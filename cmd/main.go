@@ -33,7 +33,7 @@ func main() {
 		<-c
 
 		ledger.Cleanup()
-		os.RemoveAll("testdb")
+		//os.RemoveAll("testdb")
 
 		os.Exit(0)
 	}()

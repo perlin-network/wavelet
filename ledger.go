@@ -61,48 +61,53 @@ func (ledger *Ledger) processTransactions() {
 		start = 0
 	}
 
-	accepted := make(map[uint64]map[string]bool)
+	accepted := make(map[string]bool)
+
+	totalAccepted, totalReverted := 0, 0
 
 	for depth := start; depth <= threshold; depth++ {
 		ledger.Store.ForEachDepth(depth, func(index uint64, symbol string) error {
+			encoded, err := ledger.Store.Get(merge(BucketAccepted, writeBytes(symbol)))
+			cached := readBoolean(encoded)
+
+			// Write the accepted status of transactions to the database only if it ever gets updated locally.
 			status := ledger.IsAccepted(symbol)
 
-			acceptedBytes, err := ledger.Store.Get(merge(BucketAccepted, writeBytes(symbol)))
+			if err != nil || status != cached {
+				if err != nil && status {
+					totalAccepted++
+				}
 
-			// Write the accepted status of transactions only if it ever changed.
-			if accepted := readBoolean(acceptedBytes); err == nil && status == accepted {
-				return nil
+				if err == nil {
+					if status {
+						totalAccepted++
+					} else {
+						totalReverted++
+					}
+				}
+
+				accepted[symbol] = status
 			}
-
-			if accepted[depth] == nil {
-				accepted[depth] = make(map[string]bool)
-			}
-
-			accepted[depth][symbol] = status
 			return nil
 		})
 	}
 
-	totalAccepted := 0
-
 	// Save accepted transactions to the database.
-	for _, symbols := range accepted {
-		for symbol, accepted := range symbols {
-			key := merge(BucketAccepted, writeBytes(symbol))
+	for symbol, accepted := range accepted {
+		key := merge(BucketAccepted, writeBytes(symbol))
 
-			err := ledger.Store.Put(key, writeBoolean(accepted))
-			if err != nil {
-				log.Error().Err(err).Msg("failed to write tx being accepted to db")
-			}
-
-			if accepted {
-				totalAccepted++
-			}
+		err := ledger.Store.Put(key, writeBoolean(accepted))
+		if err != nil {
+			log.Error().Err(err).Msg("failed to write tx being accepted to db")
 		}
 	}
 
 	if totalAccepted > 0 {
 		log.Info().Msgf("Accepted %d transactions.", totalAccepted)
+	}
+
+	if totalReverted > 0 {
+		log.Info().Msgf("Reverted %d transactions.", totalReverted)
 	}
 }
 
