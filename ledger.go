@@ -123,6 +123,10 @@ func (ledger *Ledger) IsAccepted(symbol string) bool {
 	}
 
 	visited := make(map[string]struct{})
+	for _, parent := range tx.Parents {
+		visited[parent] = struct{}{}
+	}
+
 	queue := tx.Parents
 
 	// Check for Condition 1.
