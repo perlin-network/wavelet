@@ -12,6 +12,10 @@ import (
 	"time"
 )
 
+var (
+	BucketAccepted = writeBytes("accepted_")
+)
+
 type Ledger struct {
 	Store    *database.Store
 	Graph    *graph.Graph
@@ -56,15 +60,27 @@ func (ledger *Ledger) processTransactions() {
 		start = 0
 	}
 
-	var accepted []string
+	accepted := make(map[uint64][]string)
 
 	for depth := start; depth <= threshold; depth++ {
 		ledger.Store.ForEachDepth(depth, func(index uint64, symbol string) error {
 			if ledger.Resolver.IsAccepted(symbol) {
-				accepted = append(accepted, symbol)
+				accepted[depth] = append(accepted[depth], symbol)
 			}
 			return nil
 		})
+	}
+
+	// Save accepted transactions to the database.
+	for depth, symbols := range accepted {
+		for _, symbol := range symbols {
+			key := merge(BucketAccepted, writeUint64(depth), writeBytes(symbol))
+
+			err := ledger.Store.Put(key, writeBoolean(true))
+			if err != nil {
+				log.Error().Err(err).Msg("failed to write tx being accepted to db")
+			}
+		}
 	}
 
 	if len(accepted) > 0 {
