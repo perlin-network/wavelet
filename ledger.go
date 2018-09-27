@@ -56,14 +56,15 @@ func (ledger *Ledger) ProcessTransactions() {
 func (ledger *Ledger) updatedAcceptedTransactions() {
 	frontierDepth := ledger.Graph.Depth()
 
-	numAccepted := 0
+	var acceptedList []string
+	var revertedList []string
 
 	for depth := uint64(0); depth <= frontierDepth; depth++ {
 		ledger.Store.ForEachDepth(depth, func(index uint64, symbol string) error {
-			bytes, _ := ledger.Store.Get(merge(BucketAccepted, writeBytes(symbol)))
-			wasAccepted := readBoolean(bytes)
-
 			accept := func(symbol string, accepted bool) error {
+				bytes, _ := ledger.Store.Get(merge(BucketAccepted, writeBytes(symbol)))
+				wasAccepted := readBoolean(bytes)
+
 				// Revert transaction and all of its ascendants.
 				if wasAccepted && !accepted {
 					numReverted := 0
@@ -75,11 +76,11 @@ func (ledger *Ledger) updatedAcceptedTransactions() {
 						popped := queue[0]
 						queue = queue[1:]
 
-						numReverted++
+						revertedList = append(revertedList, popped)
 
 						ledger.Store.Put(merge(BucketAccepted, writeBytes(popped)), writeBoolean(false))
 
-						ledger.Store.ForEachChild(symbol, func(child string) error {
+						ledger.Store.ForEachChild(popped, func(child string) error {
 							if _, seen := visited[child]; !seen {
 								queue = append(queue, child)
 								visited[child] = struct{}{}
@@ -96,7 +97,7 @@ func (ledger *Ledger) updatedAcceptedTransactions() {
 
 				if !wasAccepted && accepted {
 					ledger.Store.Put(merge(BucketAccepted, writeBytes(symbol)), writeBoolean(true))
-					numAccepted++
+					acceptedList = append(acceptedList, symbol)
 				}
 
 				return nil
@@ -135,8 +136,22 @@ func (ledger *Ledger) updatedAcceptedTransactions() {
 		})
 	}
 
-	if numAccepted > 0 {
-		log.Info().Msgf("Accepted %d transactions.", numAccepted)
+	if len(acceptedList) > 0 {
+		// Trim transaction IDs.
+		for i := 0; i < len(acceptedList); i++ {
+			acceptedList[i] = acceptedList[i][:10]
+		}
+
+		log.Info().Interface("accepted", acceptedList).Msgf("Accepted %d transactions.", len(acceptedList))
+	}
+
+	if len(revertedList) > 0 {
+		// Trim transaction IDs.
+		for i := 0; i < len(revertedList); i++ {
+			revertedList[i] = revertedList[i][:10]
+		}
+
+		log.Info().Interface("reverted", revertedList).Msgf("Reverted %d transactions.", len(revertedList))
 	}
 }
 
