@@ -9,6 +9,7 @@ import (
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/security"
+	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"time"
 )
@@ -136,11 +137,12 @@ func (ledger *Ledger) RespondToQuery(wired *wire.Transaction) (string, bool, err
 // preceding a successfully queried transactions.
 func (ledger *Ledger) HandleSuccessfulQuery(tx *database.Transaction) error {
 	visited := make(map[string]struct{})
-	queue := []string{tx.Id}
 
-	for len(queue) > 0 {
-		popped := queue[0]
-		queue = queue[1:]
+	queue := queue.New()
+	queue.PushBack(tx.Id)
+
+	for queue.Len() > 0 {
+		popped := queue.PopFront().(string)
 
 		tx, err := ledger.Store.GetBySymbol(popped)
 		if err != nil {
@@ -174,8 +176,9 @@ func (ledger *Ledger) HandleSuccessfulQuery(tx *database.Transaction) error {
 
 		for _, parent := range tx.Parents {
 			if _, seen := visited[parent]; !seen {
-				queue = append(queue, parent)
 				visited[parent] = struct{}{}
+
+				queue.PushBack(parent)
 			}
 		}
 	}
@@ -226,24 +229,31 @@ func (ledger *Ledger) acceptTransaction(symbol string) {
 
 	delete(ledger.pendingAcceptance, symbol)
 
-	queue := []string{symbol}
 	visited := make(map[string]struct{})
 
-	for len(queue) > 0 {
-		popped := queue[0]
-		queue = queue[1:]
+	queue := queue.New()
+	queue.PushBack(symbol)
 
-		ledger.Store.ForEachChild(popped, func(child string) error {
+	for queue.Len() > 0 {
+		popped := queue.PopFront().(string)
+
+		children, err := ledger.Store.GetChildrenBySymbol(popped)
+		if err != nil {
+			continue
+		}
+
+		for _, child := range children.Transactions {
 			if _, seen := visited[child]; !seen {
+				visited[child] = struct{}{}
+
 				if _, pending := ledger.pendingAcceptance[child]; !pending {
 					ledger.pendingAcceptance[child] = struct{}{}
 				}
 
-				queue = append(queue, child)
-				visited[child] = struct{}{}
+				queue.PushBack(child)
+
 			}
-			return nil
-		})
+		}
 	}
 }
 
@@ -251,24 +261,29 @@ func (ledger *Ledger) acceptTransaction(symbol string) {
 func (ledger *Ledger) revertTransaction(symbol string) {
 	numReverted := 0
 
-	queue := []string{symbol}
 	visited := make(map[string]struct{})
 
-	for len(queue) > 0 {
-		popped := queue[0]
-		queue = queue[1:]
+	queue := queue.New()
+	queue.PushBack(symbol)
+
+	for queue.Len() > 0 {
+		popped := queue.PopFront().(string)
 		numReverted++
 
 		ledger.Store.Delete(merge(BucketAccepted, writeBytes(popped)))
 
-		ledger.Store.ForEachChild(popped, func(child string) error {
-			if _, seen := visited[child]; !seen {
-				queue = append(queue, child)
-				visited[child] = struct{}{}
-			}
+		children, err := ledger.Store.GetChildrenBySymbol(popped)
+		if err != nil {
+			continue
+		}
 
-			return nil
-		})
+		for _, child := range children.Transactions {
+			if _, seen := visited[child]; !seen {
+				visited[child] = struct{}{}
+
+				queue.PushBack(child)
+			}
+		}
 	}
 
 	log.Debug().Int("num_reverted", numReverted).Msg("Reverted transactions.")
