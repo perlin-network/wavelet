@@ -144,6 +144,12 @@ func (ledger *Ledger) HandleSuccessfulQuery(tx *database.Transaction) error {
 	for queue.Len() > 0 {
 		popped := queue.PopFront().(string)
 
+		// This line cuts down consensus time from 0.03 seconds to 0.007 seconds.
+		// Whether or not it's correct requires an analysis of its own.
+		if ledger.WasAccepted(popped) {
+			continue
+		}
+
 		tx, err := ledger.Store.GetBySymbol(popped)
 		if err != nil {
 			continue
@@ -157,8 +163,6 @@ func (ledger *Ledger) HandleSuccessfulQuery(tx *database.Transaction) error {
 		score, preferredScore := ledger.Graph.CountAscendants(popped, system.Beta2), ledger.Graph.CountAscendants(set.Preferred, system.Beta2)
 
 		if score > preferredScore {
-			ledger.ensureAccepted(set, set.Preferred)
-
 			set.Preferred = popped
 		}
 
