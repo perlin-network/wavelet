@@ -80,8 +80,10 @@ func (ledger *Ledger) updatedAcceptedTransactions() {
 						ledger.Store.Put(merge(BucketAccepted, writeBytes(popped)), writeBoolean(false))
 
 						ledger.Store.ForEachChild(symbol, func(child string) error {
-							queue = append(queue, child)
-							visited[child] = struct{}{}
+							if _, seen := visited[child]; !seen {
+								queue = append(queue, child)
+								visited[child] = struct{}{}
+							}
 
 							return nil
 						})
