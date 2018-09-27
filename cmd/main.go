@@ -73,6 +73,16 @@ func main() {
 			log.Fatal().Err(err).Msg("Failed to respond to query.")
 		}
 
+		tx, err := ledger.Store.GetBySymbol(id)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to find wired transaction in the database.")
+		}
+
+		err = ledger.HandleSuccessfulQuery(tx)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to process the wired transaction should it be successfully queried.")
+		}
+
 		log.Debug().Str("id", id).Interface("tx", wired).Msgf("Received a transaction, and voted '%t' for it.", successful)
 	}
 }

@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"fmt"
 	"github.com/lytics/hll"
 	"github.com/perlin-network/graph/conflict"
 	"github.com/perlin-network/graph/database"
@@ -170,7 +171,90 @@ func (ledger *Ledger) RespondToQuery(wired *wire.Transaction) (string, bool, err
 	return id, ledger.Resolver.IsStronglyPreferred(id), nil
 }
 
-//func (ledger *Ledger) HandleQueryResponse(tx *database.Transaction) ()
+func (ledger *Ledger) HandleSuccessfulQuery(tx *database.Transaction) error {
+	visited := make(map[string]struct{})
+	queue := []string{tx.Id}
+
+	for len(queue) > 0 {
+		popped := queue[0]
+		queue = queue[1:]
+
+		tx, err := ledger.Store.GetBySymbol(popped)
+		if err != nil {
+			continue
+		}
+
+		// Conflict sets are identified under a specific sender with a specific nonce. Every
+		// single time a transaction is sent from a senders account, the nonce increments
+		// by one.
+		set, err := ledger.Resolver.GetConflictSet(tx.Sender, tx.Nonce)
+		if err != nil {
+			continue
+		}
+
+		score, preferredScore := ledger.Graph.CountAscendants(popped, system.Beta2), ledger.Graph.CountAscendants(set.Preferred, system.Beta2)
+
+		// If a transaction has more descendants than the preferred transaction in its conflict set,
+		// set the transaction to be the preferred transaction of the conflict set.
+		if score > preferredScore {
+			ledger.ensureAccepted(set, set.Preferred)
+
+			set.Preferred = popped
+		}
+
+		// If the last-updated transaction in the conflict set isn't this transaction,
+		// set it to be the transaction.
+		if popped != set.Last {
+			set.Last = popped
+			set.Count = 0
+		} else {
+			set.Count++
+		}
+
+		err = ledger.Resolver.SaveConflictSet(tx.Sender, tx.Nonce, set)
+		if err != nil {
+			continue
+		}
+
+		for _, parent := range tx.Parents {
+			if _, seen := visited[parent]; !seen {
+				queue = append(queue, parent)
+				visited[parent] = struct{}{}
+			}
+		}
+	}
+
+	return nil
+}
+
+// ensureAccepted gets called every single time the preferred transaction of a conflict set changes.
+// It ensures that preferred transactions that were accepted, which should instead be rejected get
+// reverted alongside all of their ascendant transactions.
+func (ledger *Ledger) ensureAccepted(set *database.ConflictSet, symbol string) {
+	bytes, _ := ledger.Store.Get(merge(BucketAccepted, writeBytes(symbol)))
+	accepted := readBoolean(bytes)
+
+	if accepted {
+		transactions := new(hll.Hll)
+
+		err := transactions.UnmarshalPb(set.Transactions)
+
+		if err != nil {
+			return
+		}
+
+		conflicting := transactions.Cardinality() > 1
+
+		// Check if the transaction is still accepted.
+		stillAccepted := set.Count > system.Beta2 || (!conflicting && ledger.Graph.CountAscendants(symbol, system.Beta1+1) > system.Beta2)
+
+		if !stillAccepted {
+			fmt.Println("Not accepted anymore! ", symbol)
+			// TODO: Reverse accept status and all of its ascendants.
+		}
+
+	}
+}
 
 func (ledger *Ledger) FindEligibleParents() ([]string, error) {
 	return ledger.Resolver.FindEligibleParents()
