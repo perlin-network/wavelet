@@ -22,6 +22,8 @@ type Ledger struct {
 	Graph    *graph.Graph
 	Resolver *conflict.Resolver
 
+	pendingAcceptance map[string]struct{}
+
 	kill chan struct{}
 }
 
@@ -31,7 +33,7 @@ func NewLedger() *Ledger {
 	graph := graph.New(store)
 	resolver := conflict.New(graph)
 
-	return &Ledger{Store: store, Graph: graph, Resolver: resolver}
+	return &Ledger{Store: store, Graph: graph, Resolver: resolver, pendingAcceptance: make(map[string]struct{})}
 }
 
 // ProcessTransactions starts a goroutine to periodically update the present
@@ -54,86 +56,75 @@ func (ledger *Ledger) ProcessTransactions() {
 }
 
 func (ledger *Ledger) updatedAcceptedTransactions() {
-	frontierDepth := ledger.Graph.Depth()
+	// If there are no accepted transactions and none are pending, add the very first transaction.
+	if len(ledger.pendingAcceptance) == 0 && ledger.Store.Size(BucketAccepted) == 0 {
+		tx, err := ledger.Store.GetByIndex(0)
+		if err != nil {
+			return
+		}
+
+		ledger.pendingAcceptance[tx.Id] = struct{}{}
+	}
 
 	var acceptedList []string
-	var revertedList []string
 
-	for depth := uint64(0); depth <= frontierDepth; depth++ {
-		ledger.Store.ForEachDepth(depth, func(index uint64, symbol string) error {
-			accept := func(symbol string, accepted bool) error {
-				bytes, _ := ledger.Store.Get(merge(BucketAccepted, writeBytes(symbol)))
-				wasAccepted := readBoolean(bytes)
+	accept := func(symbol string, accepted bool) error {
+		bytes, _ := ledger.Store.Get(merge(BucketAccepted, writeBytes(symbol)))
+		wasAccepted := readBoolean(bytes)
 
-				// Revert transaction and all of its ascendants.
-				if wasAccepted && !accepted {
-					numReverted := 0
+		if !wasAccepted && accepted {
+			ledger.Store.Put(merge(BucketAccepted, writeBytes(symbol)), writeBoolean(true))
 
-					queue := []string{symbol}
-					visited := map[string]struct{}{symbol: {}}
+			delete(ledger.pendingAcceptance, symbol)
 
-					for len(queue) > 0 {
-						popped := queue[0]
-						queue = queue[1:]
-
-						revertedList = append(revertedList, popped)
-
-						ledger.Store.Put(merge(BucketAccepted, writeBytes(popped)), writeBoolean(false))
-
-						ledger.Store.ForEachChild(popped, func(child string) error {
-							if _, seen := visited[child]; !seen {
-								queue = append(queue, child)
-								visited[child] = struct{}{}
-							}
-
-							return nil
-						})
-					}
-
-					if numReverted > 0 {
-						log.Info().Msgf("Reverted %d transactions.", numReverted)
-					}
-				}
-
-				if !wasAccepted && accepted {
-					ledger.Store.Put(merge(BucketAccepted, writeBytes(symbol)), writeBoolean(true))
-					acceptedList = append(acceptedList, symbol)
-				}
-
+			// Get the children of the accepted transaction and have them pend being accepted.
+			ledger.Store.ForEachChild(symbol, func(child string) error {
+				ledger.pendingAcceptance[child] = struct{}{}
 				return nil
-			}
+			})
 
-			tx, err := ledger.Store.GetBySymbol(symbol)
-			if err != nil {
-				return accept(symbol, false)
-			}
+			acceptedList = append(acceptedList, symbol)
+		}
 
-			set, err := ledger.Resolver.GetConflictSet(tx.Sender, tx.Nonce)
-			if err != nil {
-				return accept(symbol, false)
-			}
+		return nil
+	}
 
-			transactions := new(hll.Hll)
-			err = transactions.UnmarshalPb(set.Transactions)
+	for symbol := range ledger.pendingAcceptance {
+		tx, err := ledger.Store.GetBySymbol(symbol)
+		if err != nil {
+			accept(symbol, false)
+			continue
+		}
 
-			if err != nil {
-				return accept(symbol, false)
-			}
+		set, err := ledger.Resolver.GetConflictSet(tx.Sender, tx.Nonce)
+		if err != nil {
+			accept(symbol, false)
+			continue
+		}
 
-			// Condition 2 for being accepted.
-			if set.Count > system.Beta2 {
-				return accept(symbol, true)
-			}
+		transactions := new(hll.Hll)
+		err = transactions.UnmarshalPb(set.Transactions)
 
-			// Condition 1 for being accepted.
-			conflicting := transactions.Cardinality() > 1
+		if err != nil {
+			accept(symbol, false)
+			continue
+		}
 
-			if !conflicting && ledger.Graph.CountAscendants(symbol, system.Beta1+1) > system.Beta1 {
-				return accept(symbol, true)
-			}
+		// Condition 2 for being accepted.
+		if set.Count > system.Beta2 {
+			accept(symbol, true)
+			continue
+		}
 
-			return accept(symbol, false)
-		})
+		// Condition 1 for being accepted.
+		conflicting := transactions.Cardinality() > 1
+
+		if !conflicting && ledger.Graph.CountAscendants(symbol, system.Beta1+1) > system.Beta1 {
+			accept(symbol, true)
+			continue
+		}
+
+		accept(symbol, false)
 	}
 
 	if len(acceptedList) > 0 {
@@ -143,15 +134,6 @@ func (ledger *Ledger) updatedAcceptedTransactions() {
 		}
 
 		log.Info().Interface("accepted", acceptedList).Msgf("Accepted %d transactions.", len(acceptedList))
-	}
-
-	if len(revertedList) > 0 {
-		// Trim transaction IDs.
-		for i := 0; i < len(revertedList); i++ {
-			revertedList[i] = revertedList[i][:10]
-		}
-
-		log.Info().Interface("reverted", revertedList).Msgf("Reverted %d transactions.", len(revertedList))
 	}
 }
 
