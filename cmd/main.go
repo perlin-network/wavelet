@@ -24,7 +24,7 @@ func main() {
 		Msg("Keypair loaded.")
 
 	ledger := wavelet.NewLedger()
-	go ledger.ProcessTransactions()
+	go ledger.UpdateAcceptedTransactions()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -32,7 +32,7 @@ func main() {
 	go func() {
 		<-c
 
-		ledger.Cleanup()
+		ledger.Graph.Cleanup()
 		//os.RemoveAll("testdb")
 
 		os.Exit(0)
@@ -48,7 +48,7 @@ func main() {
 			panic(err)
 		}
 
-		parents, err := ledger.FindEligibleParents()
+		parents, err := ledger.Resolver.FindEligibleParents()
 		if err != nil {
 			log.Fatal().Err(err).Msg("Failed to find eligible parents.")
 		}

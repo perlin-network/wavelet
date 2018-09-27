@@ -40,11 +40,12 @@ func NewLedger() *Ledger {
 	return ledger
 }
 
-// ProcessTransactions starts a goroutine to periodically update the present
-// ledger state given all incoming transactions.
+// UpdateAcceptedTransactions incrementally from the root of the graph updates whether
+// or not all transactions this node knows about are accepted.
 //
-// ProcessTransactions will look at all tr
-func (ledger *Ledger) ProcessTransactions() {
+// The graph will be incrementally checked for updates periodically. Ideally, you should
+// execute this function in a new goroutine.
+func (ledger *Ledger) UpdateAcceptedTransactions() {
 	timer := time.NewTicker(1 * time.Second)
 
 	for {
@@ -281,15 +282,4 @@ func (ledger *Ledger) onReceiveTransaction(index uint64, tx *database.Transactio
 	}
 
 	return ledger.ensureAccepted(set, set.Preferred)
-}
-
-// FindEligibleParents finds parents which maximizes the likelihood that your transaction
-// will get accepted.
-func (ledger *Ledger) FindEligibleParents() ([]string, error) {
-	return ledger.Resolver.FindEligibleParents()
-}
-
-// Cleanup safely disposes the database instance associated to the graph associated to Wavelet.
-func (ledger *Ledger) Cleanup() error {
-	return ledger.Graph.Cleanup()
 }
