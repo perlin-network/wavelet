@@ -235,7 +235,9 @@ func (ledger *Ledger) acceptTransaction(symbol string) {
 
 		ledger.Store.ForEachChild(popped, func(child string) error {
 			if _, seen := visited[child]; !seen {
-				ledger.pendingAcceptance[child] = struct{}{}
+				if _, pending := ledger.pendingAcceptance[child]; !pending {
+					ledger.pendingAcceptance[child] = struct{}{}
+				}
 
 				queue = append(queue, child)
 				visited[child] = struct{}{}
