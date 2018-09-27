@@ -56,7 +56,7 @@ func (ledger *Ledger) ProcessTransactions() {
 func (ledger *Ledger) updatedAcceptedTransactions() {
 	frontierDepth := ledger.Graph.Depth()
 
-	numAccepted, numReverted := 0, 0
+	numAccepted := 0
 
 	for depth := uint64(0); depth <= frontierDepth; depth++ {
 		ledger.Store.ForEachDepth(depth, func(index uint64, symbol string) error {
@@ -66,6 +66,8 @@ func (ledger *Ledger) updatedAcceptedTransactions() {
 			accept := func(symbol string, accepted bool) error {
 				// Revert transaction and all of its ascendants.
 				if wasAccepted && !accepted {
+					numReverted := 0
+
 					queue := []string{symbol}
 					visited := map[string]struct{}{symbol: {}}
 
@@ -83,6 +85,10 @@ func (ledger *Ledger) updatedAcceptedTransactions() {
 
 							return nil
 						})
+					}
+
+					if numReverted > 0 {
+						log.Info().Msgf("Reverted %d transactions.", numReverted)
 					}
 				}
 
@@ -129,10 +135,6 @@ func (ledger *Ledger) updatedAcceptedTransactions() {
 
 	if numAccepted > 0 {
 		log.Info().Msgf("Accepted %d transactions.", numAccepted)
-	}
-
-	if numReverted > 0 {
-		log.Info().Msgf("Reverted %d transactions.", numReverted)
 	}
 }
 
