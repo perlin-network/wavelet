@@ -46,143 +46,94 @@ func (ledger *Ledger) ProcessTransactions() {
 		case <-ledger.kill:
 			break
 		case <-timer.C:
-			ledger.processTransactions()
+			ledger.updatedAcceptedTransactions()
 		}
 	}
 
 	timer.Stop()
 }
 
-func (ledger *Ledger) processTransactions() {
-	threshold := ledger.Graph.Depth()
+func (ledger *Ledger) updatedAcceptedTransactions() {
+	frontierDepth := ledger.Graph.Depth()
 
-	start := threshold - system.Beta2
-	if threshold < system.Beta2 {
-		start = 0
-	}
+	numAccepted, numReverted := 0, 0
 
-	accepted := make(map[string]bool)
-
-	totalAccepted, totalReverted := 0, 0
-
-	for depth := start; depth <= threshold; depth++ {
+	for depth := uint64(0); depth <= frontierDepth; depth++ {
 		ledger.Store.ForEachDepth(depth, func(index uint64, symbol string) error {
-			encoded, err := ledger.Store.Get(merge(BucketAccepted, writeBytes(symbol)))
-			cached := readBoolean(encoded)
+			bytes, _ := ledger.Store.Get(merge(BucketAccepted, writeBytes(symbol)))
+			wasAccepted := readBoolean(bytes)
 
-			// Write the accepted status of transactions to the database only if it ever gets updated locally.
-			status := ledger.IsAccepted(symbol)
+			accept := func(symbol string, accepted bool) error {
+				// Revert transaction and all of its ascendants.
+				if wasAccepted && !accepted {
+					queue := []string{symbol}
+					visited := map[string]struct{}{symbol: {}}
 
-			if err != nil || status != cached {
-				if err != nil && status {
-					totalAccepted++
-				}
+					for len(queue) > 0 {
+						popped := queue[0]
+						queue = queue[1:]
 
-				if err == nil {
-					if status {
-						totalAccepted++
-					} else {
-						totalReverted++
+						numReverted++
+
+						ledger.Store.Put(merge(BucketAccepted, writeBytes(popped)), writeBoolean(false))
+
+						ledger.Store.ForEachChild(symbol, func(child string) error {
+							queue = append(queue, child)
+							visited[child] = struct{}{}
+
+							return nil
+						})
 					}
 				}
 
-				accepted[symbol] = status
+				if !wasAccepted && accepted {
+					ledger.Store.Put(merge(BucketAccepted, writeBytes(symbol)), writeBoolean(true))
+					numAccepted++
+				}
+
+				return nil
 			}
-			return nil
+
+			tx, err := ledger.Store.GetBySymbol(symbol)
+			if err != nil {
+				return accept(symbol, false)
+			}
+
+			set, err := ledger.Resolver.GetConflictSet(tx.Sender, tx.Nonce)
+			if err != nil {
+				return accept(symbol, false)
+			}
+
+			transactions := new(hll.Hll)
+			err = transactions.UnmarshalPb(set.Transactions)
+
+			if err != nil {
+				return accept(symbol, false)
+			}
+
+			// Condition 2 for being accepted.
+			if set.Count > system.Beta2 {
+				return accept(symbol, true)
+			}
+
+			// Condition 1 for being accepted.
+			conflicting := transactions.Cardinality() > 1
+
+			if !conflicting && ledger.Graph.CountAscendants(symbol, system.Beta1+1) > system.Beta1 {
+				return accept(symbol, true)
+			}
+
+			return accept(symbol, false)
 		})
 	}
 
-	// Save accepted transactions to the database.
-	for symbol, accepted := range accepted {
-		key := merge(BucketAccepted, writeBytes(symbol))
-
-		err := ledger.Store.Put(key, writeBoolean(accepted))
-		if err != nil {
-			log.Error().Err(err).Msg("failed to write tx being accepted to db")
-		}
+	if numAccepted > 0 {
+		log.Info().Msgf("Accepted %d transactions.", numAccepted)
 	}
 
-	if totalAccepted > 0 {
-		log.Info().Msgf("Accepted %d transactions.", totalAccepted)
+	if numReverted > 0 {
+		log.Info().Msgf("Reverted %d transactions.", numReverted)
 	}
-
-	if totalReverted > 0 {
-		log.Info().Msgf("Reverted %d transactions.", totalReverted)
-	}
-}
-
-func (ledger *Ledger) IsAccepted(symbol string) bool {
-	tx, err := ledger.Store.GetBySymbol(symbol)
-	if err != nil {
-		return false
-	}
-
-	set, err := ledger.Resolver.GetConflictSet(tx.Sender, tx.Nonce)
-	if err != nil {
-		return false
-	}
-
-	// Condition 2 for being accepted. (beta 2 = 150)
-	if set.Count > system.Beta2 {
-		return true
-	}
-
-	visited := make(map[string]struct{})
-	for _, parent := range tx.Parents {
-		visited[parent] = struct{}{}
-	}
-
-	queue := tx.Parents
-
-	// Check for Condition 1.
-	for len(queue) > 0 {
-		popped := queue[0]
-		queue = queue[1:]
-
-		tx, err = ledger.Store.GetBySymbol(popped)
-		if err != nil {
-			return false
-		}
-
-		set, err = ledger.Resolver.GetConflictSet(tx.Sender, tx.Nonce)
-		if err != nil {
-			return false
-		}
-
-		transactions := new(hll.Hll)
-		err = transactions.UnmarshalPb(set.Transactions)
-
-		// If we fail to unmarshal the HyperLogLog++ counter, then consider the transaction
-		// not accepted to be safe. This implies the conflict set's bytes (in the database)
-		// are corrupt.
-		if err != nil {
-			return false
-		}
-
-		conflicting := transactions.Cardinality() > 1
-
-		// Condition 1 for being accepted. (beta 1 = 10)
-		if conflicting || ledger.Graph.CountAscendants(symbol, system.Beta1+1) <= system.Beta1 {
-			return false
-		}
-
-		acceptedBytes, err := ledger.Store.Get(merge(BucketAccepted, writeBytes(popped)))
-
-		// If the transaction appears to have already been accepted, stop traversing through
-		// its descendants.
-		if accepted := readBoolean(acceptedBytes); err == nil && accepted {
-			continue
-		}
-
-		for _, parent := range tx.Parents {
-			if _, seen := visited[parent]; !seen {
-				queue = append(queue, parent)
-				visited[parent] = struct{}{}
-			}
-		}
-	}
-
-	return true
 }
 
 // RespondToQuery provides a response should we be selected as one of the K peers
