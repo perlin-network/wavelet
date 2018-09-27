@@ -59,6 +59,8 @@ func (ledger *Ledger) ProcessTransactions() {
 	timer.Stop()
 }
 
+// updateAcceptedTransactions incrementally from the root of the graph updates whether
+// or not all transactions this node knows about are accepted.
 func (ledger *Ledger) updatedAcceptedTransactions() {
 	// If there are no accepted transactions and none are pending, add the very first transaction.
 	if len(ledger.pendingAcceptance) == 0 && ledger.Store.Size(BucketAccepted) == 0 {
@@ -72,51 +74,14 @@ func (ledger *Ledger) updatedAcceptedTransactions() {
 
 	var acceptedList []string
 
-	accept := func(symbol string, accepted bool) error {
-		bytes, _ := ledger.Store.Get(merge(BucketAccepted, writeBytes(symbol)))
-		wasAccepted := readBoolean(bytes)
-
-		if !wasAccepted && accepted {
-			ledger.Store.Put(merge(BucketAccepted, writeBytes(symbol)), writeBoolean(true))
-
-			delete(ledger.pendingAcceptance, symbol)
-
-			// Get the ascendants of the accepted transaction and have them pend being accepted.
-
-			queue := []string{symbol}
-			visited := make(map[string]struct{})
-
-			for len(queue) > 0 {
-				popped := queue[0]
-				queue = queue[1:]
-
-				ledger.Store.ForEachChild(popped, func(child string) error {
-					if _, seen := visited[child]; !seen {
-						ledger.pendingAcceptance[child] = struct{}{}
-
-						queue = append(queue, child)
-						visited[child] = struct{}{}
-					}
-					return nil
-				})
-			}
-
-			acceptedList = append(acceptedList, symbol)
-		}
-
-		return nil
-	}
-
 	for symbol := range ledger.pendingAcceptance {
 		tx, err := ledger.Store.GetBySymbol(symbol)
 		if err != nil {
-			accept(symbol, false)
 			continue
 		}
 
 		set, err := ledger.Resolver.GetConflictSet(tx.Sender, tx.Nonce)
 		if err != nil {
-			accept(symbol, false)
 			continue
 		}
 
@@ -124,25 +89,17 @@ func (ledger *Ledger) updatedAcceptedTransactions() {
 		err = transactions.UnmarshalPb(set.Transactions)
 
 		if err != nil {
-			accept(symbol, false)
 			continue
 		}
 
-		// Condition 2 for being accepted.
-		if set.Count > system.Beta2 {
-			accept(symbol, true)
-			continue
+		conflicting := !(transactions.Cardinality() == 1)
+
+		if set.Count > system.Beta2 || (!conflicting && ledger.Graph.CountAscendants(symbol, system.Beta1+1) > system.Beta1) {
+			if !ledger.WasAccepted(symbol) {
+				ledger.acceptTransaction(symbol)
+				acceptedList = append(acceptedList, symbol)
+			}
 		}
-
-		// Condition 1 for being accepted.
-		conflicting := transactions.Cardinality() > 1
-
-		if !conflicting && ledger.Graph.CountAscendants(symbol, system.Beta1+1) > system.Beta1 {
-			accept(symbol, true)
-			continue
-		}
-
-		accept(symbol, false)
 	}
 
 	if len(acceptedList) > 0 {
@@ -174,6 +131,8 @@ func (ledger *Ledger) RespondToQuery(wired *wire.Transaction) (string, bool, err
 	return id, ledger.Resolver.IsStronglyPreferred(id), nil
 }
 
+// HandleSuccessfulQuery updates the conflict sets and acceptance of all transactions
+// preceding a successfully queried transactions.
 func (ledger *Ledger) HandleSuccessfulQuery(tx *database.Transaction) error {
 	visited := make(map[string]struct{})
 	queue := []string{tx.Id}
@@ -187,9 +146,6 @@ func (ledger *Ledger) HandleSuccessfulQuery(tx *database.Transaction) error {
 			continue
 		}
 
-		// Conflict sets are identified under a specific sender with a specific nonce. Every
-		// single time a transaction is sent from a senders account, the nonce increments
-		// by one.
 		set, err := ledger.Resolver.GetConflictSet(tx.Sender, tx.Nonce)
 		if err != nil {
 			continue
@@ -197,16 +153,12 @@ func (ledger *Ledger) HandleSuccessfulQuery(tx *database.Transaction) error {
 
 		score, preferredScore := ledger.Graph.CountAscendants(popped, system.Beta2), ledger.Graph.CountAscendants(set.Preferred, system.Beta2)
 
-		// If a transaction has more descendants than the preferred transaction in its conflict set,
-		// set the transaction to be the preferred transaction of the conflict set.
 		if score > preferredScore {
 			ledger.ensureAccepted(set, set.Preferred)
 
 			set.Preferred = popped
 		}
 
-		// If the last-updated transaction in the conflict set isn't this transaction,
-		// set it to be the transaction.
 		if popped != set.Last {
 			set.Last = popped
 			set.Count = 0
@@ -231,13 +183,11 @@ func (ledger *Ledger) HandleSuccessfulQuery(tx *database.Transaction) error {
 }
 
 // ensureAccepted gets called every single time the preferred transaction of a conflict set changes.
+//
 // It ensures that preferred transactions that were accepted, which should instead be rejected get
 // reverted alongside all of their ascendant transactions.
 func (ledger *Ledger) ensureAccepted(set *database.ConflictSet, symbol string) error {
-	bytes, _ := ledger.Store.Get(merge(BucketAccepted, writeBytes(symbol)))
-	accepted := readBoolean(bytes)
-
-	if accepted {
+	if ledger.WasAccepted(symbol) {
 		transactions := new(hll.Hll)
 
 		err := transactions.UnmarshalPb(set.Transactions)
@@ -246,7 +196,7 @@ func (ledger *Ledger) ensureAccepted(set *database.ConflictSet, symbol string) e
 			return err
 		}
 
-		conflicting := transactions.Cardinality() > 1
+		conflicting := !(transactions.Cardinality() == 1)
 
 		// Check if the transaction is still accepted.
 		stillAccepted := set.Count > system.Beta2 || (!conflicting && ledger.Graph.CountAscendants(symbol, system.Beta1+1) > system.Beta2)
@@ -257,6 +207,41 @@ func (ledger *Ledger) ensureAccepted(set *database.ConflictSet, symbol string) e
 	}
 
 	return nil
+}
+
+// WasAccepted returns whether or not a transaction given by its symbol
+// was stored to be accepted inside the database.
+func (ledger *Ledger) WasAccepted(symbol string) bool {
+	bytes, _ := ledger.Store.Get(merge(BucketAccepted, writeBytes(symbol)))
+	return readBoolean(bytes)
+}
+
+// acceptTransaction accepts a transaction and ensures the transaction is not pending acceptance inside the graph.
+// The children of said accepted transaction thereafter get queued to pending acceptance.
+//
+// Should the transaction previously not have been accepted, the
+func (ledger *Ledger) acceptTransaction(symbol string) {
+	ledger.Store.Put(merge(BucketAccepted, writeBytes(symbol)), writeBoolean(true))
+
+	delete(ledger.pendingAcceptance, symbol)
+
+	queue := []string{symbol}
+	visited := make(map[string]struct{})
+
+	for len(queue) > 0 {
+		popped := queue[0]
+		queue = queue[1:]
+
+		ledger.Store.ForEachChild(popped, func(child string) error {
+			if _, seen := visited[child]; !seen {
+				ledger.pendingAcceptance[child] = struct{}{}
+
+				queue = append(queue, child)
+				visited[child] = struct{}{}
+			}
+			return nil
+		})
+	}
 }
 
 // revertTransaction sets a transaction and all of its ascendants to not be accepted.
@@ -271,10 +256,7 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 		queue = queue[1:]
 		numReverted++
 
-		err := ledger.Store.Put(merge(BucketAccepted, writeBytes(popped)), writeBoolean(false))
-		if err != nil {
-			continue
-		}
+		ledger.Store.Delete(merge(BucketAccepted, writeBytes(popped)))
 
 		ledger.Store.ForEachChild(popped, func(child string) error {
 			if _, seen := visited[child]; !seen {
@@ -289,6 +271,8 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 	log.Debug().Int("num_reverted", numReverted).Msg("Reverted transactions.")
 }
 
+// onReceiveTransaction ensures that incoming transactions which conflict with any
+// of the transactions on our graph are not accepted.
 func (ledger *Ledger) onReceiveTransaction(index uint64, tx *database.Transaction) error {
 	set, err := ledger.Resolver.GetConflictSet(tx.Sender, tx.Nonce)
 
@@ -299,10 +283,13 @@ func (ledger *Ledger) onReceiveTransaction(index uint64, tx *database.Transactio
 	return ledger.ensureAccepted(set, set.Preferred)
 }
 
+// FindEligibleParents finds parents which maximizes the likelihood that your transaction
+// will get accepted.
 func (ledger *Ledger) FindEligibleParents() ([]string, error) {
 	return ledger.Resolver.FindEligibleParents()
 }
 
+// Cleanup safely disposes the database instance associated to the graph associated to Wavelet.
 func (ledger *Ledger) Cleanup() error {
 	return ledger.Graph.Cleanup()
 }

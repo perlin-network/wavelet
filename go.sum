@@ -55,6 +55,10 @@ github.com/perlin-network/graph v0.0.0-20180926134333-d8576bb58c15 h1:SUSVzQklqf
 github.com/perlin-network/graph v0.0.0-20180926134333-d8576bb58c15/go.mod h1:6aexdrbZRz7/nRATxPt/yK+x4caBcRX2cljoVCdxCVU=
 github.com/perlin-network/graph v0.0.0-20180927040436-157af50c08ee h1:FavHoB7HacZwszq6sCARPDPtCPlXWlH5NL1S+iuZszM=
 github.com/perlin-network/graph v0.0.0-20180927040436-157af50c08ee/go.mod h1:6aexdrbZRz7/nRATxPt/yK+x4caBcRX2cljoVCdxCVU=
+github.com/perlin-network/graph v0.0.0-20180927102528-e9ddc5f05f01 h1:XwILAoQM1BXPyCA+vO+O5NpN4mZJS/9bM3iCD+IMQNA=
+github.com/perlin-network/graph v0.0.0-20180927102528-e9ddc5f05f01/go.mod h1:6aexdrbZRz7/nRATxPt/yK+x4caBcRX2cljoVCdxCVU=
+github.com/perlin-network/graph v0.0.0-20180927105512-a77dc20692e3 h1:hAEzAiCOqKHdWxVnFfAwh2qmZzoBIsAKPpCpMqz7m/Y=
+github.com/perlin-network/graph v0.0.0-20180927105512-a77dc20692e3/go.mod h1:6aexdrbZRz7/nRATxPt/yK+x4caBcRX2cljoVCdxCVU=
 github.com/perlin-network/noise v1.1.0 h1:jvFmgOXwB5VqC8iu9zX+GjGjPEMKPKfhcHmHnCX2xzQ=
 github.com/perlin-network/noise v1.1.0/go.mod h1:QCORppHESoRRJ4FOhcpg30nbr1wachSOv5BZ1SRcRhE=
 github.com/pkg/errors v0.8.0 h1:WdK/asTD0HN+q6hsWO3/vpuAkAr+tw6aNJNDFFf0+qw=
