@@ -1,7 +1,6 @@
 package wavelet
 
 import (
-	"fmt"
 	"github.com/lytics/hll"
 	"github.com/perlin-network/graph/conflict"
 	"github.com/perlin-network/graph/database"
@@ -34,7 +33,11 @@ func NewLedger() *Ledger {
 	graph := graph.New(store)
 	resolver := conflict.New(graph)
 
-	return &Ledger{Store: store, Graph: graph, Resolver: resolver, pendingAcceptance: make(map[string]struct{})}
+	ledger := &Ledger{Store: store, Graph: graph, Resolver: resolver, pendingAcceptance: make(map[string]struct{})}
+
+	graph.AddOnReceiveHandler(ledger.onReceiveTransaction)
+
+	return ledger
 }
 
 // ProcessTransactions starts a goroutine to periodically update the present
@@ -230,7 +233,7 @@ func (ledger *Ledger) HandleSuccessfulQuery(tx *database.Transaction) error {
 // ensureAccepted gets called every single time the preferred transaction of a conflict set changes.
 // It ensures that preferred transactions that were accepted, which should instead be rejected get
 // reverted alongside all of their ascendant transactions.
-func (ledger *Ledger) ensureAccepted(set *database.ConflictSet, symbol string) {
+func (ledger *Ledger) ensureAccepted(set *database.ConflictSet, symbol string) error {
 	bytes, _ := ledger.Store.Get(merge(BucketAccepted, writeBytes(symbol)))
 	accepted := readBoolean(bytes)
 
@@ -240,7 +243,7 @@ func (ledger *Ledger) ensureAccepted(set *database.ConflictSet, symbol string) {
 		err := transactions.UnmarshalPb(set.Transactions)
 
 		if err != nil {
-			return
+			return err
 		}
 
 		conflicting := transactions.Cardinality() > 1
@@ -249,11 +252,51 @@ func (ledger *Ledger) ensureAccepted(set *database.ConflictSet, symbol string) {
 		stillAccepted := set.Count > system.Beta2 || (!conflicting && ledger.Graph.CountAscendants(symbol, system.Beta1+1) > system.Beta2)
 
 		if !stillAccepted {
-			fmt.Println("Not accepted anymore! ", symbol)
-			// TODO: Reverse accept status and all of its ascendants.
+			ledger.revertTransaction(symbol)
+		}
+	}
+
+	return nil
+}
+
+// revertTransaction sets a transaction and all of its ascendants to not be accepted.
+func (ledger *Ledger) revertTransaction(symbol string) {
+	numReverted := 0
+
+	queue := []string{symbol}
+	visited := make(map[string]struct{})
+
+	for len(queue) > 0 {
+		popped := queue[0]
+		queue = queue[1:]
+		numReverted++
+
+		err := ledger.Store.Put(merge(BucketAccepted, writeBytes(popped)), writeBoolean(false))
+		if err != nil {
+			continue
 		}
 
+		ledger.Store.ForEachChild(popped, func(child string) error {
+			if _, seen := visited[child]; !seen {
+				queue = append(queue, child)
+				visited[child] = struct{}{}
+			}
+
+			return nil
+		})
 	}
+
+	log.Debug().Int("num_reverted", numReverted).Msg("Reverted transactions.")
+}
+
+func (ledger *Ledger) onReceiveTransaction(index uint64, tx *database.Transaction) error {
+	set, err := ledger.Resolver.GetConflictSet(tx.Sender, tx.Nonce)
+
+	if err != nil {
+		return err
+	}
+
+	return ledger.ensureAccepted(set, set.Preferred)
 }
 
 func (ledger *Ledger) FindEligibleParents() ([]string, error) {
