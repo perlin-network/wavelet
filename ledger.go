@@ -77,11 +77,25 @@ func (ledger *Ledger) updatedAcceptedTransactions() {
 
 			delete(ledger.pendingAcceptance, symbol)
 
-			// Get the children of the accepted transaction and have them pend being accepted.
-			ledger.Store.ForEachChild(symbol, func(child string) error {
-				ledger.pendingAcceptance[child] = struct{}{}
-				return nil
-			})
+			// Get the ascendants of the accepted transaction and have them pend being accepted.
+
+			queue := []string{symbol}
+			visited := make(map[string]struct{})
+
+			for len(queue) > 0 {
+				popped := queue[0]
+				queue = queue[1:]
+
+				ledger.Store.ForEachChild(popped, func(child string) error {
+					if _, seen := visited[child]; !seen {
+						ledger.pendingAcceptance[child] = struct{}{}
+
+						queue = append(queue, child)
+						visited[child] = struct{}{}
+					}
+					return nil
+				})
+			}
 
 			acceptedList = append(acceptedList, symbol)
 		}
@@ -155,6 +169,8 @@ func (ledger *Ledger) RespondToQuery(wired *wire.Transaction) (string, bool, err
 
 	return id, ledger.Resolver.IsStronglyPreferred(id), nil
 }
+
+//func (ledger *Ledger) HandleQueryResponse(tx *database.Transaction) ()
 
 func (ledger *Ledger) FindEligibleParents() ([]string, error) {
 	return ledger.Resolver.FindEligibleParents()
