@@ -9,3 +9,11 @@ message Delta {
     bytes old_value = 3;
     bytes new_value = 4;
 }
+
+message Deltas {
+    message List {
+        repeated Delta list = 1;
+    }
+
+    map<string, List> deltas = 1;
+}

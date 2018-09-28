@@ -87,7 +87,7 @@ func (m *state) registerService(name string, path string) error {
 // applies those transactions to the ledger state.
 func (s *state) applyTransaction(tx *database.Transaction) error {
 	accounts := make(map[string]*Account)
-	accountDeltas := make(map[string][]*Delta)
+	accountDeltas := &Deltas{Deltas: make(map[string]*Deltas_List)}
 
 	pending := queue.New()
 	pending.PushBack(tx)
@@ -145,7 +145,11 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 			_, delta.OldValue = account.State.Load(delta.Key)
 			account.State, _ = account.State.Store(delta.Key, delta.NewValue)
 
-			accountDeltas[accountID] = append(accountDeltas[accountID], delta)
+			if _, exists := accountDeltas.Deltas[accountID]; !exists {
+				accountDeltas.Deltas[accountID] = new(Deltas_List)
+			}
+
+			accountDeltas.Deltas[accountID].List = append(accountDeltas.Deltas[accountID].List, delta)
 		}
 
 		// Increment the senders account nonce.
@@ -158,7 +162,7 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 
 	// Save all modified accounts to the ledger.
 	for id, account := range accounts {
-		s.SaveAccount(account, accountDeltas[id])
+		s.SaveAccount(account, accountDeltas.Deltas[id].List)
 	}
 
 	return nil
