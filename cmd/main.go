@@ -48,7 +48,7 @@ func main() {
 			panic(err)
 		}
 
-		parents, err := ledger.Resolver.FindEligibleParents()
+		parents, err := ledger.FindEligibleParents()
 		if err != nil {
 			log.Fatal().Err(err).Msg("Failed to find eligible parents.")
 		}
@@ -73,7 +73,7 @@ func main() {
 			log.Fatal().Err(err).Msg("Failed to respond to query.")
 		}
 
-		tx, err := ledger.Store.GetBySymbol(id)
+		tx, err := ledger.GetBySymbol(id)
 		if err != nil {
 			log.Fatal().Err(err).Msg("Failed to find wired transaction in the database.")
 		}

@@ -6,24 +6,22 @@ import (
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/system"
-	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/security"
 	"github.com/phf/go-queue/queue"
-	"github.com/pkg/errors"
 	"time"
 )
 
 var (
-	BucketAccepted = writeBytes("accepted_")
+	BucketAccepted      = writeBytes("accepted_")
+	BucketAcceptPending = writeBytes("p.accepted_")
 )
 
 type Ledger struct {
-	Store    *database.Store
-	Graph    *graph.Graph
-	Resolver *conflict.Resolver
+	rpc
 
-	pendingAcceptance map[string]struct{}
+	*database.Store
+	*graph.Graph
+	*conflict.Resolver
 
 	kill chan struct{}
 }
@@ -34,9 +32,17 @@ func NewLedger() *Ledger {
 	graph := graph.New(store)
 	resolver := conflict.New(graph)
 
-	ledger := &Ledger{Store: store, Graph: graph, Resolver: resolver, pendingAcceptance: make(map[string]struct{})}
+	rpc := rpc{Graph: graph, Store: store, Resolver: resolver}
 
-	graph.AddOnReceiveHandler(ledger.onReceiveTransaction)
+	ledger := &Ledger{
+		rpc:      rpc,
+		Store:    store,
+		Graph:    graph,
+		Resolver: resolver,
+		kill:     make(chan struct{}),
+	}
+
+	graph.AddOnReceiveHandler(ledger.checkSafeCommit)
 
 	return ledger
 }
@@ -65,44 +71,58 @@ func (ledger *Ledger) UpdateAcceptedTransactions() {
 // or not all transactions this node knows about are accepted.
 func (ledger *Ledger) updatedAcceptedTransactions() {
 	// If there are no accepted transactions and none are pending, add the very first transaction.
-	if len(ledger.pendingAcceptance) == 0 && ledger.Store.Size(BucketAccepted) == 0 {
-		tx, err := ledger.Store.GetByIndex(0)
+	if ledger.Size(BucketAcceptPending) == 0 && ledger.Size(BucketAccepted) == 0 {
+		tx, err := ledger.GetByIndex(0)
 		if err != nil {
 			return
 		}
 
-		ledger.pendingAcceptance[tx.Id] = struct{}{}
+		ledger.queueTransactionForAcceptance(tx.Id)
 	}
 
 	var acceptedList []string
 
-	for symbol := range ledger.pendingAcceptance {
-		tx, err := ledger.Store.GetBySymbol(symbol)
+	ledger.ForEachKey(BucketAcceptPending, func(k []byte) error {
+		symbol := string(k)
+
+		tx, err := ledger.GetBySymbol(symbol)
 		if err != nil {
-			continue
+			return nil
 		}
 
-		set, err := ledger.Resolver.GetConflictSet(tx.Sender, tx.Nonce)
+		set, err := ledger.GetConflictSet(tx.Sender, tx.Nonce)
 		if err != nil {
-			continue
+			return nil
 		}
 
 		transactions := new(hll.Hll)
 		err = transactions.UnmarshalPb(set.Transactions)
 
 		if err != nil {
-			continue
+			return nil
 		}
 
-		conflicting := !(transactions.Cardinality() == 1)
-
-		if set.Count > system.Beta2 || (!conflicting && ledger.Graph.CountAscendants(symbol, system.Beta1+1) > system.Beta1) {
-			if !ledger.WasAccepted(symbol) {
-				ledger.acceptTransaction(symbol)
-				acceptedList = append(acceptedList, symbol)
+		parentsAccepted := true
+		for _, parent := range tx.Parents {
+			if !ledger.WasAccepted(parent) {
+				parentsAccepted = false
+				break
 			}
 		}
-	}
+
+		if parentsAccepted {
+			conflicting := !(transactions.Cardinality() == 1)
+
+			if set.Count > system.Beta2 || (!conflicting && ledger.CountAscendants(symbol, system.Beta1+1) > system.Beta1) {
+				if !ledger.WasAccepted(symbol) {
+					ledger.acceptTransaction(symbol)
+					acceptedList = append(acceptedList, symbol)
+				}
+			}
+		}
+
+		return nil
+	})
 
 	if len(acceptedList) > 0 {
 		// Trim transaction IDs.
@@ -114,124 +134,51 @@ func (ledger *Ledger) updatedAcceptedTransactions() {
 	}
 }
 
-// RespondToQuery provides a response should we be selected as one of the K peers
-// that votes whether or not we personally strongly prefer a transaction which we
-// receive over the wire.
-//
-// Our response is `true` should we strongly prefer a transaction, or `false` otherwise.
-func (ledger *Ledger) RespondToQuery(wired *wire.Transaction) (string, bool, error) {
-	if validated, err := security.ValidateWiredTransaction(wired); err != nil || !validated {
-		return "", false, errors.Wrap(err, "failed to validate incoming tx")
-	}
-
-	id, err := ledger.Graph.Receive(wired)
-
-	if err != nil {
-		return "", false, errors.Wrap(err, "failed to add incoming tx to graph")
-	}
-
-	return id, ledger.Resolver.IsStronglyPreferred(id), nil
-}
-
-// HandleSuccessfulQuery updates the conflict sets and acceptance of all transactions
-// preceding a successfully queried transactions.
-func (ledger *Ledger) HandleSuccessfulQuery(tx *database.Transaction) error {
-	visited := make(map[string]struct{})
-
-	queue := queue.New()
-	queue.PushBack(tx.Id)
-
-	for queue.Len() > 0 {
-		popped := queue.PopFront().(string)
-
-		// This line cuts down consensus time from 0.03 seconds to 0.007 seconds.
-		// Whether or not it's correct requires an analysis of its own.
-		if ledger.WasAccepted(popped) {
-			continue
-		}
-
-		tx, err := ledger.Store.GetBySymbol(popped)
-		if err != nil {
-			continue
-		}
-
-		set, err := ledger.Resolver.GetConflictSet(tx.Sender, tx.Nonce)
-		if err != nil {
-			continue
-		}
-
-		score, preferredScore := ledger.Graph.CountAscendants(popped, system.Beta2), ledger.Graph.CountAscendants(set.Preferred, system.Beta2)
-
-		if score > preferredScore {
-			set.Preferred = popped
-		}
-
-		if popped != set.Last {
-			set.Last = popped
-			set.Count = 0
-		} else {
-			set.Count++
-		}
-
-		err = ledger.Resolver.SaveConflictSet(tx.Sender, tx.Nonce, set)
-		if err != nil {
-			continue
-		}
-
-		for _, parent := range tx.Parents {
-			if _, seen := visited[parent]; !seen {
-				visited[parent] = struct{}{}
-
-				queue.PushBack(parent)
-			}
-		}
-	}
-
-	return nil
+// WasAccepted returns whether or not a transaction given by its symbol
+// was stored to be accepted inside the database.
+func (ledger *Ledger) WasAccepted(symbol string) bool {
+	bytes, _ := ledger.Get(merge(BucketAccepted, writeBytes(symbol)))
+	return readBoolean(bytes)
 }
 
 // ensureAccepted gets called every single time the preferred transaction of a conflict set changes.
 //
 // It ensures that preferred transactions that were accepted, which should instead be rejected get
 // reverted alongside all of their ascendant transactions.
-func (ledger *Ledger) ensureAccepted(set *database.ConflictSet, symbol string) error {
-	if ledger.WasAccepted(symbol) {
-		transactions := new(hll.Hll)
+func (ledger *Ledger) ensureAccepted(set *database.ConflictSet) error {
+	transactions := new(hll.Hll)
 
-		err := transactions.UnmarshalPb(set.Transactions)
+	err := transactions.UnmarshalPb(set.Transactions)
 
-		if err != nil {
-			return err
-		}
+	if err != nil {
+		return err
+	}
 
-		conflicting := !(transactions.Cardinality() == 1)
+	if count := transactions.Cardinality(); count > 1 && ledger.WasAccepted(set.Preferred) {
+		conflicting := !(count == 1)
 
 		// Check if the transaction is still accepted.
-		stillAccepted := set.Count > system.Beta2 || (!conflicting && ledger.Graph.CountAscendants(symbol, system.Beta1+1) > system.Beta2)
+		stillAccepted := set.Count > system.Beta2 || (!conflicting && ledger.CountAscendants(set.Preferred, system.Beta1+1) > system.Beta2)
 
 		if !stillAccepted {
-			ledger.revertTransaction(symbol)
+			ledger.revertTransaction(set.Preferred)
 		}
 	}
 
 	return nil
 }
 
-// WasAccepted returns whether or not a transaction given by its symbol
-// was stored to be accepted inside the database.
-func (ledger *Ledger) WasAccepted(symbol string) bool {
-	bytes, _ := ledger.Store.Get(merge(BucketAccepted, writeBytes(symbol)))
-	return readBoolean(bytes)
+func (ledger *Ledger) queueTransactionForAcceptance(symbol string) {
+	if !ledger.WasAccepted(symbol) {
+		ledger.Put(merge(BucketAcceptPending, writeBytes(symbol)), []byte{0})
+	}
 }
 
 // acceptTransaction accepts a transaction and ensures the transaction is not pending acceptance inside the graph.
 // The children of said accepted transaction thereafter get queued to pending acceptance.
-//
-// Should the transaction previously not have been accepted, the
 func (ledger *Ledger) acceptTransaction(symbol string) {
-	ledger.Store.Put(merge(BucketAccepted, writeBytes(symbol)), writeBoolean(true))
-
-	delete(ledger.pendingAcceptance, symbol)
+	ledger.Put(merge(BucketAccepted, writeBytes(symbol)), writeBoolean(true))
+	ledger.Delete(merge(BucketAcceptPending, writeBytes(symbol)))
 
 	visited := make(map[string]struct{})
 
@@ -241,7 +188,7 @@ func (ledger *Ledger) acceptTransaction(symbol string) {
 	for queue.Len() > 0 {
 		popped := queue.PopFront().(string)
 
-		children, err := ledger.Store.GetChildrenBySymbol(popped)
+		children, err := ledger.GetChildrenBySymbol(popped)
 		if err != nil {
 			continue
 		}
@@ -250,10 +197,7 @@ func (ledger *Ledger) acceptTransaction(symbol string) {
 			if _, seen := visited[child]; !seen {
 				visited[child] = struct{}{}
 
-				if _, pending := ledger.pendingAcceptance[child]; !pending {
-					ledger.pendingAcceptance[child] = struct{}{}
-				}
-
+				ledger.queueTransactionForAcceptance(child)
 				queue.PushBack(child)
 
 			}
@@ -274,9 +218,10 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 		popped := queue.PopFront().(string)
 		numReverted++
 
-		ledger.Store.Delete(merge(BucketAccepted, writeBytes(popped)))
+		ledger.Delete(merge(BucketAccepted, writeBytes(popped)))
+		ledger.queueTransactionForAcceptance(popped)
 
-		children, err := ledger.Store.GetChildrenBySymbol(popped)
+		children, err := ledger.GetChildrenBySymbol(popped)
 		if err != nil {
 			continue
 		}
@@ -293,14 +238,14 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 	log.Debug().Int("num_reverted", numReverted).Msg("Reverted transactions.")
 }
 
-// onReceiveTransaction ensures that incoming transactions which conflict with any
+// checkSafeCommit ensures that incoming transactions which conflict with any
 // of the transactions on our graph are not accepted.
-func (ledger *Ledger) onReceiveTransaction(index uint64, tx *database.Transaction) error {
-	set, err := ledger.Resolver.GetConflictSet(tx.Sender, tx.Nonce)
+func (ledger *Ledger) checkSafeCommit(index uint64, tx *database.Transaction) error {
+	set, err := ledger.GetConflictSet(tx.Sender, tx.Nonce)
 
 	if err != nil {
 		return err
 	}
 
-	return ledger.ensureAccepted(set, set.Preferred)
+	return ledger.ensureAccepted(set)
 }
