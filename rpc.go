@@ -1,9 +1,7 @@
 package wavelet
 
 import (
-	"github.com/perlin-network/graph/conflict"
 	"github.com/perlin-network/graph/database"
-	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/system"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/wavelet/security"
@@ -12,9 +10,7 @@ import (
 )
 
 type rpc struct {
-	*graph.Graph
-	*database.Store
-	*conflict.Resolver
+	*Ledger
 }
 
 // RespondToQuery provides a response should we be selected as one of the K peers

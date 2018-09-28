@@ -32,15 +32,14 @@ func NewLedger() *Ledger {
 	graph := graph.New(store)
 	resolver := conflict.New(graph)
 
-	rpc := rpc{Graph: graph, Store: store, Resolver: resolver}
-
 	ledger := &Ledger{
-		rpc:      rpc,
 		Store:    store,
 		Graph:    graph,
 		Resolver: resolver,
 		kill:     make(chan struct{}),
 	}
+
+	ledger.rpc = rpc{Ledger: ledger}
 
 	graph.AddOnReceiveHandler(ledger.checkSafeCommit)
 
@@ -53,7 +52,7 @@ func NewLedger() *Ledger {
 // The graph will be incrementally checked for updates periodically. Ideally, you should
 // execute this function in a new goroutine.
 func (ledger *Ledger) UpdateAcceptedTransactions() {
-	timer := time.NewTicker(1 * time.Second)
+	timer := time.NewTicker(100 * time.Millisecond)
 
 	for {
 		select {
@@ -77,7 +76,7 @@ func (ledger *Ledger) updatedAcceptedTransactions() {
 			return
 		}
 
-		ledger.queueTransactionForAcceptance(tx.Id)
+		ledger.Put(merge(BucketAcceptPending, writeBytes(tx.Id)), []byte{0})
 	}
 
 	var acceptedList []string
@@ -168,12 +167,6 @@ func (ledger *Ledger) ensureAccepted(set *database.ConflictSet) error {
 	return nil
 }
 
-func (ledger *Ledger) queueTransactionForAcceptance(symbol string) {
-	if !ledger.WasAccepted(symbol) {
-		ledger.Put(merge(BucketAcceptPending, writeBytes(symbol)), []byte{0})
-	}
-}
-
 // acceptTransaction accepts a transaction and ensures the transaction is not pending acceptance inside the graph.
 // The children of said accepted transaction thereafter get queued to pending acceptance.
 func (ledger *Ledger) acceptTransaction(symbol string) {
@@ -197,7 +190,9 @@ func (ledger *Ledger) acceptTransaction(symbol string) {
 			if _, seen := visited[child]; !seen {
 				visited[child] = struct{}{}
 
-				ledger.queueTransactionForAcceptance(child)
+				if !ledger.WasAccepted(child) {
+					ledger.Put(merge(BucketAcceptPending, writeBytes(child)), []byte{0})
+				}
 				queue.PushBack(child)
 
 			}
@@ -219,7 +214,7 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 		numReverted++
 
 		ledger.Delete(merge(BucketAccepted, writeBytes(popped)))
-		ledger.queueTransactionForAcceptance(popped)
+		ledger.Put(merge(BucketAcceptPending, writeBytes(popped)), []byte{0})
 
 		children, err := ledger.GetChildrenBySymbol(popped)
 		if err != nil {
