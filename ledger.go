@@ -136,7 +136,7 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 		return nil
 	})
 
-	sort.SliceStable(pendingList, func(i, j int) bool {
+	sort.Slice(pendingList, func(i, j int) bool {
 		if pendingList[i].depth < pendingList[j].depth {
 			return true
 		}
@@ -313,7 +313,7 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 		}
 	}
 
-	sort.SliceStable(pendingList, func(i, j int) bool {
+	sort.Slice(pendingList, func(i, j int) bool {
 		if pendingList[i].depth < pendingList[j].depth {
 			return true
 		}
