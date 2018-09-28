@@ -308,7 +308,9 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 			if _, seen := visited[child]; !seen {
 				visited[child] = struct{}{}
 
-				queue.PushBack(child)
+				if ledger.WasAccepted(child) {
+					queue.PushBack(child)
+				}
 			}
 		}
 	}
