@@ -117,14 +117,19 @@ func (s *state) doApplyTransaction(tx *database.Transaction) ([]*database.Transa
 
 	// Should the transaction be a nop simply increment the accounts nonce.
 	if tx.Tag == "nop" {
-		account, err := s.LoadAccount(senderID)
+		sender, err := s.LoadAccount(senderID)
+
 		if err != nil {
-			return nil, errors.Errorf("nop transaction sender account %s does not exist", tx.Sender)
+			if tx.Nonce == 0 {
+				sender = NewAccount(senderID)
+			} else {
+				return nil, errors.Errorf("nop transaction sender account %s does not exist", tx.Sender)
+			}
 		}
 
-		account.Nonce++
+		sender.Nonce++
 
-		s.SaveAccount(account, nil)
+		s.SaveAccount(sender, nil)
 
 		return nil, nil
 	}

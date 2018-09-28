@@ -176,7 +176,7 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 
 		if set.Count > system.Beta2 || (!conflicting && ledger.CountAscendants(pending.tx.Id, system.Beta1+1) > system.Beta1) {
 			if !ledger.WasAccepted(pending.tx.Id) {
-				ledger.acceptTransaction(pending.tx.Id)
+				ledger.acceptTransaction(pending.tx)
 				acceptedList = append(acceptedList, pending.tx.Id)
 			}
 		}
@@ -216,28 +216,26 @@ func (ledger *Ledger) ensureAccepted(set *database.ConflictSet) error {
 
 // acceptTransaction accepts a transaction and ensures the transaction is not pending acceptance inside the graph.
 // The children of said accepted transaction thereafter get queued to pending acceptance.
-func (ledger *Ledger) acceptTransaction(symbol string) {
+func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 	index, err := ledger.NextSequence(BucketAcceptedIndex)
 	if err != nil {
 		return
 	}
 
-	tx, err := ledger.GetBySymbol(symbol)
-	if err != nil {
-		return
-	}
-
-	ledger.Put(merge(BucketAccepted, writeBytes(symbol)), writeUint64(index))
-	ledger.Put(merge(BucketAcceptedIndex, writeUint64(index)), writeBytes(symbol))
-	ledger.Delete(merge(BucketAcceptPending, writeBytes(symbol)))
+	ledger.Put(merge(BucketAccepted, writeBytes(tx.Id)), writeUint64(index))
+	ledger.Put(merge(BucketAcceptedIndex, writeUint64(index)), writeBytes(tx.Id))
+	ledger.Delete(merge(BucketAcceptPending, writeBytes(tx.Id)))
 
 	// Apply transaction to the ledger state.
-	ledger.applyTransaction(tx)
+	err = ledger.applyTransaction(tx)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to apply transaction.")
+	}
 
 	visited := make(map[string]struct{})
 
 	queue := queue.New()
-	queue.PushBack(symbol)
+	queue.PushBack(tx.Id)
 
 	for queue.Len() > 0 {
 		popped := queue.PopFront().(string)

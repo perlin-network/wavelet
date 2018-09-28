@@ -32,6 +32,10 @@ func writeUint64(a uint64) []byte {
 	return bytes
 }
 
+func readUint64(a []byte) uint64 {
+	return binary.LittleEndian.Uint64(a)
+}
+
 func writeBoolean(a bool) []byte {
 	if a {
 		return []byte{0x1}

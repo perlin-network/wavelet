@@ -18,18 +18,10 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to decode private key.")
 	}
 
-	log.Info().
-		Str("public_key", keys.PublicKeyHex()).
-		Str("private_key", keys.PrivateKeyHex()).
-		Msg("Keypair loaded.")
-
 	ledger := wavelet.NewLedger()
 	ledger.Init()
 
-	account, err := ledger.LoadAccount(keys.PublicKey)
-	if err != nil {
-		account = wavelet.NewAccount(keys.PublicKey)
-	}
+	wallet := wavelet.NewWallet(keys, ledger.Store)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -60,18 +52,17 @@ func main() {
 			log.Fatal().Err(err).Msg("Failed to find eligible parents.")
 		}
 
+		nonce, err := wallet.NextNonce()
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to figure out the next available nonce from our wallet.")
+		}
+
 		wired := &wire.Transaction{
 			Sender:  keys.PublicKeyHex(),
-			Nonce:   account.Nonce,
+			Nonce:   nonce,
 			Parents: parents,
 			Tag:     "nop",
 			Payload: bytes,
-		}
-
-		account.Nonce++
-		err = ledger.SaveAccount(account, nil)
-		if err != nil {
-			panic(err)
 		}
 
 		encoded, err := wired.Marshal()
