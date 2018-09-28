@@ -27,7 +27,7 @@ func NewWallet(keys *crypto.KeyPair, store *database.Store) *Wallet {
 }
 
 // NextNonce returns the next available nonce from the wallet.
-func (w *Wallet) NextNonce() (uint64, error) {
+func (w *Wallet) NextNonce(ledger *Ledger) (uint64, error) {
 	walletNonceKey := merge(KeyWalletNonce, w.PublicKey)
 
 	bytes, _ := w.Get(walletNonceKey)
@@ -36,6 +36,12 @@ func (w *Wallet) NextNonce() (uint64, error) {
 	}
 
 	nonce := readUint64(bytes)
+
+	// If our personal nodes tracked nonce is smaller than the stored nonce in our ledger, update
+	// our personal nodes nonce to be the stored nonce in the ledger.
+	if account, err := ledger.LoadAccount(w.PublicKey); err == nil && account.Nonce > nonce {
+		nonce = account.Nonce
+	}
 
 	err := w.Put(walletNonceKey, writeUint64(nonce+1))
 	if err != nil {

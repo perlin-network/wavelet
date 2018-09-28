@@ -52,7 +52,7 @@ func main() {
 			log.Fatal().Err(err).Msg("Failed to find eligible parents.")
 		}
 
-		nonce, err := wallet.NextNonce()
+		nonce, err := wallet.NextNonce(ledger)
 		if err != nil {
 			log.Fatal().Err(err).Msg("Failed to figure out the next available nonce from our wallet.")
 		}
