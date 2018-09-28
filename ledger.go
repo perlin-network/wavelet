@@ -8,6 +8,7 @@ import (
 	"github.com/perlin-network/graph/system"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/phf/go-queue/queue"
+	"sort"
 	"time"
 )
 
@@ -104,18 +105,49 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 		ledger.Put(merge(BucketAcceptPending, writeBytes(tx.Id)), []byte{0})
 	}
 
+	type pending struct {
+		tx    *database.Transaction
+		depth uint64
+	}
+
 	var acceptedList []string
+	var pendingList []pending
 
 	ledger.ForEachKey(BucketAcceptPending, func(k []byte) error {
 		symbol := string(k)
+
+		pendingList = append(pendingList)
 
 		tx, err := ledger.GetBySymbol(symbol)
 		if err != nil {
 			return nil
 		}
 
+		depth, err := ledger.Store.GetDepthBySymbol(symbol)
+		if err != nil {
+			return nil
+		}
+
+		pendingList = append(pendingList, pending{tx, depth})
+
+		return nil
+	})
+
+	sort.SliceStable(pendingList, func(i, j int) bool {
+		if pendingList[i].depth < pendingList[j].depth {
+			return true
+		}
+
+		if pendingList[i].depth > pendingList[j].depth {
+			return false
+		}
+
+		return pendingList[i].tx.Id < pendingList[j].tx.Id
+	})
+
+	for _, pending := range pendingList {
 		parentsAccepted := true
-		for _, parent := range tx.Parents {
+		for _, parent := range pending.tx.Parents {
 			if !ledger.WasAccepted(parent) {
 				parentsAccepted = false
 				break
@@ -123,32 +155,30 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 		}
 
 		if !parentsAccepted {
-			return nil
+			continue
 		}
 
-		set, err := ledger.GetConflictSet(tx.Sender, tx.Nonce)
+		set, err := ledger.GetConflictSet(pending.tx.Sender, pending.tx.Nonce)
 		if err != nil {
-			return nil
+			continue
 		}
 
 		transactions := new(hll.Hll)
 		err = transactions.UnmarshalPb(set.Transactions)
 
 		if err != nil {
-			return nil
+			continue
 		}
 
 		conflicting := !(transactions.Cardinality() == 1)
 
-		if set.Count > system.Beta2 || (!conflicting && ledger.CountAscendants(symbol, system.Beta1+1) > system.Beta1) {
-			if !ledger.WasAccepted(symbol) {
-				ledger.acceptTransaction(symbol)
-				acceptedList = append(acceptedList, symbol)
+		if set.Count > system.Beta2 || (!conflicting && ledger.CountAscendants(pending.tx.Id, system.Beta1+1) > system.Beta1) {
+			if !ledger.WasAccepted(pending.tx.Id) {
+				ledger.acceptTransaction(pending.tx.Id)
+				acceptedList = append(acceptedList, pending.tx.Id)
 			}
 		}
-
-		return nil
-	})
+	}
 
 	if len(acceptedList) > 0 {
 		// Trim transaction IDs.
