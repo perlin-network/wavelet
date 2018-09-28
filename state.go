@@ -1,9 +1,8 @@
 package wavelet
 
 import (
-	"github.com/perlin-network/wavelet/log"
+	"encoding/hex"
 	"github.com/pkg/errors"
-	"time"
 )
 
 var (
@@ -15,53 +14,43 @@ type state struct {
 	*Ledger
 }
 
-func (s *state) updateLedgerStateLoop() {
-	timer := time.NewTicker(1000 * time.Millisecond)
+func (s *state) applyTransaction(symbol string) {
+	tx, err := s.GetBySymbol(symbol)
+	if err != nil {
+		return
+	}
 
-	for {
-		select {
-		case <-s.kill:
-			break
-		case <-timer.C:
-			s.updateLedgerState()
+	sender, err := hex.DecodeString(tx.Sender)
+	if err != nil {
+		return
+	}
+
+	_, err = s.state.LoadAccount(sender)
+	if err != nil {
+		if tx.Nonce == 0 {
+			//account = NewAccount(sender)
+		} else {
+			return
 		}
 	}
 
-	timer.Stop()
-}
+	// TODO: Apply transaction to ledger state here.
 
-func (s *state) updateLedgerState() {
-	numApplied, numAccepted := s.Size(BucketApplied), s.Size(BucketAcceptedIndex)
+	//account.Nonce = tx.Nonce + 1
+	//
+	//err = s.SaveAccount(account, nil)
+	//if err != nil {
+	//	return
+	//}
 
-	var appliedList []string
-
-	// Apply all transactions not yet applied.
-	for i := numApplied; i < numAccepted; i++ {
-		tx, err := s.GetAcceptedByIndex(i)
-		if err != nil {
-			return
-		}
-
-		_, err = s.NextSequence(BucketApplied)
-		if err != nil {
-			return
-		}
-
-		err = s.Put(merge(BucketApplied, writeBytes(tx.Id)), []byte{0})
-		if err != nil {
-			return
-		}
-
-		appliedList = append(appliedList, tx.Id)
+	_, err = s.NextSequence(BucketApplied)
+	if err != nil {
+		return
 	}
 
-	if len(appliedList) > 0 {
-		// Trim transaction IDs.
-		for i := 0; i < len(appliedList); i++ {
-			appliedList[i] = appliedList[i][:10]
-		}
-
-		log.Info().Interface("applied", appliedList).Msgf("Applied %d transactions.", len(appliedList))
+	err = s.Put(merge(BucketApplied, writeBytes(symbol)), []byte{0})
+	if err != nil {
+		return
 	}
 }
 

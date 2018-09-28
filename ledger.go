@@ -52,7 +52,6 @@ func NewLedger() *Ledger {
 
 func (ledger *Ledger) Init() {
 	go ledger.updateAcceptedTransactionsLoop()
-	go ledger.updateLedgerStateLoop()
 }
 
 // UpdateAcceptedTransactions incrementally from the root of the graph updates whether
@@ -194,6 +193,9 @@ func (ledger *Ledger) acceptTransaction(symbol string) {
 	ledger.Put(merge(BucketAccepted, writeBytes(symbol)), writeUint64(index))
 	ledger.Put(merge(BucketAcceptedIndex, writeUint64(index)), writeBytes(symbol))
 	ledger.Delete(merge(BucketAcceptPending, writeBytes(symbol)))
+
+	// Apply transaction to the ledger state.
+	ledger.applyTransaction(symbol)
 
 	visited := make(map[string]struct{})
 
