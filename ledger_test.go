@@ -10,6 +10,8 @@ import (
 )
 
 func BenchmarkLedger(b *testing.B) {
+	b.StopTimer()
+
 	log.Disable()
 
 	keys, err := crypto.FromPrivateKey(security.SignaturePolicy, "a6a193b4665b03e6df196ab7765b04a01de00e09c4a056f487019b5e3565522fd6edf02c950c6e091cd2450552a52febbb3d29b38c22bb89b0996225ef5ec972")
@@ -22,6 +24,8 @@ func BenchmarkLedger(b *testing.B) {
 	defer ledger.Graph.Cleanup()
 
 	go ledger.UpdateAcceptedTransactions()
+
+	b.StartTimer()
 
 	for i := 0; i < b.N; i++ {
 		parents, err := ledger.Resolver.FindEligibleParents()
