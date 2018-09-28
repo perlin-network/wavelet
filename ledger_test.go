@@ -20,10 +20,10 @@ func BenchmarkLedger(b *testing.B) {
 	}
 
 	ledger := NewLedger()
+	ledger.Init()
+
 	defer os.RemoveAll("testdb")
 	defer ledger.Graph.Cleanup()
-
-	go ledger.UpdateAcceptedTransactions()
 
 	b.StartTimer()
 

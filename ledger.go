@@ -14,6 +14,8 @@ import (
 var (
 	BucketAccepted      = writeBytes("accepted_")
 	BucketAcceptPending = writeBytes("p.accepted_")
+
+	BucketAcceptedIndex = writeBytes("i.accepted_")
 )
 
 type Ledger struct {
@@ -48,12 +50,17 @@ func NewLedger() *Ledger {
 	return ledger
 }
 
+func (ledger *Ledger) Init() {
+	go ledger.updateAcceptedTransactionsLoop()
+	go ledger.updateLedgerStateLoop()
+}
+
 // UpdateAcceptedTransactions incrementally from the root of the graph updates whether
 // or not all transactions this node knows about are accepted.
 //
 // The graph will be incrementally checked for updates periodically. Ideally, you should
 // execute this function in a new goroutine.
-func (ledger *Ledger) UpdateAcceptedTransactions() {
+func (ledger *Ledger) updateAcceptedTransactionsLoop() {
 	timer := time.NewTicker(100 * time.Millisecond)
 
 	for {
@@ -61,18 +68,35 @@ func (ledger *Ledger) UpdateAcceptedTransactions() {
 		case <-ledger.kill:
 			break
 		case <-timer.C:
-			ledger.updatedAcceptedTransactions()
+			ledger.updateAcceptedTransactions()
 		}
 	}
 
 	timer.Stop()
 }
 
+// WasAccepted returns whether or not a transaction given by its symbol was stored to be accepted
+// inside the database.
+func (ledger *Ledger) WasAccepted(symbol string) bool {
+	exists, _ := ledger.Has(merge(BucketAccepted, writeBytes(symbol)))
+	return exists
+}
+
+// GetAcceptedByIndex gets an accepted transaction by its index.
+func (ledger *Ledger) GetAcceptedByIndex(index uint64) (*database.Transaction, error) {
+	symbolBytes, err := ledger.Get(merge(BucketAcceptedIndex, writeUint64(index)))
+	if err != nil {
+		return nil, err
+	}
+
+	return ledger.GetBySymbol(writeString(symbolBytes))
+}
+
 // updateAcceptedTransactions incrementally from the root of the graph updates whether
 // or not all transactions this node knows about are accepted.
-func (ledger *Ledger) updatedAcceptedTransactions() {
+func (ledger *Ledger) updateAcceptedTransactions() {
 	// If there are no accepted transactions and none are pending, add the very first transaction.
-	if ledger.Size(BucketAcceptPending) == 0 && ledger.Size(BucketAccepted) == 0 {
+	if ledger.Size(BucketAcceptPending) == 0 && ledger.Size(BucketAcceptedIndex) == 0 {
 		tx, err := ledger.GetByIndex(0)
 		if err != nil {
 			return
@@ -135,13 +159,6 @@ func (ledger *Ledger) updatedAcceptedTransactions() {
 	}
 }
 
-// WasAccepted returns whether or not a transaction given by its symbol
-// was stored to be accepted inside the database.
-func (ledger *Ledger) WasAccepted(symbol string) bool {
-	bytes, _ := ledger.Get(merge(BucketAccepted, writeBytes(symbol)))
-	return readBoolean(bytes)
-}
-
 // ensureAccepted gets called every single time the preferred transaction of a conflict set changes.
 //
 // It ensures that preferred transactions that were accepted, which should instead be rejected get
@@ -167,7 +184,13 @@ func (ledger *Ledger) ensureAccepted(set *database.ConflictSet) error {
 // acceptTransaction accepts a transaction and ensures the transaction is not pending acceptance inside the graph.
 // The children of said accepted transaction thereafter get queued to pending acceptance.
 func (ledger *Ledger) acceptTransaction(symbol string) {
-	ledger.Put(merge(BucketAccepted, writeBytes(symbol)), writeBoolean(true))
+	index, err := ledger.NextSequence(BucketAcceptedIndex)
+	if err != nil {
+		return
+	}
+
+	ledger.Put(merge(BucketAccepted, writeBytes(symbol)), writeUint64(index))
+	ledger.Put(merge(BucketAcceptedIndex, writeUint64(index)), writeBytes(symbol))
 	ledger.Delete(merge(BucketAcceptPending, writeBytes(symbol)))
 
 	visited := make(map[string]struct{})
@@ -210,7 +233,13 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 		popped := queue.PopFront().(string)
 		numReverted++
 
+		indexBytes, err := ledger.Get(merge(BucketAccepted, writeBytes(popped)))
+		if err != nil {
+			continue
+		}
+		ledger.Delete(merge(BucketAcceptedIndex, indexBytes))
 		ledger.Delete(merge(BucketAccepted, writeBytes(popped)))
+
 		ledger.Put(merge(BucketAcceptPending, writeBytes(popped)), []byte{0})
 
 		children, err := ledger.GetChildrenBySymbol(popped)

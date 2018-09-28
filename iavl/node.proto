@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package tree;
+package iavl;
 
 message Tree {
     string key = 1;

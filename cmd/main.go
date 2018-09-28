@@ -24,7 +24,7 @@ func main() {
 		Msg("Keypair loaded.")
 
 	ledger := wavelet.NewLedger()
-	go ledger.UpdateAcceptedTransactions()
+	ledger.Init()
 
 	account, err := ledger.LoadAccount(keys.PublicKey)
 	if err != nil {

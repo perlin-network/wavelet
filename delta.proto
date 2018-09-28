@@ -5,5 +5,7 @@ package wavelet;
 message Delta {
     string account = 1;
     string key = 2;
-    bytes value = 3;
+
+    bytes old_value = 3;
+    bytes new_value = 4;
 }

@@ -23,7 +23,8 @@ const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 type Delta struct {
 	Account              string   `protobuf:"bytes,1,opt,name=account,proto3" json:"account,omitempty"`
 	Key                  string   `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
-	Value                []byte   `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
+	OldValue             []byte   `protobuf:"bytes,3,opt,name=old_value,json=oldValue,proto3" json:"old_value,omitempty"`
+	NewValue             []byte   `protobuf:"bytes,4,opt,name=new_value,json=newValue,proto3" json:"new_value,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
@@ -33,7 +34,7 @@ func (m *Delta) Reset()         { *m = Delta{} }
 func (m *Delta) String() string { return proto.CompactTextString(m) }
 func (*Delta) ProtoMessage()    {}
 func (*Delta) Descriptor() ([]byte, []int) {
-	return fileDescriptor_delta_f551803b0aaa1c8a, []int{0}
+	return fileDescriptor_delta_4f7ed8c084bbfea2, []int{0}
 }
 func (m *Delta) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -76,9 +77,16 @@ func (m *Delta) GetKey() string {
 	return ""
 }
 
-func (m *Delta) GetValue() []byte {
+func (m *Delta) GetOldValue() []byte {
 	if m != nil {
-		return m.Value
+		return m.OldValue
+	}
+	return nil
+}
+
+func (m *Delta) GetNewValue() []byte {
+	if m != nil {
+		return m.NewValue
 	}
 	return nil
 }
@@ -113,11 +121,17 @@ func (m *Delta) MarshalTo(dAtA []byte) (int, error) {
 		i = encodeVarintDelta(dAtA, i, uint64(len(m.Key)))
 		i += copy(dAtA[i:], m.Key)
 	}
-	if len(m.Value) > 0 {
+	if len(m.OldValue) > 0 {
 		dAtA[i] = 0x1a
 		i++
-		i = encodeVarintDelta(dAtA, i, uint64(len(m.Value)))
-		i += copy(dAtA[i:], m.Value)
+		i = encodeVarintDelta(dAtA, i, uint64(len(m.OldValue)))
+		i += copy(dAtA[i:], m.OldValue)
+	}
+	if len(m.NewValue) > 0 {
+		dAtA[i] = 0x22
+		i++
+		i = encodeVarintDelta(dAtA, i, uint64(len(m.NewValue)))
+		i += copy(dAtA[i:], m.NewValue)
 	}
 	if m.XXX_unrecognized != nil {
 		i += copy(dAtA[i:], m.XXX_unrecognized)
@@ -145,7 +159,11 @@ func (m *Delta) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovDelta(uint64(l))
 	}
-	l = len(m.Value)
+	l = len(m.OldValue)
+	if l > 0 {
+		n += 1 + l + sovDelta(uint64(l))
+	}
+	l = len(m.NewValue)
 	if l > 0 {
 		n += 1 + l + sovDelta(uint64(l))
 	}
@@ -257,7 +275,7 @@ func (m *Delta) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field OldValue", wireType)
 			}
 			var byteLen int
 			for shift := uint(0); ; shift += 7 {
@@ -281,9 +299,40 @@ func (m *Delta) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Value = append(m.Value[:0], dAtA[iNdEx:postIndex]...)
-			if m.Value == nil {
-				m.Value = []byte{}
+			m.OldValue = append(m.OldValue[:0], dAtA[iNdEx:postIndex]...)
+			if m.OldValue == nil {
+				m.OldValue = []byte{}
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field NewValue", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowDelta
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthDelta
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.NewValue = append(m.NewValue[:0], dAtA[iNdEx:postIndex]...)
+			if m.NewValue == nil {
+				m.NewValue = []byte{}
 			}
 			iNdEx = postIndex
 		default:
@@ -413,16 +462,18 @@ var (
 	ErrIntOverflowDelta   = fmt.Errorf("proto: integer overflow")
 )
 
-func init() { proto.RegisterFile("delta.proto", fileDescriptor_delta_f551803b0aaa1c8a) }
+func init() { proto.RegisterFile("delta.proto", fileDescriptor_delta_4f7ed8c084bbfea2) }
 
-var fileDescriptor_delta_f551803b0aaa1c8a = []byte{
-	// 123 bytes of a gzipped FileDescriptorProto
+var fileDescriptor_delta_4f7ed8c084bbfea2 = []byte{
+	// 147 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0x4e, 0x49, 0xcd, 0x29,
 	0x49, 0xd4, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0x62, 0x2f, 0x4f, 0x2c, 0x4b, 0xcd, 0x49, 0x2d,
-	0x51, 0xf2, 0xe4, 0x62, 0x75, 0x01, 0x89, 0x0b, 0x49, 0x70, 0xb1, 0x27, 0x26, 0x27, 0xe7, 0x97,
+	0x51, 0xca, 0xe5, 0x62, 0x75, 0x01, 0x89, 0x0b, 0x49, 0x70, 0xb1, 0x27, 0x26, 0x27, 0xe7, 0x97,
 	0xe6, 0x95, 0x48, 0x30, 0x2a, 0x30, 0x6a, 0x70, 0x06, 0xc1, 0xb8, 0x42, 0x02, 0x5c, 0xcc, 0xd9,
-	0xa9, 0x95, 0x12, 0x4c, 0x60, 0x51, 0x10, 0x53, 0x48, 0x84, 0x8b, 0xb5, 0x2c, 0x31, 0xa7, 0x34,
-	0x55, 0x82, 0x59, 0x81, 0x51, 0x83, 0x27, 0x08, 0xc2, 0x71, 0xe2, 0x39, 0xf1, 0x48, 0x8e, 0xf1,
-	0xc2, 0x23, 0x39, 0xc6, 0x07, 0x8f, 0xe4, 0x18, 0x93, 0xd8, 0xc0, 0x16, 0x19, 0x03, 0x02, 0x00,
-	0x00, 0xff, 0xff, 0x13, 0x03, 0x5b, 0x2f, 0x77, 0x00, 0x00, 0x00,
+	0xa9, 0x95, 0x12, 0x4c, 0x60, 0x51, 0x10, 0x53, 0x48, 0x9a, 0x8b, 0x33, 0x3f, 0x27, 0x25, 0xbe,
+	0x2c, 0x31, 0xa7, 0x34, 0x55, 0x82, 0x59, 0x81, 0x51, 0x83, 0x27, 0x88, 0x23, 0x3f, 0x27, 0x25,
+	0x0c, 0xc4, 0x07, 0x49, 0xe6, 0xa5, 0x96, 0x43, 0x25, 0x59, 0x20, 0x92, 0x79, 0xa9, 0xe5, 0x60,
+	0x49, 0x27, 0x9e, 0x13, 0x8f, 0xe4, 0x18, 0x2f, 0x3c, 0x92, 0x63, 0x7c, 0xf0, 0x48, 0x8e, 0x31,
+	0x89, 0x0d, 0xec, 0x18, 0x63, 0x40, 0x00, 0x00, 0x00, 0xff, 0xff, 0x70, 0x99, 0x8c, 0x9c, 0x9b,
+	0x00, 0x00, 0x00,
 }
