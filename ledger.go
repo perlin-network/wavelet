@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"fmt"
 	"github.com/lytics/hll"
 	"github.com/perlin-network/graph/conflict"
 	"github.com/perlin-network/graph/database"
@@ -261,21 +262,38 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 
 // revertTransaction sets a transaction and all of its ascendants to not be accepted.
 func (ledger *Ledger) revertTransaction(symbol string) {
-	numReverted := 0
-
 	visited := make(map[string]struct{})
 
 	queue := queue.New()
 	queue.PushBack(symbol)
 
+	type pending struct {
+		tx    *database.Transaction
+		depth uint64
+	}
+
+	var pendingList []pending
+
 	for queue.Len() > 0 {
 		popped := queue.PopFront().(string)
-		numReverted++
+
+		tx, err := ledger.GetBySymbol(popped)
+		if err != nil {
+			continue
+		}
+
+		depth, err := ledger.GetDepthBySymbol(popped)
+		if err != nil {
+			continue
+		}
+
+		pendingList = append(pendingList, pending{tx, depth})
 
 		indexBytes, err := ledger.Get(merge(BucketAccepted, writeBytes(popped)))
 		if err != nil {
 			continue
 		}
+
 		ledger.Delete(merge(BucketAcceptedIndex, indexBytes))
 		ledger.Delete(merge(BucketAccepted, writeBytes(popped)))
 
@@ -295,7 +313,36 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 		}
 	}
 
-	log.Debug().Int("num_reverted", numReverted).Msg("Reverted transactions.")
+	sort.SliceStable(pendingList, func(i, j int) bool {
+		if pendingList[i].depth < pendingList[j].depth {
+			return true
+		}
+
+		if pendingList[i].depth > pendingList[j].depth {
+			return false
+		}
+
+		return pendingList[i].tx.Id < pendingList[j].tx.Id
+	})
+
+	deltas := new(Deltas)
+
+	for _, pending := range pendingList {
+		//deltasBytes, err := ledger.Get(merge(BucketDeltas, writeBytes(pending.tx.Id)))
+		//if err != nil {
+		//	panic(err)
+		//	continue
+		//}
+		//
+		//err = deltas.Unmarshal(deltasBytes)
+		//if err != nil {
+		//	continue
+		//}
+
+		fmt.Println(pending.depth, deltas)
+	}
+
+	log.Debug().Int("num_reverted", len(pendingList)).Msg("Reverted transactions.")
 }
 
 // ensureSafeCommittable ensures that incoming transactions which conflict with any

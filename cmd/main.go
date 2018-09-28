@@ -22,6 +22,7 @@ func main() {
 	ledger.Init()
 
 	wallet := wavelet.NewWallet(keys, ledger.Store)
+	wallet.String()
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -52,14 +53,14 @@ func main() {
 			log.Fatal().Err(err).Msg("Failed to find eligible parents.")
 		}
 
-		nonce, err := wallet.NextNonce(ledger)
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to figure out the next available nonce from our wallet.")
-		}
+		//nonce, err := wallet.NextNonce(ledger)
+		//if err != nil {
+		//	log.Fatal().Err(err).Msg("Failed to figure out the next available nonce from our wallet.")
+		//}
 
 		wired := &wire.Transaction{
 			Sender:  keys.PublicKeyHex(),
-			Nonce:   nonce,
+			Nonce:   uint64(i),
 			Parents: parents,
 			Tag:     "nop",
 			Payload: bytes,
