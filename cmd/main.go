@@ -37,11 +37,6 @@ func main() {
 	go func() {
 		<-c
 
-		err := ledger.SaveAccount(account, nil)
-		if err != nil {
-			panic(err)
-		}
-
 		err = ledger.Graph.Cleanup()
 		if err != nil {
 			panic(err)
