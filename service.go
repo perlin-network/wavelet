@@ -283,7 +283,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					buf := make([]byte, len(value))
 					copy(buf, value)
 
-					s.accounts[string(s.account.PublicKey)][key] = buf
+					s.accounts[writeString(s.account.PublicKey)][key] = buf
 				default:
 					panic(fmt.Errorf("unknown store specified: %d", storeID))
 				}
