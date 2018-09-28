@@ -17,6 +17,7 @@ var (
 )
 
 type Ledger struct {
+	state
 	rpc
 
 	*database.Store
@@ -39,6 +40,7 @@ func NewLedger() *Ledger {
 		kill:     make(chan struct{}),
 	}
 
+	ledger.state = state{Ledger: ledger}
 	ledger.rpc = rpc{Ledger: ledger}
 
 	graph.AddOnReceiveHandler(ledger.checkSafeCommit)

@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package wavelet;
+
+message Delta {
+    string account = 1;
+    string key = 2;
+    bytes value = 3;
+}
