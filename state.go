@@ -15,6 +15,7 @@ import (
 
 var (
 	BucketAccounts = []byte("account_")
+	BucketDeltas   = []byte("deltas_")
 )
 
 type state struct {
@@ -163,6 +164,16 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 	// Save all modified accounts to the ledger.
 	for id, account := range accounts {
 		s.SaveAccount(account, accountDeltas.Deltas[id].List)
+	}
+
+	bytes, err := accountDeltas.Marshal()
+	if err != nil {
+		return err
+	}
+
+	err = s.Put(merge(BucketDeltas, writeBytes(tx.Id)), bytes)
+	if err != nil {
+		return err
 	}
 
 	return nil
