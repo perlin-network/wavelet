@@ -19,7 +19,7 @@ func readAccountBalance(acct *Account) uint64 {
 func TestNewAccount(t *testing.T) {
 	t.Parallel()
 
-	publicKey := "new_public_key"
+	publicKey := []byte("new_public_key")
 	account := NewAccount(publicKey)
 
 	assert.Equal(t, publicKey, account.PublicKey)
@@ -30,7 +30,7 @@ func TestNewAccount(t *testing.T) {
 func TestMarshal(t *testing.T) {
 	t.Parallel()
 
-	publicKey := "somekey"
+	publicKey := []byte("somekey")
 	account := NewAccount(publicKey)
 
 	b := account.MarshalBinary()

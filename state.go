@@ -11,8 +11,8 @@ type state struct {
 }
 
 // LoadAccount reads the account data for a given hex public key.
-func (s *state) LoadAccount(key string) (*Account, error) {
-	bytes, err := s.Get(merge(BucketAccounts, writeBytes(key)))
+func (s *state) LoadAccount(key []byte) (*Account, error) {
+	bytes, err := s.Get(merge(BucketAccounts, key))
 	if err != nil {
 		return nil, errors.Wrapf(err, "account %s not found in ledger state", key)
 	}
@@ -27,7 +27,7 @@ func (s *state) LoadAccount(key string) (*Account, error) {
 }
 
 func (s *state) SaveAccount(account *Account, deltas []*Delta) error {
-	err := s.Put(merge(BucketAccounts, writeBytes(account.PublicKey)), account.MarshalBinary())
+	err := s.Put(merge(BucketAccounts, account.PublicKey), account.MarshalBinary())
 	if err != nil {
 		return err
 	}

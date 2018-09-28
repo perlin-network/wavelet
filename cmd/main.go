@@ -26,14 +26,26 @@ func main() {
 	ledger := wavelet.NewLedger()
 	go ledger.UpdateAcceptedTransactions()
 
+	account, err := ledger.LoadAccount(keys.PublicKey)
+	if err != nil {
+		account = wavelet.NewAccount(keys.PublicKey)
+	}
+
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
 
 	go func() {
 		<-c
 
-		ledger.Graph.Cleanup()
-		//os.RemoveAll("testdb")
+		err := ledger.SaveAccount(account, nil)
+		if err != nil {
+			panic(err)
+		}
+
+		err = ledger.Graph.Cleanup()
+		if err != nil {
+			panic(err)
+		}
 
 		os.Exit(0)
 	}()
@@ -55,10 +67,16 @@ func main() {
 
 		wired := &wire.Transaction{
 			Sender:  keys.PublicKeyHex(),
-			Nonce:   uint64(i),
+			Nonce:   account.Nonce,
 			Parents: parents,
 			Tag:     "nop",
 			Payload: bytes,
+		}
+
+		account.Nonce++
+		err = ledger.SaveAccount(account, nil)
+		if err != nil {
+			panic(err)
 		}
 
 		encoded, err := wired.Marshal()

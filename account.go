@@ -12,7 +12,7 @@ type Account struct {
 	Nonce uint64 `json:"nonce"`
 
 	// PublicKey is the hex-encoded public key
-	PublicKey string `json:"public_key"`
+	PublicKey []byte `json:"public_key"`
 }
 
 // MarshalBinary serializes this accounts IAVL+ tree.
@@ -65,7 +65,7 @@ func (a *Account) Unmarshal(encoded []byte) error {
 }
 
 // NewAccount returns a new account object with balance and nonce = 0
-func NewAccount(publicKey string) *Account {
+func NewAccount(publicKey []byte) *Account {
 	account := &Account{
 		PublicKey: publicKey,
 	}
