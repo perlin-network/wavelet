@@ -46,6 +46,8 @@ func NewLedger() *Ledger {
 	ledger.state = state{Ledger: ledger}
 	ledger.rpc = rpc{Ledger: ledger}
 
+	ledger.registerServicePath("services")
+
 	graph.AddOnReceiveHandler(ledger.ensureSafeCommittable)
 
 	return ledger
@@ -220,12 +222,17 @@ func (ledger *Ledger) acceptTransaction(symbol string) {
 		return
 	}
 
+	tx, err := ledger.GetBySymbol(symbol)
+	if err != nil {
+		return
+	}
+
 	ledger.Put(merge(BucketAccepted, writeBytes(symbol)), writeUint64(index))
 	ledger.Put(merge(BucketAcceptedIndex, writeUint64(index)), writeBytes(symbol))
 	ledger.Delete(merge(BucketAcceptPending, writeBytes(symbol)))
 
 	// Apply transaction to the ledger state.
-	ledger.applyTransaction(symbol)
+	ledger.applyTransaction(tx)
 
 	visited := make(map[string]struct{})
 
