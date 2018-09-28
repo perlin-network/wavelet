@@ -115,6 +115,18 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 			return nil
 		}
 
+		parentsAccepted := true
+		for _, parent := range tx.Parents {
+			if !ledger.WasAccepted(parent) {
+				parentsAccepted = false
+				break
+			}
+		}
+
+		if !parentsAccepted {
+			return nil
+		}
+
 		set, err := ledger.GetConflictSet(tx.Sender, tx.Nonce)
 		if err != nil {
 			return nil
@@ -127,22 +139,12 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 			return nil
 		}
 
-		parentsAccepted := true
-		for _, parent := range tx.Parents {
-			if !ledger.WasAccepted(parent) {
-				parentsAccepted = false
-				break
-			}
-		}
+		conflicting := !(transactions.Cardinality() == 1)
 
-		if parentsAccepted {
-			conflicting := !(transactions.Cardinality() == 1)
-
-			if set.Count > system.Beta2 || (!conflicting && ledger.CountAscendants(symbol, system.Beta1+1) > system.Beta1) {
-				if !ledger.WasAccepted(symbol) {
-					ledger.acceptTransaction(symbol)
-					acceptedList = append(acceptedList, symbol)
-				}
+		if set.Count > system.Beta2 || (!conflicting && ledger.CountAscendants(symbol, system.Beta1+1) > system.Beta1) {
+			if !ledger.WasAccepted(symbol) {
+				ledger.acceptTransaction(symbol)
+				acceptedList = append(acceptedList, symbol)
 			}
 		}
 
