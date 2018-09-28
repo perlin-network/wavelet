@@ -43,7 +43,7 @@ func NewLedger() *Ledger {
 	ledger.state = state{Ledger: ledger}
 	ledger.rpc = rpc{Ledger: ledger}
 
-	graph.AddOnReceiveHandler(ledger.checkSafeCommit)
+	graph.AddOnReceiveHandler(ledger.ensureSafeCommittable)
 
 	return ledger
 }
@@ -235,9 +235,9 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 	log.Debug().Int("num_reverted", numReverted).Msg("Reverted transactions.")
 }
 
-// checkSafeCommit ensures that incoming transactions which conflict with any
+// ensureSafeCommittable ensures that incoming transactions which conflict with any
 // of the transactions on our graph are not accepted.
-func (ledger *Ledger) checkSafeCommit(index uint64, tx *database.Transaction) error {
+func (ledger *Ledger) ensureSafeCommittable(index uint64, tx *database.Transaction) error {
 	set, err := ledger.GetConflictSet(tx.Sender, tx.Nonce)
 
 	if err != nil {
