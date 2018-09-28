@@ -155,13 +155,12 @@ func (ledger *Ledger) ensureAccepted(set *database.ConflictSet) error {
 		return err
 	}
 
-	if count := transactions.Cardinality(); count > 1 && ledger.WasAccepted(set.Preferred) {
+	// Only check the conflict set if the preferred transaction was already accepted, and the count is <= Beta2.
+	if count := transactions.Cardinality(); count > 1 && ledger.WasAccepted(set.Preferred) && set.Count <= system.Beta2 {
 		conflicting := !(count == 1)
 
-		// Check if the transaction is still accepted.
-		stillAccepted := set.Count > system.Beta2 || (!conflicting && ledger.CountAscendants(set.Preferred, system.Beta1+1) > system.Beta2)
-
-		if !stillAccepted {
+		// Check if the transaction is still committed.
+		if !(!conflicting && ledger.CountAscendants(set.Preferred, system.Beta1+1) > system.Beta2) {
 			ledger.revertTransaction(set.Preferred)
 		}
 	}
