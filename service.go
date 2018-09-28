@@ -382,10 +382,6 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessErr) // a contract cannot create another one
 				}
 
-				if s.tx.Id == "" {
-					log.Fatal().Msg("no transaction id") // should be impossible now
-				}
-
 				contractID := merge(ContractPrefix, writeBytes(s.tx.Id))
 
 				account := NewAccount(contractID)
