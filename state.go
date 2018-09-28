@@ -171,13 +171,12 @@ func (s *state) doApplyTransaction(tx *database.Transaction) ([]*database.Transa
 		account, exists := accounts[accountID]
 
 		if !exists {
-			loaded, err := s.LoadAccount(change.Account)
+			account, err = s.LoadAccount(change.Account)
 			if err != nil {
-				loaded = NewAccount(change.Account)
+				account = NewAccount(change.Account)
 			}
 
-			accounts[accountID] = loaded
-			account = accounts[accountID]
+			accounts[accountID] = account
 		}
 
 		account.State, _ = account.State.Store(change.Key, change.NewValue)
