@@ -45,7 +45,7 @@ func (r *rpc) HandleSuccessfulQuery(tx *database.Transaction) error {
 
 		// This line cuts down consensus time from 0.03 seconds to 0.01 seconds.
 		// Whether or not it's correct requires an analysis of its own.
-		if r.wasAccepted(popped) {
+		if r.WasAccepted(popped) {
 			continue
 		}
 
@@ -87,11 +87,4 @@ func (r *rpc) HandleSuccessfulQuery(tx *database.Transaction) error {
 	}
 
 	return nil
-}
-
-// WasAccepted returns whether or not a transaction given by its symbol
-// was stored to be accepted inside the database.
-func (r *rpc) wasAccepted(symbol string) bool {
-	bytes, _ := r.Get(merge(BucketAccepted, writeBytes(symbol)))
-	return readBoolean(bytes)
 }
