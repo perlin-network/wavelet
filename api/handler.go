@@ -145,7 +145,7 @@ func (s *service) ledgerStateHandler(ctx *requestContext) {
 	ctx.WriteJSON(http.StatusOK, state)
 }
 
-func (s *service) SendTransactionHandler(ctx *requestContext) {
+func (s *service) sendTransactionHandler(ctx *requestContext) {
 	if !ctx.loadSession() {
 		return
 	}
@@ -170,7 +170,7 @@ func (s *service) SendTransactionHandler(ctx *requestContext) {
 	ctx.WriteJSON(http.StatusOK, "OK")
 }
 
-func (s *service) StatsResetHandler(ctx *requestContext) {
+func (s *service) resetStatsHandler(ctx *requestContext) {
 	if !ctx.loadSession() {
 		return
 	}
@@ -185,7 +185,7 @@ func (s *service) StatsResetHandler(ctx *requestContext) {
 	ctx.WriteJSON(http.StatusOK, "OK")
 }
 
-func (s *service) StatsSummaryHandler(ctx *requestContext) {
+func (s *service) summarizeStatsHandler(ctx *requestContext) {
 	if !ctx.loadSession() {
 		return
 	}
@@ -198,7 +198,7 @@ func (s *service) StatsSummaryHandler(ctx *requestContext) {
 	ctx.WriteJSON(http.StatusOK, stats.Summary())
 }
 
-func (s *service) LoadAccountHandler(ctx *requestContext) {
+func (s *service) loadAccountHandler(ctx *requestContext) {
 	if !ctx.loadSession() {
 		return
 	}
@@ -235,8 +235,8 @@ func (s *service) LoadAccountHandler(ctx *requestContext) {
 	ctx.WriteJSON(http.StatusOK, info)
 }
 
-// SessionInitHandler initialize a session.
-func (s *service) SessionInitHandler(ctx *requestContext) {
+// sessionInitHandler initialize a session.
+func (s *service) sessionInitHandler(ctx *requestContext) {
 	var credentials credentials
 	if err := ctx.readJSON(&credentials); err != nil {
 		return

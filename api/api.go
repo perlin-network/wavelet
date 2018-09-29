@@ -102,14 +102,14 @@ func (c *requestContext) loadSession() bool {
 // init registers routes to the HTTP serve mux.
 func (s *service) init(mux *http.ServeMux) {
 	mux.Handle("/debug/vars", http.DefaultServeMux)
-	mux.HandleFunc("/session/init", s.wrap(s.SessionInitHandler))
+	mux.HandleFunc("/session/init", s.wrap(s.sessionInitHandler))
 	mux.HandleFunc("/ledger/state", s.wrap(s.ledgerStateHandler))
 	mux.HandleFunc("/transaction/list", s.wrap(s.listTransactionHandler))
 	mux.HandleFunc("/transaction/poll", s.wrap(s.pollTransactionHandler))
-	mux.HandleFunc("/transaction/send", s.wrap(s.SendTransactionHandler))
-	mux.HandleFunc("/stats/reset", s.wrap(s.StatsResetHandler))
-	mux.HandleFunc("/stats/summary", s.wrap(s.StatsSummaryHandler))
-	mux.HandleFunc("/account/load", s.wrap(s.LoadAccountHandler))
+	mux.HandleFunc("/transaction/send", s.wrap(s.sendTransactionHandler))
+	mux.HandleFunc("/stats/reset", s.wrap(s.resetStatsHandler))
+	mux.HandleFunc("/stats/summary", s.wrap(s.summarizeStatsHandler))
+	mux.HandleFunc("/account/load", s.wrap(s.loadAccountHandler))
 	mux.HandleFunc("/account/poll", s.wrap(s.pollAccountHandler))
 }
 
