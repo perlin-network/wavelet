@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package iblt;
+
+message IntArray {
+    repeated int32 values = 1;
+}
+
+message IBLT {
+    repeated int32 count = 1;
+    repeated IntArray keys = 2;
+    repeated IntArray values = 3;
+    repeated IntArray hashKeys = 4;
+}
