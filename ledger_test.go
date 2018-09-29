@@ -41,7 +41,6 @@ func BenchmarkLedger(b *testing.B) {
 			Nonce:   uint64(i),
 			Parents: parents,
 			Tag:     "nop",
-			Payload: writeBytes("test payload"),
 		}
 
 		encoded, err := wired.Marshal()

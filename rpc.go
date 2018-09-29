@@ -29,16 +29,10 @@ func (r *rpc) RespondToQuery(wired *wire.Transaction) (string, bool, error) {
 		return "", false, errors.Wrap(err, "failed to decode sender id")
 	}
 
-	account, err := r.LoadAccount(senderID)
-	if err != nil {
-		if wired.Nonce != 0 {
-			return "", false, errors.Wrap(err, "tx sender account not found")
-		}
-	}
-
 	// If the nonce of the transaction is less than the currently accepted accounts nonce, reject it. Prevents most double spending
 	// cases from even reaching a conflict set.
-	if account != nil && wired.Nonce < account.Nonce {
+
+	if account, err := r.LoadAccount(senderID); err == nil && wired.Nonce < account.Nonce {
 		return "", false, errors.Wrap(err, "tx nonce is outdated in comparison to the actual accounts nonce")
 	}
 

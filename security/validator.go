@@ -15,12 +15,17 @@ var (
 // ValidateWiredTransaction validates an incoming transaction from our wire protocol
 //
 // Checks:
+// Nop with empty payload.
 // Sender public key length.
 // Signature length.
 // Tag length > 0.
 // Valid sender public key.
 // Valid message signature.
 func ValidateWiredTransaction(wired *wire.Transaction) (bool, error) {
+	if wired.Tag == "nop" && wired.Payload != nil {
+		return false, errors.Wrap(ErrMalformedTransaction, "nop must have empty payload")
+	}
+
 	if len(wired.Sender) != ed25519.PublicKeySize*2 {
 		return false, errors.Wrap(ErrMalformedTransaction, "invalid sender id")
 	}

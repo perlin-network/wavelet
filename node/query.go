@@ -13,7 +13,7 @@ var (
 )
 
 const (
-	K     = 2
+	K     = 1
 	Alpha = 0.8
 )
 
