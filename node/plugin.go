@@ -21,6 +21,7 @@ type Options struct {
 
 type Wavelet struct {
 	query
+	syncer
 	broadcaster
 
 	net    *network.Network
@@ -55,6 +56,9 @@ func (w *Wavelet) Startup(net *network.Network) {
 	w.query = query{Wavelet: w}
 	w.query.sybil = stake{query: w.query}
 
+	w.syncer = syncer{Wavelet: w, kill: make(chan struct{}, 1)}
+	go w.syncer.Init()
+
 	w.broadcaster = broadcaster{Wavelet: w}
 }
 
@@ -78,6 +82,8 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 					log.Error().Err(err).Msg("Failed to queue transaction to pend for acceptance.")
 				}
 			}
+
+			log.Debug().Str("id", id).Interface("tx", msg).Msgf("Received a transaction, and voted '%t' for it.", successful)
 
 			res := &QueryResponse{Id: id, StronglyPreferred: successful}
 
@@ -132,11 +138,21 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				}
 			}()
 		}
+	case *SyncRequest:
+		err := ctx.Reply(w.RespondToSync(msg))
+
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to send response.")
+			return err
+		}
+
 	}
 	return nil
 }
 
 func (w *Wavelet) Cleanup(net *network.Network) {
+	w.syncer.kill <- struct{}{}
+
 	err := w.Ledger.Graph.Cleanup()
 
 	if err != nil {
