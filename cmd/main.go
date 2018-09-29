@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/crypto"
+	"github.com/perlin-network/noise/network"
+	"github.com/perlin-network/noise/network/discovery"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/security"
 	"os"
 	"os/signal"
@@ -70,23 +73,32 @@ func main() {
 		log.Fatal().Err(err).Msg("Failed to decode private key.")
 	}
 
-	ledger := wavelet.NewLedger()
-	ledger.Init()
+	wavelet := node.NewPlugin(node.Options{DatabasePath: "testdb", ServicesPath: "services"})
 
-	wallet := wavelet.NewWallet(keys, ledger.Store)
-	wallet.String()
+	builder := network.NewBuilder()
 
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
+	builder.SetKeys(keys)
+	builder.SetAddress("tcp://127.0.0.1:3000")
+
+	builder.AddPlugin(new(discovery.Plugin))
+	builder.AddPlugin(wavelet)
+
+	net, err := builder.Build()
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to initialize networking.")
+	}
+
+	go net.Listen()
+
+	net.BlockUntilListening()
+
+	exit := make(chan os.Signal, 1)
+	signal.Notify(exit, os.Interrupt)
 
 	go func() {
-		<-c
+		<-exit
 
-		err = ledger.Graph.Cleanup()
-		if err != nil {
-			panic(err)
-		}
-
+		net.Close()
 		os.Exit(0)
 	}()
 
@@ -103,9 +115,9 @@ func main() {
 		switch string(bytes) {
 		case "wallet":
 			log.Info().
-				Str("id", hex.EncodeToString(wallet.PublicKey)).
-				Uint64("nonce", wallet.CurrentNonce()).
-				Uint64("balance", wallet.GetBalance(ledger)).
+				Str("id", hex.EncodeToString(wavelet.Wallet.PublicKey)).
+				Uint64("nonce", wavelet.Wallet.CurrentNonce()).
+				Uint64("balance", wavelet.Wallet.GetBalance(wavelet.Ledger)).
 				Msg("Here is your wallet information.")
 		case "pay":
 			transfer := struct {
@@ -118,9 +130,9 @@ func main() {
 				log.Fatal().Err(err).Msg("Failed to marshal transfer payload.")
 			}
 
-			sendTransaction(ledger, wallet, "transfer", payload)
+			sendTransaction(wavelet.Ledger, wavelet.Wallet, "transfer", payload)
 		default:
-			sendTransaction(ledger, wallet, "nop", nil)
+			sendTransaction(wavelet.Ledger, wavelet.Wallet, "nop", nil)
 		}
 	}
 }

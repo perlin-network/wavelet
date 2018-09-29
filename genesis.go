@@ -12,7 +12,8 @@ var genesis = map[string]map[string]interface{}{
 	},
 }
 
-func bigBang(ledger *Ledger) {
+// Spawn the genesis.
+func BIGBANG(ledger *Ledger) {
 	for encoded, values := range genesis {
 		id, err := hex.DecodeString(encoded)
 		if err != nil {

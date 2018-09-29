@@ -9,6 +9,9 @@ import (
 	"testing"
 )
 
+const databasePath = "cmd/testdb"
+const servicesPath = "cmd/services"
+
 func BenchmarkLedger(b *testing.B) {
 	b.StopTimer()
 
@@ -19,7 +22,7 @@ func BenchmarkLedger(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	ledger := NewLedger()
+	ledger := NewLedger(databasePath, servicesPath)
 	ledger.Init()
 
 	defer os.RemoveAll("testdb")

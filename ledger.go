@@ -30,8 +30,8 @@ type Ledger struct {
 	kill chan struct{}
 }
 
-func NewLedger() *Ledger {
-	store := database.New("testdb")
+func NewLedger(databasePath, servicesPath string) *Ledger {
+	store := database.New(databasePath)
 
 	graph := graph.New(store)
 	resolver := conflict.New(graph)
@@ -46,11 +46,11 @@ func NewLedger() *Ledger {
 	ledger.state = state{Ledger: ledger}
 	ledger.rpc = rpc{Ledger: ledger}
 
-	ledger.registerServicePath("services")
+	ledger.registerServicePath(servicesPath)
 
 	// If there is no data about accounts, instantiate the ledger with the genesis block.
 	if store.Size(BucketAccounts) == 0 {
-		bigBang(ledger)
+		BIGBANG(ledger)
 	}
 
 	graph.AddOnReceiveHandler(ledger.ensureSafeCommittable)
