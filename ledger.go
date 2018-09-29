@@ -75,6 +75,10 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 	return ledger
 }
 
+func (ledger *Ledger) NumTransactions() uint64 {
+	return ledger.Store.Size(database.BucketTxIndex)
+}
+
 func (ledger *Ledger) WithIBLT(call func(*iblt.Filter) interface{}) interface{} {
 	ledger.ibltMutex.Lock()
 	value := call(ledger.iblt)
