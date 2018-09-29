@@ -138,31 +138,33 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 
 		deltas, newlyPending, err := s.doApplyTransaction(tx)
 		if err != nil {
-			return err
+			log.Warn().Interface("tx", tx).Err(err).Msg("Transaction failed to get applied to the ledger state.")
 		}
 
-		for _, delta := range deltas {
-			accountID := writeString(delta.Account)
+		if err == nil {
+			for _, delta := range deltas {
+				accountID := writeString(delta.Account)
 
-			account, exists := accounts[accountID]
+				account, exists := accounts[accountID]
 
-			if !exists {
-				account, err = s.LoadAccount(delta.Account)
-				if err != nil {
-					account = NewAccount(delta.Account)
+				if !exists {
+					account, err = s.LoadAccount(delta.Account)
+					if err != nil {
+						account = NewAccount(delta.Account)
+					}
+
+					accounts[accountID] = account
 				}
 
-				accounts[accountID] = account
+				delta.OldValue, _ = account.Load(delta.Key)
+				account.Store(delta.Key, delta.NewValue)
+
+				if _, exists := accountDeltas.Deltas[accountID]; !exists {
+					accountDeltas.Deltas[accountID] = new(Deltas_List)
+				}
+
+				accountDeltas.Deltas[accountID].List = append(accountDeltas.Deltas[accountID].List, delta)
 			}
-
-			delta.OldValue, _ = account.Load(delta.Key)
-			account.Store(delta.Key, delta.NewValue)
-
-			if _, exists := accountDeltas.Deltas[accountID]; !exists {
-				accountDeltas.Deltas[accountID] = new(Deltas_List)
-			}
-
-			accountDeltas.Deltas[accountID].List = append(accountDeltas.Deltas[accountID].List, delta)
 		}
 
 		// Increment the senders account nonce.
