@@ -31,6 +31,12 @@ type state struct {
 	services []*service
 }
 
+// WasApplied returns whether or not a transaction was applied into the ledger.
+func (s *state) WasApplied(symbol string) bool {
+	applied, _ := s.Has(merge(BucketDeltas, writeBytes(symbol)))
+	return applied
+}
+
 // registerServicePath registers all the services in a path.
 func (m *state) registerServicePath(path string) error {
 	files, err := filepath.Glob(fmt.Sprintf("%s/*.wasm", path))
@@ -227,14 +233,14 @@ func (s *state) doRevertTransaction(pendingList *[]pending) {
 	accounts := make(map[string]*Account)
 
 	for _, pending := range *pendingList {
-		deltaListBytes, err := s.Get(merge(BucketDeltas, writeBytes(pending.tx.Id)))
+		deltaListKey := merge(BucketDeltas, writeBytes(pending.tx.Id))
+		deltaListBytes, err := s.Get(deltaListKey)
 
 		// Revert deltas only if the transaction has a list of deltas available.
 		if err == nil {
 			err = accountDeltas.Unmarshal(deltaListBytes)
 
 			if err != nil {
-				panic(err)
 				continue
 			}
 
@@ -252,9 +258,16 @@ func (s *state) doRevertTransaction(pendingList *[]pending) {
 						accounts[accountID] = account
 					}
 
-					account.Store(list.List[i].Key, list.List[i].OldValue)
+					if list.List[i].OldValue == nil {
+						account.State.Delete(list.List[i].Key)
+					} else {
+						account.Store(list.List[i].Key, list.List[i].OldValue)
+					}
 				}
 			}
+
+			// Delete delta list after reverting the transaction.
+			s.Delete(deltaListKey)
 		}
 
 		senderID, err := hex.DecodeString(pending.tx.Sender)

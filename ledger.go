@@ -208,7 +208,7 @@ func (ledger *Ledger) ensureAccepted(set *database.ConflictSet) error {
 	// If the preferred transaction of a conflict set was accepted (due to safe early commit) and there are now transactions
 	// conflicting with it, un-accept it.
 	if conflicting := !(transactions.Cardinality() == 1); conflicting && ledger.WasAccepted(set.Preferred) && set.Count <= system.Beta2 {
-		ledger.revertTransaction(set.Preferred)
+		ledger.revertTransaction(set.Preferred, true)
 	}
 
 	return nil
@@ -225,6 +225,15 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 	ledger.Put(merge(BucketAccepted, writeBytes(tx.Id)), writeUint64(index))
 	ledger.Put(merge(BucketAcceptedIndex, writeUint64(index)), writeBytes(tx.Id))
 	ledger.Delete(merge(BucketAcceptPending, writeBytes(tx.Id)))
+
+	// If the transaction has accepted children, revert all of the transactions ascendants.
+	if children, err := ledger.GetChildrenBySymbol(tx.Id); err == nil && len(children.Transactions) > 0 {
+		for _, child := range children.Transactions {
+			if ledger.WasAccepted(child) {
+				ledger.revertTransaction(child, false)
+			}
+		}
+	}
 
 	// Apply transaction to the ledger state.
 	err = ledger.applyTransaction(tx)
@@ -251,6 +260,15 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 
 				if !ledger.WasAccepted(child) {
 					ledger.Put(merge(BucketAcceptPending, writeBytes(child)), []byte{0})
+				} else if !ledger.WasApplied(child) {
+					// If the child was already accepted but not yet applied, apply it to the ledger state.
+
+					tx, err := ledger.GetBySymbol(child)
+					if err != nil {
+						continue
+					}
+
+					ledger.applyTransaction(tx)
 				}
 				queue.PushBack(child)
 
@@ -260,7 +278,7 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 }
 
 // revertTransaction sets a transaction and all of its ascendants to not be accepted.
-func (ledger *Ledger) revertTransaction(symbol string) {
+func (ledger *Ledger) revertTransaction(symbol string, revertAcceptance bool) {
 	visited := make(map[string]struct{})
 
 	queue := queue.New()
@@ -288,10 +306,12 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 			continue
 		}
 
-		ledger.Delete(merge(BucketAcceptedIndex, indexBytes))
-		ledger.Delete(merge(BucketAccepted, writeBytes(popped)))
+		if revertAcceptance {
+			ledger.Delete(merge(BucketAcceptedIndex, indexBytes))
+			ledger.Delete(merge(BucketAccepted, writeBytes(popped)))
 
-		ledger.Put(merge(BucketAcceptPending, writeBytes(popped)), []byte{0})
+			ledger.Put(merge(BucketAcceptPending, writeBytes(popped)), []byte{0})
+		}
 
 		children, err := ledger.GetChildrenBySymbol(popped)
 		if err != nil {
@@ -302,7 +322,7 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 			if _, seen := visited[child]; !seen {
 				visited[child] = struct{}{}
 
-				if ledger.WasAccepted(child) {
+				if ledger.WasApplied(child) && ledger.WasAccepted(child) {
 					queue.PushBack(child)
 				}
 			}

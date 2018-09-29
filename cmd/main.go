@@ -14,12 +14,15 @@ import (
 	"os/signal"
 )
 
+var nonce = uint64(0)
+
 func sendTransaction(ledger *wavelet.Ledger, wallet *wavelet.Wallet, tag string, payload []byte) {
 	parents, err := ledger.FindEligibleParents()
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to find eligible parents.")
 	}
 
+	// Comment if you're testing for conflicts.
 	nonce, err := wallet.NextNonce(ledger)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to figure out the next available nonce from our wallet.")
@@ -32,6 +35,9 @@ func sendTransaction(ledger *wavelet.Ledger, wallet *wavelet.Wallet, tag string,
 		Tag:     tag,
 		Payload: payload,
 	}
+
+	// Uncomment if you're testing for conflicts.
+	//nonce++
 
 	encoded, err := wired.Marshal()
 	if err != nil {

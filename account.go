@@ -37,6 +37,10 @@ func (a *Account) Store(key string, value []byte) {
 	a.State, _ = a.State.Store(key, value)
 }
 
+func (a *Account) Delete(key string) {
+	a.State, _ = a.State.Delete(key)
+}
+
 func (a *Account) Clone() *Account {
 	account := &Account{
 		PublicKey: a.PublicKey,
