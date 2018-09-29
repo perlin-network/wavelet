@@ -18,6 +18,13 @@ var (
 	BucketDeltas   = []byte("deltas_")
 )
 
+// pending represents a single transaction to be processed. A utility struct
+// used for lexicographically-least topological sorting of a set of transactions.
+type pending struct {
+	tx    *database.Transaction
+	depth uint64
+}
+
 type state struct {
 	*Ledger
 
@@ -120,9 +127,7 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 		if tx.Tag == "nop" {
 			sender.Nonce++
 
-			s.SaveAccount(sender, nil)
-
-			return nil
+			continue
 		}
 
 		deltas, newlyPending, err := s.doApplyTransaction(tx)
@@ -163,7 +168,14 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 
 	// Save all modified accounts to the ledger.
 	for id, account := range accounts {
-		s.SaveAccount(account, accountDeltas.Deltas[id].List)
+		log.Debug().Uint64("nonce", account.Nonce).Bytes("public_key", account.PublicKey).Msg("Applied transaction.")
+
+		list, available := accountDeltas.Deltas[id]
+		if available {
+			s.SaveAccount(account, list.List)
+		} else {
+			s.SaveAccount(account, nil)
+		}
 	}
 
 	bytes, err := accountDeltas.Marshal()
@@ -204,6 +216,73 @@ func (s *state) doApplyTransaction(tx *database.Transaction) ([]*Delta, []*datab
 	}
 
 	return deltas, pendingTransactions, nil
+}
+
+func (s *state) doRevertTransaction(pendingList *[]pending) {
+	accountDeltas := new(Deltas)
+	accounts := make(map[string]*Account)
+
+	for _, pending := range *pendingList {
+		deltaListBytes, err := s.Get(merge(BucketDeltas, writeBytes(pending.tx.Id)))
+
+		// Revert deltas only if the transaction has a list of deltas available.
+		if err == nil {
+			err = accountDeltas.Unmarshal(deltaListBytes)
+
+			if err != nil {
+				panic(err)
+				continue
+			}
+
+			for accountID, list := range accountDeltas.Deltas {
+				// Go from the end of the deltas list and apply the old value.
+				for i := len(list.List) - 1; i >= 0; i-- {
+					account, exists := accounts[accountID]
+					if !exists {
+						account, err = s.LoadAccount(writeBytes(accountID))
+
+						if err != nil {
+							continue
+						}
+
+						accounts[accountID] = account
+					}
+
+					account.State, _ = account.State.Store(list.List[i].Key, list.List[i].OldValue)
+				}
+			}
+		}
+
+		senderID, err := hex.DecodeString(pending.tx.Sender)
+		if err != nil {
+			continue
+		}
+
+		sender, exists := accounts[writeString(senderID)]
+		if !exists {
+			sender, err = s.LoadAccount(senderID)
+
+			if err != nil {
+				continue
+			}
+
+			accounts[writeString(senderID)] = sender
+		}
+
+		sender.Nonce = pending.tx.Nonce
+	}
+
+	// Save changes to all accounts.
+	for id, account := range accounts {
+		log.Debug().Uint64("nonce", account.Nonce).Bytes("public_key", account.PublicKey).Msg("Reverted transaction.")
+
+		list, available := accountDeltas.Deltas[id]
+		if available {
+			s.SaveAccount(account, list.List)
+		} else {
+			s.SaveAccount(account, nil)
+		}
+	}
 }
 
 // LoadAccount reads the account data for a given hex public key.

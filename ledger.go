@@ -1,7 +1,6 @@
 package wavelet
 
 import (
-	"fmt"
 	"github.com/lytics/hll"
 	"github.com/perlin-network/graph/conflict"
 	"github.com/perlin-network/graph/database"
@@ -106,11 +105,6 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 		}
 
 		ledger.Put(merge(BucketAcceptPending, writeBytes(tx.Id)), []byte{0})
-	}
-
-	type pending struct {
-		tx    *database.Transaction
-		depth uint64
 	}
 
 	var acceptedList []string
@@ -267,11 +261,6 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 	queue := queue.New()
 	queue.PushBack(symbol)
 
-	type pending struct {
-		tx    *database.Transaction
-		depth uint64
-	}
-
 	var pendingList []pending
 
 	for queue.Len() > 0 {
@@ -315,34 +304,21 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 		}
 	}
 
+	// Sort in ascending lexicographically-least topological order.
 	sort.Slice(pendingList, func(i, j int) bool {
-		if pendingList[i].depth < pendingList[j].depth {
+		if pendingList[i].depth > pendingList[j].depth {
 			return true
 		}
 
-		if pendingList[i].depth > pendingList[j].depth {
+		if pendingList[i].depth < pendingList[j].depth {
 			return false
 		}
 
-		return pendingList[i].tx.Id < pendingList[j].tx.Id
+		return pendingList[i].tx.Id > pendingList[j].tx.Id
 	})
 
-	deltas := new(Deltas)
-
-	for _, pending := range pendingList {
-		//deltasBytes, err := ledger.Get(merge(BucketDeltas, writeBytes(pending.tx.Id)))
-		//if err != nil {
-		//	panic(err)
-		//	continue
-		//}
-		//
-		//err = deltas.Unmarshal(deltasBytes)
-		//if err != nil {
-		//	continue
-		//}
-
-		fmt.Println(pending.depth, deltas)
-	}
+	// Revert list of transactions from ledger state.
+	ledger.doRevertTransaction(&pendingList)
 
 	log.Debug().Int("num_reverted", len(pendingList)).Msg("Reverted transactions.")
 }
