@@ -305,7 +305,7 @@ func (s *state) doRevertTransaction(pendingList *[]pending) {
 	}
 }
 
-// LoadAccount reads the account data for a given hex public key.
+// LoadAccount loads an account from the database given its public key.
 func (s *state) LoadAccount(key []byte) (*Account, error) {
 	bytes, err := s.Get(merge(BucketAccounts, key))
 	if err != nil {
@@ -321,6 +321,7 @@ func (s *state) LoadAccount(key []byte) (*Account, error) {
 	return account.Clone(), nil
 }
 
+// SaveAccount saves an account to the database.
 func (s *state) SaveAccount(account *Account, deltas []*Delta) error {
 	accountKey := merge(BucketAccounts, account.PublicKey)
 
