@@ -2,7 +2,9 @@ package node
 
 import (
 	"github.com/perlin-network/graph/wire"
+	"github.com/perlin-network/noise/dht"
 	"github.com/perlin-network/noise/network"
+	"github.com/perlin-network/noise/network/discovery"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
 )
@@ -15,7 +17,10 @@ type Options struct {
 }
 
 type Wavelet struct {
-	network.Plugin
+	query
+
+	net    *network.Network
+	routes *dht.RoutingTable
 
 	Ledger *wavelet.Ledger
 	Wallet *wavelet.Wallet
@@ -24,16 +29,27 @@ type Wavelet struct {
 }
 
 func NewPlugin(opts Options) *Wavelet {
-	plugin := &Wavelet{opts: opts}
-
-	return plugin
+	return &Wavelet{opts: opts}
 }
 
 func (w *Wavelet) Startup(net *network.Network) {
+	w.net = net
+
+	plugin, registered := net.Plugin(discovery.PluginID)
+
+	if !registered {
+		log.Fatal().Msg("net was not built with peer discovery plugin")
+	}
+
+	w.routes = plugin.(*discovery.Plugin).Routes
+
 	w.Ledger = wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath)
 	w.Ledger.Init()
 
 	w.Wallet = wavelet.NewWallet(net.GetKeys(), w.Ledger.Store)
+
+	w.query = query{Wavelet: w}
+	w.query.sybil = stake{query: w.query}
 }
 
 func (w *Wavelet) Receive(ctx *network.PluginContext) error {
