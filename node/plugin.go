@@ -69,7 +69,17 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 		existed := w.Ledger.TransactionExists(id)
 
 		if existed {
-			res := &QueryResponse{Id: id, StronglyPreferred: w.Ledger.IsStronglyPreferred(id)}
+			successful := w.Ledger.IsStronglyPreferred(id)
+
+			if successful && !w.Ledger.WasAccepted(id) {
+				err := w.Ledger.QueueForAcceptance(id)
+
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to queue transaction to pend for acceptance.")
+				}
+			}
+
+			res := &QueryResponse{Id: id, StronglyPreferred: successful}
 
 			err := ctx.Reply(res)
 			if err != nil {
@@ -81,6 +91,14 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 			if err != nil {
 				log.Warn().Err(err).Msg("Failed to respond to query.")
 				return err
+			}
+
+			if successful {
+				err = w.Ledger.QueueForAcceptance(id)
+
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to queue transaction to pend for acceptance.")
+				}
 			}
 
 			log.Debug().Str("id", id).Interface("tx", msg).Msgf("Received a transaction, and voted '%t' for it.", successful)
@@ -111,11 +129,6 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to update conflict set for transaction received which was gossiped out.")
 					return
-				}
-
-				err = w.Ledger.QueueForAcceptance(id)
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to queue transaction which was gossiped out to pend for acceptance.")
 				}
 			}()
 		}
