@@ -22,8 +22,8 @@ type query struct {
 	sybil
 }
 
-func (q query) Query(tx *wire.Transaction) error {
-	addresses := q.routes.FindClosestPeers(q.net.ID, K)
+func (q query) Query(wired *wire.Transaction) error {
+	addresses := q.routes.FindClosestPeers(q.net.ID, K+1)
 
 	var wg sync.WaitGroup
 	wg.Add(len(addresses))
@@ -43,7 +43,7 @@ func (q query) Query(tx *wire.Transaction) error {
 
 			request := new(rpc.Request)
 			request.SetTimeout(10 * time.Second)
-			request.SetMessage(tx)
+			request.SetMessage(wired)
 
 			response, err := client.Request(request)
 			if err != nil {
@@ -62,7 +62,7 @@ func (q query) Query(tx *wire.Transaction) error {
 
 	wg.Wait()
 
-	positives := q.weigh(addresses, responses, tx)
+	positives := q.weigh(addresses, responses, wired)
 
 	if positives < Alpha {
 		return errors.Wrapf(ErrPrecommit, "expected >= %.2f alpha; got only %.2f positives", Alpha, positives)

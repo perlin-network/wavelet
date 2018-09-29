@@ -5,7 +5,6 @@ import (
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/system"
 	"github.com/perlin-network/graph/wire"
-	"github.com/perlin-network/wavelet/security"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 )
@@ -20,10 +19,6 @@ type rpc struct {
 //
 // Our response is `true` should we strongly prefer a transaction, or `false` otherwise.
 func (r *rpc) RespondToQuery(wired *wire.Transaction) (string, bool, error) {
-	if validated, err := security.ValidateWiredTransaction(wired); err != nil || !validated {
-		return "", false, errors.Wrap(err, "failed to validate incoming tx")
-	}
-
 	senderID, err := hex.DecodeString(wired.Sender)
 	if err != nil {
 		return "", false, errors.Wrap(err, "failed to decode sender id")

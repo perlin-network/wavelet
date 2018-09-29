@@ -99,6 +99,11 @@ func (ledger *Ledger) GetAcceptedByIndex(index uint64) (*database.Transaction, e
 	return ledger.GetBySymbol(writeString(symbolBytes))
 }
 
+// QueueForAcceptance queues a transaction awaiting to be accepted.
+func (ledger *Ledger) QueueForAcceptance(symbol string) error {
+	return ledger.Put(merge(BucketAcceptPending, writeBytes(symbol)), []byte{0})
+}
+
 // updateAcceptedTransactions incrementally from the root of the graph updates whether
 // or not all transactions this node knows about are accepted.
 func (ledger *Ledger) updateAcceptedTransactions() {

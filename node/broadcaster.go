@@ -140,5 +140,5 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 		time.Sleep(RetryDelay)
 	}
 
-	log.Debug().Str("id", id).Interface("tx", wired).Msgf("Received a transaction, and voted '%t' for it.", successful)
+	log.Debug().Str("id", id).Interface("tx", wired).Msg("Successfully broadcasted transaction.")
 }
