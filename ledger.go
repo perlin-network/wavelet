@@ -10,6 +10,7 @@ import (
 	"github.com/phf/go-queue/queue"
 	"github.com/sasha-s/go-IBLT"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -30,7 +31,9 @@ type Ledger struct {
 	*graph.Graph
 	*conflict.Resolver
 
-	IBLT *iblt.Filter
+	iblt      *iblt.Filter
+	ibltMutex sync.Mutex
+
 	kill chan struct{}
 }
 
@@ -55,10 +58,10 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 		BIGBANG(ledger)
 	}
 
-	ledger.IBLT = iblt.New(6, 4096)
+	ledger.iblt = iblt.New(6, 4096)
 
 	if encoded, err := store.Get(KeyTransactionIBLT); err == nil {
-		err := ledger.IBLT.UnmarshalBinary(encoded)
+		err := ledger.iblt.UnmarshalBinary(encoded)
 
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to decode transaction IBLT from database.")
@@ -70,6 +73,14 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 	graph.AddOnReceiveHandler(ledger.ensureSafeCommittable)
 
 	return ledger
+}
+
+func (ledger *Ledger) WithIBLT(call func(*iblt.Filter) interface{}) interface{} {
+	ledger.ibltMutex.Lock()
+	value := call(ledger.iblt)
+	ledger.ibltMutex.Unlock()
+
+	return value
 }
 
 func (ledger *Ledger) Init() {

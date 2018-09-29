@@ -31,21 +31,29 @@ func (s *syncer) RespondToSync(req *SyncRequest) *SyncResponse {
 		}
 	}
 
-	selfTable := s.Ledger.IBLT.Clone()
+	v := s.Ledger.WithIBLT(func(filter *iblt.Filter) interface{} {
+		selfTable := filter.Clone()
 
-	err := selfTable.Sub(*peerTable)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to diff() our IBLT w.r.t. our peers transaction IBLT.")
+		err := selfTable.Sub(*peerTable)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to diff() our IBLT w.r.t. our peers transaction IBLT.")
+			return err
+		}
+
+		diff, err := selfTable.Decode()
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to decode the diff. of our IBLT w.r.t. our peers transaction IBLT.")
+			return err
+		}
+
+		return diff.Added
+	})
+
+	if _, is := v.(error); is {
 		return res
 	}
 
-	diff, err := selfTable.Decode()
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to decode the diff. of our IBLT w.r.t. our peers transaction IBLT.")
-		return res
-	}
-
-	for _, id := range diff.Added {
+	for _, id := range v.([][]byte) {
 		tx, err := s.Ledger.GetBySymbol(string(id))
 
 		if err != nil {
@@ -95,14 +103,22 @@ func (s *syncer) sync() {
 	wg := new(sync.WaitGroup)
 	wg.Add(len(peers))
 
-	encoded, err := s.Ledger.IBLT.MarshalBinary()
-	if err != nil {
+	v := s.Ledger.WithIBLT(func(filter *iblt.Filter) interface{} {
+		encoded, err := filter.MarshalBinary()
+		if err != nil {
+			return err
+		}
+
+		return encoded
+	})
+
+	if _, is := v.(error); is {
 		return
 	}
 
 	request := new(rpc.Request)
 	request.SetTimeout(5 * time.Second)
-	request.SetMessage(&SyncRequest{Table: encoded})
+	request.SetMessage(&SyncRequest{Table: v.([]byte)})
 
 	var received []*wire.Transaction
 	var mutex sync.Mutex
