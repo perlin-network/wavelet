@@ -39,9 +39,9 @@ func (r *rpc) RespondToQuery(wired *wire.Transaction) (string, bool, error) {
 
 	// Update our IBLT.
 
-	r.IBLT.Insert(id, id)
+	r.IBLT.Add(writeBytes(id))
 
-	encoded, err := r.IBLT.Marshal()
+	encoded, err := r.IBLT.MarshalBinary()
 	if err != nil {
 		return "", false, errors.Wrap(err, "failed to add tx id to iblt")
 	}
