@@ -5,12 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/crypto"
 	"github.com/perlin-network/noise/crypto/ed25519"
 	"github.com/perlin-network/noise/network"
 	"github.com/perlin-network/noise/network/discovery"
-	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/security"
@@ -18,56 +16,6 @@ import (
 	"os"
 	"os/signal"
 )
-
-var nonce = uint64(0)
-
-func sendTransaction(ledger *wavelet.Ledger, wallet *wavelet.Wallet, tag string, payload []byte) {
-	parents, err := ledger.FindEligibleParents()
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to find eligible parents.")
-	}
-
-	// Comment if you're testing for conflicts.
-	nonce, err := wallet.NextNonce(ledger)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to figure out the next available nonce from our wallet.")
-	}
-
-	wired := &wire.Transaction{
-		Sender:  wallet.PublicKeyHex(),
-		Nonce:   nonce,
-		Parents: parents,
-		Tag:     tag,
-		Payload: payload,
-	}
-
-	// Uncomment if you're testing for conflicts.
-	//nonce++
-
-	encoded, err := wired.Marshal()
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to marshal wired transaction.")
-	}
-
-	wired.Signature = security.Sign(wallet.PrivateKey, encoded)
-
-	id, successful, err := ledger.RespondToQuery(wired)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to respond to query.")
-	}
-
-	tx, err := ledger.GetBySymbol(id)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to find wired transaction in the database.")
-	}
-
-	err = ledger.HandleSuccessfulQuery(tx)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to process the wired transaction should it be successfully queried.")
-	}
-
-	log.Debug().Str("id", id).Interface("tx", wired).Msgf("Received a transaction, and voted '%t' for it.", successful)
-}
 
 func main() {
 	app := cli.NewApp()
@@ -187,9 +135,11 @@ func main() {
 					log.Fatal().Err(err).Msg("Failed to marshal transfer payload.")
 				}
 
-				sendTransaction(wavelet.Ledger, wavelet.Wallet, "transfer", payload)
+				wired := wavelet.MakeTransaction("transfer", payload)
+				wavelet.BroadcastTransaction(wired)
 			default:
-				sendTransaction(wavelet.Ledger, wavelet.Wallet, "nop", nil)
+				wired := wavelet.MakeTransaction("nop", nil)
+				wavelet.BroadcastTransaction(wired)
 			}
 		}
 	}

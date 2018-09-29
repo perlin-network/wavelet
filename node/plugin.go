@@ -18,6 +18,7 @@ type Options struct {
 
 type Wavelet struct {
 	query
+	broadcaster
 
 	net    *network.Network
 	routes *dht.RoutingTable
@@ -50,6 +51,8 @@ func (w *Wavelet) Startup(net *network.Network) {
 
 	w.query = query{Wavelet: w}
 	w.query.sybil = stake{query: w.query}
+
+	w.broadcaster = broadcaster{Wavelet: w}
 }
 
 func (w *Wavelet) Receive(ctx *network.PluginContext) error {
