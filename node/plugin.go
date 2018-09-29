@@ -1,8 +1,10 @@
 package node
 
 import (
+	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/network"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/log"
 )
 
 var _ network.PluginInterface = (*Wavelet)(nil)
@@ -35,6 +37,22 @@ func (w *Wavelet) Startup(net *network.Network) {
 }
 
 func (w *Wavelet) Receive(ctx *network.PluginContext) error {
+	switch msg := ctx.Message().(type) {
+	case *wire.Transaction:
+		id, successful, err := w.Ledger.RespondToQuery(msg)
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to respond to query.")
+			return err
+		}
+
+		res := &QueryResponse{Id: id, StronglyPreferred: successful}
+
+		err = ctx.Reply(res)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to send response.")
+			return err
+		}
+	}
 	return nil
 }
 

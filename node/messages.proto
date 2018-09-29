@@ -1,3 +1,8 @@
 syntax = "proto3";
 
 package node;
+
+message QueryResponse {
+    string id = 1;
+    bool strongly_preferred = 2;
+}
