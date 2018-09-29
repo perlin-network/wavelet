@@ -6,6 +6,7 @@ import (
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/system"
+	"github.com/perlin-network/wavelet/iblt"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/phf/go-queue/queue"
 	"sort"
@@ -14,9 +15,11 @@ import (
 
 var (
 	BucketAccepted      = writeBytes("accepted_")
+	BucketAcceptedIndex = writeBytes("i.accepted_")
+
 	BucketAcceptPending = writeBytes("p.accepted_")
 
-	BucketAcceptedIndex = writeBytes("i.accepted_")
+	KeyTransactionIBLT = writeBytes("tx_iblt")
 )
 
 type Ledger struct {
@@ -26,6 +29,8 @@ type Ledger struct {
 	*database.Store
 	*graph.Graph
 	*conflict.Resolver
+
+	transactionTable *iblt.Table
 
 	kill chan struct{}
 }
@@ -40,7 +45,9 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 		Store:    store,
 		Graph:    graph,
 		Resolver: resolver,
-		kill:     make(chan struct{}),
+
+		kill:             make(chan struct{}),
+		transactionTable: iblt.New(8192, 4, 64, 64, 10, nil),
 	}
 
 	ledger.state = state{Ledger: ledger}
@@ -51,6 +58,15 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 	// If there is no data about accounts, instantiate the ledger with the genesis block.
 	if store.Size(BucketAccounts) == 0 {
 		BIGBANG(ledger)
+	}
+
+	// Load the transaction IBLT if it is already in store.
+	if encoded, err := store.Get(KeyTransactionIBLT); err == nil {
+		err := ledger.transactionTable.Unmarshal(encoded)
+
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to decode transaction IBLT from database.")
+		}
 	}
 
 	graph.AddOnReceiveHandler(ledger.ensureSafeCommittable)

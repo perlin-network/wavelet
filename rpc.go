@@ -37,6 +37,20 @@ func (r *rpc) RespondToQuery(wired *wire.Transaction) (string, bool, error) {
 		return "", false, errors.Wrap(err, "failed to add incoming tx to graph")
 	}
 
+	// Update our transaction IBLT.
+
+	r.transactionTable.Insert(id, id)
+
+	encoded, err := r.transactionTable.Marshal()
+	if err != nil {
+		return "", false, errors.Wrap(err, "failed to add tx id to iblt")
+	}
+
+	err = r.Put(KeyTransactionIBLT, encoded)
+	if err != nil {
+		return "", false, errors.Wrap(err, "failed to save transaction iblt")
+	}
+
 	return id, r.IsStronglyPreferred(id), nil
 }
 

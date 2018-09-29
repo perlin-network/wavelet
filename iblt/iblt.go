@@ -1,4 +1,4 @@
-package sync
+package iblt
 
 import (
 	"crypto/sha1"
@@ -9,7 +9,7 @@ import (
 
 // IBLT represents a Invertible Bloom Lookup Tables.
 // Based on paper: https://arxiv.org/pdf/1101.2245.pdf
-type IBLT struct {
+type Table struct {
 	// m is amount of cells in underlying lookup table
 	m int
 	// k is amount of hash functions
@@ -82,9 +82,9 @@ const (
 	lookupListEntriesIncomplete                     // incomplete
 )
 
-// NewIBLT returns a new instance of IBLT.
-func NewIBLT(m, k, keySize, valueSize, hashKeySumSize int, hash func(int, string) int) *IBLT {
-	s := &IBLT{
+// New returns a new instance of IBLT.
+func New(m, k, keySize, valueSize, hashKeySumSize int, hash func(int, string) int) *Table {
+	s := &Table{
 		m:              m,
 		k:              k,
 		keySize:        keySize,
@@ -100,7 +100,7 @@ func NewIBLT(m, k, keySize, valueSize, hashKeySumSize int, hash func(int, string
 	return s
 }
 
-func (s *IBLT) defaultHash(i int, value string) int {
+func (s *Table) defaultHash(i int, value string) int {
 	hashHexLength := 8
 	value = fmt.Sprintf("%d%s", i, value)
 	h, err := strconv.ParseInt(getKeyHash(value)[:hashHexLength], 16, 64)
@@ -112,11 +112,11 @@ func (s *IBLT) defaultHash(i int, value string) int {
 
 // Insert will add key-value from IBLT.
 // see page 24 in paper.
-func (s *IBLT) Insert(key, value string) {
+func (s *Table) Insert(key, value string) {
 	s.insertAux(s.t, key, value)
 }
 
-func (s *IBLT) insertAux(t *table, key, value string) {
+func (s *Table) insertAux(t *table, key, value string) {
 	keyArray := strToInts(key, s.keySize)
 	valueArray := strToInts(value, s.valueSize)
 	hashArray := strToInts(getKeyHash(key), s.hashKeySumSize)
@@ -136,11 +136,11 @@ func (s *IBLT) insertAux(t *table, key, value string) {
 
 // Delete will remove key-value from IBLT.
 // see page 24 in paper.
-func (s *IBLT) Delete(key, value string) {
+func (s *Table) Delete(key, value string) {
 	s.deleteAux(s.t, key, value)
 }
 
-func (s *IBLT) deleteAux(t *table, key, value string) {
+func (s *Table) deleteAux(t *table, key, value string) {
 	keyArray := strToInts(key, s.keySize)
 	valueArray := strToInts(value, s.valueSize)
 	hashArray := strToInts(getKeyHash(key), s.hashKeySumSize)
@@ -161,7 +161,7 @@ func (s *IBLT) deleteAux(t *table, key, value string) {
 // Get returns a value and look up resulat for a given key.
 // Also this implementation handles extraneous deletions.
 // see page 24 in paper.
-func (s *IBLT) Get(key string) (string, LookupResult) {
+func (s *Table) Get(key string) (string, LookupResult) {
 
 	keyArray := strToInts(key, s.keySize)
 	hashArray := strToInts(getKeyHash(key), s.hashKeySumSize)
@@ -190,8 +190,99 @@ func (s *IBLT) Get(key string) (string, LookupResult) {
 	return "", lookupGetInconclusive
 }
 
-func (s *IBLT) list() [][2]string {
-	res := [][2]string{}
+func (s *Table) Marshal() ([]byte, error) {
+	if s == nil || s.isEmpty() {
+		return nil, nil
+	}
+
+	p := new(IBLT)
+
+	for _, val := range s.t.count {
+		p.Count = append(p.Count, int32(val))
+	}
+
+	for _, vals := range s.t.keys {
+		values := new(IntArray)
+
+		for _, val := range vals {
+			values.Values = append(values.Values, int32(val))
+		}
+
+		p.Keys = append(p.Keys, values)
+	}
+
+	for _, vals := range s.t.values {
+		values := new(IntArray)
+
+		for _, val := range vals {
+			values.Values = append(values.Values, int32(val))
+		}
+
+		p.Values = append(p.Values, values)
+	}
+
+	for _, vals := range s.t.hashKeys {
+		values := new(IntArray)
+
+		for _, val := range vals {
+			values.Values = append(values.Values, int32(val))
+		}
+
+		p.HashKeys = append(p.HashKeys, values)
+	}
+
+	return p.Marshal()
+}
+
+func (s *Table) Unmarshal(encoded []byte) error {
+	p := new(IBLT)
+
+	err := p.Unmarshal(encoded)
+	if err != nil {
+		return err
+	}
+
+	for i, val := range p.Count {
+		s.t.count[i] = int(val)
+	}
+
+	for i, x := range p.Keys {
+		for j, y := range x.Values {
+			s.t.keys[i][j] = int(y)
+		}
+	}
+
+	for i, x := range p.Values {
+		for j, y := range x.Values {
+			s.t.values[i][j] = int(y)
+		}
+	}
+
+	for i, x := range p.Values {
+		for j, y := range x.Values {
+			s.t.hashKeys[i][j] = int(y)
+		}
+	}
+
+	return nil
+}
+
+// Diff in-place removes all entries in other from current IBLT.
+func (s *Table) Diff(other *Table) *Table {
+	if s == nil || other == nil {
+		return nil
+	}
+
+	entries := other.list()
+	for _, e := range entries {
+		s.Delete(e[0], e[1])
+	}
+
+	return s
+}
+
+func (s *Table) list() [][2]string {
+	var res [][2]string
 
 	tt := s.t.copy()
 
@@ -207,7 +298,7 @@ func (s *IBLT) list() [][2]string {
 	return res
 }
 
-func (s *IBLT) isEmpty() bool {
+func (s *Table) isEmpty() bool {
 	return isEmpty(s.t.count)
 }
 
@@ -232,18 +323,25 @@ func strToInts(value string, length int) []int {
 }
 
 func intsToStr(arr []int) string {
-	res := make([]rune, len(arr))
-	for i := 0; i < len(arr); i++ {
+	size := len(arr)
+
+	if size == 0 {
+		return ""
+	}
+
+	res := make([]rune, size)
+	for i := 0; i < size; i++ {
 		res[i] = rune(arr[i])
 	}
 
-	k := len(arr)
-	for i := len(arr) - 1; i >= 0; i-- {
+	k := size - 1
+	for i := k; i >= 0; i-- {
 		if res[i] != 0 {
 			k = i
 			break
 		}
 	}
+
 	return string(res[:k+1])
 }
 
