@@ -16,6 +16,8 @@ type broadcaster struct {
 	*Wavelet
 }
 
+// MakeTransaction creates a new transaction, appends a nonce to it, signs it, and links it with descendants that will
+// maximize the likelihood the transaction will get accepted.
 func (b *broadcaster) MakeTransaction(tag string, payload []byte) *wire.Transaction {
 	parents, err := b.Ledger.FindEligibleParents()
 	if err != nil {
@@ -45,6 +47,8 @@ func (b *broadcaster) MakeTransaction(tag string, payload []byte) *wire.Transact
 	return wired
 }
 
+// BroadcastTransaction broadcasts a transaction and greedily attempts to get it accepted by broadcasting
+// nops which are built on top of our transaction.
 func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 	id, successful, err := b.Ledger.RespondToQuery(wired)
 	if err != nil {
