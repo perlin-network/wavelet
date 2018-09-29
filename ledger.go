@@ -48,6 +48,11 @@ func NewLedger() *Ledger {
 
 	ledger.registerServicePath("services")
 
+	// If there is no data about accounts, instantiate the ledger with the genesis block.
+	if store.Size(BucketAccounts) == 0 {
+		bigBang(ledger)
+	}
+
 	graph.AddOnReceiveHandler(ledger.ensureSafeCommittable)
 
 	return ledger

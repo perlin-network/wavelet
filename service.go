@@ -207,6 +207,20 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 
 				return int64(InternalProcessOk)
 			}
+		case "_sender_id":
+			return func(vm *exec.VirtualMachine) int64 {
+				frame := vm.GetCurrentFrame()
+				outPtr := int(uint32(frame.Locals[0]))
+				outLen := int(uint32(frame.Locals[1]))
+
+				//publicKey, err := hex.DecodeString(s.tx.Sender)
+				//if err != nil {
+				//	return int64(InternalProcessErr)
+				//}
+
+				// TODO: have _sender_id be represented as decoded hex sender public key
+				return int64(copy(vm.Memory[outPtr:outPtr+outLen], writeBytes(s.tx.Sender)))
+			}
 		case "_load":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()

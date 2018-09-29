@@ -141,15 +141,16 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 			account, exists := accounts[accountID]
 
 			if !exists {
-				account, err := s.LoadAccount(delta.Account)
+				account, err = s.LoadAccount(delta.Account)
 				if err != nil {
 					account = NewAccount(delta.Account)
 				}
+
 				accounts[accountID] = account
 			}
 
-			_, delta.OldValue = account.State.Load(delta.Key)
-			account.State, _ = account.State.Store(delta.Key, delta.NewValue)
+			delta.OldValue, _ = account.Load(delta.Key)
+			account.Store(delta.Key, delta.NewValue)
 
 			if _, exists := accountDeltas.Deltas[accountID]; !exists {
 				accountDeltas.Deltas[accountID] = new(Deltas_List)
@@ -168,7 +169,10 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 
 	// Save all modified accounts to the ledger.
 	for id, account := range accounts {
-		log.Debug().Uint64("nonce", account.Nonce).Bytes("public_key", account.PublicKey).Msg("Applied transaction.")
+		log.Debug().
+			Uint64("nonce", account.Nonce).
+			Str("public_key", hex.EncodeToString(account.PublicKey)).
+			Msg("Applied transaction.")
 
 		list, available := accountDeltas.Deltas[id]
 		if available {
@@ -202,13 +206,13 @@ func (s *state) doApplyTransaction(tx *database.Transaction) ([]*Delta, []*datab
 	var pendingTransactions []*database.Transaction
 
 	for _, service := range s.services {
-		deltas, pending, err := service.Run(tx)
+		new, pending, err := service.Run(tx)
 
 		if err != nil {
 			return nil, nil, err
 		}
 
-		deltas = append(deltas, deltas...)
+		deltas = append(deltas, new...)
 
 		if len(pending) > 0 {
 			pendingTransactions = append(pendingTransactions, pending...)
@@ -248,7 +252,7 @@ func (s *state) doRevertTransaction(pendingList *[]pending) {
 						accounts[accountID] = account
 					}
 
-					account.State, _ = account.State.Store(list.List[i].Key, list.List[i].OldValue)
+					account.Store(list.List[i].Key, list.List[i].OldValue)
 				}
 			}
 		}
@@ -274,7 +278,10 @@ func (s *state) doRevertTransaction(pendingList *[]pending) {
 
 	// Save changes to all accounts.
 	for id, account := range accounts {
-		log.Debug().Uint64("nonce", account.Nonce).Bytes("public_key", account.PublicKey).Msg("Reverted transaction.")
+		log.Debug().
+			Uint64("nonce", account.Nonce).
+			Str("public_key", hex.EncodeToString(account.PublicKey)).
+			Msg("Reverted transaction.")
 
 		list, available := accountDeltas.Deltas[id]
 		if available {
@@ -302,7 +309,22 @@ func (s *state) LoadAccount(key []byte) (*Account, error) {
 }
 
 func (s *state) SaveAccount(account *Account, deltas []*Delta) error {
-	err := s.Put(merge(BucketAccounts, account.PublicKey), account.MarshalBinary())
+	accountKey := merge(BucketAccounts, account.PublicKey)
+
+	existed, err := s.Has(accountKey)
+	if err != nil {
+		return err
+	}
+
+	// If this is a new account, increment the bucket size by 1.
+	if !existed {
+		_, err = s.NextSequence(BucketAccounts)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = s.Put(accountKey, account.MarshalBinary())
 	if err != nil {
 		return err
 	}

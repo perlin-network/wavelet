@@ -26,6 +26,18 @@ func NewWallet(keys *crypto.KeyPair, store *database.Store) *Wallet {
 	return wallet
 }
 
+// CurrentNonce returns our node's knowledge of our wallets current nonce.
+func (w *Wallet) CurrentNonce() uint64 {
+	walletNonceKey := merge(KeyWalletNonce, w.PublicKey)
+
+	bytes, _ := w.Get(walletNonceKey)
+	if bytes == nil {
+		bytes = make([]byte, 8)
+	}
+
+	return readUint64(bytes)
+}
+
 // NextNonce returns the next available nonce from the wallet.
 func (w *Wallet) NextNonce(ledger *Ledger) (uint64, error) {
 	walletNonceKey := merge(KeyWalletNonce, w.PublicKey)
@@ -49,4 +61,19 @@ func (w *Wallet) NextNonce(ledger *Ledger) (uint64, error) {
 	}
 
 	return nonce, nil
+}
+
+// GetBalance returns the current balance of the wallet.
+func (w *Wallet) GetBalance(ledger *Ledger) uint64 {
+	if account, err := ledger.LoadAccount(w.PublicKey); err == nil {
+		balance, exists := account.Load("balance")
+
+		if !exists {
+			return 0
+		}
+
+		return readUint64(balance)
+	}
+
+	return 0
 }
