@@ -5,10 +5,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"time"
 	"github.com/perlin-network/noise/crypto"
 	"github.com/perlin-network/noise/crypto/ed25519"
 	"github.com/perlin-network/noise/network"
 	"github.com/perlin-network/noise/network/discovery"
+	cmdUtils "github.com/perlin-network/wavelet/cmd/utils"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/security"
@@ -23,7 +25,7 @@ func main() {
 	app.Name = "wavelet"
 	app.Author = "Perlin Network"
 	app.Email = "support@perlin.net"
-	app.Version = "v0.1.0-testnet"
+	app.Version = cmdUtils.Version
 	app.Usage = "a bleeding fast ledger with a powerful compute layer"
 
 	app.Flags = []cli.Flag{
@@ -56,6 +58,13 @@ func main() {
 			Name:  "nodes, peers, n",
 			Usage: "Bootstrap to peers whose address are formatted as tcp://[host]:[port] from `PEER_NODES`.",
 		},
+	}
+
+	cli.VersionPrinter = func(c *cli.Context) {
+		fmt.Printf("Version: %s\n", c.App.Version)
+		fmt.Printf("Go Version: %s\n", cmdUtils.GoVersion)
+		fmt.Printf("Git Commit: %s\n", cmdUtils.GitCommit)
+		fmt.Printf("Built: %s\n", c.App.Compiled.Format(time.ANSIC))
 	}
 
 	app.Action = func(c *cli.Context) {

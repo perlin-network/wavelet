@@ -10,14 +10,13 @@ const (
 	// VersionPatch is patch version component of the current release
 	VersionPatch = 0
 	// VersionMeta is append to the version string
-	VersionMeta = "unstable"
+	VersionMeta = "testnet"
 )
 
 // variables set via linker flags
 var (
-	GitCommit = "unset"
-	BuiltTime = "unset"
-	GoVersion = "unset"
+	GitCommit string
+	GoVersion string
 )
 
 // Version holds the textual version string.
