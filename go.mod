@@ -10,6 +10,8 @@ require (
 	github.com/pkg/errors v0.8.0
 	github.com/rs/zerolog v1.9.1
 	github.com/stretchr/testify v1.2.2
+	github.com/urfave/cli v1.20.0
+	go.uber.org/atomic v1.3.2 // indirect
 	golang.org/x/crypto v0.0.0-20180910181607-0e37d006457b
 )
 

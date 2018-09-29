@@ -13,6 +13,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/security"
+	"github.com/urfave/cli"
 	"os"
 	"os/signal"
 )
@@ -68,71 +69,99 @@ func sendTransaction(ledger *wavelet.Ledger, wallet *wavelet.Wallet, tag string,
 }
 
 func main() {
-	keys, err := crypto.FromPrivateKey(security.SignaturePolicy, "a6a193b4665b03e6df196ab7765b04a01de00e09c4a056f487019b5e3565522fd6edf02c950c6e091cd2450552a52febbb3d29b38c22bb89b0996225ef5ec972")
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to decode private key.")
+	app := cli.NewApp()
+
+	app.Name = "wavelet"
+	app.Author = "Perlin Network"
+	app.Email = "support@perlin.net"
+	app.Version = "v0.1.0-testnet"
+	app.Usage = "a bleeding fast ledger with a powerful compute layer"
+
+	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:  "db",
+			Value: "testdb",
+			Usage: "Load/initialize LevelDB store from `DB_PATH`.",
+		},
+		cli.StringFlag{
+			Name:  "services",
+			Value: "services",
+			Usage: "Load WebAssembly transaction processor services from `SERVICES_PATH`.",
+		},
 	}
 
-	wavelet := node.NewPlugin(node.Options{DatabasePath: "testdb", ServicesPath: "services"})
-
-	builder := network.NewBuilder()
-
-	builder.SetKeys(keys)
-	builder.SetAddress("tcp://127.0.0.1:3000")
-
-	builder.AddPlugin(new(discovery.Plugin))
-	builder.AddPlugin(wavelet)
-
-	net, err := builder.Build()
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to initialize networking.")
-	}
-
-	go net.Listen()
-
-	net.BlockUntilListening()
-
-	exit := make(chan os.Signal, 1)
-	signal.Notify(exit, os.Interrupt)
-
-	go func() {
-		<-exit
-
-		net.Close()
-		os.Exit(0)
-	}()
-
-	reader := bufio.NewReader(os.Stdout)
-
-	for i := 0; ; i++ {
-		fmt.Print("Enter a message: ")
-
-		bytes, _, err := reader.ReadLine()
+	app.Action = func(c *cli.Context) {
+		keys, err := crypto.FromPrivateKey(security.SignaturePolicy, "a6a193b4665b03e6df196ab7765b04a01de00e09c4a056f487019b5e3565522fd6edf02c950c6e091cd2450552a52febbb3d29b38c22bb89b0996225ef5ec972")
 		if err != nil {
-			panic(err)
+			log.Fatal().Err(err).Msg("Failed to decode private key.")
 		}
 
-		switch string(bytes) {
-		case "wallet":
-			log.Info().
-				Str("id", hex.EncodeToString(wavelet.Wallet.PublicKey)).
-				Uint64("nonce", wavelet.Wallet.CurrentNonce()).
-				Uint64("balance", wavelet.Wallet.GetBalance(wavelet.Ledger)).
-				Msg("Here is your wallet information.")
-		case "pay":
-			transfer := struct {
-				Recipient string `json:"recipient"`
-				Amount    uint64 `json:"amount"`
-			}{"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858", 1}
+		wavelet := node.NewPlugin(node.Options{DatabasePath: "testdb", ServicesPath: "services"})
 
-			payload, err := json.Marshal(transfer)
+		builder := network.NewBuilder()
+
+		builder.SetKeys(keys)
+		builder.SetAddress("tcp://127.0.0.1:3000")
+
+		builder.AddPlugin(new(discovery.Plugin))
+		builder.AddPlugin(wavelet)
+
+		net, err := builder.Build()
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to initialize networking.")
+		}
+
+		go net.Listen()
+
+		net.BlockUntilListening()
+
+		exit := make(chan os.Signal, 1)
+		signal.Notify(exit, os.Interrupt)
+
+		go func() {
+			<-exit
+
+			net.Close()
+			os.Exit(0)
+		}()
+
+		reader := bufio.NewReader(os.Stdout)
+
+		for i := 0; ; i++ {
+			fmt.Print("Enter a message: ")
+
+			bytes, _, err := reader.ReadLine()
 			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to marshal transfer payload.")
+				log.Fatal().Err(err).Msg("Failed to read line from stdin.")
 			}
 
-			sendTransaction(wavelet.Ledger, wavelet.Wallet, "transfer", payload)
-		default:
-			sendTransaction(wavelet.Ledger, wavelet.Wallet, "nop", nil)
+			switch string(bytes) {
+			case "wallet":
+				log.Info().
+					Str("id", hex.EncodeToString(wavelet.Wallet.PublicKey)).
+					Uint64("nonce", wavelet.Wallet.CurrentNonce()).
+					Uint64("balance", wavelet.Wallet.GetBalance(wavelet.Ledger)).
+					Msg("Here is your wallet information.")
+			case "pay":
+				transfer := struct {
+					Recipient string `json:"recipient"`
+					Amount    uint64 `json:"amount"`
+				}{"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858", 1}
+
+				payload, err := json.Marshal(transfer)
+				if err != nil {
+					log.Fatal().Err(err).Msg("Failed to marshal transfer payload.")
+				}
+
+				sendTransaction(wavelet.Ledger, wavelet.Wallet, "transfer", payload)
+			default:
+				sendTransaction(wavelet.Ledger, wavelet.Wallet, "nop", nil)
+			}
 		}
+	}
+
+	err := app.Run(os.Args)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to parse configuration/command-line arugments.")
 	}
 }
