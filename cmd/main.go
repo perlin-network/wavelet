@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/crypto"
+	"github.com/perlin-network/noise/crypto/ed25519"
 	"github.com/perlin-network/noise/network"
 	"github.com/perlin-network/noise/network/discovery"
 	"github.com/perlin-network/wavelet"
@@ -101,12 +102,22 @@ func main() {
 		cli.StringFlag{
 			Name:  "privkey, pk",
 			Value: "a6a193b4665b03e6df196ab7765b04a01de00e09c4a056f487019b5e3565522fd6edf02c950c6e091cd2450552a52febbb3d29b38c22bb89b0996225ef5ec972",
-			Usage: "Set the node's private key to be `PRIVATE_KEY`.",
+			Usage: "Set the node's private key to be `PRIVATE_KEY`. Leave `PRIVATE_KEY` = 'random' if you want to randomly generate one.",
+		},
+		cli.StringSliceFlag{
+			Name:  "nodes, peers, n",
+			Usage: "Bootstrap to peers whose address are formatted as tcp://[host]:[port] from `PEER_NODES`.",
 		},
 	}
 
 	app.Action = func(c *cli.Context) {
-		keys, err := crypto.FromPrivateKey(security.SignaturePolicy, c.String("privkey"))
+		privateKey := c.String("privkey")
+
+		if privateKey == "random" {
+			privateKey = ed25519.RandomKeyPair().PrivateKeyHex()
+		}
+
+		keys, err := crypto.FromPrivateKey(security.SignaturePolicy, privateKey)
 		if err != nil {
 			log.Fatal().Err(err).Msg("Failed to decode private key.")
 		}
@@ -132,6 +143,11 @@ func main() {
 		go net.Listen()
 
 		net.BlockUntilListening()
+
+		if peers := c.StringSlice("peers"); len(peers) > 0 {
+			fmt.Println(peers)
+			net.Bootstrap(peers...)
+		}
 
 		exit := make(chan os.Signal, 1)
 		signal.Notify(exit, os.Interrupt)
