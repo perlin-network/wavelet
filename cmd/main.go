@@ -79,27 +79,27 @@ func main() {
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name:  "host",
+			Name:  "host, address",
 			Value: "localhost",
 			Usage: "Listen for peers on host address `HOST`.",
 		},
 		cli.UintFlag{
-			Name:  "port",
+			Name:  "port, p",
 			Value: 3000,
 			Usage: "Listen for peers on port `PORT`.",
 		},
 		cli.StringFlag{
-			Name:  "db",
+			Name:  "database, db",
 			Value: "testdb",
 			Usage: "Load/initialize LevelDB store from `DB_PATH`.",
 		},
 		cli.StringFlag{
-			Name:  "services",
+			Name:  "services, s",
 			Value: "services",
 			Usage: "Load WebAssembly transaction processor services from `SERVICES_PATH`.",
 		},
 		cli.StringFlag{
-			Name:  "privkey",
+			Name:  "privkey, pk",
 			Value: "a6a193b4665b03e6df196ab7765b04a01de00e09c4a056f487019b5e3565522fd6edf02c950c6e091cd2450552a52febbb3d29b38c22bb89b0996225ef5ec972",
 			Usage: "Set the node's private key to be `PRIVATE_KEY`.",
 		},
