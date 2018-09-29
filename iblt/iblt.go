@@ -2,6 +2,7 @@ package iblt
 
 import (
 	"crypto/sha1"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"strconv"
@@ -67,6 +68,7 @@ func (t *table) copy() *table {
 		tt.hashKeys[i] = make([]int, len(t.hashKeys[0]))
 		copy(tt.hashKeys[i], t.hashKeys[i])
 	}
+
 	return tt
 }
 
@@ -74,12 +76,10 @@ func (t *table) copy() *table {
 type LookupResult int
 
 const (
-	lookupGetNoMatch            LookupResult = iota // no_match
-	lookupGetMatch                                  // match
-	lookupGetDeletedMatch                           // deleted_match
-	lookupGetInconclusive                           // inconclusive
-	lookupListEntriesComplete                       // complete
-	lookupListEntriesIncomplete                     // incomplete
+	lookupGetNoMatch      LookupResult = iota // no_match
+	lookupGetMatch                            // match
+	lookupGetDeletedMatch                     // deleted_match
+	lookupGetInconclusive                     // inconclusive
 )
 
 // New returns a new instance of IBLT.
@@ -190,9 +190,9 @@ func (s *Table) Get(key string) (string, LookupResult) {
 	return "", lookupGetInconclusive
 }
 
-func (s *Table) Marshal() ([]byte, error) {
-	if s == nil || s.isEmpty() {
-		return nil, nil
+func (s *Table) MarshalProto() *IBLT {
+	if s == nil || s.IsEmpty() {
+		return nil
 	}
 
 	p := new(IBLT)
@@ -231,17 +231,19 @@ func (s *Table) Marshal() ([]byte, error) {
 		p.HashKeys = append(p.HashKeys, values)
 	}
 
-	return p.Marshal()
+	return p
 }
 
-func (s *Table) Unmarshal(encoded []byte) error {
-	p := new(IBLT)
-
-	err := p.Unmarshal(encoded)
-	if err != nil {
-		return err
+func (s *Table) Marshal() ([]byte, error) {
+	iblt := s.MarshalProto()
+	if iblt == nil {
+		return nil, nil
 	}
 
+	return iblt.Marshal()
+}
+
+func (s *Table) UnmarshalProto(p *IBLT) {
 	for i, val := range p.Count {
 		s.t.count[i] = int(val)
 	}
@@ -258,13 +260,24 @@ func (s *Table) Unmarshal(encoded []byte) error {
 		}
 	}
 
-	for i, x := range p.Values {
+	for i, x := range p.HashKeys {
 		for j, y := range x.Values {
 			s.t.hashKeys[i][j] = int(y)
 		}
 	}
+}
 
-	return nil
+func (s *Table) Unmarshal(encoded []byte) (err error) {
+	p := new(IBLT)
+
+	err = p.Unmarshal(encoded)
+	if err != nil {
+		return
+	}
+
+	s.UnmarshalProto(p)
+
+	return
 }
 
 // Diff in-place removes all entries in other from current IBLT.
@@ -273,7 +286,7 @@ func (s *Table) Diff(other *Table) *Table {
 		return nil
 	}
 
-	entries := other.list()
+	entries := other.List()
 	for _, e := range entries {
 		s.Delete(e[0], e[1])
 	}
@@ -281,7 +294,7 @@ func (s *Table) Diff(other *Table) *Table {
 	return s
 }
 
-func (s *Table) list() [][2]string {
+func (s *Table) List() [][2]string {
 	var res [][2]string
 
 	tt := s.t.copy()
@@ -298,7 +311,7 @@ func (s *Table) list() [][2]string {
 	return res
 }
 
-func (s *Table) isEmpty() bool {
+func (s *Table) IsEmpty() bool {
 	return isEmpty(s.t.count)
 }
 
@@ -382,6 +395,6 @@ func isEqual(arr1, arr2 []int) bool {
 func getKeyHash(value string) string {
 	h := sha1.New()
 	io.WriteString(h, value)
-	s := fmt.Sprintf("%x", h.Sum(nil))
-	return s
+
+	return hex.EncodeToString(h.Sum(nil))
 }

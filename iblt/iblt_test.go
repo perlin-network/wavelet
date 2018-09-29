@@ -27,7 +27,7 @@ func RandStringRunes(n int) string {
 
 func TestBasic(t *testing.T) {
 	table := New(40, 4, 10, 10, 10, nil)
-	if !table.isEmpty() {
+	if !table.IsEmpty() {
 		t.Fatal()
 	}
 }
@@ -35,15 +35,15 @@ func TestBasic(t *testing.T) {
 func TestInsertAndDelete(t *testing.T) {
 	table := New(40, 4, 10, 10, 10, nil)
 
-	assert.True(t, table.isEmpty(), "expected empty")
+	assert.True(t, table.IsEmpty(), "expected empty")
 
 	table.Insert("key", "value")
 
-	assert.False(t, table.isEmpty(), "expected non empty")
+	assert.False(t, table.IsEmpty(), "expected non empty")
 
 	table.Delete("key", "value")
 
-	assert.True(t, table.isEmpty(), "expected empty")
+	assert.True(t, table.IsEmpty(), "expected empty")
 }
 
 func TestInsertAndDeleteTxIDs(t *testing.T) {
@@ -63,7 +63,7 @@ func TestInsertAndDeleteTxIDs(t *testing.T) {
 		table.Insert(key, key)
 	}
 
-	entries := table.list()
+	entries := table.List()
 	assert.Equal(t, len(appendList), len(entries))
 
 	//for _, e := range entries {
@@ -89,7 +89,7 @@ func TestMultiInsert(t *testing.T) {
 		table.Insert(k, v)
 	}
 
-	entries := table.list()
+	entries := table.List()
 	for _, e := range entries {
 		if val, ok := pairs[e[0]]; !ok || val != e[1] {
 			t.Errorf("expected `%v`, got `%v`", val, e[1])
@@ -99,7 +99,7 @@ func TestMultiInsert(t *testing.T) {
 	table.Insert("key", "value")
 	pairs["key"] = "value"
 
-	entries = table.list()
+	entries = table.List()
 	for _, e := range entries {
 		if val, ok := pairs[e[0]]; !ok || val != e[1] {
 			t.Errorf("expected `%v`, got `%v`", val, e[1])

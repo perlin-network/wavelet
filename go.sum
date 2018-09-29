@@ -36,8 +36,6 @@ github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORN
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0 h1:45sCR5RtlFHMR4UwH9sdQ5TC8v0qDQCHnXt+kaKSTVE=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
-github.com/losfair/wagon v0.0.0-20180825141017-f8cb99b55a39 h1:frzcP5c9MdU6H4IcwreXAai126M4iwC3rHhdm5LCmJI=
-github.com/losfair/wagon v0.0.0-20180825141017-f8cb99b55a39/go.mod h1:zHOMvbitcZek8oshsMO5VpyBjWjV9X8cn8WTZwdebpM=
 github.com/lytics/hll v0.0.0-20180410160152-70adc917ce99 h1:6uj7N3GgGBHAyh+iB0ShNpYF03xR0wNzkXd2n2FpBBQ=
 github.com/lytics/hll v0.0.0-20180410160152-70adc917ce99/go.mod h1:mxf2iJ7/vH7LmE5gdgsjB661wQyoQiwXrEwMnuK8sOg=
 github.com/mattn/go-colorable v0.0.9 h1:UVL0vNpWh04HeJXV0KLcaT7r06gOH2l4OW6ddYRUIY4=
@@ -56,7 +54,6 @@ github.com/perlin-network/life v0.0.0-20180924090822-ccb94ff303dd h1:KQvfL1xwol7
 github.com/perlin-network/life v0.0.0-20180924090822-ccb94ff303dd/go.mod h1:lfYSPiNNajwjU1XbgFzZoqoU4ibQvoexKe6yivnMrDM=
 github.com/perlin-network/noise v1.1.0 h1:jvFmgOXwB5VqC8iu9zX+GjGjPEMKPKfhcHmHnCX2xzQ=
 github.com/perlin-network/noise v1.1.0/go.mod h1:QCORppHESoRRJ4FOhcpg30nbr1wachSOv5BZ1SRcRhE=
-github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39 h1:CYHXy6CWxxL7ugjvCbTELOm2j5iRLEWGPl3AQYvretw=
 github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39/go.mod h1:zHOMvbitcZek8oshsMO5VpyBjWjV9X8cn8WTZwdebpM=
 github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d h1:U+PMnTlV2tu7RuMK5etusZG3Cf+rpow5hqQByeCzJ2g=
 github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d/go.mod h1:lXfE4PvvTW5xOjO6Mba8zDPyw8M93B6AQ7frTGnMlA8=

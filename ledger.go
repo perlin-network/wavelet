@@ -30,8 +30,7 @@ type Ledger struct {
 	*graph.Graph
 	*conflict.Resolver
 
-	transactionTable *iblt.Table
-
+	IBLT *iblt.Table
 	kill chan struct{}
 }
 
@@ -46,28 +45,27 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 		Graph:    graph,
 		Resolver: resolver,
 
-		kill:             make(chan struct{}),
-		transactionTable: iblt.New(8192, 4, 64, 64, 10, nil),
+		kill: make(chan struct{}),
 	}
 
 	ledger.state = state{Ledger: ledger}
 	ledger.rpc = rpc{Ledger: ledger}
 
-	ledger.registerServicePath(servicesPath)
-
-	// If there is no data about accounts, instantiate the ledger with the genesis block.
 	if store.Size(BucketAccounts) == 0 {
 		BIGBANG(ledger)
 	}
 
-	// Load the transaction IBLT if it is already in store.
+	ledger.IBLT = iblt.New(iblt.M, iblt.K, iblt.KeySize, iblt.ValueSize, iblt.HashKeySize, nil)
+
 	if encoded, err := store.Get(KeyTransactionIBLT); err == nil {
-		err := ledger.transactionTable.Unmarshal(encoded)
+		err := ledger.IBLT.Unmarshal(encoded)
 
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to decode transaction IBLT from database.")
 		}
 	}
+
+	ledger.registerServicePath(servicesPath)
 
 	graph.AddOnReceiveHandler(ledger.ensureSafeCommittable)
 
