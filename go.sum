@@ -36,6 +36,7 @@ github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORN
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0 h1:45sCR5RtlFHMR4UwH9sdQ5TC8v0qDQCHnXt+kaKSTVE=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
+github.com/losfair/wagon v0.0.0-20180825141017-f8cb99b55a39 h1:frzcP5c9MdU6H4IcwreXAai126M4iwC3rHhdm5LCmJI=
 github.com/losfair/wagon v0.0.0-20180825141017-f8cb99b55a39/go.mod h1:zHOMvbitcZek8oshsMO5VpyBjWjV9X8cn8WTZwdebpM=
 github.com/lytics/hll v0.0.0-20180410160152-70adc917ce99 h1:6uj7N3GgGBHAyh+iB0ShNpYF03xR0wNzkXd2n2FpBBQ=
 github.com/lytics/hll v0.0.0-20180410160152-70adc917ce99/go.mod h1:mxf2iJ7/vH7LmE5gdgsjB661wQyoQiwXrEwMnuK8sOg=

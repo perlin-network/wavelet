@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/crypto"
@@ -69,6 +70,8 @@ func sendTransaction(ledger *wavelet.Ledger, wallet *wavelet.Wallet, tag string,
 }
 
 func main() {
+	flag.Parse()
+
 	app := cli.NewApp()
 
 	app.Name = "wavelet"
@@ -78,6 +81,16 @@ func main() {
 	app.Usage = "a bleeding fast ledger with a powerful compute layer"
 
 	app.Flags = []cli.Flag{
+		cli.StringFlag{
+			Name:  "host",
+			Value: "localhost",
+			Usage: "Listen for peers on host address `HOST`.",
+		},
+		cli.UintFlag{
+			Name:  "port",
+			Value: 3000,
+			Usage: "Listen for peers on port `PORT`.",
+		},
 		cli.StringFlag{
 			Name:  "db",
 			Value: "testdb",
@@ -96,12 +109,15 @@ func main() {
 			log.Fatal().Err(err).Msg("Failed to decode private key.")
 		}
 
-		wavelet := node.NewPlugin(node.Options{DatabasePath: "testdb", ServicesPath: "services"})
+		wavelet := node.NewPlugin(node.Options{
+			DatabasePath: c.String("db"),
+			ServicesPath: c.String("services"),
+		})
 
 		builder := network.NewBuilder()
 
 		builder.SetKeys(keys)
-		builder.SetAddress("tcp://127.0.0.1:3000")
+		builder.SetAddress(network.FormatAddress("tcp", c.String("host"), uint16(c.Uint("port"))))
 
 		builder.AddPlugin(new(discovery.Plugin))
 		builder.AddPlugin(wavelet)
