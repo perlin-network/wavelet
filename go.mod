@@ -15,4 +15,4 @@ require (
 	golang.org/x/crypto v0.0.0-20180910181607-0e37d006457b
 )
 
-replace github.com/go-interpreter/wagon => github.com/losfair/wagon v0.0.0-20180825141017-f8cb99b55a39
+replace github.com/go-interpreter/wagon => github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39
