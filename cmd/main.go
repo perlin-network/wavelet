@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/hex"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/crypto"
@@ -70,8 +69,6 @@ func sendTransaction(ledger *wavelet.Ledger, wallet *wavelet.Wallet, tag string,
 }
 
 func main() {
-	flag.Parse()
-
 	app := cli.NewApp()
 
 	app.Name = "wavelet"
@@ -101,10 +98,15 @@ func main() {
 			Value: "services",
 			Usage: "Load WebAssembly transaction processor services from `SERVICES_PATH`.",
 		},
+		cli.StringFlag{
+			Name:  "privkey",
+			Value: "a6a193b4665b03e6df196ab7765b04a01de00e09c4a056f487019b5e3565522fd6edf02c950c6e091cd2450552a52febbb3d29b38c22bb89b0996225ef5ec972",
+			Usage: "Set the node's private key to be `PRIVATE_KEY`.",
+		},
 	}
 
 	app.Action = func(c *cli.Context) {
-		keys, err := crypto.FromPrivateKey(security.SignaturePolicy, "a6a193b4665b03e6df196ab7765b04a01de00e09c4a056f487019b5e3565522fd6edf02c950c6e091cd2450552a52febbb3d29b38c22bb89b0996225ef5ec972")
+		keys, err := crypto.FromPrivateKey(security.SignaturePolicy, c.String("privkey"))
 		if err != nil {
 			log.Fatal().Err(err).Msg("Failed to decode private key.")
 		}
