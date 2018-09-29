@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package node;
 
-import "github.com/perlin-network/wavelet/iblt/iblt.proto";
 import "github.com/perlin-network/graph/wire/wire.proto";
 
 message QueryResponse {
@@ -11,7 +10,7 @@ message QueryResponse {
 }
 
 message SyncRequest {
-    iblt.IBLT table = 1;
+    bytes table = 1;
 }
 
 message SyncResponse {

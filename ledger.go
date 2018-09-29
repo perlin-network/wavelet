@@ -6,9 +6,9 @@ import (
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/system"
-	"github.com/perlin-network/wavelet/iblt"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/phf/go-queue/queue"
+	"github.com/sasha-s/go-IBLT"
 	"sort"
 	"time"
 )
@@ -30,7 +30,7 @@ type Ledger struct {
 	*graph.Graph
 	*conflict.Resolver
 
-	IBLT *iblt.Table
+	IBLT *iblt.Filter
 	kill chan struct{}
 }
 
@@ -55,10 +55,10 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 		BIGBANG(ledger)
 	}
 
-	ledger.IBLT = iblt.New(iblt.M, iblt.K, iblt.KeySize, iblt.ValueSize, iblt.HashKeySize, nil)
+	ledger.IBLT = iblt.New(6, 4096)
 
 	if encoded, err := store.Get(KeyTransactionIBLT); err == nil {
-		err := ledger.IBLT.Unmarshal(encoded)
+		err := ledger.IBLT.UnmarshalBinary(encoded)
 
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to decode transaction IBLT from database.")

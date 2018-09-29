@@ -1,13 +1,12 @@
 package node
 
 import (
-	"fmt"
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/network/rpc"
-	"github.com/perlin-network/wavelet/iblt"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/security"
+	"github.com/sasha-s/go-IBLT"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -22,17 +21,32 @@ type syncer struct {
 func (s *syncer) RespondToSync(req *SyncRequest) *SyncResponse {
 	res := new(SyncResponse)
 
-	peerTable := iblt.New(iblt.M, iblt.K, iblt.KeySize, iblt.ValueSize, iblt.HashKeySize, nil)
+	peerTable := iblt.New(6, 4096)
 	if req.Table != nil {
-		peerTable.UnmarshalProto(req.Table)
+		err := peerTable.UnmarshalBinary(req.Table)
+
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to unmarshal peers transaction IBLT.")
+			return res
+		}
 	}
 
-	missing := ibltKeys(peerTable.Diff(s.Ledger.IBLT))
+	selfTable := s.Ledger.IBLT.Clone()
 
-	fmt.Println(missing)
+	err := selfTable.Sub(*peerTable)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to diff() our IBLT w.r.t. our peers transaction IBLT.")
+		return res
+	}
 
-	for _, id := range missing {
-		tx, err := s.Ledger.GetBySymbol(id)
+	diff, err := selfTable.Decode()
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to decode the diff. of our IBLT w.r.t. our peers transaction IBLT.")
+		return res
+	}
+
+	for _, id := range diff.Added {
+		tx, err := s.Ledger.GetBySymbol(string(id))
 
 		if err != nil {
 			continue
@@ -78,12 +92,17 @@ func (s *syncer) sync() {
 		return
 	}
 
-	var wg sync.WaitGroup
+	wg := new(sync.WaitGroup)
 	wg.Add(len(peers))
+
+	encoded, err := s.Ledger.IBLT.MarshalBinary()
+	if err != nil {
+		return
+	}
 
 	request := new(rpc.Request)
 	request.SetTimeout(5 * time.Second)
-	request.SetMessage(&SyncRequest{Table: s.Ledger.IBLT.MarshalProto()})
+	request.SetMessage(&SyncRequest{Table: encoded})
 
 	var received []*wire.Transaction
 	var mutex sync.Mutex
@@ -115,6 +134,8 @@ func (s *syncer) sync() {
 
 	wg.Wait()
 
+	wg = new(sync.WaitGroup)
+
 	total := uint64(0)
 
 	for _, wired := range received {
@@ -141,7 +162,11 @@ func (s *syncer) sync() {
 			}
 		}
 
+		wg.Add(1)
+
 		go func(wired *wire.Transaction) {
+			defer wg.Done()
+
 			err := s.Query(wired)
 
 			if err != nil {
@@ -165,6 +190,8 @@ func (s *syncer) sync() {
 		}(wired)
 	}
 
+	wg.Wait()
+
 	if count := atomic.LoadUint64(&total); count > 0 {
 		log.Info().
 			Uint64("num_synced", count).
@@ -186,17 +213,4 @@ func (s *syncer) randomlySelectPeers(n int) ([]string, error) {
 	}
 
 	return addresses, nil
-}
-
-// ibltKeys returns the string keys of an IBLT table.
-func ibltKeys(table *iblt.Table) (keys []string) {
-	if table != nil && !table.IsEmpty() {
-		ids := table.List()
-
-		for _, pair := range ids {
-			keys = append(keys, pair[0])
-		}
-	}
-
-	return keys
 }
