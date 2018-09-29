@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"encoding/hex"
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/system"
 	"github.com/perlin-network/graph/wire"
@@ -21,6 +22,24 @@ type rpc struct {
 func (r *rpc) RespondToQuery(wired *wire.Transaction) (string, bool, error) {
 	if validated, err := security.ValidateWiredTransaction(wired); err != nil || !validated {
 		return "", false, errors.Wrap(err, "failed to validate incoming tx")
+	}
+
+	senderID, err := hex.DecodeString(wired.Sender)
+	if err != nil {
+		return "", false, errors.Wrap(err, "failed to decode sender id")
+	}
+
+	account, err := r.LoadAccount(senderID)
+	if err != nil {
+		if wired.Nonce != 0 {
+			return "", false, errors.Wrap(err, "tx sender account not found")
+		}
+	}
+
+	// If the nonce of the transaction is less than the currently accepted accounts nonce, reject it. Prevents most double spending
+	// cases from even reaching a conflict set.
+	if account != nil && wired.Nonce < account.Nonce {
+		return "", false, errors.Wrap(err, "tx nonce is outdated in comparison to the actual accounts nonce")
 	}
 
 	id, err := r.Receive(wired)
