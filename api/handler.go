@@ -107,6 +107,10 @@ func (s *service) pollTransactionHandler(ctx *requestContext) {
 			return true
 		}
 
+		if tx.Tag == "create_contract" {
+			tx.Payload = []byte("<code here>")
+		}
+
 		if err := conn.WriteJSON(tx); err != nil {
 			close(closeSignal)
 			return false
