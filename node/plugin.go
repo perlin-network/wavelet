@@ -13,6 +13,7 @@ import (
 )
 
 var _ network.PluginInterface = (*Wavelet)(nil)
+var PluginID = (*Wavelet)(nil)
 
 type Options struct {
 	DatabasePath string

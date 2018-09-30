@@ -2,6 +2,7 @@ package wavelet
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"github.com/perlin-network/wavelet/iavl"
 )
 
@@ -13,6 +14,11 @@ type Account struct {
 
 	// PublicKey is the hex-encoded public key
 	PublicKey []byte `json:"public_key"`
+}
+
+// PublicKeyHex returns a hex-encoded string of this accounts public key.
+func (a *Account) PublicKeyHex() string {
+	return hex.EncodeToString(a.PublicKey)
 }
 
 // MarshalBinary serializes this accounts IAVL+ tree.

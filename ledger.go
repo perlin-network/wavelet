@@ -6,7 +6,9 @@ import (
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/system"
+	"github.com/perlin-network/wavelet/events"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/stats"
 	"github.com/phf/go-queue/queue"
 	"github.com/sasha-s/go-IBLT"
 	"sort"
@@ -256,6 +258,9 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 	ledger.Put(merge(BucketAcceptedIndex, writeUint64(index)), writeBytes(tx.Id))
 	ledger.Delete(merge(BucketAcceptPending, writeBytes(tx.Id)))
 
+	stats.IncAcceptedTransactions(tx.Tag)
+	events.Publish(nil, &events.TransactionAcceptedEvent{ID: tx.Id})
+
 	// If the transaction has accepted children, revert all of the transactions ascendants.
 	if children, err := ledger.GetChildrenBySymbol(tx.Id); err == nil && len(children.Transactions) > 0 {
 		for _, child := range children.Transactions {
@@ -341,6 +346,8 @@ func (ledger *Ledger) revertTransaction(symbol string, revertAcceptance bool) {
 			ledger.Delete(merge(BucketAccepted, writeBytes(popped)))
 
 			ledger.Put(merge(BucketAcceptPending, writeBytes(popped)), []byte{0})
+
+			stats.DecAcceptedTransactions()
 		}
 
 		children, err := ledger.GetChildrenBySymbol(popped)

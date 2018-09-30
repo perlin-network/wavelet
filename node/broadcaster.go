@@ -5,11 +5,12 @@ import (
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/security"
+	"github.com/perlin-network/wavelet/stats"
 	"time"
 )
 
 var (
-	RetryDelay = 100 * time.Millisecond
+	RetryDelay = 10 * time.Millisecond
 )
 
 type broadcaster struct {
@@ -50,6 +51,8 @@ func (b *broadcaster) MakeTransaction(tag string, payload []byte) *wire.Transact
 // BroadcastTransaction broadcasts a transaction and greedily attempts to get it accepted by broadcasting
 // nops which are built on top of our transaction.
 func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
+	start := time.Now()
+
 	id, successful, err := b.Ledger.RespondToQuery(wired)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to insert our own broadcasted transaction into the ledger.")
@@ -144,5 +147,6 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 		time.Sleep(RetryDelay)
 	}
 
+	stats.SetConsensusDuration(time.Now().Sub(start).Seconds())
 	log.Debug().Str("id", id).Interface("tx", wired).Msg("Successfully broadcasted transaction.")
 }

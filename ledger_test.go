@@ -25,7 +25,7 @@ func BenchmarkLedger(b *testing.B) {
 	ledger := NewLedger(databasePath, servicesPath)
 	ledger.Init()
 
-	defer os.RemoveAll("testdb")
+	defer os.RemoveAll(databasePath)
 	defer ledger.Graph.Cleanup()
 
 	b.StartTimer()
