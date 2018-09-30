@@ -139,28 +139,30 @@ func (s *service) wrap(inner func(*requestContext)) func(http.ResponseWriter, *h
 }
 
 // Run runs the API server with a specified set of options.
-func Run(net *network.Network, opts *Options) {
+func Run(net *network.Network, opts Options) {
 	plugin, exists := net.Plugin(node.PluginID)
 	if !exists {
 		panic("ledger plugin not found")
 	}
 
 	registry := newSessionRegistry()
+
 	go func() {
 		for range time.Tick(10 * time.Second) {
 			registry.Recycle()
 		}
 	}()
 
-	clientMap := make(map[string]*ClientInfo)
+	clients := make(map[string]*ClientInfo)
+
 	for _, client := range opts.Clients {
-		clientMap[client.PublicKey] = client
+		clients[client.PublicKey] = client
 	}
 
 	mux := http.NewServeMux()
 
 	service := &service{
-		clients:  clientMap,
+		clients:  clients,
 		registry: newSessionRegistry(),
 		wavelet:  plugin.(*node.Wavelet),
 		network:  net,

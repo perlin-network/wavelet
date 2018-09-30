@@ -9,6 +9,7 @@ import (
 	"github.com/perlin-network/noise/crypto/ed25519"
 	"github.com/perlin-network/noise/network"
 	"github.com/perlin-network/noise/network/discovery"
+	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/cmd/utils"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
@@ -39,6 +40,10 @@ func main() {
 			Value: 3000,
 			Usage: "Listen for peers on port `PORT`.",
 		},
+		cli.UintFlag{
+			Name:  "api",
+			Usage: "Host a local HTTP API at port `API_PORT`.",
+		},
 		cli.StringFlag{
 			Name:  "database, db",
 			Value: "testdb",
@@ -50,8 +55,8 @@ func main() {
 			Usage: "Load WebAssembly transaction processor services from `SERVICES_PATH`.",
 		},
 		cli.StringFlag{
-			Name:  "privkey, pk",
-			Value: "a6a193b4665b03e6df196ab7765b04a01de00e09c4a056f487019b5e3565522fd6edf02c950c6e091cd2450552a52febbb3d29b38c22bb89b0996225ef5ec972",
+			Name:  "privkey, sk",
+			Value: "6d6fe0c2bc913c0e3e497a0328841cf4979f932e01d2030ad21e649fca8d47fe71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
 			Usage: "Set the node's private key to be `PRIVATE_KEY`. Leave `PRIVATE_KEY` = 'random' if you want to randomly generate one.",
 		},
 		cli.StringSliceFlag{
@@ -102,8 +107,28 @@ func main() {
 		net.BlockUntilListening()
 
 		if peers := c.StringSlice("peers"); len(peers) > 0 {
-			fmt.Println(peers)
 			net.Bootstrap(peers...)
+		}
+
+		if port := c.Uint("api"); port > 0 {
+			go api.Run(net, api.Options{
+				ListenAddr: fmt.Sprintf("%s:%d", c.String("host"), port),
+				Clients: []*api.ClientInfo{
+					{
+						PublicKey: net.ID.PublicKeyHex(),
+						Permissions: api.ClientPermissions{
+							CanSendTransaction: true,
+							CanPollTransaction: true,
+							CanControlStats:    true,
+						},
+					},
+				},
+			})
+
+			log.Info().
+				Str("host", c.String("host")).
+				Uint("port", port).
+				Msg("Local HTTP API is being served.")
 		}
 
 		exit := make(chan os.Signal, 1)

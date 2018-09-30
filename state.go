@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/life/exec"
+	"github.com/perlin-network/wavelet/events"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
@@ -31,14 +32,8 @@ type state struct {
 	services []*service
 }
 
-// WasApplied returns whether or not a transaction was applied into the ledger.
-func (s *state) WasApplied(symbol string) bool {
-	applied, _ := s.Has(merge(BucketDeltas, writeBytes(symbol)))
-	return applied
-}
-
 // registerServicePath registers all the services in a path.
-func (m *state) registerServicePath(path string) error {
+func (s *state) registerServicePath(path string) error {
 	files, err := filepath.Glob(fmt.Sprintf("%s/*.wasm", path))
 	if err != nil {
 		return err
@@ -47,13 +42,13 @@ func (m *state) registerServicePath(path string) error {
 	for _, f := range files {
 		name := filepath.Base(f)
 
-		if err := m.registerService(name[:len(name)-5], f); err != nil {
+		if err := s.registerService(name[:len(name)-5], f); err != nil {
 			return err
 		}
 		log.Info().Str("module", name).Msg("Registered transaction processor service.")
 	}
 
-	if len(m.services) == 0 {
+	if len(s.services) == 0 {
 		return errors.Errorf("No WebAssembly services were successfully registered for path: %s", path)
 	}
 
@@ -64,7 +59,7 @@ func (m *state) registerServicePath(path string) error {
 // with a specified name.
 //
 // Warning: will panic should there be errors in loading the service.
-func (m *state) registerService(name string, path string) error {
+func (s *state) registerService(name string, path string) error {
 	if !strings.HasSuffix(path, ".wasm") {
 		return errors.Errorf("service code %s file should be in *.wasm format", path)
 	}
@@ -74,7 +69,7 @@ func (m *state) registerService(name string, path string) error {
 		return err
 	}
 
-	service := NewService(m, name)
+	service := NewService(s, name)
 
 	service.vm, err = exec.NewVirtualMachine(code, exec.VMConfig{
 		DefaultMemoryPages: 128,
@@ -92,7 +87,7 @@ func (m *state) registerService(name string, path string) error {
 		return errors.Errorf("could not find 'process' func in %s *.wasm file", path)
 	}
 
-	m.services = append(m.services, service)
+	s.services = append(s.services, service)
 
 	return nil
 }
@@ -180,6 +175,7 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 		log.Debug().
 			Uint64("nonce", account.Nonce).
 			Str("public_key", hex.EncodeToString(account.PublicKey)).
+			Str("tx", tx.Id).
 			Msg("Applied transaction.")
 
 		list, available := accountDeltas.Deltas[id]
@@ -199,6 +195,8 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 	if err != nil {
 		return err
 	}
+
+	events.Publish(nil, &events.TransactionAppliedEvent{ID: tx.Id})
 
 	return nil
 }
@@ -345,7 +343,86 @@ func (s *state) SaveAccount(account *Account, deltas []*Delta) error {
 		return err
 	}
 
-	// TODO: Report deltas.
+	updates := make(map[string][]byte)
+
+	for _, delta := range deltas {
+		updates[delta.Key] = delta.NewValue
+	}
+
+	events.Publish(nil, &events.AccountUpdateEvent{
+		Account: account.PublicKeyHex(),
+		Nonce:   account.Nonce,
+		Updates: updates,
+	})
 
 	return nil
+}
+
+// NumTransactions represents the number of transactions in the ledger.
+func (s *state) NumTransactions() uint64 {
+	return s.Size(database.BucketTx)
+}
+
+// Paginate returns a page of transactions ordered by insertion starting from the offset index.
+func (s *state) PaginateTransactions(offset, pageSize uint64) []*database.Transaction {
+	size := s.NumTransactions()
+
+	if offset > size || pageSize == 0 {
+		return nil
+	}
+
+	if offset+pageSize > size {
+		pageSize = size - offset
+	}
+
+	var page []*database.Transaction
+
+	for i := offset; i < offset+pageSize; i++ {
+		tx, err := s.GetByIndex(i)
+		if err != nil {
+			continue
+		}
+
+		page = append(page, tx)
+	}
+
+	return page
+}
+
+// WasApplied returns whether or not a transaction was applied into the ledger.
+func (s *state) WasApplied(symbol string) bool {
+	applied, _ := s.Has(merge(BucketDeltas, writeBytes(symbol)))
+	return applied
+}
+
+// Snapshot creates a snapshot of the current ledger state.
+func (s *state) Snapshot() map[string]interface{} {
+	type accountData struct {
+		Nonce uint64
+		State map[string][]byte
+	}
+
+	json := make(map[string]interface{})
+
+	account := new(Account)
+
+	s.Store.ForEach(BucketAccounts, func(publicKey, encoded []byte) error {
+		err := account.Unmarshal(encoded)
+
+		if err != nil {
+			return err
+		}
+
+		data := accountData{Nonce: account.Nonce, State: make(map[string][]byte)}
+
+		account.Range(func(k string, v []byte) {
+			data.State[k] = v
+		})
+
+		json[hex.EncodeToString(publicKey)] = data
+
+		return nil
+	})
+
+	return json
 }

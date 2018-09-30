@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/perlin-network/noise/network/discovery"
+	"github.com/perlin-network/wavelet/events"
 	"github.com/perlin-network/wavelet/security"
+	"github.com/perlin-network/wavelet/stats"
 )
 
 func (s *service) pollAccountHandler(ctx *requestContext) {
@@ -25,7 +27,7 @@ func (s *service) pollAccountHandler(ctx *requestContext) {
 
 	closeSignal := make(chan struct{})
 
-	events.Subscribe(s.network.ID.PublicKeyHex(), func(ev *events.AccountUpdateEvent) bool {
+	events.Subscribe(nil, func(ev *events.AccountUpdateEvent) bool {
 		if err := conn.WriteJSON(ev); err != nil {
 			close(closeSignal)
 			return false
@@ -59,7 +61,7 @@ func (s *service) listTransactionHandler(ctx *requestContext) {
 		paginate.Offset = &offset
 	}
 
-	transactions := s.wavelet.Store.PaginateTransactions(*paginate.Offset, *paginate.Limit)
+	transactions := s.wavelet.Ledger.PaginateTransactions(*paginate.Offset, *paginate.Limit)
 
 	ctx.WriteJSON(http.StatusOK, transactions)
 }
@@ -109,11 +111,11 @@ func (s *service) pollTransactionHandler(ctx *requestContext) {
 
 	switch eventType {
 	case "applied":
-		events.Subscribe(s.network.ID.PublicKeyHex(), func(ev *events.TransactionAppliedEvent) bool {
+		events.Subscribe(nil, func(ev *events.TransactionAppliedEvent) bool {
 			return report(ev.ID)
 		})
 	case "accepted":
-		events.Subscribe(s.network.ID.PublicKeyHex(), func(ev *events.TransactionAcceptedEvent) bool {
+		events.Subscribe(nil, func(ev *events.TransactionAcceptedEvent) bool {
 			return report(ev.ID)
 		})
 	}
@@ -140,7 +142,12 @@ func (s *service) ledgerStateHandler(ctx *requestContext) {
 		Address   string                 `json:"address"`
 		Peers     []string               `json:"peers"`
 		State     map[string]interface{} `json:"state"`
-	}{s.network.ID.PublicKeyHex(), s.network.ID.Address, routes.GetPeerAddresses(), s.wavelet.MarshaledState()}
+	}{
+		PublicKey: s.network.ID.PublicKeyHex(),
+		Address:   s.network.ID.Address,
+		Peers:     routes.GetPeerAddresses(),
+		State:     s.wavelet.Ledger.Snapshot(),
+	}
 
 	ctx.WriteJSON(http.StatusOK, state)
 }

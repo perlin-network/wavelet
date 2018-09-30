@@ -7,7 +7,7 @@ import (
 
 // public key -> (key, value)
 var genesis = map[string]map[string]interface{}{
-	"d6edf02c950c6e091cd2450552a52febbb3d29b38c22bb89b0996225ef5ec972": {
+	"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858": {
 		"balance": uint64(10),
 	},
 }
