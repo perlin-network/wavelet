@@ -110,6 +110,8 @@ func Summary() interface{} {
 //
 // TODO: Have system information be cross-platform. Linux only for now.
 func SystemInfo() interface{} {
+	return nil
+
 	c, _ := cpu.Percent(time.Second, true)
 
 	diskDeviceName := "/dev/sda1"
