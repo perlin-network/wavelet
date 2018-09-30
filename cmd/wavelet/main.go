@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -15,8 +16,11 @@ import (
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/security"
 	"github.com/urfave/cli"
+	"io/ioutil"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -143,7 +147,7 @@ func main() {
 
 		reader := bufio.NewReader(os.Stdout)
 
-		for i := 0; ; i++ {
+		for {
 			fmt.Print("Enter a message: ")
 
 			bytes, _, err := reader.ReadLine()
@@ -151,7 +155,9 @@ func main() {
 				log.Fatal().Err(err).Msg("Failed to read line from stdin.")
 			}
 
-			switch string(bytes) {
+			cmd := strings.Split(string(bytes), " ")
+
+			switch cmd[0] {
 			case "wallet":
 				log.Info().
 					Str("id", hex.EncodeToString(wavelet.Wallet.PublicKey)).
@@ -159,10 +165,27 @@ func main() {
 					Uint64("balance", wavelet.Wallet.GetBalance(wavelet.Ledger)).
 					Msg("Here is your wallet information.")
 			case "pay":
+				recipient := "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"
+				amount := 1
+
+				if len(cmd) >= 2 {
+					recipient = cmd[1]
+				}
+
+				if len(cmd) >= 3 {
+					amount, err = strconv.Atoi(cmd[2])
+					if err != nil {
+						log.Fatal().Err(err).Msg("Failed to convert payment amount to an uint64.")
+					}
+				}
+
 				transfer := struct {
 					Recipient string `json:"recipient"`
 					Amount    uint64 `json:"amount"`
-				}{"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858", 1}
+				}{
+					Recipient: recipient,
+					Amount:    uint64(amount),
+				}
 
 				payload, err := json.Marshal(transfer)
 				if err != nil {
@@ -170,6 +193,31 @@ func main() {
 				}
 
 				wired := wavelet.MakeTransaction("transfer", payload)
+				wavelet.BroadcastTransaction(wired)
+			case "contract":
+				if len(cmd) < 2 {
+					continue
+				}
+
+				bytes, err := ioutil.ReadFile(cmd[1])
+				if err != nil {
+					log.Error().
+						Err(err).
+						Str("path", cmd[1]).
+						Msg("Failed to find/load the smart contract code from the given path.")
+					continue
+				}
+
+				contract := struct {
+					Code string `json:"code"`
+				}{Code: base64.StdEncoding.EncodeToString(bytes)}
+
+				payload, err := json.Marshal(contract)
+				if err != nil {
+					log.Fatal().Err(err).Msg("Failed to marshal smart contract deployment payload.")
+				}
+
+				wired := wavelet.MakeTransaction("create_contract", payload)
 				wavelet.BroadcastTransaction(wired)
 			default:
 				wired := wavelet.MakeTransaction("nop", nil)

@@ -95,7 +95,6 @@ func (s *state) registerService(name string, path string) error {
 // applyTransaction runs a transaction, gets any transactions created by said transaction, and
 // applies those transactions to the ledger state.
 func (s *state) applyTransaction(tx *database.Transaction) error {
-	accounts := make(map[string]*Account)
 	accountDeltas := &Deltas{Deltas: make(map[string]*Deltas_List)}
 
 	pending := queue.New()
@@ -108,6 +107,8 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 		if err != nil {
 			return err
 		}
+
+		accounts := make(map[string]*Account)
 
 		sender, exists := accounts[writeString(senderID)]
 
@@ -168,21 +169,21 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 		for _, tx := range newlyPending {
 			pending.PushBack(tx)
 		}
-	}
 
-	// Save all modified accounts to the ledger.
-	for id, account := range accounts {
-		log.Debug().
-			Uint64("nonce", account.Nonce).
-			Str("public_key", hex.EncodeToString(account.PublicKey)).
-			Str("tx", tx.Id).
-			Msg("Applied transaction.")
+		// Save all modified accounts to the ledger.
+		for id, account := range accounts {
+			log.Debug().
+				Uint64("nonce", account.Nonce).
+				Str("public_key", hex.EncodeToString(account.PublicKey)).
+				Str("tx", tx.Id).
+				Msg("Applied transaction.")
 
-		list, available := accountDeltas.Deltas[id]
-		if available {
-			s.SaveAccount(account, list.List)
-		} else {
-			s.SaveAccount(account, nil)
+			list, available := accountDeltas.Deltas[id]
+			if available {
+				s.SaveAccount(account, list.List)
+			} else {
+				s.SaveAccount(account, nil)
+			}
 		}
 	}
 
