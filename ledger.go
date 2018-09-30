@@ -27,6 +27,8 @@ var (
 )
 
 type Ledger struct {
+	sync.Mutex // a ledger must be locked before any access attempts.
+
 	state
 	rpc
 
@@ -103,7 +105,9 @@ func (ledger *Ledger) updateAcceptedTransactionsLoop() {
 		case <-ledger.kill:
 			break
 		case <-timer.C:
+			ledger.Lock()
 			ledger.updateAcceptedTransactions()
+			ledger.Unlock()
 		}
 	}
 
