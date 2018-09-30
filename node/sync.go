@@ -184,6 +184,9 @@ func (s *syncer) sync() {
 		go func(wired *wire.Transaction) {
 			defer wg.Done()
 
+			s.Ledger.Lock()
+			defer s.Ledger.Unlock()
+
 			err := s.Query(wired)
 
 			if err != nil {
