@@ -3,6 +3,7 @@ package node
 import (
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/network/rpc"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/params"
 	"github.com/pkg/errors"
 	"sync"
@@ -19,6 +20,10 @@ type query struct {
 }
 
 func (q query) Query(wired *wire.Transaction) error {
+	q.Ledger.Unlock()
+
+	log.Debug().Msg("Enter query")
+
 	addresses := q.routes.FindClosestPeers(q.net.ID, params.ConsensusK+1)
 
 	var wg sync.WaitGroup
@@ -57,6 +62,12 @@ func (q query) Query(wired *wire.Transaction) error {
 	}
 
 	wg.Wait()
+
+	log.Debug().Msg("WG done, entering lock")
+
+	q.Ledger.Lock()
+
+	log.Debug().Msg("Locked again")
 
 	positives := q.weigh(addresses, responses, wired)
 
