@@ -8,6 +8,7 @@ import (
 	"github.com/perlin-network/graph/system"
 	"github.com/perlin-network/wavelet/events"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/stats"
 	"github.com/phf/go-queue/queue"
 	"github.com/sasha-s/go-IBLT"
@@ -60,7 +61,7 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 		BIGBANG(ledger)
 	}
 
-	ledger.iblt = iblt.New(6, 4096)
+	ledger.iblt = iblt.New(params.TxK, params.TxL)
 
 	if encoded, err := store.Get(KeyTransactionIBLT); err == nil {
 		err := ledger.iblt.UnmarshalBinary(encoded)
@@ -95,7 +96,7 @@ func (ledger *Ledger) Init() {
 // The graph will be incrementally checked for updates periodically. Ideally, you should
 // execute this function in a new goroutine.
 func (ledger *Ledger) updateAcceptedTransactionsLoop() {
-	timer := time.NewTicker(100 * time.Millisecond)
+	timer := time.NewTicker(params.GraphUpdatePeriod)
 
 	for {
 		select {

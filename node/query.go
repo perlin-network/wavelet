@@ -3,6 +3,7 @@ package node
 import (
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/network/rpc"
+	"github.com/perlin-network/wavelet/params"
 	"github.com/pkg/errors"
 	"sync"
 	"time"
@@ -12,18 +13,13 @@ var (
 	ErrPrecommit = errors.New("failed to precommit tx")
 )
 
-const (
-	K     = 1
-	Alpha = 0.8
-)
-
 type query struct {
 	*Wavelet
 	sybil
 }
 
 func (q query) Query(wired *wire.Transaction) error {
-	addresses := q.routes.FindClosestPeers(q.net.ID, K+1)
+	addresses := q.routes.FindClosestPeers(q.net.ID, params.ConsensusK+1)
 
 	var wg sync.WaitGroup
 	wg.Add(len(addresses))
@@ -64,8 +60,8 @@ func (q query) Query(wired *wire.Transaction) error {
 
 	positives := q.weigh(addresses, responses, wired)
 
-	if positives < Alpha {
-		return errors.Wrapf(ErrPrecommit, "expected >= %.2f alpha; got only %.2f positives", Alpha, positives)
+	if positives < params.ConsensusAlpha {
+		return errors.Wrapf(ErrPrecommit, "expected >= %.2f alpha; got only %.2f positives", params.ConsensusAlpha, positives)
 	}
 
 	return nil

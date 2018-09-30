@@ -5,6 +5,7 @@ import (
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/network/rpc"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/security"
 	"github.com/sasha-s/go-IBLT"
 	"sync"
@@ -21,7 +22,7 @@ type syncer struct {
 func (s *syncer) RespondToSync(req *SyncRequest) *SyncResponse {
 	res := new(SyncResponse)
 
-	peerTable := iblt.New(6, 4096)
+	peerTable := iblt.New(params.TxK, params.TxL)
 	if req.Table != nil {
 		err := peerTable.UnmarshalBinary(req.Table)
 
@@ -76,7 +77,7 @@ func (s *syncer) RespondToSync(req *SyncRequest) *SyncResponse {
 }
 
 func (s *syncer) Init() {
-	timer := time.NewTicker(1000 * time.Millisecond)
+	timer := time.NewTicker(params.SyncPeriod)
 
 	for {
 		select {
@@ -91,7 +92,7 @@ func (s *syncer) Init() {
 }
 
 func (s *syncer) sync() {
-	peers, err := s.randomlySelectPeers(2)
+	peers, err := s.randomlySelectPeers(params.SyncNumPeers)
 	if err != nil {
 		return
 	}
