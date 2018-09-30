@@ -36,6 +36,9 @@ type Ledger struct {
 	IBLT *iblt.Filter
 
 	kill chan struct{}
+
+	insidePeriodicTask     bool
+	lastUpdateAcceptedTime time.Time
 }
 
 func NewLedger(databasePath, servicesPath string) *Ledger {
@@ -77,7 +80,6 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 }
 
 func (ledger *Ledger) Init() {
-	go ledger.updateAcceptedTransactionsLoop()
 }
 
 // UpdateAcceptedTransactions incrementally from the root of the graph updates whether
@@ -85,30 +87,34 @@ func (ledger *Ledger) Init() {
 //
 // The graph will be incrementally checked for updates periodically. Ideally, you should
 // execute this function in a new goroutine.
-func (ledger *Ledger) updateAcceptedTransactionsLoop() {
-	timer := time.NewTicker(params.GraphUpdatePeriod)
 
-	for {
-		select {
-		case <-ledger.kill:
-			break
-		case <-timer.C:
-			ledger.updateAcceptedTransactions()
-		}
+func (ledger *Ledger) RunPeriodicTasks() {
+	if ledger.insidePeriodicTask {
+		return
 	}
 
-	timer.Stop()
+	ledger.insidePeriodicTask = true
+	defer func() {
+		ledger.insidePeriodicTask = false
+	}()
+	current := time.Now()
+	if current.Sub(ledger.lastUpdateAcceptedTime) > params.GraphUpdatePeriod {
+		ledger.updateAcceptedTransactions()
+		ledger.lastUpdateAcceptedTime = current
+	}
 }
 
 // WasAccepted returns whether or not a transaction given by its symbol was stored to be accepted
 // inside the database.
 func (ledger *Ledger) WasAccepted(symbol string) bool {
+	ledger.RunPeriodicTasks()
 	exists, _ := ledger.Has(merge(BucketAccepted, writeBytes(symbol)))
 	return exists
 }
 
 // GetAcceptedByIndex gets an accepted transaction by its index.
 func (ledger *Ledger) GetAcceptedByIndex(index uint64) (*database.Transaction, error) {
+	ledger.RunPeriodicTasks()
 	symbolBytes, err := ledger.Get(merge(BucketAcceptedIndex, writeUint64(index)))
 	if err != nil {
 		return nil, err
@@ -119,6 +125,7 @@ func (ledger *Ledger) GetAcceptedByIndex(index uint64) (*database.Transaction, e
 
 // QueueForAcceptance queues a transaction awaiting to be accepted.
 func (ledger *Ledger) QueueForAcceptance(symbol string) error {
+	ledger.RunPeriodicTasks()
 	return ledger.Put(merge(BucketAcceptPending, writeBytes(symbol)), []byte{0})
 }
 
