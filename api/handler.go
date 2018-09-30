@@ -27,6 +27,9 @@ func (s *service) pollAccountHandler(ctx *requestContext) {
 
 	closeSignal := make(chan struct{})
 
+	s.wavelet.Ledger.Unlock()
+	defer s.wavelet.Ledger.Lock()
+
 	events.Subscribe(nil, func(ev *events.AccountUpdateEvent) bool {
 		if err := conn.WriteJSON(ev); err != nil {
 			close(closeSignal)
@@ -96,8 +99,14 @@ func (s *service) pollTransactionHandler(ctx *requestContext) {
 
 	closeSignal := make(chan struct{})
 
+	s.wavelet.Ledger.Unlock()
+	defer s.wavelet.Ledger.Lock()
+
 	report := func(txID string) bool {
+		s.wavelet.Ledger.Lock()
 		tx, err := s.wavelet.Ledger.GetBySymbol(txID)
+		s.wavelet.Ledger.Unlock()
+
 		if err != nil {
 			return true
 		}
