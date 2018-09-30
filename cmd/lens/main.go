@@ -34,7 +34,7 @@ func main() {
 		},
 		cli.UintFlag{
 			Name:  "port, p",
-			Value: 3000,
+			Value: 8080,
 			Usage: "Listen for peers on port `PORT`.",
 		},
 	}

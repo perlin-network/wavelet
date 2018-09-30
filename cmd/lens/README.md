@@ -19,5 +19,5 @@ go run main.go
 
 go build
 ./lens
-  # browse localhost:3000
+  # browse localhost:8080
 ```
