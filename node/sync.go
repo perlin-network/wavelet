@@ -33,47 +33,44 @@ func (s *syncer) RespondToSync(req *SyncRequest) *SyncResponse {
 		}
 	}
 
+	var diff *iblt.Diff
+	var err error
+
 	s.Ledger.Atomically(func(l *wavelet.Ledger) {
-		v := l.WithIBLT(func(filter *iblt.Filter) interface{} {
-			selfTable := filter.Clone()
+		selfTable := l.IBLT.Clone()
 
-			err := selfTable.Sub(*peerTable)
+		err = selfTable.Sub(*peerTable)
+
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to diff() our IBLT w.r.t. our peers transaction IBLT.")
+			return
+		}
+
+		diff, err = selfTable.Decode()
+		if err != nil {
+			log.Warn().Err(err).Msg("Failed to decode the diff. of our IBLT w.r.t. our peers transaction IBLT.")
+		}
+
+		for _, id := range diff.Added {
+			tx, err := l.GetBySymbol(string(id))
+
 			if err != nil {
-				log.Warn().Err(err).Msg("Failed to diff() our IBLT w.r.t. our peers transaction IBLT.")
-				return err
+				continue
 			}
 
-			diff, err := selfTable.Decode()
-			if err != nil {
-				log.Warn().Err(err).Msg("Failed to decode the diff. of our IBLT w.r.t. our peers transaction IBLT.")
-				return err
+			wired := &wire.Transaction{
+				Sender:    tx.Sender,
+				Nonce:     tx.Nonce,
+				Parents:   tx.Parents,
+				Tag:       tx.Tag,
+				Payload:   tx.Payload,
+				Signature: tx.Signature,
 			}
 
-			return diff.Added
-		})
+			res.Transactions = append(res.Transactions, wired)
 
-		if _, is := v.(error); !is {
-			for _, id := range v.([][]byte) {
-				tx, err := l.GetBySymbol(string(id))
-
-				if err != nil {
-					continue
-				}
-
-				wired := &wire.Transaction{
-					Sender:    tx.Sender,
-					Nonce:     tx.Nonce,
-					Parents:   tx.Parents,
-					Tag:       tx.Tag,
-					Payload:   tx.Payload,
-					Signature: tx.Signature,
-				}
-
-				res.Transactions = append(res.Transactions, wired)
-
-				if len(res.Transactions) > 100 {
-					break
-				}
+			if len(res.Transactions) > 100 {
+				break
 			}
 		}
 	})
@@ -109,26 +106,19 @@ func (s *syncer) sync() {
 	wg := new(sync.WaitGroup)
 	wg.Add(len(peers))
 
-	var v interface{}
+	var encoded []byte
 
 	s.Ledger.Atomically(func(l *wavelet.Ledger) {
-		v = l.WithIBLT(func(filter *iblt.Filter) interface{} {
-			encoded, err := filter.MarshalBinary()
-			if err != nil {
-				return err
-			}
-
-			return encoded
-		})
+		encoded, err = l.IBLT.MarshalBinary()
 	})
 
-	if _, is := v.(error); is {
+	if err != nil {
 		return
 	}
 
 	request := new(rpc.Request)
 	request.SetTimeout(5 * time.Second)
-	request.SetMessage(&SyncRequest{Table: v.([]byte)})
+	request.SetMessage(&SyncRequest{Table: encoded})
 
 	var received []*wire.Transaction
 	var mutex sync.Mutex
