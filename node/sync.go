@@ -4,7 +4,6 @@ import (
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/network/rpc"
-	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/security"
@@ -12,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"github.com/perlin-network/wavelet"
 )
 
 type syncer struct {
@@ -70,6 +70,10 @@ func (s *syncer) RespondToSync(req *SyncRequest) *SyncResponse {
 				}
 
 				res.Transactions = append(res.Transactions, wired)
+
+				if len(res.Transactions) > 100 {
+					break
+				}
 			}
 		}
 	})

@@ -422,6 +422,9 @@ func (s *state) Snapshot() map[string]interface{} {
 		data := accountData{Nonce: account.Nonce, State: make(map[string][]byte)}
 
 		account.Range(func(k string, v []byte) {
+			if k == "contract_code" {
+				v = writeBytes("<code here>")
+			}
 			data.State[k] = v
 		})
 
