@@ -63,6 +63,7 @@ func NewLedger(databasePath, servicesPath string, genesisCSV string) *Ledger {
 			log.Error().Err(err).Msgf("Unable to load genesis from file %s", genesisCSV)
 		} else {
 			ApplyGenesisTransactions(ledger, genesis)
+			log.Info().Str("csv", genesisCSV).Int("NumAccounts", len(genesis)).Msg("Loaded genesis csv.")
 		}
 	}
 
