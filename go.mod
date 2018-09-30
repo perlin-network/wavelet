@@ -16,7 +16,6 @@ require (
 	github.com/rs/cors v1.5.0
 	github.com/rs/zerolog v1.9.1
 	github.com/sasha-s/go-IBLT v0.0.0-20150527092913-0d7bd59e8167
-	github.com/shirou/gopsutil v2.17.12+incompatible
 	github.com/stretchr/testify v1.2.2
 	github.com/urfave/cli v1.20.0
 	go.uber.org/atomic v1.3.2 // indirect
