@@ -3,10 +3,6 @@ package stats
 import (
 	"expvar"
 	"time"
-
-	"github.com/shirou/gopsutil/cpu"
-	"github.com/shirou/gopsutil/disk"
-	"github.com/shirou/gopsutil/mem"
 )
 
 var (
@@ -44,8 +40,6 @@ func init() {
 			bufferAcceptByTagPerSec.Init()
 		}
 	}()
-
-	expvar.Publish("system_stats", expvar.Func(SystemInfo))
 }
 
 // IncAcceptedTransactions will increment #accepted transactions for the tag
@@ -104,28 +98,4 @@ func Summary() interface{} {
 	}
 
 	return summary
-}
-
-// SystemInfo returns real-time information about the current system.
-//
-// TODO: Have system information be cross-platform. Linux only for now.
-func SystemInfo() interface{} {
-	c, _ := cpu.Percent(time.Second, true)
-
-	diskDeviceName := "/dev/sda1"
-
-	d, _ := disk.IOCounters(diskDeviceName)
-	v, _ := mem.VirtualMemory()
-
-	systemStats := struct {
-		Memory *mem.VirtualMemoryStat `json:"memory"`
-		CPU    []float64              `json:"cpu"`
-		Disk   disk.IOCountersStat    `json:"disk"`
-	}{
-		CPU:    c,
-		Disk:   d[diskDeviceName],
-		Memory: v,
-	}
-
-	return systemStats
 }
