@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"runtime/debug"
 	"time"
 
 	"github.com/perlin-network/noise/network"
@@ -16,6 +15,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/rs/cors"
+	"runtime/debug"
 )
 
 // service represents a service.
@@ -129,6 +129,9 @@ func (s *service) wrap(inner func(*requestContext)) func(http.ResponseWriter, *h
 					Msg("An error occured from the API.")
 			}
 		}()
+
+		s.wavelet.Ledger.Lock()
+		defer s.wavelet.Ledger.Unlock()
 
 		inner(&requestContext{
 			service:  s,

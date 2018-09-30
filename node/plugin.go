@@ -64,6 +64,9 @@ func (w *Wavelet) Startup(net *network.Network) {
 }
 
 func (w *Wavelet) Receive(ctx *network.PluginContext) error {
+	w.Ledger.Lock()
+	defer w.Ledger.Unlock()
+
 	switch msg := ctx.Message().(type) {
 	case *wire.Transaction:
 		if validated, err := security.ValidateWiredTransaction(msg); err != nil || !validated {
@@ -119,6 +122,9 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 			}
 
 			go func() {
+				w.Ledger.Lock()
+				defer w.Ledger.Unlock()
+
 				err := w.Query(msg)
 
 				if err != nil {
