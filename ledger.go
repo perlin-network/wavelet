@@ -79,10 +79,10 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 }
 
 // Step will perform one single time step of all periodic tasks within the ledger.
-func (ledger *Ledger) Step() {
+func (ledger *Ledger) Step(force bool) {
 	current := time.Now()
 
-	if current.Sub(ledger.lastUpdateAcceptedTime) >= params.GraphUpdatePeriod {
+	if force || current.Sub(ledger.lastUpdateAcceptedTime) >= params.GraphUpdatePeriod {
 		ledger.updateAcceptedTransactions()
 		ledger.lastUpdateAcceptedTime = current
 	}

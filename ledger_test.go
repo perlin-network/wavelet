@@ -64,6 +64,6 @@ func BenchmarkLedger(b *testing.B) {
 			b.Fatal(err)
 		}
 
-		ledger.Step()
+		ledger.Step(false)
 	}
 }

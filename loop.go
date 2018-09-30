@@ -3,6 +3,7 @@ package wavelet
 import (
 	"github.com/pkg/errors"
 	"sync"
+	"time"
 )
 
 // eventLoop provides an event loop to reduce mutex contention for a *Ledger instance.
@@ -10,6 +11,8 @@ type eventLoop struct {
 	sync.Mutex
 	ledger    *Ledger
 	taskQueue chan *task
+
+	tail bool
 }
 
 // LoopHandle provides a handle to an existing, running event loop.
@@ -33,12 +36,28 @@ func NewEventLoop(ledger *Ledger) *eventLoop {
 }
 
 func (l *eventLoop) RunForever() {
-	for t := range l.taskQueue {
+	timer := time.NewTicker(100 * time.Nanosecond)
+
+	for {
 		l.Lock()
-		t.step(l.ledger)
-		l.ledger.Step()
+
+		select {
+		case t := <-l.taskQueue:
+			t.step(l.ledger)
+			l.ledger.Step(false)
+
+			l.tail = false
+		case <-timer.C:
+			if !l.tail {
+				l.ledger.Step(true)
+				l.tail = true
+			}
+		}
+
 		l.Unlock()
 	}
+
+	timer.Stop()
 }
 
 func (l *eventLoop) Handle() *LoopHandle {
