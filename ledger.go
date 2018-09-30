@@ -94,27 +94,25 @@ func (ledger *Ledger) RunPeriodicTasks() {
 	}
 
 	ledger.insidePeriodicTask = true
-	defer func() {
-		ledger.insidePeriodicTask = false
-	}()
+
 	current := time.Now()
 	if current.Sub(ledger.lastUpdateAcceptedTime) > params.GraphUpdatePeriod {
 		ledger.updateAcceptedTransactions()
 		ledger.lastUpdateAcceptedTime = current
 	}
+
+	ledger.insidePeriodicTask = false
 }
 
 // WasAccepted returns whether or not a transaction given by its symbol was stored to be accepted
 // inside the database.
 func (ledger *Ledger) WasAccepted(symbol string) bool {
-	ledger.RunPeriodicTasks()
 	exists, _ := ledger.Has(merge(BucketAccepted, writeBytes(symbol)))
 	return exists
 }
 
 // GetAcceptedByIndex gets an accepted transaction by its index.
 func (ledger *Ledger) GetAcceptedByIndex(index uint64) (*database.Transaction, error) {
-	ledger.RunPeriodicTasks()
 	symbolBytes, err := ledger.Get(merge(BucketAcceptedIndex, writeUint64(index)))
 	if err != nil {
 		return nil, err
@@ -125,7 +123,6 @@ func (ledger *Ledger) GetAcceptedByIndex(index uint64) (*database.Transaction, e
 
 // QueueForAcceptance queues a transaction awaiting to be accepted.
 func (ledger *Ledger) QueueForAcceptance(symbol string) error {
-	ledger.RunPeriodicTasks()
 	return ledger.Put(merge(BucketAcceptPending, writeBytes(symbol)), []byte{0})
 }
 
@@ -257,7 +254,7 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 	ledger.Delete(merge(BucketAcceptPending, writeBytes(tx.Id)))
 
 	stats.IncAcceptedTransactions(tx.Tag)
-	events.Publish(nil, &events.TransactionAcceptedEvent{ID: tx.Id})
+	go events.Publish(nil, &events.TransactionAcceptedEvent{ID: tx.Id})
 
 	// If the transaction has accepted children, revert all of the transactions ascendants.
 	if children, err := ledger.GetChildrenBySymbol(tx.Id); err == nil && len(children.Transactions) > 0 {

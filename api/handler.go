@@ -199,7 +199,7 @@ func (s *service) sendTransactionHandler(ctx *requestContext) {
 	}
 
 	wired := s.wavelet.MakeTransaction(info.Tag, info.Payload)
-	s.wavelet.BroadcastTransaction(wired)
+	go s.wavelet.BroadcastTransaction(wired)
 
 	ctx.WriteJSON(http.StatusOK, "OK")
 }

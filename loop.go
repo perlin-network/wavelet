@@ -36,6 +36,7 @@ func (l *eventLoop) RunForever() {
 	for t := range l.taskQueue {
 		l.Lock()
 		t.step(l.ledger)
+		l.ledger.RunPeriodicTasks()
 		l.Unlock()
 	}
 }

@@ -197,7 +197,7 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 		return err
 	}
 
-	events.Publish(nil, &events.TransactionAppliedEvent{ID: tx.Id})
+	go events.Publish(nil, &events.TransactionAppliedEvent{ID: tx.Id})
 
 	return nil
 }
@@ -350,7 +350,7 @@ func (s *state) SaveAccount(account *Account, deltas []*Delta) error {
 		updates[delta.Key] = delta.NewValue
 	}
 
-	events.Publish(nil, &events.AccountUpdateEvent{
+	go events.Publish(nil, &events.AccountUpdateEvent{
 		Account: account.PublicKeyHex(),
 		Nonce:   account.Nonce,
 		Updates: updates,
