@@ -65,6 +65,6 @@ func BenchmarkLedger(b *testing.B) {
 			b.Fatal(err)
 		}
 
-		ledger.updateAcceptedTransactions()
+		ledger.RunPeriodicTasks()
 	}
 }
