@@ -62,6 +62,11 @@ func (s *service) listTransactionHandler(ctx *requestContext) {
 	}
 
 	transactions := s.wavelet.Ledger.PaginateTransactions(*paginate.Offset, *paginate.Limit)
+	for _, tx := range transactions {
+		if tx.Tag == "create_contract" {
+			tx.Payload = []byte("<code here>")
+		}
+	}
 
 	ctx.WriteJSON(http.StatusOK, transactions)
 }

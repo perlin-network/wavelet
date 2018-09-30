@@ -58,6 +58,7 @@ func (s *service) Run(tx *database.Transaction) ([]*Delta, []*database.Transacti
 	defer s.Unlock()
 
 	s.tx = tx
+	s.pendingNewTransactions = nil
 
 	// Reset service state for each run.
 	s.globals = make(map[string][]byte)
@@ -240,7 +241,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 						return 0
 					}
 
-					copy(vm.Memory[outPtr:], s.accountQuery(writeString(s.account.PublicKey), key))
+					copy(vm.Memory[outPtr:], s.accountQuery(string(s.account.PublicKey), key))
 				default:
 					panic(fmt.Errorf("unknown store specified: %d", storeID))
 				}
@@ -266,7 +267,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 						return 0
 					}
 
-					value := s.accountQuery(writeString(s.account.PublicKey), key)
+					value := s.accountQuery(string(s.account.PublicKey), key)
 					return int64(len(value))
 				default:
 					panic(fmt.Errorf("unknown store specified: %d", storeID))
@@ -297,7 +298,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					buf := make([]byte, len(value))
 					copy(buf, value)
 
-					s.accounts[writeString(s.account.PublicKey)][key] = buf
+					s.accounts[string(s.account.PublicKey)][key] = buf
 				default:
 					panic(fmt.Errorf("unknown store specified: %d", storeID))
 				}
@@ -306,19 +307,19 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 			}
 		case "_activate_contract":
 			return func(vm *exec.VirtualMachine) int64 {
-				accountIDPtr := int(uint32(vm.GetCurrentFrame().Locals[0]))
-				accountIDLen := int(uint32(vm.GetCurrentFrame().Locals[1]))
+				contractIDPtr := int(uint32(vm.GetCurrentFrame().Locals[0]))
+				contractIDLen := int(uint32(vm.GetCurrentFrame().Locals[1]))
 				reasonPtr := int(uint32(vm.GetCurrentFrame().Locals[2]))
 				reasonLen := int(uint32(vm.GetCurrentFrame().Locals[3]))
 
-				encodedAccountID := writeString(vm.Memory[accountIDPtr : accountIDPtr+accountIDLen])
+				encodedContractID := string(vm.Memory[contractIDPtr : contractIDPtr+contractIDLen])
 
-				accountID, err := hex.DecodeString(encodedAccountID)
+				contractID, err := hex.DecodeString(encodedContractID)
 				if err != nil {
 					return int64(InternalProcessOk)
 				}
 
-				if !bytes.HasPrefix(accountID, ContractPrefix) {
+				if !bytes.HasPrefix(contractID, ContractPrefix) {
 					return int64(InternalProcessOk) // no need to activate
 				}
 
@@ -331,7 +332,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessOk) // cannot activate recursively
 				}
 
-				account, err := s.state.LoadAccount(accountID)
+				account, err := s.state.LoadAccount(contractID)
 				if err != nil {
 					return int64(InternalProcessOk) // always report ok.
 				}
@@ -351,7 +352,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					Code:     contractCode,
 					QueueTransaction: func(tag string, payload []byte) {
 						tx := &database.Transaction{
-							Sender:  encodedAccountID,
+							Sender:  encodedContractID,
 							Tag:     tag,
 							Payload: payload,
 						}
@@ -360,15 +361,15 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					GetActivationReasonLen: func() int { return len(reason) },
 					GetActivationReason:    func() []byte { return reason },
 					GetDataItemLen: func(key string) int {
-						val, _ := s.account.Load(writeString(merge(ContractCustomStatePrefix, writeBytes(key))))
+						val, _ := s.account.Load(string(merge(ContractCustomStatePrefix, writeBytes(key))))
 						return len(val)
 					},
 					GetDataItem: func(key string) []byte {
-						val, _ := s.account.Load(writeString(merge(ContractCustomStatePrefix, writeBytes(key))))
+						val, _ := s.account.Load(string(merge(ContractCustomStatePrefix, writeBytes(key))))
 						return val
 					},
 					SetDataItem: func(key string, val []byte) {
-						s.account.Store(writeString(merge(ContractCustomStatePrefix, writeBytes(key))), val)
+						s.account.Store(string(merge(ContractCustomStatePrefix, writeBytes(key))), val)
 					},
 				}
 
@@ -396,12 +397,12 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessErr) // a contract cannot create another one
 				}
 
-				contractID := merge(ContractPrefix, writeBytes(s.tx.Id))
+				contractID := ContractID(s.tx.Id)
 
-				account := NewAccount(contractID)
-				account.Store("contract_code", code)
+				contractAccount := NewAccount(contractID)
+				contractAccount.Store("contract_code", code)
 
-				s.state.SaveAccount(account, nil)
+				s.state.SaveAccount(contractAccount, nil)
 
 				return int64(InternalProcessOk)
 			}
@@ -415,4 +416,10 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 
 func (s *service) ResolveGlobal(module, field string) int64 {
 	panic("no global variables")
+}
+
+// ContractID returns the expected ID of a smart contract given the transaction symbol which
+// spawned the contract.
+func ContractID(id string) []byte {
+	return merge(ContractPrefix, writeBytes(id))
 }

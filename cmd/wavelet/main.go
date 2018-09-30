@@ -6,10 +6,12 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/noise/crypto"
 	"github.com/perlin-network/noise/crypto/ed25519"
 	"github.com/perlin-network/noise/network"
 	"github.com/perlin-network/noise/network/discovery"
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/cmd/utils"
 	"github.com/perlin-network/wavelet/log"
@@ -88,7 +90,7 @@ func main() {
 			log.Fatal().Err(err).Msg("Failed to decode private key.")
 		}
 
-		wavelet := node.NewPlugin(node.Options{
+		w := node.NewPlugin(node.Options{
 			DatabasePath: c.String("db"),
 			ServicesPath: c.String("services"),
 		})
@@ -99,7 +101,7 @@ func main() {
 		builder.SetAddress(network.FormatAddress("tcp", c.String("host"), uint16(c.Uint("port"))))
 
 		builder.AddPlugin(new(discovery.Plugin))
-		builder.AddPlugin(wavelet)
+		builder.AddPlugin(w)
 
 		net, err := builder.Build()
 		if err != nil {
@@ -160,9 +162,9 @@ func main() {
 			switch cmd[0] {
 			case "wallet":
 				log.Info().
-					Str("id", hex.EncodeToString(wavelet.Wallet.PublicKey)).
-					Uint64("nonce", wavelet.Wallet.CurrentNonce()).
-					Uint64("balance", wavelet.Wallet.GetBalance(wavelet.Ledger)).
+					Str("id", hex.EncodeToString(w.Wallet.PublicKey)).
+					Uint64("nonce", w.Wallet.CurrentNonce()).
+					Uint64("balance", w.Wallet.GetBalance(w.Ledger)).
 					Msg("Here is your wallet information.")
 			case "pay":
 				recipient := "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"
@@ -192,8 +194,8 @@ func main() {
 					log.Fatal().Err(err).Msg("Failed to marshal transfer payload.")
 				}
 
-				wired := wavelet.MakeTransaction("transfer", payload)
-				wavelet.BroadcastTransaction(wired)
+				wired := w.MakeTransaction("transfer", payload)
+				w.BroadcastTransaction(wired)
 			case "contract":
 				if len(cmd) < 2 {
 					continue
@@ -217,11 +219,15 @@ func main() {
 					log.Fatal().Err(err).Msg("Failed to marshal smart contract deployment payload.")
 				}
 
-				wired := wavelet.MakeTransaction("create_contract", payload)
-				wavelet.BroadcastTransaction(wired)
+				wired := w.MakeTransaction("create_contract", payload)
+				w.BroadcastTransaction(wired)
+
+				contractID := hex.EncodeToString(wavelet.ContractID(graph.Symbol(wired)))
+
+				log.Info().Msgf("Success! Your smart contract ID is: %s", contractID)
 			default:
-				wired := wavelet.MakeTransaction("nop", nil)
-				wavelet.BroadcastTransaction(wired)
+				wired := w.MakeTransaction("nop", nil)
+				w.BroadcastTransaction(wired)
 			}
 		}
 	}
