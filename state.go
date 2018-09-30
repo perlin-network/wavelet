@@ -363,9 +363,14 @@ func (s *state) NumTransactions() uint64 {
 	return s.Size(database.BucketTx)
 }
 
+// NumAcceptedTransactions represents the number of accepted transactions in the ledger.
+func (s *state) NumAcceptedTransactions() uint64 {
+	return s.Size(BucketAcceptedIndex)
+}
+
 // Paginate returns a page of transactions ordered by insertion starting from the offset index.
 func (s *state) PaginateTransactions(offset, pageSize uint64) []*database.Transaction {
-	size := s.NumTransactions()
+	size := s.NumAcceptedTransactions()
 
 	if offset > size || pageSize == 0 {
 		return nil
@@ -378,7 +383,7 @@ func (s *state) PaginateTransactions(offset, pageSize uint64) []*database.Transa
 	var page []*database.Transaction
 
 	for i := offset; i < offset+pageSize; i++ {
-		tx, err := s.GetByIndex(i)
+		tx, err := s.GetAcceptedByIndex(i)
 		if err != nil {
 			continue
 		}
