@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/noise/network/discovery"
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/events"
 	"github.com/perlin-network/wavelet/security"
 	"github.com/perlin-network/wavelet/stats"
-	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/graph/database"
 )
 
 func (s *service) pollAccountHandler(ctx *requestContext) {
@@ -70,7 +70,6 @@ func (s *service) listTransactionHandler(ctx *requestContext) {
 
 		transactions = ledger.PaginateTransactions(*paginate.Offset, *paginate.Limit)
 	})
-
 
 	for _, tx := range transactions {
 		if tx.Tag == "create_contract" {
