@@ -71,6 +71,10 @@ func (s *syncer) RespondToSync(req *SyncRequest) *SyncResponse {
 		}
 
 		res.Transactions = append(res.Transactions, wired)
+
+		if len(res.Transactions) > 100 {
+			break
+		}
 	}
 
 	return res
