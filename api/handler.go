@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/noise/network/discovery"
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/events"
 	"github.com/perlin-network/wavelet/security"
 	"github.com/perlin-network/wavelet/stats"
@@ -48,20 +50,25 @@ func (s *service) listTransactionHandler(ctx *requestContext) {
 		Limit  *uint64 `json:"limit"`
 	}
 
-	// If there are errors in reading the JSON, return the last 50 transactions.
-	if err := ctx.readJSON(&paginate); err != nil || (paginate.Offset == nil || paginate.Limit == nil) {
-		limit := uint64(50)
-		if limit > s.wavelet.Ledger.NumTransactions() {
-			limit = s.wavelet.Ledger.NumTransactions()
+	var transactions []*database.Transaction
+
+	err := ctx.readJSON(&paginate)
+
+	s.wavelet.Ledger.Atomically(func(ledger *wavelet.Ledger) {
+		// If there are errors in reading the JSON, return the last 50 transactions.
+		if err != nil || (paginate.Offset == nil || paginate.Limit == nil) {
+			limit := uint64(50)
+			if limit > ledger.NumTransactions() {
+				limit = ledger.NumTransactions()
+			}
+
+			offset := ledger.NumTransactions() - limit
+
+			paginate.Limit = &limit
+			paginate.Offset = &offset
 		}
-
-		offset := s.wavelet.Ledger.NumTransactions() - limit
-
-		paginate.Limit = &limit
-		paginate.Offset = &offset
-	}
-
-	transactions := s.wavelet.Ledger.PaginateTransactions(*paginate.Offset, *paginate.Limit)
+		transactions = ledger.PaginateTransactions(*paginate.Offset, *paginate.Limit)
+	})
 
 	ctx.WriteJSON(http.StatusOK, transactions)
 }
@@ -97,7 +104,13 @@ func (s *service) pollTransactionHandler(ctx *requestContext) {
 	closeSignal := make(chan struct{})
 
 	report := func(txID string) bool {
-		tx, err := s.wavelet.Ledger.GetBySymbol(txID)
+		var tx *database.Transaction
+		var err error
+
+		s.wavelet.Ledger.Atomically(func(ledger *wavelet.Ledger) {
+			tx, err = ledger.GetBySymbol(txID)
+		})
+
 		if err != nil {
 			return true
 		}
@@ -146,8 +159,11 @@ func (s *service) ledgerStateHandler(ctx *requestContext) {
 		PublicKey: s.network.ID.PublicKeyHex(),
 		Address:   s.network.ID.Address,
 		Peers:     routes.GetPeerAddresses(),
-		State:     s.wavelet.Ledger.Snapshot(),
 	}
+
+	s.wavelet.Ledger.Atomically(func(ledger *wavelet.Ledger) {
+		state.State = ledger.Snapshot()
+	})
 
 	ctx.WriteJSON(http.StatusOK, state)
 }
@@ -227,7 +243,12 @@ func (s *service) loadAccountHandler(ctx *requestContext) {
 		return
 	}
 
-	account, err := s.wavelet.Ledger.LoadAccount(accountID)
+	var account *wavelet.Account
+
+	s.wavelet.Ledger.Atomically(func(ledger *wavelet.Ledger) {
+		account, err = ledger.LoadAccount(accountID)
+	})
+
 	if err != nil {
 		ctx.WriteJSON(http.StatusOK, make(map[string][]byte))
 		return

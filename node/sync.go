@@ -4,6 +4,7 @@ import (
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/network/rpc"
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/security"
@@ -32,46 +33,46 @@ func (s *syncer) RespondToSync(req *SyncRequest) *SyncResponse {
 		}
 	}
 
-	v := s.Ledger.WithIBLT(func(filter *iblt.Filter) interface{} {
-		selfTable := filter.Clone()
+	s.Ledger.Atomically(func(l *wavelet.Ledger) {
+		v := l.WithIBLT(func(filter *iblt.Filter) interface{} {
+			selfTable := filter.Clone()
 
-		err := selfTable.Sub(*peerTable)
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to diff() our IBLT w.r.t. our peers transaction IBLT.")
-			return err
+			err := selfTable.Sub(*peerTable)
+			if err != nil {
+				log.Warn().Err(err).Msg("Failed to diff() our IBLT w.r.t. our peers transaction IBLT.")
+				return err
+			}
+
+			diff, err := selfTable.Decode()
+			if err != nil {
+				log.Warn().Err(err).Msg("Failed to decode the diff. of our IBLT w.r.t. our peers transaction IBLT.")
+				return err
+			}
+
+			return diff.Added
+		})
+
+		if _, is := v.(error); !is {
+			for _, id := range v.([][]byte) {
+				tx, err := l.GetBySymbol(string(id))
+
+				if err != nil {
+					continue
+				}
+
+				wired := &wire.Transaction{
+					Sender:    tx.Sender,
+					Nonce:     tx.Nonce,
+					Parents:   tx.Parents,
+					Tag:       tx.Tag,
+					Payload:   tx.Payload,
+					Signature: tx.Signature,
+				}
+
+				res.Transactions = append(res.Transactions, wired)
+			}
 		}
-
-		diff, err := selfTable.Decode()
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to decode the diff. of our IBLT w.r.t. our peers transaction IBLT.")
-			return err
-		}
-
-		return diff.Added
 	})
-
-	if _, is := v.(error); is {
-		return res
-	}
-
-	for _, id := range v.([][]byte) {
-		tx, err := s.Ledger.GetBySymbol(string(id))
-
-		if err != nil {
-			continue
-		}
-
-		wired := &wire.Transaction{
-			Sender:    tx.Sender,
-			Nonce:     tx.Nonce,
-			Parents:   tx.Parents,
-			Tag:       tx.Tag,
-			Payload:   tx.Payload,
-			Signature: tx.Signature,
-		}
-
-		res.Transactions = append(res.Transactions, wired)
-	}
 
 	return res
 }
@@ -104,13 +105,17 @@ func (s *syncer) sync() {
 	wg := new(sync.WaitGroup)
 	wg.Add(len(peers))
 
-	v := s.Ledger.WithIBLT(func(filter *iblt.Filter) interface{} {
-		encoded, err := filter.MarshalBinary()
-		if err != nil {
-			return err
-		}
+	var v interface{}
 
-		return encoded
+	s.Ledger.Atomically(func(l *wavelet.Ledger) {
+		v = l.WithIBLT(func(filter *iblt.Filter) interface{} {
+			encoded, err := filter.MarshalBinary()
+			if err != nil {
+				return err
+			}
+
+			return encoded
+		})
 	})
 
 	if _, is := v.(error); is {
@@ -162,21 +167,30 @@ func (s *syncer) sync() {
 
 		id := graph.Symbol(wired)
 
-		if s.Ledger.TransactionExists(id) {
-			continue
-		}
+		atomicOK := false
 
-		_, successful, err := s.Ledger.RespondToQuery(wired)
-		if err != nil {
-			continue
-		}
-
-		if successful {
-			err = s.Ledger.QueueForAcceptance(id)
-
-			if err != nil {
-				continue
+		s.Ledger.Atomically(func(l *wavelet.Ledger) {
+			if l.TransactionExists(id) {
+				return
 			}
+
+			_, successful, err := l.RespondToQuery(wired)
+			if err != nil {
+				return
+			}
+
+			if successful {
+				err = l.QueueForAcceptance(id)
+				if err != nil {
+					return
+				}
+			}
+
+			atomicOK = true
+		})
+
+		if !atomicOK {
+			continue
 		}
 
 		wg.Add(1)
@@ -191,19 +205,21 @@ func (s *syncer) sync() {
 				return
 			}
 
-			tx, err := s.Ledger.GetBySymbol(id)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to find transaction which was received.")
-				return
-			}
+			s.Ledger.Atomically(func(l *wavelet.Ledger) {
+				tx, err := l.GetBySymbol(id)
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to find transaction which was received.")
+					return
+				}
 
-			err = s.Ledger.HandleSuccessfulQuery(tx)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to update conflict set for transaction received which was gossiped out.")
-				return
-			}
+				err = l.HandleSuccessfulQuery(tx)
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to update conflict set for transaction received which was gossiped out.")
+					return
+				}
 
-			atomic.AddUint64(&total, 1)
+				atomic.AddUint64(&total, 1)
+			})
 		}(wired)
 	}
 

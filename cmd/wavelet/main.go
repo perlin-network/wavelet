@@ -10,6 +10,7 @@ import (
 	"github.com/perlin-network/noise/crypto/ed25519"
 	"github.com/perlin-network/noise/network"
 	"github.com/perlin-network/noise/network/discovery"
+	wavelet2 "github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/cmd/utils"
 	"github.com/perlin-network/wavelet/log"
@@ -159,11 +160,13 @@ func main() {
 
 			switch cmd[0] {
 			case "wallet":
-				log.Info().
-					Str("id", hex.EncodeToString(wavelet.Wallet.PublicKey)).
-					Uint64("nonce", wavelet.Wallet.CurrentNonce()).
-					Uint64("balance", wavelet.Wallet.GetBalance(wavelet.Ledger)).
-					Msg("Here is your wallet information.")
+				wavelet.Ledger.Atomically(func(l *wavelet2.Ledger) {
+					log.Info().
+						Str("id", hex.EncodeToString(wavelet.Wallet.PublicKey)).
+						Uint64("nonce", wavelet.Wallet.CurrentNonce(l)).
+						Uint64("balance", wavelet.Wallet.GetBalance(l)).
+						Msg("Here is your wallet information.")
+				})
 			case "pay":
 				recipient := "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"
 				amount := 1
