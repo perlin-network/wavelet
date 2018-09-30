@@ -12,7 +12,7 @@ import (
 
 const databasePath = "cmd/testdb"
 const servicesPath = "cmd/services"
-const genesisCSV = "genesis.csv"
+const genesisCSV = "cmd/wavelet/genesis.csv"
 
 func BenchmarkLedger(b *testing.B) {
 	b.StopTimer()
