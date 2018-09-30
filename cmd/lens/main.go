@@ -1,4 +1,5 @@
-//go:generate statik -f -src=../../../lens/build -p statik -dest .
+//go:generate statik -f -src=$GOPATH/src/github.com/perlin-network/lens/build -p statik -dest .
+//go:generate go run gen.go
 
 package main
 
@@ -9,7 +10,7 @@ import (
 	"os/signal"
 	"time"
 
-	_ "github.com/perlin-network/wavelet/cmd/lens/statik"
+	"github.com/perlin-network/wavelet/cmd/lens/statik"
 	"github.com/perlin-network/wavelet/cmd/utils"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/rakyll/statik/fs"
@@ -44,6 +45,7 @@ func main() {
 		fmt.Printf("Go Version: %s\n", utils.GoVersion)
 		fmt.Printf("Git Commit: %s\n", utils.GitCommit)
 		fmt.Printf("Built: %s\n", c.App.Compiled.Format(time.ANSIC))
+		fmt.Printf("Lens Git Version: %s\n", statik.LensGitVersion)
 	}
 
 	app.Action = func(c *cli.Context) {
