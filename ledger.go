@@ -37,7 +37,6 @@ type Ledger struct {
 
 	kill chan struct{}
 
-	insidePeriodicTask     bool
 	lastUpdateAcceptedTime time.Time
 }
 
@@ -79,29 +78,14 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 	return ledger
 }
 
-func (ledger *Ledger) Init() {
-}
-
-// UpdateAcceptedTransactions incrementally from the root of the graph updates whether
-// or not all transactions this node knows about are accepted.
-//
-// The graph will be incrementally checked for updates periodically. Ideally, you should
-// execute this function in a new goroutine.
-
-func (ledger *Ledger) RunPeriodicTasks() {
-	if ledger.insidePeriodicTask {
-		return
-	}
-
-	ledger.insidePeriodicTask = true
-
+// Step will perform one single time step of all periodic tasks within the ledger.
+func (ledger *Ledger) Step() {
 	current := time.Now()
-	if current.Sub(ledger.lastUpdateAcceptedTime) > params.GraphUpdatePeriod {
+
+	if current.Sub(ledger.lastUpdateAcceptedTime) >= params.GraphUpdatePeriod {
 		ledger.updateAcceptedTransactions()
 		ledger.lastUpdateAcceptedTime = current
 	}
-
-	ledger.insidePeriodicTask = false
 }
 
 // WasAccepted returns whether or not a transaction given by its symbol was stored to be accepted
@@ -126,7 +110,7 @@ func (ledger *Ledger) QueueForAcceptance(symbol string) error {
 	return ledger.Put(merge(BucketAcceptPending, writeBytes(symbol)), []byte{0})
 }
 
-// updateAcceptedTransactions incrementally from the root of the graph updates whether
+// UpdateAcceptedTransactions incrementally from the root of the graph updates whether
 // or not all transactions this node knows about are accepted.
 func (ledger *Ledger) updateAcceptedTransactions() {
 	// If there are no accepted transactions and none are pending, add the very first transaction.

@@ -23,7 +23,6 @@ func BenchmarkLedger(b *testing.B) {
 	}
 
 	ledger := NewLedger(databasePath, servicesPath)
-	ledger.Init()
 
 	defer os.RemoveAll(databasePath)
 	defer ledger.Graph.Cleanup()
@@ -65,6 +64,6 @@ func BenchmarkLedger(b *testing.B) {
 			b.Fatal(err)
 		}
 
-		ledger.RunPeriodicTasks()
+		ledger.Step()
 	}
 }
