@@ -5,45 +5,48 @@ import (
 	"sync"
 )
 
-type LedgerLoop struct {
-	ledgerLock sync.Mutex
-	ledger     *Ledger
-	taskQueue  chan *LedgerTask
+// eventLoop provides an event loop to reduce mutex contention for a *Ledger instance.
+type eventLoop struct {
+	sync.Mutex
+	ledger    *Ledger
+	taskQueue chan *task
 }
 
-type LedgerLoopHandle struct {
-	taskQueue chan *LedgerTask
+// LoopHandle provides a handle to an existing, running event loop.
+type LoopHandle struct {
+	taskQueue chan *task
 }
 
-type LedgerTask struct {
-	handle     *LedgerLoopHandle
-	chain      []func(task *LedgerTask, ledger *Ledger) bool
+// task is a single job to be executed on an event loop.
+type task struct {
+	handle     *LoopHandle
+	chain      []func(task *task, ledger *Ledger) bool
 	lastResult interface{}
 	completion chan struct{}
 }
 
-func NewLoop(ledger *Ledger) *LedgerLoop {
-	return &LedgerLoop{
+func NewEventLoop(ledger *Ledger) *eventLoop {
+	return &eventLoop{
 		ledger:    ledger,
-		taskQueue: make(chan *LedgerTask, 4096),
+		taskQueue: make(chan *task, 4096),
 	}
 }
 
-func (l *LedgerLoop) RunForever() {
+func (l *eventLoop) RunForever() {
 	for t := range l.taskQueue {
-		l.ledgerLock.Lock()
+		l.Lock()
 		t.step(l.ledger)
-		l.ledgerLock.Unlock()
+		l.Unlock()
 	}
 }
 
-func (l *LedgerLoop) Handle() *LedgerLoopHandle {
-	return &LedgerLoopHandle{
+func (l *eventLoop) Handle() *LoopHandle {
+	return &LoopHandle{
 		taskQueue: l.taskQueue,
 	}
 }
 
-func (l *LedgerLoopHandle) submit(task *LedgerTask) error {
+func (l *LoopHandle) submit(task *task) error {
 	select {
 	case l.taskQueue <- task:
 		return nil
@@ -52,26 +55,26 @@ func (l *LedgerLoopHandle) submit(task *LedgerTask) error {
 	}
 }
 
-func (l *LedgerLoopHandle) Atomically(f func(ledger *Ledger)) {
-	l.Task().Push(func(_ *LedgerTask, ledger *Ledger) bool {
+func (l *LoopHandle) Do(f func(ledger *Ledger)) {
+	l.Task().Push(func(_ *task, ledger *Ledger) bool {
 		f(ledger)
 		return true
 	}).Resume(nil).Wait()
 }
 
-func (l *LedgerLoopHandle) Task() *LedgerTask {
-	return &LedgerTask{
+func (l *LoopHandle) Task() *task {
+	return &task{
 		handle:     l,
 		completion: make(chan struct{}),
 	}
 }
 
-func (t *LedgerTask) Push(f func(task *LedgerTask, ledger *Ledger) bool) *LedgerTask {
+func (t *task) Push(f func(task *task, ledger *Ledger) bool) *task {
 	t.chain = append(t.chain, f)
 	return t
 }
 
-func (t *LedgerTask) step(ledger *Ledger) {
+func (t *task) step(ledger *Ledger) {
 	if len(t.chain) == 0 {
 		return
 	}
@@ -89,12 +92,12 @@ func (t *LedgerTask) step(ledger *Ledger) {
 	}
 }
 
-func (t *LedgerTask) Resume(result interface{}) *LedgerTask {
+func (t *task) Resume(result interface{}) *task {
 	t.lastResult = result
 	t.handle.submit(t)
 	return t
 }
 
-func (t *LedgerTask) Wait() {
+func (t *task) Wait() {
 	<-t.completion
 }

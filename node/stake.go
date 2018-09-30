@@ -26,7 +26,7 @@ func (s stake) weigh(peers []peer.ID, responses []bool, tx *wire.Transaction) (p
 	for _, peer := range peers {
 		stake := uint64(minimumStake)
 
-		s.Ledger.Atomically(func(l *wavelet.Ledger) {
+		s.Ledger.Do(func(l *wavelet.Ledger) {
 			account, err := l.LoadAccount(peer.PublicKey)
 			if err == nil {
 				if val, exists := account.Load("stake"); exists {

@@ -29,7 +29,7 @@ type Wavelet struct {
 	net    *network.Network
 	routes *dht.RoutingTable
 
-	Ledger *wavelet.LedgerLoopHandle
+	Ledger *wavelet.LoopHandle
 	Wallet *wavelet.Wallet
 
 	opts Options
@@ -52,9 +52,11 @@ func (w *Wavelet) Startup(net *network.Network) {
 
 	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath)
 	ledger.Init()
-	ledgerLoop := wavelet.NewLoop(ledger)
-	go ledgerLoop.RunForever()
-	w.Ledger = ledgerLoop.Handle()
+
+	loop := wavelet.NewEventLoop(ledger)
+	go loop.RunForever()
+
+	w.Ledger = loop.Handle()
 
 	w.Wallet = wavelet.NewWallet(net.GetKeys())
 
@@ -75,14 +77,17 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 		}
 
 		id := graph.Symbol(msg)
+
 		var existed bool
-		w.Ledger.Atomically(func(l *wavelet.Ledger) {
+
+		w.Ledger.Do(func(l *wavelet.Ledger) {
 			existed = l.TransactionExists(id)
 		})
 
 		if existed {
 			var successful bool
-			w.Ledger.Atomically(func(l *wavelet.Ledger) {
+
+			w.Ledger.Do(func(l *wavelet.Ledger) {
 				successful = l.IsStronglyPreferred(id)
 
 				if successful && !l.WasAccepted(id) {
@@ -106,7 +111,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 		} else {
 			var successful bool
 			var err error
-			w.Ledger.Atomically(func(l *wavelet.Ledger) {
+			w.Ledger.Do(func(l *wavelet.Ledger) {
 				_, successful, err = l.RespondToQuery(msg)
 				if err == nil && successful {
 					err = l.QueueForAcceptance(id)
@@ -136,7 +141,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				}
 
 				var tx *database.Transaction
-				w.Ledger.Atomically(func(l *wavelet.Ledger) {
+				w.Ledger.Do(func(l *wavelet.Ledger) {
 					tx, err = l.GetBySymbol(id)
 					if err == nil {
 						err = l.HandleSuccessfulQuery(tx)
@@ -162,7 +167,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 func (w *Wavelet) Cleanup(net *network.Network) {
 	w.syncer.kill <- struct{}{}
 
-	w.Ledger.Atomically(func(l *wavelet.Ledger) {
+	w.Ledger.Do(func(l *wavelet.Ledger) {
 		err := l.Graph.Cleanup()
 
 		if err != nil {

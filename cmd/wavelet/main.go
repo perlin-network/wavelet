@@ -161,7 +161,7 @@ func main() {
 
 			switch cmd[0] {
 			case "wallet":
-				w.Ledger.Atomically(func(l *wavelet.Ledger) {
+				w.Ledger.Do(func(l *wavelet.Ledger) {
 					log.Info().
 						Str("id", hex.EncodeToString(w.Wallet.PublicKey)).
 						Uint64("nonce", w.Wallet.CurrentNonce(l)).

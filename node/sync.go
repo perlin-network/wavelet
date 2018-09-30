@@ -36,7 +36,7 @@ func (s *syncer) RespondToSync(req *SyncRequest) *SyncResponse {
 	var diff *iblt.Diff
 	var err error
 
-	s.Ledger.Atomically(func(l *wavelet.Ledger) {
+	s.Ledger.Do(func(l *wavelet.Ledger) {
 		selfTable := l.IBLT.Clone()
 
 		err = selfTable.Sub(*peerTable)
@@ -108,7 +108,7 @@ func (s *syncer) sync() {
 
 	var encoded []byte
 
-	s.Ledger.Atomically(func(l *wavelet.Ledger) {
+	s.Ledger.Do(func(l *wavelet.Ledger) {
 		encoded, err = l.IBLT.MarshalBinary()
 	})
 
@@ -163,7 +163,7 @@ func (s *syncer) sync() {
 
 		atomicOK := false
 
-		s.Ledger.Atomically(func(l *wavelet.Ledger) {
+		s.Ledger.Do(func(l *wavelet.Ledger) {
 			if l.TransactionExists(id) {
 				return
 			}
@@ -199,7 +199,7 @@ func (s *syncer) sync() {
 				return
 			}
 
-			s.Ledger.Atomically(func(l *wavelet.Ledger) {
+			s.Ledger.Do(func(l *wavelet.Ledger) {
 				tx, err := l.GetBySymbol(id)
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to find transaction which was received.")

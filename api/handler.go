@@ -54,7 +54,7 @@ func (s *service) listTransactionHandler(ctx *requestContext) {
 
 	err := ctx.readJSON(&paginate)
 
-	s.wavelet.Ledger.Atomically(func(ledger *wavelet.Ledger) {
+	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
 		// If there are errors in reading the JSON, return the last 50 transactions.
 		if err != nil || (paginate.Offset == nil || paginate.Limit == nil) {
 			limit := uint64(50)
@@ -114,7 +114,7 @@ func (s *service) pollTransactionHandler(ctx *requestContext) {
 		var tx *database.Transaction
 		var err error
 
-		s.wavelet.Ledger.Atomically(func(ledger *wavelet.Ledger) {
+		s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
 			tx, err = ledger.GetBySymbol(txID)
 		})
 
@@ -172,7 +172,7 @@ func (s *service) ledgerStateHandler(ctx *requestContext) {
 		Peers:     routes.GetPeerAddresses(),
 	}
 
-	s.wavelet.Ledger.Atomically(func(ledger *wavelet.Ledger) {
+	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
 		state.State = ledger.Snapshot()
 	})
 
@@ -256,7 +256,7 @@ func (s *service) loadAccountHandler(ctx *requestContext) {
 
 	var account *wavelet.Account
 
-	s.wavelet.Ledger.Atomically(func(ledger *wavelet.Ledger) {
+	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
 		account, err = ledger.LoadAccount(accountID)
 	})
 
