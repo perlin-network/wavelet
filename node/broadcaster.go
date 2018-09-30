@@ -106,6 +106,7 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 	b.Ledger.Atomically(func(l *wavelet.Ledger) {
 		err = l.HandleSuccessfulQuery(tx)
 	})
+
 	if err != nil {
 		log.Warn().Err(err).Msg("Failed to process our transaction which was successfully queried.")
 		return
@@ -130,13 +131,6 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 				shouldReturn = true
 				return
 			}
-
-			nop = b.MakeTransaction("nop", nil)
-
-			nopID, successful, err = l.RespondToQuery(nop)
-			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to insert our nop into the ledger.")
-			}
 		})
 
 		if shouldBreak {
@@ -146,6 +140,16 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 		if shouldReturn {
 			return
 		}
+
+		nop = b.MakeTransaction("nop", nil)
+
+		b.Ledger.Atomically(func(l *wavelet.Ledger) {
+			nopID, successful, err = l.RespondToQuery(nop)
+
+			if err != nil {
+				log.Fatal().Err(err).Msg("Failed to insert our nop into the ledger.")
+			}
+		})
 
 		if !successful {
 			continue

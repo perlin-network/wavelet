@@ -16,6 +16,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/rs/cors"
+	"net/http/pprof"
 )
 
 // service represents a service.
@@ -102,6 +103,13 @@ func (c *requestContext) loadSession() bool {
 // init registers routes to the HTTP serve mux.
 func (s *service) init(mux *http.ServeMux) {
 	mux.Handle("/debug/vars", http.DefaultServeMux)
+
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
 	mux.HandleFunc("/session/init", s.wrap(s.sessionInitHandler))
 	mux.HandleFunc("/ledger/state", s.wrap(s.ledgerStateHandler))
 	mux.HandleFunc("/transaction/list", s.wrap(s.listTransactionHandler))
