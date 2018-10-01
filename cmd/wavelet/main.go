@@ -6,25 +6,41 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/perlin-network/graph/graph"
-	"github.com/perlin-network/noise/crypto"
-	"github.com/perlin-network/noise/crypto/ed25519"
-	"github.com/perlin-network/noise/network"
-	"github.com/perlin-network/noise/network/discovery"
-	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/api"
-	"github.com/perlin-network/wavelet/cmd/utils"
-	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/node"
-	"github.com/perlin-network/wavelet/security"
-	"github.com/urfave/cli"
 	"io/ioutil"
 	"os"
 	"os/signal"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/api"
+	"github.com/perlin-network/wavelet/cmd/utils"
+	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/node"
+	"github.com/perlin-network/wavelet/security"
+
+	"github.com/perlin-network/graph/graph"
+	"github.com/perlin-network/noise/crypto"
+	"github.com/perlin-network/noise/crypto/ed25519"
+	"github.com/perlin-network/noise/network"
+	"github.com/perlin-network/noise/network/discovery"
+
+	"gopkg.in/urfave/cli.v1"
+	"gopkg.in/urfave/cli.v1/altsrc"
 )
+
+type ClientConfig struct {
+	Database   string   `toml:"database"`
+	Peers      []string `toml:"peers"`
+	Port       uint16   `toml:"port"`
+	PrivateKey string   `toml:"private_key"`
+}
+
+type Config struct {
+	API    *api.Options  `toml:"api"`
+	Client *ClientConfig `toml:"client"`
+}
 
 func main() {
 	app := cli.NewApp()
@@ -35,39 +51,44 @@ func main() {
 	app.Version = utils.Version
 	app.Usage = "a bleeding fast ledger with a powerful compute layer"
 
+	// alternate names breaks loading from a config
 	app.Flags = []cli.Flag{
-		cli.StringFlag{
-			Name:  "host, address",
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:  "host",
 			Value: "localhost",
 			Usage: "Listen for peers on host address `HOST`.",
-		},
-		cli.UintFlag{
-			Name:  "port, p",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "port",
 			Value: 3000,
 			Usage: "Listen for peers on port `PORT`.",
-		},
-		cli.UintFlag{
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "api",
 			Usage: "Host a local HTTP API at port `API_PORT`.",
-		},
-		cli.StringFlag{
-			Name:  "database, db",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:  "db",
 			Value: "testdb",
 			Usage: "Load/initialize LevelDB store from `DB_PATH`.",
-		},
-		cli.StringFlag{
-			Name:  "services, s",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:  "services",
 			Value: "services",
 			Usage: "Load WebAssembly transaction processor services from `SERVICES_PATH`.",
-		},
-		cli.StringFlag{
-			Name:  "privkey, sk",
-			Value: "6d6fe0c2bc913c0e3e497a0328841cf4979f932e01d2030ad21e649fca8d47fe71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:  "privkey",
+			Value: "random",
 			Usage: "Set the node's private key to be `PRIVATE_KEY`. Leave `PRIVATE_KEY` = 'random' if you want to randomly generate one.",
-		},
-		cli.StringSliceFlag{
-			Name:  "nodes, peers, n",
+		}),
+		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
+			Name:  "peers",
 			Usage: "Bootstrap to peers whose address are formatted as tcp://[host]:[port] from `PEER_NODES`.",
+		}),
+		cli.StringFlag{
+			Name:  "config, c",
+			Usage: "Wavelet configuration file.",
 		},
 	}
 
@@ -80,6 +101,12 @@ func main() {
 
 	app.Action = func(c *cli.Context) {
 		privateKey := c.String("privkey")
+		host := c.String("host")
+		port := uint16(c.Uint("port"))
+		databasePath := c.String("db")
+		servicesPath := c.String("services")
+		peers := c.StringSlice("peers")
+		apiPort := c.Uint("api")
 
 		if privateKey == "random" {
 			privateKey = ed25519.RandomKeyPair().PrivateKeyHex()
@@ -91,14 +118,14 @@ func main() {
 		}
 
 		w := node.NewPlugin(node.Options{
-			DatabasePath: c.String("db"),
-			ServicesPath: c.String("services"),
+			DatabasePath: databasePath,
+			ServicesPath: servicesPath,
 		})
 
 		builder := network.NewBuilder()
 
 		builder.SetKeys(keys)
-		builder.SetAddress(network.FormatAddress("tcp", c.String("host"), uint16(c.Uint("port"))))
+		builder.SetAddress(network.FormatAddress("tcp", host, port))
 
 		builder.AddPlugin(new(discovery.Plugin))
 		builder.AddPlugin(w)
@@ -112,13 +139,13 @@ func main() {
 
 		net.BlockUntilListening()
 
-		if peers := c.StringSlice("peers"); len(peers) > 0 {
+		if len(peers) > 0 {
 			net.Bootstrap(peers...)
 		}
 
-		if port := c.Uint("api"); port > 0 {
+		if apiPort > 0 {
 			go api.Run(net, api.Options{
-				ListenAddr: fmt.Sprintf("%s:%d", c.String("host"), port),
+				ListenAddr: fmt.Sprintf("%s:%d", host, apiPort),
 				Clients: []*api.ClientInfo{
 					{
 						PublicKey: net.ID.PublicKeyHex(),
@@ -133,7 +160,7 @@ func main() {
 
 			log.Info().
 				Str("host", c.String("host")).
-				Uint("port", port).
+				Uint("port", apiPort).
 				Msg("Local HTTP API is being served.")
 		}
 
@@ -231,6 +258,14 @@ func main() {
 			}
 		}
 	}
+
+	app.Before = altsrc.InitInputSourceWithContext(app.Flags, func(c *cli.Context) (altsrc.InputSourceContext, error) {
+		filePath := c.String("config")
+		if filePath != "" {
+			return altsrc.NewTomlSourceFromFile(filePath)
+		}
+		return &altsrc.MapInputSource{}, nil
+	})
 
 	err := app.Run(os.Args)
 	if err != nil {
