@@ -4,7 +4,7 @@ import "fmt"
 
 const sessionInitSigningPrefix = "perlin_session_init_"
 
-type credentials struct {
+type Credentials struct {
 	PublicKey  string
 	TimeMillis int64
 	Sig        string

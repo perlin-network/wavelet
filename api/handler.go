@@ -253,7 +253,7 @@ func (s *service) loadAccountHandler(ctx *requestContext) {
 
 // sessionInitHandler initialize a session.
 func (s *service) sessionInitHandler(ctx *requestContext) {
-	var credentials credentials
+	var credentials Credentials
 	if err := ctx.readJSON(&credentials); err != nil {
 		return
 	}
