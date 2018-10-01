@@ -57,12 +57,12 @@ func (s *service) listTransactionHandler(ctx *requestContext) {
 	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
 		// If there are errors in reading the JSON, return the last 50 transactions.
 		if err != nil || (paginate.Offset == nil || paginate.Limit == nil) {
-			limit := uint64(50)
-			if limit > ledger.NumTransactions() {
-				limit = ledger.NumTransactions()
+			total, limit := ledger.NumTransactions(), uint64(50)
+			if limit > total {
+				limit = total
 			}
 
-			offset := ledger.NumTransactions() - limit
+			offset := total - limit
 
 			paginate.Limit = &limit
 			paginate.Offset = &offset
