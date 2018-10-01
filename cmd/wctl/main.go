@@ -29,12 +29,12 @@ func main() {
 		cli.StringFlag{
 			Name:  "remote, r",
 			Value: "localhost:3001",
-			Usage: "remote address `HOST`.",
+			Usage: "remote address `REMOTE`.",
 		},
 		cli.StringFlag{
-			Name:  "privkey, p",
+			Name:  "privkey, k",
 			Value: "",
-			Usage: "private key (hex) `PORT`.",
+			Usage: "private key (hex) `KEY`.",
 		},
 	}
 
