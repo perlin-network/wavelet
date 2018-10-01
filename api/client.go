@@ -1,4 +1,4 @@
-package main
+package api
 
 import (
 	"bytes"
@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/security"
 )
 
@@ -30,7 +29,7 @@ type ClientConfig struct {
 
 // SessionResponse represents the response from a session call
 type SessionResponse struct {
-	Token string  `json:"token"`
+	Token string `json:"token"`
 }
 
 // NewClient creates a new Perlin Ledger client from a config.
@@ -49,10 +48,10 @@ func NewClient(config ClientConfig) (*Client, error) {
 // Init will initialize a client.
 func (c *Client) Init() error {
 	millis := time.Now().Unix() * 1000
-	authStr := fmt.Sprintf("%s%d", api.SessionInitSigningPrefix, millis)
+	authStr := fmt.Sprintf("%s%d", sessionInitSigningPrefix, millis)
 	sig := security.Sign(c.KeyPair.PrivateKey, []byte(authStr))
 
-	creds := api.Credentials{
+	creds := credentials{
 		PublicKey:  hex.EncodeToString(c.KeyPair.PublicKey),
 		TimeMillis: millis,
 		Sig:        hex.EncodeToString(sig),

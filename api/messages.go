@@ -2,9 +2,9 @@ package api
 
 import "fmt"
 
-const SessionInitSigningPrefix = "perlin_session_init_"
+const sessionInitSigningPrefix = "perlin_session_init_"
 
-type Credentials struct {
+type credentials struct {
 	PublicKey  string
 	TimeMillis int64
 	Sig        string

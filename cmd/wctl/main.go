@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/cmd/utils"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/urfave/cli"
@@ -59,7 +60,7 @@ func runAction(c *cli.Context) {
 		log.Fatal().Msg("remote flag is missing")
 	}
 
-	client, err := NewClient(ClientConfig{
+	client, err := api.NewClient(api.ClientConfig{
 		RemoteAddr: remoteAddr,
 		PrivateKey: privateKey,
 		UseHTTPS:   false,

@@ -253,7 +253,7 @@ func (s *service) loadAccountHandler(ctx *requestContext) {
 
 // sessionInitHandler initialize a session.
 func (s *service) sessionInitHandler(ctx *requestContext) {
-	var credentials Credentials
+	var credentials credentials
 	if err := ctx.readJSON(&credentials); err != nil {
 		return
 	}
@@ -286,7 +286,7 @@ func (s *service) sessionInitHandler(ctx *requestContext) {
 		return
 	}
 
-	expected := fmt.Sprintf("%s%d", SessionInitSigningPrefix, credentials.TimeMillis)
+	expected := fmt.Sprintf("%s%d", sessionInitSigningPrefix, credentials.TimeMillis)
 
 	if !security.Verify(rawPublicKey, []byte(expected), rawSignature) {
 		ctx.WriteJSON(http.StatusForbidden, "signature verification failed")
