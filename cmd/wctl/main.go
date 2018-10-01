@@ -54,7 +54,7 @@ func main() {
 
 func runAction(c *cli.Context) {
 	remoteAddr := c.String("remote")
-	privateKey := c.String("privKey")
+	privateKey := c.String("privkey")
 
 	if len(remoteAddr) == 0 {
 		log.Fatal().Msg("remote flag is missing")
@@ -87,30 +87,27 @@ func runAction(c *cli.Context) {
 
 	switch cmd[0] {
 	case "wallet":
-		recipient := "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"
-		if len(cmd) >= 2 {
-			recipient = cmd[1]
+		if len(cmd) != 2 {
+			log.Fatal().Msg("wallet expected 1 argument: wallet [address]")
 		}
+
+		recipient := cmd[1]
 		var ret map[string][]byte
 		if err := client.Request("/account/load", recipient, &ret); err != nil {
 			log.Fatal().Err(err).Msg("")
 		}
-		log.Info().Msgf("Here is your wallet information: %v", ret)
+		log.Info().Msgf("Wallet information: %v", ret)
 	case "pay":
-
 		tag := "transfer"
-		recipient := "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"
-		amount := 1
 
-		if len(cmd) >= 2 {
-			recipient = cmd[1]
+		if len(cmd) != 3 {
+			log.Fatal().Msg("transfer expected 2 arguments: transfer [recipient] [amount]")
 		}
 
-		if len(cmd) >= 3 {
-			amount, err = strconv.Atoi(cmd[2])
-			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to convert payment amount to an uint64.")
-			}
+		recipient := cmd[1]
+		amount, err := strconv.Atoi(cmd[2])
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to convert payment amount to an uint64.")
 		}
 
 		transfer := struct {
@@ -136,11 +133,11 @@ func runAction(c *cli.Context) {
 			log.Fatal().Err(err).Msg("Failed to send pay command.")
 		}
 	case "contract":
-		contractPath := ""
-
-		if len(cmd) < 2 {
-			contractPath = cmd[1]
+		if len(cmd) != 3 {
+			log.Fatal().Msg("contract expected 1 argument: contract [path]")
 		}
+
+		contractPath := cmd[1]
 
 		bytes, err := ioutil.ReadFile(contractPath)
 		if err != nil {
