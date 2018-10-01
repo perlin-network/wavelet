@@ -64,8 +64,12 @@ func main() {
 			Usage: "Listen for peers on port `PORT`.",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "api",
+			Name:  "api.port",
 			Usage: "Host a local HTTP API at port `API_PORT`.",
+		}),
+		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
+			Name:  "api.clients.public_key",
+			Usage: "The public keys with access to your wavelet client's API.",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "db",
@@ -106,7 +110,10 @@ func main() {
 		databasePath := c.String("db")
 		servicesPath := c.String("services")
 		peers := c.StringSlice("peers")
-		apiPort := c.Uint("api")
+		apiPort := c.Uint("api.port")
+		apiPublicKeys := c.StringSlice("peers")
+
+		log.Info().Interface("pub_keys:", apiPublicKeys).Msg("")
 
 		if privateKey == "random" {
 			privateKey = ed25519.RandomKeyPair().PrivateKeyHex()
