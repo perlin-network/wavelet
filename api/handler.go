@@ -286,7 +286,7 @@ func (s *service) sessionInitHandler(ctx *requestContext) {
 		return
 	}
 
-	expected := fmt.Sprintf("%s%d", sessionInitSigningPrefix, credentials.TimeMillis)
+	expected := fmt.Sprintf("%s%d", SessionInitSigningPrefix, credentials.TimeMillis)
 
 	if !security.Verify(rawPublicKey, []byte(expected), rawSignature) {
 		ctx.WriteJSON(http.StatusForbidden, "signature verification failed")
