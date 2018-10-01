@@ -126,6 +126,7 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 			}
 
 			confidence := l.CountAscendants(id, system.Beta2+1)
+
 			if confidence > system.Beta2 {
 				log.Error().Msg("Failed to get our transaction accepted in spite of broadcasting > Beta2 nops.")
 				shouldReturn = true
@@ -195,5 +196,5 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 	}
 
 	stats.SetConsensusDuration(time.Now().Sub(start).Seconds())
-	log.Debug().Str("id", id).Interface("tx", wired).Msg("Successfully broadcasted transaction.")
+	log.Debug().Str("id", id).Str("tag", wired.Tag).Msg("Successfully broadcasted transaction.")
 }

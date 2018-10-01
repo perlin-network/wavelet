@@ -9,6 +9,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
 	"sync"
+	"time"
 )
 
 const (
@@ -65,11 +66,15 @@ func (s *service) Run(tx *database.Transaction) ([]*Delta, []*database.Transacti
 	s.accounts = make(map[string]map[string][]byte)
 	s.account = nil
 
+	start := time.Now()
+
 	ret, err := s.vm.Run(s.entry)
 	if err != nil {
 		s.vm.PrintStackTrace()
 		panic(errors.Errorf("Transaction processor [%s] panicked during handling tx: %+v", s.name, tx))
 	}
+
+	log.Debug().TimeDiff("duration", time.Now(), start).Msgf("Executed service %s.", s.name)
 
 	switch uint32(ret) {
 	case InternalProcessErr:

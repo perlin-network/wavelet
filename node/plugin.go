@@ -98,7 +98,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				}
 			})
 
-			log.Debug().Str("id", id).Interface("tx", msg).Msgf("Received a transaction, and voted '%t' for it.", successful)
+			log.Debug().Str("id", id).Str("tag", msg.Tag).Msgf("Received an existing transaction, and voted '%t' for it.", successful)
 
 			res := &QueryResponse{Id: id, StronglyPreferred: successful}
 
@@ -121,7 +121,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				return err
 			}
 
-			log.Debug().Str("id", id).Interface("tx", msg).Msgf("Received a transaction, and voted '%t' for it.", successful)
+			log.Debug().Str("id", id).Str("tag", msg.Tag).Msgf("Received a new transaction, and voted '%t' for it.", successful)
 
 			res := &QueryResponse{Id: id, StronglyPreferred: successful}
 
