@@ -18,6 +18,7 @@ var PluginID = (*Wavelet)(nil)
 type Options struct {
 	DatabasePath string
 	ServicesPath string
+	GenesisCSV string
 }
 
 type Wavelet struct {
@@ -49,7 +50,7 @@ func (w *Wavelet) Startup(net *network.Network) {
 
 	w.routes = plugin.(*discovery.Plugin).Routes
 
-	w.Ledger = wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath)
+	w.Ledger = wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath, w.opts.GenesisCSV)
 	w.Ledger.Init()
 
 	w.Wallet = wavelet.NewWallet(net.GetKeys(), w.Ledger.Store)

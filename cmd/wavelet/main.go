@@ -86,6 +86,11 @@ func main() {
 			Value: "random",
 			Usage: "Set the node's private key to be `PRIVATE_KEY`. Leave `PRIVATE_KEY` = 'random' if you want to randomly generate one.",
 		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:  "genesis",
+			Value: "genesis.csv",
+			Usage: "CSV file containing account data to initialize the ledger from `GENESIS_CSV`.",
+		}),
 		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
 			Name:  "peers",
 			Usage: "Bootstrap to peers whose address are formatted as tcp://[host]:[port] from `PEER_NODES`.",
@@ -109,6 +114,7 @@ func main() {
 		port := uint16(c.Uint("port"))
 		databasePath := c.String("db")
 		servicesPath := c.String("services")
+		genesisPath := c.String("genesis")
 		peers := c.StringSlice("peers")
 		apiPort := c.Uint("api.port")
 		apiPublicKeys := c.StringSlice("api.clients.public_key")
@@ -127,6 +133,7 @@ func main() {
 		w := node.NewPlugin(node.Options{
 			DatabasePath: databasePath,
 			ServicesPath: servicesPath,
+			GenesisCSV:   genesisPath,
 		})
 
 		builder := network.NewBuilder()

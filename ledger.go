@@ -40,7 +40,7 @@ type Ledger struct {
 	kill chan struct{}
 }
 
-func NewLedger(databasePath, servicesPath string) *Ledger {
+func NewLedger(databasePath, servicesPath string, genesisCSV string) *Ledger {
 	store := database.New(databasePath)
 
 	graph := graph.New(store)
@@ -58,7 +58,13 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 	ledger.rpc = rpc{Ledger: ledger}
 
 	if store.Size(BucketAccounts) == 0 {
-		BIGBANG(ledger)
+		genesis, err := LoadGenesisTransaction(genesisCSV)
+		if err != nil {
+			log.Error().Err(err).Msgf("Unable to load genesis from file %s", genesisCSV)
+		} else {
+			ApplyGenesisTransactions(ledger, genesis)
+			log.Info().Str("csv", genesisCSV).Int("NumAccounts", len(genesis)).Msg("Loaded genesis csv.")
+		}
 	}
 
 	ledger.iblt = iblt.New(params.TxK, params.TxL)
