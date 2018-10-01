@@ -111,7 +111,7 @@ func main() {
 		servicesPath := c.String("services")
 		peers := c.StringSlice("peers")
 		apiPort := c.Uint("api.port")
-		apiPublicKeys := c.StringSlice("peers")
+		apiPublicKeys := c.StringSlice("api.clients.public_key")
 
 		log.Info().Interface("pub_keys:", apiPublicKeys).Msg("")
 
@@ -151,18 +151,21 @@ func main() {
 		}
 
 		if apiPort > 0 {
+			clients := []*api.ClientInfo{}
+			for _, key := range apiPublicKeys {
+				client := &api.ClientInfo{
+					PublicKey: key,
+					Permissions: api.ClientPermissions{
+						CanSendTransaction: true,
+						CanPollTransaction: true,
+						CanControlStats:    true,
+					},
+				}
+				clients = append(clients, client)
+			}
 			go api.Run(net, api.Options{
 				ListenAddr: fmt.Sprintf("%s:%d", host, apiPort),
-				Clients: []*api.ClientInfo{
-					{
-						PublicKey: net.ID.PublicKeyHex(),
-						Permissions: api.ClientPermissions{
-							CanSendTransaction: true,
-							CanPollTransaction: true,
-							CanControlStats:    true,
-						},
-					},
-				},
+				Clients:    clients,
 			})
 
 			log.Info().
