@@ -37,6 +37,7 @@ type Ledger struct {
 
 	kill chan struct{}
 
+	stepping               bool
 	lastUpdateAcceptedTime time.Time
 }
 
@@ -80,12 +81,20 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 
 // Step will perform one single time step of all periodic tasks within the ledger.
 func (ledger *Ledger) Step(force bool) {
+	if ledger.stepping {
+		return
+	}
+
+	ledger.stepping = true
+
 	current := time.Now()
 
 	if force || current.Sub(ledger.lastUpdateAcceptedTime) >= params.GraphUpdatePeriod {
 		ledger.updateAcceptedTransactions()
 		ledger.lastUpdateAcceptedTime = current
 	}
+
+	ledger.stepping = false
 }
 
 // WasAccepted returns whether or not a transaction given by its symbol was stored to be accepted

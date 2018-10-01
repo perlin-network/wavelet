@@ -397,12 +397,13 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessErr) // a contract cannot create another one
 				}
 
-				contractID := ContractID(s.tx.Id)
+				contractID := string(ContractID(s.tx.Id))
 
-				contractAccount := NewAccount(contractID)
-				contractAccount.Store("contract_code", code)
+				if s.accounts[contractID] == nil {
+					s.accounts[contractID] = make(map[string][]byte)
+				}
 
-				s.state.SaveAccount(contractAccount, nil)
+				s.accounts[contractID]["contract_code"] = code
 
 				return int64(InternalProcessOk)
 			}

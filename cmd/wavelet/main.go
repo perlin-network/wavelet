@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -160,7 +161,7 @@ func main() {
 			cmd := strings.Split(string(bytes), " ")
 
 			switch cmd[0] {
-			case "wallet":
+			case "w":
 				w.Ledger.Do(func(l *wavelet.Ledger) {
 					log.Info().
 						Str("id", hex.EncodeToString(w.Wallet.PublicKey)).
@@ -168,7 +169,38 @@ func main() {
 						Uint64("balance", w.Wallet.GetBalance(l)).
 						Msg("Here is your wallet information.")
 				})
-			case "pay":
+			case "a":
+				if len(cmd) < 2 {
+					continue
+				}
+
+				accountID, err := hex.DecodeString(cmd[1])
+
+				if err != nil {
+					log.Error().Msg("The account ID you specified is invalid.")
+					continue
+				}
+
+				w.Ledger.Do(func(l *wavelet.Ledger) {
+					account, err := l.LoadAccount(accountID)
+
+					if err != nil {
+						log.Error().Msg("There is no account with that ID in the database.")
+						return
+					}
+
+					balance, exists := account.Load("balance")
+					if !exists {
+						log.Error().Msg("The account has no balance associated to it.")
+						return
+					}
+
+					log.Info().
+						Uint64("nonce", account.Nonce).
+						Uint64("balance", binary.LittleEndian.Uint64(balance)).
+						Msgf("Account Info: %s", cmd[1])
+				})
+			case "p":
 				recipient := "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"
 				amount := 1
 
@@ -198,7 +230,7 @@ func main() {
 
 				wired := w.MakeTransaction("transfer", payload)
 				w.BroadcastTransaction(wired)
-			case "contract":
+			case "c":
 				if len(cmd) < 2 {
 					continue
 				}
