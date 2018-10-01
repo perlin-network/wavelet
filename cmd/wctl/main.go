@@ -91,10 +91,10 @@ func runAction(c *cli.Context) {
 			recipient = cmd[1]
 		}
 		var ret map[string][]byte
-		if err := c.Request("/account/load", id, &ret); err != nil {
-
+		if err := client.Request("/account/load", recipient, &ret); err != nil {
+			log.Fatal().Err(err).Msg("")
 		}
-		log.Fatal().Msg("TODO: not implemented")
+		log.Info().Msgf("Here is your wallet information: %v", ret)
 	case "pay":
 
 		tag := "transfer"
@@ -135,15 +135,10 @@ func runAction(c *cli.Context) {
 			log.Fatal().Err(err).Msg("Failed to send pay command.")
 		}
 	case "contract":
-		recipient := "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"
 		contractPath := ""
 
 		if len(cmd) < 2 {
-			recipient = cmd[1]
-		}
-
-		if len(cmd) >= 3 {
-			contractPath = cmd[2]
+			contractPath = cmd[1]
 		}
 
 		bytes, err := ioutil.ReadFile(contractPath)
@@ -165,7 +160,7 @@ func runAction(c *cli.Context) {
 			log.Fatal().Err(err).Msg("Failed to marshal smart contract deployment payload.")
 		}
 
-		log.Fatal().Msg("TODO: not implemented")
+		log.Info().Msgf("Result: %v", payload)
 	case "stats_reset":
 		res := new(interface{})
 		if err := client.Request("/stats/reset", struct{}{}, res); err != nil {

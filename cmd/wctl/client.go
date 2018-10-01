@@ -10,8 +10,8 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/perlin-network/perlin-go/security"
 	"github.com/perlin-network/wavelet/api"
+	"github.com/perlin-network/wavelet/security"
 )
 
 // Client represents a Perlin Ledger client.
@@ -49,7 +49,7 @@ func NewClient(config ClientConfig) (*Client, error) {
 // Init will initialize a client.
 func (c *Client) Init() error {
 	millis := time.Now().Unix() * 1000
-	authStr := fmt.Sprintf("%s%d", security.SessionInitSigningPrefix, millis)
+	authStr := fmt.Sprintf("%s%d", api.SessionInitSigningPrefix, millis)
 	sig := security.Sign(c.KeyPair.PrivateKey, []byte(authStr))
 
 	creds := api.Credentials{
