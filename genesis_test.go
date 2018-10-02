@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -65,7 +66,7 @@ func TestLoadGenesisTransaction(t *testing.T) {
 		}
 	}
 }
-func TestLoadGenesisTransactionBadIDs(t *testing.T) {
+func TestLoadGenesisBadIDs(t *testing.T) {
 	t.Parallel()
 
 	testCases := [][]entry{
@@ -86,5 +87,46 @@ func TestLoadGenesisTransactionBadIDs(t *testing.T) {
 
 		_, err = LoadGenesisTransaction(tmpfile.Name())
 		assert.NotNilf(t, err, "test case %d", i)
+	}
+}
+func TestLoadGenesisRegression(t *testing.T) {
+	t.Parallel()
+
+	// this should match a checked in file
+	testCases := []struct {
+		filename string
+		entries  []entry
+	}{
+		{filepath.Join("cmd", "wavelet", "genesis.json"),
+			[]entry{
+				{PublicKey: "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858", Balance: 100000000},
+				{PublicKey: "8f9b4ae0364280e6a0b988c149f65d1badaeefed2db582266494dd79aa7c821a", Message: "genesis"},
+			},
+		},
+	}
+
+	for _, tt := range testCases {
+		accounts, err := LoadGenesisTransaction(tt.filename)
+		assert.Equal(t, nil, err, "%+v", err)
+		for i, e := range tt.entries {
+			key := e.PublicKey
+			balance := e.Balance
+			message := e.Message
+			assert.Equalf(t, key, accounts[i].PublicKeyHex(), "public key should be equal i=%d", i)
+			b, loaded := accounts[i].Load("balance")
+			if balance != 0 {
+				assert.Equalf(t, true, loaded, "balance should exists i=%d", i)
+				assert.Equalf(t, balance, readUint64(b), "balance should be equal i=%d", i)
+			} else {
+				assert.Equalf(t, false, loaded, "balance should not exists i=%d", i)
+			}
+			m, loaded := accounts[i].Load("message")
+			if message != "" {
+				assert.Equalf(t, true, loaded, "message should exists i=%d i=%d", i)
+				assert.Equalf(t, message, string(m), "message should be equal i=%d", i)
+			} else {
+				assert.Equalf(t, false, loaded, "message should not exists i=%d", i)
+			}
+		}
 	}
 }
