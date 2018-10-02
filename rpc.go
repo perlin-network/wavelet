@@ -7,7 +7,6 @@ import (
 	"github.com/perlin-network/graph/wire"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
-	"github.com/sasha-s/go-IBLT"
 )
 
 type rpc struct {
@@ -40,22 +39,14 @@ func (r *rpc) RespondToQuery(wired *wire.Transaction) (string, bool, error) {
 
 	// Update our IBLT.
 
-	v := r.WithIBLT(func(filter *iblt.Filter) interface{} {
-		filter.Add(writeBytes(id))
+	r.IBLT.Add(writeBytes(id))
 
-		encoded, err := filter.MarshalBinary()
-		if err != nil {
-			return err
-		}
-
-		return encoded
-	})
-
-	if err, is := v.(error); is {
+	encoded, err := r.IBLT.MarshalBinary()
+	if err != nil {
 		return "", false, errors.Wrap(err, "failed to add tx id to iblt")
 	}
 
-	err = r.Put(KeyTransactionIBLT, v.([]byte))
+	err = r.Put(KeyTransactionIBLT, encoded)
 	if err != nil {
 		return "", false, errors.Wrap(err, "failed to save transaction iblt")
 	}

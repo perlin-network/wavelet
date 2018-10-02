@@ -5,7 +5,7 @@ import "time"
 var (
 	// Transaction IBLT parameters.
 	TxK = 6
-	TxL = 1024
+	TxL = 4096
 
 	// Consensus protocol parameters.
 	ConsensusK     = 1

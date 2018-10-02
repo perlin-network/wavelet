@@ -119,7 +119,7 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 				if tx.Nonce == 0 {
 					sender = NewAccount(senderID)
 				} else {
-					return errors.Errorf("sender account %s does not exist", tx.Sender)
+					return errors.Wrapf(err, "sender account %s does not exist", tx.Sender)
 				}
 			}
 
@@ -128,6 +128,21 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 
 		if tx.Tag == "nop" {
 			sender.Nonce++
+
+			for id, account := range accounts {
+				log.Debug().
+					Uint64("nonce", account.Nonce).
+					Str("public_key", hex.EncodeToString(account.PublicKey)).
+					Str("tx", tx.Id).
+					Msg("Applied transaction.")
+
+				list, available := accountDeltas.Deltas[id]
+				if available {
+					s.SaveAccount(account, list.List)
+				} else {
+					s.SaveAccount(account, nil)
+				}
+			}
 
 			continue
 		}
@@ -197,7 +212,7 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 		return err
 	}
 
-	events.Publish(nil, &events.TransactionAppliedEvent{ID: tx.Id})
+	go events.Publish(nil, &events.TransactionAppliedEvent{ID: tx.Id})
 
 	return nil
 }
@@ -350,7 +365,7 @@ func (s *state) SaveAccount(account *Account, deltas []*Delta) error {
 		updates[delta.Key] = delta.NewValue
 	}
 
-	events.Publish(nil, &events.AccountUpdateEvent{
+	go events.Publish(nil, &events.AccountUpdateEvent{
 		Account: account.PublicKeyHex(),
 		Nonce:   account.Nonce,
 		Updates: updates,
