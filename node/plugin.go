@@ -19,6 +19,7 @@ var PluginID = (*Wavelet)(nil)
 type Options struct {
 	DatabasePath string
 	ServicesPath string
+	GenesisPath  string
 }
 
 type Wavelet struct {
@@ -45,12 +46,12 @@ func (w *Wavelet) Startup(net *network.Network) {
 	plugin, registered := net.Plugin(discovery.PluginID)
 
 	if !registered {
-		log.Fatal().Msg("net was not built with peer discovery plugin")
+		log.Fatal().Msg("Wavelet requires `discovery.Plugin` from the `noise` lib. to be registered into this nodes network.")
 	}
 
 	w.routes = plugin.(*discovery.Plugin).Routes
 
-	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath)
+	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath, w.opts.GenesisPath)
 
 	loop := wavelet.NewEventLoop(ledger)
 	go loop.RunForever()

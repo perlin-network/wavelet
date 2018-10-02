@@ -2,35 +2,57 @@ package wavelet
 
 import (
 	"encoding/hex"
-	"github.com/perlin-network/wavelet/log"
+	"encoding/json"
+	"io/ioutil"
+	"os"
+
+	"github.com/pkg/errors"
 )
 
-// public key -> (key, value)
-var genesis = map[string]map[string]interface{}{
-	"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858": {
-		"balance": uint64(1000000),
-	},
-}
+// ReadGenesis loads data expected to exist at the birth of any node in this ledgers network.
+// The data is fed in as .json.
+func ReadGenesis(path string) ([]*Account, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
 
-// Spawn the genesis.
-func BIGBANG(ledger *Ledger) {
-	for encoded, values := range genesis {
-		id, err := hex.DecodeString(encoded)
+	bytes, err := ioutil.ReadAll(file)
+	if err != nil {
+		return nil, err
+	}
+
+	var entries map[string]map[string]interface{}
+	if err := json.Unmarshal(bytes, &entries); err != nil {
+		return nil, err
+	}
+
+	var genesis []*Account
+
+	for encodedID, pairs := range entries {
+		id, err := hex.DecodeString(encodedID)
+
 		if err != nil {
-			log.Fatal().Err(err).Str("public_key", encoded).Msg("Failed to decode genesis account ID.")
+			return nil, err
 		}
 
 		account := NewAccount(id)
-		for key, v := range values {
+
+		for key, v := range pairs {
 			switch value := v.(type) {
-			case uint64:
-				account.Store(key, writeUint64(value))
+			case float64:
+				uintVal := uint64(value)
+				account.Store(key, writeUint64(uintVal))
+			case string:
+				account.Store(key, writeBytes(value))
+			default:
+				return nil, errors.Errorf("failed to cast type for key %s with value %+v", key, value)
 			}
 		}
 
-		err = ledger.SaveAccount(account, nil)
-		if err != nil {
-			log.Fatal().Err(err).Str("public_key", encoded).Msg("Failed to save genesis account information.")
-		}
+		genesis = append(genesis, account)
 	}
+
+	return genesis, nil
 }

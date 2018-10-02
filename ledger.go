@@ -41,7 +41,7 @@ type Ledger struct {
 	lastUpdateAcceptedTime time.Time
 }
 
-func NewLedger(databasePath, servicesPath string) *Ledger {
+func NewLedger(databasePath, servicesPath, genesisPath string) *Ledger {
 	store := database.New(databasePath)
 
 	graph := graph.New(store)
@@ -58,8 +58,22 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 	ledger.state = state{Ledger: ledger}
 	ledger.rpc = rpc{Ledger: ledger}
 
-	if store.Size(BucketAccounts) == 0 {
-		BIGBANG(ledger)
+	if len(genesisPath) > 0 && ledger.NumAccounts() == 0 {
+		genesis, err := ReadGenesis(genesisPath)
+
+		if err != nil {
+			log.Error().Err(err).Msgf("Could not read genesis details which were expected to be at: %s", genesisPath)
+		}
+
+		for _, account := range genesis {
+			if err := ledger.SaveAccount(account, nil); err != nil {
+				log.Fatal().Err(err).
+					Str("id", string(account.PublicKey)).
+					Msg("Failed to save genesis account information.")
+			}
+		}
+
+		log.Info().Str("file", genesisPath).Int("num_accounts", len(genesis)).Msg("Successfully seeded the genesis of this node.")
 	}
 
 	ledger.IBLT = iblt.New(params.TxK, params.TxL)
