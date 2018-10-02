@@ -388,7 +388,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 				s.pendingNewTransactions = append(s.pendingNewTransactions, localNewTx...)
 				return int64(InternalProcessOk)
 			}
-		case "_create_contract":
+		case "_decode_and_create_contract":
 			return func(vm *exec.VirtualMachine) int64 {
 				senderID, err := hex.DecodeString(s.tx.Sender)
 				if err != nil {
@@ -420,6 +420,32 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 				}
 
 				s.accounts[contractID]["contract_code"] = decoded
+
+				return int64(InternalProcessOk)
+			}
+		case "_create_contract":
+			return func(vm *exec.VirtualMachine) int64 {
+				frame := vm.GetCurrentFrame()
+				codePtr := int(uint32(frame.Locals[0]))
+				codeLen := int(uint32(frame.Locals[1]))
+				code := vm.Memory[codePtr : codePtr+codeLen]
+
+				senderID, err := hex.DecodeString(s.tx.Sender)
+				if err != nil {
+					return int64(InternalProcessOk)
+				}
+
+				if bytes.HasPrefix(senderID, ContractPrefix) {
+					return int64(InternalProcessErr) // a contract cannot create another one
+				}
+
+				contractID := string(ContractID(s.tx.Id))
+
+				if s.accounts[contractID] == nil {
+					s.accounts[contractID] = make(map[string][]byte)
+				}
+
+				s.accounts[contractID]["contract_code"] = code
 
 				return int64(InternalProcessOk)
 			}
