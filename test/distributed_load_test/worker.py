@@ -404,7 +404,7 @@ def get_keys(keyFile, argIdx):
 def create_genesis(keys):
     fd, path = tempfile.mkstemp()
     with os.fdopen(fd, 'w') as tmp:
-        tmp.write("{},{}\n").format("id", "balance")
+        tmp.write("{},{}\n".format("id", "balance"))
         for _, publicKey in keys:
             tmp.write("{},{}\n".format(publicKey, GENESIS_BALANCE))
     return path
