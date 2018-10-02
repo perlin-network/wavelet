@@ -3,6 +3,7 @@ title = "wavelet configuration file"
 port = 3000
 host = "localhost"
 privkey = "56be15513d1837340c068c56c7a3f00132b52431c263df87340c65ed25b4d63895bd6a21573d2e01495ae4c061653e1076593c8b3cd82c1077e907e0123caa55"
+daemon = true
 
 [api]
 host = "localhost"

@@ -102,7 +102,7 @@ func main() {
 			Usage: "Bootstrap to peers whose address are formatted as tcp://[host]:[port] from `PEER_NODES`.",
 		}),
 		altsrc.NewBoolFlag(cli.BoolFlag{
-			Name:  "daemon, d",
+			Name:  "daemon",
 			Usage: "Run client in daemon mode.",
 		}),
 		cli.StringFlag{
