@@ -40,8 +40,9 @@ func main() {
 	app.Version = utils.Version
 	app.Usage = "a bleeding fast ledger with a powerful compute layer"
 
-	// alternate names breaks loading from a config
 	app.Flags = []cli.Flag{
+		// altsrc allows the config toml to override the cli flag
+		// note: cannot use multiple names for the cli flag name, it breaks the config override
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "host",
 			Value: "localhost",
@@ -76,23 +77,24 @@ func main() {
 			Usage: "Load WebAssembly transaction processor services from `SERVICES_PATH`.",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "genesis, g",
+			Name:  "genesis",
 			Value: "genesis.json",
 			Usage: "JSON file containing account data to initialize the ledger from `GENESIS_FILE`.",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "privkey, sk",
+			Name:  "privkey",
 			Value: "6d6fe0c2bc913c0e3e497a0328841cf4979f932e01d2030ad21e649fca8d47fe71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
 			Usage: "Set the node's private key to be `PRIVATE_KEY`. Leave `PRIVATE_KEY` = 'random' if you want to randomly generate one.",
 		}),
 		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
-			Name:  "nodes, peers, n",
+			Name:  "peers",
 			Usage: "Bootstrap to peers whose address are formatted as tcp://[host]:[port] from `PEER_NODES`.",
 		}),
 		altsrc.NewBoolFlag(cli.BoolFlag{
 			Name:  "daemon",
 			Usage: "Run client in daemon mode.",
 		}),
+		// config specifies the file that overrides altsrc
 		cli.StringFlag{
 			Name:  "config, c",
 			Usage: "Wavelet configuration file.",
