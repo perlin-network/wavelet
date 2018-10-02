@@ -11,9 +11,9 @@ import (
 )
 
 type entry struct {
-	id      string `json:"id"`
-	balance uint64 `json:"balance,omitempty"`
-	message string `json:"message,omitempty"`
+	PublicKey string `json:"public_key"`
+	Balance   uint64 `json:"balance,omitempty"`
+	Message   string `json:"message,omitempty"`
 }
 
 func TestLoadGenesisTransaction(t *testing.T) {
@@ -35,17 +35,21 @@ func TestLoadGenesisTransaction(t *testing.T) {
 		require.Nilf(t, err, "test case %d", i)
 		tmpfile.Write(b)
 
+		t.Logf("contents: %s", b)
+
 		accounts, err := LoadGenesisTransaction(tmpfile.Name())
-		require.Nilf(t, err, "test case %d", i)
+		assert.Nilf(t, err, "test case %d", i)
+		assert.Equalf(t, len(entries), len(accounts), "test case %d", i)
 		for j, e := range entries {
-			key := e.id
-			balance := e.balance
-			message := e.message
+			key := e.PublicKey
+			balance := e.Balance
+			message := e.Message
 			assert.Equalf(t, key, accounts[i].PublicKeyHex(), "public key should be equal i=%d j=%d", i, j)
 			b, loaded := accounts[i].Load("balance")
 			assert.Equalf(t, true, loaded, "balance should exists i=%d j=%d", i, j)
 			assert.Equalf(t, balance, readUint64(b), "balance should be equal i=%d j=%d", i, j)
 			m, loaded := accounts[i].Load("message")
+			assert.Equalf(t, true, loaded, "message should exists i=%d j=%d", i, j)
 			assert.Equalf(t, message, string(m), "message should be equal i=%d j=%d", i, j)
 		}
 	}

@@ -51,8 +51,10 @@ func LoadGenesisTransaction(path string) ([]*Account, error) {
 				continue
 			}
 			switch value := v.(type) {
-			case uint64:
-				account.Store(key, writeUint64(value))
+			case float64:
+				// yeah, JSON numbers are floats
+				uintVal := uint64(value)
+				account.Store(key, writeUint64(uintVal))
 			case string:
 				account.Store(key, writeBytes(value))
 			}
