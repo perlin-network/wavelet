@@ -183,8 +183,6 @@ func main() {
 			os.Exit(0)
 		}()
 
-		reader := bufio.NewReader(os.Stdout)
-
 		for {
 		}
 	}
