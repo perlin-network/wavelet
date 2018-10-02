@@ -23,6 +23,8 @@ RUN GIT_COMMIT=$(git rev-parse --short HEAD) && \
         cmd/wavelet/main.go && \
     ${BUILD_BIN}/wavelet -version
 
-#RUN go build -o ${BUILD_BIN}/plctl cmd/plctl/plctl.go
+RUN go build \
+    -o ${BUILD_BIN}/wctl \
+    cmd/wctl/main.go
 
 RUN go test -coverprofile=coverage.txt -covermode=atomic -timeout 300s -v -bench -race ./...
