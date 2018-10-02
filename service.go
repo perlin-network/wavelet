@@ -2,7 +2,9 @@ package wavelet
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/life/exec"
@@ -388,11 +390,6 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 			}
 		case "_create_contract":
 			return func(vm *exec.VirtualMachine) int64 {
-				frame := vm.GetCurrentFrame()
-				codePtr := int(uint32(frame.Locals[0]))
-				codeLen := int(uint32(frame.Locals[1]))
-				code := vm.Memory[codePtr : codePtr+codeLen]
-
 				senderID, err := hex.DecodeString(s.tx.Sender)
 				if err != nil {
 					return int64(InternalProcessOk)
@@ -408,7 +405,21 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					s.accounts[contractID] = make(map[string][]byte)
 				}
 
-				s.accounts[contractID]["contract_code"] = code
+				var payload struct {
+					Code string `json:"code"`
+				}
+
+				err = json.Unmarshal(s.tx.Payload, &payload)
+				if err != nil {
+					return int64(InternalProcessErr)
+				}
+
+				decoded, err := base64.StdEncoding.DecodeString(payload.Code)
+				if err != nil {
+					return int64(InternalProcessErr)
+				}
+
+				s.accounts[contractID]["contract_code"] = decoded
 
 				return int64(InternalProcessOk)
 			}
