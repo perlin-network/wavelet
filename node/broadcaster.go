@@ -182,17 +182,17 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 			}
 
 			err = l.HandleSuccessfulQuery(nopDB)
+
 			if err != nil {
 				log.Warn().Err(err).Msg("Failed to process our nop which was successfully queried.")
-				return // RetryDelay?
+				time.Sleep(RetryDelay)
+				return
 			}
 		})
 
 		if shouldReturn {
 			return
 		}
-
-		time.Sleep(RetryDelay)
 	}
 
 	stats.SetConsensusDuration(time.Now().Sub(start).Seconds())

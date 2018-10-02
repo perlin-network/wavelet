@@ -3,6 +3,7 @@ package wavelet
 import (
 	"github.com/perlin-network/noise/crypto"
 	"github.com/perlin-network/wavelet/log"
+	"sync"
 )
 
 var (
@@ -10,6 +11,7 @@ var (
 )
 
 type Wallet struct {
+	sync.Mutex
 	*crypto.KeyPair
 }
 
@@ -26,6 +28,9 @@ func NewWallet(keys *crypto.KeyPair) *Wallet {
 
 // CurrentNonce returns our node's knowledge of our wallets current nonce.
 func (w *Wallet) CurrentNonce(l *Ledger) uint64 {
+	w.Lock()
+	defer w.Unlock()
+
 	walletNonceKey := merge(KeyWalletNonce, w.PublicKey)
 
 	bytes, _ := l.Store.Get(walletNonceKey)
@@ -37,6 +42,9 @@ func (w *Wallet) CurrentNonce(l *Ledger) uint64 {
 
 // NextNonce returns the next available nonce from the wallet.
 func (w *Wallet) NextNonce(l *Ledger) (uint64, error) {
+	w.Lock()
+	defer w.Unlock()
+
 	walletNonceKey := merge(KeyWalletNonce, w.PublicKey)
 
 	bytes, _ := l.Store.Get(walletNonceKey)
