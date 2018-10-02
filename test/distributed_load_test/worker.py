@@ -54,25 +54,25 @@ parser.add_argument(
     default=8000,
     help='coordinator server port (default: 8000).')
 parser.add_argument(
-    "--plctl_exec",
+    "--wctl_exec",
     type=str,
-    default="./plctl",
-    help='path to the plctl executable')
+    default="./wctl",
+    help='path to the wctl executable')
 parser.add_argument(
     "--main_exec",
     type=str,
-    default="./perlin-go",
+    default="./wavelet",
     help='path to the main executable')
 parser.add_argument(
-    "--perlin_port",
+    "--wavelet_port",
     type=int,
     default=3000,
-    help='port for the perlin executable (default: 3000).')
+    help='port for the wavelet executable (default: 3000).')
 parser.add_argument(
     "--api_port",
     type=int,
     default=3100,
-    help='port for the perlin api (default: 3100).')
+    help='port for the wavelet api (default: 3100).')
 parser.add_argument(
     "--peers",
     type=str,
@@ -93,11 +93,6 @@ parser.add_argument(
     type=float,
     default=0.0,
     help='broadcast sleep interval (default: 1s).')
-parser.add_argument(
-    "--storage_type",
-    type=str,
-    default="inmem",
-    help='backend to store transactions [inmem, badger, level] (default: inmem).')
 parser.add_argument(
     "--stats_poll_interval",
     type=float,
@@ -122,11 +117,11 @@ class LoadTestWorker(object):
                 self.host = socket.gethostbyname(socket.gethostname())
             except:
                 self.host = socket.gethostbyname("")
-        self.perlin_port = args.perlin_port
+        self.wavelet_port = args.wavelet_port
         self.api_port = args.api_port
         self.name = args.name
         self.port = args.port
-        self.plctl_exec = args.plctl_exec
+        self.wctl_exec = args.wctl_exec
         self.bootstrap = args.bootstrap
         if self.name is None:
             self.name = "%s:%s" % (self.host, self.port)
@@ -136,20 +131,19 @@ class LoadTestWorker(object):
             "name": self.name,
             "host": self.host,
             "port": self.port,
-            "perlin_port": self.perlin_port,
+            "wavelet_port": self.wavelet_port,
             "bootstrap": self.bootstrap,
         })
         self.main_runner = MainRunner({
             "pk_file": args.pk_file,
             "pk_index": args.pk_index,
             "peers": args.peers,
-            "plctl_exec": args.plctl_exec,
+            "wctl_exec": args.wctl_exec,
             "host": args.host,
-            "perlin_port": args.perlin_port,
+            "wavelet_port": args.wavelet_port,
             "sleep_interval": args.sleep_interval,
             "main_exec": args.main_exec,
             "api_port": self.api_port,
-            "storage_type": args.storage_type,
             "stats_poll_interval": args.stats_poll_interval,
         })
         self.register_routes()
@@ -213,9 +207,9 @@ class LoadTestWorker(object):
             return jsonify(summary)
 
     def get_summary(self):
-        # Example: plctl -privkey abcd -remote localhost:3900 transfer efgh 1000
+        # Example: wctl -privkey abcd -remote localhost:3900 stats_summary
         pargs = [
-            self.plctl_exec,
+            self.wctl_exec,
             "-remote", "localhost:%d" % self.api_port,
             "-privkey", self.main_runner.private_key,
             "stats_summary",
@@ -230,14 +224,13 @@ class MainRunner(object):
         self.pk_file = args["pk_file"]
         self.pk_index = args["pk_index"]
         self.peers = args["peers"]
-        self.plctl_exec = args["plctl_exec"]
+        self.wctl_exec = args["wctl_exec"]
         self.host = args["host"]
-        self.perlin_port = args["perlin_port"]
+        self.wavelet_port = args["wavelet_port"]
         self.sleep_interval = args["sleep_interval"]
         self.main_exec = args["main_exec"]
         self.api_port = args["api_port"]
-        self.storage_type = args["storage_type"]
-        self.stats_thread = StatsPoller(self.perlin_port, self, args["stats_poll_interval"])
+        self.stats_thread = StatsPoller(self.api_port, self, args["stats_poll_interval"])
 
         # pick a random key from the keypairs.csv
         self.keys, self.key_idx = get_keys(self.pk_file, self.pk_index)
@@ -254,7 +247,7 @@ class MainRunner(object):
     def init_thread(self):
         # setup the broadcast loop
         self.thread = BroadcastTransaction(
-            self.plctl_exec,
+            self.wctl_exec,
             self.private_key,
             self.keys,
             self.key_idx,
@@ -272,9 +265,8 @@ class MainRunner(object):
             self.public_key,
             self.private_key,
             self.peers,
-            self.perlin_port,
-            self.api_port,
-            self.storage_type)
+            self.wavelet_port,
+            self.api_port)
 
         # spawn the main process
         spawn_main_process(self.main_exec, self.host,
@@ -288,7 +280,7 @@ class RegisterWorker(threading.Thread):
         self.name = args["name"]
         self.host = args["host"]
         self.port = args["port"]
-        self.perlin_port = args["perlin_port"]
+        self.wavelet_port = args["wavelet_port"]
         self.bootstrap = args["bootstrap"]
 
     def run(self):
@@ -301,7 +293,7 @@ class RegisterWorker(threading.Thread):
             "name": self.name,
             "host": self.host,
             "port": self.port,
-            "perlin_port": self.perlin_port,
+            "wavelet_port": self.wavelet_port,
             "bootstrap": self.bootstrap,
         }
         endpoint = "http://%s:%s%s" % (self.coordinator_host, self.coordinator_port, CoordinatorEndpoints.PostAddWorker)
@@ -313,9 +305,9 @@ class RegisterWorker(threading.Thread):
         return
 
 class StatsPoller(threading.Thread):
-    def __init__(self, perlin_port, runner, interval):
+    def __init__(self, api_port, runner, interval):
         threading.Thread.__init__(self)
-        self.debug_port = perlin_port + 500
+        self.debug_port = api_port
         self.runner = runner
         self.interval = interval
 
@@ -334,10 +326,10 @@ class StatsPoller(threading.Thread):
 
 
 class BroadcastTransaction(threading.Thread):
-    def __init__(self, plctl_exec, private_key, keys, key_idx, api_port, sleep_interval):
+    def __init__(self, wctl_exec, private_key, keys, key_idx, api_port, sleep_interval):
         threading.Thread.__init__(self)
         self.stop_thread = True
-        self.plctl_exec = plctl_exec
+        self.wctl_exec = wctl_exec
         self.private_key = private_key
         self.keys = keys
         self.num_keys = len(keys)
@@ -348,7 +340,7 @@ class BroadcastTransaction(threading.Thread):
     def run(self):
         # first reset the stats
         pargs = [
-                self.plctl_exec,
+                self.wctl_exec,
                 "-remote", "localhost:%d" % self.api_port,
                 "-privkey", self.private_key,
                 "stats_reset"
@@ -361,7 +353,7 @@ class BroadcastTransaction(threading.Thread):
 
         consecutive_errors = 0
         time.sleep(1.0)
-        # example: plctl -privkey abcd -remote localhost:3900 send_transaction transfer '{"recipient": "8f9b4ae0364280e6a0b988c149f65d1badaeefed2db582266494dd79aa7c821a", "amount": 10}'
+        # example: wctl -privkey abcd -remote localhost:3900 pay 8f9b4ae0364280e6a0b988c149f65d1badaeefed2db582266494dd79aa7c821a 10
         while True:
             if self.stop_thread:
                 break
@@ -371,17 +363,15 @@ class BroadcastTransaction(threading.Thread):
                 while recipientIdx == self.key_idx:
                     # if it is the key_idx, which it itself, pick a new index
                     recipientIdx = random.randint(0, self.num_keys)
-                transfer = dict()
-                transfer["recipient"] = self.keys[recipientIdx][1]
-                transfer["amount"] = random.randint(1, 5)
-                payload = json.dumps(transfer)
+                recipient = self.keys[recipientIdx][1]
+                amount = random.randint(1, 5)
                 pargs = [
-                    self.plctl_exec,
+                    self.wctl_exec,
                     "-remote", "localhost:%d" % self.api_port,
                     "-privkey", self.private_key,
-                    "send_transaction",
-                    "transfer",
-                    payload,
+                    "pay",
+                    recipient,
+                    amount
                 ]
                 return_code, stdout = exec_process(pargs)
                 if return_code != 0:
@@ -419,26 +409,19 @@ def create_genesis(keys):
     return path
 
 
-def create_local_config(publicKey, privateKey, peers, port, api_port, storage_type):
+def create_local_config(publicKey, privateKey, peers, port, api_port):
     # see the config.0.toml as an example
     local_config = dict()
-    local_config["client"] = dict()
-    local_config["client"]["port"] = int(port)
+    local_config["port"] = int(port)
     if peers != None and len(peers) > 0:
-        local_config["client"]["peers"] = peers.split(",")
-    local_config["client"]["private_key"] = privateKey
-    local_config["storage"] = {"storage_type": storage_type}
+        local_config["peers"] = peers.split(",")
+    local_config["privkey"] = privateKey
     local_config["api"] = dict()
-    local_config["api"]["listen_addr"] = "0.0.0.0:%d" % api_port
-    local_config["api.clients"] = []
-    local_config["api.clients"].append({
-        "public_key": publicKey,
-        "_private_key": privateKey,
-    })
-    local_config["api.clients.permissions"] = dict()
-    local_config["api.clients.permissions"]["can_poll_transaction"] = True
-    local_config["api.clients.permissions"]["can_send_transaction"] = True
-    local_config["api.clients.permissions"]["can_control_stats"] = True
+    local_config["api"]["port"] = "0.0.0.0:%d" % api_port
+    local_config["api.clients"]["public_key"] = []
+    local_config["api.clients"]["_private_key"] = []
+    local_config["api.clients"]["public_key"].append(publicKey)
+    local_config["api.clients"]["_private_key"].append(privateKey)
     fd, path = tempfile.mkstemp()
     with os.fdopen(fd, 'w') as tmp:
         tmp.write(toml.dumps(local_config))
@@ -447,8 +430,8 @@ def create_local_config(publicKey, privateKey, peers, port, api_port, storage_ty
 
 def parse_stats(lines):
     # 2018/08/14 14:02:14 SessionToken = 03d04594-f3a4-4000-95ec-50b29085e3ce
-    # 2018/08/14 14:02:14 {"consensus_duration":0.6343094,"num_accepted_tx":117,"num_accepted_tx_per_sec":0}
-    # --> return json.loads({"consensus_duration":0.6343094,"num_accepted_tx":117,"num_accepted_tx_per_sec":0})
+    # 2018/08/14 14:02:14 {"wavelet_consensus_duration":0.6343094,"wavelet_num_accepted_transactions":117,"wavelet_num_accepted_transactions_per_sec":0}
+    # --> return json.loads({"wavelet_consensus_duration":0.6343094,"wavelet_num_accepted_transactions":117,"wavelet_num_accepted_transactions_per_sec":0})
     last_line = lines[-1].strip()
     the_json = last_line.split(" ", 2)  # split that log twice
     json_summary = json.loads(the_json[-1])

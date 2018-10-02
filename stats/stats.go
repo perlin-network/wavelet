@@ -6,15 +6,15 @@ import (
 )
 
 var (
-	numAcceptedTransactions          = expvar.NewInt("perlin_num_accepted_transactions")
-	numAcceptedTransactionsPerSecond = expvar.NewInt("perlin_num_accepted_transactions_per_sec")
-	consensusDuration                = expvar.NewFloat("perlin_consensus_duration")
+	numAcceptedTransactions          = expvar.NewInt("wavelet_num_accepted_transactions")
+	numAcceptedTransactionsPerSecond = expvar.NewInt("wavelet_num_accepted_transactions_per_sec")
+	consensusDuration                = expvar.NewFloat("wavelet_consensus_duration")
 
-	uptime  = expvar.NewString("perlin_uptime")
-	laptime = expvar.NewFloat("perlin_laptime")
+	uptime  = expvar.NewString("wavelet_uptime")
+	laptime = expvar.NewFloat("wavelet_laptime")
 
-	bufferAcceptByTagPerSec = expvar.NewMap("perlin_buffer_accept_by_tag_per_sec")
-	lastAcceptByTagPerSec   = expvar.NewMap("perlin_last_accept_by_tag_per_sec")
+	bufferAcceptByTagPerSec = expvar.NewMap("wavelet_buffer_accept_by_tag_per_sec")
+	lastAcceptByTagPerSec   = expvar.NewMap("wavelet_last_accept_by_tag_per_sec")
 
 	startTime    time.Time
 	lapStartTime time.Time

@@ -33,7 +33,7 @@ logging.basicConfig(format=FORMAT)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-PERLIN_PORT = 3000
+WAVELET_PORT = 3000
 
 WORKER_STATE_CREATED = 1
 WORKER_STATE_INITED = 2
@@ -41,11 +41,11 @@ WORKER_STATE_STARTED = 3
 WORKER_STATE_STOPPED = 4
 
 class Worker(object):
-    def __init__(self, name, host, port, perlin_port):
+    def __init__(self, name, host, port, wavelet_port):
         self.name = name
         self.host = host
         self.port = port
-        self.perlin_port = perlin_port
+        self.wavelet_port = wavelet_port
         self.bootstrap = False
         self.state = WORKER_STATE_CREATED
         self.error_count = 0
@@ -119,13 +119,13 @@ class CoordinatorServer(object):
         @self.app.route(CoordinatorEndpoints.PostAddWorker, methods=["POST"])
         def PostAddWorker():
             content = request.json
-            check_for_fields(content, ["name", "host", "port", "perlin_port"])
+            check_for_fields(content, ["name", "host", "port", "wavelet_port"])
             name = content["name"]
             host = content["host"]
             port = content["port"]
-            perlin_port = content["perlin_port"]
+            wavelet_port = content["wavelet_port"]
             if name not in self.workers:
-                worker = Worker(name, host, port, perlin_port)
+                worker = Worker(name, host, port, wavelet_port)
                 msg = "added new worker: %s" % worker
                 if "bootstrap" in content and content["bootstrap"]:
                     worker.bootstrap = True
@@ -138,7 +138,7 @@ class CoordinatorServer(object):
                 worker = self.workers[name]
                 worker.host = host
                 worker.port = port
-                worker.perlin_port = perlin_port
+                worker.wavelet_port = wavelet_port
                 self.workers[name] = worker
                 msg = "updated worker: %s" % name
                 logger.info(msg)
@@ -179,7 +179,7 @@ class CoordinatorServer(object):
             time.sleep(3)
 
             payload = {
-                "peers": ",".join(["tcp://%s:%d" % (worker.host, worker.perlin_port) for worker in bootstraps])
+                "peers": ",".join(["tcp://%s:%d" % (worker.host, worker.wavelet_port) for worker in bootstraps])
             }
             logger.info("initializing %d workers with payload: %s" % ((len(self.workers) - len(bootstraps)), payload))
             with FuturesSession(executor=ThreadPoolExecutor(max_workers=16)) as session:

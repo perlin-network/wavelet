@@ -29,7 +29,7 @@ spec:
           value: "8000"
         - name: WORKER_PORT
           value: "8000"
-        - name: PERLIN_PORT
+        - name: WAVELET_PORT
           value: "8001"
         - name: API_PORT
           value: "8002"
@@ -73,13 +73,12 @@ spec:
             --port $WORKER_PORT \
             --coordinator_host $COORDINATOR_HOST \
             --coordinator_port $COORDINATOR_PORT \
-            --plctl_exec ./plctl \
-            --main_exec ./perlin-go \
-            --perlin_port $PERLIN_PORT \
+            --wctl_exec ./wctl \
+            --main_exec ./wavelet \
+            --wavelet_port $WAVELET_PORT \
             --api_port $API_PORT \
             --pk_file ./test/keypairs.csv \
             --sleep_interval $SLEEP_INTERVAL \
             --bootstrap $IS_BOOTSTRAP \
-            --storage_type $STORAGE_TYPE \
             --stats_poll_interval $STATS_POLL_INTERVAL \
             ;"
