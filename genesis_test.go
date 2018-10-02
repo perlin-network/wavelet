@@ -1,43 +1,52 @@
 package wavelet
 
 import (
-	"path/filepath"
+	"encoding/json"
+	"io/ioutil"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+type entry struct {
+	id      string `json:"id"`
+	balance uint64 `json:"balance,omitempty"`
+	message string `json:"message,omitempty"`
+}
 
 func TestLoadGenesisTransaction(t *testing.T) {
 	t.Parallel()
 
-	testCases := []struct {
-		filename   string
-		publicKeys []string
-		balances   []uint64
-	}{
-		{"config_1.csv",
-			[]string{
-				"f8cab2617bdd3127d1ba17f5c4890466c2c668610fa09a8416e9aeafdd8336c3",
-				"ef999332ca9f567221a31549db23241e624d9e30f9a0c788f53cb5ded5c6d047",
-			},
-			[]uint64{
-				1337,
-				1000000,
-			},
+	testCases := [][]entry{
+		[]entry{
+			{"f8cab2617bdd3127d1ba17f5c4890466c2c668610fa09a8416e9aeafdd8336c3", 1337, "one"},
+			{"ef999332ca9f567221a31549db23241e624d9e30f9a0c788f53cb5ded5c6d047", 1000000, "two"},
 		},
 	}
 
-	for _, tt := range testCases {
-		filepath := filepath.Join("test", "genesis", tt.filename)
-		accounts, err := LoadGenesisTransaction(filepath)
-		assert.Equal(t, nil, err, "%+v", err)
-		for i, key := range tt.publicKeys {
-			assert.Equalf(t, key, accounts[i].PublicKeyHex(), "public key should be equal i=%d", i)
-		}
-		for i, expectedBalance := range tt.balances {
-			v, loaded := accounts[i].Load("balance")
-			assert.Equalf(t, true, loaded, "balance should exists i=%d", i)
-			assert.Equalf(t, expectedBalance, readUint64(v), "balance should be equal i=%d", i)
+	for i, entries := range testCases {
+		tmpfile, err := ioutil.TempFile("", "genesis")
+		require.Nilf(t, err, "test case %d", i)
+		defer os.Remove(tmpfile.Name())
+
+		b, err := json.Marshal(entries)
+		require.Nilf(t, err, "test case %d", i)
+		tmpfile.Write(b)
+
+		accounts, err := LoadGenesisTransaction(tmpfile.Name())
+		require.Nilf(t, err, "test case %d", i)
+		for j, e := range entries {
+			key := e.id
+			balance := e.balance
+			message := e.message
+			assert.Equalf(t, key, accounts[i].PublicKeyHex(), "public key should be equal i=%d j=%d", i, j)
+			b, loaded := accounts[i].Load("balance")
+			assert.Equalf(t, true, loaded, "balance should exists i=%d j=%d", i, j)
+			assert.Equalf(t, balance, readUint64(b), "balance should be equal i=%d j=%d", i, j)
+			m, loaded := accounts[i].Load("message")
+			assert.Equalf(t, message, string(m), "message should be equal i=%d j=%d", i, j)
 		}
 	}
 }

@@ -10,9 +10,9 @@ import (
 	"github.com/perlin-network/wavelet/security"
 )
 
-const databasePath = "cmd/testdb"
+const databasePath = "testdb"
 const servicesPath = "cmd/services"
-const genesisCSV = "cmd/wavelet/genesis.csv"
+const genesisFile = "cmd/wavelet/genesis.json"
 
 func BenchmarkLedger(b *testing.B) {
 	b.StopTimer()
@@ -24,8 +24,7 @@ func BenchmarkLedger(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	ledger := NewLedger(databasePath, servicesPath, genesisCSV)
-	ledger.Init()
+	ledger := NewLedger(databasePath, servicesPath, genesisFile)
 
 	defer os.RemoveAll(databasePath)
 	defer ledger.Graph.Cleanup()
@@ -66,5 +65,7 @@ func BenchmarkLedger(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
+
+		ledger.Step(false)
 	}
 }
