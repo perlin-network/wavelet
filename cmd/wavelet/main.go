@@ -31,18 +31,6 @@ import (
 	"gopkg.in/urfave/cli.v1/altsrc"
 )
 
-type ClientConfig struct {
-	Database   string   `toml:"database"`
-	Peers      []string `toml:"peers"`
-	Port       uint16   `toml:"port"`
-	PrivateKey string   `toml:"private_key"`
-}
-
-type Config struct {
-	API    *api.Options  `toml:"api"`
-	Client *ClientConfig `toml:"client"`
-}
-
 func main() {
 	app := cli.NewApp()
 
