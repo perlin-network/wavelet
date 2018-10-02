@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: coordinator-service
+  namespace: load-test
+spec:
+  selector:
+    app: coordinator
+  ports:
+  - protocol: TCP
+    port: 8000
+    targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coordinator-deployment
+  namespace: load-test
+  labels:
+    app: coordinator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: coordinator
+  template:
+    metadata:
+      labels:
+        app: coordinator
+    spec:
+      containers:
+      - name: coordinator
+        image: us.gcr.io/wavelet-dev/load-test:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: COORDINATOR_HOST
+          value: coordinator-service.load-test.svc
+        - name: COORDINATOR_PORT
+          value: "8000"
+        - name: MY_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MY_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          initialDelaySeconds: 3
+          periodSeconds: 60
+        resources:
+          requests:
+            memory: 2048Mi
+          limits:
+            memory: 2048Mi
+        command: ["/bin/bash", "-c"]
+        args:
+          - "python test/coordinator.py --port $COORDINATOR_PORT"

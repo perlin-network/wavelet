@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bootstrap-deployment
+  namespace: load-test
+  labels:
+    app: bootstrap
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bootstrap
+  template:
+    metadata:
+      labels:
+        app: bootstrap
+    spec:
+      containers:
+      - name: bootstrap
+        image: us.gcr.io/wavelet-dev/load-test:latest
+        ports:
+        - containerPort: 8000
+        - containerPort: 8001
+        - containerPort: 8002
+        env:
+        - name: COORDINATOR_HOST
+          value: coordinator-service.load-test.svc
+        - name: COORDINATOR_PORT
+          value: "8000"
+        - name: WORKER_PORT
+          value: "8000"
+        - name: PERLIN_PORT
+          value: "8001"
+        - name: API_PORT
+          value: "8002"
+        - name: IS_BOOTSTRAP
+          value: "True"
+        - name: SLEEP_INTERVAL
+          value: "0.5"
+        - name: STORAGE_TYPE
+          value: "level"
+        - name: STATS_POLL_INTERVAL
+          value: "1.0"
+        - name: MY_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: MY_POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: MY_POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          initialDelaySeconds: 3
+          periodSeconds: 60
+        resources:
+          # 4 * 3072Mi = 12288Mi, can fit 4 pods on a 16GB node
+          requests:
+            memory: 3072Mi
+          limits:
+            memory: 3072Mi
+        command: ["/bin/bash", "-c"]
+        args:
+        - "python ./test/worker.py \
+            --name $MY_POD_NAME \
+            --host $MY_POD_IP \
+            --port $WORKER_PORT \
+            --coordinator_host $COORDINATOR_HOST \
+            --coordinator_port $COORDINATOR_PORT \
+            --plctl_exec ./plctl \
+            --main_exec ./perlin-go \
+            --perlin_port $PERLIN_PORT \
+            --api_port $API_PORT \
+            --pk_file ./test/keypairs.csv \
+            --sleep_interval $SLEEP_INTERVAL \
+            --bootstrap $IS_BOOTSTRAP \
+            --storage_type $STORAGE_TYPE \
+            --stats_poll_interval $STATS_POLL_INTERVAL \
+            ;"
