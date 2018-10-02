@@ -2,6 +2,7 @@ package wavelet
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -21,13 +22,17 @@ func TestLoadGenesisTransaction(t *testing.T) {
 
 	testCases := [][]entry{
 		[]entry{
-			{"f8cab2617bdd3127d1ba17f5c4890466c2c668610fa09a8416e9aeafdd8336c3", 1337, "one"},
-			{"ef999332ca9f567221a31549db23241e624d9e30f9a0c788f53cb5ded5c6d047", 1000000, "two"},
+			{PublicKey: "f8cab2617bdd3127d1ba17f5c4890466c2c668610fa09a8416e9aeafdd8336c3", Balance: 1337, Message: "one"},
+			{PublicKey: "ef999332ca9f567221a31549db23241e624d9e30f9a0c788f53cb5ded5c6d047", Balance: 1000000, Message: "two"},
+		},
+		[]entry{
+			{PublicKey: "f8cab2617bdd3127d1ba17f5c4890466c2c668610fa09a8416e9aeafdd8336c3", Message: "one"},
+			{PublicKey: "ef999332ca9f567221a31549db23241e624d9e30f9a0c788f53cb5ded5c6d047", Balance: 1000000},
 		},
 	}
 
 	for i, entries := range testCases {
-		tmpfile, err := ioutil.TempFile("", "genesis")
+		tmpfile, err := ioutil.TempFile("", fmt.Sprintf("genesis-%d", i))
 		require.Nilf(t, err, "test case %d", i)
 		defer os.Remove(tmpfile.Name())
 
@@ -44,11 +49,42 @@ func TestLoadGenesisTransaction(t *testing.T) {
 			message := e.Message
 			assert.Equalf(t, key, accounts[j].PublicKeyHex(), "public key should be equal i=%d j=%d", i, j)
 			b, loaded := accounts[j].Load("balance")
-			assert.Equalf(t, true, loaded, "balance should exists i=%d j=%d", i, j)
-			assert.Equalf(t, balance, readUint64(b), "balance should be equal i=%d j=%d", i, j)
+			if balance != 0 {
+				assert.Equalf(t, true, loaded, "balance should exists i=%d j=%d", i, j)
+				assert.Equalf(t, balance, readUint64(b), "balance should be equal i=%d j=%d", i, j)
+			} else {
+				assert.Equalf(t, false, loaded, "balance should not exists i=%d j=%d", i, j)
+			}
 			m, loaded := accounts[j].Load("message")
-			assert.Equalf(t, true, loaded, "message should exists i=%d j=%d", i, j)
-			assert.Equalf(t, message, string(m), "message should be equal i=%d j=%d", i, j)
+			if message != "" {
+				assert.Equalf(t, true, loaded, "message should exists i=%d j=%d", i, j)
+				assert.Equalf(t, message, string(m), "message should be equal i=%d j=%d", i, j)
+			} else {
+				assert.Equalf(t, false, loaded, "message should not exists i=%d j=%d", i, j)
+			}
 		}
+	}
+}
+func TestLoadGenesisTransactionBadIDs(t *testing.T) {
+	t.Parallel()
+
+	testCases := [][]entry{
+		[]entry{
+			{PublicKey: "bad_id1", Balance: 1000000, Message: "one"},
+			{PublicKey: "bad_id2"},
+		},
+	}
+
+	for i, entries := range testCases {
+		tmpfile, err := ioutil.TempFile("", fmt.Sprintf("genesis-%d", i))
+		require.Nilf(t, err, "test case %d", i)
+		defer os.Remove(tmpfile.Name())
+
+		b, err := json.Marshal(entries)
+		require.Nilf(t, err, "test case %d", i)
+		tmpfile.Write(b)
+
+		_, err = LoadGenesisTransaction(tmpfile.Name())
+		assert.NotNilf(t, err, "test case %d", i)
 	}
 }
