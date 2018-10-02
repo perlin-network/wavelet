@@ -19,6 +19,7 @@ var PluginID = (*Wavelet)(nil)
 type Options struct {
 	DatabasePath string
 	ServicesPath string
+	GenesisFile string
 }
 
 type Wavelet struct {
@@ -31,7 +32,6 @@ type Wavelet struct {
 
 	Ledger *wavelet.LoopHandle
 	Wallet *wavelet.Wallet
-	Ledger2 *wavelet.Ledger
 
 	opts Options
 }
@@ -51,9 +51,20 @@ func (w *Wavelet) Startup(net *network.Network) {
 
 	w.routes = plugin.(*discovery.Plugin).Routes
 
-	w.Ledger2 = wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath)
+	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath)
 
-	loop := wavelet.NewEventLoop(w.Ledger2)
+	if len(w.opts.GenesisFile) > 0 {
+		genesisFile := w.opts.GenesisFile
+		genesis, err := wavelet.LoadGenesis(genesisFile)
+		if err != nil {
+			log.Error().Err(err).Msgf("Unable to load genesis from file %s", genesisFile)
+		} else {
+			wavelet.ApplyGenesis(ledger, genesis)
+			log.Info().Str("file", genesisFile).Int("NumAccounts", len(genesis)).Msg("Loaded genesis file.")
+		}
+	}
+
+	loop := wavelet.NewEventLoop(ledger)
 	go loop.RunForever()
 
 	w.Ledger = loop.Handle()
