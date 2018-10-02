@@ -12,9 +12,14 @@ ENV BUILD_BIN=/pkg/linux-amd64/
 COPY . ${REPO_DIR}
 WORKDIR ${REPO_DIR}
 
+# figure out build time variables to reuse later
+RUN echo "# some env variables \n\
+export GIT_COMMIT=$(git rev-parse --short HEAD) \n\
+export GO_VERSION=$(go version | awk '{print $3}') \n\
+" > /tmp/build_vars.sh
+
 # compile the wavelet executable, inject variables at build time
-RUN GIT_COMMIT=$(git rev-parse --short HEAD) && \
-    GO_VERSION=$(go version | awk '{print $3}') && \
+RUN . /tmp/build_vars.sh && \
     go build \
         -o ${BUILD_BIN}/wavelet \
         -ldflags "-s -w \
@@ -23,8 +28,8 @@ RUN GIT_COMMIT=$(git rev-parse --short HEAD) && \
         cmd/wavelet/main.go && \
     ${BUILD_BIN}/wavelet -version
 
-RUN GIT_COMMIT=$(git rev-parse --short HEAD) && \
-    GO_VERSION=$(go version | awk '{print $3}') && \
+# compile the wctl exec
+RUN . /tmp/build_vars.sh && \
     go build \
         -o ${BUILD_BIN}/wctl \
         -ldflags "-s -w \
@@ -33,4 +38,5 @@ RUN GIT_COMMIT=$(git rev-parse --short HEAD) && \
         cmd/wctl/main.go && \
     ${BUILD_BIN}/wctl -version
 
+# run the tests to make sure everything passes
 RUN go test -coverprofile=coverage.txt -covermode=atomic -timeout 300s -v -bench -race ./...
