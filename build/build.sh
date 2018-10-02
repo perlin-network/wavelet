@@ -2,7 +2,7 @@
 set -eu
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
-IMAGE_NAME="perlin/build"
+IMAGE_NAME="perlin/wavelet"
 HOST_BUILD_BIN="${SCRIPT_DIR}/_bin"
 
 cd ${SCRIPT_DIR}/..
@@ -26,7 +26,7 @@ docker run \
     --rm \
     --mount type=bind,source="${HOST_BUILD_BIN}",target="/host-bin" \
     ${IMAGE_NAME} \
-    bash -c "cp ${CONTAINER_BUILD_BIN}/* /host-bin/ && \
+    bash -c "cp -r ${CONTAINER_BUILD_BIN}/ /host-bin/ && \
         chown $(id -u):$(id -g) /host-bin/*"
 
 echo "Done building."
