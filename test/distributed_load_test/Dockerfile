@@ -25,6 +25,9 @@ RUN GIT_COMMIT=$(git rev-parse --short HEAD) && \
 
 RUN go build \
     -o ${BUILD_BIN}/wctl \
+    -ldflags "-s -w \
+            -X ${PROJ_DIR}/cmd/utils.GitCommit=${GIT_COMMIT} \
+            -X ${PROJ_DIR}/cmd/utils.GoVersion=${GO_VERSION}" \
     cmd/wctl/main.go
 
 ################################
