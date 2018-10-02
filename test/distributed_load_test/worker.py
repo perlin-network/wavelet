@@ -404,6 +404,7 @@ def get_keys(keyFile, argIdx):
 def create_genesis(keys):
     fd, path = tempfile.mkstemp()
     with os.fdopen(fd, 'w') as tmp:
+        tmp.write("{},{}\n".format("id", "balance")
         for _, publicKey in keys:
             tmp.write("{},{}\n".format(publicKey, GENESIS_BALANCE))
     return path
@@ -417,7 +418,8 @@ def create_local_config(publicKey, privateKey, peers, port, api_port):
         local_config["peers"] = peers.split(",")
     local_config["privkey"] = privateKey
     local_config["api"] = dict()
-    local_config["api"]["port"] = "0.0.0.0:%d" % api_port
+    local_config["api"]["port"] = api_port
+    local_config["api.clients"] = dict()
     local_config["api.clients"]["public_key"] = []
     local_config["api.clients"]["_private_key"] = []
     local_config["api.clients"]["public_key"].append(publicKey)
