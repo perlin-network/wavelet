@@ -23,11 +23,14 @@ RUN GIT_COMMIT=$(git rev-parse --short HEAD) && \
         cmd/wavelet/main.go && \
     ${BUILD_BIN}/wavelet -version
 
-RUN go build \
-    -o ${BUILD_BIN}/wctl \
-    -ldflags "-s -w \
-            -X ${PROJ_DIR}/cmd/utils.GitCommit=${GIT_COMMIT} \
-            -X ${PROJ_DIR}/cmd/utils.GoVersion=${GO_VERSION}" \
-    cmd/wctl/main.go
+RUN GIT_COMMIT=$(git rev-parse --short HEAD) && \
+    GO_VERSION=$(go version | awk '{print $3}') && \
+    go build \
+        -o ${BUILD_BIN}/wctl \
+        -ldflags "-s -w \
+                -X ${PROJ_DIR}/cmd/utils.GitCommit=${GIT_COMMIT} \
+                -X ${PROJ_DIR}/cmd/utils.GoVersion=${GO_VERSION}" \
+        cmd/wctl/main.go && \
+    ${BUILD_BIN}/wctl -version
 
 RUN go test -coverprofile=coverage.txt -covermode=atomic -timeout 300s -v -bench -race ./...
