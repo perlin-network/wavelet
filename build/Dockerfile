@@ -64,6 +64,15 @@ RUN . /tmp/build_vars.sh && \
             -X ${PROJ_DIR}/cmd/utils.GitCommit=${GIT_COMMIT} \
             -X ${PROJ_DIR}/cmd/utils.GoVersion=${GO_VERSION}" \
         cmd/wavelet/main.go
+# RUN . /tmp/build_vars.sh && \
+#     GOOS=darwin \
+#     GOARCH=amd64 \
+#     go build \
+#         -o ${BUILD_BIN}/darwin-amd64/wavelet \
+#         -ldflags "-s -w \
+#             -X ${PROJ_DIR}/cmd/utils.GitCommit=${GIT_COMMIT} \
+#             -X ${PROJ_DIR}/cmd/utils.GoVersion=${GO_VERSION}" \
+#         cmd/wavelet/main.go
 
 # compile the wctl exec
 RUN . /tmp/build_vars.sh && \
@@ -85,6 +94,15 @@ RUN . /tmp/build_vars.sh && \
                 -X ${PROJ_DIR}/cmd/utils.GitCommit=${GIT_COMMIT} \
                 -X ${PROJ_DIR}/cmd/utils.GoVersion=${GO_VERSION}" \
         cmd/wctl/main.go
+# RUN . /tmp/build_vars.sh && \
+#     GOOS=darwin \
+#     GOARCH=amd64 \
+#     go build \
+#         -o ${BUILD_BIN}/darwin-amd64/wctl \
+#         -ldflags "-s -w \
+#                 -X ${PROJ_DIR}/cmd/utils.GitCommit=${GIT_COMMIT} \
+#                 -X ${PROJ_DIR}/cmd/utils.GoVersion=${GO_VERSION}" \
+#         cmd/wctl/main.go
 
 # run the tests to make sure everything passes
 RUN go test -coverprofile=coverage.txt -covermode=atomic -timeout 300s -v -bench -race ./...
