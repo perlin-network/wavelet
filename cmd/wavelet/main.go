@@ -94,8 +94,8 @@ func main() {
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "genesis",
-			Value: "genesis.csv",
-			Usage: "CSV file containing account data to initialize the ledger from `GENESIS_CSV`.",
+			Value: "",
+			Usage: "JSON file containing account data to initialize the ledger from `GENESIS_JSON`.",
 		}),
 		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
 			Name:  "peers",
@@ -145,7 +145,7 @@ func main() {
 		w := node.NewPlugin(node.Options{
 			DatabasePath: databasePath,
 			ServicesPath: servicesPath,
-			GenesisCSV:   genesisPath,
+			GenesisFile:   genesisPath,
 		})
 
 		builder := network.NewBuilder()
