@@ -2,9 +2,7 @@ module github.com/perlin-network/wavelet
 
 require (
 	github.com/BurntSushi/toml v0.3.1 // indirect
-	github.com/StackExchange/wmi v0.0.0-20180725035823-b12b22c5341f // indirect
 	github.com/dchest/siphash v1.2.0 // indirect
-	github.com/go-ole/go-ole v1.2.1 // indirect
 	github.com/gofrs/uuid v3.1.0+incompatible
 	github.com/gogo/protobuf v1.1.1
 	github.com/gorilla/websocket v1.4.0

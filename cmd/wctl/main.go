@@ -1,14 +1,12 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"strconv"
 	"time"
 
+	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/cmd/utils"
 	"github.com/perlin-network/wavelet/log"
@@ -85,95 +83,70 @@ func runAction(c *cli.Context) {
 		log.Fatal().Msg("Missing command argument")
 	}
 
-	switch cmd[0] {
-	case "wallet":
-		if len(cmd) != 2 {
-			log.Fatal().Msg("wallet expected 1 argument: wallet [address]")
-		}
-
-		recipient := cmd[1]
-		var ret map[string][]byte
-		if err := client.Request("/account/load", recipient, &ret); err != nil {
+	switch c.Args().Get(0) {
+	case "send_transaction":
+		tag := c.Args().Get(1)
+		payload := c.Args().Get(2)
+		err := client.SendTransaction(tag, []byte(payload))
+		if err != nil {
 			log.Fatal().Err(err).Msg("")
 		}
-		log.Info().Msgf("Wallet information: %v", ret)
-	case "pay":
-		tag := "transfer"
-
-		if len(cmd) != 3 {
-			log.Fatal().Msg("transfer expected 2 arguments: transfer [recipient] [amount]")
-		}
-
-		recipient := cmd[1]
-		amount, err := strconv.Atoi(cmd[2])
+	case "recent_transactions":
+		transactions, err := client.RecentTransactions()
 		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to convert payment amount to an uint64.")
+			log.Fatal().Err(err).Msg("")
 		}
 
-		transfer := struct {
-			Recipient string `json:"recipient"`
-			Amount    uint64 `json:"amount"`
-		}{
-			Recipient: recipient,
-			Amount:    uint64(amount),
+		for _, tx := range transactions {
+			log.Info().Msgf("%v", tx)
 		}
+	case "poll_accounts":
+		evChan, err := client.PollAccountUpdates(nil)
 
-		payload, err := json.Marshal(transfer)
 		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to marshal transfer payload.")
+			log.Fatal().Err(err).Msg("")
 		}
 
-		if err := client.Request("/transaction/send", struct {
-			Tag     string `json:"tag"`
-			Payload []byte `json:"payload"`
-		}{
-			Tag:     tag,
-			Payload: payload,
-		}, nil); err != nil {
-			log.Fatal().Err(err).Msg("Failed to send pay command.")
+		for ev := range evChan {
+			log.Info().Msgf("%v", ev)
 		}
-	case "contract":
-		if len(cmd) != 3 {
-			log.Fatal().Msg("contract expected 1 argument: contract [path]")
+	case "poll_transactions":
+		event := c.Args().Get(1)
+
+		var evChan <-chan wire.Transaction
+		switch event {
+		case "accepted":
+			evChan, err = client.PollAcceptedTransactions(nil)
+		case "applied":
+			evChan, err = client.PollAppliedTransactions(nil)
+		default:
+			log.Fatal().Msgf("invalid event type specified: %v", event)
 		}
 
-		contractPath := cmd[1]
-
-		bytes, err := ioutil.ReadFile(contractPath)
 		if err != nil {
-			log.Fatal().
-				Err(err).
-				Str("path", contractPath).
-				Msg("Failed to find/load the smart contract code from the given path.")
+			log.Fatal().Err(err).Msg("")
 		}
 
-		contract := struct {
-			Code string `json:"code"`
-		}{
-			Code: base64.StdEncoding.EncodeToString(bytes),
+		for ev := range evChan {
+			log.Info().Msgf("%v", ev)
 		}
-
-		payload, err := json.Marshal(contract)
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to marshal smart contract deployment payload.")
-		}
-
-		log.Info().Msgf("Result: %v", payload)
 	case "stats_reset":
 		res := new(interface{})
-		if err := client.Request("/stats/reset", struct{}{}, res); err != nil {
+		err := client.StatsReset(res)
+		if err != nil {
 			log.Fatal().Err(err).Msg("")
 		}
 		jsonOut, _ := json.Marshal(res)
 		fmt.Printf("%s\n", jsonOut)
 	case "stats_summary":
 		res := new(interface{})
-		if err := client.Request("/stats/summary", struct{}{}, res); err != nil {
+		err := client.StatsSummary(res)
+		if err != nil {
 			log.Fatal().Err(err).Msg("")
 		}
 		jsonOut, _ := json.Marshal(res)
 		fmt.Printf("%s\n", jsonOut)
 	default:
-		log.Fatal().Msgf("unknown command: %s", cmd[0])
+		log.Fatal().Msgf("unknown command: %s", cmd)
 	}
 }
