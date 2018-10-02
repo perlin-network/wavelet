@@ -371,7 +371,7 @@ class BroadcastTransaction(threading.Thread):
                     "-privkey", self.private_key,
                     "pay",
                     recipient,
-                    amount
+                    str(amount)
                 ]
                 return_code, stdout = exec_process(pargs)
                 if return_code != 0:

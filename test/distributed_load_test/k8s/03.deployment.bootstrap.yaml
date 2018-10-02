@@ -40,7 +40,7 @@ spec:
         - name: STORAGE_TYPE
           value: "level"
         - name: STATS_POLL_INTERVAL
-          value: "1.0"
+          value: "0.0"
         - name: MY_NODE_NAME
           valueFrom:
             fieldRef:

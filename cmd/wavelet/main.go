@@ -181,15 +181,10 @@ func main() {
 		exit := make(chan os.Signal, 1)
 		signal.Notify(exit, os.Interrupt)
 
-		go func() {
-			<-exit
+		<-exit
 
-			net.Close()
-			os.Exit(0)
-		}()
-
-		for {
-		}
+		net.Close()
+		os.Exit(0)
 	}
 
 	app.Before = altsrc.InitInputSourceWithContext(app.Flags, func(c *cli.Context) (altsrc.InputSourceContext, error) {
