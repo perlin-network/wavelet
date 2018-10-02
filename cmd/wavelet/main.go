@@ -2,25 +2,17 @@ package main
 
 import (
 	"bufio"
-	"encoding/base64"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
 	"time"
 
-	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/cmd/utils"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/security"
 
-	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/noise/crypto"
 	"github.com/perlin-network/noise/crypto/ed25519"
 	"github.com/perlin-network/noise/network"
