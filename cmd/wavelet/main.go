@@ -92,12 +92,12 @@ func main() {
 		}),
 		altsrc.NewBoolFlag(cli.BoolFlag{
 			Name:  "daemon",
-			Usage: "Run client in daemon mode.",
+			Usage: "Run node in daemon mode. Daemon mode means no standard input needed.",
 		}),
 		// config specifies the file that overrides altsrc
 		cli.StringFlag{
 			Name:  "config, c",
-			Usage: "Wavelet configuration file.",
+			Usage: "Wavelet configuration file. Command line arguments override the config file.",
 		},
 	}
 
