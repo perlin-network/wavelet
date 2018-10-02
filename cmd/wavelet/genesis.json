@@ -1,4 +1,8 @@
-[
-    {"public_key":"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858","balance":100000000},
-    {"public_key":"8f9b4ae0364280e6a0b988c149f65d1badaeefed2db582266494dd79aa7c821a","message":"genesis"}
-]
+{
+  "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858": {
+    "balance": 100000000
+  },
+  "8f9b4ae0364280e6a0b988c149f65d1badaeefed2db582266494dd79aa7c821a": {
+    "message": "genesis"
+  }
+}
