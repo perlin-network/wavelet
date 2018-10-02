@@ -99,7 +99,7 @@ func main() {
 		w := node.NewPlugin(node.Options{
 			DatabasePath: c.String("db"),
 			ServicesPath: c.String("services"),
-			GenesisFile: c.String("genesis"),
+			GenesisFile:  c.String("genesis"),
 		})
 
 		builder := network.NewBuilder()

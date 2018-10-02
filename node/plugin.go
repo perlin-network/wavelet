@@ -19,7 +19,7 @@ var PluginID = (*Wavelet)(nil)
 type Options struct {
 	DatabasePath string
 	ServicesPath string
-	GenesisFile string
+	GenesisFile  string
 }
 
 type Wavelet struct {
