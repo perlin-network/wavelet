@@ -23,12 +23,26 @@ func TestLoadGenesis(t *testing.T) {
 
 	testCases := [][]entry{
 		[]entry{
-			{PublicKey: "f8cab2617bdd3127d1ba17f5c4890466c2c668610fa09a8416e9aeafdd8336c3", Balance: 1337, Message: "one"},
-			{PublicKey: "ef999332ca9f567221a31549db23241e624d9e30f9a0c788f53cb5ded5c6d047", Balance: 1000000, Message: "two"},
+			{
+				PublicKey: "f8cab2617bdd3127d1ba17f5c4890466c2c668610fa09a8416e9aeafdd8336c3",
+				Balance:   1337,
+				Message:   "one",
+			},
+			{
+				PublicKey: "ef999332ca9f567221a31549db23241e624d9e30f9a0c788f53cb5ded5c6d047",
+				Balance:   1000000,
+				Message:   "two",
+			},
 		},
 		[]entry{
-			{PublicKey: "f8cab2617bdd3127d1ba17f5c4890466c2c668610fa09a8416e9aeafdd8336c3", Message: "one"},
-			{PublicKey: "ef999332ca9f567221a31549db23241e624d9e30f9a0c788f53cb5ded5c6d047", Balance: 1000000},
+			{
+				PublicKey: "f8cab2617bdd3127d1ba17f5c4890466c2c668610fa09a8416e9aeafdd8336c3",
+				Message:   "one",
+			},
+			{
+				PublicKey: "ef999332ca9f567221a31549db23241e624d9e30f9a0c788f53cb5ded5c6d047",
+				Balance:   1000000,
+			},
 		},
 	}
 
@@ -71,8 +85,14 @@ func TestLoadGenesisBadIDs(t *testing.T) {
 
 	testCases := [][]entry{
 		[]entry{
-			{PublicKey: "bad_id1", Balance: 1000000, Message: "one"},
-			{PublicKey: "bad_id2"},
+			{
+				PublicKey: "bad_id1",
+				Balance:   1000000,
+				Message:   "one",
+			},
+			{
+				PublicKey: "bad_id2",
+			},
 		},
 	}
 
@@ -99,8 +119,14 @@ func TestLoadGenesisRegression(t *testing.T) {
 	}{
 		{filepath.Join("cmd", "wavelet", "genesis.json"),
 			[]entry{
-				{PublicKey: "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858", Balance: 100000000},
-				{PublicKey: "8f9b4ae0364280e6a0b988c149f65d1badaeefed2db582266494dd79aa7c821a", Message: "genesis"},
+				{
+					PublicKey: "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
+					Balance:   100000000,
+				},
+				{
+					PublicKey: "8f9b4ae0364280e6a0b988c149f65d1badaeefed2db582266494dd79aa7c821a",
+					Message:   "genesis",
+				},
 			},
 		},
 	}
