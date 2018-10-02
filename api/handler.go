@@ -318,9 +318,7 @@ func (s *service) sessionInitHandler(ctx *requestContext) {
 
 	session := s.registry.newSession(info.Permissions)
 
-	ctx.WriteJSON(http.StatusOK, struct {
-		Token string `json:"token"`
-	}{
+	ctx.WriteJSON(http.StatusOK, SessionResponse{
 		Token: session.ID,
 	})
 }
