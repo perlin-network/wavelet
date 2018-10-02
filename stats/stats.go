@@ -5,16 +5,30 @@ import (
 	"time"
 )
 
+const (
+	numAcceptedTransactions          = "num_accepted_transactions"
+	numAcceptedTransactionsPerSecond = "num_accepted_transactions_per_sec"
+	consensusDuration                = "consensus_duration"
+
+	uptime  = "uptime"
+	laptime = "laptime"
+
+	bufferAcceptByTagPerSec = "buffer_accept_by_tag_per_sec"
+	lastAcceptByTagPerSec   = "last_accept_by_tag_per_sec"
+)
+
 var (
-	numAcceptedTransactions          = expvar.NewInt("wavelet_num_accepted_transactions")
-	numAcceptedTransactionsPerSecond = expvar.NewInt("wavelet_num_accepted_transactions_per_sec")
-	consensusDuration                = expvar.NewFloat("wavelet_consensus_duration")
+	numAcceptedTransactionsStat          expvar.Int
+	numAcceptedTransactionsPerSecondStat expvar.Int
+	consensusDurationStat                expvar.Float
 
-	uptime  = expvar.NewString("wavelet_uptime")
-	laptime = expvar.NewFloat("wavelet_laptime")
+	uptimeStat  expvar.String
+	laptimeStat expvar.Float
 
-	bufferAcceptByTagPerSec = expvar.NewMap("wavelet_buffer_accept_by_tag_per_sec")
-	lastAcceptByTagPerSec   = expvar.NewMap("wavelet_last_accept_by_tag_per_sec")
+	bufferAcceptByTagPerSecStat expvar.Map
+	lastAcceptByTagPerSecStat   expvar.Map
+
+	stats = expvar.NewMap("wavelet")
 
 	startTime    time.Time
 	lapStartTime time.Time
@@ -27,75 +41,54 @@ func init() {
 
 	go func() {
 		for range time.Tick(1 * time.Second) {
-			numAcceptedTransactionsPerSecond.Set(0)
-			uptime.Set(time.Now().Sub(startTime).String())
-			laptime.Set(time.Now().Sub(lapStartTime).Seconds())
+			numAcceptedTransactionsPerSecondStat.Set(0)
+			uptimeStat.Set(time.Now().Sub(startTime).String())
+			laptimeStat.Set(time.Now().Sub(lapStartTime).Seconds())
 
-			lastAcceptByTagPerSec.Init()
+			lastAcceptByTagPerSecStat.Init()
 
-			bufferAcceptByTagPerSec.Do(func(kv expvar.KeyValue) {
-				lastAcceptByTagPerSec.Set(kv.Key, kv.Value)
+			bufferAcceptByTagPerSecStat.Do(func(kv expvar.KeyValue) {
+				lastAcceptByTagPerSecStat.Set(kv.Key, kv.Value)
 			})
 
-			bufferAcceptByTagPerSec.Init()
+			bufferAcceptByTagPerSecStat.Init()
 		}
 	}()
 }
 
 // IncAcceptedTransactions will increment #accepted transactions for the tag
 func IncAcceptedTransactions(tag string) {
-	numAcceptedTransactions.Add(1)
-	numAcceptedTransactionsPerSecond.Add(1)
-	bufferAcceptByTagPerSec.Add(tag, 1)
-	bufferAcceptByTagPerSec.Add("total", 1)
+	numAcceptedTransactionsStat.Add(1)
+	numAcceptedTransactionsPerSecondStat.Add(1)
+	bufferAcceptByTagPerSecStat.Add(tag, 1)
+	bufferAcceptByTagPerSecStat.Add("total", 1)
 }
 
 // DecAcceptedTransactions will decrement #accepted transactions by 1.
 func DecAcceptedTransactions() {
-	numAcceptedTransactions.Set(numAcceptedTransactions.Value() - 1)
+	numAcceptedTransactionsStat.Set(numAcceptedTransactionsStat.Value() - 1)
 }
 
 // SetConsensusDuration will update last consensus duration.
 func SetConsensusDuration(value float64) {
-	consensusDuration.Set(value)
+	consensusDurationStat.Set(value)
 }
 
 // Reset sets all metrics to 0
 func Reset() {
 	lapStartTime = time.Now()
-	consensusDuration.Set(0)
-	numAcceptedTransactions.Set(0)
-	numAcceptedTransactionsPerSecond.Set(0)
-	lastAcceptByTagPerSec.Init()
-	bufferAcceptByTagPerSec.Init()
-}
+	consensusDurationStat.Set(0)
+	numAcceptedTransactionsStat.Set(0)
+	numAcceptedTransactionsPerSecondStat.Set(0)
+	lastAcceptByTagPerSecStat.Init()
+	bufferAcceptByTagPerSecStat.Init()
 
-// Summary returns a summary of the stats
-func Summary() interface{} {
-	t, _ := time.ParseDuration(uptime.Value())
-
-	acceptByTagPerSec := make(map[string]int64)
-	lastAcceptByTagPerSec.Do(func(kv expvar.KeyValue) {
-		if iv, ok := kv.Value.(*expvar.Int); ok {
-			acceptByTagPerSec[kv.Key] = iv.Value()
-		}
-	})
-
-	summary := struct {
-		ConsensusDuration                float64          `json:"consensus_duration"`
-		NumAcceptedTransactions          int64            `json:"num_accepted_tx"`
-		NumAcceptedTransactionsPerSecond int64            `json:"num_accepted_tx_per_sec"`
-		Uptime                           float64          `json:"uptime"`
-		LapTime                          float64          `json:"laptime"`
-		AcceptByTagPerSec                map[string]int64 `json:"accept_by_tag_per_sec"`
-	}{
-		ConsensusDuration:                consensusDuration.Value(),
-		NumAcceptedTransactions:          numAcceptedTransactions.Value(),
-		NumAcceptedTransactionsPerSecond: numAcceptedTransactionsPerSecond.Value(),
-		Uptime:                           t.Seconds(),
-		LapTime:                          laptime.Value(),
-		AcceptByTagPerSec:                acceptByTagPerSec,
-	}
-
-	return summary
+	stats.Init()
+	stats.Set(numAcceptedTransactions, &numAcceptedTransactionsStat)
+	stats.Set(numAcceptedTransactionsPerSecond, &numAcceptedTransactionsPerSecondStat)
+	stats.Set(consensusDuration, &consensusDurationStat)
+	stats.Set(uptime, &uptimeStat)
+	stats.Set(laptime, &laptimeStat)
+	stats.Set(bufferAcceptByTagPerSec, &bufferAcceptByTagPerSecStat)
+	stats.Set(lastAcceptByTagPerSec, &lastAcceptByTagPerSecStat)
 }
