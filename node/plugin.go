@@ -19,7 +19,7 @@ var PluginID = (*Wavelet)(nil)
 type Options struct {
 	DatabasePath string
 	ServicesPath string
-	GenesisFile string
+	GenesisPath  string
 }
 
 type Wavelet struct {
@@ -46,23 +46,12 @@ func (w *Wavelet) Startup(net *network.Network) {
 	plugin, registered := net.Plugin(discovery.PluginID)
 
 	if !registered {
-		log.Fatal().Msg("net was not built with peer discovery plugin")
+		log.Fatal().Msg("Wavelet requires `discovery.Plugin` from the `noise` lib. to be registered into this nodes network.")
 	}
 
 	w.routes = plugin.(*discovery.Plugin).Routes
 
-	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath)
-
-	if len(w.opts.GenesisFile) > 0 {
-		genesisFile := w.opts.GenesisFile
-		genesis, err := wavelet.LoadGenesis(genesisFile)
-		if err != nil {
-			log.Error().Err(err).Msgf("Unable to load genesis from file %s", genesisFile)
-		} else {
-			wavelet.ApplyGenesis(ledger, genesis)
-			log.Info().Str("file", genesisFile).Int("NumAccounts", len(genesis)).Msg("Loaded genesis file.")
-		}
-	}
+	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath, w.opts.GenesisPath)
 
 	loop := wavelet.NewEventLoop(ledger)
 	go loop.RunForever()

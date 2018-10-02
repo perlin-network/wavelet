@@ -88,17 +88,17 @@ func main() {
 			Usage: "Load WebAssembly transaction processor services from `SERVICES_PATH`.",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "privkey",
-			Value: "random",
-			Usage: "Set the node's private key to be `PRIVATE_KEY`. Leave `PRIVATE_KEY` = 'random' if you want to randomly generate one.",
+			Name:  "genesis, g",
+			Value: "genesis.json",
+			Usage: "JSON file containing account data to initialize the ledger from `GENESIS_FILE`.",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "genesis",
-			Value: "",
-			Usage: "JSON file containing account data to initialize the ledger from `GENESIS_JSON`.",
+			Name:  "privkey, sk",
+			Value: "6d6fe0c2bc913c0e3e497a0328841cf4979f932e01d2030ad21e649fca8d47fe71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
+			Usage: "Set the node's private key to be `PRIVATE_KEY`. Leave `PRIVATE_KEY` = 'random' if you want to randomly generate one.",
 		}),
 		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
-			Name:  "peers",
+			Name:  "nodes, peers, n",
 			Usage: "Bootstrap to peers whose address are formatted as tcp://[host]:[port] from `PEER_NODES`.",
 		}),
 		altsrc.NewBoolFlag(cli.BoolFlag{
@@ -145,7 +145,7 @@ func main() {
 		w := node.NewPlugin(node.Options{
 			DatabasePath: databasePath,
 			ServicesPath: servicesPath,
-			GenesisFile:   genesisPath,
+			GenesisPath:   genesisPath,
 		})
 
 		builder := network.NewBuilder()

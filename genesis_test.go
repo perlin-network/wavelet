@@ -3,156 +3,123 @@ package wavelet
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"os"
-	"path/filepath"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
-type entry struct {
-	PublicKey string `json:"public_key"`
-	Balance   uint64 `json:"balance,omitempty"`
-	Message   string `json:"message,omitempty"`
-}
-
-func TestLoadGenesis(t *testing.T) {
-	t.Parallel()
-
-	testCases := [][]entry{
-		[]entry{
-			{
-				PublicKey: "f8cab2617bdd3127d1ba17f5c4890466c2c668610fa09a8416e9aeafdd8336c3",
-				Balance:   1337,
-				Message:   "one",
-			},
-			{
-				PublicKey: "ef999332ca9f567221a31549db23241e624d9e30f9a0c788f53cb5ded5c6d047",
-				Balance:   1000000,
-				Message:   "two",
-			},
-		},
-		[]entry{
-			{
-				PublicKey: "f8cab2617bdd3127d1ba17f5c4890466c2c668610fa09a8416e9aeafdd8336c3",
-				Message:   "one",
-			},
-			{
-				PublicKey: "ef999332ca9f567221a31549db23241e624d9e30f9a0c788f53cb5ded5c6d047",
-				Balance:   1000000,
-			},
-		},
-	}
-
-	for i, entries := range testCases {
-		tmpfile, err := ioutil.TempFile("", fmt.Sprintf("genesis-%d", i))
-		require.Nilf(t, err, "test case %d", i)
-		defer os.Remove(tmpfile.Name())
-
-		b, err := json.Marshal(entries)
-		require.Nilf(t, err, "test case %d", i)
-		tmpfile.Write(b)
-
-		accounts, err := LoadGenesis(tmpfile.Name())
-		assert.Nilf(t, err, "test case %d", i)
-		assert.Equalf(t, len(entries), len(accounts), "test case %d", i)
-		for j, e := range entries {
-			key := e.PublicKey
-			balance := e.Balance
-			message := e.Message
-			assert.Equalf(t, key, accounts[j].PublicKeyHex(), "public key should be equal i=%d j=%d", i, j)
-			b, loaded := accounts[j].Load("balance")
-			if balance != 0 {
-				assert.Equalf(t, true, loaded, "balance should exists i=%d j=%d", i, j)
-				assert.Equalf(t, balance, readUint64(b), "balance should be equal i=%d j=%d", i, j)
-			} else {
-				assert.Equalf(t, false, loaded, "balance should not exists i=%d j=%d", i, j)
-			}
-			m, loaded := accounts[j].Load("message")
-			if message != "" {
-				assert.Equalf(t, true, loaded, "message should exists i=%d j=%d", i, j)
-				assert.Equalf(t, message, string(m), "message should be equal i=%d j=%d", i, j)
-			} else {
-				assert.Equalf(t, false, loaded, "message should not exists i=%d j=%d", i, j)
-			}
+func check(t *testing.T, file *os.File, err error) {
+	if err != nil {
+		if file != nil {
+			os.Remove(file.Name())
 		}
+		t.Fatal(err)
 	}
 }
-func TestLoadGenesisBadIDs(t *testing.T) {
+
+func TestReadGenesis(t *testing.T) {
 	t.Parallel()
 
-	testCases := [][]entry{
-		[]entry{
-			{
-				PublicKey: "bad_id1",
-				Balance:   1000000,
-				Message:   "one",
+	cases := []map[string]map[string]interface{}{
+		{
+			"f8cab2617bdd3127d1ba17f5c4890466c2c668610fa09a8416e9aeafdd8336c3": {
+				"balance": uint64(1337),
+				"message": "one",
 			},
-			{
-				PublicKey: "bad_id2",
+			"ef999332ca9f567221a31549db23241e624d9e30f9a0c788f53cb5ded5c6d047": {
+				"balance": uint64(1000000),
+				"message": "two",
+			},
+		},
+		{
+			"f8cab2617bdd3127d1ba17f5c4890466c2c668610fa09a8416e9aeafdd8336c3": {
+				"message": "one",
+			},
+			"ef999332ca9f567221a31549db23241e624d9e30f9a0c788f53cb5ded5c6d047": {
+				"balance": uint64(1000000),
 			},
 		},
 	}
 
-	for i, entries := range testCases {
-		tmpfile, err := ioutil.TempFile("", fmt.Sprintf("genesis-%d", i))
-		require.Nilf(t, err, "test case %d", i)
-		defer os.Remove(tmpfile.Name())
+	for i, template := range cases {
+		tmp, err := ioutil.TempFile("", fmt.Sprintf("genesis-%d", i))
+		check(t, tmp, err)
 
-		b, err := json.Marshal(entries)
-		require.Nilf(t, err, "test case %d", i)
-		tmpfile.Write(b)
+		bytes, err := json.Marshal(template)
+		check(t, tmp, err)
 
-		_, err = LoadGenesis(tmpfile.Name())
-		assert.NotNilf(t, err, "test case %d", i)
-	}
-}
-func TestLoadGenesisRegression(t *testing.T) {
-	t.Parallel()
+		_, err = tmp.Write(bytes)
+		check(t, tmp, err)
 
-	// this should match a checked in file
-	testCases := []struct {
-		filename string
-		entries  []entry
-	}{
-		{filepath.Join("cmd", "wavelet", "genesis.json"),
-			[]entry{
-				{
-					PublicKey: "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
-					Balance:   100000000,
-				},
-				{
-					PublicKey: "8f9b4ae0364280e6a0b988c149f65d1badaeefed2db582266494dd79aa7c821a",
-					Message:   "genesis",
-				},
-			},
-		},
-	}
+		genesis, err := ReadGenesis(tmp.Name())
+		check(t, tmp, err)
 
-	for _, tt := range testCases {
-		accounts, err := LoadGenesis(tt.filename)
-		assert.Equal(t, nil, err, "%+v", err)
-		for i, e := range tt.entries {
-			key := e.PublicKey
-			balance := e.Balance
-			message := e.Message
-			assert.Equalf(t, key, accounts[i].PublicKeyHex(), "public key should be equal i=%d", i)
-			b, loaded := accounts[i].Load("balance")
-			if balance != 0 {
-				assert.Equalf(t, true, loaded, "balance should exists i=%d", i)
-				assert.Equalf(t, balance, readUint64(b), "balance should be equal i=%d", i)
-			} else {
-				assert.Equalf(t, false, loaded, "balance should not exists i=%d", i)
+		assert.Equalf(t, len(template), len(genesis), "test case %d", i)
+
+		for targetID, pairs := range template {
+			var target *Account
+
+			for _, account := range genesis {
+				if account.PublicKeyHex() == targetID {
+					target = account
+					break
+				}
 			}
-			m, loaded := accounts[i].Load("message")
-			if message != "" {
-				assert.Equalf(t, true, loaded, "message should exists i=%d i=%d", i)
-				assert.Equalf(t, message, string(m), "message should be equal i=%d", i)
-			} else {
-				assert.Equalf(t, false, loaded, "message should not exists i=%d", i)
+
+			if target == nil {
+				t.Fatalf("failed to find account %s in genesis", targetID)
 			}
+
+			balance, exists := pairs["balance"]
+			loadedBalance, loaded := target.Load("balance")
+
+			if loaded {
+				assert.Equal(t, balance, readUint64(loadedBalance), "expected balances to be equal")
+			}
+			assert.Equal(t, loaded, exists, "expected balances to exist")
+
+			message, exists := pairs["message"]
+			loadedMessage, loaded := target.Load("message")
+
+			if len(loadedMessage) > 0 {
+				assert.Equal(t, message, string(loadedMessage), "expected messages to be equal")
+			}
+			assert.Equal(t, loaded, exists, "expected messages to exist")
 		}
+
+		os.Remove(tmp.Name())
+	}
+}
+
+func TestReadGenesisBadIDs(t *testing.T) {
+	t.Parallel()
+
+	cases := []map[string]map[string]interface{}{
+		{
+			"bad_id1": {
+				"balance": uint64(1000000),
+				"message": "one",
+			},
+		},
+		{
+			"bad_id2": {},
+		},
+	}
+
+	for i, template := range cases {
+		tmp, err := ioutil.TempFile("", fmt.Sprintf("genesis-%d", i))
+		check(t, tmp, err)
+
+		bytes, err := json.Marshal(template)
+		check(t, tmp, err)
+
+		_, err = tmp.Write(bytes)
+		check(t, tmp, err)
+
+		_, err = ReadGenesis(tmp.Name())
+		assert.NotNil(t, err, "expected there to be an error loading invalid account IDs")
+
+		os.Remove(tmp.Name())
 	}
 }

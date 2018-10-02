@@ -374,12 +374,17 @@ func (s *state) SaveAccount(account *Account, deltas []*Delta) error {
 	return nil
 }
 
-// NumTransactions represents the number of transactions in the ledger.
+// NumAccounts returns the number of accounts recorded in the ledger.
+func (s *state) NumAccounts() uint64 {
+	return s.Size(BucketAccounts)
+}
+
+// NumTransactions returns the number of transactions in the ledger.
 func (s *state) NumTransactions() uint64 {
 	return s.Size(database.BucketTx)
 }
 
-// NumAcceptedTransactions represents the number of accepted transactions in the ledger.
+// NumAcceptedTransactions returns the number of accepted transactions in the ledger.
 func (s *state) NumAcceptedTransactions() uint64 {
 	return s.Size(BucketAcceptedIndex)
 }
