@@ -12,7 +12,6 @@ import (
 
 const databasePath = "testdb"
 const servicesPath = "cmd/services"
-const genesisFile = "cmd/wavelet/genesis.json"
 
 func BenchmarkLedger(b *testing.B) {
 	b.StopTimer()
@@ -24,7 +23,11 @@ func BenchmarkLedger(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	ledger := NewLedger(databasePath, servicesPath, genesisFile)
+	ledger := NewLedger(databasePath, servicesPath)
+
+	account := NewAccount(keys.PublicKey)
+	account.Store("balance", writeUint64(1000000))
+	ApplyGenesis(ledger, []*Account{account})
 
 	defer os.RemoveAll(databasePath)
 	defer ledger.Graph.Cleanup()

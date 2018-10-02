@@ -19,7 +19,6 @@ var PluginID = (*Wavelet)(nil)
 type Options struct {
 	DatabasePath string
 	ServicesPath string
-	GenesisFile  string
 }
 
 type Wavelet struct {
@@ -32,6 +31,7 @@ type Wavelet struct {
 
 	Ledger *wavelet.LoopHandle
 	Wallet *wavelet.Wallet
+	Ledger2 *wavelet.Ledger
 
 	opts Options
 }
@@ -51,9 +51,9 @@ func (w *Wavelet) Startup(net *network.Network) {
 
 	w.routes = plugin.(*discovery.Plugin).Routes
 
-	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath, w.opts.GenesisFile)
+	w.Ledger2 = wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath)
 
-	loop := wavelet.NewEventLoop(ledger)
+	loop := wavelet.NewEventLoop(w.Ledger2)
 	go loop.RunForever()
 
 	w.Ledger = loop.Handle()

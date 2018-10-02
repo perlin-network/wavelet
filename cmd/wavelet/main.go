@@ -63,7 +63,7 @@ func main() {
 		},
 		cli.StringFlag{
 			Name:  "genesis, g",
-			Value: "genesis.json",
+			Value: "",
 			Usage: "JSON file containing account data to initialize the ledger from `GENESIS_JSON`.",
 		},
 		cli.StringFlag{
@@ -99,8 +99,18 @@ func main() {
 		w := node.NewPlugin(node.Options{
 			DatabasePath: c.String("db"),
 			ServicesPath: c.String("services"),
-			GenesisFile:  c.String("genesis"),
 		})
+
+		if len(c.String("genesis")) > 0 {
+			genesisFile := c.String("genesis")
+			genesis, err := wavelet.LoadGenesis(genesisFile)
+			if err != nil {
+				log.Error().Err(err).Msgf("Unable to load genesis from file %s", genesisFile)
+			} else {
+				wavelet.ApplyGenesis(w.Ledger2, genesis)
+				log.Info().Str("file", genesisFile).Int("NumAccounts", len(genesis)).Msg("Loaded genesis file.")
+			}
+		}
 
 		builder := network.NewBuilder()
 

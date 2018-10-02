@@ -18,7 +18,7 @@ type entry struct {
 	Message   string `json:"message,omitempty"`
 }
 
-func TestLoadGenesisTransaction(t *testing.T) {
+func TestLoadGenesis(t *testing.T) {
 	t.Parallel()
 
 	testCases := [][]entry{
@@ -41,7 +41,7 @@ func TestLoadGenesisTransaction(t *testing.T) {
 		require.Nilf(t, err, "test case %d", i)
 		tmpfile.Write(b)
 
-		accounts, err := LoadGenesisTransaction(tmpfile.Name())
+		accounts, err := LoadGenesis(tmpfile.Name())
 		assert.Nilf(t, err, "test case %d", i)
 		assert.Equalf(t, len(entries), len(accounts), "test case %d", i)
 		for j, e := range entries {
@@ -85,7 +85,7 @@ func TestLoadGenesisBadIDs(t *testing.T) {
 		require.Nilf(t, err, "test case %d", i)
 		tmpfile.Write(b)
 
-		_, err = LoadGenesisTransaction(tmpfile.Name())
+		_, err = LoadGenesis(tmpfile.Name())
 		assert.NotNilf(t, err, "test case %d", i)
 	}
 }
@@ -106,7 +106,7 @@ func TestLoadGenesisRegression(t *testing.T) {
 	}
 
 	for _, tt := range testCases {
-		accounts, err := LoadGenesisTransaction(tt.filename)
+		accounts, err := LoadGenesis(tt.filename)
 		assert.Equal(t, nil, err, "%+v", err)
 		for i, e := range tt.entries {
 			key := e.PublicKey

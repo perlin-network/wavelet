@@ -41,7 +41,7 @@ type Ledger struct {
 	lastUpdateAcceptedTime time.Time
 }
 
-func NewLedger(databasePath, servicesPath string, genesisFile string) *Ledger {
+func NewLedger(databasePath, servicesPath string) *Ledger {
 	store := database.New(databasePath)
 
 	graph := graph.New(store)
@@ -57,17 +57,6 @@ func NewLedger(databasePath, servicesPath string, genesisFile string) *Ledger {
 
 	ledger.state = state{Ledger: ledger}
 	ledger.rpc = rpc{Ledger: ledger}
-
-	if store.Size(BucketAccounts) == 0 {
-		genesis, err := LoadGenesisTransaction(genesisFile)
-		if err != nil {
-			log.Error().Err(err).Msgf("Unable to load genesis from file %s", genesisFile)
-		} else {
-			ApplyGenesisTransactions(ledger, genesis)
-			log.Info().Str("file", genesisFile).Int("NumAccounts", len(genesis)).Msg("Loaded genesis file.")
-		}
-	}
-
 	ledger.IBLT = iblt.New(params.TxK, params.TxL)
 
 	if encoded, err := store.Get(KeyTransactionIBLT); err == nil {

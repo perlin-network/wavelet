@@ -10,8 +10,8 @@ import (
 	"github.com/pkg/errors"
 )
 
-// LoadGenesisTransaction loads the genesis transaction from a json file.
-func LoadGenesisTransaction(path string) ([]*Account, error) {
+// LoadGenesis loads the genesis transaction from a json file.
+func LoadGenesis(path string) ([]*Account, error) {
 	jsonFile, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -68,8 +68,8 @@ func LoadGenesisTransaction(path string) ([]*Account, error) {
 	return accounts, nil
 }
 
-// ApplyGenesisTransactions applies accounts to the ledger
-func ApplyGenesisTransactions(ledger *Ledger, accounts []*Account) {
+// ApplyGenesis applies accounts to the ledger
+func ApplyGenesis(ledger *Ledger, accounts []*Account) {
 	for i, account := range accounts {
 		if err := ledger.SaveAccount(account, nil); err != nil {
 			log.Fatal().Err(err).
