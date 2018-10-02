@@ -54,6 +54,11 @@ func main() {
 			Value: 3000,
 			Usage: "Listen for peers on port `PORT`.",
 		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:  "api.host",
+			Value: "localhost",
+			Usage: "Host a local HTTP API at host `API_HOST`.",
+		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "api.port",
 			Usage: "Host a local HTTP API at port `API_PORT`.",
@@ -107,6 +112,7 @@ func main() {
 		servicesPath := c.String("services")
 		genesisPath := c.String("genesis")
 		peers := c.StringSlice("peers")
+		apiHost := c.String("api.host")
 		apiPort := c.Uint("api.port")
 		apiPublicKeys := c.StringSlice("api.clients.public_key")
 
@@ -162,12 +168,12 @@ func main() {
 				clients = append(clients, client)
 			}
 			go api.Run(net, api.Options{
-				ListenAddr: fmt.Sprintf("%s:%d", host, apiPort),
+				ListenAddr: fmt.Sprintf("%s:%d", apiHost, apiPort),
 				Clients:    clients,
 			})
 
 			log.Info().
-				Str("host", c.String("host")).
+				Str("host", apiHost).
 				Uint("port", apiPort).
 				Msg("Local HTTP API is being served.")
 		}
