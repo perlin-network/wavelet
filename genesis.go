@@ -57,6 +57,8 @@ func LoadGenesisTransaction(path string) ([]*Account, error) {
 				account.Store(key, writeUint64(uintVal))
 			case string:
 				account.Store(key, writeBytes(value))
+			default:
+				return nil, errors.Errorf("Genesis file malformed, failed to cast type for key %s at entry %d", key, i)
 			}
 		}
 

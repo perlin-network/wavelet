@@ -35,8 +35,6 @@ func TestLoadGenesisTransaction(t *testing.T) {
 		require.Nilf(t, err, "test case %d", i)
 		tmpfile.Write(b)
 
-		t.Logf("contents: %s", b)
-
 		accounts, err := LoadGenesisTransaction(tmpfile.Name())
 		assert.Nilf(t, err, "test case %d", i)
 		assert.Equalf(t, len(entries), len(accounts), "test case %d", i)
@@ -44,11 +42,11 @@ func TestLoadGenesisTransaction(t *testing.T) {
 			key := e.PublicKey
 			balance := e.Balance
 			message := e.Message
-			assert.Equalf(t, key, accounts[i].PublicKeyHex(), "public key should be equal i=%d j=%d", i, j)
-			b, loaded := accounts[i].Load("balance")
+			assert.Equalf(t, key, accounts[j].PublicKeyHex(), "public key should be equal i=%d j=%d", i, j)
+			b, loaded := accounts[j].Load("balance")
 			assert.Equalf(t, true, loaded, "balance should exists i=%d j=%d", i, j)
 			assert.Equalf(t, balance, readUint64(b), "balance should be equal i=%d j=%d", i, j)
-			m, loaded := accounts[i].Load("message")
+			m, loaded := accounts[j].Load("message")
 			assert.Equalf(t, true, loaded, "message should exists i=%d j=%d", i, j)
 			assert.Equalf(t, message, string(m), "message should be equal i=%d j=%d", i, j)
 		}
