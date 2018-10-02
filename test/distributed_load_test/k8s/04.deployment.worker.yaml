@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: worker
-        image: us.gcr.io/wavelet-dev/load-test:latest
+        image: us.gcr.io/perlin-dev/load-test:latest
         ports:
         - containerPort: 8000
         - containerPort: 8001
