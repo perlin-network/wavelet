@@ -13,7 +13,6 @@ import (
 	"github.com/phf/go-queue/queue"
 	"github.com/sasha-s/go-IBLT"
 	"sort"
-	"sync"
 	"time"
 )
 
@@ -34,10 +33,12 @@ type Ledger struct {
 	*graph.Graph
 	*conflict.Resolver
 
-	iblt      *iblt.Filter
-	ibltMutex sync.Mutex
+	IBLT *iblt.Filter
 
 	kill chan struct{}
+
+	stepping               bool
+	lastUpdateAcceptedTime time.Time
 }
 
 func NewLedger(databasePath, servicesPath string) *Ledger {
@@ -61,10 +62,10 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 		BIGBANG(ledger)
 	}
 
-	ledger.iblt = iblt.New(params.TxK, params.TxL)
+	ledger.IBLT = iblt.New(params.TxK, params.TxL)
 
 	if encoded, err := store.Get(KeyTransactionIBLT); err == nil {
-		err := ledger.iblt.UnmarshalBinary(encoded)
+		err := ledger.IBLT.UnmarshalBinary(encoded)
 
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to decode transaction IBLT from database.")
@@ -78,36 +79,22 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 	return ledger
 }
 
-func (ledger *Ledger) WithIBLT(call func(*iblt.Filter) interface{}) interface{} {
-	ledger.ibltMutex.Lock()
-	value := call(ledger.iblt)
-	ledger.ibltMutex.Unlock()
-
-	return value
-}
-
-func (ledger *Ledger) Init() {
-	go ledger.updateAcceptedTransactionsLoop()
-}
-
-// UpdateAcceptedTransactions incrementally from the root of the graph updates whether
-// or not all transactions this node knows about are accepted.
-//
-// The graph will be incrementally checked for updates periodically. Ideally, you should
-// execute this function in a new goroutine.
-func (ledger *Ledger) updateAcceptedTransactionsLoop() {
-	timer := time.NewTicker(params.GraphUpdatePeriod)
-
-	for {
-		select {
-		case <-ledger.kill:
-			break
-		case <-timer.C:
-			ledger.updateAcceptedTransactions()
-		}
+// Step will perform one single time step of all periodic tasks within the ledger.
+func (ledger *Ledger) Step(force bool) {
+	if ledger.stepping {
+		return
 	}
 
-	timer.Stop()
+	ledger.stepping = true
+
+	current := time.Now()
+
+	if force || current.Sub(ledger.lastUpdateAcceptedTime) >= params.GraphUpdatePeriod {
+		ledger.updateAcceptedTransactions()
+		ledger.lastUpdateAcceptedTime = current
+	}
+
+	ledger.stepping = false
 }
 
 // WasAccepted returns whether or not a transaction given by its symbol was stored to be accepted
@@ -132,7 +119,7 @@ func (ledger *Ledger) QueueForAcceptance(symbol string) error {
 	return ledger.Put(merge(BucketAcceptPending, writeBytes(symbol)), []byte{0})
 }
 
-// updateAcceptedTransactions incrementally from the root of the graph updates whether
+// UpdateAcceptedTransactions incrementally from the root of the graph updates whether
 // or not all transactions this node knows about are accepted.
 func (ledger *Ledger) updateAcceptedTransactions() {
 	// If there are no accepted transactions and none are pending, add the very first transaction.
@@ -260,7 +247,7 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 	ledger.Delete(merge(BucketAcceptPending, writeBytes(tx.Id)))
 
 	stats.IncAcceptedTransactions(tx.Tag)
-	events.Publish(nil, &events.TransactionAcceptedEvent{ID: tx.Id})
+	go events.Publish(nil, &events.TransactionAcceptedEvent{ID: tx.Id})
 
 	// If the transaction has accepted children, revert all of the transactions ascendants.
 	if children, err := ledger.GetChildrenBySymbol(tx.Id); err == nil && len(children.Transactions) > 0 {

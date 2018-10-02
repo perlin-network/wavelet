@@ -1,6 +1,7 @@
 package node
 
 import (
+	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/dht"
@@ -28,7 +29,7 @@ type Wavelet struct {
 	net    *network.Network
 	routes *dht.RoutingTable
 
-	Ledger *wavelet.Ledger
+	Ledger *wavelet.LoopHandle
 	Wallet *wavelet.Wallet
 
 	opts Options
@@ -49,10 +50,14 @@ func (w *Wavelet) Startup(net *network.Network) {
 
 	w.routes = plugin.(*discovery.Plugin).Routes
 
-	w.Ledger = wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath)
-	w.Ledger.Init()
+	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath)
 
-	w.Wallet = wavelet.NewWallet(net.GetKeys(), w.Ledger.Store)
+	loop := wavelet.NewEventLoop(ledger)
+	go loop.RunForever()
+
+	w.Ledger = loop.Handle()
+
+	w.Wallet = wavelet.NewWallet(net.GetKeys())
 
 	w.query = query{Wavelet: w}
 	w.query.sybil = stake{query: w.query}
@@ -71,20 +76,29 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 		}
 
 		id := graph.Symbol(msg)
-		existed := w.Ledger.TransactionExists(id)
+
+		var existed bool
+
+		w.Ledger.Do(func(l *wavelet.Ledger) {
+			existed = l.TransactionExists(id)
+		})
 
 		if existed {
-			successful := w.Ledger.IsStronglyPreferred(id)
+			var successful bool
 
-			if successful && !w.Ledger.WasAccepted(id) {
-				err := w.Ledger.QueueForAcceptance(id)
+			w.Ledger.Do(func(l *wavelet.Ledger) {
+				successful = l.IsStronglyPreferred(id)
 
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to queue transaction to pend for acceptance.")
+				if successful && !l.WasAccepted(id) {
+					err := l.QueueForAcceptance(id)
+
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to queue transaction to pend for acceptance.")
+					}
 				}
-			}
+			})
 
-			log.Debug().Str("id", id).Interface("tx", msg).Msgf("Received a transaction, and voted '%t' for it.", successful)
+			log.Debug().Str("id", id).Str("tag", msg.Tag).Msgf("Received an existing transaction, and voted '%t' for it.", successful)
 
 			res := &QueryResponse{Id: id, StronglyPreferred: successful}
 
@@ -94,21 +108,20 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				return err
 			}
 		} else {
-			_, successful, err := w.Ledger.RespondToQuery(msg)
+			var successful bool
+			var err error
+			w.Ledger.Do(func(l *wavelet.Ledger) {
+				_, successful, err = l.RespondToQuery(msg)
+				if err == nil && successful {
+					err = l.QueueForAcceptance(id)
+				}
+			})
 			if err != nil {
-				log.Warn().Err(err).Msg("Failed to respond to query.")
+				log.Warn().Err(err).Msg("Failed to respond to query or queue transaction to pend for acceptance")
 				return err
 			}
 
-			if successful {
-				err = w.Ledger.QueueForAcceptance(id)
-
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to queue transaction to pend for acceptance.")
-				}
-			}
-
-			log.Debug().Str("id", id).Interface("tx", msg).Msgf("Received a transaction, and voted '%t' for it.", successful)
+			log.Debug().Str("id", id).Str("tag", msg.Tag).Msgf("Received a new transaction, and voted '%t' for it.", successful)
 
 			res := &QueryResponse{Id: id, StronglyPreferred: successful}
 
@@ -126,16 +139,15 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 					return
 				}
 
-				tx, err := w.Ledger.GetBySymbol(id)
+				var tx *database.Transaction
+				w.Ledger.Do(func(l *wavelet.Ledger) {
+					tx, err = l.GetBySymbol(id)
+					if err == nil {
+						err = l.HandleSuccessfulQuery(tx)
+					}
+				})
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to find transaction which was received.")
-					return
-				}
-
-				err = w.Ledger.HandleSuccessfulQuery(tx)
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to update conflict set for transaction received which was gossiped out.")
-					return
+					log.Error().Err(err).Msg("Failed to find transaction which was received or update conflict set for transaction received which was gossiped out.")
 				}
 			}()
 		}
@@ -154,11 +166,13 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 func (w *Wavelet) Cleanup(net *network.Network) {
 	w.syncer.kill <- struct{}{}
 
-	err := w.Ledger.Graph.Cleanup()
+	w.Ledger.Do(func(l *wavelet.Ledger) {
+		err := l.Graph.Cleanup()
 
-	if err != nil {
-		panic(err)
-	}
+		if err != nil {
+			panic(err)
+		}
+	})
 }
 
 func (w *Wavelet) PeerConnect(client *network.PeerClient) {

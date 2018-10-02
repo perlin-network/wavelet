@@ -11,13 +11,16 @@ go run main.go -db testdb2 -p 3001 -sk random -n tcp://127.0.0.1:3000
 
 # Pays a random address should [address] not be specified.
 # Pays 1 PERL by default unless [amount] is specified.
-pay [address] [amount]
+p [address] [amount]
 
 # Gives details about your own personal wallet.
-wallet
+w
+
+# Gives details about an account given [account id].
+a [account id]
 
 # Test-deploy a smart contract at a given path.
-contract [smart contract path here]
+c [smart contract path here]
 
 
 
