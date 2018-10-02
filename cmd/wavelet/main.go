@@ -145,7 +145,7 @@ func main() {
 		w := node.NewPlugin(node.Options{
 			DatabasePath: databasePath,
 			ServicesPath: servicesPath,
-			GenesisPath:   genesisPath,
+			GenesisPath:  genesisPath,
 		})
 
 		builder := network.NewBuilder()
