@@ -418,6 +418,7 @@ def create_local_config(publicKey, privateKey, peers, port, api_port):
         local_config["peers"] = peers.split(",")
     local_config["privkey"] = privateKey
     local_config["api"] = dict()
+    local_config["api"]["host"] = "localhost"
     local_config["api"]["port"] = api_port
     local_config["api"]["clients"] = dict()
     local_config["api"]["clients"]["public_key"] = []
