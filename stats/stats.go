@@ -92,3 +92,42 @@ func Reset() {
 	stats.Set(bufferAcceptByTagPerSec, &bufferAcceptByTagPerSecStat)
 	stats.Set(lastAcceptByTagPerSec, &lastAcceptByTagPerSecStat)
 }
+
+// Summary returns a summary of the stats
+func Summary() interface{} {
+	t, _ := time.ParseDuration(uptimeStat.Value())
+
+	lastAcceptByTagPerSec := make(map[string]int64)
+	lastAcceptByTagPerSecStat.Do(func(kv expvar.KeyValue) {
+		if iv, ok := kv.Value.(*expvar.Int); ok {
+			lastAcceptByTagPerSec[kv.Key] = iv.Value()
+		}
+	})
+
+	bufferAcceptByTagPerSec := make(map[string]int64)
+	bufferAcceptByTagPerSecStat.Do(func(kv expvar.KeyValue) {
+		if iv, ok := kv.Value.(*expvar.Int); ok {
+			bufferAcceptByTagPerSec[kv.Key] = iv.Value()
+		}
+	})
+
+	summary := struct {
+		ConsensusDuration                float64          `json:"consensus_duration"`
+		NumAcceptedTransactions          int64            `json:"num_accepted_transactions"`
+		NumAcceptedTransactionsPerSecond int64            `json:"num_accepted_transactions_per_sec"`
+		Uptime                           float64          `json:"uptime"`
+		LapTime                          float64          `json:"laptime"`
+		LastAcceptByTagPerSec            map[string]int64 `json:"last_accept_by_tag_per_sec"`
+		BufferAcceptByTagPerSec          map[string]int64 `json:"buffer_accept_by_tag_per_sec"`
+	}{
+		ConsensusDuration:                consensusDurationStat.Value(),
+		NumAcceptedTransactions:          numAcceptedTransactionsStat.Value(),
+		NumAcceptedTransactionsPerSecond: numAcceptedTransactionsPerSecondStat.Value(),
+		Uptime:                           t.Seconds(),
+		LapTime:                          laptimeStat.Value(),
+		LastAcceptByTagPerSec:            lastAcceptByTagPerSec,
+		BufferAcceptByTagPerSec:          bufferAcceptByTagPerSec,
+	}
+
+	return summary
+}

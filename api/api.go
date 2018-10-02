@@ -116,6 +116,7 @@ func (s *service) init(mux *http.ServeMux) {
 	mux.HandleFunc("/transaction/poll", s.wrap(s.pollTransactionHandler))
 	mux.HandleFunc("/transaction/send", s.wrap(s.sendTransactionHandler))
 	mux.HandleFunc("/stats/reset", s.wrap(s.resetStatsHandler))
+	mux.HandleFunc("/stats/summary", s.wrap(s.summarizeStatsHandler))
 	mux.HandleFunc("/account/load", s.wrap(s.loadAccountHandler))
 	mux.HandleFunc("/account/poll", s.wrap(s.pollAccountHandler))
 }

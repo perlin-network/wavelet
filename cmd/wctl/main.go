@@ -138,6 +138,14 @@ func runAction(c *cli.Context) {
 		}
 		jsonOut, _ := json.Marshal(res)
 		fmt.Printf("%s\n", jsonOut)
+	case "stats_summary":
+		res := new(interface{})
+		err := client.StatsSummary(res)
+		if err != nil {
+			log.Fatal().Err(err).Msg("")
+		}
+		jsonOut, _ := json.Marshal(res)
+		fmt.Printf("%s\n", jsonOut)
 	default:
 		log.Fatal().Msgf("unknown command: %s", cmd)
 	}

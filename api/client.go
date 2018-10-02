@@ -243,6 +243,11 @@ func (c *Client) StatsReset(res interface{}) error {
 	return c.Request("/stats/reset", struct{}{}, res)
 }
 
+// StatsSummary will get a client statistics.
+func (c *Client) StatsSummary(res interface{}) error {
+	return c.Request("/stats/summary", struct{}{}, res)
+}
+
 func (c *Client) LoadAccount(id string) (map[string][]byte, error) {
 	var ret map[string][]byte
 	err := c.Request("/account/load", id, &ret)

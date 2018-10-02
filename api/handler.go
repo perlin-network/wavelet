@@ -219,6 +219,19 @@ func (s *service) resetStatsHandler(ctx *requestContext) {
 	ctx.WriteJSON(http.StatusOK, "OK")
 }
 
+func (s *service) summarizeStatsHandler(ctx *requestContext) {
+	if !ctx.loadSession() {
+		return
+	}
+
+	if !ctx.session.Permissions.CanControlStats {
+		ctx.WriteJSON(http.StatusForbidden, "no stats permissions")
+		return
+	}
+
+	ctx.WriteJSON(http.StatusOK, stats.Summary())
+}
+
 func (s *service) loadAccountHandler(ctx *requestContext) {
 	if !ctx.loadSession() {
 		return
