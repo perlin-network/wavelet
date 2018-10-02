@@ -18,7 +18,7 @@ func check(t *testing.T, file *os.File, err error) {
 	}
 }
 
-func TestLoadGenesis(t *testing.T) {
+func TestReadGenesis(t *testing.T) {
 	t.Parallel()
 
 	cases := []map[string]map[string]interface{}{
@@ -92,7 +92,7 @@ func TestLoadGenesis(t *testing.T) {
 	}
 }
 
-func TestLoadGenesisBadIDs(t *testing.T) {
+func TestReadGenesisBadIDs(t *testing.T) {
 	t.Parallel()
 
 	cases := []map[string]map[string]interface{}{
