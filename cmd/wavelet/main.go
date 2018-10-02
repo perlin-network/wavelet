@@ -63,8 +63,8 @@ func main() {
 		},
 		cli.StringFlag{
 			Name:  "genesis, g",
-			Value: "genesis.csv",
-			Usage: "CSV file containing account data to initialize the ledger from `GENESIS_CSV`.",
+			Value: "genesis.json",
+			Usage: "JSON file containing account data to initialize the ledger from `GENESIS_JSON`.",
 		},
 		cli.StringFlag{
 			Name:  "privkey, sk",
@@ -99,7 +99,7 @@ func main() {
 		w := node.NewPlugin(node.Options{
 			DatabasePath: c.String("db"),
 			ServicesPath: c.String("services"),
-			GenesisCSV: c.String("genesis"),
+			GenesisFile: c.String("genesis"),
 		})
 
 		builder := network.NewBuilder()

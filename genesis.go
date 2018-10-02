@@ -1,57 +1,61 @@
 package wavelet
 
 import (
-	"bufio"
-	"encoding/csv"
 	"encoding/hex"
-	"io"
+	"encoding/json"
+	"io/ioutil"
 	"os"
-	"strconv"
 
 	"github.com/perlin-network/wavelet/log"
+	"github.com/pkg/errors"
 )
 
-// LoadGenesisTransaction loads the genesis transaction from a csv file.
+// LoadGenesisTransaction loads the genesis transaction from a json file.
 func LoadGenesisTransaction(path string) ([]*Account, error) {
-	csvFile, err := os.Open(path)
+	jsonFile, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	reader := csv.NewReader(bufio.NewReader(csvFile))
+	defer jsonFile.Close()
+
+	byteValue, err := ioutil.ReadAll(jsonFile)
+	if err != nil {
+		return nil, err
+	}
+
+	var jsonEntries []map[string]interface{}
+	if err := json.Unmarshal(byteValue, &jsonEntries); err != nil {
+		return nil, err
+	}
+
 	var accounts []*Account
-	var headers []string
-	for i := 0; ; i++ {
-		line, err := reader.Read()
-		if err == io.EOF {
-			break
-		} else if err != nil {
-			return nil, err
+	for i, entry := range jsonEntries {
+		encoded, ok := entry["public_key"]
+		if !ok {
+			return nil, errors.Errorf("Genesis file malformed, failed to find public_key for entry %d", i)
 		}
-		if i == 0 {
-			// read the headers only
-			headers = line
-			continue
+		encodedID, ok := encoded.(string)
+		if !ok {
+			return nil, errors.Errorf("Genesis file malformed, failed to cast public_key for entry %d", i)
 		}
 
-		// process data rows
-		encoded := line[0]
-
-		id, err := hex.DecodeString(encoded)
+		id, err := hex.DecodeString(encodedID)
 		if err != nil {
 			return nil, err
 		}
 
 		account := NewAccount(id)
-		for j := 1; j < len(headers); j++ {
-			key := headers[j]
-			v := line[j]
-
-			// TODO: figure out how to get type information from the csv
-			value, err := strconv.ParseUint(v, 0, 64)
-			if err != nil {
-				return nil, err
+		for key, v := range entry {
+			if key == "public_key" {
+				// we already processed this special entry, skip it
+				continue
 			}
-			account.Store(key, writeUint64(value))
+			switch value := v.(type) {
+			case uint64:
+				account.Store(key, writeUint64(value))
+			case string:
+				account.Store(key, writeBytes(value))
+			}
 		}
 
 		accounts = append(accounts, account)

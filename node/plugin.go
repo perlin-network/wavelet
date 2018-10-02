@@ -51,7 +51,7 @@ func (w *Wavelet) Startup(net *network.Network) {
 
 	w.routes = plugin.(*discovery.Plugin).Routes
 
-	w.Ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath, w.opts.GenesisFile)
+	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath, w.opts.GenesisFile)
 
 	loop := wavelet.NewEventLoop(ledger)
 	go loop.RunForever()
