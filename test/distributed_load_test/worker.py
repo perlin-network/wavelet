@@ -419,11 +419,11 @@ def create_local_config(publicKey, privateKey, peers, port, api_port):
     local_config["privkey"] = privateKey
     local_config["api"] = dict()
     local_config["api"]["port"] = api_port
-    local_config["api.clients"] = dict()
-    local_config["api.clients"]["public_key"] = []
-    local_config["api.clients"]["_private_key"] = []
-    local_config["api.clients"]["public_key"].append(publicKey)
-    local_config["api.clients"]["_private_key"].append(privateKey)
+    local_config["api"]["clients"] = dict()
+    local_config["api"]["clients"]["public_key"] = []
+    local_config["api"]["clients"]["_private_key"] = []
+    local_config["api"]["clients"]["public_key"].append(publicKey)
+    local_config["api"]["clients"]["_private_key"].append(privateKey)
     fd, path = tempfile.mkstemp()
     with os.fdopen(fd, 'w') as tmp:
         tmp.write(toml.dumps(local_config))
