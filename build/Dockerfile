@@ -17,6 +17,7 @@ export GO_VERSION=$(go version | awk '{print $3}') \n\
 
 # compile the wavelet executable, inject variables at build time
 RUN . /tmp/build_vars.sh && \
+    CGO_ENABLED=1 \
     GOOS=linux \
     GOARCH=amd64 \
     go build \
@@ -56,6 +57,7 @@ RUN . /tmp/build_vars.sh && \
 #             -X ${PROJ_DIR}/cmd/utils.GoVersion=${GO_VERSION}" \
 #         cmd/wavelet/main.go
 RUN . /tmp/build_vars.sh && \
+    CGO_ENABLED=0 \
     GOOS=windows \
     GOARCH=amd64 \
     go build \
@@ -76,6 +78,7 @@ RUN . /tmp/build_vars.sh && \
 
 # compile the wctl exec
 RUN . /tmp/build_vars.sh && \
+    CGO_ENABLED=0 \
     GOOS=linux \
     GOARCH=amd64 \
     go build \
@@ -86,6 +89,7 @@ RUN . /tmp/build_vars.sh && \
         cmd/wctl/main.go && \
     ${BUILD_BIN}/linux-amd64/wctl -version
 RUN . /tmp/build_vars.sh && \
+    CGO_ENABLED=0 \
     GOOS=windows \
     GOARCH=amd64 \
     go build \

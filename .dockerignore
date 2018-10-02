@@ -1,2 +1,2 @@
 .dockerignore
-./build/*
+build/*
