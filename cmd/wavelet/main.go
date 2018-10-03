@@ -64,6 +64,7 @@ func main() {
 		}),
 		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
 			Name:  "api.clients.public_key",
+			Value: &cli.StringSlice{"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"},
 			Usage: "The public keys with access to your wavelet client's API.",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
@@ -120,8 +121,6 @@ func main() {
 		apiPort := c.Uint("api.port")
 		apiPublicKeys := c.StringSlice("api.clients.public_key")
 		daemon := c.Bool("daemon")
-
-		log.Info().Interface("pub_keys:", apiPublicKeys).Msg("")
 
 		if privateKey == "random" {
 			privateKey = ed25519.RandomKeyPair().PrivateKeyHex()

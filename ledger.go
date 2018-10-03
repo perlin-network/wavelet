@@ -181,6 +181,10 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 		return pendingList[i].tx.Id < pendingList[j].tx.Id
 	})
 
+	//if len(pendingList) > 0 {
+	//	log.Info().Msgf("Number of pending transactions: %d", len(pendingList))
+	//}
+
 	for _, pending := range pendingList {
 		parentsAccepted := true
 		for _, parent := range pending.tx.Parents {
