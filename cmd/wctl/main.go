@@ -10,6 +10,7 @@ import (
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/cmd/utils"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 )
 
@@ -23,14 +24,15 @@ func main() {
 	app.Version = utils.Version
 	app.Usage = "a cli client to interact with the wavelet node"
 
+	// these are common flags
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name:  "remote, r",
+			Name:  "remote",
 			Value: "localhost:3001",
 			Usage: "remote address `REMOTE`.",
 		},
 		cli.StringFlag{
-			Name:  "privkey, k",
+			Name:  "privkey",
 			Value: "",
 			Usage: "private key (hex) `KEY`.",
 		},
@@ -43,11 +45,56 @@ func main() {
 		fmt.Printf("Built: %s\n", c.App.Compiled.Format(time.ANSIC))
 	}
 
-	app.Action = runAction
+	app.Commands = []cli.Command{
+		cli.Command{
+			Name:      "testme",
+			Usage:     "send a transaction",
+			ArgsUsage: "<tag> <json payload>",
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				tag := c.Args().Get(0)
+				payload := c.Args().Get(1)
+				if err := client.SendTransaction(tag, []byte(payload)); err != nil {
+					return err
+				}
+				return nil
+			},
+		},
+	}
 
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal().Err(err).Msg("Failed to parse configuration/command-line arugments.")
 	}
+}
+
+func setup(c *cli.Context) (*api.Client, error) {
+
+	remoteAddr := c.String("remote")
+	privateKey := c.String("privkey")
+
+	if len(remoteAddr) == 0 {
+		return nil, errors.New("remote flag is missing")
+	}
+
+	client, err := api.NewClient(api.ClientConfig{
+		RemoteAddr: remoteAddr,
+		PrivateKey: privateKey,
+		UseHTTPS:   false,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	err = client.Init()
+	if err != nil {
+		return nil, err
+	}
+
+	log.Debug().Str("SessionToken", client.SessionToken).Msg("")
+	return client, nil
 }
 
 func runAction(c *cli.Context) {
