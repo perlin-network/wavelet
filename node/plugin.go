@@ -131,7 +131,9 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 			})
 
 			if err != nil {
-				log.Warn().Err(err).Msg("Failed to respond to query or queue transaction to pend for acceptance")
+				if errors.Cause(err) != database.ErrTxExists {
+					log.Warn().Err(err).Msg("Failed to respond to query or queue transaction to pend for acceptance")
+				}
 				return err
 			}
 

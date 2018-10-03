@@ -84,7 +84,9 @@ func (r *rpc) HandleSuccessfulQuery(tx *database.Transaction) error {
 		score, preferredScore := r.CountAscendants(popped, system.Beta2), r.CountAscendants(set.Preferred, system.Beta2)
 
 		if score > preferredScore {
+			r.UpdateStrongPreferences(set.Preferred, false)
 			set.Preferred = popped
+			r.UpdateStrongPreferences(set.Preferred, true)
 		}
 
 		if popped != set.Last {

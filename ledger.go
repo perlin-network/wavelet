@@ -203,10 +203,6 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 		return pendingList[i].tx.Id < pendingList[j].tx.Id
 	})
 
-	//if len(pendingList) > 0 {
-	//	log.Info().Msgf("Number of pending transactions: %d", len(pendingList))
-	//}
-
 	for _, pending := range pendingList {
 		parentsAccepted := true
 
@@ -249,7 +245,7 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 			acceptedList[i] = acceptedList[i][:10]
 		}
 
-		log.Info().Interface("accepted", acceptedList).Msgf("Accepted %d transactions.", len(acceptedList))
+		log.Debug().Interface("accepted", acceptedList).Msgf("Accepted %d transactions.", len(acceptedList))
 	}
 }
 
