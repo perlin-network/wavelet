@@ -65,7 +65,7 @@ func main() {
 		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
 			Name:  "api.clients.public_key",
 			Value: &cli.StringSlice{"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"},
-			Usage: "The public keys with access to your wavelet client's API.",
+			Usage: "The public keys with access to your wavelet client's API `PUBLIC_KEY`",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "db",
@@ -102,7 +102,7 @@ func main() {
 		// config specifies the file that overrides altsrc
 		cli.StringFlag{
 			Name:  "config, c",
-			Usage: "Wavelet configuration file. Command line arguments override the config file.",
+			Usage: "Wavelet TOML configuration file. `CONFIG_FILE`",
 		},
 	}
 
