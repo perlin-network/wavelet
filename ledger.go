@@ -11,6 +11,7 @@ import (
 	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/stats"
 	"github.com/phf/go-queue/queue"
+	"github.com/pkg/errors"
 	"github.com/sasha-s/go-IBLT"
 	"sort"
 	"time"
@@ -23,6 +24,10 @@ var (
 	BucketAcceptPending = writeBytes("p.accepted_")
 
 	KeyTransactionIBLT = writeBytes("tx_iblt")
+)
+
+var (
+	ErrStop = errors.New("stop")
 )
 
 type Ledger struct {
@@ -43,6 +48,8 @@ type Ledger struct {
 
 func NewLedger(databasePath, servicesPath, genesisPath string) *Ledger {
 	store := database.New(databasePath)
+
+	log.Info().Str("db_path", databasePath).Msg("Database has been loaded.")
 
 	graph := graph.New(store)
 	resolver := conflict.New(graph)
@@ -137,13 +144,28 @@ func (ledger *Ledger) QueueForAcceptance(symbol string) error {
 // or not all transactions this node knows about are accepted.
 func (ledger *Ledger) updateAcceptedTransactions() {
 	// If there are no accepted transactions and none are pending, add the very first transaction.
-	if ledger.Size(BucketAcceptPending) == 0 && ledger.Size(BucketAcceptedIndex) == 0 {
-		tx, err := ledger.GetByIndex(0)
-		if err != nil {
+	if ledger.Size(BucketAcceptPending) == 0 && ledger.NumAcceptedTransactions() == 0 {
+		var tx *database.Transaction
+
+		err := ledger.ForEachDepth(0, func(symbol string) error {
+			first, err := ledger.GetBySymbol(symbol)
+			if err != nil {
+				return err
+			}
+
+			tx = first
+			return ErrStop
+		})
+
+		if err != ErrStop {
 			return
 		}
 
-		ledger.Put(merge(BucketAcceptPending, writeBytes(tx.Id)), []byte{0})
+		err = ledger.QueueForAcceptance(tx.Id)
+
+		if err != nil {
+			return
+		}
 	}
 
 	var acceptedList []string
@@ -183,6 +205,7 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 
 	for _, pending := range pendingList {
 		parentsAccepted := true
+
 		for _, parent := range pending.tx.Parents {
 			if !ledger.WasAccepted(parent) {
 				parentsAccepted = false
@@ -208,7 +231,7 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 
 		conflicting := !(transactions.Cardinality() == 1)
 
-		if set.Count > system.Beta2 || (!conflicting && ledger.CountAscendants(pending.tx.Id, system.Beta1+1) > system.Beta1) {
+		if (set.Preferred == pending.tx.Id && set.Count > system.Beta2) || (!conflicting && ledger.CountAscendants(pending.tx.Id, system.Beta1+1) > system.Beta1) {
 			if !ledger.WasAccepted(pending.tx.Id) {
 				ledger.acceptTransaction(pending.tx)
 				acceptedList = append(acceptedList, pending.tx.Id)
@@ -222,7 +245,7 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 			acceptedList[i] = acceptedList[i][:10]
 		}
 
-		log.Info().Interface("accepted", acceptedList).Msgf("Accepted %d transactions.", len(acceptedList))
+		log.Debug().Interface("accepted", acceptedList).Msgf("Accepted %d transactions.", len(acceptedList))
 	}
 }
 
@@ -296,7 +319,7 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 				visited[child] = struct{}{}
 
 				if !ledger.WasAccepted(child) {
-					ledger.Put(merge(BucketAcceptPending, writeBytes(child)), []byte{0})
+					ledger.QueueForAcceptance(child)
 				} else if !ledger.WasApplied(child) {
 					// If the child was already accepted but not yet applied, apply it to the ledger state.
 
@@ -347,7 +370,7 @@ func (ledger *Ledger) revertTransaction(symbol string, revertAcceptance bool) {
 			ledger.Delete(merge(BucketAcceptedIndex, indexBytes))
 			ledger.Delete(merge(BucketAccepted, writeBytes(popped)))
 
-			ledger.Put(merge(BucketAcceptPending, writeBytes(popped)), []byte{0})
+			ledger.QueueForAcceptance(popped)
 
 			stats.DecAcceptedTransactions()
 		}

@@ -12,7 +12,7 @@ var (
 	ConsensusAlpha = float32(0.8)
 
 	// Ledger parameters.
-	GraphUpdatePeriod = 100 * time.Millisecond
+	GraphUpdatePeriod = 50 * time.Millisecond
 
 	// Sync parameters.
 	SyncPeriod   = 1000 * time.Millisecond

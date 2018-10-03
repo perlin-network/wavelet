@@ -64,12 +64,17 @@ func main() {
 		}),
 		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
 			Name:  "api.clients.public_key",
-			Usage: "The public keys with access to your wavelet client's API.",
+			Value: &cli.StringSlice{"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"},
+			Usage: "The public keys with access to your wavelet client's API `PUBLIC_KEY`",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "db",
+			Name:  "db.path",
 			Value: "testdb",
 			Usage: "Load/initialize LevelDB store from `DB_PATH`.",
+		}),
+		altsrc.NewBoolFlag(cli.BoolFlag{
+			Name:  "db.reset",
+			Usage: "Clear out the existing data in the datastore before initializing",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "services",
@@ -96,10 +101,19 @@ func main() {
 		}),
 		// config specifies the file that overrides altsrc
 		cli.StringFlag{
-			Name:  "config, c",
-			Usage: "Wavelet configuration file. Command line arguments override the config file.",
+			Name:  "config",
+			Usage: "Wavelet TOML configuration file. `CONFIG_FILE`",
 		},
 	}
+
+	// apply the toml before processing the flags
+	app.Before = altsrc.InitInputSourceWithContext(app.Flags, func(c *cli.Context) (altsrc.InputSourceContext, error) {
+		filePath := c.String("config")
+		if len(filePath) > 0 {
+			return altsrc.NewTomlSourceFromFile(filePath)
+		}
+		return &altsrc.MapInputSource{}, nil
+	})
 
 	cli.VersionPrinter = func(c *cli.Context) {
 		fmt.Printf("Version: %s\n", c.App.Version)
@@ -112,7 +126,8 @@ func main() {
 		privateKey := c.String("privkey")
 		host := c.String("host")
 		port := uint16(c.Uint("port"))
-		databasePath := c.String("db")
+		databasePath := c.String("db.path")
+		resetDatabase := c.Bool("db.reset")
 		servicesPath := c.String("services")
 		genesisPath := c.String("genesis")
 		peers := c.StringSlice("peers")
@@ -120,8 +135,6 @@ func main() {
 		apiPort := c.Uint("api.port")
 		apiPublicKeys := c.StringSlice("api.clients.public_key")
 		daemon := c.Bool("daemon")
-
-		log.Info().Interface("pub_keys:", apiPublicKeys).Msg("")
 
 		if privateKey == "random" {
 			privateKey = ed25519.RandomKeyPair().PrivateKeyHex()
@@ -133,9 +146,10 @@ func main() {
 		}
 
 		w := node.NewPlugin(node.Options{
-			DatabasePath: databasePath,
-			ServicesPath: servicesPath,
-			GenesisPath:  genesisPath,
+			DatabasePath:  databasePath,
+			ServicesPath:  servicesPath,
+			GenesisPath:   genesisPath,
+			ResetDatabase: resetDatabase,
 		})
 
 		builder := network.NewBuilder()
@@ -281,7 +295,7 @@ func main() {
 				}
 
 				wired := w.MakeTransaction("transfer", payload)
-				w.BroadcastTransaction(wired)
+				go w.BroadcastTransaction(wired)
 			case "c":
 				if len(cmd) < 2 {
 					continue
@@ -306,25 +320,17 @@ func main() {
 				}
 
 				wired := w.MakeTransaction("create_contract", payload)
-				w.BroadcastTransaction(wired)
+				go w.BroadcastTransaction(wired)
 
 				contractID := hex.EncodeToString(wavelet.ContractID(graph.Symbol(wired)))
 
 				log.Info().Msgf("Success! Your smart contract ID is: %s", contractID)
 			default:
 				wired := w.MakeTransaction("nop", nil)
-				w.BroadcastTransaction(wired)
+				go w.BroadcastTransaction(wired)
 			}
 		}
 	}
-
-	app.Before = altsrc.InitInputSourceWithContext(app.Flags, func(c *cli.Context) (altsrc.InputSourceContext, error) {
-		filePath := c.String("config")
-		if filePath != "" {
-			return altsrc.NewTomlSourceFromFile(filePath)
-		}
-		return &altsrc.MapInputSource{}, nil
-	})
 
 	err := app.Run(os.Args)
 	if err != nil {

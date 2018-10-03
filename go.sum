@@ -50,6 +50,8 @@ github.com/onsi/ginkgo v1.6.0/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+W
 github.com/onsi/gomega v1.4.2/go.mod h1:ex+gbHU/CVuBBDIJjb2X0qEXbFg53c61hWP/1CpauHY=
 github.com/perlin-network/graph v0.0.0-20180929174226-a3aaabda9ce2 h1:Q2vlzIgbAIiwjgSJyhKzPa9Kf682erRiY+EeO71gGKA=
 github.com/perlin-network/graph v0.0.0-20180929174226-a3aaabda9ce2/go.mod h1:T8lj3k0V8rY8KZ6WTWY1gi0LCHmRegOozHr7XIvBhgk=
+github.com/perlin-network/graph v0.0.0-20181003184713-e4c31fc39379 h1:Ob9dp9pa+pOSe82t2Q8dHnsT5z+r6SPHF7AmZ6RWpc8=
+github.com/perlin-network/graph v0.0.0-20181003184713-e4c31fc39379/go.mod h1:T8lj3k0V8rY8KZ6WTWY1gi0LCHmRegOozHr7XIvBhgk=
 github.com/perlin-network/life v0.0.0-20180924090822-ccb94ff303dd h1:KQvfL1xwol7Rrrp4J7xDFGkOJgSKslJ/mOHDMCAX1sY=
 github.com/perlin-network/life v0.0.0-20180924090822-ccb94ff303dd/go.mod h1:lfYSPiNNajwjU1XbgFzZoqoU4ibQvoexKe6yivnMrDM=
 github.com/perlin-network/noise v1.1.0 h1:jvFmgOXwB5VqC8iu9zX+GjGjPEMKPKfhcHmHnCX2xzQ=
