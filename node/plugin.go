@@ -1,6 +1,7 @@
 package node
 
 import (
+	"os"
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/wire"
@@ -17,9 +18,10 @@ var _ network.PluginInterface = (*Wavelet)(nil)
 var PluginID = (*Wavelet)(nil)
 
 type Options struct {
-	DatabasePath string
-	ServicesPath string
-	GenesisPath  string
+	DatabasePath  string
+	ServicesPath  string
+	GenesisPath   string
+	ResetDatabase bool
 }
 
 type Wavelet struct {
@@ -50,6 +52,11 @@ func (w *Wavelet) Startup(net *network.Network) {
 	}
 
 	w.routes = plugin.(*discovery.Plugin).Routes
+
+	if w.opts.ResetDatabase {
+		os.RemoveAll(w.opts.DatabasePath)
+		log.Info().Str("db_path", w.opts.DatabasePath).Msg("DB was reset")
+	}
 
 	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath, w.opts.GenesisPath)
 

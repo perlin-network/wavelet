@@ -43,6 +43,7 @@ type Ledger struct {
 
 func NewLedger(databasePath, servicesPath, genesisPath string) *Ledger {
 	store := database.New(databasePath)
+	log.Info().Str("db_path", databasePath).Msg("DB setup")
 
 	graph := graph.New(store)
 	resolver := conflict.New(graph)
