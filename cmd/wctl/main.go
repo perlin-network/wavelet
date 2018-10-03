@@ -24,20 +24,6 @@ func main() {
 	app.Version = utils.Version
 	app.Usage = "a cli client to interact with the wavelet node"
 
-	// these are common flags
-	app.Flags = []cli.Flag{
-		cli.StringFlag{
-			Name:  "remote",
-			Value: "localhost:3001",
-			Usage: "remote address `REMOTE`.",
-		},
-		cli.StringFlag{
-			Name:  "privkey",
-			Value: "",
-			Usage: "private key (hex) `KEY`.",
-		},
-	}
-
 	cli.VersionPrinter = func(c *cli.Context) {
 		fmt.Printf("Version: %s\n", c.App.Version)
 		fmt.Printf("Go Version: %s\n", utils.GoVersion)
@@ -45,11 +31,23 @@ func main() {
 		fmt.Printf("Built: %s\n", c.App.Compiled.Format(time.ANSIC))
 	}
 
+	commonFlags := []cli.Flag{
+		cli.StringFlag{
+			Name:  "remote",
+			Usage: "remote address `REMOTE` (required).",
+		},
+		cli.StringFlag{
+			Name:  "privkey",
+			Usage: "private key (hex) `KEY` (required).",
+		},
+	}
+
 	app.Commands = []cli.Command{
 		cli.Command{
-			Name:      "testme",
+			Name:      "send_transaction",
 			Usage:     "send a transaction",
 			ArgsUsage: "<tag> <json payload>",
+			Flags:     commonFlags,
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
 				if err != nil {
@@ -57,9 +55,111 @@ func main() {
 				}
 				tag := c.Args().Get(0)
 				payload := c.Args().Get(1)
-				if err := client.SendTransaction(tag, []byte(payload)); err != nil {
+				return client.SendTransaction(tag, []byte(payload))
+			},
+		},
+		cli.Command{
+			Name:  "recent_transactions",
+			Usage: "get recent transactions",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
 					return err
 				}
+				transactions, err := client.RecentTransactions()
+				if err != nil {
+					return err
+				}
+				for _, tx := range transactions {
+					log.Info().Msgf("%v", tx)
+				}
+				return nil
+			},
+		},
+		cli.Command{
+			Name:  "poll_accounts",
+			Usage: "continuously receive account updates",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				evChan, err := client.PollAccountUpdates(nil)
+				if err != nil {
+					return err
+				}
+				for ev := range evChan {
+					log.Info().Msgf("%v", ev)
+				}
+				return nil
+			},
+		},
+		cli.Command{
+			Name:      "poll_transactions",
+			Usage:     "continuously receive transaction updates",
+			ArgsUsage: "<accepted | applied>",
+			Flags:     commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				event := c.Args().Get(0)
+
+				var evChan <-chan wire.Transaction
+				switch event {
+				case "accepted":
+					evChan, err = client.PollAcceptedTransactions(nil)
+				case "applied":
+					evChan, err = client.PollAppliedTransactions(nil)
+				default:
+					return errors.Errorf("invalid event type specified: %v", event)
+				}
+				if err != nil {
+					return err
+				}
+
+				for ev := range evChan {
+					log.Info().Msgf("%v", ev)
+				}
+				return nil
+			},
+		},
+		cli.Command{
+			Name:  "stats_reset",
+			Usage: "reset the stats counters",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				res := new(interface{})
+				if err := client.StatsReset(res); err != nil {
+					return err
+				}
+				jsonOut, _ := json.Marshal(res)
+				fmt.Printf("%s\n", jsonOut)
+				return nil
+			},
+		},
+		cli.Command{
+			Name:  "stats_summary",
+			Usage: "get the stats counters",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				res := new(interface{})
+				if err := client.StatsSummary(res); err != nil {
+					return err
+				}
+				jsonOut, _ := json.Marshal(res)
+				fmt.Printf("%s\n", jsonOut)
 				return nil
 			},
 		},
@@ -79,6 +179,10 @@ func setup(c *cli.Context) (*api.Client, error) {
 		return nil, errors.New("remote flag is missing")
 	}
 
+	if len(privateKey) == 0 {
+		return nil, errors.New("private key is missing")
+	}
+
 	client, err := api.NewClient(api.ClientConfig{
 		RemoteAddr: remoteAddr,
 		PrivateKey: privateKey,
@@ -95,105 +199,4 @@ func setup(c *cli.Context) (*api.Client, error) {
 
 	log.Debug().Str("SessionToken", client.SessionToken).Msg("")
 	return client, nil
-}
-
-func runAction(c *cli.Context) {
-	remoteAddr := c.String("remote")
-	privateKey := c.String("privkey")
-
-	if len(remoteAddr) == 0 {
-		log.Fatal().Msg("remote flag is missing")
-	}
-
-	client, err := api.NewClient(api.ClientConfig{
-		RemoteAddr: remoteAddr,
-		PrivateKey: privateKey,
-		UseHTTPS:   false,
-	})
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
-
-	err = client.Init()
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
-
-	log.Info().Str("SessionToken", client.SessionToken).Msg("")
-
-	cmd := ([]string)(c.Args())
-	if err != nil {
-		log.Fatal().Err(err).Msg("")
-	}
-
-	if len(cmd) == 0 {
-		log.Fatal().Msg("Missing command argument")
-	}
-
-	switch c.Args().Get(0) {
-	case "send_transaction":
-		tag := c.Args().Get(1)
-		payload := c.Args().Get(2)
-		err := client.SendTransaction(tag, []byte(payload))
-		if err != nil {
-			log.Fatal().Err(err).Msg("")
-		}
-	case "recent_transactions":
-		transactions, err := client.RecentTransactions()
-		if err != nil {
-			log.Fatal().Err(err).Msg("")
-		}
-
-		for _, tx := range transactions {
-			log.Info().Msgf("%v", tx)
-		}
-	case "poll_accounts":
-		evChan, err := client.PollAccountUpdates(nil)
-
-		if err != nil {
-			log.Fatal().Err(err).Msg("")
-		}
-
-		for ev := range evChan {
-			log.Info().Msgf("%v", ev)
-		}
-	case "poll_transactions":
-		event := c.Args().Get(1)
-
-		var evChan <-chan wire.Transaction
-		switch event {
-		case "accepted":
-			evChan, err = client.PollAcceptedTransactions(nil)
-		case "applied":
-			evChan, err = client.PollAppliedTransactions(nil)
-		default:
-			log.Fatal().Msgf("invalid event type specified: %v", event)
-		}
-
-		if err != nil {
-			log.Fatal().Err(err).Msg("")
-		}
-
-		for ev := range evChan {
-			log.Info().Msgf("%v", ev)
-		}
-	case "stats_reset":
-		res := new(interface{})
-		err := client.StatsReset(res)
-		if err != nil {
-			log.Fatal().Err(err).Msg("")
-		}
-		jsonOut, _ := json.Marshal(res)
-		fmt.Printf("%s\n", jsonOut)
-	case "stats_summary":
-		res := new(interface{})
-		err := client.StatsSummary(res)
-		if err != nil {
-			log.Fatal().Err(err).Msg("")
-		}
-		jsonOut, _ := json.Marshal(res)
-		fmt.Printf("%s\n", jsonOut)
-	default:
-		log.Fatal().Msgf("unknown command: %s", cmd)
-	}
 }
