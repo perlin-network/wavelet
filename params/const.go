@@ -8,7 +8,7 @@ var (
 	TxL = 4096
 
 	// Consensus protocol parameters.
-	ConsensusK     = 4
+	ConsensusK     = 10
 	ConsensusAlpha = float32(0.8)
 
 	// Ledger parameters.
