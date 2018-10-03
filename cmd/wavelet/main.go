@@ -68,7 +68,7 @@ func main() {
 			Usage: "The public keys with access to your wavelet client's API `PUBLIC_KEY`",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "db",
+			Name:  "db.path",
 			Value: "testdb",
 			Usage: "Load/initialize LevelDB store from `DB_PATH`.",
 		}),
@@ -126,7 +126,7 @@ func main() {
 		privateKey := c.String("privkey")
 		host := c.String("host")
 		port := uint16(c.Uint("port"))
-		databasePath := c.String("db")
+		databasePath := c.String("db.path")
 		resetDatabase := c.Bool("db.reset")
 		servicesPath := c.String("services")
 		genesisPath := c.String("genesis")
