@@ -1,7 +1,6 @@
 package node
 
 import (
-	"os"
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/wire"
@@ -12,6 +11,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/security"
 	"github.com/pkg/errors"
+	"os"
 )
 
 var _ network.PluginInterface = (*Wavelet)(nil)
@@ -54,8 +54,13 @@ func (w *Wavelet) Startup(net *network.Network) {
 	w.routes = plugin.(*discovery.Plugin).Routes
 
 	if w.opts.ResetDatabase {
-		os.RemoveAll(w.opts.DatabasePath)
-		log.Info().Str("db_path", w.opts.DatabasePath).Msg("DB was reset")
+		err := os.RemoveAll(w.opts.DatabasePath)
+
+		if err != nil {
+			log.Info().Err(err).Str("db_path", w.opts.DatabasePath).Msg("Failed to delete previous database instance.")
+		} else {
+			log.Info().Str("db_path", w.opts.DatabasePath).Msg("Deleted previous database instance.")
+		}
 	}
 
 	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath, w.opts.GenesisPath)
@@ -85,6 +90,15 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 
 		id := graph.Symbol(msg)
 
+		res := &QueryResponse{Id: id}
+
+		defer func() {
+			err := ctx.Reply(res)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to send response.")
+			}
+		}()
+
 		var existed bool
 
 		w.Ledger.Do(func(l *wavelet.Ledger) {
@@ -92,12 +106,10 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 		})
 
 		if existed {
-			var successful bool
-
 			w.Ledger.Do(func(l *wavelet.Ledger) {
-				successful = l.IsStronglyPreferred(id)
+				res.StronglyPreferred = l.IsStronglyPreferred(id)
 
-				if successful && !l.WasAccepted(id) {
+				if res.StronglyPreferred && !l.WasAccepted(id) {
 					err := l.QueueForAcceptance(id)
 
 					if err != nil {
@@ -106,38 +118,24 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				}
 			})
 
-			log.Debug().Str("id", id).Str("tag", msg.Tag).Msgf("Received an existing transaction, and voted '%t' for it.", successful)
-
-			res := &QueryResponse{Id: id, StronglyPreferred: successful}
-
-			err := ctx.Reply(res)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to send response.")
-				return err
-			}
+			log.Debug().Str("id", id).Str("tag", msg.Tag).Msgf("Received an existing transaction, and voted '%t' for it.", res.StronglyPreferred)
 		} else {
-			var successful bool
 			var err error
+
 			w.Ledger.Do(func(l *wavelet.Ledger) {
-				_, successful, err = l.RespondToQuery(msg)
-				if err == nil && successful {
+				_, res.StronglyPreferred, err = l.RespondToQuery(msg)
+
+				if err == nil && res.StronglyPreferred {
 					err = l.QueueForAcceptance(id)
 				}
 			})
+
 			if err != nil {
 				log.Warn().Err(err).Msg("Failed to respond to query or queue transaction to pend for acceptance")
 				return err
 			}
 
-			log.Debug().Str("id", id).Str("tag", msg.Tag).Msgf("Received a new transaction, and voted '%t' for it.", successful)
-
-			res := &QueryResponse{Id: id, StronglyPreferred: successful}
-
-			err = ctx.Reply(res)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to send response.")
-				return err
-			}
+			log.Debug().Str("id", id).Str("tag", msg.Tag).Msgf("Received a new transaction, and voted '%t' for it.", res.StronglyPreferred)
 
 			go func() {
 				err := w.Query(msg)

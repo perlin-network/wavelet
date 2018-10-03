@@ -295,7 +295,7 @@ func main() {
 				}
 
 				wired := w.MakeTransaction("transfer", payload)
-				w.BroadcastTransaction(wired)
+				go w.BroadcastTransaction(wired)
 			case "c":
 				if len(cmd) < 2 {
 					continue
@@ -320,14 +320,14 @@ func main() {
 				}
 
 				wired := w.MakeTransaction("create_contract", payload)
-				w.BroadcastTransaction(wired)
+				go w.BroadcastTransaction(wired)
 
 				contractID := hex.EncodeToString(wavelet.ContractID(graph.Symbol(wired)))
 
 				log.Info().Msgf("Success! Your smart contract ID is: %s", contractID)
 			default:
 				wired := w.MakeTransaction("nop", nil)
-				w.BroadcastTransaction(wired)
+				go w.BroadcastTransaction(wired)
 			}
 		}
 	}

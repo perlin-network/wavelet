@@ -161,29 +161,17 @@ func (s *syncer) sync() {
 
 		id := graph.Symbol(wired)
 
-		atomicOK := false
+		successful := false
 
 		s.Ledger.Do(func(l *wavelet.Ledger) {
 			if l.TransactionExists(id) {
 				return
 			}
 
-			_, successful, err := l.RespondToQuery(wired)
-			if err != nil {
-				return
-			}
-
-			if successful {
-				err = l.QueueForAcceptance(id)
-				if err != nil {
-					return
-				}
-			}
-
-			atomicOK = true
+			_, successful, err = l.RespondToQuery(wired)
 		})
 
-		if !atomicOK {
+		if err != nil || !successful {
 			continue
 		}
 
