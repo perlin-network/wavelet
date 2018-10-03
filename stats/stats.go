@@ -5,18 +5,6 @@ import (
 	"time"
 )
 
-const (
-	numAcceptedTransactions          = "num_accepted_transactions"
-	numAcceptedTransactionsPerSecond = "num_accepted_transactions_per_sec"
-	consensusDuration                = "consensus_duration"
-
-	uptime  = "uptime"
-	laptime = "laptime"
-
-	bufferAcceptByTagPerSec = "buffer_accept_by_tag_per_sec"
-	lastAcceptByTagPerSec   = "last_accept_by_tag_per_sec"
-)
-
 var (
 	numAcceptedTransactionsStat          expvar.Int
 	numAcceptedTransactionsPerSecondStat expvar.Int
@@ -27,8 +15,6 @@ var (
 
 	bufferAcceptByTagPerSecStat expvar.Map
 	lastAcceptByTagPerSecStat   expvar.Map
-
-	stats = expvar.NewMap("wavelet")
 
 	startTime    time.Time
 	lapStartTime time.Time
@@ -45,15 +31,21 @@ func init() {
 			uptimeStat.Set(time.Now().Sub(startTime).String())
 			laptimeStat.Set(time.Now().Sub(lapStartTime).Seconds())
 
+			// reset the last stats
 			lastAcceptByTagPerSecStat.Init()
 
+			// copy over the buffered stats
 			bufferAcceptByTagPerSecStat.Do(func(kv expvar.KeyValue) {
 				lastAcceptByTagPerSecStat.Set(kv.Key, kv.Value)
 			})
 
+			// reset the buffered stats
 			bufferAcceptByTagPerSecStat.Init()
 		}
 	}()
+
+	// publish the custom struct
+	expvar.Publish("wavelet", expvar.Func(Summary))
 }
 
 // IncAcceptedTransactions will increment #accepted transactions for the tag
@@ -82,18 +74,9 @@ func Reset() {
 	numAcceptedTransactionsPerSecondStat.Set(0)
 	lastAcceptByTagPerSecStat.Init()
 	bufferAcceptByTagPerSecStat.Init()
-
-	stats.Init()
-	stats.Set(numAcceptedTransactions, &numAcceptedTransactionsStat)
-	stats.Set(numAcceptedTransactionsPerSecond, &numAcceptedTransactionsPerSecondStat)
-	stats.Set(consensusDuration, &consensusDurationStat)
-	stats.Set(uptime, &uptimeStat)
-	stats.Set(laptime, &laptimeStat)
-	stats.Set(bufferAcceptByTagPerSec, &bufferAcceptByTagPerSecStat)
-	stats.Set(lastAcceptByTagPerSec, &lastAcceptByTagPerSecStat)
 }
 
-// Summary returns a summary of the stats
+// Summary returns a custom summary struct
 func Summary() interface{} {
 	t, _ := time.ParseDuration(uptimeStat.Value())
 
