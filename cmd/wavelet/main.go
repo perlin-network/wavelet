@@ -72,6 +72,10 @@ func main() {
 			Value: "testdb",
 			Usage: "Load/initialize LevelDB store from `DB_PATH`.",
 		}),
+		altsrc.NewBoolFlag(cli.BoolFlag{
+			Name:  "db.reset",
+			Usage: "Clear out the existing data in the datastore before initializing",
+		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "services",
 			Value: "services",
@@ -114,6 +118,7 @@ func main() {
 		host := c.String("host")
 		port := uint16(c.Uint("port"))
 		databasePath := c.String("db")
+		resetDatabase := c.Bool("db.reset")
 		servicesPath := c.String("services")
 		genesisPath := c.String("genesis")
 		peers := c.StringSlice("peers")
@@ -132,9 +137,10 @@ func main() {
 		}
 
 		w := node.NewPlugin(node.Options{
-			DatabasePath: databasePath,
-			ServicesPath: servicesPath,
-			GenesisPath:  genesisPath,
+			DatabasePath:  databasePath,
+			ServicesPath:  servicesPath,
+			GenesisPath:   genesisPath,
+			ResetDatabase: resetDatabase,
 		})
 
 		builder := network.NewBuilder()
