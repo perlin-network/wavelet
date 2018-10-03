@@ -101,10 +101,19 @@ func main() {
 		}),
 		// config specifies the file that overrides altsrc
 		cli.StringFlag{
-			Name:  "config, c",
+			Name:  "config",
 			Usage: "Wavelet TOML configuration file. `CONFIG_FILE`",
 		},
 	}
+
+	// apply the toml before processing the flags
+	app.Before = altsrc.InitInputSourceWithContext(app.Flags, func(c *cli.Context) (altsrc.InputSourceContext, error) {
+		filePath := c.String("config")
+		if len(filePath) > 0 {
+			return altsrc.NewTomlSourceFromFile(filePath)
+		}
+		return &altsrc.MapInputSource{}, nil
+	})
 
 	cli.VersionPrinter = func(c *cli.Context) {
 		fmt.Printf("Version: %s\n", c.App.Version)
@@ -322,14 +331,6 @@ func main() {
 			}
 		}
 	}
-
-	app.Before = altsrc.InitInputSourceWithContext(app.Flags, func(c *cli.Context) (altsrc.InputSourceContext, error) {
-		filePath := c.String("config")
-		if filePath != "" {
-			return altsrc.NewTomlSourceFromFile(filePath)
-		}
-		return &altsrc.MapInputSource{}, nil
-	})
 
 	err := app.Run(os.Args)
 	if err != nil {

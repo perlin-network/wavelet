@@ -55,6 +55,7 @@ func (w *Wavelet) Startup(net *network.Network) {
 
 	if w.opts.ResetDatabase {
 		os.RemoveAll(w.opts.DatabasePath)
+		log.Info().Str("db_path", w.opts.DatabasePath).Msg("DB was reset")
 	}
 
 	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath, w.opts.GenesisPath)
