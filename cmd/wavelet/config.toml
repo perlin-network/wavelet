@@ -12,7 +12,7 @@ path = "testdb"
 
 [api]
 host = "localhost"
-port = 3500
+port = 9000
 
 [api.clients]
 public_key = ["95bd6a21573d2e01495ae4c061653e1076593c8b3cd82c1077e907e0123caa55"]
