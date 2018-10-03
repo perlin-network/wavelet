@@ -1,4 +1,6 @@
-#!/bin/bash -eux
+#!/bin/bash -eu
+#
+# This script compiles wavelet and pctl in a Docker container for the specified environments.
 
 OPTIND=1
 IMAGE_NAME="perlin/wavelet"
