@@ -1,6 +1,7 @@
 package node
 
 import (
+	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/network/rpc"
@@ -33,64 +34,68 @@ func (s *syncer) RespondToSync(req *SyncRequest) *SyncResponse {
 		}
 	}
 
+	var selfTable *iblt.Filter
 	var diff *iblt.Diff
 	var err error
 
 	s.Ledger.Do(func(l *wavelet.Ledger) {
-		selfTable := l.IBLT.Clone()
-
-		err = selfTable.Sub(*peerTable)
-
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to diff() our IBLT w.r.t. our peers transaction IBLT.")
-			return
-		}
-
-		diff, err = selfTable.Decode()
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to decode the diff. of our IBLT w.r.t. our peers transaction IBLT.")
-		}
-
-		for _, id := range diff.Added {
-			tx, err := l.GetBySymbol(string(id))
-
-			if err != nil {
-				continue
-			}
-
-			wired := &wire.Transaction{
-				Sender:    tx.Sender,
-				Nonce:     tx.Nonce,
-				Parents:   tx.Parents,
-				Tag:       tx.Tag,
-				Payload:   tx.Payload,
-				Signature: tx.Signature,
-			}
-
-			res.Transactions = append(res.Transactions, wired)
-
-			if len(res.Transactions) > 100 {
-				break
-			}
-		}
+		selfTable = l.IBLT.Clone()
 	})
+
+	err = selfTable.Sub(*peerTable)
+
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to diff() our IBLT w.r.t. our peers transaction IBLT.")
+		return res
+	}
+
+	diff, err = selfTable.Decode()
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to decode the diff. of our IBLT w.r.t. our peers transaction IBLT.")
+	}
+
+	var tx *database.Transaction
+
+	for _, id := range diff.Added {
+		s.Ledger.Do(func(l *wavelet.Ledger) {
+			tx, err = l.GetBySymbol(string(id))
+		})
+
+		if err != nil {
+			continue
+		}
+
+		wired := &wire.Transaction{
+			Sender:    tx.Sender,
+			Nonce:     tx.Nonce,
+			Parents:   tx.Parents,
+			Tag:       tx.Tag,
+			Payload:   tx.Payload,
+			Signature: tx.Signature,
+		}
+
+		res.Transactions = append(res.Transactions, wired)
+
+		if len(res.Transactions) > 100 {
+			break
+		}
+	}
 
 	return res
 }
 
 func (s *syncer) Init() {
-	timer := time.NewTicker(params.SyncPeriod)
-
 	for {
 		select {
 		case <-s.kill:
 			break
-		case <-timer.C:
-			s.sync()
+		default:
 		}
-	}
 
-	timer.Stop()
+		s.sync()
+
+		time.Sleep(params.SyncPeriod)
+	}
 }
 
 func (s *syncer) sync() {
@@ -187,21 +192,27 @@ func (s *syncer) sync() {
 				return
 			}
 
+			var tx *database.Transaction
+
 			s.Ledger.Do(func(l *wavelet.Ledger) {
-				tx, err := l.GetBySymbol(id)
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to find transaction which was received.")
-					return
-				}
-
-				err = l.HandleSuccessfulQuery(tx)
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to update conflict set for transaction received which was gossiped out.")
-					return
-				}
-
-				atomic.AddUint64(&total, 1)
+				tx, err = l.GetBySymbol(id)
 			})
+
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to find transaction which was received.")
+				return
+			}
+
+			s.Ledger.Do(func(l *wavelet.Ledger) {
+				err = l.HandleSuccessfulQuery(tx)
+			})
+
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to update conflict set for transaction received which was gossiped out.")
+				return
+			}
+
+			atomic.AddUint64(&total, 1)
 		}(wired)
 	}
 
