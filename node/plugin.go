@@ -150,14 +150,22 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				}
 
 				var tx *database.Transaction
+
 				w.Ledger.Do(func(l *wavelet.Ledger) {
 					tx, err = l.GetBySymbol(id)
-					if err == nil {
-						err = l.HandleSuccessfulQuery(tx)
-					}
 				})
+
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to find transaction which was received or update conflict set for transaction received which was gossiped out.")
+					log.Error().Err(err).Msg("Failed to find transaction which was received which was gossiped out.")
+					return
+				}
+
+				w.Ledger.Do(func(l *wavelet.Ledger) {
+					err = l.HandleSuccessfulQuery(tx)
+				})
+
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to update conflict set for transaction received which was gossiped out.")
 				}
 			}()
 		}

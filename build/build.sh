@@ -61,6 +61,7 @@ docker run \
     --mount type=bind,source="${HOST_BUILD_BIN}",target="/host-bin" \
     ${IMAGE_NAME} \
     bash -c "cp -r ${CONTAINER_BUILD_BIN}/ /host-bin/ && \
-        chown $(id -u):$(id -g) /host-bin/*"
+        # update the folder ownership from root to the script runner
+        chown $(id -u):$(id -g) -R /host-bin/"
 
 echo "Done building."

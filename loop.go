@@ -32,29 +32,30 @@ func NewEventLoop(ledger *Ledger) *eventLoop {
 	return &eventLoop{
 		ledger:    ledger,
 		taskQueue: make(chan *task, 4096),
+		tail:      true,
 	}
 }
 
 func (l *eventLoop) RunForever() {
-	timer := time.NewTicker(100 * time.Nanosecond)
+	timer := time.NewTicker(17 * time.Millisecond)
 
 	for {
-		l.Lock()
-
 		select {
 		case t := <-l.taskQueue:
+			l.Lock()
 			t.step(l.ledger)
-			l.ledger.Step(false)
+			l.Unlock()
 
+			l.ledger.Step(false)
 			l.tail = false
 		case <-timer.C:
+			// If there are no events for more than 17ms (60FPS), check if we need
+			// to run a complementary time-step.
 			if !l.tail {
 				l.ledger.Step(true)
 				l.tail = true
 			}
 		}
-
-		l.Unlock()
 	}
 
 	timer.Stop()
