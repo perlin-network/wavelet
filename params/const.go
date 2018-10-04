@@ -5,7 +5,7 @@ import "time"
 var (
 	// Transaction IBLT parameters.
 	TxK = 6
-	TxL = 4096
+	TxL = 4096*5
 
 	// Consensus protocol parameters.
 	ConsensusK     = 3
@@ -15,6 +15,6 @@ var (
 	GraphUpdatePeriod = 50 * time.Millisecond
 
 	// Sync parameters.
-	SyncPeriod   = 1000 * time.Millisecond
+	SyncPeriod   = 4000 * time.Millisecond
 	SyncNumPeers = 1
 )
