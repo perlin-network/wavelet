@@ -162,8 +162,6 @@ func (s *syncer) sync() {
 
 	total := uint64(0)
 
-	log.Debug().Int("num_received", len(received)).Interface("received", received).Msg("sync received transactions")
-
 	for _, wired := range received {
 		if validated, err := security.ValidateWiredTransaction(wired); err != nil || !validated {
 			continue
