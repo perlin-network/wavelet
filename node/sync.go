@@ -134,16 +134,19 @@ func (s *syncer) sync() {
 
 			client, err := s.net.Client(address)
 			if err != nil {
+				log.Error().Err(err).Msg("")
 				return
 			}
 
 			r, err := client.Request(request)
 			if err != nil {
+				log.Error().Err(err).Msg("")
 				return
 			}
 
 			res, ok := r.(*SyncResponse)
 			if !ok {
+				log.Error().Msg("node: response could not be converted to SyncResponse")
 				return
 			}
 
@@ -158,6 +161,8 @@ func (s *syncer) sync() {
 	wg = new(sync.WaitGroup)
 
 	total := uint64(0)
+
+	log.Debug().Int("num_received", len(received)).Interface("received", received).Msg("sync received transactions")
 
 	for _, wired := range received {
 		if validated, err := security.ValidateWiredTransaction(wired); err != nil || !validated {
