@@ -1,6 +1,8 @@
 .PHONY: wavelet all build-all test bench clean
 .PHONY: linux
 .PHONY: windows
+.PHONY: darwin
+.PHONY: linux-arm
 
 BINOUT = $(shell pwd)/build/bin
 WAVELET_DIR = $(shell pwd)/cmd/wavelet
@@ -15,6 +17,12 @@ linux:
 
 windows:
 	build/build.sh -a windows-amd64
+
+darwin:
+	build/build.sh -a darwin-amd64
+
+linux-arm:
+	build/build.sh -a linux-arm64
 
 test:
 	go test -coverprofile=coverage.txt -covermode=atomic -timeout 300s -v -bench -race ./...
