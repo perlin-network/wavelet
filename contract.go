@@ -20,9 +20,10 @@ type ContractExecutor struct {
 
 func (e *ContractExecutor) Run() error {
 	vm, err := exec.NewVirtualMachine(e.Code, exec.VMConfig{
-		DefaultMemoryPages: 128,
-		DefaultTableSize:   65536,
-		GasLimit:           e.GasLimit,
+		DefaultMemoryPages:   128,
+		DefaultTableSize:     65536,
+		GasLimit:             e.GasLimit,
+		DisableFloatingPoint: true,
 	}, e, e)
 	if err != nil {
 		return err
