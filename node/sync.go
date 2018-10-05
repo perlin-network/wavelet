@@ -1,9 +1,11 @@
 package node
 
 import (
+	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/network/rpc"
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/security"
@@ -32,30 +34,32 @@ func (s *syncer) RespondToSync(req *SyncRequest) *SyncResponse {
 		}
 	}
 
-	v := s.Ledger.WithIBLT(func(filter *iblt.Filter) interface{} {
-		selfTable := filter.Clone()
+	var selfTable *iblt.Filter
+	var diff *iblt.Diff
+	var err error
 
-		err := selfTable.Sub(*peerTable)
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to diff() our IBLT w.r.t. our peers transaction IBLT.")
-			return err
-		}
-
-		diff, err := selfTable.Decode()
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to decode the diff. of our IBLT w.r.t. our peers transaction IBLT.")
-			return err
-		}
-
-		return diff.Added
+	s.Ledger.Do(func(l *wavelet.Ledger) {
+		selfTable = l.IBLT.Clone()
 	})
 
-	if _, is := v.(error); is {
+	err = selfTable.Sub(*peerTable)
+
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to diff() our IBLT w.r.t. our peers transaction IBLT.")
 		return res
 	}
 
-	for _, id := range v.([][]byte) {
-		tx, err := s.Ledger.GetBySymbol(string(id))
+	diff, err = selfTable.Decode()
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to decode the diff. of our IBLT w.r.t. our peers transaction IBLT.")
+	}
+
+	var tx *database.Transaction
+
+	for _, id := range diff.Added {
+		s.Ledger.Do(func(l *wavelet.Ledger) {
+			tx, err = l.GetBySymbol(string(id))
+		})
 
 		if err != nil {
 			continue
@@ -81,18 +85,17 @@ func (s *syncer) RespondToSync(req *SyncRequest) *SyncResponse {
 }
 
 func (s *syncer) Init() {
-	timer := time.NewTicker(params.SyncPeriod)
-
 	for {
 		select {
 		case <-s.kill:
 			break
-		case <-timer.C:
-			s.sync()
+		default:
 		}
-	}
 
-	timer.Stop()
+		s.sync()
+
+		time.Sleep(params.SyncPeriod)
+	}
 }
 
 func (s *syncer) sync() {
@@ -108,22 +111,19 @@ func (s *syncer) sync() {
 	wg := new(sync.WaitGroup)
 	wg.Add(len(peers))
 
-	v := s.Ledger.WithIBLT(func(filter *iblt.Filter) interface{} {
-		encoded, err := filter.MarshalBinary()
-		if err != nil {
-			return err
-		}
+	var encoded []byte
 
-		return encoded
+	s.Ledger.Do(func(l *wavelet.Ledger) {
+		encoded, err = l.IBLT.MarshalBinary()
 	})
 
-	if _, is := v.(error); is {
+	if err != nil {
 		return
 	}
 
 	request := new(rpc.Request)
 	request.SetTimeout(5 * time.Second)
-	request.SetMessage(&SyncRequest{Table: v.([]byte)})
+	request.SetMessage(&SyncRequest{Table: encoded})
 
 	var received []*wire.Transaction
 	var mutex sync.Mutex
@@ -166,21 +166,18 @@ func (s *syncer) sync() {
 
 		id := graph.Symbol(wired)
 
-		if s.Ledger.TransactionExists(id) {
-			continue
-		}
+		successful := false
 
-		_, successful, err := s.Ledger.RespondToQuery(wired)
-		if err != nil {
-			continue
-		}
-
-		if successful {
-			err = s.Ledger.QueueForAcceptance(id)
-
-			if err != nil {
-				continue
+		s.Ledger.Do(func(l *wavelet.Ledger) {
+			if l.TransactionExists(id) {
+				return
 			}
+
+			_, successful, err = l.RespondToQuery(wired)
+		})
+
+		if err != nil || !successful {
+			continue
 		}
 
 		wg.Add(1)
@@ -195,13 +192,21 @@ func (s *syncer) sync() {
 				return
 			}
 
-			tx, err := s.Ledger.GetBySymbol(id)
+			var tx *database.Transaction
+
+			s.Ledger.Do(func(l *wavelet.Ledger) {
+				tx, err = l.GetBySymbol(id)
+			})
+
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to find transaction which was received.")
 				return
 			}
 
-			err = s.Ledger.HandleSuccessfulQuery(tx)
+			s.Ledger.Do(func(l *wavelet.Ledger) {
+				err = l.HandleSuccessfulQuery(tx)
+			})
+
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to update conflict set for transaction received which was gossiped out.")
 				return

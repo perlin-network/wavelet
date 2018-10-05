@@ -11,9 +11,9 @@ import (
 	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/stats"
 	"github.com/phf/go-queue/queue"
+	"github.com/pkg/errors"
 	"github.com/sasha-s/go-IBLT"
 	"sort"
-	"sync"
 	"time"
 )
 
@@ -26,6 +26,10 @@ var (
 	KeyTransactionIBLT = writeBytes("tx_iblt")
 )
 
+var (
+	ErrStop = errors.New("stop")
+)
+
 type Ledger struct {
 	state
 	rpc
@@ -34,14 +38,18 @@ type Ledger struct {
 	*graph.Graph
 	*conflict.Resolver
 
-	iblt      *iblt.Filter
-	ibltMutex sync.Mutex
+	IBLT *iblt.Filter
 
 	kill chan struct{}
+
+	stepping               bool
+	lastUpdateAcceptedTime time.Time
 }
 
-func NewLedger(databasePath, servicesPath string) *Ledger {
+func NewLedger(databasePath, servicesPath, genesisPath string) *Ledger {
 	store := database.New(databasePath)
+
+	log.Info().Str("db_path", databasePath).Msg("Database has been loaded.")
 
 	graph := graph.New(store)
 	resolver := conflict.New(graph)
@@ -57,14 +65,28 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 	ledger.state = state{Ledger: ledger}
 	ledger.rpc = rpc{Ledger: ledger}
 
-	if store.Size(BucketAccounts) == 0 {
-		BIGBANG(ledger)
+	if len(genesisPath) > 0 && ledger.NumAccounts() == 0 {
+		genesis, err := ReadGenesis(genesisPath)
+
+		if err != nil {
+			log.Error().Err(err).Msgf("Could not read genesis details which were expected to be at: %s", genesisPath)
+		}
+
+		for _, account := range genesis {
+			if err := ledger.SaveAccount(account, nil); err != nil {
+				log.Fatal().Err(err).
+					Str("id", string(account.PublicKey)).
+					Msg("Failed to save genesis account information.")
+			}
+		}
+
+		log.Info().Str("file", genesisPath).Int("num_accounts", len(genesis)).Msg("Successfully seeded the genesis of this node.")
 	}
 
-	ledger.iblt = iblt.New(params.TxK, params.TxL)
+	ledger.IBLT = iblt.New(params.TxK, params.TxL)
 
 	if encoded, err := store.Get(KeyTransactionIBLT); err == nil {
-		err := ledger.iblt.UnmarshalBinary(encoded)
+		err := ledger.IBLT.UnmarshalBinary(encoded)
 
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to decode transaction IBLT from database.")
@@ -78,36 +100,22 @@ func NewLedger(databasePath, servicesPath string) *Ledger {
 	return ledger
 }
 
-func (ledger *Ledger) WithIBLT(call func(*iblt.Filter) interface{}) interface{} {
-	ledger.ibltMutex.Lock()
-	value := call(ledger.iblt)
-	ledger.ibltMutex.Unlock()
-
-	return value
-}
-
-func (ledger *Ledger) Init() {
-	go ledger.updateAcceptedTransactionsLoop()
-}
-
-// UpdateAcceptedTransactions incrementally from the root of the graph updates whether
-// or not all transactions this node knows about are accepted.
-//
-// The graph will be incrementally checked for updates periodically. Ideally, you should
-// execute this function in a new goroutine.
-func (ledger *Ledger) updateAcceptedTransactionsLoop() {
-	timer := time.NewTicker(params.GraphUpdatePeriod)
-
-	for {
-		select {
-		case <-ledger.kill:
-			break
-		case <-timer.C:
-			ledger.updateAcceptedTransactions()
-		}
+// Step will perform one single time step of all periodic tasks within the ledger.
+func (ledger *Ledger) Step(force bool) {
+	if ledger.stepping {
+		return
 	}
 
-	timer.Stop()
+	ledger.stepping = true
+
+	current := time.Now()
+
+	if force || current.Sub(ledger.lastUpdateAcceptedTime) >= params.GraphUpdatePeriod {
+		ledger.updateAcceptedTransactions()
+		ledger.lastUpdateAcceptedTime = current
+	}
+
+	ledger.stepping = false
 }
 
 // WasAccepted returns whether or not a transaction given by its symbol was stored to be accepted
@@ -132,17 +140,32 @@ func (ledger *Ledger) QueueForAcceptance(symbol string) error {
 	return ledger.Put(merge(BucketAcceptPending, writeBytes(symbol)), []byte{0})
 }
 
-// updateAcceptedTransactions incrementally from the root of the graph updates whether
+// UpdateAcceptedTransactions incrementally from the root of the graph updates whether
 // or not all transactions this node knows about are accepted.
 func (ledger *Ledger) updateAcceptedTransactions() {
 	// If there are no accepted transactions and none are pending, add the very first transaction.
-	if ledger.Size(BucketAcceptPending) == 0 && ledger.Size(BucketAcceptedIndex) == 0 {
-		tx, err := ledger.GetByIndex(0)
-		if err != nil {
+	if ledger.Size(BucketAcceptPending) == 0 && ledger.NumAcceptedTransactions() == 0 {
+		var tx *database.Transaction
+
+		err := ledger.ForEachDepth(0, func(symbol string) error {
+			first, err := ledger.GetBySymbol(symbol)
+			if err != nil {
+				return err
+			}
+
+			tx = first
+			return ErrStop
+		})
+
+		if err != ErrStop {
 			return
 		}
 
-		ledger.Put(merge(BucketAcceptPending, writeBytes(tx.Id)), []byte{0})
+		err = ledger.QueueForAcceptance(tx.Id)
+
+		if err != nil {
+			return
+		}
 	}
 
 	var acceptedList []string
@@ -182,6 +205,7 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 
 	for _, pending := range pendingList {
 		parentsAccepted := true
+
 		for _, parent := range pending.tx.Parents {
 			if !ledger.WasAccepted(parent) {
 				parentsAccepted = false
@@ -207,7 +231,7 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 
 		conflicting := !(transactions.Cardinality() == 1)
 
-		if set.Count > system.Beta2 || (!conflicting && ledger.CountAscendants(pending.tx.Id, system.Beta1+1) > system.Beta1) {
+		if (set.Preferred == pending.tx.Id && set.Count > system.Beta2) || (!conflicting && ledger.CountAscendants(pending.tx.Id, system.Beta1+1) > system.Beta1) {
 			if !ledger.WasAccepted(pending.tx.Id) {
 				ledger.acceptTransaction(pending.tx)
 				acceptedList = append(acceptedList, pending.tx.Id)
@@ -221,7 +245,7 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 			acceptedList[i] = acceptedList[i][:10]
 		}
 
-		log.Info().Interface("accepted", acceptedList).Msgf("Accepted %d transactions.", len(acceptedList))
+		log.Debug().Interface("accepted", acceptedList).Msgf("Accepted %d transactions.", len(acceptedList))
 	}
 }
 
@@ -260,7 +284,7 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 	ledger.Delete(merge(BucketAcceptPending, writeBytes(tx.Id)))
 
 	stats.IncAcceptedTransactions(tx.Tag)
-	events.Publish(nil, &events.TransactionAcceptedEvent{ID: tx.Id})
+	go events.Publish(nil, &events.TransactionAcceptedEvent{ID: tx.Id})
 
 	// If the transaction has accepted children, revert all of the transactions ascendants.
 	if children, err := ledger.GetChildrenBySymbol(tx.Id); err == nil && len(children.Transactions) > 0 {
@@ -295,7 +319,7 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 				visited[child] = struct{}{}
 
 				if !ledger.WasAccepted(child) {
-					ledger.Put(merge(BucketAcceptPending, writeBytes(child)), []byte{0})
+					ledger.QueueForAcceptance(child)
 				} else if !ledger.WasApplied(child) {
 					// If the child was already accepted but not yet applied, apply it to the ledger state.
 
@@ -346,7 +370,7 @@ func (ledger *Ledger) revertTransaction(symbol string, revertAcceptance bool) {
 			ledger.Delete(merge(BucketAcceptedIndex, indexBytes))
 			ledger.Delete(merge(BucketAccepted, writeBytes(popped)))
 
-			ledger.Put(merge(BucketAcceptPending, writeBytes(popped)), []byte{0})
+			ledger.QueueForAcceptance(popped)
 
 			stats.DecAcceptedTransactions()
 		}

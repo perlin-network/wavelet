@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/peer"
+	"github.com/perlin-network/wavelet"
 )
 
 const (
@@ -25,14 +26,16 @@ func (s stake) weigh(peers []peer.ID, responses []bool, tx *wire.Transaction) (p
 	for _, peer := range peers {
 		stake := uint64(minimumStake)
 
-		account, err := s.Ledger.LoadAccount(peer.PublicKey)
-		if err == nil {
-			if val, exists := account.Load("stake"); exists {
-				if s := binary.LittleEndian.Uint64(val); s > stake {
-					stake = s
+		s.Ledger.Do(func(l *wavelet.Ledger) {
+			account, err := l.LoadAccount(peer.PublicKey)
+			if err == nil {
+				if val, exists := account.Load("stake"); exists {
+					if s := binary.LittleEndian.Uint64(val); s > stake {
+						stake = s
+					}
 				}
 			}
-		}
+		})
 
 		if stake > maxStake {
 			maxStake = stake

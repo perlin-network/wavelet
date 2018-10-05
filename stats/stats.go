@@ -3,22 +3,18 @@ package stats
 import (
 	"expvar"
 	"time"
-
-	"github.com/shirou/gopsutil/cpu"
-	"github.com/shirou/gopsutil/disk"
-	"github.com/shirou/gopsutil/mem"
 )
 
 var (
-	numAcceptedTransactions          = expvar.NewInt("perlin_num_accepted_transactions")
-	numAcceptedTransactionsPerSecond = expvar.NewInt("perlin_num_accepted_transactions_per_sec")
-	consensusDuration                = expvar.NewFloat("perlin_consensus_duration")
+	numAcceptedTransactionsStat          expvar.Int
+	numAcceptedTransactionsPerSecondStat expvar.Int
+	consensusDurationStat                expvar.Float
 
-	uptime  = expvar.NewString("perlin_uptime")
-	laptime = expvar.NewFloat("perlin_laptime")
+	uptimeStat  expvar.String
+	laptimeStat expvar.Float
 
-	bufferAcceptByTagPerSec = expvar.NewMap("perlin_buffer_accept_by_tag_per_sec")
-	lastAcceptByTagPerSec   = expvar.NewMap("perlin_last_accept_by_tag_per_sec")
+	bufferAcceptByTagPerSecStat expvar.Map
+	lastAcceptByTagPerSecStat   expvar.Map
 
 	startTime    time.Time
 	lapStartTime time.Time
@@ -31,101 +27,90 @@ func init() {
 
 	go func() {
 		for range time.Tick(1 * time.Second) {
-			numAcceptedTransactionsPerSecond.Set(0)
-			uptime.Set(time.Now().Sub(startTime).String())
-			laptime.Set(time.Now().Sub(lapStartTime).Seconds())
+			numAcceptedTransactionsPerSecondStat.Set(0)
+			uptimeStat.Set(time.Now().Sub(startTime).String())
+			laptimeStat.Set(time.Now().Sub(lapStartTime).Seconds())
 
-			lastAcceptByTagPerSec.Init()
+			// reset the last stats
+			lastAcceptByTagPerSecStat.Init()
 
-			bufferAcceptByTagPerSec.Do(func(kv expvar.KeyValue) {
-				lastAcceptByTagPerSec.Set(kv.Key, kv.Value)
+			// copy over the buffered stats
+			bufferAcceptByTagPerSecStat.Do(func(kv expvar.KeyValue) {
+				lastAcceptByTagPerSecStat.Set(kv.Key, kv.Value)
 			})
 
-			bufferAcceptByTagPerSec.Init()
+			// reset the buffered stats
+			bufferAcceptByTagPerSecStat.Init()
 		}
 	}()
 
-	expvar.Publish("system_stats", expvar.Func(SystemInfo))
+	// publish the custom struct
+	expvar.Publish("wavelet", expvar.Func(Summary))
 }
 
 // IncAcceptedTransactions will increment #accepted transactions for the tag
 func IncAcceptedTransactions(tag string) {
-	numAcceptedTransactions.Add(1)
-	numAcceptedTransactionsPerSecond.Add(1)
-	bufferAcceptByTagPerSec.Add(tag, 1)
-	bufferAcceptByTagPerSec.Add("total", 1)
+	numAcceptedTransactionsStat.Add(1)
+	numAcceptedTransactionsPerSecondStat.Add(1)
+	bufferAcceptByTagPerSecStat.Add(tag, 1)
+	bufferAcceptByTagPerSecStat.Add("total", 1)
 }
 
 // DecAcceptedTransactions will decrement #accepted transactions by 1.
 func DecAcceptedTransactions() {
-	numAcceptedTransactions.Set(numAcceptedTransactions.Value() - 1)
+	numAcceptedTransactionsStat.Set(numAcceptedTransactionsStat.Value() - 1)
 }
 
 // SetConsensusDuration will update last consensus duration.
 func SetConsensusDuration(value float64) {
-	consensusDuration.Set(value)
+	consensusDurationStat.Set(value)
 }
 
 // Reset sets all metrics to 0
 func Reset() {
 	lapStartTime = time.Now()
-	consensusDuration.Set(0)
-	numAcceptedTransactions.Set(0)
-	numAcceptedTransactionsPerSecond.Set(0)
-	lastAcceptByTagPerSec.Init()
-	bufferAcceptByTagPerSec.Init()
+	consensusDurationStat.Set(0)
+	numAcceptedTransactionsStat.Set(0)
+	numAcceptedTransactionsPerSecondStat.Set(0)
+	lastAcceptByTagPerSecStat.Init()
+	bufferAcceptByTagPerSecStat.Init()
 }
 
-// Summary returns a summary of the stats
+// Summary returns a custom summary struct
 func Summary() interface{} {
-	t, _ := time.ParseDuration(uptime.Value())
+	t, _ := time.ParseDuration(uptimeStat.Value())
 
-	acceptByTagPerSec := make(map[string]int64)
-	lastAcceptByTagPerSec.Do(func(kv expvar.KeyValue) {
+	lastAcceptByTagPerSec := make(map[string]int64)
+	lastAcceptByTagPerSecStat.Do(func(kv expvar.KeyValue) {
 		if iv, ok := kv.Value.(*expvar.Int); ok {
-			acceptByTagPerSec[kv.Key] = iv.Value()
+			lastAcceptByTagPerSec[kv.Key] = iv.Value()
+		}
+	})
+
+	bufferAcceptByTagPerSec := make(map[string]int64)
+	bufferAcceptByTagPerSecStat.Do(func(kv expvar.KeyValue) {
+		if iv, ok := kv.Value.(*expvar.Int); ok {
+			bufferAcceptByTagPerSec[kv.Key] = iv.Value()
 		}
 	})
 
 	summary := struct {
 		ConsensusDuration                float64          `json:"consensus_duration"`
-		NumAcceptedTransactions          int64            `json:"num_accepted_tx"`
-		NumAcceptedTransactionsPerSecond int64            `json:"num_accepted_tx_per_sec"`
+		NumAcceptedTransactions          int64            `json:"num_accepted_transactions"`
+		NumAcceptedTransactionsPerSecond int64            `json:"num_accepted_transactions_per_sec"`
 		Uptime                           float64          `json:"uptime"`
 		LapTime                          float64          `json:"laptime"`
-		AcceptByTagPerSec                map[string]int64 `json:"accept_by_tag_per_sec"`
+		LastAcceptByTagPerSec            map[string]int64 `json:"last_accept_by_tag_per_sec"`
+		BufferAcceptByTagPerSec          map[string]int64 `json:"buffer_accept_by_tag_per_sec"`
 	}{
-		ConsensusDuration:                consensusDuration.Value(),
-		NumAcceptedTransactions:          numAcceptedTransactions.Value(),
-		NumAcceptedTransactionsPerSecond: numAcceptedTransactionsPerSecond.Value(),
+		ConsensusDuration:                consensusDurationStat.Value(),
+		NumAcceptedTransactions:          numAcceptedTransactionsStat.Value(),
+		NumAcceptedTransactionsPerSecond: numAcceptedTransactionsPerSecondStat.Value(),
 		Uptime:                           t.Seconds(),
-		LapTime:                          laptime.Value(),
-		AcceptByTagPerSec:                acceptByTagPerSec,
+		LapTime:                          laptimeStat.Value(),
+		LastAcceptByTagPerSec:            lastAcceptByTagPerSec,
+		BufferAcceptByTagPerSec:          bufferAcceptByTagPerSec,
 	}
 
 	return summary
-}
-
-// SystemInfo returns real-time information about the current system.
-//
-// TODO: Have system information be cross-platform. Linux only for now.
-func SystemInfo() interface{} {
-	c, _ := cpu.Percent(time.Second, true)
-
-	diskDeviceName := "/dev/sda1"
-
-	d, _ := disk.IOCounters(diskDeviceName)
-	v, _ := mem.VirtualMemory()
-
-	systemStats := struct {
-		Memory *mem.VirtualMemoryStat `json:"memory"`
-		CPU    []float64              `json:"cpu"`
-		Disk   disk.IOCountersStat    `json:"disk"`
-	}{
-		CPU:    c,
-		Disk:   d[diskDeviceName],
-		Memory: v,
-	}
-
-	return systemStats
 }

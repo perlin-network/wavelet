@@ -1,16 +1,18 @@
 package wavelet
 
 import (
+	"os"
+	"testing"
+
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/crypto"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/security"
-	"os"
-	"testing"
 )
 
-const databasePath = "cmd/testdb"
-const servicesPath = "cmd/services"
+const databasePath = "testdb"
+const servicesPath = "cmd/wavelet/services"
+const genesisPath = "cmd/wavelet/genesis.json"
 
 func BenchmarkLedger(b *testing.B) {
 	b.StopTimer()
@@ -22,8 +24,7 @@ func BenchmarkLedger(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	ledger := NewLedger(databasePath, servicesPath)
-	ledger.Init()
+	ledger := NewLedger(databasePath, servicesPath, genesisPath)
 
 	defer os.RemoveAll(databasePath)
 	defer ledger.Graph.Cleanup()
@@ -64,5 +65,7 @@ func BenchmarkLedger(b *testing.B) {
 		if err != nil {
 			b.Fatal(err)
 		}
+
+		ledger.Step(false)
 	}
 }

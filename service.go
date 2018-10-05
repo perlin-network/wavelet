@@ -2,13 +2,16 @@ package wavelet
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
 	"sync"
+	"time"
 )
 
 const (
@@ -65,11 +68,15 @@ func (s *service) Run(tx *database.Transaction) ([]*Delta, []*database.Transacti
 	s.accounts = make(map[string]map[string][]byte)
 	s.account = nil
 
+	start := time.Now()
+
 	ret, err := s.vm.Run(s.entry)
 	if err != nil {
 		s.vm.PrintStackTrace()
 		panic(errors.Errorf("Transaction processor [%s] panicked during handling tx: %+v", s.name, tx))
 	}
+
+	log.Debug().TimeDiff("duration", time.Now(), start).Msgf("Executed service %s.", s.name)
 
 	switch uint32(ret) {
 	case InternalProcessErr:
@@ -381,6 +388,41 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 				s.pendingNewTransactions = append(s.pendingNewTransactions, localNewTx...)
 				return int64(InternalProcessOk)
 			}
+		case "_decode_and_create_contract":
+			return func(vm *exec.VirtualMachine) int64 {
+				senderID, err := hex.DecodeString(s.tx.Sender)
+				if err != nil {
+					return int64(InternalProcessOk)
+				}
+
+				if bytes.HasPrefix(senderID, ContractPrefix) {
+					return int64(InternalProcessErr) // a contract cannot create another one
+				}
+
+				contractID := string(ContractID(s.tx.Id))
+
+				if s.accounts[contractID] == nil {
+					s.accounts[contractID] = make(map[string][]byte)
+				}
+
+				var payload struct {
+					Code string `json:"code"`
+				}
+
+				err = json.Unmarshal(s.tx.Payload, &payload)
+				if err != nil {
+					return int64(InternalProcessErr)
+				}
+
+				decoded, err := base64.StdEncoding.DecodeString(payload.Code)
+				if err != nil {
+					return int64(InternalProcessErr)
+				}
+
+				s.accounts[contractID]["contract_code"] = decoded
+
+				return int64(InternalProcessOk)
+			}
 		case "_create_contract":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
@@ -397,12 +439,13 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessErr) // a contract cannot create another one
 				}
 
-				contractID := ContractID(s.tx.Id)
+				contractID := string(ContractID(s.tx.Id))
 
-				contractAccount := NewAccount(contractID)
-				contractAccount.Store("contract_code", code)
+				if s.accounts[contractID] == nil {
+					s.accounts[contractID] = make(map[string][]byte)
+				}
 
-				s.state.SaveAccount(contractAccount, nil)
+				s.accounts[contractID]["contract_code"] = code
 
 				return int64(InternalProcessOk)
 			}

@@ -1,6 +1,7 @@
 package node
 
 import (
+	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/dht"
@@ -10,14 +11,17 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/security"
 	"github.com/pkg/errors"
+	"os"
 )
 
 var _ network.PluginInterface = (*Wavelet)(nil)
 var PluginID = (*Wavelet)(nil)
 
 type Options struct {
-	DatabasePath string
-	ServicesPath string
+	DatabasePath  string
+	ServicesPath  string
+	GenesisPath   string
+	ResetDatabase bool
 }
 
 type Wavelet struct {
@@ -28,7 +32,7 @@ type Wavelet struct {
 	net    *network.Network
 	routes *dht.RoutingTable
 
-	Ledger *wavelet.Ledger
+	Ledger *wavelet.LoopHandle
 	Wallet *wavelet.Wallet
 
 	opts Options
@@ -44,15 +48,29 @@ func (w *Wavelet) Startup(net *network.Network) {
 	plugin, registered := net.Plugin(discovery.PluginID)
 
 	if !registered {
-		log.Fatal().Msg("net was not built with peer discovery plugin")
+		log.Fatal().Msg("Wavelet requires `discovery.Plugin` from the `noise` lib. to be registered into this nodes network.")
 	}
 
 	w.routes = plugin.(*discovery.Plugin).Routes
 
-	w.Ledger = wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath)
-	w.Ledger.Init()
+	if w.opts.ResetDatabase {
+		err := os.RemoveAll(w.opts.DatabasePath)
 
-	w.Wallet = wavelet.NewWallet(net.GetKeys(), w.Ledger.Store)
+		if err != nil {
+			log.Info().Err(err).Str("db_path", w.opts.DatabasePath).Msg("Failed to delete previous database instance.")
+		} else {
+			log.Info().Str("db_path", w.opts.DatabasePath).Msg("Deleted previous database instance.")
+		}
+	}
+
+	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath, w.opts.GenesisPath)
+
+	loop := wavelet.NewEventLoop(ledger)
+	go loop.RunForever()
+
+	w.Ledger = loop.Handle()
+
+	w.Wallet = wavelet.NewWallet(net.GetKeys())
 
 	w.query = query{Wavelet: w}
 	w.query.sybil = stake{query: w.query}
@@ -71,52 +89,57 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 		}
 
 		id := graph.Symbol(msg)
-		existed := w.Ledger.TransactionExists(id)
 
-		if existed {
-			successful := w.Ledger.IsStronglyPreferred(id)
+		res := &QueryResponse{Id: id}
 
-			if successful && !w.Ledger.WasAccepted(id) {
-				err := w.Ledger.QueueForAcceptance(id)
-
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to queue transaction to pend for acceptance.")
-				}
-			}
-
-			log.Debug().Str("id", id).Interface("tx", msg).Msgf("Received a transaction, and voted '%t' for it.", successful)
-
-			res := &QueryResponse{Id: id, StronglyPreferred: successful}
-
+		defer func() {
 			err := ctx.Reply(res)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to send response.")
-				return err
 			}
-		} else {
-			_, successful, err := w.Ledger.RespondToQuery(msg)
-			if err != nil {
-				log.Warn().Err(err).Msg("Failed to respond to query.")
-				return err
-			}
+		}()
 
-			if successful {
-				err = w.Ledger.QueueForAcceptance(id)
+		var existed bool
 
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to queue transaction to pend for acceptance.")
+		w.Ledger.Do(func(l *wavelet.Ledger) {
+			existed = l.TransactionExists(id)
+		})
+
+		if existed {
+			w.Ledger.Do(func(l *wavelet.Ledger) {
+				res.StronglyPreferred = l.IsStronglyPreferred(id)
+
+				if res.StronglyPreferred && !l.WasAccepted(id) {
+					err := l.QueueForAcceptance(id)
+
+					if err != nil {
+						log.Error().Err(err).Msg("Failed to queue transaction to pend for acceptance.")
+					}
 				}
-			}
+			})
 
-			log.Debug().Str("id", id).Interface("tx", msg).Msgf("Received a transaction, and voted '%t' for it.", successful)
+			log.Debug().Str("id", id).Str("tag", msg.Tag).Msgf("Received an existing transaction, and voted '%t' for it.", res.StronglyPreferred)
+		} else {
+			var err error
 
-			res := &QueryResponse{Id: id, StronglyPreferred: successful}
+			w.Ledger.Do(func(l *wavelet.Ledger) {
+				_, res.StronglyPreferred, err = l.RespondToQuery(msg)
 
-			err = ctx.Reply(res)
+				if err == nil && res.StronglyPreferred {
+					err = l.QueueForAcceptance(id)
+				}
+			})
+
 			if err != nil {
-				log.Error().Err(err).Msg("Failed to send response.")
+				if errors.Cause(err) == database.ErrTxExists {
+					return nil
+				}
+
+				log.Warn().Err(err).Msg("Failed to respond to query or queue transaction to pend for acceptance.")
 				return err
 			}
+
+			log.Debug().Str("id", id).Str("tag", msg.Tag).Msgf("Received a new transaction, and voted '%t' for it.", res.StronglyPreferred)
 
 			go func() {
 				err := w.Query(msg)
@@ -126,16 +149,23 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 					return
 				}
 
-				tx, err := w.Ledger.GetBySymbol(id)
+				var tx *database.Transaction
+
+				w.Ledger.Do(func(l *wavelet.Ledger) {
+					tx, err = l.GetBySymbol(id)
+				})
+
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to find transaction which was received.")
+					log.Error().Err(err).Msg("Failed to find transaction which was received which was gossiped out.")
 					return
 				}
 
-				err = w.Ledger.HandleSuccessfulQuery(tx)
+				w.Ledger.Do(func(l *wavelet.Ledger) {
+					err = l.HandleSuccessfulQuery(tx)
+				})
+
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to update conflict set for transaction received which was gossiped out.")
-					return
 				}
 			}()
 		}
@@ -154,11 +184,13 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 func (w *Wavelet) Cleanup(net *network.Network) {
 	w.syncer.kill <- struct{}{}
 
-	err := w.Ledger.Graph.Cleanup()
+	w.Ledger.Do(func(l *wavelet.Ledger) {
+		err := l.Graph.Cleanup()
 
-	if err != nil {
-		panic(err)
-	}
+		if err != nil {
+			panic(err)
+		}
+	})
 }
 
 func (w *Wavelet) PeerConnect(client *network.PeerClient) {
