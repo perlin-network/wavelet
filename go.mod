@@ -7,8 +7,8 @@ require (
 	github.com/gogo/protobuf v1.1.1
 	github.com/gorilla/websocket v1.4.0
 	github.com/lytics/hll v0.0.0-20180410160152-70adc917ce99
-	github.com/perlin-network/graph v0.0.0-20181003184713-e4c31fc39379
-	github.com/perlin-network/life v0.0.0-20180924090822-ccb94ff303dd
+	github.com/perlin-network/graph v0.0.0-20181004114900-9e7b984a114d
+	github.com/perlin-network/life v0.0.0-20181005150058-1eb3d14cb6e7
 	github.com/perlin-network/noise v1.1.0
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
 	github.com/pkg/errors v0.8.0
@@ -19,6 +19,7 @@ require (
 	github.com/urfave/cli v1.20.0
 	go.uber.org/atomic v1.3.2 // indirect
 	golang.org/x/crypto v0.0.0-20180910181607-0e37d006457b
+	golang.org/x/sys v0.0.0-20181004145325-8469e314837c // indirect
 	gopkg.in/urfave/cli.v1 v1.20.0
 )
 
