@@ -1,0 +1,27 @@
+#!/bin/bash
+set -eu
+
+GIT_COMMIT=$(git rev-parse --short HEAD)
+GO_VERSION=$(go version | awk '{print $3}')
+for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
+    IFS="-" read -r -a array <<< ${os_arch};
+    OS=${array[0]};
+    ARCH=${array[1]};
+    echo "Building wavelet and wctl for ${os_arch}";
+    GOOS=${OS}
+    GOARCH=${ARCH}
+
+    go build \
+        -o ${BUILD_BIN}/${OS}-${ARCH}/wavelet \
+        -ldflags "-s -w \
+            -X ${PROJ_DIR}/cmd/utils.GitCommit=${GIT_COMMIT} \
+            -X ${PROJ_DIR}/cmd/utils.GoVersion=${GO_VERSION}" \
+        cmd/wavelet/main.go
+
+    go build \
+        -o ${BUILD_BIN}/${OS}-${ARCH}/wctl \
+        -ldflags "-s -w \
+            -X ${PROJ_DIR}/cmd/utils.GitCommit=${GIT_COMMIT} \
+            -X ${PROJ_DIR}/cmd/utils.GoVersion=${GO_VERSION}" \
+        cmd/wctl/main.go;
+done;

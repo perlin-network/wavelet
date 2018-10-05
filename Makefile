@@ -9,7 +9,7 @@ WAVELET_DIR = $(shell pwd)/cmd/wavelet
 
 all: build-all test bench
 
-build-all: linux windows
+build-all: linux windows darwin
 	@echo "Done building all targets."
 
 linux:
