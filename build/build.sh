@@ -4,7 +4,6 @@
 set -eu
 
 OPTIND=1
-IMAGE_NAME="perlin-network/wavelet"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 HOST_BUILD_BIN="${SCRIPT_DIR}/bin/pkg"
 OS_ARCH="linux-amd64"
