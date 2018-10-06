@@ -16,11 +16,11 @@ go run main.go -db.path testdb2 -port 3001 -privkey random -peers tcp://127.0.0.
 # Pays 1 PERL by default unless [amount] is specified.
 p [address] [amount]
 
-# Gives details about your own personal wallet.
-w
+# Gives details about your own personal wallet. If [account id] is specified, gives details of another wallet.
+w [account id]
 
-# Gives details about an account given [account id].
-a [account id]
+# Gives details about a transaction under id [tx id].
+tx [tx id]
 
 # Test-deploy a smart contract at a given path.
 c [smart contract path here]
