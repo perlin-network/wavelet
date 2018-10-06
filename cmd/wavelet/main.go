@@ -27,6 +27,7 @@ import (
 	"github.com/perlin-network/noise/network"
 	"github.com/perlin-network/noise/network/discovery"
 
+	"github.com/perlin-network/graph/database"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
 )
@@ -41,8 +42,6 @@ func main() {
 	app.Usage = "a bleeding fast ledger with a powerful compute layer"
 
 	app.Flags = []cli.Flag{
-		// altsrc allows the config toml to override the cli flag
-		// note: cannot use multiple names for the cli flag name, it breaks the config override
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "host",
 			Value: "localhost",
@@ -228,15 +227,15 @@ func main() {
 
 			switch cmd[0] {
 			case "w":
-				w.Ledger.Do(func(l *wavelet.Ledger) {
-					log.Info().
-						Str("id", hex.EncodeToString(w.Wallet.PublicKey)).
-						Uint64("nonce", w.Wallet.CurrentNonce(l)).
-						Uint64("balance", w.Wallet.GetBalance(l)).
-						Msg("Here is your wallet information.")
-				})
-			case "a":
 				if len(cmd) < 2 {
+					w.Ledger.Do(func(l *wavelet.Ledger) {
+						log.Info().
+							Str("id", hex.EncodeToString(w.Wallet.PublicKey)).
+							Uint64("nonce", w.Wallet.CurrentNonce(l)).
+							Uint64("balance", w.Wallet.GetBalance(l)).
+							Msg("Here is your wallet information.")
+					})
+
 					continue
 				}
 
@@ -247,25 +246,27 @@ func main() {
 					continue
 				}
 
+				var account *wavelet.Account
+
 				w.Ledger.Do(func(l *wavelet.Ledger) {
-					account, err := l.LoadAccount(accountID)
-
-					if err != nil {
-						log.Error().Msg("There is no account with that ID in the database.")
-						return
-					}
-
-					balance, exists := account.Load("balance")
-					if !exists {
-						log.Error().Msg("The account has no balance associated to it.")
-						return
-					}
-
-					log.Info().
-						Uint64("nonce", account.Nonce).
-						Uint64("balance", binary.LittleEndian.Uint64(balance)).
-						Msgf("Account Info: %s", cmd[1])
+					account, err = l.LoadAccount(accountID)
 				})
+
+				if err != nil {
+					log.Error().Msg("There is no account with that ID in the database.")
+					continue
+				}
+
+				balance, exists := account.Load("balance")
+				if !exists {
+					log.Error().Msg("The account has no balance associated to it.")
+					continue
+				}
+
+				log.Info().
+					Uint64("nonce", account.Nonce).
+					Uint64("balance", binary.LittleEndian.Uint64(balance)).
+					Msgf("Account Info: %s", cmd[1])
 			case "p":
 				recipient := "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"
 				amount := 1
@@ -316,7 +317,8 @@ func main() {
 
 				payload, err := json.Marshal(contract)
 				if err != nil {
-					log.Fatal().Err(err).Msg("Failed to marshal smart contract deployment payload.")
+					log.Warn().Err(err).Msg("Failed to marshal smart contract deployment payload.")
+					continue
 				}
 
 				wired := w.MakeTransaction("create_contract", payload)
@@ -325,6 +327,46 @@ func main() {
 				contractID := hex.EncodeToString(wavelet.ContractID(graph.Symbol(wired)))
 
 				log.Info().Msgf("Success! Your smart contract ID is: %s", contractID)
+			case "tx":
+				if len(cmd) < 2 {
+					continue
+				}
+
+				var tx *database.Transaction
+
+				w.Ledger.Do(func(l *wavelet.Ledger) {
+					tx, err = l.GetBySymbol(cmd[1])
+				})
+
+				if err != nil {
+					log.Error().Err(err).Msg("Unable to find transaction.")
+					continue
+				}
+
+				view := struct {
+					Sender    string                 `json:"sender"`
+					Nonce     uint64                 `json:"nonce"`
+					Tag       string                 `json:"tag"`
+					Payload   map[string]interface{} `json:"payload"`
+					Signature string                 `json:"signature"`
+					Parents   []string               `json:"parents"`
+				}{
+					Sender:    tx.Sender,
+					Nonce:     tx.Nonce,
+					Tag:       tx.Tag,
+					Payload:   make(map[string]interface{}),
+					Signature: hex.EncodeToString(tx.Signature),
+					Parents:   tx.Parents,
+				}
+
+				err := json.Unmarshal(tx.Payload, &view.Payload)
+
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to unmarshal transactions payload.")
+					continue
+				}
+
+				log.Info().Interface("tx", view).Msg("Here is the transaction you requested.")
 			default:
 				wired := w.MakeTransaction("nop", nil)
 				go w.BroadcastTransaction(wired)
