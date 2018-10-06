@@ -17,14 +17,14 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
     go build \
         -o ${BUILD_BIN}/${OS}-${ARCH}/wavelet \
         -ldflags "-s -w \
-            -X ${PROJ_DIR}/cmd/utils.GitCommit=${GIT_COMMIT} \
-            -X ${PROJ_DIR}/cmd/utils.GoVersion=${GO_VERSION}" \
+            -X ${PROJ_DIR}/params.GitCommit=${GIT_COMMIT} \
+            -X ${PROJ_DIR}/params.GoVersion=${GO_VERSION}" \
         cmd/wavelet/main.go
 
     go build \
         -o ${BUILD_BIN}/${OS}-${ARCH}/wctl \
         -ldflags "-s -w \
-            -X ${PROJ_DIR}/cmd/utils.GitCommit=${GIT_COMMIT} \
-            -X ${PROJ_DIR}/cmd/utils.GoVersion=${GO_VERSION}" \
+            -X ${PROJ_DIR}/params.GitCommit=${GIT_COMMIT} \
+            -X ${PROJ_DIR}/params.GoVersion=${GO_VERSION}" \
         cmd/wctl/main.go
 done;

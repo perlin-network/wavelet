@@ -16,9 +16,9 @@ import (
 
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
-	"github.com/perlin-network/wavelet/cmd/utils"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
+	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/security"
 
 	"github.com/perlin-network/graph/graph"
@@ -38,7 +38,7 @@ func main() {
 	app.Name = "wavelet"
 	app.Author = "Perlin Network"
 	app.Email = "support@perlin.net"
-	app.Version = utils.Version
+	app.Version = params.Version
 	app.Usage = "a bleeding fast ledger with a powerful compute layer"
 
 	app.Flags = []cli.Flag{
@@ -116,8 +116,8 @@ func main() {
 
 	cli.VersionPrinter = func(c *cli.Context) {
 		fmt.Printf("Version: %s\n", c.App.Version)
-		fmt.Printf("Go Version: %s\n", utils.GoVersion)
-		fmt.Printf("Git Commit: %s\n", utils.GitCommit)
+		fmt.Printf("Go Version: %s\n", params.GoVersion)
+		fmt.Printf("Git Commit: %s\n", params.GitCommit)
 		fmt.Printf("Built: %s\n", c.App.Compiled.Format(time.ANSIC))
 	}
 
