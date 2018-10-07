@@ -6,7 +6,6 @@ package node
 import proto "github.com/gogo/protobuf/proto"
 import fmt "fmt"
 import math "math"
-import wired "github.com/perlin-network/graph/wire"
 
 import io "io"
 
@@ -33,7 +32,7 @@ func (m *QueryResponse) Reset()         { *m = QueryResponse{} }
 func (m *QueryResponse) String() string { return proto.CompactTextString(m) }
 func (*QueryResponse) ProtoMessage()    {}
 func (*QueryResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_messages_f6ea6299ab4406b0, []int{0}
+	return fileDescriptor_messages_93b7e6094a51540d, []int{0}
 }
 func (m *QueryResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -76,25 +75,25 @@ func (m *QueryResponse) GetStronglyPreferred() bool {
 	return false
 }
 
-type SyncRequest struct {
-	Table                []byte   `protobuf:"bytes,1,opt,name=table,proto3" json:"table,omitempty"`
+type SyncSeed struct {
+	Transactions         []string `protobuf:"bytes,1,rep,name=transactions" json:"transactions,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
 }
 
-func (m *SyncRequest) Reset()         { *m = SyncRequest{} }
-func (m *SyncRequest) String() string { return proto.CompactTextString(m) }
-func (*SyncRequest) ProtoMessage()    {}
-func (*SyncRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_messages_f6ea6299ab4406b0, []int{1}
+func (m *SyncSeed) Reset()         { *m = SyncSeed{} }
+func (m *SyncSeed) String() string { return proto.CompactTextString(m) }
+func (*SyncSeed) ProtoMessage()    {}
+func (*SyncSeed) Descriptor() ([]byte, []int) {
+	return fileDescriptor_messages_93b7e6094a51540d, []int{1}
 }
-func (m *SyncRequest) XXX_Unmarshal(b []byte) error {
+func (m *SyncSeed) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *SyncRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *SyncSeed) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_SyncRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_SyncSeed.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalTo(b)
@@ -104,76 +103,220 @@ func (m *SyncRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) 
 		return b[:n], nil
 	}
 }
-func (dst *SyncRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_SyncRequest.Merge(dst, src)
+func (dst *SyncSeed) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SyncSeed.Merge(dst, src)
 }
-func (m *SyncRequest) XXX_Size() int {
+func (m *SyncSeed) XXX_Size() int {
 	return m.Size()
 }
-func (m *SyncRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_SyncRequest.DiscardUnknown(m)
+func (m *SyncSeed) XXX_DiscardUnknown() {
+	xxx_messageInfo_SyncSeed.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_SyncRequest proto.InternalMessageInfo
+var xxx_messageInfo_SyncSeed proto.InternalMessageInfo
 
-func (m *SyncRequest) GetTable() []byte {
-	if m != nil {
-		return m.Table
-	}
-	return nil
-}
-
-type SyncResponse struct {
-	Transactions         []*wired.Transaction `protobuf:"bytes,1,rep,name=transactions" json:"transactions,omitempty"`
-	XXX_NoUnkeyedLiteral struct{}             `json:"-"`
-	XXX_unrecognized     []byte               `json:"-"`
-	XXX_sizecache        int32                `json:"-"`
-}
-
-func (m *SyncResponse) Reset()         { *m = SyncResponse{} }
-func (m *SyncResponse) String() string { return proto.CompactTextString(m) }
-func (*SyncResponse) ProtoMessage()    {}
-func (*SyncResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_messages_f6ea6299ab4406b0, []int{2}
-}
-func (m *SyncResponse) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *SyncResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_SyncResponse.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (dst *SyncResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_SyncResponse.Merge(dst, src)
-}
-func (m *SyncResponse) XXX_Size() int {
-	return m.Size()
-}
-func (m *SyncResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_SyncResponse.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_SyncResponse proto.InternalMessageInfo
-
-func (m *SyncResponse) GetTransactions() []*wired.Transaction {
+func (m *SyncSeed) GetTransactions() []string {
 	if m != nil {
 		return m.Transactions
 	}
 	return nil
 }
 
+type SyncTxIDQueryRequest struct {
+	Id                   string   `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *SyncTxIDQueryRequest) Reset()         { *m = SyncTxIDQueryRequest{} }
+func (m *SyncTxIDQueryRequest) String() string { return proto.CompactTextString(m) }
+func (*SyncTxIDQueryRequest) ProtoMessage()    {}
+func (*SyncTxIDQueryRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_messages_93b7e6094a51540d, []int{2}
+}
+func (m *SyncTxIDQueryRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SyncTxIDQueryRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SyncTxIDQueryRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (dst *SyncTxIDQueryRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SyncTxIDQueryRequest.Merge(dst, src)
+}
+func (m *SyncTxIDQueryRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *SyncTxIDQueryRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_SyncTxIDQueryRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SyncTxIDQueryRequest proto.InternalMessageInfo
+
+func (m *SyncTxIDQueryRequest) GetId() string {
+	if m != nil {
+		return m.Id
+	}
+	return ""
+}
+
+type SyncTxIDQueryResponse struct {
+	Positive             bool     `protobuf:"varint,1,opt,name=positive,proto3" json:"positive,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *SyncTxIDQueryResponse) Reset()         { *m = SyncTxIDQueryResponse{} }
+func (m *SyncTxIDQueryResponse) String() string { return proto.CompactTextString(m) }
+func (*SyncTxIDQueryResponse) ProtoMessage()    {}
+func (*SyncTxIDQueryResponse) Descriptor() ([]byte, []int) {
+	return fileDescriptor_messages_93b7e6094a51540d, []int{3}
+}
+func (m *SyncTxIDQueryResponse) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SyncTxIDQueryResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SyncTxIDQueryResponse.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (dst *SyncTxIDQueryResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SyncTxIDQueryResponse.Merge(dst, src)
+}
+func (m *SyncTxIDQueryResponse) XXX_Size() int {
+	return m.Size()
+}
+func (m *SyncTxIDQueryResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_SyncTxIDQueryResponse.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SyncTxIDQueryResponse proto.InternalMessageInfo
+
+func (m *SyncTxIDQueryResponse) GetPositive() bool {
+	if m != nil {
+		return m.Positive
+	}
+	return false
+}
+
+type SyncTxFetchRequest struct {
+	Id                   string   `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *SyncTxFetchRequest) Reset()         { *m = SyncTxFetchRequest{} }
+func (m *SyncTxFetchRequest) String() string { return proto.CompactTextString(m) }
+func (*SyncTxFetchRequest) ProtoMessage()    {}
+func (*SyncTxFetchRequest) Descriptor() ([]byte, []int) {
+	return fileDescriptor_messages_93b7e6094a51540d, []int{4}
+}
+func (m *SyncTxFetchRequest) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SyncTxFetchRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SyncTxFetchRequest.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (dst *SyncTxFetchRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SyncTxFetchRequest.Merge(dst, src)
+}
+func (m *SyncTxFetchRequest) XXX_Size() int {
+	return m.Size()
+}
+func (m *SyncTxFetchRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_SyncTxFetchRequest.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SyncTxFetchRequest proto.InternalMessageInfo
+
+func (m *SyncTxFetchRequest) GetId() string {
+	if m != nil {
+		return m.Id
+	}
+	return ""
+}
+
+type SyncChildrenQueryHint struct {
+	Id                   string   `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	XXX_NoUnkeyedLiteral struct{} `json:"-"`
+	XXX_unrecognized     []byte   `json:"-"`
+	XXX_sizecache        int32    `json:"-"`
+}
+
+func (m *SyncChildrenQueryHint) Reset()         { *m = SyncChildrenQueryHint{} }
+func (m *SyncChildrenQueryHint) String() string { return proto.CompactTextString(m) }
+func (*SyncChildrenQueryHint) ProtoMessage()    {}
+func (*SyncChildrenQueryHint) Descriptor() ([]byte, []int) {
+	return fileDescriptor_messages_93b7e6094a51540d, []int{5}
+}
+func (m *SyncChildrenQueryHint) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *SyncChildrenQueryHint) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_SyncChildrenQueryHint.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (dst *SyncChildrenQueryHint) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_SyncChildrenQueryHint.Merge(dst, src)
+}
+func (m *SyncChildrenQueryHint) XXX_Size() int {
+	return m.Size()
+}
+func (m *SyncChildrenQueryHint) XXX_DiscardUnknown() {
+	xxx_messageInfo_SyncChildrenQueryHint.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_SyncChildrenQueryHint proto.InternalMessageInfo
+
+func (m *SyncChildrenQueryHint) GetId() string {
+	if m != nil {
+		return m.Id
+	}
+	return ""
+}
+
 func init() {
 	proto.RegisterType((*QueryResponse)(nil), "node.QueryResponse")
-	proto.RegisterType((*SyncRequest)(nil), "node.SyncRequest")
-	proto.RegisterType((*SyncResponse)(nil), "node.SyncResponse")
+	proto.RegisterType((*SyncSeed)(nil), "node.SyncSeed")
+	proto.RegisterType((*SyncTxIDQueryRequest)(nil), "node.SyncTxIDQueryRequest")
+	proto.RegisterType((*SyncTxIDQueryResponse)(nil), "node.SyncTxIDQueryResponse")
+	proto.RegisterType((*SyncTxFetchRequest)(nil), "node.SyncTxFetchRequest")
+	proto.RegisterType((*SyncChildrenQueryHint)(nil), "node.SyncChildrenQueryHint")
 }
 func (m *QueryResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
@@ -212,7 +355,7 @@ func (m *QueryResponse) MarshalTo(dAtA []byte) (int, error) {
 	return i, nil
 }
 
-func (m *SyncRequest) Marshal() (dAtA []byte, err error) {
+func (m *SyncSeed) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalTo(dAtA)
@@ -222,16 +365,25 @@ func (m *SyncRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *SyncRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *SyncSeed) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
 	_ = l
-	if len(m.Table) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintMessages(dAtA, i, uint64(len(m.Table)))
-		i += copy(dAtA[i:], m.Table)
+	if len(m.Transactions) > 0 {
+		for _, s := range m.Transactions {
+			dAtA[i] = 0xa
+			i++
+			l = len(s)
+			for l >= 1<<7 {
+				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
+				l >>= 7
+				i++
+			}
+			dAtA[i] = uint8(l)
+			i++
+			i += copy(dAtA[i:], s)
+		}
 	}
 	if m.XXX_unrecognized != nil {
 		i += copy(dAtA[i:], m.XXX_unrecognized)
@@ -239,7 +391,7 @@ func (m *SyncRequest) MarshalTo(dAtA []byte) (int, error) {
 	return i, nil
 }
 
-func (m *SyncResponse) Marshal() (dAtA []byte, err error) {
+func (m *SyncTxIDQueryRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalTo(dAtA)
@@ -249,22 +401,101 @@ func (m *SyncResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *SyncResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *SyncTxIDQueryRequest) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
 	_ = l
-	if len(m.Transactions) > 0 {
-		for _, msg := range m.Transactions {
-			dAtA[i] = 0xa
-			i++
-			i = encodeVarintMessages(dAtA, i, uint64(msg.Size()))
-			n, err := msg.MarshalTo(dAtA[i:])
-			if err != nil {
-				return 0, err
-			}
-			i += n
+	if len(m.Id) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintMessages(dAtA, i, uint64(len(m.Id)))
+		i += copy(dAtA[i:], m.Id)
+	}
+	if m.XXX_unrecognized != nil {
+		i += copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	return i, nil
+}
+
+func (m *SyncTxIDQueryResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SyncTxIDQueryResponse) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Positive {
+		dAtA[i] = 0x8
+		i++
+		if m.Positive {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
 		}
+		i++
+	}
+	if m.XXX_unrecognized != nil {
+		i += copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	return i, nil
+}
+
+func (m *SyncTxFetchRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SyncTxFetchRequest) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.Id) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintMessages(dAtA, i, uint64(len(m.Id)))
+		i += copy(dAtA[i:], m.Id)
+	}
+	if m.XXX_unrecognized != nil {
+		i += copy(dAtA[i:], m.XXX_unrecognized)
+	}
+	return i, nil
+}
+
+func (m *SyncChildrenQueryHint) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *SyncChildrenQueryHint) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.Id) > 0 {
+		dAtA[i] = 0xa
+		i++
+		i = encodeVarintMessages(dAtA, i, uint64(len(m.Id)))
+		i += copy(dAtA[i:], m.Id)
 	}
 	if m.XXX_unrecognized != nil {
 		i += copy(dAtA[i:], m.XXX_unrecognized)
@@ -297,10 +528,25 @@ func (m *QueryResponse) Size() (n int) {
 	return n
 }
 
-func (m *SyncRequest) Size() (n int) {
+func (m *SyncSeed) Size() (n int) {
 	var l int
 	_ = l
-	l = len(m.Table)
+	if len(m.Transactions) > 0 {
+		for _, s := range m.Transactions {
+			l = len(s)
+			n += 1 + l + sovMessages(uint64(l))
+		}
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *SyncTxIDQueryRequest) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.Id)
 	if l > 0 {
 		n += 1 + l + sovMessages(uint64(l))
 	}
@@ -310,14 +556,37 @@ func (m *SyncRequest) Size() (n int) {
 	return n
 }
 
-func (m *SyncResponse) Size() (n int) {
+func (m *SyncTxIDQueryResponse) Size() (n int) {
 	var l int
 	_ = l
-	if len(m.Transactions) > 0 {
-		for _, e := range m.Transactions {
-			l = e.Size()
-			n += 1 + l + sovMessages(uint64(l))
-		}
+	if m.Positive {
+		n += 2
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *SyncTxFetchRequest) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.Id)
+	if l > 0 {
+		n += 1 + l + sovMessages(uint64(l))
+	}
+	if m.XXX_unrecognized != nil {
+		n += len(m.XXX_unrecognized)
+	}
+	return n
+}
+
+func (m *SyncChildrenQueryHint) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.Id)
+	if l > 0 {
+		n += 1 + l + sovMessages(uint64(l))
 	}
 	if m.XXX_unrecognized != nil {
 		n += len(m.XXX_unrecognized)
@@ -438,7 +707,7 @@ func (m *QueryResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *SyncRequest) Unmarshal(dAtA []byte) error {
+func (m *SyncSeed) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -461,17 +730,17 @@ func (m *SyncRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: SyncRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: SyncSeed: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SyncRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SyncSeed: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Table", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Transactions", wireType)
 			}
-			var byteLen int
+			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowMessages
@@ -481,22 +750,20 @@ func (m *SyncRequest) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
+				stringLen |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if byteLen < 0 {
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
 				return ErrInvalidLengthMessages
 			}
-			postIndex := iNdEx + byteLen
+			postIndex := iNdEx + intStringLen
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Table = append(m.Table[:0], dAtA[iNdEx:postIndex]...)
-			if m.Table == nil {
-				m.Table = []byte{}
-			}
+			m.Transactions = append(m.Transactions, string(dAtA[iNdEx:postIndex]))
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -520,7 +787,7 @@ func (m *SyncRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *SyncResponse) Unmarshal(dAtA []byte) error {
+func (m *SyncTxIDQueryRequest) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -543,17 +810,17 @@ func (m *SyncResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: SyncResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: SyncTxIDQueryRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: SyncResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: SyncTxIDQueryRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Transactions", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
 			}
-			var msglen int
+			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowMessages
@@ -563,22 +830,251 @@ func (m *SyncResponse) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				msglen |= (int(b) & 0x7F) << shift
+				stringLen |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			if msglen < 0 {
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
 				return ErrInvalidLengthMessages
 			}
-			postIndex := iNdEx + msglen
+			postIndex := iNdEx + intStringLen
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Transactions = append(m.Transactions, &wired.Transaction{})
-			if err := m.Transactions[len(m.Transactions)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			m.Id = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipMessages(dAtA[iNdEx:])
+			if err != nil {
 				return err
 			}
+			if skippy < 0 {
+				return ErrInvalidLengthMessages
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SyncTxIDQueryResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowMessages
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SyncTxIDQueryResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SyncTxIDQueryResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Positive", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMessages
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Positive = bool(v != 0)
+		default:
+			iNdEx = preIndex
+			skippy, err := skipMessages(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthMessages
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SyncTxFetchRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowMessages
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SyncTxFetchRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SyncTxFetchRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMessages
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMessages
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Id = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipMessages(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthMessages
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.XXX_unrecognized = append(m.XXX_unrecognized, dAtA[iNdEx:iNdEx+skippy]...)
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *SyncChildrenQueryHint) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowMessages
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: SyncChildrenQueryHint: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: SyncChildrenQueryHint: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowMessages
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthMessages
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Id = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -707,24 +1203,24 @@ var (
 	ErrIntOverflowMessages   = fmt.Errorf("proto: integer overflow")
 )
 
-func init() { proto.RegisterFile("node/messages.proto", fileDescriptor_messages_f6ea6299ab4406b0) }
+func init() { proto.RegisterFile("node/messages.proto", fileDescriptor_messages_93b7e6094a51540d) }
 
-var fileDescriptor_messages_f6ea6299ab4406b0 = []byte{
-	// 242 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x54, 0x8f, 0xcd, 0x4a, 0xc4, 0x30,
-	0x10, 0x80, 0x49, 0xfd, 0x41, 0xb3, 0x55, 0xd8, 0xe8, 0xa1, 0x78, 0x28, 0xa5, 0x5e, 0x7a, 0xd9,
-	0x06, 0x14, 0x5f, 0x40, 0xf0, 0x2a, 0x1a, 0xbd, 0x4b, 0xda, 0x8e, 0xdd, 0x60, 0x37, 0x89, 0x33,
-	0x29, 0x4b, 0xdf, 0xd0, 0xa3, 0x8f, 0x20, 0x7d, 0x12, 0xb1, 0x75, 0x11, 0x2f, 0x03, 0x33, 0xdf,
-	0x37, 0x7f, 0xfc, 0xcc, 0xba, 0x06, 0xe4, 0x06, 0x88, 0x74, 0x0b, 0x54, 0x7a, 0x74, 0xc1, 0x89,
-	0xfd, 0x9f, 0xe2, 0x85, 0x6c, 0x4d, 0x58, 0xf7, 0x55, 0x59, 0xbb, 0x8d, 0xf4, 0x80, 0x9d, 0xb1,
-	0x2b, 0x0b, 0x61, 0xeb, 0xf0, 0x4d, 0xb6, 0xa8, 0xfd, 0x5a, 0x6e, 0x0d, 0xc2, 0x14, 0xe6, 0xb6,
-	0xfc, 0x9e, 0x9f, 0x3c, 0xf6, 0x80, 0x83, 0x02, 0xf2, 0xce, 0x12, 0x88, 0x53, 0x1e, 0x99, 0x26,
-	0x61, 0x19, 0x2b, 0x8e, 0x55, 0x64, 0x1a, 0xb1, 0xe2, 0x82, 0x02, 0x3a, 0xdb, 0x76, 0xc3, 0x8b,
-	0x47, 0x78, 0x05, 0x44, 0x68, 0x92, 0x28, 0x63, 0xc5, 0x91, 0x5a, 0xee, 0xc8, 0xc3, 0x0e, 0xe4,
-	0x97, 0x7c, 0xf1, 0x34, 0xd8, 0x5a, 0xc1, 0x7b, 0x0f, 0x14, 0xc4, 0x39, 0x3f, 0x08, 0xba, 0xea,
-	0x60, 0x1a, 0x18, 0xab, 0x39, 0xc9, 0xef, 0x78, 0x3c, 0x4b, 0xbf, 0x3b, 0x6f, 0x78, 0x1c, 0x50,
-	0x5b, 0xd2, 0x75, 0x30, 0xce, 0x52, 0xc2, 0xb2, 0xbd, 0x62, 0x71, 0xb5, 0x2c, 0xa7, 0x3b, 0x9f,
-	0xff, 0x88, 0xfa, 0xa7, 0xdd, 0xc6, 0x1f, 0x63, 0xca, 0x3e, 0xc7, 0x94, 0x7d, 0x8d, 0x29, 0xab,
-	0x0e, 0xa7, 0x87, 0xae, 0xbf, 0x03, 0x00, 0x00, 0xff, 0xff, 0x12, 0xdf, 0x6e, 0x11, 0x1e, 0x01,
-	0x00, 0x00,
+var fileDescriptor_messages_93b7e6094a51540d = []byte{
+	// 248 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x74, 0x90, 0xc1, 0x4a, 0x03, 0x31,
+	0x10, 0x86, 0xc9, 0x2a, 0xb2, 0x1d, 0xaa, 0x60, 0x54, 0x58, 0x3c, 0x2c, 0x4b, 0x10, 0xdd, 0x8b,
+	0xf5, 0xd0, 0x37, 0x50, 0x11, 0xbd, 0x88, 0xa6, 0xde, 0x65, 0xdd, 0x8c, 0x6d, 0xa0, 0x26, 0x71,
+	0x26, 0x15, 0xf7, 0x0d, 0x3d, 0xfa, 0x08, 0xb2, 0x4f, 0x22, 0xdd, 0xb6, 0x82, 0x15, 0x8f, 0xf9,
+	0xff, 0x2f, 0x3f, 0x1f, 0x03, 0x7b, 0xce, 0x1b, 0x3c, 0x7b, 0x41, 0xe6, 0x6a, 0x8c, 0x3c, 0x08,
+	0xe4, 0xa3, 0x97, 0x9b, 0xf3, 0x50, 0xdd, 0xc2, 0xf6, 0xfd, 0x0c, 0xa9, 0xd1, 0xc8, 0xc1, 0x3b,
+	0x46, 0xb9, 0x03, 0x89, 0x35, 0x99, 0x28, 0x44, 0xd9, 0xd3, 0x89, 0x35, 0xf2, 0x14, 0x24, 0x47,
+	0xf2, 0x6e, 0x3c, 0x6d, 0x1e, 0x03, 0xe1, 0x33, 0x12, 0xa1, 0xc9, 0x92, 0x42, 0x94, 0xa9, 0xde,
+	0x5d, 0x35, 0x77, 0xab, 0x42, 0x0d, 0x20, 0x1d, 0x35, 0xae, 0x1e, 0x21, 0x1a, 0xa9, 0xa0, 0x1f,
+	0xa9, 0x72, 0x5c, 0xd5, 0xd1, 0x7a, 0xc7, 0x99, 0x28, 0x36, 0xca, 0x9e, 0xfe, 0x95, 0xa9, 0x63,
+	0xd8, 0x9f, 0xf3, 0x0f, 0xef, 0x37, 0x97, 0x4b, 0x8f, 0xd7, 0x19, 0x72, 0x5c, 0xd7, 0x50, 0x43,
+	0x38, 0x58, 0xe3, 0x96, 0xbe, 0x87, 0x90, 0x06, 0xcf, 0x36, 0xda, 0x37, 0xec, 0xf0, 0x54, 0xff,
+	0xbc, 0xd5, 0x11, 0xc8, 0xc5, 0xa7, 0x2b, 0x8c, 0xf5, 0xe4, 0xbf, 0xe9, 0x93, 0xc5, 0xf4, 0xc5,
+	0xc4, 0x4e, 0x0d, 0xa1, 0xeb, 0xe6, 0xaf, 0xad, 0xfb, 0x03, 0x9e, 0xf7, 0x3f, 0xda, 0x5c, 0x7c,
+	0xb6, 0xb9, 0xf8, 0x6a, 0x73, 0xf1, 0xb4, 0xd5, 0x9d, 0x71, 0xf8, 0x1d, 0x00, 0x00, 0xff, 0xff,
+	0xb6, 0xeb, 0x0c, 0xa3, 0x5d, 0x01, 0x00, 0x00,
 }

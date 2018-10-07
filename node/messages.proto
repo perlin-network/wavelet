@@ -2,17 +2,27 @@ syntax = "proto3";
 
 package node;
 
-import "github.com/perlin-network/graph/wire/wire.proto";
-
 message QueryResponse {
     string id = 1;
     bool strongly_preferred = 2;
 }
 
-message SyncRequest {
-    bytes table = 1;
+message SyncSeed {
+    repeated string transactions = 1;
 }
 
-message SyncResponse {
-    repeated wire.Transaction transactions = 1;
+message SyncTxIDQueryRequest {
+    string id = 1;
+}
+
+message SyncTxIDQueryResponse {
+    bool positive = 1;
+}
+
+message SyncTxFetchRequest {
+    string id = 1;
+}
+
+message SyncChildrenQueryHint {
+    string id = 1;
 }
