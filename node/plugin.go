@@ -26,8 +26,9 @@ type Options struct {
 
 type Wavelet struct {
 	query
-	syncer
 	broadcaster
+
+	syncWorker *SyncWorker
 
 	net    *network.Network
 	routes *dht.RoutingTable
@@ -75,8 +76,8 @@ func (w *Wavelet) Startup(net *network.Network) {
 	w.query = query{Wavelet: w}
 	w.query.sybil = stake{query: w.query}
 
-	w.syncer = syncer{Wavelet: w, kill: make(chan struct{}, 1)}
-	go w.syncer.Init()
+	w.syncWorker = NewSyncWorker(w)
+	w.syncWorker.Start()
 
 	w.broadcaster = broadcaster{Wavelet: w}
 }
@@ -169,21 +170,42 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				}
 			}()
 		}
-	case *SyncRequest:
-		err := ctx.Reply(w.RespondToSync(msg))
+	case *SyncSeed:
+		for _, id := range msg.Transactions {
+			w.syncWorker.AddIncomingTxID(id)
+		}
+	case *SyncChildrenQueryHint:
+		var children []string
 
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to send response.")
-			return err
+		w.Ledger.Do(func(l *wavelet.Ledger) {
+			_children, err := l.Graph.Store.GetChildrenBySymbol(msg.Id)
+			if err == nil {
+				children = _children.Transactions
+			} else {
+				log.Warn().Err(err).Msg("cannot get children")
+			}
+		})
+
+		if len(children) == 0 {
+			log.Debug().Msg("no children")
+			return nil
 		}
 
+		client, err := w.net.Client(ctx.Sender().Address)
+		if err != nil {
+			log.Warn().Err(err).Msg("cannot create client")
+			return nil
+		}
+
+		client.Tell(&SyncSeed{
+			Transactions: children,
+		})
+		log.Debug().Msgf("sent %d children", len(children))
 	}
 	return nil
 }
 
 func (w *Wavelet) Cleanup(net *network.Network) {
-	w.syncer.kill <- struct{}{}
-
 	w.Ledger.Do(func(l *wavelet.Ledger) {
 		err := l.Graph.Cleanup()
 
