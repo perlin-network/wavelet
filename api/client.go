@@ -2,32 +2,30 @@ package api
 
 import (
 	"bytes"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/wavelet/events"
-	"github.com/perlin-network/wavelet/security"
+	"github.com/pkg/errors"
 )
 
 // Client represents a Perlin Ledger client.
 type Client struct {
 	Config       ClientConfig
 	SessionToken string
-	KeyPair      *security.KeyPair
 }
 
 // ClientConfig represents a Perlin Ledger client config.
 type ClientConfig struct {
-	RemoteAddr string
-	PrivateKey string
-	UseHTTPS   bool
+	APIHost  string
+	APIPort  uint
+	AuthKey  string
+	UseHTTPS bool
 }
 
 // SessionResponse represents the response from a session call
@@ -37,28 +35,18 @@ type SessionResponse struct {
 
 // NewClient creates a new Perlin Ledger client from a config.
 func NewClient(config ClientConfig) (*Client, error) {
-	keys, err := security.FromPrivateKey(security.SignaturePolicy, config.PrivateKey)
-	if err != nil {
-		return nil, err
+	if len(config.AuthKey) == 0 {
+		return nil, errors.New("Missing authentication key")
 	}
 
 	return &Client{
-		Config:  config,
-		KeyPair: keys,
+		Config: config,
 	}, nil
 }
 
 // Init will initialize a client.
 func (c *Client) Init() error {
-	millis := time.Now().Unix() * 1000
-	authStr := fmt.Sprintf("%s%d", sessionInitSigningPrefix, millis)
-	sig := security.Sign(c.KeyPair.PrivateKey, []byte(authStr))
-
-	creds := credentials{
-		PublicKey:  hex.EncodeToString(c.KeyPair.PublicKey),
-		TimeMillis: millis,
-		Sig:        hex.EncodeToString(sig),
-	}
+	creds := makeCreds(c.Config.AuthKey)
 
 	resp := SessionResponse{}
 
@@ -77,7 +65,7 @@ func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 		prot = "wss"
 	}
 
-	url := fmt.Sprintf("%s://%s%s", prot, c.Config.RemoteAddr, path)
+	url := fmt.Sprintf("%s://%s:%d/%s", prot, c.Config.APIHost, c.Config.APIPort, path)
 
 	header := make(http.Header)
 	header.Add("X-Session-Token", c.SessionToken)
@@ -93,7 +81,7 @@ func (c *Client) Request(path string, body, out interface{}) error {
 	if c.Config.UseHTTPS {
 		prot = "https"
 	}
-	u, err := url.Parse(fmt.Sprintf("%s://%s%s", prot, c.Config.RemoteAddr, path))
+	u, err := url.Parse(fmt.Sprintf("%s://%s:%d/%s", prot, c.Config.APIHost, c.Config.APIPort, path))
 	if err != nil {
 		return err
 	}
@@ -241,11 +229,6 @@ func (c *Client) RecentTransactions() (transactions []*wire.Transaction, err err
 // StatsReset will reset a client statistics.
 func (c *Client) StatsReset(res interface{}) error {
 	return c.Request("/stats/reset", struct{}{}, res)
-}
-
-// StatsSummary will get a client statistics.
-func (c *Client) StatsSummary(res interface{}) error {
-	return c.Request("/stats/summary", struct{}{}, res)
 }
 
 func (c *Client) LoadAccount(id string) (map[string][]byte, error) {

@@ -33,12 +33,17 @@ func main() {
 
 	commonFlags := []cli.Flag{
 		cli.StringFlag{
-			Name:  "remote",
-			Usage: "remote address `REMOTE` (required).",
+			Name:  "api.host",
+			Value: "localhost",
+			Usage: "Host of the local HTTP API `API_HOST`.",
+		},
+		cli.IntFlag{
+			Name:  "api.port",
+			Usage: "Port of the local HTTP API `API_PORT` (required).",
 		},
 		cli.StringFlag{
-			Name:  "privkey",
-			Usage: "private key (hex) `KEY` (required).",
+			Name:  "api.auth_key",
+			Usage: "The authentication key corresponding to the api account (required).",
 		},
 	}
 
@@ -145,24 +150,6 @@ func main() {
 				return nil
 			},
 		},
-		cli.Command{
-			Name:  "stats_summary",
-			Usage: "get the stats counters",
-			Flags: commonFlags,
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-				res := new(interface{})
-				if err := client.StatsSummary(res); err != nil {
-					return err
-				}
-				jsonOut, _ := json.Marshal(res)
-				fmt.Printf("%s\n", jsonOut)
-				return nil
-			},
-		},
 	}
 
 	if err := app.Run(os.Args); err != nil {
@@ -171,22 +158,23 @@ func main() {
 }
 
 func setup(c *cli.Context) (*api.Client, error) {
+	host := c.String("api.host")
+	port := c.Uint("api.port")
+	authKey := c.String("api.auth_key")
 
-	remoteAddr := c.String("remote")
-	privateKey := c.String("privkey")
-
-	if len(remoteAddr) == 0 {
-		return nil, errors.New("remote flag is missing")
+	if port == 0 {
+		return nil, errors.New("port is missing")
 	}
 
-	if len(privateKey) == 0 {
-		return nil, errors.New("private key is missing")
+	if len(authKey) == 0 {
+		return nil, errors.New("auth key is missing")
 	}
 
 	client, err := api.NewClient(api.ClientConfig{
-		RemoteAddr: remoteAddr,
-		PrivateKey: privateKey,
-		UseHTTPS:   false,
+		APIHost:  host,
+		APIPort:  port,
+		AuthKey:  authKey,
+		UseHTTPS: false,
 	})
 	if err != nil {
 		return nil, err

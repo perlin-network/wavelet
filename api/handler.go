@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/hex"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -10,7 +9,6 @@ import (
 	"github.com/perlin-network/noise/network/discovery"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/events"
-	"github.com/perlin-network/wavelet/security"
 	"github.com/perlin-network/wavelet/stats"
 )
 
@@ -219,19 +217,6 @@ func (s *service) resetStatsHandler(ctx *requestContext) {
 	ctx.WriteJSON(http.StatusOK, "OK")
 }
 
-func (s *service) summarizeStatsHandler(ctx *requestContext) {
-	if !ctx.loadSession() {
-		return
-	}
-
-	if !ctx.session.Permissions.CanControlStats {
-		ctx.WriteJSON(http.StatusForbidden, "no stats permissions")
-		return
-	}
-
-	ctx.WriteJSON(http.StatusOK, stats.Summary())
-}
-
 func (s *service) loadAccountHandler(ctx *requestContext) {
 	if !ctx.loadSession() {
 		return
@@ -281,9 +266,16 @@ func (s *service) sessionInitHandler(ctx *requestContext) {
 		return
 	}
 
-	info, ok := s.clients[credentials.PublicKey]
-	if !ok {
-		ctx.WriteJSON(http.StatusNotFound, "client not found")
+	var info *ClientInfo
+	for _, clientInfo := range s.clients {
+		if credentials.validate(clientInfo.AuthKey) == nil {
+			info = clientInfo
+			break
+		}
+	}
+
+	if info == nil {
+		ctx.WriteJSON(http.StatusForbidden, "invalid token")
 		return
 	}
 
@@ -293,26 +285,7 @@ func (s *service) sessionInitHandler(ctx *requestContext) {
 	}
 
 	if timeOffset > 5000 {
-		ctx.WriteJSON(http.StatusForbidden, "time offset too large")
-		return
-	}
-
-	rawSignature, err := hex.DecodeString(credentials.Sig)
-	if err != nil {
-		ctx.WriteJSON(http.StatusForbidden, "invalid signature")
-		return
-	}
-
-	rawPublicKey, err := hex.DecodeString(credentials.PublicKey)
-	if err != nil {
-		ctx.WriteJSON(http.StatusForbidden, "invalid public key")
-		return
-	}
-
-	expected := fmt.Sprintf("%s%d", sessionInitSigningPrefix, credentials.TimeMillis)
-
-	if !security.Verify(rawPublicKey, []byte(expected), rawSignature) {
-		ctx.WriteJSON(http.StatusForbidden, "signature verification failed")
+		ctx.WriteJSON(http.StatusForbidden, "token too old")
 		return
 	}
 

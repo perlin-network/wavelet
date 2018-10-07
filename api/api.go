@@ -116,7 +116,6 @@ func (s *service) init(mux *http.ServeMux) {
 	mux.HandleFunc("/transaction/poll", s.wrap(s.pollTransactionHandler))
 	mux.HandleFunc("/transaction/send", s.wrap(s.sendTransactionHandler))
 	mux.HandleFunc("/stats/reset", s.wrap(s.resetStatsHandler))
-	mux.HandleFunc("/stats/summary", s.wrap(s.summarizeStatsHandler))
 	mux.HandleFunc("/account/load", s.wrap(s.loadAccountHandler))
 	mux.HandleFunc("/account/poll", s.wrap(s.pollAccountHandler))
 }
@@ -164,7 +163,7 @@ func Run(net *network.Network, opts Options) {
 	clients := make(map[string]*ClientInfo)
 
 	for _, client := range opts.Clients {
-		clients[client.PublicKey] = client
+		clients[client.AuthKey] = client
 	}
 
 	mux := http.NewServeMux()
