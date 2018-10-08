@@ -132,8 +132,7 @@ func (s *service) wrap(inner func(*requestContext)) func(http.ResponseWriter, *h
 				log.Error().
 					Interface("error", err).
 					Interface("url", r.URL).
-					Str("stack_trace", string(debug.Stack())).
-					Msg("An error occured from the API.")
+					Msgf("An error occured from the API: %s", string(debug.Stack()))
 			}
 		}()
 

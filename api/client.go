@@ -81,7 +81,7 @@ func (c *Client) Request(path string, body, out interface{}) error {
 	if c.Config.UseHTTPS {
 		prot = "https"
 	}
-	u, err := url.Parse(fmt.Sprintf("%s://%s:%d/%s", prot, c.Config.APIHost, c.Config.APIPort, path))
+	u, err := url.Parse(fmt.Sprintf("%s://%s:%d%s", prot, c.Config.APIHost, c.Config.APIPort, path))
 	if err != nil {
 		return err
 	}
