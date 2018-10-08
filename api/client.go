@@ -48,6 +48,9 @@ func NewClient(config ClientConfig) (*Client, error) {
 func (c *Client) Init() error {
 	creds := makeCreds(c.Config.AuthKey)
 
+	j, _ := json.Marshal(creds)
+	fmt.Printf("Creds: %s\n", string(j))
+
 	resp := SessionResponse{}
 
 	err := c.Request("/session/init", &creds, &resp)

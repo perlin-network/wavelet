@@ -4,8 +4,6 @@ import (
 	"fmt"
 )
 
-const sessionInitSigningPrefix = "wavelet_session_init_"
-
 // Options represents available options for a local user.
 type Options struct {
 	ListenAddr string
