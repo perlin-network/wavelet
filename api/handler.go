@@ -8,6 +8,7 @@ import (
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/noise/network/discovery"
 	"github.com/perlin-network/wavelet"
+	cmdUtils "github.com/perlin-network/wavelet/cmd/utils"
 	"github.com/perlin-network/wavelet/events"
 	"github.com/perlin-network/wavelet/stats"
 )
@@ -256,6 +257,18 @@ func (s *service) loadAccountHandler(ctx *requestContext) {
 		info[key] = value
 	})
 
+	ctx.WriteJSON(http.StatusOK, info)
+}
+
+func (s *service) serverVersionHandler(ctx *requestContext) {
+	if !ctx.loadSession() {
+		return
+	}
+
+	info := &ServerVersion{
+		Version:   cmdUtils.Version,
+		GitCommit: cmdUtils.GitCommit,
+	}
 	ctx.WriteJSON(http.StatusOK, info)
 }
 

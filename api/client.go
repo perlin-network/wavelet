@@ -240,3 +240,8 @@ func (c *Client) LoadAccount(id string) (map[string][]byte, error) {
 
 	return ret, nil
 }
+
+func (c *Client) ServerVersion() (sv *ServerVersion, err error) {
+	err = c.Request("/server/version", ServerVersion{}, &sv)
+	return
+}

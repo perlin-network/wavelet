@@ -118,6 +118,7 @@ func (s *service) init(mux *http.ServeMux) {
 	mux.HandleFunc("/stats/reset", s.wrap(s.resetStatsHandler))
 	mux.HandleFunc("/account/load", s.wrap(s.loadAccountHandler))
 	mux.HandleFunc("/account/poll", s.wrap(s.pollAccountHandler))
+	mux.HandleFunc("/server/version", s.wrap(s.serverVersionHandler))
 }
 
 // wrap applies middleware to a HTTP request handler.

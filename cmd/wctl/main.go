@@ -49,6 +49,24 @@ func main() {
 
 	app.Commands = []cli.Command{
 		cli.Command{
+			Name:  "server_version",
+			Usage: "get the version information of the api server",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				res, err := client.ServerVersion()
+				if err != nil {
+					return err
+				}
+				jsonOut, _ := json.Marshal(res)
+				fmt.Printf("%s\n", jsonOut)
+				return nil
+			},
+		},
+		cli.Command{
 			Name:      "send_transaction",
 			Usage:     "send a transaction",
 			ArgsUsage: "<tag> <json payload>",
