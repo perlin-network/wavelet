@@ -183,7 +183,7 @@ func runServer(c *Config) (*node.Wavelet, error) {
 		if err != nil {
 			return nil, errors.Wrapf(err, "Unable to open server private key file: %s", c.PrivateKeyFile)
 		}
-		privateKeyHex = string(bytes)
+		privateKeyHex = strings.TrimSpace(string(bytes))
 	} else {
 		log.Info().Msg("Generating a random wallet")
 		privateKeyHex = ed25519.RandomKeyPair().PrivateKeyHex()
@@ -230,7 +230,7 @@ func runServer(c *Config) (*node.Wavelet, error) {
 			if err != nil {
 				return nil, errors.Wrapf(err, "Unable to open api private key file: %s", filename)
 			}
-			keys, err := crypto.FromPrivateKey(security.SignaturePolicy, string(bytes))
+			keys, err := crypto.FromPrivateKey(security.SignaturePolicy, strings.TrimSpace(string(bytes)))
 			if err != nil {
 				return nil, errors.Wrapf(err, "Unable to decode api private key file: %s", filename)
 			}
