@@ -10,8 +10,8 @@ import (
 
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/wavelet/api"
-	"github.com/perlin-network/wavelet/cmd/utils"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/params"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 )
@@ -23,13 +23,13 @@ func main() {
 	app.Name = "wctl"
 	app.Author = "Perlin Network"
 	app.Email = "support@perlin.net"
-	app.Version = utils.Version
+	app.Version = params.Version
 	app.Usage = "a cli client to interact with the wavelet node"
 
 	cli.VersionPrinter = func(c *cli.Context) {
 		fmt.Printf("Version: %s\n", c.App.Version)
-		fmt.Printf("Go Version: %s\n", utils.GoVersion)
-		fmt.Printf("Git Commit: %s\n", utils.GitCommit)
+		fmt.Printf("Go Version: %s\n", params.GoVersion)
+		fmt.Printf("Git Commit: %s\n", params.GitCommit)
 		fmt.Printf("Built: %s\n", c.App.Compiled.Format(time.ANSIC))
 	}
 
