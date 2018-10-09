@@ -6,6 +6,7 @@ privkey = "56be15513d1837340c068c56c7a3f00132b52431c263df87340c65ed25b4d63895bd6
 services = "services"
 genesis = "genesis.json"
 daemon = true
+nat = false
 
 [db]
 path = "testdb"

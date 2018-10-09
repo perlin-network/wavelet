@@ -26,6 +26,7 @@ import (
 	"github.com/perlin-network/noise/crypto/ed25519"
 	"github.com/perlin-network/noise/network"
 	"github.com/perlin-network/noise/network/discovery"
+	"github.com/perlin-network/noise/network/nat"
 
 	"github.com/perlin-network/graph/database"
 	"gopkg.in/urfave/cli.v1"
@@ -98,6 +99,10 @@ func main() {
 			Name:  "daemon",
 			Usage: "Run node in daemon mode. Daemon mode means no standard input needed.",
 		}),
+		altsrc.NewBoolFlag(cli.BoolFlag{
+			Name:  "nat",
+			Usage: "Use network address traversal (NAT).",
+		}),
 		// config specifies the file that overrides altsrc
 		cli.StringFlag{
 			Name:  "config",
@@ -134,6 +139,7 @@ func main() {
 		apiPort := c.Uint("api.port")
 		apiPublicKeys := c.StringSlice("api.clients.public_key")
 		daemon := c.Bool("daemon")
+		useNAT := c.Bool("nat")
 
 		if privateKey == "random" {
 			privateKey = ed25519.RandomKeyPair().PrivateKeyHex()
@@ -157,6 +163,9 @@ func main() {
 		builder.SetAddress(network.FormatAddress("tcp", host, port))
 
 		builder.AddPlugin(new(discovery.Plugin))
+		if useNAT {
+			nat.RegisterPlugin(builder)
+		}
 		builder.AddPlugin(w)
 
 		net, err := builder.Build()
