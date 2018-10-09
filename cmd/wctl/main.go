@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/perlin-network/graph/wire"
@@ -170,6 +171,9 @@ func main() {
 			},
 		},
 	}
+
+	sort.Sort(cli.FlagsByName(app.Flags))
+	sort.Sort(cli.CommandsByName(app.Commands))
 
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal().Err(err).Msg("Failed to parse configuration/command-line arugments.")

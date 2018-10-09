@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -81,7 +82,7 @@ func main() {
 		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
 			Name:  "api.private_key_files",
 			Value: &cli.StringSlice{"wallet_0.txt"},
-			Usage: "Files containing private keys that can make transactions through the api `API_PRIVATE_KEY_FILES`",
+			Usage: "TXT files containing private keys that can make transactions through the api `API_PRIVATE_KEY_FILES`",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "db.path",
@@ -90,7 +91,7 @@ func main() {
 		}),
 		altsrc.NewBoolFlag(cli.BoolFlag{
 			Name:  "db.reset",
-			Usage: "Clear out the existing data in the datastore before initializing",
+			Usage: "Clear out the existing data in the datastore before initializing the db.",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "services",
@@ -105,11 +106,11 @@ func main() {
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "private_key_file",
 			Value: "wallet_0.txt",
-			Usage: "The file that contain's the node's private key `PRIVATE_KEY_FILE`. Leave `PRIVATE_KEY_FILE` = 'random' if you want to randomly generate wallet.",
+			Usage: "TXT file that contain's the node's private key `PRIVATE_KEY_FILE`. Leave `PRIVATE_KEY_FILE` = 'random' if you want to randomly generate a wallet.",
 		}),
 		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
 			Name:  "peers",
-			Usage: "Bootstrap to peers whose address are formatted as tcp://[host]:[port] from `PEER_NODES`.",
+			Usage: "Bootstrap to peers whose address are formatted as tcp://[host]:[port] from `PEERS`.",
 		}),
 		altsrc.NewBoolFlag(cli.BoolFlag{
 			Name:  "daemon",
@@ -165,6 +166,9 @@ func main() {
 
 		return nil
 	}
+
+	sort.Sort(cli.FlagsByName(app.Flags))
+	sort.Sort(cli.CommandsByName(app.Commands))
 
 	err := app.Run(os.Args)
 	if err != nil {
