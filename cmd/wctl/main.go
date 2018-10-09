@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"time"
 
@@ -188,16 +189,15 @@ func setup(c *cli.Context) (*api.Client, error) {
 		return nil, errors.New("private key file is missing")
 	}
 
-	bytes, err := ioutil.ReadFile(privateKeyFile)
+	privateKeyBytes, err := ioutil.ReadFile(privateKeyFile)
 	if err != nil {
-		return nil, errors.Wrap(err, "Unable to open api private key file: %s", privateKeyFile)
+		return nil, errors.Wrapf(err, "Unable to open api private key file: %s", privateKeyFile)
 	}
-	privateKeyHex = string(bytes)
 
 	client, err := api.NewClient(api.ClientConfig{
 		APIHost:    host,
 		APIPort:    port,
-		PrivateKey: privateKeyHex,
+		PrivateKey: string(privateKeyBytes),
 		UseHTTPS:   false,
 	})
 	if err != nil {
