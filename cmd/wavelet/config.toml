@@ -2,7 +2,7 @@ title = "wavelet configuration file"
 
 port = 3000
 host = "localhost"
-private_key_file = "wallet_1.txt"
+private_key_file = "wallet.txt"
 services = "services"
 genesis = "genesis.json"
 daemon = true
@@ -13,4 +13,4 @@ path = "testdb"
 [api]
 host = "localhost"
 port = 9000
-private_key_files = ["wallet_1.txt"]
+private_key_files = "wallets.txt"

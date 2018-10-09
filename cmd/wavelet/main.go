@@ -46,7 +46,7 @@ type Config struct {
 	Peers              []string
 	APIHost            string
 	APIPort            uint
-	APIPrivateKeyFiles []string
+	APIPrivateKeysFile string
 	Daemon             bool
 }
 
@@ -79,10 +79,10 @@ func main() {
 			Name:  "api.port",
 			Usage: "Host a local HTTP API at port `API_PORT`.",
 		}),
-		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
-			Name:  "api.private_key_files",
-			Value: &cli.StringSlice{"wallet_0.txt"},
-			Usage: "TXT files containing private keys that can make transactions through the API `API_PRIVATE_KEY_FILES`",
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:  "api.private_keys_file",
+			Value: "wallets.txt",
+			Usage: "TXT file containing private keys that can make transactions through the API `API_PRIVATE_KEYS_FILE`",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "db.path",
@@ -105,7 +105,7 @@ func main() {
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "private_key_file",
-			Value: "wallet_0.txt",
+			Value: "wallet.txt",
 			Usage: "TXT file that contain's the node's private key `PRIVATE_KEY_FILE`. Leave `PRIVATE_KEY_FILE` = 'random' if you want to randomly generate a wallet.",
 		}),
 		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
@@ -151,7 +151,7 @@ func main() {
 			Peers:              c.StringSlice("peers"),
 			APIHost:            c.String("api.host"),
 			APIPort:            c.Uint("api.port"),
-			APIPrivateKeyFiles: c.StringSlice("api.private_key_files"),
+			APIPrivateKeysFile: c.String("api.private_keys_file"),
 			Daemon:             c.Bool("daemon"),
 		}
 
@@ -225,23 +225,31 @@ func runServer(c *Config) (*node.Wavelet, error) {
 	if c.APIPort > 0 {
 		var clients []*api.ClientInfo
 
-		for _, filename := range c.APIPrivateKeyFiles {
-			bytes, err := ioutil.ReadFile(filename)
+		if len(c.APIPrivateKeysFile) > 0 {
+			bytes, err := ioutil.ReadFile(c.APIPrivateKeysFile)
 			if err != nil {
-				return nil, errors.Wrapf(err, "Unable to open api private key file: %s", filename)
+				return nil, errors.Wrapf(err, "Unable to open api private keys file: %s", c.APIPrivateKeysFile)
 			}
-			keys, err := crypto.FromPrivateKey(security.SignaturePolicy, strings.TrimSpace(string(bytes)))
-			if err != nil {
-				return nil, errors.Wrapf(err, "Unable to decode api private key file: %s", filename)
+			privateKeysHex := strings.Split(string(bytes), "\n")
+			for i, privateKeyHex := range privateKeysHex {
+				trimmed := strings.TrimSpace(privateKeyHex)
+				if len(trimmed) == 0 {
+					continue
+				}
+				keys, err := crypto.FromPrivateKey(security.SignaturePolicy, trimmed)
+				if err != nil {
+					log.Info().Msgf("Unable to decode key %d from file %s", i, c.APIPrivateKeysFile)
+					continue
+				}
+				clients = append(clients, &api.ClientInfo{
+					PublicKey: keys.PublicKeyHex(),
+					Permissions: api.ClientPermissions{
+						CanSendTransaction: true,
+						CanPollTransaction: true,
+						CanControlStats:    true,
+					},
+				})
 			}
-			clients = append(clients, &api.ClientInfo{
-				PublicKey: keys.PublicKeyHex(),
-				Permissions: api.ClientPermissions{
-					CanSendTransaction: true,
-					CanPollTransaction: true,
-					CanControlStats:    true,
-				},
-			})
 		}
 		go api.Run(net, api.Options{
 			ListenAddr: fmt.Sprintf("%s:%d", c.APIHost, c.APIPort),
