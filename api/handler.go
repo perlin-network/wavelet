@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/perlin-network/wavelet"
 	cmdUtils "github.com/perlin-network/wavelet/cmd/utils"
 	"github.com/perlin-network/wavelet/events"
+	"github.com/perlin-network/wavelet/security"
 	"github.com/perlin-network/wavelet/stats"
 )
 
@@ -279,16 +281,9 @@ func (s *service) sessionInitHandler(ctx *requestContext) {
 		return
 	}
 
-	var info *ClientInfo
-	for _, clientInfo := range s.clients {
-		if credentials.validate(clientInfo.AuthKey) == nil {
-			info = clientInfo
-			break
-		}
-	}
-
-	if info == nil {
-		ctx.WriteJSON(http.StatusForbidden, "invalid token")
+	info, ok := s.clients[credentials.PublicKey]
+	if !ok {
+		ctx.WriteJSON(http.StatusNotFound, "invalid found")
 		return
 	}
 
@@ -299,6 +294,22 @@ func (s *service) sessionInitHandler(ctx *requestContext) {
 
 	if timeOffset > 5000 {
 		ctx.WriteJSON(http.StatusForbidden, "token too old")
+		return
+	}
+
+	rawSignature, err := hex.DecodeString(credentials.Sig)
+	if err != nil {
+		ctx.WriteJSON(http.StatusForbidden, "invalid signature")
+		return
+	}
+	rawPublicKey, err := hex.DecodeString(credentials.PublicKey)
+	if err != nil {
+		ctx.WriteJSON(http.StatusForbidden, "invalid public key")
+		return
+	}
+	expected := fmt.Sprintf("%s%d", sessionInitSigningPrefix, credentials.TimeMillis)
+	if !security.Verify(rawPublicKey, []byte(expected), rawSignature) {
+		ctx.WriteJSON(http.StatusForbidden, "signature verification failed")
 		return
 	}
 

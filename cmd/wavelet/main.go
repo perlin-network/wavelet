@@ -35,18 +35,18 @@ import (
 )
 
 type Config struct {
-	PrivateKey    string
-	Host          string
-	Port          uint
-	DatabasePath  string
-	ResetDatabase bool
-	ServicesPath  string
-	GenesisPath   string
-	Peers         []string
-	APIHost       string
-	APIPort       uint
-	APIAuthKey    string
-	Daemon        bool
+	PrivateKeyFile     string
+	Host               string
+	Port               uint
+	DatabasePath       string
+	ResetDatabase      bool
+	ServicesPath       string
+	GenesisPath        string
+	Peers              []string
+	APIHost            string
+	APIPort            uint
+	APIPrivateKeyFiles []string
+	Daemon             bool
 }
 
 func main() {
@@ -78,10 +78,10 @@ func main() {
 			Name:  "api.port",
 			Usage: "Host a local HTTP API at port `API_PORT`.",
 		}),
-		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "api.auth_key",
-			Value: "auth_key_6d6fe0",
-			Usage: "The authentication key corresponding to the api account `API_AUTH_KEY`",
+		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
+			Name:  "api.private_key_files",
+			Value: &cli.StringSlice{"wallet_0.txt"},
+			Usage: "Files containing private keys that can make transactions through the api `API_PRIVATE_KEY_FILES`",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "db.path",
@@ -103,9 +103,9 @@ func main() {
 			Usage: "JSON file containing account data to initialize the ledger from `GENESIS_FILE`.",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "private_key",
-			Value: "6d6fe0c2bc913c0e3e497a0328841cf4979f932e01d2030ad21e649fca8d47fe71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
-			Usage: "Set the node's private key to be `PRIVATE_KEY`. Leave `PRIVATE_KEY` = 'random' if you want to randomly generate one.",
+			Name:  "private_key_file",
+			Value: "wallet_0.txt",
+			Usage: "The file that contain's the node's private key `PRIVATE_KEY_FILE`. Leave `PRIVATE_KEY_FILE` = 'random' if you want to randomly generate wallet.",
 		}),
 		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
 			Name:  "peers",
@@ -140,18 +140,18 @@ func main() {
 
 	app.Action = func(c *cli.Context) error {
 		config := &Config{
-			PrivateKey:    c.String("private_key"),
-			Host:          c.String("host"),
-			Port:          c.Uint("port"),
-			DatabasePath:  c.String("db.path"),
-			ResetDatabase: c.Bool("db.reset"),
-			ServicesPath:  c.String("services"),
-			GenesisPath:   c.String("genesis"),
-			Peers:         c.StringSlice("peers"),
-			APIHost:       c.String("api.host"),
-			APIPort:       c.Uint("api.port"),
-			APIAuthKey:    c.String("api.auth_key"),
-			Daemon:        c.Bool("daemon"),
+			PrivateKeyFile:     c.String("private_key_file"),
+			Host:               c.String("host"),
+			Port:               c.Uint("port"),
+			DatabasePath:       c.String("db.path"),
+			ResetDatabase:      c.Bool("db.reset"),
+			ServicesPath:       c.String("services"),
+			GenesisPath:        c.String("genesis"),
+			Peers:              c.StringSlice("peers"),
+			APIHost:            c.String("api.host"),
+			APIPort:            c.Uint("api.port"),
+			APIPrivateKeyFiles: c.StringSlice("api.private_key_files"),
+			Daemon:             c.Bool("daemon"),
 		}
 
 		// start the plugin
@@ -173,13 +173,21 @@ func main() {
 }
 
 func runServer(c *Config) (*node.Wavelet, error) {
-	if c.PrivateKey == "random" {
-		c.PrivateKey = ed25519.RandomKeyPair().PrivateKeyHex()
+	var privateKeyHex string
+	if len(c.PrivateKeyFile) > 0 && c.PrivateKeyFile != "random" {
+		bytes, err := ioutil.ReadFile(c.PrivateKeyFile)
+		if err != nil {
+			return nil, errors.Wrapf(err, "Unable to open server private key file: %s", c.PrivateKeyFile)
+		}
+		privateKeyHex = string(bytes)
+	} else {
+		log.Info().Msg("Generating a random wallet")
+		privateKeyHex = ed25519.RandomKeyPair().PrivateKeyHex()
 	}
 
-	keys, err := crypto.FromPrivateKey(security.SignaturePolicy, c.PrivateKey)
+	keys, err := crypto.FromPrivateKey(security.SignaturePolicy, privateKeyHex)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to decode private key.")
+		return nil, errors.Wrap(err, "Unable to decode server private key")
 	}
 
 	w := node.NewPlugin(node.Options{
@@ -213,10 +221,17 @@ func runServer(c *Config) (*node.Wavelet, error) {
 	if c.APIPort > 0 {
 		var clients []*api.ClientInfo
 
-		if len(c.APIAuthKey) > 0 {
+		for _, filename := range c.APIPrivateKeyFiles {
+			bytes, err := ioutil.ReadFile(filename)
+			if err != nil {
+				return nil, errors.Wrapf(err, "Unable to open api private key file: %s", filename)
+			}
+			keys, err := crypto.FromPrivateKey(security.SignaturePolicy, string(bytes))
+			if err != nil {
+				return nil, errors.Wrapf(err, "Unable to decode api private key file: %s", filename)
+			}
 			clients = append(clients, &api.ClientInfo{
 				PublicKey: keys.PublicKeyHex(),
-				AuthKey:   c.APIAuthKey,
 				Permissions: api.ClientPermissions{
 					CanSendTransaction: true,
 					CanPollTransaction: true,

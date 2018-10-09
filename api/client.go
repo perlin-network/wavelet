@@ -2,15 +2,18 @@ package api
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/wavelet/events"
+	"github.com/perlin-network/wavelet/security"
 	"github.com/pkg/errors"
 )
 
@@ -18,38 +21,41 @@ import (
 type Client struct {
 	Config       ClientConfig
 	SessionToken string
+	KeyPair      *security.KeyPair
 }
 
 // ClientConfig represents a Perlin Ledger client config.
 type ClientConfig struct {
-	APIHost  string
-	APIPort  uint
-	AuthKey  string
-	UseHTTPS bool
-}
-
-// SessionResponse represents the response from a session call
-type SessionResponse struct {
-	Token string `json:"token"`
+	APIHost    string
+	APIPort    uint
+	PrivateKey string
+	UseHTTPS   bool
 }
 
 // NewClient creates a new Perlin Ledger client from a config.
 func NewClient(config ClientConfig) (*Client, error) {
-	if len(config.AuthKey) == 0 {
-		return nil, errors.New("Missing authentication key")
+	keys, err := security.FromPrivateKey(security.SignaturePolicy, config.PrivateKey)
+	if err != nil {
+		return nil, errors.Wrap(err, "Missing authentication key")
 	}
 
 	return &Client{
-		Config: config,
+		Config:  config,
+		KeyPair: keys,
 	}, nil
 }
 
 // Init will initialize a client.
 func (c *Client) Init() error {
-	creds := makeCreds(c.Config.AuthKey)
+	millis := time.Now().Unix() * 1000
+	authStr := fmt.Sprintf("%s%d", sessionInitSigningPrefix, millis)
+	sig := security.Sign(c.KeyPair.PrivateKey, []byte(authStr))
 
-	j, _ := json.Marshal(creds)
-	fmt.Printf("Creds: %s\n", string(j))
+	creds := credentials{
+		PublicKey:  hex.EncodeToString(c.KeyPair.PublicKey),
+		TimeMillis: millis,
+		Sig:        hex.EncodeToString(sig),
+	}
 
 	resp := SessionResponse{}
 

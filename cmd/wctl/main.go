@@ -42,8 +42,8 @@ func main() {
 			Usage: "Port of the local HTTP API `API_PORT` (required).",
 		},
 		cli.StringFlag{
-			Name:  "api.auth_key",
-			Usage: "The authentication key corresponding to the api account (required).",
+			Name:  "api.private_key_file",
+			Usage: "The file containing private key that will make transactions through the api `API_PRIVATE_KEY_FILE` (required).",
 		},
 	}
 
@@ -178,21 +178,27 @@ func main() {
 func setup(c *cli.Context) (*api.Client, error) {
 	host := c.String("api.host")
 	port := c.Uint("api.port")
-	authKey := c.String("api.auth_key")
+	privateKeyFile := c.String("api.private_key_file")
 
 	if port == 0 {
 		return nil, errors.New("port is missing")
 	}
 
-	if len(authKey) == 0 {
-		return nil, errors.New("auth key is missing")
+	if len(privateKeyFile) == 0 {
+		return nil, errors.New("private key file is missing")
 	}
 
+	bytes, err := ioutil.ReadFile(privateKeyFile)
+	if err != nil {
+		return nil, errors.Wrap(err, "Unable to open api private key file: %s", privateKeyFile)
+	}
+	privateKeyHex = string(bytes)
+
 	client, err := api.NewClient(api.ClientConfig{
-		APIHost:  host,
-		APIPort:  port,
-		AuthKey:  authKey,
-		UseHTTPS: false,
+		APIHost:    host,
+		APIPort:    port,
+		PrivateKey: privateKeyHex,
+		UseHTTPS:   false,
 	})
 	if err != nil {
 		return nil, err

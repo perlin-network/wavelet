@@ -4,6 +4,14 @@ import (
 	"fmt"
 )
 
+const sessionInitSigningPrefix = "perlin_session_init_"
+
+type credentials struct {
+	PublicKey  string `json:"PublicKey"`
+	TimeMillis int64  `json:"TimeMillis"`
+	Sig        string `json:"Sig"`
+}
+
 // Options represents available options for a local user.
 type Options struct {
 	ListenAddr string
@@ -13,7 +21,6 @@ type Options struct {
 // ClientInfo represents a single clients info.
 type ClientInfo struct {
 	PublicKey   string
-	AuthKey     string
 	Permissions ClientPermissions
 }
 
@@ -24,6 +31,12 @@ type ClientPermissions struct {
 	CanControlStats    bool
 }
 
+// SessionResponse represents the response from a session call
+type SessionResponse struct {
+	Token string `json:"token"`
+}
+
+// ServerVersion represents the response from a server version call
 type ServerVersion struct {
 	Version   string `json:"version"`
 	GitCommit string `json:"git_commit"`

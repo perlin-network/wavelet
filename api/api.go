@@ -163,7 +163,7 @@ func Run(net *network.Network, opts Options) {
 	clients := make(map[string]*ClientInfo)
 
 	for _, client := range opts.Clients {
-		clients[client.AuthKey] = client
+		clients[client.PublicKey] = client
 	}
 
 	mux := http.NewServeMux()
