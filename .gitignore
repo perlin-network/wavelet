@@ -20,6 +20,7 @@
 # Test binary, build with `go test -c`
 *.test
 *testdb
+coverage.txt
 
 # dependencies
 vendor

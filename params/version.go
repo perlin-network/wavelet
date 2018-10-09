@@ -1,4 +1,4 @@
-package utils
+package params
 
 import "fmt"
 
@@ -15,8 +15,8 @@ const (
 
 // variables set via linker flags
 var (
-	GitCommit string
-	GoVersion string
+	GitCommit = "unset"
+	GoVersion = "unset"
 )
 
 // Version holds the textual version string.
