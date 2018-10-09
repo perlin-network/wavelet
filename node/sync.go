@@ -219,19 +219,19 @@ func (w *SyncWorker) RunTxFetchLoop() {
 			client, err := w.wavelet.net.Client(p)
 			if err != nil {
 				log.Warn().Err(err).Msg("unable to create client")
-				continue
+				return
 			}
 
 			_res, err := client.Request(request)
 			if err != nil {
 				log.Warn().Err(err).Msg("request failed")
-				continue
+				return
 			}
 
 			tx, ok := _res.(*wire.Transaction)
 			if !ok {
-				log.Warn().Msg("invalid response type")
-				continue
+				log.Error().Msg("node: response could not be converted to SyncResponse")
+				return
 			}
 
 			valid, err := security.ValidateWiredTransaction(tx)

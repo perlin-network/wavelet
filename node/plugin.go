@@ -220,5 +220,5 @@ func (w *Wavelet) PeerConnect(client *network.PeerClient) {
 }
 
 func (w *Wavelet) PeerDisconnect(client *network.PeerClient) {
-
+	log.Debug().Interface("ID", client.ID).Msgf("Peer disconnected: ", client.Address)
 }
