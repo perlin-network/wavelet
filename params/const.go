@@ -5,16 +5,16 @@ import "time"
 var (
 	// Transaction IBLT parameters.
 	TxK = 6
-	TxL = 4096*4
+	TxL = 4096
 
 	// Consensus protocol parameters.
-	ConsensusK     = 3
+	ConsensusK     = 1
 	ConsensusAlpha = float32(0.8)
 
 	// Ledger parameters.
 	GraphUpdatePeriod = 50 * time.Millisecond
 
 	// Sync parameters.
-	SyncPeriod   = 4000 * time.Millisecond
+	SyncPeriod   = 2000 * time.Millisecond
 	SyncNumPeers = 1
 )
