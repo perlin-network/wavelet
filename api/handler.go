@@ -9,8 +9,8 @@ import (
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/noise/network/discovery"
 	"github.com/perlin-network/wavelet"
-	cmdUtils "github.com/perlin-network/wavelet/cmd/utils"
 	"github.com/perlin-network/wavelet/events"
+	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/security"
 	"github.com/perlin-network/wavelet/stats"
 )
@@ -268,8 +268,8 @@ func (s *service) serverVersionHandler(ctx *requestContext) {
 	}
 
 	info := &ServerVersion{
-		Version:   cmdUtils.Version,
-		GitCommit: cmdUtils.GitCommit,
+		Version:   params.Version,
+		GitCommit: params.GitCommit,
 	}
 	ctx.WriteJSON(http.StatusOK, info)
 }
@@ -283,7 +283,7 @@ func (s *service) sessionInitHandler(ctx *requestContext) {
 
 	info, ok := s.clients[credentials.PublicKey]
 	if !ok {
-		ctx.WriteJSON(http.StatusNotFound, "invalid found")
+		ctx.WriteJSON(http.StatusNotFound, "invalid token")
 		return
 	}
 
@@ -293,7 +293,7 @@ func (s *service) sessionInitHandler(ctx *requestContext) {
 	}
 
 	if timeOffset > 5000 {
-		ctx.WriteJSON(http.StatusForbidden, "token too old")
+		ctx.WriteJSON(http.StatusForbidden, "token expired")
 		return
 	}
 
