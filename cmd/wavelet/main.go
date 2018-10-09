@@ -82,7 +82,7 @@ func main() {
 		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
 			Name:  "api.private_key_files",
 			Value: &cli.StringSlice{"wallet_0.txt"},
-			Usage: "TXT files containing private keys that can make transactions through the api `API_PRIVATE_KEY_FILES`",
+			Usage: "TXT files containing private keys that can make transactions through the API `API_PRIVATE_KEY_FILES`",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "db.path",
@@ -91,7 +91,7 @@ func main() {
 		}),
 		altsrc.NewBoolFlag(cli.BoolFlag{
 			Name:  "db.reset",
-			Usage: "Clear out the existing data in the datastore before initializing the db.",
+			Usage: "Clear out the existing data in the datastore before initializing the DB.",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "services",

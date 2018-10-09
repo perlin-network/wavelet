@@ -45,7 +45,7 @@ func main() {
 		},
 		cli.StringFlag{
 			Name:  "api.private_key_file",
-			Usage: "The file containing private key that will make transactions through the api `API_PRIVATE_KEY_FILE` (required).",
+			Usage: "The file containing private key that will make transactions through the API `API_PRIVATE_KEY_FILE` (required).",
 		},
 	}
 
