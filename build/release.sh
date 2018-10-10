@@ -7,7 +7,7 @@ CMD_WAVELET_DIR="${SCRIPT_DIR}/../cmd/wavelet"
 VERSION=$(${BIN_DIR}/linux-amd64/wavelet -v | grep "^Version:" | awk '{print $2}')
 
 # clean up old zip files
-rm ${SCRIPT_DIR}/bin/*.zip
+rm ${SCRIPT_DIR}/bin/*.zip || true
 
 # loop through all the platforms and create an archive
 cd ${SCRIPT_DIR}

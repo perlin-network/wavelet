@@ -63,6 +63,7 @@ func main() {
 		fmt.Printf("Version:          %s\n", c.App.Version)
 		fmt.Printf("Go Version:       %s\n", params.GoVersion)
 		fmt.Printf("Git Commit:       %s\n", params.GitCommit)
+		fmt.Printf("OS/Arch:          %s\n", params.OSArch)
 		fmt.Printf("Lens Git Version: %s\n", statik.LensGitVersion)
 		fmt.Printf("Built:            %s\n", c.App.Compiled.Format(time.ANSIC))
 	}
