@@ -270,6 +270,7 @@ func (s *service) serverVersionHandler(ctx *requestContext) {
 	info := &ServerVersion{
 		Version:   params.Version,
 		GitCommit: params.GitCommit,
+		OSArch:    params.OSArch,
 	}
 	ctx.WriteJSON(http.StatusOK, info)
 }
