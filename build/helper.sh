@@ -10,7 +10,7 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
     IFS="-" read -r -a array <<< ${os_arch}
     OS=${array[0]}
     ARCH=${array[1]}
-    echo "Building wavelet and wctl for ${os_arch}"
+    echo "Building binaries for ${os_arch}"
     GOOS=${OS}
     GOARCH=${ARCH}
 
