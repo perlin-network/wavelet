@@ -106,6 +106,9 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 			existed = l.TransactionExists(id)
 		})
 
+		go w.syncWorker.QueryChildren(id)
+		go w.syncWorker.QueryParents(msg.Parents)
+
 		if existed {
 			w.Ledger.Do(func(l *wavelet.Ledger) {
 				res.StronglyPreferred = l.IsStronglyPreferred(id)
@@ -170,37 +173,46 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				}
 			}()
 		}
-	case *SyncSeed:
-		for _, id := range msg.Transactions {
-			w.syncWorker.AddIncomingTxID(id)
-		}
-	case *SyncChildrenQueryHint:
-		var children []string
+	case *SyncChildrenQueryRequest:
+		var childrenIDs []string
 
 		w.Ledger.Do(func(l *wavelet.Ledger) {
-			_children, err := l.Graph.Store.GetChildrenBySymbol(msg.Id)
-			if err == nil {
-				children = _children.Transactions
+			children, err := l.Store.GetChildrenBySymbol(msg.Id)
+			if err != nil {
+				log.Error().Err(err).Msg("cannot get children")
 			} else {
-				log.Warn().Err(err).Msg("cannot get children")
+				childrenIDs = children.Transactions
 			}
 		})
 
-		if len(children) == 0 {
-			log.Debug().Msg("no children")
-			return nil
+		if childrenIDs == nil {
+			childrenIDs = make([]string, 0)
 		}
 
-		client, err := w.net.Client(ctx.Sender().Address)
-		if err != nil {
-			log.Warn().Err(err).Msg("cannot create client")
-			return nil
-		}
-
-		client.Tell(&SyncSeed{
-			Transactions: children,
+		ctx.Reply(&SyncChildrenQueryResponse{
+			Children: childrenIDs,
 		})
-		log.Debug().Msgf("sent %d children", len(children))
+	case *TxPushHint:
+		for _, id := range msg.Transactions {
+			var out *wire.Transaction
+
+			w.Ledger.Do(func(l *wavelet.Ledger) {
+				if tx, err := l.Store.GetBySymbol(id); err == nil {
+					out = &wire.Transaction{
+						Sender:    tx.Sender,
+						Nonce:     tx.Nonce,
+						Parents:   tx.Parents,
+						Tag:       tx.Tag,
+						Payload:   tx.Payload,
+						Signature: tx.Signature,
+					}
+				}
+			})
+
+			if out != nil {
+				w.net.BroadcastByAddresses(out, ctx.Sender().Address)
+			}
+		}
 	}
 	return nil
 }
