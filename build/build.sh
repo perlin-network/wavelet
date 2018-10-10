@@ -48,6 +48,7 @@ mkdir -p ${HOST_BUILD_BIN}
 docker run \
     --rm \
     --user $(id -u):$(id -g) \
+    --env GOCACHE="off" \
     --env BUILD_BIN="/output" \
     --env PROJ_DIR="github.com/perlin-network/wavelet" \
     --env OS_ARCH=${OS_ARCH} \

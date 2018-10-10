@@ -27,4 +27,15 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
             -X ${PROJ_DIR}/params.GitCommit=${GIT_COMMIT} \
             -X ${PROJ_DIR}/params.GoVersion=${GO_VERSION}" \
         cmd/wctl/main.go
-done;
+
+    if [ -d "cmd/lens/statik" ]; then
+        # only build lens if the cmd/lens/build/statik.sh was ran
+        go build \
+            -o ${BUILD_BIN}/${OS}-${ARCH}/lens \
+            -ldflags "-s -w \
+                -X ${PROJ_DIR}/params.GitCommit=${GIT_COMMIT} \
+                -X ${PROJ_DIR}/params.GoVersion=${GO_VERSION}" \
+            cmd/lens/main.go
+    fi
+
+done
