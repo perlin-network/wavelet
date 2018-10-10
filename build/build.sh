@@ -1,11 +1,11 @@
-#!/bin/bash -eu
+#!/bin/bash
 #
 # This script compiles wavelet and pctl in a Docker container for the specified environments.
+set -eu
 
 OPTIND=1
-IMAGE_NAME="perlin/wavelet"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
-HOST_BUILD_BIN="${SCRIPT_DIR}/bin"
+HOST_BUILD_BIN="${SCRIPT_DIR}/bin/pkg"
 OS_ARCH="linux-amd64"
 CLEAR_BUILDS=false
 
@@ -43,25 +43,18 @@ if [ ${CLEAR_BUILDS} = true ] && [ -d ${HOST_BUILD_BIN} ]; then
     rm -rf ${HOST_BUILD_BIN}
 fi
 
-if [ ! -d ${HOST_BUILD_BIN} ]; then
-    mkdir -p ${HOST_BUILD_BIN}
-fi
+mkdir -p ${HOST_BUILD_BIN}
 
-# make a workspace to compile and test
-docker build \
-    --tag ${IMAGE_NAME} \
-    --file build/Dockerfile \
-    --build-arg OS_ARCH=${OS_ARCH} \
-    $(pwd)
-
-# copy the binaries to the host bin directory
-CONTAINER_BUILD_BIN=$(docker run --rm ${IMAGE_NAME} bash -c "echo \$BUILD_BIN")
 docker run \
     --rm \
-    --mount type=bind,source="${HOST_BUILD_BIN}",target="/host-bin" \
-    ${IMAGE_NAME} \
-    bash -c "cp -r ${CONTAINER_BUILD_BIN}/ /host-bin/ && \
-        # update the folder ownership from root to the script runner
-        chown $(id -u):$(id -g) -R /host-bin/"
+    --user $(id -u):$(id -g) \
+    --env BUILD_BIN="/output" \
+    --env PROJ_DIR="github.com/perlin-network/wavelet" \
+    --env OS_ARCH=${OS_ARCH} \
+    --mount type=bind,source="${SCRIPT_DIR}/..",target="/go/src/github.com/perlin-network/wavelet" \
+    --mount type=bind,source="${HOST_BUILD_BIN}",target="/output" \
+    --workdir "/go/src/github.com/perlin-network/wavelet" \
+    golang:1.11 \
+        bash build/helper.sh
 
 echo "Done building."

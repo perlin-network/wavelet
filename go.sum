@@ -55,6 +55,8 @@ github.com/perlin-network/graph v0.0.0-20181003184713-e4c31fc39379 h1:Ob9dp9pa+p
 github.com/perlin-network/graph v0.0.0-20181003184713-e4c31fc39379/go.mod h1:T8lj3k0V8rY8KZ6WTWY1gi0LCHmRegOozHr7XIvBhgk=
 github.com/perlin-network/graph v0.0.0-20181004114900-9e7b984a114d h1:w5HpJgqP222BgbEjMN4qVco4ZlkMM3FRHOLnm7snJL4=
 github.com/perlin-network/graph v0.0.0-20181004114900-9e7b984a114d/go.mod h1:hCglm+rtUWJ+dIAUtD+/QL0zNZ2GT9hgbQii7MSJOPE=
+github.com/perlin-network/graph v0.0.0-20181007125339-237fc8cfbd7c h1:YIOOX6y8JILDE+ylgP8Je0ZqOhtbK6fFEm08pm+kUyM=
+github.com/perlin-network/graph v0.0.0-20181007125339-237fc8cfbd7c/go.mod h1:hCglm+rtUWJ+dIAUtD+/QL0zNZ2GT9hgbQii7MSJOPE=
 github.com/perlin-network/life v0.0.0-20180924090822-ccb94ff303dd h1:KQvfL1xwol7Rrrp4J7xDFGkOJgSKslJ/mOHDMCAX1sY=
 github.com/perlin-network/life v0.0.0-20180924090822-ccb94ff303dd/go.mod h1:lfYSPiNNajwjU1XbgFzZoqoU4ibQvoexKe6yivnMrDM=
 github.com/perlin-network/life v0.0.0-20181005003153-69f41b0484c3 h1:F7v6fdpAm9bH2oatemMVQqwqxoFyZI3o99JmulCysEo=
