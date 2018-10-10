@@ -1,6 +1,3 @@
-//go:generate statik -f -src=$GOPATH/src/github.com/perlin-network/lens/build -p statik -dest .
-//go:generate go run gen.go
-
 package main
 
 import (
@@ -11,11 +8,19 @@ import (
 	"time"
 
 	"github.com/perlin-network/wavelet/cmd/lens/statik"
-	"github.com/perlin-network/wavelet/cmd/utils"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/params"
 	"github.com/rakyll/statik/fs"
 	"github.com/urfave/cli"
 )
+
+type config struct {
+	LensHost          string
+	LensPort          uint
+	APIHost           string
+	APIPort           uint
+	APIPrivateKeyFile string
+}
 
 func main() {
 
@@ -24,37 +29,55 @@ func main() {
 	app.Name = "lens"
 	app.Author = "Perlin Network"
 	app.Email = "support@perlin.net"
-	app.Version = utils.Version
+	app.Version = params.Version
 	app.Usage = "web interface to a Perlin node's API"
 
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
-			Name:  "host, address",
+			Name:  "lens.host",
 			Value: "localhost",
-			Usage: "Listen for peers on host address `HOST`.",
+			Usage: "Host address that will serve lens web content `LENS_HOST`.",
 		},
 		cli.UintFlag{
-			Name:  "port, p",
+			Name:  "lens.port",
 			Value: 8080,
-			Usage: "Listen for peers on port `PORT`.",
+			Usage: "Port that will serve lens web content `LENS_PORT`.",
+		},
+		cli.StringFlag{
+			Name:  "api.host",
+			Value: "localhost",
+			Usage: "Host of the local HTTP API `API_HOST`.",
+		},
+		cli.IntFlag{
+			Name:  "api.port",
+			Value: 9000,
+			Usage: "Port of the local HTTP API `API_PORT`.",
+		},
+		cli.StringFlag{
+			Name:  "api.private_key_file",
+			Usage: "The file containing private key that will make transactions through the API `API_PRIVATE_KEY_FILE` (required).",
 		},
 	}
 
 	cli.VersionPrinter = func(c *cli.Context) {
-		fmt.Printf("Version: %s\n", c.App.Version)
-		fmt.Printf("Go Version: %s\n", utils.GoVersion)
-		fmt.Printf("Git Commit: %s\n", utils.GitCommit)
-		fmt.Printf("Built: %s\n", c.App.Compiled.Format(time.ANSIC))
+		fmt.Printf("Version:          %s\n", c.App.Version)
+		fmt.Printf("Go Version:       %s\n", params.GoVersion)
+		fmt.Printf("Git Commit:       %s\n", params.GitCommit)
 		fmt.Printf("Lens Git Version: %s\n", statik.LensGitVersion)
+		fmt.Printf("Built:            %s\n", c.App.Compiled.Format(time.ANSIC))
 	}
 
 	app.Action = func(c *cli.Context) {
-		port := c.Uint("port")
-		host := c.String("host")
+		conf := &config{
+			LensHost:          c.String("lens.host"),
+			LensPort:          c.Uint("lens.port"),
+			APIHost:           c.String("api.host"),
+			APIPort:           c.Uint("api.port"),
+			APIPrivateKeyFile: c.String("api.private_key_file"),
+		}
 
 		log.Info().
-			Str("host", host).
-			Uint("port", port).
+			Interface("config", conf).
 			Msg("Lens is being served.")
 
 		exit := make(chan os.Signal, 1)
@@ -66,7 +89,7 @@ func main() {
 			os.Exit(0)
 		}()
 
-		runServer(host, port)
+		runServer(conf)
 	}
 
 	if err := app.Run(os.Args); err != nil {
@@ -74,12 +97,12 @@ func main() {
 	}
 }
 
-func runServer(host string, port uint) {
+func runServer(c *config) {
 	statikFS, err := fs.New()
 	if err != nil {
 		log.Fatal().Err(err).Msg("")
 	}
 
 	http.Handle("/", http.FileServer(statikFS))
-	log.Fatal().Err(http.ListenAndServe(fmt.Sprintf("%s:%d", host, port), nil)).Msg("")
+	log.Fatal().Err(http.ListenAndServe(fmt.Sprintf("%s:%d", c.LensHost, c.LensPort), nil)).Msg("")
 }
