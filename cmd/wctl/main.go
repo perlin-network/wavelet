@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/perlin-network/graph/wire"
@@ -33,16 +35,39 @@ func main() {
 
 	commonFlags := []cli.Flag{
 		cli.StringFlag{
-			Name:  "remote",
-			Usage: "remote address `REMOTE` (required).",
+			Name:  "api.host",
+			Value: "localhost",
+			Usage: "Host of the local HTTP API `API_HOST`.",
+		},
+		cli.IntFlag{
+			Name:  "api.port",
+			Usage: "Port of the local HTTP API `API_PORT` (required).",
 		},
 		cli.StringFlag{
-			Name:  "privkey",
-			Usage: "private key (hex) `KEY` (required).",
+			Name:  "api.private_key_file",
+			Usage: "The file containing private key that will make transactions through the API `API_PRIVATE_KEY_FILE` (required).",
 		},
 	}
 
 	app.Commands = []cli.Command{
+		cli.Command{
+			Name:  "server_version",
+			Usage: "get the version information of the api server",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				res, err := client.ServerVersion()
+				if err != nil {
+					return err
+				}
+				jsonOut, _ := json.Marshal(res)
+				fmt.Printf("%s\n", jsonOut)
+				return nil
+			},
+		},
 		cli.Command{
 			Name:      "send_transaction",
 			Usage:     "send a transaction",
@@ -145,25 +170,10 @@ func main() {
 				return nil
 			},
 		},
-		cli.Command{
-			Name:  "stats_summary",
-			Usage: "get the stats counters",
-			Flags: commonFlags,
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-				res := new(interface{})
-				if err := client.StatsSummary(res); err != nil {
-					return err
-				}
-				jsonOut, _ := json.Marshal(res)
-				fmt.Printf("%s\n", jsonOut)
-				return nil
-			},
-		},
 	}
+
+	sort.Sort(cli.FlagsByName(app.Flags))
+	sort.Sort(cli.CommandsByName(app.Commands))
 
 	if err := app.Run(os.Args); err != nil {
 		log.Fatal().Err(err).Msg("Failed to parse configuration/command-line arugments.")
@@ -171,21 +181,27 @@ func main() {
 }
 
 func setup(c *cli.Context) (*api.Client, error) {
+	host := c.String("api.host")
+	port := c.Uint("api.port")
+	privateKeyFile := c.String("api.private_key_file")
 
-	remoteAddr := c.String("remote")
-	privateKey := c.String("privkey")
-
-	if len(remoteAddr) == 0 {
-		return nil, errors.New("remote flag is missing")
+	if port == 0 {
+		return nil, errors.New("port is missing")
 	}
 
-	if len(privateKey) == 0 {
-		return nil, errors.New("private key is missing")
+	if len(privateKeyFile) == 0 {
+		return nil, errors.New("private key file is missing")
+	}
+
+	privateKeyBytes, err := ioutil.ReadFile(privateKeyFile)
+	if err != nil {
+		return nil, errors.Wrapf(err, "Unable to open api private key file: %s", privateKeyFile)
 	}
 
 	client, err := api.NewClient(api.ClientConfig{
-		RemoteAddr: remoteAddr,
-		PrivateKey: privateKey,
+		APIHost:    host,
+		APIPort:    port,
+		PrivateKey: string(privateKeyBytes),
 		UseHTTPS:   false,
 	})
 	if err != nil {
