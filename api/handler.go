@@ -10,6 +10,7 @@ import (
 	"github.com/perlin-network/noise/network/discovery"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/events"
+	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/security"
 	"github.com/perlin-network/wavelet/stats"
 )
@@ -219,19 +220,6 @@ func (s *service) resetStatsHandler(ctx *requestContext) {
 	ctx.WriteJSON(http.StatusOK, "OK")
 }
 
-func (s *service) summarizeStatsHandler(ctx *requestContext) {
-	if !ctx.loadSession() {
-		return
-	}
-
-	if !ctx.session.Permissions.CanControlStats {
-		ctx.WriteJSON(http.StatusForbidden, "no stats permissions")
-		return
-	}
-
-	ctx.WriteJSON(http.StatusOK, stats.Summary())
-}
-
 func (s *service) loadAccountHandler(ctx *requestContext) {
 	if !ctx.loadSession() {
 		return
@@ -274,6 +262,18 @@ func (s *service) loadAccountHandler(ctx *requestContext) {
 	ctx.WriteJSON(http.StatusOK, info)
 }
 
+func (s *service) serverVersionHandler(ctx *requestContext) {
+	if !ctx.loadSession() {
+		return
+	}
+
+	info := &ServerVersion{
+		Version:   params.Version,
+		GitCommit: params.GitCommit,
+	}
+	ctx.WriteJSON(http.StatusOK, info)
+}
+
 // sessionInitHandler initialize a session.
 func (s *service) sessionInitHandler(ctx *requestContext) {
 	var credentials credentials
@@ -283,7 +283,7 @@ func (s *service) sessionInitHandler(ctx *requestContext) {
 
 	info, ok := s.clients[credentials.PublicKey]
 	if !ok {
-		ctx.WriteJSON(http.StatusNotFound, "client not found")
+		ctx.WriteJSON(http.StatusNotFound, "invalid token")
 		return
 	}
 
@@ -293,7 +293,7 @@ func (s *service) sessionInitHandler(ctx *requestContext) {
 	}
 
 	if timeOffset > 5000 {
-		ctx.WriteJSON(http.StatusForbidden, "time offset too large")
+		ctx.WriteJSON(http.StatusForbidden, "token expired")
 		return
 	}
 
@@ -302,15 +302,12 @@ func (s *service) sessionInitHandler(ctx *requestContext) {
 		ctx.WriteJSON(http.StatusForbidden, "invalid signature")
 		return
 	}
-
 	rawPublicKey, err := hex.DecodeString(credentials.PublicKey)
 	if err != nil {
 		ctx.WriteJSON(http.StatusForbidden, "invalid public key")
 		return
 	}
-
 	expected := fmt.Sprintf("%s%d", sessionInitSigningPrefix, credentials.TimeMillis)
-
 	if !security.Verify(rawPublicKey, []byte(expected), rawSignature) {
 		ctx.WriteJSON(http.StatusForbidden, "signature verification failed")
 		return

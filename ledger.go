@@ -203,6 +203,8 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 		return pendingList[i].tx.Id < pendingList[j].tx.Id
 	})
 
+	stats.SetNumPendingTx(int64(len(pendingList)))
+
 	for _, pending := range pendingList {
 		parentsAccepted := true
 

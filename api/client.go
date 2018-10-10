@@ -14,6 +14,7 @@ import (
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/wavelet/events"
 	"github.com/perlin-network/wavelet/security"
+	"github.com/pkg/errors"
 )
 
 // Client represents a Perlin Ledger client.
@@ -25,21 +26,17 @@ type Client struct {
 
 // ClientConfig represents a Perlin Ledger client config.
 type ClientConfig struct {
-	RemoteAddr string
+	APIHost    string
+	APIPort    uint
 	PrivateKey string
 	UseHTTPS   bool
-}
-
-// SessionResponse represents the response from a session call
-type SessionResponse struct {
-	Token string `json:"token"`
 }
 
 // NewClient creates a new Perlin Ledger client from a config.
 func NewClient(config ClientConfig) (*Client, error) {
 	keys, err := security.FromPrivateKey(security.SignaturePolicy, config.PrivateKey)
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrap(err, "Missing authentication key")
 	}
 
 	return &Client{
@@ -77,7 +74,7 @@ func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 		prot = "wss"
 	}
 
-	url := fmt.Sprintf("%s://%s%s", prot, c.Config.RemoteAddr, path)
+	url := fmt.Sprintf("%s://%s:%d/%s", prot, c.Config.APIHost, c.Config.APIPort, path)
 
 	header := make(http.Header)
 	header.Add("X-Session-Token", c.SessionToken)
@@ -93,7 +90,7 @@ func (c *Client) Request(path string, body, out interface{}) error {
 	if c.Config.UseHTTPS {
 		prot = "https"
 	}
-	u, err := url.Parse(fmt.Sprintf("%s://%s%s", prot, c.Config.RemoteAddr, path))
+	u, err := url.Parse(fmt.Sprintf("%s://%s:%d%s", prot, c.Config.APIHost, c.Config.APIPort, path))
 	if err != nil {
 		return err
 	}
@@ -243,11 +240,6 @@ func (c *Client) StatsReset(res interface{}) error {
 	return c.Request("/stats/reset", struct{}{}, res)
 }
 
-// StatsSummary will get a client statistics.
-func (c *Client) StatsSummary(res interface{}) error {
-	return c.Request("/stats/summary", struct{}{}, res)
-}
-
 func (c *Client) LoadAccount(id string) (map[string][]byte, error) {
 	var ret map[string][]byte
 	err := c.Request("/account/load", id, &ret)
@@ -256,4 +248,9 @@ func (c *Client) LoadAccount(id string) (map[string][]byte, error) {
 	}
 
 	return ret, nil
+}
+
+func (c *Client) ServerVersion() (sv *ServerVersion, err error) {
+	err = c.Request("/server/version", ServerVersion{}, &sv)
+	return
 }

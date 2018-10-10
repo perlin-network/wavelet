@@ -1,32 +1,45 @@
 package api
 
-import "fmt"
+import (
+	"fmt"
+)
 
 const sessionInitSigningPrefix = "perlin_session_init_"
 
 type credentials struct {
-	PublicKey  string
-	TimeMillis int64
-	Sig        string
+	PublicKey  string `json:"PublicKey"`
+	TimeMillis int64  `json:"TimeMillis"`
+	Sig        string `json:"Sig"`
 }
 
 // Options represents available options for a local user.
 type Options struct {
-	ListenAddr string        `toml:"listen_addr"`
-	Clients    []*ClientInfo `toml:"clients"`
+	ListenAddr string
+	Clients    []*ClientInfo
 }
 
 // ClientInfo represents a single clients info.
 type ClientInfo struct {
-	PublicKey   string            `toml:"public_key"`
-	Permissions ClientPermissions `toml:"permissions"`
+	PublicKey   string
+	Permissions ClientPermissions
 }
 
 // ClientPermissions represents a single client permissions.
 type ClientPermissions struct {
-	CanPollTransaction bool `toml:"can_poll_transaction"`
-	CanSendTransaction bool `toml:"can_send_transaction"`
-	CanControlStats    bool `toml:"can_control_stats"`
+	CanPollTransaction bool
+	CanSendTransaction bool
+	CanControlStats    bool
+}
+
+// SessionResponse represents the response from a session call
+type SessionResponse struct {
+	Token string `json:"token"`
+}
+
+// ServerVersion represents the response from a server version call
+type ServerVersion struct {
+	Version   string `json:"version"`
+	GitCommit string `json:"git_commit"`
 }
 
 func (c ClientInfo) String() string {

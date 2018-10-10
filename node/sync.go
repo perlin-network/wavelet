@@ -134,16 +134,19 @@ func (s *syncer) sync() {
 
 			client, err := s.net.Client(address)
 			if err != nil {
+				log.Error().Err(err).Msg("")
 				return
 			}
 
 			r, err := client.Request(request)
 			if err != nil {
+				log.Error().Err(err).Msg("")
 				return
 			}
 
 			res, ok := r.(*SyncResponse)
 			if !ok {
+				log.Error().Msg("node: response could not be converted to SyncResponse")
 				return
 			}
 

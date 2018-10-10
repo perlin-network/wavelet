@@ -10,26 +10,45 @@ import (
 	"io/ioutil"
 	"os"
 	"os/signal"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
-	"github.com/perlin-network/wavelet/cmd/utils"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
+	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/security"
 
+	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
+
 	"github.com/perlin-network/noise/crypto"
 	"github.com/perlin-network/noise/crypto/ed25519"
 	"github.com/perlin-network/noise/network"
 	"github.com/perlin-network/noise/network/discovery"
 
+	"github.com/pkg/errors"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
 )
+
+type Config struct {
+	PrivateKeyFile     string
+	Host               string
+	Port               uint
+	DatabasePath       string
+	ResetDatabase      bool
+	ServicesPath       string
+	GenesisPath        string
+	Peers              []string
+	APIHost            string
+	APIPort            uint
+	APIPrivateKeysFile string
+	Daemon             bool
+}
 
 func main() {
 	app := cli.NewApp()
@@ -37,12 +56,10 @@ func main() {
 	app.Name = "wavelet"
 	app.Author = "Perlin Network"
 	app.Email = "support@perlin.net"
-	app.Version = utils.Version
+	app.Version = params.Version
 	app.Usage = "a bleeding fast ledger with a powerful compute layer"
 
 	app.Flags = []cli.Flag{
-		// altsrc allows the config toml to override the cli flag
-		// note: cannot use multiple names for the cli flag name, it breaks the config override
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "host",
 			Value: "localhost",
@@ -62,10 +79,10 @@ func main() {
 			Name:  "api.port",
 			Usage: "Host a local HTTP API at port `API_PORT`.",
 		}),
-		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
-			Name:  "api.clients.public_key",
-			Value: &cli.StringSlice{"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"},
-			Usage: "The public keys with access to your wavelet client's API `PUBLIC_KEY`",
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:  "api.private_keys_file",
+			Value: "wallets.txt",
+			Usage: "TXT file containing private keys that can make transactions through the API `API_PRIVATE_KEYS_FILE`",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "db.path",
@@ -74,7 +91,7 @@ func main() {
 		}),
 		altsrc.NewBoolFlag(cli.BoolFlag{
 			Name:  "db.reset",
-			Usage: "Clear out the existing data in the datastore before initializing",
+			Usage: "Clear out the existing data in the datastore before initializing the DB.",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "services",
@@ -87,13 +104,13 @@ func main() {
 			Usage: "JSON file containing account data to initialize the ledger from `GENESIS_FILE`.",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "privkey",
-			Value: "6d6fe0c2bc913c0e3e497a0328841cf4979f932e01d2030ad21e649fca8d47fe71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
-			Usage: "Set the node's private key to be `PRIVATE_KEY`. Leave `PRIVATE_KEY` = 'random' if you want to randomly generate one.",
+			Name:  "private_key_file",
+			Value: "wallet.txt",
+			Usage: "TXT file that contain's the node's private key `PRIVATE_KEY_FILE`. Leave `PRIVATE_KEY_FILE` = 'random' if you want to randomly generate a wallet.",
 		}),
 		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
 			Name:  "peers",
-			Usage: "Bootstrap to peers whose address are formatted as tcp://[host]:[port] from `PEER_NODES`.",
+			Usage: "Bootstrap to peers whose address are formatted as tcp://[host]:[port] from `PEERS`.",
 		}),
 		altsrc.NewBoolFlag(cli.BoolFlag{
 			Name:  "daemon",
@@ -117,117 +134,170 @@ func main() {
 
 	cli.VersionPrinter = func(c *cli.Context) {
 		fmt.Printf("Version: %s\n", c.App.Version)
-		fmt.Printf("Go Version: %s\n", utils.GoVersion)
-		fmt.Printf("Git Commit: %s\n", utils.GitCommit)
+		fmt.Printf("Go Version: %s\n", params.GoVersion)
+		fmt.Printf("Git Commit: %s\n", params.GitCommit)
 		fmt.Printf("Built: %s\n", c.App.Compiled.Format(time.ANSIC))
 	}
 
-	app.Action = func(c *cli.Context) {
-		privateKey := c.String("privkey")
-		host := c.String("host")
-		port := uint16(c.Uint("port"))
-		databasePath := c.String("db.path")
-		resetDatabase := c.Bool("db.reset")
-		servicesPath := c.String("services")
-		genesisPath := c.String("genesis")
-		peers := c.StringSlice("peers")
-		apiHost := c.String("api.host")
-		apiPort := c.Uint("api.port")
-		apiPublicKeys := c.StringSlice("api.clients.public_key")
-		daemon := c.Bool("daemon")
-
-		if privateKey == "random" {
-			privateKey = ed25519.RandomKeyPair().PrivateKeyHex()
+	app.Action = func(c *cli.Context) error {
+		config := &Config{
+			PrivateKeyFile:     c.String("private_key_file"),
+			Host:               c.String("host"),
+			Port:               c.Uint("port"),
+			DatabasePath:       c.String("db.path"),
+			ResetDatabase:      c.Bool("db.reset"),
+			ServicesPath:       c.String("services"),
+			GenesisPath:        c.String("genesis"),
+			Peers:              c.StringSlice("peers"),
+			APIHost:            c.String("api.host"),
+			APIPort:            c.Uint("api.port"),
+			APIPrivateKeysFile: c.String("api.private_keys_file"),
+			Daemon:             c.Bool("daemon"),
 		}
 
-		keys, err := crypto.FromPrivateKey(security.SignaturePolicy, privateKey)
+		// start the plugin
+		w, err := runServer(config)
 		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to decode private key.")
+			return err
 		}
 
-		w := node.NewPlugin(node.Options{
-			DatabasePath:  databasePath,
-			ServicesPath:  servicesPath,
-			GenesisPath:   genesisPath,
-			ResetDatabase: resetDatabase,
-		})
+		// run the shell version of the node
+		runShell(w)
 
-		builder := network.NewBuilder()
+		return nil
+	}
 
-		builder.SetKeys(keys)
-		builder.SetAddress(network.FormatAddress("tcp", host, port))
+	sort.Sort(cli.FlagsByName(app.Flags))
+	sort.Sort(cli.CommandsByName(app.Commands))
 
-		builder.AddPlugin(new(discovery.Plugin))
-		builder.AddPlugin(w)
+	err := app.Run(os.Args)
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to parse configuration/command-line arugments.")
+	}
+}
 
-		net, err := builder.Build()
+func runServer(c *Config) (*node.Wavelet, error) {
+	var privateKeyHex string
+	if len(c.PrivateKeyFile) > 0 && c.PrivateKeyFile != "random" {
+		bytes, err := ioutil.ReadFile(c.PrivateKeyFile)
 		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to initialize networking.")
+			return nil, errors.Wrapf(err, "Unable to open server private key file: %s", c.PrivateKeyFile)
 		}
+		privateKeyHex = strings.TrimSpace(string(bytes))
+	} else {
+		log.Info().Msg("Generating a random wallet")
+		privateKeyHex = ed25519.RandomKeyPair().PrivateKeyHex()
+	}
 
-		go net.Listen()
+	keys, err := crypto.FromPrivateKey(security.SignaturePolicy, privateKeyHex)
+	if err != nil {
+		return nil, errors.Wrap(err, "Unable to decode server private key")
+	}
 
-		net.BlockUntilListening()
+	w := node.NewPlugin(node.Options{
+		DatabasePath:  c.DatabasePath,
+		ServicesPath:  c.ServicesPath,
+		GenesisPath:   c.GenesisPath,
+		ResetDatabase: c.ResetDatabase,
+	})
 
-		if len(peers) > 0 {
-			net.Bootstrap(peers...)
-		}
+	builder := network.NewBuilder()
 
-		if apiPort > 0 {
-			clients := []*api.ClientInfo{}
-			for _, key := range apiPublicKeys {
-				client := &api.ClientInfo{
-					PublicKey: key,
+	builder.SetKeys(keys)
+	builder.SetAddress(network.FormatAddress("tcp", c.Host, uint16(c.Port)))
+
+	builder.AddPlugin(new(discovery.Plugin))
+	builder.AddPlugin(w)
+
+	net, err := builder.Build()
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to initialize networking.")
+	}
+
+	go net.Listen()
+
+	net.BlockUntilListening()
+
+	if len(c.Peers) > 0 {
+		net.Bootstrap(c.Peers...)
+	}
+
+	if c.APIPort > 0 {
+		var clients []*api.ClientInfo
+
+		if len(c.APIPrivateKeysFile) > 0 {
+			bytes, err := ioutil.ReadFile(c.APIPrivateKeysFile)
+			if err != nil {
+				return nil, errors.Wrapf(err, "Unable to open api private keys file: %s", c.APIPrivateKeysFile)
+			}
+			privateKeysHex := strings.Split(string(bytes), "\n")
+			for i, privateKeyHex := range privateKeysHex {
+				trimmed := strings.TrimSpace(privateKeyHex)
+				if len(trimmed) == 0 {
+					continue
+				}
+				keys, err := crypto.FromPrivateKey(security.SignaturePolicy, trimmed)
+				if err != nil {
+					log.Info().Msgf("Unable to decode key %d from file %s", i, c.APIPrivateKeysFile)
+					continue
+				}
+				clients = append(clients, &api.ClientInfo{
+					PublicKey: keys.PublicKeyHex(),
 					Permissions: api.ClientPermissions{
 						CanSendTransaction: true,
 						CanPollTransaction: true,
 						CanControlStats:    true,
 					},
-				}
-				clients = append(clients, client)
+				})
 			}
-			go api.Run(net, api.Options{
-				ListenAddr: fmt.Sprintf("%s:%d", apiHost, apiPort),
-				Clients:    clients,
-			})
+		}
+		go api.Run(net, api.Options{
+			ListenAddr: fmt.Sprintf("%s:%d", c.APIHost, c.APIPort),
+			Clients:    clients,
+		})
 
-			log.Info().
-				Str("host", apiHost).
-				Uint("port", apiPort).
-				Msg("Local HTTP API is being served.")
+		log.Info().
+			Str("host", c.APIHost).
+			Uint("port", c.APIPort).
+			Msg("Local HTTP API is being served.")
+	}
+
+	exit := make(chan os.Signal, 1)
+	signal.Notify(exit, os.Interrupt)
+
+	if c.Daemon {
+		<-exit
+
+		net.Close()
+		os.Exit(0)
+	}
+
+	go func() {
+		<-exit
+
+		net.Close()
+		os.Exit(0)
+	}()
+
+	return w, nil
+}
+
+func runShell(w *node.Wavelet) error {
+	reader := bufio.NewReader(os.Stdout)
+
+	for {
+		fmt.Print("Enter a message: ")
+
+		bytes, _, err := reader.ReadLine()
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to read line from stdin.")
 		}
 
-		exit := make(chan os.Signal, 1)
-		signal.Notify(exit, os.Interrupt)
+		cmd := strings.Split(string(bytes), " ")
 
-		if daemon {
-			<-exit
-
-			net.Close()
-			os.Exit(0)
-		}
-
-		go func() {
-			<-exit
-
-			net.Close()
-			os.Exit(0)
-		}()
-
-		reader := bufio.NewReader(os.Stdout)
-
-		for {
-			fmt.Print("Enter a message: ")
-
-			bytes, _, err := reader.ReadLine()
-			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to read line from stdin.")
-			}
-
-			cmd := strings.Split(string(bytes), " ")
-
-			switch cmd[0] {
-			case "w":
+		switch cmd[0] {
+		case "w":
+			if len(cmd) < 2 {
 				w.Ledger.Do(func(l *wavelet.Ledger) {
 					log.Info().
 						Str("id", hex.EncodeToString(w.Wallet.PublicKey)).
@@ -235,105 +305,143 @@ func main() {
 						Uint64("balance", w.Wallet.GetBalance(l)).
 						Msg("Here is your wallet information.")
 				})
-			case "a":
-				if len(cmd) < 2 {
-					continue
-				}
 
-				accountID, err := hex.DecodeString(cmd[1])
-
-				if err != nil {
-					log.Error().Msg("The account ID you specified is invalid.")
-					continue
-				}
-
-				w.Ledger.Do(func(l *wavelet.Ledger) {
-					account, err := l.LoadAccount(accountID)
-
-					if err != nil {
-						log.Error().Msg("There is no account with that ID in the database.")
-						return
-					}
-
-					balance, exists := account.Load("balance")
-					if !exists {
-						log.Error().Msg("The account has no balance associated to it.")
-						return
-					}
-
-					log.Info().
-						Uint64("nonce", account.Nonce).
-						Uint64("balance", binary.LittleEndian.Uint64(balance)).
-						Msgf("Account Info: %s", cmd[1])
-				})
-			case "p":
-				recipient := "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"
-				amount := 1
-
-				if len(cmd) >= 2 {
-					recipient = cmd[1]
-				}
-
-				if len(cmd) >= 3 {
-					amount, err = strconv.Atoi(cmd[2])
-					if err != nil {
-						log.Fatal().Err(err).Msg("Failed to convert payment amount to an uint64.")
-					}
-				}
-
-				transfer := struct {
-					Recipient string `json:"recipient"`
-					Amount    uint64 `json:"amount"`
-				}{
-					Recipient: recipient,
-					Amount:    uint64(amount),
-				}
-
-				payload, err := json.Marshal(transfer)
-				if err != nil {
-					log.Fatal().Err(err).Msg("Failed to marshal transfer payload.")
-				}
-
-				wired := w.MakeTransaction("transfer", payload)
-				go w.BroadcastTransaction(wired)
-			case "c":
-				if len(cmd) < 2 {
-					continue
-				}
-
-				bytes, err := ioutil.ReadFile(cmd[1])
-				if err != nil {
-					log.Error().
-						Err(err).
-						Str("path", cmd[1]).
-						Msg("Failed to find/load the smart contract code from the given path.")
-					continue
-				}
-
-				contract := struct {
-					Code string `json:"code"`
-				}{Code: base64.StdEncoding.EncodeToString(bytes)}
-
-				payload, err := json.Marshal(contract)
-				if err != nil {
-					log.Fatal().Err(err).Msg("Failed to marshal smart contract deployment payload.")
-				}
-
-				wired := w.MakeTransaction("create_contract", payload)
-				go w.BroadcastTransaction(wired)
-
-				contractID := hex.EncodeToString(wavelet.ContractID(graph.Symbol(wired)))
-
-				log.Info().Msgf("Success! Your smart contract ID is: %s", contractID)
-			default:
-				wired := w.MakeTransaction("nop", nil)
-				go w.BroadcastTransaction(wired)
+				continue
 			}
+
+			accountID, err := hex.DecodeString(cmd[1])
+
+			if err != nil {
+				log.Error().Msg("The account ID you specified is invalid.")
+				continue
+			}
+
+			var account *wavelet.Account
+
+			w.Ledger.Do(func(l *wavelet.Ledger) {
+				account, err = l.LoadAccount(accountID)
+			})
+
+			if err != nil {
+				log.Error().Msg("There is no account with that ID in the database.")
+				continue
+			}
+
+			balance, exists := account.Load("balance")
+			if !exists {
+				log.Error().Msg("The account has no balance associated to it.")
+				continue
+			}
+
+			log.Info().
+				Uint64("nonce", account.Nonce).
+				Uint64("balance", binary.LittleEndian.Uint64(balance)).
+				Msgf("Account Info: %s", cmd[1])
+		case "p":
+			recipient := "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"
+			amount := 1
+
+			if len(cmd) >= 2 {
+				recipient = cmd[1]
+			}
+
+			if len(cmd) >= 3 {
+				amount, err = strconv.Atoi(cmd[2])
+				if err != nil {
+					log.Fatal().Err(err).Msg("Failed to convert payment amount to an uint64.")
+				}
+			}
+
+			transfer := struct {
+				Recipient string `json:"recipient"`
+				Amount    uint64 `json:"amount"`
+			}{
+				Recipient: recipient,
+				Amount:    uint64(amount),
+			}
+
+			payload, err := json.Marshal(transfer)
+			if err != nil {
+				log.Fatal().Err(err).Msg("Failed to marshal transfer payload.")
+			}
+
+			wired := w.MakeTransaction("transfer", payload)
+			go w.BroadcastTransaction(wired)
+		case "c":
+			if len(cmd) < 2 {
+				continue
+			}
+
+			bytes, err := ioutil.ReadFile(cmd[1])
+			if err != nil {
+				log.Error().
+					Err(err).
+					Str("path", cmd[1]).
+					Msg("Failed to find/load the smart contract code from the given path.")
+				continue
+			}
+
+			contract := struct {
+				Code string `json:"code"`
+			}{Code: base64.StdEncoding.EncodeToString(bytes)}
+
+			payload, err := json.Marshal(contract)
+			if err != nil {
+				log.Warn().Err(err).Msg("Failed to marshal smart contract deployment payload.")
+				continue
+			}
+
+			wired := w.MakeTransaction("create_contract", payload)
+			go w.BroadcastTransaction(wired)
+
+			contractID := hex.EncodeToString(wavelet.ContractID(graph.Symbol(wired)))
+
+			log.Info().Msgf("Success! Your smart contract ID is: %s", contractID)
+		case "tx":
+			if len(cmd) < 2 {
+				continue
+			}
+
+			var tx *database.Transaction
+
+			w.Ledger.Do(func(l *wavelet.Ledger) {
+				tx, err = l.GetBySymbol(cmd[1])
+			})
+
+			if err != nil {
+				log.Error().Err(err).Msg("Unable to find transaction.")
+				continue
+			}
+
+			view := struct {
+				Sender    string                 `json:"sender"`
+				Nonce     uint64                 `json:"nonce"`
+				Tag       string                 `json:"tag"`
+				Payload   map[string]interface{} `json:"payload"`
+				Signature string                 `json:"signature"`
+				Parents   []string               `json:"parents"`
+			}{
+				Sender:    tx.Sender,
+				Nonce:     tx.Nonce,
+				Tag:       tx.Tag,
+				Payload:   make(map[string]interface{}),
+				Signature: hex.EncodeToString(tx.Signature),
+				Parents:   tx.Parents,
+			}
+
+			err := json.Unmarshal(tx.Payload, &view.Payload)
+
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to unmarshal transactions payload.")
+				continue
+			}
+
+			log.Info().Interface("tx", view).Msg("Here is the transaction you requested.")
+		default:
+			wired := w.MakeTransaction("nop", nil)
+			go w.BroadcastTransaction(wired)
 		}
 	}
 
-	err := app.Run(os.Args)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to parse configuration/command-line arugments.")
-	}
+	return nil
 }

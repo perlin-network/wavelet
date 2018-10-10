@@ -9,6 +9,7 @@ var (
 	numAcceptedTransactionsStat          expvar.Int
 	numAcceptedTransactionsPerSecondStat expvar.Int
 	consensusDurationStat                expvar.Float
+	numPendingTx                         expvar.Int
 
 	uptimeStat  expvar.String
 	laptimeStat expvar.Float
@@ -66,10 +67,16 @@ func SetConsensusDuration(value float64) {
 	consensusDurationStat.Set(value)
 }
 
+// SetNumPendingTx will update the number of pending transactions.
+func SetNumPendingTx(value int64) {
+	numPendingTx.Set(value)
+}
+
 // Reset sets all metrics to 0
 func Reset() {
 	lapStartTime = time.Now()
 	consensusDurationStat.Set(0)
+	numPendingTx.Set(0)
 	numAcceptedTransactionsStat.Set(0)
 	numAcceptedTransactionsPerSecondStat.Set(0)
 	lastAcceptByTagPerSecStat.Init()
@@ -98,6 +105,7 @@ func Summary() interface{} {
 		ConsensusDuration                float64          `json:"consensus_duration"`
 		NumAcceptedTransactions          int64            `json:"num_accepted_transactions"`
 		NumAcceptedTransactionsPerSecond int64            `json:"num_accepted_transactions_per_sec"`
+		NumPendingTx                     int64            `json:"num_pending_transactions"`
 		Uptime                           float64          `json:"uptime"`
 		LapTime                          float64          `json:"laptime"`
 		LastAcceptByTagPerSec            map[string]int64 `json:"last_accept_by_tag_per_sec"`
@@ -106,6 +114,7 @@ func Summary() interface{} {
 		ConsensusDuration:                consensusDurationStat.Value(),
 		NumAcceptedTransactions:          numAcceptedTransactionsStat.Value(),
 		NumAcceptedTransactionsPerSecond: numAcceptedTransactionsPerSecondStat.Value(),
+		NumPendingTx:                     numPendingTx.Value(),
 		Uptime:                           t.Seconds(),
 		LapTime:                          laptimeStat.Value(),
 		LastAcceptByTagPerSec:            lastAcceptByTagPerSec,
