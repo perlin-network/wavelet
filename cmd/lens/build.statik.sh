@@ -2,7 +2,7 @@
 set -eu
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
-GIT_BRANCH="master"
+GIT_BRANCH=${GIT_BRANCH-"master"}
 
 cd ${SCRIPT_DIR}
 rm -rf lens statik
