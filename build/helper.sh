@@ -36,7 +36,8 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
             -o ${BUILD_BIN}/${OS}-${ARCH}/lens \
             -ldflags "-s -w \
                 -X ${PROJ_DIR}/params.GitCommit=${GIT_COMMIT} \
-                -X ${PROJ_DIR}/params.GoVersion=${GO_VERSION}" \
+                -X ${PROJ_DIR}/params.GoVersion=${GO_VERSION} \
+                -X ${PROJ_DIR}/params.OSArch=${os_arch}" \
             cmd/lens/main.go
     fi
 
