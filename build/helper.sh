@@ -18,14 +18,16 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
         -o ${BUILD_BIN}/${OS}-${ARCH}/wavelet \
         -ldflags "-s -w \
             -X ${PROJ_DIR}/params.GitCommit=${GIT_COMMIT} \
-            -X ${PROJ_DIR}/params.GoVersion=${GO_VERSION}" \
+            -X ${PROJ_DIR}/params.GoVersion=${GO_VERSION} \
+            -X ${PROJ_DIR}/params.OSArch=${os_arch}" \
         cmd/wavelet/main.go
 
     go build \
         -o ${BUILD_BIN}/${OS}-${ARCH}/wctl \
         -ldflags "-s -w \
             -X ${PROJ_DIR}/params.GitCommit=${GIT_COMMIT} \
-            -X ${PROJ_DIR}/params.GoVersion=${GO_VERSION}" \
+            -X ${PROJ_DIR}/params.GoVersion=${GO_VERSION} \
+            -X ${PROJ_DIR}/params.OSArch=${os_arch}" \
         cmd/wctl/main.go
 
     if [ -d "cmd/lens/statik" ]; then
