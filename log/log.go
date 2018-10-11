@@ -10,7 +10,15 @@ import (
 )
 
 var (
-	logger = zerolog.New(os.Stderr).With().Timestamp().Logger()
+	logger       = zerolog.New(os.Stderr).With().Timestamp().Logger()
+	levelMapping = map[string]zerolog.Level{
+		"off":   zerolog.Disabled,
+		"debug": zerolog.DebugLevel,
+		"info":  zerolog.InfoLevel,
+		"warn":  zerolog.WarnLevel,
+		"error": zerolog.ErrorLevel,
+		"fatal": zerolog.FatalLevel,
+	}
 )
 
 func init() {
@@ -23,6 +31,13 @@ func init() {
 // Disable disables the logger.
 func Disable() {
 	logger = zerolog.New(nil).Level(zerolog.Disabled)
+}
+
+// SetLevel sets the log level, accepts one of "off|debug|info|warn|error|fatal|panic"
+func SetLevel(level string) {
+	if l, ok := levelMapping[level]; ok {
+		logger = logger.Level(l)
+	}
 }
 
 // Output duplicates the global logger and sets w as its output.

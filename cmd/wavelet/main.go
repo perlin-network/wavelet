@@ -35,6 +35,7 @@ import (
 	"gopkg.in/urfave/cli.v1/altsrc"
 )
 
+// struct to configure how to start the node
 type Config struct {
 	PrivateKeyFile     string
 	Host               string
@@ -48,6 +49,7 @@ type Config struct {
 	APIPort            uint
 	APIPrivateKeysFile string
 	Daemon             bool
+	LogLevel           string
 }
 
 func main() {
@@ -116,6 +118,11 @@ func main() {
 			Name:  "daemon",
 			Usage: "Run node in daemon mode. Daemon mode means no standard input needed.",
 		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:  "log_level",
+			Value: "info",
+			Usage: "Minimum level at which logs will be printed to stdout. One of off|debug|info|warn|error|fatal `LOG_LEVEL`",
+		}),
 		// config specifies the file that overrides altsrc
 		cli.StringFlag{
 			Name:  "config",
@@ -154,6 +161,7 @@ func main() {
 			APIPort:            c.Uint("api.port"),
 			APIPrivateKeysFile: c.String("api.private_keys_file"),
 			Daemon:             c.Bool("daemon"),
+			LogLevel:           c.String("log_level"),
 		}
 
 		// start the plugin
@@ -178,6 +186,8 @@ func main() {
 }
 
 func runServer(c *Config) (*node.Wavelet, error) {
+	log.SetLevel(c.LogLevel)
+
 	var privateKeyHex string
 	if len(c.PrivateKeyFile) > 0 && c.PrivateKeyFile != "random" {
 		bytes, err := ioutil.ReadFile(c.PrivateKeyFile)
