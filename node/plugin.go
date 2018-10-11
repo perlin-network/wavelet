@@ -11,6 +11,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/security"
 	"github.com/pkg/errors"
+	"math/rand"
 	"os"
 )
 
@@ -106,9 +107,6 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 			existed = l.TransactionExists(id)
 		})
 
-		go w.syncWorker.QueryChildren(id)
-		go w.syncWorker.QueryParents(msg.Parents)
-
 		if existed {
 			w.Ledger.Do(func(l *wavelet.Ledger) {
 				res.StronglyPreferred = l.IsStronglyPreferred(id)
@@ -123,7 +121,15 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 			})
 
 			log.Debug().Str("id", id).Str("tag", msg.Tag).Msgf("Received an existing transaction, and voted '%t' for it.", res.StronglyPreferred)
+
+			if rand.Intn(3) == 0 {
+				go w.syncWorker.QueryChildren(id)
+				go w.syncWorker.QueryParents(msg.Parents)
+			}
 		} else {
+			go w.syncWorker.QueryChildren(id)
+			go w.syncWorker.QueryParents(msg.Parents)
+
 			var err error
 
 			w.Ledger.Do(func(l *wavelet.Ledger) {
