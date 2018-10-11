@@ -33,7 +33,7 @@ func Disable() {
 	logger = zerolog.New(nil).Level(zerolog.Disabled)
 }
 
-// SetLevel sets the log level, accepts one of "off|debug|info|warn|error|fatal|panic"
+// SetLevel sets the log level, accepts one of "off|debug|info|warn|error|fatal"
 func SetLevel(level string) {
 	if l, ok := levelMapping[level]; ok {
 		logger = logger.Level(l)

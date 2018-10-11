@@ -35,7 +35,7 @@ import (
 	"gopkg.in/urfave/cli.v1/altsrc"
 )
 
-// struct to configure how to start the node
+// Config describes how to start the node
 type Config struct {
 	PrivateKeyFile     string
 	Host               string
