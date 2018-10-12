@@ -75,7 +75,7 @@ func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 		prot = "wss"
 	}
 
-	url := fmt.Sprintf("%s://%s:%d/%s", prot, c.Config.APIHost, c.Config.APIPort, path)
+	url := fmt.Sprintf("%s://%s:%d%s", prot, c.Config.APIHost, c.Config.APIPort, path)
 
 	header := make(http.Header)
 	header.Add("X-Session-Token", c.SessionToken)
@@ -256,6 +256,15 @@ func (c *Client) LoadAccount(id string) (map[string][]byte, error) {
 func (c *Client) ServerVersion() (sv *ServerVersion, err error) {
 	err = c.Request("/server/version", nil, &sv)
 	return
+}
+
+func (c *Client) LedgerState() (*LedgerState, error) {
+	var ret LedgerState
+	err := c.Request("/ledger/state", nil, &ret)
+	if err != nil {
+		return nil, err
+	}
+	return &ret, nil
 }
 
 // userAgent is a short summary of the client type making the connection

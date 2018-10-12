@@ -162,12 +162,7 @@ func (s *service) ledgerStateHandler(ctx *requestContext) {
 
 	routes := plugin.(*discovery.Plugin).Routes
 
-	state := struct {
-		PublicKey string                 `json:"public_key"`
-		Address   string                 `json:"address"`
-		Peers     []string               `json:"peers"`
-		State     map[string]interface{} `json:"state"`
-	}{
+	state := &LedgerState{
 		PublicKey: s.network.ID.PublicKeyHex(),
 		Address:   s.network.ID.Address,
 		Peers:     routes.GetPeerAddresses(),

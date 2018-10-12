@@ -43,6 +43,14 @@ type ServerVersion struct {
 	OSArch    string `json:"os_arch"`
 }
 
+// LedgerState represents the state of the ledger.
+type LedgerState struct {
+	PublicKey string                 `json:"public_key"`
+	Address   string                 `json:"address"`
+	Peers     []string               `json:"peers"`
+	State     map[string]interface{} `json:"state"`
+}
+
 func (c ClientInfo) String() string {
 	return fmt.Sprintf("public_key: %s permissions: %+v", c.PublicKey, c.Permissions)
 }
