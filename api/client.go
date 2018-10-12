@@ -13,6 +13,7 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/wavelet/events"
+	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/security"
 	"github.com/pkg/errors"
 )
@@ -94,19 +95,21 @@ func (c *Client) Request(path string, body, out interface{}) error {
 	if err != nil {
 		return err
 	}
-
-	rawBody, err := json.Marshal(body)
-	if err != nil {
-		return err
-	}
-
 	req := &http.Request{
 		Method: "POST",
 		URL:    u,
 		Header: map[string][]string{
 			"X-Session-Token": []string{c.SessionToken},
+			"User-Agent":      []string{userAgent()},
 		},
-		Body: ioutil.NopCloser(bytes.NewReader(rawBody)),
+	}
+
+	if body != nil {
+		rawBody, err := json.Marshal(body)
+		if err != nil {
+			return err
+		}
+		req.Body = ioutil.NopCloser(bytes.NewReader(rawBody))
 	}
 
 	client := &http.Client{}
@@ -237,7 +240,7 @@ func (c *Client) RecentTransactions() (transactions []*wire.Transaction, err err
 
 // StatsReset will reset a client statistics.
 func (c *Client) StatsReset(res interface{}) error {
-	return c.Request("/stats/reset", struct{}{}, res)
+	return c.Request("/stats/reset", nil, res)
 }
 
 func (c *Client) LoadAccount(id string) (map[string][]byte, error) {
@@ -251,6 +254,11 @@ func (c *Client) LoadAccount(id string) (map[string][]byte, error) {
 }
 
 func (c *Client) ServerVersion() (sv *ServerVersion, err error) {
-	err = c.Request("/server/version", ServerVersion{}, &sv)
+	err = c.Request("/server/version", nil, &sv)
 	return
+}
+
+// userAgent is a short summary of the client type making the connection
+func userAgent() string {
+	return fmt.Sprintf("wctl/%s-%s (%s)", params.Version, params.GitCommit, params.OSArch)
 }
