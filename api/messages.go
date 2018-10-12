@@ -40,6 +40,7 @@ type SessionResponse struct {
 type ServerVersion struct {
 	Version   string `json:"version"`
 	GitCommit string `json:"git_commit"`
+	OSArch    string `json:"os_arch"`
 }
 
 func (c ClientInfo) String() string {

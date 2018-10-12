@@ -17,6 +17,7 @@ const (
 var (
 	GitCommit = "unset"
 	GoVersion = "unset"
+	OSArch    = "unset"
 )
 
 // Version holds the textual version string.
