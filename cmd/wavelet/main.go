@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -51,6 +52,9 @@ type Config struct {
 }
 
 func main() {
+	// suppress the glog "logging before flag.Parse" error
+	flag.Parse()
+
 	app := cli.NewApp()
 
 	app.Name = "wavelet"
