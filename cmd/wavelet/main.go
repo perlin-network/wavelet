@@ -53,7 +53,7 @@ type Config struct {
 
 func main() {
 	// suppress the glog "logging before flag.Parse" error
-	flag.Parse()
+	flag.CommandLine.Parse([]string{})
 
 	app := cli.NewApp()
 
