@@ -11,6 +11,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/security"
 	"github.com/pkg/errors"
+	"math/rand"
 	"os"
 )
 
@@ -26,8 +27,9 @@ type Options struct {
 
 type Wavelet struct {
 	query
-	syncer
 	broadcaster
+
+	syncWorker *SyncWorker
 
 	net    *network.Network
 	routes *dht.RoutingTable
@@ -75,8 +77,8 @@ func (w *Wavelet) Startup(net *network.Network) {
 	w.query = query{Wavelet: w}
 	w.query.sybil = stake{query: w.query}
 
-	w.syncer = syncer{Wavelet: w, kill: make(chan struct{}, 1)}
-	go w.syncer.Init()
+	w.syncWorker = NewSyncWorker(w)
+	w.syncWorker.Start()
 
 	w.broadcaster = broadcaster{Wavelet: w}
 }
@@ -119,7 +121,15 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 			})
 
 			log.Debug().Str("id", id).Str("tag", msg.Tag).Msgf("Received an existing transaction, and voted '%t' for it.", res.StronglyPreferred)
+
+			if rand.Intn(3) == 0 {
+				go w.syncWorker.QueryChildren(id)
+				go w.syncWorker.QueryParents(msg.Parents)
+			}
 		} else {
+			go w.syncWorker.QueryChildren(id)
+			go w.syncWorker.QueryParents(msg.Parents)
+
 			var err error
 
 			w.Ledger.Do(func(l *wavelet.Ledger) {
@@ -169,21 +179,51 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				}
 			}()
 		}
-	case *SyncRequest:
-		err := ctx.Reply(w.RespondToSync(msg))
+	case *SyncChildrenQueryRequest:
+		var childrenIDs []string
 
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to send response.")
-			return err
+		w.Ledger.Do(func(l *wavelet.Ledger) {
+			children, err := l.Store.GetChildrenBySymbol(msg.Id)
+			if err != nil {
+				log.Error().Err(err).Msg("cannot get children")
+			} else {
+				childrenIDs = children.Transactions
+			}
+		})
+
+		if childrenIDs == nil {
+			childrenIDs = make([]string, 0)
 		}
 
+		ctx.Reply(&SyncChildrenQueryResponse{
+			Children: childrenIDs,
+		})
+	case *TxPushHint:
+		for _, id := range msg.Transactions {
+			var out *wire.Transaction
+
+			w.Ledger.Do(func(l *wavelet.Ledger) {
+				if tx, err := l.Store.GetBySymbol(id); err == nil {
+					out = &wire.Transaction{
+						Sender:    tx.Sender,
+						Nonce:     tx.Nonce,
+						Parents:   tx.Parents,
+						Tag:       tx.Tag,
+						Payload:   tx.Payload,
+						Signature: tx.Signature,
+					}
+				}
+			})
+
+			if out != nil {
+				w.net.BroadcastByAddresses(out, ctx.Sender().Address)
+			}
+		}
 	}
 	return nil
 }
 
 func (w *Wavelet) Cleanup(net *network.Network) {
-	w.syncer.kill <- struct{}{}
-
 	w.Ledger.Do(func(l *wavelet.Ledger) {
 		err := l.Graph.Cleanup()
 

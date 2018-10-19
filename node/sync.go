@@ -1,245 +1,149 @@
 package node
 
 import (
-	"github.com/perlin-network/graph/database"
-	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/network/rpc"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/params"
-	"github.com/perlin-network/wavelet/security"
-	"github.com/sasha-s/go-IBLT"
-	"sync"
-	"sync/atomic"
 	"time"
 )
 
-type syncer struct {
-	*Wavelet
+const SyncQueryPeerNum = 3
+const SyncChildrenQueryPeerNum = 5
+const SyncBroadcastTxNum = 16
 
-	kill chan struct{}
+type SyncWorker struct {
+	wavelet *Wavelet
 }
 
-func (s *syncer) RespondToSync(req *SyncRequest) *SyncResponse {
-	res := new(SyncResponse)
-
-	peerTable := iblt.New(params.TxK, params.TxL)
-	if req.Table != nil {
-		err := peerTable.UnmarshalBinary(req.Table)
-
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to unmarshal peers transaction IBLT.")
-			return res
-		}
-	}
-
-	var selfTable *iblt.Filter
-	var diff *iblt.Diff
-	var err error
-
-	s.Ledger.Do(func(l *wavelet.Ledger) {
-		selfTable = l.IBLT.Clone()
-	})
-
-	err = selfTable.Sub(*peerTable)
-
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to diff() our IBLT w.r.t. our peers transaction IBLT.")
-		return res
-	}
-
-	diff, err = selfTable.Decode()
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to decode the diff. of our IBLT w.r.t. our peers transaction IBLT.")
-	}
-
-	var tx *database.Transaction
-
-	for _, id := range diff.Added {
-		s.Ledger.Do(func(l *wavelet.Ledger) {
-			tx, err = l.GetBySymbol(string(id))
-		})
-
-		if err != nil {
-			continue
-		}
-
-		wired := &wire.Transaction{
-			Sender:    tx.Sender,
-			Nonce:     tx.Nonce,
-			Parents:   tx.Parents,
-			Tag:       tx.Tag,
-			Payload:   tx.Payload,
-			Signature: tx.Signature,
-		}
-
-		res.Transactions = append(res.Transactions, wired)
-
-		if len(res.Transactions) > 100 {
-			break
-		}
-	}
-
-	return res
-}
-
-func (s *syncer) Init() {
-	for {
-		select {
-		case <-s.kill:
-			break
-		default:
-		}
-
-		s.sync()
-
-		time.Sleep(params.SyncPeriod)
-	}
-}
-
-func (s *syncer) sync() {
-	peers, err := s.randomlySelectPeers(params.SyncNumPeers)
-	if err != nil {
-		return
-	}
-
-	if len(peers) == 0 {
-		return
-	}
-
-	wg := new(sync.WaitGroup)
-	wg.Add(len(peers))
-
-	var encoded []byte
-
-	s.Ledger.Do(func(l *wavelet.Ledger) {
-		encoded, err = l.IBLT.MarshalBinary()
-	})
-
-	if err != nil {
-		return
-	}
-
-	request := new(rpc.Request)
-	request.SetTimeout(5 * time.Second)
-	request.SetMessage(&SyncRequest{Table: encoded})
-
-	var received []*wire.Transaction
-	var mutex sync.Mutex
-
-	for _, peer := range peers {
-		go func(address string) {
-			defer wg.Done()
-
-			client, err := s.net.Client(address)
-			if err != nil {
-				log.Error().Err(err).Msg("")
-				return
-			}
-
-			r, err := client.Request(request)
-			if err != nil {
-				log.Error().Err(err).Msg("")
-				return
-			}
-
-			res, ok := r.(*SyncResponse)
-			if !ok {
-				log.Error().Msg("node: response could not be converted to SyncResponse")
-				return
-			}
-
-			mutex.Lock()
-			received = append(received, res.Transactions...)
-			mutex.Unlock()
-		}(peer)
-	}
-
-	wg.Wait()
-
-	wg = new(sync.WaitGroup)
-
-	total := uint64(0)
-
-	for _, wired := range received {
-		if validated, err := security.ValidateWiredTransaction(wired); err != nil || !validated {
-			continue
-		}
-
-		id := graph.Symbol(wired)
-
-		successful := false
-
-		s.Ledger.Do(func(l *wavelet.Ledger) {
-			if l.TransactionExists(id) {
-				return
-			}
-
-			_, successful, err = l.RespondToQuery(wired)
-		})
-
-		if err != nil || !successful {
-			continue
-		}
-
-		wg.Add(1)
-
-		go func(wired *wire.Transaction) {
-			defer wg.Done()
-
-			err := s.Query(wired)
-
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to gossip out transaction which was received.")
-				return
-			}
-
-			var tx *database.Transaction
-
-			s.Ledger.Do(func(l *wavelet.Ledger) {
-				tx, err = l.GetBySymbol(id)
-			})
-
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to find transaction which was received.")
-				return
-			}
-
-			s.Ledger.Do(func(l *wavelet.Ledger) {
-				err = l.HandleSuccessfulQuery(tx)
-			})
-
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to update conflict set for transaction received which was gossiped out.")
-				return
-			}
-
-			atomic.AddUint64(&total, 1)
-		}(wired)
-	}
-
-	wg.Wait()
-
-	if count := atomic.LoadUint64(&total); count > 0 {
-		log.Info().
-			Uint64("num_synced", count).
-			Int("num_peers", len(peers)).
-			Msg("Synchronized transactions.")
+func NewSyncWorker(wavelet *Wavelet) *SyncWorker {
+	return &SyncWorker{
+		wavelet: wavelet,
 	}
 }
 
 // randomlySelectPeers randomly selects N closest peers w.r.t. this node.
-func (s *syncer) randomlySelectPeers(n int) ([]string, error) {
-	peers := s.routes.FindClosestPeers(s.net.ID, n+1)
+func (w *SyncWorker) randomlySelectPeers(n int) ([]string, error) {
+	peers := w.wavelet.routes.FindClosestPeers(w.wavelet.net.ID, n+1)
 
 	var addresses []string
 
 	for _, peer := range peers {
-		if peer.Address != s.net.ID.Address {
+		if peer.Address != w.wavelet.net.ID.Address {
 			addresses = append(addresses, peer.Address)
 		}
 	}
 
 	return addresses, nil
+}
+
+func (w *SyncWorker) RunSeedBroadcastLoop() {
+	for {
+		time.Sleep(3 * time.Second)
+		var tx *wire.Transaction
+
+		w.wavelet.Ledger.Do(func(l *wavelet.Ledger) {
+			selected := l.Graph.Store.GetMostRecentlyUsed(2)
+			if len(selected) != 0 {
+				raw, err := l.Graph.Store.GetBySymbol(selected[len(selected)-1])
+				if err == nil {
+					tx = &wire.Transaction{
+						Sender:    raw.Sender,
+						Nonce:     raw.Nonce,
+						Parents:   raw.Parents,
+						Tag:       raw.Tag,
+						Payload:   raw.Payload,
+						Signature: raw.Signature,
+					}
+				} else {
+					log.Error().Err(err).Msg("cannot get tx by symbol")
+				}
+			}
+		})
+
+		if tx == nil {
+			continue
+		}
+
+		w.wavelet.net.BroadcastRandomly(tx, SyncQueryPeerNum)
+	}
+}
+
+func (w *SyncWorker) Start() {
+	go w.RunSeedBroadcastLoop()
+}
+
+func (w *SyncWorker) QueryParents(parents []string) {
+	pushHint := make([]string, 0)
+	w.wavelet.Ledger.Do(func(l *wavelet.Ledger) {
+		for _, p := range parents {
+			if !l.Store.TransactionExists(p) {
+				pushHint = append(pushHint, p)
+			}
+		}
+	})
+	w.wavelet.net.BroadcastRandomly(&TxPushHint{
+		Transactions: pushHint,
+	}, 3)
+}
+
+func (w *SyncWorker) QueryChildren(id string) {
+	peers, err := w.randomlySelectPeers(SyncChildrenQueryPeerNum)
+	if err != nil {
+		log.Error().Err(err).Msg("unable to select peers")
+		return
+	}
+
+	children := make(map[string]struct{})
+
+	for _, p := range peers {
+		client, err := w.wavelet.net.Client(p)
+		if err != nil {
+			log.Error().Err(err).Msg("unable to create client")
+			continue
+		}
+
+		request := new(rpc.Request)
+		request.SetTimeout(10 * time.Second)
+		request.SetMessage(&SyncChildrenQueryRequest{
+			Id: id,
+		})
+		_res, err := client.Request(request)
+		if err != nil {
+			log.Error().Err(err).Msg("request failed")
+			continue
+		}
+		res, ok := _res.(*SyncChildrenQueryResponse)
+		if !ok {
+			log.Error().Err(err).Msg("response type mismatch")
+			continue
+		}
+
+		for _, child := range res.Children {
+			children[child] = struct{}{}
+		}
+	}
+
+	deleteList := make([]string, 0)
+
+	w.wavelet.Ledger.Do(func(l *wavelet.Ledger) {
+		for c, _ := range children {
+			if l.Store.TransactionExists(c) {
+				deleteList = append(deleteList, c)
+			}
+		}
+	})
+
+	for _, c := range deleteList {
+		delete(children, c)
+	}
+
+	pushHint := make([]string, 0)
+	for c, _ := range children {
+		pushHint = append(pushHint, c)
+	}
+
+	w.wavelet.net.BroadcastRandomly(&TxPushHint{
+		Transactions: pushHint,
+	}, 3)
 }
