@@ -5,31 +5,22 @@ import (
 	"github.com/perlin-network/noise/network/rpc"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/params"
 	"time"
 )
 
-const SyncQueryPeerNum = 3
-const SyncChildrenQueryPeerNum = 5
-const SyncBroadcastTxNum = 16
-
-type SyncWorker struct {
-	wavelet *Wavelet
-}
-
-func NewSyncWorker(wavelet *Wavelet) *SyncWorker {
-	return &SyncWorker{
-		wavelet: wavelet,
-	}
+type syncer struct {
+	*Wavelet
 }
 
 // randomlySelectPeers randomly selects N closest peers w.r.t. this node.
-func (w *SyncWorker) randomlySelectPeers(n int) ([]string, error) {
-	peers := w.wavelet.routes.FindClosestPeers(w.wavelet.net.ID, n+1)
+func (s *syncer) randomlySelectPeers(n int) ([]string, error) {
+	peers := s.routes.FindClosestPeers(s.net.ID, n+1)
 
 	var addresses []string
 
 	for _, peer := range peers {
-		if peer.Address != w.wavelet.net.ID.Address {
+		if peer.Address != s.net.ID.Address {
 			addresses = append(addresses, peer.Address)
 		}
 	}
@@ -37,26 +28,36 @@ func (w *SyncWorker) randomlySelectPeers(n int) ([]string, error) {
 	return addresses, nil
 }
 
-func (w *SyncWorker) RunSeedBroadcastLoop() {
+// hinterLoop hints transactions we have to other nodes which said nodes may not have.
+func (s *syncer) hinterLoop() {
 	for {
-		time.Sleep(3 * time.Second)
+		time.Sleep(params.SyncHintPeriod * time.Second)
+
 		var tx *wire.Transaction
 
-		w.wavelet.Ledger.Do(func(l *wavelet.Ledger) {
-			selected := l.Graph.Store.GetMostRecentlyUsed(2)
-			if len(selected) != 0 {
-				raw, err := l.Graph.Store.GetBySymbol(selected[len(selected)-1])
-				if err == nil {
-					tx = &wire.Transaction{
-						Sender:    raw.Sender,
-						Nonce:     raw.Nonce,
-						Parents:   raw.Parents,
-						Tag:       raw.Tag,
-						Payload:   raw.Payload,
-						Signature: raw.Signature,
-					}
-				} else {
-					log.Error().Err(err).Msg("cannot get tx by symbol")
+		s.Ledger.Do(func(l *wavelet.Ledger) {
+			if recent := l.Store.GetMostRecentlyUsed(3); len(recent) > 0 {
+				// Randomly pick a transaction out of the most recently used.
+				symbol := recent[len(recent)/2]
+
+				if len(symbol) > 64 {
+					// TODO(kenta): A hack in place as all symbols in tx object cache are prefixed with 'tx_'.
+					symbol = symbol[3:]
+				}
+
+				raw, err := l.Store.GetBySymbol(symbol)
+
+				if err != nil {
+					return
+				}
+
+				tx = &wire.Transaction{
+					Sender:    raw.Sender,
+					Nonce:     raw.Nonce,
+					Parents:   raw.Parents,
+					Tag:       raw.Tag,
+					Payload:   raw.Payload,
+					Signature: raw.Signature,
 				}
 			}
 		})
@@ -65,30 +66,36 @@ func (w *SyncWorker) RunSeedBroadcastLoop() {
 			continue
 		}
 
-		w.wavelet.net.BroadcastRandomly(tx, SyncQueryPeerNum)
+		s.net.BroadcastRandomly(tx, params.SyncHintNumPeers)
 	}
 }
 
-func (w *SyncWorker) Start() {
-	go w.RunSeedBroadcastLoop()
+func (s *syncer) Start() {
+	go s.hinterLoop()
 }
 
-func (w *SyncWorker) QueryParents(parents []string) {
+// QueryMissingParents queries other nodes for parents of a children which we may
+// not ahve in store.
+func (s *syncer) QueryMissingParents(parents []string) {
 	pushHint := make([]string, 0)
-	w.wavelet.Ledger.Do(func(l *wavelet.Ledger) {
+
+	s.Ledger.Do(func(l *wavelet.Ledger) {
 		for _, p := range parents {
 			if !l.Store.TransactionExists(p) {
 				pushHint = append(pushHint, p)
 			}
 		}
 	})
-	w.wavelet.net.BroadcastRandomly(&TxPushHint{
+
+	s.net.BroadcastRandomly(&TxPushHint{
 		Transactions: pushHint,
 	}, 3)
 }
 
-func (w *SyncWorker) QueryChildren(id string) {
-	peers, err := w.randomlySelectPeers(SyncChildrenQueryPeerNum)
+// QueryMissingChildren queries other nodes for children of a transaction which we may
+// not have in store.
+func (s *syncer) QueryMissingChildren(id string) {
+	peers, err := s.randomlySelectPeers(params.SyncNumPeers)
 	if err != nil {
 		log.Error().Err(err).Msg("unable to select peers")
 		return
@@ -97,23 +104,25 @@ func (w *SyncWorker) QueryChildren(id string) {
 	children := make(map[string]struct{})
 
 	for _, p := range peers {
-		client, err := w.wavelet.net.Client(p)
+		client, err := s.net.Client(p)
 		if err != nil {
 			log.Error().Err(err).Msg("unable to create client")
 			continue
 		}
 
-		request := new(rpc.Request)
-		request.SetTimeout(10 * time.Second)
-		request.SetMessage(&SyncChildrenQueryRequest{
+		req := new(rpc.Request)
+		req.SetTimeout(10 * time.Second)
+		req.SetMessage(&SyncChildrenQueryRequest{
 			Id: id,
 		})
-		_res, err := client.Request(request)
+
+		r, err := client.Request(req)
 		if err != nil {
 			log.Error().Err(err).Msg("request failed")
 			continue
 		}
-		res, ok := _res.(*SyncChildrenQueryResponse)
+
+		res, ok := r.(*SyncChildrenQueryResponse)
 		if !ok {
 			log.Error().Err(err).Msg("response type mismatch")
 			continue
@@ -126,7 +135,7 @@ func (w *SyncWorker) QueryChildren(id string) {
 
 	deleteList := make([]string, 0)
 
-	w.wavelet.Ledger.Do(func(l *wavelet.Ledger) {
+	s.Ledger.Do(func(l *wavelet.Ledger) {
 		for c, _ := range children {
 			if l.Store.TransactionExists(c) {
 				deleteList = append(deleteList, c)
@@ -143,7 +152,7 @@ func (w *SyncWorker) QueryChildren(id string) {
 		pushHint = append(pushHint, c)
 	}
 
-	w.wavelet.net.BroadcastRandomly(&TxPushHint{
+	s.net.BroadcastRandomly(&TxPushHint{
 		Transactions: pushHint,
-	}, 3)
+	}, params.SyncHintNumPeers)
 }

@@ -7,14 +7,17 @@ message QueryResponse {
     bool strongly_preferred = 2;
 }
 
+// Query for children our node might be missing for a given transaction.
 message SyncChildrenQueryRequest {
     string id = 1;
 }
 
+// Response to SyncChildrenQueryRequest.
 message SyncChildrenQueryResponse {
     repeated string children = 1;
 }
 
+// Hint a potentially missing list of transactions nodes may not have.
 message TxPushHint {
     repeated string transactions = 1;
 }
