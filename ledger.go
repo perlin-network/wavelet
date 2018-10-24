@@ -12,7 +12,6 @@ import (
 	"github.com/perlin-network/wavelet/stats"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
-	"github.com/sasha-s/go-IBLT"
 	"sort"
 	"time"
 )
@@ -22,8 +21,6 @@ var (
 	BucketAcceptedIndex = writeBytes("i.accepted_")
 
 	BucketAcceptPending = writeBytes("p.accepted_")
-
-	KeyTransactionIBLT = writeBytes("tx_iblt")
 )
 
 var (
@@ -37,8 +34,6 @@ type Ledger struct {
 	*database.Store
 	*graph.Graph
 	*conflict.Resolver
-
-	IBLT *iblt.Filter
 
 	kill chan struct{}
 
@@ -81,16 +76,6 @@ func NewLedger(databasePath, servicesPath, genesisPath string) *Ledger {
 		}
 
 		log.Info().Str("file", genesisPath).Int("num_accounts", len(genesis)).Msg("Successfully seeded the genesis of this node.")
-	}
-
-	ledger.IBLT = iblt.New(params.TxK, params.TxL)
-
-	if encoded, err := store.Get(KeyTransactionIBLT); err == nil {
-		err := ledger.IBLT.UnmarshalBinary(encoded)
-
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to decode transaction IBLT from database.")
-		}
 	}
 
 	ledger.registerServicePath(servicesPath)

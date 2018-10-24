@@ -9,6 +9,7 @@ import (
 	"github.com/perlin-network/noise/network/discovery"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/security"
 	"github.com/pkg/errors"
 	"math/rand"
@@ -28,8 +29,7 @@ type Options struct {
 type Wavelet struct {
 	query
 	broadcaster
-
-	syncWorker *SyncWorker
+	syncer
 
 	net    *network.Network
 	routes *dht.RoutingTable
@@ -77,8 +77,8 @@ func (w *Wavelet) Startup(net *network.Network) {
 	w.query = query{Wavelet: w}
 	w.query.sybil = stake{query: w.query}
 
-	w.syncWorker = NewSyncWorker(w)
-	w.syncWorker.Start()
+	w.syncer = syncer{Wavelet: w}
+	w.syncer.Start()
 
 	w.broadcaster = broadcaster{Wavelet: w}
 }
@@ -122,13 +122,13 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 
 			log.Debug().Str("id", id).Str("tag", msg.Tag).Msgf("Received an existing transaction, and voted '%t' for it.", res.StronglyPreferred)
 
-			if rand.Intn(3) == 0 {
-				go w.syncWorker.QueryChildren(id)
-				go w.syncWorker.QueryParents(msg.Parents)
+			if rand.Intn(params.SyncNeighborsLikelihood) == 0 {
+				go w.syncer.QueryMissingChildren(id)
+				go w.syncer.QueryMissingParents(msg.Parents)
 			}
 		} else {
-			go w.syncWorker.QueryChildren(id)
-			go w.syncWorker.QueryParents(msg.Parents)
+			go w.syncer.QueryMissingChildren(id)
+			go w.syncer.QueryMissingParents(msg.Parents)
 
 			var err error
 
