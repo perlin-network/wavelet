@@ -290,7 +290,7 @@ func (s *service) sessionInitHandler(ctx *requestContext) {
 	}
 
 	if err := validate.Struct(credentials); err != nil {
-		ctx.WriteJSON(http.StatusNotFound, fmt.Sprintf("invalid token: %+v", err))
+		ctx.WriteJSON(http.StatusNotFound, "invalid credentials")
 		return
 	}
 

@@ -45,9 +45,10 @@ func (r *registry) getSession(id string) (*session, bool) {
 // newSession creates a new session and stores it in registry.
 func (r *registry) newSession(permissions ClientPermissions) (*session, error) {
 	r.Lock()
-	defer r.Unlock()
+	numSessions := len(r.Sessions)
+	r.Unlock()
 
-	if len(r.Sessions) > MaxAllowableSessions {
+	if numSessions > MaxAllowableSessions {
 		return nil, errors.New("too many sessions active")
 	}
 
@@ -60,7 +61,9 @@ func (r *registry) newSession(permissions ClientPermissions) (*session, error) {
 		Permissions: permissions,
 	}
 
+	r.Lock()
 	r.Sessions[id] = sess
+	r.Unlock()
 
 	return sess, nil
 }

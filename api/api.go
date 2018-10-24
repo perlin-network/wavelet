@@ -1,9 +1,8 @@
 package api
 
 import (
-	_ "expvar"
-
 	"encoding/json"
+	_ "expvar"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -86,7 +85,7 @@ func (c *requestContext) requireHeader(names ...string) string {
 func (c *requestContext) loadSession() bool {
 	token := c.requireHeader(HeaderSessionToken, HeaderWebsocketProtocol)
 
-	if err := validate.Struct(token); err != nil {
+	if err := validate.Var(token, "min=32,max=40"); err != nil {
 		c.WriteJSON(http.StatusForbidden, "invalid session")
 		return false
 	}
