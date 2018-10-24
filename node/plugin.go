@@ -1,19 +1,23 @@
 package node
 
 import (
+	"math/rand"
+	"os"
+
+	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/params"
+	"github.com/perlin-network/wavelet/security"
+
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/dht"
 	"github.com/perlin-network/noise/network"
 	"github.com/perlin-network/noise/network/discovery"
-	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/params"
-	"github.com/perlin-network/wavelet/security"
+	"github.com/perlin-network/noise/types/opcode"
+
 	"github.com/pkg/errors"
-	"math/rand"
-	"os"
 )
 
 var _ network.PluginInterface = (*Wavelet)(nil)
@@ -38,6 +42,22 @@ type Wavelet struct {
 	Wallet *wavelet.Wallet
 
 	opts Options
+}
+
+const (
+	WireTransactionOpcode           = 4000
+	QueryResponseOpcode             = 4010
+	SyncChildrenQueryRequestOpcode  = 4011
+	SyncChildrenQueryResponseOpcode = 4012
+	TxPushHintOpcode                = 4013
+)
+
+func init() {
+	opcode.RegisterMessageType(opcode.Opcode(WireTransactionOpcode), &wire.Transaction{})
+	opcode.RegisterMessageType(opcode.Opcode(QueryResponseOpcode), &QueryResponse{})
+	opcode.RegisterMessageType(opcode.Opcode(SyncChildrenQueryRequestOpcode), &SyncChildrenQueryRequest{})
+	opcode.RegisterMessageType(opcode.Opcode(SyncChildrenQueryResponseOpcode), &SyncChildrenQueryResponse{})
+	opcode.RegisterMessageType(opcode.Opcode(TxPushHintOpcode), &TxPushHint{})
 }
 
 func NewPlugin(opts Options) *Wavelet {

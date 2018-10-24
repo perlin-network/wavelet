@@ -1,12 +1,13 @@
 package node
 
 import (
+	"context"
+	"time"
+
 	"github.com/perlin-network/graph/wire"
-	"github.com/perlin-network/noise/network/rpc"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/params"
-	"time"
 )
 
 type syncer struct {
@@ -110,13 +111,13 @@ func (s *syncer) QueryMissingChildren(id string) {
 			continue
 		}
 
-		req := new(rpc.Request)
-		req.SetTimeout(10 * time.Second)
-		req.SetMessage(&SyncChildrenQueryRequest{
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		msg := &SyncChildrenQueryRequest{
 			Id: id,
-		})
+		}
 
-		r, err := client.Request(req)
+		r, err := client.Request(ctx, msg)
 		if err != nil {
 			log.Error().Err(err).Msg("request failed")
 			continue
