@@ -326,7 +326,11 @@ func (s *service) sessionInitHandler(ctx *requestContext) {
 		return
 	}
 
-	session := s.registry.newSession(info.Permissions)
+	session, err := s.registry.newSession(info.Permissions)
+	if err != nil {
+		ctx.WriteJSON(http.StatusForbidden, "sessions limited")
+		return
+	}
 
 	ctx.WriteJSON(http.StatusOK, SessionResponse{
 		Token: session.ID,

@@ -7,6 +7,7 @@ import (
 	"unsafe"
 
 	"github.com/gofrs/uuid"
+	"github.com/pkg/errors"
 )
 
 // defaultSessionTimeout represents a default TTL for session.
@@ -42,7 +43,14 @@ func (r *registry) getSession(id string) (*session, bool) {
 }
 
 // newSession creates a new session and stores it in registry.
-func (r *registry) newSession(permissions ClientPermissions) *session {
+func (r *registry) newSession(permissions ClientPermissions) (*session, error) {
+	r.Lock()
+	defer r.Unlock()
+
+	if len(r.Sessions) > MaxAllowableSessions {
+		return nil, errors.New("too many sessions active")
+	}
+
 	currentTime := time.Now()
 	id := mustUUID(uuid.NewV4())
 	sess := &session{
@@ -52,11 +60,9 @@ func (r *registry) newSession(permissions ClientPermissions) *session {
 		Permissions: permissions,
 	}
 
-	r.Lock()
 	r.Sessions[id] = sess
-	r.Unlock()
 
-	return sess
+	return sess, nil
 }
 
 // Recycle will remove stale sessions.

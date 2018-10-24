@@ -14,4 +14,6 @@ const (
 	HeaderSessionToken      = "X-Session-Token"
 	HeaderWebsocketProtocol = "Sec-Websocket-Protocol"
 	HeaderUserAgent         = "User-Agent"
+
+	MaxAllowableSessions = 50000
 )
