@@ -31,7 +31,7 @@ func (s *service) pollAccountHandler(ctx *requestContext) {
 	}
 
 	headers := make(http.Header)
-	headers.Add("Sec-Websocket-Protocol", ctx.session.ID)
+	headers.Add(HeaderWebsocketProtocol, ctx.session.ID)
 
 	conn, err := s.upgrader.Upgrade(ctx.response, ctx.request, headers)
 	if err != nil {

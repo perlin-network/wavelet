@@ -78,7 +78,7 @@ func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 	url := fmt.Sprintf("%s://%s:%d%s", prot, c.Config.APIHost, c.Config.APIPort, path)
 
 	header := make(http.Header)
-	header.Add("X-Session-Token", c.SessionToken)
+	header.Add(HeaderSessionToken, c.SessionToken)
 
 	dialer := &websocket.Dialer{}
 	conn, _, err := dialer.Dial(url, header)
@@ -99,8 +99,8 @@ func (c *Client) Request(path string, body, out interface{}) error {
 		Method: "POST",
 		URL:    u,
 		Header: map[string][]string{
-			"X-Session-Token": []string{c.SessionToken},
-			"User-Agent":      []string{userAgent()},
+			HeaderSessionToken: []string{c.SessionToken},
+			HeaderUserAgent:    []string{userAgent()},
 		},
 	}
 

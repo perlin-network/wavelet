@@ -84,7 +84,7 @@ func (c *requestContext) requireHeader(names ...string) string {
 
 // loadSession sets a session for a request.
 func (c *requestContext) loadSession() bool {
-	token := c.requireHeader("X-Session-Token", "Sec-Websocket-Protocol")
+	token := c.requireHeader(HeaderSessionToken, HeaderWebsocketProtocol)
 
 	if err := validate.Struct(token); err != nil {
 		c.WriteJSON(http.StatusForbidden, "invalid session")
