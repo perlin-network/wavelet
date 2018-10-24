@@ -25,6 +25,11 @@ func (s *service) pollAccountHandler(ctx *requestContext) {
 		return
 	}
 
+	if !ctx.session.Permissions.CanAccessLedger {
+		ctx.WriteJSON(http.StatusForbidden, "permission denied")
+		return
+	}
+
 	headers := make(http.Header)
 	headers.Add("Sec-Websocket-Protocol", ctx.session.ID)
 
@@ -57,10 +62,7 @@ func (s *service) listTransactionHandler(ctx *requestContext) {
 	}
 
 	var transactions []*database.Transaction
-	var paginate struct {
-		Offset *uint64 `json:"offset"`
-		Limit  *uint64 `json:"limit"`
-	}
+	var paginate Paginate
 
 	err := ctx.readJSON(&paginate)
 
@@ -161,6 +163,11 @@ func (s *service) ledgerStateHandler(ctx *requestContext) {
 		return
 	}
 
+	if !ctx.session.Permissions.CanAccessLedger {
+		ctx.WriteJSON(http.StatusForbidden, "permission denied")
+		return
+	}
+
 	plugin, exists := s.network.Plugin(discovery.PluginID)
 
 	if !exists {
@@ -193,10 +200,7 @@ func (s *service) sendTransactionHandler(ctx *requestContext) {
 		return
 	}
 
-	var info struct {
-		Tag     string `json:"tag"`
-		Payload []byte `json:"payload"`
-	}
+	var info SendTransaction
 
 	if err := ctx.readJSON(&info); err != nil {
 		return
@@ -228,7 +232,7 @@ func (s *service) loadAccountHandler(ctx *requestContext) {
 		return
 	}
 
-	if !ctx.session.Permissions.CanPollTransaction {
+	if !ctx.session.Permissions.CanAccessLedger {
 		ctx.WriteJSON(http.StatusForbidden, "permission denied")
 		return
 	}
