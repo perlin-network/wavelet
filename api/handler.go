@@ -206,6 +206,11 @@ func (s *service) sendTransactionHandler(ctx *requestContext) {
 		return
 	}
 
+	if err := validate.Struct(info); err != nil {
+		ctx.WriteJSON(http.StatusBadRequest, "bad request body")
+		return
+	}
+
 	wired := s.wavelet.MakeTransaction(info.Tag, info.Payload)
 	go s.wavelet.BroadcastTransaction(wired)
 
