@@ -22,8 +22,8 @@ type Paginate struct {
 
 // SendTransaction is the payload sent to send a transaction
 type SendTransaction struct {
-	Tag     string `json:"tag"      validate:"required"`
-	Payload []byte `json:"payload"  validate:"required"`
+	Tag     string `json:"tag"      validate:"required,max=30"`
+	Payload []byte `json:"payload"  validate:"required,max=1024"`
 }
 
 // ServerVersion represents the response from a server version call
