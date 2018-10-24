@@ -7,16 +7,15 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/http/pprof"
 	"runtime/debug"
 	"time"
 
-	"github.com/perlin-network/noise/network"
-
 	"github.com/gorilla/websocket"
+	"github.com/perlin-network/noise/network"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/rs/cors"
-	"net/http/pprof"
 )
 
 // service represents a service.
@@ -86,6 +85,11 @@ func (c *requestContext) requireHeader(names ...string) string {
 // loadSession sets a session for a request.
 func (c *requestContext) loadSession() bool {
 	token := c.requireHeader("X-Session-Token", "Sec-Websocket-Protocol")
+
+	if err := validate.Struct(token); err != nil {
+		c.WriteJSON(http.StatusForbidden, "invalid session")
+		return false
+	}
 
 	session, ok := c.service.registry.getSession(token)
 

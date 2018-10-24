@@ -13,6 +13,11 @@ import (
 	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/security"
 	"github.com/perlin-network/wavelet/stats"
+	"gopkg.in/go-playground/validator.v9"
+)
+
+var (
+	validate = validator.New()
 )
 
 func (s *service) pollAccountHandler(ctx *requestContext) {
@@ -46,12 +51,16 @@ func (s *service) listTransactionHandler(ctx *requestContext) {
 		return
 	}
 
+	if !ctx.session.Permissions.CanPollTransaction {
+		ctx.WriteJSON(http.StatusForbidden, "permission denied")
+		return
+	}
+
+	var transactions []*database.Transaction
 	var paginate struct {
 		Offset *uint64 `json:"offset"`
 		Limit  *uint64 `json:"limit"`
 	}
-
-	var transactions []*database.Transaction
 
 	err := ctx.readJSON(&paginate)
 
@@ -68,7 +77,6 @@ func (s *service) listTransactionHandler(ctx *requestContext) {
 			paginate.Limit = &limit
 			paginate.Offset = &offset
 		}
-
 		transactions = ledger.PaginateTransactions(*paginate.Offset, *paginate.Limit)
 	})
 
@@ -274,6 +282,11 @@ func (s *service) serverVersionHandler(ctx *requestContext) {
 func (s *service) sessionInitHandler(ctx *requestContext) {
 	var credentials credentials
 	if err := ctx.readJSON(&credentials); err != nil {
+		return
+	}
+
+	if err := validate.Struct(credentials); err != nil {
+		ctx.WriteJSON(http.StatusNotFound, fmt.Sprintf("invalid token: %+v", err))
 		return
 	}
 

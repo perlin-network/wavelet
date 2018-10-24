@@ -125,7 +125,7 @@ func (c *Client) Request(path string, body, out interface{}) error {
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("got an error code %s: %s", resp.Status, string(data))
+		return errors.Errorf("got an error code %v: %v", resp.Status, data)
 	}
 
 	if out == nil {
