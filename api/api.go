@@ -114,15 +114,15 @@ func (s *service) init(mux *http.ServeMux) {
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
-	mux.HandleFunc("/session/init", s.wrap(s.sessionInitHandler))
-	mux.HandleFunc("/ledger/state", s.wrap(s.ledgerStateHandler))
-	mux.HandleFunc("/transaction/list", s.wrap(s.listTransactionHandler))
-	mux.HandleFunc("/transaction/poll", s.wrap(s.pollTransactionHandler))
-	mux.HandleFunc("/transaction/send", s.wrap(s.sendTransactionHandler))
-	mux.HandleFunc("/stats/reset", s.wrap(s.resetStatsHandler))
-	mux.HandleFunc("/account/load", s.wrap(s.loadAccountHandler))
-	mux.HandleFunc("/account/poll", s.wrap(s.pollAccountHandler))
-	mux.HandleFunc("/server/version", s.wrap(s.serverVersionHandler))
+	mux.HandleFunc(RouteSessionInit, s.wrap(s.sessionInitHandler))
+	mux.HandleFunc(RouteLedgerState, s.wrap(s.ledgerStateHandler))
+	mux.HandleFunc(RouteTransactionList, s.wrap(s.listTransactionHandler))
+	mux.HandleFunc(RouteTransactionPoll, s.wrap(s.pollTransactionHandler))
+	mux.HandleFunc(RouteTransactionSend, s.wrap(s.sendTransactionHandler))
+	mux.HandleFunc(RouteStatsReset, s.wrap(s.resetStatsHandler))
+	mux.HandleFunc(RouteAccountLoad, s.wrap(s.loadAccountHandler))
+	mux.HandleFunc(RouteAccountPoll, s.wrap(s.pollAccountHandler))
+	mux.HandleFunc(RouteServerVersion, s.wrap(s.serverVersionHandler))
 }
 
 // wrap applies middleware to a HTTP request handler.

@@ -60,7 +60,7 @@ func (c *Client) Init() error {
 
 	resp := SessionResponse{}
 
-	err := c.Request("/session/init", &creds, &resp)
+	err := c.Request(RouteSessionInit, &creds, &resp)
 	if err != nil {
 		return err
 	}
@@ -151,7 +151,7 @@ func (c *Client) PollAccountUpdates(stop <-chan struct{}) (<-chan events.Account
 		stop = make(chan struct{})
 	}
 
-	ws, err := c.EstablishWS("/account/poll")
+	ws, err := c.EstablishWS(RouteAccountPoll)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +184,7 @@ func (c *Client) pollTransactions(event string, stop <-chan struct{}) (<-chan wi
 		stop = make(chan struct{})
 	}
 
-	ws, err := c.EstablishWS("/transaction/poll?event=" + event)
+	ws, err := c.EstablishWS(RouteTransactionPoll + "?event=" + event)
 	if err != nil {
 		return nil, err
 	}
@@ -213,39 +213,34 @@ func (c *Client) pollTransactions(event string, stop <-chan struct{}) (<-chan wi
 }
 
 func (c *Client) SendTransaction(tag string, payload []byte) error {
-	return c.Request("/transaction/send", struct {
-		Tag     string `json:"tag"`
-		Payload []byte `json:"payload"`
-	}{
+	return c.Request(RouteTransactionSend, SendTransaction{
 		Tag:     tag,
 		Payload: payload,
 	}, nil)
 }
 
 func (c *Client) ListTransaction(offset uint64, limit uint64) (transactions []*wire.Transaction, err error) {
-	err = c.Request("/transaction/list", struct {
-		Offset uint64 `json:"offset"`
-		Limit  uint64 `json:"limit"`
-	}{
-		offset, limit,
+	err = c.Request(RouteTransactionList, Paginate{
+		Offset: &offset,
+		Limit:  &limit,
 	}, &transactions)
 
 	return
 }
 
 func (c *Client) RecentTransactions() (transactions []*wire.Transaction, err error) {
-	err = c.Request("/transaction/list", nil, &transactions)
+	err = c.Request(RouteTransactionList, nil, &transactions)
 	return
 }
 
 // StatsReset will reset a client statistics.
 func (c *Client) StatsReset(res interface{}) error {
-	return c.Request("/stats/reset", nil, res)
+	return c.Request(RouteStatsReset, nil, res)
 }
 
 func (c *Client) LoadAccount(id string) (map[string][]byte, error) {
 	var ret map[string][]byte
-	err := c.Request("/account/load", id, &ret)
+	err := c.Request(RouteAccountLoad, id, &ret)
 	if err != nil {
 		return nil, err
 	}
@@ -254,13 +249,13 @@ func (c *Client) LoadAccount(id string) (map[string][]byte, error) {
 }
 
 func (c *Client) ServerVersion() (sv *ServerVersion, err error) {
-	err = c.Request("/server/version", nil, &sv)
+	err = c.Request(RouteServerVersion, nil, &sv)
 	return
 }
 
 func (c *Client) LedgerState() (*LedgerState, error) {
 	var ret LedgerState
-	err := c.Request("/ledger/state", nil, &ret)
+	err := c.Request(RouteLedgerState, nil, &ret)
 	if err != nil {
 		return nil, err
 	}
