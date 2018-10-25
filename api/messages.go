@@ -16,7 +16,7 @@ type Credentials struct {
 // Paginate is the payload sent to get from a list call
 type Paginate struct {
 	Offset *uint64 `json:"offset"`
-	Limit  *uint64 `json:"limit" validate:"max=1024"`
+	Limit  *uint64 `json:"limit" validate:"omitempty,max=1024"`
 }
 
 // SendTransaction is the payload sent to send a transaction
