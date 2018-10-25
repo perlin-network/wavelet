@@ -52,14 +52,6 @@ const (
 	TxPushHintOpcode                = 4013
 )
 
-func init() {
-	opcode.RegisterMessageType(opcode.Opcode(WireTransactionOpcode), &wire.Transaction{})
-	opcode.RegisterMessageType(opcode.Opcode(QueryResponseOpcode), &QueryResponse{})
-	opcode.RegisterMessageType(opcode.Opcode(SyncChildrenQueryRequestOpcode), &SyncChildrenQueryRequest{})
-	opcode.RegisterMessageType(opcode.Opcode(SyncChildrenQueryResponseOpcode), &SyncChildrenQueryResponse{})
-	opcode.RegisterMessageType(opcode.Opcode(TxPushHintOpcode), &TxPushHint{})
-}
-
 func NewPlugin(opts Options) *Wavelet {
 	return &Wavelet{opts: opts}
 }
@@ -84,6 +76,12 @@ func (w *Wavelet) Startup(net *network.Network) {
 			log.Info().Str("db_path", w.opts.DatabasePath).Msg("Deleted previous database instance.")
 		}
 	}
+
+	opcode.RegisterMessageType(opcode.Opcode(WireTransactionOpcode), &wire.Transaction{})
+	opcode.RegisterMessageType(opcode.Opcode(QueryResponseOpcode), &QueryResponse{})
+	opcode.RegisterMessageType(opcode.Opcode(SyncChildrenQueryRequestOpcode), &SyncChildrenQueryRequest{})
+	opcode.RegisterMessageType(opcode.Opcode(SyncChildrenQueryResponseOpcode), &SyncChildrenQueryResponse{})
+	opcode.RegisterMessageType(opcode.Opcode(TxPushHintOpcode), &TxPushHint{})
 
 	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath, w.opts.GenesisPath)
 

@@ -111,7 +111,7 @@ func (s *syncer) QueryMissingChildren(id string) {
 			continue
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
 		defer cancel()
 		msg := &SyncChildrenQueryRequest{
 			Id: id,

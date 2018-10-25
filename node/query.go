@@ -10,6 +10,10 @@ import (
 	"github.com/pkg/errors"
 )
 
+const (
+	queryTimeout = 10 * time.Second
+)
+
 var (
 	ErrPrecommit = errors.New("failed to precommit tx")
 )
@@ -38,7 +42,7 @@ func (q query) Query(wired *wire.Transaction) error {
 				return
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
 			defer cancel()
 
 			response, err := client.Request(ctx, wired)
