@@ -236,9 +236,11 @@ func (c *Client) SendTransaction(tag string, payload []byte) error {
 }
 
 func (c *Client) ListTransaction(offset uint64, limit uint64) (transactions []*wire.Transaction, err error) {
-	err = c.Request(api.RouteTransactionList, api.Paginate{
-		Offset: &offset,
-		Limit:  &limit,
+	err = c.Request(api.RouteTransactionList, api.ListTransactions{
+		Paginate: &api.Paginate{
+			Offset: &offset,
+			Limit:  &limit,
+		},
 	}, &transactions, nil)
 
 	return
@@ -246,7 +248,9 @@ func (c *Client) ListTransaction(offset uint64, limit uint64) (transactions []*w
 
 // RecentTransactions returns the last 50 transactions in the ledger
 func (c *Client) RecentTransactions() (transactions []*wire.Transaction, err error) {
-	err = c.Request(api.RouteTransactionList, api.Paginate{}, &transactions, nil)
+	err = c.Request(api.RouteTransactionList, api.ListTransactions{
+		Paginate: &api.Paginate{},
+	}, &transactions, nil)
 	return
 }
 

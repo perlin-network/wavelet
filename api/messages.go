@@ -13,6 +13,12 @@ type Credentials struct {
 	Sig        string `json:"Sig"           validate:"required,min=120,max=135"`
 }
 
+// ListTransactions retrieves paginated transactions based on a specified tag
+type ListTransactions struct {
+	Tag      *string   `json:"tag"      validate:"omitempty,max=30"`
+	Paginate *Paginate `json:"paginate" validate:"omitempty"`
+}
+
 // Paginate is the payload sent to get from a list call
 type Paginate struct {
 	Offset *uint64 `json:"offset"`
