@@ -65,6 +65,11 @@ func (c *requestContext) requireHeader(names ...string) (string, error) {
 
 // loadSession sets a session for a request.
 func (c *requestContext) loadSession() error {
+	if c.session != nil {
+		// early exit for testing purposes
+		return nil
+	}
+
 	token, err := c.requireHeader(HeaderSessionToken, HeaderWebsocketProtocol)
 	if err != nil {
 		return err
