@@ -5,7 +5,9 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+	"runtime/debug"
 
+	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
 )
 
@@ -81,4 +83,46 @@ func (c *requestContext) loadSession() error {
 
 	c.session = session
 	return nil
+}
+
+// wrap applies middleware to a HTTP request handler.
+func (s *service) wrap(handler func(*requestContext) (int, interface{}, error)) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		c := &requestContext{
+			service:  s,
+			response: w,
+			request:  r,
+		}
+		defer func() {
+			if err := recover(); err != nil {
+				if _, ok := err.(requestTermination); ok {
+					return
+				}
+
+				log.Error().
+					Interface("url", r.URL).
+					Msgf("An error occured from the API: %s", string(debug.Stack()))
+
+				// return a 500 on a panic
+				c.WriteJSON(http.StatusInternalServerError, ErrorResponse{
+					StatusCode: http.StatusInternalServerError,
+					Error:      err,
+				})
+			}
+		}()
+		statusCode, data, err := handler(c)
+		if err != nil {
+			log.Error().
+				Interface("url", r.URL).
+				Interface("statusCode", statusCode).
+				Msgf("An error occured from the API: %+v", err)
+
+			c.WriteJSON(statusCode, ErrorResponse{
+				StatusCode: statusCode,
+				Error:      err.Error(),
+			})
+		} else {
+			c.WriteJSON(statusCode, data)
+		}
+	}
 }
