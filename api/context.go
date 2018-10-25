@@ -20,6 +20,15 @@ type requestContext struct {
 	session *session
 }
 
+var (
+	// ErrHeaderNotFound occurs when a required header is missing
+	ErrHeaderNotFound = errors.New("required header not found")
+	// ErrMsgBodyNil occurs when request body is empty
+	ErrMsgBodyNil = errors.New("message body is nil")
+	// ErrSessionNotFound occurs the session is missing
+	ErrSessionNotFound = errors.New("session not found")
+)
+
 // readJSON decodes a HTTP requests JSON body into a struct.
 // Can call this once per request
 func (c *requestContext) readJSON(out interface{}) error {
@@ -29,6 +38,10 @@ func (c *requestContext) readJSON(out interface{}) error {
 	data, err := ioutil.ReadAll(r)
 	if err != nil {
 		return errors.Wrap(err, "bad request body")
+	}
+
+	if len(data) == 0 {
+		return ErrMsgBodyNil
 	}
 
 	if err = json.Unmarshal(data, out); err != nil {
@@ -60,7 +73,7 @@ func (c *requestContext) requireHeader(names ...string) (string, error) {
 		}
 	}
 
-	return "", errors.New("required header not found")
+	return "", ErrHeaderNotFound
 }
 
 // loadSession sets a session for a request.
@@ -81,7 +94,7 @@ func (c *requestContext) loadSession() error {
 
 	session, ok := c.service.registry.getSession(token)
 	if !ok {
-		return errors.New("session not found")
+		return ErrSessionNotFound
 	}
 
 	session.renew()
