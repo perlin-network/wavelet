@@ -171,6 +171,25 @@ func main() {
 				return nil
 			},
 		},
+		cli.Command{
+			Name:      "send_contract",
+			Usage:     "send a smart contract",
+			Flags:     commonFlags,
+			ArgsUsage: "<contract_filename>",
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				filename := c.Args().Get(0)
+				contractID, err := client.SendContract(filename)
+				if err != nil {
+					return err
+				}
+				log.Info().Msgf("%v", contractID)
+				return nil
+			},
+		},
 	}
 
 	sort.Sort(cli.FlagsByName(app.Flags))

@@ -8,7 +8,6 @@ const (
 	RouteTransactionPoll = "/transaction/poll"
 	RouteTransactionSend = "/transaction/send"
 	RouteContractSend    = "/contract/send"
-	RouteContractGet     = "/contract/get"
 	RouteStatsReset      = "/stats/reset"
 	RouteAccountLoad     = "/account/load"
 	RouteAccountPoll     = "/account/poll"
@@ -22,4 +21,6 @@ const (
 	MaxRequestBodySize    = 4 * 1024 * 1024
 	MaxTimeOffsetInMs     = 5000
 	MaxContractUploadSize = 4 * 1024 * 1024
+
+	UploadFormField = "uploadFile"
 )

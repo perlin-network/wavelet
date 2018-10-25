@@ -175,9 +175,8 @@ func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, er
 		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
-	//
 	ctx.request.ParseMultipartForm(MaxContractUploadSize)
-	file, info, err := ctx.request.FormFile("uploadfile")
+	file, info, err := ctx.request.FormFile(UploadFormField)
 	if err != nil {
 		return http.StatusInternalServerError, nil, errors.Wrap(err, "unable to read file")
 	}
@@ -186,7 +185,6 @@ func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, er
 	if info.Size > MaxContractUploadSize {
 		return http.StatusBadRequest, nil, errors.New("contract file too large")
 	}
-	fmt.Printf("Uploaded file info: %+v / %+v\n", info.Header, info)
 
 	var bb bytes.Buffer
 	io.Copy(&bb, file)
@@ -212,20 +210,6 @@ func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, er
 	}
 
 	return http.StatusOK, response, nil
-}
-
-func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, error) {
-	if err := ctx.loadSession(); err != nil {
-		return http.StatusForbidden, nil, err
-	}
-
-	if !ctx.session.Permissions.CanPollTransaction {
-		return http.StatusForbidden, nil, errors.New("permission denied")
-	}
-
-	// TODO:
-
-	return http.StatusOK, nil, nil
 }
 
 func (s *service) ledgerStateHandler(ctx *requestContext) (int, interface{}, error) {
