@@ -7,6 +7,8 @@ const (
 	RouteTransactionList = "/transaction/list"
 	RouteTransactionPoll = "/transaction/poll"
 	RouteTransactionSend = "/transaction/send"
+	RouteContractSend    = "/contract/send"
+	RouteContractGet     = "/contract/get"
 	RouteStatsReset      = "/stats/reset"
 	RouteAccountLoad     = "/account/load"
 	RouteAccountPoll     = "/account/poll"
@@ -16,7 +18,8 @@ const (
 	HeaderWebsocketProtocol = "Sec-Websocket-Protocol"
 	HeaderUserAgent         = "User-Agent"
 
-	MaxAllowableSessions = 50000
-	MaxRequestBodySize   = 4 * 1024 * 1024
-	MaxTimeOffsetInMs    = 5000
+	MaxAllowableSessions  = 50000
+	MaxRequestBodySize    = 4 * 1024 * 1024
+	MaxTimeOffsetInMs     = 5000
+	MaxContractUploadSize = 4 * 1024 * 1024
 )

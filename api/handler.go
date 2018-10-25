@@ -1,12 +1,17 @@
 package api
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
 	"github.com/perlin-network/graph/database"
+	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/noise/network/discovery"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/events"
@@ -159,6 +164,68 @@ func (s *service) listTransactionHandler(ctx *requestContext) (int, interface{},
 	}
 
 	return http.StatusOK, transactions, nil
+}
+
+func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
+	}
+
+	if !ctx.session.Permissions.CanSendTransaction {
+		return http.StatusForbidden, nil, errors.New("permission denied")
+	}
+
+	//
+	ctx.request.ParseMultipartForm(MaxContractUploadSize)
+	file, info, err := ctx.request.FormFile("uploadfile")
+	if err != nil {
+		return http.StatusInternalServerError, nil, errors.Wrap(err, "unable to read file")
+	}
+	defer file.Close()
+
+	if info.Size > MaxContractUploadSize {
+		return http.StatusBadRequest, nil, errors.New("contract file too large")
+	}
+	fmt.Printf("Uploaded file info: %+v / %+v\n", info.Header, info)
+
+	var bb bytes.Buffer
+	io.Copy(&bb, file)
+
+	contract := struct {
+		Code string `json:"code"`
+	}{
+		Code: base64.StdEncoding.EncodeToString(bb.Bytes()),
+	}
+
+	payload, err := json.Marshal(contract)
+	if err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "Failed to marshal smart contract deployment payload.")
+	}
+
+	wired := s.wavelet.MakeTransaction("create_contract", payload)
+	go s.wavelet.BroadcastTransaction(wired)
+
+	response := struct {
+		ContractID string `json:"contract_id"`
+	}{
+		ContractID: hex.EncodeToString(wavelet.ContractID(graph.Symbol(wired))),
+	}
+
+	return http.StatusOK, response, nil
+}
+
+func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
+	}
+
+	if !ctx.session.Permissions.CanPollTransaction {
+		return http.StatusForbidden, nil, errors.New("permission denied")
+	}
+
+	// TODO:
+
+	return http.StatusOK, nil, nil
 }
 
 func (s *service) ledgerStateHandler(ctx *requestContext) (int, interface{}, error) {
