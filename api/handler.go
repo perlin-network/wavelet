@@ -334,7 +334,7 @@ func (s *service) serverVersionHandler(ctx *requestContext) (int, interface{}, e
 
 // sessionInitHandler initialize a session.
 func (s *service) sessionInitHandler(ctx *requestContext) (int, interface{}, error) {
-	var credentials credentials
+	var credentials Credentials
 	if err := ctx.readJSON(&credentials); err != nil {
 		return http.StatusBadRequest, nil, err
 	}
@@ -365,7 +365,7 @@ func (s *service) sessionInitHandler(ctx *requestContext) (int, interface{}, err
 	if err != nil {
 		return http.StatusForbidden, nil, errors.New("invalid public key")
 	}
-	expected := fmt.Sprintf("%s%d", sessionInitSigningPrefix, credentials.TimeMillis)
+	expected := fmt.Sprintf("%s%d", SessionInitSigningPrefix, credentials.TimeMillis)
 	if !security.Verify(rawPublicKey, []byte(expected), rawSignature) {
 		return http.StatusForbidden, nil, errors.New("signature verification failed")
 	}

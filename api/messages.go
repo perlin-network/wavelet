@@ -1,13 +1,13 @@
 package api
 
-const sessionInitSigningPrefix = "perlin_session_init_"
+const SessionInitSigningPrefix = "perlin_session_init_"
 
 //------------------------
 // Request Payloads
 //------------------------
 
-// credentials is the payload sent from clients to server to get a session token
-type credentials struct {
+// Credentials is the payload sent from clients to server to get a session token
+type Credentials struct {
 	PublicKey  string `json:"PublicKey"     validate:"required,min=60,max=70"`
 	TimeMillis int64  `json:"TimeMillis"    validate:"required,gt=0"`
 	Sig        string `json:"Sig"           validate:"required,min=120,max=135"`
