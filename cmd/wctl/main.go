@@ -177,7 +177,7 @@ func main() {
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	if err := app.Run(os.Args); err != nil {
-		log.Fatal().Err(err).Msgf("Failed to parse configuration/command-line arguments: %+v", err)
+		log.Fatal().Msgf("Failed to parse configuration/command-line arguments: %v", err)
 	}
 }
 

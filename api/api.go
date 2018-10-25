@@ -47,8 +47,13 @@ func (s *service) init(mux *http.ServeMux) {
 }
 
 // wrap applies middleware to a HTTP request handler.
-func (s *service) wrap(inner func(*requestContext)) func(http.ResponseWriter, *http.Request) {
+func (s *service) wrap(handler func(*requestContext) (int, interface{}, error)) func(http.ResponseWriter, *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		c := &requestContext{
+			service:  s,
+			response: w,
+			request:  r,
+		}
 		defer func() {
 			if err := recover(); err != nil {
 				if _, ok := err.(requestTermination); ok {
@@ -59,14 +64,29 @@ func (s *service) wrap(inner func(*requestContext)) func(http.ResponseWriter, *h
 					Interface("error", err).
 					Interface("url", r.URL).
 					Msgf("An error occured from the API: %s", string(debug.Stack()))
+
+				// return a 500 on a panic
+				c.WriteJSON(http.StatusInternalServerError, ErrorResponse{
+					StatusCode: http.StatusInternalServerError,
+					Error:      err,
+				})
 			}
 		}()
+		statusCode, data, err := handler(c)
+		if err != nil {
+			log.Error().
+				Interface("error", err).
+				Interface("url", r.URL).
+				Interface("statusCode", statusCode).
+				Msgf("An error occured from the API: %+v", err)
 
-		inner(&requestContext{
-			service:  s,
-			response: w,
-			request:  r,
-		})
+			c.WriteJSON(statusCode, ErrorResponse{
+				StatusCode: statusCode,
+				Error:      err.Error(),
+			})
+		} else {
+			c.WriteJSON(statusCode, data)
+		}
 	}
 }
 
@@ -117,6 +137,6 @@ func Run(net *network.Network, opts Options) {
 	}
 
 	if err := server.ListenAndServe(); err != nil {
-		panic(err)
+		log.Fatal().Err(err).Msg("")
 	}
 }

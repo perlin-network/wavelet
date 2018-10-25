@@ -16,4 +16,5 @@ const (
 	HeaderUserAgent         = "User-Agent"
 
 	MaxAllowableSessions = 50000
+	MaxRequestBodySize   = 4 * 1024 * 1024
 )

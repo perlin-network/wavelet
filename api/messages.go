@@ -9,11 +9,6 @@ type credentials struct {
 	Sig        string `json:"Sig"           validate:"required,min=120,max=135"`
 }
 
-// SessionResponse represents the response from a session call
-type SessionResponse struct {
-	Token string `json:"token" validate:"required,min=32,max=40"`
-}
-
 // Paginate is the payload sent to get from a list call
 type Paginate struct {
 	Offset *uint64 `json:"offset"`
@@ -24,6 +19,17 @@ type Paginate struct {
 type SendTransaction struct {
 	Tag     string `json:"tag"      validate:"required,max=30"`
 	Payload []byte `json:"payload"  validate:"required,max=1024"`
+}
+
+// ErrorResponse is a payload when there is an error
+type ErrorResponse struct {
+	StatusCode int         `json:"status"`
+	Error      interface{} `json:"error"`
+}
+
+// SessionResponse represents the response from a session call
+type SessionResponse struct {
+	Token string `json:"token"`
 }
 
 // ServerVersion represents the response from a server version call

@@ -5,6 +5,8 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
+
+	"github.com/pkg/errors"
 )
 
 // requestContext represents a context for a request.
@@ -17,24 +19,24 @@ type requestContext struct {
 }
 
 // readJSON decodes a HTTP requests JSON body into a struct.
+// Can call this once per request
 func (c *requestContext) readJSON(out interface{}) error {
-	r := io.LimitReader(c.request.Body, 4096*1024)
+	r := io.LimitReader(c.request.Body, MaxRequestBodySize)
 	defer c.request.Body.Close()
 
 	data, err := ioutil.ReadAll(r)
 	if err != nil {
-		c.WriteJSON(http.StatusBadRequest, "bad request body")
-		return err
+		return errors.Wrap(err, "bad request body")
 	}
 
 	if err = json.Unmarshal(data, out); err != nil {
-		c.WriteJSON(http.StatusBadRequest, "malformed json")
-		return err
+		return errors.Wrap(err, "malformed json")
 	}
 	return nil
 }
 
 // WriteJSON will write a given status code & JSON to a response.
+// Should call this once per request
 func (c *requestContext) WriteJSON(status int, data interface{}) {
 	out, err := json.Marshal(data)
 	if err != nil {
@@ -47,37 +49,36 @@ func (c *requestContext) WriteJSON(status int, data interface{}) {
 }
 
 // requireHeader returns a header value if presents or stops request with a bad request response.
-func (c *requestContext) requireHeader(names ...string) string {
+func (c *requestContext) requireHeader(names ...string) (string, error) {
 	for _, name := range names {
 		values, ok := c.request.Header[name]
 
 		if ok && len(values) > 0 {
-			return values[0]
+			return values[0], nil
 		}
 	}
 
-	c.WriteJSON(http.StatusBadRequest, "required header not found")
-	return ""
+	return "", errors.New("required header not found")
 }
 
 // loadSession sets a session for a request.
-func (c *requestContext) loadSession() bool {
-	token := c.requireHeader(HeaderSessionToken, HeaderWebsocketProtocol)
+func (c *requestContext) loadSession() error {
+	token, err := c.requireHeader(HeaderSessionToken, HeaderWebsocketProtocol)
+	if err != nil {
+		return err
+	}
 
 	if err := validate.Var(token, "min=32,max=40"); err != nil {
-		c.WriteJSON(http.StatusForbidden, "invalid session")
-		return false
+		return errors.Wrap(err, "invalid session")
 	}
 
 	session, ok := c.service.registry.getSession(token)
-
 	if !ok {
-		c.WriteJSON(http.StatusForbidden, "session not found")
-		return false
+		return errors.New("session not found")
 	}
 
 	session.renew()
 
 	c.session = session
-	return true
+	return nil
 }
