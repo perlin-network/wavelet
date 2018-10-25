@@ -2,6 +2,10 @@ package api
 
 const sessionInitSigningPrefix = "perlin_session_init_"
 
+//------------------------
+// Request Payloads
+//------------------------
+
 // credentials is the payload sent from clients to server to get a session token
 type credentials struct {
 	PublicKey  string `json:"PublicKey"     validate:"required,min=60,max=70"`
@@ -20,6 +24,10 @@ type SendTransaction struct {
 	Tag     string `json:"tag"      validate:"required,max=30"`
 	Payload []byte `json:"payload"  validate:"required,max=1024"`
 }
+
+//------------------------
+// Response Payloads
+//------------------------
 
 // ErrorResponse is a payload when there is an error
 type ErrorResponse struct {

@@ -302,7 +302,7 @@ func (s *service) sessionInitHandler(ctx *requestContext) (int, interface{}, err
 		timeOffset = -timeOffset
 	}
 
-	if timeOffset > 5000 {
+	if timeOffset > MaxTimeOffsetInMs {
 		return http.StatusForbidden, nil, errors.New("token expired")
 	}
 

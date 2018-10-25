@@ -1,5 +1,6 @@
 package api
 
+// Constants used in the api package
 const (
 	RouteSessionInit     = "/session/init"
 	RouteLedgerState     = "/ledger/state"
@@ -17,4 +18,5 @@ const (
 
 	MaxAllowableSessions = 50000
 	MaxRequestBodySize   = 4 * 1024 * 1024
+	MaxTimeOffsetInMs    = 5000
 )

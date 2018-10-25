@@ -61,7 +61,6 @@ func (s *service) wrap(handler func(*requestContext) (int, interface{}, error)) 
 				}
 
 				log.Error().
-					Interface("error", err).
 					Interface("url", r.URL).
 					Msgf("An error occured from the API: %s", string(debug.Stack()))
 
@@ -75,7 +74,6 @@ func (s *service) wrap(handler func(*requestContext) (int, interface{}, error)) 
 		statusCode, data, err := handler(c)
 		if err != nil {
 			log.Error().
-				Interface("error", err).
 				Interface("url", r.URL).
 				Interface("statusCode", statusCode).
 				Msgf("An error occured from the API: %+v", err)
