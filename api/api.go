@@ -22,8 +22,6 @@ type service struct {
 	upgrader websocket.Upgrader
 }
 
-type requestTermination struct{}
-
 // init registers routes to the HTTP serve mux.
 func (s *service) init(mux *http.ServeMux) {
 	mux.Handle("/debug/vars", http.DefaultServeMux)
@@ -93,6 +91,6 @@ func Run(net *network.Network, opts Options) {
 	}
 
 	if err := server.ListenAndServe(); err != nil {
-		log.Fatal().Err(err).Msg("")
+		log.Fatal().Err(err).Msg(" ")
 	}
 }

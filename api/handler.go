@@ -141,6 +141,10 @@ func (s *service) listTransactionHandler(ctx *requestContext) (int, interface{},
 		return http.StatusBadRequest, nil, err
 	}
 
+	if err := validate.Struct(paginate); err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
+	}
+
 	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
 		// If paginate is blank, return the last 50 transactions.
 		if paginate.Offset == nil || paginate.Limit == nil {
@@ -257,7 +261,7 @@ func (s *service) sendTransactionHandler(ctx *requestContext) (int, interface{},
 	}
 
 	if err := validate.Struct(info); err != nil {
-		return http.StatusBadRequest, nil, errors.Wrap(err, "malformed request")
+		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
 	}
 
 	wired := s.wavelet.MakeTransaction(info.Tag, info.Payload)

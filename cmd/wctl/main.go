@@ -233,6 +233,6 @@ func setup(c *cli.Context) (*client.Client, error) {
 		return nil, err
 	}
 
-	log.Debug().Str("SessionToken", cl.SessionToken).Msg("")
+	log.Debug().Str("SessionToken", cl.SessionToken).Msg(" ")
 	return cl, nil
 }
