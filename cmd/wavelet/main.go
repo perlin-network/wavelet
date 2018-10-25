@@ -377,7 +377,7 @@ func runShell(w *node.Wavelet) error {
 				log.Fatal().Err(err).Msg("Failed to marshal transfer payload.")
 			}
 
-			wired := w.MakeTransaction("transfer", payload)
+			wired := w.MakeTransaction(params.TransferTag, payload)
 			go w.BroadcastTransaction(wired)
 		case "c":
 			if len(cmd) < 2 {
@@ -403,7 +403,7 @@ func runShell(w *node.Wavelet) error {
 				continue
 			}
 
-			wired := w.MakeTransaction("create_contract", payload)
+			wired := w.MakeTransaction(params.CreateContractTag, payload)
 			go w.BroadcastTransaction(wired)
 
 			contractID := hex.EncodeToString(wavelet.ContractID(graph.Symbol(wired)))
@@ -450,7 +450,7 @@ func runShell(w *node.Wavelet) error {
 
 			log.Info().Interface("tx", view).Msg("Here is the transaction you requested.")
 		default:
-			wired := w.MakeTransaction("nop", nil)
+			wired := w.MakeTransaction(params.NopTag, nil)
 			go w.BroadcastTransaction(wired)
 		}
 	}

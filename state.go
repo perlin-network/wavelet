@@ -3,15 +3,19 @@ package wavelet
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/perlin-network/graph/database"
-	"github.com/perlin-network/life/exec"
-	"github.com/perlin-network/wavelet/events"
-	"github.com/perlin-network/wavelet/log"
-	"github.com/phf/go-queue/queue"
-	"github.com/pkg/errors"
 	"io/ioutil"
 	"path/filepath"
 	"strings"
+
+	"github.com/perlin-network/wavelet/events"
+	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/params"
+
+	"github.com/perlin-network/graph/database"
+	"github.com/perlin-network/life/exec"
+
+	"github.com/phf/go-queue/queue"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -126,7 +130,7 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 			accounts[writeString(senderID)] = sender
 		}
 
-		if tx.Tag == "nop" {
+		if tx.Tag == params.NopTag {
 			sender.Nonce++
 
 			for id, account := range accounts {

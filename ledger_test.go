@@ -4,10 +4,12 @@ import (
 	"os"
 	"testing"
 
+	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/params"
+	"github.com/perlin-network/wavelet/security"
+
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/crypto"
-	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/security"
 )
 
 const databasePath = "testdb"
@@ -41,7 +43,7 @@ func BenchmarkLedger(b *testing.B) {
 			Sender:  keys.PublicKeyHex(),
 			Nonce:   uint64(i),
 			Parents: parents,
-			Tag:     "nop",
+			Tag:     params.NopTag,
 		}
 
 		encoded, err := wired.Marshal()

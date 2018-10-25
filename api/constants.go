@@ -8,6 +8,8 @@ const (
 	RouteTransactionPoll = "/transaction/poll"
 	RouteTransactionSend = "/transaction/send"
 	RouteContractSend    = "/contract/send"
+	RouteContractList    = "/contract/list"
+	RouteContractGet     = "/contract/get"
 	RouteStatsReset      = "/stats/reset"
 	RouteAccountLoad     = "/account/load"
 	RouteAccountPoll     = "/account/poll"
