@@ -45,7 +45,7 @@ func (r *registry) newSession(permissions ClientPermissions) (*session, error) {
 	numSessions := len(r.Sessions)
 	r.Unlock()
 
-	if numSessions > MaxAllowableSessions {
+	if numSessions >= MaxAllowableSessions {
 		return nil, errors.New("too many sessions active")
 	}
 

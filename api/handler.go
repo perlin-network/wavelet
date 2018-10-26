@@ -352,7 +352,7 @@ func (s *service) sessionInitHandler(ctx *requestContext) (int, interface{}, err
 	}
 
 	// TODO: this check doesn't work if the client clock is off from the server's clock,
-	// but we need something to prevent reused credentials
+	//  but we need something to prevent reused credentials
 	/*
 		timeOffset := credentials.TimeMillis - time.Now().UnixNano()/int64(time.Millisecond)
 		if timeOffset < 0 {
@@ -368,10 +368,12 @@ func (s *service) sessionInitHandler(ctx *requestContext) (int, interface{}, err
 	if err != nil {
 		return http.StatusForbidden, nil, errors.New("invalid signature")
 	}
+
 	rawPublicKey, err := hex.DecodeString(credentials.PublicKey)
 	if err != nil {
 		return http.StatusForbidden, nil, errors.New("invalid public key")
 	}
+
 	expected := fmt.Sprintf("%s%d", SessionInitSigningPrefix, credentials.TimeMillis)
 	if !security.Verify(rawPublicKey, []byte(expected), rawSignature) {
 		return http.StatusForbidden, nil, errors.New("signature verification failed")
