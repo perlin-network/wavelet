@@ -7,10 +7,17 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func Test_requestContext_loadSession(t *testing.T) {
 	t.Parallel()
+
+	// create a registry with an expired session
+	regOutOfDateEntry := newSessionRegistry()
+	sess, _ := regOutOfDateEntry.newSession(ClientPermissions{})
+	olderTime := sess.renewTime.Add(-(MaxSessionTimeoutMinutes + 1) * time.Minute)
+	sess.renewTime = &olderTime
 
 	type fields struct {
 		service  *service
@@ -31,13 +38,43 @@ func Test_requestContext_loadSession(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "bad session",
+			name: "bad session format",
 			fields: fields{
 				request: &http.Request{
 					Method: "POST",
 					Header: map[string][]string{
 						HeaderSessionToken: []string{"bad"},
 					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "session not in registry",
+			fields: fields{
+				request: &http.Request{
+					Method: "POST",
+					Header: map[string][]string{
+						HeaderSessionToken: []string{"0511959c-4715-43ab-baf1-d34f436bb9c7"},
+					},
+				},
+				service: &service{
+					registry: newSessionRegistry(),
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "expired session in registry",
+			fields: fields{
+				request: &http.Request{
+					Method: "POST",
+					Header: map[string][]string{
+						HeaderSessionToken: []string{sess.ID},
+					},
+				},
+				service: &service{
+					registry: regOutOfDateEntry,
 				},
 			},
 			wantErr: true,
@@ -67,7 +104,7 @@ func Test_requestContext_readJSON(t *testing.T) {
 		bigBytes.WriteByte((byte)(i % 10))
 	}
 	var testString string
-	testStruct := SendTransaction{
+	testStruct := SendTransactionRequest{
 		Tag: "test tag",
 	}
 	jsonStruct, _ := json.Marshal(testStruct)

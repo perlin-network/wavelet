@@ -1,20 +1,18 @@
 package api
 
-const SessionInitSigningPrefix = "perlin_session_init_"
-
 //------------------------
 // Request Payloads
 //------------------------
 
-// Credentials is the payload sent from clients to server to get a session token
-type Credentials struct {
+// CredentialsRequest is the payload sent from clients to server to get a session token
+type CredentialsRequest struct {
 	PublicKey  string `json:"PublicKey"     validate:"required,min=60,max=70"`
 	TimeMillis int64  `json:"TimeMillis"    validate:"required,gt=0"`
 	Sig        string `json:"Sig"           validate:"required,min=120,max=135"`
 }
 
-// ListTransactions retrieves paginated transactions based on a specified tag
-type ListTransactions struct {
+// ListTransactionsRequest retrieves paginated transactions based on a specified tag
+type ListTransactionsRequest struct {
 	Tag      *string   `json:"tag"      validate:"omitempty,max=30"`
 	Paginate *Paginate `json:"paginate" validate:"omitempty"`
 }
@@ -25,8 +23,8 @@ type Paginate struct {
 	Limit  *uint64 `json:"limit" validate:"omitempty,max=1024"`
 }
 
-// SendTransaction is the payload sent to send a transaction
-type SendTransaction struct {
+// SendTransactionRequest is the payload sent to send a transaction
+type SendTransactionRequest struct {
 	Tag     string `json:"tag"      validate:"required,max=30"`
 	Payload []byte `json:"payload"  validate:"required,max=1024"`
 }

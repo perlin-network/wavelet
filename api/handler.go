@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
@@ -135,7 +134,7 @@ func (s *service) listTransactionHandler(ctx *requestContext) (int, interface{},
 	}
 
 	var transactions []*database.Transaction
-	var listParams ListTransactions
+	var listParams ListTransactionsRequest
 
 	if err := ctx.readJSON(&listParams); err != nil {
 		return http.StatusBadRequest, nil, err
@@ -222,12 +221,12 @@ func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, er
 	ctx.request.ParseMultipartForm(MaxContractUploadSize)
 	file, info, err := ctx.request.FormFile(UploadFormField)
 	if err != nil {
-		return http.StatusInternalServerError, nil, errors.Wrap(err, "unable to read file")
+		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid format")
 	}
 	defer file.Close()
 
 	if info.Size > MaxContractUploadSize {
-		return http.StatusBadRequest, nil, errors.New("contract file too large")
+		return http.StatusBadRequest, nil, errors.New("file too large")
 	}
 
 	var bb bytes.Buffer
@@ -290,7 +289,7 @@ func (s *service) sendTransactionHandler(ctx *requestContext) (int, interface{},
 		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
-	var info SendTransaction
+	var info SendTransactionRequest
 
 	if err := ctx.readJSON(&info); err != nil {
 		return http.StatusBadRequest, nil, err
@@ -374,7 +373,7 @@ func (s *service) serverVersionHandler(ctx *requestContext) (int, interface{}, e
 
 // sessionInitHandler initialize a session.
 func (s *service) sessionInitHandler(ctx *requestContext) (int, interface{}, error) {
-	var credentials Credentials
+	var credentials CredentialsRequest
 	if err := ctx.readJSON(&credentials); err != nil {
 		return http.StatusBadRequest, nil, err
 	}
@@ -388,23 +387,29 @@ func (s *service) sessionInitHandler(ctx *requestContext) (int, interface{}, err
 		return http.StatusForbidden, nil, errors.New("invalid token")
 	}
 
-	timeOffset := credentials.TimeMillis - time.Now().UnixNano()/int64(time.Millisecond)
-	if timeOffset < 0 {
-		timeOffset = -timeOffset
-	}
+	// TODO: this check doesn't work if the client clock is off from the server's clock,
+	//  but we need something to prevent reused credentials
+	/*
+		timeOffset := credentials.TimeMillis - time.Now().UnixNano()/int64(time.Millisecond)
+		if timeOffset < 0 {
+			timeOffset = -timeOffset
+		}
 
-	if timeOffset > MaxTimeOffsetInMs {
-		return http.StatusForbidden, nil, errors.New("token expired")
-	}
+		if timeOffset > MaxTimeOffsetInMs {
+			return http.StatusForbidden, nil, errors.New("token expired")
+		}
+	*/
 
 	rawSignature, err := hex.DecodeString(credentials.Sig)
 	if err != nil {
 		return http.StatusForbidden, nil, errors.New("invalid signature")
 	}
+
 	rawPublicKey, err := hex.DecodeString(credentials.PublicKey)
 	if err != nil {
 		return http.StatusForbidden, nil, errors.New("invalid public key")
 	}
+
 	expected := fmt.Sprintf("%s%d", SessionInitSigningPrefix, credentials.TimeMillis)
 	if !security.Verify(rawPublicKey, []byte(expected), rawSignature) {
 		return http.StatusForbidden, nil, errors.New("signature verification failed")

@@ -61,7 +61,7 @@ func (c *Client) Init() error {
 	authStr := fmt.Sprintf("%s%d", api.SessionInitSigningPrefix, millis)
 	sig := security.Sign(c.KeyPair.PrivateKey, []byte(authStr))
 
-	creds := api.Credentials{
+	creds := api.CredentialsRequest{
 		PublicKey:  hex.EncodeToString(c.KeyPair.PublicKey),
 		TimeMillis: millis,
 		Sig:        hex.EncodeToString(sig),
@@ -229,14 +229,14 @@ func (c *Client) pollTransactions(event string, stop <-chan struct{}) (<-chan wi
 }
 
 func (c *Client) SendTransaction(tag string, payload []byte) error {
-	return c.Request(api.RouteTransactionSend, api.SendTransaction{
+	return c.Request(api.RouteTransactionSend, api.SendTransactionRequest{
 		Tag:     tag,
 		Payload: payload,
 	}, nil, nil)
 }
 
 func (c *Client) ListTransaction(offset uint64, limit uint64) (transactions []*wire.Transaction, err error) {
-	err = c.Request(api.RouteTransactionList, api.ListTransactions{
+	err = c.Request(api.RouteTransactionList, api.ListTransactionsRequest{
 		Paginate: &api.Paginate{
 			Offset: &offset,
 			Limit:  &limit,
@@ -248,7 +248,7 @@ func (c *Client) ListTransaction(offset uint64, limit uint64) (transactions []*w
 
 // RecentTransactions returns the last 50 transactions in the ledger
 func (c *Client) RecentTransactions(tag string) (transactions []*wire.Transaction, err error) {
-	err = c.Request(api.RouteTransactionList, api.ListTransactions{
+	err = c.Request(api.RouteTransactionList, api.ListTransactionsRequest{
 		Tag:      &tag,
 		Paginate: &api.Paginate{},
 	}, &transactions, nil)
@@ -293,14 +293,14 @@ func (c *Client) SendContract(filename string) (string, error) {
 	}
 
 	// open file handle
-	fh, err := os.Open(filename)
+	sourceFile, err := os.Open(filename)
 	if err != nil {
 		return "", errors.Wrap(err, "error opening file")
 	}
-	defer fh.Close()
+	defer sourceFile.Close()
 
-	// iocopy
-	if _, err = io.Copy(fileWriter, fh); err != nil {
+	// copy to dest from source
+	if _, err = io.Copy(fileWriter, sourceFile); err != nil {
 		return "", errors.Wrap(err, "error copy the file")
 	}
 

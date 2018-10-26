@@ -19,10 +19,12 @@ const (
 	HeaderWebsocketProtocol = "Sec-Websocket-Protocol"
 	HeaderUserAgent         = "User-Agent"
 
-	MaxAllowableSessions  = 50000
-	MaxRequestBodySize    = 4 * 1024 * 1024
-	MaxTimeOffsetInMs     = 5000
-	MaxContractUploadSize = 4 * 1024 * 1024
+	MaxAllowableSessions     = 50000
+	MaxRequestBodySize       = 4 * 1024 * 1024
+	MaxContractUploadSize    = 4 * 1024 * 1024
+	MaxSessionTimeoutMinutes = 5
+	MaxTimeOffsetInMs        = 5000
 
-	UploadFormField = "uploadFile"
+	SessionInitSigningPrefix = "perlin_session_init_"
+	UploadFormField          = "uploadFile"
 )

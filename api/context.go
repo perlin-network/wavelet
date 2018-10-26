@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"runtime/debug"
+	"time"
 
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
@@ -27,6 +28,8 @@ var (
 	ErrMsgBodyNil = errors.New("message body is nil")
 	// ErrSessionNotFound occurs the session is missing
 	ErrSessionNotFound = errors.New("session not found")
+	// ErrTokenExpired occurs when the token provided has expired
+	ErrTokenExpired = errors.New("token expired")
 )
 
 // readJSON decodes a HTTP requests JSON body into a struct.
@@ -93,8 +96,15 @@ func (c *requestContext) loadSession() error {
 	}
 
 	session, ok := c.service.registry.getSession(token)
-	if !ok {
+	if !ok || session == nil {
 		return ErrSessionNotFound
+	}
+
+	sessionTime := session.loadRenewTime()
+	if sessionTime != nil {
+		if time.Now().Sub(*sessionTime) > MaxSessionTimeoutMinutes*time.Minute {
+			return ErrTokenExpired
+		}
 	}
 
 	session.renew()
@@ -116,7 +126,8 @@ func (s *service) wrap(handler func(*requestContext) (int, interface{}, error)) 
 		defer func() {
 			if err := recover(); err != nil {
 				log.Error().
-					Str("url", r.URL.EscapedPath()).
+					Interface("IP", r.RemoteAddr).
+					Str("path", r.URL.EscapedPath()).
 					Msgf("An error occured from the API: %s", string(debug.Stack()))
 
 				// return a 500 on a panic
@@ -133,7 +144,8 @@ func (s *service) wrap(handler func(*requestContext) (int, interface{}, error)) 
 		// write the result
 		if err != nil {
 			log.Warn().
-				Str("url", r.URL.EscapedPath()).
+				Interface("IP", r.RemoteAddr).
+				Str("path", r.URL.EscapedPath()).
 				Interface("statusCode", statusCode).
 				Msgf("An error occured from the API: %+v", err)
 
@@ -142,7 +154,10 @@ func (s *service) wrap(handler func(*requestContext) (int, interface{}, error)) 
 				Error:      err.Error(),
 			})
 		} else {
-			log.Debug().Str("url", r.URL.EscapedPath()).Msg(" ")
+			log.Debug().
+				Interface("IP", r.RemoteAddr).
+				Str("path", r.URL.EscapedPath()).
+				Msg(" ")
 
 			c.WriteJSON(statusCode, data)
 		}

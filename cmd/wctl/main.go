@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/perlin-network/graph/wire"
-	"github.com/perlin-network/wavelet/cmd/wctl/client"
+	apiClient "github.com/perlin-network/wavelet/cmd/wctl/client"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/params"
 	"github.com/pkg/errors"
@@ -56,11 +56,11 @@ func main() {
 			Usage: "get the version information of the api server",
 			Flags: commonFlags,
 			Action: func(c *cli.Context) error {
-				cl, err := setup(c)
+				client, err := setup(c)
 				if err != nil {
 					return err
 				}
-				res, err := cl.ServerVersion()
+				res, err := client.ServerVersion()
 				if err != nil {
 					return err
 				}
@@ -75,13 +75,13 @@ func main() {
 			ArgsUsage: "<tag> <json payload>",
 			Flags:     commonFlags,
 			Action: func(c *cli.Context) error {
-				cl, err := setup(c)
+				client, err := setup(c)
 				if err != nil {
 					return err
 				}
 				tag := c.Args().Get(0)
 				payload := c.Args().Get(1)
-				return cl.SendTransaction(tag, []byte(payload))
+				return client.SendTransaction(tag, []byte(payload))
 			},
 		},
 		cli.Command{
@@ -89,11 +89,11 @@ func main() {
 			Usage: "get recent transactions",
 			Flags: commonFlags,
 			Action: func(c *cli.Context) error {
-				cl, err := setup(c)
+				client, err := setup(c)
 				if err != nil {
 					return err
 				}
-				transactions, err := cl.RecentTransactions()
+				transactions, err := client.RecentTransactions()
 				if err != nil {
 					return err
 				}
@@ -108,11 +108,11 @@ func main() {
 			Usage: "continuously receive account updates",
 			Flags: commonFlags,
 			Action: func(c *cli.Context) error {
-				cl, err := setup(c)
+				client, err := setup(c)
 				if err != nil {
 					return err
 				}
-				evChan, err := cl.PollAccountUpdates(nil)
+				evChan, err := client.PollAccountUpdates(nil)
 				if err != nil {
 					return err
 				}
@@ -128,7 +128,7 @@ func main() {
 			ArgsUsage: "<accepted | applied>",
 			Flags:     commonFlags,
 			Action: func(c *cli.Context) error {
-				cl, err := setup(c)
+				client, err := setup(c)
 				if err != nil {
 					return err
 				}
@@ -137,9 +137,9 @@ func main() {
 				var evChan <-chan wire.Transaction
 				switch event {
 				case "accepted":
-					evChan, err = cl.PollAcceptedTransactions(nil)
+					evChan, err = client.PollAcceptedTransactions(nil)
 				case "applied":
-					evChan, err = cl.PollAppliedTransactions(nil)
+					evChan, err = client.PollAppliedTransactions(nil)
 				default:
 					return errors.Errorf("invalid event type specified: %v", event)
 				}
@@ -158,12 +158,12 @@ func main() {
 			Usage: "reset the stats counters",
 			Flags: commonFlags,
 			Action: func(c *cli.Context) error {
-				cl, err := setup(c)
+				client, err := setup(c)
 				if err != nil {
 					return err
 				}
 				res := new(interface{})
-				if err := cl.StatsReset(res); err != nil {
+				if err := client.StatsReset(res); err != nil {
 					return err
 				}
 				jsonOut, _ := json.Marshal(res)
@@ -177,12 +177,12 @@ func main() {
 			Flags:     commonFlags,
 			ArgsUsage: "<contract_filename>",
 			Action: func(c *cli.Context) error {
-				cl, err := setup(c)
+				client, err := setup(c)
 				if err != nil {
 					return err
 				}
 				filename := c.Args().Get(0)
-				contractID, err := cl.SendContract(filename)
+				contractID, err := client.SendContract(filename)
 				if err != nil {
 					return err
 				}
@@ -200,7 +200,7 @@ func main() {
 	}
 }
 
-func setup(c *cli.Context) (*client.Client, error) {
+func setup(c *cli.Context) (*apiClient.Client, error) {
 	host := c.String("api.host")
 	port := c.Uint("api.port")
 	privateKeyFile := c.String("api.private_key_file")
@@ -218,7 +218,7 @@ func setup(c *cli.Context) (*client.Client, error) {
 		return nil, errors.Wrapf(err, "Unable to open api private key file: %s", privateKeyFile)
 	}
 
-	cl, err := client.NewClient(client.Config{
+	client, err := apiClient.NewClient(apiClient.Config{
 		APIHost:    host,
 		APIPort:    port,
 		PrivateKey: string(privateKeyBytes),
@@ -228,11 +228,11 @@ func setup(c *cli.Context) (*client.Client, error) {
 		return nil, err
 	}
 
-	err = cl.Init()
+	err = client.Init()
 	if err != nil {
 		return nil, err
 	}
 
-	log.Debug().Str("SessionToken", cl.SessionToken).Msg(" ")
-	return cl, nil
+	log.Debug().Str("SessionToken", client.SessionToken).Msg(" ")
+	return client, nil
 }
