@@ -181,12 +181,12 @@ func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, er
 	ctx.request.ParseMultipartForm(MaxContractUploadSize)
 	file, info, err := ctx.request.FormFile(UploadFormField)
 	if err != nil {
-		return http.StatusInternalServerError, nil, errors.Wrap(err, "unable to read file")
+		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid format")
 	}
 	defer file.Close()
 
 	if info.Size > MaxContractUploadSize {
-		return http.StatusBadRequest, nil, errors.New("contract file too large")
+		return http.StatusBadRequest, nil, errors.New("file too large")
 	}
 
 	var bb bytes.Buffer

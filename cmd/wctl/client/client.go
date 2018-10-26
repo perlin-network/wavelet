@@ -287,14 +287,14 @@ func (c *Client) SendContract(filename string) (string, error) {
 	}
 
 	// open file handle
-	fh, err := os.Open(filename)
+	sourceFile, err := os.Open(filename)
 	if err != nil {
 		return "", errors.Wrap(err, "error opening file")
 	}
-	defer fh.Close()
+	defer sourceFile.Close()
 
-	// iocopy
-	if _, err = io.Copy(fileWriter, fh); err != nil {
+	// copy to dest from source
+	if _, err = io.Copy(fileWriter, sourceFile); err != nil {
 		return "", errors.Wrap(err, "error copy the file")
 	}
 
