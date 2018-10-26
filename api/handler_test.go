@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -123,22 +124,6 @@ func Test_service_listTransactionHandler(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "malformed input",
-			args: args{
-				ctx: &requestContext{
-					session: &session{
-						Permissions: ClientPermissions{
-							CanPollTransaction: true,
-						},
-					},
-					request: httptest.NewRequest("POST", RouteTransactionList, strings.NewReader(`{"broken:json`)),
-				},
-			},
-			want:    http.StatusBadRequest,
-			want1:   nil,
-			wantErr: true,
-		},
-		{
 			name: "blank input",
 			args: args{
 				ctx: &requestContext{
@@ -255,7 +240,18 @@ func Test_service_sessionInitHandler(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			name: "bad fields in request",
+			name: "blank input",
+			args: args{
+				ctx: &requestContext{
+					request: httptest.NewRequest("POST", RouteSessionInit, strings.NewReader(``)),
+				},
+			},
+			want:    http.StatusBadRequest,
+			want1:   nil,
+			wantErr: true,
+		},
+		{
+			name: "missing fields in request",
 			args: args{
 				ctx: &requestContext{
 					request: httptest.NewRequest("POST", RouteSessionInit, strings.NewReader(`
@@ -358,6 +354,130 @@ func Test_service_sessionInitHandler(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got1, tt.want1) {
 				t.Errorf("service.sessionInitHandler() name = %s, got1 = %v, want %v", tt.name, got1, tt.want1)
+			}
+		})
+	}
+}
+
+func Test_service_sendTransactionHandler(t *testing.T) {
+	t.Parallel()
+
+	var bigBytes bytes.Buffer
+	bigBytes.Grow(1500)
+	for i := 0; i < 1500; i++ {
+		bigBytes.WriteByte((byte)(i % 10))
+	}
+
+	type fields struct {
+		clients  map[string]*ClientInfo
+		registry *registry
+		wavelet  *node.Wavelet
+		network  *network.Network
+		upgrader websocket.Upgrader
+	}
+	type args struct {
+		ctx *requestContext
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    int
+		want1   interface{}
+		wantErr bool
+	}{
+		{
+			name: "permission denied",
+			args: args{
+				ctx: &requestContext{
+					session: &session{
+						Permissions: ClientPermissions{
+							CanSendTransaction: false,
+						},
+					},
+					request: httptest.NewRequest("POST", RouteTransactionList, strings.NewReader(``)),
+				},
+			},
+			want:    http.StatusForbidden,
+			want1:   nil,
+			wantErr: true,
+		},
+		{
+			name: "blank request",
+			args: args{
+				ctx: &requestContext{
+					session: &session{
+						Permissions: ClientPermissions{
+							CanSendTransaction: true,
+						},
+					},
+					request: httptest.NewRequest("POST", RouteTransactionList, strings.NewReader(`{}`)),
+				},
+			},
+			want:    http.StatusBadRequest,
+			want1:   nil,
+			wantErr: true,
+		},
+		{
+			name: "bad tag field",
+			args: args{
+				ctx: &requestContext{
+					session: &session{
+						Permissions: ClientPermissions{
+							CanSendTransaction: true,
+						},
+					},
+					request: httptest.NewRequest("POST", RouteTransactionList, strings.NewReader(`
+					{
+						"tag": "too-long-field-1234567890123456789012345678901",
+						"payload": "doesn't matter"
+					}`)),
+				},
+			},
+			want:    http.StatusBadRequest,
+			want1:   nil,
+			wantErr: true,
+		},
+		{
+			name: "bad payload field",
+			args: args{
+				ctx: &requestContext{
+					session: &session{
+						Permissions: ClientPermissions{
+							CanSendTransaction: true,
+						},
+					},
+					request: httptest.NewRequest("POST", RouteTransactionList, strings.NewReader(`
+					{
+						"tag": "transfer",
+						"payload": "`+string(bigBytes.Bytes())+`"
+					}`)),
+				},
+			},
+			want:    http.StatusBadRequest,
+			want1:   nil,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &service{
+				clients:  tt.fields.clients,
+				registry: tt.fields.registry,
+				wavelet:  tt.fields.wavelet,
+				network:  tt.fields.network,
+				upgrader: tt.fields.upgrader,
+			}
+			got, got1, err := s.sendTransactionHandler(tt.args.ctx)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("service.sendTransactionHandler() name = %s, error = %v, wantErr %v", tt.name, err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("service.sendTransactionHandler() name = %s, got = %v, want %v", tt.name, got, tt.want)
+			}
+			if !reflect.DeepEqual(got1, tt.want1) {
+				t.Errorf("service.sendTransactionHandler() name = %s, got1 = %v, want %v", tt.name, got1, tt.want1)
 			}
 		})
 	}
