@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"fmt"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
@@ -491,20 +490,20 @@ func Test_service_sendContractHandler(t *testing.T) {
 
 	var contentType string
 	bigBytes := &bytes.Buffer{}
+	badFormField := &bytes.Buffer{}
+
+	{
+		bodyWriter := multipart.NewWriter(badFormField)
+		bodyWriter.CreateFormFile("bad_form_field", "some_filename")
+		bodyWriter.Close()
+		contentType = bodyWriter.FormDataContentType()
+	}
 	{
 		bodyWriter := multipart.NewWriter(bigBytes)
 		fileWriter, _ := bodyWriter.CreateFormFile(UploadFormField, "some_filename")
 		for i := 0; i < MaxRequestBodySize+1; i++ {
 			fileWriter.Write([]byte("x"))
 		}
-		bodyWriter.Close()
-		contentType = bodyWriter.FormDataContentType()
-	}
-
-	badFormField := &bytes.Buffer{}
-	{
-		bodyWriter := multipart.NewWriter(bigBytes)
-		bodyWriter.CreateFormFile("bad_form_field", "some_filename")
 		bodyWriter.Close()
 	}
 
@@ -632,7 +631,6 @@ func Test_service_sendContractHandler(t *testing.T) {
 				upgrader: tt.fields.upgrader,
 			}
 			got, got1, err := s.sendContractHandler(tt.args.ctx)
-			fmt.Printf("name = %s, err = %+v\n", tt.name, err)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("service.sendContractHandler() name = %s, error = %v, wantErr %v", tt.name, err, tt.wantErr)
 				return
