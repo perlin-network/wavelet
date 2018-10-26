@@ -61,7 +61,7 @@ func (c *Client) Init() error {
 	authStr := fmt.Sprintf("%s%d", api.SessionInitSigningPrefix, millis)
 	sig := security.Sign(c.KeyPair.PrivateKey, []byte(authStr))
 
-	creds := api.Credentials{
+	creds := api.CredentialsRequest{
 		PublicKey:  hex.EncodeToString(c.KeyPair.PublicKey),
 		TimeMillis: millis,
 		Sig:        hex.EncodeToString(sig),
@@ -229,14 +229,14 @@ func (c *Client) pollTransactions(event string, stop <-chan struct{}) (<-chan wi
 }
 
 func (c *Client) SendTransaction(tag string, payload []byte) error {
-	return c.Request(api.RouteTransactionSend, api.SendTransaction{
+	return c.Request(api.RouteTransactionSend, api.SendTransactionRequest{
 		Tag:     tag,
 		Payload: payload,
 	}, nil, nil)
 }
 
 func (c *Client) ListTransaction(offset uint64, limit uint64) (transactions []*wire.Transaction, err error) {
-	err = c.Request(api.RouteTransactionList, api.Paginate{
+	err = c.Request(api.RouteTransactionList, api.PaginateRequest{
 		Offset: &offset,
 		Limit:  &limit,
 	}, &transactions, nil)

@@ -67,7 +67,7 @@ func Test_requestContext_readJSON(t *testing.T) {
 		bigBytes.WriteByte((byte)(i % 10))
 	}
 	var testString string
-	testStruct := SendTransaction{
+	testStruct := SendTransactionRequest{
 		Tag: "test tag",
 	}
 	jsonStruct, _ := json.Marshal(testStruct)

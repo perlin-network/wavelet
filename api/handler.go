@@ -135,7 +135,7 @@ func (s *service) listTransactionHandler(ctx *requestContext) (int, interface{},
 	}
 
 	var transactions []*database.Transaction
-	var paginate Paginate
+	var paginate PaginateRequest
 
 	if err := ctx.readJSON(&paginate); err != nil {
 		return http.StatusBadRequest, nil, err
@@ -254,7 +254,7 @@ func (s *service) sendTransactionHandler(ctx *requestContext) (int, interface{},
 		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
-	var info SendTransaction
+	var info SendTransactionRequest
 
 	if err := ctx.readJSON(&info); err != nil {
 		return http.StatusBadRequest, nil, err
@@ -338,7 +338,7 @@ func (s *service) serverVersionHandler(ctx *requestContext) (int, interface{}, e
 
 // sessionInitHandler initialize a session.
 func (s *service) sessionInitHandler(ctx *requestContext) (int, interface{}, error) {
-	var credentials Credentials
+	var credentials CredentialsRequest
 	if err := ctx.readJSON(&credentials); err != nil {
 		return http.StatusBadRequest, nil, err
 	}
