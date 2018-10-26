@@ -351,7 +351,8 @@ func (s *service) sessionInitHandler(ctx *requestContext) (int, interface{}, err
 		return http.StatusForbidden, nil, errors.New("invalid token")
 	}
 
-	// TODO: this check doesn't work if the client clock is off from the server's clock
+	// TODO: this check doesn't work if the client clock is off from the server's clock,
+	// but we need something to prevent reused credentials
 	/*
 		timeOffset := credentials.TimeMillis - time.Now().UnixNano()/int64(time.Millisecond)
 		if timeOffset < 0 {

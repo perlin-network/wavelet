@@ -109,7 +109,8 @@ func (s *service) wrap(handler func(*requestContext) (int, interface{}, error)) 
 		defer func() {
 			if err := recover(); err != nil {
 				log.Error().
-					Str("url", r.URL.EscapedPath()).
+					Interface("IP", r.RemoteAddr).
+					Str("path", r.URL.EscapedPath()).
 					Msgf("An error occured from the API: %s", string(debug.Stack()))
 
 				// return a 500 on a panic
@@ -126,7 +127,8 @@ func (s *service) wrap(handler func(*requestContext) (int, interface{}, error)) 
 		// write the result
 		if err != nil {
 			log.Warn().
-				Str("url", r.URL.EscapedPath()).
+				Interface("IP", r.RemoteAddr).
+				Str("path", r.URL.EscapedPath()).
 				Interface("statusCode", statusCode).
 				Msgf("An error occured from the API: %+v", err)
 
@@ -135,7 +137,10 @@ func (s *service) wrap(handler func(*requestContext) (int, interface{}, error)) 
 				Error:      err.Error(),
 			})
 		} else {
-			log.Debug().Str("url", r.URL.EscapedPath()).Msg(" ")
+			log.Debug().
+				Interface("IP", r.RemoteAddr).
+				Str("path", r.URL.EscapedPath()).
+				Msg(" ")
 
 			c.WriteJSON(statusCode, data)
 		}
