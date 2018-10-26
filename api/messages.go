@@ -1,7 +1,5 @@
 package api
 
-const SessionInitSigningPrefix = "perlin_session_init_"
-
 //------------------------
 // Request Payloads
 //------------------------

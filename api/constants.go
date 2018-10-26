@@ -23,5 +23,6 @@ const (
 	MaxSessionTimeoutMinues = 5
 	MaxTimeOffsetInMs       = 5000
 
-	UploadFormField = "uploadFile"
+	SessionInitSigningPrefix = "perlin_session_init_"
+	UploadFormField          = "uploadFile"
 )
