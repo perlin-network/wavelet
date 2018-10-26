@@ -10,9 +10,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-// defaultSessionTimeout represents a default TTL for session.
-var defaultSessionTimeout = 5 * time.Minute
-
 // registry represents a thread-safe session registry.
 type registry struct {
 	sync.Mutex
@@ -73,11 +70,12 @@ func (r *registry) Recycle() {
 	r.Lock()
 	defer r.Unlock()
 
+	sessionTimeout := MaxSessionTimeoutMinues * time.Minute
 	currentTime := time.Now()
 
 	for k, sess := range r.Sessions {
 		t := *sess.loadRenewTime()
-		if currentTime.Sub(t) > defaultSessionTimeout {
+		if currentTime.Sub(t) > sessionTimeout {
 			delete(r.Sessions, k)
 		}
 	}

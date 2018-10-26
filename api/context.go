@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"runtime/debug"
+	"time"
 
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
@@ -80,8 +81,13 @@ func (c *requestContext) loadSession() error {
 	}
 
 	session, ok := c.service.registry.getSession(token)
-	if !ok {
+	if !ok || session == nil {
 		return errors.New("session not found")
+	}
+
+	sessionTime := session.loadRenewTime()
+	if sessionTime == nil || time.Now().Sub(*sessionTime) > MaxSessionTimeoutMinues*time.Minute {
+		return errors.New("token expired")
 	}
 
 	session.renew()
