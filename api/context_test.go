@@ -16,7 +16,8 @@ func Test_requestContext_loadSession(t *testing.T) {
 	// create a registry with an expired session
 	regOutOfDateEntry := newSessionRegistry()
 	sess, _ := regOutOfDateEntry.newSession(ClientPermissions{})
-	sess.renewTime.Add(-(MaxSessionTimeoutMinues + 1) * time.Minute)
+	olderTime := sess.renewTime.Add(-(MaxSessionTimeoutMinutes + 1) * time.Minute)
+	sess.renewTime = &olderTime
 
 	type fields struct {
 		service  *service
@@ -73,7 +74,7 @@ func Test_requestContext_loadSession(t *testing.T) {
 					},
 				},
 				service: &service{
-					registry: newSessionRegistry(),
+					registry: regOutOfDateEntry,
 				},
 			},
 			wantErr: true,

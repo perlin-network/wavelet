@@ -70,7 +70,7 @@ func (r *registry) Recycle() {
 	r.Lock()
 	defer r.Unlock()
 
-	sessionTimeout := MaxSessionTimeoutMinues * time.Minute
+	sessionTimeout := MaxSessionTimeoutMinutes * time.Minute
 	currentTime := time.Now()
 
 	for k, sess := range r.Sessions {

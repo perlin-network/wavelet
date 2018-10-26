@@ -86,8 +86,10 @@ func (c *requestContext) loadSession() error {
 	}
 
 	sessionTime := session.loadRenewTime()
-	if sessionTime == nil || time.Now().Sub(*sessionTime) > MaxSessionTimeoutMinues*time.Minute {
-		return errors.New("token expired")
+	if sessionTime != nil {
+		if time.Now().Sub(*sessionTime) > MaxSessionTimeoutMinutes*time.Minute {
+			return errors.New("token expired")
+		}
 	}
 
 	session.renew()
