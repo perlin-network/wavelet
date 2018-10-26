@@ -1,10 +1,27 @@
 package wavelet
 
 import (
-	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/wavelet/log"
+
+	"github.com/perlin-network/life/exec"
+
 	"github.com/pkg/errors"
 )
+
+// Contract represents a smart contract on Perlin.
+type Contract struct {
+	ID   string `json:"id"`
+	Code string `json:"code"`
+}
+
+// NewContract returns a new smart contract object.
+func NewContract(code string) *Contract {
+	contract := &Contract{
+		Code: code,
+	}
+
+	return contract
+}
 
 type ContractExecutor struct {
 	GasTable               map[string]int64

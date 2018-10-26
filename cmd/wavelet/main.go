@@ -406,7 +406,7 @@ func runShell(w *node.Wavelet) error {
 			wired := w.MakeTransaction(params.CreateContractTag, payload)
 			go w.BroadcastTransaction(wired)
 
-			contractID := hex.EncodeToString(wavelet.ContractID(graph.Symbol(wired)))
+			contractID := string(wavelet.ContractID(graph.Symbol(wired)))
 
 			log.Info().Msgf("Success! Your smart contract ID is: %s", contractID)
 		case "tx":

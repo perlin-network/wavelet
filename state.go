@@ -393,7 +393,7 @@ func (s *state) NumAcceptedTransactions() uint64 {
 	return s.Size(BucketAcceptedIndex)
 }
 
-// Paginate returns a page of transactions ordered by insertion starting from the offset index.
+// PaginateTransactions returns a page of transactions ordered by insertion starting from the offset index.
 func (s *state) PaginateTransactions(offset, pageSize uint64) []*database.Transaction {
 	size := s.NumAcceptedTransactions()
 

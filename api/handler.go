@@ -98,7 +98,7 @@ func (s *service) pollTransactionHandler(ctx *requestContext) (int, interface{},
 			return true
 		}
 
-		if tx.Tag == "create_contract" {
+		if tx.Tag == params.CreateContractTag {
 			tx.Payload = []byte("<code here>")
 		}
 
@@ -135,15 +135,17 @@ func (s *service) listTransactionHandler(ctx *requestContext) (int, interface{},
 	}
 
 	var transactions []*database.Transaction
-	var paginate Paginate
+	var listParams ListTransactions
 
-	if err := ctx.readJSON(&paginate); err != nil {
+	if err := ctx.readJSON(&listParams); err != nil {
 		return http.StatusBadRequest, nil, err
 	}
 
-	if err := validate.Struct(paginate); err != nil {
+	if err := validate.Struct(listParams); err != nil {
 		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
 	}
+
+	paginate := listParams.Paginate
 
 	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
 		// If paginate is blank, return the last 50 transactions.
@@ -162,12 +164,50 @@ func (s *service) listTransactionHandler(ctx *requestContext) (int, interface{},
 	})
 
 	for _, tx := range transactions {
-		if tx.Tag == "create_contract" {
+		if tx.Tag == params.CreateContractTag {
 			tx.Payload = []byte("<code here>")
 		}
 	}
 
 	return http.StatusOK, transactions, nil
+}
+
+func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
+	}
+
+	if !ctx.session.Permissions.CanAccessLedger {
+		return http.StatusForbidden, nil, errors.New("permission denied")
+	}
+
+	var encodedContractID string
+	if err := ctx.readJSON(&encodedContractID); err != nil {
+		return http.StatusBadRequest, nil, err
+	}
+
+	accountID, err := hex.DecodeString(encodedContractID)
+	if err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "failed to decode smart contract ID")
+	}
+
+	var account *wavelet.Account
+
+	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+		account, err = ledger.LoadAccount(accountID)
+	})
+
+	if err != nil {
+		return http.StatusOK, make(map[string][]byte), nil
+	}
+
+	info := make(map[string][]byte)
+
+	account.Range(func(key string, value []byte) {
+		info[key] = value
+	})
+
+	return http.StatusOK, info, nil
 }
 
 func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, error) {
@@ -193,18 +233,14 @@ func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, er
 	var bb bytes.Buffer
 	io.Copy(&bb, file)
 
-	contract := struct {
-		Code string `json:"code"`
-	}{
-		Code: base64.StdEncoding.EncodeToString(bb.Bytes()),
-	}
+	contract := wavelet.NewContract(base64.StdEncoding.EncodeToString(bb.Bytes()))
 
 	payload, err := json.Marshal(contract)
 	if err != nil {
 		return http.StatusBadRequest, nil, errors.Wrap(err, "Failed to marshal smart contract deployment payload.")
 	}
 
-	wired := s.wavelet.MakeTransaction("create_contract", payload)
+	wired := s.wavelet.MakeTransaction(params.CreateContractTag, payload)
 	go s.wavelet.BroadcastTransaction(wired)
 
 	response := struct {

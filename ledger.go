@@ -120,6 +120,16 @@ func (ledger *Ledger) GetAcceptedByIndex(index uint64) (*database.Transaction, e
 	return ledger.GetBySymbol(writeString(symbolBytes))
 }
 
+// GetAcceptedByIndex gets an accepted transaction by its index.
+func (ledger *Ledger) GetContractByID(id string) (*database.Transaction, error) {
+	symbolBytes, err := ledger.Get(merge(ContractPrefix, writeBytes(id)))
+	if err != nil {
+		return nil, err
+	}
+
+	return ledger.GetBySymbol(writeString(symbolBytes))
+}
+
 // QueueForAcceptance queues a transaction awaiting to be accepted.
 func (ledger *Ledger) QueueForAcceptance(symbol string) error {
 	return ledger.Put(merge(BucketAcceptPending, writeBytes(symbol)), []byte{0})
