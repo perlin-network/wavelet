@@ -15,6 +15,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/perlin-network/graph/wire"
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/events"
 	"github.com/perlin-network/wavelet/params"
@@ -317,6 +318,16 @@ func (c *Client) SendContract(filename string) (string, error) {
 		return "", err
 	}
 	return result.ContractID, nil
+}
+
+// GetContract returns a smart contract given an id
+func (c *Client) GetContract(id string) (*wavelet.Contract, error) {
+	var contract wavelet.Contract
+	if err := c.Request(api.RouteContractGet, id, &contract, nil); err != nil {
+		return nil, err
+	}
+
+	return &contract, nil
 }
 
 // userAgent is a short summary of the client type making the connection

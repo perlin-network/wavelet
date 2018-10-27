@@ -1,6 +1,8 @@
 package wavelet
 
 import (
+	"encoding/json"
+
 	"github.com/perlin-network/wavelet/log"
 
 	"github.com/perlin-network/life/exec"
@@ -21,6 +23,16 @@ func NewContract(code string) *Contract {
 	}
 
 	return contract
+}
+
+// UnmarshalContract unmarshals json-encoded bytes into a contract object
+func UnmarshalContract(bytes []byte) (*Contract, error) {
+	var contract Contract
+	err := json.Unmarshal(bytes, contract)
+	if err != nil {
+		return nil, err
+	}
+	return &contract, nil
 }
 
 type ContractExecutor struct {
