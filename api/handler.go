@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/perlin-network/wavelet/log"
 	"io"
 	"net/http"
 
@@ -180,33 +181,27 @@ func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, err
 		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
-	var encodedContractID string
-	if err := ctx.readJSON(&encodedContractID); err != nil {
+	var contractID string
+	if err := ctx.readJSON(&contractID); err != nil {
 		return http.StatusBadRequest, nil, err
 	}
 
-	accountID, err := hex.DecodeString(encodedContractID)
-	if err != nil {
-		return http.StatusBadRequest, nil, errors.Wrap(err, "failed to decode smart contract ID")
-	}
+	log.Info().Msgf("id: %s", contractID)
 
-	var account *wavelet.Account
+	var contract *wavelet.Contract
+	var err error
 
 	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
-		account, err = ledger.LoadAccount(accountID)
+		contract, err = ledger.GetContract(contractID)
 	})
 
 	if err != nil {
-		return http.StatusOK, make(map[string][]byte), nil
+		return http.StatusOK, make(map[string][]byte), err
 	}
 
-	info := make(map[string][]byte)
+	log.Info().Interface("contract", contract).Msg("")
 
-	account.Range(func(key string, value []byte) {
-		info[key] = value
-	})
-
-	return http.StatusOK, info, nil
+	return http.StatusOK, contract, nil
 }
 
 func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, error) {
@@ -245,7 +240,7 @@ func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, er
 	response := struct {
 		ContractID string `json:"contract_id"`
 	}{
-		ContractID: hex.EncodeToString(wavelet.ContractID(graph.Symbol(wired))),
+		ContractID: string(wavelet.ContractID(graph.Symbol(wired))),
 	}
 
 	return http.StatusOK, response, nil
@@ -345,7 +340,7 @@ func (s *service) loadAccountHandler(ctx *requestContext) (int, interface{}, err
 	})
 
 	if err != nil {
-		return http.StatusOK, make(map[string][]byte), nil
+		return http.StatusOK, make(map[string][]byte), err
 	}
 
 	info := make(map[string][]byte)

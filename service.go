@@ -421,6 +421,8 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 
 				s.accounts[contractID]["contract_code"] = decoded
 
+				log.Info().
+					Str("contract_id", string(contractID)).Msg("decode and create contract")
 				return int64(InternalProcessOk)
 			}
 		case "_create_contract":
@@ -447,6 +449,8 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 
 				s.accounts[contractID]["contract_code"] = code
 
+				log.Info().
+					Str("contract_id", string(contractID)).Msg("create contract")
 				return int64(InternalProcessOk)
 			}
 		default:

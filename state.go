@@ -459,3 +459,18 @@ func (s *state) Snapshot() map[string]interface{} {
 
 	return json
 }
+
+// GetContract loads a smart contract from the database given its smart contract ID.
+func (s *state) GetContract(id string) (*Contract, error) {
+	bytes, err := s.Get(ContractID(id))
+	if err != nil {
+		return nil, errors.Wrapf(err, "contract ID %s not found in ledger state", id)
+	}
+
+	contract, err := UnmarshalContract(bytes)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to decode account bytes")
+	}
+
+	return contract, nil
+}

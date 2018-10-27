@@ -93,7 +93,7 @@ func main() {
 				if err != nil {
 					return err
 				}
-				transactions, err := client.RecentTransactions()
+				transactions, err := client.RecentTransactions("")
 				if err != nil {
 					return err
 				}
@@ -187,6 +187,25 @@ func main() {
 					return err
 				}
 				log.Info().Msgf("%v", contractID)
+				return nil
+			},
+		},
+		cli.Command{
+			Name:      "get_contract",
+			Usage:     "get smart contract by ID",
+			Flags:     commonFlags,
+			ArgsUsage: "<contract_id>",
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				contractID := c.Args().Get(0)
+				contract, err := client.GetContract(contractID)
+				if err != nil {
+					return err
+				}
+				log.Info().Msgf("%v", contract)
 				return nil
 			},
 		},
