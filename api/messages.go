@@ -6,9 +6,9 @@ package api
 
 // CredentialsRequest is the payload sent from clients to server to get a session token
 type CredentialsRequest struct {
-	PublicKey  string `json:"PublicKey"     validate:"required,min=60,max=70"`
+	PublicKey  string `json:"PublicKey"     validate:"required,len=64"`
 	TimeMillis int64  `json:"TimeMillis"    validate:"required,gt=0"`
-	Sig        string `json:"Sig"           validate:"required,min=120,max=135"`
+	Sig        string `json:"Sig"           validate:"required,len=128"`
 }
 
 // PaginateRequest is the payload sent to get from a list call
