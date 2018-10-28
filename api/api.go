@@ -2,21 +2,15 @@ package api
 
 import (
 	_ "expvar"
-
-	"encoding/json"
-	"io"
-	"io/ioutil"
 	"net/http"
-	"runtime/debug"
+	"net/http/pprof"
 	"time"
 
-	"github.com/perlin-network/noise/network"
-
 	"github.com/gorilla/websocket"
+	"github.com/perlin-network/noise/network"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/rs/cors"
-	"net/http/pprof"
 )
 
 // service represents a service.
@@ -26,78 +20,6 @@ type service struct {
 	wavelet  *node.Wavelet
 	network  *network.Network
 	upgrader websocket.Upgrader
-}
-
-// requestContext represents a context for a request.
-type requestContext struct {
-	service  *service
-	response http.ResponseWriter
-	request  *http.Request
-
-	session *session
-}
-
-type requestTermination struct{}
-
-// readJSON decodes a HTTP requests JSON body into a struct.
-func (c *requestContext) readJSON(out interface{}) error {
-	r := io.LimitReader(c.request.Body, 4096*1024)
-	defer c.request.Body.Close()
-
-	data, err := ioutil.ReadAll(r)
-	if err != nil {
-		c.WriteJSON(http.StatusBadRequest, "bad request body")
-		return err
-	}
-
-	if err = json.Unmarshal(data, out); err != nil {
-		c.WriteJSON(http.StatusBadRequest, "malformed json")
-		return err
-	}
-	return nil
-}
-
-// WriteJSON will write a given status code & JSON to a response.
-func (c *requestContext) WriteJSON(status int, data interface{}) {
-	out, err := json.Marshal(data)
-	if err != nil {
-		c.WriteJSON(http.StatusInternalServerError, "server error")
-		return
-	}
-	c.response.Header().Set("Content-Type", "application/json")
-	c.response.WriteHeader(status)
-	c.response.Write(out)
-}
-
-// requireHeader returns a header value if presents or stops request with a bad request response.
-func (c *requestContext) requireHeader(names ...string) string {
-	for _, name := range names {
-		values, ok := c.request.Header[name]
-
-		if ok && len(values) > 0 {
-			return values[0]
-		}
-	}
-
-	c.WriteJSON(http.StatusBadRequest, "required header not found")
-	return ""
-}
-
-// loadSession sets a session for a request.
-func (c *requestContext) loadSession() bool {
-	token := c.requireHeader("X-Session-Token", "Sec-Websocket-Protocol")
-
-	session, ok := c.service.registry.getSession(token)
-
-	if !ok {
-		c.WriteJSON(http.StatusForbidden, "session not found")
-		return false
-	}
-
-	session.renew()
-
-	c.session = session
-	return true
 }
 
 // init registers routes to the HTTP serve mux.
@@ -110,39 +32,16 @@ func (s *service) init(mux *http.ServeMux) {
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
-	mux.HandleFunc("/session/init", s.wrap(s.sessionInitHandler))
-	mux.HandleFunc("/ledger/state", s.wrap(s.ledgerStateHandler))
-	mux.HandleFunc("/transaction/list", s.wrap(s.listTransactionHandler))
-	mux.HandleFunc("/transaction/poll", s.wrap(s.pollTransactionHandler))
-	mux.HandleFunc("/transaction/send", s.wrap(s.sendTransactionHandler))
-	mux.HandleFunc("/stats/reset", s.wrap(s.resetStatsHandler))
-	mux.HandleFunc("/account/load", s.wrap(s.loadAccountHandler))
-	mux.HandleFunc("/account/poll", s.wrap(s.pollAccountHandler))
-	mux.HandleFunc("/server/version", s.wrap(s.serverVersionHandler))
-}
-
-// wrap applies middleware to a HTTP request handler.
-func (s *service) wrap(inner func(*requestContext)) func(http.ResponseWriter, *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		defer func() {
-			if err := recover(); err != nil {
-				if _, ok := err.(requestTermination); ok {
-					return
-				}
-
-				log.Error().
-					Interface("error", err).
-					Interface("url", r.URL).
-					Msgf("An error occured from the API: %s", string(debug.Stack()))
-			}
-		}()
-
-		inner(&requestContext{
-			service:  s,
-			response: w,
-			request:  r,
-		})
-	}
+	mux.HandleFunc(RouteSessionInit, s.wrap(s.sessionInitHandler))
+	mux.HandleFunc(RouteLedgerState, s.wrap(s.ledgerStateHandler))
+	mux.HandleFunc(RouteTransactionList, s.wrap(s.listTransactionHandler))
+	mux.HandleFunc(RouteTransactionPoll, s.wrap(s.pollTransactionHandler))
+	mux.HandleFunc(RouteTransactionSend, s.wrap(s.sendTransactionHandler))
+	mux.HandleFunc(RouteContractSend, s.wrap(s.sendContractHandler))
+	mux.HandleFunc(RouteStatsReset, s.wrap(s.resetStatsHandler))
+	mux.HandleFunc(RouteAccountLoad, s.wrap(s.loadAccountHandler))
+	mux.HandleFunc(RouteAccountPoll, s.wrap(s.pollAccountHandler))
+	mux.HandleFunc(RouteServerVersion, s.wrap(s.serverVersionHandler))
 }
 
 // Run runs the API server with a specified set of options.
@@ -192,6 +91,6 @@ func Run(net *network.Network, opts Options) {
 	}
 
 	if err := server.ListenAndServe(); err != nil {
-		panic(err)
+		log.Fatal().Err(err).Msg(" ")
 	}
 }
