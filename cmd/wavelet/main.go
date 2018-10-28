@@ -258,6 +258,7 @@ func runServer(c *Config) (*node.Wavelet, error) {
 						CanSendTransaction: true,
 						CanPollTransaction: true,
 						CanControlStats:    true,
+						CanAccessLedger:    true,
 					},
 				})
 			}

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/perlin-network/graph/wire"
-	"github.com/perlin-network/wavelet/api"
+	apiClient "github.com/perlin-network/wavelet/cmd/wctl/client"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/params"
 	"github.com/pkg/errors"
@@ -171,17 +171,36 @@ func main() {
 				return nil
 			},
 		},
+		cli.Command{
+			Name:      "send_contract",
+			Usage:     "send a smart contract",
+			Flags:     commonFlags,
+			ArgsUsage: "<contract_filename>",
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				filename := c.Args().Get(0)
+				contractID, err := client.SendContract(filename)
+				if err != nil {
+					return err
+				}
+				log.Info().Msgf("%v", contractID)
+				return nil
+			},
+		},
 	}
 
 	sort.Sort(cli.FlagsByName(app.Flags))
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	if err := app.Run(os.Args); err != nil {
-		log.Fatal().Err(err).Msg("Failed to parse configuration/command-line arugments.")
+		log.Fatal().Msgf("Failed to parse configuration/command-line arguments: %v", err)
 	}
 }
 
-func setup(c *cli.Context) (*api.Client, error) {
+func setup(c *cli.Context) (*apiClient.Client, error) {
 	host := c.String("api.host")
 	port := c.Uint("api.port")
 	privateKeyFile := c.String("api.private_key_file")
@@ -199,7 +218,7 @@ func setup(c *cli.Context) (*api.Client, error) {
 		return nil, errors.Wrapf(err, "Unable to open api private key file: %s", privateKeyFile)
 	}
 
-	client, err := api.NewClient(api.ClientConfig{
+	client, err := apiClient.NewClient(apiClient.Config{
 		APIHost:    host,
 		APIPort:    port,
 		PrivateKey: string(privateKeyBytes),
@@ -214,6 +233,6 @@ func setup(c *cli.Context) (*api.Client, error) {
 		return nil, err
 	}
 
-	log.Debug().Str("SessionToken", client.SessionToken).Msg("")
+	log.Debug().Str("SessionToken", client.SessionToken).Msg(" ")
 	return client, nil
 }

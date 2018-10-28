@@ -3,6 +3,8 @@ module github.com/perlin-network/wavelet
 require (
 	github.com/BurntSushi/toml v0.3.1 // indirect
 	github.com/dchest/siphash v1.2.0 // indirect
+	github.com/go-playground/locales v0.12.1 // indirect
+	github.com/go-playground/universal-translator v0.16.0 // indirect
 	github.com/gofrs/uuid v3.1.0+incompatible
 	github.com/gogo/protobuf v1.1.1
 	github.com/gorilla/websocket v1.4.0
@@ -19,6 +21,8 @@ require (
 	github.com/stretchr/testify v1.2.2
 	github.com/urfave/cli v1.20.0
 	golang.org/x/crypto v0.0.0-20180910181607-0e37d006457b
+	golang.org/x/sys v0.0.0-20181004145325-8469e314837c // indirect
+	gopkg.in/go-playground/validator.v9 v9.21.0
 	gopkg.in/urfave/cli.v1 v1.20.0
 )
 

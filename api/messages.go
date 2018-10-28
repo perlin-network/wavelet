@@ -1,34 +1,36 @@
 package api
 
-import (
-	"fmt"
-)
+//------------------------
+// Request Payloads
+//------------------------
 
-const sessionInitSigningPrefix = "perlin_session_init_"
-
-type credentials struct {
-	PublicKey  string `json:"PublicKey"`
-	TimeMillis int64  `json:"TimeMillis"`
-	Sig        string `json:"Sig"`
+// CredentialsRequest is the payload sent from clients to server to get a session token
+type CredentialsRequest struct {
+	PublicKey  string `json:"PublicKey"     validate:"required,len=64"`
+	TimeMillis int64  `json:"TimeMillis"    validate:"required,gt=0"`
+	Sig        string `json:"Sig"           validate:"required,len=128"`
 }
 
-// Options represents available options for a local user.
-type Options struct {
-	ListenAddr string
-	Clients    []*ClientInfo
+// PaginateRequest is the payload sent to get from a list call
+type PaginateRequest struct {
+	Offset *uint64 `json:"offset"`
+	Limit  *uint64 `json:"limit" validate:"max=1024"`
 }
 
-// ClientInfo represents a single clients info.
-type ClientInfo struct {
-	PublicKey   string
-	Permissions ClientPermissions
+// SendTransactionRequest is the payload sent to send a transaction
+type SendTransactionRequest struct {
+	Tag     string `json:"tag"      validate:"required,max=30"`
+	Payload []byte `json:"payload"  validate:"required,max=1024"`
 }
 
-// ClientPermissions represents a single client permissions.
-type ClientPermissions struct {
-	CanPollTransaction bool
-	CanSendTransaction bool
-	CanControlStats    bool
+//------------------------
+// Response Payloads
+//------------------------
+
+// ErrorResponse is a payload when there is an error
+type ErrorResponse struct {
+	StatusCode int         `json:"status"`
+	Error      interface{} `json:"error"`
 }
 
 // SessionResponse represents the response from a session call
@@ -49,8 +51,4 @@ type LedgerState struct {
 	Address   string                 `json:"address"`
 	Peers     []string               `json:"peers"`
 	State     map[string]interface{} `json:"state"`
-}
-
-func (c ClientInfo) String() string {
-	return fmt.Sprintf("public_key: %s permissions: %+v", c.PublicKey, c.Permissions)
 }
