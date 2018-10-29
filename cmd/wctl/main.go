@@ -199,20 +199,21 @@ func main() {
 		},
 		cli.Command{
 			Name:      "get_contract",
-			Usage:     "get smart contract by ID",
+			Usage:     "get smart contract by transaction ID",
 			Flags:     commonFlags,
-			ArgsUsage: "<contract_id>",
+			ArgsUsage: "<transaction_id> <output_filename>",
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
 				if err != nil {
 					return err
 				}
+
 				contractID := c.Args().Get(0)
-				contract, err := client.GetContract(contractID)
-				if err != nil {
+				filename := c.Args().Get(1)
+				if _, err = client.GetContract(contractID, filename); err != nil {
 					return err
 				}
-				log.Info().Msgf("%v", contract)
+				log.Info().Msgf("saved contract %s to file %s", contractID, filename)
 				return nil
 			},
 		},

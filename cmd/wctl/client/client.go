@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -317,12 +318,29 @@ func (c *Client) SendContract(filename string) (*api.TransactionResponse, error)
 }
 
 // GetContract returns a smart contract given an id
-func (c *Client) GetContract(id string) (*wavelet.Contract, error) {
+func (c *Client) GetContract(txID string, filename string) (*wavelet.Contract, error) {
+	if len(filename) == 0 {
+		return nil, errors.New("output filename argument missing")
+	}
+
 	req := api.GetTransactionRequest{
-		ID: id,
+		ID: txID,
 	}
 	contract := &wavelet.Contract{}
-	if err := c.Request(api.RouteContractGet, req, &contract, nil); err != nil {
+	if err := c.Request(api.RouteContractGet, req, contract, nil); err != nil {
+		return nil, err
+	}
+
+	if len(contract.Code) == 0 {
+		return nil, errors.New("contract was empty")
+	}
+
+	bytes, err := base64.StdEncoding.DecodeString(contract.Code)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := ioutil.WriteFile(filename, bytes, 0644); err != nil {
 		return nil, err
 	}
 
