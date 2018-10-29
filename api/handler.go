@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/perlin-network/wavelet/log"
 	"io"
 	"net/http"
 
