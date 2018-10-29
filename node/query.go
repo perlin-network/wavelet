@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"github.com/gogo/protobuf/proto"
 	"sync"
 	"time"
 
@@ -42,10 +43,12 @@ func (q query) Query(wired *wire.Transaction) error {
 				return
 			}
 
-			ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
-			defer cancel()
+			response, err := func() (proto.Message, error) {
+				ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+				defer cancel()
+				return client.Request(ctx, wired)
+			}()
 
-			response, err := client.Request(ctx, wired)
 			if err != nil {
 				responses[i] = false
 				return

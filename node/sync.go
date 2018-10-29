@@ -8,6 +8,8 @@ import (
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/params"
+
+	"github.com/gogo/protobuf/proto"
 )
 
 type syncer struct {
@@ -111,13 +113,15 @@ func (s *syncer) QueryMissingChildren(id string) {
 			continue
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
-		defer cancel()
-		msg := &SyncChildrenQueryRequest{
-			Id: id,
-		}
+		r, err := func() (proto.Message, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+			defer cancel()
+			msg := &SyncChildrenQueryRequest{
+				Id: id,
+			}
 
-		r, err := client.Request(ctx, msg)
+			return client.Request(ctx, msg)
+		}()
 		if err != nil {
 			log.Error().Err(err).Msg("request failed")
 			continue
@@ -137,7 +141,7 @@ func (s *syncer) QueryMissingChildren(id string) {
 	deleteList := make([]string, 0)
 
 	s.Ledger.Do(func(l *wavelet.Ledger) {
-		for c, _ := range children {
+		for c := range children {
 			if l.Store.TransactionExists(c) {
 				deleteList = append(deleteList, c)
 			}
@@ -149,7 +153,7 @@ func (s *syncer) QueryMissingChildren(id string) {
 	}
 
 	pushHint := make([]string, 0)
-	for c, _ := range children {
+	for c := range children {
 		pushHint = append(pushHint, c)
 	}
 
