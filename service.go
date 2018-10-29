@@ -6,12 +6,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/perlin-network/graph/database"
-	"github.com/perlin-network/life/exec"
-	"github.com/perlin-network/wavelet/log"
-	"github.com/pkg/errors"
 	"sync"
 	"time"
+
+	"github.com/perlin-network/wavelet/log"
+
+	"github.com/perlin-network/graph/database"
+	"github.com/perlin-network/life/exec"
+
+	"github.com/pkg/errors"
 )
 
 const (
@@ -421,8 +424,6 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 
 				s.accounts[contractID]["contract_code"] = decoded
 
-				log.Info().
-					Str("contract_id", string(contractID)).Msg("decode and create contract")
 				return int64(InternalProcessOk)
 			}
 		case "_create_contract":
@@ -449,8 +450,6 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 
 				s.accounts[contractID]["contract_code"] = code
 
-				log.Info().
-					Str("contract_id", string(contractID)).Msg("create contract")
 				return int64(InternalProcessOk)
 			}
 		default:
