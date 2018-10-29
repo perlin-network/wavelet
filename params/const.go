@@ -7,6 +7,9 @@ const (
 	CreateContractTag = "create_contract"
 	NopTag            = "nop"
 	TransferTag       = "transfer"
+
+	// Account keys
+	ContractCodeKey = "contract_code"
 )
 
 var (

@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -187,24 +186,15 @@ func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, err
 		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
 	}
 
-	var tx *database.Transaction
+	var contract *wavelet.Contract
 	var err error
 
 	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
-		tx, err = ledger.GetBySymbol(req.ID)
+		contract, err = ledger.LoadContract(req.ID)
 	})
 
 	if err != nil {
 		return http.StatusBadRequest, nil, errors.Wrapf(err, "transaction %s does not exist", req.ID)
-	}
-
-	if tx.Tag != params.CreateContractTag {
-		return http.StatusBadRequest, nil, errors.New("transaction is not a smart contract")
-	}
-
-	contract, err := wavelet.UnmarshalContract(tx.Payload)
-	if err != nil {
-		return http.StatusBadRequest, nil, errors.Wrap(err, "unable to parse contract")
 	}
 
 	return http.StatusOK, contract, nil
@@ -233,7 +223,7 @@ func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, er
 	var bb bytes.Buffer
 	io.Copy(&bb, file)
 
-	contract := wavelet.NewContract(base64.StdEncoding.EncodeToString(bb.Bytes()))
+	contract := wavelet.NewContract(bb.Bytes())
 
 	payload, err := json.Marshal(contract)
 	if err != nil {

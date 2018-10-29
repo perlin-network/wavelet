@@ -2,7 +2,6 @@ package client
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -335,12 +334,7 @@ func (c *Client) GetContract(txID string, filename string) (*wavelet.Contract, e
 		return nil, errors.New("contract was empty")
 	}
 
-	bytes, err := base64.StdEncoding.DecodeString(contract.Code)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := ioutil.WriteFile(filename, bytes, 0644); err != nil {
+	if err := ioutil.WriteFile(filename, contract.Code, 0644); err != nil {
 		return nil, err
 	}
 

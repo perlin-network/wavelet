@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/params"
 
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/life/exec"
@@ -347,7 +348,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessOk) // always report ok.
 				}
 
-				contractCode, ok := account.Load("contract_code")
+				contractCode, ok := account.Load(params.ContractCodeKey)
 				if !ok {
 					return int64(InternalProcessOk)
 				}
@@ -422,7 +423,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessErr)
 				}
 
-				s.accounts[contractID]["contract_code"] = decoded
+				s.accounts[contractID][params.ContractCodeKey] = decoded
 
 				return int64(InternalProcessOk)
 			}
@@ -448,7 +449,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					s.accounts[contractID] = make(map[string][]byte)
 				}
 
-				s.accounts[contractID]["contract_code"] = code
+				s.accounts[contractID][params.ContractCodeKey] = code
 
 				return int64(InternalProcessOk)
 			}

@@ -12,11 +12,11 @@ import (
 
 // Contract represents a smart contract on Perlin.
 type Contract struct {
-	Code string `json:"code"`
+	Code []byte `json:"code"`
 }
 
 // NewContract returns a new smart contract object.
-func NewContract(code string) *Contract {
+func NewContract(code []byte) *Contract {
 	contract := &Contract{
 		Code: code,
 	}

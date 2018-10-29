@@ -459,3 +459,28 @@ func (s *state) Snapshot() map[string]interface{} {
 
 	return json
 }
+
+// LoadContract loads a smart contract from the database given its tx id.
+// The key in the database will be of the form "account_C-txID"
+func (s *state) LoadContract(id string) (*Contract, error) {
+	key := merge(ContractPrefix, writeBytes(id))
+	contractKey := merge(BucketAccounts, key)
+	bytes, err := s.Get(contractKey)
+	if err != nil {
+		return nil, errors.Wrapf(err, "contract ID %s not found in ledger state", key)
+	}
+
+	account := NewAccount(key)
+	err = account.Unmarshal(bytes)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to decode contract bytes")
+	}
+
+	contractCode, ok := account.Load(params.ContractCodeKey)
+	if !ok {
+		return nil, errors.Errorf("contract ID %s has no contract code", id)
+	}
+	contract := NewContract(contractCode)
+
+	return contract, nil
+}
