@@ -81,7 +81,13 @@ func main() {
 				}
 				tag := c.Args().Get(0)
 				payload := c.Args().Get(1)
-				return client.SendTransaction(tag, []byte(payload))
+				tx, err := client.SendTransaction(tag, []byte(payload))
+				if err != nil {
+					return err
+				}
+				jsonOut, _ := json.Marshal(tx)
+				fmt.Printf("%s\n", jsonOut)
+				return nil
 			},
 		},
 		cli.Command{
@@ -182,11 +188,12 @@ func main() {
 					return err
 				}
 				filename := c.Args().Get(0)
-				contractID, err := client.SendContract(filename)
+				tx, err := client.SendContract(filename)
 				if err != nil {
 					return err
 				}
-				log.Info().Msgf("%v", contractID)
+				jsonOut, _ := json.Marshal(tx)
+				fmt.Printf("%s\n", jsonOut)
 				return nil
 			},
 		},

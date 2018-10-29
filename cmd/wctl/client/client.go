@@ -229,29 +229,26 @@ func (c *Client) pollTransactions(event string, stop <-chan struct{}) (<-chan wi
 
 }
 
-func (c *Client) SendTransaction(tag string, payload []byte) error {
-	return c.Request(api.RouteTransactionSend, api.SendTransactionRequest{
+func (c *Client) SendTransaction(tag string, payload []byte) (resp *api.TransactionResponse, err error) {
+	err = c.Request(api.RouteTransactionSend, api.SendTransactionRequest{
 		Tag:     tag,
 		Payload: payload,
-	}, nil, nil)
+	}, &resp, nil)
+	return
 }
 
 func (c *Client) ListTransaction(offset uint64, limit uint64) (transactions []*wire.Transaction, err error) {
 	err = c.Request(api.RouteTransactionList, api.ListTransactionsRequest{
-		Paginate: &api.Paginate{
-			Offset: &offset,
-			Limit:  &limit,
-		},
+		Offset: &offset,
+		Limit:  &limit,
 	}, &transactions, nil)
-
 	return
 }
 
 // RecentTransactions returns the last 50 transactions in the ledger
 func (c *Client) RecentTransactions(tag string) (transactions []*wire.Transaction, err error) {
 	err = c.Request(api.RouteTransactionList, api.ListTransactionsRequest{
-		Tag:      &tag,
-		Paginate: &api.Paginate{},
+		Tag: &tag,
 	}, &transactions, nil)
 	return
 }
@@ -283,26 +280,26 @@ func (c *Client) LedgerState() (*api.LedgerState, error) {
 	return &ret, nil
 }
 
-func (c *Client) SendContract(filename string) (string, error) {
+func (c *Client) SendContract(filename string) (*api.TransactionResponse, error) {
 	bodyBuf := &bytes.Buffer{}
 	bodyWriter := multipart.NewWriter(bodyBuf)
 
 	// this step is very important
 	fileWriter, err := bodyWriter.CreateFormFile(api.UploadFormField, filename)
 	if err != nil {
-		return "", errors.Wrap(err, "error writing to buffer")
+		return nil, errors.Wrap(err, "error writing to buffer")
 	}
 
 	// open file handle
 	sourceFile, err := os.Open(filename)
 	if err != nil {
-		return "", errors.Wrap(err, "error opening file")
+		return nil, errors.Wrap(err, "error opening file")
 	}
 	defer sourceFile.Close()
 
 	// copy to dest from source
 	if _, err = io.Copy(fileWriter, sourceFile); err != nil {
-		return "", errors.Wrap(err, "error copy the file")
+		return nil, errors.Wrap(err, "error copy the file")
 	}
 
 	opts := &requestOptions{
@@ -311,23 +308,25 @@ func (c *Client) SendContract(filename string) (string, error) {
 	}
 	bodyWriter.Close()
 
-	var result struct {
-		ContractID string `json:"contract_id"`
+	var resp *api.TransactionResponse
+	if err := c.Request(api.RouteContractSend, bodyBuf.Bytes(), &resp, opts); err != nil {
+		return nil, err
 	}
-	if err := c.Request(api.RouteContractSend, bodyBuf.Bytes(), &result, opts); err != nil {
-		return "", err
-	}
-	return result.ContractID, nil
+
+	return resp, nil
 }
 
 // GetContract returns a smart contract given an id
 func (c *Client) GetContract(id string) (*wavelet.Contract, error) {
-	var contract wavelet.Contract
-	if err := c.Request(api.RouteContractGet, id, &contract, nil); err != nil {
+	req := api.GetContractRequest{
+		ContractID: id,
+	}
+	contract := &wavelet.Contract{}
+	if err := c.Request(api.RouteContractGet, req, &contract, nil); err != nil {
 		return nil, err
 	}
 
-	return &contract, nil
+	return contract, nil
 }
 
 // userAgent is a short summary of the client type making the connection
