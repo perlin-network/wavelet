@@ -644,3 +644,95 @@ func Test_service_sendContractHandler(t *testing.T) {
 		})
 	}
 }
+
+func Test_service_getContractHandler(t *testing.T) {
+	type fields struct {
+		clients  map[string]*ClientInfo
+		registry *registry
+		wavelet  *node.Wavelet
+		network  *network.Network
+		upgrader websocket.Upgrader
+	}
+	type args struct {
+		ctx *requestContext
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    int
+		want1   interface{}
+		wantErr bool
+	}{
+		{
+			name: "permission denied",
+			args: args{
+				ctx: &requestContext{
+					session: &session{
+						Permissions: ClientPermissions{
+							CanAccessLedger: false,
+						},
+					},
+					request: httptest.NewRequest("POST", RouteContractGet, strings.NewReader(``)),
+				},
+			},
+			want:    http.StatusForbidden,
+			want1:   nil,
+			wantErr: true,
+		},
+		{
+			name: "blank request",
+			args: args{
+				ctx: &requestContext{
+					session: &session{
+						Permissions: ClientPermissions{
+							CanAccessLedger: true,
+						},
+					},
+					request: httptest.NewRequest("POST", RouteContractGet, strings.NewReader(``)),
+				},
+			},
+			want:    http.StatusBadRequest,
+			want1:   nil,
+			wantErr: true,
+		},
+		{
+			name: "bad transaction id",
+			args: args{
+				ctx: &requestContext{
+					session: &session{
+						Permissions: ClientPermissions{
+							CanAccessLedger: true,
+						},
+					},
+					request: httptest.NewRequest("POST", RouteContractGet, strings.NewReader(`{"transaction_id":"too_short"}`)),
+				},
+			},
+			want:    http.StatusBadRequest,
+			want1:   nil,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &service{
+				clients:  tt.fields.clients,
+				registry: tt.fields.registry,
+				wavelet:  tt.fields.wavelet,
+				network:  tt.fields.network,
+				upgrader: tt.fields.upgrader,
+			}
+			got, got1, err := s.getContractHandler(tt.args.ctx)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("service.getContractHandler() name = %s, error = %v, wantErr %v", tt.name, err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("service.getContractHandler() name = %s, got = %v, want %v", tt.name, got, tt.want)
+			}
+			if !reflect.DeepEqual(got1, tt.want1) {
+				t.Errorf("service.getContractHandler() name = %s, got1 = %v, want %v", tt.name, got1, tt.want1)
+			}
+		})
+	}
+}

@@ -9,6 +9,7 @@ daemon = true
 
 [db]
 path = "testdb"
+reset = true
 
 [api]
 host = "localhost"

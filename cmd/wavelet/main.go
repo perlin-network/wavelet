@@ -379,6 +379,10 @@ func runShell(w *node.Wavelet) error {
 
 			wired := w.MakeTransaction(params.TransferTag, payload)
 			go w.BroadcastTransaction(wired)
+
+			txID := graph.Symbol(wired)
+
+			log.Info().Msgf("Success! Your payment txID = %s", txID)
 		case "c":
 			if len(cmd) < 2 {
 				continue
@@ -406,9 +410,9 @@ func runShell(w *node.Wavelet) error {
 			wired := w.MakeTransaction(params.CreateContractTag, payload)
 			go w.BroadcastTransaction(wired)
 
-			contractID := string(wavelet.ContractID(graph.Symbol(wired)))
+			txID := graph.Symbol(wired)
 
-			log.Info().Msgf("Success! Your smart contract ID is: %s", contractID)
+			log.Info().Msgf("Success! Your smart contract txID = %s", txID)
 		case "tx":
 			if len(cmd) < 2 {
 				continue
@@ -452,6 +456,8 @@ func runShell(w *node.Wavelet) error {
 		default:
 			wired := w.MakeTransaction(params.NopTag, nil)
 			go w.BroadcastTransaction(wired)
+			txID := graph.Symbol(wired)
+			log.Info().Msgf("Your nop txID = %s", txID)
 		}
 	}
 
