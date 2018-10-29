@@ -496,6 +496,7 @@ func (s *state) LoadContract(id string) (*Contract, error) {
 		return nil, errors.Errorf("contract ID %s has no contract code", id)
 	}
 	contract := NewContract(contractCode)
+	contract.ID = id
 
 	return contract, nil
 }
