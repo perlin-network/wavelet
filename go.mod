@@ -14,14 +14,13 @@ require (
 	github.com/perlin-network/noise v0.0.0-0.20181016155300-e83afc330dff
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
 	github.com/pkg/errors v0.8.0
-	github.com/rakyll/statik v0.1.5 // indirect
+	github.com/rakyll/statik v0.1.5
 	github.com/rs/cors v1.5.0
 	github.com/rs/zerolog v1.9.1
 	github.com/sasha-s/go-IBLT v0.0.0-20150527092913-0d7bd59e8167 // indirect
 	github.com/stretchr/testify v1.2.2
 	github.com/urfave/cli v1.20.0
 	golang.org/x/crypto v0.0.0-20180910181607-0e37d006457b
-	golang.org/x/sys v0.0.0-20181004145325-8469e314837c // indirect
 	gopkg.in/go-playground/validator.v9 v9.21.0
 	gopkg.in/urfave/cli.v1 v1.20.0
 )
