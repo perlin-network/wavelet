@@ -1,17 +1,21 @@
-package api
+package client
 
 import (
 	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/perlin-network/graph/wire"
+	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/events"
 	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/security"
@@ -20,21 +24,26 @@ import (
 
 // Client represents a Perlin Ledger client.
 type Client struct {
-	Config       ClientConfig
+	Config       Config
 	SessionToken string
 	KeyPair      *security.KeyPair
 }
 
-// ClientConfig represents a Perlin Ledger client config.
-type ClientConfig struct {
+// Config represents a Perlin Ledger client config.
+type Config struct {
 	APIHost    string
 	APIPort    uint
 	PrivateKey string
 	UseHTTPS   bool
 }
 
+type requestOptions struct {
+	ContentType  string
+	SendRawBytes bool
+}
+
 // NewClient creates a new Perlin Ledger client from a config.
-func NewClient(config ClientConfig) (*Client, error) {
+func NewClient(config Config) (*Client, error) {
 	keys, err := security.FromPrivateKey(security.SignaturePolicy, config.PrivateKey)
 	if err != nil {
 		return nil, errors.Wrap(err, "Missing authentication key")
@@ -49,18 +58,18 @@ func NewClient(config ClientConfig) (*Client, error) {
 // Init will initialize a client.
 func (c *Client) Init() error {
 	millis := time.Now().Unix() * 1000
-	authStr := fmt.Sprintf("%s%d", sessionInitSigningPrefix, millis)
+	authStr := fmt.Sprintf("%s%d", api.SessionInitSigningPrefix, millis)
 	sig := security.Sign(c.KeyPair.PrivateKey, []byte(authStr))
 
-	creds := credentials{
+	creds := api.CredentialsRequest{
 		PublicKey:  hex.EncodeToString(c.KeyPair.PublicKey),
 		TimeMillis: millis,
 		Sig:        hex.EncodeToString(sig),
 	}
 
-	resp := SessionResponse{}
+	resp := api.SessionResponse{}
 
-	err := c.Request("/session/init", &creds, &resp)
+	err := c.Request(api.RouteSessionInit, &creds, &resp, nil)
 	if err != nil {
 		return err
 	}
@@ -78,7 +87,7 @@ func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 	url := fmt.Sprintf("%s://%s:%d%s", prot, c.Config.APIHost, c.Config.APIPort, path)
 
 	header := make(http.Header)
-	header.Add("X-Session-Token", c.SessionToken)
+	header.Add(api.HeaderSessionToken, c.SessionToken)
 
 	dialer := &websocket.Dialer{}
 	conn, _, err := dialer.Dial(url, header)
@@ -86,7 +95,7 @@ func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 }
 
 // Request will make a request to a given path, with a given body and return result in out.
-func (c *Client) Request(path string, body, out interface{}) error {
+func (c *Client) Request(path string, body, out interface{}, opts *requestOptions) error {
 	prot := "http"
 	if c.Config.UseHTTPS {
 		prot = "https"
@@ -99,17 +108,25 @@ func (c *Client) Request(path string, body, out interface{}) error {
 		Method: "POST",
 		URL:    u,
 		Header: map[string][]string{
-			"X-Session-Token": []string{c.SessionToken},
-			"User-Agent":      []string{userAgent()},
+			api.HeaderSessionToken: []string{c.SessionToken},
+			api.HeaderUserAgent:    []string{userAgent()},
 		},
 	}
 
+	if opts != nil && len(opts.ContentType) > 0 {
+		req.Header["Content-type"] = []string{opts.ContentType}
+	}
+
 	if body != nil {
-		rawBody, err := json.Marshal(body)
-		if err != nil {
-			return err
+		if opts != nil && opts.SendRawBytes {
+			req.Body = ioutil.NopCloser(bytes.NewReader(body.([]byte)))
+		} else {
+			rawBody, err := json.Marshal(body)
+			if err != nil {
+				return err
+			}
+			req.Body = ioutil.NopCloser(bytes.NewReader(rawBody))
 		}
-		req.Body = ioutil.NopCloser(bytes.NewReader(rawBody))
 	}
 
 	client := &http.Client{}
@@ -125,14 +142,13 @@ func (c *Client) Request(path string, body, out interface{}) error {
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("got an error code %s: %s", resp.Status, string(data))
+		return errors.Errorf("got an error code %v: %v", resp.Status, string(data))
 	}
 
 	if out == nil {
 		return nil
 	}
-	err = json.Unmarshal(data, out)
-	return err
+	return json.Unmarshal(data, out)
 }
 
 // PollAcceptedTransactions polls for accepted transactions.
@@ -151,7 +167,7 @@ func (c *Client) PollAccountUpdates(stop <-chan struct{}) (<-chan events.Account
 		stop = make(chan struct{})
 	}
 
-	ws, err := c.EstablishWS("/account/poll")
+	ws, err := c.EstablishWS(api.RouteAccountPoll)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +200,7 @@ func (c *Client) pollTransactions(event string, stop <-chan struct{}) (<-chan wi
 		stop = make(chan struct{})
 	}
 
-	ws, err := c.EstablishWS("/transaction/poll?event=" + event)
+	ws, err := c.EstablishWS(api.RouteTransactionPoll + "?event=" + event)
 	if err != nil {
 		return nil, err
 	}
@@ -213,58 +229,88 @@ func (c *Client) pollTransactions(event string, stop <-chan struct{}) (<-chan wi
 }
 
 func (c *Client) SendTransaction(tag string, payload []byte) error {
-	return c.Request("/transaction/send", struct {
-		Tag     string `json:"tag"`
-		Payload []byte `json:"payload"`
-	}{
+	return c.Request(api.RouteTransactionSend, api.SendTransactionRequest{
 		Tag:     tag,
 		Payload: payload,
-	}, nil)
+	}, nil, nil)
 }
 
 func (c *Client) ListTransaction(offset uint64, limit uint64) (transactions []*wire.Transaction, err error) {
-	err = c.Request("/transaction/list", struct {
-		Offset uint64 `json:"offset"`
-		Limit  uint64 `json:"limit"`
-	}{
-		offset, limit,
-	}, &transactions)
+	err = c.Request(api.RouteTransactionList, api.PaginateRequest{
+		Offset: &offset,
+		Limit:  &limit,
+	}, &transactions, nil)
 
 	return
 }
 
 func (c *Client) RecentTransactions() (transactions []*wire.Transaction, err error) {
-	err = c.Request("/transaction/list", nil, &transactions)
+	err = c.Request(api.RouteTransactionList, nil, &transactions, nil)
 	return
 }
 
 // StatsReset will reset a client statistics.
 func (c *Client) StatsReset(res interface{}) error {
-	return c.Request("/stats/reset", nil, res)
+	return c.Request(api.RouteStatsReset, nil, res, nil)
 }
 
 func (c *Client) LoadAccount(id string) (map[string][]byte, error) {
 	var ret map[string][]byte
-	err := c.Request("/account/load", id, &ret)
-	if err != nil {
+	if err := c.Request(api.RouteAccountLoad, id, &ret, nil); err != nil {
 		return nil, err
 	}
 
 	return ret, nil
 }
 
-func (c *Client) ServerVersion() (sv *ServerVersion, err error) {
-	err = c.Request("/server/version", nil, &sv)
+func (c *Client) ServerVersion() (sv *api.ServerVersion, err error) {
+	err = c.Request(api.RouteServerVersion, nil, &sv, nil)
 	return
 }
 
-func (c *Client) LedgerState() (*LedgerState, error) {
-	var ret LedgerState
-	err := c.Request("/ledger/state", nil, &ret)
-	if err != nil {
+func (c *Client) LedgerState() (*api.LedgerState, error) {
+	var ret api.LedgerState
+	if err := c.Request(api.RouteLedgerState, nil, &ret, nil); err != nil {
 		return nil, err
 	}
 	return &ret, nil
+}
+
+func (c *Client) SendContract(filename string) (string, error) {
+	bodyBuf := &bytes.Buffer{}
+	bodyWriter := multipart.NewWriter(bodyBuf)
+
+	// this step is very important
+	fileWriter, err := bodyWriter.CreateFormFile(api.UploadFormField, filename)
+	if err != nil {
+		return "", errors.Wrap(err, "error writing to buffer")
+	}
+
+	// open file handle
+	sourceFile, err := os.Open(filename)
+	if err != nil {
+		return "", errors.Wrap(err, "error opening file")
+	}
+	defer sourceFile.Close()
+
+	// copy to dest from source
+	if _, err = io.Copy(fileWriter, sourceFile); err != nil {
+		return "", errors.Wrap(err, "error copy the file")
+	}
+
+	opts := &requestOptions{
+		ContentType:  bodyWriter.FormDataContentType(),
+		SendRawBytes: true,
+	}
+	bodyWriter.Close()
+
+	var result struct {
+		ContractID string `json:"contract_id"`
+	}
+	if err := c.Request(api.RouteContractSend, bodyBuf.Bytes(), &result, opts); err != nil {
+		return "", err
+	}
+	return result.ContractID, nil
 }
 
 // userAgent is a short summary of the client type making the connection
