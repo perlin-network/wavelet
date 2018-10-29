@@ -202,9 +202,6 @@ func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, err
 		return http.StatusBadRequest, nil, errors.New("transaction is not a smart contract")
 	}
 
-	// TODO: this is for debugging while the contract can't be unmarshalled
-	fmt.Printf("tx.payload len = %d\n", len(tx.Payload))
-
 	contract, err := wavelet.UnmarshalContract(tx.Payload)
 	if err != nil {
 		return http.StatusBadRequest, nil, errors.Wrap(err, "unable to parse contract")

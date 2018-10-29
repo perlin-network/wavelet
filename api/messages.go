@@ -26,7 +26,7 @@ type SendTransactionRequest struct {
 
 // GetTransactionRequest is the payload sent to send a transaction
 type GetTransactionRequest struct {
-	ID string `json:"id"   validate:"required"`
+	ID string `json:"transaction_id"   validate:"required,len=64"`
 }
 
 //------------------------
@@ -61,5 +61,5 @@ type LedgerState struct {
 
 // TransactionResponse represents the response from a sent transaction
 type TransactionResponse struct {
-	ID string `json:"id"`
+	ID string `json:"transaction_id"`
 }

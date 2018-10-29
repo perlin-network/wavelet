@@ -27,7 +27,7 @@ func NewContract(code string) *Contract {
 // UnmarshalContract unmarshals json-encoded bytes into a contract object
 func UnmarshalContract(bytes []byte) (*Contract, error) {
 	var contract Contract
-	err := json.Unmarshal(bytes, contract)
+	err := json.Unmarshal(bytes, &contract)
 	if err != nil {
 		return nil, err
 	}
