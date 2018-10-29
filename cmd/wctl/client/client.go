@@ -318,8 +318,8 @@ func (c *Client) SendContract(filename string) (*api.TransactionResponse, error)
 
 // GetContract returns a smart contract given an id
 func (c *Client) GetContract(id string) (*wavelet.Contract, error) {
-	req := api.GetContractRequest{
-		ContractID: id,
+	req := api.GetTransactionRequest{
+		ID: id,
 	}
 	contract := &wavelet.Contract{}
 	if err := c.Request(api.RouteContractGet, req, &contract, nil); err != nil {

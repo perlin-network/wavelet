@@ -178,24 +178,36 @@ func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, err
 		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
-	var params GetContractRequest
-	if err := ctx.readJSON(&params); err != nil {
+	var req GetTransactionRequest
+	if err := ctx.readJSON(&req); err != nil {
 		return http.StatusBadRequest, nil, err
 	}
 
-	if err := validate.Struct(params); err != nil {
+	if err := validate.Struct(req); err != nil {
 		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
 	}
 
-	var contract *wavelet.Contract
+	var tx *database.Transaction
 	var err error
 
 	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
-		contract, err = ledger.GetContract(params.ContractID)
+		tx, err = ledger.GetBySymbol(req.ID)
 	})
 
 	if err != nil {
-		return http.StatusBadRequest, nil, errors.Wrapf(err, "ContractID=%s does not exist", params.ContractID)
+		return http.StatusBadRequest, nil, errors.Wrapf(err, "transaction %s does not exist", req.ID)
+	}
+
+	if tx.Tag != params.CreateContractTag {
+		return http.StatusBadRequest, nil, errors.New("transaction is not a smart contract")
+	}
+
+	// TODO: this is for debugging while the contract can't be unmarshalled
+	fmt.Printf("tx.payload len = %d\n", len(tx.Payload))
+
+	contract, err := wavelet.UnmarshalContract(tx.Payload)
+	if err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "unable to parse contract")
 	}
 
 	return http.StatusOK, contract, nil

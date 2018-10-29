@@ -24,9 +24,9 @@ type SendTransactionRequest struct {
 	Payload []byte `json:"payload"  validate:"required,max=1024"`
 }
 
-// GetContractRequest is the payload sent to send a transaction
-type GetContractRequest struct {
-	ContractID string `json:"contract_id"   validate:"required"`
+// GetTransactionRequest is the payload sent to send a transaction
+type GetTransactionRequest struct {
+	ID string `json:"id"   validate:"required"`
 }
 
 //------------------------
