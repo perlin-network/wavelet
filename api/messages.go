@@ -13,20 +13,20 @@ type CredentialsRequest struct {
 
 // ListTransactionsRequest retrieves paginated transactions based on a specified tag
 type ListTransactionsRequest struct {
-	Tag      *string   `json:"tag"      validate:"omitempty,max=30"`
-	Paginate *Paginate `json:"paginate" validate:"omitempty"`
-}
-
-// Paginate is the payload sent to get from a list call
-type Paginate struct {
+	Tag    *string `json:"tag"      validate:"omitempty,max=30"`
 	Offset *uint64 `json:"offset"`
-	Limit  *uint64 `json:"limit" validate:"omitempty,max=1024"`
+	Limit  *uint64 `json:"limit"    validate:"omitempty,max=1024"`
 }
 
 // SendTransactionRequest is the payload sent to send a transaction
 type SendTransactionRequest struct {
 	Tag     string `json:"tag"      validate:"required,max=30"`
 	Payload []byte `json:"payload"  validate:"required,max=1024"`
+}
+
+// GetContractRequest is the payload sent to send a transaction
+type GetContractRequest struct {
+	ContractID string `json:"contract_id"   validate:"required"`
 }
 
 //------------------------
@@ -57,4 +57,9 @@ type LedgerState struct {
 	Address   string                 `json:"address"`
 	Peers     []string               `json:"peers"`
 	State     map[string]interface{} `json:"state"`
+}
+
+// TransactionResponse represents the response from a sent transaction
+type TransactionResponse struct {
+	ID string `json:"id"`
 }

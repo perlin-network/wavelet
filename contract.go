@@ -12,7 +12,6 @@ import (
 
 // Contract represents a smart contract on Perlin.
 type Contract struct {
-	ID   string `json:"id"`
 	Code string `json:"code"`
 }
 
