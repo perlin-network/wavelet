@@ -231,9 +231,8 @@ func main() {
 					return err
 				}
 				// TODO: need better way to output contracts
-				log.Info().Msgf("contracts: %d", len(contracts))
 				for _, contract := range contracts {
-					log.Info().Msgf("%v", contract)
+					log.Info().Msgf("contract id: %v", contract)
 				}
 				return nil
 			},

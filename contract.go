@@ -12,6 +12,7 @@ import (
 
 // Contract represents a smart contract on Perlin.
 type Contract struct {
+	ID   string `json:"id"`
 	Code []byte `json:"code"`
 }
 
@@ -32,6 +33,10 @@ func UnmarshalContract(bytes []byte) (*Contract, error) {
 		return nil, err
 	}
 	return &contract, nil
+}
+
+func (c Contract) String() string {
+	return c.ID
 }
 
 type ContractExecutor struct {
