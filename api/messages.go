@@ -29,6 +29,12 @@ type GetTransactionRequest struct {
 	ID string `json:"transaction_id"   validate:"required,len=64"`
 }
 
+// ListContractsRequest retrieves paginated contracts
+type ListContractsRequest struct {
+	Offset *uint64 `json:"offset"`
+	Limit  *uint64 `json:"limit"    validate:"omitempty,max=1024"`
+}
+
 //------------------------
 // Response Payloads
 //------------------------

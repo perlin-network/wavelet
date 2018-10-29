@@ -240,6 +240,45 @@ func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, er
 	return http.StatusOK, resp, nil
 }
 
+func (s *service) listContractsHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
+	}
+
+	if !ctx.session.Permissions.CanAccessLedger {
+		return http.StatusForbidden, nil, errors.New("permission denied")
+	}
+
+	var contracts []*wavelet.Contract
+	var listParams ListContractsRequest
+
+	if err := ctx.readJSON(&listParams); err != nil {
+		return http.StatusBadRequest, nil, err
+	}
+
+	if err := validate.Struct(listParams); err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
+	}
+
+	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+		// If paginate is blank, return the last 50 contracts.
+		if listParams.Offset == nil || listParams.Limit == nil {
+			total, limit := ledger.NumContracts(), uint64(50)
+			if limit > total {
+				limit = total
+			}
+
+			offset := total - limit
+
+			listParams.Limit = &limit
+			listParams.Offset = &offset
+		}
+		contracts = ledger.PaginateContracts(*listParams.Offset, *listParams.Limit)
+	})
+
+	return http.StatusOK, contracts, nil
+}
+
 func (s *service) ledgerStateHandler(ctx *requestContext) (int, interface{}, error) {
 	if err := ctx.loadSession(); err != nil {
 		return http.StatusForbidden, nil, err

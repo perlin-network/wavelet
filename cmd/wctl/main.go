@@ -217,6 +217,27 @@ func main() {
 				return nil
 			},
 		},
+		cli.Command{
+			Name:  "list_contracts",
+			Usage: "list smart contracts",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				contracts, err := client.ListContracts(0, 100)
+				if err != nil {
+					return err
+				}
+				// TODO: need better way to output contracts
+				log.Info().Msgf("contracts: %d", len(contracts))
+				for _, contract := range contracts {
+					log.Info().Msgf("%v", contract)
+				}
+				return nil
+			},
+		},
 	}
 
 	sort.Sort(cli.FlagsByName(app.Flags))

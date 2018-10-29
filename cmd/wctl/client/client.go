@@ -341,6 +341,15 @@ func (c *Client) GetContract(txID string, filename string) (*wavelet.Contract, e
 	return contract, nil
 }
 
+// ListContracts paginates through a list of smart contracts
+func (c *Client) ListContracts(offset uint64, limit uint64) (contracts []*wavelet.Contract, err error) {
+	err = c.Request(api.RouteContractList, api.ListContractsRequest{
+		Offset: &offset,
+		Limit:  &limit,
+	}, &contracts, nil)
+	return
+}
+
 // userAgent is a short summary of the client type making the connection
 func userAgent() string {
 	return fmt.Sprintf("wctl/%s-%s (%s)", params.Version, params.GitCommit, params.OSArch)
