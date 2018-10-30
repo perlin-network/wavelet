@@ -166,6 +166,12 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 			return nil
 		}
 
+		if ledger.WasAccepted(tx.Id) {
+			ledger.Delete(merge(BucketAcceptPending, writeBytes(tx.Id)))
+			// do we need to handle children here?
+			return nil
+		}
+
 		depth, err := ledger.Store.GetDepthBySymbol(symbol)
 		if err != nil {
 			return nil
