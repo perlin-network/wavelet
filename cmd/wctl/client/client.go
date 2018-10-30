@@ -322,7 +322,7 @@ func (c *Client) GetContract(txID string, filename string) (*wavelet.Contract, e
 		return nil, errors.New("output filename argument missing")
 	}
 
-	req := api.GetTransactionRequest{
+	req := api.GetContractRequest{
 		ID: txID,
 	}
 	contract := &wavelet.Contract{}
