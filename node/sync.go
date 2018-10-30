@@ -69,7 +69,7 @@ func (s *syncer) hinterLoop() {
 			continue
 		}
 
-		s.net.BroadcastRandomly(tx, params.SyncHintNumPeers)
+		s.net.BroadcastRandomly(context.Background(), tx, params.SyncHintNumPeers)
 	}
 }
 
@@ -90,7 +90,7 @@ func (s *syncer) QueryMissingParents(parents []string) {
 		}
 	})
 
-	s.net.BroadcastRandomly(&TxPushHint{
+	s.net.BroadcastRandomly(context.Background(), &TxPushHint{
 		Transactions: pushHint,
 	}, 3)
 }
@@ -157,7 +157,7 @@ func (s *syncer) QueryMissingChildren(id string) {
 		pushHint = append(pushHint, c)
 	}
 
-	s.net.BroadcastRandomly(&TxPushHint{
+	s.net.BroadcastRandomly(context.Background(), &TxPushHint{
 		Transactions: pushHint,
 	}, params.SyncHintNumPeers)
 }
