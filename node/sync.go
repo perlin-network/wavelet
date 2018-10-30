@@ -1,12 +1,15 @@
 package node
 
 import (
+	"context"
+	"time"
+
 	"github.com/perlin-network/graph/wire"
-	"github.com/perlin-network/noise/network/rpc"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/params"
-	"time"
+
+	"github.com/gogo/protobuf/proto"
 )
 
 type syncer struct {
@@ -110,13 +113,15 @@ func (s *syncer) QueryMissingChildren(id string) {
 			continue
 		}
 
-		req := new(rpc.Request)
-		req.SetTimeout(10 * time.Second)
-		req.SetMessage(&SyncChildrenQueryRequest{
-			Id: id,
-		})
+		r, err := func() (proto.Message, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+			defer cancel()
+			msg := &SyncChildrenQueryRequest{
+				Id: id,
+			}
 
-		r, err := client.Request(req)
+			return client.Request(ctx, msg)
+		}()
 		if err != nil {
 			log.Error().Err(err).Msg("request failed")
 			continue
@@ -136,7 +141,7 @@ func (s *syncer) QueryMissingChildren(id string) {
 	deleteList := make([]string, 0)
 
 	s.Ledger.Do(func(l *wavelet.Ledger) {
-		for c, _ := range children {
+		for c := range children {
 			if l.Store.TransactionExists(c) {
 				deleteList = append(deleteList, c)
 			}
@@ -148,7 +153,7 @@ func (s *syncer) QueryMissingChildren(id string) {
 	}
 
 	pushHint := make([]string, 0)
-	for c, _ := range children {
+	for c := range children {
 		pushHint = append(pushHint, c)
 	}
 
