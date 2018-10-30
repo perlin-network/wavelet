@@ -348,7 +348,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessOk) // always report ok.
 				}
 
-				contractCode, ok := account.Load(params.ContractCodeKey)
+				contractCode, ok := account.Load(params.KeyContractCode)
 				if !ok {
 					return int64(InternalProcessOk)
 				}
@@ -423,7 +423,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessErr)
 				}
 
-				s.accounts[contractID][params.ContractCodeKey] = decoded
+				s.accounts[contractID][params.KeyContractCode] = decoded
 
 				return int64(InternalProcessOk)
 			}
@@ -449,7 +449,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					s.accounts[contractID] = make(map[string][]byte)
 				}
 
-				s.accounts[contractID][params.ContractCodeKey] = code
+				s.accounts[contractID][params.KeyContractCode] = code
 
 				return int64(InternalProcessOk)
 			}

@@ -132,7 +132,7 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 			accounts[writeString(senderID)] = sender
 		}
 
-		if tx.Tag == params.NopTag {
+		if tx.Tag == params.TagNop {
 			sender.Nonce++
 
 			for id, account := range accounts {
@@ -491,7 +491,7 @@ func (s *state) LoadContract(id string) (*Contract, error) {
 		return nil, errors.Wrapf(err, "failed to decode contract bytes")
 	}
 
-	contractCode, ok := account.Load(params.ContractCodeKey)
+	contractCode, ok := account.Load(params.KeyContractCode)
 	if !ok {
 		return nil, errors.Errorf("contract ID %s has no contract code", id)
 	}
@@ -528,7 +528,7 @@ func (s *state) PaginateContracts(offset, pageSize uint64) []*Contract {
 				return err
 			}
 
-			contractCode, ok := account.Load(params.ContractCodeKey)
+			contractCode, ok := account.Load(params.KeyContractCode)
 			if !ok {
 				err := errors.Errorf("contract ID %s has no contract code", publicKey)
 				log.Error().Err(err).Msg("")

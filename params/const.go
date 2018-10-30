@@ -4,12 +4,12 @@ import "time"
 
 const (
 	// Transaction tags
-	CreateContractTag = "create_contract"
-	NopTag            = "nop"
-	TransferTag       = "transfer"
+	TagCreateContract = "create_contract"
+	TagNop            = "nop"
+	TagTransfer       = "transfer"
 
 	// Account keys
-	ContractCodeKey = "contract_code"
+	KeyContractCode = "contract_code"
 )
 
 var (

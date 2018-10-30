@@ -26,7 +26,7 @@ var (
 // Valid sender public key.
 // Valid message signature.
 func ValidateWiredTransaction(wired *wire.Transaction) (bool, error) {
-	if wired.Tag == params.NopTag && wired.Payload != nil {
+	if wired.Tag == params.TagNop && wired.Payload != nil {
 		return false, errors.Wrap(ErrMalformedTransaction, "nop must have empty payload")
 	}
 

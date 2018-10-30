@@ -96,7 +96,7 @@ func (s *service) pollTransactionHandler(ctx *requestContext) (int, interface{},
 			return true
 		}
 
-		if tx.Tag == params.CreateContractTag {
+		if tx.Tag == params.TagCreateContract {
 			tx.Payload = []byte("<code here>")
 		}
 
@@ -160,7 +160,7 @@ func (s *service) listTransactionHandler(ctx *requestContext) (int, interface{},
 	})
 
 	for _, tx := range transactions {
-		if tx.Tag == params.CreateContractTag {
+		if tx.Tag == params.TagCreateContract {
 			tx.Payload = []byte("<code placeholder>")
 		}
 	}
@@ -177,7 +177,7 @@ func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, err
 		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
-	var req GetTransactionRequest
+	var req GetContractRequest
 	if err := ctx.readJSON(&req); err != nil {
 		return http.StatusBadRequest, nil, err
 	}
@@ -230,7 +230,7 @@ func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, er
 		return http.StatusBadRequest, nil, errors.Wrap(err, "Failed to marshal smart contract deployment payload.")
 	}
 
-	wired := s.wavelet.MakeTransaction(params.CreateContractTag, payload)
+	wired := s.wavelet.MakeTransaction(params.TagCreateContract, payload)
 	go s.wavelet.BroadcastTransaction(wired)
 
 	resp := &TransactionResponse{

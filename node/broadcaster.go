@@ -145,7 +145,7 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 			return
 		}
 
-		nop = b.MakeTransaction(params.NopTag, nil)
+		nop = b.MakeTransaction(params.TagNop, nil)
 
 		b.Ledger.Do(func(l *wavelet.Ledger) {
 			nopID, successful, err = l.RespondToQuery(nop)

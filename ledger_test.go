@@ -43,7 +43,7 @@ func BenchmarkLedger(b *testing.B) {
 			Sender:  keys.PublicKeyHex(),
 			Nonce:   uint64(i),
 			Parents: parents,
-			Tag:     params.NopTag,
+			Tag:     params.TagNop,
 		}
 
 		encoded, err := wired.Marshal()
