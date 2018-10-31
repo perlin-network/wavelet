@@ -409,6 +409,8 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					s.accounts[contractID] = make(map[string][]byte)
 				}
 
+				// This struct is defined in
+				// github.com/perlin-network/transaction-processor-rs/builtin/contract/src/lib.rs
 				var payload struct {
 					Code string `json:"code"`
 				}
@@ -465,7 +467,7 @@ func (s *service) ResolveGlobal(module, field string) int64 {
 	panic("no global variables")
 }
 
-// ContractID returns the expected ID of a smart contract given the transaction symbol which
+// asContractID returns the expected ID of a smart contract given the transaction symbol which
 // spawned the contract.
 func asContractID(txID string) string {
 	return string(merge(ContractPrefix, writeBytes(txID)))
