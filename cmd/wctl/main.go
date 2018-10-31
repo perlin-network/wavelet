@@ -230,9 +230,13 @@ func main() {
 				if err != nil {
 					return err
 				}
-				fmt.Println("Contract IDs")
-				for i, contract := range contracts {
-					fmt.Printf(" %d) %s\n", i+1, contract.TxID)
+				fmt.Println("Contract IDs:")
+				if len(contracts) == 0 {
+					fmt.Println("    none found")
+				} else {
+					for i, contract := range contracts {
+						fmt.Printf(" %d) %s\n", i+1, contract.TxID)
+					}
 				}
 				return nil
 			},
