@@ -1,19 +1,24 @@
 package node
 
 import (
+	"context"
+	"math/rand"
+	"os"
+
+	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/params"
+	"github.com/perlin-network/wavelet/security"
+
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/dht"
 	"github.com/perlin-network/noise/network"
 	"github.com/perlin-network/noise/network/discovery"
-	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/params"
-	"github.com/perlin-network/wavelet/security"
+	"github.com/perlin-network/noise/types/opcode"
+
 	"github.com/pkg/errors"
-	"math/rand"
-	"os"
 )
 
 var _ network.PluginInterface = (*Wavelet)(nil)
@@ -40,6 +45,14 @@ type Wavelet struct {
 	opts Options
 }
 
+const (
+	WireTransactionOpcode           = 4000
+	QueryResponseOpcode             = 4010
+	SyncChildrenQueryRequestOpcode  = 4011
+	SyncChildrenQueryResponseOpcode = 4012
+	TxPushHintOpcode                = 4013
+)
+
 func NewPlugin(opts Options) *Wavelet {
 	return &Wavelet{opts: opts}
 }
@@ -64,6 +77,12 @@ func (w *Wavelet) Startup(net *network.Network) {
 			log.Info().Str("db_path", w.opts.DatabasePath).Msg("Deleted previous database instance.")
 		}
 	}
+
+	opcode.RegisterMessageType(opcode.Opcode(WireTransactionOpcode), &wire.Transaction{})
+	opcode.RegisterMessageType(opcode.Opcode(QueryResponseOpcode), &QueryResponse{})
+	opcode.RegisterMessageType(opcode.Opcode(SyncChildrenQueryRequestOpcode), &SyncChildrenQueryRequest{})
+	opcode.RegisterMessageType(opcode.Opcode(SyncChildrenQueryResponseOpcode), &SyncChildrenQueryResponse{})
+	opcode.RegisterMessageType(opcode.Opcode(TxPushHintOpcode), &TxPushHint{})
 
 	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath, w.opts.GenesisPath)
 
@@ -95,7 +114,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 		res := &QueryResponse{Id: id}
 
 		defer func() {
-			err := ctx.Reply(res)
+			err := ctx.Reply(context.Background(), res)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to send response.")
 			}
@@ -195,7 +214,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 			childrenIDs = make([]string, 0)
 		}
 
-		ctx.Reply(&SyncChildrenQueryResponse{
+		ctx.Reply(context.Background(), &SyncChildrenQueryResponse{
 			Children: childrenIDs,
 		})
 	case *TxPushHint:
@@ -216,7 +235,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 			})
 
 			if out != nil {
-				w.net.BroadcastByAddresses(out, ctx.Sender().Address)
+				w.net.BroadcastByAddresses(context.Background(), out, ctx.Sender().Address)
 			}
 		}
 	}
