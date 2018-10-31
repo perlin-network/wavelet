@@ -11,16 +11,28 @@ type CredentialsRequest struct {
 	Sig        string `json:"Sig"           validate:"required,len=128"`
 }
 
-// PaginateRequest is the payload sent to get from a list call
-type PaginateRequest struct {
+// ListTransactionsRequest retrieves paginated transactions based on a specified tag
+type ListTransactionsRequest struct {
+	Tag    *string `json:"tag"      validate:"omitempty,max=30"`
 	Offset *uint64 `json:"offset"`
-	Limit  *uint64 `json:"limit" validate:"max=1024"`
+	Limit  *uint64 `json:"limit"    validate:"omitempty,max=1024"`
 }
 
 // SendTransactionRequest is the payload sent to send a transaction
 type SendTransactionRequest struct {
 	Tag     string `json:"tag"      validate:"required,max=30"`
 	Payload []byte `json:"payload"  validate:"required,max=1024"`
+}
+
+// GetContractRequest is the payload request to get a smart contract
+type GetContractRequest struct {
+	ID string `json:"contract_id"   validate:"required,len=64"`
+}
+
+// ListContractsRequest retrieves paginated contracts
+type ListContractsRequest struct {
+	Offset *uint64 `json:"offset"`
+	Limit  *uint64 `json:"limit"    validate:"omitempty,max=1024"`
 }
 
 //------------------------
@@ -51,4 +63,9 @@ type LedgerState struct {
 	Address   string                 `json:"address"`
 	Peers     []string               `json:"peers"`
 	State     map[string]interface{} `json:"state"`
+}
+
+// TransactionResponse represents the response from a sent transaction
+type TransactionResponse struct {
+	ID string `json:"transaction_id"`
 }

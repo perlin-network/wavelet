@@ -2,6 +2,16 @@ package params
 
 import "time"
 
+const (
+	// Transaction tags
+	TagCreateContract = "create_contract"
+	TagNop            = "nop"
+	TagTransfer       = "transfer"
+
+	// Account keys
+	KeyContractCode = "contract_code"
+)
+
 var (
 	// Transaction IBLT parameters.
 	TxK = 6

@@ -377,8 +377,12 @@ func runShell(w *node.Wavelet) error {
 				log.Fatal().Err(err).Msg("Failed to marshal transfer payload.")
 			}
 
-			wired := w.MakeTransaction("transfer", payload)
+			wired := w.MakeTransaction(params.TagTransfer, payload)
 			go w.BroadcastTransaction(wired)
+
+			txID := graph.Symbol(wired)
+
+			log.Info().Msgf("Success! Your payment txID = %s", txID)
 		case "c":
 			if len(cmd) < 2 {
 				continue
@@ -403,12 +407,12 @@ func runShell(w *node.Wavelet) error {
 				continue
 			}
 
-			wired := w.MakeTransaction("create_contract", payload)
+			wired := w.MakeTransaction(params.TagCreateContract, payload)
 			go w.BroadcastTransaction(wired)
 
-			contractID := hex.EncodeToString(wavelet.ContractID(graph.Symbol(wired)))
+			txID := graph.Symbol(wired)
 
-			log.Info().Msgf("Success! Your smart contract ID is: %s", contractID)
+			log.Info().Msgf("Success! Your smart contract txID = %s", txID)
 		case "tx":
 			if len(cmd) < 2 {
 				continue
@@ -450,8 +454,10 @@ func runShell(w *node.Wavelet) error {
 
 			log.Info().Interface("tx", view).Msg("Here is the transaction you requested.")
 		default:
-			wired := w.MakeTransaction("nop", nil)
+			wired := w.MakeTransaction(params.TagNop, nil)
 			go w.BroadcastTransaction(wired)
+			txID := graph.Symbol(wired)
+			log.Info().Msgf("Your nop txID = %s", txID)
 		}
 	}
 

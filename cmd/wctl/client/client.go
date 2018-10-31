@@ -15,6 +15,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/perlin-network/graph/wire"
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/events"
 	"github.com/perlin-network/wavelet/params"
@@ -228,24 +229,27 @@ func (c *Client) pollTransactions(event string, stop <-chan struct{}) (<-chan wi
 
 }
 
-func (c *Client) SendTransaction(tag string, payload []byte) error {
-	return c.Request(api.RouteTransactionSend, api.SendTransactionRequest{
+func (c *Client) SendTransaction(tag string, payload []byte) (resp *api.TransactionResponse, err error) {
+	err = c.Request(api.RouteTransactionSend, api.SendTransactionRequest{
 		Tag:     tag,
 		Payload: payload,
-	}, nil, nil)
-}
-
-func (c *Client) ListTransaction(offset uint64, limit uint64) (transactions []*wire.Transaction, err error) {
-	err = c.Request(api.RouteTransactionList, api.PaginateRequest{
-		Offset: &offset,
-		Limit:  &limit,
-	}, &transactions, nil)
-
+	}, &resp, nil)
 	return
 }
 
-func (c *Client) RecentTransactions() (transactions []*wire.Transaction, err error) {
-	err = c.Request(api.RouteTransactionList, nil, &transactions, nil)
+func (c *Client) ListTransaction(offset uint64, limit uint64) (transactions []*wire.Transaction, err error) {
+	err = c.Request(api.RouteTransactionList, api.ListTransactionsRequest{
+		Offset: &offset,
+		Limit:  &limit,
+	}, &transactions, nil)
+	return
+}
+
+// RecentTransactions returns the last 50 transactions in the ledger
+func (c *Client) RecentTransactions(tag string) (transactions []*wire.Transaction, err error) {
+	err = c.Request(api.RouteTransactionList, api.ListTransactionsRequest{
+		Tag: &tag,
+	}, &transactions, nil)
 	return
 }
 
@@ -276,26 +280,26 @@ func (c *Client) LedgerState() (*api.LedgerState, error) {
 	return &ret, nil
 }
 
-func (c *Client) SendContract(filename string) (string, error) {
+func (c *Client) SendContract(filename string) (*api.TransactionResponse, error) {
 	bodyBuf := &bytes.Buffer{}
 	bodyWriter := multipart.NewWriter(bodyBuf)
 
 	// this step is very important
 	fileWriter, err := bodyWriter.CreateFormFile(api.UploadFormField, filename)
 	if err != nil {
-		return "", errors.Wrap(err, "error writing to buffer")
+		return nil, errors.Wrap(err, "error writing to buffer")
 	}
 
 	// open file handle
 	sourceFile, err := os.Open(filename)
 	if err != nil {
-		return "", errors.Wrap(err, "error opening file")
+		return nil, errors.Wrap(err, "error opening file")
 	}
 	defer sourceFile.Close()
 
 	// copy to dest from source
 	if _, err = io.Copy(fileWriter, sourceFile); err != nil {
-		return "", errors.Wrap(err, "error copy the file")
+		return nil, errors.Wrap(err, "error copy the file")
 	}
 
 	opts := &requestOptions{
@@ -304,13 +308,46 @@ func (c *Client) SendContract(filename string) (string, error) {
 	}
 	bodyWriter.Close()
 
-	var result struct {
-		ContractID string `json:"contract_id"`
+	var resp *api.TransactionResponse
+	if err := c.Request(api.RouteContractSend, bodyBuf.Bytes(), &resp, opts); err != nil {
+		return nil, err
 	}
-	if err := c.Request(api.RouteContractSend, bodyBuf.Bytes(), &result, opts); err != nil {
-		return "", err
+
+	return resp, nil
+}
+
+// GetContract returns a smart contract given an id
+func (c *Client) GetContract(txID string, filename string) (*wavelet.Contract, error) {
+	if len(filename) == 0 {
+		return nil, errors.New("output filename argument missing")
 	}
-	return result.ContractID, nil
+
+	req := api.GetContractRequest{
+		ID: txID,
+	}
+	contract := &wavelet.Contract{}
+	if err := c.Request(api.RouteContractGet, req, contract, nil); err != nil {
+		return nil, err
+	}
+
+	if len(contract.Code) == 0 {
+		return nil, errors.New("contract was empty")
+	}
+
+	if err := ioutil.WriteFile(filename, contract.Code, 0644); err != nil {
+		return nil, err
+	}
+
+	return contract, nil
+}
+
+// ListContracts paginates through a list of smart contracts
+func (c *Client) ListContracts(offset uint64, limit uint64) (contracts []*wavelet.Contract, err error) {
+	err = c.Request(api.RouteContractList, api.ListContractsRequest{
+		Offset: &offset,
+		Limit:  &limit,
+	}, &contracts, nil)
+	return
 }
 
 // userAgent is a short summary of the client type making the connection

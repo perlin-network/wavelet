@@ -81,7 +81,13 @@ func main() {
 				}
 				tag := c.Args().Get(0)
 				payload := c.Args().Get(1)
-				return client.SendTransaction(tag, []byte(payload))
+				tx, err := client.SendTransaction(tag, []byte(payload))
+				if err != nil {
+					return err
+				}
+				jsonOut, _ := json.Marshal(tx)
+				fmt.Printf("%s\n", jsonOut)
+				return nil
 			},
 		},
 		cli.Command{
@@ -93,7 +99,7 @@ func main() {
 				if err != nil {
 					return err
 				}
-				transactions, err := client.RecentTransactions()
+				transactions, err := client.RecentTransactions("")
 				if err != nil {
 					return err
 				}
@@ -182,11 +188,52 @@ func main() {
 					return err
 				}
 				filename := c.Args().Get(0)
-				contractID, err := client.SendContract(filename)
+				tx, err := client.SendContract(filename)
 				if err != nil {
 					return err
 				}
-				log.Info().Msgf("%v", contractID)
+				jsonOut, _ := json.Marshal(tx)
+				fmt.Printf("%s\n", jsonOut)
+				return nil
+			},
+		},
+		cli.Command{
+			Name:      "get_contract",
+			Usage:     "get smart contract by transaction ID",
+			Flags:     commonFlags,
+			ArgsUsage: "<transaction_id> <output_filename>",
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+
+				contractID := c.Args().Get(0)
+				filename := c.Args().Get(1)
+				if _, err = client.GetContract(contractID, filename); err != nil {
+					return err
+				}
+				log.Info().Msgf("saved contract %s to file %s", contractID, filename)
+				return nil
+			},
+		},
+		cli.Command{
+			Name:  "list_contracts",
+			Usage: "list smart contracts",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				contracts, err := client.ListContracts(0, 100)
+				if err != nil {
+					return err
+				}
+				// TODO: need better way to output contracts
+				for _, contract := range contracts {
+					log.Info().Msgf("contract id: %v", contract)
+				}
 				return nil
 			},
 		},

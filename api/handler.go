@@ -2,7 +2,6 @@ package api
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -97,7 +96,7 @@ func (s *service) pollTransactionHandler(ctx *requestContext) (int, interface{},
 			return true
 		}
 
-		if tx.Tag == "create_contract" {
+		if tx.Tag == params.TagCreateContract {
 			tx.Payload = []byte("<code here>")
 		}
 
@@ -134,19 +133,19 @@ func (s *service) listTransactionHandler(ctx *requestContext) (int, interface{},
 	}
 
 	var transactions []*database.Transaction
-	var paginate PaginateRequest
+	var listParams ListTransactionsRequest
 
-	if err := ctx.readJSON(&paginate); err != nil {
+	if err := ctx.readJSON(&listParams); err != nil {
 		return http.StatusBadRequest, nil, err
 	}
 
-	if err := validate.Struct(paginate); err != nil {
+	if err := validate.Struct(listParams); err != nil {
 		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
 	}
 
 	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
 		// If paginate is blank, return the last 50 transactions.
-		if paginate.Offset == nil || paginate.Limit == nil {
+		if listParams.Offset == nil || listParams.Limit == nil {
 			total, limit := ledger.NumTransactions(), uint64(50)
 			if limit > total {
 				limit = total
@@ -154,19 +153,51 @@ func (s *service) listTransactionHandler(ctx *requestContext) (int, interface{},
 
 			offset := total - limit
 
-			paginate.Limit = &limit
-			paginate.Offset = &offset
+			listParams.Limit = &limit
+			listParams.Offset = &offset
 		}
-		transactions = ledger.PaginateTransactions(*paginate.Offset, *paginate.Limit)
+		transactions = ledger.PaginateTransactions(*listParams.Offset, *listParams.Limit)
 	})
 
 	for _, tx := range transactions {
-		if tx.Tag == "create_contract" {
-			tx.Payload = []byte("<code here>")
+		if tx.Tag == params.TagCreateContract {
+			tx.Payload = []byte("<code placeholder>")
 		}
 	}
 
 	return http.StatusOK, transactions, nil
+}
+
+func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
+	}
+
+	if !ctx.session.Permissions.CanAccessLedger {
+		return http.StatusForbidden, nil, errors.New("permission denied")
+	}
+
+	var req GetContractRequest
+	if err := ctx.readJSON(&req); err != nil {
+		return http.StatusBadRequest, nil, err
+	}
+
+	if err := validate.Struct(req); err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
+	}
+
+	var contract *wavelet.Contract
+	var err error
+
+	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+		contract, err = ledger.LoadContract(req.ID)
+	})
+
+	if err != nil {
+		return http.StatusBadRequest, nil, errors.Wrapf(err, "transaction %s does not exist", req.ID)
+	}
+
+	return http.StatusOK, contract, nil
 }
 
 func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, error) {
@@ -192,27 +223,60 @@ func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, er
 	var bb bytes.Buffer
 	io.Copy(&bb, file)
 
-	contract := struct {
-		Code string `json:"code"`
-	}{
-		Code: base64.StdEncoding.EncodeToString(bb.Bytes()),
-	}
+	contract := wavelet.NewContract(bb.Bytes())
 
 	payload, err := json.Marshal(contract)
 	if err != nil {
 		return http.StatusBadRequest, nil, errors.Wrap(err, "Failed to marshal smart contract deployment payload.")
 	}
 
-	wired := s.wavelet.MakeTransaction("create_contract", payload)
+	wired := s.wavelet.MakeTransaction(params.TagCreateContract, payload)
 	go s.wavelet.BroadcastTransaction(wired)
 
-	response := struct {
-		ContractID string `json:"contract_id"`
-	}{
-		ContractID: hex.EncodeToString(wavelet.ContractID(graph.Symbol(wired))),
+	resp := &TransactionResponse{
+		ID: graph.Symbol(wired),
 	}
 
-	return http.StatusOK, response, nil
+	return http.StatusOK, resp, nil
+}
+
+func (s *service) listContractsHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
+	}
+
+	if !ctx.session.Permissions.CanAccessLedger {
+		return http.StatusForbidden, nil, errors.New("permission denied")
+	}
+
+	var contracts []*wavelet.Contract
+	var listParams ListContractsRequest
+
+	if err := ctx.readJSON(&listParams); err != nil {
+		return http.StatusBadRequest, nil, err
+	}
+
+	if err := validate.Struct(listParams); err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
+	}
+
+	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+		// If paginate is blank, return the last 50 contracts.
+		if listParams.Offset == nil || listParams.Limit == nil {
+			total, limit := ledger.NumContracts(), uint64(50)
+			if limit > total {
+				limit = total
+			}
+
+			offset := total - limit
+
+			listParams.Limit = &limit
+			listParams.Offset = &offset
+		}
+		contracts = ledger.PaginateContracts(*listParams.Offset, *listParams.Limit)
+	})
+
+	return http.StatusOK, contracts, nil
 }
 
 func (s *service) ledgerStateHandler(ctx *requestContext) (int, interface{}, error) {
@@ -266,7 +330,11 @@ func (s *service) sendTransactionHandler(ctx *requestContext) (int, interface{},
 	wired := s.wavelet.MakeTransaction(info.Tag, info.Payload)
 	go s.wavelet.BroadcastTransaction(wired)
 
-	return http.StatusOK, "OK", nil
+	resp := &TransactionResponse{
+		ID: graph.Symbol(wired),
+	}
+
+	return http.StatusOK, resp, nil
 }
 
 func (s *service) resetStatsHandler(ctx *requestContext) (int, interface{}, error) {
@@ -309,6 +377,7 @@ func (s *service) loadAccountHandler(ctx *requestContext) (int, interface{}, err
 	})
 
 	if err != nil {
+		// if account doesn't exist, return an empty account
 		return http.StatusOK, make(map[string][]byte), nil
 	}
 
