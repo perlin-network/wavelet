@@ -223,7 +223,9 @@ func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, er
 	var bb bytes.Buffer
 	io.Copy(&bb, file)
 
-	contract := wavelet.NewContract(bb.Bytes())
+	contract := &wavelet.Contract{
+		Code: bb.Bytes(),
+	}
 
 	payload, err := json.Marshal(contract)
 	if err != nil {

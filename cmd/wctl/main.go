@@ -230,10 +230,9 @@ func main() {
 				if err != nil {
 					return err
 				}
-				// TODO: need better way to output contracts
 				fmt.Println("Contract IDs")
 				for i, contract := range contracts {
-					fmt.Printf(" %d) %s\n", i+1, contract.ID)
+					fmt.Printf(" %d) %s\n", i+1, contract.TxID)
 				}
 				return nil
 			},

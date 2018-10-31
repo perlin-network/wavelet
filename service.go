@@ -403,7 +403,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessErr) // a contract cannot create another one
 				}
 
-				contractID := string(ContractID(s.tx.Id))
+				contractID := asContractID(s.tx.Id)
 
 				if s.accounts[contractID] == nil {
 					s.accounts[contractID] = make(map[string][]byte)
@@ -443,7 +443,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessErr) // a contract cannot create another one
 				}
 
-				contractID := string(ContractID(s.tx.Id))
+				contractID := asContractID(s.tx.Id)
 
 				if s.accounts[contractID] == nil {
 					s.accounts[contractID] = make(map[string][]byte)
@@ -467,6 +467,6 @@ func (s *service) ResolveGlobal(module, field string) int64 {
 
 // ContractID returns the expected ID of a smart contract given the transaction symbol which
 // spawned the contract.
-func ContractID(id string) []byte {
-	return merge(ContractPrefix, writeBytes(id))
+func asContractID(txID string) string {
+	return string(merge(ContractPrefix, writeBytes(txID)))
 }
