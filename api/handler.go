@@ -190,11 +190,11 @@ func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, err
 	var err error
 
 	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
-		contract, err = ledger.LoadContract(req.ID)
+		contract, err = ledger.LoadContract(req.ContractID)
 	})
 
 	if err != nil {
-		return http.StatusBadRequest, nil, errors.Wrapf(err, "transaction %s does not exist", req.ID)
+		return http.StatusBadRequest, nil, errors.Wrapf(err, "transaction %s does not exist", req.ContractID)
 	}
 
 	return http.StatusOK, contract, nil
@@ -234,7 +234,7 @@ func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, er
 	go s.wavelet.BroadcastTransaction(wired)
 
 	resp := &TransactionResponse{
-		ID: graph.Symbol(wired),
+		TransactionID: graph.Symbol(wired),
 	}
 
 	return http.StatusOK, resp, nil
@@ -331,7 +331,7 @@ func (s *service) sendTransactionHandler(ctx *requestContext) (int, interface{},
 	go s.wavelet.BroadcastTransaction(wired)
 
 	resp := &TransactionResponse{
-		ID: graph.Symbol(wired),
+		TransactionID: graph.Symbol(wired),
 	}
 
 	return http.StatusOK, resp, nil

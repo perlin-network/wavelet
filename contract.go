@@ -35,10 +35,6 @@ func UnmarshalContract(bytes []byte) (*Contract, error) {
 	return &contract, nil
 }
 
-func (c Contract) String() string {
-	return c.ID
-}
-
 type ContractExecutor struct {
 	GasTable               map[string]int64
 	GasLimit               uint64
