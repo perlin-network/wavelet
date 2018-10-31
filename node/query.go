@@ -1,12 +1,18 @@
 package node
 
 import (
-	"github.com/perlin-network/graph/wire"
-	"github.com/perlin-network/noise/network/rpc"
-	"github.com/perlin-network/wavelet/params"
-	"github.com/pkg/errors"
+	"context"
+	"github.com/gogo/protobuf/proto"
 	"sync"
 	"time"
+
+	"github.com/perlin-network/graph/wire"
+	"github.com/perlin-network/wavelet/params"
+	"github.com/pkg/errors"
+)
+
+const (
+	queryTimeout = 10 * time.Second
 )
 
 var (
@@ -37,11 +43,12 @@ func (q query) Query(wired *wire.Transaction) error {
 				return
 			}
 
-			request := new(rpc.Request)
-			request.SetTimeout(10 * time.Second)
-			request.SetMessage(wired)
+			response, err := func() (proto.Message, error) {
+				ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+				defer cancel()
+				return client.Request(ctx, wired)
+			}()
 
-			response, err := client.Request(request)
 			if err != nil {
 				responses[i] = false
 				return

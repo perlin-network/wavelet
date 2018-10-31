@@ -2,11 +2,11 @@
 go run main.go -api.port 9000
 
 # or use a config file
-go run main.go -config config.toml
+go run main.go -config config.toml --daemon=false
 ```
 
 ```bash
-go run main.go -db.path testdb2 -port 3001 -privkey random -peers tcp://127.0.0.1:3000
+go run main.go --db.path testdb2 --port 3001 --private_key_file random --peers tcp://127.0.0.1:3000
 ```
 
 ```bash
