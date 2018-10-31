@@ -190,11 +190,11 @@ func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, err
 	var err error
 
 	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
-		contract, err = ledger.LoadContract(req.ContractID)
+		contract, err = ledger.LoadContract(req.TxID)
 	})
 
 	if err != nil {
-		return http.StatusBadRequest, nil, errors.Wrapf(err, "transaction %s does not exist", req.ContractID)
+		return http.StatusBadRequest, nil, errors.Wrapf(err, "transaction %s does not exist", req.TxID)
 	}
 
 	return http.StatusOK, contract, nil
