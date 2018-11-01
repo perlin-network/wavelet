@@ -1,6 +1,9 @@
 package params
 
-import "time"
+import (
+	"math/big"
+	"time"
+)
 
 const (
 	// Transaction tags
@@ -20,6 +23,10 @@ var (
 	// Consensus protocol parameters.
 	ConsensusK     = 1
 	ConsensusAlpha = float32(0.8)
+
+	// The prime field order which validator reward polynomials are over. By default set to the Mersenne prime 2^511 - 1.
+	ConsensusRewardProofP = new(big.Int).Sub(new(big.Int).Exp(big.NewInt(2), big.NewInt(511), nil), big.NewInt(-1))
+	//ConsensusRewardProofP = big.NewInt(11)
 
 	// Ledger parameters.
 	GraphUpdatePeriod = 50 * time.Millisecond
