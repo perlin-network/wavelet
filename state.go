@@ -98,6 +98,39 @@ func (s *state) registerService(name string, path string) error {
 	return nil
 }
 
+func (s *state) init() error {
+	events.Subscribe(nil, func(ev *events.TransactionAppliedEvent) bool {
+		txID := ev.ID
+		tx, err := s.GetBySymbol(txID)
+		if err != nil {
+			return true
+		}
+		if tx.Tag == params.TagCreateContract {
+			// clear the payload field on applied, since a copy is in the ledger
+			if len(tx.Payload) == 0 {
+				// it's already empty nothing more to do
+				return true
+			}
+			contract, err := s.LoadContract(txID)
+			if err != nil || contract == nil {
+				// contract is missing, don't continue
+				return true
+			}
+			/*
+				TODO: clear out the payload from the transaction when graph PR is merged
+				s.Store.EditTxPayload(txID, func(editPayload []byte, editErr error) ([]byte, error) {
+					// set the payload to nil
+					return nil, editErr
+				})
+			*/
+		}
+
+		return true
+	})
+
+	return nil
+}
+
 // applyTransaction runs a transaction, gets any transactions created by said transaction, and
 // applies those transactions to the ledger state.
 func (s *state) applyTransaction(tx *database.Transaction) error {

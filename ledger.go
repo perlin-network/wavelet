@@ -80,6 +80,8 @@ func NewLedger(databasePath, servicesPath, genesisPath string) *Ledger {
 
 	ledger.registerServicePath(servicesPath)
 
+	ledger.state.init()
+
 	graph.AddOnReceiveHandler(ledger.ensureSafeCommittable)
 
 	return ledger
