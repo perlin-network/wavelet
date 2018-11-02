@@ -197,7 +197,8 @@ func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, err
 	}
 
 	resp := &TransactionResponse{
-		Code: contractCode,
+		TransactionID: req.TransactionID,
+		Code:          contractCode,
 	}
 
 	return http.StatusOK, resp, nil
