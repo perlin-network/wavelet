@@ -566,8 +566,8 @@ func (s *state) PaginateContracts(offset, pageSize uint64) []*Contract {
 			}
 
 			contract := &Contract{
-				TxID: string(txID),
-				Code: contractCode,
+				TransactionID: string(txID),
+				Code:          contractCode,
 			}
 
 			page = append(page, contract)
