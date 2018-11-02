@@ -2,7 +2,6 @@ package node
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/perlin-network/graph/wire"
@@ -67,16 +66,11 @@ func (s *syncer) hinterLoop() {
 				if tx.Tag == params.TagCreateContract {
 					// if it was a create contract that was removed from the db, load the tx payload from the ledger
 					if len(tx.Payload) == 0 {
-						contract, err := l.LoadContract(symbol)
+						contractCode, err := l.LoadContract(symbol)
 						if err != nil {
 							return
 						}
-						contract.TxID = ""
-						payload, err := json.Marshal(contract)
-						if err != nil {
-							return
-						}
-						tx.Payload = payload
+						tx.Payload = contractCode
 					}
 				}
 			}

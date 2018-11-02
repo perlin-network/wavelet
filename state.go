@@ -511,7 +511,7 @@ func (s *state) Snapshot() map[string]interface{} {
 
 // LoadContract loads a smart contract from the database given its tx id.
 // The key in the database will be of the form "account_C-txID"
-func (s *state) LoadContract(txID string) (*Contract, error) {
+func (s *state) LoadContract(txID string) ([]byte, error) {
 	contractKey := merge(BucketContracts, writeBytes(txID))
 	bytes, err := s.Get(contractKey)
 	if err != nil {
@@ -521,19 +521,38 @@ func (s *state) LoadContract(txID string) (*Contract, error) {
 	account := NewAccount(writeBytes(txID))
 	err = account.Unmarshal(bytes)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to decode contract bytes")
+		return nil, errors.Wrapf(err, "failed to decode account")
 	}
 
 	contractCode, ok := account.Load(params.KeyContractCode)
 	if !ok {
 		return nil, errors.Errorf("contract ID %s has no contract code", txID)
 	}
-	contract := &Contract{
-		TxID: txID,
-		Code: contractCode,
+	return contractCode, nil
+}
+
+// SaveContract saves a smart contract to the database given its tx id.
+// The key in the database will be of the form "account_C-txID"
+func (s *state) SaveContract(txID string, contractCode []byte) error {
+	contractKey := merge(BucketContracts, writeBytes(txID))
+
+	account := NewAccount(writeBytes(txID))
+
+	if bytes, err := s.Get(contractKey); err == nil {
+		if err := account.Unmarshal(bytes); err != nil {
+			return errors.Wrapf(err, "failed to decode account")
+		}
+		account.Nonce++
 	}
 
-	return contract, nil
+	account.Store(params.KeyContractCode, contractCode)
+
+	bytes := account.MarshalBinary()
+	if err := s.Put(contractKey, bytes); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // PaginateContracts paginates through the smart contracts found in the ledger by searching for the prefix

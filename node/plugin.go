@@ -2,7 +2,6 @@ package node
 
 import (
 	"context"
-	"encoding/json"
 	"math/rand"
 	"os"
 
@@ -236,16 +235,11 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 					if out.Tag == params.TagCreateContract {
 						// if it was a create contract that was removed from the db, load the tx payload from the ledger
 						if len(out.Payload) == 0 {
-							contract, err := l.LoadContract(id)
+							contractCode, err := l.LoadContract(id)
 							if err != nil {
 								return
 							}
-							contract.TxID = ""
-							payload, err := json.Marshal(contract)
-							if err != nil {
-								return
-							}
-							out.Payload = payload
+							out.Payload = contractCode
 						}
 					}
 				}
