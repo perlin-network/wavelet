@@ -26,7 +26,7 @@ type SendTransactionRequest struct {
 
 // GetContractRequest is the payload request to get a smart contract
 type GetContractRequest struct {
-	TxID string `json:"transaction_id"   validate:"required,len=64"`
+	TransactionID string `json:"transaction_id"   validate:"required,len=64"`
 }
 
 // ListContractsRequest retrieves paginated contracts

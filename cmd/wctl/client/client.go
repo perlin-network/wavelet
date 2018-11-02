@@ -323,7 +323,7 @@ func (c *Client) GetContract(txID string, filename string) (*wavelet.Contract, e
 	}
 
 	req := api.GetContractRequest{
-		TxID: txID,
+		TransactionID: txID,
 	}
 	contract := &wavelet.Contract{}
 	if err := c.Request(api.RouteContractGet, req, contract, nil); err != nil {
