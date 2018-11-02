@@ -13,9 +13,9 @@ type CredentialsRequest struct {
 
 // ListTransactionsRequest retrieves paginated transactions based on a specified tag
 type ListTransactionsRequest struct {
-	Tag    *string `json:"tag"                   validate:"omitempty,max=30"`
-	Offset *uint64 `json:"offset,omitempty"`
-	Limit  *uint64 `json:"limit,omitempty"       validate:"omitempty,max=1024"`
+	Tag    *string `json:"tag"      validate:"omitempty,max=30"`
+	Offset *uint64 `json:"offset"`
+	Limit  *uint64 `json:"limit"    validate:"omitempty,max=1024"`
 }
 
 // SendTransactionRequest is the payload sent to send a transaction
@@ -31,8 +31,8 @@ type GetContractRequest struct {
 
 // ListContractsRequest retrieves paginated contracts
 type ListContractsRequest struct {
-	Offset *uint64 `json:"offset,omitempty"`
-	Limit  *uint64 `json:"limit,omitempty"      validate:"omitempty,max=1024"`
+	Offset *uint64 `json:"offset"`
+	Limit  *uint64 `json:"limit"    validate:"omitempty,max=1024"`
 }
 
 //------------------------
@@ -42,7 +42,7 @@ type ListContractsRequest struct {
 // ErrorResponse is a payload when there is an error
 type ErrorResponse struct {
 	StatusCode int         `json:"status"`
-	Error      interface{} `json:"error"`
+	Error      interface{} `json:"error,omitempty"`
 }
 
 // SessionResponse represents the response from a session call
