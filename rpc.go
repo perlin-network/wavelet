@@ -39,7 +39,6 @@ func (r *rpc) RespondToQuery(wired *wire.Transaction) (string, bool, error) {
 		txID := graph.Symbol(wired)
 		r.SaveContract(txID, wired.Payload)
 		id, err = r.Receive(wired, graph.WithPayload(nil))
-		log.Debug().Str("tx", txID).Msg("Moved contract payload")
 	} else {
 		id, err = r.Receive(wired)
 	}

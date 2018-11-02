@@ -241,7 +241,6 @@ func (s *state) doApplyTransaction(tx *database.Transaction) ([]*Delta, []*datab
 				return nil, nil, errors.Wrapf(err, "Unable to load contract for txID %s", tx.Id)
 			}
 			tx.Payload = contractCode
-			log.Debug().Str("tx", tx.Id).Msg("Loaded contract payload")
 		}
 
 		new, pending, err := service.Run(tx)
