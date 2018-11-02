@@ -68,4 +68,5 @@ type LedgerState struct {
 // TransactionResponse represents the response from a sent transaction
 type TransactionResponse struct {
 	TransactionID string `json:"transaction_id,omitempty"`
+	Code          []byte `json:"code,omitempty"`
 }
