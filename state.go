@@ -494,7 +494,7 @@ func (s *state) LoadContract(txID string) ([]byte, error) {
 		return nil, errors.Wrapf(err, "contract ID %s not found in ledger state", txID)
 	}
 
-	account := NewAccount(writeBytes(asContractID(txID)))
+	account := NewAccount(writeBytes(ContractID(txID)))
 	err = account.Unmarshal(bytes)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to decode account")
@@ -512,7 +512,7 @@ func (s *state) LoadContract(txID string) ([]byte, error) {
 func (s *state) SaveContract(txID string, contractCode []byte) error {
 	contractKey := merge(BucketContracts, writeBytes(txID))
 
-	account := NewAccount(writeBytes(asContractID(txID)))
+	account := NewAccount(writeBytes(ContractID(txID)))
 
 	if bytes, err := s.Get(contractKey); err == nil {
 		if err := account.Unmarshal(bytes); err != nil {
@@ -549,7 +549,7 @@ func (s *state) PaginateContracts(offset, pageSize uint64) []*Contract {
 
 	s.Store.ForEach(BucketContracts, func(txID []byte, encoded []byte) error {
 		if i >= offset && uint64(len(page)) < pageSize {
-			account := NewAccount(writeBytes(asContractID(string(txID))))
+			account := NewAccount(writeBytes(ContractID(string(txID))))
 			err := account.Unmarshal(encoded)
 			if err != nil {
 				err := errors.Wrapf(err, "failed to decode contract bytes")

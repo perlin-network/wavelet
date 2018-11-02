@@ -6,7 +6,6 @@ import (
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/system"
 	"github.com/perlin-network/graph/wire"
-	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/params"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
