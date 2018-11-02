@@ -325,7 +325,7 @@ func (c *Client) GetContract(txID string, filename string) (*api.TransactionResp
 		TransactionID: txID,
 	}
 	var contract *api.TransactionResponse
-	if err := c.Request(api.RouteContractGet, req, contract, nil); err != nil {
+	if err := c.Request(api.RouteContractGet, req, &contract, nil); err != nil {
 		return nil, err
 	}
 
