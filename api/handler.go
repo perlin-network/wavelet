@@ -286,7 +286,6 @@ func (s *service) listContractsHandler(ctx *requestContext) (int, interface{}, e
 	for _, contract := range contracts {
 		resp = append(resp, &TransactionResponse{
 			TransactionID: contract.TxID,
-			Code:          contract.Code,
 		})
 	}
 
