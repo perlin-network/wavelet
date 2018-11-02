@@ -323,7 +323,7 @@ func (c *Client) GetContract(txID string, filename string) (*wavelet.Contract, e
 	}
 
 	req := api.GetContractRequest{
-		ID: txID,
+		TransactionID: txID,
 	}
 	contract := &wavelet.Contract{}
 	if err := c.Request(api.RouteContractGet, req, contract, nil); err != nil {
@@ -342,10 +342,10 @@ func (c *Client) GetContract(txID string, filename string) (*wavelet.Contract, e
 }
 
 // ListContracts paginates through a list of smart contracts
-func (c *Client) ListContracts(offset uint64, limit uint64) (contracts []*wavelet.Contract, err error) {
+func (c *Client) ListContracts(offset *uint64, limit *uint64) (contracts []*wavelet.Contract, err error) {
 	err = c.Request(api.RouteContractList, api.ListContractsRequest{
-		Offset: &offset,
-		Limit:  &limit,
+		Offset: offset,
+		Limit:  limit,
 	}, &contracts, nil)
 	return
 }

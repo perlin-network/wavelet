@@ -478,14 +478,14 @@ func (s *state) Snapshot() map[string]interface{} {
 
 // LoadContract loads a smart contract from the database given its tx id.
 // The key in the database will be of the form "account_C-txID"
-func (s *state) LoadContract(id string) (*Contract, error) {
-	contractKey := merge(BucketContracts, writeBytes(id))
+func (s *state) LoadContract(txID string) (*Contract, error) {
+	contractKey := merge(BucketContracts, writeBytes(txID))
 	bytes, err := s.Get(contractKey)
 	if err != nil {
-		return nil, errors.Wrapf(err, "contract ID %s not found in ledger state", id)
+		return nil, errors.Wrapf(err, "contract ID %s not found in ledger state", txID)
 	}
 
-	account := NewAccount(writeBytes(id))
+	account := NewAccount(writeBytes(txID))
 	err = account.Unmarshal(bytes)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to decode contract bytes")
@@ -493,10 +493,12 @@ func (s *state) LoadContract(id string) (*Contract, error) {
 
 	contractCode, ok := account.Load(params.KeyContractCode)
 	if !ok {
-		return nil, errors.Errorf("contract ID %s has no contract code", id)
+		return nil, errors.Errorf("contract ID %s has no contract code", txID)
 	}
-	contract := NewContract(contractCode)
-	contract.ID = id
+	contract := &Contract{
+		TxID: txID,
+		Code: contractCode,
+	}
 
 	return contract, nil
 }
@@ -518,9 +520,9 @@ func (s *state) PaginateContracts(offset, pageSize uint64) []*Contract {
 
 	i := uint64(0)
 
-	s.Store.ForEach(BucketContracts, func(publicKey, encoded []byte) error {
+	s.Store.ForEach(BucketContracts, func(txID []byte, encoded []byte) error {
 		if i >= offset && uint64(len(page)) < pageSize {
-			account := NewAccount(publicKey)
+			account := NewAccount(txID)
 			err := account.Unmarshal(encoded)
 			if err != nil {
 				err := errors.Wrapf(err, "failed to decode contract bytes")
@@ -530,13 +532,15 @@ func (s *state) PaginateContracts(offset, pageSize uint64) []*Contract {
 
 			contractCode, ok := account.Load(params.KeyContractCode)
 			if !ok {
-				err := errors.Errorf("contract ID %s has no contract code", publicKey)
+				err := errors.Errorf("contract ID %s has no contract code", txID)
 				log.Error().Err(err).Msg("")
 				return err
 			}
 
-			contract := NewContract(contractCode)
-			contract.ID = string(publicKey)
+			contract := &Contract{
+				TxID: string(txID),
+				Code: contractCode,
+			}
 
 			page = append(page, contract)
 		}

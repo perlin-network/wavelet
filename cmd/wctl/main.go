@@ -219,20 +219,24 @@ func main() {
 		},
 		cli.Command{
 			Name:  "list_contracts",
-			Usage: "list smart contracts",
+			Usage: "lists the most recent smart contracts",
 			Flags: commonFlags,
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
 				if err != nil {
 					return err
 				}
-				contracts, err := client.ListContracts(0, 100)
+				contracts, err := client.ListContracts(nil, nil)
 				if err != nil {
 					return err
 				}
-				// TODO: need better way to output contracts
-				for _, contract := range contracts {
-					log.Info().Msgf("contract id: %v", contract)
+				fmt.Println("Contract IDs:")
+				if len(contracts) == 0 {
+					fmt.Println("    none found")
+				} else {
+					for i, contract := range contracts {
+						fmt.Printf(" %d) %s\n", i+1, contract.TxID)
+					}
 				}
 				return nil
 			},

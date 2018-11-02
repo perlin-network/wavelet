@@ -1,8 +1,6 @@
 package wavelet
 
 import (
-	"encoding/json"
-
 	"github.com/perlin-network/wavelet/log"
 
 	"github.com/perlin-network/life/exec"
@@ -12,31 +10,8 @@ import (
 
 // Contract represents a smart contract on Perlin.
 type Contract struct {
-	ID   string `json:"contract_id"`
+	TxID string `json:"transaction_id"`
 	Code []byte `json:"code"`
-}
-
-// NewContract returns a new smart contract object.
-func NewContract(code []byte) *Contract {
-	contract := &Contract{
-		Code: code,
-	}
-
-	return contract
-}
-
-// UnmarshalContract unmarshals json-encoded bytes into a contract object
-func UnmarshalContract(bytes []byte) (*Contract, error) {
-	var contract Contract
-	err := json.Unmarshal(bytes, &contract)
-	if err != nil {
-		return nil, err
-	}
-	return &contract, nil
-}
-
-func (c Contract) String() string {
-	return c.ID
 }
 
 type ContractExecutor struct {
@@ -80,9 +55,9 @@ func (e *ContractExecutor) GetCost(name string) int64 {
 
 	if v, ok := e.GasTable[name]; ok {
 		return v
-	} else {
-		log.Fatal().Msg("instruction not found in gas table")
 	}
+
+	log.Fatal().Msgf("instruction %s not found in gas table", name)
 
 	return 1
 }
