@@ -13,9 +13,9 @@ type CredentialsRequest struct {
 
 // ListTransactionsRequest retrieves paginated transactions based on a specified tag
 type ListTransactionsRequest struct {
-	Tag    *string `json:"tag"      validate:"omitempty,max=30"`
-	Offset *uint64 `json:"offset"`
-	Limit  *uint64 `json:"limit"    validate:"omitempty,max=1024"`
+	Tag    *string `json:"tag"                   validate:"omitempty,max=30"`
+	Offset *uint64 `json:"offset,omitempty"`
+	Limit  *uint64 `json:"limit,omitempty"       validate:"omitempty,max=1024"`
 }
 
 // SendTransactionRequest is the payload sent to send a transaction
@@ -26,13 +26,13 @@ type SendTransactionRequest struct {
 
 // GetContractRequest is the payload request to get a smart contract
 type GetContractRequest struct {
-	TransactionID string `json:"transaction_id"   validate:"required,len=64"`
+	TransactionID string `json:"transaction_id" validate:"required,len=64"`
 }
 
 // ListContractsRequest retrieves paginated contracts
 type ListContractsRequest struct {
-	Offset *uint64 `json:"offset"`
-	Limit  *uint64 `json:"limit"    validate:"omitempty,max=1024"`
+	Offset *uint64 `json:"offset,omitempty"`
+	Limit  *uint64 `json:"limit,omitempty"      validate:"omitempty,max=1024"`
 }
 
 //------------------------

@@ -267,6 +267,16 @@ func (s *state) doApplyTransaction(tx *database.Transaction) ([]*Delta, []*datab
 	var pendingTransactions []*database.Transaction
 
 	for _, service := range s.services {
+		if tx.Tag == params.TagCreateContract {
+			// load the contract code into the tx before running the service
+			contractCode, err := s.LoadContract(tx.Id)
+			if err != nil {
+				return nil, nil, errors.Wrapf(err, "Unable to load contract for txID %s", tx.Id)
+			}
+			tx.Payload = contractCode
+			log.Debug().Str("tx", tx.Id).Msg("Loaded contract code")
+		}
+
 		new, pending, err := service.Run(tx)
 
 		if err != nil {
@@ -518,7 +528,7 @@ func (s *state) LoadContract(txID string) ([]byte, error) {
 		return nil, errors.Wrapf(err, "contract ID %s not found in ledger state", txID)
 	}
 
-	account := NewAccount(writeBytes(txID))
+	account := NewAccount(writeBytes(asContractID(txID)))
 	err = account.Unmarshal(bytes)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to decode account")
@@ -536,7 +546,7 @@ func (s *state) LoadContract(txID string) ([]byte, error) {
 func (s *state) SaveContract(txID string, contractCode []byte) error {
 	contractKey := merge(BucketContracts, writeBytes(txID))
 
-	account := NewAccount(writeBytes(txID))
+	account := NewAccount(writeBytes(asContractID(txID)))
 
 	if bytes, err := s.Get(contractKey); err == nil {
 		if err := account.Unmarshal(bytes); err != nil {
@@ -547,8 +557,7 @@ func (s *state) SaveContract(txID string, contractCode []byte) error {
 
 	account.Store(params.KeyContractCode, contractCode)
 
-	bytes := account.MarshalBinary()
-	if err := s.Put(contractKey, bytes); err != nil {
+	if err := s.SaveAccount(account, nil); err != nil {
 		return err
 	}
 
@@ -574,7 +583,7 @@ func (s *state) PaginateContracts(offset, pageSize uint64) []*Contract {
 
 	s.Store.ForEach(BucketContracts, func(txID []byte, encoded []byte) error {
 		if i >= offset && uint64(len(page)) < pageSize {
-			account := NewAccount(txID)
+			account := NewAccount(writeBytes(asContractID(string(txID))))
 			err := account.Unmarshal(encoded)
 			if err != nil {
 				err := errors.Wrapf(err, "failed to decode contract bytes")
