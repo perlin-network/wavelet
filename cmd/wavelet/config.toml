@@ -6,6 +6,7 @@ private_key_file = "wallet.txt"
 services = "services"
 genesis = "genesis.json"
 daemon = true
+nat = false
 
 [db]
 path = "testdb"

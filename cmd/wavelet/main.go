@@ -29,6 +29,7 @@ import (
 	"github.com/perlin-network/noise/crypto/ed25519"
 	"github.com/perlin-network/noise/network"
 	"github.com/perlin-network/noise/network/discovery"
+	"github.com/perlin-network/noise/network/nat"
 
 	"github.com/pkg/errors"
 	"gopkg.in/urfave/cli.v1"
@@ -50,6 +51,7 @@ type Config struct {
 	APIPrivateKeysFile string
 	Daemon             bool
 	LogLevel           string
+	UseNAT             bool
 }
 
 func main() {
@@ -118,6 +120,10 @@ func main() {
 			Name:  "daemon",
 			Usage: "Run node in daemon mode. Daemon mode means no standard input needed.",
 		}),
+		altsrc.NewBoolFlag(cli.BoolFlag{
+			Name:  "nat",
+			Usage: "Use network address traversal (NAT).",
+		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "log_level",
 			Value: "info",
@@ -162,6 +168,7 @@ func main() {
 			APIPrivateKeysFile: c.String("api.private_keys_file"),
 			Daemon:             c.Bool("daemon"),
 			LogLevel:           c.String("log_level"),
+			UseNAT:             c.Bool("nat"),
 		}
 
 		// start the plugin
@@ -218,6 +225,9 @@ func runServer(c *Config) (*node.Wavelet, error) {
 	builder.SetAddress(network.FormatAddress("tcp", c.Host, uint16(c.Port)))
 
 	builder.AddPlugin(new(discovery.Plugin))
+	if c.UseNAT {
+		nat.RegisterPlugin(builder)
+	}
 	builder.AddPlugin(w)
 
 	net, err := builder.Build()
