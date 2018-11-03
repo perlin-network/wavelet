@@ -202,10 +202,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 		var childrenIDs []string
 
 		w.Ledger.Do(func(l *wavelet.Ledger) {
-			children, err := l.Store.GetChildrenBySymbol(msg.Id)
-			if err != nil {
-				log.Error().Err(err).Msg("cannot get children")
-			} else {
+			if children, err := l.Store.GetChildrenBySymbol(msg.Id); err == nil {
 				childrenIDs = children.Transactions
 			}
 		})
