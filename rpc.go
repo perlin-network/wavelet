@@ -34,9 +34,13 @@ func (r *rpc) RespondToQuery(wired *wire.Transaction) (string, bool, error) {
 	}
 
 	var id string
+
 	if wired.Tag == params.TagCreateContract {
-		txID := graph.Symbol(wired)
-		r.SaveContract(txID, wired.Payload)
+		err := r.SaveContract(graph.Symbol(wired), wired.Payload)
+		if err != nil {
+			return "", false, errors.Wrap(err, "failed to save smart contract code to db")
+		}
+
 		id, err = r.Receive(wired, graph.WithPayload(nil))
 	} else {
 		id, err = r.Receive(wired)

@@ -149,21 +149,21 @@ func (s *syncer) QueryMissingChildren(id string) {
 		}
 	}
 
-	deleteList := make([]string, 0)
+	var deleteList []string
 
 	s.Ledger.Do(func(l *wavelet.Ledger) {
-		for c := range children {
-			if l.Store.TransactionExists(c) {
-				deleteList = append(deleteList, c)
+		for child := range children {
+			if l.Store.TransactionExists(child) {
+				deleteList = append(deleteList, child)
 			}
 		}
 	})
 
-	for _, c := range deleteList {
-		delete(children, c)
+	for _, child := range deleteList {
+		delete(children, child)
 	}
 
-	pushHint := make([]string, 0)
+	pushHint := make([]string, len(children))
 	for c := range children {
 		pushHint = append(pushHint, c)
 	}

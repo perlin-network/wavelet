@@ -41,11 +41,12 @@ func (b *broadcaster) MakeTransaction(tag string, payload []byte) *wire.Transact
 	}
 
 	wired := &wire.Transaction{
-		Sender:  b.Wallet.PublicKeyHex(),
-		Nonce:   nonce,
-		Parents: parents,
-		Tag:     tag,
-		Payload: payload,
+		Timestamp: time.Now().UTC().Unix(),
+		Sender:    b.Wallet.PublicKeyHex(),
+		Nonce:     nonce,
+		Parents:   parents,
+		Tag:       tag,
+		Payload:   payload,
 	}
 
 	encoded, err := wired.Marshal()
