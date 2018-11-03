@@ -15,7 +15,6 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/perlin-network/graph/wire"
-	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/events"
 	"github.com/perlin-network/wavelet/params"
@@ -317,7 +316,7 @@ func (c *Client) SendContract(filename string) (*api.TransactionResponse, error)
 }
 
 // GetContract returns a smart contract given an id
-func (c *Client) GetContract(txID string, filename string) (*wavelet.Contract, error) {
+func (c *Client) GetContract(txID string, filename string) (*api.TransactionResponse, error) {
 	if len(filename) == 0 {
 		return nil, errors.New("output filename argument missing")
 	}
@@ -325,8 +324,8 @@ func (c *Client) GetContract(txID string, filename string) (*wavelet.Contract, e
 	req := api.GetContractRequest{
 		TransactionID: txID,
 	}
-	contract := &wavelet.Contract{}
-	if err := c.Request(api.RouteContractGet, req, contract, nil); err != nil {
+	var contract *api.TransactionResponse
+	if err := c.Request(api.RouteContractGet, req, &contract, nil); err != nil {
 		return nil, err
 	}
 
@@ -342,7 +341,7 @@ func (c *Client) GetContract(txID string, filename string) (*wavelet.Contract, e
 }
 
 // ListContracts paginates through a list of smart contracts
-func (c *Client) ListContracts(offset *uint64, limit *uint64) (contracts []*wavelet.Contract, err error) {
+func (c *Client) ListContracts(offset *uint64, limit *uint64) (contracts []*api.TransactionResponse, err error) {
 	err = c.Request(api.RouteContractList, api.ListContractsRequest{
 		Offset: offset,
 		Limit:  limit,

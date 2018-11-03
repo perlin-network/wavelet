@@ -186,18 +186,22 @@ func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, err
 		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
 	}
 
-	var contract *wavelet.Contract
+	var contractCode []byte
 	var err error
 
 	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
-		contract, err = ledger.LoadContract(req.TransactionID)
+		contractCode, err = ledger.LoadContract(req.TransactionID)
 	})
-
 	if err != nil {
 		return http.StatusBadRequest, nil, errors.Wrapf(err, "transaction %s does not exist", req.TransactionID)
 	}
 
-	return http.StatusOK, contract, nil
+	resp := &TransactionResponse{
+		TransactionID: req.TransactionID,
+		Code:          contractCode,
+	}
+
+	return http.StatusOK, resp, nil
 }
 
 func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, error) {
@@ -253,6 +257,7 @@ func (s *service) listContractsHandler(ctx *requestContext) (int, interface{}, e
 
 	var contracts []*wavelet.Contract
 	var listParams ListContractsRequest
+	var resp []*TransactionResponse
 
 	if err := ctx.readJSON(&listParams); err != nil {
 		return http.StatusBadRequest, nil, err
@@ -278,7 +283,13 @@ func (s *service) listContractsHandler(ctx *requestContext) (int, interface{}, e
 		contracts = ledger.PaginateContracts(*listParams.Offset, *listParams.Limit)
 	})
 
-	return http.StatusOK, contracts, nil
+	for _, contract := range contracts {
+		resp = append(resp, &TransactionResponse{
+			TransactionID: contract.TransactionID,
+		})
+	}
+
+	return http.StatusOK, resp, nil
 }
 
 func (s *service) ledgerStateHandler(ctx *requestContext) (int, interface{}, error) {

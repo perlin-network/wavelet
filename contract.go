@@ -10,8 +10,8 @@ import (
 
 // Contract represents a smart contract on Perlin.
 type Contract struct {
-	TxID string `json:"transaction_id"`
-	Code []byte `json:"code"`
+	TransactionID string `json:"transaction_id,omitempty"`
+	Code          []byte `json:"code,omitempty"`
 }
 
 type ContractExecutor struct {

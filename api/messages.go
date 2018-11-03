@@ -26,7 +26,7 @@ type SendTransactionRequest struct {
 
 // GetContractRequest is the payload request to get a smart contract
 type GetContractRequest struct {
-	TransactionID string `json:"transaction_id"   validate:"required,len=64"`
+	TransactionID string `json:"transaction_id" validate:"required,len=64"`
 }
 
 // ListContractsRequest retrieves paginated contracts
@@ -42,7 +42,7 @@ type ListContractsRequest struct {
 // ErrorResponse is a payload when there is an error
 type ErrorResponse struct {
 	StatusCode int         `json:"status"`
-	Error      interface{} `json:"error"`
+	Error      interface{} `json:"error,omitempty"`
 }
 
 // SessionResponse represents the response from a session call
@@ -68,4 +68,5 @@ type LedgerState struct {
 // TransactionResponse represents the response from a sent transaction
 type TransactionResponse struct {
 	TransactionID string `json:"transaction_id,omitempty"`
+	Code          []byte `json:"code,omitempty"`
 }

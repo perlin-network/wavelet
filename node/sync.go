@@ -62,6 +62,17 @@ func (s *syncer) hinterLoop() {
 					Payload:   raw.Payload,
 					Signature: raw.Signature,
 				}
+
+				if tx.Tag == params.TagCreateContract {
+					// if it was a create contract that was removed from the db, load the tx payload from the ledger
+					if len(tx.Payload) == 0 {
+						contractCode, err := l.LoadContract(symbol)
+						if err != nil {
+							return
+						}
+						tx.Payload = contractCode
+					}
+				}
 			}
 		})
 

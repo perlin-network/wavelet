@@ -3,8 +3,10 @@ package wavelet
 import (
 	"encoding/hex"
 	"github.com/perlin-network/graph/database"
+	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/system"
 	"github.com/perlin-network/graph/wire"
+	"github.com/perlin-network/wavelet/params"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 )
@@ -31,7 +33,14 @@ func (r *rpc) RespondToQuery(wired *wire.Transaction) (string, bool, error) {
 		return "", false, errors.Wrap(err, "tx nonce is outdated in comparison to the actual accounts nonce")
 	}
 
-	id, err := r.Receive(wired)
+	var id string
+	if wired.Tag == params.TagCreateContract {
+		txID := graph.Symbol(wired)
+		r.SaveContract(txID, wired.Payload)
+		id, err = r.Receive(wired, graph.WithPayload(nil))
+	} else {
+		id, err = r.Receive(wired)
+	}
 
 	if err != nil {
 		return "", false, errors.Wrap(err, "failed to add incoming tx to graph")

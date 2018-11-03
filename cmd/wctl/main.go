@@ -235,7 +235,7 @@ func main() {
 					fmt.Println("    none found")
 				} else {
 					for i, contract := range contracts {
-						fmt.Printf(" %d) %s\n", i+1, contract.TxID)
+						fmt.Printf(" %d) %s\n", i+1, contract.TransactionID)
 					}
 				}
 				return nil

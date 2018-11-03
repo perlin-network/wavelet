@@ -234,6 +234,15 @@ func (s *state) doApplyTransaction(tx *database.Transaction) ([]*Delta, []*datab
 	var pendingTransactions []*database.Transaction
 
 	for _, service := range s.services {
+		if tx.Tag == params.TagCreateContract {
+			// load the contract code into the tx before running the service
+			contractCode, err := s.LoadContract(tx.Id)
+			if err != nil {
+				return nil, nil, errors.Wrapf(err, "Unable to load contract for txID %s", tx.Id)
+			}
+			tx.Payload = contractCode
+		}
+
 		new, pending, err := service.Run(tx)
 
 		if err != nil {
@@ -478,29 +487,47 @@ func (s *state) Snapshot() map[string]interface{} {
 
 // LoadContract loads a smart contract from the database given its tx id.
 // The key in the database will be of the form "account_C-txID"
-func (s *state) LoadContract(txID string) (*Contract, error) {
+func (s *state) LoadContract(txID string) ([]byte, error) {
 	contractKey := merge(BucketContracts, writeBytes(txID))
 	bytes, err := s.Get(contractKey)
 	if err != nil {
 		return nil, errors.Wrapf(err, "contract ID %s not found in ledger state", txID)
 	}
 
-	account := NewAccount(writeBytes(txID))
+	account := NewAccount(writeBytes(ContractID(txID)))
 	err = account.Unmarshal(bytes)
 	if err != nil {
-		return nil, errors.Wrapf(err, "failed to decode contract bytes")
+		return nil, errors.Wrapf(err, "failed to decode account")
 	}
 
 	contractCode, ok := account.Load(params.KeyContractCode)
 	if !ok {
 		return nil, errors.Errorf("contract ID %s has no contract code", txID)
 	}
-	contract := &Contract{
-		TxID: txID,
-		Code: contractCode,
+	return contractCode, nil
+}
+
+// SaveContract saves a smart contract to the database given its tx id.
+// The key in the database will be of the form "account_C-txID"
+func (s *state) SaveContract(txID string, contractCode []byte) error {
+	contractKey := merge(BucketContracts, writeBytes(txID))
+
+	account := NewAccount(writeBytes(ContractID(txID)))
+
+	if bytes, err := s.Get(contractKey); err == nil {
+		if err := account.Unmarshal(bytes); err != nil {
+			return errors.Wrapf(err, "failed to decode account")
+		}
+		account.Nonce++
 	}
 
-	return contract, nil
+	account.Store(params.KeyContractCode, contractCode)
+
+	if err := s.SaveAccount(account, nil); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // PaginateContracts paginates through the smart contracts found in the ledger by searching for the prefix
@@ -522,7 +549,7 @@ func (s *state) PaginateContracts(offset, pageSize uint64) []*Contract {
 
 	s.Store.ForEach(BucketContracts, func(txID []byte, encoded []byte) error {
 		if i >= offset && uint64(len(page)) < pageSize {
-			account := NewAccount(txID)
+			account := NewAccount(writeBytes(ContractID(string(txID))))
 			err := account.Unmarshal(encoded)
 			if err != nil {
 				err := errors.Wrapf(err, "failed to decode contract bytes")
@@ -538,8 +565,8 @@ func (s *state) PaginateContracts(offset, pageSize uint64) []*Contract {
 			}
 
 			contract := &Contract{
-				TxID: string(txID),
-				Code: contractCode,
+				TransactionID: string(txID),
+				Code:          contractCode,
 			}
 
 			page = append(page, contract)
