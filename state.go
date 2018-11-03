@@ -15,14 +15,22 @@ import (
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/life/exec"
 
+	"crypto/sha256"
+	"encoding/binary"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
+	"sort"
 )
 
 var (
 	BucketAccounts  = []byte("account_")
 	BucketDeltas    = []byte("deltas_")
 	BucketContracts = merge(BucketAccounts, ContractPrefix)
+)
+
+const (
+	RewardDepth  = 5
+	RewardAmount = 10
 )
 
 // pending represents a single transaction to be processed. A utility struct
@@ -98,6 +106,108 @@ func (s *state) registerService(name string, path string) error {
 	return nil
 }
 
+func (s *state) collectRewardedAncestors(tx *database.Transaction, filterOutSender string, depth int) ([]*database.Transaction, error) {
+	if depth == 0 {
+		return nil, nil
+	}
+
+	ret := make([]*database.Transaction, 0)
+
+	parents := make([]string, len(tx.Parents))
+	copy(parents, tx.Parents)
+	sort.Strings(parents)
+
+	for _, p := range parents {
+		parent, err := s.Ledger.Store.GetBySymbol(p)
+		if err != nil {
+			return nil, err
+		}
+
+		if parent.Sender != filterOutSender {
+			ret = append(ret, parent)
+		}
+
+		parentAncestors, err := s.collectRewardedAncestors(parent, filterOutSender, depth-1)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, parentAncestors...)
+	}
+
+	return ret, nil
+}
+
+func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth int) error {
+	readBalance := func(sAccountID string) uint64 {
+		accountID, err := hex.DecodeString(sAccountID)
+		if err != nil {
+			panic(err) // shouldn't happen?
+		}
+
+		account, err := s.LoadAccount(accountID)
+		if err != nil {
+			return 0
+		}
+
+		_, _balance := account.State.Load("balance")
+		return readUint64(_balance)
+	}
+
+	writeBalance := func(sAccountID string, balance uint64) {
+		accountID, err := hex.DecodeString(sAccountID)
+		if err != nil {
+			panic(err) // shouldn't happen?
+		}
+
+		account, err := s.LoadAccount(accountID)
+		if err != nil {
+			account = NewAccount(accountID)
+		}
+
+		_, oldBalance := account.State.Load("balance")
+
+		account.State.Store("balance", writeUint64(balance))
+		s.Ledger.SaveAccount(account, []*Delta{{
+			Account:  account.PublicKey,
+			Key:      "balance",
+			OldValue: oldBalance,
+			NewValue: writeUint64(balance),
+		}})
+	}
+
+	if depth < 0 {
+		return errors.New("invalid depth")
+	}
+
+	senderBalance := readBalance(tx.Sender)
+	if senderBalance < amount {
+		return errors.New("sender balance isn't enough to pay reward")
+	}
+
+	possiblyRewarded, err := s.collectRewardedAncestors(tx, tx.Sender, depth)
+	if err != nil {
+		return err
+	}
+
+	if len(possiblyRewarded) == 0 {
+		return nil
+	}
+
+	hashWriter := sha256.New()
+	for _, pr := range possiblyRewarded {
+		hashWriter.Write([]byte(pr.Id))
+	}
+	entropySource := hashWriter.Sum(nil)
+
+	// FIXME: distribution?
+	rewarded := possiblyRewarded[int(binary.LittleEndian.Uint64(entropySource)%uint64(len(possiblyRewarded)))]
+
+	recipientBalance := readBalance(rewarded.Sender)
+	writeBalance(tx.Sender, senderBalance-amount)
+	writeBalance(rewarded.Sender, recipientBalance+amount)
+	return nil
+}
+
 // applyTransaction runs a transaction, gets any transactions created by said transaction, and
 // applies those transactions to the ledger state.
 func (s *state) applyTransaction(tx *database.Transaction) error {
@@ -110,6 +220,11 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 		tx := pending.PopFront().(*database.Transaction)
 
 		senderID, err := hex.DecodeString(tx.Sender)
+		if err != nil {
+			return err
+		}
+
+		err = s.rewardAncestor(tx, RewardAmount, RewardDepth)
 		if err != nil {
 			return err
 		}
