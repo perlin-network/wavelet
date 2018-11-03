@@ -36,6 +36,7 @@ import (
 	"gopkg.in/urfave/cli.v1/altsrc"
 )
 
+// Config describes how to start the node
 type Config struct {
 	PrivateKeyFile     string
 	Host               string
@@ -49,6 +50,7 @@ type Config struct {
 	APIPort            uint
 	APIPrivateKeysFile string
 	Daemon             bool
+	LogLevel           string
 	UseNAT             bool
 }
 
@@ -122,6 +124,11 @@ func main() {
 			Name:  "nat",
 			Usage: "Use network address traversal (NAT).",
 		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:  "log_level",
+			Value: "info",
+			Usage: "Minimum level at which logs will be printed to stdout. One of off|debug|info|warn|error|fatal `LOG_LEVEL`",
+		}),
 		// config specifies the file that overrides altsrc
 		cli.StringFlag{
 			Name:  "config",
@@ -139,10 +146,11 @@ func main() {
 	})
 
 	cli.VersionPrinter = func(c *cli.Context) {
-		fmt.Printf("Version: %s\n", c.App.Version)
+		fmt.Printf("Version:    %s\n", c.App.Version)
 		fmt.Printf("Go Version: %s\n", params.GoVersion)
 		fmt.Printf("Git Commit: %s\n", params.GitCommit)
-		fmt.Printf("Built: %s\n", c.App.Compiled.Format(time.ANSIC))
+		fmt.Printf("OS/Arch:    %s\n", params.OSArch)
+		fmt.Printf("Built:      %s\n", c.App.Compiled.Format(time.ANSIC))
 	}
 
 	app.Action = func(c *cli.Context) error {
@@ -159,6 +167,7 @@ func main() {
 			APIPort:            c.Uint("api.port"),
 			APIPrivateKeysFile: c.String("api.private_keys_file"),
 			Daemon:             c.Bool("daemon"),
+			LogLevel:           c.String("log_level"),
 			UseNAT:             c.Bool("nat"),
 		}
 
@@ -184,6 +193,8 @@ func main() {
 }
 
 func runServer(c *Config) (*node.Wavelet, error) {
+	log.SetLevel(c.LogLevel)
+
 	var privateKeyHex string
 	if len(c.PrivateKeyFile) > 0 && c.PrivateKeyFile != "random" {
 		bytes, err := ioutil.ReadFile(c.PrivateKeyFile)
@@ -257,6 +268,7 @@ func runServer(c *Config) (*node.Wavelet, error) {
 						CanSendTransaction: true,
 						CanPollTransaction: true,
 						CanControlStats:    true,
+						CanAccessLedger:    true,
 					},
 				})
 			}
@@ -375,8 +387,12 @@ func runShell(w *node.Wavelet) error {
 				log.Fatal().Err(err).Msg("Failed to marshal transfer payload.")
 			}
 
-			wired := w.MakeTransaction("transfer", payload)
+			wired := w.MakeTransaction(params.TagTransfer, payload)
 			go w.BroadcastTransaction(wired)
+
+			txID := graph.Symbol(wired)
+
+			log.Info().Msgf("Success! Your payment txID = %s", txID)
 		case "c":
 			if len(cmd) < 2 {
 				continue
@@ -401,12 +417,12 @@ func runShell(w *node.Wavelet) error {
 				continue
 			}
 
-			wired := w.MakeTransaction("create_contract", payload)
+			wired := w.MakeTransaction(params.TagCreateContract, payload)
 			go w.BroadcastTransaction(wired)
 
-			contractID := hex.EncodeToString(wavelet.ContractID(graph.Symbol(wired)))
+			txID := graph.Symbol(wired)
 
-			log.Info().Msgf("Success! Your smart contract ID is: %s", contractID)
+			log.Info().Msgf("Success! Your smart contract txID = %s", txID)
 		case "tx":
 			if len(cmd) < 2 {
 				continue
@@ -448,8 +464,10 @@ func runShell(w *node.Wavelet) error {
 
 			log.Info().Interface("tx", view).Msg("Here is the transaction you requested.")
 		default:
-			wired := w.MakeTransaction("nop", nil)
+			wired := w.MakeTransaction(params.TagNop, nil)
 			go w.BroadcastTransaction(wired)
+			txID := graph.Symbol(wired)
+			log.Info().Msgf("Your nop txID = %s", txID)
 		}
 	}
 

@@ -1,10 +1,18 @@
 package wavelet
 
 import (
-	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/wavelet/log"
+
+	"github.com/perlin-network/life/exec"
+
 	"github.com/pkg/errors"
 )
+
+// Contract represents a smart contract on Perlin.
+type Contract struct {
+	TransactionID string `json:"transaction_id,omitempty"`
+	Code          []byte `json:"code,omitempty"`
+}
 
 type ContractExecutor struct {
 	GasTable               map[string]int64
@@ -47,9 +55,9 @@ func (e *ContractExecutor) GetCost(name string) int64 {
 
 	if v, ok := e.GasTable[name]; ok {
 		return v
-	} else {
-		log.Fatal().Msg("instruction not found in gas table")
 	}
+
+	log.Fatal().Msgf("instruction %s not found in gas table", name)
 
 	return 1
 }

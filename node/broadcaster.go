@@ -1,14 +1,17 @@
 package node
 
 import (
+	"time"
+
+	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/params"
+	"github.com/perlin-network/wavelet/security"
+	"github.com/perlin-network/wavelet/stats"
+
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/system"
 	"github.com/perlin-network/graph/wire"
-	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/security"
-	"github.com/perlin-network/wavelet/stats"
-	"time"
 )
 
 var (
@@ -142,7 +145,7 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 			return
 		}
 
-		nop = b.MakeTransaction("nop", nil)
+		nop = b.MakeTransaction(params.TagNop, nil)
 
 		b.Ledger.Do(func(l *wavelet.Ledger) {
 			nopID, successful, err = l.RespondToQuery(nop)

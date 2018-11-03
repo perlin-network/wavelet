@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/perlin-network/graph/wire"
-	"github.com/perlin-network/wavelet/api"
+	apiClient "github.com/perlin-network/wavelet/cmd/wctl/client"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/params"
 	"github.com/pkg/errors"
@@ -27,10 +27,11 @@ func main() {
 	app.Usage = "a cli client to interact with the wavelet node"
 
 	cli.VersionPrinter = func(c *cli.Context) {
-		fmt.Printf("Version: %s\n", c.App.Version)
+		fmt.Printf("Version:    %s\n", c.App.Version)
 		fmt.Printf("Go Version: %s\n", params.GoVersion)
 		fmt.Printf("Git Commit: %s\n", params.GitCommit)
-		fmt.Printf("Built: %s\n", c.App.Compiled.Format(time.ANSIC))
+		fmt.Printf("OS/Arch:    %s\n", params.OSArch)
+		fmt.Printf("Built:      %s\n", c.App.Compiled.Format(time.ANSIC))
 	}
 
 	commonFlags := []cli.Flag{
@@ -80,7 +81,13 @@ func main() {
 				}
 				tag := c.Args().Get(0)
 				payload := c.Args().Get(1)
-				return client.SendTransaction(tag, []byte(payload))
+				tx, err := client.SendTransaction(tag, []byte(payload))
+				if err != nil {
+					return err
+				}
+				jsonOut, _ := json.Marshal(tx)
+				fmt.Printf("%s\n", jsonOut)
+				return nil
 			},
 		},
 		cli.Command{
@@ -92,7 +99,7 @@ func main() {
 				if err != nil {
 					return err
 				}
-				transactions, err := client.RecentTransactions()
+				transactions, err := client.RecentTransactions("")
 				if err != nil {
 					return err
 				}
@@ -170,17 +177,81 @@ func main() {
 				return nil
 			},
 		},
+		cli.Command{
+			Name:      "send_contract",
+			Usage:     "send a smart contract",
+			Flags:     commonFlags,
+			ArgsUsage: "<contract_filename>",
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				filename := c.Args().Get(0)
+				tx, err := client.SendContract(filename)
+				if err != nil {
+					return err
+				}
+				jsonOut, _ := json.Marshal(tx)
+				fmt.Printf("%s\n", jsonOut)
+				return nil
+			},
+		},
+		cli.Command{
+			Name:      "get_contract",
+			Usage:     "get smart contract by transaction ID",
+			Flags:     commonFlags,
+			ArgsUsage: "<transaction_id> <output_filename>",
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+
+				contractID := c.Args().Get(0)
+				filename := c.Args().Get(1)
+				if _, err = client.GetContract(contractID, filename); err != nil {
+					return err
+				}
+				log.Info().Msgf("saved contract %s to file %s", contractID, filename)
+				return nil
+			},
+		},
+		cli.Command{
+			Name:  "list_contracts",
+			Usage: "lists the most recent smart contracts",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				contracts, err := client.ListContracts(nil, nil)
+				if err != nil {
+					return err
+				}
+				fmt.Println("Contract IDs:")
+				if len(contracts) == 0 {
+					fmt.Println("    none found")
+				} else {
+					for i, contract := range contracts {
+						fmt.Printf(" %d) %s\n", i+1, contract.TransactionID)
+					}
+				}
+				return nil
+			},
+		},
 	}
 
 	sort.Sort(cli.FlagsByName(app.Flags))
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	if err := app.Run(os.Args); err != nil {
-		log.Fatal().Err(err).Msg("Failed to parse configuration/command-line arugments.")
+		log.Fatal().Msgf("Failed to parse configuration/command-line arguments: %v", err)
 	}
 }
 
-func setup(c *cli.Context) (*api.Client, error) {
+func setup(c *cli.Context) (*apiClient.Client, error) {
 	host := c.String("api.host")
 	port := c.Uint("api.port")
 	privateKeyFile := c.String("api.private_key_file")
@@ -198,7 +269,7 @@ func setup(c *cli.Context) (*api.Client, error) {
 		return nil, errors.Wrapf(err, "Unable to open api private key file: %s", privateKeyFile)
 	}
 
-	client, err := api.NewClient(api.ClientConfig{
+	client, err := apiClient.NewClient(apiClient.Config{
 		APIHost:    host,
 		APIPort:    port,
 		PrivateKey: string(privateKeyBytes),
@@ -213,6 +284,6 @@ func setup(c *cli.Context) (*api.Client, error) {
 		return nil, err
 	}
 
-	log.Debug().Str("SessionToken", client.SessionToken).Msg("")
+	log.Debug().Str("SessionToken", client.SessionToken).Msg(" ")
 	return client, nil
 }

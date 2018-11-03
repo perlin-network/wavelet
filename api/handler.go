@@ -1,31 +1,44 @@
 package api
 
 import (
+	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
-	"time"
 
 	"github.com/perlin-network/graph/database"
+	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/noise/network/discovery"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/events"
 	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/security"
 	"github.com/perlin-network/wavelet/stats"
+	"github.com/pkg/errors"
+	"gopkg.in/go-playground/validator.v9"
 )
 
-func (s *service) pollAccountHandler(ctx *requestContext) {
-	if !ctx.loadSession() {
-		return
+var (
+	validate = validator.New()
+)
+
+func (s *service) pollAccountHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
+	}
+
+	if !ctx.session.Permissions.CanAccessLedger {
+		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
 	headers := make(http.Header)
-	headers.Add("Sec-Websocket-Protocol", ctx.session.ID)
+	headers.Add(HeaderWebsocketProtocol, ctx.session.ID)
 
 	conn, err := s.upgrader.Upgrade(ctx.response, ctx.request, headers)
 	if err != nil {
-		panic(err)
+		return http.StatusInternalServerError, nil, errors.Wrap(err, "cannot upgrade connection")
 	}
 
 	closeSignal := make(chan struct{})
@@ -39,56 +52,17 @@ func (s *service) pollAccountHandler(ctx *requestContext) {
 	})
 
 	<-closeSignal
+
+	return http.StatusOK, nil, nil
 }
 
-func (s *service) listTransactionHandler(ctx *requestContext) {
-	if !ctx.loadSession() {
-		return
-	}
-
-	var paginate struct {
-		Offset *uint64 `json:"offset"`
-		Limit  *uint64 `json:"limit"`
-	}
-
-	var transactions []*database.Transaction
-
-	err := ctx.readJSON(&paginate)
-
-	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
-		// If there are errors in reading the JSON, return the last 50 transactions.
-		if err != nil || (paginate.Offset == nil || paginate.Limit == nil) {
-			total, limit := ledger.NumTransactions(), uint64(50)
-			if limit > total {
-				limit = total
-			}
-
-			offset := total - limit
-
-			paginate.Limit = &limit
-			paginate.Offset = &offset
-		}
-
-		transactions = ledger.PaginateTransactions(*paginate.Offset, *paginate.Limit)
-	})
-
-	for _, tx := range transactions {
-		if tx.Tag == "create_contract" {
-			tx.Payload = []byte("<code here>")
-		}
-	}
-
-	ctx.WriteJSON(http.StatusOK, transactions)
-}
-
-func (s *service) pollTransactionHandler(ctx *requestContext) {
-	if !ctx.loadSession() {
-		return
+func (s *service) pollTransactionHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
 	}
 
 	if !ctx.session.Permissions.CanPollTransaction {
-		ctx.WriteJSON(http.StatusForbidden, "cannot poll transaction")
-		return
+		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
 	eventType := ctx.request.URL.Query().Get("event")
@@ -97,16 +71,15 @@ func (s *service) pollTransactionHandler(ctx *requestContext) {
 	case "accepted":
 	case "applied":
 	default:
-		ctx.WriteJSON(http.StatusBadRequest, "event poll type not specified")
-		return
+		return http.StatusBadRequest, nil, errors.New("event poll type not specified")
 	}
 
 	headers := make(http.Header)
-	headers.Add("Sec-Websocket-Protocol", ctx.session.ID)
+	headers.Add(HeaderWebsocketProtocol, ctx.session.ID)
 
 	conn, err := s.upgrader.Upgrade(ctx.response, ctx.request, headers)
 	if err != nil {
-		panic(err)
+		return http.StatusInternalServerError, nil, errors.Wrap(err, "cannot upgrade connection")
 	}
 
 	closeSignal := make(chan struct{})
@@ -123,7 +96,7 @@ func (s *service) pollTransactionHandler(ctx *requestContext) {
 			return true
 		}
 
-		if tx.Tag == "create_contract" {
+		if tx.Tag == params.TagCreateContract {
 			tx.Payload = []byte("<code here>")
 		}
 
@@ -146,28 +119,196 @@ func (s *service) pollTransactionHandler(ctx *requestContext) {
 	}
 
 	<-closeSignal
+
+	return http.StatusOK, nil, nil
 }
 
-func (s *service) ledgerStateHandler(ctx *requestContext) {
-	if !ctx.loadSession() {
-		return
+func (s *service) listTransactionHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
+	}
+
+	if !ctx.session.Permissions.CanPollTransaction {
+		return http.StatusForbidden, nil, errors.New("permission denied")
+	}
+
+	var transactions []*database.Transaction
+	var listParams ListTransactionsRequest
+
+	if err := ctx.readJSON(&listParams); err != nil {
+		return http.StatusBadRequest, nil, err
+	}
+
+	if err := validate.Struct(listParams); err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
+	}
+
+	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+		// If paginate is blank, return the last 50 transactions.
+		if listParams.Offset == nil || listParams.Limit == nil {
+			total, limit := ledger.NumTransactions(), uint64(50)
+			if limit > total {
+				limit = total
+			}
+
+			offset := total - limit
+
+			listParams.Limit = &limit
+			listParams.Offset = &offset
+		}
+		transactions = ledger.PaginateTransactions(*listParams.Offset, *listParams.Limit)
+	})
+
+	for _, tx := range transactions {
+		if tx.Tag == params.TagCreateContract {
+			tx.Payload = []byte("<code placeholder>")
+		}
+	}
+
+	return http.StatusOK, transactions, nil
+}
+
+func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
+	}
+
+	if !ctx.session.Permissions.CanAccessLedger {
+		return http.StatusForbidden, nil, errors.New("permission denied")
+	}
+
+	var req GetContractRequest
+	if err := ctx.readJSON(&req); err != nil {
+		return http.StatusBadRequest, nil, err
+	}
+
+	if err := validate.Struct(req); err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
+	}
+
+	var contractCode []byte
+	var err error
+
+	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+		contractCode, err = ledger.LoadContract(req.TransactionID)
+	})
+	if err != nil {
+		return http.StatusBadRequest, nil, errors.Wrapf(err, "transaction %s does not exist", req.TransactionID)
+	}
+
+	resp := &TransactionResponse{
+		TransactionID: req.TransactionID,
+		Code:          contractCode,
+	}
+
+	return http.StatusOK, resp, nil
+}
+
+func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
+	}
+
+	if !ctx.session.Permissions.CanSendTransaction {
+		return http.StatusForbidden, nil, errors.New("permission denied")
+	}
+
+	ctx.request.ParseMultipartForm(MaxContractUploadSize)
+	file, info, err := ctx.request.FormFile(UploadFormField)
+	if err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid format")
+	}
+	defer file.Close()
+
+	if info.Size > MaxContractUploadSize {
+		return http.StatusBadRequest, nil, errors.New("file too large")
+	}
+
+	var bb bytes.Buffer
+	io.Copy(&bb, file)
+
+	contract := &wavelet.Contract{
+		Code: bb.Bytes(),
+	}
+
+	payload, err := json.Marshal(contract)
+	if err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "Failed to marshal smart contract deployment payload.")
+	}
+
+	wired := s.wavelet.MakeTransaction(params.TagCreateContract, payload)
+	go s.wavelet.BroadcastTransaction(wired)
+
+	resp := &TransactionResponse{
+		TransactionID: graph.Symbol(wired),
+	}
+
+	return http.StatusOK, resp, nil
+}
+
+func (s *service) listContractsHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
+	}
+
+	if !ctx.session.Permissions.CanAccessLedger {
+		return http.StatusForbidden, nil, errors.New("permission denied")
+	}
+
+	var contracts []*wavelet.Contract
+	var listParams ListContractsRequest
+	var resp []*TransactionResponse
+
+	if err := ctx.readJSON(&listParams); err != nil {
+		return http.StatusBadRequest, nil, err
+	}
+
+	if err := validate.Struct(listParams); err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
+	}
+
+	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+		// If paginate is blank, return the last 50 contracts.
+		if listParams.Offset == nil || listParams.Limit == nil {
+			total, limit := ledger.NumContracts(), uint64(50)
+			if limit > total {
+				limit = total
+			}
+
+			offset := total - limit
+
+			listParams.Limit = &limit
+			listParams.Offset = &offset
+		}
+		contracts = ledger.PaginateContracts(*listParams.Offset, *listParams.Limit)
+	})
+
+	for _, contract := range contracts {
+		resp = append(resp, &TransactionResponse{
+			TransactionID: contract.TransactionID,
+		})
+	}
+
+	return http.StatusOK, resp, nil
+}
+
+func (s *service) ledgerStateHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
+	}
+
+	if !ctx.session.Permissions.CanAccessLedger {
+		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
 	plugin, exists := s.network.Plugin(discovery.PluginID)
-
 	if !exists {
-		ctx.WriteJSON(http.StatusInternalServerError, "ledger does not have peer discovery enabled")
-		return
+		return http.StatusInternalServerError, nil, errors.New("peer discovery disabled")
 	}
 
 	routes := plugin.(*discovery.Plugin).Routes
 
-	state := struct {
-		PublicKey string                 `json:"public_key"`
-		Address   string                 `json:"address"`
-		Peers     []string               `json:"peers"`
-		State     map[string]interface{} `json:"state"`
-	}{
+	state := &LedgerState{
 		PublicKey: s.network.ID.PublicKeyHex(),
 		Address:   s.network.ID.Address,
 		Peers:     routes.GetPeerAddresses(),
@@ -177,69 +318,69 @@ func (s *service) ledgerStateHandler(ctx *requestContext) {
 		state.State = ledger.Snapshot()
 	})
 
-	ctx.WriteJSON(http.StatusOK, state)
+	return http.StatusOK, state, nil
 }
 
-func (s *service) sendTransactionHandler(ctx *requestContext) {
-	if !ctx.loadSession() {
-		return
+func (s *service) sendTransactionHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
 	}
 
 	if !ctx.session.Permissions.CanSendTransaction {
-		ctx.WriteJSON(http.StatusForbidden, "cannot send transaction")
-		return
+		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
-	var info struct {
-		Tag     string `json:"tag"`
-		Payload []byte `json:"payload"`
-	}
+	var info SendTransactionRequest
 
 	if err := ctx.readJSON(&info); err != nil {
-		return
+		return http.StatusBadRequest, nil, err
+	}
+
+	if err := validate.Struct(info); err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
 	}
 
 	wired := s.wavelet.MakeTransaction(info.Tag, info.Payload)
 	go s.wavelet.BroadcastTransaction(wired)
 
-	ctx.WriteJSON(http.StatusOK, "OK")
+	resp := &TransactionResponse{
+		TransactionID: graph.Symbol(wired),
+	}
+
+	return http.StatusOK, resp, nil
 }
 
-func (s *service) resetStatsHandler(ctx *requestContext) {
-	if !ctx.loadSession() {
-		return
+func (s *service) resetStatsHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
 	}
 
 	if !ctx.session.Permissions.CanControlStats {
-		ctx.WriteJSON(http.StatusForbidden, "no stats permissions")
-		return
+		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
 	stats.Reset()
 
-	ctx.WriteJSON(http.StatusOK, "OK")
+	return http.StatusOK, "OK", nil
 }
 
-func (s *service) loadAccountHandler(ctx *requestContext) {
-	if !ctx.loadSession() {
-		return
+func (s *service) loadAccountHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
 	}
 
-	if !ctx.session.Permissions.CanPollTransaction {
-		ctx.WriteJSON(http.StatusForbidden, "permission denied")
-		return
+	if !ctx.session.Permissions.CanAccessLedger {
+		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
 	var encodedAccountID string
 	if err := ctx.readJSON(&encodedAccountID); err != nil {
-		ctx.WriteJSON(http.StatusBadRequest, "missing accountID parameter")
-		return
+		return http.StatusBadRequest, nil, err
 	}
 
 	accountID, err := hex.DecodeString(encodedAccountID)
 	if err != nil {
-		ctx.WriteJSON(http.StatusBadRequest, "failed to hex-decode accountID")
-		return
+		return http.StatusBadRequest, nil, errors.Wrap(err, "failed to hex-decode accountID")
 	}
 
 	var account *wavelet.Account
@@ -249,8 +390,8 @@ func (s *service) loadAccountHandler(ctx *requestContext) {
 	})
 
 	if err != nil {
-		ctx.WriteJSON(http.StatusOK, make(map[string][]byte))
-		return
+		// if account doesn't exist, return an empty account
+		return http.StatusOK, make(map[string][]byte), nil
 	}
 
 	info := make(map[string][]byte)
@@ -259,63 +400,71 @@ func (s *service) loadAccountHandler(ctx *requestContext) {
 		info[key] = value
 	})
 
-	ctx.WriteJSON(http.StatusOK, info)
+	return http.StatusOK, info, nil
 }
 
-func (s *service) serverVersionHandler(ctx *requestContext) {
-	if !ctx.loadSession() {
-		return
+func (s *service) serverVersionHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
 	}
 
 	info := &ServerVersion{
 		Version:   params.Version,
 		GitCommit: params.GitCommit,
+		OSArch:    params.OSArch,
 	}
-	ctx.WriteJSON(http.StatusOK, info)
+
+	return http.StatusOK, info, nil
 }
 
 // sessionInitHandler initialize a session.
-func (s *service) sessionInitHandler(ctx *requestContext) {
-	var credentials credentials
+func (s *service) sessionInitHandler(ctx *requestContext) (int, interface{}, error) {
+	var credentials CredentialsRequest
 	if err := ctx.readJSON(&credentials); err != nil {
-		return
+		return http.StatusBadRequest, nil, err
+	}
+
+	if err := validate.Struct(credentials); err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid credentials")
 	}
 
 	info, ok := s.clients[credentials.PublicKey]
 	if !ok {
-		ctx.WriteJSON(http.StatusNotFound, "invalid token")
-		return
+		return http.StatusForbidden, nil, errors.New("invalid token")
 	}
 
-	timeOffset := credentials.TimeMillis - time.Now().UnixNano()/int64(time.Millisecond)
-	if timeOffset < 0 {
-		timeOffset = -timeOffset
-	}
+	// TODO: this check doesn't work if the client clock is off from the server's clock,
+	//  but we need something to prevent reused credentials
+	/*
+		timeOffset := credentials.TimeMillis - time.Now().UnixNano()/int64(time.Millisecond)
+		if timeOffset < 0 {
+			timeOffset = -timeOffset
+		}
 
-	if timeOffset > 5000 {
-		ctx.WriteJSON(http.StatusForbidden, "token expired")
-		return
-	}
+		if timeOffset > MaxTimeOffsetInMs {
+			return http.StatusForbidden, nil, errors.New("token expired")
+		}
+	*/
 
 	rawSignature, err := hex.DecodeString(credentials.Sig)
 	if err != nil {
-		ctx.WriteJSON(http.StatusForbidden, "invalid signature")
-		return
+		return http.StatusForbidden, nil, errors.New("invalid signature")
 	}
+
 	rawPublicKey, err := hex.DecodeString(credentials.PublicKey)
 	if err != nil {
-		ctx.WriteJSON(http.StatusForbidden, "invalid public key")
-		return
+		return http.StatusForbidden, nil, errors.New("invalid public key")
 	}
-	expected := fmt.Sprintf("%s%d", sessionInitSigningPrefix, credentials.TimeMillis)
+
+	expected := fmt.Sprintf("%s%d", SessionInitSigningPrefix, credentials.TimeMillis)
 	if !security.Verify(rawPublicKey, []byte(expected), rawSignature) {
-		ctx.WriteJSON(http.StatusForbidden, "signature verification failed")
-		return
+		return http.StatusForbidden, nil, errors.New("signature verification failed")
 	}
 
-	session := s.registry.newSession(info.Permissions)
+	session, err := s.registry.newSession(info.Permissions)
+	if err != nil {
+		return http.StatusForbidden, nil, errors.New("sessions limited")
+	}
 
-	ctx.WriteJSON(http.StatusOK, SessionResponse{
-		Token: session.ID,
-	})
+	return http.StatusOK, SessionResponse{Token: session.ID}, nil
 }

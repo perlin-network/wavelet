@@ -10,6 +10,7 @@ nat = false
 
 [db]
 path = "testdb"
+reset = true
 
 [api]
 host = "localhost"

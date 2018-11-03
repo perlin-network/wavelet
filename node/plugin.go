@@ -1,17 +1,24 @@
 package node
 
 import (
+	"context"
+	"math/rand"
+	"os"
+
+	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/params"
+	"github.com/perlin-network/wavelet/security"
+
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/dht"
 	"github.com/perlin-network/noise/network"
 	"github.com/perlin-network/noise/network/discovery"
-	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/security"
+	"github.com/perlin-network/noise/types/opcode"
+
 	"github.com/pkg/errors"
-	"os"
 )
 
 var _ network.PluginInterface = (*Wavelet)(nil)
@@ -26,8 +33,8 @@ type Options struct {
 
 type Wavelet struct {
 	query
-	syncer
 	broadcaster
+	syncer
 
 	net    *network.Network
 	routes *dht.RoutingTable
@@ -37,6 +44,14 @@ type Wavelet struct {
 
 	opts Options
 }
+
+const (
+	WireTransactionOpcode           = 4000
+	QueryResponseOpcode             = 4010
+	SyncChildrenQueryRequestOpcode  = 4011
+	SyncChildrenQueryResponseOpcode = 4012
+	TxPushHintOpcode                = 4013
+)
 
 func NewPlugin(opts Options) *Wavelet {
 	return &Wavelet{opts: opts}
@@ -63,6 +78,12 @@ func (w *Wavelet) Startup(net *network.Network) {
 		}
 	}
 
+	opcode.RegisterMessageType(opcode.Opcode(WireTransactionOpcode), &wire.Transaction{})
+	opcode.RegisterMessageType(opcode.Opcode(QueryResponseOpcode), &QueryResponse{})
+	opcode.RegisterMessageType(opcode.Opcode(SyncChildrenQueryRequestOpcode), &SyncChildrenQueryRequest{})
+	opcode.RegisterMessageType(opcode.Opcode(SyncChildrenQueryResponseOpcode), &SyncChildrenQueryResponse{})
+	opcode.RegisterMessageType(opcode.Opcode(TxPushHintOpcode), &TxPushHint{})
+
 	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath, w.opts.GenesisPath)
 
 	loop := wavelet.NewEventLoop(ledger)
@@ -75,8 +96,8 @@ func (w *Wavelet) Startup(net *network.Network) {
 	w.query = query{Wavelet: w}
 	w.query.sybil = stake{query: w.query}
 
-	w.syncer = syncer{Wavelet: w, kill: make(chan struct{}, 1)}
-	go w.syncer.Init()
+	w.syncer = syncer{Wavelet: w}
+	w.syncer.Start()
 
 	w.broadcaster = broadcaster{Wavelet: w}
 }
@@ -93,7 +114,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 		res := &QueryResponse{Id: id}
 
 		defer func() {
-			err := ctx.Reply(res)
+			err := ctx.Reply(context.Background(), res)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to send response.")
 			}
@@ -119,7 +140,15 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 			})
 
 			log.Debug().Str("id", id).Str("tag", msg.Tag).Msgf("Received an existing transaction, and voted '%t' for it.", res.StronglyPreferred)
+
+			if rand.Intn(params.SyncNeighborsLikelihood) == 0 {
+				go w.syncer.QueryMissingChildren(id)
+				go w.syncer.QueryMissingParents(msg.Parents)
+			}
 		} else {
+			go w.syncer.QueryMissingChildren(id)
+			go w.syncer.QueryMissingParents(msg.Parents)
+
 			var err error
 
 			w.Ledger.Do(func(l *wavelet.Ledger) {
@@ -169,21 +198,59 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				}
 			}()
 		}
-	case *SyncRequest:
-		err := ctx.Reply(w.RespondToSync(msg))
+	case *SyncChildrenQueryRequest:
+		var childrenIDs []string
 
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to send response.")
-			return err
+		w.Ledger.Do(func(l *wavelet.Ledger) {
+			if children, err := l.Store.GetChildrenBySymbol(msg.Id); err == nil {
+				childrenIDs = children.Transactions
+			}
+		})
+
+		if childrenIDs == nil {
+			childrenIDs = make([]string, 0)
 		}
 
+		ctx.Reply(context.Background(), &SyncChildrenQueryResponse{
+			Children: childrenIDs,
+		})
+	case *TxPushHint:
+		for _, id := range msg.Transactions {
+			var out *wire.Transaction
+
+			w.Ledger.Do(func(l *wavelet.Ledger) {
+				if tx, err := l.Store.GetBySymbol(id); err == nil {
+					out = &wire.Transaction{
+						Sender:    tx.Sender,
+						Nonce:     tx.Nonce,
+						Parents:   tx.Parents,
+						Tag:       tx.Tag,
+						Payload:   tx.Payload,
+						Signature: tx.Signature,
+					}
+
+					if out.Tag == params.TagCreateContract {
+						// if it was a create contract that was removed from the db, load the tx payload from the ledger
+						if len(out.Payload) == 0 {
+							contractCode, err := l.LoadContract(id)
+							if err != nil {
+								return
+							}
+							out.Payload = contractCode
+						}
+					}
+				}
+			})
+
+			if out != nil {
+				w.net.BroadcastByAddresses(context.Background(), out, ctx.Sender().Address)
+			}
+		}
 	}
 	return nil
 }
 
 func (w *Wavelet) Cleanup(net *network.Network) {
-	w.syncer.kill <- struct{}{}
-
 	w.Ledger.Do(func(l *wavelet.Ledger) {
 		err := l.Graph.Cleanup()
 
@@ -198,5 +265,5 @@ func (w *Wavelet) PeerConnect(client *network.PeerClient) {
 }
 
 func (w *Wavelet) PeerDisconnect(client *network.PeerClient) {
-	log.Debug().Interface("ID", client.ID).Msgf("Peer disconnected: ", client.Address)
+	log.Debug().Interface("ID", client.ID).Msgf("Peer disconnected: %s", client.Address)
 }

@@ -1,22 +1,28 @@
 package wavelet
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
-	"github.com/perlin-network/graph/database"
-	"github.com/perlin-network/life/exec"
-	"github.com/perlin-network/wavelet/events"
-	"github.com/perlin-network/wavelet/log"
-	"github.com/phf/go-queue/queue"
-	"github.com/pkg/errors"
 	"io/ioutil"
 	"path/filepath"
 	"strings"
+
+	"github.com/perlin-network/wavelet/events"
+	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/params"
+
+	"github.com/perlin-network/graph/database"
+	"github.com/perlin-network/life/exec"
+
+	"github.com/phf/go-queue/queue"
+	"github.com/pkg/errors"
 )
 
 var (
-	BucketAccounts = []byte("account_")
-	BucketDeltas   = []byte("deltas_")
+	BucketAccounts  = []byte("account_")
+	BucketDeltas    = []byte("deltas_")
+	BucketContracts = merge(BucketAccounts, ContractPrefix)
 )
 
 // pending represents a single transaction to be processed. A utility struct
@@ -126,7 +132,7 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 			accounts[writeString(senderID)] = sender
 		}
 
-		if tx.Tag == "nop" {
+		if tx.Tag == params.TagNop {
 			sender.Nonce++
 
 			for id, account := range accounts {
@@ -228,6 +234,15 @@ func (s *state) doApplyTransaction(tx *database.Transaction) ([]*Delta, []*datab
 	var pendingTransactions []*database.Transaction
 
 	for _, service := range s.services {
+		if tx.Tag == params.TagCreateContract {
+			// load the contract code into the tx before running the service
+			contractCode, err := s.LoadContract(tx.Id)
+			if err != nil {
+				return nil, nil, errors.Wrapf(err, "Unable to load contract for txID %s", tx.Id)
+			}
+			tx.Payload = contractCode
+		}
+
 		new, pending, err := service.Run(tx)
 
 		if err != nil {
@@ -348,10 +363,19 @@ func (s *state) SaveAccount(account *Account, deltas []*Delta) error {
 
 	// If this is a new account, increment the bucket size by 1.
 	if !existed {
-		_, err = s.NextSequence(BucketAccounts)
-		if err != nil {
-			return err
+		// TODO: need a better way to get counts
+		if bytes.HasPrefix(account.PublicKey, ContractPrefix) {
+			_, err = s.NextSequence(BucketContracts)
+			if err != nil {
+				return err
+			}
+		} else {
+			_, err = s.NextSequence(BucketAccounts)
+			if err != nil {
+				return err
+			}
 		}
+
 	}
 
 	err = s.Put(accountKey, account.MarshalBinary())
@@ -384,12 +408,17 @@ func (s *state) NumTransactions() uint64 {
 	return s.Size(database.BucketTx)
 }
 
+// NumContracts returns the number of smart contracts in the ledger.
+func (s *state) NumContracts() uint64 {
+	return s.Size(BucketContracts)
+}
+
 // NumAcceptedTransactions returns the number of accepted transactions in the ledger.
 func (s *state) NumAcceptedTransactions() uint64 {
 	return s.Size(BucketAcceptedIndex)
 }
 
-// Paginate returns a page of transactions ordered by insertion starting from the offset index.
+// PaginateTransactions returns a page of transactions ordered by insertion starting from the offset index.
 func (s *state) PaginateTransactions(offset, pageSize uint64) []*database.Transaction {
 	size := s.NumAcceptedTransactions()
 
@@ -454,4 +483,99 @@ func (s *state) Snapshot() map[string]interface{} {
 	})
 
 	return json
+}
+
+// LoadContract loads a smart contract from the database given its tx id.
+// The key in the database will be of the form "account_C-txID"
+func (s *state) LoadContract(txID string) ([]byte, error) {
+	contractKey := merge(BucketContracts, writeBytes(txID))
+	bytes, err := s.Get(contractKey)
+	if err != nil {
+		return nil, errors.Wrapf(err, "contract ID %s not found in ledger state", txID)
+	}
+
+	account := NewAccount(writeBytes(ContractID(txID)))
+	err = account.Unmarshal(bytes)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to decode account")
+	}
+
+	contractCode, ok := account.Load(params.KeyContractCode)
+	if !ok {
+		return nil, errors.Errorf("contract ID %s has no contract code", txID)
+	}
+	return contractCode, nil
+}
+
+// SaveContract saves a smart contract to the database given its tx id.
+// The key in the database will be of the form "account_C-txID"
+func (s *state) SaveContract(txID string, contractCode []byte) error {
+	contractKey := merge(BucketContracts, writeBytes(txID))
+
+	account := NewAccount(writeBytes(ContractID(txID)))
+
+	if bytes, err := s.Get(contractKey); err == nil {
+		if err := account.Unmarshal(bytes); err != nil {
+			return errors.Wrapf(err, "failed to decode account")
+		}
+		account.Nonce++
+	}
+
+	account.Store(params.KeyContractCode, contractCode)
+
+	if err := s.SaveAccount(account, nil); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// PaginateContracts paginates through the smart contracts found in the ledger by searching for the prefix
+// "account_C-*" in the database.
+func (s *state) PaginateContracts(offset, pageSize uint64) []*Contract {
+	size := s.NumContracts()
+
+	if offset > size || pageSize == 0 {
+		return nil
+	}
+
+	if offset+pageSize > size {
+		pageSize = size - offset
+	}
+
+	var page []*Contract
+
+	i := uint64(0)
+
+	s.Store.ForEach(BucketContracts, func(txID []byte, encoded []byte) error {
+		if i >= offset && uint64(len(page)) < pageSize {
+			account := NewAccount(writeBytes(ContractID(string(txID))))
+			err := account.Unmarshal(encoded)
+			if err != nil {
+				err := errors.Wrapf(err, "failed to decode contract bytes")
+				log.Error().Err(err).Msg("")
+				return err
+			}
+
+			contractCode, ok := account.Load(params.KeyContractCode)
+			if !ok {
+				err := errors.Errorf("contract ID %s has no contract code", txID)
+				log.Error().Err(err).Msg("")
+				return err
+			}
+
+			contract := &Contract{
+				TransactionID: string(txID),
+				Code:          contractCode,
+			}
+
+			page = append(page, contract)
+		}
+
+		i++
+
+		return nil
+	})
+
+	return page
 }

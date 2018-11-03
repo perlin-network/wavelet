@@ -6,12 +6,16 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/perlin-network/graph/database"
-	"github.com/perlin-network/life/exec"
-	"github.com/perlin-network/wavelet/log"
-	"github.com/pkg/errors"
 	"sync"
 	"time"
+
+	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/params"
+
+	"github.com/perlin-network/graph/database"
+	"github.com/perlin-network/life/exec"
+
+	"github.com/pkg/errors"
 )
 
 const (
@@ -344,7 +348,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessOk) // always report ok.
 				}
 
-				contractCode, ok := account.Load("contract_code")
+				contractCode, ok := account.Load(params.KeyContractCode)
 				if !ok {
 					return int64(InternalProcessOk)
 				}
@@ -399,12 +403,14 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessErr) // a contract cannot create another one
 				}
 
-				contractID := string(ContractID(s.tx.Id))
+				contractID := ContractID(s.tx.Id)
 
 				if s.accounts[contractID] == nil {
 					s.accounts[contractID] = make(map[string][]byte)
 				}
 
+				// This struct is defined in
+				// github.com/perlin-network/transaction-processor-rs/builtin/contract/src/lib.rs
 				var payload struct {
 					Code string `json:"code"`
 				}
@@ -419,7 +425,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessErr)
 				}
 
-				s.accounts[contractID]["contract_code"] = decoded
+				s.accounts[contractID][params.KeyContractCode] = decoded
 
 				return int64(InternalProcessOk)
 			}
@@ -439,13 +445,13 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessErr) // a contract cannot create another one
 				}
 
-				contractID := string(ContractID(s.tx.Id))
+				contractID := ContractID(s.tx.Id)
 
 				if s.accounts[contractID] == nil {
 					s.accounts[contractID] = make(map[string][]byte)
 				}
 
-				s.accounts[contractID]["contract_code"] = code
+				s.accounts[contractID][params.KeyContractCode] = code
 
 				return int64(InternalProcessOk)
 			}
@@ -463,6 +469,6 @@ func (s *service) ResolveGlobal(module, field string) int64 {
 
 // ContractID returns the expected ID of a smart contract given the transaction symbol which
 // spawned the contract.
-func ContractID(id string) []byte {
-	return merge(ContractPrefix, writeBytes(id))
+func ContractID(txID string) string {
+	return string(merge(ContractPrefix, writeBytes(txID)))
 }
