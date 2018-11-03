@@ -41,7 +41,7 @@ func (b *broadcaster) MakeTransaction(tag string, payload []byte) *wire.Transact
 	}
 
 	wired := &wire.Transaction{
-		Timestamp: time.Now().UTC().Unix(),
+		Timestamp: time.Now().UTC().UnixNano() / 1e6,
 		Sender:    b.Wallet.PublicKeyHex(),
 		Nonce:     nonce,
 		Parents:   parents,

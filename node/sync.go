@@ -89,7 +89,7 @@ func (s *syncer) Start() {
 }
 
 // QueryMissingParents queries other nodes for parents of a children which we may
-// not ahve in store.
+// not have in store.
 func (s *syncer) QueryMissingParents(parents []string) {
 	pushHint := make([]string, 0)
 
@@ -103,7 +103,7 @@ func (s *syncer) QueryMissingParents(parents []string) {
 
 	s.net.BroadcastRandomly(context.Background(), &TxPushHint{
 		Transactions: pushHint,
-	}, 3)
+	}, params.SyncHintNumPeers)
 }
 
 // QueryMissingChildren queries other nodes for children of a transaction which we may

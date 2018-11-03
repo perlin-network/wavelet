@@ -13,9 +13,8 @@ const (
 )
 
 var (
-	// Transaction IBLT parameters.
-	TxK = 6
-	TxL = 4096
+	// Transaction timestamp authenticity parameter.
+	TimestampAncestorSampleSize = 30
 
 	// Consensus protocol parameters.
 	ConsensusK     = 1

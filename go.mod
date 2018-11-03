@@ -2,7 +2,6 @@ module github.com/perlin-network/wavelet
 
 require (
 	github.com/BurntSushi/toml v0.3.1 // indirect
-	github.com/dchest/siphash v1.2.0 // indirect
 	github.com/go-playground/locales v0.12.1 // indirect
 	github.com/go-playground/universal-translator v0.16.0 // indirect
 	github.com/gofrs/uuid v3.1.0+incompatible
@@ -14,13 +13,12 @@ require (
 	github.com/perlin-network/noise v0.0.0-0.20181016155300-3840e75
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
 	github.com/pkg/errors v0.8.0
-	github.com/rakyll/statik v0.1.5
 	github.com/rs/cors v1.5.0
 	github.com/rs/zerolog v1.9.1
-	github.com/sasha-s/go-IBLT v0.0.0-20150527092913-0d7bd59e8167 // indirect
 	github.com/stretchr/testify v1.2.2
 	github.com/urfave/cli v1.20.0
 	golang.org/x/crypto v0.0.0-20180910181607-0e37d006457b
+	gopkg.in/go-playground/assert.v1 v1.2.1 // indirect
 	gopkg.in/go-playground/validator.v9 v9.21.0
 	gopkg.in/urfave/cli.v1 v1.20.0
 )

@@ -121,9 +121,11 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 		}()
 
 		var existed bool
+		var numTransactions uint64
 
 		w.Ledger.Do(func(l *wavelet.Ledger) {
 			existed = l.TransactionExists(id)
+			numTransactions = l.NumTransactions()
 		})
 
 		if existed {
@@ -150,6 +152,11 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 			go w.syncer.QueryMissingParents(msg.Parents)
 
 			var err error
+
+			err = validateTimestamp(w.Ledger, msg)
+			if err != nil && numTransactions > 0 {
+				return errors.Wrap(err, "failed to invalidate incoming tx timestamp")
+			}
 
 			w.Ledger.Do(func(l *wavelet.Ledger) {
 				_, res.StronglyPreferred, err = l.RespondToQuery(msg)
