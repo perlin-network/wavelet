@@ -190,6 +190,7 @@ func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth in
 	}
 
 	if len(possiblyRewarded) == 0 {
+		log.Debug().Msgf("nobody to reward for transaction %s from sender %s", tx.Id, tx.Sender)
 		return nil
 	}
 
@@ -205,6 +206,7 @@ func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth in
 	recipientBalance := readBalance(rewarded.Sender)
 	writeBalance(tx.Sender, senderBalance-amount)
 	writeBalance(rewarded.Sender, recipientBalance+amount)
+	log.Debug().Msgf("transferred %d perls from %s to %s as the reward for transaction %s.", amount, tx.Sender, rewarded.Sender, tx.Id)
 	return nil
 }
 
