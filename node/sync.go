@@ -34,7 +34,7 @@ func (s *syncer) randomlySelectPeers(n int) ([]string, error) {
 // hinterLoop hints transactions we have to other nodes which said nodes may not have.
 func (s *syncer) hinterLoop() {
 	for {
-		time.Sleep(params.SyncHintPeriod * time.Second)
+		time.Sleep(params.SyncHintPeriod)
 
 		var tx *wire.Transaction
 
