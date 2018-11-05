@@ -13,7 +13,7 @@ require (
 	github.com/perlin-network/noise v0.0.0-0.20181016155300-3840e75
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
 	github.com/pkg/errors v0.8.0
-	github.com/rakyll/statik v0.1.5
+	github.com/rakyll/statik v0.1.5 // indirect
 	github.com/rs/cors v1.5.0
 	github.com/rs/zerolog v1.9.1
 	github.com/stretchr/testify v1.2.2
