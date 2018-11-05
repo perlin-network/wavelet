@@ -24,4 +24,11 @@ tx [tx id]
 
 # Test-deploy a smart contract at a given path.
 c [smart contract path here]
+
+# Register yourself as a validator with a placed stake of [stake amount].
+ps [stake amount]
+
+# Withdraw [stake amount] from your stakes as a validator into PERLs.
+ws [stake amount]
+
 ```
