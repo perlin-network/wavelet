@@ -255,6 +255,8 @@ func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth in
 
 	recipientBalance := readBalance(rewarded.Sender)
 
+	// No error is allowed here from now on.
+
 	writeBalance(tx.Sender, senderBalance-amount)
 	writeBalance(rewarded.Sender, recipientBalance+amount)
 
