@@ -15,8 +15,8 @@ import (
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/life/exec"
 
-	"crypto/sha256"
 	"encoding/binary"
+	"github.com/perlin-network/wavelet/security"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"sort"
@@ -26,11 +26,6 @@ var (
 	BucketAccounts  = []byte("account_")
 	BucketDeltas    = []byte("deltas_")
 	BucketContracts = merge(BucketAccounts, ContractPrefix)
-)
-
-const (
-	RewardDepth  = 5
-	RewardAmount = 10
 )
 
 // pending represents a single transaction to be processed. A utility struct
@@ -149,12 +144,12 @@ func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth in
 			return 0
 		}
 
-		_, _stake := account.State.Load("stake")
-		if _stake == nil {
+		_, stake := account.State.Load("stake")
+		if stake == nil {
 			return 0
 		}
 
-		return readUint64(_stake)
+		return readUint64(stake)
 	}
 
 	readBalance := func(sAccountID string) uint64 {
@@ -168,8 +163,8 @@ func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth in
 			return 0
 		}
 
-		_, _balance := account.State.Load("balance")
-		return readUint64(_balance)
+		_, balance := account.State.Load("balance")
+		return readUint64(balance)
 	}
 
 	writeBalance := func(sAccountID string, balance uint64) {
@@ -209,57 +204,61 @@ func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth in
 		return errors.New("sender balance isn't enough to pay reward")
 	}
 
-	possiblyRewarded, err := s.collectRewardedAncestors(tx, tx.Sender, depth)
+	candidateRewardees, err := s.collectRewardedAncestors(tx, tx.Sender, depth)
 	if err != nil {
 		return err
 	}
 
-	if len(possiblyRewarded) == 0 {
-		log.Info().Msgf("nobody to reward for transaction %s from sender %s", tx.Id, tx.Sender)
+	if len(candidateRewardees) == 0 {
 		return nil
 	}
 
-	prAccountStakes := make([]uint64, 0)
+	stakes := make([]uint64, len(candidateRewardees))
 	totalStake := uint64(0)
-	hashWriter := sha256.New()
-	for _, pr := range possiblyRewarded {
-		hashWriter.Write([]byte(pr.Id))
-		stake := readStake(pr.Sender)
-		prAccountStakes = append(prAccountStakes, stake)
+
+	var buffer bytes.Buffer
+
+	for _, rewardee := range candidateRewardees {
+		buffer.WriteString(rewardee.Id)
+
+		stake := readStake(rewardee.Sender)
+		stakes = append(stakes, stake)
 		totalStake += stake
 	}
-	entropySource := hashWriter.Sum(nil)
+
+	entropy := security.Hash(buffer.Bytes())
 
 	if totalStake == 0 {
-		log.Info().Msg("none of the candidates have stakes. skipping reward.")
+		log.Warn().Msg("None of the candidates have any stakes available. Skipping reward.")
 		return nil
 	}
 
-	random01 := float64(binary.LittleEndian.Uint64(entropySource)%uint64(0xffff)) / float64(0xffff)
+	threshold := float64(binary.LittleEndian.Uint64(entropy)%uint64(0xffff)) / float64(0xffff)
 	acc := float64(0.0)
+
 	var rewarded *database.Transaction
-	for i, pr := range possiblyRewarded {
-		stake := prAccountStakes[i]
-		acc += float64(stake) / float64(totalStake)
-		if acc >= random01 {
-			log.Info().Msgf("selected candidate %s (%f/%f)", pr.Sender, acc, random01)
-			rewarded = pr
+
+	for i, tx := range candidateRewardees {
+		acc += float64(stakes[i]) / float64(totalStake)
+
+		if acc >= threshold {
+			log.Debug().Msgf("Selected validator rewardee transaction %s (%f/%f).", tx.Sender, acc, threshold)
+			rewarded = tx
 			break
 		}
 	}
 
-	// FIXME: is this needed?
+	// If there is no selected transaction that deserves a reward, give the reward to the last reward candidate.
 	if rewarded == nil {
-		log.Warn().Msg("bug: rewarded == nil. selecting last tx.")
-		rewarded = possiblyRewarded[len(possiblyRewarded)-1]
+		rewarded = candidateRewardees[len(candidateRewardees)-1]
 	}
 
 	recipientBalance := readBalance(rewarded.Sender)
 
-	// no error is allowed from here on.
 	writeBalance(tx.Sender, senderBalance-amount)
 	writeBalance(rewarded.Sender, recipientBalance+amount)
-	log.Info().Msgf("transferred %d perls from %s to %s as the reward for transaction %s.", amount, tx.Sender, rewarded.Sender, tx.Id)
+
+	log.Debug().Msgf("Transferred %d PERLs from %s to %s as a validator reward for transaction %s.", amount, tx.Sender, rewarded.Sender, tx.Id)
 	return nil
 }
 
@@ -268,7 +267,7 @@ func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth in
 func (s *state) applyTransaction(tx *database.Transaction) error {
 	accountDeltas := &Deltas{Deltas: make(map[string]*Deltas_List)}
 
-	err := s.rewardAncestor(tx, RewardAmount, RewardDepth, accountDeltas.Deltas)
+	err := s.rewardAncestor(tx, params.ValidatorRewardAmount, params.ValidatorRewardDepth, accountDeltas.Deltas)
 	if err != nil {
 		return err
 	}
