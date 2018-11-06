@@ -3,7 +3,9 @@ package node
 import (
 	"context"
 	"github.com/gogo/protobuf/proto"
+	"github.com/perlin-network/wavelet/stats"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/perlin-network/graph/wire"
@@ -31,6 +33,7 @@ func (q query) Query(wired *wire.Transaction) error {
 	wg.Add(len(addresses))
 
 	responses := make([]bool, len(addresses))
+	var connErr int32
 
 	for i, address := range addresses {
 		go func(i int, address string) {
@@ -40,6 +43,7 @@ func (q query) Query(wired *wire.Transaction) error {
 
 			if err != nil {
 				responses[i] = false
+				atomic.AddInt32(&connErr, 1)
 				return
 			}
 
@@ -51,6 +55,7 @@ func (q query) Query(wired *wire.Transaction) error {
 
 			if err != nil {
 				responses[i] = false
+				atomic.AddInt32(&connErr, 1)
 				return
 			}
 
@@ -64,6 +69,9 @@ func (q query) Query(wired *wire.Transaction) error {
 	}
 
 	wg.Wait()
+
+	stats.IncMiscPerSecStat("connAddr", len(addresses))
+	stats.IncMiscPerSecStat("connErr", int(connErr))
 
 	positives := q.weigh(addresses, responses, wired)
 
