@@ -71,7 +71,7 @@ func (q query) Query(wired *wire.Transaction) error {
 	wg.Wait()
 
 	stats.IncMiscPerSecStat("connAddr", len(addresses))
-	stats.IncMiscPerSecStat("connErr", connErr)
+	stats.IncMiscPerSecStat("connErr", int(connErr))
 
 	positives := q.weigh(addresses, responses, wired)
 
