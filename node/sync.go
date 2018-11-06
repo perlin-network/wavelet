@@ -8,6 +8,7 @@ import (
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/params"
+	"github.com/perlin-network/wavelet/stats"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/perlin-network/noise/peer"
@@ -82,6 +83,9 @@ func (s *syncer) hinterLoop() {
 		}
 
 		s.net.BroadcastRandomly(context.Background(), tx, params.SyncHintNumPeers)
+
+		// update the number of connected peers
+		stats.SetNumConnectedPeers(int64(len(s.randomlySelectPeers(1000))))
 	}
 }
 

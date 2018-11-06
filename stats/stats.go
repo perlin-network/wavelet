@@ -10,6 +10,7 @@ var (
 	numAcceptedTransactionsPerSecondStat expvar.Int
 	consensusDurationStat                expvar.Float
 	numPendingTx                         expvar.Int
+	numConnectedPeers                    expvar.Int
 
 	uptimeStat  expvar.String
 	laptimeStat expvar.Float
@@ -73,6 +74,11 @@ func SetNumPendingTx(value int64) {
 	numPendingTx.Set(value)
 }
 
+// SetNumConnectedPeers will update the number of connected peers.
+func SetNumConnectedPeers(value int64) {
+	numConnectedPeers.Set(value)
+}
+
 // Reset sets all metrics to 0
 func Reset() {
 	lapStartTime = time.Now()
@@ -80,6 +86,7 @@ func Reset() {
 	numPendingTx.Set(0)
 	numAcceptedTransactionsStat.Set(0)
 	numAcceptedTransactionsPerSecondStat.Set(0)
+	numConnectedPeers.Set(0)
 	lastAcceptByTagPerSecStat.Init()
 	bufferAcceptByTagPerSecStat.Init()
 	lastMiscPerSecStat.Init()
@@ -95,6 +102,7 @@ func Summary() interface{} {
 		NumAcceptedTransactions          int64            `json:"num_accepted_transactions"`
 		NumAcceptedTransactionsPerSecond int64            `json:"num_accepted_transactions_per_sec"`
 		NumPendingTx                     int64            `json:"num_pending_transactions"`
+		NumConnectedPeers                int64            `json:"num_connected_peers"`
 		Uptime                           float64          `json:"uptime"`
 		LapTime                          float64          `json:"laptime"`
 		LastAcceptByTagPerSec            map[string]int64 `json:"last_accept_by_tag_per_sec"`
@@ -106,6 +114,7 @@ func Summary() interface{} {
 		NumAcceptedTransactions:          numAcceptedTransactionsStat.Value(),
 		NumAcceptedTransactionsPerSecond: numAcceptedTransactionsPerSecondStat.Value(),
 		NumPendingTx:                     numPendingTx.Value(),
+		NumConnectedPeers:                numConnectedPeers.Value(),
 		Uptime:                           t.Seconds(),
 		LapTime:                          laptimeStat.Value(),
 		LastAcceptByTagPerSec:            convertMap(&lastAcceptByTagPerSecStat),
