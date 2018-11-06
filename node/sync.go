@@ -10,6 +10,7 @@ import (
 	"github.com/perlin-network/wavelet/params"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/perlin-network/noise/peer"
 )
 
 type syncer struct {
@@ -17,18 +18,18 @@ type syncer struct {
 }
 
 // randomlySelectPeers randomly selects N closest peers w.r.t. this node.
-func (s *syncer) randomlySelectPeers(n int) ([]string, error) {
+func (s *syncer) randomlySelectPeers(n int) []peer.ID {
 	peers := s.routes.FindClosestPeers(s.net.ID, n+1)
 
-	var addresses []string
+	var ids []peer.ID
 
 	for _, peer := range peers {
 		if peer.Address != s.net.ID.Address {
-			addresses = append(addresses, peer.Address)
+			ids = append(ids, peer)
 		}
 	}
 
-	return addresses, nil
+	return ids
 }
 
 // hinterLoop hints transactions we have to other nodes which said nodes may not have.
@@ -109,16 +110,11 @@ func (s *syncer) QueryMissingParents(parents []string) {
 // QueryMissingChildren queries other nodes for children of a transaction which we may
 // not have in store.
 func (s *syncer) QueryMissingChildren(id string) {
-	peers, err := s.randomlySelectPeers(params.SyncNumPeers)
-	if err != nil {
-		log.Error().Err(err).Msg("unable to select peers")
-		return
-	}
-
+	peers := s.randomlySelectPeers(params.SyncNumPeers)
 	children := make(map[string]struct{})
 
 	for _, p := range peers {
-		client, err := s.net.Client(p)
+		client, err := s.net.Client(p.Address)
 		if err != nil {
 			log.Error().Err(err).Msg("unable to create client")
 			continue

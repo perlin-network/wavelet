@@ -2,18 +2,25 @@ package api
 
 // Constants used in the api package
 const (
-	RouteSessionInit     = "/session/init"
-	RouteLedgerState     = "/ledger/state"
+	RouteSessionInit = "/session/init"
+
+	RouteLedgerState = "/ledger/state"
+
 	RouteTransactionList = "/transaction/list"
 	RouteTransactionPoll = "/transaction/poll"
 	RouteTransactionSend = "/transaction/send"
-	RouteContractSend    = "/contract/send"
-	RouteContractGet     = "/contract/get"
-	RouteContractList    = "/contract/list"
-	RouteStatsReset      = "/stats/reset"
-	RouteAccountLoad     = "/account/load"
-	RouteAccountPoll     = "/account/poll"
-	RouteServerVersion   = "/server/version"
+	RouteTransaction     = "/transaction"
+
+	RouteContractSend = "/contract/send"
+	RouteContractGet  = "/contract/get"
+	RouteContractList = "/contract/list"
+
+	RouteStatsReset = "/stats/reset"
+
+	RouteAccountGet  = "/account/get"
+	RouteAccountPoll = "/account/poll"
+
+	RouteServerVersion = "/server/version"
 
 	HeaderSessionToken      = "X-Session-Token"
 	HeaderWebsocketProtocol = "Sec-Websocket-Protocol"

@@ -25,7 +25,7 @@ type query struct {
 }
 
 func (q query) Query(wired *wire.Transaction) error {
-	addresses := q.routes.FindClosestPeers(q.net.ID, params.ConsensusK+1)
+	addresses := q.randomlySelectPeers(params.ConsensusK)
 
 	var wg sync.WaitGroup
 	wg.Add(len(addresses))

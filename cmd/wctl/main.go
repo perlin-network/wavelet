@@ -51,7 +51,7 @@ func main() {
 	}
 
 	app.Commands = []cli.Command{
-		cli.Command{
+		{
 			Name:  "server_version",
 			Usage: "get the version information of the api server",
 			Flags: commonFlags,
@@ -69,7 +69,7 @@ func main() {
 				return nil
 			},
 		},
-		cli.Command{
+		{
 			Name:      "send_transaction",
 			Usage:     "send a transaction",
 			ArgsUsage: "<tag> <json payload>",
@@ -90,7 +90,7 @@ func main() {
 				return nil
 			},
 		},
-		cli.Command{
+		{
 			Name:  "recent_transactions",
 			Usage: "get recent transactions",
 			Flags: commonFlags,
@@ -128,7 +128,7 @@ func main() {
 				return nil
 			},
 		},
-		cli.Command{
+		{
 			Name:      "poll_transactions",
 			Usage:     "continuously receive transaction updates",
 			ArgsUsage: "<accepted | applied>",
@@ -159,7 +159,7 @@ func main() {
 				return nil
 			},
 		},
-		cli.Command{
+		{
 			Name:  "stats_reset",
 			Usage: "reset the stats counters",
 			Flags: commonFlags,
@@ -177,7 +177,7 @@ func main() {
 				return nil
 			},
 		},
-		cli.Command{
+		{
 			Name:      "send_contract",
 			Usage:     "send a smart contract",
 			Flags:     commonFlags,
@@ -197,7 +197,7 @@ func main() {
 				return nil
 			},
 		},
-		cli.Command{
+		{
 			Name:      "get_contract",
 			Usage:     "get smart contract by transaction ID",
 			Flags:     commonFlags,
@@ -217,7 +217,7 @@ func main() {
 				return nil
 			},
 		},
-		cli.Command{
+		{
 			Name:  "list_contracts",
 			Usage: "lists the most recent smart contracts",
 			Flags: commonFlags,

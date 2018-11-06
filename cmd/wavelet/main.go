@@ -325,6 +325,7 @@ func runShell(w *node.Wavelet) error {
 						Str("id", hex.EncodeToString(w.Wallet.PublicKey)).
 						Uint64("nonce", w.Wallet.CurrentNonce(l)).
 						Uint64("balance", w.Wallet.GetBalance(l)).
+						Uint64("stake", w.Wallet.GetStake(l)).
 						Msg("Here is your wallet information.")
 				})
 
@@ -349,16 +350,22 @@ func runShell(w *node.Wavelet) error {
 				continue
 			}
 
-			balance, exists := account.Load("balance")
-			if !exists {
-				log.Error().Msg("The account has no balance associated to it.")
-				continue
+			var balance uint64
+			var stake uint64
+
+			if balanceValue, exists := account.Load("balance"); exists {
+				balance = binary.LittleEndian.Uint64(balanceValue)
+			}
+
+			if stakeValue, exists := account.Load("stake"); exists {
+				stake = binary.LittleEndian.Uint64(stakeValue)
 			}
 
 			log.Info().
 				Uint64("nonce", account.Nonce).
-				Uint64("balance", binary.LittleEndian.Uint64(balance)).
-				Msgf("Account Info: %s", cmd[1])
+				Uint64("balance", balance).
+				Uint64("stake", stake).
+				Msgf("Account: %s", cmd[1])
 		case "p":
 			recipient := "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"
 			amount := 1
@@ -390,9 +397,57 @@ func runShell(w *node.Wavelet) error {
 			wired := w.MakeTransaction(params.TagTransfer, payload)
 			go w.BroadcastTransaction(wired)
 
-			txID := graph.Symbol(wired)
+			log.Info().Msgf("Success! Your payment transaction ID: %s", graph.Symbol(wired))
+		case "ps":
+			if len(cmd) < 2 {
+				continue
+			}
 
-			log.Info().Msgf("Success! Your payment txID = %s", txID)
+			amount, err := strconv.Atoi(cmd[1])
+			if err != nil {
+				log.Fatal().Err(err).Msg("Failed to convert staking amount to an uint64.")
+			}
+
+			ps := struct {
+				Amount uint64 `json:"amount"`
+			}{
+				Amount: uint64(amount),
+			}
+
+			payload, err := json.Marshal(ps)
+			if err != nil {
+				log.Fatal().Err(err).Msg("Failed to marshal place stake payload.")
+			}
+
+			wired := w.MakeTransaction(params.TagPlaceStake, payload)
+			go w.BroadcastTransaction(wired)
+
+			log.Info().Msgf("Success! Your stake placement transaction ID: %s", graph.Symbol(wired))
+		case "ws":
+			if len(cmd) < 2 {
+				continue
+			}
+
+			amount, err := strconv.Atoi(cmd[1])
+			if err != nil {
+				log.Fatal().Err(err).Msg("Failed to convert withdraw amount to an uint64.")
+			}
+
+			ps := struct {
+				Amount uint64 `json:"amount"`
+			}{
+				Amount: uint64(amount),
+			}
+
+			payload, err := json.Marshal(ps)
+			if err != nil {
+				log.Fatal().Err(err).Msg("Failed to marshal place stake payload.")
+			}
+
+			wired := w.MakeTransaction(params.TagWithdrawStake, payload)
+			go w.BroadcastTransaction(wired)
+
+			log.Info().Msgf("Success! Your stake withdrawal transaction ID: %s", graph.Symbol(wired))
 		case "c":
 			if len(cmd) < 2 {
 				continue
@@ -420,9 +475,7 @@ func runShell(w *node.Wavelet) error {
 			wired := w.MakeTransaction(params.TagCreateContract, payload)
 			go w.BroadcastTransaction(wired)
 
-			txID := graph.Symbol(wired)
-
-			log.Info().Msgf("Success! Your smart contract txID = %s", txID)
+			log.Info().Msgf("Success! Your smart contract ID: %s", graph.Symbol(wired))
 		case "tx":
 			if len(cmd) < 2 {
 				continue
@@ -439,35 +492,27 @@ func runShell(w *node.Wavelet) error {
 				continue
 			}
 
-			view := struct {
-				Sender    string                 `json:"sender"`
-				Nonce     uint64                 `json:"nonce"`
-				Tag       string                 `json:"tag"`
-				Payload   map[string]interface{} `json:"payload"`
-				Signature string                 `json:"signature"`
-				Parents   []string               `json:"parents"`
-			}{
-				Sender:    tx.Sender,
-				Nonce:     tx.Nonce,
-				Tag:       tx.Tag,
-				Payload:   make(map[string]interface{}),
-				Signature: hex.EncodeToString(tx.Signature),
-				Parents:   tx.Parents,
-			}
+			payload := make(map[string]interface{})
 
-			err := json.Unmarshal(tx.Payload, &view.Payload)
+			err := json.Unmarshal(tx.Payload, &payload)
 
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to unmarshal transactions payload.")
 				continue
 			}
 
-			log.Info().Interface("tx", view).Msg("Here is the transaction you requested.")
+			log.Info().
+				Str("sender", tx.Sender).
+				Uint64("nonce", tx.Nonce).
+				Str("tag", tx.Tag).
+				Strs("parents", tx.Parents).
+				Interface("payload", payload).
+				Msg("Here is the transaction you requested.")
 		default:
 			wired := w.MakeTransaction(params.TagNop, nil)
 			go w.BroadcastTransaction(wired)
-			txID := graph.Symbol(wired)
-			log.Info().Msgf("Your nop txID = %s", txID)
+
+			log.Info().Msgf("Your nop transaction ID: %s", graph.Symbol(wired))
 		}
 	}
 

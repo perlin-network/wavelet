@@ -26,16 +26,20 @@ func (s stake) weigh(peers []peer.ID, responses []bool, tx *wire.Transaction) (p
 	for _, peer := range peers {
 		stake := uint64(minimumStake)
 
+		var account *wavelet.Account
+		var err error
+
 		s.Ledger.Do(func(l *wavelet.Ledger) {
-			account, err := l.LoadAccount(peer.PublicKey)
-			if err == nil {
-				if val, exists := account.Load("stake"); exists {
-					if s := binary.LittleEndian.Uint64(val); s > stake {
-						stake = s
-					}
+			account, err = l.LoadAccount(peer.PublicKey)
+		})
+
+		if err == nil {
+			if val, exists := account.Load("stake"); exists {
+				if s := binary.LittleEndian.Uint64(val); s > stake {
+					stake = s
 				}
 			}
-		})
+		}
 
 		if stake > maxStake {
 			maxStake = stake
@@ -45,9 +49,11 @@ func (s stake) weigh(peers []peer.ID, responses []bool, tx *wire.Transaction) (p
 	}
 
 	// Calculate votes based off of stake.
-	for _, stake := range stakes {
-		vote := float32(stake/maxStake) / float32(len(peers))
-		positives += vote
+	for i, stake := range stakes {
+		if responses[i] {
+			vote := float32(stake/maxStake) / float32(len(peers))
+			positives += vote
+		}
 	}
 
 	return positives

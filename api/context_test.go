@@ -15,8 +15,11 @@ func Test_requestContext_loadSession(t *testing.T) {
 
 	// create a registry with an expired session
 	regOutOfDateEntry := newSessionRegistry()
+
 	sess, _ := regOutOfDateEntry.newSession(ClientPermissions{})
+
 	olderTime := sess.renewTime.Add(-(MaxSessionTimeoutMinutes + 1) * time.Minute)
+
 	sess.renewTime = &olderTime
 
 	type fields struct {
@@ -25,6 +28,7 @@ func Test_requestContext_loadSession(t *testing.T) {
 		request  *http.Request
 		session  *session
 	}
+
 	tests := []struct {
 		name    string
 		fields  fields
@@ -80,6 +84,7 @@ func Test_requestContext_loadSession(t *testing.T) {
 			wantErr: true,
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &requestContext{
@@ -88,6 +93,7 @@ func Test_requestContext_loadSession(t *testing.T) {
 				request:  tt.fields.request,
 				session:  tt.fields.session,
 			}
+
 			if err := c.loadSession(); (err != nil) != tt.wantErr {
 				t.Errorf("requestContext.loadSession() name = %s, error = %v, wantErr %v", tt.name, err, tt.wantErr)
 			}
@@ -99,14 +105,19 @@ func Test_requestContext_readJSON(t *testing.T) {
 	t.Parallel()
 
 	var bigBytes bytes.Buffer
+
 	bigBytes.Grow(MaxRequestBodySize + 1)
+
 	for i := 0; i < MaxRequestBodySize+1; i++ {
 		bigBytes.WriteByte((byte)(i % 10))
 	}
+
 	var testString string
+
 	testStruct := SendTransactionRequest{
 		Tag: "test tag",
 	}
+
 	jsonStruct, _ := json.Marshal(testStruct)
 
 	type fields struct {
@@ -115,9 +126,11 @@ func Test_requestContext_readJSON(t *testing.T) {
 		request  *http.Request
 		session  *session
 	}
+
 	type args struct {
 		out interface{}
 	}
+
 	tests := []struct {
 		name    string
 		fields  fields
@@ -157,6 +170,7 @@ func Test_requestContext_readJSON(t *testing.T) {
 			wantErr: false,
 		},
 	}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &requestContext{
