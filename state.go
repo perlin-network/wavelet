@@ -281,7 +281,7 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 
 		senderID, err := hex.DecodeString(tx.Sender)
 		if err != nil {
-			log.Error().Err(err).Msg("cannot decode sender")
+			log.Error().Err(err).Str("tx", tx.Id).Msg("Failed to decode sender ID.")
 			continue
 		}
 
@@ -296,7 +296,7 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 				if tx.Nonce == 0 {
 					sender = NewAccount(senderID)
 				} else {
-					log.Error().Err(err).Msgf("sender account %s does not exist", tx.Sender)
+					log.Error().Err(err).Str("tx", tx.Id).Msgf("Sender account %s does not exist.", tx.Sender)
 					continue
 				}
 			}
