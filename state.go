@@ -138,6 +138,25 @@ func (s *state) collectRewardedAncestors(tx *database.Transaction, filterOutSend
 }
 
 func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth int) error {
+	readStake := func(sAccountID string) uint64 {
+		accountID, err := hex.DecodeString(sAccountID)
+		if err != nil {
+			panic(err) // shouldn't happen?
+		}
+
+		account, err := s.LoadAccount(accountID)
+		if err != nil {
+			return 0
+		}
+
+		_, _stake := account.State.Load("stake")
+		if _stake == nil {
+			return 0
+		}
+
+		return readUint64(_stake)
+	}
+
 	readBalance := func(sAccountID string) uint64 {
 		accountID, err := hex.DecodeString(sAccountID)
 		if err != nil {
@@ -190,23 +209,49 @@ func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth in
 	}
 
 	if len(possiblyRewarded) == 0 {
-		log.Debug().Msgf("nobody to reward for transaction %s from sender %s", tx.Id, tx.Sender)
+		log.Info().Msgf("nobody to reward for transaction %s from sender %s", tx.Id, tx.Sender)
 		return nil
 	}
 
+	prAccountStakes := make([]uint64, 0)
+	totalStake := uint64(0)
 	hashWriter := sha256.New()
 	for _, pr := range possiblyRewarded {
 		hashWriter.Write([]byte(pr.Id))
+		stake := readStake(pr.Sender)
+		prAccountStakes = append(prAccountStakes, stake)
+		totalStake += stake
 	}
 	entropySource := hashWriter.Sum(nil)
 
-	// FIXME: distribution?
-	rewarded := possiblyRewarded[int(binary.LittleEndian.Uint64(entropySource)%uint64(len(possiblyRewarded)))]
+	if totalStake == 0 {
+		log.Info().Msg("none of the candidates have stakes. skipping reward.")
+		return nil
+	}
+
+	random01 := float64(binary.LittleEndian.Uint64(entropySource)%uint64(0xffff)) / float64(0xffff)
+	acc := float64(0.0)
+	var rewarded *database.Transaction
+	for i, pr := range possiblyRewarded {
+		stake := prAccountStakes[i]
+		acc += float64(stake) / float64(totalStake)
+		if acc >= random01 {
+			log.Info().Msgf("selected candidate %s (%f/%f)", pr.Sender, acc, random01)
+			rewarded = pr
+			break
+		}
+	}
+
+	// FIXME: is this needed?
+	if rewarded == nil {
+		log.Warn().Msg("bug: rewarded == nil. selecting last tx.")
+		rewarded = possiblyRewarded[len(possiblyRewarded)-1]
+	}
 
 	recipientBalance := readBalance(rewarded.Sender)
 	writeBalance(tx.Sender, senderBalance-amount)
 	writeBalance(rewarded.Sender, recipientBalance+amount)
-	log.Debug().Msgf("transferred %d perls from %s to %s as the reward for transaction %s.", amount, tx.Sender, rewarded.Sender, tx.Id)
+	log.Info().Msgf("transferred %d perls from %s to %s as the reward for transaction %s.", amount, tx.Sender, rewarded.Sender, tx.Id)
 	return nil
 }
 
