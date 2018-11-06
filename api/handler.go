@@ -196,12 +196,12 @@ func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, err
 		return http.StatusBadRequest, nil, errors.Wrapf(err, "transaction %s does not exist", req.TransactionID)
 	}
 
-	resp := &TransactionResponse{
+	res := &TransactionResponse{
 		TransactionID: req.TransactionID,
 		Code:          contractCode,
 	}
 
-	return http.StatusOK, resp, nil
+	return http.StatusOK, res, nil
 }
 
 func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, error) {
@@ -214,13 +214,15 @@ func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, er
 	}
 
 	ctx.request.ParseMultipartForm(MaxContractUploadSize)
-	file, info, err := ctx.request.FormFile(UploadFormField)
+
+	file, header, err := ctx.request.FormFile(UploadFormField)
+
 	if err != nil {
 		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid format")
 	}
 	defer file.Close()
 
-	if info.Size > MaxContractUploadSize {
+	if header.Size > MaxContractUploadSize {
 		return http.StatusBadRequest, nil, errors.New("file too large")
 	}
 
@@ -239,11 +241,11 @@ func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, er
 	wired := s.wavelet.MakeTransaction(params.TagCreateContract, payload)
 	go s.wavelet.BroadcastTransaction(wired)
 
-	resp := &TransactionResponse{
+	res := &TransactionResponse{
 		TransactionID: graph.Symbol(wired),
 	}
 
-	return http.StatusOK, resp, nil
+	return http.StatusOK, res, nil
 }
 
 func (s *service) listContractsHandler(ctx *requestContext) (int, interface{}, error) {
@@ -257,7 +259,7 @@ func (s *service) listContractsHandler(ctx *requestContext) (int, interface{}, e
 
 	var contracts []*wavelet.Contract
 	var listParams ListContractsRequest
-	var resp []*TransactionResponse
+	var res []*TransactionResponse
 
 	if err := ctx.readJSON(&listParams); err != nil {
 		return http.StatusBadRequest, nil, err
@@ -284,12 +286,12 @@ func (s *service) listContractsHandler(ctx *requestContext) (int, interface{}, e
 	})
 
 	for _, contract := range contracts {
-		resp = append(resp, &TransactionResponse{
+		res = append(res, &TransactionResponse{
 			TransactionID: contract.TransactionID,
 		})
 	}
 
-	return http.StatusOK, resp, nil
+	return http.StatusOK, res, nil
 }
 
 func (s *service) ledgerStateHandler(ctx *requestContext) (int, interface{}, error) {
@@ -330,24 +332,58 @@ func (s *service) sendTransactionHandler(ctx *requestContext) (int, interface{},
 		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
-	var info SendTransactionRequest
+	var req SendTransactionRequest
 
-	if err := ctx.readJSON(&info); err != nil {
+	if err := ctx.readJSON(&req); err != nil {
 		return http.StatusBadRequest, nil, err
 	}
 
-	if err := validate.Struct(info); err != nil {
+	if err := validate.Struct(req); err != nil {
 		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
 	}
 
-	wired := s.wavelet.MakeTransaction(info.Tag, info.Payload)
+	wired := s.wavelet.MakeTransaction(req.Tag, req.Payload)
 	go s.wavelet.BroadcastTransaction(wired)
 
-	resp := &TransactionResponse{
+	res := &TransactionResponse{
 		TransactionID: graph.Symbol(wired),
 	}
 
-	return http.StatusOK, resp, nil
+	return http.StatusOK, res, nil
+}
+
+func (s *service) getTransactionHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
+	}
+
+	var symbol string
+
+	if err := ctx.readJSON(&symbol); err != nil {
+		return http.StatusBadRequest, nil, err
+	}
+
+	if len(symbol) != 64 {
+		return http.StatusBadRequest, nil, errors.New("transaction symbol ID must be a length-64 hex-encoded string")
+	}
+
+	_, err := hex.DecodeString(symbol)
+
+	if err != nil {
+		return http.StatusBadRequest, nil, errors.New("transaction symbol ID must be a length-64 hex-encoded string")
+	}
+
+	var tx *database.Transaction
+
+	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+		tx, err = ledger.GetBySymbol(symbol)
+	})
+
+	if err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "could not find transaction given symbol ID")
+	}
+
+	return http.StatusOK, tx, nil
 }
 
 func (s *service) resetStatsHandler(ctx *requestContext) (int, interface{}, error) {
@@ -364,7 +400,7 @@ func (s *service) resetStatsHandler(ctx *requestContext) (int, interface{}, erro
 	return http.StatusOK, "OK", nil
 }
 
-func (s *service) loadAccountHandler(ctx *requestContext) (int, interface{}, error) {
+func (s *service) getAccountHandler(ctx *requestContext) (int, interface{}, error) {
 	if err := ctx.loadSession(); err != nil {
 		return http.StatusForbidden, nil, err
 	}
@@ -380,7 +416,7 @@ func (s *service) loadAccountHandler(ctx *requestContext) (int, interface{}, err
 
 	accountID, err := hex.DecodeString(encodedAccountID)
 	if err != nil {
-		return http.StatusBadRequest, nil, errors.Wrap(err, "failed to hex-decode accountID")
+		return http.StatusBadRequest, nil, errors.Wrap(err, "failed to hex-decode account id")
 	}
 
 	var account *wavelet.Account
@@ -390,17 +426,16 @@ func (s *service) loadAccountHandler(ctx *requestContext) (int, interface{}, err
 	})
 
 	if err != nil {
-		// if account doesn't exist, return an empty account
 		return http.StatusOK, make(map[string][]byte), nil
 	}
 
-	info := make(map[string][]byte)
+	state := make(map[string][]byte)
 
 	account.Range(func(key string, value []byte) {
-		info[key] = value
+		state[key] = value
 	})
 
-	return http.StatusOK, info, nil
+	return http.StatusOK, state, nil
 }
 
 func (s *service) serverVersionHandler(ctx *requestContext) (int, interface{}, error) {
@@ -408,13 +443,13 @@ func (s *service) serverVersionHandler(ctx *requestContext) (int, interface{}, e
 		return http.StatusForbidden, nil, err
 	}
 
-	info := &ServerVersion{
+	res := &ServerVersion{
 		Version:   params.Version,
 		GitCommit: params.GitCommit,
 		OSArch:    params.OSArch,
 	}
 
-	return http.StatusOK, info, nil
+	return http.StatusOK, res, nil
 }
 
 // sessionInitHandler initialize a session.

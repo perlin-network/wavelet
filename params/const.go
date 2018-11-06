@@ -4,9 +4,11 @@ import "time"
 
 const (
 	// Transaction tags
-	TagCreateContract = "create_contract"
 	TagNop            = "nop"
 	TagTransfer       = "transfer"
+	TagPlaceStake     = "place_stake"
+	TagWithdrawStake  = "withdraw_stake"
+	TagCreateContract = "create_contract"
 
 	// Account keys
 	KeyContractCode = "contract_code"
