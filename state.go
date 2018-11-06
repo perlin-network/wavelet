@@ -15,8 +15,11 @@ import (
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/life/exec"
 
+	"encoding/binary"
+	"github.com/perlin-network/wavelet/security"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
+	"sort"
 )
 
 var (
@@ -98,20 +101,188 @@ func (s *state) registerService(name string, path string) error {
 	return nil
 }
 
+func (s *state) collectRewardedAncestors(tx *database.Transaction, filterOutSender string, depth int) ([]*database.Transaction, error) {
+	if depth == 0 {
+		return nil, nil
+	}
+
+	ret := make([]*database.Transaction, 0)
+
+	parents := make([]string, len(tx.Parents))
+	copy(parents, tx.Parents)
+	sort.Strings(parents)
+
+	for _, p := range parents {
+		parent, err := s.Ledger.Store.GetBySymbol(p)
+		if err != nil {
+			return nil, err
+		}
+
+		if parent.Sender != filterOutSender {
+			ret = append(ret, parent)
+		}
+
+		parentAncestors, err := s.collectRewardedAncestors(parent, filterOutSender, depth-1)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, parentAncestors...)
+	}
+
+	return ret, nil
+}
+
+func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth int, deltaMap map[string]*Deltas_List) error {
+	readStake := func(sAccountID string) uint64 {
+		accountID, err := hex.DecodeString(sAccountID)
+		if err != nil {
+			panic(err) // shouldn't happen?
+		}
+
+		account, err := s.LoadAccount(accountID)
+		if err != nil {
+			return 0
+		}
+
+		_, stake := account.State.Load("stake")
+		if stake == nil {
+			return 0
+		}
+
+		return readUint64(stake)
+	}
+
+	readBalance := func(sAccountID string) uint64 {
+		accountID, err := hex.DecodeString(sAccountID)
+		if err != nil {
+			panic(err) // shouldn't happen?
+		}
+
+		account, err := s.LoadAccount(accountID)
+		if err != nil {
+			return 0
+		}
+
+		_, balance := account.State.Load("balance")
+		return readUint64(balance)
+	}
+
+	writeBalance := func(sAccountID string, balance uint64) {
+		accountID, err := hex.DecodeString(sAccountID)
+		if err != nil {
+			panic(err) // shouldn't happen?
+		}
+
+		account, err := s.LoadAccount(accountID)
+		if err != nil {
+			account = NewAccount(accountID)
+		}
+
+		_, oldBalance := account.State.Load("balance")
+		account.State.Store("balance", writeUint64(balance))
+
+		delta := &Delta{
+			Account:  account.PublicKey,
+			Key:      "balance",
+			OldValue: oldBalance,
+			NewValue: writeUint64(balance),
+		}
+		s.Ledger.SaveAccount(account, []*Delta{delta})
+
+		if _, ok := deltaMap[writeString(account.PublicKey)]; !ok {
+			deltaMap[writeString(account.PublicKey)] = new(Deltas_List)
+		}
+		deltaMap[writeString(account.PublicKey)].List = append(deltaMap[writeString(account.PublicKey)].List, delta)
+	}
+
+	if depth < 0 {
+		return errors.New("invalid depth")
+	}
+
+	senderBalance := readBalance(tx.Sender)
+	if senderBalance < amount {
+		return errors.New("sender balance isn't enough to pay reward")
+	}
+
+	candidateRewardees, err := s.collectRewardedAncestors(tx, tx.Sender, depth)
+	if err != nil {
+		return err
+	}
+
+	if len(candidateRewardees) == 0 {
+		return nil
+	}
+
+	stakes := make([]uint64, len(candidateRewardees))
+	totalStake := uint64(0)
+
+	var buffer bytes.Buffer
+
+	for _, rewardee := range candidateRewardees {
+		buffer.WriteString(rewardee.Id)
+
+		stake := readStake(rewardee.Sender)
+		stakes = append(stakes, stake)
+		totalStake += stake
+	}
+
+	entropy := security.Hash(buffer.Bytes())
+
+	if totalStake == 0 {
+		log.Warn().Msg("None of the candidates have any stakes available. Skipping reward.")
+		return nil
+	}
+
+	threshold := float64(binary.LittleEndian.Uint64(entropy)%uint64(0xffff)) / float64(0xffff)
+	acc := float64(0.0)
+
+	var rewarded *database.Transaction
+
+	for i, tx := range candidateRewardees {
+		acc += float64(stakes[i]) / float64(totalStake)
+
+		if acc >= threshold {
+			log.Debug().Msgf("Selected validator rewardee transaction %s (%f/%f).", tx.Sender, acc, threshold)
+			rewarded = tx
+			break
+		}
+	}
+
+	// If there is no selected transaction that deserves a reward, give the reward to the last reward candidate.
+	if rewarded == nil {
+		rewarded = candidateRewardees[len(candidateRewardees)-1]
+	}
+
+	recipientBalance := readBalance(rewarded.Sender)
+
+	writeBalance(tx.Sender, senderBalance-amount)
+	writeBalance(rewarded.Sender, recipientBalance+amount)
+
+	log.Debug().Msgf("Transferred %d PERLs from %s to %s as a validator reward for transaction %s.", amount, tx.Sender, rewarded.Sender, tx.Id)
+	return nil
+}
+
 // applyTransaction runs a transaction, gets any transactions created by said transaction, and
 // applies those transactions to the ledger state.
 func (s *state) applyTransaction(tx *database.Transaction) error {
 	accountDeltas := &Deltas{Deltas: make(map[string]*Deltas_List)}
 
+	err := s.rewardAncestor(tx, params.ValidatorRewardAmount, params.ValidatorRewardDepth, accountDeltas.Deltas)
+	if err != nil {
+		return err
+	}
+
 	pending := queue.New()
 	pending.PushBack(tx)
 
+	// Returning from within this loop is not allowed.
 	for pending.Len() > 0 {
 		tx := pending.PopFront().(*database.Transaction)
 
 		senderID, err := hex.DecodeString(tx.Sender)
 		if err != nil {
-			return err
+			log.Error().Err(err).Str("tx", tx.Id).Msg("Failed to decode sender ID.")
+			continue
 		}
 
 		accounts := make(map[string]*Account)
@@ -125,7 +296,8 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 				if tx.Nonce == 0 {
 					sender = NewAccount(senderID)
 				} else {
-					return errors.Wrapf(err, "sender account %s does not exist", tx.Sender)
+					log.Error().Err(err).Str("tx", tx.Id).Msgf("Sender account %s does not exist.", tx.Sender)
+					continue
 				}
 			}
 
