@@ -229,7 +229,7 @@ func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth in
 	entropy := security.Hash(buffer.Bytes())
 
 	if totalStake == 0 {
-		log.Warn().Msg("None of the candidates have any stakes available. Skipping reward.")
+		//log.Warn().Msg("None of the candidates have any stakes available. Skipping reward.")
 		return nil
 	}
 
