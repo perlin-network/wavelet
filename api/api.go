@@ -33,16 +33,23 @@ func (s *service) init(mux *http.ServeMux) {
 	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
 	mux.HandleFunc(RouteSessionInit, s.wrap(s.sessionInitHandler))
+
 	mux.HandleFunc(RouteLedgerState, s.wrap(s.ledgerStateHandler))
+
 	mux.HandleFunc(RouteTransactionList, s.wrap(s.listTransactionHandler))
 	mux.HandleFunc(RouteTransactionPoll, s.wrap(s.pollTransactionHandler))
 	mux.HandleFunc(RouteTransactionSend, s.wrap(s.sendTransactionHandler))
+	mux.HandleFunc(RouteTransaction, s.wrap(s.getTransactionHandler))
+
 	mux.HandleFunc(RouteContractSend, s.wrap(s.sendContractHandler))
 	mux.HandleFunc(RouteContractGet, s.wrap(s.getContractHandler))
 	mux.HandleFunc(RouteContractList, s.wrap(s.listContractsHandler))
+
 	mux.HandleFunc(RouteStatsReset, s.wrap(s.resetStatsHandler))
-	mux.HandleFunc(RouteAccountLoad, s.wrap(s.loadAccountHandler))
+
+	mux.HandleFunc(RouteAccountGet, s.wrap(s.getAccountHandler))
 	mux.HandleFunc(RouteAccountPoll, s.wrap(s.pollAccountHandler))
+
 	mux.HandleFunc(RouteServerVersion, s.wrap(s.serverVersionHandler))
 }
 

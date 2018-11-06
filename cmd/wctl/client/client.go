@@ -259,7 +259,7 @@ func (c *Client) StatsReset(res interface{}) error {
 
 func (c *Client) LoadAccount(id string) (map[string][]byte, error) {
 	var ret map[string][]byte
-	if err := c.Request(api.RouteAccountLoad, id, &ret, nil); err != nil {
+	if err := c.Request(api.RouteAccountGet, id, &ret, nil); err != nil {
 		return nil, err
 	}
 
