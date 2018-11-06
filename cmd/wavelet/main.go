@@ -325,6 +325,7 @@ func runShell(w *node.Wavelet) error {
 						Str("id", hex.EncodeToString(w.Wallet.PublicKey)).
 						Uint64("nonce", w.Wallet.CurrentNonce(l)).
 						Uint64("balance", w.Wallet.GetBalance(l)).
+						Uint64("stake", w.Wallet.GetStake(l)).
 						Msg("Here is your wallet information.")
 				})
 
@@ -349,15 +350,21 @@ func runShell(w *node.Wavelet) error {
 				continue
 			}
 
-			balance, exists := account.Load("balance")
-			if !exists {
-				log.Error().Msg("The account has no balance associated to it.")
-				continue
+			var balance uint64
+			var stake uint64
+
+			if balanceValue, exists := account.Load("balance"); exists {
+				balance = binary.LittleEndian.Uint64(balanceValue)
+			}
+
+			if stakeValue, exists := account.Load("stake"); exists {
+				stake = binary.LittleEndian.Uint64(stakeValue)
 			}
 
 			log.Info().
 				Uint64("nonce", account.Nonce).
-				Uint64("balance", binary.LittleEndian.Uint64(balance)).
+				Uint64("balance", balance).
+				Uint64("stake", stake).
 				Msgf("Account: %s", cmd[1])
 		case "p":
 			recipient := "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"

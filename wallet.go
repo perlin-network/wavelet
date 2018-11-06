@@ -82,3 +82,17 @@ func (w *Wallet) GetBalance(ledger *Ledger) uint64 {
 
 	return 0
 }
+
+func (w *Wallet) GetStake(ledger *Ledger) uint64 {
+	if account, err := ledger.LoadAccount(w.PublicKey); err == nil {
+		stake, exists := account.Load("stake")
+
+		if !exists {
+			return 0
+		}
+
+		return readUint64(stake)
+	}
+
+	return 0
+}
