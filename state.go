@@ -137,7 +137,7 @@ func (s *state) collectRewardedAncestors(tx *database.Transaction, filterOutSend
 	return ret, nil
 }
 
-func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth int) error {
+func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth int, deltaMap map[string]*Deltas_List) error {
 	readStake := func(sAccountID string) uint64 {
 		accountID, err := hex.DecodeString(sAccountID)
 		if err != nil {
@@ -184,14 +184,20 @@ func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth in
 		}
 
 		_, oldBalance := account.State.Load("balance")
-
 		account.State.Store("balance", writeUint64(balance))
-		s.Ledger.SaveAccount(account, []*Delta{{
+
+		delta := &Delta{
 			Account:  account.PublicKey,
 			Key:      "balance",
 			OldValue: oldBalance,
 			NewValue: writeUint64(balance),
-		}})
+		}
+		s.Ledger.SaveAccount(account, []*Delta{delta})
+
+		if _, ok := deltaMap[writeString(account.PublicKey)]; !ok {
+			deltaMap[writeString(account.PublicKey)] = new(Deltas_List)
+		}
+		deltaMap[writeString(account.PublicKey)].List = append(deltaMap[writeString(account.PublicKey)].List, delta)
 	}
 
 	if depth < 0 {
@@ -249,6 +255,8 @@ func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth in
 	}
 
 	recipientBalance := readBalance(rewarded.Sender)
+
+	// no error is allowed from here on.
 	writeBalance(tx.Sender, senderBalance-amount)
 	writeBalance(rewarded.Sender, recipientBalance+amount)
 	log.Info().Msgf("transferred %d perls from %s to %s as the reward for transaction %s.", amount, tx.Sender, rewarded.Sender, tx.Id)
@@ -260,20 +268,22 @@ func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth in
 func (s *state) applyTransaction(tx *database.Transaction) error {
 	accountDeltas := &Deltas{Deltas: make(map[string]*Deltas_List)}
 
+	err := s.rewardAncestor(tx, RewardAmount, RewardDepth, accountDeltas.Deltas)
+	if err != nil {
+		return err
+	}
+
 	pending := queue.New()
 	pending.PushBack(tx)
 
+	// Returning from within this loop is not allowed.
 	for pending.Len() > 0 {
 		tx := pending.PopFront().(*database.Transaction)
 
 		senderID, err := hex.DecodeString(tx.Sender)
 		if err != nil {
-			return err
-		}
-
-		err = s.rewardAncestor(tx, RewardAmount, RewardDepth)
-		if err != nil {
-			return err
+			log.Error().Err(err).Msg("cannot decode sender")
+			continue
 		}
 
 		accounts := make(map[string]*Account)
@@ -287,7 +297,8 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 				if tx.Nonce == 0 {
 					sender = NewAccount(senderID)
 				} else {
-					return errors.Wrapf(err, "sender account %s does not exist", tx.Sender)
+					log.Error().Err(err).Msgf("sender account %s does not exist", tx.Sender)
+					continue
 				}
 			}
 
