@@ -279,6 +279,7 @@ func runServer(c *Config) (*node.Wavelet, error) {
 
 	jsonConfig, _ := json.MarshalIndent(c, "", "  ")
 	log.Debug().Msgf("Config: %s", string(jsonConfig))
+	log.Debug().Msgf("Params: %s", params.DumpParams())
 
 	var privateKeyHex string
 	if len(c.PrivateKeyFile) > 0 && c.PrivateKeyFile != "random" {

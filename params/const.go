@@ -1,5 +1,9 @@
 package params
 
+import (
+	"fmt"
+)
+
 const (
 	// Transaction tags
 	TagNop            = "nop"
@@ -39,3 +43,29 @@ var (
 	ValidatorRewardAmount    = uint64(10)
 	TransactionFeePercentage = 5
 )
+
+// DumpParams prints out all the params
+func DumpParams() string {
+	return fmt.Sprintf(`
+  ConsensusK:               %v
+  ConsensusAlpha:           %v
+  GraphUpdatePeriodMs:      %v
+  SyncHintPeriodMs:         %v
+  SyncHintNumPeers:         %v
+  SyncNeighborsLikelihood:  %v
+  SyncNumPeers:             %v
+  ValidatorRewardDepth:     %v
+  ValidatorRewardAmount:    %v
+  TransactionFeePercentage: %v
+	`,
+		ConsensusK,
+		ConsensusAlpha,
+		GraphUpdatePeriodMs,
+		SyncHintPeriodMs,
+		SyncHintNumPeers,
+		SyncNeighborsLikelihood,
+		SyncNumPeers,
+		ValidatorRewardDepth,
+		ValidatorRewardAmount,
+		TransactionFeePercentage)
+}
