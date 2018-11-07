@@ -3,10 +3,21 @@
 # This script compiles wavelet and pctl in a Docker container for the specified environments.
 set -eu
 
+# get platform
+PLATFORM='unknown'
+unamestr=`uname`
+if [[ "$unamestr" == 'Linux' ]]; then
+   PLATFORM='linux'
+elif [[ "$unamestr" == 'Darwin' ]]; then
+   PLATFORM='darwin'
+elif [[ "$unamestr" == 'Windows' ]]; then
+   PLATFORM='windows'
+fi
+
 OPTIND=1
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 HOST_BUILD_BIN="${SCRIPT_DIR}/bin/pkg"
-OS_ARCH="linux-amd64"
+OS_ARCH="${PLATFORM}-amd64"
 CLEAR_BUILDS=false
 
 function show_help {
