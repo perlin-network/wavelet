@@ -52,6 +52,7 @@ type Config struct {
 	Daemon             bool
 	LogLevel           string
 	UseNAT             bool
+	TuneConsensusK     uint
 }
 
 func main() {
@@ -127,7 +128,12 @@ func main() {
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "log_level",
 			Value: "info",
-			Usage: "Minimum level at which logs will be printed to stdout. One of off|debug|info|warn|error|fatal `LOG_LEVEL`",
+			Usage: "Minimum level at which logs will be printed to stdout. One of off|debug|info|warn|error|fatal `LOG_LEVEL`.",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "tune.consensus_k",
+			Value: 1,
+			Usage: "Tuning parameter for the consensus parameter k `TUNE_CONSENSUS_K`.",
 		}),
 		// config specifies the file that overrides altsrc
 		cli.StringFlag{
@@ -169,6 +175,7 @@ func main() {
 			Daemon:             c.Bool("daemon"),
 			LogLevel:           c.String("log_level"),
 			UseNAT:             c.Bool("nat"),
+			TuneConsensusK:     c.Uint("tune.consensus_k"),
 		}
 
 		// start the plugin
@@ -210,6 +217,10 @@ func runServer(c *Config) (*node.Wavelet, error) {
 	keys, err := crypto.FromPrivateKey(security.SignaturePolicy, privateKeyHex)
 	if err != nil {
 		return nil, errors.Wrap(err, "Unable to decode server private key")
+	}
+
+	if c.TuneConsensusK > 1 {
+		params.ConsensusK = int(c.TuneConsensusK)
 	}
 
 	w := node.NewPlugin(node.Options{
