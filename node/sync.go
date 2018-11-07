@@ -36,7 +36,7 @@ func (s *syncer) randomlySelectPeers(n int) []peer.ID {
 // hinterLoop hints transactions we have to other nodes which said nodes may not have.
 func (s *syncer) hinterLoop() {
 	for {
-		time.Sleep(params.SyncHintPeriod)
+		time.Sleep(time.Duration(params.SyncHintPeriodMs) * time.Millisecond)
 
 		var tx *wire.Transaction
 
@@ -108,7 +108,7 @@ func (s *syncer) QueryMissingParents(parents []string) {
 
 	s.net.BroadcastRandomly(context.Background(), &TxPushHint{
 		Transactions: pushHint,
-	}, 3)
+	}, params.SyncHintNumPeers)
 }
 
 // QueryMissingChildren queries other nodes for children of a transaction which we may

@@ -69,7 +69,7 @@ func main() {
 			Value: "localhost",
 			Usage: "Listen for peers on host address `HOST`.",
 		}),
-		altsrc.NewIntFlag(cli.IntFlag{
+		altsrc.NewUintFlag(cli.UintFlag{
 			Name:  "port",
 			Value: 3000,
 			Usage: "Listen for peers on port `PORT`.",
@@ -127,7 +127,63 @@ func main() {
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "log_level",
 			Value: "info",
-			Usage: "Minimum level at which logs will be printed to stdout. One of off|debug|info|warn|error|fatal `LOG_LEVEL`",
+			Usage: "Minimum level at which logs will be printed to stdout. One of off|debug|info|warn|error|fatal `LOG_LEVEL`.",
+		}),
+		// from params package
+		altsrc.NewUintFlag(cli.UintFlag{
+			Name:  "params.consensus_k",
+			Value: uint(params.ConsensusK),
+			Usage: "Consensus parameter k number of confirmations.",
+		}),
+		altsrc.NewFloat64Flag(cli.Float64Flag{
+			Name:  "params.consensus_alpha",
+			Value: float64(params.ConsensusAlpha),
+			Usage: "Consensus parameter alpha for positive strong preferences. Should be between 0-1.",
+		}),
+		altsrc.NewUintFlag(cli.UintFlag{
+			Name:  "params.consensus_query_timeout_ms",
+			Value: uint(params.ConsensusQueryTimeout),
+			Usage: "Timeout for querying a transaction to K peers.",
+		}),
+		altsrc.NewUintFlag(cli.UintFlag{
+			Name:  "params.graph_update_period_ms",
+			Value: uint(params.GraphUpdatePeriodMs),
+			Usage: "Ledger graph update period in milliseconds.",
+		}),
+		altsrc.NewUintFlag(cli.UintFlag{
+			Name:  "params.sync_hint_period_ms",
+			Value: uint(params.SyncHintPeriodMs),
+			Usage: "Sync hint period in milliseconds.",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "params.sync_hint_num_peers",
+			Value: params.SyncHintNumPeers,
+			Usage: "Sync hint number of peers.",
+		}),
+		altsrc.NewUintFlag(cli.UintFlag{
+			Name:  "params.sync_neighbors_likelihood",
+			Value: uint(params.SyncNeighborsLikelihood),
+			Usage: "Sync probability will ask nodes to see if we're missing any of its parents/children.",
+		}),
+		altsrc.NewUintFlag(cli.UintFlag{
+			Name:  "params.sync_num_peers",
+			Value: uint(params.SyncNumPeers),
+			Usage: "Sync number of peers that will query for missing transactions.",
+		}),
+		altsrc.NewUintFlag(cli.UintFlag{
+			Name:  "params.validator_reward_depth",
+			Value: uint(params.ValidatorRewardDepth),
+			Usage: "Validator reward depth.",
+		}),
+		altsrc.NewUint64Flag(cli.Uint64Flag{
+			Name:  "params.validator_reward_amount",
+			Value: params.ValidatorRewardAmount,
+			Usage: "Validator reward amount.",
+		}),
+		altsrc.NewUintFlag(cli.UintFlag{
+			Name:  "params.transaction_fee_percentage",
+			Value: uint(params.TransactionFeePercentage),
+			Usage: "Transaction fee percentage.",
 		}),
 		// config specifies the file that overrides altsrc
 		cli.StringFlag{
@@ -171,6 +227,50 @@ func main() {
 			UseNAT:             c.Bool("nat"),
 		}
 
+		if c.Uint("params.consensus_k") > 0 {
+			params.ConsensusK = int(c.Uint("params.consensus_k"))
+		}
+
+		if c.Float64("params.consensus_alpha") >= 0 && c.Float64("params.consensus_alpha") <= 1 {
+			params.ConsensusAlpha = float32(c.Float64("params.consensus_alpha"))
+		}
+
+		if c.Uint("params.consensus_query_timeout_ms") > 0 {
+			params.ConsensusQueryTimeout = int(c.Uint("params.consensus_query_timeout_ms"))
+		}
+
+		if c.Uint("params.graph_update_period_ms") > 0 {
+			params.GraphUpdatePeriodMs = int(c.Uint("params.graph_update_period_ms"))
+		}
+
+		if c.Uint("params.sync_hint_period_ms") > 0 {
+			params.SyncHintPeriodMs = int(c.Uint("params.sync_hint_period_ms"))
+		}
+
+		if c.Uint("params.sync_hint_num_peers") > 0 {
+			params.SyncHintNumPeers = int(c.Uint("params.sync_hint_num_peers"))
+		}
+
+		if c.Uint("params.sync_neighbors_likelihood") > 0 {
+			params.SyncNeighborsLikelihood = int(c.Uint("params.sync_neighbors_likelihood"))
+		}
+
+		if c.Uint("params.sync_num_peers") > 0 {
+			params.SyncNumPeers = int(c.Uint("params.sync_num_peers"))
+		}
+
+		if c.Uint("params.validator_reward_depth") > 0 {
+			params.ValidatorRewardDepth = int(c.Uint("params.validator_reward_depth"))
+		}
+
+		if c.Uint64("params.validator_reward_amount") > 0 {
+			params.GraphUpdatePeriodMs = int(c.Uint64("params.validator_reward_amount"))
+		}
+
+		if c.Uint("params.transaction_fee_percentage") > 0 {
+			params.TransactionFeePercentage = int(c.Uint("params.transaction_fee_percentage"))
+		}
+
 		// start the plugin
 		w, err := runServer(config)
 		if err != nil {
@@ -194,6 +294,10 @@ func main() {
 
 func runServer(c *Config) (*node.Wavelet, error) {
 	log.SetLevel(c.LogLevel)
+
+	jsonConfig, _ := json.MarshalIndent(c, "", "  ")
+	log.Debug().Msgf("Config: %s", string(jsonConfig))
+	log.Debug().Msgf("Params: %s", params.DumpParams())
 
 	var privateKeyHex string
 	if len(c.PrivateKeyFile) > 0 && c.PrivateKeyFile != "random" {

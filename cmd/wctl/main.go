@@ -48,6 +48,11 @@ func main() {
 			Name:  "api.private_key_file",
 			Usage: "The file containing private key that will make transactions through the API `API_PRIVATE_KEY_FILE` (required).",
 		},
+		cli.StringFlag{
+			Name:  "log_level",
+			Value: "info",
+			Usage: "Minimum level at which logs will be printed to stdout. One of off|debug|info|warn|error|fatal `LOG_LEVEL`.",
+		},
 	}
 
 	app.Commands = []cli.Command{
@@ -173,7 +178,7 @@ func main() {
 					return err
 				}
 				jsonOut, _ := json.Marshal(res)
-				fmt.Printf("%s\n", jsonOut)
+				log.Info().Msgf("%s", string(jsonOut))
 				return nil
 			},
 		},
@@ -247,7 +252,7 @@ func main() {
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	if err := app.Run(os.Args); err != nil {
-		log.Fatal().Msgf("Failed to parse configuration/command-line arguments: %v", err)
+		log.Error().Msgf("Failed to parse configuration/command-line arguments: %v", err)
 	}
 }
 
@@ -255,6 +260,7 @@ func setup(c *cli.Context) (*apiClient.Client, error) {
 	host := c.String("api.host")
 	port := c.Uint("api.port")
 	privateKeyFile := c.String("api.private_key_file")
+	log.SetLevel(c.String("log_level"))
 
 	if port == 0 {
 		return nil, errors.New("port is missing")

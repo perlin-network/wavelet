@@ -93,7 +93,7 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 		err = b.Query(wired)
 
 		if err != nil {
-			log.Warn().
+			log.Debug().
 				Err(err).
 				Int("num_attempts", i).
 				Msg("Failed to get our transaction validated by K peers.")
@@ -163,7 +163,7 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 			err = b.Query(nop)
 
 			if err != nil {
-				log.Warn().
+				log.Debug().
 					Err(err).
 					Int("num_attempts", i).
 					Msg("Failed to get our nop validated by K peers.")

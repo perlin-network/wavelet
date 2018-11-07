@@ -1,6 +1,8 @@
 package params
 
-import "time"
+import (
+	"fmt"
+)
 
 const (
 	// Transaction tags
@@ -15,32 +17,60 @@ const (
 )
 
 var (
-	// Transaction IBLT parameters.
-	TxK = 6
-	TxL = 4096
-
 	// Consensus protocol parameters.
 	ConsensusK     = 1
 	ConsensusAlpha = float32(0.8)
 
+	// Timeout for querying a transaction to K peers.
+	ConsensusQueryTimeout = 10000
+
 	// Ledger parameters.
-	GraphUpdatePeriod = 50 * time.Millisecond
+	GraphUpdatePeriodMs = 50
 
 	// Sync parameters.
 
-	// How often should we hint transactions we personally have to other nodes that might not have some of our transactions?
-	SyncHintPeriod = 2000 * time.Millisecond
+	// SyncHintPeriodMs is how often should we hint transactions we personally have to other nodes that might not have some of our transactions?
+	SyncHintPeriodMs = 2000
 
-	// How many peers will we hint periodically about transactions they may potentially not hajve?
+	// SyncHintNumPeers is how many peers will we hint periodically about transactions they may potentially not hajve?
 	SyncHintNumPeers = 3
 
-	// If we receive a transaction we already have, give a 1/(this) probability we will ask nodes to see if we're missing any of its parents/children, and if so query them for it.
+	// SyncNeighborsLikelihood is if we receive a transaction we already have, give a 1/(this) probability we will ask nodes to see if we're missing any of its parents/children, and if so query them for it.
 	SyncNeighborsLikelihood = 3
 
-	// How many peers will we query for missing transactions from?
+	// SyncNumPeers is how many peers will we query for missing transactions from?
 	SyncNumPeers = 5
 
+	// Reward parameters
 	ValidatorRewardDepth     = 5
-	ValidatorRewardAmount    = uint64(10)
+	ValidatorRewardAmount    = uint64(2)
 	TransactionFeePercentage = 5
 )
+
+// DumpParams prints out all the params
+func DumpParams() string {
+	return fmt.Sprintf(`
+  ConsensusK:               %v
+  ConsensusAlpha:           %v
+  ConsensusQueryTimeout:    %v
+  GraphUpdatePeriodMs:      %v
+  SyncHintPeriodMs:         %v
+  SyncHintNumPeers:         %v
+  SyncNeighborsLikelihood:  %v
+  SyncNumPeers:             %v
+  ValidatorRewardDepth:     %v
+  ValidatorRewardAmount:    %v
+  TransactionFeePercentage: %v
+	`,
+		ConsensusK,
+		ConsensusAlpha,
+		ConsensusQueryTimeout,
+		GraphUpdatePeriodMs,
+		SyncHintPeriodMs,
+		SyncHintNumPeers,
+		SyncNeighborsLikelihood,
+		SyncNumPeers,
+		ValidatorRewardDepth,
+		ValidatorRewardAmount,
+		TransactionFeePercentage)
+}

@@ -48,7 +48,7 @@ func (q query) Query(wired *wire.Transaction) error {
 			}
 
 			response, err := func() (proto.Message, error) {
-				ctx, cancel := context.WithTimeout(context.Background(), queryTimeout)
+				ctx, cancel := context.WithTimeout(context.Background(), time.Duration(params.ConsensusQueryTimeout)*time.Millisecond)
 				defer cancel()
 				return client.Request(ctx, wired)
 			}()
@@ -76,7 +76,7 @@ func (q query) Query(wired *wire.Transaction) error {
 	positives := q.weigh(addresses, responses, wired)
 
 	if positives < params.ConsensusAlpha {
-		return errors.Wrapf(ErrPrecommit, "expected >= %.2f alpha; got only %.2f positives", params.ConsensusAlpha, positives)
+		return errors.Wrapf(ErrPrecommit, "Expected >= %.2f alpha; got only %.2f positives.", params.ConsensusAlpha, positives)
 	}
 
 	return nil
