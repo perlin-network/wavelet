@@ -175,9 +175,9 @@ func main() {
 			Value: params.ValidatorRewardAmount,
 			Usage: "Validator reward amount.",
 		}),
-		altsrc.NewUint64Flag(cli.Uint64Flag{
+		altsrc.NewUintFlag(cli.UintFlag{
 			Name:  "params.transaction_fee_percentage",
-			Value: params.TransactionFeePercentage,
+			Value: uint(params.TransactionFeePercentage),
 			Usage: "Transaction fee percentage.",
 		}),
 		// config specifies the file that overrides altsrc
