@@ -69,7 +69,8 @@ func main() {
 			Value: "localhost",
 			Usage: "Listen for peers on host address `HOST`.",
 		}),
-		altsrc.NewUintFlag(cli.UintFlag{
+		// note: use IntFlag for ports, otherwise it won't override properly
+		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "port",
 			Value: 3000,
 			Usage: "Listen for peers on port `PORT`.",
