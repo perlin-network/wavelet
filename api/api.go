@@ -3,7 +3,6 @@ package api
 import (
 	_ "expvar"
 	"net/http"
-	"net/http/pprof"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -25,12 +24,6 @@ type service struct {
 // init registers routes to the HTTP serve mux.
 func (s *service) init(mux *http.ServeMux) {
 	mux.Handle("/debug/vars", http.DefaultServeMux)
-
-	mux.HandleFunc("/debug/pprof/", pprof.Index)
-	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
 
 	mux.HandleFunc(RouteSessionInit, s.wrap(s.sessionInitHandler))
 
