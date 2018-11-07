@@ -79,7 +79,7 @@ func main() {
 			Value: "localhost",
 			Usage: "Host a local HTTP API at host `API_HOST`.",
 		}),
-		altsrc.NewUintFlag(cli.UintFlag{
+		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "api.port",
 			Usage: "Host a local HTTP API at port `API_PORT`.",
 		}),
