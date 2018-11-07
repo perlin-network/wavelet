@@ -95,7 +95,7 @@ func (ledger *Ledger) Step(force bool) {
 
 	current := time.Now()
 
-	if force || current.Sub(ledger.lastUpdateAcceptedTime) >= params.GraphUpdatePeriod {
+	if force || current.Sub(ledger.lastUpdateAcceptedTime) >= time.Duration(params.GraphUpdatePeriodMs)*time.Millisecond {
 		ledger.updateAcceptedTransactions()
 		ledger.lastUpdateAcceptedTime = current
 	}

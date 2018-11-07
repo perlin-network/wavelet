@@ -16,6 +16,3 @@ reset = true
 host = "localhost"
 port = 9000
 private_key_files = "wallets.txt"
-
-[tune]
-consensus_k = 1
