@@ -108,7 +108,7 @@ func (s *syncer) QueryMissingParents(parents []string) {
 
 	s.net.BroadcastRandomly(context.Background(), &TxPushHint{
 		Transactions: pushHint,
-	}, 3)
+	}, params.SyncHintNumPeers)
 }
 
 // QueryMissingChildren queries other nodes for children of a transaction which we may

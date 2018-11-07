@@ -141,6 +141,11 @@ func main() {
 			Usage: "Consensus parameter alpha for positive strong preferences. Should be between 0-1.",
 		}),
 		altsrc.NewUintFlag(cli.UintFlag{
+			Name:  "params.consensus_query_timeout_ms",
+			Value: uint(params.ConsensusQueryTimeout),
+			Usage: "Timeout for querying a transaction to K peers.",
+		}),
+		altsrc.NewUintFlag(cli.UintFlag{
 			Name:  "params.graph_update_period_ms",
 			Value: uint(params.GraphUpdatePeriodMs),
 			Usage: "Ledger graph update period in milliseconds.",
@@ -225,30 +230,43 @@ func main() {
 		if c.Uint("params.consensus_k") > 0 {
 			params.ConsensusK = int(c.Uint("params.consensus_k"))
 		}
+
 		if c.Float64("params.consensus_alpha") >= 0 && c.Float64("params.consensus_alpha") <= 1 {
 			params.ConsensusAlpha = float32(c.Float64("params.consensus_alpha"))
 		}
+
+		if c.Uint("params.consensus_query_timeout_ms") > 0 {
+			params.ConsensusQueryTimeout = int(c.Uint("params.consensus_query_timeout_ms"))
+		}
+
 		if c.Uint("params.graph_update_period_ms") > 0 {
 			params.GraphUpdatePeriodMs = int(c.Uint("params.graph_update_period_ms"))
 		}
+
 		if c.Uint("params.sync_hint_period_ms") > 0 {
 			params.SyncHintPeriodMs = int(c.Uint("params.sync_hint_period_ms"))
 		}
+
 		if c.Uint("params.sync_hint_num_peers") > 0 {
 			params.SyncHintNumPeers = int(c.Uint("params.sync_hint_num_peers"))
 		}
+
 		if c.Uint("params.sync_neighbors_likelihood") > 0 {
 			params.SyncNeighborsLikelihood = int(c.Uint("params.sync_neighbors_likelihood"))
 		}
+
 		if c.Uint("params.sync_num_peers") > 0 {
 			params.SyncNumPeers = int(c.Uint("params.sync_num_peers"))
 		}
+
 		if c.Uint("params.validator_reward_depth") > 0 {
 			params.ValidatorRewardDepth = int(c.Uint("params.validator_reward_depth"))
 		}
+
 		if c.Uint64("params.validator_reward_amount") > 0 {
 			params.GraphUpdatePeriodMs = int(c.Uint64("params.validator_reward_amount"))
 		}
+
 		if c.Uint("params.transaction_fee_percentage") > 0 {
 			params.TransactionFeePercentage = int(c.Uint("params.transaction_fee_percentage"))
 		}

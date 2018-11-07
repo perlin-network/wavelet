@@ -21,6 +21,9 @@ var (
 	ConsensusK     = 1
 	ConsensusAlpha = float32(0.8)
 
+	// Timeout for querying a transaction to K peers.
+	ConsensusQueryTimeout = 10000
+
 	// Ledger parameters.
 	GraphUpdatePeriodMs = 50
 
@@ -40,7 +43,7 @@ var (
 
 	// Reward parameters
 	ValidatorRewardDepth     = 5
-	ValidatorRewardAmount    = uint64(10)
+	ValidatorRewardAmount    = uint64(2)
 	TransactionFeePercentage = 5
 )
 
@@ -49,6 +52,7 @@ func DumpParams() string {
 	return fmt.Sprintf(`
   ConsensusK:               %v
   ConsensusAlpha:           %v
+  ConsensusQueryTimeout:    %v
   GraphUpdatePeriodMs:      %v
   SyncHintPeriodMs:         %v
   SyncHintNumPeers:         %v
@@ -60,6 +64,7 @@ func DumpParams() string {
 	`,
 		ConsensusK,
 		ConsensusAlpha,
+		ConsensusQueryTimeout,
 		GraphUpdatePeriodMs,
 		SyncHintPeriodMs,
 		SyncHintNumPeers,
