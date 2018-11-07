@@ -132,7 +132,7 @@ func (s *state) collectRewardedAncestors(tx *database.Transaction, filterOutSend
 	return ret, nil
 }
 
-func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth int, deltaMap map[string]*Deltas_List) error {
+func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth int, deltaMap map[string]*Deltas_List) (string, error) {
 	readStake := func(sAccountID string) uint64 {
 		accountID, err := hex.DecodeString(sAccountID)
 		if err != nil {
@@ -196,21 +196,21 @@ func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth in
 	}
 
 	if depth < 0 {
-		return errors.New("invalid depth")
+		return "", errors.New("invalid depth")
 	}
 
 	senderBalance := readBalance(tx.Sender)
 	if senderBalance < amount {
-		return errors.New("sender balance isn't enough to pay reward")
+		return "", errors.New("sender balance isn't enough to pay reward")
 	}
 
 	candidateRewardees, err := s.collectRewardedAncestors(tx, tx.Sender, depth)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if len(candidateRewardees) == 0 {
-		return nil
+		return "", nil
 	}
 
 	stakes := make([]uint64, len(candidateRewardees))
@@ -230,7 +230,7 @@ func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth in
 
 	if totalStake == 0 {
 		//log.Warn().Msg("None of the candidates have any stakes available. Skipping reward.")
-		return nil
+		return "", nil
 	}
 
 	threshold := float64(binary.LittleEndian.Uint64(entropy)%uint64(0xffff)) / float64(0xffff)
@@ -261,7 +261,7 @@ func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth in
 	writeBalance(rewarded.Sender, recipientBalance+amount)
 
 	log.Debug().Msgf("Transferred %d PERLs from %s to %s as a validator reward for transaction %s.", amount, tx.Sender, rewarded.Sender, tx.Id)
-	return nil
+	return rewarded.Sender, nil
 }
 
 // applyTransaction runs a transaction, gets any transactions created by said transaction, and
@@ -269,7 +269,7 @@ func (s *state) rewardAncestor(tx *database.Transaction, amount uint64, depth in
 func (s *state) applyTransaction(tx *database.Transaction) error {
 	accountDeltas := &Deltas{Deltas: make(map[string]*Deltas_List)}
 
-	err := s.rewardAncestor(tx, params.ValidatorRewardAmount, params.ValidatorRewardDepth, accountDeltas.Deltas)
+	rewarded, err := s.rewardAncestor(tx, params.ValidatorRewardAmount, params.ValidatorRewardDepth, accountDeltas.Deltas)
 	if err != nil {
 		return err
 	}
@@ -332,6 +332,12 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 			log.Warn().Interface("tx", tx).Err(err).Msg("Transaction failed to get applied to the ledger state.")
 		}
 
+		_initialBalance, _ := sender.Load("balance")
+		var initialBalance uint64
+		if len(_initialBalance) > 0 {
+			initialBalance = readUint64(_initialBalance)
+		}
+
 		if err == nil {
 			for _, delta := range deltas {
 				accountID := writeString(delta.Account)
@@ -359,7 +365,59 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 		}
 
 		// Increment the senders account nonce.
-		accounts[writeString(sender.PublicKey)].Nonce++
+		sender.Nonce++
+
+		_finalBalance, _ := sender.Load("balance")
+		var finalBalance uint64
+		if len(_finalBalance) > 0 {
+			finalBalance = readUint64(_finalBalance)
+		}
+
+		if finalBalance < initialBalance && len(rewarded) > 0 {
+			deducted := (initialBalance - finalBalance) * uint64(params.TransactionFeePercentage) / 100
+			if deducted > 0 {
+				if finalBalance < deducted {
+					deducted = finalBalance
+				}
+
+				rewardedID, err := hex.DecodeString(rewarded)
+				if err != nil {
+					panic(err) // should not happen
+				}
+
+				rewardedAccount, ok := accounts[writeString(rewardedID)]
+				if !ok {
+					rewardedAccount, err = s.LoadAccount(rewardedID)
+					if err != nil {
+						rewardedAccount = NewAccount(rewardedID)
+					}
+					accounts[writeString(rewardedID)] = rewardedAccount
+				}
+
+				_rewardedBalance, ok := rewardedAccount.Load("balance")
+				if !ok || len(_rewardedBalance) == 0 {
+					panic("impossible") // already checked when rewarding
+				}
+				rewardedBalance := readUint64(_rewardedBalance)
+
+				sender.Store("balance", writeUint64(finalBalance-deducted))
+				rewardedAccount.Store("balance", writeUint64(rewardedBalance+deducted))
+
+				accountDeltas.Deltas[writeString(sender.PublicKey)].List = append(accountDeltas.Deltas[writeString(sender.PublicKey)].List, &Delta{
+					Account:  sender.PublicKey,
+					Key:      "balance",
+					OldValue: _finalBalance,
+					NewValue: writeUint64(finalBalance - deducted),
+				})
+				accountDeltas.Deltas[writeString(rewardedAccount.PublicKey)].List = append(accountDeltas.Deltas[writeString(rewardedAccount.PublicKey)].List, &Delta{
+					Account:  rewardedAccount.PublicKey,
+					Key:      "balance",
+					OldValue: _rewardedBalance,
+					NewValue: writeUint64(rewardedBalance + deducted),
+				})
+				//log.Info().Msgf("Transaction fee of %d PERLs transferred from %s to %s.", deducted, sender.PublicKeyHex(), rewarded)
+			}
+		}
 
 		for _, tx := range newlyPending {
 			pending.PushBack(tx)
