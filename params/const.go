@@ -40,6 +40,7 @@ var (
 	// How many peers will we query for missing transactions from?
 	SyncNumPeers = 5
 
-	ValidatorRewardDepth  = 5
-	ValidatorRewardAmount = uint64(10)
+	ValidatorRewardDepth     = 5
+	ValidatorRewardAmount    = uint64(10)
+	TransactionFeePercentage = 5
 )
