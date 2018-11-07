@@ -202,6 +202,9 @@ func main() {
 func runServer(c *Config) (*node.Wavelet, error) {
 	log.SetLevel(c.LogLevel)
 
+	jsonConfig, _ := json.MarshalIndent(c, "", "  ")
+	log.Debug().Msgf("Config: %s", string(jsonConfig))
+
 	var privateKeyHex string
 	if len(c.PrivateKeyFile) > 0 && c.PrivateKeyFile != "random" {
 		bytes, err := ioutil.ReadFile(c.PrivateKeyFile)
