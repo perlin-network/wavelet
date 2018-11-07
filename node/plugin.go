@@ -174,7 +174,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				err := w.Query(msg)
 
 				if err != nil {
-					log.Error().Err(err).Msg("Failed to gossip out transaction which was received.")
+					log.Debug().Err(err).Msg("Failed to gossip out transaction which was received.")
 					return
 				}
 
