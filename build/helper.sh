@@ -11,8 +11,8 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
     OS=${array[0]}
     ARCH=${array[1]}
     echo "Building binaries for ${os_arch}"
-    GOOS=${OS}
-    GOARCH=${ARCH}
+    export GOOS=${OS}
+    export GOARCH=${ARCH}
 
     go build \
         -o ${BUILD_BIN}/${OS}-${ARCH}/wavelet \
