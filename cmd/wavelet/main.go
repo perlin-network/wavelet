@@ -599,12 +599,7 @@ func runShell(w *node.Wavelet) error {
 
 			payload := make(map[string]interface{})
 
-			err := json.Unmarshal(tx.Payload, &payload)
-
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to unmarshal transactions payload.")
-				continue
-			}
+			json.Unmarshal(tx.Payload, &payload)
 
 			log.Info().
 				Str("sender", tx.Sender).
