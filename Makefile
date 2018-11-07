@@ -35,3 +35,6 @@ bench:
 
 clean:
 	rm -rf $(BINOUT)
+
+release: clean build-all
+	build/release.sh
