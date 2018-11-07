@@ -6,9 +6,9 @@ package api
 
 // CredentialsRequest is the payload sent from clients to server to get a session token
 type CredentialsRequest struct {
-	PublicKey  string `json:"PublicKey"     validate:"required,len=64"`
-	TimeMillis int64  `json:"TimeMillis"    validate:"required,gt=0"`
-	Sig        string `json:"Sig"           validate:"required,len=128"`
+	PublicKey  string `json:"public_key"     validate:"required,len=64"`
+	TimeMillis int64  `json:"time_millis"    validate:"required,gt=0"`
+	Sig        string `json:"signature"      validate:"required,len=128"`
 }
 
 // ListTransactionsRequest retrieves paginated transactions based on a specified tag
