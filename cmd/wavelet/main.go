@@ -175,6 +175,11 @@ func main() {
 			Value: params.ValidatorRewardAmount,
 			Usage: "Validator reward amount.",
 		}),
+		altsrc.NewUint64Flag(cli.Uint64Flag{
+			Name:  "params.transaction_fee_percentage",
+			Value: params.TransactionFeePercentage,
+			Usage: "Transaction fee percentage.",
+		}),
 		// config specifies the file that overrides altsrc
 		cli.StringFlag{
 			Name:  "config",
@@ -243,6 +248,9 @@ func main() {
 		}
 		if c.Uint64("params.validator_reward_amount") > 0 {
 			params.GraphUpdatePeriodMs = int(c.Uint64("params.validator_reward_amount"))
+		}
+		if c.Uint("params.transaction_fee_percentage") > 0 {
+			params.TransactionFeePercentage = int(c.Uint("params.transaction_fee_percentage"))
 		}
 
 		// start the plugin
