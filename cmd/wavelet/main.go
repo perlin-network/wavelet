@@ -138,7 +138,7 @@ func main() {
 		altsrc.NewFloat64Flag(cli.Float64Flag{
 			Name:  "params.consensus_alpha",
 			Value: float64(params.ConsensusAlpha),
-			Usage: "Consensus parameter alpha for positive strong preferences.",
+			Usage: "Consensus parameter alpha for positive strong preferences. Should be between 0-1.",
 		}),
 		altsrc.NewUintFlag(cli.UintFlag{
 			Name:  "params.graph_update_period_ms",
