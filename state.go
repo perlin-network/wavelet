@@ -322,7 +322,11 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 		}
 
 		if len(rewardee) > 0 {
-			deducted := (initialBalance - finalBalance) * uint64(params.TransactionFeePercentage) / 100
+			var deducted uint64
+
+			if finalBalance < initialBalance {
+				deducted = (initialBalance - finalBalance) * uint64(params.TransactionFeePercentage) / 100
+			}
 
 			// Bare minimum transaction fee that must be paid by all transactions.
 			if deducted < params.ValidatorRewardAmount {
