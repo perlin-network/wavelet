@@ -69,7 +69,7 @@ func main() {
 			Value: "localhost",
 			Usage: "Listen for peers on host address `HOST`.",
 		}),
-		// note: use IntFlag for ports, otherwise it won't override properly
+		// note: use IntFlag for numbers, UintFlag don't seem to work with the toml files
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "port",
 			Value: 3000,
@@ -131,9 +131,9 @@ func main() {
 			Usage: "Minimum level at which logs will be printed to stdout. One of off|debug|info|warn|error|fatal `LOG_LEVEL`.",
 		}),
 		// from params package
-		altsrc.NewUintFlag(cli.UintFlag{
+		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "params.consensus_k",
-			Value: uint(params.ConsensusK),
+			Value: params.ConsensusK,
 			Usage: "Consensus parameter k number of confirmations.",
 		}),
 		altsrc.NewFloat64Flag(cli.Float64Flag{
@@ -141,19 +141,19 @@ func main() {
 			Value: float64(params.ConsensusAlpha),
 			Usage: "Consensus parameter alpha for positive strong preferences. Should be between 0-1.",
 		}),
-		altsrc.NewUintFlag(cli.UintFlag{
+		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "params.consensus_query_timeout_ms",
-			Value: uint(params.ConsensusQueryTimeout),
+			Value: params.ConsensusQueryTimeout,
 			Usage: "Timeout for querying a transaction to K peers.",
 		}),
-		altsrc.NewUintFlag(cli.UintFlag{
+		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "params.graph_update_period_ms",
-			Value: uint(params.GraphUpdatePeriodMs),
+			Value: params.GraphUpdatePeriodMs,
 			Usage: "Ledger graph update period in milliseconds.",
 		}),
-		altsrc.NewUintFlag(cli.UintFlag{
+		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "params.sync_hint_period_ms",
-			Value: uint(params.SyncHintPeriodMs),
+			Value: params.SyncHintPeriodMs,
 			Usage: "Sync hint period in milliseconds.",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
@@ -161,29 +161,29 @@ func main() {
 			Value: params.SyncHintNumPeers,
 			Usage: "Sync hint number of peers.",
 		}),
-		altsrc.NewUintFlag(cli.UintFlag{
+		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "params.sync_neighbors_likelihood",
-			Value: uint(params.SyncNeighborsLikelihood),
+			Value: params.SyncNeighborsLikelihood,
 			Usage: "Sync probability will ask nodes to see if we're missing any of its parents/children.",
 		}),
-		altsrc.NewUintFlag(cli.UintFlag{
+		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "params.sync_num_peers",
-			Value: uint(params.SyncNumPeers),
+			Value: params.SyncNumPeers,
 			Usage: "Sync number of peers that will query for missing transactions.",
 		}),
-		altsrc.NewUintFlag(cli.UintFlag{
+		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "params.validator_reward_depth",
-			Value: uint(params.ValidatorRewardDepth),
+			Value: params.ValidatorRewardDepth,
 			Usage: "Validator reward depth.",
 		}),
-		altsrc.NewUint64Flag(cli.Uint64Flag{
+		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "params.validator_reward_amount",
-			Value: params.ValidatorRewardAmount,
+			Value: int(params.ValidatorRewardAmount),
 			Usage: "Validator reward amount.",
 		}),
-		altsrc.NewUintFlag(cli.UintFlag{
+		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "params.transaction_fee_percentage",
-			Value: uint(params.TransactionFeePercentage),
+			Value: params.TransactionFeePercentage,
 			Usage: "Transaction fee percentage.",
 		}),
 		// config specifies the file that overrides altsrc
@@ -248,7 +248,7 @@ func main() {
 			params.SyncHintPeriodMs = int(c.Uint("params.sync_hint_period_ms"))
 		}
 
-		if c.Uint("params.sync_hint_num_peers") > 0 {
+		if c.Uint("params.sync_hint_num_peers") >= 0 {
 			params.SyncHintNumPeers = int(c.Uint("params.sync_hint_num_peers"))
 		}
 
@@ -256,19 +256,19 @@ func main() {
 			params.SyncNeighborsLikelihood = int(c.Uint("params.sync_neighbors_likelihood"))
 		}
 
-		if c.Uint("params.sync_num_peers") > 0 {
+		if c.Uint("params.sync_num_peers") >= 0 {
 			params.SyncNumPeers = int(c.Uint("params.sync_num_peers"))
 		}
 
-		if c.Uint("params.validator_reward_depth") > 0 {
+		if c.Uint("params.validator_reward_depth") >= 0 {
 			params.ValidatorRewardDepth = int(c.Uint("params.validator_reward_depth"))
 		}
 
-		if c.Uint64("params.validator_reward_amount") > 0 {
-			params.GraphUpdatePeriodMs = int(c.Uint64("params.validator_reward_amount"))
+		if c.Uint64("params.validator_reward_amount") >= 0 {
+			params.ValidatorRewardAmount = c.Uint64("params.validator_reward_amount")
 		}
 
-		if c.Uint("params.transaction_fee_percentage") > 0 {
+		if c.Uint("params.transaction_fee_percentage") >= 0 {
 			params.TransactionFeePercentage = int(c.Uint("params.transaction_fee_percentage"))
 		}
 
