@@ -410,7 +410,7 @@ func runServer(c *Config) (*node.Wavelet, error) {
 }
 
 func runShell(w *node.Wavelet) error {
-	reader := bufio.NewReader(os.Stdout)
+	reader := bufio.NewReader(os.Stdin)
 
 	for {
 		fmt.Print("Enter a message: ")
