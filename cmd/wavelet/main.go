@@ -580,7 +580,7 @@ func runShell(w *node.Wavelet) error {
 			wired := w.MakeTransaction(params.TagCreateContract, payload)
 			go w.BroadcastTransaction(wired)
 
-			log.Info().Msgf("Success! Your smart contract ID: %s", graph.Symbol(wired))
+			log.Info().Msgf("Success! Your smart contract ID: %s", hex.EncodeToString([]byte(wavelet.ContractID(graph.Symbol(wired)))))
 		case "tx":
 			if len(cmd) < 2 {
 				continue
