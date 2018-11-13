@@ -13,9 +13,14 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
     echo "Building binaries for ${os_arch}"
     export GOOS=${OS}
     export GOARCH=${ARCH}
+    BINARY_POSTFIX=""
+    if [[ "${GOOS}" == 'windows' ]]; then
+        BINARY_POSTFIX=".exe"
+    fi
 
     go build \
-        -o ${BUILD_BIN}/${OS}-${ARCH}/wavelet \
+        -a \
+        -o ${BUILD_BIN}/${OS}-${ARCH}/wavelet${BINARY_POSTFIX} \
         -ldflags "-s -w \
             -X ${PROJ_DIR}/params.GitCommit=${GIT_COMMIT} \
             -X ${PROJ_DIR}/params.GoVersion=${GO_VERSION} \
@@ -23,7 +28,8 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
         cmd/wavelet/main.go
 
     go build \
-        -o ${BUILD_BIN}/${OS}-${ARCH}/wctl \
+        -a \
+        -o ${BUILD_BIN}/${OS}-${ARCH}/wctl${BINARY_POSTFIX} \
         -ldflags "-s -w \
             -X ${PROJ_DIR}/params.GitCommit=${GIT_COMMIT} \
             -X ${PROJ_DIR}/params.GoVersion=${GO_VERSION} \
@@ -33,7 +39,8 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
     if [ -d "cmd/lens/statik" ]; then
         # only build lens if the cmd/lens/build/statik.sh was ran
         go build \
-            -o ${BUILD_BIN}/${OS}-${ARCH}/lens \
+            -a \
+            -o ${BUILD_BIN}/${OS}-${ARCH}/lens${BINARY_POSTFIX} \
             -ldflags "-s -w \
                 -X ${PROJ_DIR}/params.GitCommit=${GIT_COMMIT} \
                 -X ${PROJ_DIR}/params.GoVersion=${GO_VERSION} \
