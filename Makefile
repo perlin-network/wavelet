@@ -9,7 +9,7 @@ WAVELET_DIR = $(shell pwd)/cmd/wavelet
 
 all: build-all test bench
 
-build-all: linux windows darwin linux-arm
+build-all: linux windows darwin linux-arm64
 	@echo "Done building all targets."
 
 linux:
@@ -21,8 +21,8 @@ windows:
 darwin:
 	build/build.sh -a darwin-amd64
 
-linux-arm:
-	build/build.sh -a linux-arm
+linux-arm64:
+	build/build.sh -a linux-arm64
 
 test:
 	go test -coverprofile=coverage.txt -covermode=atomic -timeout 300s -v -bench -race ./...
