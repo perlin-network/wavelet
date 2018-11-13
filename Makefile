@@ -22,7 +22,6 @@ darwin:
 	build/build.sh -a darwin-amd64
 
 linux-arm:
-	# this is the raspberry pie
 	build/build.sh -a linux-arm
 
 test:
