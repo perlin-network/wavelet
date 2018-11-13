@@ -8,7 +8,7 @@ const (
 	// VersionMinor is minor version component of the current release
 	VersionMinor = 0
 	// VersionPatch is patch version component of the current release
-	VersionPatch = 2
+	VersionPatch = 1
 	// VersionMeta is append to the version string
 	VersionMeta = "testnet"
 )
