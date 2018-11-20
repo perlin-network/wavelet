@@ -78,7 +78,10 @@ func NewLedger(databasePath, servicesPath, genesisPath string) *Ledger {
 		log.Info().Str("file", genesisPath).Int("num_accounts", len(genesis)).Msg("Successfully seeded the genesis of this node.")
 	}
 
-	ledger.registerServicePath(servicesPath)
+	err := ledger.registerServicePath(servicesPath)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to load transaction processors.")
+	}
 
 	graph.AddOnReceiveHandler(ledger.ensureSafeCommittable)
 

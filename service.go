@@ -5,7 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"sync"
 	"time"
 
@@ -144,6 +143,10 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 	switch module {
 	case "env":
 		switch field {
+		case "abort":
+			return func(vm *exec.VirtualMachine) int64 {
+				panic(errors.New("abort called"))
+			}
 		case "_log":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
@@ -254,7 +257,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 
 					copy(vm.Memory[outPtr:], s.accountQuery(string(s.account.PublicKey), key))
 				default:
-					panic(fmt.Errorf("unknown store specified: %d", storeID))
+					panic(errors.Errorf("unknown store specified: %d", storeID))
 				}
 
 				return 0
@@ -281,7 +284,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					value := s.accountQuery(string(s.account.PublicKey), key)
 					return int64(len(value))
 				default:
-					panic(fmt.Errorf("unknown store specified: %d", storeID))
+					panic(errors.Errorf("unknown store specified: %d", storeID))
 				}
 
 				return 0
@@ -311,7 +314,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 
 					s.accounts[string(s.account.PublicKey)][key] = buf
 				default:
-					panic(fmt.Errorf("unknown store specified: %d", storeID))
+					panic(errors.Errorf("unknown store specified: %d", storeID))
 				}
 
 				return int64(InternalProcessOk)
@@ -456,10 +459,10 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 				return int64(InternalProcessOk)
 			}
 		default:
-			panic(fmt.Errorf("unknown import resolved: %s", field))
+			panic(errors.Errorf("unknown import resolved: %s", field))
 		}
 	default:
-		panic(fmt.Errorf("unknown module: %s", module))
+		panic(errors.Errorf("unknown module: %s", module))
 	}
 }
 
