@@ -23,7 +23,7 @@ CLEAR_BUILDS=false
 function show_help {
     echo "Usage: build.sh [-h] [-d] [-a arch] [-o output]"
     echo "    -h    Display this help message."
-    echo "    -a    OS and architecture (default: ${OS_ARCH}). You can specify multiple values (e.g. linux-amd64,darwin-amd64,windows-amd64)."
+    echo "    -a    OS and architecture (default: ${OS_ARCH}). You can specify multiple values (e.g. linux-amd64,linux-arm64,darwin-amd64,windows-amd64)."
     echo "    -d    Delete old builds (default: ${CLEAR_BUILDS})."
     echo "    -o    Binary output directory (default: ${HOST_BUILD_BIN})."
 }

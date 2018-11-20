@@ -66,6 +66,10 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 	switch module {
 	case "env":
 		switch field {
+		case "abort":
+			return func(vm *exec.VirtualMachine) int64 {
+				panic(errors.New("abort called"))
+			}
 		case "_send_transaction":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()

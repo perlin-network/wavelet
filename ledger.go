@@ -80,7 +80,7 @@ func NewLedger(databasePath, servicesPath, genesisPath string) *Ledger {
 
 	err := ledger.registerServicePath(servicesPath)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to load transaction processors.")
+		log.Fatal().Err(err).Msg("Failed to load transaction processors.")
 	}
 
 	graph.AddOnReceiveHandler(ledger.ensureSafeCommittable)
