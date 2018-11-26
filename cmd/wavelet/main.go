@@ -589,7 +589,7 @@ func runShell(w *node.Wavelet) error {
 			var tx *database.Transaction
 
 			w.Ledger.Do(func(l *wavelet.Ledger) {
-				tx, err = l.GetBySymbol(cmd[1])
+				tx, err = l.GetBySymbol([]byte(cmd[1]))
 			})
 
 			if err != nil {
@@ -601,11 +601,16 @@ func runShell(w *node.Wavelet) error {
 
 			json.Unmarshal(tx.Payload, &payload)
 
+			var txParents []string
+			for _, parent := range tx.Parents {
+				txParents = append(txParents, string(parent))
+			}
+
 			log.Info().
-				Str("sender", tx.Sender).
+				Str("sender", hex.EncodeToString(tx.Sender)).
 				Uint64("nonce", tx.Nonce).
 				Str("tag", tx.Tag).
-				Strs("parents", tx.Parents).
+				Strs("parents", txParents).
 				Interface("payload", payload).
 				Msg("Here is the transaction you requested.")
 		default:

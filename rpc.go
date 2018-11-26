@@ -1,7 +1,7 @@
 package wavelet
 
 import (
-	"encoding/hex"
+	"bytes"
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/system"
@@ -20,20 +20,18 @@ type rpc struct {
 // receive over the wire.
 //
 // Our response is `true` should we strongly prefer a transaction, or `false` otherwise.
-func (r *rpc) RespondToQuery(wired *wire.Transaction) (string, bool, error) {
-	senderID, err := hex.DecodeString(wired.Sender)
-	if err != nil {
-		return "", false, errors.Wrap(err, "failed to decode sender id")
-	}
+func (r *rpc) RespondToQuery(wired *wire.Transaction) ([]byte, bool, error) {
+	senderID := wired.Sender
 
 	// If the nonce of the transaction is less than the currently accepted accounts nonce, reject it. Prevents most double spending
 	// cases from even reaching a conflict set.
 
 	if account, err := r.LoadAccount(senderID); err == nil && wired.Nonce < account.Nonce {
-		return "", false, errors.Wrap(err, "tx nonce is outdated in comparison to the actual accounts nonce")
+		return nil, false, errors.Wrap(err, "tx nonce is outdated in comparison to the actual accounts nonce")
 	}
 
-	var id string
+	var err error
+	var id []byte
 	if wired.Tag == params.TagCreateContract {
 		txID := graph.Symbol(wired)
 		r.SaveContract(txID, wired.Payload)
@@ -43,7 +41,7 @@ func (r *rpc) RespondToQuery(wired *wire.Transaction) (string, bool, error) {
 	}
 
 	if err != nil {
-		return "", false, errors.Wrap(err, "failed to add incoming tx to graph")
+		return nil, false, errors.Wrap(err, "failed to add incoming tx to graph")
 	}
 
 	return id, r.IsStronglyPreferred(id), nil
@@ -58,7 +56,7 @@ func (r *rpc) HandleSuccessfulQuery(tx *database.Transaction) error {
 	queue.PushBack(tx.Id)
 
 	for queue.Len() > 0 {
-		popped := queue.PopFront().(string)
+		popped := queue.PopFront().([]byte)
 
 		// This line cuts down consensus time from 0.03 seconds to 0.01 seconds.
 		// Whether or not it's correct requires an analysis of its own.
@@ -84,7 +82,7 @@ func (r *rpc) HandleSuccessfulQuery(tx *database.Transaction) error {
 			r.UpdateStrongPreferences(set.Preferred, true)
 		}
 
-		if popped != set.Last {
+		if !bytes.Equal(popped, set.Last) {
 			set.Last = popped
 			set.Count = 0
 		} else {
@@ -97,8 +95,9 @@ func (r *rpc) HandleSuccessfulQuery(tx *database.Transaction) error {
 		}
 
 		for _, parent := range tx.Parents {
-			if _, seen := visited[parent]; !seen {
-				visited[parent] = struct{}{}
+			parentStr := writeString(parent)
+			if _, seen := visited[parentStr]; !seen {
+				visited[parentStr] = struct{}{}
 
 				queue.PushBack(parent)
 			}

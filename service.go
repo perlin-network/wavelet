@@ -208,10 +208,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 			}
 		case "_load_sender":
 			return func(vm *exec.VirtualMachine) int64 {
-				publicKey, err := hex.DecodeString(s.tx.Sender)
-				if err != nil {
-					return int64(InternalProcessErr)
-				}
+				publicKey := s.tx.Sender
 
 				account, err := s.LoadAccount(publicKey)
 				if err != nil {
@@ -234,7 +231,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 				//}
 
 				// TODO: have _sender_id be represented as decoded hex sender public key
-				return int64(copy(vm.Memory[outPtr:outPtr+outLen], writeBytes(s.tx.Sender)))
+				return int64(copy(vm.Memory[outPtr:outPtr+outLen], s.tx.Sender))
 			}
 		case "_load":
 			return func(vm *exec.VirtualMachine) int64 {
@@ -337,10 +334,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessOk) // no need to activate
 				}
 
-				senderID, err := hex.DecodeString(s.tx.Sender)
-				if err != nil {
-					return int64(InternalProcessOk)
-				}
+				senderID := s.tx.Sender
 
 				if bytes.HasPrefix(senderID, ContractPrefix) {
 					return int64(InternalProcessOk) // cannot activate recursively
@@ -366,7 +360,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					Code:     contractCode,
 					QueueTransaction: func(tag string, payload []byte) {
 						tx := &database.Transaction{
-							Sender:  encodedContractID,
+							Sender:  contractID,
 							Tag:     tag,
 							Payload: payload,
 						}
@@ -397,16 +391,13 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 			}
 		case "_decode_and_create_contract":
 			return func(vm *exec.VirtualMachine) int64 {
-				senderID, err := hex.DecodeString(s.tx.Sender)
-				if err != nil {
-					return int64(InternalProcessOk)
-				}
+				senderID := s.tx.Sender
 
 				if bytes.HasPrefix(senderID, ContractPrefix) {
 					return int64(InternalProcessErr) // a contract cannot create another one
 				}
 
-				contractID := ContractID(s.tx.Id)
+				contractID := string(ContractID(s.tx.Id))
 
 				if s.accounts[contractID] == nil {
 					s.accounts[contractID] = make(map[string][]byte)
@@ -418,8 +409,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					Code string `json:"code"`
 				}
 
-				err = json.Unmarshal(s.tx.Payload, &payload)
-				if err != nil {
+				if err := json.Unmarshal(s.tx.Payload, &payload); err != nil {
 					return int64(InternalProcessErr)
 				}
 
@@ -439,16 +429,13 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 				codeLen := int(uint32(frame.Locals[1]))
 				code := vm.Memory[codePtr : codePtr+codeLen]
 
-				senderID, err := hex.DecodeString(s.tx.Sender)
-				if err != nil {
-					return int64(InternalProcessOk)
-				}
+				senderID := s.tx.Sender
 
 				if bytes.HasPrefix(senderID, ContractPrefix) {
 					return int64(InternalProcessErr) // a contract cannot create another one
 				}
 
-				contractID := ContractID(s.tx.Id)
+				contractID := string(ContractID(s.tx.Id))
 
 				if s.accounts[contractID] == nil {
 					s.accounts[contractID] = make(map[string][]byte)
@@ -472,6 +459,6 @@ func (s *service) ResolveGlobal(module, field string) int64 {
 
 // ContractID returns the expected ID of a smart contract given the transaction symbol which
 // spawned the contract.
-func ContractID(txID string) string {
-	return string(merge(ContractPrefix, writeBytes(txID)))
+func ContractID(txID []byte) []byte {
+	return merge(ContractPrefix, txID)
 }

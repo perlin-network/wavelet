@@ -101,16 +101,19 @@ func (s *state) registerService(name string, path string) error {
 	return nil
 }
 
-func (s *state) collectRewardedAncestors(tx *database.Transaction, filterOutSender string, depth int) ([]*database.Transaction, error) {
+func (s *state) collectRewardedAncestors(tx *database.Transaction, filterOutSender []byte, depth int) ([]*database.Transaction, error) {
 	if depth == 0 {
 		return nil, nil
 	}
 
 	ret := make([]*database.Transaction, 0)
 
-	parents := make([]string, len(tx.Parents))
+	parents := make([][]byte, len(tx.Parents))
 	copy(parents, tx.Parents)
-	sort.Strings(parents)
+
+	sort.Slice(parents, func(i, j int) bool {
+		return bytes.Compare(parents[i], parents[j]) == -1
+	})
 
 	for _, p := range parents {
 		parent, err := s.Ledger.Store.GetBySymbol(p)
@@ -118,7 +121,7 @@ func (s *state) collectRewardedAncestors(tx *database.Transaction, filterOutSend
 			return nil, err
 		}
 
-		if parent.Sender != filterOutSender {
+		if !bytes.Equal(parent.Sender, filterOutSender) {
 			ret = append(ret, parent)
 		}
 
@@ -132,13 +135,8 @@ func (s *state) collectRewardedAncestors(tx *database.Transaction, filterOutSend
 	return ret, nil
 }
 
-func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64, depth int) (string, error) {
-	readStake := func(sAccountID string) uint64 {
-		accountID, err := hex.DecodeString(sAccountID)
-		if err != nil {
-			panic(err) // shouldn't happen?
-		}
-
+func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64, depth int) ([]byte, error) {
+	readStake := func(accountID []byte) uint64 {
 		account, err := s.LoadAccount(accountID)
 		if err != nil {
 			return 0
@@ -153,16 +151,16 @@ func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64,
 	}
 
 	if depth < 0 {
-		return "", errors.New("invalid depth")
+		return nil, errors.New("invalid depth")
 	}
 
 	candidateRewardees, err := s.collectRewardedAncestors(tx, tx.Sender, depth)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if len(candidateRewardees) == 0 {
-		return "", nil
+		return nil, nil
 	}
 
 	stakes := make([]uint64, len(candidateRewardees))
@@ -171,7 +169,7 @@ func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64,
 	var buffer bytes.Buffer
 
 	for _, rewardee := range candidateRewardees {
-		buffer.WriteString(rewardee.Id)
+		buffer.Write(rewardee.Id)
 
 		stake := readStake(rewardee.Sender)
 		stakes = append(stakes, stake)
@@ -182,7 +180,7 @@ func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64,
 
 	if totalStake == 0 {
 		//log.Warn().Msg("None of the candidates have any stakes available. Skipping reward.")
-		return "", nil
+		return nil, nil
 	}
 
 	threshold := float64(binary.LittleEndian.Uint64(entropy)%uint64(0xffff)) / float64(0xffff)
@@ -225,13 +223,9 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 	for pending.Len() > 0 {
 		tx := pending.PopFront().(*database.Transaction)
 
-		senderID, err := hex.DecodeString(tx.Sender)
-		if err != nil {
-			log.Error().Err(err).Str("tx", tx.Id).Msg("Failed to decode sender ID.")
-			continue
-		}
-
 		accounts := make(map[string]*Account)
+
+		senderID := tx.Sender
 
 		sender, exists := accounts[writeString(senderID)]
 
@@ -242,7 +236,7 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 				if tx.Nonce == 0 {
 					sender = NewAccount(senderID)
 				} else {
-					log.Error().Err(err).Str("tx", tx.Id).Msgf("Sender account %s does not exist.", tx.Sender)
+					log.Error().Err(err).Str("tx", hex.EncodeToString(tx.Id)).Msgf("Sender account %s does not exist.", tx.Sender)
 					continue
 				}
 			}
@@ -257,7 +251,7 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 				log.Debug().
 					Uint64("nonce", account.Nonce).
 					Str("public_key", hex.EncodeToString(account.PublicKey)).
-					Str("tx", tx.Id).
+					Str("tx", hex.EncodeToString(tx.Id)).
 					Msg("Applied transaction.")
 
 				list, available := accountDeltas.Deltas[id]
@@ -337,19 +331,14 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 				deducted = finalBalance
 			}
 
-			rewardeeID, err := hex.DecodeString(rewardee)
-			if err != nil {
-				panic(err) // Should not happen.
-			}
-
-			rewardeeAccount, ok := accounts[writeString(rewardeeID)]
+			rewardeeAccount, ok := accounts[writeString(rewardee)]
 
 			if !ok {
-				rewardeeAccount, err = s.LoadAccount(rewardeeID)
+				rewardeeAccount, err = s.LoadAccount(rewardee)
 				if err != nil {
-					rewardeeAccount = NewAccount(rewardeeID)
+					rewardeeAccount = NewAccount(rewardee)
 				}
-				accounts[writeString(rewardeeID)] = rewardeeAccount
+				accounts[writeString(rewardee)] = rewardeeAccount
 			}
 
 			var rewardeeBalance uint64
@@ -397,7 +386,7 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 			log.Debug().
 				Uint64("nonce", account.Nonce).
 				Str("public_key", hex.EncodeToString(account.PublicKey)).
-				Str("tx", tx.Id).
+				Str("tx", hex.EncodeToString(tx.Id)).
 				Msg("Applied transaction.")
 
 			list, available := accountDeltas.Deltas[id]
@@ -414,12 +403,12 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 		return err
 	}
 
-	err = s.Put(merge(BucketDeltas, writeBytes(tx.Id)), bytes)
+	err = s.Put(merge(BucketDeltas, tx.Id), bytes)
 	if err != nil {
 		return err
 	}
 
-	go events.Publish(nil, &events.TransactionAppliedEvent{ID: tx.Id})
+	go events.Publish(nil, events.NewTransactionAppliedEvent(tx.Id))
 
 	return nil
 }
@@ -465,7 +454,7 @@ func (s *state) doRevertTransaction(pendingList *[]pending) {
 	accounts := make(map[string]*Account)
 
 	for _, pending := range *pendingList {
-		deltaListKey := merge(BucketDeltas, writeBytes(pending.tx.Id))
+		deltaListKey := merge(BucketDeltas, pending.tx.Id)
 		deltaListBytes, err := s.Get(deltaListKey)
 
 		// Revert deltas only if the transaction has a list of deltas available.
@@ -502,10 +491,7 @@ func (s *state) doRevertTransaction(pendingList *[]pending) {
 			s.Delete(deltaListKey)
 		}
 
-		senderID, err := hex.DecodeString(pending.tx.Sender)
-		if err != nil {
-			continue
-		}
+		senderID := pending.tx.Sender
 
 		sender, exists := accounts[writeString(senderID)]
 		if !exists {
@@ -646,8 +632,8 @@ func (s *state) PaginateTransactions(offset, pageSize uint64) []*database.Transa
 }
 
 // WasApplied returns whether or not a transaction was applied into the ledger.
-func (s *state) WasApplied(symbol string) bool {
-	applied, _ := s.Has(merge(BucketDeltas, writeBytes(symbol)))
+func (s *state) WasApplied(symbol []byte) bool {
+	applied, _ := s.Has(merge(BucketDeltas, symbol))
 	return applied
 }
 
@@ -688,14 +674,14 @@ func (s *state) Snapshot() map[string]interface{} {
 
 // LoadContract loads a smart contract from the database given its tx id.
 // The key in the database will be of the form "account_C-txID"
-func (s *state) LoadContract(txID string) ([]byte, error) {
-	contractKey := merge(BucketContracts, writeBytes(txID))
+func (s *state) LoadContract(txID []byte) ([]byte, error) {
+	contractKey := merge(BucketContracts, txID)
 	bytes, err := s.Get(contractKey)
 	if err != nil {
 		return nil, errors.Wrapf(err, "contract ID %s not found in ledger state", txID)
 	}
 
-	account := NewAccount(writeBytes(ContractID(txID)))
+	account := NewAccount(ContractID(txID))
 	err = account.Unmarshal(bytes)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to decode account")
@@ -710,10 +696,10 @@ func (s *state) LoadContract(txID string) ([]byte, error) {
 
 // SaveContract saves a smart contract to the database given its tx id.
 // The key in the database will be of the form "account_C-txID"
-func (s *state) SaveContract(txID string, contractCode []byte) error {
-	contractKey := merge(BucketContracts, writeBytes(txID))
+func (s *state) SaveContract(txID []byte, contractCode []byte) error {
+	contractKey := merge(BucketContracts, txID)
 
-	account := NewAccount(writeBytes(ContractID(txID)))
+	account := NewAccount(ContractID(txID))
 
 	if bytes, err := s.Get(contractKey); err == nil {
 		if err := account.Unmarshal(bytes); err != nil {
@@ -750,7 +736,7 @@ func (s *state) PaginateContracts(offset, pageSize uint64) []*Contract {
 
 	s.Store.ForEach(BucketContracts, func(txID []byte, encoded []byte) error {
 		if i >= offset && uint64(len(page)) < pageSize {
-			account := NewAccount(writeBytes(ContractID(string(txID))))
+			account := NewAccount(ContractID(txID))
 			err := account.Unmarshal(encoded)
 			if err != nil {
 				err := errors.Wrapf(err, "failed to decode contract bytes")

@@ -1,6 +1,7 @@
 package node
 
 import (
+	"encoding/hex"
 	"time"
 
 	"github.com/perlin-network/wavelet"
@@ -25,7 +26,7 @@ type broadcaster struct {
 // MakeTransaction creates a new transaction, appends a nonce to it, signs it, and links it with descendants that will
 // maximize the likelihood the transaction will get accepted.
 func (b *broadcaster) MakeTransaction(tag string, payload []byte) *wire.Transaction {
-	var parents []string
+	var parents [][]byte
 	var nonce uint64
 	var err error
 
@@ -41,7 +42,7 @@ func (b *broadcaster) MakeTransaction(tag string, payload []byte) *wire.Transact
 	}
 
 	wired := &wire.Transaction{
-		Sender:  b.Wallet.PublicKeyHex(),
+		Sender:  b.Wallet.PublicKey,
 		Nonce:   nonce,
 		Parents: parents,
 		Tag:     tag,
@@ -64,7 +65,7 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 	start := time.Now()
 
 	var err error
-	var id string
+	var id []byte
 	var successful bool
 	var tx *database.Transaction
 
@@ -116,7 +117,7 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 	}
 
 	var nop *wire.Transaction
-	var nopID string
+	var nopID []byte
 
 	for attempt := 0; ; attempt++ {
 		shouldBreak := false
@@ -199,5 +200,5 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 	}
 
 	stats.SetConsensusDuration(time.Now().Sub(start).Seconds())
-	log.Debug().Str("id", id).Str("tag", wired.Tag).Msg("Successfully broadcasted transaction.")
+	log.Debug().Str("id", hex.EncodeToString(id)).Str("tag", wired.Tag).Msg("Successfully broadcasted transaction.")
 }

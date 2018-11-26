@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"bytes"
 	"github.com/lytics/hll"
 	"github.com/perlin-network/graph/conflict"
 	"github.com/perlin-network/graph/database"
@@ -108,8 +109,8 @@ func (ledger *Ledger) Step(force bool) {
 
 // WasAccepted returns whether or not a transaction given by its symbol was stored to be accepted
 // inside the database.
-func (ledger *Ledger) WasAccepted(symbol string) bool {
-	exists, _ := ledger.Has(merge(BucketAccepted, writeBytes(symbol)))
+func (ledger *Ledger) WasAccepted(symbol []byte) bool {
+	exists, _ := ledger.Has(merge(BucketAccepted, symbol))
 	return exists
 }
 
@@ -120,12 +121,12 @@ func (ledger *Ledger) GetAcceptedByIndex(index uint64) (*database.Transaction, e
 		return nil, err
 	}
 
-	return ledger.GetBySymbol(writeString(symbolBytes))
+	return ledger.GetBySymbol(symbolBytes)
 }
 
 // QueueForAcceptance queues a transaction awaiting to be accepted.
-func (ledger *Ledger) QueueForAcceptance(symbol string) error {
-	return ledger.Put(merge(BucketAcceptPending, writeBytes(symbol)), []byte{0})
+func (ledger *Ledger) QueueForAcceptance(symbol []byte) error {
+	return ledger.Put(merge(BucketAcceptPending, symbol), []byte{0})
 }
 
 // UpdateAcceptedTransactions incrementally from the root of the graph updates whether
@@ -135,7 +136,7 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 	if ledger.Size(BucketAcceptPending) == 0 && ledger.NumAcceptedTransactions() == 0 {
 		var tx *database.Transaction
 
-		err := ledger.ForEachDepth(0, func(symbol string) error {
+		err := ledger.ForEachDepth(0, func(symbol []byte) error {
 			first, err := ledger.GetBySymbol(symbol)
 			if err != nil {
 				return err
@@ -156,20 +157,22 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 		}
 	}
 
-	var acceptedList []string
+	var acceptedList [][]byte
 	var pendingList []pending
 
 	ledger.ForEachKey(BucketAcceptPending, func(k []byte) error {
-		symbol := string(k)
+		//  // We make a copy of the key because the key is only valid until the next iterator.Next()
+		kCopy := make([]byte, len(k))
+		copy(kCopy, k)
 
 		pendingList = append(pendingList)
 
-		tx, err := ledger.GetBySymbol(symbol)
+		tx, err := ledger.GetBySymbol(kCopy)
 		if err != nil {
 			return nil
 		}
 
-		depth, err := ledger.Store.GetDepthBySymbol(symbol)
+		depth, err := ledger.Store.GetDepthBySymbol(kCopy)
 		if err != nil {
 			return nil
 		}
@@ -188,7 +191,7 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 			return false
 		}
 
-		return pendingList[i].tx.Id < pendingList[j].tx.Id
+		return bytes.Compare(pendingList[i].tx.Id, pendingList[j].tx.Id) == -1
 	})
 
 	stats.SetNumPendingTx(int64(len(pendingList)))
@@ -221,7 +224,7 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 
 		conflicting := !(transactions.Cardinality() == 1)
 
-		if (set.Preferred == pending.tx.Id && set.Count > system.Beta2) || (!conflicting && ledger.CountAscendants(pending.tx.Id, system.Beta1+1) > system.Beta1) {
+		if (bytes.Equal(set.Preferred, pending.tx.Id) && set.Count > system.Beta2) || (!conflicting && ledger.CountAscendants(pending.tx.Id, system.Beta1+1) > system.Beta1) {
 			if !ledger.WasAccepted(pending.tx.Id) {
 				ledger.acceptTransaction(pending.tx)
 				acceptedList = append(acceptedList, pending.tx.Id)
@@ -269,12 +272,12 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 		return
 	}
 
-	ledger.Put(merge(BucketAccepted, writeBytes(tx.Id)), writeUint64(index))
-	ledger.Put(merge(BucketAcceptedIndex, writeUint64(index)), writeBytes(tx.Id))
-	ledger.Delete(merge(BucketAcceptPending, writeBytes(tx.Id)))
+	ledger.Put(merge(BucketAccepted, tx.Id), writeUint64(index))
+	ledger.Put(merge(BucketAcceptedIndex, writeUint64(index)), tx.Id)
+	ledger.Delete(merge(BucketAcceptPending, tx.Id))
 
 	stats.IncAcceptedTransactions(tx.Tag)
-	go events.Publish(nil, &events.TransactionAcceptedEvent{ID: tx.Id})
+	go events.Publish(nil, events.NewTransactionAcceptedEvent(tx.Id))
 
 	// If the transaction has accepted children, revert all of the transactions ascendants.
 	if children, err := ledger.GetChildrenBySymbol(tx.Id); err == nil && len(children.Transactions) > 0 {
@@ -297,7 +300,7 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 	queue.PushBack(tx.Id)
 
 	for queue.Len() > 0 {
-		popped := queue.PopFront().(string)
+		popped := queue.PopFront().([]byte)
 
 		children, err := ledger.GetChildrenBySymbol(popped)
 		if err != nil {
@@ -305,8 +308,9 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 		}
 
 		for _, child := range children.Transactions {
-			if _, seen := visited[child]; !seen {
-				visited[child] = struct{}{}
+			childStr := writeString(child)
+			if _, seen := visited[childStr]; !seen {
+				visited[childStr] = struct{}{}
 
 				if !ledger.WasAccepted(child) {
 					ledger.QueueForAcceptance(child)
@@ -328,7 +332,7 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 }
 
 // revertTransaction sets a transaction and all of its ascendants to not be accepted.
-func (ledger *Ledger) revertTransaction(symbol string, revertAcceptance bool) {
+func (ledger *Ledger) revertTransaction(symbol []byte, revertAcceptance bool) {
 	visited := make(map[string]struct{})
 
 	queue := queue.New()
@@ -337,7 +341,7 @@ func (ledger *Ledger) revertTransaction(symbol string, revertAcceptance bool) {
 	var pendingList []pending
 
 	for queue.Len() > 0 {
-		popped := queue.PopFront().(string)
+		popped := queue.PopFront().([]byte)
 
 		tx, err := ledger.GetBySymbol(popped)
 		if err != nil {
@@ -351,14 +355,14 @@ func (ledger *Ledger) revertTransaction(symbol string, revertAcceptance bool) {
 
 		pendingList = append(pendingList, pending{tx, depth})
 
-		indexBytes, err := ledger.Get(merge(BucketAccepted, writeBytes(popped)))
+		indexBytes, err := ledger.Get(merge(BucketAccepted, popped))
 		if err != nil {
 			continue
 		}
 
 		if revertAcceptance {
 			ledger.Delete(merge(BucketAcceptedIndex, indexBytes))
-			ledger.Delete(merge(BucketAccepted, writeBytes(popped)))
+			ledger.Delete(merge(BucketAccepted, popped))
 
 			ledger.QueueForAcceptance(popped)
 
@@ -371,8 +375,9 @@ func (ledger *Ledger) revertTransaction(symbol string, revertAcceptance bool) {
 		}
 
 		for _, child := range children.Transactions {
-			if _, seen := visited[child]; !seen {
-				visited[child] = struct{}{}
+			childStr := writeString(child)
+			if _, seen := visited[childStr]; !seen {
+				visited[childStr] = struct{}{}
 
 				if ledger.WasApplied(child) && ledger.WasAccepted(child) {
 					queue.PushBack(child)
@@ -391,7 +396,7 @@ func (ledger *Ledger) revertTransaction(symbol string, revertAcceptance bool) {
 			return false
 		}
 
-		return pendingList[i].tx.Id > pendingList[j].tx.Id
+		return bytes.Compare(pendingList[i].tx.Id, pendingList[j].tx.Id) == 1
 	})
 
 	// Revert list of transactions from ledger state.

@@ -40,7 +40,7 @@ func BenchmarkLedger(b *testing.B) {
 		}
 
 		wired := &wire.Transaction{
-			Sender:  keys.PublicKeyHex(),
+			Sender:  keys.PublicKey,
 			Nonce:   uint64(i),
 			Parents: parents,
 			Tag:     params.TagNop,
