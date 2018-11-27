@@ -28,7 +28,7 @@ func ValidateWiredTransaction(wired *wire.Transaction) (bool, error) {
 		return false, errors.Wrap(ErrMalformedTransaction, "nop must have empty payload")
 	}
 
-	if len(wired.Sender) != ed25519.PublicKeySize*2 {
+	if len(wired.Sender) != ed25519.PublicKeySize {
 		return false, errors.Wrap(ErrMalformedTransaction, "invalid sender id")
 	}
 

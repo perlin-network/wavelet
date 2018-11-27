@@ -76,7 +76,7 @@ func (s *service) Run(tx *database.Transaction) ([]*Delta, []*database.Transacti
 	ret, err := s.vm.Run(s.entry)
 	if err != nil {
 		s.vm.PrintStackTrace()
-		panic(errors.Errorf("Transaction processor [%s] panicked during handling tx: %+v", s.name, tx))
+		panic(errors.Errorf("Transaction processor [%s] panicked with err '%+v' while handling tx: %+v", s.name, err, tx))
 	}
 
 	log.Debug().TimeDiff("duration", time.Now(), start).Msgf("Executed service %s.", s.name)
