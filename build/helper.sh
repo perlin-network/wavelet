@@ -10,9 +10,18 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
     IFS="-" read -r -a array <<< ${os_arch}
     OS=${array[0]}
     ARCH=${array[1]}
-    echo "Building binaries for ${os_arch}"
+
+    echo "Building binaries for ${os_arch}."
+
     export GOOS=${OS}
-    export GOARCH=${ARCH}
+
+    if [[ "${ARCH}" == 'armv7' ]]; then
+        export GOARCH='arm'
+        export GOARM=7
+    else
+        export GOARCH=${ARCH}
+    fi
+
     BINARY_POSTFIX=""
     if [[ "${GOOS}" == 'windows' ]]; then
         BINARY_POSTFIX=".exe"
@@ -36,7 +45,7 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
             -X ${PROJ_DIR}/params.OSArch=${os_arch}" \
         cmd/wctl/main.go
 
-    if [ -d "cmd/lens/statik" ]; then
+    if [[ -d "cmd/lens/statik" ]]; then
         # only build lens if the cmd/lens/build/statik.sh was ran
         go build \
             -a \
