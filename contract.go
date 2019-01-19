@@ -117,6 +117,7 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				valLen := int(uint32(frame.Locals[3]))
 				key := string(vm.Memory[keyPtr : keyPtr+keyLen])
 				val := vm.Memory[valPtr : valPtr+valLen]
+				//log.Info().Str("key", key).Msg("set persistent key")
 				e.SetDataItem(key, val)
 				return 0
 			}
@@ -135,6 +136,7 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				keyLen := int(uint32(frame.Locals[1]))
 				outPtr := int(uint32(frame.Locals[2]))
 				key := string(vm.Memory[keyPtr : keyPtr+keyLen])
+				//log.Info().Str("key", key).Msg("get persistent key")
 				copy(vm.Memory[outPtr:], e.GetDataItem(key))
 				return 0
 			}
@@ -146,7 +148,8 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
 				outPtr := int(uint32(frame.Locals[0]))
-				copy(vm.Memory[outPtr:], e.GetActivationReason())
+				reason := e.GetActivationReason()
+				copy(vm.Memory[outPtr:], reason)
 				return 0
 			}
 		default:

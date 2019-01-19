@@ -210,11 +210,13 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 			return func(vm *exec.VirtualMachine) int64 {
 				publicKey, err := hex.DecodeString(s.tx.Sender)
 				if err != nil {
+					log.Info().Msg("cannot decode sender")
 					return int64(InternalProcessErr)
 				}
 
 				account, err := s.LoadAccount(publicKey)
 				if err != nil {
+					log.Info().Msg("cannot load account")
 					return int64(InternalProcessErr)
 				}
 
@@ -359,6 +361,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 				reason := vm.Memory[reasonPtr : reasonPtr+reasonLen]
 
 				var localNewTx []*database.Transaction
+				var deltas []*Delta
 
 				executor := &ContractExecutor{
 					GasTable: nil,
@@ -375,21 +378,36 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					GetActivationReasonLen: func() int { return len(reason) },
 					GetActivationReason:    func() []byte { return reason },
 					GetDataItemLen: func(key string) int {
-						val, _ := s.account.Load(string(merge(ContractCustomStatePrefix, writeBytes(key))))
+						val, _ := account.Load(string(merge(ContractCustomStatePrefix, writeBytes(key))))
 						return len(val)
 					},
 					GetDataItem: func(key string) []byte {
-						val, _ := s.account.Load(string(merge(ContractCustomStatePrefix, writeBytes(key))))
+						val, _ := account.Load(string(merge(ContractCustomStatePrefix, writeBytes(key))))
 						return val
 					},
 					SetDataItem: func(key string, val []byte) {
-						s.account.Store(string(merge(ContractCustomStatePrefix, writeBytes(key))), val)
+						fullKey := string(merge(ContractCustomStatePrefix, writeBytes(key)))
+						oldVal, _ := account.Load(fullKey)
+
+						deltas = append(deltas, &Delta{
+							Account:  contractID,
+							Key:      fullKey,
+							OldValue: oldVal,
+							NewValue: val,
+						})
+						account.Store(string(merge(ContractCustomStatePrefix, writeBytes(key))), val)
 					},
 				}
 
 				err = executor.Run()
 				if err != nil {
+					log.Warn().Err(err).Msg("smart contract exited with error")
 					return int64(InternalProcessOk)
+				}
+
+				err = s.state.SaveAccount(account, deltas)
+				if err != nil {
+					log.Warn().Err(err).Msg("unable to save account")
 				}
 
 				s.pendingNewTransactions = append(s.pendingNewTransactions, localNewTx...)

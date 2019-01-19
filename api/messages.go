@@ -26,7 +26,7 @@ type SendTransactionRequest struct {
 
 // GetContractRequest is the payload request to get a smart contract
 type GetContractRequest struct {
-	TransactionID string `json:"transaction_id" validate:"required,len=64"`
+	TransactionID string `json:"transaction_id" validate:"required"`
 }
 
 // ListContractsRequest retrieves paginated contracts
@@ -37,7 +37,7 @@ type ListContractsRequest struct {
 
 // ExecuteContractRequest executes a contract locally.
 type ExecuteContractRequest struct {
-	ContractID string `json:"contract_id" validate:"required,len=64"`
+	ContractID string `json:"contract_id" validate:"required"`
 	Entry      string `json:"entry_id" validate:"required,max=255"`
 	Param      []byte `json:"param"`
 }
