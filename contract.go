@@ -48,6 +48,30 @@ func (e *ContractExecutor) Run() error {
 	return nil
 }
 
+func (e *ContractExecutor) RunLocal(entryName string) error {
+	vm, err := exec.NewVirtualMachine(e.Code, exec.VMConfig{
+		DefaultMemoryPages:   128,
+		DefaultTableSize:     65536,
+		GasLimit:             e.GasLimit,
+		DisableFloatingPoint: true,
+	}, e, e)
+	if err != nil {
+		return err
+	}
+
+	entryID, ok := vm.GetFunctionExport(entryName)
+	if !ok {
+		return errors.Errorf("local entry not found")
+	}
+
+	_, err = vm.Run(entryID)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (e *ContractExecutor) GetCost(name string) int64 {
 	if e.GasTable == nil {
 		return 1

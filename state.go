@@ -208,6 +208,57 @@ func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64,
 	return rewarded.Sender, nil
 }
 
+func (s *state) ExecuteContract(txID string, entry string, param []byte) ([]byte, error) {
+	account, err := s.state.LoadAccount(writeBytes(txID))
+	if err != nil {
+		return nil, err
+	}
+
+	code, ok := account.Load(params.KeyContractCode)
+	if !ok {
+		return nil, errors.Errorf("contract ID %s has no contract code", txID)
+	}
+
+	var result []byte
+
+	executor := &ContractExecutor{
+		GasTable: nil,
+		GasLimit: 100000, // TODO: Set the limit properly
+		Code:     code,
+		QueueTransaction: func(tag string, payload []byte) {
+			panic("not supported in local execution mode")
+		},
+		GetActivationReasonLen: func() int {
+			return len(param)
+		},
+		GetActivationReason: func() []byte {
+			return param
+		},
+		GetDataItemLen: func(key string) int {
+			val, _ := account.Load(string(merge(ContractCustomStatePrefix, writeBytes(key))))
+			return len(val)
+		},
+		GetDataItem: func(key string) []byte {
+			val, _ := account.Load(string(merge(ContractCustomStatePrefix, writeBytes(key))))
+			return val
+		},
+		SetDataItem: func(key string, val []byte) {
+			if key == ".local_result" {
+				result = make([]byte, len(val))
+				copy(result, val)
+			} else {
+				panic("not supported in local execution mode")
+			}
+		},
+	}
+	err = executor.RunLocal(entry)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
 // applyTransaction runs a transaction, gets any transactions created by said transaction, and
 // applies those transactions to the ledger state.
 func (s *state) applyTransaction(tx *database.Transaction) error {

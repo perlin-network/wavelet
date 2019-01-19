@@ -35,6 +35,13 @@ type ListContractsRequest struct {
 	Limit  *uint64 `json:"limit"    validate:"omitempty,max=1024"`
 }
 
+// ExecuteContractRequest executes a contract locally.
+type ExecuteContractRequest struct {
+	ContractID string `json:"contract_id" validate:"required,len=64"`
+	Entry      string `json:"entry_id" validate:"required,max=255"`
+	Param      []byte `json:"param"`
+}
+
 //------------------------
 // Response Payloads
 //------------------------
@@ -69,4 +76,8 @@ type LedgerState struct {
 type TransactionResponse struct {
 	TransactionID string `json:"transaction_id,omitempty"`
 	Code          []byte `json:"code,omitempty"`
+}
+
+type ExecuteContractResponse struct {
+	Result []byte `json:"result"`
 }
