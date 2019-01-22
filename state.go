@@ -439,7 +439,7 @@ func (s *state) doApplyTransaction(tx *database.Transaction) ([]*Delta, []*datab
 			// load the contract code into the tx before running the service
 			contractCode, err := s.LoadContract(tx.Id)
 			if err != nil {
-				return nil, nil, errors.Wrapf(err, "Unable to load contract for txID %s", tx.Id)
+				return nil, nil, errors.Wrapf(err, "unable to load contract for tx ID %s", tx.Id)
 			}
 			tx.Payload = contractCode
 		}
@@ -703,7 +703,7 @@ func (s *state) LoadContract(txID string) ([]byte, error) {
 
 	contractCode, ok := account.Load(params.KeyContractCode)
 	if !ok {
-		return nil, errors.Errorf("contract ID %s has no contract code", txID)
+		return nil, errors.Errorf("contract ID %s has no code", txID)
 	}
 	return contractCode, nil
 }
@@ -760,7 +760,7 @@ func (s *state) PaginateContracts(offset, pageSize uint64) []*Contract {
 
 			contractCode, ok := account.Load(params.KeyContractCode)
 			if !ok {
-				err := errors.Errorf("contract ID %s has no contract code", txID)
+				err := errors.Errorf("contract ID %s has no code", txID)
 				log.Error().Err(err).Msg("")
 				return err
 			}
