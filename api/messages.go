@@ -13,14 +13,14 @@ type CredentialsRequest struct {
 
 // ListTransactionsRequest retrieves paginated transactions based on a specified tag
 type ListTransactionsRequest struct {
-	Tag    *string `json:"tag"      validate:"omitempty,max=30"`
+	Tag    *uint32 `json:"tag"      validate:"omitempty,max=30"`
 	Offset *uint64 `json:"offset"`
 	Limit  *uint64 `json:"limit"    validate:"omitempty,max=1024"`
 }
 
 // SendTransactionRequest is the payload sent to send a transaction
 type SendTransactionRequest struct {
-	Tag     string `json:"tag"      validate:"required,max=30"`
+	Tag     uint32 `json:"tag"      validate:"required,max=30"`
 	Payload []byte `json:"payload"  validate:"required,max=1024"`
 }
 

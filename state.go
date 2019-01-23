@@ -3,21 +3,13 @@ package wavelet
 import (
 	"bytes"
 	"encoding/hex"
-	"fmt"
-	"io/ioutil"
-	"path/filepath"
-	"strings"
-
 	"github.com/perlin-network/wavelet/events"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/params"
 
-	"github.com/perlin-network/graph/database"
-	"github.com/perlin-network/life/exec"
-
 	"encoding/binary"
+	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/wavelet/security"
-	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"sort"
 )
@@ -41,67 +33,11 @@ type pending struct {
 type state struct {
 	*Ledger
 
-	services []*service
+	processors [256]TransactionProcessor
 }
 
-// registerServicePath registers all the services in a path.
-func (s *state) registerServicePath(path string) error {
-	files, err := filepath.Glob(fmt.Sprintf("%s/*.wasm", path))
-	if err != nil {
-		return err
-	}
-
-	for _, f := range files {
-		name := filepath.Base(f)
-
-		if err := s.registerService(name[:len(name)-5], f); err != nil {
-			return err
-		}
-		log.Info().Str("module", name).Msg("Registered transaction processor service.")
-	}
-
-	if len(s.services) == 0 {
-		return errors.Errorf("No WebAssembly services were successfully registered for path: %s", path)
-	}
-
-	return nil
-}
-
-// registerService internally loads a *.wasm module representing a service, and registers the service
-// with a specified name.
-//
-// Warning: will panic should there be errors in loading the service.
-func (s *state) registerService(name string, path string) error {
-	if !strings.HasSuffix(path, ".wasm") {
-		return errors.Errorf("service code %s file should be in *.wasm format", path)
-	}
-
-	code, err := ioutil.ReadFile(path)
-	if err != nil {
-		return err
-	}
-
-	service := NewService(s, name)
-
-	service.vm, err = exec.NewVirtualMachine(code, exec.VMConfig{
-		DefaultMemoryPages: 128,
-		DefaultTableSize:   65536,
-	}, service, nil)
-
-	if err != nil {
-		return err
-	}
-
-	var exists bool
-
-	service.entry, exists = service.vm.GetFunctionExport("process")
-	if !exists {
-		return errors.Errorf("could not find 'process' func in %s *.wasm file", path)
-	}
-
-	s.services = append(s.services, service)
-
-	return nil
+func (s *state) RegisterTransactionProcessor(tag byte, p TransactionProcessor) {
+	s.processors[int(tag)] = p
 }
 
 func (s *state) collectRewardedAncestors(tx *database.Transaction, filterOutSender string, depth int) ([]*database.Transaction, error) {
@@ -216,8 +152,8 @@ func (s *state) ExecuteContract(txID string, entry string, param []byte) ([]byte
 		return nil, errors.Errorf("contract ID %s has no contract code", txID)
 	}
 
-	executor := newContractExecutor(account, nil, param, contractGasPolicy{nil, 100000})
-	err := executor.run(code, entry)
+	executor := NewContractExecutor(account, nil, param, ContractGasPolicy{nil, 100000})
+	err := executor.Run(code, entry)
 	if err != nil {
 		return nil, err
 	}
@@ -229,154 +165,22 @@ func (s *state) ExecuteContract(txID string, entry string, param []byte) ([]byte
 // applyTransaction runs a transaction, gets any transactions created by said transaction, and
 // applies those transactions to the ledger state.
 func (s *state) applyTransaction(tx *database.Transaction) error {
-	rewardee, err := s.randomlySelectValidator(tx, params.ValidatorRewardAmount, params.ValidatorRewardDepth)
-	if err != nil {
-		return err
-	}
-
 	s.Ledger.Store.Put(merge(BucketPreStates, []byte(tx.Id)), s.Ledger.accountList.GetRoot())
 
-	pending := queue.New()
-	pending.PushBack(tx)
+	processor := s.processors[int(tx.Tag&0xff)]
+	if processor == nil {
+		return errors.New("no processor for incoming tx found")
+	}
 
-	// Returning from within this loop is not allowed.
-	for pending.Len() > 0 {
-		tx := pending.PopFront().(*database.Transaction)
-
-		senderID, err := hex.DecodeString(tx.Sender)
-		if err != nil {
-			log.Error().Err(err).Str("tx", tx.Id).Msg("Failed to decode sender ID.")
-			continue
-		}
-
-		accounts := make(map[string]*Account)
-
-		sender, exists := accounts[writeString(senderID)]
-
-		if !exists {
-			if x, _ := s.Store.Get(merge(BucketAccountIDs, senderID)); x == nil && tx.Nonce != 0 {
-				log.Error().Err(err).Str("tx", tx.Id).Msgf("Sender account %s does not exist.", tx.Sender)
-				continue
-			}
-
-			sender = NewAccount(s.Ledger, senderID)
-			accounts[writeString(senderID)] = sender
-		}
-
-		if tx.Tag == params.TagNop {
-			sender.SetNonce(sender.GetNonce() + 1)
-			continue
-		}
-
-		newlyPending, err := s.doApplyTransaction(tx, accounts)
-		if err != nil {
-			log.Warn().Interface("tx", tx).Err(err).Msg("Transaction failed to get applied to the ledger state.")
-		}
-
-		initialBalance := sender.GetBalance()
-		finalBalance := sender.GetBalance()
-
-		// Increment the senders account nonce.
-		sender.SetNonce(sender.GetNonce() + 1)
-
-		if len(rewardee) > 0 {
-			var deducted uint64
-
-			if finalBalance < initialBalance {
-				deducted = (initialBalance - finalBalance) * uint64(params.TransactionFeePercentage) / 100
-			}
-
-			// Bare minimum transaction fee that must be paid by all transactions.
-			if deducted < params.ValidatorRewardAmount {
-				deducted = params.ValidatorRewardAmount
-			}
-
-			if finalBalance < deducted {
-				deducted = finalBalance
-			}
-
-			rewardeeID, err := hex.DecodeString(rewardee)
-			if err != nil {
-				panic(err) // Should not happen.
-			}
-
-			rewardeeAccount, ok := accounts[writeString(rewardeeID)]
-
-			if !ok {
-				rewardeeAccount := NewAccount(s.Ledger, rewardeeID)
-				accounts[writeString(rewardeeID)] = rewardeeAccount
-			}
-
-			var rewardeeBalance uint64
-
-			rewardeeBalanceBytes, ok := rewardeeAccount.Load("balance")
-
-			if ok && len(rewardeeBalanceBytes) > 0 {
-				rewardeeBalance = readUint64(rewardeeBalanceBytes)
-			}
-
-			sender.Store("balance", writeUint64(finalBalance-deducted))
-			rewardeeAccount.Store("balance", writeUint64(rewardeeBalance+deducted))
-
-			sender.SetBalance(finalBalance - deducted)
-			rewardeeAccount.SetBalance(rewardeeBalance + deducted)
-
-			log.Debug().Msgf("Transaction fee of %d PERLs transferred from %s to validator %s as a reward.", deducted, sender.PublicKeyHex(), rewardee)
-		}
-
-		for _, tx := range newlyPending {
-			pending.PushBack(tx)
-		}
-
-		// Save all modified accounts to the ledger.
-		for _, account := range accounts {
-			account.Writeback()
-			log.Debug().
-				Uint64("nonce", account.GetNonce()).
-				Str("public_key", hex.EncodeToString(account.PublicKey())).
-				Str("tx", tx.Id).
-				Msg("Applied transaction.")
-		}
+	ctx := newTransactionContext(s.Ledger, tx)
+	err := ctx.run(processor)
+	if err != nil {
+		return err
 	}
 
 	go events.Publish(nil, &events.TransactionAppliedEvent{ID: tx.Id})
 
 	return nil
-}
-
-// doApplyTransaction runs a transaction through a transaction processor and applies its recorded
-// changes to the ledger state.
-//
-// Any additional transactions that are recursively generated by smart contracts for example are returned.
-func (s *state) doApplyTransaction(tx *database.Transaction, accounts map[string]*Account) ([]*database.Transaction, error) {
-	// Iterate through all registered services and run them on the transactions given their tags and payload.
-	var pendingTransactions []*database.Transaction
-
-	for _, service := range s.services {
-		// TODO
-		/*
-			if tx.Tag == params.TagCreateContract {
-				// load the contract code into the tx before running the service
-				contractCode, err := s.LoadContract(tx.Id)
-				if err != nil {
-					return nil, nil, errors.Wrapf(err, "Unable to load contract for txID %s", tx.Id)
-				}
-				tx.Payload = contractCode
-			}
-		*/
-
-		pending, err := service.Run(tx, accounts)
-
-		if err != nil {
-			return nil, err
-		}
-
-		if len(pending) > 0 {
-			pendingTransactions = append(pendingTransactions, pending...)
-		}
-	}
-
-	return pendingTransactions, nil
 }
 
 // NumTransactions returns the number of transactions in the ledger.
@@ -465,16 +269,6 @@ func (s *state) LoadContract(txID string) ([]byte, error) {
 		return nil, errors.Errorf("contract ID %s has no code", txID)
 	}
 	return contractCode, nil
-}
-
-// SaveContract saves a smart contract to the database given its tx id.
-// The key in the database will be of the form "account_C-txID"
-func (s *state) SaveContract(txID string, contractCode []byte) error {
-	account := NewAccount(s.Ledger, writeBytes(ContractID(txID)))
-	account.Store(params.KeyContractCode, contractCode)
-	account.Writeback()
-
-	return nil
 }
 
 // PaginateContracts paginates through the smart contracts found in the ledger by searching for the prefix

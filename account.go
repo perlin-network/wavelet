@@ -126,11 +126,11 @@ func (a *Account) PublicKey() []byte {
 	return a.store.PublicKey
 }
 
-func (a *Account) Writeback() {
+func (a *Account) writeback() {
 	a.store.Ledger.Store.Put(merge(BucketAccountIDs, a.store.PublicKey), []byte("1"))
 	a.tree.Writeback()
 	a.store.Ledger.accountList.Insert(a.store.PublicKey, a.GetRoot())
-	a.store.Ledger.accountList.Writeback()
+	a.store.Ledger.accountList.writeback()
 }
 
 func (a *Account) GetRoot() []byte {
@@ -199,7 +199,7 @@ type AccountList struct {
 	store *AccountListStore
 }
 
-func (l *AccountList) Writeback() {
+func (l *AccountList) writeback() {
 	l.tree.Writeback()
 }
 
