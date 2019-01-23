@@ -29,7 +29,7 @@ func (r *rpc) RespondToQuery(wired *wire.Transaction) (string, bool, error) {
 	// If the nonce of the transaction is less than the currently accepted accounts nonce, reject it. Prevents most double spending
 	// cases from even reaching a conflict set.
 
-	if account, err := r.LoadAccount(senderID); err == nil && wired.Nonce < account.Nonce {
+	if wired.Nonce < NewAccount(r.Ledger, senderID).GetNonce() {
 		return "", false, errors.Wrap(err, "tx nonce is outdated in comparison to the actual accounts nonce")
 	}
 

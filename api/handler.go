@@ -456,7 +456,7 @@ func (s *service) getAccountHandler(ctx *requestContext) (int, interface{}, erro
 	var account *wavelet.Account
 
 	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
-		account, err = ledger.LoadAccount(accountID)
+		account = wavelet.NewAccount(ledger, accountID)
 	})
 
 	if err != nil {
