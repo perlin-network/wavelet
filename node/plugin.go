@@ -18,6 +18,7 @@ import (
 	"github.com/perlin-network/noise/network/discovery"
 	"github.com/perlin-network/noise/types/opcode"
 
+	"github.com/perlin-network/wavelet/processor"
 	"github.com/pkg/errors"
 )
 
@@ -26,7 +27,6 @@ var PluginID = (*Wavelet)(nil)
 
 type Options struct {
 	DatabasePath  string
-	ServicesPath  string
 	GenesisPath   string
 	ResetDatabase bool
 }
@@ -84,7 +84,11 @@ func (w *Wavelet) Startup(net *network.Network) {
 	opcode.RegisterMessageType(opcode.Opcode(SyncChildrenQueryResponseOpcode), &SyncChildrenQueryResponse{})
 	opcode.RegisterMessageType(opcode.Opcode(TxPushHintOpcode), &TxPushHint{})
 
-	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.ServicesPath, w.opts.GenesisPath)
+	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.GenesisPath)
+	ledger.RegisterTransactionProcessor(&processor.NopProcessor{})
+	ledger.RegisterTransactionProcessor(&processor.GenericProcessor{})
+	ledger.RegisterTransactionProcessor(&processor.CreateContractProcessor{})
+	ledger.RegisterTransactionProcessor(&processor.StakeProcessor{})
 
 	loop := wavelet.NewEventLoop(ledger)
 	go loop.RunForever()
@@ -139,7 +143,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				}
 			})
 
-			log.Debug().Str("id", id).Str("tag", msg.Tag).Msgf("Received an existing transaction, and voted '%t' for it.", res.StronglyPreferred)
+			log.Debug().Str("id", id).Uint32("tag", msg.Tag).Msgf("Received an existing transaction, and voted '%t' for it.", res.StronglyPreferred)
 
 			if rand.Intn(params.SyncNeighborsLikelihood) == 0 {
 				go w.syncer.QueryMissingChildren(id)
@@ -168,7 +172,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				return err
 			}
 
-			log.Debug().Str("id", id).Str("tag", msg.Tag).Msgf("Received a new transaction, and voted '%t' for it.", res.StronglyPreferred)
+			log.Debug().Str("id", id).Uint32("tag", msg.Tag).Msgf("Received a new transaction, and voted '%t' for it.", res.StronglyPreferred)
 
 			go func() {
 				err := w.Query(msg)

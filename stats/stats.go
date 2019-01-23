@@ -2,6 +2,7 @@ package stats
 
 import (
 	"expvar"
+	"fmt"
 	"time"
 )
 
@@ -47,10 +48,10 @@ func init() {
 }
 
 // IncAcceptedTransactions will increment #accepted transactions for the tag
-func IncAcceptedTransactions(tag string) {
+func IncAcceptedTransactions(tag uint32) {
 	numAcceptedTransactionsStat.Add(1)
 	numAcceptedTransactionsPerSecondStat.Add(1)
-	bufferAcceptByTagPerSecStat.Add(tag, 1)
+	bufferAcceptByTagPerSecStat.Add(fmt.Sprintf("%d", tag), 1)
 	bufferAcceptByTagPerSecStat.Add("total", 1)
 }
 

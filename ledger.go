@@ -47,7 +47,7 @@ type Ledger struct {
 	accountList *AccountList
 }
 
-func NewLedger(databasePath, servicesPath, genesisPath string) *Ledger {
+func NewLedger(databasePath, genesisPath string) *Ledger {
 	store := database.New(databasePath)
 
 	log.Info().Str("db_path", databasePath).Msg("Database has been loaded.")
@@ -77,17 +77,12 @@ func NewLedger(databasePath, servicesPath, genesisPath string) *Ledger {
 			}
 
 			for _, account := range genesis {
-				account.Writeback()
+				account.writeback()
 			}
 
 			log.Info().Str("file", genesisPath).Int("num_accounts", len(genesis)).Msg("Successfully seeded the genesis of this node.")
 			ledger.Store.Put(KeyGenesisApplied, []byte("true"))
 		}
-	}
-
-	err := ledger.registerServicePath(servicesPath)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to load transaction processors.")
 	}
 
 	graph.AddOnReceiveHandler(ledger.ensureSafeCommittable)

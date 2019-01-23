@@ -6,11 +6,10 @@ import (
 
 const (
 	// Transaction tags
-	TagNop            = "nop"
-	TagTransfer       = "transfer"
-	TagPlaceStake     = "place_stake"
-	TagWithdrawStake  = "withdraw_stake"
-	TagCreateContract = "create_contract"
+	TagNop            = 0x00
+	TagTransfer       = 0x01
+	TagCreateContract = 0x02
+	TagStake          = 0x03
 
 	// Account keys
 	KeyContractCode = "contract_code"

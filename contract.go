@@ -9,14 +9,19 @@ import (
 	"github.com/pkg/errors"
 )
 
+var (
+	ContractPrefix            = writeBytes("C-")
+	ContractCustomStatePrefix = writeBytes("CS-")
+)
+
 // Contract represents a smart contract on Perlin.
 type Contract struct {
 	TransactionID string `json:"transaction_id,omitempty"`
 	Code          []byte `json:"code,omitempty"`
 }
 
-type contractExecutor struct {
-	contractGasPolicy
+type ContractExecutor struct {
+	ContractGasPolicy
 
 	contract *Account
 	sender   []byte
@@ -24,9 +29,9 @@ type contractExecutor struct {
 	pending  []*database.Transaction
 }
 
-func newContractExecutor(contract *Account, sender []byte, payload []byte, gasPolicy contractGasPolicy) contractExecutor {
-	return contractExecutor{
-		contractGasPolicy: gasPolicy,
+func NewContractExecutor(contract *Account, sender []byte, payload []byte, gasPolicy ContractGasPolicy) *ContractExecutor {
+	return &ContractExecutor{
+		ContractGasPolicy: gasPolicy,
 
 		sender:   sender,
 		payload:  payload,
@@ -34,11 +39,11 @@ func newContractExecutor(contract *Account, sender []byte, payload []byte, gasPo
 	}
 }
 
-func (c contractExecutor) run(code []byte, entry string) error {
+func (c *ContractExecutor) Run(code []byte, entry string) error {
 	vm, err := exec.NewVirtualMachine(code, exec.VMConfig{
 		DefaultMemoryPages: 1238,
 		DefaultTableSize:   65536,
-		GasLimit:           c.gasLimit,
+		GasLimit:           c.GasLimit,
 	}, c, c)
 
 	if err != nil {
@@ -58,17 +63,17 @@ func (c contractExecutor) run(code []byte, entry string) error {
 	return nil
 }
 
-type contractGasPolicy struct {
-	gasTable map[string]int64
-	gasLimit uint64
+type ContractGasPolicy struct {
+	GasTable map[string]int64
+	GasLimit uint64
 }
 
-func (c contractGasPolicy) GetCost(name string) int64 {
-	if c.gasTable == nil {
+func (c *ContractGasPolicy) GetCost(name string) int64 {
+	if c.GasTable == nil {
 		return 1
 	}
 
-	if v, ok := c.gasTable[name]; ok {
+	if v, ok := c.GasTable[name]; ok {
 		return v
 	}
 
@@ -77,7 +82,7 @@ func (c contractGasPolicy) GetCost(name string) int64 {
 	return 1
 }
 
-func (c contractExecutor) ResolveFunc(module, field string) exec.FunctionImport {
+func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport {
 	switch module {
 	case "env":
 		switch field {
@@ -89,12 +94,10 @@ func (c contractExecutor) ResolveFunc(module, field string) exec.FunctionImport 
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
 
-				tagPtr := int(uint32(frame.Locals[0]))
-				tagLen := int(uint32(frame.Locals[1]))
-				payloadPtr := int(uint32(frame.Locals[2]))
-				payloadLen := int(uint32(frame.Locals[3]))
+				tag := uint32(frame.Locals[0])
+				payloadPtr := int(uint32(frame.Locals[1]))
+				payloadLen := int(uint32(frame.Locals[2]))
 
-				tag := string(vm.Memory[tagPtr : tagPtr+tagLen])
 				payload := vm.Memory[payloadPtr : payloadPtr+payloadLen]
 
 				c.pending = append(c.pending, &database.Transaction{
@@ -180,6 +183,12 @@ func (c contractExecutor) ResolveFunc(module, field string) exec.FunctionImport 
 	}
 }
 
-func (c contractExecutor) ResolveGlobal(module, field string) int64 {
+func (c *ContractExecutor) ResolveGlobal(module, field string) int64 {
 	panic("no global variables")
+}
+
+// ContractID returns the expected ID of a smart contract given the transaction symbol which
+// spawned the contract.
+func ContractID(txID string) string {
+	return string(merge(ContractPrefix, writeBytes(txID)))
 }
