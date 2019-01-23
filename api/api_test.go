@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/crypto"
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
 	apiClient "github.com/perlin-network/wavelet/cmd/wctl/client"
 	"github.com/perlin-network/wavelet/node"
@@ -12,6 +13,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"testing"
 	"time"
@@ -80,10 +82,17 @@ func client(port int, privateKeyFile string) (*apiClient.Client, error) {
 	return client, nil
 }
 
+// GetRandomUnusedPort returns a random unused port
+func GetRandomUnusedPort() int {
+	listener, _ := net.Listen("tcp", ":0")
+	defer listener.Close()
+	return listener.Addr().(*net.TCPAddr).Port
+}
+
 ////////////////////////////////
 
 func Test_api_serverVersion(t *testing.T) {
-	port := 30000
+	port := GetRandomUnusedPort()
 	s, c, err := setupMockServer(port, privateKeyFile, &node.WaveletMock{})
 	assert.Nil(t, err)
 	defer s.Close()
@@ -94,7 +103,7 @@ func Test_api_serverVersion(t *testing.T) {
 }
 
 func Test_api_send_transaction(t *testing.T) {
-	port := 30001
+	port := GetRandomUnusedPort()
 	s, c, err := setupMockServer(port, privateKeyFile, &node.WaveletMock{
 		MakeTransactionCallback: func(tag string, payload []byte) *wire.Transaction {
 			return &wire.Transaction{}
@@ -113,4 +122,19 @@ func Test_api_send_transaction(t *testing.T) {
 	res, err := c.SendTransaction(tag, []byte(payload))
 	assert.Nil(t, err)
 	assert.True(t, len(res.TransactionID) > 0)
+}
+
+func noTest_api_ledger_state(t *testing.T) {
+	port := GetRandomUnusedPort()
+	s, c, err := setupMockServer(port, privateKeyFile, &node.WaveletMock{
+		LedgerDoCallback: func(f func(ledger *wavelet.Ledger)) {
+			f(nil)
+		},
+	})
+	assert.Nil(t, err)
+	defer s.Close()
+
+	res, err := c.LedgerState()
+	assert.Nil(t, err)
+	assert.Nil(t, res)
 }
