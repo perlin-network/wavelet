@@ -8,10 +8,6 @@ import (
 type CreateContractProcessor struct {
 }
 
-func (p *CreateContractProcessor) Tag() byte {
-	return 0x02
-}
-
 func (p *CreateContractProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) error {
 	contractID := wavelet.ContractID(ctx.Tx.Id)
 	contract := ctx.NewAccount(contractID)

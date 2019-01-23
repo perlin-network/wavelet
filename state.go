@@ -36,8 +36,8 @@ type state struct {
 	processors [256]TransactionProcessor
 }
 
-func (s *state) RegisterTransactionProcessor(p TransactionProcessor) {
-	s.processors[int(p.Tag())] = p
+func (s *state) RegisterTransactionProcessor(tag byte, p TransactionProcessor) {
+	s.processors[int(tag)] = p
 }
 
 func (s *state) collectRewardedAncestors(tx *database.Transaction, filterOutSender string, depth int) ([]*database.Transaction, error) {

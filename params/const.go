@@ -7,7 +7,7 @@ import (
 const (
 	// Transaction tags
 	TagNop            = 0x00
-	TagTransfer       = 0x01
+	TagGeneric        = 0x01
 	TagCreateContract = 0x02
 	TagStake          = 0x03
 

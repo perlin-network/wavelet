@@ -482,7 +482,7 @@ func runShell(w *node.Wavelet) error {
 			copy(payload[:32], recipientDecoded)
 			binary.LittleEndian.PutUint64(payload[32:], uint64(amount))
 
-			wired := w.MakeTransaction(params.TagTransfer, payload)
+			wired := w.MakeTransaction(params.TagGeneric, payload)
 			go w.BroadcastTransaction(wired)
 
 			log.Info().Msgf("Success! Your payment transaction ID: %s", graph.Symbol(wired))

@@ -17,7 +17,6 @@ type TransactionContext struct {
 }
 
 type TransactionProcessor interface {
-	Tag() byte
 	OnApplyTransaction(ctx *TransactionContext) error
 }
 

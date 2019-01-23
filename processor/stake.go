@@ -10,10 +10,6 @@ import (
 type StakeProcessor struct {
 }
 
-func (p *StakeProcessor) Tag() byte {
-	return 0x03
-}
-
 func (p *StakeProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) error {
 	if len(ctx.Tx.Payload) != 8 {
 		return errors.New("expecting an int64")

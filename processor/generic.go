@@ -12,10 +12,6 @@ import (
 type GenericProcessor struct {
 }
 
-func (p *GenericProcessor) Tag() byte {
-	return 0x01
-}
-
 func (p *GenericProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) error {
 	senderID, err := hex.DecodeString(ctx.Tx.Sender)
 	if err != nil {

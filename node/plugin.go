@@ -85,10 +85,10 @@ func (w *Wavelet) Startup(net *network.Network) {
 	opcode.RegisterMessageType(opcode.Opcode(TxPushHintOpcode), &TxPushHint{})
 
 	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.GenesisPath)
-	ledger.RegisterTransactionProcessor(&processor.NopProcessor{})
-	ledger.RegisterTransactionProcessor(&processor.GenericProcessor{})
-	ledger.RegisterTransactionProcessor(&processor.CreateContractProcessor{})
-	ledger.RegisterTransactionProcessor(&processor.StakeProcessor{})
+	ledger.RegisterTransactionProcessor(params.TagNop, &processor.NopProcessor{})
+	ledger.RegisterTransactionProcessor(params.TagGeneric, &processor.GenericProcessor{})
+	ledger.RegisterTransactionProcessor(params.TagCreateContract, &processor.CreateContractProcessor{})
+	ledger.RegisterTransactionProcessor(params.TagStake, &processor.StakeProcessor{})
 
 	loop := wavelet.NewEventLoop(ledger)
 	go loop.RunForever()
