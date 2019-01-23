@@ -88,7 +88,7 @@ func (s *service) pollTransactionHandler(ctx *requestContext) (int, interface{},
 		var tx *database.Transaction
 		var err error
 
-		s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+		s.wavelet.LedgerDo(func(ledger *wavelet.Ledger) {
 			tx, err = ledger.GetBySymbol(txID)
 		})
 
@@ -143,7 +143,7 @@ func (s *service) listTransactionHandler(ctx *requestContext) (int, interface{},
 		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
 	}
 
-	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+	s.wavelet.LedgerDo(func(ledger *wavelet.Ledger) {
 		// If paginate is blank, return the last 50 transactions.
 		if listParams.Offset == nil || listParams.Limit == nil {
 			total, limit := ledger.NumTransactions(), uint64(50)
@@ -189,7 +189,7 @@ func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, err
 	var contractCode []byte
 	var err error
 
-	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+	s.wavelet.LedgerDo(func(ledger *wavelet.Ledger) {
 		contractCode, err = ledger.LoadContract(req.TransactionID)
 	})
 	if err != nil {
@@ -269,7 +269,7 @@ func (s *service) listContractsHandler(ctx *requestContext) (int, interface{}, e
 		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
 	}
 
-	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+	s.wavelet.LedgerDo(func(ledger *wavelet.Ledger) {
 		// If paginate is blank, return the last 50 contracts.
 		if listParams.Offset == nil || listParams.Limit == nil {
 			total, limit := ledger.NumContracts(), uint64(50)
@@ -316,7 +316,7 @@ func (s *service) ledgerStateHandler(ctx *requestContext) (int, interface{}, err
 		Peers:     routes.GetPeerAddresses(),
 	}
 
-	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+	s.wavelet.LedgerDo(func(ledger *wavelet.Ledger) {
 		state.State = ledger.Snapshot()
 	})
 
@@ -375,7 +375,7 @@ func (s *service) getTransactionHandler(ctx *requestContext) (int, interface{}, 
 
 	var tx *database.Transaction
 
-	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+	s.wavelet.LedgerDo(func(ledger *wavelet.Ledger) {
 		tx, err = ledger.GetBySymbol(symbol)
 	})
 
@@ -421,7 +421,7 @@ func (s *service) getAccountHandler(ctx *requestContext) (int, interface{}, erro
 
 	var account *wavelet.Account
 
-	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+	s.wavelet.LedgerDo(func(ledger *wavelet.Ledger) {
 		account, err = ledger.LoadAccount(accountID)
 	})
 

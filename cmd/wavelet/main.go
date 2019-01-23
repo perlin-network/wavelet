@@ -425,7 +425,7 @@ func runShell(w *node.Wavelet) error {
 		switch cmd[0] {
 		case "w":
 			if len(cmd) < 2 {
-				w.Ledger.Do(func(l *wavelet.Ledger) {
+				w.LedgerDo(func(l *wavelet.Ledger) {
 					log.Info().
 						Str("id", hex.EncodeToString(w.Wallet.PublicKey)).
 						Uint64("nonce", w.Wallet.CurrentNonce(l)).
@@ -446,7 +446,7 @@ func runShell(w *node.Wavelet) error {
 
 			var account *wavelet.Account
 
-			w.Ledger.Do(func(l *wavelet.Ledger) {
+			w.LedgerDo(func(l *wavelet.Ledger) {
 				account, err = l.LoadAccount(accountID)
 			})
 
@@ -588,7 +588,7 @@ func runShell(w *node.Wavelet) error {
 
 			var tx *database.Transaction
 
-			w.Ledger.Do(func(l *wavelet.Ledger) {
+			w.LedgerDo(func(l *wavelet.Ledger) {
 				tx, err = l.GetBySymbol(cmd[1])
 			})
 
