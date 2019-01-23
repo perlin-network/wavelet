@@ -15,51 +15,8 @@ type Contract struct {
 	Code          []byte `json:"code,omitempty"`
 }
 
-type queryableEntity interface {
-	Load(key string) ([]byte, bool)
-	Store(key string, value []byte)
-}
-
-type stateDeltaLogger struct {
-	entity queryableEntity
-	state  map[string][]byte
-
-	disabled bool
-}
-
-func newStateDeltaLogger(entity queryableEntity, disabled bool) stateDeltaLogger {
-	return stateDeltaLogger{entity, make(map[string][]byte), disabled}
-}
-
-func (s stateDeltaLogger) get(key string) []byte {
-	if s.disabled {
-		panic("state logging is disabled")
-	}
-
-	var val []byte
-	var exists bool
-
-	if val, exists = s.state[key]; exists {
-		return val
-	}
-
-	val, _ = s.entity.Load(key)
-	s.state[key] = val
-
-	return val
-}
-
-func (s stateDeltaLogger) set(key string, val []byte) {
-	if s.disabled {
-		panic("state logging is disabled")
-	}
-
-	s.state[key] = val
-}
-
 type contractExecutor struct {
 	contractGasPolicy
-	stateDeltaLogger
 
 	contract *Account
 	sender   []byte
@@ -69,7 +26,6 @@ type contractExecutor struct {
 
 func newContractExecutor(contract *Account, sender []byte, payload []byte, gasPolicy contractGasPolicy) contractExecutor {
 	return contractExecutor{
-		stateDeltaLogger:  newStateDeltaLogger(contract, false),
 		contractGasPolicy: gasPolicy,
 
 		sender:   sender,
@@ -161,7 +117,10 @@ func (c contractExecutor) ResolveFunc(module, field string) exec.FunctionImport 
 				key := string(vm.Memory[keyPtr : keyPtr+keyLen])
 				val := vm.Memory[valPtr : valPtr+valLen]
 
-				c.stateDeltaLogger.set(string(merge(ContractCustomStatePrefix, writeBytes(key))), val)
+				valCopy := make([]byte, len(val))
+				copy(valCopy, val)
+
+				c.contract.Store(string(merge(ContractCustomStatePrefix, writeBytes(key))), valCopy)
 				return 0
 			}
 		case "_get_len":
@@ -171,7 +130,8 @@ func (c contractExecutor) ResolveFunc(module, field string) exec.FunctionImport 
 				keyLen := int(uint32(frame.Locals[1]))
 				key := string(vm.Memory[keyPtr : keyPtr+keyLen])
 
-				return int64(len(c.stateDeltaLogger.get(string(merge(ContractCustomStatePrefix, writeBytes(key))))))
+				data, _ := c.contract.Load(writeString(merge(ContractCustomStatePrefix, writeBytes(key))))
+				return int64(len(data))
 			}
 		case "_get":
 			return func(vm *exec.VirtualMachine) int64 {
@@ -183,7 +143,9 @@ func (c contractExecutor) ResolveFunc(module, field string) exec.FunctionImport 
 
 				key := string(vm.Memory[keyPtr : keyPtr+keyLen])
 
-				copy(vm.Memory[outPtr:], c.stateDeltaLogger.get(string(merge(ContractCustomStatePrefix, writeBytes(key)))))
+				data, _ := c.contract.Load(writeString(merge(ContractCustomStatePrefix, writeBytes(key))))
+				copy(vm.Memory[outPtr:], data)
+
 				return 0
 			}
 		case "_sender_id_len":

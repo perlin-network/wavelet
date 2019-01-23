@@ -321,7 +321,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 
 				var localNewTx []*database.Transaction
 
-				executor := newContractExecutor(s.account, senderID, s.tx.Payload, contractGasPolicy{nil, 100000})
+				executor := newContractExecutor(NewAccount(s.Ledger, []byte(s.accountID)), senderID, s.tx.Payload, contractGasPolicy{nil, 100000})
 
 				err = executor.run(contractCode, "contract_main")
 				if err != nil {
