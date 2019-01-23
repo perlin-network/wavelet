@@ -40,7 +40,7 @@ type service struct {
 	name string
 
 	globals  map[string][]byte
-	accounts map[string]map[string][]byte
+	accounts map[string]*Account
 
 	// The current transaction being fed into this service.
 	tx *database.Transaction
@@ -49,7 +49,7 @@ type service struct {
 	pendingNewTransactions []*database.Transaction
 
 	// The current account being modified.
-	account *Account
+	accountID string
 
 	vm    *exec.VirtualMachine
 	entry int
@@ -59,7 +59,7 @@ func NewService(state *state, name string) *service {
 	return &service{Mutex: new(sync.Mutex), state: state, name: name}
 }
 
-func (s *service) Run(tx *database.Transaction) ([]*Delta, []*database.Transaction, error) {
+func (s *service) Run(tx *database.Transaction, accounts map[string]*Account) ([]*database.Transaction, error) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -68,8 +68,8 @@ func (s *service) Run(tx *database.Transaction) ([]*Delta, []*database.Transacti
 
 	// Reset service state for each run.
 	s.globals = make(map[string][]byte)
-	s.accounts = make(map[string]map[string][]byte)
-	s.account = nil
+	s.accounts = accounts
+	s.accountID = ""
 
 	start := time.Now()
 
@@ -83,33 +83,12 @@ func (s *service) Run(tx *database.Transaction) ([]*Delta, []*database.Transacti
 
 	switch uint32(ret) {
 	case InternalProcessErr:
-		return nil, nil, errors.New("processor reported an error")
+		return nil, errors.New("processor reported an error")
 	case InternalProcessIgnore:
-		return nil, nil, nil
+		return nil, nil
 	}
 
-	var changes []*Delta
-
-	// Append global store changes. Omit account to denote a change in the global store.
-	for key, val := range s.globals {
-		changes = append(changes, &Delta{
-			Key:      key,
-			NewValue: val,
-		})
-	}
-
-	// Append account store changes.
-	for account, store := range s.accounts {
-		for key, val := range store {
-			changes = append(changes, &Delta{
-				Account:  writeBytes(account),
-				Key:      key,
-				NewValue: val,
-			})
-		}
-	}
-
-	return changes, s.pendingNewTransactions, nil
+	return s.pendingNewTransactions, nil
 }
 
 func (s *service) globalQuery(key string) (value []byte) {
@@ -123,20 +102,21 @@ func (s *service) globalQuery(key string) (value []byte) {
 	return
 }
 
-func (s *service) accountQuery(id string, key string) (value []byte) {
+func (s *service) accountQuery(id string, key string) []byte {
 	if s.accounts[id] == nil {
-		s.accounts[id] = make(map[string][]byte)
+		s.accounts[id] = NewAccount(s.Ledger, []byte(id))
 	}
 
-	// Locally load account key if not loaded beforehand.
-	if v, exists := s.accounts[id][key]; exists {
-		value = v
-	} else {
-		_, value = s.account.State.Load(key)
-		s.accounts[id][key] = value
+	v, _ := s.accounts[id].Load(key)
+	return v
+}
+
+func (s *service) accountWrite(id string, key string, val []byte) {
+	if s.accounts[id] == nil {
+		s.accounts[id] = NewAccount(s.Ledger, []byte(id))
 	}
 
-	return
+	s.accounts[id].Store(key, val)
 }
 
 func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
@@ -196,13 +176,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessErr)
 				}
 
-				account, err := s.LoadAccount(key)
-
-				if err != nil {
-					account = NewAccount(key)
-				}
-
-				s.account = account
+				s.accountID = string(key)
 
 				return int64(InternalProcessOk)
 			}
@@ -210,15 +184,11 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 			return func(vm *exec.VirtualMachine) int64 {
 				publicKey, err := hex.DecodeString(s.tx.Sender)
 				if err != nil {
+					log.Info().Msg("cannot decode sender")
 					return int64(InternalProcessErr)
 				}
 
-				account, err := s.LoadAccount(publicKey)
-				if err != nil {
-					return int64(InternalProcessErr)
-				}
-
-				s.account = account
+				s.accountID = string(publicKey)
 
 				return int64(InternalProcessOk)
 			}
@@ -251,11 +221,11 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 				case StoreGlobal:
 					copy(vm.Memory[outPtr:], s.globalQuery(key))
 				case StoreAccount:
-					if s.account == nil {
+					if s.accountID == "" {
 						return 0
 					}
 
-					copy(vm.Memory[outPtr:], s.accountQuery(string(s.account.PublicKey), key))
+					copy(vm.Memory[outPtr:], s.accountQuery(s.accountID, key))
 				default:
 					panic(errors.Errorf("unknown store specified: %d", storeID))
 				}
@@ -277,11 +247,11 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					value := s.globalQuery(key)
 					return int64(len(value))
 				case StoreAccount:
-					if s.account == nil {
+					if s.accountID == "" {
 						return 0
 					}
 
-					value := s.accountQuery(string(s.account.PublicKey), key)
+					value := s.accountQuery(s.accountID, key)
 					return int64(len(value))
 				default:
 					panic(errors.Errorf("unknown store specified: %d", storeID))
@@ -305,14 +275,14 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 				case StoreGlobal:
 					copy(s.globals[key], value)
 				case StoreAccount:
-					if s.account == nil {
+					if s.accountID == "" {
 						return int64(InternalProcessErr)
 					}
 
 					buf := make([]byte, len(value))
 					copy(buf, value)
 
-					s.accounts[string(s.account.PublicKey)][key] = buf
+					s.accountWrite(s.accountID, key, buf)
 				default:
 					panic(errors.Errorf("unknown store specified: %d", storeID))
 				}
@@ -323,8 +293,6 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 			return func(vm *exec.VirtualMachine) int64 {
 				contractIDPtr := int(uint32(vm.GetCurrentFrame().Locals[0]))
 				contractIDLen := int(uint32(vm.GetCurrentFrame().Locals[1]))
-				reasonPtr := int(uint32(vm.GetCurrentFrame().Locals[2]))
-				reasonLen := int(uint32(vm.GetCurrentFrame().Locals[3]))
 
 				encodedContractID := string(vm.Memory[contractIDPtr : contractIDPtr+contractIDLen])
 
@@ -346,49 +314,18 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessOk) // cannot activate recursively
 				}
 
-				account, err := s.state.LoadAccount(contractID)
-				if err != nil {
-					return int64(InternalProcessOk) // always report ok.
-				}
-
-				contractCode, ok := account.Load(params.KeyContractCode)
-				if !ok {
+				contractCode := s.accountQuery(writeString(contractID), params.KeyContractCode)
+				if contractCode == nil {
 					return int64(InternalProcessOk)
 				}
 
-				reason := vm.Memory[reasonPtr : reasonPtr+reasonLen]
-
 				var localNewTx []*database.Transaction
 
-				executor := &ContractExecutor{
-					GasTable: nil,
-					GasLimit: 100000, // TODO: Set the limit properly
-					Code:     contractCode,
-					QueueTransaction: func(tag string, payload []byte) {
-						tx := &database.Transaction{
-							Sender:  encodedContractID,
-							Tag:     tag,
-							Payload: payload,
-						}
-						localNewTx = append(localNewTx, tx)
-					},
-					GetActivationReasonLen: func() int { return len(reason) },
-					GetActivationReason:    func() []byte { return reason },
-					GetDataItemLen: func(key string) int {
-						val, _ := s.account.Load(string(merge(ContractCustomStatePrefix, writeBytes(key))))
-						return len(val)
-					},
-					GetDataItem: func(key string) []byte {
-						val, _ := s.account.Load(string(merge(ContractCustomStatePrefix, writeBytes(key))))
-						return val
-					},
-					SetDataItem: func(key string, val []byte) {
-						s.account.Store(string(merge(ContractCustomStatePrefix, writeBytes(key))), val)
-					},
-				}
+				executor := newContractExecutor(NewAccount(s.Ledger, []byte(s.accountID)), senderID, s.tx.Payload, contractGasPolicy{nil, 100000})
 
-				err = executor.Run()
+				err = executor.run(contractCode, "contract_main")
 				if err != nil {
+					log.Warn().Err(err).Msg("smart contract exited with error")
 					return int64(InternalProcessOk)
 				}
 
@@ -403,14 +340,10 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 				}
 
 				if bytes.HasPrefix(senderID, ContractPrefix) {
-					return int64(InternalProcessErr) // a contract cannot create another one
+					return int64(InternalProcessErr) // a Contract cannot create another one
 				}
 
 				contractID := ContractID(s.tx.Id)
-
-				if s.accounts[contractID] == nil {
-					s.accounts[contractID] = make(map[string][]byte)
-				}
 
 				// This struct is defined in
 				// github.com/perlin-network/transaction-processor-rs/builtin/contract/src/lib.rs
@@ -428,7 +361,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessErr)
 				}
 
-				s.accounts[contractID][params.KeyContractCode] = decoded
+				s.accountWrite(contractID, params.KeyContractCode, decoded)
 
 				return int64(InternalProcessOk)
 			}
@@ -450,11 +383,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 
 				contractID := ContractID(s.tx.Id)
 
-				if s.accounts[contractID] == nil {
-					s.accounts[contractID] = make(map[string][]byte)
-				}
-
-				s.accounts[contractID][params.KeyContractCode] = code
+				s.accountWrite(contractID, params.KeyContractCode, code)
 
 				return int64(InternalProcessOk)
 			}

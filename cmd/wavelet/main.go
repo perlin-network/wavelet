@@ -447,7 +447,7 @@ func runShell(w *node.Wavelet) error {
 			var account *wavelet.Account
 
 			w.Ledger.Do(func(l *wavelet.Ledger) {
-				account, err = l.LoadAccount(accountID)
+				account = wavelet.NewAccount(l, accountID)
 			})
 
 			if err != nil {
@@ -467,7 +467,7 @@ func runShell(w *node.Wavelet) error {
 			}
 
 			log.Info().
-				Uint64("nonce", account.Nonce).
+				Uint64("nonce", account.GetNonce()).
 				Uint64("balance", balance).
 				Uint64("stake", stake).
 				Msgf("Account: %s", cmd[1])

@@ -23,9 +23,12 @@ import (
 )
 
 var (
-	BucketAccounts  = []byte("account_")
-	BucketDeltas    = []byte("deltas_")
-	BucketContracts = merge(BucketAccounts, ContractPrefix)
+	BucketAccountList = []byte("acctlist_")
+	BucketAccounts    = []byte("account_")
+	BucketAccountIDs  = []byte("accountid_")
+	BucketPreStates   = []byte("prestates_")
+	BucketDeltas      = []byte("deltas_")
+	BucketContracts   = merge(BucketAccounts, ContractPrefix)
 )
 
 // pending represents a single transaction to be processed. A utility struct
@@ -139,12 +142,9 @@ func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64,
 			panic(err) // shouldn't happen?
 		}
 
-		account, err := s.LoadAccount(accountID)
-		if err != nil {
-			return 0
-		}
+		account := NewAccount(s.Ledger, accountID)
 
-		_, stake := account.State.Load("stake")
+		stake, _ := account.Load("stake")
 		if stake == nil {
 			return 0
 		}
@@ -208,15 +208,33 @@ func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64,
 	return rewarded.Sender, nil
 }
 
+func (s *state) ExecuteContract(txID string, entry string, param []byte) ([]byte, error) {
+	account := NewAccount(s.Ledger, writeBytes(txID))
+
+	code, ok := account.Load(params.KeyContractCode)
+	if !ok {
+		return nil, errors.Errorf("contract ID %s has no contract code", txID)
+	}
+
+	executor := newContractExecutor(account, nil, param, contractGasPolicy{nil, 100000})
+	err := executor.run(code, entry)
+	if err != nil {
+		return nil, err
+	}
+
+	result, _ := account.Load(string(ContractCustomStatePrefix) + ".local_result")
+	return result, nil
+}
+
 // applyTransaction runs a transaction, gets any transactions created by said transaction, and
 // applies those transactions to the ledger state.
 func (s *state) applyTransaction(tx *database.Transaction) error {
-	accountDeltas := &Deltas{Deltas: make(map[string]*Deltas_List)}
-
 	rewardee, err := s.randomlySelectValidator(tx, params.ValidatorRewardAmount, params.ValidatorRewardDepth)
 	if err != nil {
 		return err
 	}
+
+	s.Ledger.Store.Put(merge(BucketPreStates, []byte(tx.Id)), s.Ledger.accountList.GetRoot())
 
 	pending := queue.New()
 	pending.PushBack(tx)
@@ -236,90 +254,30 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 		sender, exists := accounts[writeString(senderID)]
 
 		if !exists {
-			sender, err = s.LoadAccount(senderID)
-
-			if err != nil {
-				if tx.Nonce == 0 {
-					sender = NewAccount(senderID)
-				} else {
-					log.Error().Err(err).Str("tx", tx.Id).Msgf("Sender account %s does not exist.", tx.Sender)
-					continue
-				}
+			if x, _ := s.Store.Get(merge(BucketAccountIDs, senderID)); x == nil && tx.Nonce != 0 {
+				log.Error().Err(err).Str("tx", tx.Id).Msgf("Sender account %s does not exist.", tx.Sender)
+				continue
 			}
 
+			sender = NewAccount(s.Ledger, senderID)
 			accounts[writeString(senderID)] = sender
 		}
 
 		if tx.Tag == params.TagNop {
-			sender.Nonce++
-
-			for id, account := range accounts {
-				log.Debug().
-					Uint64("nonce", account.Nonce).
-					Str("public_key", hex.EncodeToString(account.PublicKey)).
-					Str("tx", tx.Id).
-					Msg("Applied transaction.")
-
-				list, available := accountDeltas.Deltas[id]
-				if available {
-					s.SaveAccount(account, list.List)
-				} else {
-					s.SaveAccount(account, nil)
-				}
-			}
-
+			sender.SetNonce(sender.GetNonce() + 1)
 			continue
 		}
 
-		deltas, newlyPending, err := s.doApplyTransaction(tx)
+		newlyPending, err := s.doApplyTransaction(tx, accounts)
 		if err != nil {
 			log.Warn().Interface("tx", tx).Err(err).Msg("Transaction failed to get applied to the ledger state.")
 		}
 
-		var initialBalance uint64
-
-		initialBalanceBytes, ok := sender.Load("balance")
-
-		if ok && len(initialBalanceBytes) > 0 {
-			initialBalance = readUint64(initialBalanceBytes)
-		}
-
-		if err == nil {
-			for _, delta := range deltas {
-				accountID := writeString(delta.Account)
-
-				account, exists := accounts[accountID]
-
-				if !exists {
-					account, err = s.LoadAccount(delta.Account)
-					if err != nil {
-						account = NewAccount(delta.Account)
-					}
-
-					accounts[accountID] = account
-				}
-
-				delta.OldValue, _ = account.Load(delta.Key)
-				account.Store(delta.Key, delta.NewValue)
-
-				if _, exists := accountDeltas.Deltas[accountID]; !exists {
-					accountDeltas.Deltas[accountID] = new(Deltas_List)
-				}
-
-				accountDeltas.Deltas[accountID].List = append(accountDeltas.Deltas[accountID].List, delta)
-			}
-		}
+		initialBalance := sender.GetBalance()
+		finalBalance := sender.GetBalance()
 
 		// Increment the senders account nonce.
-		sender.Nonce++
-
-		var finalBalance uint64
-
-		finalBalanceBytes, ok := sender.Load("balance")
-
-		if ok && len(finalBalanceBytes) > 0 {
-			finalBalance = readUint64(finalBalanceBytes)
-		}
+		sender.SetNonce(sender.GetNonce() + 1)
 
 		if len(rewardee) > 0 {
 			var deducted uint64
@@ -345,10 +303,7 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 			rewardeeAccount, ok := accounts[writeString(rewardeeID)]
 
 			if !ok {
-				rewardeeAccount, err = s.LoadAccount(rewardeeID)
-				if err != nil {
-					rewardeeAccount = NewAccount(rewardeeID)
-				}
+				rewardeeAccount := NewAccount(s.Ledger, rewardeeID)
 				accounts[writeString(rewardeeID)] = rewardeeAccount
 			}
 
@@ -363,27 +318,8 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 			sender.Store("balance", writeUint64(finalBalance-deducted))
 			rewardeeAccount.Store("balance", writeUint64(rewardeeBalance+deducted))
 
-			if _, exists := accountDeltas.Deltas[writeString(sender.PublicKey)]; !exists {
-				accountDeltas.Deltas[writeString(sender.PublicKey)] = new(Deltas_List)
-			}
-
-			accountDeltas.Deltas[writeString(sender.PublicKey)].List = append(accountDeltas.Deltas[writeString(sender.PublicKey)].List, &Delta{
-				Account:  sender.PublicKey,
-				Key:      "balance",
-				OldValue: finalBalanceBytes,
-				NewValue: writeUint64(finalBalance - deducted),
-			})
-
-			if _, exists := accountDeltas.Deltas[writeString(rewardeeAccount.PublicKey)]; !exists {
-				accountDeltas.Deltas[writeString(rewardeeAccount.PublicKey)] = new(Deltas_List)
-			}
-
-			accountDeltas.Deltas[writeString(rewardeeAccount.PublicKey)].List = append(accountDeltas.Deltas[writeString(rewardeeAccount.PublicKey)].List, &Delta{
-				Account:  rewardeeAccount.PublicKey,
-				Key:      "balance",
-				OldValue: rewardeeBalanceBytes,
-				NewValue: writeUint64(rewardeeBalance + deducted),
-			})
+			sender.SetBalance(finalBalance - deducted)
+			rewardeeAccount.SetBalance(rewardeeBalance + deducted)
 
 			log.Debug().Msgf("Transaction fee of %d PERLs transferred from %s to validator %s as a reward.", deducted, sender.PublicKeyHex(), rewardee)
 		}
@@ -393,30 +329,14 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 		}
 
 		// Save all modified accounts to the ledger.
-		for id, account := range accounts {
+		for _, account := range accounts {
+			account.Writeback()
 			log.Debug().
-				Uint64("nonce", account.Nonce).
-				Str("public_key", hex.EncodeToString(account.PublicKey)).
+				Uint64("nonce", account.GetNonce()).
+				Str("public_key", hex.EncodeToString(account.PublicKey())).
 				Str("tx", tx.Id).
 				Msg("Applied transaction.")
-
-			list, available := accountDeltas.Deltas[id]
-			if available {
-				s.SaveAccount(account, list.List)
-			} else {
-				s.SaveAccount(account, nil)
-			}
 		}
-	}
-
-	bytes, err := accountDeltas.Marshal()
-	if err != nil {
-		return err
-	}
-
-	err = s.Put(merge(BucketDeltas, writeBytes(tx.Id)), bytes)
-	if err != nil {
-		return err
 	}
 
 	go events.Publish(nil, &events.TransactionAppliedEvent{ID: tx.Id})
@@ -428,180 +348,35 @@ func (s *state) applyTransaction(tx *database.Transaction) error {
 // changes to the ledger state.
 //
 // Any additional transactions that are recursively generated by smart contracts for example are returned.
-func (s *state) doApplyTransaction(tx *database.Transaction) ([]*Delta, []*database.Transaction, error) {
-	var deltas []*Delta
-
+func (s *state) doApplyTransaction(tx *database.Transaction, accounts map[string]*Account) ([]*database.Transaction, error) {
 	// Iterate through all registered services and run them on the transactions given their tags and payload.
 	var pendingTransactions []*database.Transaction
 
 	for _, service := range s.services {
-		if tx.Tag == params.TagCreateContract {
-			// load the contract code into the tx before running the service
-			contractCode, err := s.LoadContract(tx.Id)
-			if err != nil {
-				return nil, nil, errors.Wrapf(err, "Unable to load contract for txID %s", tx.Id)
+		// TODO
+		/*
+			if tx.Tag == params.TagCreateContract {
+				// load the contract code into the tx before running the service
+				contractCode, err := s.LoadContract(tx.Id)
+				if err != nil {
+					return nil, nil, errors.Wrapf(err, "Unable to load contract for txID %s", tx.Id)
+				}
+				tx.Payload = contractCode
 			}
-			tx.Payload = contractCode
-		}
+		*/
 
-		new, pending, err := service.Run(tx)
+		pending, err := service.Run(tx, accounts)
 
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
-
-		deltas = append(deltas, new...)
 
 		if len(pending) > 0 {
 			pendingTransactions = append(pendingTransactions, pending...)
 		}
 	}
 
-	return deltas, pendingTransactions, nil
-}
-
-func (s *state) doRevertTransaction(pendingList *[]pending) {
-	accountDeltas := new(Deltas)
-	accounts := make(map[string]*Account)
-
-	for _, pending := range *pendingList {
-		deltaListKey := merge(BucketDeltas, writeBytes(pending.tx.Id))
-		deltaListBytes, err := s.Get(deltaListKey)
-
-		// Revert deltas only if the transaction has a list of deltas available.
-		if err == nil {
-			err = accountDeltas.Unmarshal(deltaListBytes)
-
-			if err != nil {
-				continue
-			}
-
-			for accountID, list := range accountDeltas.Deltas {
-				// Go from the end of the deltas list and apply the old value.
-				for i := len(list.List) - 1; i >= 0; i-- {
-					account, exists := accounts[accountID]
-					if !exists {
-						account, err = s.LoadAccount(writeBytes(accountID))
-
-						if err != nil {
-							continue
-						}
-
-						accounts[accountID] = account
-					}
-
-					if list.List[i].OldValue == nil {
-						account.State.Delete(list.List[i].Key)
-					} else {
-						account.Store(list.List[i].Key, list.List[i].OldValue)
-					}
-				}
-			}
-
-			// Delete delta list after reverting the transaction.
-			s.Delete(deltaListKey)
-		}
-
-		senderID, err := hex.DecodeString(pending.tx.Sender)
-		if err != nil {
-			continue
-		}
-
-		sender, exists := accounts[writeString(senderID)]
-		if !exists {
-			sender, err = s.LoadAccount(senderID)
-
-			if err != nil {
-				continue
-			}
-
-			accounts[writeString(senderID)] = sender
-		}
-
-		sender.Nonce = pending.tx.Nonce
-	}
-
-	// Save changes to all accounts.
-	for id, account := range accounts {
-		log.Debug().
-			Uint64("nonce", account.Nonce).
-			Str("public_key", hex.EncodeToString(account.PublicKey)).
-			Msg("Reverted transaction.")
-
-		list, available := accountDeltas.Deltas[id]
-		if available {
-			s.SaveAccount(account, list.List)
-		} else {
-			s.SaveAccount(account, nil)
-		}
-	}
-}
-
-// LoadAccount loads an account from the database given its public key.
-func (s *state) LoadAccount(key []byte) (*Account, error) {
-	bytes, err := s.Get(merge(BucketAccounts, key))
-	if err != nil {
-		return nil, errors.Wrapf(err, "account %s not found in ledger state", key)
-	}
-
-	account := NewAccount(key)
-	err = account.Unmarshal(bytes)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to decode account bytes")
-	}
-
-	return account.Clone(), nil
-}
-
-// SaveAccount saves an account to the database.
-func (s *state) SaveAccount(account *Account, deltas []*Delta) error {
-	accountKey := merge(BucketAccounts, account.PublicKey)
-
-	existed, err := s.Has(accountKey)
-	if err != nil {
-		return err
-	}
-
-	// If this is a new account, increment the bucket size by 1.
-	if !existed {
-		// TODO: need a better way to get counts
-		if bytes.HasPrefix(account.PublicKey, ContractPrefix) {
-			_, err = s.NextSequence(BucketContracts)
-			if err != nil {
-				return err
-			}
-		} else {
-			_, err = s.NextSequence(BucketAccounts)
-			if err != nil {
-				return err
-			}
-		}
-
-	}
-
-	err = s.Put(accountKey, account.MarshalBinary())
-	if err != nil {
-		return err
-	}
-
-	updates := make(map[string][]byte)
-
-	for _, delta := range deltas {
-		updates[delta.Key] = delta.NewValue
-	}
-
-	go events.Publish(nil, &events.AccountUpdateEvent{
-		Account: account.PublicKeyHex(),
-		Nonce:   account.Nonce,
-		Updates: updates,
-	})
-
-	return nil
-}
-
-// NumAccounts returns the number of accounts recorded in the ledger.
-func (s *state) NumAccounts() uint64 {
-	return s.Size(BucketAccounts)
+	return pendingTransactions, nil
 }
 
 // NumTransactions returns the number of transactions in the ledger.
@@ -660,18 +435,12 @@ func (s *state) Snapshot() map[string]interface{} {
 
 	json := make(map[string]interface{})
 
-	account := new(Account)
+	s.Store.ForEach(BucketAccountIDs, func(publicKey, _ []byte) error {
+		acct := NewAccount(s.Ledger, publicKey)
 
-	s.Store.ForEach(BucketAccounts, func(publicKey, encoded []byte) error {
-		err := account.Unmarshal(encoded)
+		data := accountData{Nonce: acct.GetNonce(), State: make(map[string][]byte)}
 
-		if err != nil {
-			return err
-		}
-
-		data := accountData{Nonce: account.Nonce, State: make(map[string][]byte)}
-
-		account.Range(func(k string, v []byte) {
+		acct.Range(func(k string, v []byte) {
 			if k == params.KeyContractCode {
 				v = writeBytes("<code here>")
 			}
@@ -689,21 +458,11 @@ func (s *state) Snapshot() map[string]interface{} {
 // LoadContract loads a smart contract from the database given its tx id.
 // The key in the database will be of the form "account_C-txID"
 func (s *state) LoadContract(txID string) ([]byte, error) {
-	contractKey := merge(BucketContracts, writeBytes(txID))
-	bytes, err := s.Get(contractKey)
-	if err != nil {
-		return nil, errors.Wrapf(err, "contract ID %s not found in ledger state", txID)
-	}
-
-	account := NewAccount(writeBytes(ContractID(txID)))
-	err = account.Unmarshal(bytes)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to decode account")
-	}
+	account := NewAccount(s.Ledger, writeBytes(ContractID(txID)))
 
 	contractCode, ok := account.Load(params.KeyContractCode)
 	if !ok {
-		return nil, errors.Errorf("contract ID %s has no contract code", txID)
+		return nil, errors.Errorf("contract ID %s has no code", txID)
 	}
 	return contractCode, nil
 }
@@ -711,22 +470,9 @@ func (s *state) LoadContract(txID string) ([]byte, error) {
 // SaveContract saves a smart contract to the database given its tx id.
 // The key in the database will be of the form "account_C-txID"
 func (s *state) SaveContract(txID string, contractCode []byte) error {
-	contractKey := merge(BucketContracts, writeBytes(txID))
-
-	account := NewAccount(writeBytes(ContractID(txID)))
-
-	if bytes, err := s.Get(contractKey); err == nil {
-		if err := account.Unmarshal(bytes); err != nil {
-			return errors.Wrapf(err, "failed to decode account")
-		}
-		account.Nonce++
-	}
-
+	account := NewAccount(s.Ledger, writeBytes(ContractID(txID)))
 	account.Store(params.KeyContractCode, contractCode)
-
-	if err := s.SaveAccount(account, nil); err != nil {
-		return err
-	}
+	account.Writeback()
 
 	return nil
 }
@@ -734,49 +480,52 @@ func (s *state) SaveContract(txID string, contractCode []byte) error {
 // PaginateContracts paginates through the smart contracts found in the ledger by searching for the prefix
 // "account_C-*" in the database.
 func (s *state) PaginateContracts(offset, pageSize uint64) []*Contract {
-	size := s.NumContracts()
+	return nil
+	/*
+		size := s.NumContracts()
 
-	if offset > size || pageSize == 0 {
-		return nil
-	}
-
-	if offset+pageSize > size {
-		pageSize = size - offset
-	}
-
-	var page []*Contract
-
-	i := uint64(0)
-
-	s.Store.ForEach(BucketContracts, func(txID []byte, encoded []byte) error {
-		if i >= offset && uint64(len(page)) < pageSize {
-			account := NewAccount(writeBytes(ContractID(string(txID))))
-			err := account.Unmarshal(encoded)
-			if err != nil {
-				err := errors.Wrapf(err, "failed to decode contract bytes")
-				log.Error().Err(err).Msg("")
-				return err
-			}
-
-			contractCode, ok := account.Load(params.KeyContractCode)
-			if !ok {
-				err := errors.Errorf("contract ID %s has no contract code", txID)
-				log.Error().Err(err).Msg("")
-				return err
-			}
-
-			contract := &Contract{
-				TransactionID: string(txID),
-				Code:          contractCode,
-			}
-
-			page = append(page, contract)
+		if offset > size || pageSize == 0 {
+			return nil
 		}
 
-		i++
+		if offset+pageSize > size {
+			pageSize = size - offset
+		}
 
-		return nil
-	})
+		var page []*Contract
 
-	return page
+		i := uint64(0)
+
+		s.Store.ForEach(BucketContracts, func(txID []byte, encoded []byte) error {
+			if i >= offset && uint64(len(page)) < pageSize {
+				account := NewAccount(writeBytes(ContractID(string(txID))))
+				err := account.Unmarshal(encoded)
+				if err != nil {
+					err := errors.Wrapf(err, "failed to decode contract bytes")
+					log.Error().Err(err).Msg("")
+					return err
+				}
+
+				contractCode, ok := account.Load(params.KeyContractCode)
+				if !ok {
+					err := errors.Errorf("contract ID %s has no contract code", txID)
+					log.Error().Err(err).Msg("")
+					return err
+				}
+
+				contract := &Contract{
+					TransactionID: string(txID),
+					Code:          contractCode,
+				}
+
+				page = append(page, contract)
+			}
+
+			i++
+
+			return nil
+		})
+
+		return page
+	*/
 }

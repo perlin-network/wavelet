@@ -246,6 +246,29 @@ func main() {
 				return nil
 			},
 		},
+		{
+			Name:  "execute_contract",
+			Usage: "executes a contract",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+
+				contractID := c.Args().Get(0)
+				entry := c.Args().Get(1)
+				param := c.Args().Get(2)
+
+				result, err := client.ExecuteContract(contractID, entry, []byte(param))
+				if err != nil {
+					return err
+				}
+
+				fmt.Println(string(result.Result))
+				return nil
+			},
+		},
 	}
 
 	sort.Sort(cli.FlagsByName(app.Flags))

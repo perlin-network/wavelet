@@ -5,6 +5,7 @@ import (
 
 	"github.com/perlin-network/life/exec"
 
+	"github.com/perlin-network/graph/database"
 	"github.com/pkg/errors"
 )
 
@@ -14,46 +15,60 @@ type Contract struct {
 	Code          []byte `json:"code,omitempty"`
 }
 
-type ContractExecutor struct {
-	GasTable               map[string]int64
-	GasLimit               uint64
-	Code                   []byte
-	GetActivationReason    func() []byte
-	GetActivationReasonLen func() int
-	GetDataItem            func(key string) []byte          // can panic
-	GetDataItemLen         func(key string) int             // can panic
-	SetDataItem            func(key string, val []byte)     // can panic
-	QueueTransaction       func(tag string, payload []byte) // can panic
+type contractExecutor struct {
+	contractGasPolicy
+
+	contract *Account
+	sender   []byte
+	payload  []byte
+	pending  []*database.Transaction
 }
 
-func (e *ContractExecutor) Run() error {
-	vm, err := exec.NewVirtualMachine(e.Code, exec.VMConfig{
-		DefaultMemoryPages:   128,
-		DefaultTableSize:     65536,
-		GasLimit:             e.GasLimit,
-		DisableFloatingPoint: true,
-	}, e, e)
+func newContractExecutor(contract *Account, sender []byte, payload []byte, gasPolicy contractGasPolicy) contractExecutor {
+	return contractExecutor{
+		contractGasPolicy: gasPolicy,
+
+		sender:   sender,
+		payload:  payload,
+		contract: contract,
+	}
+}
+
+func (c contractExecutor) run(code []byte, entry string) error {
+	vm, err := exec.NewVirtualMachine(code, exec.VMConfig{
+		DefaultMemoryPages: 1238,
+		DefaultTableSize:   65536,
+		GasLimit:           c.gasLimit,
+	}, c, c)
+
 	if err != nil {
 		return err
 	}
 
-	entryID, ok := vm.GetFunctionExport("contract_main")
-	if !ok {
-		return errors.Errorf("contract_main not found")
+	entryID, exists := vm.GetFunctionExport(entry)
+	if !exists {
+		return errors.Errorf("entry point `%s` not found", entry)
 	}
+
 	_, err = vm.Run(entryID)
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
-func (e *ContractExecutor) GetCost(name string) int64 {
-	if e.GasTable == nil {
+type contractGasPolicy struct {
+	gasTable map[string]int64
+	gasLimit uint64
+}
+
+func (c contractGasPolicy) GetCost(name string) int64 {
+	if c.gasTable == nil {
 		return 1
 	}
 
-	if v, ok := e.GasTable[name]; ok {
+	if v, ok := c.gasTable[name]; ok {
 		return v
 	}
 
@@ -62,7 +77,7 @@ func (e *ContractExecutor) GetCost(name string) int64 {
 	return 1
 }
 
-func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport {
+func (c contractExecutor) ResolveFunc(module, field string) exec.FunctionImport {
 	switch module {
 	case "env":
 		switch field {
@@ -73,6 +88,7 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 		case "_send_transaction":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
+
 				tagPtr := int(uint32(frame.Locals[0]))
 				tagLen := int(uint32(frame.Locals[1]))
 				payloadPtr := int(uint32(frame.Locals[2]))
@@ -81,19 +97,30 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				tag := string(vm.Memory[tagPtr : tagPtr+tagLen])
 				payload := vm.Memory[payloadPtr : payloadPtr+payloadLen]
 
-				e.QueueTransaction(tag, payload)
+				c.pending = append(c.pending, &database.Transaction{
+					Sender:  c.contract.PublicKeyHex(),
+					Tag:     tag,
+					Payload: payload,
+				})
+
 				return 0
 			}
 		case "_set":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
+
 				keyPtr := int(uint32(frame.Locals[0]))
 				keyLen := int(uint32(frame.Locals[1]))
 				valPtr := int(uint32(frame.Locals[2]))
 				valLen := int(uint32(frame.Locals[3]))
+
 				key := string(vm.Memory[keyPtr : keyPtr+keyLen])
 				val := vm.Memory[valPtr : valPtr+valLen]
-				e.SetDataItem(key, val)
+
+				valCopy := make([]byte, len(val))
+				copy(valCopy, val)
+
+				c.contract.Store(string(merge(ContractCustomStatePrefix, writeBytes(key))), valCopy)
 				return 0
 			}
 		case "_get_len":
@@ -102,27 +129,47 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				keyPtr := int(uint32(frame.Locals[0]))
 				keyLen := int(uint32(frame.Locals[1]))
 				key := string(vm.Memory[keyPtr : keyPtr+keyLen])
-				return int64(e.GetDataItemLen(key))
+
+				data, _ := c.contract.Load(writeString(merge(ContractCustomStatePrefix, writeBytes(key))))
+				return int64(len(data))
 			}
 		case "_get":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
+
 				keyPtr := int(uint32(frame.Locals[0]))
 				keyLen := int(uint32(frame.Locals[1]))
 				outPtr := int(uint32(frame.Locals[2]))
+
 				key := string(vm.Memory[keyPtr : keyPtr+keyLen])
-				copy(vm.Memory[outPtr:], e.GetDataItem(key))
+
+				data, _ := c.contract.Load(writeString(merge(ContractCustomStatePrefix, writeBytes(key))))
+				copy(vm.Memory[outPtr:], data)
+
 				return 0
 			}
-		case "_reason_len":
+		case "_sender_id_len":
 			return func(vm *exec.VirtualMachine) int64 {
-				return int64(e.GetActivationReasonLen())
+				return int64(len(c.sender))
 			}
-		case "_reason":
+		case "_sender_id":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
+
 				outPtr := int(uint32(frame.Locals[0]))
-				copy(vm.Memory[outPtr:], e.GetActivationReason())
+				copy(vm.Memory[outPtr:], c.sender)
+				return 0
+			}
+		case "_payload_len":
+			return func(vm *exec.VirtualMachine) int64 {
+				return int64(len(c.payload))
+			}
+		case "_payload":
+			return func(vm *exec.VirtualMachine) int64 {
+				frame := vm.GetCurrentFrame()
+
+				outPtr := int(uint32(frame.Locals[0]))
+				copy(vm.Memory[outPtr:], c.payload)
 				return 0
 			}
 		default:
@@ -133,6 +180,6 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 	}
 }
 
-func (e *ContractExecutor) ResolveGlobal(module, field string) int64 {
+func (c contractExecutor) ResolveGlobal(module, field string) int64 {
 	panic("no global variables")
 }
