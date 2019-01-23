@@ -378,7 +378,7 @@ func runServer(c *Config) (*node.Wavelet, error) {
 				})
 			}
 		}
-		go api.Run(net, w, api.Options{
+		go api.Run(net, w, nil, api.Options{
 			ListenAddr: fmt.Sprintf("%s:%d", c.APIHost, c.APIPort),
 			Clients:    clients,
 		})

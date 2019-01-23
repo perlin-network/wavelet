@@ -47,7 +47,7 @@ func (s *service) init(mux *http.ServeMux) {
 }
 
 // Run runs the API server with a specified set of options.
-func Run(net *network.Network, wavelet node.NodeInterface, opts Options) {
+func Run(net *network.Network, wavelet node.NodeInterface, server *http.Server, opts Options) {
 	if wavelet == nil {
 		panic("ledger plugin not found")
 	}
@@ -86,7 +86,7 @@ func Run(net *network.Network, wavelet node.NodeInterface, opts Options) {
 
 	handler := cors.AllowAll().Handler(mux)
 
-	server := &http.Server{
+	server = &http.Server{
 		Addr:    opts.ListenAddr,
 		Handler: handler,
 	}
@@ -94,4 +94,5 @@ func Run(net *network.Network, wavelet node.NodeInterface, opts Options) {
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatal().Err(err).Msg(" ")
 	}
+
 }

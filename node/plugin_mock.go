@@ -7,7 +7,6 @@ import (
 )
 
 var _ NodeInterface = (*WaveletMock)(nil)
-var MockPluginID = (*WaveletMock)(nil)
 
 type MockOptions struct {
 }
