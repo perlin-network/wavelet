@@ -22,6 +22,7 @@ import (
 )
 
 var _ network.PluginInterface = (*Wavelet)(nil)
+var _ NodeInterface = (*Wavelet)(nil)
 var PluginID = (*Wavelet)(nil)
 
 type Options struct {

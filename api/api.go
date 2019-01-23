@@ -16,7 +16,7 @@ import (
 type service struct {
 	clients  map[string]*ClientInfo
 	registry *registry
-	wavelet  *node.Wavelet
+	wavelet  node.NodeInterface
 	network  *network.Network
 	upgrader websocket.Upgrader
 }
@@ -47,9 +47,8 @@ func (s *service) init(mux *http.ServeMux) {
 }
 
 // Run runs the API server with a specified set of options.
-func Run(net *network.Network, opts Options) {
-	plugin, exists := net.Plugin(node.PluginID)
-	if !exists {
+func Run(net *network.Network, wavelet node.NodeInterface, opts Options) {
+	if wavelet == nil {
 		panic("ledger plugin not found")
 	}
 
@@ -72,7 +71,7 @@ func Run(net *network.Network, opts Options) {
 	service := &service{
 		clients:  clients,
 		registry: newSessionRegistry(),
-		wavelet:  plugin.(*node.Wavelet),
+		wavelet:  wavelet,
 		network:  net,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(r *http.Request) bool {
