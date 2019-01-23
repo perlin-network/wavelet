@@ -41,5 +41,5 @@ func (p *StakeProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) err
 		acct.SetBalance(acct.GetBalance() + delta)
 	}
 
-	return ctx.Reward()
+	return nil
 }

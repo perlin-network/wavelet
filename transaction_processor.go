@@ -8,7 +8,6 @@ import (
 )
 
 type TransactionContext struct {
-	rewarded            bool
 	ledger              *Ledger
 	accounts            map[string]*Account
 	pendingTransactions []*database.Transaction
@@ -34,12 +33,7 @@ func (c *TransactionContext) SendTransaction(tx *database.Transaction) {
 	c.pendingTransactions = append(c.pendingTransactions, tx)
 }
 
-func (c *TransactionContext) Reward() error {
-	if c.rewarded {
-		return nil
-	}
-	c.rewarded = true
-
+func (c *TransactionContext) reward() error {
 	rewardee, err := c.ledger.randomlySelectValidator(c.firstTx, params.ValidatorRewardAmount, params.ValidatorRewardDepth)
 	if err != nil {
 		return err
@@ -90,6 +84,10 @@ func (c *TransactionContext) run(processor TransactionProcessor) error {
 		}
 		pending = c.pendingTransactions
 		c.pendingTransactions = nil
+	}
+
+	if err := c.reward(); err != nil {
+		return err
 	}
 
 	for _, acct := range c.accounts {

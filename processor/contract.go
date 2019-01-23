@@ -13,5 +13,5 @@ func (p *CreateContractProcessor) OnApplyTransaction(ctx *wavelet.TransactionCon
 	contract := ctx.NewAccount(contractID)
 	contract.Store(params.KeyContractCode, ctx.Tx.Payload)
 
-	return ctx.Reward()
+	return nil
 }

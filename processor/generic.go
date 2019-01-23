@@ -51,5 +51,5 @@ func (p *GenericProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) e
 		}
 	}
 
-	return ctx.Reward()
+	return nil
 }
