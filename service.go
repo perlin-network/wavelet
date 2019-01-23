@@ -293,8 +293,6 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 			return func(vm *exec.VirtualMachine) int64 {
 				contractIDPtr := int(uint32(vm.GetCurrentFrame().Locals[0]))
 				contractIDLen := int(uint32(vm.GetCurrentFrame().Locals[1]))
-				reasonPtr := int(uint32(vm.GetCurrentFrame().Locals[2]))
-				reasonLen := int(uint32(vm.GetCurrentFrame().Locals[3]))
 
 				encodedContractID := string(vm.Memory[contractIDPtr : contractIDPtr+contractIDLen])
 
@@ -321,36 +319,11 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 					return int64(InternalProcessOk)
 				}
 
-				reason := vm.Memory[reasonPtr : reasonPtr+reasonLen]
-
 				var localNewTx []*database.Transaction
 
-				executor := &ContractExecutor{
-					GasTable: nil,
-					GasLimit: 100000, // TODO: Set the limit properly
-					Code:     contractCode,
-					QueueTransaction: func(tag string, payload []byte) {
-						tx := &database.Transaction{
-							Sender:  encodedContractID,
-							Tag:     tag,
-							Payload: payload,
-						}
-						localNewTx = append(localNewTx, tx)
-					},
-					GetActivationReasonLen: func() int { return len(reason) },
-					GetActivationReason:    func() []byte { return reason },
-					GetDataItemLen: func(key string) int {
-						return len(s.accountQuery(writeString(contractID), string(merge(ContractCustomStatePrefix, writeBytes(key)))))
-					},
-					GetDataItem: func(key string) []byte {
-						return s.accountQuery(writeString(contractID), string(merge(ContractCustomStatePrefix, writeBytes(key))))
-					},
-					SetDataItem: func(key string, val []byte) {
-						s.accountWrite(writeString(contractID), string(merge(ContractCustomStatePrefix, writeBytes(key))), val)
-					},
-				}
+				executor := newContractExecutor(s.account, senderID, s.tx.Payload, contractGasPolicy{nil, 100000})
 
-				err = executor.Run()
+				err = executor.run(contractCode, "contract_main")
 				if err != nil {
 					log.Warn().Err(err).Msg("smart contract exited with error")
 					return int64(InternalProcessOk)
@@ -367,7 +340,7 @@ func (s *service) ResolveFunc(module, field string) exec.FunctionImport {
 				}
 
 				if bytes.HasPrefix(senderID, ContractPrefix) {
-					return int64(InternalProcessErr) // a contract cannot create another one
+					return int64(InternalProcessErr) // a Contract cannot create another one
 				}
 
 				contractID := ContractID(s.tx.Id)

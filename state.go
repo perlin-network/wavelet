@@ -492,7 +492,7 @@ func (s *state) LoadContract(txID string) ([]byte, error) {
 
 	contractCode, ok := account.Load(params.KeyContractCode)
 	if !ok {
-		return nil, errors.Errorf("contract ID %s has no contract code", txID)
+		return nil, errors.Errorf("contract ID %s has no code", txID)
 	}
 	return contractCode, nil
 }
