@@ -86,7 +86,7 @@ func (w *Wavelet) Startup(net *network.Network) {
 
 	ledger := wavelet.NewLedger(w.opts.DatabasePath, w.opts.GenesisPath)
 	ledger.RegisterTransactionProcessor(params.TagNop, &processor.NopProcessor{})
-	ledger.RegisterTransactionProcessor(params.TagGeneric, &processor.GenericProcessor{})
+	ledger.RegisterTransactionProcessor(params.TagGeneric, &processor.TransferProcessor{})
 	ledger.RegisterTransactionProcessor(params.TagCreateContract, &processor.CreateContractProcessor{})
 	ledger.RegisterTransactionProcessor(params.TagStake, &processor.StakeProcessor{})
 

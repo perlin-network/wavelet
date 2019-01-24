@@ -443,7 +443,7 @@ func runShell(w *node.Wavelet) error {
 			var account *wavelet.Account
 
 			w.Ledger.Do(func(l *wavelet.Ledger) {
-				account = wavelet.NewAccount(l, accountID)
+				account = wavelet.LoadAccount(l.Accounts, accountID)
 			})
 
 			if err != nil {
@@ -481,6 +481,47 @@ func runShell(w *node.Wavelet) error {
 			payload := make([]byte, 40)
 			copy(payload[:32], recipientDecoded)
 			binary.LittleEndian.PutUint64(payload[32:], uint64(amount))
+
+			if len(cmd) >= 5 {
+				pb := wavelet.NewPayloadBuilder()
+				pb.WriteUTF8String(cmd[3])
+
+				invPb := wavelet.NewPayloadBuilder()
+				for i := 4; i < len(cmd); i++ {
+					arg := cmd[i]
+					switch arg[0] {
+					case 'S':
+						invPb.WriteUTF8String(arg[1:])
+					case 'B':
+						invPb.WriteBytes([]byte(arg[1:]))
+					case '1', '2', '4', '8':
+						var val uint64
+						fmt.Sscanf(arg[1:], "%d", &val)
+						switch arg[0] {
+						case '1':
+							invPb.WriteByte(byte(val))
+						case '2':
+							invPb.WriteUint16(uint16(val))
+						case '4':
+							invPb.WriteUint32(uint32(val))
+						case '8':
+							invPb.WriteUint64(uint64(val))
+						}
+					case 'H':
+						b, err := hex.DecodeString(arg[1:])
+						if err != nil {
+							log.Fatal().Err(err).Msgf("cannot decode hex: %s", arg[1:])
+						}
+						invPb.WriteBytes(b)
+					default:
+						log.Fatal().Msgf("invalid arg: %s", arg)
+					}
+				}
+
+				pb.WriteBytes(invPb.Build())
+
+				payload = append(payload, pb.Build()...)
+			}
 
 			wired := w.MakeTransaction(params.TagGeneric, payload)
 			go w.BroadcastTransaction(wired)
@@ -553,7 +594,7 @@ func runShell(w *node.Wavelet) error {
 			wired := w.MakeTransaction(params.TagCreateContract, bytes)
 			go w.BroadcastTransaction(wired)
 
-			log.Info().Msgf("Success! Your smart contract ID: %s", hex.EncodeToString([]byte(wavelet.ContractID(graph.Symbol(wired)))))
+			log.Info().Msgf("Success! Your smart contract ID: %s", hex.EncodeToString(wavelet.ContractID(graph.Symbol(wired))))
 		case "tx":
 			if len(cmd) < 2 {
 				continue

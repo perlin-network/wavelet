@@ -11,22 +11,24 @@ type TransactionContext struct {
 	ledger              *Ledger
 	accounts            map[string]*Account
 	pendingTransactions []*database.Transaction
-	Tx                  *database.Transaction
 	firstTx             *database.Transaction
+
+	Transaction *database.Transaction
 }
 
 type TransactionProcessor interface {
 	OnApplyTransaction(ctx *TransactionContext) error
 }
 
-func (c *TransactionContext) NewAccount(publicKey string) *Account {
-	if acct, ok := c.accounts[publicKey]; ok {
-		return acct
+func (c *TransactionContext) LoadAccount(publicKey []byte) *Account {
+	if account, ok := c.accounts[writeString(publicKey)]; ok {
+		return account
 	}
 
-	acct := NewAccount(c.ledger, []byte(publicKey))
-	c.accounts[publicKey] = acct
-	return acct
+	account := LoadAccount(c.ledger.Accounts, publicKey)
+	c.accounts[writeString(publicKey)] = account
+
+	return account
 }
 
 func (c *TransactionContext) SendTransaction(tx *database.Transaction) {
@@ -43,13 +45,14 @@ func (c *TransactionContext) reward() error {
 	if err != nil {
 		return err
 	}
-	sender := c.NewAccount(string(firstSenderID))
+	sender := c.LoadAccount(firstSenderID)
 
 	rewardeeID, err := hex.DecodeString(rewardee)
 	if err != nil {
 		return err
 	}
-	recipient := c.NewAccount(string(rewardeeID))
+
+	recipient := c.LoadAccount(rewardeeID)
 
 	deducted := params.ValidatorRewardAmount
 	if sender.GetBalance() < deducted {
@@ -64,19 +67,19 @@ func (c *TransactionContext) reward() error {
 
 func newTransactionContext(ledger *Ledger, tx *database.Transaction) *TransactionContext {
 	return &TransactionContext{
-		ledger:   ledger,
-		accounts: make(map[string]*Account),
-		Tx:       tx,
-		firstTx:  tx,
+		ledger:      ledger,
+		accounts:    make(map[string]*Account),
+		Transaction: tx,
+		firstTx:     tx,
 	}
 }
 
 func (c *TransactionContext) run(processor TransactionProcessor) error {
-	pending := []*database.Transaction{c.Tx}
+	pending := []*database.Transaction{c.Transaction}
 
 	for len(pending) > 0 {
 		for _, tx := range pending {
-			c.Tx = tx
+			c.Transaction = tx
 			err := processor.OnApplyTransaction(c)
 			if err != nil {
 				return errors.Wrap(err, "failed to apply transaction")
@@ -90,8 +93,8 @@ func (c *TransactionContext) run(processor TransactionProcessor) error {
 		return err
 	}
 
-	for _, acct := range c.accounts {
-		acct.writeback()
+	for _, account := range c.accounts {
+		c.ledger.Accounts.save(account)
 	}
 	return nil
 }
