@@ -15,18 +15,18 @@ type TransferProcessor struct {
 const TransferPayloadSize = 32 + 8
 
 func (p *TransferProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) error {
-	senderID, err := hex.DecodeString(ctx.Tx.Sender)
+	senderID, err := hex.DecodeString(ctx.Transaction.Sender)
 	if err != nil {
 		return err
 	}
 	sender := ctx.LoadAccount(senderID)
 
-	if len(ctx.Tx.Payload) < TransferPayloadSize {
+	if len(ctx.Transaction.Payload) < TransferPayloadSize {
 		return errors.New("payload is too short")
 	}
 
-	recipient := ctx.LoadAccount(ctx.Tx.Payload[:TransferPayloadSize-8])
-	amount := binary.LittleEndian.Uint64(ctx.Tx.Payload[TransferPayloadSize-8 : TransferPayloadSize])
+	recipient := ctx.LoadAccount(ctx.Transaction.Payload[:TransferPayloadSize-8])
+	amount := binary.LittleEndian.Uint64(ctx.Transaction.Payload[TransferPayloadSize-8 : TransferPayloadSize])
 
 	if sender.GetBalance() < amount {
 		return errors.Errorf("no enough balance, wanting %d PERLs", amount)
@@ -37,12 +37,12 @@ func (p *TransferProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) 
 
 	if _, ok := recipient.Load(params.KeyContractCode); ok {
 		payloadHeaderBuilder := wavelet.NewPayloadBuilder()
-		payloadHeaderBuilder.WriteBytes([]byte(ctx.Tx.Id))
+		payloadHeaderBuilder.WriteBytes([]byte(ctx.Transaction.Id))
 		payloadHeaderBuilder.WriteBytes(senderID)
 		payloadHeaderBuilder.WriteUint64(amount)
 
-		if len(ctx.Tx.Payload[TransferPayloadSize:]) > 0 {
-			reader := wavelet.NewPayloadReader(ctx.Tx.Payload[TransferPayloadSize:])
+		if len(ctx.Transaction.Payload[TransferPayloadSize:]) > 0 {
+			reader := wavelet.NewPayloadReader(ctx.Transaction.Payload[TransferPayloadSize:])
 			name, err := reader.ReadUTF8String()
 			if err != nil {
 				return err

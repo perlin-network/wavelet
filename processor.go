@@ -11,8 +11,9 @@ type TransactionContext struct {
 	ledger              *Ledger
 	accounts            map[string]*Account
 	pendingTransactions []*database.Transaction
-	Tx                  *database.Transaction
 	firstTx             *database.Transaction
+
+	Transaction *database.Transaction
 }
 
 type TransactionProcessor interface {
@@ -66,19 +67,19 @@ func (c *TransactionContext) reward() error {
 
 func newTransactionContext(ledger *Ledger, tx *database.Transaction) *TransactionContext {
 	return &TransactionContext{
-		ledger:   ledger,
-		accounts: make(map[string]*Account),
-		Tx:       tx,
-		firstTx:  tx,
+		ledger:      ledger,
+		accounts:    make(map[string]*Account),
+		Transaction: tx,
+		firstTx:     tx,
 	}
 }
 
 func (c *TransactionContext) run(processor TransactionProcessor) error {
-	pending := []*database.Transaction{c.Tx}
+	pending := []*database.Transaction{c.Transaction}
 
 	for len(pending) > 0 {
 		for _, tx := range pending {
-			c.Tx = tx
+			c.Transaction = tx
 			err := processor.OnApplyTransaction(c)
 			if err != nil {
 				return errors.Wrap(err, "failed to apply transaction")
