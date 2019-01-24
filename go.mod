@@ -25,7 +25,3 @@ require (
 )
 
 replace github.com/go-interpreter/wagon => github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39
-
-replace github.com/perlin-network/graph => ../graph
-
-replace github.com/perlin-network/pem-avl => ../pem-avl
