@@ -11,7 +11,7 @@ type Accounts struct {
 	tree  *pem_avl.Tree
 }
 
-func (accounts *Accounts) Save(account *Account) {
+func (accounts *Accounts) save(account *Account) {
 	accounts.store.Put(merge(BucketAccountIDs, account.publicKey), []byte{0x01})
 
 	// Flush changes to persistent AVL trees.

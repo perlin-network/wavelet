@@ -19,6 +19,8 @@ var (
 	ContractPagePrefix        = "CP-"
 )
 
+const PageSize = 65536
+
 // Contract represents a smart contract on Perlin.
 type Contract struct {
 	TransactionID string `json:"transaction_id,omitempty"`
@@ -53,14 +55,14 @@ func (c *ContractExecutor) getMemorySnapshot() ([]byte, error) {
 		return nil, nil
 	}
 
-	mem := make([]byte, 65536*contractPageNum)
+	mem := make([]byte, PageSize*contractPageNum)
 	for i := 0; i < contractPageNum; i++ {
 		page, _ := c.contract.Load(fmt.Sprintf("%s%d", ContractPagePrefix, i))
 		if len(page) > 0 { // zero-filled by default
-			if len(page) != 65536 {
-				return nil, errors.Errorf("page %d has a size of %d != 65536", i, len(page))
+			if len(page) != PageSize {
+				return nil, errors.Errorf("page %d has a size of %d != PageSize", i, len(page))
 			}
-			copy(mem[65536*i:65536*(i+1)], page)
+			copy(mem[PageSize*i:PageSize*(i+1)], page)
 		}
 	}
 
@@ -68,7 +70,7 @@ func (c *ContractExecutor) getMemorySnapshot() ([]byte, error) {
 }
 
 func (c *ContractExecutor) setMemorySnapshot(mem []byte) {
-	newPageNum := len(mem) / 65536
+	newPageNum := len(mem) / PageSize
 	c.contract.SetUint64Field(KeyContractPageNum, uint64(newPageNum))
 
 	for i := 0; i < newPageNum; i++ {
@@ -77,12 +79,12 @@ func (c *ContractExecutor) setMemorySnapshot(mem []byte) {
 
 		identical := true
 
-		for j := 0; j < 65536; j++ {
-			if len(oldContent) == 0 && mem[i*65536+j] != 0 {
+		for j := 0; j < PageSize; j++ {
+			if len(oldContent) == 0 && mem[i*PageSize+j] != 0 {
 				identical = false
 				break
 			}
-			if len(oldContent) != 0 && mem[i*65536+j] != oldContent[j] {
+			if len(oldContent) != 0 && mem[i*PageSize+j] != oldContent[j] {
 				identical = false
 				break
 			}
@@ -90,8 +92,8 @@ func (c *ContractExecutor) setMemorySnapshot(mem []byte) {
 
 		if !identical {
 			allZero := true
-			for j := 0; j < 65536; j++ {
-				if mem[i*65536+j] != 0 {
+			for j := 0; j < PageSize; j++ {
+				if mem[i*PageSize+j] != 0 {
 					allZero = false
 					break
 				}
@@ -99,7 +101,7 @@ func (c *ContractExecutor) setMemorySnapshot(mem []byte) {
 			if allZero {
 				c.contract.Store(pageKey, []byte{})
 			} else {
-				c.contract.Store(pageKey, mem[i*65536:(i+1)*65536])
+				c.contract.Store(pageKey, mem[i*PageSize:(i+1)*PageSize])
 			}
 		}
 	}
@@ -111,8 +113,8 @@ func (c *ContractExecutor) newVirtualMachine() (*exec.VirtualMachine, error) {
 		DefaultMemoryPages: 16,
 		MaxMemoryPages:     32,
 
-		DefaultTableSize: 65536,
-		MaxTableSize:     65536,
+		DefaultTableSize: PageSize,
+		MaxTableSize:     PageSize,
 
 		MaxValueSlots:     4096,
 		MaxCallStackDepth: 256,

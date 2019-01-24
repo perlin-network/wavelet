@@ -94,7 +94,7 @@ func (c *TransactionContext) run(processor TransactionProcessor) error {
 	}
 
 	for _, account := range c.accounts {
-		c.ledger.Accounts.Save(account)
+		c.ledger.Accounts.save(account)
 	}
 	return nil
 }

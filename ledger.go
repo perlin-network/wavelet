@@ -77,7 +77,7 @@ func NewLedger(databasePath, genesisPath string) *Ledger {
 			}
 
 			for _, account := range genesis {
-				ledger.Accounts.Save(account)
+				ledger.Accounts.save(account)
 			}
 
 			log.Info().Str("file", genesisPath).Int("num_accounts", len(genesis)).Msg("Successfully seeded the genesis of this node.")
