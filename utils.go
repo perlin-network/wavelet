@@ -3,9 +3,54 @@ package wavelet
 import (
 	"crypto/sha1"
 	"encoding/binary"
+	"github.com/perlin-network/graph/database"
+	"github.com/perlin-network/pem-avl"
 	"reflect"
 	"unsafe"
 )
+
+type prefixedStore struct {
+	database.Store
+
+	prefix []byte
+}
+
+var _ pem_avl.KVStore = (*prefixedStore)(nil)
+
+func newPrefixedStore(store database.Store, prefix []byte) prefixedStore {
+	return prefixedStore{Store: store, prefix: prefix}
+}
+
+func (s prefixedStore) Get(key []byte) []byte {
+	ret, _ := s.Store.Get(merge(s.prefix, key))
+	return ret
+}
+
+func (s prefixedStore) Has(key []byte) bool {
+	ok, err := s.Store.Has(merge(s.prefix, key))
+
+	if err != nil {
+		panic(err)
+	}
+
+	return ok
+}
+
+func (s prefixedStore) Set(key []byte, value []byte) {
+	err := s.Store.Put(merge(s.prefix, key), value)
+
+	if err != nil {
+		panic(err)
+	}
+}
+
+func (s prefixedStore) Delete(key []byte) {
+	err := s.Store.Delete(merge(s.prefix, key))
+
+	if err != nil {
+		panic(err)
+	}
+}
 
 // writeBytes converts string to a byte slice without memory allocation.
 //

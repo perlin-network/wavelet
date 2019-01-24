@@ -19,14 +19,15 @@ type TransactionProcessor interface {
 	OnApplyTransaction(ctx *TransactionContext) error
 }
 
-func (c *TransactionContext) NewAccount(publicKey string) *Account {
-	if acct, ok := c.accounts[publicKey]; ok {
-		return acct
+func (c *TransactionContext) LoadAccount(publicKey []byte) *Account {
+	if account, ok := c.accounts[writeString(publicKey)]; ok {
+		return account
 	}
 
-	acct := NewAccount(c.ledger, []byte(publicKey))
-	c.accounts[publicKey] = acct
-	return acct
+	account := LoadAccount(c.ledger.Accounts, publicKey)
+	c.accounts[writeString(publicKey)] = account
+
+	return account
 }
 
 func (c *TransactionContext) SendTransaction(tx *database.Transaction) {
@@ -43,13 +44,14 @@ func (c *TransactionContext) reward() error {
 	if err != nil {
 		return err
 	}
-	sender := c.NewAccount(string(firstSenderID))
+	sender := c.LoadAccount(firstSenderID)
 
 	rewardeeID, err := hex.DecodeString(rewardee)
 	if err != nil {
 		return err
 	}
-	recipient := c.NewAccount(string(rewardeeID))
+
+	recipient := c.LoadAccount(rewardeeID)
 
 	deducted := params.ValidatorRewardAmount
 	if sender.GetBalance() < deducted {
@@ -90,8 +92,8 @@ func (c *TransactionContext) run(processor TransactionProcessor) error {
 		return err
 	}
 
-	for _, acct := range c.accounts {
-		acct.writeback()
+	for _, account := range c.accounts {
+		c.ledger.Accounts.Save(account)
 	}
 	return nil
 }

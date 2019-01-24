@@ -8,22 +8,25 @@ import (
 	"github.com/pkg/errors"
 )
 
-type GenericProcessor struct {
+type TransferProcessor struct {
 }
 
-func (p *GenericProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) error {
+// 32 (recipient) + 8 (amount)
+const TransferPayloadSize = 32 + 8
+
+func (p *TransferProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) error {
 	senderID, err := hex.DecodeString(ctx.Tx.Sender)
 	if err != nil {
 		return err
 	}
-	sender := ctx.NewAccount(string(senderID))
+	sender := ctx.LoadAccount(senderID)
 
-	if len(ctx.Tx.Payload) < 40 /* 32 (recipient) + 8 (amount) */ {
+	if len(ctx.Tx.Payload) < TransferPayloadSize {
 		return errors.New("payload is too short")
 	}
 
-	recipient := ctx.NewAccount(string(ctx.Tx.Payload[:32]))
-	amount := binary.LittleEndian.Uint64(ctx.Tx.Payload[32:40])
+	recipient := ctx.LoadAccount(ctx.Tx.Payload[:TransferPayloadSize-8])
+	amount := binary.LittleEndian.Uint64(ctx.Tx.Payload[TransferPayloadSize-8 : TransferPayloadSize])
 
 	if sender.GetBalance() < amount {
 		return errors.Errorf("no enough balance, wanting %d PERLs", amount)
@@ -38,8 +41,8 @@ func (p *GenericProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) e
 		payloadHeaderBuilder.WriteBytes(senderID)
 		payloadHeaderBuilder.WriteUint64(amount)
 
-		if len(ctx.Tx.Payload[40:]) > 0 {
-			reader := wavelet.NewPayloadReader(ctx.Tx.Payload[40:])
+		if len(ctx.Tx.Payload[TransferPayloadSize:]) > 0 {
+			reader := wavelet.NewPayloadReader(ctx.Tx.Payload[TransferPayloadSize:])
 			name, err := reader.ReadUTF8String()
 			if err != nil {
 				return err

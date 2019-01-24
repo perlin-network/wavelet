@@ -21,7 +21,8 @@ func (p *StakeProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) err
 	if err != nil {
 		return err
 	}
-	acct := ctx.NewAccount(string(senderID))
+
+	acct := ctx.LoadAccount(senderID)
 
 	if delta >= 0 {
 		delta := uint64(delta)

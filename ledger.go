@@ -44,7 +44,7 @@ type Ledger struct {
 	stepping               bool
 	lastUpdateAcceptedTime time.Time
 
-	accountList *AccountList
+	Accounts *Accounts
 }
 
 func NewLedger(databasePath, genesisPath string) *Ledger {
@@ -63,7 +63,7 @@ func NewLedger(databasePath, genesisPath string) *Ledger {
 		kill: make(chan struct{}),
 	}
 
-	ledger.accountList = NewAccountList(ledger)
+	ledger.Accounts = newAccounts(*store)
 
 	ledger.state = state{Ledger: ledger}
 	ledger.rpc = rpc{Ledger: ledger}
@@ -77,7 +77,7 @@ func NewLedger(databasePath, genesisPath string) *Ledger {
 			}
 
 			for _, account := range genesis {
-				account.writeback()
+				ledger.Accounts.Save(account)
 			}
 
 			log.Info().Str("file", genesisPath).Int("num_accounts", len(genesis)).Msg("Successfully seeded the genesis of this node.")
@@ -381,7 +381,7 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 		return
 	}
 
-	ledger.accountList.SetRoot(stateRoot)
+	ledger.Accounts.SetRoot(stateRoot)
 
 	log.Debug().Str("key", symbol).Str("state_root", hex.EncodeToString(stateRoot)).Msg("Reverted transaction.")
 }

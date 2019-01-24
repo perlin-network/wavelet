@@ -443,7 +443,7 @@ func runShell(w *node.Wavelet) error {
 			var account *wavelet.Account
 
 			w.Ledger.Do(func(l *wavelet.Ledger) {
-				account = wavelet.NewAccount(l, accountID)
+				account = wavelet.LoadAccount(l.Accounts, accountID)
 			})
 
 			if err != nil {

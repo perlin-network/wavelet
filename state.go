@@ -15,11 +15,11 @@ import (
 )
 
 var (
-	BucketAccountList = []byte("acctlist_")
-	BucketAccounts    = []byte("account_")
-	BucketAccountIDs  = []byte("accountid_")
-	BucketPreStates   = []byte("prestates_")
-	BucketDeltas      = []byte("deltas_")
+	BucketAccountRoots = []byte("acctlist_")
+	BucketAccounts     = []byte("account_")
+	BucketAccountIDs   = []byte("accountid_")
+	BucketPreStates    = []byte("prestates_")
+	BucketDeltas       = []byte("deltas_")
 	//BucketContracts   = merge(BucketAccounts, ContractPrefix)
 )
 
@@ -78,7 +78,7 @@ func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64,
 			panic(err) // shouldn't happen?
 		}
 
-		account := NewAccount(s.Ledger, accountID)
+		account := LoadAccount(s.Ledger.Accounts, accountID)
 
 		stake, _ := account.Load("stake")
 		if stake == nil {
@@ -145,7 +145,7 @@ func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64,
 }
 
 func (s *state) ExecuteContract(txID string, entry string, param []byte) ([]byte, error) {
-	account := NewAccount(s.Ledger, writeBytes(txID))
+	account := LoadAccount(s.Ledger.Accounts, writeBytes(txID))
 
 	executor := NewContractExecutor(account, nil, param, ContractGasPolicy{nil, 100000})
 	err := executor.Run(entry)
@@ -160,7 +160,7 @@ func (s *state) ExecuteContract(txID string, entry string, param []byte) ([]byte
 // applyTransaction runs a transaction, gets any transactions created by said transaction, and
 // applies those transactions to the ledger state.
 func (s *state) applyTransaction(tx *database.Transaction) error {
-	s.Ledger.Store.Put(merge(BucketPreStates, []byte(tx.Id)), s.Ledger.accountList.GetRoot())
+	s.Ledger.Store.Put(merge(BucketPreStates, []byte(tx.Id)), s.Ledger.Accounts.GetRoot())
 
 	processor := s.processors[int(tx.Tag&0xff)]
 	if processor == nil {
@@ -235,7 +235,7 @@ func (s *state) Snapshot() map[string]interface{} {
 	json := make(map[string]interface{})
 
 	s.Store.ForEach(BucketAccountIDs, func(publicKey, _ []byte) error {
-		acct := NewAccount(s.Ledger, publicKey)
+		acct := LoadAccount(s.Ledger.Accounts, publicKey)
 
 		data := accountData{Nonce: acct.GetNonce(), State: make(map[string][]byte)}
 
@@ -257,7 +257,7 @@ func (s *state) Snapshot() map[string]interface{} {
 // LoadContract loads a smart contract from the database given its tx id.
 // The key in the database will be of the form "account_C-txID"
 func (s *state) LoadContract(txID string) ([]byte, error) {
-	account := NewAccount(s.Ledger, ContractID(txID))
+	account := LoadAccount(s.Ledger.Accounts, ContractID(txID))
 
 	contractCode, ok := account.Load(params.KeyContractCode)
 	if !ok {
@@ -287,7 +287,7 @@ func (s *state) PaginateContracts(offset, pageSize uint64) []*Contract {
 
 		s.Store.ForEach(BucketContracts, func(txID []byte, encoded []byte) error {
 			if i >= offset && uint64(len(page)) < pageSize {
-				account := NewAccount(writeBytes(ContractID(string(txID))))
+				account := LoadAccount(writeBytes(ContractID(string(txID))))
 				err := account.Unmarshal(encoded)
 				if err != nil {
 					err := errors.Wrapf(err, "failed to decode contract bytes")
