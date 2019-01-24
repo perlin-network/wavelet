@@ -303,17 +303,19 @@ func (s *service) ledgerStateHandler(ctx *requestContext) (int, interface{}, err
 		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
-	plugin, exists := s.network().Plugin(discovery.PluginID)
-	if !exists {
-		return http.StatusInternalServerError, nil, errors.New("peer discovery disabled")
-	}
+	state := &LedgerState{}
 
-	routes := plugin.(*discovery.Plugin).Routes
+	if s.network != nil {
+		plugin, exists := s.network.Plugin(discovery.PluginID)
+		if !exists {
+			return http.StatusInternalServerError, nil, errors.New("peer discovery disabled")
+		}
 
-	state := &LedgerState{
-		PublicKey: s.network().ID.PublicKeyHex(),
-		Address:   s.network().ID.Address,
-		Peers:     routes.GetPeerAddresses(),
+		routes := plugin.(*discovery.Plugin).Routes
+
+		state.PublicKey = s.network.ID.PublicKeyHex()
+		state.Address = s.network.ID.Address
+		state.Peers = routes.GetPeerAddresses()
 	}
 
 	s.wavelet.LedgerDo(func(ledger wavelet.LedgerInterface) {
