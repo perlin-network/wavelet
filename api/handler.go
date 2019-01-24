@@ -168,6 +168,40 @@ func (s *service) listTransactionHandler(ctx *requestContext) (int, interface{},
 	return http.StatusOK, transactions, nil
 }
 
+func (s *service) executeContractHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
+	}
+
+	if !ctx.session.Permissions.CanAccessLedger {
+		return http.StatusForbidden, nil, errors.New("permission denied")
+	}
+
+	var req ExecuteContractRequest
+	if err := ctx.readJSON(&req); err != nil {
+		return http.StatusBadRequest, nil, err
+	}
+
+	if err := validate.Struct(req); err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
+	}
+
+	var result []byte
+	var err error
+
+	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+		result, err = ledger.ExecuteContract(req.ContractID, req.Entry, req.Param)
+	})
+
+	if err != nil {
+		return http.StatusInternalServerError, nil, errors.Wrap(err, "contract exited with error")
+	} else {
+		return http.StatusOK, &ExecuteContractResponse{
+			Result: result,
+		}, nil
+	}
+}
+
 func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, error) {
 	if err := ctx.loadSession(); err != nil {
 		return http.StatusForbidden, nil, err
@@ -424,7 +458,7 @@ func (s *service) getAccountHandler(ctx *requestContext) (int, interface{}, erro
 	var account *wavelet.Account
 
 	s.wavelet.LedgerDo(func(ledger wavelet.LedgerInterface) {
-		account, err = ledger.LoadAccount(accountID)
+		account = wavelet.NewAccount(ledger.(*wavelet.Ledger), accountID)
 	})
 
 	if err != nil {

@@ -11,9 +11,10 @@ const (
 	RouteTransactionSend = "/transaction/send"
 	RouteTransaction     = "/transaction"
 
-	RouteContractSend = "/contract/send"
-	RouteContractGet  = "/contract/get"
-	RouteContractList = "/contract/list"
+	RouteContractSend    = "/contract/send"
+	RouteContractGet     = "/contract/get"
+	RouteContractList    = "/contract/list"
+	RouteContractExecute = "/contract/execute"
 
 	RouteStatsReset = "/stats/reset"
 

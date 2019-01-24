@@ -13,26 +13,33 @@ type CredentialsRequest struct {
 
 // ListTransactionsRequest retrieves paginated transactions based on a specified tag
 type ListTransactionsRequest struct {
-	Tag    *string `json:"tag"      validate:"omitempty,max=30"`
+	Tag    *uint32 `json:"tag"      validate:"omitempty,max=30"`
 	Offset *uint64 `json:"offset"`
 	Limit  *uint64 `json:"limit"    validate:"omitempty,max=1024"`
 }
 
 // SendTransactionRequest is the payload sent to send a transaction
 type SendTransactionRequest struct {
-	Tag     string `json:"tag"      validate:"required,max=30"`
+	Tag     uint32 `json:"tag"      validate:"required,max=30"`
 	Payload []byte `json:"payload"  validate:"required,max=1024"`
 }
 
 // GetContractRequest is the payload request to get a smart contract
 type GetContractRequest struct {
-	TransactionID string `json:"transaction_id" validate:"required,len=64"`
+	TransactionID string `json:"transaction_id" validate:"required"`
 }
 
 // ListContractsRequest retrieves paginated contracts
 type ListContractsRequest struct {
 	Offset *uint64 `json:"offset"`
 	Limit  *uint64 `json:"limit"    validate:"omitempty,max=1024"`
+}
+
+// ExecuteContractRequest executes a contract locally.
+type ExecuteContractRequest struct {
+	ContractID string `json:"contract_id" validate:"required"`
+	Entry      string `json:"entry_id" validate:"required,max=255"`
+	Param      []byte `json:"param"`
 }
 
 //------------------------
@@ -69,4 +76,8 @@ type LedgerState struct {
 type TransactionResponse struct {
 	TransactionID string `json:"transaction_id,omitempty"`
 	Code          []byte `json:"code,omitempty"`
+}
+
+type ExecuteContractResponse struct {
+	Result []byte `json:"result"`
 }

@@ -1,12 +1,6 @@
 package wavelet
 
-import (
-	"testing"
-
-	"encoding/binary"
-	"github.com/stretchr/testify/assert"
-)
-
+/*
 func readAccountBalance(acct *Account) uint64 {
 	val, ok := acct.Load("balance")
 	if !ok {
@@ -36,3 +30,4 @@ func TestMarshal(t *testing.T) {
 	b := account.MarshalBinary()
 	assert.NotEqual(t, 0, len(b), "serialized account should not be length 0")
 }
+*/

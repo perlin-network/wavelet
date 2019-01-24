@@ -1,6 +1,8 @@
 package wavelet
 
 import (
+	"bytes"
+	"encoding/hex"
 	"github.com/lytics/hll"
 	"github.com/perlin-network/graph/conflict"
 	"github.com/perlin-network/graph/database"
@@ -21,6 +23,8 @@ var (
 	BucketAcceptedIndex = writeBytes("i.accepted_")
 
 	BucketAcceptPending = writeBytes("p.accepted_")
+
+	KeyGenesisApplied = writeBytes("@genesis_applied")
 )
 
 var (
@@ -39,9 +43,11 @@ type Ledger struct {
 
 	stepping               bool
 	lastUpdateAcceptedTime time.Time
+
+	accountList *AccountList
 }
 
-func NewLedger(databasePath, servicesPath, genesisPath string) *Ledger {
+func NewLedger(databasePath, genesisPath string) *Ledger {
 	store := database.New(databasePath)
 
 	log.Info().Str("db_path", databasePath).Msg("Database has been loaded.")
@@ -57,30 +63,26 @@ func NewLedger(databasePath, servicesPath, genesisPath string) *Ledger {
 		kill: make(chan struct{}),
 	}
 
+	ledger.accountList = NewAccountList(ledger)
+
 	ledger.state = state{Ledger: ledger}
 	ledger.rpc = rpc{Ledger: ledger}
 
-	if len(genesisPath) > 0 && ledger.NumAccounts() == 0 {
-		genesis, err := ReadGenesis(genesisPath)
+	if len(genesisPath) > 0 {
+		if x, _ := ledger.Store.Get(KeyGenesisApplied); x == nil {
+			genesis, err := ReadGenesis(ledger, genesisPath)
 
-		if err != nil {
-			log.Error().Err(err).Msgf("Could not read genesis details which were expected to be at: %s", genesisPath)
-		}
-
-		for _, account := range genesis {
-			if err := ledger.SaveAccount(account, nil); err != nil {
-				log.Fatal().Err(err).
-					Str("id", string(account.PublicKey)).
-					Msg("Failed to save genesis account information.")
+			if err != nil {
+				log.Error().Err(err).Msgf("Could not read genesis details which were expected to be at: %s", genesisPath)
 			}
+
+			for _, account := range genesis {
+				account.writeback()
+			}
+
+			log.Info().Str("file", genesisPath).Int("num_accounts", len(genesis)).Msg("Successfully seeded the genesis of this node.")
+			ledger.Store.Put(KeyGenesisApplied, []byte("true"))
 		}
-
-		log.Info().Str("file", genesisPath).Int("num_accounts", len(genesis)).Msg("Successfully seeded the genesis of this node.")
-	}
-
-	err := ledger.registerServicePath(servicesPath)
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to load transaction processors.")
 	}
 
 	graph.AddOnReceiveHandler(ledger.ensureSafeCommittable)
@@ -255,7 +257,8 @@ func (ledger *Ledger) ensureAccepted(set *database.ConflictSet) error {
 	// If the preferred transaction of a conflict set was accepted (due to safe early commit) and there are now transactions
 	// conflicting with it, un-accept it.
 	if conflicting := !(transactions.Cardinality() == 1); conflicting && ledger.WasAccepted(set.Preferred) && set.Count <= system.Beta2 {
-		ledger.revertTransaction(set.Preferred, true)
+		//ledger.revertTransaction(set.Preferred, true)
+		log.Warn().Msg("safe early commit conflicts with new transactions")
 	}
 
 	return nil
@@ -276,19 +279,65 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 	stats.IncAcceptedTransactions(tx.Tag)
 	go events.Publish(nil, &events.TransactionAcceptedEvent{ID: tx.Id})
 
-	// If the transaction has accepted children, revert all of the transactions ascendants.
-	if children, err := ledger.GetChildrenBySymbol(tx.Id); err == nil && len(children.Transactions) > 0 {
-		for _, child := range children.Transactions {
-			if ledger.WasAccepted(child) {
-				ledger.revertTransaction(child, false)
+	depth, err := ledger.Store.GetDepthBySymbol(tx.Id)
+	if err != nil {
+		log.Error().Err(err).Msg("cannot get depth")
+		return
+	}
+
+	var refTxId string
+	var gotRefTxId bool
+	var pendingReapply []string
+
+	ledger.Store.ForEachDepth(depth, func(symbol string) error {
+		if bytes.Compare(writeBytes(symbol), writeBytes(tx.Id)) > 0 {
+			if ledger.WasAccepted(symbol) {
+				if !gotRefTxId {
+					refTxId = symbol
+					gotRefTxId = true
+				}
+				pendingReapply = append(pendingReapply, symbol)
 			}
+		}
+		return nil
+	})
+
+	for i := depth + 1; ; i++ {
+		gotAnyTx := false
+		ledger.Store.ForEachDepth(i, func(symbol string) error {
+			gotAnyTx = true
+			if ledger.WasAccepted(symbol) {
+				if !gotRefTxId {
+					refTxId = symbol
+					gotRefTxId = true
+				}
+				pendingReapply = append(pendingReapply, symbol)
+			}
+			return nil
+		})
+		if !gotAnyTx {
+			break
 		}
 	}
 
-	// Apply transaction to the ledger state.
+	if gotRefTxId {
+		ledger.revertTransaction(refTxId)
+	}
+
 	err = ledger.applyTransaction(tx)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to apply transaction.")
+		log.Warn().Err(err).Str("symbol", tx.Id).Msg("failed to apply transaction")
+	}
+
+	for _, symbol := range pendingReapply {
+		reTx, err := ledger.GetBySymbol(symbol)
+		if err != nil {
+			continue
+		}
+		err = ledger.applyTransaction(reTx)
+		if err != nil {
+			log.Warn().Err(err).Str("symbol", symbol).Msg("failed to reapply transaction")
+		}
 	}
 
 	visited := make(map[string]struct{})
@@ -310,15 +359,6 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 
 				if !ledger.WasAccepted(child) {
 					ledger.QueueForAcceptance(child)
-				} else if !ledger.WasApplied(child) {
-					// If the child was already accepted but not yet applied, apply it to the ledger state.
-
-					tx, err := ledger.GetBySymbol(child)
-					if err != nil {
-						continue
-					}
-
-					ledger.applyTransaction(tx)
 				}
 				queue.PushBack(child)
 
@@ -328,76 +368,22 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 }
 
 // revertTransaction sets a transaction and all of its ascendants to not be accepted.
-func (ledger *Ledger) revertTransaction(symbol string, revertAcceptance bool) {
-	visited := make(map[string]struct{})
-
-	queue := queue.New()
-	queue.PushBack(symbol)
-
-	var pendingList []pending
-
-	for queue.Len() > 0 {
-		popped := queue.PopFront().(string)
-
-		tx, err := ledger.GetBySymbol(popped)
-		if err != nil {
-			continue
-		}
-
-		depth, err := ledger.GetDepthBySymbol(popped)
-		if err != nil {
-			continue
-		}
-
-		pendingList = append(pendingList, pending{tx, depth})
-
-		indexBytes, err := ledger.Get(merge(BucketAccepted, writeBytes(popped)))
-		if err != nil {
-			continue
-		}
-
-		if revertAcceptance {
-			ledger.Delete(merge(BucketAcceptedIndex, indexBytes))
-			ledger.Delete(merge(BucketAccepted, writeBytes(popped)))
-
-			ledger.QueueForAcceptance(popped)
-
-			stats.DecAcceptedTransactions()
-		}
-
-		children, err := ledger.GetChildrenBySymbol(popped)
-		if err != nil {
-			continue
-		}
-
-		for _, child := range children.Transactions {
-			if _, seen := visited[child]; !seen {
-				visited[child] = struct{}{}
-
-				if ledger.WasApplied(child) && ledger.WasAccepted(child) {
-					queue.PushBack(child)
-				}
-			}
-		}
+func (ledger *Ledger) revertTransaction(symbol string) {
+	tx, err := ledger.GetBySymbol(symbol)
+	if err != nil {
+		log.Error().Err(err).Msg("cannot get transaction for reverting")
+		return
 	}
 
-	// Sort in ascending lexicographically-least topological order.
-	sort.Slice(pendingList, func(i, j int) bool {
-		if pendingList[i].depth > pendingList[j].depth {
-			return true
-		}
+	stateRoot, err := ledger.Store.Get(merge(BucketPreStates, []byte(tx.Id)))
+	if err != nil {
+		log.Error().Err(err).Msg("cannot get state root for reverting")
+		return
+	}
 
-		if pendingList[i].depth < pendingList[j].depth {
-			return false
-		}
+	ledger.accountList.SetRoot(stateRoot)
 
-		return pendingList[i].tx.Id > pendingList[j].tx.Id
-	})
-
-	// Revert list of transactions from ledger state.
-	ledger.doRevertTransaction(&pendingList)
-
-	log.Debug().Int("num_reverted", len(pendingList)).Msg("Reverted transactions.")
+	log.Debug().Str("key", symbol).Str("state_root", hex.EncodeToString(stateRoot)).Msg("Reverted transaction.")
 }
 
 // ensureSafeCommittable ensures that incoming transactions which conflict with any

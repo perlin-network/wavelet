@@ -37,6 +37,7 @@ func (s *service) init(mux *http.ServeMux) {
 	mux.HandleFunc(RouteContractSend, s.wrap(s.sendContractHandler))
 	mux.HandleFunc(RouteContractGet, s.wrap(s.getContractHandler))
 	mux.HandleFunc(RouteContractList, s.wrap(s.listContractsHandler))
+	mux.HandleFunc(RouteContractExecute, s.wrap(s.executeContractHandler))
 
 	mux.HandleFunc(RouteStatsReset, s.wrap(s.resetStatsHandler))
 

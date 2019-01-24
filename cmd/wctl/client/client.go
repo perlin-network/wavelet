@@ -349,6 +349,21 @@ func (c *Client) ListContracts(offset *uint64, limit *uint64) (contracts []*api.
 	return
 }
 
+// GetContract returns a smart contract given an id
+func (c *Client) ExecuteContract(txID string, entry string, param []byte) (*api.ExecuteContractResponse, error) {
+	req := api.ExecuteContractRequest{
+		ContractID: txID,
+		Entry:      entry,
+		Param:      param,
+	}
+	var response *api.ExecuteContractResponse
+	if err := c.Request(api.RouteContractExecute, req, &response, nil); err != nil {
+		return nil, err
+	}
+
+	return response, nil
+}
+
 // userAgent is a short summary of the client type making the connection
 func userAgent() string {
 	return fmt.Sprintf("wctl/%s-%s (%s)", params.Version, params.GitCommit, params.OSArch)

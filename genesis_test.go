@@ -1,14 +1,6 @@
 package wavelet
 
-import (
-	"encoding/json"
-	"fmt"
-	"github.com/stretchr/testify/assert"
-	"io/ioutil"
-	"os"
-	"testing"
-)
-
+/*
 func check(t *testing.T, file *os.File, err error) {
 	if err != nil {
 		if file != nil {
@@ -17,6 +9,7 @@ func check(t *testing.T, file *os.File, err error) {
 		t.Fatal(err)
 	}
 }
+
 
 func TestReadGenesis(t *testing.T) {
 	t.Parallel()
@@ -123,3 +116,4 @@ func TestReadGenesisBadIDs(t *testing.T) {
 		os.Remove(tmp.Name())
 	}
 }
+*/
