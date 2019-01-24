@@ -29,7 +29,6 @@ import (
 	"github.com/perlin-network/noise/network/discovery"
 	"github.com/perlin-network/noise/network/nat"
 
-	"encoding/binary"
 	"github.com/pkg/errors"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
@@ -478,9 +477,11 @@ func runShell(w *node.Wavelet) error {
 				continue
 			}
 
-			payload := make([]byte, 40)
-			copy(payload[:32], recipientDecoded)
-			binary.LittleEndian.PutUint64(payload[32:], uint64(amount))
+			writer := wavelet.NewPayloadBuilder()
+			writer.WriteBytes(recipientDecoded)
+			writer.WriteUint64(uint64(amount))
+
+			payload := writer.Bytes()
 
 			if len(cmd) >= 5 {
 				pb := wavelet.NewPayloadBuilder()
@@ -518,9 +519,9 @@ func runShell(w *node.Wavelet) error {
 					}
 				}
 
-				pb.WriteBytes(invPb.Build())
+				pb.WriteBytes(invPb.Bytes())
 
-				payload = append(payload, pb.Build()...)
+				payload = append(payload, pb.Bytes()...)
 			}
 
 			wired := w.MakeTransaction(params.TagGeneric, payload)

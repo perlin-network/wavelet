@@ -16,7 +16,7 @@ func NewPayloadBuilder() *PayloadBuilder {
 	}
 }
 
-func (b *PayloadBuilder) Build() []byte {
+func (b *PayloadBuilder) Bytes() []byte {
 	return b.buffer.Bytes()
 }
 
@@ -60,6 +60,10 @@ func NewPayloadReader(payload []byte) *PayloadReader {
 	return &PayloadReader{
 		reader: bytes.NewReader(payload),
 	}
+}
+
+func (r *PayloadReader) Len() int {
+	return r.reader.Len()
 }
 
 func (r *PayloadReader) ReadBytes() ([]byte, error) {

@@ -32,6 +32,7 @@ type ContractExecutor struct {
 
 	contract *Account
 	sender   []byte
+	header   []byte
 	payload  []byte
 	pending  []*database.Transaction
 
@@ -39,12 +40,12 @@ type ContractExecutor struct {
 	Result        []byte
 }
 
-func NewContractExecutor(contract *Account, sender []byte, payload []byte, gasPolicy ContractGasPolicy) *ContractExecutor {
+func NewContractExecutor(contract *Account, sender []byte, header []byte, gasPolicy ContractGasPolicy) *ContractExecutor {
 	return &ContractExecutor{
 		ContractGasPolicy: gasPolicy,
 
 		sender:   sender,
-		payload:  payload,
+		header:   header,
 		contract: contract,
 	}
 }
@@ -139,7 +140,9 @@ func (c *ContractExecutor) runVirtualMachine(vm *exec.VirtualMachine) error {
 	return nil
 }
 
-func (c *ContractExecutor) Run(entry string) error {
+func (c *ContractExecutor) Run(entry string, params ...byte) error {
+	c.payload = append(c.header, params...)
+
 	vm, err := c.newVirtualMachine()
 	if err != nil {
 		return err
