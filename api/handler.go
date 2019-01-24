@@ -189,7 +189,7 @@ func (s *service) executeContractHandler(ctx *requestContext) (int, interface{},
 	var result []byte
 	var err error
 
-	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
+	s.wavelet.LedgerDo(func(ledger wavelet.LedgerInterface) {
 		result, err = ledger.ExecuteContract(req.ContractID, req.Entry, req.Param)
 	})
 

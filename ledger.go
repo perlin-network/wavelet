@@ -31,6 +31,8 @@ var (
 	ErrStop = errors.New("stop")
 )
 
+var _ LedgerInterface = (*Ledger)(nil)
+
 type Ledger struct {
 	state
 	rpc

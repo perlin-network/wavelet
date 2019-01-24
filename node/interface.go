@@ -13,7 +13,7 @@ type NodeInterface interface {
 	Cleanup(net *network.Network)
 	PeerConnect(client *network.PeerClient)
 	PeerDisconnect(client *network.PeerClient)
-	MakeTransaction(tag string, payload []byte) *wire.Transaction
+	MakeTransaction(tag uint32, payload []byte) *wire.Transaction
 	BroadcastTransaction(wired *wire.Transaction)
 	LedgerDo(f func(ledger wavelet.LedgerInterface))
 }

@@ -105,30 +105,35 @@ func Test_api_serverVersion(t *testing.T) {
 func Test_api_send_transaction(t *testing.T) {
 	port := GetRandomUnusedPort()
 	s, c, err := setupMockServer(port, privateKeyFile, &node.WaveletMock{
-		MakeTransactionCallback: func(tag string, payload []byte) *wire.Transaction {
+		MakeTransactionCB: func(tag uint32, payload []byte) *wire.Transaction {
 			return &wire.Transaction{}
 		},
 	})
 	assert.Nil(t, err)
 	defer s.Close()
 
-	tag := "custom"
 	payload := fmt.Sprintf(`{
 		"recipient": "%s",
 		"body": {
 			"Payload": "Register"
 		}
 	}`, "contractAddress")
-	res, err := c.SendTransaction(tag, []byte(payload))
+	res, err := c.SendTransaction(params.TagCreateContract, []byte(payload))
 	assert.Nil(t, err)
 	assert.True(t, len(res.TransactionID) > 0)
 }
 
-func noTest_api_ledger_state(t *testing.T) {
+func Test_api_ledger_state(t *testing.T) {
 	port := GetRandomUnusedPort()
 	s, c, err := setupMockServer(port, privateKeyFile, &node.WaveletMock{
-		LedgerDoCallback: func(f func(ledger wavelet.LedgerInterface)) {
-			f(nil)
+		LedgerDoCB: func(f func(ledger wavelet.LedgerInterface)) {
+			mock := &wavelet.MockLedger{}
+			mock.SnapshotCB = func() map[string]interface{} {
+				return map[string]interface{}{
+					"key": "value",
+				}
+			}
+			f(mock)
 		},
 	})
 	assert.Nil(t, err)
@@ -136,5 +141,5 @@ func noTest_api_ledger_state(t *testing.T) {
 
 	res, err := c.LedgerState()
 	assert.Nil(t, err)
-	assert.Nil(t, res)
+	assert.Equal(t, "value", res.State["key"])
 }

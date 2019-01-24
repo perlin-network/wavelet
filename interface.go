@@ -8,13 +8,13 @@ import (
 // LedgerInterface provides methods expected by the ledger
 type LedgerInterface interface {
 	// Wavelet/state
-	LoadAccount(key []byte) (*Account, error)
 	Snapshot() map[string]interface{}
 	LoadContract(txID string) ([]byte, error)
 	NumContracts() uint64
 	PaginateContracts(offset, pageSize uint64) []*Contract
 	NumTransactions() uint64
 	PaginateTransactions(offset, pageSize uint64) []*database.Transaction
+	ExecuteContract(txID string, entry string, param []byte) ([]byte, error)
 
 	// Wavelet/rpc
 	RespondToQuery(wired *wire.Transaction) (string, bool, error)

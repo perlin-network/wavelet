@@ -9,62 +9,44 @@ import (
 var _ NodeInterface = (*WaveletMock)(nil)
 
 type WaveletMock struct {
-	StartupCallback              func(net *network.Network)
-	ReceiveCallback              func(ctx *network.PluginContext) error
-	CleanupCallback              func(net *network.Network)
-	PeerConnectCallback          func(client *network.PeerClient)
-	PeerDisconnectCallback       func(client *network.PeerClient)
-	MakeTransactionCallback      func(tag string, payload []byte) *wire.Transaction
-	BroadcastTransactionCallback func(wired *wire.Transaction)
-	LedgerDoCallback             func(f func(ledger wavelet.LedgerInterface))
+	StartupCB              func(net *network.Network)
+	ReceiveCB              func(ctx *network.PluginContext) error
+	CleanupCB              func(net *network.Network)
+	PeerConnectCB          func(client *network.PeerClient)
+	PeerDisconnectCB       func(client *network.PeerClient)
+	MakeTransactionCB      func(tag uint32, payload []byte) *wire.Transaction
+	BroadcastTransactionCB func(wired *wire.Transaction)
+	LedgerDoCB             func(f func(ledger wavelet.LedgerInterface))
 }
 
 func (w *WaveletMock) Startup(net *network.Network) {
-	if w.StartupCallback != nil {
-		w.StartupCallback(net)
-	}
+	w.StartupCB(net)
 }
 
 func (w *WaveletMock) Receive(ctx *network.PluginContext) error {
-	if w.ReceiveCallback != nil {
-		return w.ReceiveCallback(ctx)
-	}
-	return nil
+	return w.ReceiveCB(ctx)
 }
 
 func (w *WaveletMock) Cleanup(net *network.Network) {
-	if w.CleanupCallback != nil {
-		w.CleanupCallback(net)
-	}
+	w.CleanupCB(net)
 }
 
 func (w *WaveletMock) PeerConnect(client *network.PeerClient) {
-	if w.PeerConnectCallback != nil {
-		w.PeerConnectCallback(client)
-	}
+	w.PeerConnectCB(client)
 }
 
 func (w *WaveletMock) PeerDisconnect(client *network.PeerClient) {
-	if w.PeerDisconnectCallback != nil {
-		w.PeerDisconnectCallback(client)
-	}
+	w.PeerDisconnectCB(client)
 }
 
-func (w *WaveletMock) MakeTransaction(tag string, payload []byte) *wire.Transaction {
-	if w.MakeTransactionCallback != nil {
-		return w.MakeTransactionCallback(tag, payload)
-	}
-	return nil
+func (w *WaveletMock) MakeTransaction(tag uint32, payload []byte) *wire.Transaction {
+	return w.MakeTransactionCB(tag, payload)
 }
 
 func (w *WaveletMock) BroadcastTransaction(wired *wire.Transaction) {
-	if w.BroadcastTransactionCallback != nil {
-		w.BroadcastTransactionCallback(wired)
-	}
+	w.BroadcastTransactionCB(wired)
 }
 
 func (w *WaveletMock) LedgerDo(f func(ledger wavelet.LedgerInterface)) {
-	if w.LedgerDoCallback != nil {
-		w.LedgerDoCallback(f)
-	}
+	w.LedgerDoCB(f)
 }
