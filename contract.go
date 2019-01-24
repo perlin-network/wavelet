@@ -5,13 +5,19 @@ import (
 
 	"github.com/perlin-network/life/exec"
 
+	"fmt"
 	"github.com/perlin-network/graph/database"
+	"github.com/perlin-network/life/utils"
+	"github.com/perlin-network/wavelet/params"
 	"github.com/pkg/errors"
 )
 
 var (
 	ContractPrefix            = writeBytes("C-")
 	ContractCustomStatePrefix = writeBytes("CS-")
+	//KeyContractState = "contract_state"
+	KeyContractPageNum = "contract_page_num"
+	ContractPagePrefix = "CP-"
 )
 
 // Contract represents a smart contract on Perlin.
@@ -39,28 +45,119 @@ func NewContractExecutor(contract *Account, sender []byte, payload []byte, gasPo
 	}
 }
 
-func (c *ContractExecutor) Run(code []byte, entry string) error {
-	vm, err := exec.NewVirtualMachine(code, exec.VMConfig{
-		DefaultMemoryPages: 1238,
-		DefaultTableSize:   65536,
-		GasLimit:           c.GasLimit,
-	}, c, c)
+func (c *ContractExecutor) getMemorySnapshot() ([]byte, error) {
+	contractPageNum := int(c.contract.GetUint64Field(KeyContractPageNum))
+	if contractPageNum == 0 {
+		return nil, nil
+	}
 
+	mem := make([]byte, 65536*contractPageNum)
+	for i := 0; i < contractPageNum; i++ {
+		page, _ := c.contract.Load(fmt.Sprintf("%s%d", ContractPagePrefix, i))
+		if len(page) > 0 { // zero-filled by default
+			if len(page) != 65536 {
+				return nil, errors.Errorf("page %d has a size of %d != 65536", i, len(page))
+			}
+			copy(mem[65536*i:65536*(i+1)], page)
+		}
+	}
+
+	return mem, nil
+}
+
+func (c *ContractExecutor) setMemorySnapshot(mem []byte) {
+	newPageNum := len(mem) / 65536
+	c.contract.SetUint64Field(KeyContractPageNum, uint64(newPageNum))
+
+	for i := 0; i < newPageNum; i++ {
+		pageKey := fmt.Sprintf("%s%d", ContractPagePrefix, i)
+		oldContent, _ := c.contract.Load(pageKey)
+
+		identical := true
+
+		for j := 0; j < 65536; j++ {
+			if len(oldContent) == 0 && mem[i*65536+j] != 0 {
+				identical = false
+				break
+			}
+			if len(oldContent) != 0 && mem[i*65536+j] != oldContent[j] {
+				identical = false
+				break
+			}
+		}
+
+		if !identical {
+			allZero := true
+			for j := 0; j < 65536; j++ {
+				if mem[i*65536+j] != 0 {
+					allZero = false
+					break
+				}
+			}
+			if allZero {
+				c.contract.Store(pageKey, []byte{})
+			} else {
+				c.contract.Store(pageKey, mem[i*65536:(i+1)*65536])
+			}
+		}
+	}
+}
+
+func (c *ContractExecutor) newVirtualMachine() (*exec.VirtualMachine, error) {
+	code, _ := c.contract.Load(params.KeyContractCode)
+	return exec.NewVirtualMachine(code, exec.VMConfig{
+		DefaultMemoryPages: 8,
+		MaxMemoryPages:     16,
+
+		DefaultTableSize: 65536,
+		MaxTableSize:     65536,
+
+		MaxValueSlots:     4096,
+		MaxCallStackDepth: 256,
+		GasLimit:          c.GasLimit,
+	}, c, c)
+}
+
+func (c *ContractExecutor) runVirtualMachine(vm *exec.VirtualMachine) error {
+	for !vm.Exited {
+		vm.Execute()
+		if vm.Delegate != nil {
+			vm.Delegate()
+			vm.Delegate = nil
+		}
+	}
+
+	if vm.ExitError != nil {
+		return utils.UnifyError(vm.ExitError)
+	}
+
+	c.setMemorySnapshot(vm.Memory)
+	return nil
+}
+
+func (c *ContractExecutor) Run(entry string) error {
+	vm, err := c.newVirtualMachine()
 	if err != nil {
 		return err
 	}
 
+	mem, err := c.getMemorySnapshot()
+	if err != nil {
+		return err
+	}
+
+	if mem != nil {
+		vm.Memory = mem
+	}
+
+	entry = "_contract_" + entry
 	entryID, exists := vm.GetFunctionExport(entry)
 	if !exists {
 		return errors.Errorf("entry point `%s` not found", entry)
 	}
 
-	_, err = vm.Run(entryID)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	vm.Ignite(entryID)
+	return c.runVirtualMachine(vm)
 }
 
 type ContractGasPolicy struct {

@@ -34,7 +34,7 @@ func (p *GenericProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) e
 	recipient.SetBalance(recipient.GetBalance() + amount)
 
 	if len(ctx.Tx.Payload[40:]) > 0 {
-		if code, ok := recipient.Load(params.KeyContractCode); ok {
+		if _, ok := recipient.Load(params.KeyContractCode); ok {
 			nameLen := int(ctx.Tx.Payload[40])
 			if len(ctx.Tx.Payload[41:]) < nameLen {
 				return errors.New("invalid contract invocation")
@@ -42,7 +42,7 @@ func (p *GenericProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) e
 			name := string(ctx.Tx.Payload[41 : 41+nameLen])
 			payload := ctx.Tx.Payload[41+nameLen:]
 			executor := wavelet.NewContractExecutor(recipient, senderID, payload, wavelet.ContractGasPolicy{nil, 100000})
-			err := executor.Run(code, name)
+			err := executor.Run(name)
 			if err != nil {
 				return errors.Wrap(err, "smart contract failed")
 			}

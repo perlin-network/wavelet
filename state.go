@@ -147,13 +147,8 @@ func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64,
 func (s *state) ExecuteContract(txID string, entry string, param []byte) ([]byte, error) {
 	account := NewAccount(s.Ledger, writeBytes(txID))
 
-	code, ok := account.Load(params.KeyContractCode)
-	if !ok {
-		return nil, errors.Errorf("contract ID %s has no contract code", txID)
-	}
-
 	executor := NewContractExecutor(account, nil, param, ContractGasPolicy{nil, 100000})
-	err := executor.Run(code, entry)
+	err := executor.Run(entry)
 	if err != nil {
 		return nil, err
 	}
