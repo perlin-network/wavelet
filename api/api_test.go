@@ -108,6 +108,7 @@ func Test_api_send_transaction(t *testing.T) {
 		MakeTransactionCB: func(tag uint32, payload []byte) *wire.Transaction {
 			return &wire.Transaction{}
 		},
+		BroadcastTransactionCB: func(wired *wire.Transaction) {},
 	})
 	assert.Nil(t, err)
 	defer s.Close()
