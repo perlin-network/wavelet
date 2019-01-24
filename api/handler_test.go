@@ -21,7 +21,7 @@ func Test_service_resetStatsHandler(t *testing.T) {
 		clients  map[string]*ClientInfo
 		registry *registry
 		wavelet  node.NodeInterface
-		network  func() *network.Network
+		network  *network.Network
 		upgrader websocket.Upgrader
 	}
 	type args struct {
@@ -96,7 +96,7 @@ func Test_service_listTransactionHandler(t *testing.T) {
 		clients  map[string]*ClientInfo
 		registry *registry
 		wavelet  node.NodeInterface
-		network  func() *network.Network
+		network  *network.Network
 		upgrader websocket.Upgrader
 	}
 	type args struct {
@@ -227,7 +227,7 @@ func Test_service_sessionInitHandler(t *testing.T) {
 		clients  map[string]*ClientInfo
 		registry *registry
 		wavelet  node.NodeInterface
-		network  func() *network.Network
+		network  *network.Network
 		upgrader websocket.Upgrader
 	}
 	type args struct {
@@ -374,7 +374,7 @@ func Test_service_sendTransactionHandler(t *testing.T) {
 		clients  map[string]*ClientInfo
 		registry *registry
 		wavelet  node.NodeInterface
-		network  func() *network.Network
+		network  *network.Network
 		upgrader websocket.Upgrader
 	}
 	type args struct {
@@ -511,7 +511,7 @@ func Test_service_sendContractHandler(t *testing.T) {
 		clients  map[string]*ClientInfo
 		registry *registry
 		wavelet  node.NodeInterface
-		network  func() *network.Network
+		network  *network.Network
 		upgrader websocket.Upgrader
 	}
 	type args struct {
@@ -650,7 +650,7 @@ func Test_service_getContractHandler(t *testing.T) {
 		clients  map[string]*ClientInfo
 		registry *registry
 		wavelet  node.NodeInterface
-		network  func() *network.Network
+		network  *network.Network
 		upgrader websocket.Upgrader
 	}
 	type args struct {
