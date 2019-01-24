@@ -195,11 +195,11 @@ func (s *service) executeContractHandler(ctx *requestContext) (int, interface{},
 
 	if err != nil {
 		return http.StatusInternalServerError, nil, errors.Wrap(err, "contract exited with error")
-	} else {
-		return http.StatusOK, &ExecuteContractResponse{
-			Result: result,
-		}, nil
 	}
+
+	return http.StatusOK, &ExecuteContractResponse{
+		Result: result,
+	}, nil
 }
 
 func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, error) {
