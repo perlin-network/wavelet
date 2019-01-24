@@ -378,7 +378,12 @@ func runServer(c *Config) (*node.Wavelet, error) {
 				})
 			}
 		}
-		go api.Run(net, w, nil, api.Options{
+
+		getNetwork := func() *network.Network {
+			return net
+		}
+
+		go api.Run(getNetwork, w, nil, api.Options{
 			ListenAddr: fmt.Sprintf("%s:%d", c.APIHost, c.APIPort),
 			Clients:    clients,
 		})
@@ -425,12 +430,13 @@ func runShell(w *node.Wavelet) error {
 		switch cmd[0] {
 		case "w":
 			if len(cmd) < 2 {
-				w.LedgerDo(func(l *wavelet.Ledger) {
+				w.LedgerDo(func(l wavelet.LedgerInterface) {
+					ledger := l.(*wavelet.Ledger)
 					log.Info().
 						Str("id", hex.EncodeToString(w.Wallet.PublicKey)).
-						Uint64("nonce", w.Wallet.CurrentNonce(l)).
-						Uint64("balance", w.Wallet.GetBalance(l)).
-						Uint64("stake", w.Wallet.GetStake(l)).
+						Uint64("nonce", w.Wallet.CurrentNonce(ledger)).
+						Uint64("balance", w.Wallet.GetBalance(ledger)).
+						Uint64("stake", w.Wallet.GetStake(ledger)).
 						Msg("Here is your wallet information.")
 				})
 
@@ -446,7 +452,7 @@ func runShell(w *node.Wavelet) error {
 
 			var account *wavelet.Account
 
-			w.LedgerDo(func(l *wavelet.Ledger) {
+			w.LedgerDo(func(l wavelet.LedgerInterface) {
 				account, err = l.LoadAccount(accountID)
 			})
 
@@ -588,7 +594,7 @@ func runShell(w *node.Wavelet) error {
 
 			var tx *database.Transaction
 
-			w.LedgerDo(func(l *wavelet.Ledger) {
+			w.LedgerDo(func(l wavelet.LedgerInterface) {
 				tx, err = l.GetBySymbol(cmd[1])
 			})
 

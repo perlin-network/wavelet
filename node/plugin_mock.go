@@ -16,7 +16,7 @@ type WaveletMock struct {
 	PeerDisconnectCallback       func(client *network.PeerClient)
 	MakeTransactionCallback      func(tag string, payload []byte) *wire.Transaction
 	BroadcastTransactionCallback func(wired *wire.Transaction)
-	LedgerDoCallback             func(f func(ledger *wavelet.Ledger))
+	LedgerDoCallback             func(f func(ledger wavelet.LedgerInterface))
 }
 
 func (w *WaveletMock) Startup(net *network.Network) {
@@ -63,7 +63,7 @@ func (w *WaveletMock) BroadcastTransaction(wired *wire.Transaction) {
 	}
 }
 
-func (w *WaveletMock) LedgerDo(f func(ledger *wavelet.Ledger)) {
+func (w *WaveletMock) LedgerDo(f func(ledger wavelet.LedgerInterface)) {
 	if w.LedgerDoCallback != nil {
 		w.LedgerDoCallback(f)
 	}

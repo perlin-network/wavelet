@@ -29,10 +29,10 @@ func (b *broadcaster) MakeTransaction(tag string, payload []byte) *wire.Transact
 	var nonce uint64
 	var err error
 
-	b.LedgerDo(func(l *wavelet.Ledger) {
+	b.LedgerDo(func(l wavelet.LedgerInterface) {
 		parents, err = l.FindEligibleParents()
 		if err == nil {
-			nonce, err = b.Wallet.NextNonce(l)
+			nonce, err = b.Wallet.NextNonce(l.(*wavelet.Ledger))
 		}
 	})
 
@@ -68,7 +68,7 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 	var successful bool
 	var tx *database.Transaction
 
-	b.LedgerDo(func(l *wavelet.Ledger) {
+	b.LedgerDo(func(l wavelet.LedgerInterface) {
 		id, successful, err = l.RespondToQuery(wired)
 		if err != nil {
 			log.Fatal().Err(err).Msg("Failed to insert our own broadcasted transaction into the ledger.")
@@ -106,7 +106,7 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 		break
 	}
 
-	b.LedgerDo(func(l *wavelet.Ledger) {
+	b.LedgerDo(func(l wavelet.LedgerInterface) {
 		err = l.HandleSuccessfulQuery(tx)
 	})
 
@@ -122,7 +122,7 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 		shouldBreak := false
 		shouldReturn := false
 
-		b.LedgerDo(func(l *wavelet.Ledger) {
+		b.LedgerDo(func(l wavelet.LedgerInterface) {
 			if l.WasAccepted(id) {
 				shouldBreak = true
 				return
@@ -147,7 +147,7 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 
 		nop = b.MakeTransaction(params.TagNop, nil)
 
-		b.LedgerDo(func(l *wavelet.Ledger) {
+		b.LedgerDo(func(l wavelet.LedgerInterface) {
 			nopID, successful, err = l.RespondToQuery(nop)
 
 			if err != nil {
@@ -176,7 +176,7 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 			break
 		}
 
-		b.LedgerDo(func(l *wavelet.Ledger) {
+		b.LedgerDo(func(l wavelet.LedgerInterface) {
 			nopDB, err := l.GetBySymbol(nopID)
 			if err != nil {
 				log.Warn().Err(err).Msg("Failed to find our nop in our database.")

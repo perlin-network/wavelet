@@ -123,12 +123,12 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 
 		var existed bool
 
-		w.LedgerDo(func(l *wavelet.Ledger) {
+		w.LedgerDo(func(l wavelet.LedgerInterface) {
 			existed = l.TransactionExists(id)
 		})
 
 		if existed {
-			w.LedgerDo(func(l *wavelet.Ledger) {
+			w.LedgerDo(func(l wavelet.LedgerInterface) {
 				res.StronglyPreferred = l.IsStronglyPreferred(id)
 
 				if res.StronglyPreferred && !l.WasAccepted(id) {
@@ -152,7 +152,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 
 			var err error
 
-			w.LedgerDo(func(l *wavelet.Ledger) {
+			w.LedgerDo(func(l wavelet.LedgerInterface) {
 				_, res.StronglyPreferred, err = l.RespondToQuery(msg)
 
 				if err == nil && res.StronglyPreferred {
@@ -181,7 +181,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 
 				var tx *database.Transaction
 
-				w.LedgerDo(func(l *wavelet.Ledger) {
+				w.LedgerDo(func(l wavelet.LedgerInterface) {
 					tx, err = l.GetBySymbol(id)
 				})
 
@@ -190,7 +190,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 					return
 				}
 
-				w.LedgerDo(func(l *wavelet.Ledger) {
+				w.LedgerDo(func(l wavelet.LedgerInterface) {
 					err = l.HandleSuccessfulQuery(tx)
 				})
 
@@ -202,8 +202,8 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 	case *SyncChildrenQueryRequest:
 		var childrenIDs []string
 
-		w.LedgerDo(func(l *wavelet.Ledger) {
-			if children, err := l.Store.GetChildrenBySymbol(msg.Id); err == nil {
+		w.LedgerDo(func(l wavelet.LedgerInterface) {
+			if children, err := l.GetChildrenBySymbol(msg.Id); err == nil {
 				childrenIDs = children.Transactions
 			}
 		})
@@ -219,8 +219,8 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 		for _, id := range msg.Transactions {
 			var out *wire.Transaction
 
-			w.LedgerDo(func(l *wavelet.Ledger) {
-				if tx, err := l.Store.GetBySymbol(id); err == nil {
+			w.LedgerDo(func(l wavelet.LedgerInterface) {
+				if tx, err := l.GetBySymbol(id); err == nil {
 					out = &wire.Transaction{
 						Sender:    tx.Sender,
 						Nonce:     tx.Nonce,
@@ -252,8 +252,8 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 }
 
 func (w *Wavelet) Cleanup(net *network.Network) {
-	w.LedgerDo(func(l *wavelet.Ledger) {
-		err := l.Graph.Cleanup()
+	w.LedgerDo(func(l wavelet.LedgerInterface) {
+		err := l.Cleanup()
 
 		if err != nil {
 			panic(err)
@@ -269,6 +269,8 @@ func (w *Wavelet) PeerDisconnect(client *network.PeerClient) {
 	log.Debug().Interface("ID", client.ID).Msgf("Peer disconnected: %s", client.Address)
 }
 
-func (w *Wavelet) LedgerDo(f func(ledger *wavelet.Ledger)) {
-	w.Ledger.Do(f)
+func (w *Wavelet) LedgerDo(f func(ledger wavelet.LedgerInterface)) {
+	w.Ledger.Do(func(l *wavelet.Ledger) {
+		f(l)
+	})
 }

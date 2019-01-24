@@ -40,8 +40,8 @@ func (s *syncer) hinterLoop() {
 
 		var tx *wire.Transaction
 
-		s.LedgerDo(func(l *wavelet.Ledger) {
-			if recent := l.Store.GetMostRecentlyUsed(3); len(recent) > 0 {
+		s.LedgerDo(func(l wavelet.LedgerInterface) {
+			if recent := l.GetMostRecentlyUsed(3); len(recent) > 0 {
 				// Randomly pick a transaction out of the most recently used.
 				symbol := recent[len(recent)/2]
 
@@ -50,7 +50,7 @@ func (s *syncer) hinterLoop() {
 					symbol = symbol[3:]
 				}
 
-				raw, err := l.Store.GetBySymbol(symbol)
+				raw, err := l.GetBySymbol(symbol)
 
 				if err != nil {
 					return
@@ -98,9 +98,9 @@ func (s *syncer) Start() {
 func (s *syncer) QueryMissingParents(parents []string) {
 	pushHint := make([]string, 0)
 
-	s.LedgerDo(func(l *wavelet.Ledger) {
+	s.LedgerDo(func(l wavelet.LedgerInterface) {
 		for _, p := range parents {
-			if !l.Store.TransactionExists(p) {
+			if !l.TransactionExists(p) {
 				pushHint = append(pushHint, p)
 			}
 		}
@@ -151,9 +151,9 @@ func (s *syncer) QueryMissingChildren(id string) {
 
 	deleteList := make([]string, 0)
 
-	s.LedgerDo(func(l *wavelet.Ledger) {
+	s.LedgerDo(func(l wavelet.LedgerInterface) {
 		for c := range children {
-			if l.Store.TransactionExists(c) {
+			if l.TransactionExists(c) {
 				deleteList = append(deleteList, c)
 			}
 		}

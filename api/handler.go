@@ -88,7 +88,7 @@ func (s *service) pollTransactionHandler(ctx *requestContext) (int, interface{},
 		var tx *database.Transaction
 		var err error
 
-		s.wavelet.LedgerDo(func(ledger *wavelet.Ledger) {
+		s.wavelet.LedgerDo(func(ledger wavelet.LedgerInterface) {
 			tx, err = ledger.GetBySymbol(txID)
 		})
 
@@ -143,7 +143,7 @@ func (s *service) listTransactionHandler(ctx *requestContext) (int, interface{},
 		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
 	}
 
-	s.wavelet.LedgerDo(func(ledger *wavelet.Ledger) {
+	s.wavelet.LedgerDo(func(ledger wavelet.LedgerInterface) {
 		// If paginate is blank, return the last 50 transactions.
 		if listParams.Offset == nil || listParams.Limit == nil {
 			total, limit := ledger.NumTransactions(), uint64(50)
@@ -189,7 +189,7 @@ func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, err
 	var contractCode []byte
 	var err error
 
-	s.wavelet.LedgerDo(func(ledger *wavelet.Ledger) {
+	s.wavelet.LedgerDo(func(ledger wavelet.LedgerInterface) {
 		contractCode, err = ledger.LoadContract(req.TransactionID)
 	})
 	if err != nil {
@@ -269,7 +269,7 @@ func (s *service) listContractsHandler(ctx *requestContext) (int, interface{}, e
 		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
 	}
 
-	s.wavelet.LedgerDo(func(ledger *wavelet.Ledger) {
+	s.wavelet.LedgerDo(func(ledger wavelet.LedgerInterface) {
 		// If paginate is blank, return the last 50 contracts.
 		if listParams.Offset == nil || listParams.Limit == nil {
 			total, limit := ledger.NumContracts(), uint64(50)
@@ -303,7 +303,7 @@ func (s *service) ledgerStateHandler(ctx *requestContext) (int, interface{}, err
 		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
-	plugin, exists := s.network.Plugin(discovery.PluginID)
+	plugin, exists := s.network().Plugin(discovery.PluginID)
 	if !exists {
 		return http.StatusInternalServerError, nil, errors.New("peer discovery disabled")
 	}
@@ -311,12 +311,12 @@ func (s *service) ledgerStateHandler(ctx *requestContext) (int, interface{}, err
 	routes := plugin.(*discovery.Plugin).Routes
 
 	state := &LedgerState{
-		PublicKey: s.network.ID.PublicKeyHex(),
-		Address:   s.network.ID.Address,
+		PublicKey: s.network().ID.PublicKeyHex(),
+		Address:   s.network().ID.Address,
 		Peers:     routes.GetPeerAddresses(),
 	}
 
-	s.wavelet.LedgerDo(func(ledger *wavelet.Ledger) {
+	s.wavelet.LedgerDo(func(ledger wavelet.LedgerInterface) {
 		state.State = ledger.Snapshot()
 	})
 
@@ -375,7 +375,7 @@ func (s *service) getTransactionHandler(ctx *requestContext) (int, interface{}, 
 
 	var tx *database.Transaction
 
-	s.wavelet.LedgerDo(func(ledger *wavelet.Ledger) {
+	s.wavelet.LedgerDo(func(ledger wavelet.LedgerInterface) {
 		tx, err = ledger.GetBySymbol(symbol)
 	})
 
@@ -421,7 +421,7 @@ func (s *service) getAccountHandler(ctx *requestContext) (int, interface{}, erro
 
 	var account *wavelet.Account
 
-	s.wavelet.LedgerDo(func(ledger *wavelet.Ledger) {
+	s.wavelet.LedgerDo(func(ledger wavelet.LedgerInterface) {
 		account, err = ledger.LoadAccount(accountID)
 	})
 

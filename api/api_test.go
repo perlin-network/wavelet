@@ -127,7 +127,7 @@ func Test_api_send_transaction(t *testing.T) {
 func noTest_api_ledger_state(t *testing.T) {
 	port := GetRandomUnusedPort()
 	s, c, err := setupMockServer(port, privateKeyFile, &node.WaveletMock{
-		LedgerDoCallback: func(f func(ledger *wavelet.Ledger)) {
+		LedgerDoCallback: func(f func(ledger wavelet.LedgerInterface)) {
 			f(nil)
 		},
 	})
