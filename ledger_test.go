@@ -26,7 +26,7 @@ func BenchmarkLedger(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	ledger := NewLedger(databasePath, servicesPath, genesisPath)
+	ledger := NewLedger(databasePath, genesisPath)
 
 	defer os.RemoveAll(databasePath)
 	defer ledger.Graph.Cleanup()

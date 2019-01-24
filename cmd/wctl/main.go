@@ -14,6 +14,7 @@ import (
 	"github.com/perlin-network/wavelet/params"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
+	"strconv"
 )
 
 func main() {
@@ -84,9 +85,14 @@ func main() {
 				if err != nil {
 					return err
 				}
-				tag := c.Args().Get(0)
+
+				tag, err := strconv.Atoi(c.Args().Get(0))
+				if err != nil {
+					return err
+				}
+
 				payload := c.Args().Get(1)
-				tx, err := client.SendTransaction(tag, []byte(payload))
+				tx, err := client.SendTransaction(uint32(tag), []byte(payload))
 				if err != nil {
 					return err
 				}
@@ -104,7 +110,7 @@ func main() {
 				if err != nil {
 					return err
 				}
-				transactions, err := client.RecentTransactions("")
+				transactions, err := client.RecentTransactions(nil)
 				if err != nil {
 					return err
 				}
