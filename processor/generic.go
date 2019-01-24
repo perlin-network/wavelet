@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/params"
 	"github.com/pkg/errors"
 )
@@ -33,21 +32,35 @@ func (p *GenericProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) e
 	sender.SetBalance(sender.GetBalance() - amount)
 	recipient.SetBalance(recipient.GetBalance() + amount)
 
-	if len(ctx.Tx.Payload[40:]) > 0 {
-		if _, ok := recipient.Load(params.KeyContractCode); ok {
-			nameLen := int(ctx.Tx.Payload[40])
-			if len(ctx.Tx.Payload[41:]) < nameLen {
-				return errors.New("invalid contract invocation")
+	if _, ok := recipient.Load(params.KeyContractCode); ok {
+		payloadHeaderBuilder := wavelet.NewPayloadBuilder()
+		payloadHeaderBuilder.WriteBytes([]byte(ctx.Tx.Id))
+		payloadHeaderBuilder.WriteBytes(senderID)
+		payloadHeaderBuilder.WriteUint64(amount)
+
+		if len(ctx.Tx.Payload[40:]) > 0 {
+			reader := wavelet.NewPayloadReader(ctx.Tx.Payload[40:])
+			name, err := reader.ReadUTF8String()
+			if err != nil {
+				return err
 			}
-			name := string(ctx.Tx.Payload[41 : 41+nameLen])
-			payload := ctx.Tx.Payload[41+nameLen:]
-			executor := wavelet.NewContractExecutor(recipient, senderID, payload, wavelet.ContractGasPolicy{nil, 100000})
-			err := executor.Run(name)
+			invocationPayload, err := reader.ReadBytes()
+			if err != nil {
+				return err
+			}
+			executor := wavelet.NewContractExecutor(recipient, senderID, append(payloadHeaderBuilder.Build(), invocationPayload...), wavelet.ContractGasPolicy{nil, 50000000})
+			executor.EnableLogging = true
+			err = executor.Run(name)
 			if err != nil {
 				return errors.Wrap(err, "smart contract failed")
 			}
 		} else {
-			log.Debug().Msg("junk data after transaction payload")
+			executor := wavelet.NewContractExecutor(recipient, senderID, payloadHeaderBuilder.Build(), wavelet.ContractGasPolicy{nil, 50000000})
+			executor.EnableLogging = true
+			err := executor.Run("on_money_received")
+			if err != nil {
+				return errors.Wrap(err, "smart contract failed")
+			}
 		}
 	}
 

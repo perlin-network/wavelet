@@ -20,7 +20,7 @@ var (
 	BucketAccountIDs  = []byte("accountid_")
 	BucketPreStates   = []byte("prestates_")
 	BucketDeltas      = []byte("deltas_")
-	BucketContracts   = merge(BucketAccounts, ContractPrefix)
+	//BucketContracts   = merge(BucketAccounts, ContractPrefix)
 )
 
 // pending represents a single transaction to be processed. A utility struct
@@ -185,7 +185,7 @@ func (s *state) NumTransactions() uint64 {
 
 // NumContracts returns the number of smart contracts in the ledger.
 func (s *state) NumContracts() uint64 {
-	return s.Size(BucketContracts)
+	return 0
 }
 
 // NumAcceptedTransactions returns the number of accepted transactions in the ledger.
@@ -257,7 +257,7 @@ func (s *state) Snapshot() map[string]interface{} {
 // LoadContract loads a smart contract from the database given its tx id.
 // The key in the database will be of the form "account_C-txID"
 func (s *state) LoadContract(txID string) ([]byte, error) {
-	account := NewAccount(s.Ledger, writeBytes(ContractID(txID)))
+	account := NewAccount(s.Ledger, ContractID(txID))
 
 	contractCode, ok := account.Load(params.KeyContractCode)
 	if !ok {

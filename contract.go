@@ -5,6 +5,9 @@ import (
 
 	"github.com/perlin-network/life/exec"
 
+	"bytes"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/life/utils"
@@ -13,7 +16,7 @@ import (
 )
 
 var (
-	ContractPrefix            = writeBytes("C-")
+	//ContractPrefix            = writeBytes("C-")
 	ContractCustomStatePrefix = writeBytes("CS-")
 	//KeyContractState = "contract_state"
 	KeyContractPageNum = "contract_page_num"
@@ -33,6 +36,116 @@ type ContractExecutor struct {
 	sender   []byte
 	payload  []byte
 	pending  []*database.Transaction
+
+	EnableLogging bool
+	Result        []byte
+}
+
+type PayloadBuilder struct {
+	buffer *bytes.Buffer
+}
+
+func NewPayloadBuilder() *PayloadBuilder {
+	return &PayloadBuilder{
+		buffer: bytes.NewBuffer(nil),
+	}
+}
+
+func (b *PayloadBuilder) Build() []byte {
+	return b.buffer.Bytes()
+}
+
+func (b *PayloadBuilder) WriteBytes(x []byte) {
+	b.WriteUint32(uint32(len(x)))
+	b.buffer.Write(x)
+}
+
+func (b *PayloadBuilder) WriteUTF8String(x string) {
+	b.buffer.WriteString(x)
+	b.buffer.WriteByte(0)
+}
+
+func (b *PayloadBuilder) WriteByte(x byte) {
+	b.buffer.WriteByte(x)
+}
+
+func (b *PayloadBuilder) WriteUint16(x uint16) {
+	var buf [2]byte
+	binary.LittleEndian.PutUint16(buf[:], x)
+	b.buffer.Write(buf[:])
+}
+
+func (b *PayloadBuilder) WriteUint32(x uint32) {
+	var buf [4]byte
+	binary.LittleEndian.PutUint32(buf[:], x)
+	b.buffer.Write(buf[:])
+}
+
+func (b *PayloadBuilder) WriteUint64(x uint64) {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], x)
+	b.buffer.Write(buf[:])
+}
+
+type PayloadReader struct {
+	reader *bytes.Reader
+}
+
+func NewPayloadReader(payload []byte) *PayloadReader {
+	return &PayloadReader{
+		reader: bytes.NewReader(payload),
+	}
+}
+
+func (r *PayloadReader) ReadBytes() ([]byte, error) {
+	_xLen, err := r.ReadUint32()
+	if err != nil {
+		return nil, err
+	}
+	xLen := int(_xLen)
+	if xLen < 0 || xLen > r.reader.Len() {
+		return nil, errors.New("bytes out of bounds")
+	}
+	buf := make([]byte, xLen)
+	r.reader.Read(buf)
+	return buf, nil
+}
+
+func (r *PayloadReader) ReadUTF8String() (string, error) {
+	buf := make([]byte, 0)
+
+	for {
+		x, err := r.reader.ReadByte()
+		if err != nil {
+			return "", err
+		}
+		if x == 0 {
+			return string(buf), nil
+		}
+		buf = append(buf, x)
+	}
+}
+
+func (r *PayloadReader) ReadByte() (byte, error) {
+	return r.reader.ReadByte()
+}
+
+func (r *PayloadReader) ReadUint16() (uint16, error) {
+	var buf [2]byte
+	_, err := r.reader.Read(buf[:])
+	return binary.LittleEndian.Uint16(buf[:]), err
+}
+
+func (r *PayloadReader) ReadUint32() (uint32, error) {
+	var buf [4]byte
+	_, err := r.reader.Read(buf[:])
+	return binary.LittleEndian.Uint32(buf[:]), err
+}
+
+func (r *PayloadReader) ReadUint64() (uint64, error) {
+	var buf [8]byte
+	_, err := r.reader.Read(buf[:])
+	return binary.LittleEndian.Uint64(buf[:]), err
 }
 
 func NewContractExecutor(contract *Account, sender []byte, payload []byte, gasPolicy ContractGasPolicy) *ContractExecutor {
@@ -106,8 +219,8 @@ func (c *ContractExecutor) setMemorySnapshot(mem []byte) {
 func (c *ContractExecutor) newVirtualMachine() (*exec.VirtualMachine, error) {
 	code, _ := c.contract.Load(params.KeyContractCode)
 	return exec.NewVirtualMachine(code, exec.VMConfig{
-		DefaultMemoryPages: 8,
-		MaxMemoryPages:     16,
+		DefaultMemoryPages: 16,
+		MaxMemoryPages:     32,
 
 		DefaultTableSize: 65536,
 		MaxTableSize:     65536,
@@ -191,7 +304,7 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
 
-				tag := uint32(frame.Locals[0])
+				tag := uint32(frame.Locals[0]) & 0xff
 				payloadPtr := int(uint32(frame.Locals[1]))
 				payloadLen := int(uint32(frame.Locals[2]))
 
@@ -205,61 +318,6 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 
 				return 0
 			}
-		case "_set":
-			return func(vm *exec.VirtualMachine) int64 {
-				frame := vm.GetCurrentFrame()
-
-				keyPtr := int(uint32(frame.Locals[0]))
-				keyLen := int(uint32(frame.Locals[1]))
-				valPtr := int(uint32(frame.Locals[2]))
-				valLen := int(uint32(frame.Locals[3]))
-
-				key := string(vm.Memory[keyPtr : keyPtr+keyLen])
-				val := vm.Memory[valPtr : valPtr+valLen]
-
-				valCopy := make([]byte, len(val))
-				copy(valCopy, val)
-
-				c.contract.Store(string(merge(ContractCustomStatePrefix, writeBytes(key))), valCopy)
-				return 0
-			}
-		case "_get_len":
-			return func(vm *exec.VirtualMachine) int64 {
-				frame := vm.GetCurrentFrame()
-				keyPtr := int(uint32(frame.Locals[0]))
-				keyLen := int(uint32(frame.Locals[1]))
-				key := string(vm.Memory[keyPtr : keyPtr+keyLen])
-
-				data, _ := c.contract.Load(writeString(merge(ContractCustomStatePrefix, writeBytes(key))))
-				return int64(len(data))
-			}
-		case "_get":
-			return func(vm *exec.VirtualMachine) int64 {
-				frame := vm.GetCurrentFrame()
-
-				keyPtr := int(uint32(frame.Locals[0]))
-				keyLen := int(uint32(frame.Locals[1]))
-				outPtr := int(uint32(frame.Locals[2]))
-
-				key := string(vm.Memory[keyPtr : keyPtr+keyLen])
-
-				data, _ := c.contract.Load(writeString(merge(ContractCustomStatePrefix, writeBytes(key))))
-				copy(vm.Memory[outPtr:], data)
-
-				return 0
-			}
-		case "_sender_id_len":
-			return func(vm *exec.VirtualMachine) int64 {
-				return int64(len(c.sender))
-			}
-		case "_sender_id":
-			return func(vm *exec.VirtualMachine) int64 {
-				frame := vm.GetCurrentFrame()
-
-				outPtr := int(uint32(frame.Locals[0]))
-				copy(vm.Memory[outPtr:], c.sender)
-				return 0
-			}
 		case "_payload_len":
 			return func(vm *exec.VirtualMachine) int64 {
 				return int64(len(c.payload))
@@ -270,6 +328,29 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 
 				outPtr := int(uint32(frame.Locals[0]))
 				copy(vm.Memory[outPtr:], c.payload)
+				return 0
+			}
+		case "_provide_result":
+			return func(vm *exec.VirtualMachine) int64 {
+				frame := vm.GetCurrentFrame()
+				dataPtr := int(uint32(frame.Locals[0]))
+				dataLen := int(uint32(frame.Locals[1]))
+				slice := vm.Memory[dataPtr : dataPtr+dataLen]
+				c.Result = make([]byte, dataLen)
+				copy(c.Result, slice)
+				return 0
+			}
+		case "_log":
+			return func(vm *exec.VirtualMachine) int64 {
+				if c.EnableLogging {
+					frame := vm.GetCurrentFrame()
+					dataPtr := int(uint32(frame.Locals[0]))
+					dataLen := int(uint32(frame.Locals[1]))
+					log.Info().
+						Str("contract", c.contract.PublicKeyHex()).
+						Bytes("content", vm.Memory[dataPtr:dataPtr+dataLen]).
+						Msg("contract log")
+				}
 				return 0
 			}
 		default:
@@ -286,6 +367,10 @@ func (c *ContractExecutor) ResolveGlobal(module, field string) int64 {
 
 // ContractID returns the expected ID of a smart contract given the transaction symbol which
 // spawned the contract.
-func ContractID(txID string) string {
-	return string(merge(ContractPrefix, writeBytes(txID)))
+func ContractID(txID string) []byte {
+	x, err := hex.DecodeString(txID)
+	if err != nil {
+		panic(err)
+	}
+	return x
 }
