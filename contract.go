@@ -260,8 +260,10 @@ func (c *ContractExecutor) ResolveGlobal(module, field string) int64 {
 // spawned the contract.
 func ContractID(txID string) []byte {
 	x, err := hex.DecodeString(txID)
+
 	if err != nil {
 		panic(err)
 	}
+
 	return x
 }

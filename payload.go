@@ -3,6 +3,7 @@ package wavelet
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/pkg/errors"
 )
 
 type PayloadBuilder struct {
