@@ -228,7 +228,7 @@ func (c *Client) pollTransactions(event string, stop <-chan struct{}) (<-chan wi
 
 }
 
-func (c *Client) SendTransaction(tag string, payload []byte) (resp *api.TransactionResponse, err error) {
+func (c *Client) SendTransaction(tag uint32, payload []byte) (resp *api.TransactionResponse, err error) {
 	err = c.Request(api.RouteTransactionSend, api.SendTransactionRequest{
 		Tag:     tag,
 		Payload: payload,
@@ -245,9 +245,9 @@ func (c *Client) ListTransaction(offset uint64, limit uint64) (transactions []*w
 }
 
 // RecentTransactions returns the last 50 transactions in the ledger
-func (c *Client) RecentTransactions(tag string) (transactions []*wire.Transaction, err error) {
+func (c *Client) RecentTransactions(tag *uint32) (transactions []*wire.Transaction, err error) {
 	err = c.Request(api.RouteTransactionList, api.ListTransactionsRequest{
-		Tag: &tag,
+		Tag: tag,
 	}, &transactions, nil)
 	return
 }

@@ -226,6 +226,7 @@ func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, err
 	s.wavelet.LedgerDo(func(ledger wavelet.LedgerInterface) {
 		contractCode, err = ledger.LoadContract(req.TransactionID)
 	})
+
 	if err != nil {
 		return http.StatusBadRequest, nil, errors.Wrapf(err, "transaction %s does not exist", req.TransactionID)
 	}
