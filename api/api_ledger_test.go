@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/wire"
@@ -24,6 +25,7 @@ const (
 	host           = "localhost"
 	privateKeyFile = "../cmd/wavelet/wallet.txt"
 	txID           = "bd0ed50ef81a40a233fad3a3cc7dee53880764a10facc81078e0f46b9f7d141a"
+	recipient      = "84c546dddfa01833bf9bd3478bdd3d8a1280725f081cbb70410a77d0ae471d88"
 )
 
 func setupMockServer(port int, privateKeyFile string, mockWavelet node.NodeInterface) (*http.Server, *apiClient.Client, error) {
@@ -154,10 +156,29 @@ func Test_api_get_contract(t *testing.T) {
 	assert.Nil(t, err)
 	defer s.Close()
 
-	res, err := c.GetContract(txID, "/tmp/filename")
+	res, err := c.GetContract(txID, "/tmp/filename1")
 	assert.Nil(t, err)
 	assert.Equal(t, txID, res.TransactionID)
 	assert.Equal(t, []byte("contract-"+txID), res.Code)
+}
+
+func Test_api_send_contract(t *testing.T) {
+	port := GetRandomUnusedPort()
+	s, c, err := setupMockServer(port, privateKeyFile, &node.WaveletMock{
+		MakeTransactionCB: func(tag uint32, payload []byte) *wire.Transaction {
+			return &wire.Transaction{}
+		},
+		BroadcastTransactionCB: func(wired *wire.Transaction) {},
+	})
+	assert.Nil(t, err)
+	defer s.Close()
+
+	filename := "/tmp/filename2"
+	assert.Nil(t, ioutil.WriteFile(filename, []byte("hello\ngo\n"), 0644))
+
+	res, err := c.SendContract(filename)
+	assert.Nil(t, err)
+	assert.True(t, len(res.TransactionID) > 0)
 }
 
 func Test_api_list_contracts(t *testing.T) {
@@ -218,20 +239,26 @@ func Test_api_send_transaction(t *testing.T) {
 	port := GetRandomUnusedPort()
 	s, c, err := setupMockServer(port, privateKeyFile, &node.WaveletMock{
 		MakeTransactionCB: func(tag uint32, payload []byte) *wire.Transaction {
-			return &wire.Transaction{}
+			return &wire.Transaction{
+				Tag:     tag,
+				Payload: payload,
+			}
 		},
-		BroadcastTransactionCB: func(wired *wire.Transaction) {},
+		BroadcastTransactionCB: func(wired *wire.Transaction) {
+			// TODO: validate the payload
+		},
 	})
 	assert.Nil(t, err)
 	defer s.Close()
 
-	payload := fmt.Sprintf(`{
-		"recipient": "%s",
-		"body": {
-			"Payload": "Register"
-		}
-	}`, "contractAddress")
-	res, err := c.SendTransaction(params.TagGeneric, []byte(payload))
+	recipientDecoded, _ := hex.DecodeString(recipient)
+	writer := wavelet.NewPayloadBuilder()
+	writer.WriteBytes(recipientDecoded)
+	writer.WriteUint64(uint64(10))
+	writer.WriteUTF8String("balance")
+	writer.WriteUint64(25)
+
+	res, err := c.SendTransaction(params.TagGeneric, writer.Bytes())
 	assert.Nil(t, err)
 	assert.True(t, len(res.TransactionID) > 0)
 }
