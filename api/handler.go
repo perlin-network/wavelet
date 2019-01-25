@@ -462,6 +462,10 @@ func (s *service) getAccountHandler(ctx *requestContext) (int, interface{}, erro
 	var account *wavelet.Account
 
 	s.wavelet.LedgerDo(func(ledger wavelet.LedgerInterface) {
+		if ledger.Accounts() == nil {
+			err = errors.New("cannot access accounts")
+			return
+		}
 		account = wavelet.LoadAccount(ledger.Accounts(), accountID)
 	})
 

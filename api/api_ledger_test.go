@@ -258,7 +258,22 @@ func Test_api_get_transaction(t *testing.T) {
 }
 
 func Test_api_get_account(t *testing.T) {
-	// TODO
+	port := GetRandomUnusedPort()
+	s, c, err := setupMockServer(port, privateKeyFile, &node.WaveletMock{
+		LedgerDoCB: func(f func(ledger wavelet.LedgerInterface)) {
+			mock := &wavelet.MockLedger{}
+			mock.AccountsCB = func() *wavelet.Accounts {
+				return nil
+			}
+			f(mock)
+		},
+	})
+	assert.Nil(t, err)
+	defer s.Close()
+
+	res, err := c.LoadAccount(txID)
+	assert.Nil(t, err)
+	assert.Equal(t, 0, len(res))
 }
 
 func Test_api_serverVersion(t *testing.T) {
