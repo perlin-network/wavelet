@@ -400,14 +400,17 @@ func (s *service) getTransactionHandler(ctx *requestContext) (int, interface{}, 
 		return http.StatusBadRequest, nil, err
 	}
 
-	if len(symbol) != 64 {
-		return http.StatusBadRequest, nil, errors.New("transaction symbol ID must be a length-64 hex-encoded string")
+	req := &GetContractRequest{
+		TransactionID: symbol,
+	}
+	if err := validate.Struct(req); err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "transaction symbol ID invalid length")
 	}
 
 	_, err := hex.DecodeString(symbol)
 
 	if err != nil {
-		return http.StatusBadRequest, nil, errors.New("transaction symbol ID must be a length-64 hex-encoded string")
+		return http.StatusBadRequest, nil, errors.New("invalid encoded transaction ID")
 	}
 
 	var tx *database.Transaction

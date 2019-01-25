@@ -23,6 +23,7 @@ import (
 const (
 	host           = "localhost"
 	privateKeyFile = "../cmd/wavelet/wallet.txt"
+	txID           = "bd0ed50ef81a40a233fad3a3cc7dee53880764a10facc81078e0f46b9f7d141a"
 )
 
 func setupMockServer(port int, privateKeyFile string, mockWavelet node.NodeInterface) (*http.Server, *apiClient.Client, error) {
@@ -91,17 +92,6 @@ func GetRandomUnusedPort() int {
 
 ////////////////////////////////
 
-func Test_api_serverVersion(t *testing.T) {
-	port := GetRandomUnusedPort()
-	s, c, err := setupMockServer(port, privateKeyFile, &node.WaveletMock{})
-	assert.Nil(t, err)
-	defer s.Close()
-
-	res, err := c.ServerVersion()
-	assert.Nil(t, err)
-	assert.Equal(t, params.Version, res.Version)
-}
-
 func Test_api_list_transaction(t *testing.T) {
 	numTx := 10
 	port := GetRandomUnusedPort()
@@ -164,7 +154,6 @@ func Test_api_get_contract(t *testing.T) {
 	assert.Nil(t, err)
 	defer s.Close()
 
-	txID := "123456789012345678901234567890123"
 	res, err := c.GetContract(txID, "/tmp/filename")
 	assert.Nil(t, err)
 	assert.Equal(t, txID, res.TransactionID)
@@ -245,4 +234,40 @@ func Test_api_send_transaction(t *testing.T) {
 	res, err := c.SendTransaction(params.TagGeneric, []byte(payload))
 	assert.Nil(t, err)
 	assert.True(t, len(res.TransactionID) > 0)
+}
+
+func Test_api_get_transaction(t *testing.T) {
+	port := GetRandomUnusedPort()
+	s, c, err := setupMockServer(port, privateKeyFile, &node.WaveletMock{
+		LedgerDoCB: func(f func(ledger wavelet.LedgerInterface)) {
+			mock := &wavelet.MockLedger{}
+			mock.GetBySymbolCB = func(symbol string) (*database.Transaction, error) {
+				return &database.Transaction{
+					Nonce: uint64(123),
+				}, nil
+			}
+			f(mock)
+		},
+	})
+	assert.Nil(t, err)
+	defer s.Close()
+
+	res, err := c.GetTransaction(txID)
+	assert.Nil(t, err)
+	assert.Equal(t, uint64(123), res.Nonce)
+}
+
+func Test_api_get_account(t *testing.T) {
+	// TODO
+}
+
+func Test_api_serverVersion(t *testing.T) {
+	port := GetRandomUnusedPort()
+	s, c, err := setupMockServer(port, privateKeyFile, &node.WaveletMock{})
+	assert.Nil(t, err)
+	defer s.Close()
+
+	res, err := c.ServerVersion()
+	assert.Nil(t, err)
+	assert.Equal(t, params.Version, res.Version)
 }

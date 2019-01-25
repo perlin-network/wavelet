@@ -244,6 +244,11 @@ func (c *Client) ListTransaction(offset uint64, limit uint64) (transactions []*w
 	return
 }
 
+func (c *Client) GetTransaction(txID string) (transaction *wire.Transaction, err error) {
+	err = c.Request(api.RouteTransaction, txID, &transaction, nil)
+	return
+}
+
 // RecentTransactions returns the last 50 transactions in the ledger
 func (c *Client) RecentTransactions(tag *uint32) (transactions []*wire.Transaction, err error) {
 	err = c.Request(api.RouteTransactionList, api.ListTransactionsRequest{
