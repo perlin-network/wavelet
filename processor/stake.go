@@ -11,17 +11,18 @@ type StakeProcessor struct {
 }
 
 func (p *StakeProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) error {
-	if len(ctx.Tx.Payload) != 8 {
+	if len(ctx.Transaction.Payload) != 8 {
 		return errors.New("expecting an int64")
 	}
 
-	delta := int64(binary.LittleEndian.Uint64(ctx.Tx.Payload))
+	delta := int64(binary.LittleEndian.Uint64(ctx.Transaction.Payload))
 
-	senderID, err := hex.DecodeString(ctx.Tx.Sender)
+	senderID, err := hex.DecodeString(ctx.Transaction.Sender)
 	if err != nil {
 		return err
 	}
-	acct := ctx.NewAccount(string(senderID))
+
+	acct := ctx.LoadAccount(senderID)
 
 	if delta >= 0 {
 		delta := uint64(delta)

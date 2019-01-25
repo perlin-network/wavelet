@@ -23,6 +23,7 @@ type LedgerInterface interface {
 	// Wavelet/ledger
 	WasAccepted(symbol string) bool
 	QueueForAcceptance(symbol string) error
+	Accounts() *Accounts
 
 	// Store
 	GetBySymbol(symbol string) (*database.Transaction, error)

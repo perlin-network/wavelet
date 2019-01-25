@@ -37,7 +37,7 @@ func ReadGenesis(ledger *Ledger, path string) ([]*Account, error) {
 			return nil, err
 		}
 
-		account := NewAccount(ledger, id)
+		account := LoadAccount(ledger.Accounts, id)
 
 		for key, v := range pairs {
 			switch value := v.(type) {

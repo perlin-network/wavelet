@@ -17,6 +17,7 @@ type MockLedger struct {
 	HandleSuccessfulQueryCB func(tx *database.Transaction) error
 	WasAcceptedCB           func(symbol string) bool
 	QueueForAcceptanceCB    func(symbol string) error
+	AccountsCB              func() *Accounts
 	GetBySymbolCB           func(symbol string) (*database.Transaction, error)
 	GetChildrenBySymbolCB   func(symbol string) (*database.Children, error)
 	GetMostRecentlyUsedCB   func(n int) []string
@@ -69,6 +70,10 @@ func (m *MockLedger) WasAccepted(symbol string) bool {
 
 func (m *MockLedger) QueueForAcceptance(symbol string) error {
 	return m.QueueForAcceptanceCB(symbol)
+}
+
+func (m *MockLedger) Accounts() *Accounts {
+	return m.AccountsCB()
 }
 
 func (m *MockLedger) GetBySymbol(symbol string) (*database.Transaction, error) {
