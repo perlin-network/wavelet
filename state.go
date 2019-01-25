@@ -40,16 +40,18 @@ func (s *state) RegisterTransactionProcessor(tag byte, p TransactionProcessor) {
 	s.processors[int(tag)] = p
 }
 
-func (s *state) collectRewardedAncestors(tx *database.Transaction, filterOutSender string, depth int) ([]*database.Transaction, error) {
+func (s *state) collectRewardedAncestors(tx *database.Transaction, filterOutSender []byte, depth int) ([]*database.Transaction, error) {
 	if depth == 0 {
 		return nil, nil
 	}
 
 	ret := make([]*database.Transaction, 0)
 
-	parents := make([]string, len(tx.Parents))
+	parents := make([][]byte, len(tx.Parents))
 	copy(parents, tx.Parents)
-	sort.Strings(parents)
+	sort.Slice(parents, func(i, j int) bool {
+		return bytes.Compare(parents[i], parents[j]) == -1
+	})
 
 	for _, p := range parents {
 		parent, err := s.Ledger.Store.GetBySymbol(p)
@@ -57,7 +59,7 @@ func (s *state) collectRewardedAncestors(tx *database.Transaction, filterOutSend
 			return nil, err
 		}
 
-		if parent.Sender != filterOutSender {
+		if !bytes.Equal(parent.Sender, filterOutSender) {
 			ret = append(ret, parent)
 		}
 
@@ -71,13 +73,8 @@ func (s *state) collectRewardedAncestors(tx *database.Transaction, filterOutSend
 	return ret, nil
 }
 
-func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64, depth int) (string, error) {
-	readStake := func(sAccountID string) uint64 {
-		accountID, err := hex.DecodeString(sAccountID)
-		if err != nil {
-			panic(err) // shouldn't happen?
-		}
-
+func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64, depth int) ([]byte, error) {
+	readStake := func(accountID []byte) uint64 {
 		account := LoadAccount(s.Ledger.Accounts, accountID)
 
 		stake, _ := account.Load("stake")
@@ -89,16 +86,16 @@ func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64,
 	}
 
 	if depth < 0 {
-		return "", errors.New("invalid depth")
+		return nil, errors.New("invalid depth")
 	}
 
 	candidateRewardees, err := s.collectRewardedAncestors(tx, tx.Sender, depth)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if len(candidateRewardees) == 0 {
-		return "", nil
+		return nil, nil
 	}
 
 	stakes := make([]uint64, len(candidateRewardees))
@@ -107,7 +104,7 @@ func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64,
 	var buffer bytes.Buffer
 
 	for _, rewardee := range candidateRewardees {
-		buffer.WriteString(rewardee.Id)
+		buffer.Write(rewardee.Id)
 
 		stake := readStake(rewardee.Sender)
 		stakes = append(stakes, stake)
@@ -118,7 +115,7 @@ func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64,
 
 	if totalStake == 0 {
 		//log.Warn().Msg("None of the candidates have any stakes available. Skipping reward.")
-		return "", nil
+		return nil, nil
 	}
 
 	threshold := float64(binary.LittleEndian.Uint64(entropy)%uint64(0xffff)) / float64(0xffff)
@@ -256,12 +253,12 @@ func (s *state) Snapshot() map[string]interface{} {
 
 // LoadContract loads a smart contract from the database given its tx id.
 // The key in the database will be of the form "account_C-txID"
-func (s *state) LoadContract(txID string) ([]byte, error) {
-	account := LoadAccount(s.Ledger.Accounts, ContractID(txID))
+func (s *state) LoadContract(txID []byte) ([]byte, error) {
+	account := LoadAccount(s.Ledger.Accounts, txID)
 
 	contractCode, ok := account.Load(params.KeyContractCode)
 	if !ok {
-		return nil, errors.Errorf("contract ID %s has no code", txID)
+		return nil, errors.Errorf("contract ID %s has no code", hex.EncodeToString(txID))
 	}
 	return contractCode, nil
 }

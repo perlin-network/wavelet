@@ -1,7 +1,7 @@
 package events
 
 type transactionUpdate struct {
-	ID string `json:"id"`
+	ID []byte `json:"id"`
 }
 
 type TransactionAcceptedEvent transactionUpdate

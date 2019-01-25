@@ -1,8 +1,6 @@
 package security
 
 import (
-	"encoding/hex"
-
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/crypto/ed25519"
 
@@ -36,11 +34,6 @@ func ValidateWiredTransaction(wired *wire.Transaction) (bool, error) {
 		return false, errors.Wrapf(ErrInvalidSignature, "invalid signature from sender %s", wired.Sender)
 	}
 
-	publicKey, err := hex.DecodeString(wired.Sender)
-	if err != nil {
-		return false, err
-	}
-
 	signature := wired.Signature
 	wired.Signature = nil
 
@@ -49,7 +42,7 @@ func ValidateWiredTransaction(wired *wire.Transaction) (bool, error) {
 		return false, err
 	}
 
-	if verified := Verify(publicKey, encoded, signature); !verified {
+	if verified := Verify(wired.Sender, encoded, signature); !verified {
 		return false, errors.Wrapf(ErrInvalidSignature, "invalid signature from sender %s", wired.Sender)
 	}
 

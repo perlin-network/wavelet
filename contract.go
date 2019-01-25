@@ -5,7 +5,6 @@ import (
 
 	"github.com/perlin-network/life/exec"
 
-	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/life/utils"
@@ -205,7 +204,7 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				payload := vm.Memory[payloadPtr : payloadPtr+payloadLen]
 
 				c.pending = append(c.pending, &database.Transaction{
-					Sender:  c.contract.PublicKeyHex(),
+					Sender:  c.contract.PublicKey(),
 					Tag:     tag,
 					Payload: payload,
 				})
@@ -257,16 +256,4 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 
 func (c *ContractExecutor) ResolveGlobal(module, field string) int64 {
 	panic("no global variables")
-}
-
-// ContractID returns the expected ID of a smart contract given the transaction symbol which
-// spawned the contract.
-func ContractID(txID string) []byte {
-	x, err := hex.DecodeString(txID)
-
-	if err != nil {
-		panic(err)
-	}
-
-	return x
 }

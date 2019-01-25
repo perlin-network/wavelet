@@ -2,7 +2,6 @@ package processor
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 	"github.com/perlin-network/wavelet"
 	"github.com/pkg/errors"
 )
@@ -17,12 +16,7 @@ func (p *StakeProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) err
 
 	delta := int64(binary.LittleEndian.Uint64(ctx.Transaction.Payload))
 
-	senderID, err := hex.DecodeString(ctx.Transaction.Sender)
-	if err != nil {
-		return err
-	}
-
-	acct := ctx.LoadAccount(senderID)
+	acct := ctx.LoadAccount(ctx.Transaction.Sender)
 
 	if delta >= 0 {
 		delta := uint64(delta)

@@ -9,8 +9,7 @@ type CreateContractProcessor struct {
 }
 
 func (p *CreateContractProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) error {
-	contractID := wavelet.ContractID(ctx.Transaction.Id)
-	contract := ctx.LoadAccount(contractID)
+	contract := ctx.LoadAccount(ctx.Transaction.Id)
 	contract.Store(params.KeyContractCode, ctx.Transaction.Payload)
 
 	return nil

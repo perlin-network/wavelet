@@ -595,7 +595,7 @@ func runShell(w *node.Wavelet) error {
 			wired := w.MakeTransaction(params.TagCreateContract, bytes)
 			go w.BroadcastTransaction(wired)
 
-			log.Info().Msgf("Success! Your smart contract ID: %s", hex.EncodeToString(wavelet.ContractID(graph.Symbol(wired))))
+			log.Info().Msgf("Success! Your smart contract ID: %s", hex.EncodeToString(graph.Symbol(wired)))
 		case "tx":
 			if len(cmd) < 2 {
 				continue
@@ -604,7 +604,7 @@ func runShell(w *node.Wavelet) error {
 			var tx *database.Transaction
 
 			w.Ledger.Do(func(l *wavelet.Ledger) {
-				tx, err = l.GetBySymbol(cmd[1])
+				tx, err = l.GetBySymbol([]byte(cmd[1]))
 			})
 
 			if err != nil {
@@ -612,11 +612,16 @@ func runShell(w *node.Wavelet) error {
 				continue
 			}
 
+			var txParents []string
+			for _, parent := range tx.Parents {
+				txParents = append(txParents, string(parent))
+			}
+
 			log.Info().
-				Str("sender", tx.Sender).
+				Str("sender", hex.EncodeToString(tx.Sender)).
 				Uint64("nonce", tx.Nonce).
 				Uint32("tag", tx.Tag).
-				Strs("parents", tx.Parents).
+				Strs("parents", txParents).
 				Bytes("payload", tx.Payload).
 				Msg("Here is the transaction you requested.")
 		default:
