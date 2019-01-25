@@ -6,6 +6,7 @@ require (
 	github.com/go-playground/universal-translator v0.16.0 // indirect
 	github.com/gofrs/uuid v3.1.0+incompatible
 	github.com/gogo/protobuf v1.1.1
+	github.com/golang/mock v1.2.0
 	github.com/gorilla/websocket v1.4.0
 	github.com/lytics/hll v0.0.0-20180410160152-70adc917ce99
 	github.com/perlin-network/graph v0.0.0-20190124074922-48a621e95097
