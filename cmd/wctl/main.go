@@ -120,6 +120,26 @@ func main() {
 				return nil
 			},
 		},
+		{
+			Name:      "get_transaction",
+			Usage:     "get transaction",
+			ArgsUsage: "<transaction_id>",
+			Flags:     commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				txID := c.Args().Get(0)
+				tx, err := client.GetTransaction(txID)
+				if err != nil {
+					return err
+				}
+				jsonOut, _ := json.Marshal(tx)
+				fmt.Printf("%s\n", jsonOut)
+				return nil
+			},
+		},
 		cli.Command{
 			Name:  "poll_accounts",
 			Usage: "continuously receive account updates",
