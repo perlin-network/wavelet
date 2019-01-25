@@ -236,9 +236,23 @@ func Test_api_ledger_state(t *testing.T) {
 }
 
 func Test_api_send_transaction(t *testing.T) {
+	recipientDecoded, _ := hex.DecodeString(recipient)
 	port := GetRandomUnusedPort()
 	s, c, err := setupMockServer(port, privateKeyFile, &node.WaveletMock{
 		MakeTransactionCB: func(tag uint32, payload []byte) *wire.Transaction {
+			reader := wavelet.NewPayloadReader(payload)
+			r, err := reader.ReadBytes()
+			assert.Nil(t, err)
+			assert.Equal(t, recipientDecoded, r)
+			a, err := reader.ReadUint64()
+			assert.Nil(t, err)
+			assert.Equal(t, uint64(10), a)
+			s, err := reader.ReadUTF8String()
+			assert.Nil(t, err)
+			assert.Equal(t, "balance", s)
+			f, err := reader.ReadUint32()
+			assert.Nil(t, err)
+			assert.Equal(t, uint32(25), f)
 			return &wire.Transaction{
 				Tag:     tag,
 				Payload: payload,
@@ -251,12 +265,11 @@ func Test_api_send_transaction(t *testing.T) {
 	assert.Nil(t, err)
 	defer s.Close()
 
-	recipientDecoded, _ := hex.DecodeString(recipient)
 	writer := wavelet.NewPayloadBuilder()
 	writer.WriteBytes(recipientDecoded)
 	writer.WriteUint64(uint64(10))
 	writer.WriteUTF8String("balance")
-	writer.WriteUint64(25)
+	writer.WriteUint32(25)
 
 	res, err := c.SendTransaction(params.TagGeneric, writer.Bytes())
 	assert.Nil(t, err)
