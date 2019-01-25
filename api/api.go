@@ -92,7 +92,9 @@ func Run(net *network.Network, wavelet node.NodeInterface, sc chan *http.Server,
 		Handler: handler,
 	}
 
-	sc <- server
+	if sc != nil {
+		sc <- server
+	}
 
 	if err := server.ListenAndServe(); err != nil {
 		log.Error().Err(err).Msg(" ")
