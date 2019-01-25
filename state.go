@@ -78,7 +78,7 @@ func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64,
 			panic(err) // shouldn't happen?
 		}
 
-		account := LoadAccount(s.Ledger.Accounts, accountID)
+		account := LoadAccount(s.Ledger.Accounts(), accountID)
 
 		stake, _ := account.Load("stake")
 		if stake == nil {
@@ -145,7 +145,7 @@ func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64,
 }
 
 func (s *state) ExecuteContract(txID string, entry string, param []byte) ([]byte, error) {
-	account := LoadAccount(s.Ledger.Accounts, writeBytes(txID))
+	account := LoadAccount(s.Ledger.Accounts(), writeBytes(txID))
 
 	executor := NewContractExecutor(account, nil, param, ContractGasPolicy{nil, 100000})
 	err := executor.Run(entry)
@@ -160,7 +160,7 @@ func (s *state) ExecuteContract(txID string, entry string, param []byte) ([]byte
 // applyTransaction runs a transaction, gets any transactions created by said transaction, and
 // applies those transactions to the ledger state.
 func (s *state) applyTransaction(tx *database.Transaction) error {
-	s.Ledger.Store.Put(merge(BucketPreStates, []byte(tx.Id)), s.Ledger.Accounts.GetRoot())
+	s.Ledger.Store.Put(merge(BucketPreStates, []byte(tx.Id)), s.Ledger.Accounts().GetRoot())
 
 	processor := s.processors[int(tx.Tag&0xff)]
 	if processor == nil {
@@ -235,7 +235,7 @@ func (s *state) Snapshot() map[string]interface{} {
 	json := make(map[string]interface{})
 
 	s.Store.ForEach(BucketAccountIDs, func(publicKey, _ []byte) error {
-		acct := LoadAccount(s.Ledger.Accounts, publicKey)
+		acct := LoadAccount(s.Ledger.Accounts(), publicKey)
 
 		data := accountData{Nonce: acct.GetNonce(), State: make(map[string][]byte)}
 
@@ -257,7 +257,7 @@ func (s *state) Snapshot() map[string]interface{} {
 // LoadContract loads a smart contract from the database given its tx id.
 // The key in the database will be of the form "account_C-txID"
 func (s *state) LoadContract(txID string) ([]byte, error) {
-	account := LoadAccount(s.Ledger.Accounts, ContractID(txID))
+	account := LoadAccount(s.Ledger.Accounts(), ContractID(txID))
 
 	contractCode, ok := account.Load(params.KeyContractCode)
 	if !ok {

@@ -25,7 +25,7 @@ func (c *TransactionContext) LoadAccount(publicKey []byte) *Account {
 		return account
 	}
 
-	account := LoadAccount(c.ledger.Accounts, publicKey)
+	account := LoadAccount(c.ledger.Accounts(), publicKey)
 	c.accounts[writeString(publicKey)] = account
 
 	return account
@@ -94,7 +94,7 @@ func (c *TransactionContext) run(processor TransactionProcessor) error {
 	}
 
 	for _, account := range c.accounts {
-		c.ledger.Accounts.save(account)
+		c.ledger.Accounts().save(account)
 	}
 	return nil
 }

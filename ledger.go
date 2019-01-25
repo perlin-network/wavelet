@@ -388,7 +388,7 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 		return
 	}
 
-	ledger.Accounts.SetRoot(stateRoot)
+	ledger.Accounts().SetRoot(stateRoot)
 
 	log.Debug().Str("key", symbol).Str("state_root", hex.EncodeToString(stateRoot)).Msg("Reverted transaction.")
 }

@@ -56,7 +56,7 @@ func (w *Wallet) NextNonce(ledger *Ledger) (uint64, error) {
 
 	// If our personal nodes tracked nonce is smaller than the stored nonce in our ledger, update
 	// our personal nodes nonce to be the stored nonce in the ledger.
-	if account := LoadAccount(ledger.Accounts, w.PublicKey); account.GetNonce() > nonce {
+	if account := LoadAccount(ledger.Accounts(), w.PublicKey); account.GetNonce() > nonce {
 		nonce = account.GetNonce()
 	}
 
@@ -70,9 +70,9 @@ func (w *Wallet) NextNonce(ledger *Ledger) (uint64, error) {
 
 // GetBalance returns the current balance of the wallet.
 func (w *Wallet) GetBalance(ledger *Ledger) uint64 {
-	return LoadAccount(ledger.Accounts, w.PublicKey).GetBalance()
+	return LoadAccount(ledger.Accounts(), w.PublicKey).GetBalance()
 }
 
 func (w *Wallet) GetStake(ledger *Ledger) uint64 {
-	return LoadAccount(ledger.Accounts, w.PublicKey).GetStake()
+	return LoadAccount(ledger.Accounts(), w.PublicKey).GetStake()
 }
