@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/golang/mock/gomock"
 	"github.com/perlin-network/graph/database"
-	//"github.com/perlin-network/graph/wire"
+	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/crypto"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
@@ -93,19 +93,18 @@ func GetRandomUnusedPort() int {
 	return listener.Addr().(*net.TCPAddr).Port
 }
 
-// https://blog.codecentric.de/en/2017/08/gomock-tutorial/
-
 ////////////////////////////////
 
 func Test_api_list_transaction(t *testing.T) {
 	numTx := 10
+	numLimit := uint64(5)
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
 	mockNode := node.NewMockNodeInterface(mockCtrl)
 	mockLedger := wavelet.NewMockLedgerInterface(mockCtrl)
 
-	mockLedger.EXPECT().PaginateTransactions(uint64(numTx), uint64(5)).Return(func() []*database.Transaction {
+	mockLedger.EXPECT().PaginateTransactions(uint64(numTx), uint64(numLimit)).Return(func() []*database.Transaction {
 		result := []*database.Transaction{}
 		for i := 0; i < numTx; i++ {
 			result = append(result, &database.Transaction{
@@ -124,7 +123,7 @@ func Test_api_list_transaction(t *testing.T) {
 	assert.Nil(t, err)
 	defer s.Close()
 
-	res, err := c.ListTransaction(uint64(numTx), 5)
+	res, err := c.ListTransaction(uint64(numTx), numLimit)
 	assert.Nil(t, err)
 	assert.Equal(t, numTx, len(res))
 	for i := 0; i < numTx; i++ {
@@ -132,37 +131,48 @@ func Test_api_list_transaction(t *testing.T) {
 	}
 }
 
-/*
 func Test_api_execute_contract(t *testing.T) {
+	paramEntry := "entry"
+	paramParam := []byte("param")
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockNode := node.NewMockNodeInterface(mockCtrl)
+	mockLedger := wavelet.NewMockLedgerInterface(mockCtrl)
+
+	mockLedger.EXPECT().ExecuteContract(txID, paramEntry, paramParam).Return(func() ([]byte, error) {
+		return []byte("result"), nil
+	}()).Times(1)
+	mockNode.EXPECT().LedgerDo(gomock.Any()).Times(1).DoAndReturn(func(f func(ledger wavelet.LedgerInterface)) {
+		f(mockLedger)
+	}).Times(1)
+
 	port := GetRandomUnusedPort()
-	s, c, err := setupMockServer(port, privateKeyFile, &node.WaveletMock{
-		LedgerDoCB: func(f func(ledger wavelet.LedgerInterface)) {
-			mock := &wavelet.MockLedger{}
-			mock.ExecuteContractCB = func(txID string, entry string, param []byte) ([]byte, error) {
-				return []byte("result"), nil
-			}
-			f(mock)
-		},
-	})
+	s, c, err := setupMockServer(port, privateKeyFile, mockNode)
 	assert.Nil(t, err)
 	defer s.Close()
 
-	res, err := c.ExecuteContract("txID", "entry", []byte("param"))
+	res, err := c.ExecuteContract(txID, paramEntry, paramParam)
 	assert.Nil(t, err)
 	assert.Equal(t, []byte("result"), res.Result)
 }
 
 func Test_api_get_contract(t *testing.T) {
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockNode := node.NewMockNodeInterface(mockCtrl)
+	mockLedger := wavelet.NewMockLedgerInterface(mockCtrl)
+
+	mockLedger.EXPECT().LoadContract(txID).Return(func() ([]byte, error) {
+		return []byte("contract-" + txID), nil
+	}()).Times(1)
+	mockNode.EXPECT().LedgerDo(gomock.Any()).Times(1).DoAndReturn(func(f func(ledger wavelet.LedgerInterface)) {
+		f(mockLedger)
+	}).Times(1)
+
 	port := GetRandomUnusedPort()
-	s, c, err := setupMockServer(port, privateKeyFile, &node.WaveletMock{
-		LedgerDoCB: func(f func(ledger wavelet.LedgerInterface)) {
-			mock := &wavelet.MockLedger{}
-			mock.LoadContractCB = func(txID string) ([]byte, error) {
-				return []byte("contract-" + txID), nil
-			}
-			f(mock)
-		},
-	})
+	s, c, err := setupMockServer(port, privateKeyFile, mockNode)
 	assert.Nil(t, err)
 	defer s.Close()
 
@@ -173,13 +183,19 @@ func Test_api_get_contract(t *testing.T) {
 }
 
 func Test_api_send_contract(t *testing.T) {
+
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockNode := node.NewMockNodeInterface(mockCtrl)
+
+	mockNode.EXPECT().MakeTransaction(gomock.Any(), gomock.Any()).Return(func() *wire.Transaction {
+		return &wire.Transaction{}
+	}()).Times(1)
+	mockNode.EXPECT().BroadcastTransaction(gomock.Any()).Times(1)
+
 	port := GetRandomUnusedPort()
-	s, c, err := setupMockServer(port, privateKeyFile, &node.WaveletMock{
-		MakeTransactionCB: func(tag uint32, payload []byte) *wire.Transaction {
-			return &wire.Transaction{}
-		},
-		BroadcastTransactionCB: func(wired *wire.Transaction) {},
-	})
+	s, c, err := setupMockServer(port, privateKeyFile, mockNode)
 	assert.Nil(t, err)
 	defer s.Close()
 
@@ -191,6 +207,7 @@ func Test_api_send_contract(t *testing.T) {
 	assert.True(t, len(res.TransactionID) > 0)
 }
 
+/*
 func Test_api_list_contracts(t *testing.T) {
 	numContracts := 10
 	port := GetRandomUnusedPort()
