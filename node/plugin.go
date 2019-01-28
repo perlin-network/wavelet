@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"encoding/hex"
 	"math/rand"
 	"os"
 
@@ -144,7 +145,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				}
 			})
 
-			log.Debug().Str("id", id).Uint32("tag", msg.Tag).Msgf("Received an existing transaction, and voted '%t' for it.", res.StronglyPreferred)
+			log.Debug().Str("id", hex.EncodeToString(id)).Uint32("tag", msg.Tag).Msgf("Received an existing transaction, and voted '%t' for it.", res.StronglyPreferred)
 
 			if rand.Intn(params.SyncNeighborsLikelihood) == 0 {
 				go w.syncer.QueryMissingChildren(id)
@@ -173,7 +174,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 				return err
 			}
 
-			log.Debug().Str("id", id).Uint32("tag", msg.Tag).Msgf("Received a new transaction, and voted '%t' for it.", res.StronglyPreferred)
+			log.Debug().Str("id", hex.EncodeToString(id)).Uint32("tag", msg.Tag).Msgf("Received a new transaction, and voted '%t' for it.", res.StronglyPreferred)
 
 			go func() {
 				err := w.Query(msg)
@@ -204,7 +205,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 			}()
 		}
 	case *SyncChildrenQueryRequest:
-		var childrenIDs []string
+		var childrenIDs [][]byte
 
 		w.LedgerDo(func(l wavelet.LedgerInterface) {
 			if children, err := l.GetChildrenBySymbol(msg.Id); err == nil {
@@ -213,7 +214,7 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 		})
 
 		if childrenIDs == nil {
-			childrenIDs = make([]string, 0)
+			childrenIDs = make([][]byte, 0)
 		}
 
 		ctx.Reply(context.Background(), &SyncChildrenQueryResponse{

@@ -37,7 +37,7 @@ type ListContractsRequest struct {
 
 // ExecuteContractRequest executes a contract locally.
 type ExecuteContractRequest struct {
-	ContractID string `json:"contract_id" validate:"required"`
+	ContractID string `json:"contract_id" validate:"required,len=64"`
 	Entry      string `json:"entry_id" validate:"required,max=255"`
 	Param      []byte `json:"param"`
 }

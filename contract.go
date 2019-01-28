@@ -5,7 +5,6 @@ import (
 
 	"github.com/perlin-network/life/exec"
 
-	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/life/utils"
@@ -17,6 +16,8 @@ var (
 	ContractCustomStatePrefix = writeBytes("CS-")
 	KeyContractPageNum        = ".CP"
 	ContractPagePrefix        = "CP-"
+
+	ErrEntrypointNotFound = errors.New("entry point not found")
 )
 
 const PageSize = 65536
@@ -160,7 +161,7 @@ func (c *ContractExecutor) Run(entry string, params ...byte) error {
 	entry = "_contract_" + entry
 	entryID, exists := vm.GetFunctionExport(entry)
 	if !exists {
-		return errors.Errorf("entry point `%s` not found", entry)
+		return errors.Wrapf(ErrEntrypointNotFound, "`%s` does not exist", entry)
 	}
 
 	vm.Ignite(entryID)
@@ -205,7 +206,7 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				payload := vm.Memory[payloadPtr : payloadPtr+payloadLen]
 
 				c.pending = append(c.pending, &database.Transaction{
-					Sender:  c.contract.PublicKeyHex(),
+					Sender:  c.contract.PublicKey(),
 					Tag:     tag,
 					Payload: payload,
 				})
@@ -240,10 +241,8 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 					frame := vm.GetCurrentFrame()
 					dataPtr := int(uint32(frame.Locals[0]))
 					dataLen := int(uint32(frame.Locals[1]))
-					log.Info().
-						Str("contract", c.contract.PublicKeyHex()).
-						Bytes("content", vm.Memory[dataPtr:dataPtr+dataLen]).
-						Msg("contract log")
+
+					log.Info().Str("contract_id", c.contract.PublicKeyHex()).Msgf(string(vm.Memory[dataPtr : dataPtr+dataLen]))
 				}
 				return 0
 			}
@@ -257,16 +256,4 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 
 func (c *ContractExecutor) ResolveGlobal(module, field string) int64 {
 	panic("no global variables")
-}
-
-// ContractID returns the expected ID of a smart contract given the transaction symbol which
-// spawned the contract.
-func ContractID(txID string) []byte {
-	x, err := hex.DecodeString(txID)
-
-	if err != nil {
-		panic(err)
-	}
-
-	return x
 }

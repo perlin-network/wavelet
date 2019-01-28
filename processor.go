@@ -1,7 +1,6 @@
 package wavelet
 
 import (
-	"encoding/hex"
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/wavelet/params"
 	"github.com/pkg/errors"
@@ -41,18 +40,9 @@ func (c *TransactionContext) reward() error {
 		return err
 	}
 
-	firstSenderID, err := hex.DecodeString(c.firstTx.Sender)
-	if err != nil {
-		return err
-	}
-	sender := c.LoadAccount(firstSenderID)
+	sender := c.LoadAccount(c.firstTx.Sender)
 
-	rewardeeID, err := hex.DecodeString(rewardee)
-	if err != nil {
-		return err
-	}
-
-	recipient := c.LoadAccount(rewardeeID)
+	recipient := c.LoadAccount(rewardee)
 
 	deducted := params.ValidatorRewardAmount
 	if sender.GetBalance() < deducted {

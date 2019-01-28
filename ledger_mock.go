@@ -63,7 +63,7 @@ func (mr *MockLedgerInterfaceMockRecorder) Cleanup() *gomock.Call {
 }
 
 // CountAscendants mocks base method
-func (m *MockLedgerInterface) CountAscendants(arg0 string, arg1 int) int {
+func (m *MockLedgerInterface) CountAscendants(arg0 []byte, arg1 int) int {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CountAscendants", arg0, arg1)
 	ret0, _ := ret[0].(int)
@@ -77,7 +77,7 @@ func (mr *MockLedgerInterfaceMockRecorder) CountAscendants(arg0, arg1 interface{
 }
 
 // ExecuteContract mocks base method
-func (m *MockLedgerInterface) ExecuteContract(arg0, arg1 string, arg2 []byte) ([]byte, error) {
+func (m *MockLedgerInterface) ExecuteContract(arg0 []byte, arg1 string, arg2 []byte) ([]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "ExecuteContract", arg0, arg1, arg2)
 	ret0, _ := ret[0].([]byte)
@@ -92,10 +92,10 @@ func (mr *MockLedgerInterfaceMockRecorder) ExecuteContract(arg0, arg1, arg2 inte
 }
 
 // FindEligibleParents mocks base method
-func (m *MockLedgerInterface) FindEligibleParents() ([]string, error) {
+func (m *MockLedgerInterface) FindEligibleParents() ([][]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "FindEligibleParents")
-	ret0, _ := ret[0].([]string)
+	ret0, _ := ret[0].([][]byte)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -107,7 +107,7 @@ func (mr *MockLedgerInterfaceMockRecorder) FindEligibleParents() *gomock.Call {
 }
 
 // GetBySymbol mocks base method
-func (m *MockLedgerInterface) GetBySymbol(arg0 string) (*database.Transaction, error) {
+func (m *MockLedgerInterface) GetBySymbol(arg0 []byte) (*database.Transaction, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBySymbol", arg0)
 	ret0, _ := ret[0].(*database.Transaction)
@@ -122,7 +122,7 @@ func (mr *MockLedgerInterfaceMockRecorder) GetBySymbol(arg0 interface{}) *gomock
 }
 
 // GetChildrenBySymbol mocks base method
-func (m *MockLedgerInterface) GetChildrenBySymbol(arg0 string) (*database.Children, error) {
+func (m *MockLedgerInterface) GetChildrenBySymbol(arg0 []byte) (*database.Children, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetChildrenBySymbol", arg0)
 	ret0, _ := ret[0].(*database.Children)
@@ -137,10 +137,10 @@ func (mr *MockLedgerInterfaceMockRecorder) GetChildrenBySymbol(arg0 interface{})
 }
 
 // GetMostRecentlyUsed mocks base method
-func (m *MockLedgerInterface) GetMostRecentlyUsed(arg0 int) []string {
+func (m *MockLedgerInterface) GetMostRecentlyUsed(arg0 int) [][]byte {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetMostRecentlyUsed", arg0)
-	ret0, _ := ret[0].([]string)
+	ret0, _ := ret[0].([][]byte)
 	return ret0
 }
 
@@ -165,7 +165,7 @@ func (mr *MockLedgerInterfaceMockRecorder) HandleSuccessfulQuery(arg0 interface{
 }
 
 // IsStronglyPreferred mocks base method
-func (m *MockLedgerInterface) IsStronglyPreferred(arg0 string) bool {
+func (m *MockLedgerInterface) IsStronglyPreferred(arg0 []byte) bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "IsStronglyPreferred", arg0)
 	ret0, _ := ret[0].(bool)
@@ -179,7 +179,7 @@ func (mr *MockLedgerInterfaceMockRecorder) IsStronglyPreferred(arg0 interface{})
 }
 
 // LoadContract mocks base method
-func (m *MockLedgerInterface) LoadContract(arg0 string) ([]byte, error) {
+func (m *MockLedgerInterface) LoadContract(arg0 []byte) ([]byte, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "LoadContract", arg0)
 	ret0, _ := ret[0].([]byte)
@@ -250,7 +250,7 @@ func (mr *MockLedgerInterfaceMockRecorder) PaginateTransactions(arg0, arg1 inter
 }
 
 // QueueForAcceptance mocks base method
-func (m *MockLedgerInterface) QueueForAcceptance(arg0 string) error {
+func (m *MockLedgerInterface) QueueForAcceptance(arg0 []byte) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "QueueForAcceptance", arg0)
 	ret0, _ := ret[0].(error)
@@ -264,10 +264,10 @@ func (mr *MockLedgerInterfaceMockRecorder) QueueForAcceptance(arg0 interface{}) 
 }
 
 // RespondToQuery mocks base method
-func (m *MockLedgerInterface) RespondToQuery(arg0 *wire.Transaction) (string, bool, error) {
+func (m *MockLedgerInterface) RespondToQuery(arg0 *wire.Transaction) ([]byte, bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "RespondToQuery", arg0)
-	ret0, _ := ret[0].(string)
+	ret0, _ := ret[0].([]byte)
 	ret1, _ := ret[1].(bool)
 	ret2, _ := ret[2].(error)
 	return ret0, ret1, ret2
@@ -294,7 +294,7 @@ func (mr *MockLedgerInterfaceMockRecorder) Snapshot() *gomock.Call {
 }
 
 // TransactionExists mocks base method
-func (m *MockLedgerInterface) TransactionExists(arg0 string) bool {
+func (m *MockLedgerInterface) TransactionExists(arg0 []byte) bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "TransactionExists", arg0)
 	ret0, _ := ret[0].(bool)
@@ -308,7 +308,7 @@ func (mr *MockLedgerInterfaceMockRecorder) TransactionExists(arg0 interface{}) *
 }
 
 // WasAccepted mocks base method
-func (m *MockLedgerInterface) WasAccepted(arg0 string) bool {
+func (m *MockLedgerInterface) WasAccepted(arg0 []byte) bool {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "WasAccepted", arg0)
 	ret0, _ := ret[0].(bool)

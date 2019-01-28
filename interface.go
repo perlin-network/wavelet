@@ -9,31 +9,31 @@ import (
 type LedgerInterface interface {
 	// Wavelet/state
 	Snapshot() map[string]interface{}
-	LoadContract(txID string) ([]byte, error)
+	LoadContract(txID []byte) ([]byte, error)
 	NumContracts() uint64
 	PaginateContracts(offset, pageSize uint64) []*Contract
 	NumTransactions() uint64
 	PaginateTransactions(offset, pageSize uint64) []*database.Transaction
-	ExecuteContract(txID string, entry string, param []byte) ([]byte, error)
+	ExecuteContract(txID []byte, entry string, param []byte) ([]byte, error)
 
 	// Wavelet/rpc
-	RespondToQuery(wired *wire.Transaction) (string, bool, error)
+	RespondToQuery(wired *wire.Transaction) ([]byte, bool, error)
 	HandleSuccessfulQuery(tx *database.Transaction) error
 
 	// Wavelet/ledger
-	WasAccepted(symbol string) bool
-	QueueForAcceptance(symbol string) error
+	WasAccepted(symbol []byte) bool
+	QueueForAcceptance(symbol []byte) error
 	Accounts() *Accounts
 
 	// Store
-	GetBySymbol(symbol string) (*database.Transaction, error)
-	GetChildrenBySymbol(symbol string) (*database.Children, error)
-	GetMostRecentlyUsed(n int) []string
-	TransactionExists(symbol string) bool
+	GetBySymbol(symbol []byte) (*database.Transaction, error)
+	GetChildrenBySymbol(symbol []byte) (*database.Children, error)
+	GetMostRecentlyUsed(n int) [][]byte
+	TransactionExists(symbol []byte) bool
 
 	// Graph
 	Cleanup() error
-	FindEligibleParents() (parents []string, err error)
-	CountAscendants(symbol string, threshold int) (numReachable int)
-	IsStronglyPreferred(symbol string) bool
+	FindEligibleParents() (parents [][]byte, err error)
+	CountAscendants(symbol []byte, threshold int) (numReachable int)
+	IsStronglyPreferred(symbol []byte) bool
 }

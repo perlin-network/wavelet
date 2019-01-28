@@ -117,8 +117,8 @@ func (ledger *Ledger) Step(force bool) {
 
 // WasAccepted returns whether or not a transaction given by its symbol was stored to be accepted
 // inside the database.
-func (ledger *Ledger) WasAccepted(symbol string) bool {
-	exists, _ := ledger.Has(merge(BucketAccepted, writeBytes(symbol)))
+func (ledger *Ledger) WasAccepted(symbol []byte) bool {
+	exists, _ := ledger.Has(merge(BucketAccepted, symbol))
 	return exists
 }
 
@@ -129,12 +129,12 @@ func (ledger *Ledger) GetAcceptedByIndex(index uint64) (*database.Transaction, e
 		return nil, err
 	}
 
-	return ledger.GetBySymbol(writeString(symbolBytes))
+	return ledger.GetBySymbol(symbolBytes)
 }
 
 // QueueForAcceptance queues a transaction awaiting to be accepted.
-func (ledger *Ledger) QueueForAcceptance(symbol string) error {
-	return ledger.Put(merge(BucketAcceptPending, writeBytes(symbol)), []byte{0})
+func (ledger *Ledger) QueueForAcceptance(symbol []byte) error {
+	return ledger.Put(merge(BucketAcceptPending, symbol), []byte{0})
 }
 
 // UpdateAcceptedTransactions incrementally from the root of the graph updates whether
@@ -144,7 +144,7 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 	if ledger.Size(BucketAcceptPending) == 0 && ledger.NumAcceptedTransactions() == 0 {
 		var tx *database.Transaction
 
-		err := ledger.ForEachDepth(0, func(symbol string) error {
+		err := ledger.ForEachDepth(0, func(symbol []byte) error {
 			first, err := ledger.GetBySymbol(symbol)
 			if err != nil {
 				return err
@@ -165,11 +165,10 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 		}
 	}
 
-	var acceptedList []string
+	var acceptedList [][]byte
 	var pendingList []pending
 
-	ledger.ForEachKey(BucketAcceptPending, func(k []byte) error {
-		symbol := string(k)
+	ledger.ForEachKey(BucketAcceptPending, func(symbol []byte) error {
 
 		pendingList = append(pendingList)
 
@@ -197,7 +196,7 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 			return false
 		}
 
-		return pendingList[i].tx.Id < pendingList[j].tx.Id
+		return bytes.Compare(pendingList[i].tx.Id, pendingList[j].tx.Id) == -1
 	})
 
 	stats.SetNumPendingTx(int64(len(pendingList)))
@@ -230,7 +229,7 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 
 		conflicting := !(transactions.Cardinality() == 1)
 
-		if (set.Preferred == pending.tx.Id && set.Count > system.Beta2) || (!conflicting && ledger.CountAscendants(pending.tx.Id, system.Beta1+1) > system.Beta1) {
+		if (bytes.Equal(set.Preferred, pending.tx.Id) && set.Count > system.Beta2) || (!conflicting && ledger.CountAscendants(pending.tx.Id, system.Beta1+1) > system.Beta1) {
 			if !ledger.WasAccepted(pending.tx.Id) {
 				ledger.acceptTransaction(pending.tx)
 				acceptedList = append(acceptedList, pending.tx.Id)
@@ -239,12 +238,14 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 	}
 
 	if len(acceptedList) > 0 {
-		// Trim transaction IDs.
+		var acceptedListStr = make([]string, len(acceptedList))
+
+		// Trim and encode transaction IDs.
 		for i := 0; i < len(acceptedList); i++ {
-			acceptedList[i] = acceptedList[i][:10]
+			acceptedListStr[i] = hex.EncodeToString(acceptedList[i][:10])
 		}
 
-		log.Debug().Interface("accepted", acceptedList).Msgf("Accepted %d transactions.", len(acceptedList))
+		log.Debug().Interface("accepted", acceptedListStr).Msgf("Accepted %d transactions.", len(acceptedListStr))
 	}
 }
 
@@ -279,9 +280,9 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 		return
 	}
 
-	ledger.Put(merge(BucketAccepted, writeBytes(tx.Id)), writeUint64(index))
-	ledger.Put(merge(BucketAcceptedIndex, writeUint64(index)), writeBytes(tx.Id))
-	ledger.Delete(merge(BucketAcceptPending, writeBytes(tx.Id)))
+	ledger.Put(merge(BucketAccepted, tx.Id), writeUint64(index))
+	ledger.Put(merge(BucketAcceptedIndex, writeUint64(index)), tx.Id)
+	ledger.Delete(merge(BucketAcceptPending, tx.Id))
 
 	stats.IncAcceptedTransactions(tx.Tag)
 	go events.Publish(nil, &events.TransactionAcceptedEvent{ID: tx.Id})
@@ -292,12 +293,12 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 		return
 	}
 
-	var refTxId string
+	var refTxId []byte
 	var gotRefTxId bool
-	var pendingReapply []string
+	var pendingReapply [][]byte
 
-	ledger.Store.ForEachDepth(depth, func(symbol string) error {
-		if bytes.Compare(writeBytes(symbol), writeBytes(tx.Id)) > 0 {
+	ledger.Store.ForEachDepth(depth, func(symbol []byte) error {
+		if bytes.Compare(symbol, tx.Id) > 0 {
 			if ledger.WasAccepted(symbol) {
 				if !gotRefTxId {
 					refTxId = symbol
@@ -311,7 +312,7 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 
 	for i := depth + 1; ; i++ {
 		gotAnyTx := false
-		ledger.Store.ForEachDepth(i, func(symbol string) error {
+		ledger.Store.ForEachDepth(i, func(symbol []byte) error {
 			gotAnyTx = true
 			if ledger.WasAccepted(symbol) {
 				if !gotRefTxId {
@@ -333,7 +334,7 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 
 	err = ledger.applyTransaction(tx)
 	if err != nil {
-		log.Warn().Err(err).Str("symbol", tx.Id).Msg("failed to apply transaction")
+		log.Warn().Err(err).Str("symbol", hex.EncodeToString(tx.Id)).Msg("failed to apply transaction")
 	}
 
 	for _, symbol := range pendingReapply {
@@ -343,7 +344,7 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 		}
 		err = ledger.applyTransaction(reTx)
 		if err != nil {
-			log.Warn().Err(err).Str("symbol", symbol).Msg("failed to reapply transaction")
+			log.Warn().Err(err).Str("symbol", hex.EncodeToString(symbol)).Msg("failed to reapply transaction")
 		}
 	}
 
@@ -353,7 +354,7 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 	queue.PushBack(tx.Id)
 
 	for queue.Len() > 0 {
-		popped := queue.PopFront().(string)
+		popped := queue.PopFront().([]byte)
 
 		children, err := ledger.GetChildrenBySymbol(popped)
 		if err != nil {
@@ -361,8 +362,8 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 		}
 
 		for _, child := range children.Transactions {
-			if _, seen := visited[child]; !seen {
-				visited[child] = struct{}{}
+			if _, seen := visited[writeString(child)]; !seen {
+				visited[writeString(child)] = struct{}{}
 
 				if !ledger.WasAccepted(child) {
 					ledger.QueueForAcceptance(child)
@@ -375,7 +376,7 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 }
 
 // revertTransaction sets a transaction and all of its ascendants to not be accepted.
-func (ledger *Ledger) revertTransaction(symbol string) {
+func (ledger *Ledger) revertTransaction(symbol []byte) {
 	tx, err := ledger.GetBySymbol(symbol)
 	if err != nil {
 		log.Error().Err(err).Msg("cannot get transaction for reverting")
@@ -390,7 +391,7 @@ func (ledger *Ledger) revertTransaction(symbol string) {
 
 	ledger.Accounts().SetRoot(stateRoot)
 
-	log.Debug().Str("key", symbol).Str("state_root", hex.EncodeToString(stateRoot)).Msg("Reverted transaction.")
+	log.Debug().Str("key", hex.EncodeToString(symbol)).Str("state_root", hex.EncodeToString(stateRoot)).Msg("Reverted transaction.")
 }
 
 // ensureSafeCommittable ensures that incoming transactions which conflict with any
