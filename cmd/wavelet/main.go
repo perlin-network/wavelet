@@ -527,7 +527,7 @@ func runShell(w *node.Wavelet) error {
 			wired := w.MakeTransaction(params.TagGeneric, payload)
 			go w.BroadcastTransaction(wired)
 
-			log.Info().Msgf("Success! Your payment transaction ID: %s", graph.Symbol(wired))
+			log.Info().Msgf("Success! Your payment transaction ID: %s", hex.EncodeToString(graph.Symbol(wired)))
 		case "ps":
 			if len(cmd) < 2 {
 				continue
@@ -535,7 +535,7 @@ func runShell(w *node.Wavelet) error {
 
 			amount, err := strconv.Atoi(cmd[1])
 			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to convert staking amount to an uint64.")
+				log.Fatal().Err(err).Msg("Failed to convert staking amount to a uint64.")
 			}
 
 			ps := struct {
@@ -552,7 +552,7 @@ func runShell(w *node.Wavelet) error {
 			wired := w.MakeTransaction(params.TagStake, payload)
 			go w.BroadcastTransaction(wired)
 
-			log.Info().Msgf("Success! Your stake placement transaction ID: %s", graph.Symbol(wired))
+			log.Info().Msgf("Success! Your stake placement transaction ID: %s", hex.EncodeToString(graph.Symbol(wired)))
 		case "ws":
 			if len(cmd) < 2 {
 				continue
@@ -577,7 +577,7 @@ func runShell(w *node.Wavelet) error {
 			wired := w.MakeTransaction(params.TagStake, payload)
 			go w.BroadcastTransaction(wired)
 
-			log.Info().Msgf("Success! Your stake withdrawal transaction ID: %s", graph.Symbol(wired))
+			log.Info().Msgf("Success! Your stake withdrawal transaction ID: %s", hex.EncodeToString(graph.Symbol(wired)))
 		case "c":
 			if len(cmd) < 2 {
 				continue
@@ -628,7 +628,7 @@ func runShell(w *node.Wavelet) error {
 			wired := w.MakeTransaction(params.TagNop, nil)
 			go w.BroadcastTransaction(wired)
 
-			log.Info().Msgf("Your nop transaction ID: %s", graph.Symbol(wired))
+			log.Info().Msgf("Your nop transaction ID: %s", hex.EncodeToString(graph.Symbol(wired)))
 		}
 	}
 

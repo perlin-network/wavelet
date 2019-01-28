@@ -57,7 +57,7 @@ func (p *TransferProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) 
 			err = executor.Run("on_money_received")
 		}
 
-		if err != nil {
+		if err != nil && errors.Cause(err) != wavelet.ErrEntrypointNotFound {
 			return errors.Wrap(err, "failed to execute smart contract method")
 		}
 	}

@@ -141,17 +141,17 @@ func (s *state) randomlySelectValidator(tx *database.Transaction, amount uint64,
 	return rewarded.Sender, nil
 }
 
-func (s *state) ExecuteContract(txID string, entry string, param []byte) ([]byte, error) {
-	account := LoadAccount(s.Ledger.Accounts, writeBytes(txID))
+func (s *state) ExecuteContract(txID []byte, entry string, param []byte) ([]byte, error) {
+	account := LoadAccount(s.Ledger.Accounts, txID)
 
 	executor := NewContractExecutor(account, nil, param, ContractGasPolicy{nil, 100000})
+
 	err := executor.Run(entry)
-	if err != nil {
+	if err != nil && errors.Cause(err) != ErrEntrypointNotFound {
 		return nil, err
 	}
 
-	result, _ := account.Load(string(ContractCustomStatePrefix) + ".local_result")
-	return result, nil
+	return executor.Result, nil
 }
 
 // applyTransaction runs a transaction, gets any transactions created by said transaction, and

@@ -189,8 +189,13 @@ func (s *service) executeContractHandler(ctx *requestContext) (int, interface{},
 	var result []byte
 	var err error
 
+	idBuf, err := hex.DecodeString(req.ContractID)
+	if err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "failed to decode contract ID")
+	}
+
 	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
-		result, err = ledger.ExecuteContract(req.ContractID, req.Entry, req.Param)
+		result, err = ledger.ExecuteContract(idBuf, req.Entry, req.Param)
 	})
 
 	if err != nil {
