@@ -134,13 +134,14 @@ func Test_api_list_transaction(t *testing.T) {
 func Test_api_execute_contract(t *testing.T) {
 	paramEntry := "entry"
 	paramParam := []byte("param")
+	txIDBytes, _ := hex.DecodeString(txID)
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
 	mockNode := node.NewMockNodeInterface(mockCtrl)
 	mockLedger := wavelet.NewMockLedgerInterface(mockCtrl)
 
-	mockLedger.EXPECT().ExecuteContract(txID, paramEntry, paramParam).Return(func() ([]byte, error) {
+	mockLedger.EXPECT().ExecuteContract(txIDBytes, paramEntry, paramParam).Return(func() ([]byte, error) {
 		return []byte("result"), nil
 	}()).Times(1)
 	mockNode.EXPECT().LedgerDo(gomock.Any()).Times(1).DoAndReturn(func(f func(ledger wavelet.LedgerInterface)) {
@@ -158,13 +159,14 @@ func Test_api_execute_contract(t *testing.T) {
 }
 
 func Test_api_get_contract(t *testing.T) {
+	txIDBytes, _ := hex.DecodeString(txID)
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
 	mockNode := node.NewMockNodeInterface(mockCtrl)
 	mockLedger := wavelet.NewMockLedgerInterface(mockCtrl)
 
-	mockLedger.EXPECT().LoadContract(txID).Return(func() ([]byte, error) {
+	mockLedger.EXPECT().LoadContract(txIDBytes).Return(func() ([]byte, error) {
 		return []byte("contract-" + txID), nil
 	}()).Times(1)
 	mockNode.EXPECT().LedgerDo(gomock.Any()).Times(1).DoAndReturn(func(f func(ledger wavelet.LedgerInterface)) {
@@ -319,13 +321,14 @@ func Test_api_send_transaction(t *testing.T) {
 }
 
 func Test_api_get_transaction(t *testing.T) {
+	txIDBytes, _ := hex.DecodeString(txID)
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
 	mockNode := node.NewMockNodeInterface(mockCtrl)
 	mockLedger := wavelet.NewMockLedgerInterface(mockCtrl)
 
-	mockLedger.EXPECT().GetBySymbol(txID).Return(func() (*database.Transaction, error) {
+	mockLedger.EXPECT().GetBySymbol(txIDBytes).Return(func() (*database.Transaction, error) {
 		return &database.Transaction{
 			Nonce: uint64(123),
 		}, nil
