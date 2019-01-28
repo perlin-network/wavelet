@@ -3,6 +3,7 @@ package processor
 import (
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/params"
+	"github.com/perlin-network/wavelet/payload"
 	"github.com/pkg/errors"
 )
 
@@ -12,7 +13,7 @@ type TransferProcessor struct {
 func (p *TransferProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) error {
 	sender := ctx.LoadAccount(ctx.Transaction.Sender)
 
-	reader := wavelet.NewPayloadReader(ctx.Transaction.Payload)
+	reader := payload.NewReader(ctx.Transaction.Payload)
 
 	recipientAddress, err := reader.ReadBytes()
 	if err != nil {
@@ -33,7 +34,7 @@ func (p *TransferProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) 
 	recipient.SetBalance(recipient.GetBalance() + amount)
 
 	if _, ok := recipient.Load(params.KeyContractCode); ok {
-		writer := wavelet.NewPayloadBuilder()
+		writer := payload.NewWriter(nil)
 		writer.WriteBytes([]byte(ctx.Transaction.Id))
 		writer.WriteBytes(ctx.Transaction.Sender)
 		writer.WriteUint64(amount)
@@ -42,7 +43,7 @@ func (p *TransferProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) 
 		executor.EnableLogging = true
 
 		if reader.Len() > 0 {
-			funcName, err := reader.ReadUTF8String()
+			funcName, err := reader.ReadString()
 			if err != nil {
 				return err
 			}
