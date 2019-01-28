@@ -1,8 +1,6 @@
 package security
 
 import (
-	"github.com/perlin-network/wavelet/params"
-
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/crypto/ed25519"
 
@@ -24,20 +22,16 @@ var (
 // Valid sender public key.
 // Valid message signature.
 func ValidateWiredTransaction(wired *wire.Transaction) (bool, error) {
-	if wired.Tag == params.TagNop && wired.Payload != nil {
+	if wired.Tag == 0x00 && wired.Payload != nil {
 		return false, errors.Wrap(ErrMalformedTransaction, "nop must have empty payload")
 	}
 
-	if len(wired.Sender) != ed25519.PublicKeySize {
+	if len(wired.Sender) != ed25519.PublicKeySize*2 {
 		return false, errors.Wrap(ErrMalformedTransaction, "invalid sender id")
 	}
 
 	if len(wired.Signature) != ed25519.SignatureSize {
 		return false, errors.Wrapf(ErrInvalidSignature, "invalid signature from sender %s", wired.Sender)
-	}
-
-	if len(wired.Tag) == 0 {
-		return false, errors.Wrap(ErrMalformedTransaction, "invalid tag")
 	}
 
 	signature := wired.Signature

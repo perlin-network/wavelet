@@ -25,7 +25,7 @@ type broadcaster struct {
 
 // MakeTransaction creates a new transaction, appends a nonce to it, signs it, and links it with descendants that will
 // maximize the likelihood the transaction will get accepted.
-func (b *broadcaster) MakeTransaction(tag string, payload []byte) *wire.Transaction {
+func (b *broadcaster) MakeTransaction(tag uint32, payload []byte) *wire.Transaction {
 	var parents [][]byte
 	var nonce uint64
 	var err error
@@ -200,5 +200,5 @@ func (b *broadcaster) BroadcastTransaction(wired *wire.Transaction) {
 	}
 
 	stats.SetConsensusDuration(time.Now().Sub(start).Seconds())
-	log.Debug().Str("id", hex.EncodeToString(id)).Str("tag", wired.Tag).Msg("Successfully broadcasted transaction.")
+	log.Debug().Str("id", hex.EncodeToString(id)).Uint32("tag", wired.Tag).Msg("Successfully broadcasted transaction.")
 }

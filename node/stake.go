@@ -30,7 +30,7 @@ func (s stake) weigh(peers []peer.ID, responses []bool, tx *wire.Transaction) (p
 		var err error
 
 		s.Ledger.Do(func(l *wavelet.Ledger) {
-			account, err = l.LoadAccount(peer.PublicKey)
+			account = wavelet.LoadAccount(l.Accounts, peer.PublicKey)
 		})
 
 		if err == nil {

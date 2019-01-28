@@ -115,7 +115,7 @@ func Test_requestContext_readJSON(t *testing.T) {
 	var testString string
 
 	testStruct := SendTransactionRequest{
-		Tag: "test tag",
+		Tag: 0,
 	}
 
 	jsonStruct, _ := json.Marshal(testStruct)

@@ -41,13 +41,13 @@ func (w *Wallet) CurrentNonce(l *Ledger) uint64 {
 }
 
 // NextNonce returns the next available nonce from the wallet.
-func (w *Wallet) NextNonce(l *Ledger) (uint64, error) {
+func (w *Wallet) NextNonce(ledger *Ledger) (uint64, error) {
 	w.Lock()
 	defer w.Unlock()
 
 	walletNonceKey := merge(KeyWalletNonce, w.PublicKey)
 
-	bytes, _ := l.Store.Get(walletNonceKey)
+	bytes, _ := ledger.Store.Get(walletNonceKey)
 	if bytes == nil {
 		bytes = make([]byte, 8)
 	}
@@ -56,11 +56,11 @@ func (w *Wallet) NextNonce(l *Ledger) (uint64, error) {
 
 	// If our personal nodes tracked nonce is smaller than the stored nonce in our ledger, update
 	// our personal nodes nonce to be the stored nonce in the ledger.
-	if account, err := l.LoadAccount(w.PublicKey); err == nil && account.Nonce > nonce {
-		nonce = account.Nonce
+	if account := LoadAccount(ledger.Accounts, w.PublicKey); account.GetNonce() > nonce {
+		nonce = account.GetNonce()
 	}
 
-	err := l.Store.Put(walletNonceKey, writeUint64(nonce+1))
+	err := ledger.Store.Put(walletNonceKey, writeUint64(nonce+1))
 	if err != nil {
 		return nonce, err
 	}
@@ -70,29 +70,9 @@ func (w *Wallet) NextNonce(l *Ledger) (uint64, error) {
 
 // GetBalance returns the current balance of the wallet.
 func (w *Wallet) GetBalance(ledger *Ledger) uint64 {
-	if account, err := ledger.LoadAccount(w.PublicKey); err == nil {
-		balance, exists := account.Load("balance")
-
-		if !exists {
-			return 0
-		}
-
-		return readUint64(balance)
-	}
-
-	return 0
+	return LoadAccount(ledger.Accounts, w.PublicKey).GetBalance()
 }
 
 func (w *Wallet) GetStake(ledger *Ledger) uint64 {
-	if account, err := ledger.LoadAccount(w.PublicKey); err == nil {
-		stake, exists := account.Load("stake")
-
-		if !exists {
-			return 0
-		}
-
-		return readUint64(stake)
-	}
-
-	return 0
+	return LoadAccount(ledger.Accounts, w.PublicKey).GetStake()
 }

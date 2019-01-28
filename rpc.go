@@ -3,10 +3,8 @@ package wavelet
 import (
 	"bytes"
 	"github.com/perlin-network/graph/database"
-	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/system"
 	"github.com/perlin-network/graph/wire"
-	"github.com/perlin-network/wavelet/params"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 )
@@ -21,24 +19,14 @@ type rpc struct {
 //
 // Our response is `true` should we strongly prefer a transaction, or `false` otherwise.
 func (r *rpc) RespondToQuery(wired *wire.Transaction) ([]byte, bool, error) {
-	senderID := wired.Sender
-
 	// If the nonce of the transaction is less than the currently accepted accounts nonce, reject it. Prevents most double spending
 	// cases from even reaching a conflict set.
 
-	if account, err := r.LoadAccount(senderID); err == nil && wired.Nonce < account.Nonce {
-		return nil, false, errors.Wrap(err, "tx nonce is outdated in comparison to the actual accounts nonce")
+	if wired.Nonce < LoadAccount(r.Ledger.Accounts, wired.Sender).GetNonce() {
+		return nil, false, errors.New("tx nonce is outdated in comparison to the actual accounts nonce")
 	}
 
-	var err error
-	var id []byte
-	if wired.Tag == params.TagCreateContract {
-		txID := graph.Symbol(wired)
-		r.SaveContract(txID, wired.Payload)
-		id, err = r.Receive(wired, graph.WithPayload(nil))
-	} else {
-		id, err = r.Receive(wired)
-	}
+	id, err := r.Receive(wired)
 
 	if err != nil {
 		return nil, false, errors.Wrap(err, "failed to add incoming tx to graph")

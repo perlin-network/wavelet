@@ -5,8 +5,20 @@ import (
 
 	"github.com/perlin-network/life/exec"
 
+	"fmt"
+	"github.com/perlin-network/graph/database"
+	"github.com/perlin-network/life/utils"
+	"github.com/perlin-network/wavelet/params"
 	"github.com/pkg/errors"
 )
+
+var (
+	ContractCustomStatePrefix = writeBytes("CS-")
+	KeyContractPageNum        = ".CP"
+	ContractPagePrefix        = "CP-"
+)
+
+const PageSize = 65536
 
 // Contract represents a smart contract on Perlin.
 type Contract struct {
@@ -15,45 +27,156 @@ type Contract struct {
 }
 
 type ContractExecutor struct {
-	GasTable               map[string]int64
-	GasLimit               uint64
-	Code                   []byte
-	GetActivationReason    func() []byte
-	GetActivationReasonLen func() int
-	GetDataItem            func(key string) []byte          // can panic
-	GetDataItemLen         func(key string) int             // can panic
-	SetDataItem            func(key string, val []byte)     // can panic
-	QueueTransaction       func(tag string, payload []byte) // can panic
+	ContractGasPolicy
+
+	contract *Account
+	sender   []byte
+	header   []byte
+	payload  []byte
+	pending  []*database.Transaction
+
+	EnableLogging bool
+	Result        []byte
 }
 
-func (e *ContractExecutor) Run() error {
-	vm, err := exec.NewVirtualMachine(e.Code, exec.VMConfig{
-		DefaultMemoryPages:   128,
-		DefaultTableSize:     65536,
-		GasLimit:             e.GasLimit,
-		DisableFloatingPoint: true,
-	}, e, e)
-	if err != nil {
-		return err
+func NewContractExecutor(contract *Account, sender []byte, header []byte, gasPolicy ContractGasPolicy) *ContractExecutor {
+	return &ContractExecutor{
+		ContractGasPolicy: gasPolicy,
+
+		sender:   sender,
+		header:   header,
+		contract: contract,
+	}
+}
+
+func (c *ContractExecutor) getMemorySnapshot() ([]byte, error) {
+	contractPageNum := int(c.contract.GetUint64Field(KeyContractPageNum))
+	if contractPageNum == 0 {
+		return nil, nil
 	}
 
-	entryID, ok := vm.GetFunctionExport("contract_main")
-	if !ok {
-		return errors.Errorf("contract_main not found")
+	mem := make([]byte, PageSize*contractPageNum)
+	for i := 0; i < contractPageNum; i++ {
+		page, _ := c.contract.Load(fmt.Sprintf("%s%d", ContractPagePrefix, i))
+		if len(page) > 0 { // zero-filled by default
+			if len(page) != PageSize {
+				return nil, errors.Errorf("page %d has a size of %d != PageSize", i, len(page))
+			}
+			copy(mem[PageSize*i:PageSize*(i+1)], page)
+		}
 	}
-	_, err = vm.Run(entryID)
-	if err != nil {
-		return err
+
+	return mem, nil
+}
+
+func (c *ContractExecutor) setMemorySnapshot(mem []byte) {
+	newPageNum := len(mem) / PageSize
+	c.contract.SetUint64Field(KeyContractPageNum, uint64(newPageNum))
+
+	for i := 0; i < newPageNum; i++ {
+		pageKey := fmt.Sprintf("%s%d", ContractPagePrefix, i)
+		oldContent, _ := c.contract.Load(pageKey)
+
+		identical := true
+
+		for j := 0; j < PageSize; j++ {
+			if len(oldContent) == 0 && mem[i*PageSize+j] != 0 {
+				identical = false
+				break
+			}
+			if len(oldContent) != 0 && mem[i*PageSize+j] != oldContent[j] {
+				identical = false
+				break
+			}
+		}
+
+		if !identical {
+			allZero := true
+			for j := 0; j < PageSize; j++ {
+				if mem[i*PageSize+j] != 0 {
+					allZero = false
+					break
+				}
+			}
+			if allZero {
+				c.contract.Store(pageKey, []byte{})
+			} else {
+				c.contract.Store(pageKey, mem[i*PageSize:(i+1)*PageSize])
+			}
+		}
 	}
+}
+
+func (c *ContractExecutor) newVirtualMachine() (*exec.VirtualMachine, error) {
+	code, _ := c.contract.Load(params.KeyContractCode)
+	return exec.NewVirtualMachine(code, exec.VMConfig{
+		DefaultMemoryPages: 16,
+		MaxMemoryPages:     32,
+
+		DefaultTableSize: PageSize,
+		MaxTableSize:     PageSize,
+
+		MaxValueSlots:     4096,
+		MaxCallStackDepth: 256,
+		GasLimit:          c.GasLimit,
+	}, c, c)
+}
+
+func (c *ContractExecutor) runVirtualMachine(vm *exec.VirtualMachine) error {
+	for !vm.Exited {
+		vm.Execute()
+		if vm.Delegate != nil {
+			vm.Delegate()
+			vm.Delegate = nil
+		}
+	}
+
+	if vm.ExitError != nil {
+		return utils.UnifyError(vm.ExitError)
+	}
+
+	c.setMemorySnapshot(vm.Memory)
 	return nil
 }
 
-func (e *ContractExecutor) GetCost(name string) int64 {
-	if e.GasTable == nil {
+func (c *ContractExecutor) Run(entry string, params ...byte) error {
+	c.payload = append(c.header, params...)
+
+	vm, err := c.newVirtualMachine()
+	if err != nil {
+		return err
+	}
+
+	mem, err := c.getMemorySnapshot()
+	if err != nil {
+		return err
+	}
+
+	if mem != nil {
+		vm.Memory = mem
+	}
+
+	entry = "_contract_" + entry
+	entryID, exists := vm.GetFunctionExport(entry)
+	if !exists {
+		return errors.Errorf("entry point `%s` not found", entry)
+	}
+
+	vm.Ignite(entryID)
+	return c.runVirtualMachine(vm)
+}
+
+type ContractGasPolicy struct {
+	GasTable map[string]int64
+	GasLimit uint64
+}
+
+func (c *ContractGasPolicy) GetCost(name string) int64 {
+	if c.GasTable == nil {
 		return 1
 	}
 
-	if v, ok := e.GasTable[name]; ok {
+	if v, ok := c.GasTable[name]; ok {
 		return v
 	}
 
@@ -62,7 +185,7 @@ func (e *ContractExecutor) GetCost(name string) int64 {
 	return 1
 }
 
-func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport {
+func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport {
 	switch module {
 	case "env":
 		switch field {
@@ -73,56 +196,54 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 		case "_send_transaction":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
-				tagPtr := int(uint32(frame.Locals[0]))
-				tagLen := int(uint32(frame.Locals[1]))
-				payloadPtr := int(uint32(frame.Locals[2]))
-				payloadLen := int(uint32(frame.Locals[3]))
 
-				tag := string(vm.Memory[tagPtr : tagPtr+tagLen])
+				tag := uint32(frame.Locals[0]) & 0xff
+				payloadPtr := int(uint32(frame.Locals[1]))
+				payloadLen := int(uint32(frame.Locals[2]))
+
 				payload := vm.Memory[payloadPtr : payloadPtr+payloadLen]
 
-				e.QueueTransaction(tag, payload)
+				c.pending = append(c.pending, &database.Transaction{
+					Sender:  c.contract.PublicKey(),
+					Tag:     tag,
+					Payload: payload,
+				})
+
 				return 0
 			}
-		case "_set":
+		case "_payload_len":
+			return func(vm *exec.VirtualMachine) int64 {
+				return int64(len(c.payload))
+			}
+		case "_payload":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
-				keyPtr := int(uint32(frame.Locals[0]))
-				keyLen := int(uint32(frame.Locals[1]))
-				valPtr := int(uint32(frame.Locals[2]))
-				valLen := int(uint32(frame.Locals[3]))
-				key := string(vm.Memory[keyPtr : keyPtr+keyLen])
-				val := vm.Memory[valPtr : valPtr+valLen]
-				e.SetDataItem(key, val)
-				return 0
-			}
-		case "_get_len":
-			return func(vm *exec.VirtualMachine) int64 {
-				frame := vm.GetCurrentFrame()
-				keyPtr := int(uint32(frame.Locals[0]))
-				keyLen := int(uint32(frame.Locals[1]))
-				key := string(vm.Memory[keyPtr : keyPtr+keyLen])
-				return int64(e.GetDataItemLen(key))
-			}
-		case "_get":
-			return func(vm *exec.VirtualMachine) int64 {
-				frame := vm.GetCurrentFrame()
-				keyPtr := int(uint32(frame.Locals[0]))
-				keyLen := int(uint32(frame.Locals[1]))
-				outPtr := int(uint32(frame.Locals[2]))
-				key := string(vm.Memory[keyPtr : keyPtr+keyLen])
-				copy(vm.Memory[outPtr:], e.GetDataItem(key))
-				return 0
-			}
-		case "_reason_len":
-			return func(vm *exec.VirtualMachine) int64 {
-				return int64(e.GetActivationReasonLen())
-			}
-		case "_reason":
-			return func(vm *exec.VirtualMachine) int64 {
-				frame := vm.GetCurrentFrame()
+
 				outPtr := int(uint32(frame.Locals[0]))
-				copy(vm.Memory[outPtr:], e.GetActivationReason())
+				copy(vm.Memory[outPtr:], c.payload)
+				return 0
+			}
+		case "_provide_result":
+			return func(vm *exec.VirtualMachine) int64 {
+				frame := vm.GetCurrentFrame()
+				dataPtr := int(uint32(frame.Locals[0]))
+				dataLen := int(uint32(frame.Locals[1]))
+				slice := vm.Memory[dataPtr : dataPtr+dataLen]
+				c.Result = make([]byte, dataLen)
+				copy(c.Result, slice)
+				return 0
+			}
+		case "_log":
+			return func(vm *exec.VirtualMachine) int64 {
+				if c.EnableLogging {
+					frame := vm.GetCurrentFrame()
+					dataPtr := int(uint32(frame.Locals[0]))
+					dataLen := int(uint32(frame.Locals[1]))
+					log.Info().
+						Str("contract", c.contract.PublicKeyHex()).
+						Bytes("content", vm.Memory[dataPtr:dataPtr+dataLen]).
+						Msg("contract log")
+				}
 				return 0
 			}
 		default:
@@ -133,6 +254,6 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 	}
 }
 
-func (e *ContractExecutor) ResolveGlobal(module, field string) int64 {
+func (c *ContractExecutor) ResolveGlobal(module, field string) int64 {
 	panic("no global variables")
 }

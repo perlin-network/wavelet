@@ -2,8 +2,6 @@ package main
 
 import (
 	"bufio"
-	"encoding/base64"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -43,7 +41,6 @@ type Config struct {
 	Port               uint
 	DatabasePath       string
 	ResetDatabase      bool
-	ServicesPath       string
 	GenesisPath        string
 	Peers              []string
 	APIHost            string
@@ -217,7 +214,6 @@ func main() {
 			Port:               c.Uint("port"),
 			DatabasePath:       c.String("db.path"),
 			ResetDatabase:      c.Bool("db.reset"),
-			ServicesPath:       c.String("services"),
 			GenesisPath:        c.String("genesis"),
 			Peers:              c.StringSlice("peers"),
 			APIHost:            c.String("api.host"),
@@ -319,7 +315,6 @@ func runServer(c *Config) (*node.Wavelet, error) {
 
 	w := node.NewPlugin(node.Options{
 		DatabasePath:  c.DatabasePath,
-		ServicesPath:  c.ServicesPath,
 		GenesisPath:   c.GenesisPath,
 		ResetDatabase: c.ResetDatabase,
 	})
@@ -447,7 +442,7 @@ func runShell(w *node.Wavelet) error {
 			var account *wavelet.Account
 
 			w.Ledger.Do(func(l *wavelet.Ledger) {
-				account, err = l.LoadAccount(accountID)
+				account = wavelet.LoadAccount(l.Accounts, accountID)
 			})
 
 			if err != nil {
@@ -455,21 +450,10 @@ func runShell(w *node.Wavelet) error {
 				continue
 			}
 
-			var balance uint64
-			var stake uint64
-
-			if balanceValue, exists := account.Load("balance"); exists {
-				balance = binary.LittleEndian.Uint64(balanceValue)
-			}
-
-			if stakeValue, exists := account.Load("stake"); exists {
-				stake = binary.LittleEndian.Uint64(stakeValue)
-			}
-
 			log.Info().
-				Uint64("nonce", account.Nonce).
-				Uint64("balance", balance).
-				Uint64("stake", stake).
+				Uint64("nonce", account.GetNonce()).
+				Uint64("balance", account.GetBalance()).
+				Uint64("stake", account.GetStake()).
 				Msgf("Account: %s", cmd[1])
 		case "p":
 			recipient := "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"
@@ -482,24 +466,65 @@ func runShell(w *node.Wavelet) error {
 			if len(cmd) >= 3 {
 				amount, err = strconv.Atoi(cmd[2])
 				if err != nil {
-					log.Fatal().Err(err).Msg("Failed to convert payment amount to an uint64.")
+					log.Error().Err(err).Msg("Failed to convert payment amount to an uint64.")
+					continue
 				}
 			}
 
-			transfer := struct {
-				Recipient string `json:"recipient"`
-				Amount    uint64 `json:"amount"`
-			}{
-				Recipient: recipient,
-				Amount:    uint64(amount),
-			}
-
-			payload, err := json.Marshal(transfer)
+			recipientDecoded, err := hex.DecodeString(recipient)
 			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to marshal transfer payload.")
+				log.Error().Err(err).Msg("cannot decode recipient")
+				continue
 			}
 
-			wired := w.MakeTransaction(params.TagTransfer, payload)
+			writer := wavelet.NewPayloadBuilder()
+			writer.WriteBytes(recipientDecoded)
+			writer.WriteUint64(uint64(amount))
+
+			payload := writer.Bytes()
+
+			if len(cmd) >= 5 {
+				pb := wavelet.NewPayloadBuilder()
+				pb.WriteUTF8String(cmd[3])
+
+				invPb := wavelet.NewPayloadBuilder()
+				for i := 4; i < len(cmd); i++ {
+					arg := cmd[i]
+					switch arg[0] {
+					case 'S':
+						invPb.WriteUTF8String(arg[1:])
+					case 'B':
+						invPb.WriteBytes([]byte(arg[1:]))
+					case '1', '2', '4', '8':
+						var val uint64
+						fmt.Sscanf(arg[1:], "%d", &val)
+						switch arg[0] {
+						case '1':
+							invPb.WriteByte(byte(val))
+						case '2':
+							invPb.WriteUint16(uint16(val))
+						case '4':
+							invPb.WriteUint32(uint32(val))
+						case '8':
+							invPb.WriteUint64(uint64(val))
+						}
+					case 'H':
+						b, err := hex.DecodeString(arg[1:])
+						if err != nil {
+							log.Fatal().Err(err).Msgf("cannot decode hex: %s", arg[1:])
+						}
+						invPb.WriteBytes(b)
+					default:
+						log.Fatal().Msgf("invalid arg: %s", arg)
+					}
+				}
+
+				pb.WriteBytes(invPb.Bytes())
+
+				payload = append(payload, pb.Bytes()...)
+			}
+
+			wired := w.MakeTransaction(params.TagGeneric, payload)
 			go w.BroadcastTransaction(wired)
 
 			log.Info().Msgf("Success! Your payment transaction ID: %s", graph.Symbol(wired))
@@ -524,7 +549,7 @@ func runShell(w *node.Wavelet) error {
 				log.Fatal().Err(err).Msg("Failed to marshal place stake payload.")
 			}
 
-			wired := w.MakeTransaction(params.TagPlaceStake, payload)
+			wired := w.MakeTransaction(params.TagStake, payload)
 			go w.BroadcastTransaction(wired)
 
 			log.Info().Msgf("Success! Your stake placement transaction ID: %s", graph.Symbol(wired))
@@ -549,7 +574,7 @@ func runShell(w *node.Wavelet) error {
 				log.Fatal().Err(err).Msg("Failed to marshal place stake payload.")
 			}
 
-			wired := w.MakeTransaction(params.TagWithdrawStake, payload)
+			wired := w.MakeTransaction(params.TagStake, payload)
 			go w.BroadcastTransaction(wired)
 
 			log.Info().Msgf("Success! Your stake withdrawal transaction ID: %s", graph.Symbol(wired))
@@ -567,20 +592,10 @@ func runShell(w *node.Wavelet) error {
 				continue
 			}
 
-			contract := struct {
-				Code string `json:"code"`
-			}{Code: base64.StdEncoding.EncodeToString(bytes)}
-
-			payload, err := json.Marshal(contract)
-			if err != nil {
-				log.Warn().Err(err).Msg("Failed to marshal smart contract deployment payload.")
-				continue
-			}
-
-			wired := w.MakeTransaction(params.TagCreateContract, payload)
+			wired := w.MakeTransaction(params.TagCreateContract, bytes)
 			go w.BroadcastTransaction(wired)
 
-			log.Info().Msgf("Success! Your smart contract ID: %s", hex.EncodeToString([]byte(wavelet.ContractID(graph.Symbol(wired)))))
+			log.Info().Msgf("Success! Your smart contract ID: %s", hex.EncodeToString(graph.Symbol(wired)))
 		case "tx":
 			if len(cmd) < 2 {
 				continue
@@ -597,10 +612,6 @@ func runShell(w *node.Wavelet) error {
 				continue
 			}
 
-			payload := make(map[string]interface{})
-
-			json.Unmarshal(tx.Payload, &payload)
-
 			var txParents []string
 			for _, parent := range tx.Parents {
 				txParents = append(txParents, string(parent))
@@ -609,9 +620,9 @@ func runShell(w *node.Wavelet) error {
 			log.Info().
 				Str("sender", hex.EncodeToString(tx.Sender)).
 				Uint64("nonce", tx.Nonce).
-				Str("tag", tx.Tag).
+				Uint32("tag", tx.Tag).
 				Strs("parents", txParents).
-				Interface("payload", payload).
+				Bytes("payload", tx.Payload).
 				Msg("Here is the transaction you requested.")
 		default:
 			wired := w.MakeTransaction(params.TagNop, nil)

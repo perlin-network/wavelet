@@ -1,83 +1,146 @@
 package wavelet
 
 import (
-	"encoding/binary"
 	"encoding/hex"
-	"github.com/perlin-network/wavelet/iavl"
+	"github.com/perlin-network/graph/database"
+	"github.com/perlin-network/pem-avl"
 )
 
-// Account represents a single account on Perlin.
+type Accounts struct {
+	store database.Store
+	tree  *pem_avl.Tree
+}
+
+func (accounts *Accounts) save(account *Account) {
+	accounts.store.Put(merge(BucketAccountIDs, account.publicKey), []byte{0x01})
+
+	// Flush changes to persistent AVL trees.
+	account.state.Writeback()
+
+	accounts.tree.Insert(account.publicKey, account.GetRoot())
+	accounts.tree.Writeback()
+}
+
+func (accounts *Accounts) GetAccountRootHash(publicKey []byte) ([]byte, bool) {
+	return accounts.tree.Lookup(publicKey)
+}
+
+func (accounts *Accounts) GetRoot() []byte {
+	return accounts.tree.GetRoot()[:]
+}
+
+func (accounts *Accounts) SetRoot(x []byte) {
+	root := &[pem_avl.MerkleHashSize]byte{}
+	copy(root[:], x)
+
+	accounts.tree.SetRoot(root)
+}
+
+func newAccounts(store database.Store) *Accounts {
+	return &Accounts{store: store, tree: pem_avl.NewTree(newPrefixedStore(store, BucketAccountRoots))}
+}
+
 type Account struct {
-	State *iavl.Node
+	publicKey []byte
 
-	Nonce uint64 `json:"nonce"`
-
-	// PublicKey is the hex-encoded public key
-	PublicKey []byte `json:"public_key"`
+	store prefixedStore
+	state *pem_avl.Tree
 }
 
 // PublicKeyHex returns a hex-encoded string of this accounts public key.
 func (a *Account) PublicKeyHex() string {
-	return hex.EncodeToString(a.PublicKey)
-}
-
-// MarshalBinary serializes this accounts IAVL+ tree.
-func (a *Account) MarshalBinary() []byte {
-	buffer := make([]byte, 8)
-	binary.LittleEndian.PutUint64(buffer, a.Nonce)
-	return append(buffer, a.State.Marshal()...)
+	return hex.EncodeToString(a.publicKey)
 }
 
 func (a *Account) Range(callback func(k string, v []byte)) {
-	if a.State != nil {
-		a.State.Range(callback)
-	}
+	a.state.Range(func(k []byte, v []byte) {
+		callback(string(k), v)
+	})
 }
 
 func (a *Account) Load(key string) ([]byte, bool) {
-	_, value := a.State.Load(key)
-	return value, value != nil
+	return a.state.Lookup(writeBytes(key))
 }
 
 func (a *Account) Store(key string, value []byte) {
-	a.State, _ = a.State.Store(key, value)
+	a.state.Insert([]byte(key), value)
 }
 
 func (a *Account) Delete(key string) {
-	a.State, _ = a.State.Delete(key)
+	a.state.Delete([]byte(key))
 }
 
 func (a *Account) Clone() *Account {
-	account := &Account{
-		PublicKey: a.PublicKey,
-		Nonce:     a.Nonce,
+	return &Account{
+		state:     a.state.Clone(),
+		publicKey: a.publicKey,
 	}
-
-	a.Range(func(k string, v []byte) {
-		account.State, _ = account.State.Store(k, v)
-	})
-
-	return account
 }
 
-// Unmarshal decodes an accounts encoded bytes from the database.
-func (a *Account) Unmarshal(encoded []byte) error {
-	var err error
-
-	a.Nonce = binary.LittleEndian.Uint64(encoded[:8])
-	a.State, err = iavl.Unmarshal(encoded[8:])
-
-	if err != nil {
-		return err
+func (a *Account) GetUint64Field(key string) uint64 {
+	v, ok := a.Load(key)
+	if !ok {
+		return 0
+	} else {
+		return readUint64(v)
 	}
-
-	return nil
 }
 
-// NewAccount returns a new account object with balance and nonce = 0
-func NewAccount(publicKey []byte) *Account {
+func (a *Account) SetUint64Field(key string, value uint64) {
+	a.Store(key, writeUint64(value))
+}
+
+func (a *Account) GetNonce() uint64 {
+	return a.GetUint64Field("nonce")
+}
+
+func (a *Account) SetNonce(nonce uint64) {
+	a.SetUint64Field("nonce", nonce)
+}
+
+func (a *Account) GetBalance() uint64 {
+	return a.GetUint64Field("balance")
+}
+
+func (a *Account) SetBalance(balance uint64) {
+	a.SetUint64Field("balance", balance)
+}
+
+func (a *Account) GetStake() uint64 {
+	return a.GetUint64Field("stake")
+}
+
+func (a *Account) SetStake(stake uint64) {
+	a.SetUint64Field("stake", stake)
+}
+
+func (a *Account) PublicKey() []byte {
+	return a.publicKey
+}
+
+func (a *Account) GetRoot() []byte {
+	return a.state.GetRoot()[:]
+}
+
+func (a *Account) SetRoot(x []byte) {
+	root := &[pem_avl.MerkleHashSize]byte{}
+	copy(root[:], x)
+
+	a.state.SetRoot(root)
+}
+
+// LoadAccount returns or creates a new account object.
+func LoadAccount(accounts *Accounts, publicKey []byte) *Account {
+	store := newPrefixedStore(accounts.store, merge(BucketAccounts, publicKey))
+
 	account := &Account{
-		PublicKey: publicKey,
+		publicKey: publicKey,
+		store:     store,
+		state:     pem_avl.NewTree(store),
+	}
+
+	if rootHash, ok := accounts.GetAccountRootHash(publicKey); ok {
+		account.SetRoot(rootHash)
 	}
 
 	return account

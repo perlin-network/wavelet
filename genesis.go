@@ -11,7 +11,7 @@ import (
 
 // ReadGenesis loads data expected to exist at the birth of any node in this ledgers network.
 // The data is fed in as .json.
-func ReadGenesis(path string) ([]*Account, error) {
+func ReadGenesis(ledger *Ledger, path string) ([]*Account, error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -37,7 +37,7 @@ func ReadGenesis(path string) ([]*Account, error) {
 			return nil, err
 		}
 
-		account := NewAccount(id)
+		account := LoadAccount(ledger.Accounts, id)
 
 		for key, v := range pairs {
 			switch value := v.(type) {
