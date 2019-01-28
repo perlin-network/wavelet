@@ -8,7 +8,7 @@ require (
 	github.com/gogo/protobuf v1.1.1
 	github.com/gorilla/websocket v1.4.0
 	github.com/lytics/hll v0.0.0-20180410160152-70adc917ce99
-	github.com/perlin-network/graph v0.0.0-20190124074922-48a621e95097
+	github.com/perlin-network/graph v0.0.0-20190125081319-de3684fe55fe
 	github.com/perlin-network/life v0.0.0-20181005150058-1eb3d14cb6e7
 	github.com/perlin-network/noise v1.1.1-0.20181107172939-6f607c059418
 	github.com/perlin-network/pem-avl v0.0.0-20190123025833-623b68e9f510
@@ -22,6 +22,7 @@ require (
 	gopkg.in/go-playground/assert.v1 v1.2.1 // indirect
 	gopkg.in/go-playground/validator.v9 v9.21.0
 	gopkg.in/urfave/cli.v1 v1.20.0
+	gopkg.in/yaml.v2 v2.2.2 // indirect
 )
 
 replace github.com/go-interpreter/wagon => github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39

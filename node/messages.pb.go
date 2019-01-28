@@ -21,7 +21,7 @@ var _ = math.Inf
 const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 
 type QueryResponse struct {
-	Id                   string   `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Id                   []byte   `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	StronglyPreferred    bool     `protobuf:"varint,2,opt,name=strongly_preferred,json=stronglyPreferred,proto3" json:"strongly_preferred,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
@@ -32,7 +32,7 @@ func (m *QueryResponse) Reset()         { *m = QueryResponse{} }
 func (m *QueryResponse) String() string { return proto.CompactTextString(m) }
 func (*QueryResponse) ProtoMessage()    {}
 func (*QueryResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_messages_0c6d80d6c4d47caf, []int{0}
+	return fileDescriptor_messages_a73aab2ccfc1a9df, []int{0}
 }
 func (m *QueryResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -61,11 +61,11 @@ func (m *QueryResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_QueryResponse proto.InternalMessageInfo
 
-func (m *QueryResponse) GetId() string {
+func (m *QueryResponse) GetId() []byte {
 	if m != nil {
 		return m.Id
 	}
-	return ""
+	return nil
 }
 
 func (m *QueryResponse) GetStronglyPreferred() bool {
@@ -75,8 +75,9 @@ func (m *QueryResponse) GetStronglyPreferred() bool {
 	return false
 }
 
+// Query for children our node might be missing for a given transaction.
 type SyncChildrenQueryRequest struct {
-	Id                   string   `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Id                   []byte   `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
@@ -86,7 +87,7 @@ func (m *SyncChildrenQueryRequest) Reset()         { *m = SyncChildrenQueryReque
 func (m *SyncChildrenQueryRequest) String() string { return proto.CompactTextString(m) }
 func (*SyncChildrenQueryRequest) ProtoMessage()    {}
 func (*SyncChildrenQueryRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_messages_0c6d80d6c4d47caf, []int{1}
+	return fileDescriptor_messages_a73aab2ccfc1a9df, []int{1}
 }
 func (m *SyncChildrenQueryRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -115,15 +116,16 @@ func (m *SyncChildrenQueryRequest) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_SyncChildrenQueryRequest proto.InternalMessageInfo
 
-func (m *SyncChildrenQueryRequest) GetId() string {
+func (m *SyncChildrenQueryRequest) GetId() []byte {
 	if m != nil {
 		return m.Id
 	}
-	return ""
+	return nil
 }
 
+// Response to SyncChildrenQueryRequest.
 type SyncChildrenQueryResponse struct {
-	Children             []string `protobuf:"bytes,1,rep,name=children" json:"children,omitempty"`
+	Children             [][]byte `protobuf:"bytes,1,rep,name=children" json:"children,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
@@ -133,7 +135,7 @@ func (m *SyncChildrenQueryResponse) Reset()         { *m = SyncChildrenQueryResp
 func (m *SyncChildrenQueryResponse) String() string { return proto.CompactTextString(m) }
 func (*SyncChildrenQueryResponse) ProtoMessage()    {}
 func (*SyncChildrenQueryResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_messages_0c6d80d6c4d47caf, []int{2}
+	return fileDescriptor_messages_a73aab2ccfc1a9df, []int{2}
 }
 func (m *SyncChildrenQueryResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -162,15 +164,16 @@ func (m *SyncChildrenQueryResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_SyncChildrenQueryResponse proto.InternalMessageInfo
 
-func (m *SyncChildrenQueryResponse) GetChildren() []string {
+func (m *SyncChildrenQueryResponse) GetChildren() [][]byte {
 	if m != nil {
 		return m.Children
 	}
 	return nil
 }
 
+// Hint a potentially missing list of transactions nodes may not have.
 type TxPushHint struct {
-	Transactions         []string `protobuf:"bytes,1,rep,name=transactions" json:"transactions,omitempty"`
+	Transactions         [][]byte `protobuf:"bytes,1,rep,name=transactions" json:"transactions,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
 	XXX_sizecache        int32    `json:"-"`
@@ -180,7 +183,7 @@ func (m *TxPushHint) Reset()         { *m = TxPushHint{} }
 func (m *TxPushHint) String() string { return proto.CompactTextString(m) }
 func (*TxPushHint) ProtoMessage()    {}
 func (*TxPushHint) Descriptor() ([]byte, []int) {
-	return fileDescriptor_messages_0c6d80d6c4d47caf, []int{3}
+	return fileDescriptor_messages_a73aab2ccfc1a9df, []int{3}
 }
 func (m *TxPushHint) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -209,7 +212,7 @@ func (m *TxPushHint) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_TxPushHint proto.InternalMessageInfo
 
-func (m *TxPushHint) GetTransactions() []string {
+func (m *TxPushHint) GetTransactions() [][]byte {
 	if m != nil {
 		return m.Transactions
 	}
@@ -302,18 +305,11 @@ func (m *SyncChildrenQueryResponse) MarshalTo(dAtA []byte) (int, error) {
 	var l int
 	_ = l
 	if len(m.Children) > 0 {
-		for _, s := range m.Children {
+		for _, b := range m.Children {
 			dAtA[i] = 0xa
 			i++
-			l = len(s)
-			for l >= 1<<7 {
-				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
-				l >>= 7
-				i++
-			}
-			dAtA[i] = uint8(l)
-			i++
-			i += copy(dAtA[i:], s)
+			i = encodeVarintMessages(dAtA, i, uint64(len(b)))
+			i += copy(dAtA[i:], b)
 		}
 	}
 	if m.XXX_unrecognized != nil {
@@ -338,18 +334,11 @@ func (m *TxPushHint) MarshalTo(dAtA []byte) (int, error) {
 	var l int
 	_ = l
 	if len(m.Transactions) > 0 {
-		for _, s := range m.Transactions {
+		for _, b := range m.Transactions {
 			dAtA[i] = 0xa
 			i++
-			l = len(s)
-			for l >= 1<<7 {
-				dAtA[i] = uint8(uint64(l)&0x7f | 0x80)
-				l >>= 7
-				i++
-			}
-			dAtA[i] = uint8(l)
-			i++
-			i += copy(dAtA[i:], s)
+			i = encodeVarintMessages(dAtA, i, uint64(len(b)))
+			i += copy(dAtA[i:], b)
 		}
 	}
 	if m.XXX_unrecognized != nil {
@@ -400,8 +389,8 @@ func (m *SyncChildrenQueryResponse) Size() (n int) {
 	var l int
 	_ = l
 	if len(m.Children) > 0 {
-		for _, s := range m.Children {
-			l = len(s)
+		for _, b := range m.Children {
+			l = len(b)
 			n += 1 + l + sovMessages(uint64(l))
 		}
 	}
@@ -415,8 +404,8 @@ func (m *TxPushHint) Size() (n int) {
 	var l int
 	_ = l
 	if len(m.Transactions) > 0 {
-		for _, s := range m.Transactions {
-			l = len(s)
+		for _, b := range m.Transactions {
+			l = len(b)
 			n += 1 + l + sovMessages(uint64(l))
 		}
 	}
@@ -472,7 +461,7 @@ func (m *QueryResponse) Unmarshal(dAtA []byte) error {
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
 			}
-			var stringLen uint64
+			var byteLen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowMessages
@@ -482,20 +471,22 @@ func (m *QueryResponse) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
+				byteLen |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
+			if byteLen < 0 {
 				return ErrInvalidLengthMessages
 			}
-			postIndex := iNdEx + intStringLen
+			postIndex := iNdEx + byteLen
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Id = string(dAtA[iNdEx:postIndex])
+			m.Id = append(m.Id[:0], dAtA[iNdEx:postIndex]...)
+			if m.Id == nil {
+				m.Id = []byte{}
+			}
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
@@ -572,7 +563,7 @@ func (m *SyncChildrenQueryRequest) Unmarshal(dAtA []byte) error {
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Id", wireType)
 			}
-			var stringLen uint64
+			var byteLen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowMessages
@@ -582,20 +573,22 @@ func (m *SyncChildrenQueryRequest) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
+				byteLen |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
+			if byteLen < 0 {
 				return ErrInvalidLengthMessages
 			}
-			postIndex := iNdEx + intStringLen
+			postIndex := iNdEx + byteLen
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Id = string(dAtA[iNdEx:postIndex])
+			m.Id = append(m.Id[:0], dAtA[iNdEx:postIndex]...)
+			if m.Id == nil {
+				m.Id = []byte{}
+			}
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -652,7 +645,7 @@ func (m *SyncChildrenQueryResponse) Unmarshal(dAtA []byte) error {
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Children", wireType)
 			}
-			var stringLen uint64
+			var byteLen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowMessages
@@ -662,20 +655,20 @@ func (m *SyncChildrenQueryResponse) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
+				byteLen |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
+			if byteLen < 0 {
 				return ErrInvalidLengthMessages
 			}
-			postIndex := iNdEx + intStringLen
+			postIndex := iNdEx + byteLen
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Children = append(m.Children, string(dAtA[iNdEx:postIndex]))
+			m.Children = append(m.Children, make([]byte, postIndex-iNdEx))
+			copy(m.Children[len(m.Children)-1], dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -732,7 +725,7 @@ func (m *TxPushHint) Unmarshal(dAtA []byte) error {
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Transactions", wireType)
 			}
-			var stringLen uint64
+			var byteLen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowMessages
@@ -742,20 +735,20 @@ func (m *TxPushHint) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= (uint64(b) & 0x7F) << shift
+				byteLen |= (int(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
+			if byteLen < 0 {
 				return ErrInvalidLengthMessages
 			}
-			postIndex := iNdEx + intStringLen
+			postIndex := iNdEx + byteLen
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Transactions = append(m.Transactions, string(dAtA[iNdEx:postIndex]))
+			m.Transactions = append(m.Transactions, make([]byte, postIndex-iNdEx))
+			copy(m.Transactions[len(m.Transactions)-1], dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -884,22 +877,22 @@ var (
 	ErrIntOverflowMessages   = fmt.Errorf("proto: integer overflow")
 )
 
-func init() { proto.RegisterFile("node/messages.proto", fileDescriptor_messages_0c6d80d6c4d47caf) }
+func init() { proto.RegisterFile("node/messages.proto", fileDescriptor_messages_a73aab2ccfc1a9df) }
 
-var fileDescriptor_messages_0c6d80d6c4d47caf = []byte{
+var fileDescriptor_messages_a73aab2ccfc1a9df = []byte{
 	// 219 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0x12, 0xce, 0xcb, 0x4f, 0x49,
 	0xd5, 0xcf, 0x4d, 0x2d, 0x2e, 0x4e, 0x4c, 0x4f, 0x2d, 0xd6, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17,
 	0x62, 0x01, 0x09, 0x2a, 0xf9, 0x71, 0xf1, 0x06, 0x96, 0xa6, 0x16, 0x55, 0x06, 0xa5, 0x16, 0x17,
-	0xe4, 0xe7, 0x15, 0xa7, 0x0a, 0xf1, 0x71, 0x31, 0x65, 0xa6, 0x48, 0x30, 0x2a, 0x30, 0x6a, 0x70,
-	0x06, 0x31, 0x65, 0xa6, 0x08, 0xe9, 0x72, 0x09, 0x15, 0x97, 0x14, 0xe5, 0xe7, 0xa5, 0xe7, 0x54,
+	0xe4, 0xe7, 0x15, 0xa7, 0x0a, 0xf1, 0x71, 0x31, 0x65, 0xa6, 0x48, 0x30, 0x2a, 0x30, 0x6a, 0xf0,
+	0x04, 0x31, 0x65, 0xa6, 0x08, 0xe9, 0x72, 0x09, 0x15, 0x97, 0x14, 0xe5, 0xe7, 0xa5, 0xe7, 0x54,
 	0xc6, 0x17, 0x14, 0xa5, 0xa6, 0xa5, 0x16, 0x15, 0xa5, 0xa6, 0x48, 0x30, 0x29, 0x30, 0x6a, 0x70,
 	0x04, 0x09, 0xc2, 0x64, 0x02, 0x60, 0x12, 0x4a, 0x5a, 0x5c, 0x12, 0xc1, 0x95, 0x79, 0xc9, 0xce,
 	0x19, 0x99, 0x39, 0x29, 0x45, 0xa9, 0x79, 0x50, 0xb3, 0x0b, 0x4b, 0x53, 0x8b, 0x4b, 0xd0, 0x8d,
 	0x56, 0x32, 0xe7, 0x92, 0xc4, 0xa2, 0x16, 0xea, 0x0e, 0x29, 0x2e, 0x8e, 0x64, 0xa8, 0x84, 0x04,
-	0xa3, 0x02, 0xb3, 0x06, 0x67, 0x10, 0x9c, 0xaf, 0x64, 0xc0, 0xc5, 0x15, 0x52, 0x11, 0x50, 0x5a,
+	0xa3, 0x02, 0xb3, 0x06, 0x4f, 0x10, 0x9c, 0xaf, 0x64, 0xc0, 0xc5, 0x15, 0x52, 0x11, 0x50, 0x5a,
 	0x9c, 0xe1, 0x91, 0x99, 0x57, 0x22, 0xa4, 0xc4, 0xc5, 0x53, 0x52, 0x94, 0x98, 0x57, 0x9c, 0x98,
 	0x5c, 0x92, 0x99, 0x9f, 0x57, 0x0c, 0x55, 0x8d, 0x22, 0xe6, 0xc4, 0x73, 0xe2, 0x91, 0x1c, 0xe3,
 	0x85, 0x47, 0x72, 0x8c, 0x0f, 0x1e, 0xc9, 0x31, 0x26, 0xb1, 0x81, 0x43, 0xc0, 0x18, 0x10, 0x00,
-	0x00, 0xff, 0xff, 0xbf, 0xd9, 0xb1, 0x2c, 0x18, 0x01, 0x00, 0x00,
+	0x00, 0xff, 0xff, 0x9c, 0xee, 0x28, 0x9e, 0x18, 0x01, 0x00, 0x00,
 }

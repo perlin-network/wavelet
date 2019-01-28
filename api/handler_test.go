@@ -258,8 +258,8 @@ func Test_service_sessionInitHandler(t *testing.T) {
 				ctx: &requestContext{
 					request: httptest.NewRequest("POST", RouteSessionInit, strings.NewReader(`
 						{
-							"PublicKey":"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
-							"TimeMillis": 1540385725600
+							"public_key":"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
+							"time_millis": 1540385725600
 						}`)),
 				},
 			},
@@ -273,9 +273,9 @@ func Test_service_sessionInitHandler(t *testing.T) {
 				ctx: &requestContext{
 					request: httptest.NewRequest("POST", RouteSessionInit, strings.NewReader(`
 						{
-							"PublicKey":"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
-							"TimeMillis": 1540385725600,
-							"Sig": "cd11300ad10025ea83adedc686665b25e697dcd76c83bcfc37a7d268182dd5033dd479c24bd28b23d142d62f0b677caeace1552046432fc6992d24cf4633cb0c"
+							"public_key":"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
+							"time_millis": 1540385725600,
+							"signature": "cd11300ad10025ea83adedc686665b25e697dcd76c83bcfc37a7d268182dd5033dd479c24bd28b23d142d62f0b677caeace1552046432fc6992d24cf4633cb0c"
 						}`)),
 				},
 			},
@@ -292,9 +292,9 @@ func Test_service_sessionInitHandler(t *testing.T) {
 				ctx: &requestContext{
 					request: httptest.NewRequest("POST", RouteSessionInit, strings.NewReader(`
 						{
-							"PublicKey":"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
-							"TimeMillis": 1540385725600,
-							"Sig": "bad_signature_ea83adedc686665b25e697dcd76c83bcfc37a7d268182dd5033dd479c24bd28b23d142d62f0b677caeace1552046432fc6992d24cf4633cb0c"
+							"public_key":"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
+							"time_millis": 1540385725600,
+							"signature": "bad_signature_ea83adedc686665b25e697dcd76c83bcfc37a7d268182dd5033dd479c24bd28b23d142d62f0b677caeace1552046432fc6992d24cf4633cb0c"
 						}`)),
 				},
 			},
@@ -317,9 +317,9 @@ func Test_service_sessionInitHandler(t *testing.T) {
 				ctx: &requestContext{
 					request: httptest.NewRequest("POST", RouteSessionInit, strings.NewReader(`
 						{
-							"PublicKey":"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
-							"TimeMillis": 1540385725600,
-							"Sig": "cd11300ad10025ea83adedc686665b25e697dcd76c83bcfc37a7d268182dd5033dd479c24bd28b23d142d62f0b677caeace1552046432fc6992d24cf4633cb0c"
+							"public_key":"71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
+							"time_millis": 1540385725600,
+							"signature": "cd11300ad10025ea83adedc686665b25e697dcd76c83bcfc37a7d268182dd5033dd479c24bd28b23d142d62f0b677caeace1552046432fc6992d24cf4633cb0c"
 						}`)),
 				},
 			},

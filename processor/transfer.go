@@ -1,7 +1,6 @@
 package processor
 
 import (
-	"encoding/hex"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/params"
 	"github.com/pkg/errors"
@@ -11,11 +10,7 @@ type TransferProcessor struct {
 }
 
 func (p *TransferProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) error {
-	senderID, err := hex.DecodeString(ctx.Transaction.Sender)
-	if err != nil {
-		return err
-	}
-	sender := ctx.LoadAccount(senderID)
+	sender := ctx.LoadAccount(ctx.Transaction.Sender)
 
 	reader := wavelet.NewPayloadReader(ctx.Transaction.Payload)
 
@@ -40,10 +35,10 @@ func (p *TransferProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) 
 	if _, ok := recipient.Load(params.KeyContractCode); ok {
 		writer := wavelet.NewPayloadBuilder()
 		writer.WriteBytes([]byte(ctx.Transaction.Id))
-		writer.WriteBytes(senderID)
+		writer.WriteBytes(ctx.Transaction.Sender)
 		writer.WriteUint64(amount)
 
-		executor := wavelet.NewContractExecutor(recipient, senderID, writer.Bytes(), wavelet.ContractGasPolicy{GasLimit: 50000000})
+		executor := wavelet.NewContractExecutor(recipient, ctx.Transaction.Sender, writer.Bytes(), wavelet.ContractGasPolicy{GasLimit: 50000000})
 		executor.EnableLogging = true
 
 		if reader.Len() > 0 {
@@ -62,7 +57,7 @@ func (p *TransferProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) 
 			err = executor.Run("on_money_received")
 		}
 
-		if err != nil {
+		if err != nil && errors.Cause(err) != wavelet.ErrEntrypointNotFound {
 			return errors.Wrap(err, "failed to execute smart contract method")
 		}
 	}

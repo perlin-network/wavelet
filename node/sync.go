@@ -95,8 +95,8 @@ func (s *syncer) Start() {
 
 // QueryMissingParents queries other nodes for parents of a children which we may
 // not ahve in store.
-func (s *syncer) QueryMissingParents(parents []string) {
-	pushHint := make([]string, 0)
+func (s *syncer) QueryMissingParents(parents [][]byte) {
+	pushHint := make([][]byte, 0)
 
 	s.Ledger.Do(func(l *wavelet.Ledger) {
 		for _, p := range parents {
@@ -113,7 +113,7 @@ func (s *syncer) QueryMissingParents(parents []string) {
 
 // QueryMissingChildren queries other nodes for children of a transaction which we may
 // not have in store.
-func (s *syncer) QueryMissingChildren(id string) {
+func (s *syncer) QueryMissingChildren(id []byte) {
 	peers := s.randomlySelectPeers(params.SyncNumPeers)
 	children := make(map[string]struct{})
 
@@ -145,7 +145,7 @@ func (s *syncer) QueryMissingChildren(id string) {
 		}
 
 		for _, child := range res.Children {
-			children[child] = struct{}{}
+			children[writeString(child)] = struct{}{}
 		}
 	}
 
@@ -153,7 +153,7 @@ func (s *syncer) QueryMissingChildren(id string) {
 
 	s.Ledger.Do(func(l *wavelet.Ledger) {
 		for c := range children {
-			if l.Store.TransactionExists(c) {
+			if l.Store.TransactionExists(writeBytes(c)) {
 				deleteList = append(deleteList, c)
 			}
 		}
@@ -163,9 +163,9 @@ func (s *syncer) QueryMissingChildren(id string) {
 		delete(children, c)
 	}
 
-	pushHint := make([]string, 0)
+	pushHint := make([][]byte, 0)
 	for c := range children {
-		pushHint = append(pushHint, c)
+		pushHint = append(pushHint, writeBytes(c))
 	}
 
 	s.net.BroadcastRandomly(context.Background(), &TxPushHint{

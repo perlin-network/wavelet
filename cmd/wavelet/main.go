@@ -527,7 +527,7 @@ func runShell(w *node.Wavelet) error {
 			wired := w.MakeTransaction(params.TagGeneric, payload)
 			go w.BroadcastTransaction(wired)
 
-			log.Info().Msgf("Success! Your payment transaction ID: %s", graph.Symbol(wired))
+			log.Info().Msgf("Success! Your payment transaction ID: %s", hex.EncodeToString(graph.Symbol(wired)))
 		case "ps":
 			if len(cmd) < 2 {
 				continue
@@ -535,7 +535,7 @@ func runShell(w *node.Wavelet) error {
 
 			amount, err := strconv.Atoi(cmd[1])
 			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to convert staking amount to an uint64.")
+				log.Fatal().Err(err).Msg("Failed to convert staking amount to a uint64.")
 			}
 
 			ps := struct {
@@ -552,7 +552,7 @@ func runShell(w *node.Wavelet) error {
 			wired := w.MakeTransaction(params.TagStake, payload)
 			go w.BroadcastTransaction(wired)
 
-			log.Info().Msgf("Success! Your stake placement transaction ID: %s", graph.Symbol(wired))
+			log.Info().Msgf("Success! Your stake placement transaction ID: %s", hex.EncodeToString(graph.Symbol(wired)))
 		case "ws":
 			if len(cmd) < 2 {
 				continue
@@ -577,7 +577,7 @@ func runShell(w *node.Wavelet) error {
 			wired := w.MakeTransaction(params.TagStake, payload)
 			go w.BroadcastTransaction(wired)
 
-			log.Info().Msgf("Success! Your stake withdrawal transaction ID: %s", graph.Symbol(wired))
+			log.Info().Msgf("Success! Your stake withdrawal transaction ID: %s", hex.EncodeToString(graph.Symbol(wired)))
 		case "c":
 			if len(cmd) < 2 {
 				continue
@@ -595,7 +595,7 @@ func runShell(w *node.Wavelet) error {
 			wired := w.MakeTransaction(params.TagCreateContract, bytes)
 			go w.BroadcastTransaction(wired)
 
-			log.Info().Msgf("Success! Your smart contract ID: %s", hex.EncodeToString(wavelet.ContractID(graph.Symbol(wired))))
+			log.Info().Msgf("Success! Your smart contract ID: %s", hex.EncodeToString(graph.Symbol(wired)))
 		case "tx":
 			if len(cmd) < 2 {
 				continue
@@ -604,7 +604,7 @@ func runShell(w *node.Wavelet) error {
 			var tx *database.Transaction
 
 			w.Ledger.Do(func(l *wavelet.Ledger) {
-				tx, err = l.GetBySymbol(cmd[1])
+				tx, err = l.GetBySymbol([]byte(cmd[1]))
 			})
 
 			if err != nil {
@@ -612,18 +612,23 @@ func runShell(w *node.Wavelet) error {
 				continue
 			}
 
+			var txParents []string
+			for _, parent := range tx.Parents {
+				txParents = append(txParents, string(parent))
+			}
+
 			log.Info().
-				Str("sender", tx.Sender).
+				Str("sender", hex.EncodeToString(tx.Sender)).
 				Uint64("nonce", tx.Nonce).
 				Uint32("tag", tx.Tag).
-				Strs("parents", tx.Parents).
+				Strs("parents", txParents).
 				Bytes("payload", tx.Payload).
 				Msg("Here is the transaction you requested.")
 		default:
 			wired := w.MakeTransaction(params.TagNop, nil)
 			go w.BroadcastTransaction(wired)
 
-			log.Info().Msgf("Your nop transaction ID: %s", graph.Symbol(wired))
+			log.Info().Msgf("Your nop transaction ID: %s", hex.EncodeToString(graph.Symbol(wired)))
 		}
 	}
 

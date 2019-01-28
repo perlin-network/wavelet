@@ -84,7 +84,7 @@ func (s *service) pollTransactionHandler(ctx *requestContext) (int, interface{},
 
 	closeSignal := make(chan struct{})
 
-	report := func(txID string) bool {
+	report := func(txID []byte) bool {
 		var tx *database.Transaction
 		var err error
 
@@ -189,8 +189,13 @@ func (s *service) executeContractHandler(ctx *requestContext) (int, interface{},
 	var result []byte
 	var err error
 
+	idBuf, err := hex.DecodeString(req.ContractID)
+	if err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "failed to decode contract ID")
+	}
+
 	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
-		result, err = ledger.ExecuteContract(req.ContractID, req.Entry, req.Param)
+		result, err = ledger.ExecuteContract(idBuf, req.Entry, req.Param)
 	})
 
 	if err != nil {
@@ -220,11 +225,18 @@ func (s *service) getContractHandler(ctx *requestContext) (int, interface{}, err
 		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid request")
 	}
 
-	var contractCode []byte
+	var transactionIDBytes []byte
 	var err error
 
+	transactionIDBytes, err = hex.DecodeString(req.TransactionID)
+	if err != nil {
+		return http.StatusBadRequest, nil, errors.New("transaction symbol ID must be a length-64 hex-encoded string")
+	}
+
+	var contractCode []byte
+
 	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
-		contractCode, err = ledger.LoadContract(req.TransactionID)
+		contractCode, err = ledger.LoadContract(transactionIDBytes)
 	})
 
 	if err != nil {
@@ -277,7 +289,7 @@ func (s *service) sendContractHandler(ctx *requestContext) (int, interface{}, er
 	go s.wavelet.BroadcastTransaction(wired)
 
 	res := &TransactionResponse{
-		TransactionID: graph.Symbol(wired),
+		TransactionID: hex.EncodeToString(graph.Symbol(wired)),
 	}
 
 	return http.StatusOK, res, nil
@@ -381,7 +393,7 @@ func (s *service) sendTransactionHandler(ctx *requestContext) (int, interface{},
 	go s.wavelet.BroadcastTransaction(wired)
 
 	res := &TransactionResponse{
-		TransactionID: graph.Symbol(wired),
+		TransactionID: hex.EncodeToString(graph.Symbol(wired)),
 	}
 
 	return http.StatusOK, res, nil
@@ -402,8 +414,7 @@ func (s *service) getTransactionHandler(ctx *requestContext) (int, interface{}, 
 		return http.StatusBadRequest, nil, errors.New("transaction symbol ID must be a length-64 hex-encoded string")
 	}
 
-	_, err := hex.DecodeString(symbol)
-
+	symbolBytes, err := hex.DecodeString(symbol)
 	if err != nil {
 		return http.StatusBadRequest, nil, errors.New("transaction symbol ID must be a length-64 hex-encoded string")
 	}
@@ -411,7 +422,7 @@ func (s *service) getTransactionHandler(ctx *requestContext) (int, interface{}, 
 	var tx *database.Transaction
 
 	s.wavelet.Ledger.Do(func(ledger *wavelet.Ledger) {
-		tx, err = ledger.GetBySymbol(symbol)
+		tx, err = ledger.GetBySymbol(symbolBytes)
 	})
 
 	if err != nil {
