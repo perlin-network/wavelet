@@ -369,9 +369,53 @@ func (c *Client) ExecuteContract(txID string, entry string, param []byte) (*api.
 	return response, nil
 }
 
-// FindParents gets the next
+// FindParents returns a list of eligible parents to build a transaction
 func (c *Client) FindParents() (parents *api.FindParentsResponse, err error) {
 	err = c.Request(api.RouteTransactionFindParents, nil, &parents, nil)
+	return
+}
+
+// ForwardTransaction forwards a signed transaction to the ledger
+func (c *Client) ForwardTransaction(nonce uint64, tag uint32, payload []byte) (resp *api.TransactionResponse, err error) {
+	// get valid parents
+	parents, err := c.FindParents()
+	if err != nil {
+		return nil, err
+	}
+
+	// decode the parentIDs
+	var parentBytes [][]byte
+	for _, parentID := range parents.ParentIDs {
+		pBytes, err := hex.DecodeString(parentID)
+		if err != nil {
+			return nil, err
+		}
+		parentBytes = append(parentBytes, pBytes)
+	}
+	// encode the transaction details for signing
+	w := &wire.Transaction{
+		Sender:  c.KeyPair.PublicKey,
+		Nonce:   nonce,
+		Parents: parentBytes,
+		Tag:     tag,
+		Payload: payload,
+	}
+	encoded, err := w.Marshal()
+	if err != nil {
+		return nil, err
+	}
+	signature := security.Sign(c.KeyPair.PrivateKey, encoded)
+
+	// build the request and send
+	tx := api.ForwareTransactionRequest{
+		Sender:    c.KeyPair.PublicKeyHex(),
+		Nonce:     w.Nonce,
+		Parents:   parents.ParentIDs,
+		Tag:       w.Tag,
+		Payload:   w.Payload,
+		Signature: hex.EncodeToString(signature),
+	}
+	err = c.Request(api.RouteTransactionForward, tx, &resp, nil)
 	return
 }
 

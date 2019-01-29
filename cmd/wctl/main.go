@@ -273,9 +273,10 @@ func main() {
 			},
 		},
 		{
-			Name:  "execute_contract",
-			Usage: "executes a contract",
-			Flags: commonFlags,
+			Name:      "execute_contract",
+			Usage:     "executes a contract",
+			Flags:     commonFlags,
+			ArgsUsage: "<contract_id> <entry_name> <params>",
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
 				if err != nil {
@@ -312,6 +313,38 @@ func main() {
 				for _, parentID := range result.ParentIDs {
 					fmt.Println(parentID)
 				}
+				return nil
+			},
+		},
+		{
+			Name:      "forward_transaction",
+			Usage:     "locally signs a transaction to be forwarded to the ledger",
+			Flags:     commonFlags,
+			ArgsUsage: "<nonce> <tag> <payload>",
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+
+				nonce, err := strconv.Atoi(c.Args().Get(0))
+				if err != nil {
+					return err
+				}
+
+				tag, err := strconv.Atoi(c.Args().Get(1))
+				if err != nil {
+					return err
+				}
+
+				payload := c.Args().Get(2)
+				result, err := client.ForwardTransaction(uint64(nonce), uint32(tag), []byte(payload))
+				if err != nil {
+					return err
+				}
+
+				jsonOut, _ := json.Marshal(result)
+				fmt.Printf("%s\n", jsonOut)
 				return nil
 			},
 		},
