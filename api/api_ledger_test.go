@@ -12,6 +12,7 @@ import (
 	apiClient "github.com/perlin-network/wavelet/cmd/wctl/client"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/params"
+	"github.com/perlin-network/wavelet/payload"
 	"github.com/perlin-network/wavelet/security"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -277,27 +278,27 @@ func Test_api_ledger_state(t *testing.T) {
 func Test_api_send_transaction(t *testing.T) {
 	recipientDecoded, _ := hex.DecodeString(recipient)
 	tag := uint32(params.TagGeneric)
-	writer := wavelet.NewPayloadBuilder()
+	writer := payload.NewWriter(nil)
 	writer.WriteBytes(recipientDecoded)
 	writer.WriteUint64(uint64(10))
-	writer.WriteUTF8String("balance")
+	writer.WriteString("balance")
 	writer.WriteUint32(25)
-	payload := writer.Bytes()
+	pl := writer.Bytes()
 
 	mockCtrl := gomock.NewController(t)
 	defer mockCtrl.Finish()
 
 	mockNode := node.NewMockNodeInterface(mockCtrl)
 
-	mockNode.EXPECT().MakeTransaction(tag, payload).Times(1).Return(func() *wire.Transaction {
-		reader := wavelet.NewPayloadReader(payload)
+	mockNode.EXPECT().MakeTransaction(tag, pl).Times(1).Return(func() *wire.Transaction {
+		reader := payload.NewReader(pl)
 		r, err := reader.ReadBytes()
 		assert.Nil(t, err)
 		assert.Equal(t, recipientDecoded, r)
 		a, err := reader.ReadUint64()
 		assert.Nil(t, err)
 		assert.Equal(t, uint64(10), a)
-		s, err := reader.ReadUTF8String()
+		s, err := reader.ReadString()
 		assert.Nil(t, err)
 		assert.Equal(t, "balance", s)
 		f, err := reader.ReadUint32()
@@ -305,7 +306,7 @@ func Test_api_send_transaction(t *testing.T) {
 		assert.Equal(t, uint32(25), f)
 		return &wire.Transaction{
 			Tag:     tag,
-			Payload: payload,
+			Payload: pl,
 		}
 	}()).Times(1)
 	mockNode.EXPECT().BroadcastTransaction(gomock.Any()).Times(1)
@@ -315,7 +316,7 @@ func Test_api_send_transaction(t *testing.T) {
 	assert.Nil(t, err)
 	defer s.Close()
 
-	res, err := c.SendTransaction(tag, payload)
+	res, err := c.SendTransaction(tag, pl)
 	assert.Nil(t, err)
 	assert.True(t, len(res.TransactionID) > 0)
 }

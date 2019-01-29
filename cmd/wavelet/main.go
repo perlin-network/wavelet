@@ -481,34 +481,34 @@ func runShell(w *node.Wavelet) error {
 				continue
 			}
 
-			payload := payload.NewWriter(nil)
-			payload.WriteBytes(recipientDecoded)
-			payload.WriteUint64(uint64(amount))
+			pl := payload.NewWriter(nil)
+			pl.WriteBytes(recipientDecoded)
+			pl.WriteUint64(uint64(amount))
 
 			if len(cmd) >= 5 {
-				payload.WriteString(cmd[3])
+				pl.WriteString(cmd[3])
 
 				for i := 4; i < len(cmd); i++ {
 					arg := cmd[i]
 
 					switch arg[0] {
 					case 'S':
-						payload.WriteString(arg[1:])
+						pl.WriteString(arg[1:])
 					case 'B':
-						payload.WriteBytes([]byte(arg[1:]))
+						pl.WriteBytes([]byte(arg[1:]))
 					case '1', '2', '4', '8':
 						var val uint64
 						fmt.Sscanf(arg[1:], "%d", &val)
 
 						switch arg[0] {
 						case '1':
-							payload.WriteByte(byte(val))
+							pl.WriteByte(byte(val))
 						case '2':
-							payload.WriteUint16(uint16(val))
+							pl.WriteUint16(uint16(val))
 						case '4':
-							payload.WriteUint32(uint32(val))
+							pl.WriteUint32(uint32(val))
 						case '8':
-							payload.WriteUint64(uint64(val))
+							pl.WriteUint64(uint64(val))
 						}
 					case 'H':
 						b, err := hex.DecodeString(arg[1:])
@@ -516,14 +516,14 @@ func runShell(w *node.Wavelet) error {
 							log.Fatal().Err(err).Msgf("cannot decode hex: %s", arg[1:])
 						}
 
-						payload.WriteBytes(b)
+						pl.WriteBytes(b)
 					default:
 						log.Fatal().Msgf("invalid arg: %s", arg)
 					}
 				}
 			}
 
-			wired := w.MakeTransaction(params.TagGeneric, payload.Bytes())
+			wired := w.MakeTransaction(params.TagGeneric, pl.Bytes())
 			go w.BroadcastTransaction(wired)
 
 			log.Info().Msgf("Success! Your payment transaction ID: %s", hex.EncodeToString(graph.Symbol(wired)))
