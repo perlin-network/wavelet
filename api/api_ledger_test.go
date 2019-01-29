@@ -372,6 +372,82 @@ func Test_api_get_account(t *testing.T) {
 	assert.Equal(t, 0, len(res))
 }
 
+func Test_api_find_parents(t *testing.T) {
+	numParents := 5
+
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockNode := node.NewMockNodeInterface(mockCtrl)
+	mockLedger := wavelet.NewMockLedgerInterface(mockCtrl)
+
+	mockLedger.EXPECT().FindEligibleParents().Return(func() (parents [][]byte, err error) {
+		for i := 0; i < numParents; i++ {
+			parents = append(parents, []byte(fmt.Sprintf("id-%d", i)))
+		}
+		return parents, nil
+	}()).Times(1)
+	mockNode.EXPECT().LedgerDo(gomock.Any()).Times(1).DoAndReturn(func(f func(ledger wavelet.LedgerInterface)) {
+		f(mockLedger)
+	}).Times(1)
+
+	port := GetRandomUnusedPort()
+	s, c, err := setupMockServer(port, privateKeyFile, mockNode)
+	assert.Nil(t, err)
+	defer s.Close()
+
+	res, err := c.FindParents()
+	assert.Nil(t, err)
+	assert.Equal(t, numParents, len(res.ParentIDs))
+	for i, val := range res.ParentIDs {
+		assert.Equal(t, hex.EncodeToString([]byte(fmt.Sprintf("id-%d", i))), val)
+	}
+}
+
+func Test_api_forward_transaction(t *testing.T) {
+	wiredTx := &wire.Transaction{
+		Sender: func() []byte {
+			decoded, _ := hex.DecodeString("71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858")
+			return []byte(decoded)
+		}(),
+		Nonce: uint64(2),
+		Parents: func() [][]byte {
+			decoded, _ := hex.DecodeString(txID)
+			return [][]byte{decoded}
+		}(),
+		Tag:     uint32(params.TagGeneric),
+		Payload: []byte("payload"),
+		Signature: func() []byte {
+			decoded, _ := hex.DecodeString("38609fc546cb54db22f6ed14608609cf6a07642c71b5b75bfc9859cc0fd7cb730140a31926e4b0a33be96b008e207c4266da0bfbae3db116009f7f6ea629e205")
+			return []byte(decoded)
+		}(),
+	}
+
+	mockCtrl := gomock.NewController(t)
+	defer mockCtrl.Finish()
+
+	mockNode := node.NewMockNodeInterface(mockCtrl)
+	mockLedger := wavelet.NewMockLedgerInterface(mockCtrl)
+
+	mockLedger.EXPECT().FindEligibleParents().Return(func() (parents [][]byte, err error) {
+		decoded, _ := hex.DecodeString(txID)
+		return [][]byte{decoded}, nil
+	}()).Times(1)
+	mockNode.EXPECT().LedgerDo(gomock.Any()).Times(1).DoAndReturn(func(f func(ledger wavelet.LedgerInterface)) {
+		f(mockLedger)
+	}).Times(1)
+	mockNode.EXPECT().BroadcastTransaction(wiredTx).Times(1)
+
+	port := GetRandomUnusedPort()
+	s, c, err := setupMockServer(port, privateKeyFile, mockNode)
+	assert.Nil(t, err)
+	defer s.Close()
+
+	res, err := c.ForwardTransaction(wiredTx.Nonce, wiredTx.Tag, wiredTx.Payload)
+	assert.Nil(t, err)
+	assert.True(t, len(res.TransactionID) > 0)
+}
+
 func Test_api_serverVersion(t *testing.T) {
 	port := GetRandomUnusedPort()
 	s, c, err := setupMockServer(port, privateKeyFile, node.NewMockNodeInterface(gomock.NewController(t)))
