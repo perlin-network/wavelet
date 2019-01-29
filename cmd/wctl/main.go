@@ -295,6 +295,26 @@ func main() {
 				return nil
 			},
 		},
+		{
+			Name:  "find_parents",
+			Usage: "finds eligable parents to use in a new transaction",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				result, err := client.FindParents()
+				if err != nil {
+					return err
+				}
+
+				for _, parentID := range result.ParentIDs {
+					fmt.Println(parentID)
+				}
+				return nil
+			},
+		},
 	}
 
 	sort.Sort(cli.FlagsByName(app.Flags))

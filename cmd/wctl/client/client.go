@@ -369,6 +369,12 @@ func (c *Client) ExecuteContract(txID string, entry string, param []byte) (*api.
 	return response, nil
 }
 
+// FindParents gets the next
+func (c *Client) FindParents() (parents *api.FindParentsResponse, err error) {
+	err = c.Request(api.RouteTransactionFindParents, nil, &parents, nil)
+	return
+}
+
 // userAgent is a short summary of the client type making the connection
 func userAgent() string {
 	return fmt.Sprintf("wctl/%s-%s (%s)", params.Version, params.GitCommit, params.OSArch)
