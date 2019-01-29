@@ -6,10 +6,12 @@ const (
 
 	RouteLedgerState = "/ledger/state"
 
-	RouteTransactionList = "/transaction/list"
-	RouteTransactionPoll = "/transaction/poll"
-	RouteTransactionSend = "/transaction/send"
-	RouteTransaction     = "/transaction"
+	RouteTransactionList        = "/transaction/list"
+	RouteTransactionPoll        = "/transaction/poll"
+	RouteTransactionSend        = "/transaction/send"
+	RouteTransaction            = "/transaction"
+	RouteTransactionForward     = "/transaction/forward"
+	RouteTransactionFindParents = "/transaction/find_parents"
 
 	RouteContractSend    = "/contract/send"
 	RouteContractGet     = "/contract/get"
@@ -22,6 +24,8 @@ const (
 	RouteAccountPoll = "/account/poll"
 
 	RouteServerVersion = "/server/version"
+
+	///////////////////////////////////////////
 
 	HeaderSessionToken      = "X-Session-Token"
 	HeaderWebsocketProtocol = "Sec-Websocket-Protocol"

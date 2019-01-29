@@ -42,6 +42,25 @@ type ExecuteContractRequest struct {
 	Param      []byte `json:"param"`
 }
 
+type ForwareTransactionRequest struct {
+
+	wired := &wire.Transaction{
+		Sender:  b.Wallet.PublicKey,
+		Nonce:   nonce,
+		Parents: parents,
+		Tag:     tag,
+		Payload: payload,
+	}
+
+	Sender               []byte   `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
+	Nonce                uint64   `protobuf:"varint,2,opt,name=nonce,proto3" json:"nonce,omitempty"`
+	Parents              [][]byte `protobuf:"bytes,3,rep,name=parents" json:"parents,omitempty"`
+	Tag                  uint32   `protobuf:"varint,4,opt,name=tag,proto3" json:"tag,omitempty"`
+	Payload              []byte   `protobuf:"bytes,5,opt,name=payload,proto3" json:"payload,omitempty"`
+	Signature            []byte   `protobuf:"bytes,6,opt,name=signature,proto3" json:"signature,omitempty"`
+	Timestamp            int64    `protobuf:"varint,7,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+}
+
 //------------------------
 // Response Payloads
 //------------------------
@@ -80,4 +99,8 @@ type TransactionResponse struct {
 
 type ExecuteContractResponse struct {
 	Result []byte `json:"result"`
+}
+
+type FindParentsResponse struct {
+	ParentIDs []string `json:"parents"`
 }

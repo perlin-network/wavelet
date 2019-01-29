@@ -493,6 +493,45 @@ func (s *service) getAccountHandler(ctx *requestContext) (int, interface{}, erro
 	return http.StatusOK, state, nil
 }
 
+func (s *service) findParentsHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
+	}
+
+	if !ctx.session.Permissions.CanSendTransaction {
+		return http.StatusForbidden, nil, errors.New("permission denied")
+	}
+
+	resp := FindParentsResponse{}
+
+	s.wavelet.LedgerDo(func(ledger wavelet.LedgerInterface) {
+		var parents [][]byte
+		parents, err = l.FindEligibleParents()
+		for _, parent := range parents {
+			resp.ParentIDs = append(resp.ParentIDs, hex.EncodeString(parent))
+		}
+	})
+
+	if err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "could not find transaction given symbol ID")
+	}
+
+	return http.StatusOK, resp, nil
+
+func (s *service) forwardTransactionHandler(ctx *requestContext) (int, interface{}, error) {
+	if err := ctx.loadSession(); err != nil {
+		return http.StatusForbidden, nil, err
+	}
+
+	if !ctx.session.Permissions.CanSendTransaction {
+		return http.StatusForbidden, nil, errors.New("permission denied")
+	}
+
+	// TODO:
+
+	return http.StatusBadRequest, nil, errors.New("Not implemented")
+}
+
 func (s *service) serverVersionHandler(ctx *requestContext) (int, interface{}, error) {
 	if err := ctx.loadSession(); err != nil {
 		return http.StatusForbidden, nil, err
