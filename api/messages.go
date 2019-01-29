@@ -44,12 +44,12 @@ type ExecuteContractRequest struct {
 
 // ForwareTransactionRequest sends a presigned transaction to the ledger
 type ForwareTransactionRequest struct {
-	Sender    []byte   `json:"sender" validate:"required,len=32"`
+	Sender    string   `json:"sender" validate:"required,len=64"`
 	Nonce     uint64   `json:"nonce" validate:"required,min=0"`
-	Parents   [][]byte `json:"parents" validate:"required,min=1"`
+	Parents   []string `json:"parents" validate:"required,min=1,max=32"`
 	Tag       uint32   `json:"tag" validate:"required,max=30"`
 	Payload   []byte   `json:"payload"`
-	Signature []byte   `json:"signature" validate:"required,len=64"`
+	Signature string   `json:"signature" validate:"required,len=128"`
 }
 
 //------------------------
@@ -94,5 +94,4 @@ type ExecuteContractResponse struct {
 
 type FindParentsResponse struct {
 	ParentIDs []string `json:"parents"`
-	Nonce     uint64   `json:"nonce"`
 }

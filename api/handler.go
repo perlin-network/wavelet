@@ -414,10 +414,10 @@ func (s *service) getTransactionHandler(ctx *requestContext) (int, interface{}, 
 		return http.StatusBadRequest, nil, err
 	}
 
-	req := &GetContractRequest{
+	// validate the transaction id
+	if err := validate.Struct(&GetContractRequest{
 		TransactionID: symbol,
-	}
-	if err := validate.Struct(req); err != nil {
+	}); err != nil {
 		return http.StatusBadRequest, nil, errors.Wrap(err, "transaction symbol ID invalid length")
 	}
 
@@ -504,6 +504,7 @@ func (s *service) findParentsHandler(ctx *requestContext) (int, interface{}, err
 		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
+	maxFindParents := 32
 	resp := FindParentsResponse{}
 	var err error
 
@@ -512,7 +513,10 @@ func (s *service) findParentsHandler(ctx *requestContext) (int, interface{}, err
 		if parents, err = ledger.FindEligibleParents(); err != nil {
 			return
 		}
-		for _, parent := range parents {
+		for i, parent := range parents {
+			if i >= maxFindParents {
+				break
+			}
 			resp.ParentIDs = append(resp.ParentIDs, hex.EncodeToString(parent))
 		}
 	})
@@ -534,6 +538,7 @@ func (s *service) forwardTransactionHandler(ctx *requestContext) (int, interface
 	}
 
 	var req ForwareTransactionRequest
+	var err error
 
 	if err := ctx.readJSON(&req); err != nil {
 		return http.StatusBadRequest, nil, err
@@ -544,12 +549,36 @@ func (s *service) forwardTransactionHandler(ctx *requestContext) (int, interface
 	}
 
 	wired := &wire.Transaction{
-		Sender:    req.Sender,
-		Nonce:     req.Nonce,
-		Parents:   req.Parents,
-		Tag:       req.Tag,
-		Payload:   req.Payload,
-		Signature: req.Signature,
+		Nonce:   req.Nonce,
+		Tag:     req.Tag,
+		Payload: req.Payload,
+	}
+
+	// decode the sender
+	if wired.Sender, err = hex.DecodeString(req.Sender); err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid transaction sender")
+	}
+
+	// decode the parent
+	for _, hexParentID := range req.Parents {
+		// validate the parent transaction id
+		if err := validate.Struct(&GetContractRequest{
+			TransactionID: hexParentID,
+		}); err != nil {
+			return http.StatusBadRequest, nil, errors.Wrap(err, "parent transaction symbol ID invalid")
+		}
+
+		parentID, err := hex.DecodeString(hexParentID)
+		if err != nil {
+			return http.StatusBadRequest, nil, errors.Wrap(err, "invalid parent id")
+		}
+
+		wired.Parents = append(wired.Parents, parentID)
+	}
+
+	// decode the signature
+	if wired.Signature, err = hex.DecodeString(req.Signature); err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "invalid transaction signature")
 	}
 
 	// Check signature matches sender
