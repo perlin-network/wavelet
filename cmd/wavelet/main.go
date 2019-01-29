@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+
 	"io/ioutil"
 	"os"
 	"os/signal"
@@ -18,6 +19,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/params"
+	"github.com/perlin-network/wavelet/payload"
 	"github.com/perlin-network/wavelet/security"
 
 	"github.com/perlin-network/graph/database"
@@ -474,54 +476,49 @@ func runShell(w *node.Wavelet) error {
 				continue
 			}
 
-			writer := wavelet.NewPayloadBuilder()
-			writer.WriteBytes(recipientDecoded)
-			writer.WriteUint64(uint64(amount))
-
-			payload := writer.Bytes()
+			pl := payload.NewWriter(nil)
+			pl.WriteBytes(recipientDecoded)
+			pl.WriteUint64(uint64(amount))
 
 			if len(cmd) >= 5 {
-				pb := wavelet.NewPayloadBuilder()
-				pb.WriteUTF8String(cmd[3])
+				pl.WriteString(cmd[3])
 
-				invPb := wavelet.NewPayloadBuilder()
 				for i := 4; i < len(cmd); i++ {
 					arg := cmd[i]
+
 					switch arg[0] {
 					case 'S':
-						invPb.WriteUTF8String(arg[1:])
+						pl.WriteString(arg[1:])
 					case 'B':
-						invPb.WriteBytes([]byte(arg[1:]))
+						pl.WriteBytes([]byte(arg[1:]))
 					case '1', '2', '4', '8':
 						var val uint64
 						fmt.Sscanf(arg[1:], "%d", &val)
+
 						switch arg[0] {
 						case '1':
-							invPb.WriteByte(byte(val))
+							pl.WriteByte(byte(val))
 						case '2':
-							invPb.WriteUint16(uint16(val))
+							pl.WriteUint16(uint16(val))
 						case '4':
-							invPb.WriteUint32(uint32(val))
+							pl.WriteUint32(uint32(val))
 						case '8':
-							invPb.WriteUint64(uint64(val))
+							pl.WriteUint64(uint64(val))
 						}
 					case 'H':
 						b, err := hex.DecodeString(arg[1:])
 						if err != nil {
 							log.Fatal().Err(err).Msgf("cannot decode hex: %s", arg[1:])
 						}
-						invPb.WriteBytes(b)
+
+						pl.WriteBytes(b)
 					default:
 						log.Fatal().Msgf("invalid arg: %s", arg)
 					}
 				}
-
-				pb.WriteBytes(invPb.Bytes())
-
-				payload = append(payload, pb.Bytes()...)
 			}
 
-			wired := w.MakeTransaction(params.TagGeneric, payload)
+			wired := w.MakeTransaction(params.TagGeneric, pl.Bytes())
 			go w.BroadcastTransaction(wired)
 
 			log.Info().Msgf("Success! Your payment transaction ID: %s", hex.EncodeToString(graph.Symbol(wired)))
@@ -535,18 +532,7 @@ func runShell(w *node.Wavelet) error {
 				log.Fatal().Err(err).Msg("Failed to convert staking amount to a uint64.")
 			}
 
-			ps := struct {
-				Amount uint64 `json:"amount"`
-			}{
-				Amount: uint64(amount),
-			}
-
-			payload, err := json.Marshal(ps)
-			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to marshal place stake payload.")
-			}
-
-			wired := w.MakeTransaction(params.TagStake, payload)
+			wired := w.MakeTransaction(params.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
 			go w.BroadcastTransaction(wired)
 
 			log.Info().Msgf("Success! Your stake placement transaction ID: %s", hex.EncodeToString(graph.Symbol(wired)))
@@ -560,18 +546,7 @@ func runShell(w *node.Wavelet) error {
 				log.Fatal().Err(err).Msg("Failed to convert withdraw amount to an uint64.")
 			}
 
-			ps := struct {
-				Amount uint64 `json:"amount"`
-			}{
-				Amount: uint64(amount),
-			}
-
-			payload, err := json.Marshal(ps)
-			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to marshal place stake payload.")
-			}
-
-			wired := w.MakeTransaction(params.TagStake, payload)
+			wired := w.MakeTransaction(params.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
 			go w.BroadcastTransaction(wired)
 
 			log.Info().Msgf("Success! Your stake withdrawal transaction ID: %s", hex.EncodeToString(graph.Symbol(wired)))

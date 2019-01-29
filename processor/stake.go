@@ -1,8 +1,8 @@
 package processor
 
 import (
-	"encoding/binary"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/payload"
 	"github.com/pkg/errors"
 )
 
@@ -10,11 +10,13 @@ type StakeProcessor struct {
 }
 
 func (p *StakeProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) error {
-	if len(ctx.Transaction.Payload) != 8 {
-		return errors.New("expecting an int64")
+	raw, err := payload.NewReader(ctx.Transaction.Payload).ReadUint64()
+
+	if err != nil {
+		return errors.Wrap(err, "failed to decode stake delta amount")
 	}
 
-	delta := int64(binary.LittleEndian.Uint64(ctx.Transaction.Payload))
+	delta := int64(raw)
 
 	acct := ctx.LoadAccount(ctx.Transaction.Sender)
 
