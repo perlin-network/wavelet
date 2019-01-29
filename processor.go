@@ -79,9 +79,9 @@ func (c *TransactionContext) run(processor TransactionProcessor) error {
 		c.pendingTransactions = nil
 	}
 
-	if err := c.reward(); err != nil {
+	/*if err := c.reward(); err != nil {
 		return err
-	}
+	}*/
 
 	for _, account := range c.accounts {
 		c.ledger.Accounts.save(account)

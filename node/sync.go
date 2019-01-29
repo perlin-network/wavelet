@@ -2,16 +2,11 @@ package node
 
 import (
 	"context"
-	"time"
-
-	"github.com/perlin-network/graph/wire"
+	"github.com/gogo/protobuf/proto"
+	"github.com/perlin-network/noise/peer"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/params"
-	"github.com/perlin-network/wavelet/stats"
-
-	"github.com/gogo/protobuf/proto"
-	"github.com/perlin-network/noise/peer"
 )
 
 type syncer struct {
@@ -35,58 +30,60 @@ func (s *syncer) randomlySelectPeers(n int) []peer.ID {
 
 // hinterLoop hints transactions we have to other nodes which said nodes may not have.
 func (s *syncer) hinterLoop() {
-	for {
-		time.Sleep(time.Duration(params.SyncHintPeriodMs) * time.Millisecond)
+	/*
+		for {
+			time.Sleep(time.Duration(params.SyncHintPeriodMs) * time.Millisecond)
 
-		var tx *wire.Transaction
+			var tx *wire.Transaction
 
-		s.Ledger.Do(func(l *wavelet.Ledger) {
-			if recent := l.Store.GetMostRecentlyUsed(3); len(recent) > 0 {
-				// Randomly pick a transaction out of the most recently used.
-				symbol := recent[len(recent)/2]
+			s.Ledger.Do(func(l *wavelet.Ledger) {
+				if recent := l.Store.GetMostRecentlyUsed(3); len(recent) > 0 {
+					// Randomly pick a transaction out of the most recently used.
+					symbol := recent[len(recent)/2]
 
-				if len(symbol) > 64 {
-					// TODO(kenta): A hack in place as all symbols in tx object cache are prefixed with 'tx_'.
-					symbol = symbol[3:]
-				}
+					if len(symbol) > 64 {
+						// TODO(kenta): A hack in place as all symbols in tx object cache are prefixed with 'tx_'.
+						symbol = symbol[3:]
+					}
 
-				raw, err := l.Store.GetBySymbol(symbol)
+					raw, err := l.Store.GetBySymbol(symbol)
 
-				if err != nil {
-					return
-				}
+					if err != nil {
+						return
+					}
 
-				tx = &wire.Transaction{
-					Sender:    raw.Sender,
-					Nonce:     raw.Nonce,
-					Parents:   raw.Parents,
-					Tag:       raw.Tag,
-					Payload:   raw.Payload,
-					Signature: raw.Signature,
-				}
+					tx = &wire.Transaction{
+						Sender:    raw.Sender,
+						Nonce:     raw.Nonce,
+						Parents:   raw.Parents,
+						Tag:       raw.Tag,
+						Payload:   raw.Payload,
+						Signature: raw.Signature,
+					}
 
-				if tx.Tag == params.TagCreateContract {
-					// if it was a create contract that was removed from the db, load the tx payload from the ledger
-					if len(tx.Payload) == 0 {
-						contractCode, err := l.LoadContract(symbol)
-						if err != nil {
-							return
+					if tx.Tag == params.TagCreateContract {
+						// if it was a create contract that was removed from the db, load the tx payload from the ledger
+						if len(tx.Payload) == 0 {
+							contractCode, err := l.LoadContract(symbol)
+							if err != nil {
+								return
+							}
+							tx.Payload = contractCode
 						}
-						tx.Payload = contractCode
 					}
 				}
+			})
+
+			if tx == nil {
+				continue
 			}
-		})
 
-		if tx == nil {
-			continue
+			s.net.BroadcastRandomly(context.Background(), tx, params.SyncHintNumPeers)
+
+			// update the number of connected peers
+			stats.SetNumConnectedPeers(int64(len(s.randomlySelectPeers(1000))))
 		}
-
-		s.net.BroadcastRandomly(context.Background(), tx, params.SyncHintNumPeers)
-
-		// update the number of connected peers
-		stats.SetNumConnectedPeers(int64(len(s.randomlySelectPeers(1000))))
-	}
+	*/
 }
 
 func (s *syncer) Start() {
