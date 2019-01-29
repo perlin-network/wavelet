@@ -31,7 +31,14 @@ func (b *broadcaster) MakeTransaction(tag uint32, payload []byte) *wire.Transact
 	var err error
 
 	b.Ledger.Do(func(l *wavelet.Ledger) {
-		parents, err = l.FindEligibleParents()
+		criticalTx := l.GetLastCriticalTransactionID()
+		var minDepth uint64
+
+		if len(criticalTx) > 0 {
+			minDepth, _ = l.Store.GetDepthBySymbol(criticalTx)
+		}
+
+		parents, err = l.FindEligibleParents(minDepth)
 		if err == nil {
 			nonce, err = b.Wallet.NextNonce(l)
 		}

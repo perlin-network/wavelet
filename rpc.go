@@ -57,7 +57,7 @@ func (r *rpc) HandleSuccessfulQuery(tx *database.Transaction) error {
 			continue
 		}
 
-		set, err := r.GetConflictSet(tx.Sender, tx.Nonce)
+		set, err := r.GetConflictSetForTx(tx)
 		if err != nil {
 			continue
 		}
@@ -77,7 +77,7 @@ func (r *rpc) HandleSuccessfulQuery(tx *database.Transaction) error {
 			set.Count++
 		}
 
-		err = r.SaveConflictSet(tx.Sender, tx.Nonce, set)
+		err = r.SaveConflictSetForTx(tx, set)
 		if err != nil {
 			continue
 		}

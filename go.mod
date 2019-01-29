@@ -10,7 +10,7 @@ require (
 	github.com/lytics/hll v0.0.0-20180410160152-70adc917ce99
 	github.com/perlin-network/graph v0.0.0-20190125081319-de3684fe55fe
 	github.com/perlin-network/life v0.0.0-20181005150058-1eb3d14cb6e7
-	github.com/perlin-network/noise v1.1.1-0.20181107172939-6f607c059418
+	github.com/perlin-network/noise v1.1.1-0.20181127154441-b1699ec3b8b3
 	github.com/perlin-network/pem-avl v0.0.0-20190123025833-623b68e9f510
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
 	github.com/pkg/errors v0.8.0
@@ -26,3 +26,7 @@ require (
 )
 
 replace github.com/go-interpreter/wagon => github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39
+
+replace github.com/perlin-network/graph => ../graph
+
+replace github.com/perlin-network/pem-avl => ../pem-avl

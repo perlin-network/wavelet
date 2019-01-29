@@ -25,6 +25,8 @@ var (
 	BucketAcceptPending = writeBytes("p.accepted_")
 
 	KeyGenesisApplied = writeBytes("@genesis_applied")
+
+	KeyLastCriticalTransaction = writeBytes("@last_critical_transaction")
 )
 
 var (
@@ -208,7 +210,7 @@ func (ledger *Ledger) updateAcceptedTransactions() {
 			continue
 		}
 
-		set, err := ledger.GetConflictSet(pending.tx.Sender, pending.tx.Nonce)
+		set, err := ledger.GetConflictSetForTx(pending.tx)
 		if err != nil {
 			continue
 		}
@@ -265,6 +267,118 @@ func (ledger *Ledger) ensureAccepted(set *database.ConflictSet) error {
 	return nil
 }
 
+func (ledger *Ledger) GetLastCriticalTransactionID() []byte {
+	lastCriticalTransaction, _ := ledger.Store.Get(KeyLastCriticalTransaction)
+	return lastCriticalTransaction
+}
+
+func (ledger *Ledger) GetLastCriticalTransaction() *database.Transaction {
+	id := ledger.GetLastCriticalTransactionID()
+	if id == nil {
+		return nil
+	}
+	tx, _ := ledger.Store.GetBySymbol(id)
+	return tx
+}
+
+func (ledger *Ledger) ApplyWithFinality(currentCriticalTransaction []byte) error {
+	bfsQueue := queue.New()
+	dedup := make(map[string]struct{})
+	revReachable := make(map[string]struct{})
+
+	lastCriticalTransaction := ledger.GetLastCriticalTransactionID()
+
+	log.Info().Str("last", hex.EncodeToString(lastCriticalTransaction)).
+		Str("current", hex.EncodeToString(currentCriticalTransaction)).
+		Msg("Applying with finality")
+
+	bfsQueue.PushBack(currentCriticalTransaction)
+	for bfsQueue.Len() > 0 {
+		symbol := bfsQueue.PopFront().([]byte)
+		if _, ok := dedup[string(symbol)]; ok {
+			continue
+		}
+		dedup[string(symbol)] = struct{}{}
+		if bytes.Equal(symbol, lastCriticalTransaction) {
+			continue
+		}
+		revReachable[string(symbol)] = struct{}{}
+		tx, err := ledger.Store.GetBySymbol(symbol)
+		if err != nil {
+			return errors.Wrap(err, "transaction not found")
+		}
+		for _, p := range tx.Parents {
+			bfsQueue.PushBack(p)
+		}
+	}
+
+	if len(lastCriticalTransaction) > 0 {
+		bfsQueue.PushBack(lastCriticalTransaction)
+	} else {
+		err := ledger.Store.ForEachDepth(0, func(symbol []byte) error {
+			bfsQueue.PushBack(symbol)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	dedup = make(map[string]struct{})
+
+	for bfsQueue.Len() > 0 {
+		symbol := bfsQueue.PopFront().([]byte)
+		if bytes.Equal(symbol, currentCriticalTransaction) {
+			continue
+		}
+
+		if _, ok := dedup[string(symbol)]; ok {
+			continue
+		}
+		dedup[string(symbol)] = struct{}{}
+
+		if _, ok := revReachable[string(symbol)]; ok {
+			tx, err := ledger.Store.GetBySymbol(symbol)
+			if err != nil {
+				continue
+			}
+			err = ledger.applyTransaction(tx)
+			if err != nil {
+				log.Warn().Err(err).Msgf("unable to apply transaction %s", hex.EncodeToString(tx.Id))
+			} else {
+				log.Info().Msgf("transaction %s applied", hex.EncodeToString(tx.Id))
+			}
+		}
+
+		children, err := ledger.Store.GetChildrenBySymbol(symbol)
+		if err != nil {
+			continue
+		}
+
+		sort.Slice(children.Transactions, func(i, j int) bool {
+			return bytes.Compare(children.Transactions[i], children.Transactions[j]) < 0
+		})
+
+		for _, c := range children.Transactions {
+			bfsQueue.PushBack(c)
+		}
+
+		depth, err := ledger.Store.GetDepthBySymbol(symbol)
+		if err == nil {
+			ledger.Store.Delete(merge(database.BucketTxDepthIndex, writeUint64(depth), symbol))
+		}
+
+		ledger.Store.Delete(merge(database.BucketTxDepth, symbol))
+		ledger.Store.Delete(merge(database.BucketTx, symbol))
+		ledger.Store.Delete(merge(database.BucketTxChildren, symbol))
+		ledger.Store.Delete(merge(BucketAccepted, symbol))
+		ledger.Store.Delete(merge(BucketAcceptPending, symbol))
+	}
+
+	ledger.Store.Put(KeyLastCriticalTransaction, currentCriticalTransaction)
+	return nil
+}
+
 // acceptTransaction accepts a transaction and ensures the transaction is not pending acceptance inside the graph.
 // The children of said accepted transaction thereafter get queued to pending acceptance.
 func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
@@ -280,64 +394,9 @@ func (ledger *Ledger) acceptTransaction(tx *database.Transaction) {
 	stats.IncAcceptedTransactions(tx.Tag)
 	go events.Publish(nil, &events.TransactionAcceptedEvent{ID: tx.Id})
 
-	depth, err := ledger.Store.GetDepthBySymbol(tx.Id)
-	if err != nil {
-		log.Error().Err(err).Msg("cannot get depth")
-		return
-	}
-
-	var refTxId []byte
-	var gotRefTxId bool
-	var pendingReapply [][]byte
-
-	ledger.Store.ForEachDepth(depth, func(symbol []byte) error {
-		if bytes.Compare(symbol, tx.Id) > 0 {
-			if ledger.WasAccepted(symbol) {
-				if !gotRefTxId {
-					refTxId = symbol
-					gotRefTxId = true
-				}
-				pendingReapply = append(pendingReapply, symbol)
-			}
-		}
-		return nil
-	})
-
-	for i := depth + 1; ; i++ {
-		gotAnyTx := false
-		ledger.Store.ForEachDepth(i, func(symbol []byte) error {
-			gotAnyTx = true
-			if ledger.WasAccepted(symbol) {
-				if !gotRefTxId {
-					refTxId = symbol
-					gotRefTxId = true
-				}
-				pendingReapply = append(pendingReapply, symbol)
-			}
-			return nil
-		})
-		if !gotAnyTx {
-			break
-		}
-	}
-
-	if gotRefTxId {
-		ledger.revertTransaction(refTxId)
-	}
-
-	err = ledger.applyTransaction(tx)
-	if err != nil {
-		log.Warn().Err(err).Str("symbol", hex.EncodeToString(tx.Id)).Msg("failed to apply transaction")
-	}
-
-	for _, symbol := range pendingReapply {
-		reTx, err := ledger.GetBySymbol(symbol)
-		if err != nil {
-			continue
-		}
-		err = ledger.applyTransaction(reTx)
-		if err != nil {
-			log.Warn().Err(err).Str("symbol", hex.EncodeToString(symbol)).Msg("failed to reapply transaction")
+	if tx.IsCritical() {
+		if err := ledger.ApplyWithFinality(tx.Id); err != nil {
+			log.Error().Err(err).Msg("Unable to apply with finality")
 		}
 	}
 
@@ -390,7 +449,7 @@ func (ledger *Ledger) revertTransaction(symbol []byte) {
 // ensureSafeCommittable ensures that incoming transactions which conflict with any
 // of the transactions on our graph are not accepted.
 func (ledger *Ledger) ensureSafeCommittable(index uint64, tx *database.Transaction) error {
-	set, err := ledger.GetConflictSet(tx.Sender, tx.Nonce)
+	set, err := ledger.GetConflictSetForTx(tx)
 
 	if err != nil {
 		return err

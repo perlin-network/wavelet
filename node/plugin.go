@@ -102,7 +102,7 @@ func (w *Wavelet) Startup(net *network.Network) {
 	w.query.sybil = stake{query: w.query}
 
 	w.syncer = syncer{Wavelet: w}
-	w.syncer.Start()
+	//w.syncer.Start()
 
 	w.broadcaster = broadcaster{Wavelet: w}
 }
@@ -147,12 +147,12 @@ func (w *Wavelet) Receive(ctx *network.PluginContext) error {
 			log.Debug().Str("id", hex.EncodeToString(id)).Uint32("tag", msg.Tag).Msgf("Received an existing transaction, and voted '%t' for it.", res.StronglyPreferred)
 
 			if rand.Intn(params.SyncNeighborsLikelihood) == 0 {
-				go w.syncer.QueryMissingChildren(id)
-				go w.syncer.QueryMissingParents(msg.Parents)
+				//go w.syncer.QueryMissingChildren(id)
+				//go w.syncer.QueryMissingParents(msg.Parents)
 			}
 		} else {
-			go w.syncer.QueryMissingChildren(id)
-			go w.syncer.QueryMissingParents(msg.Parents)
+			//go w.syncer.QueryMissingChildren(id)
+			//go w.syncer.QueryMissingParents(msg.Parents)
 
 			var err error
 
