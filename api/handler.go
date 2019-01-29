@@ -582,10 +582,8 @@ func (s *service) forwardTransactionHandler(ctx *requestContext) (int, interface
 	}
 
 	// Check signature matches sender
-	if valid, err := security.ValidateWiredTransaction(wired); err != nil {
-		return http.StatusBadRequest, nil, errors.Wrap(err, "unable to invalid transaction")
-	} else if !valid {
-		return http.StatusBadRequest, nil, errors.New("invalid transaction")
+	if _, err := security.ValidateWiredTransaction(wired); err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "signature does not match")
 	}
 
 	go s.wavelet.BroadcastTransaction(wired)

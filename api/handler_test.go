@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"mime/multipart"
 	"net/http"
@@ -76,16 +77,9 @@ func Test_service_resetStatsHandler(t *testing.T) {
 				upgrader: tt.fields.upgrader,
 			}
 			got, got1, err := s.resetStatsHandler(tt.args.ctx)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("service.resetStatsHandler() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("service.resetStatsHandler() got = %v, want %v", got, tt.want)
-			}
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("service.resetStatsHandler() got1 = %v, want %v", got1, tt.want1)
-			}
+			assert.Equal(t, (err != nil), tt.wantErr, "service.resetStatsHandler() error = %v, wantErr %v", err, tt.wantErr)
+			assert.Equal(t, got, tt.want, "service.resetStatsHandler() got = %v, want %v", got, tt.want)
+			assert.True(t, reflect.DeepEqual(got1, tt.want1), "service.resetStatsHandler() got1 = %v, want %v", got1, tt.want1)
 		})
 	}
 }
@@ -201,16 +195,9 @@ func Test_service_listTransactionHandler(t *testing.T) {
 				upgrader: tt.fields.upgrader,
 			}
 			got, got1, err := s.listTransactionHandler(tt.args.ctx)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("service.listTransactionHandler() name = %s, error = %v, wantErr %v", tt.name, err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("service.listTransactionHandler() name = %s, got = %v, want %v", tt.name, got, tt.want)
-			}
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("service.listTransactionHandler() name = %s, got1 = %v, want %v", tt.name, got1, tt.want1)
-			}
+			assert.Equal(t, (err != nil), tt.wantErr, "service.listTransactionHandler() name = %s, error = %v, wantErr %v", tt.name, err, tt.wantErr)
+			assert.Equal(t, got, tt.want, "service.listTransactionHandler() name = %s, got = %v, want %v", tt.name, got, tt.want)
+			assert.True(t, reflect.DeepEqual(got1, tt.want1), "service.listTransactionHandler() name = %s, got1 = %v, want %v", tt.name, got1, tt.want1)
 		})
 	}
 }
@@ -347,16 +334,9 @@ func Test_service_sessionInitHandler(t *testing.T) {
 				upgrader: tt.fields.upgrader,
 			}
 			got, got1, err := s.sessionInitHandler(tt.args.ctx)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("service.sessionInitHandler() name = %s, error = %v, wantErr %v", tt.name, err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("service.sessionInitHandler() name = %s, got = %v, want %v", tt.name, got, tt.want)
-			}
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("service.sessionInitHandler() name = %s, got1 = %v, want %v", tt.name, got1, tt.want1)
-			}
+			assert.Equal(t, (err != nil), tt.wantErr, "service.sessionInitHandler() name = %s, error = %v, wantErr %v", tt.name, err, tt.wantErr)
+			assert.Equal(t, got, tt.want, "service.sessionInitHandler() name = %s, got = %v, want %v", tt.name, got, tt.want)
+			assert.True(t, reflect.DeepEqual(got1, tt.want1), "service.sessionInitHandler() name = %s, got1 = %v, want %v", tt.name, got1, tt.want1)
 		})
 	}
 }
@@ -471,16 +451,9 @@ func Test_service_sendTransactionHandler(t *testing.T) {
 				upgrader: tt.fields.upgrader,
 			}
 			got, got1, err := s.sendTransactionHandler(tt.args.ctx)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("service.sendTransactionHandler() name = %s, error = %v, wantErr %v", tt.name, err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("service.sendTransactionHandler() name = %s, got = %v, want %v", tt.name, got, tt.want)
-			}
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("service.sendTransactionHandler() name = %s, got1 = %v, want %v", tt.name, got1, tt.want1)
-			}
+			assert.Equal(t, (err != nil), tt.wantErr, "service.sendTransactionHandler() name = %s, error = %v, wantErr %v", tt.name, err, tt.wantErr)
+			assert.Equal(t, got, tt.want, "service.sendTransactionHandler() name = %s, got = %v, want %v", tt.name, got, tt.want)
+			assert.True(t, reflect.DeepEqual(got1, tt.want1), "service.sendTransactionHandler() name = %s, got1 = %v, want %v", tt.name, got1, tt.want1)
 		})
 	}
 }
@@ -631,16 +604,9 @@ func Test_service_sendContractHandler(t *testing.T) {
 				upgrader: tt.fields.upgrader,
 			}
 			got, got1, err := s.sendContractHandler(tt.args.ctx)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("service.sendContractHandler() name = %s, error = %v, wantErr %v", tt.name, err, tt.wantErr)
-				return
-			}
-			if got != tt.want {
-				t.Errorf("service.sendContractHandler() name = %s, got = %v, want %v", tt.name, got, tt.want)
-			}
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("service.sendContractHandler() name = %s, got1 = %v, want %v", tt.name, got1, tt.want1)
-			}
+			assert.Equal(t, (err != nil), tt.wantErr, "service.sendContractHandler() name = %s, error = %v, wantErr %v", tt.name, err, tt.wantErr)
+			assert.Equal(t, got, tt.want, "service.sendContractHandler() name = %s, got = %v, want %v", tt.name, got, tt.want)
+			assert.True(t, reflect.DeepEqual(got1, tt.want1), "service.sendContractHandler() name = %s, got1 = %v, want %v", tt.name, got1, tt.want1)
 		})
 	}
 }
@@ -723,16 +689,203 @@ func Test_service_getContractHandler(t *testing.T) {
 				upgrader: tt.fields.upgrader,
 			}
 			got, got1, err := s.getContractHandler(tt.args.ctx)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("service.getContractHandler() name = %s, error = %v, wantErr %v", tt.name, err, tt.wantErr)
-				return
+			assert.Equal(t, (err != nil), tt.wantErr, "service.getContractHandler() name = %s, error = %v, wantErr %v", tt.name, err, tt.wantErr)
+			assert.Equal(t, got, tt.want, "service.getContractHandler() name = %s, got = %v, want %v", tt.name, got, tt.want)
+			assert.True(t, reflect.DeepEqual(got1, tt.want1), "service.getContractHandler() name = %s, got1 = %v, want %v", tt.name, got1, tt.want1)
+		})
+	}
+}
+
+func Test_service_findParentsHandler(t *testing.T) {
+	type fields struct {
+		clients  map[string]*ClientInfo
+		registry *registry
+		wavelet  node.NodeInterface
+		network  *network.Network
+		upgrader websocket.Upgrader
+	}
+	type args struct {
+		ctx *requestContext
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    int
+		want1   interface{}
+		wantErr bool
+	}{
+		{
+			name: "permission denied",
+			args: args{
+				ctx: &requestContext{
+					session: &session{
+						Permissions: ClientPermissions{
+							CanSendTransaction: false,
+						},
+					},
+					request: httptest.NewRequest("POST", RouteTransactionForward, strings.NewReader(``)),
+				},
+			},
+			want:    http.StatusForbidden,
+			want1:   nil,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &service{
+				clients:  tt.fields.clients,
+				registry: tt.fields.registry,
+				wavelet:  tt.fields.wavelet,
+				network:  tt.fields.network,
+				upgrader: tt.fields.upgrader,
 			}
-			if got != tt.want {
-				t.Errorf("service.getContractHandler() name = %s, got = %v, want %v", tt.name, got, tt.want)
+			got, got1, err := s.findParentsHandler(tt.args.ctx)
+			assert.Equal(t, (err != nil), tt.wantErr, "service.findParentsHandler() name = %s, error = %v, wantErr %v", tt.name, err, tt.wantErr)
+			assert.Equal(t, got, tt.want, "service.findParentsHandler() name = %s, got = %v, want %v", tt.name, got, tt.want)
+			assert.True(t, reflect.DeepEqual(got1, tt.want1), "service.findParentsHandler() name = %s, got1 = %v, want %v", tt.name, got1, tt.want1)
+		})
+	}
+}
+
+func Test_service_forwardTransactionHandler(t *testing.T) {
+	type fields struct {
+		clients  map[string]*ClientInfo
+		registry *registry
+		wavelet  node.NodeInterface
+		network  *network.Network
+		upgrader websocket.Upgrader
+	}
+	type args struct {
+		ctx *requestContext
+	}
+	tests := []struct {
+		name    string
+		fields  fields
+		args    args
+		want    int
+		want1   interface{}
+		wantErr bool
+	}{
+		{
+			name: "permission denied",
+			args: args{
+				ctx: &requestContext{
+					session: &session{
+						Permissions: ClientPermissions{
+							CanSendTransaction: false,
+						},
+					},
+					request: httptest.NewRequest("POST", RouteTransactionForward, strings.NewReader(``)),
+				},
+			},
+			want:    http.StatusForbidden,
+			want1:   nil,
+			wantErr: true,
+		},
+		{
+			name: "blank request",
+			args: args{
+				ctx: &requestContext{
+					session: &session{
+						Permissions: ClientPermissions{
+							CanSendTransaction: true,
+						},
+					},
+					request: httptest.NewRequest("POST", RouteTransactionForward, strings.NewReader(``)),
+				},
+			},
+			want:    http.StatusBadRequest,
+			want1:   nil,
+			wantErr: true,
+		},
+		{
+			name: "bad signature, bad sender hex",
+			args: args{
+				ctx: &requestContext{
+					session: &session{
+						Permissions: ClientPermissions{
+							CanSendTransaction: true,
+						},
+					},
+					request: httptest.NewRequest("POST", RouteSessionInit, strings.NewReader(`
+						{
+							"sender": "bad_1d",
+							"nonce": 1,
+							"parents": ["d0b587b71268b267d846d38b4aa1d5f1f524c51a9a4a98cf4fd5c0951204620f"],
+							"tag": 1,
+							"payload": "",
+							"signature": "a63b290c91162f692c22c70ebda5e9218c542a32879f6229984b1ae6eda1188b324aafa2150d25a20a71dbcddc395caeb6b5373272bd6462f2cc347e63377c0c"
+						}`)),
+				},
+			},
+			want:    http.StatusBadRequest,
+			want1:   nil,
+			wantErr: true,
+		},
+		{
+			name: "bad signature, bad parent hex",
+			args: args{
+				ctx: &requestContext{
+					session: &session{
+						Permissions: ClientPermissions{
+							CanSendTransaction: true,
+						},
+					},
+					request: httptest.NewRequest("POST", RouteSessionInit, strings.NewReader(`
+						{
+							"sender": "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
+							"nonce": 2,
+							"parents": ["123"],
+							"tag": 1,
+							"payload": "",
+							"signature": "a63b290c91162f692c22c70ebda5e9218c542a32879f6229984b1ae6eda1188b324aafa2150d25a20a71dbcddc395caeb6b5373272bd6462f2cc347e63377c0c"
+						}`)),
+				},
+			},
+			want:    http.StatusBadRequest,
+			want1:   nil,
+			wantErr: true,
+		},
+		{
+			name: "bad signature, nonce was incremented",
+			args: args{
+				ctx: &requestContext{
+					session: &session{
+						Permissions: ClientPermissions{
+							CanSendTransaction: true,
+						},
+					},
+					request: httptest.NewRequest("POST", RouteSessionInit, strings.NewReader(`
+						{
+							"sender": "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858",
+							"nonce": 2,
+							"parents": ["d0b587b71268b267d846d38b4aa1d5f1f524c51a9a4a98cf4fd5c0951204620f"],
+							"tag": 1,
+							"payload": "",
+							"signature": "a63b290c91162f692c22c70ebda5e9218c542a32879f6229984b1ae6eda1188b324aafa2150d25a20a71dbcddc395caeb6b5373272bd6462f2cc347e63377c0c"
+						}`)),
+				},
+			},
+			want:    http.StatusBadRequest,
+			want1:   nil,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &service{
+				clients:  tt.fields.clients,
+				registry: tt.fields.registry,
+				wavelet:  tt.fields.wavelet,
+				network:  tt.fields.network,
+				upgrader: tt.fields.upgrader,
 			}
-			if !reflect.DeepEqual(got1, tt.want1) {
-				t.Errorf("service.getContractHandler() name = %s, got1 = %v, want %v", tt.name, got1, tt.want1)
-			}
+			got, got1, err := s.forwardTransactionHandler(tt.args.ctx)
+			assert.Equal(t, (err != nil), tt.wantErr, "service.forwardTransactionHandler() name = %s, error = %v, wantErr %v", tt.name, err, tt.wantErr)
+			assert.Equal(t, got, tt.want, "service.forwardTransactionHandler() name = %s, got = %v, want %v", tt.name, got, tt.want)
+			assert.True(t, reflect.DeepEqual(got1, tt.want1), "service.forwardTransactionHandler() name = %s, got1 = %v, want %v", tt.name, got1, tt.want1)
 		})
 	}
 }
