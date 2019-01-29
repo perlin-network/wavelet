@@ -42,23 +42,14 @@ type ExecuteContractRequest struct {
 	Param      []byte `json:"param"`
 }
 
+// ForwareTransactionRequest sends a presigned transaction to the ledger
 type ForwareTransactionRequest struct {
-
-	wired := &wire.Transaction{
-		Sender:  b.Wallet.PublicKey,
-		Nonce:   nonce,
-		Parents: parents,
-		Tag:     tag,
-		Payload: payload,
-	}
-
-	Sender               []byte   `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	Nonce                uint64   `protobuf:"varint,2,opt,name=nonce,proto3" json:"nonce,omitempty"`
-	Parents              [][]byte `protobuf:"bytes,3,rep,name=parents" json:"parents,omitempty"`
-	Tag                  uint32   `protobuf:"varint,4,opt,name=tag,proto3" json:"tag,omitempty"`
-	Payload              []byte   `protobuf:"bytes,5,opt,name=payload,proto3" json:"payload,omitempty"`
-	Signature            []byte   `protobuf:"bytes,6,opt,name=signature,proto3" json:"signature,omitempty"`
-	Timestamp            int64    `protobuf:"varint,7,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	Sender    []byte   `json:"sender" validate:"required,len=32"`
+	Nonce     uint64   `json:"nonce" validate:"required,min=0"`
+	Parents   [][]byte `json:"parents" validate:"required,min=1"`
+	Tag       uint32   `json:"tag" validate:"required,max=30"`
+	Payload   []byte   `json:"payload"`
+	Signature []byte   `json:"signature" validate:"required,len=64"`
 }
 
 //------------------------
@@ -103,4 +94,5 @@ type ExecuteContractResponse struct {
 
 type FindParentsResponse struct {
 	ParentIDs []string `json:"parents"`
+	Nonce     uint64   `json:"nonce"`
 }

@@ -10,12 +10,14 @@ import (
 
 	"github.com/perlin-network/graph/database"
 	"github.com/perlin-network/graph/graph"
+	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/network/discovery"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/events"
 	"github.com/perlin-network/wavelet/params"
 	"github.com/perlin-network/wavelet/security"
 	"github.com/perlin-network/wavelet/stats"
+
 	"github.com/pkg/errors"
 	"gopkg.in/go-playground/validator.v9"
 )
@@ -503,12 +505,15 @@ func (s *service) findParentsHandler(ctx *requestContext) (int, interface{}, err
 	}
 
 	resp := FindParentsResponse{}
+	var err error
 
 	s.wavelet.LedgerDo(func(ledger wavelet.LedgerInterface) {
 		var parents [][]byte
-		parents, err = l.FindEligibleParents()
+		if parents, err = ledger.FindEligibleParents(); err != nil {
+			return
+		}
 		for _, parent := range parents {
-			resp.ParentIDs = append(resp.ParentIDs, hex.EncodeString(parent))
+			resp.ParentIDs = append(resp.ParentIDs, hex.EncodeToString(parent))
 		}
 	})
 
@@ -517,6 +522,7 @@ func (s *service) findParentsHandler(ctx *requestContext) (int, interface{}, err
 	}
 
 	return http.StatusOK, resp, nil
+}
 
 func (s *service) forwardTransactionHandler(ctx *requestContext) (int, interface{}, error) {
 	if err := ctx.loadSession(); err != nil {
@@ -527,9 +533,39 @@ func (s *service) forwardTransactionHandler(ctx *requestContext) (int, interface
 		return http.StatusForbidden, nil, errors.New("permission denied")
 	}
 
-	// TODO:
+	var req ForwareTransactionRequest
 
-	return http.StatusBadRequest, nil, errors.New("Not implemented")
+	if err := ctx.readJSON(&req); err != nil {
+		return http.StatusBadRequest, nil, err
+	}
+
+	if err := validate.Struct(req); err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "transaction symbol ID invalid length")
+	}
+
+	wired := &wire.Transaction{
+		Sender:    req.Sender,
+		Nonce:     req.Nonce,
+		Parents:   req.Parents,
+		Tag:       req.Tag,
+		Payload:   req.Payload,
+		Signature: req.Signature,
+	}
+
+	// Check signature matches sender
+	if valid, err := security.ValidateWiredTransaction(wired); err != nil {
+		return http.StatusBadRequest, nil, errors.Wrap(err, "unable to invalid transaction")
+	} else if !valid {
+		return http.StatusBadRequest, nil, errors.New("invalid transaction")
+	}
+
+	go s.wavelet.BroadcastTransaction(wired)
+
+	res := &TransactionResponse{
+		TransactionID: hex.EncodeToString(graph.Symbol(wired)),
+	}
+
+	return http.StatusOK, res, nil
 }
 
 func (s *service) serverVersionHandler(ctx *requestContext) (int, interface{}, error) {
