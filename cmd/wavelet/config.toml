@@ -15,4 +15,4 @@ reset = true
 [api]
 host = "localhost"
 port = 9000
-private_key_files = "wallets.txt"
+whitelist_public_keys_file = "whitelist.txt"

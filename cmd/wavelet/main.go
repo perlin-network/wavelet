@@ -36,19 +36,19 @@ import (
 
 // Config describes how to start the node
 type Config struct {
-	PrivateKeyFile     string
-	Host               string
-	Port               uint
-	DatabasePath       string
-	ResetDatabase      bool
-	GenesisPath        string
-	Peers              []string
-	APIHost            string
-	APIPort            uint
-	APIPrivateKeysFile string
-	Daemon             bool
-	LogLevel           string
-	UseNAT             bool
+	PrivateKeyFile   string
+	Host             string
+	Port             uint
+	DatabasePath     string
+	ResetDatabase    bool
+	GenesisPath      string
+	Peers            []string
+	APIHost          string
+	APIPort          uint
+	APIWhitelistFile string
+	Daemon           bool
+	LogLevel         string
+	UseNAT           bool
 }
 
 func main() {
@@ -82,9 +82,9 @@ func main() {
 			Usage: "Host a local HTTP API at port `API_PORT`.",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "api.private_keys_file",
-			Value: "wallets.txt",
-			Usage: "TXT file containing private keys that can make transactions through the API `API_PRIVATE_KEYS_FILE`",
+			Name:  "api.whitelist_file",
+			Value: "whitelist.txt",
+			Usage: "TXT file containing public keys that can interact with the API `API_WHITELIST_FILE`",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "db.path",
@@ -209,19 +209,19 @@ func main() {
 
 	app.Action = func(c *cli.Context) error {
 		config := &Config{
-			PrivateKeyFile:     c.String("private_key_file"),
-			Host:               c.String("host"),
-			Port:               c.Uint("port"),
-			DatabasePath:       c.String("db.path"),
-			ResetDatabase:      c.Bool("db.reset"),
-			GenesisPath:        c.String("genesis"),
-			Peers:              c.StringSlice("peers"),
-			APIHost:            c.String("api.host"),
-			APIPort:            c.Uint("api.port"),
-			APIPrivateKeysFile: c.String("api.private_keys_file"),
-			Daemon:             c.Bool("daemon"),
-			LogLevel:           c.String("log_level"),
-			UseNAT:             c.Bool("nat"),
+			PrivateKeyFile:   c.String("private_key_file"),
+			Host:             c.String("host"),
+			Port:             c.Uint("port"),
+			DatabasePath:     c.String("db.path"),
+			ResetDatabase:    c.Bool("db.reset"),
+			GenesisPath:      c.String("genesis"),
+			Peers:            c.StringSlice("peers"),
+			APIHost:          c.String("api.host"),
+			APIPort:          c.Uint("api.port"),
+			APIWhitelistFile: c.String("api.whitelist_file"),
+			Daemon:           c.Bool("daemon"),
+			LogLevel:         c.String("log_level"),
+			UseNAT:           c.Bool("nat"),
 		}
 
 		if c.Uint("params.consensus_k") > 0 {
@@ -346,24 +346,19 @@ func runServer(c *Config) (*node.Wavelet, error) {
 	if c.APIPort > 0 {
 		var clients []*api.ClientInfo
 
-		if len(c.APIPrivateKeysFile) > 0 {
-			bytes, err := ioutil.ReadFile(c.APIPrivateKeysFile)
+		if len(c.APIWhitelistFile) > 0 {
+			bytes, err := ioutil.ReadFile(c.APIWhitelistFile)
 			if err != nil {
-				return nil, errors.Wrapf(err, "Unable to open api private keys file: %s", c.APIPrivateKeysFile)
+				return nil, errors.Wrapf(err, "Unable to open api whilte file: %s", c.APIWhitelistFile)
 			}
-			privateKeysHex := strings.Split(string(bytes), "\n")
-			for i, privateKeyHex := range privateKeysHex {
-				trimmed := strings.TrimSpace(privateKeyHex)
+			publicKeysHex := strings.Split(string(bytes), "\n")
+			for _, publicKeyHex := range publicKeysHex {
+				trimmed := strings.TrimSpace(publicKeyHex)
 				if len(trimmed) == 0 {
 					continue
 				}
-				keys, err := crypto.FromPrivateKey(security.SignaturePolicy, trimmed)
-				if err != nil {
-					log.Info().Msgf("Unable to decode key %d from file %s", i, c.APIPrivateKeysFile)
-					continue
-				}
 				clients = append(clients, &api.ClientInfo{
-					PublicKey: keys.PublicKeyHex(),
+					PublicKey: publicKeyHex,
 					Permissions: api.ClientPermissions{
 						CanSendTransaction: true,
 						CanPollTransaction: true,
