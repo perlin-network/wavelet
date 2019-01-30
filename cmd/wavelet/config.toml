@@ -15,4 +15,4 @@ reset = true
 [api]
 host = "localhost"
 port = 9000
-whitelist_public_keys_file = "whitelist.txt"
+whitelist_file = "whitelist.txt"

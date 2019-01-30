@@ -26,6 +26,7 @@ type SendTransactionRequest struct {
 
 // GetContractRequest is the payload request to get a smart contract
 type GetContractRequest struct {
+	// TransactionID string length isn't finalized yet, so use a range for now
 	TransactionID string `json:"transaction_id" validate:"required,min=32,max=96"`
 }
 
@@ -46,7 +47,7 @@ type ExecuteContractRequest struct {
 type ForwareTransactionRequest struct {
 	Sender    string   `json:"sender" validate:"required,len=64"`
 	Nonce     uint64   `json:"nonce" validate:"required,min=0"`
-	Parents   []string `json:"parents" validate:"required,min=1,max=32"`
+	Parents   []string `json:"parents" validate:"required,min=1,max=32"` // the parent list length is currently arbitrarily set
 	Tag       uint32   `json:"tag" validate:"required,max=30"`
 	Payload   []byte   `json:"payload"`
 	Signature string   `json:"signature" validate:"required,len=128"`
