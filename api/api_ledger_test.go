@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/golang/mock/gomock"
 	"github.com/perlin-network/graph/database"
+	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/wire"
 	"github.com/perlin-network/noise/crypto"
 	"github.com/perlin-network/wavelet"
@@ -445,7 +446,7 @@ func Test_api_forward_transaction(t *testing.T) {
 
 	res, err := c.ForwardTransaction(wiredTx.Nonce, wiredTx.Tag, wiredTx.Payload)
 	assert.Nil(t, err)
-	assert.True(t, len(res.TransactionID) > 0)
+	assert.Equal(t, hex.EncodeToString(graph.Symbol(wiredTx)), res.TransactionID)
 }
 
 func Test_api_serverVersion(t *testing.T) {
