@@ -6,6 +6,7 @@ import (
 	"github.com/lytics/hll"
 	"github.com/perlin-network/graph/conflict"
 	"github.com/perlin-network/graph/database"
+	"github.com/perlin-network/graph/database/level"
 	"github.com/perlin-network/graph/graph"
 	"github.com/perlin-network/graph/system"
 	"github.com/perlin-network/wavelet/events"
@@ -48,7 +49,12 @@ type Ledger struct {
 }
 
 func NewLedger(databasePath, genesisPath string) *Ledger {
-	store := database.New(databasePath)
+	db, err := level.NewDatabase(databasePath)
+	if err != nil {
+		panic(err)
+	}
+
+	store := database.NewStore(db)
 
 	log.Info().Str("db_path", databasePath).Msg("Database has been loaded.")
 
