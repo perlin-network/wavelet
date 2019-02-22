@@ -4,13 +4,15 @@ import (
 	"fmt"
 )
 
+// Transaction tags
 const (
-	// Transaction tags
-	TagNop            = 0x00
-	TagGeneric        = 0x01
-	TagCreateContract = 0x02
-	TagStake          = 0x03
+	TagNop byte = iota
+	TagGeneric
+	TagCreateContract
+	TagStake
+)
 
+const (
 	// Account keys
 	KeyContractCode = "contract_code"
 )

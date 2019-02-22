@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/rs/zerolog"
-	"golang.org/x/crypto/ssh/terminal"
 )
 
 var (
@@ -22,10 +21,7 @@ var (
 )
 
 func init() {
-	// Prettify if the terminal is a console.
-	if terminal.IsTerminal(int(os.Stdout.Fd())) {
-		logger = logger.Output(ConsoleWriter{Out: os.Stderr})
-	}
+	logger = logger.Output(ConsoleWriter{Out: os.Stderr})
 }
 
 // Disable disables the logger.

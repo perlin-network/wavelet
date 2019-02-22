@@ -25,3 +25,5 @@ coverage.txt
 # dependencies
 vendor
 go.sum
+
+cmd/wavelet/testdb*
