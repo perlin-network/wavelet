@@ -88,7 +88,7 @@ func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
 					queue.PushBack(g.transactions[childrenID])
 				}
 			}
-		} else if popped.depth >= g.frontierDepth-sys.MaxEligibleParentsDepthDiff {
+		} else if popped.depth+sys.MaxEligibleParentsDepthDiff < g.frontierDepth {
 			// All eligible parents are within the graph depth [frontier_depth - max_depth_diff, frontier_depth].
 			eligible = append(eligible, popped.id)
 		}
