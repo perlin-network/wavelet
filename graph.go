@@ -7,7 +7,10 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-var ErrTxNotExist = errors.New("graph: transaction does not exist")
+var (
+	ErrTxNotExist      = errors.New("graph: transaction does not exist")
+	ErrTxAlreadyExists = errors.New("graph: transaction already exists")
+)
 
 type graph struct {
 	transactions map[[blake2b.Size256]byte]*Transaction
@@ -30,8 +33,14 @@ func (g *graph) clearTransactions() {
 }
 
 func (g *graph) addTransaction(tx *Transaction) error {
+	// Return an error if the transaction is already inside the graph.
+	if _, stored := g.transactions[tx.id]; stored {
+		return ErrTxAlreadyExists
+	}
+
 	var parents []*Transaction
 
+	// Look in the graph for the transactions parents.
 	for _, parentID := range tx.parentIDs {
 		if parent, stored := g.transactions[parentID]; stored {
 			parents = append(parents, parent)
@@ -40,6 +49,7 @@ func (g *graph) addTransaction(tx *Transaction) error {
 		}
 	}
 
+	// Update transaction and graph frontiers depth.
 	maxParentsDepth := parents[0].depth
 	for _, parent := range parents[1:] {
 		if maxParentsDepth < parent.depth {
@@ -54,6 +64,11 @@ func (g *graph) addTransaction(tx *Transaction) error {
 	}
 
 	g.transactions[tx.id] = tx
+
+	// Update the parents children.
+	for _, parent := range parents {
+		parent.children = append(parent.children, tx.id)
+	}
 
 	return nil
 }
