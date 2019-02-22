@@ -20,7 +20,7 @@ type Transaction struct {
 
 	sender, creator [PublicKeySize]byte
 
-	parents [][blake2b.Size256]byte
+	parentIDs [][blake2b.Size256]byte
 
 	timestamp uint64
 
@@ -39,7 +39,7 @@ func (t *Transaction) IsCritical(difficulty int) bool {
 	var buf bytes.Buffer
 	_, _ = buf.Write(t.sender[:])
 
-	for _, parentID := range t.parents {
+	for _, parentID := range t.parentIDs {
 		_, _ = buf.Write(parentID[:])
 	}
 
@@ -84,7 +84,7 @@ func (t *Transaction) Read(reader payload.Reader) (noise.Message, error) {
 			return nil, errors.Errorf("could not read enough bytes for parent %d", i)
 		}
 
-		t.parents = append(t.parents, parentID)
+		t.parentIDs = append(t.parentIDs, parentID)
 	}
 
 	t.timestamp, err = reader.ReadUint64()
@@ -136,9 +136,9 @@ func (t *Transaction) Write() []byte {
 	_, _ = writer.Write(t.sender[:])
 	_, _ = writer.Write(t.creator[:])
 
-	writer.WriteByte(byte(len(t.parents)))
+	writer.WriteByte(byte(len(t.parentIDs)))
 
-	for _, parentID := range t.parents {
+	for _, parentID := range t.parentIDs {
 		_, _ = writer.Write(parentID[:])
 	}
 
