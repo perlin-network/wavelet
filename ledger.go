@@ -77,7 +77,7 @@ func (l *Ledger) applyTransaction(accounts accounts, tx *Transaction) error {
 
 	ctx := newTransactionContext(accounts, tx)
 
-	err := ctx.Apply(processor)
+	err := ctx.apply(processor)
 	if err != nil {
 		return errors.Wrap(err, "wavelet: could not apply transaction")
 	}

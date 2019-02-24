@@ -228,7 +228,7 @@ func (c *TransactionContext) WriteAccountStake(id [PublicKeySize]byte, stake uin
 	c.stakes[id] = stake
 }
 
-func (c *TransactionContext) Apply(processor TransactionProcessor) error {
+func (c *TransactionContext) apply(processor TransactionProcessor) error {
 	for c.transactions.Len() > 0 {
 		c.tx = c.transactions.PopFront().(*Transaction)
 
