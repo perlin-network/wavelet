@@ -15,13 +15,12 @@ func (TransferProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) err
 
 	reader := payload.NewReader(tx.Payload)
 
-	recipientBuf, err := reader.ReadBytes()
+	var recipient [wavelet.PublicKeySize]byte
+
+	_, err := reader.Read(recipient[:])
 	if err != nil {
 		return errors.Wrap(err, "transfer: failed to decode recipient address")
 	}
-
-	var recipient [wavelet.PublicKeySize]byte
-	copy(recipient[:], recipientBuf)
 
 	amount, err := reader.ReadUint64()
 	if err != nil {
