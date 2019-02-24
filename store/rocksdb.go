@@ -68,6 +68,10 @@ func (r *rocksdbKV) Put(key, value []byte) error {
 	return r.db.Put(r.wo, key, value)
 }
 
+func (r *rocksdbKV) Delete(key []byte) error {
+	return r.db.Delete(r.wo, key)
+}
+
 func (r *rocksdbKV) NewWriteBatch() WriteBatch {
 	return gorocksdb.NewWriteBatch()
 }

@@ -12,6 +12,8 @@ type KV interface {
 
 	NewWriteBatch() WriteBatch
 	CommitWriteBatch(batch WriteBatch) error
+
+	Delete(key []byte) error
 }
 
 type WriteBatch interface {
