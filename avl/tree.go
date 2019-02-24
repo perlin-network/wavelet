@@ -162,6 +162,14 @@ func (t *Tree) Commit() error {
 	return nil
 }
 
+func (t *Tree) Checksum() [merkleHashSize]byte {
+	if t.root == nil {
+		return [merkleHashSize]byte{}
+	}
+
+	return t.root.id
+}
+
 func (t *Tree) loadNode(id [merkleHashSize]byte) *node {
 	if n, ok := t.writesTodo.Load(id); ok {
 		return n.(*node)
