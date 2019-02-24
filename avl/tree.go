@@ -41,6 +41,10 @@ func New(kv store.KV) *Tree {
 	return t
 }
 
+func LoadFromSnapshot(kv store.KV, ss Snapshot) *Tree {
+	return &Tree{root: ss.root, kv: kv}
+}
+
 func (t *Tree) Insert(key, value []byte) {
 	if t.root == nil {
 		t.root = newLeafNode(t, key, value)

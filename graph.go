@@ -21,7 +21,7 @@ type graph struct {
 
 func newGraph(root *Transaction) graph {
 	return graph{
-		transactions: map[[blake2b.Size256]byte]*Transaction{root.id: root},
+		transactions: map[[blake2b.Size256]byte]*Transaction{root.ID: root},
 		root:         root,
 
 		height: new(uint64),
@@ -30,14 +30,14 @@ func newGraph(root *Transaction) graph {
 
 func (g graph) addTransaction(tx *Transaction) error {
 	// Return an error if the transaction is already inside the graph.
-	if _, stored := g.transactions[tx.id]; stored {
+	if _, stored := g.transactions[tx.ID]; stored {
 		return ErrTxAlreadyExists
 	}
 
 	var parents []*Transaction
 
 	// Look in the graph for the transactions parents.
-	for _, parentID := range tx.parentIDs {
+	for _, parentID := range tx.ParentIDs {
 		if parent, stored := g.transactions[parentID]; stored {
 			parents = append(parents, parent)
 		} else {
@@ -59,11 +59,11 @@ func (g graph) addTransaction(tx *Transaction) error {
 		*g.height = tx.depth
 	}
 
-	g.transactions[tx.id] = tx
+	g.transactions[tx.ID] = tx
 
 	// Update the parents children.
 	for _, parent := range parents {
-		parent.children = append(parent.children, tx.id)
+		parent.children = append(parent.children, tx.ID)
 	}
 
 	return nil
@@ -72,7 +72,7 @@ func (g graph) addTransaction(tx *Transaction) error {
 // setRoot resets the entire graph and sets the graph to start from
 // the specified root (latest critical transaction of the entire ledger).
 func (g graph) setRoot(root *Transaction) {
-	g.transactions = map[[blake2b.Size256]byte]*Transaction{root.id: root}
+	g.transactions = map[[blake2b.Size256]byte]*Transaction{root.ID: root}
 
 	g.root = root
 	*g.height = 0
@@ -95,10 +95,10 @@ func (g graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
 			}
 		} else if popped.depth+sys.MaxEligibleParentsDepthDiff < *g.height {
 			// All eligible parents are within the graph depth [frontier_depth - max_depth_diff, frontier_depth].
-			eligible = append(eligible, popped.id)
+			eligible = append(eligible, popped.ID)
 		}
 
-		visited[popped.id] = struct{}{}
+		visited[popped.ID] = struct{}{}
 	}
 
 	return

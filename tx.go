@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/payload"
+	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"math/bits"
@@ -17,19 +18,19 @@ var _ noise.Message = (*Transaction)(nil)
 
 type Transaction struct {
 	// WIRE FORMAT
-	id [blake2b.Size256]byte
+	ID [blake2b.Size256]byte
 
-	sender, creator [PublicKeySize]byte
+	Sender, Creator [PublicKeySize]byte
 
-	parentIDs [][blake2b.Size256]byte
+	ParentIDs [][blake2b.Size256]byte
 
-	timestamp uint64
+	Timestamp uint64
 
-	tag byte
+	Tag byte
 
-	payload []byte
+	Payload []byte
 
-	senderSignature, creatorSignature [SignatureSize]byte
+	SenderSignature, CreatorSignature [SignatureSize]byte
 
 	// IN-MEMORY DATA
 	children [][blake2b.Size256]byte
@@ -48,9 +49,9 @@ func prefixLen(buf []byte) int {
 
 func (t *Transaction) IsCritical(difficulty int) bool {
 	var buf bytes.Buffer
-	_, _ = buf.Write(t.sender[:])
+	_, _ = buf.Write(t.Sender[:])
 
-	for _, parentID := range t.parentIDs {
+	for _, parentID := range t.ParentIDs {
 		_, _ = buf.Write(parentID[:])
 	}
 
@@ -60,7 +61,7 @@ func (t *Transaction) IsCritical(difficulty int) bool {
 }
 
 func (t *Transaction) Read(reader payload.Reader) (noise.Message, error) {
-	n, err := reader.Read(t.sender[:])
+	n, err := reader.Read(t.Sender[:])
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to decode transaction sender")
 	}
@@ -69,7 +70,7 @@ func (t *Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.New("could not read enough bytes for transaction sender")
 	}
 
-	n, err = reader.Read(t.creator[:])
+	n, err = reader.Read(t.Creator[:])
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to decode transaction creator")
 	}
@@ -95,29 +96,29 @@ func (t *Transaction) Read(reader payload.Reader) (noise.Message, error) {
 			return nil, errors.Errorf("could not read enough bytes for parent %d", i)
 		}
 
-		t.parentIDs = append(t.parentIDs, parentID)
+		t.ParentIDs = append(t.ParentIDs, parentID)
 	}
 
-	t.timestamp, err = reader.ReadUint64()
+	t.Timestamp, err = reader.ReadUint64()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not read transaction timestamp")
 	}
 
-	t.tag, err = reader.ReadByte()
+	t.Tag, err = reader.ReadByte()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not read transaction tag")
 	}
 
-	t.payload, err = reader.ReadBytes()
+	t.Payload, err = reader.ReadBytes()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not read transaction payload")
 	}
 
-	if len(t.payload) > MaxTransactionPayloadSize {
-		return nil, errors.Errorf("transaction payload is of size %d, but can at most only handle %d bytes", len(t.payload), MaxTransactionPayloadSize)
+	if len(t.Payload) > MaxTransactionPayloadSize {
+		return nil, errors.Errorf("transaction payload is of size %d, but can at most only handle %d bytes", len(t.Payload), MaxTransactionPayloadSize)
 	}
 
-	n, err = reader.Read(t.senderSignature[:])
+	n, err = reader.Read(t.SenderSignature[:])
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to decode sender signature")
 	}
@@ -126,7 +127,7 @@ func (t *Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.New("could not read enough bytes for sender signature")
 	}
 
-	n, err = reader.Read(t.creatorSignature[:])
+	n, err = reader.Read(t.CreatorSignature[:])
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to decode creator signature")
 	}
@@ -136,7 +137,7 @@ func (t *Transaction) Read(reader payload.Reader) (noise.Message, error) {
 	}
 
 	// TODO(kenta): have payload.Reader expose underlying byte buffer to not have to rewrite all bytes into a buffer and hash
-	t.id = blake2b.Sum256(t.Write())
+	t.ID = blake2b.Sum256(t.Write())
 
 	return t, nil
 }
@@ -144,21 +145,109 @@ func (t *Transaction) Read(reader payload.Reader) (noise.Message, error) {
 func (t *Transaction) Write() []byte {
 	writer := payload.NewWriter(nil)
 
-	_, _ = writer.Write(t.sender[:])
-	_, _ = writer.Write(t.creator[:])
+	_, _ = writer.Write(t.Sender[:])
+	_, _ = writer.Write(t.Creator[:])
 
-	writer.WriteByte(byte(len(t.parentIDs)))
+	writer.WriteByte(byte(len(t.ParentIDs)))
 
-	for _, parentID := range t.parentIDs {
+	for _, parentID := range t.ParentIDs {
 		_, _ = writer.Write(parentID[:])
 	}
 
-	writer.WriteUint64(t.timestamp)
-	writer.WriteByte(t.tag)
-	writer.WriteBytes(t.payload)
+	writer.WriteUint64(t.Timestamp)
+	writer.WriteByte(t.Tag)
+	writer.WriteBytes(t.Payload)
 
-	_, _ = writer.Write(t.senderSignature[:])
-	_, _ = writer.Write(t.creatorSignature[:])
+	_, _ = writer.Write(t.SenderSignature[:])
+	_, _ = writer.Write(t.CreatorSignature[:])
 
 	return writer.Bytes()
+}
+
+type TransactionProcessor interface {
+	OnApplyTransaction(ctx *TransactionContext) error
+}
+
+type TransactionContext struct {
+	accounts accounts
+
+	balances map[[PublicKeySize]byte]uint64
+	stakes   map[[PublicKeySize]byte]uint64
+
+	transactions queue.Queue
+	tx           *Transaction
+}
+
+func newTransactionContext(accounts accounts, tx *Transaction) *TransactionContext {
+	ctx := &TransactionContext{
+		accounts: accounts,
+		balances: make(map[[PublicKeySize]byte]uint64),
+		stakes:   make(map[[PublicKeySize]byte]uint64),
+
+		tx: tx,
+	}
+
+	ctx.transactions.PushBack(tx)
+
+	return ctx
+}
+
+func (c *TransactionContext) Transaction() Transaction {
+	return *c.tx
+}
+
+func (c *TransactionContext) SendTransaction(tx *Transaction) {
+	c.transactions.PushBack(tx)
+}
+
+func (c *TransactionContext) ReadAccountBalance(id [PublicKeySize]byte) (uint64, bool) {
+	if balance, ok := c.balances[id]; ok {
+		return balance, true
+	}
+
+	balance, exists := c.accounts.ReadAccountBalance(id)
+	c.balances[id] = balance
+	return balance, exists
+}
+
+func (c *TransactionContext) ReadAccountStake(id [PublicKeySize]byte) (uint64, bool) {
+	if stake, ok := c.stakes[id]; ok {
+		return stake, true
+	}
+
+	stake, exists := c.accounts.ReadAccountStake(id)
+	c.stakes[id] = stake
+	return stake, exists
+}
+
+func (c *TransactionContext) WriteAccountBalance(id [PublicKeySize]byte, balance uint64) {
+	c.balances[id] = balance
+}
+
+func (c *TransactionContext) WriteAccountStake(id [PublicKeySize]byte, stake uint64) {
+	c.stakes[id] = stake
+}
+
+func (c *TransactionContext) Apply(processor TransactionProcessor) error {
+	for c.transactions.Len() > 0 {
+		c.tx = c.transactions.PopFront().(*Transaction)
+
+		err := processor.OnApplyTransaction(c)
+		if err != nil {
+			return errors.Wrap(err, "failed to apply transaction")
+		}
+	}
+
+	// If the transaction processor executed properly, apply changes from
+	// the transactions context over to our accounts snapshot.
+
+	for id, balance := range c.balances {
+		c.accounts.WriteAccountBalance(id, balance)
+	}
+
+	for id, stake := range c.stakes {
+		c.accounts.WriteAccountStake(id, stake)
+	}
+
+	return nil
 }
