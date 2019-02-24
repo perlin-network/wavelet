@@ -6,6 +6,7 @@ import (
 	"github.com/perlin-network/noise/payload"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
+	"math/bits"
 )
 
 const PublicKeySize = 32
@@ -33,6 +34,16 @@ type Transaction struct {
 	// IN-MEMORY DATA
 	children [][blake2b.Size256]byte
 	depth    uint64
+}
+
+func prefixLen(buf []byte) int {
+	for i, b := range buf {
+		if b != 0 {
+			return i*8 + bits.LeadingZeros8(uint8(b))
+		}
+	}
+
+	return len(buf)*8 - 1
 }
 
 func (t *Transaction) IsCritical(difficulty int) bool {

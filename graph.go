@@ -15,24 +15,20 @@ var (
 type graph struct {
 	transactions map[[blake2b.Size256]byte]*Transaction
 
-	criticalTransactionsWindow      [sys.MaxHistoryWindowSize]*Transaction
-	criticalTransactionsWindowIndex int
-
-	// The current depth of the frontier of the graph.
-	frontierDepth uint64
+	root   *Transaction // The current root (the latest critical transaction) of the graph.
+	height *uint64      // The current depth of the frontier of the graph.
 }
 
-func newGraph() *graph {
-	return &graph{
-		transactions: make(map[[blake2b.Size256]byte]*Transaction),
+func newGraph(root *Transaction) graph {
+	return graph{
+		transactions: map[[blake2b.Size256]byte]*Transaction{root.id: root},
+		root:         root,
+
+		height: new(uint64),
 	}
 }
 
-func (g *graph) clearTransactions() {
-	g.transactions = make(map[[blake2b.Size256]byte]*Transaction)
-}
-
-func (g *graph) addTransaction(tx *Transaction) error {
+func (g graph) addTransaction(tx *Transaction) error {
 	// Return an error if the transaction is already inside the graph.
 	if _, stored := g.transactions[tx.id]; stored {
 		return ErrTxAlreadyExists
@@ -59,8 +55,8 @@ func (g *graph) addTransaction(tx *Transaction) error {
 
 	tx.depth = maxParentsDepth + 1
 
-	if g.frontierDepth < tx.depth {
-		g.frontierDepth = tx.depth
+	if *g.height < tx.depth {
+		*g.height = tx.depth
 	}
 
 	g.transactions[tx.id] = tx
@@ -73,11 +69,20 @@ func (g *graph) addTransaction(tx *Transaction) error {
 	return nil
 }
 
-func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
+// setRoot resets the entire graph and sets the graph to start from
+// the specified root (latest critical transaction of the entire ledger).
+func (g graph) setRoot(root *Transaction) {
+	g.transactions = map[[blake2b.Size256]byte]*Transaction{root.id: root}
+
+	g.root = root
+	*g.height = 0
+}
+
+func (g graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
 	visited := make(map[[blake2b.Size256]byte]struct{})
 	queue := queue.New()
 
-	queue.PushBack(g.criticalTransactionsWindow[g.criticalTransactionsWindowIndex])
+	queue.PushBack(g.root)
 
 	for queue.Len() > 0 {
 		popped := queue.PopFront().(*Transaction)
@@ -88,7 +93,7 @@ func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
 					queue.PushBack(g.transactions[childrenID])
 				}
 			}
-		} else if popped.depth+sys.MaxEligibleParentsDepthDiff < g.frontierDepth {
+		} else if popped.depth+sys.MaxEligibleParentsDepthDiff < *g.height {
 			// All eligible parents are within the graph depth [frontier_depth - max_depth_diff, frontier_depth].
 			eligible = append(eligible, popped.id)
 		}
