@@ -22,4 +22,7 @@ var (
 
 	// Minimum difficulty to define a critical transaction.
 	MinimumDifficulty = 7
+
+	// Number of ancestors to derive a median timestamp from.
+	MedianTimestampNumAncestors = 10
 )

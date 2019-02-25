@@ -1,16 +1,15 @@
-package processor
+package wavelet
 
 import (
-	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/payload"
 	"github.com/pkg/errors"
 )
 
-var _ wavelet.TransactionProcessor = (*StakeProcessor)(nil)
+var _ TransactionProcessor = (*StakeProcessor)(nil)
 
 type StakeProcessor struct{}
 
-func (StakeProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) error {
+func (StakeProcessor) OnApplyTransaction(ctx *TransactionContext) error {
 	tx := ctx.Transaction()
 
 	raw, err := payload.NewReader(tx.Payload).ReadUint64()

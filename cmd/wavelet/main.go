@@ -11,7 +11,6 @@ import (
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/processor"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"io/ioutil"
@@ -27,9 +26,9 @@ func main() {
 	kv := store.NewInmem()
 
 	ledger := wavelet.NewLedger(kv, genesisPath)
-	ledger.RegisterProcessor(sys.TagNop, new(processor.NopProcessor))
-	ledger.RegisterProcessor(sys.TagTransfer, new(processor.TransferProcessor))
-	ledger.RegisterProcessor(sys.TagStake, new(processor.StakeProcessor))
+	ledger.RegisterProcessor(sys.TagNop, new(wavelet.NopProcessor))
+	ledger.RegisterProcessor(sys.TagTransfer, new(wavelet.TransferProcessor))
+	ledger.RegisterProcessor(sys.TagStake, new(wavelet.StakeProcessor))
 
 	var keys identity.Keypair
 

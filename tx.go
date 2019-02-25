@@ -11,9 +11,14 @@ import (
 	"math/bits"
 )
 
-const PublicKeySize = 32
-const SignatureSize = 64
-const MaxTransactionPayloadSize = 1024 * 100
+const (
+	PublicKeySize  = 32
+	PrivateKeySize = 64
+
+	SignatureSize = 64
+
+	MaxTransactionPayloadSize = 1024 * 100
+)
 
 var _ noise.Message = (*Transaction)(nil)
 
@@ -183,8 +188,9 @@ func (t *Transaction) Write() []byte {
 	return writer.Bytes()
 }
 
-func (t *Transaction) rehash() {
+func (t *Transaction) rehash() *Transaction {
 	t.ID = blake2b.Sum256(t.Write())
+	return t
 }
 
 type TransactionProcessor interface {

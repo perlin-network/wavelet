@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	ErrTxNotExist      = errors.New("graph: transaction does not exist")
-	ErrTxAlreadyExists = errors.New("graph: transaction already exists")
+	ErrParentsNotAvailable = errors.New("graph: do not have parents available")
+	ErrTxAlreadyExists     = errors.New("graph: transaction already exists")
 )
 
 type graph struct {
@@ -41,7 +41,7 @@ func (g graph) addTransaction(tx *Transaction) error {
 		if parent, stored := g.transactions[parentID]; stored {
 			parents = append(parents, parent)
 		} else {
-			return errors.Wrap(ErrTxNotExist, "could not find transactions parents")
+			return ErrParentsNotAvailable
 		}
 	}
 
@@ -93,7 +93,7 @@ func (g graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
 					queue.PushBack(g.transactions[childrenID])
 				}
 			}
-		} else if popped.depth+sys.MaxEligibleParentsDepthDiff < *g.height {
+		} else if popped.depth+sys.MaxEligibleParentsDepthDiff >= *g.height {
 			// All eligible parents are within the graph depth [frontier_depth - max_depth_diff, frontier_depth].
 			eligible = append(eligible, popped.ID)
 		}

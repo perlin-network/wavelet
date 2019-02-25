@@ -1,21 +1,20 @@
-package processor
+package wavelet
 
 import (
-	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/payload"
 	"github.com/pkg/errors"
 )
 
-var _ wavelet.TransactionProcessor = (*TransferProcessor)(nil)
+var _ TransactionProcessor = (*TransferProcessor)(nil)
 
 type TransferProcessor struct{}
 
-func (TransferProcessor) OnApplyTransaction(ctx *wavelet.TransactionContext) error {
+func (TransferProcessor) OnApplyTransaction(ctx *TransactionContext) error {
 	tx := ctx.Transaction()
 
 	reader := payload.NewReader(tx.Payload)
 
-	var recipient [wavelet.PublicKeySize]byte
+	var recipient [PublicKeySize]byte
 
 	_, err := reader.Read(recipient[:])
 	if err != nil {
