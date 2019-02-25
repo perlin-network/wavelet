@@ -14,6 +14,10 @@ import (
 	"time"
 )
 
+var (
+	ErrTxNotCritical = errors.New("wavelet: tx is not critical")
+)
+
 type Ledger struct {
 	accounts
 
@@ -207,6 +211,10 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 }
 
 func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]byte]bool) error {
+	if !tx.IsCritical(l.difficulty) {
+		return ErrTxNotCritical
+	}
+
 	// Weigh votes based on each voters stake.
 	var stakes []uint64
 	var maxStake uint64
@@ -267,12 +275,12 @@ func (l *Ledger) adjustDifficulty(critical *Transaction) error {
 	if err == nil {
 		reader := payload.NewReader(buf)
 
-		len, err := reader.ReadByte()
+		size, err := reader.ReadByte()
 		if err != nil {
 			panic(errors.Wrap(err, "wavelet: failed to read length of critical timestamp history"))
 		}
 
-		for i := 0; i < int(len); i++ {
+		for i := 0; i < int(size); i++ {
 			timestamp, err := reader.ReadUint64()
 			if err != nil {
 				panic(errors.Wrap(err, "wavelet: failed to read a single historical critical timestamp"))

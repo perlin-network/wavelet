@@ -68,7 +68,7 @@ func (t *Transaction) IsCritical(difficulty int) bool {
 	return prefixLen(checksum[:]) >= difficulty
 }
 
-func (t *Transaction) Read(reader payload.Reader) (noise.Message, error) {
+func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 	n, err := reader.Read(t.Sender[:])
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to decode transaction sender")
@@ -161,7 +161,7 @@ func (t *Transaction) Read(reader payload.Reader) (noise.Message, error) {
 	return t, nil
 }
 
-func (t *Transaction) Write() []byte {
+func (t Transaction) Write() []byte {
 	writer := payload.NewWriter(nil)
 
 	_, _ = writer.Write(t.Sender[:])
