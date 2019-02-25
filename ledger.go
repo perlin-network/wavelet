@@ -192,8 +192,9 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 
 	median := computeMedianTimestamp(timestamps)
 
-	// Check that the transaction is within the range:
-	// (median(last 10 BFS-ordered transactions in terms of history), nodes current time + 2 hours]
+	// Check that the transactions timestamp is within the range:
+	//
+	// TIMESTAMP ∈ (median(last 10 BFS-ordered transactions in terms of history), nodes current time + 2 hours]
 	if tx.Timestamp <= median {
 		return false
 	}
@@ -233,9 +234,9 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 	// Update conflict resolver.
 	l.resolver.Tick(tx.ID, votes)
 
-	// If a consensus has been decided on the next critical transaction, then
-	// reset the view-graph, increment the current view ID, and update the
-	// current ledgers difficulty.
+	// If a consensus has been decided on the next critical transaction, then reset
+	// the view-graph, increment the current view ID, and update the current ledgers
+	// difficulty.
 	if l.resolver.Decided() {
 		rootID := l.resolver.Result()
 		root, recorded := l.view.transactions[rootID]
