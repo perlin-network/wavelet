@@ -1,6 +1,8 @@
 package store
 
 import (
+	"bytes"
+	"github.com/huandu/skiplist"
 	"github.com/pkg/errors"
 )
 
@@ -39,41 +41,41 @@ func (b *inmemWriteBatch) Destroy() {
 var _ KV = (*inmemKV)(nil)
 
 type inmemKV struct {
-	db map[string][]byte
+	db *skiplist.SkipList
 }
 
 func (s *inmemKV) Close() error {
-	s.db = make(map[string][]byte)
+	s.db.Init()
+	s.db = nil
 	return nil
 }
 
 func (s *inmemKV) Get(key []byte) ([]byte, error) {
-	v, ok := s.db[string(key)]
-	if !ok {
+	buf, found := s.db.GetValue(key)
+	if !found {
 		return nil, errors.New("key not found")
 	}
 
-	return v, nil
+	return buf.([]byte), nil
 }
 
 func (s *inmemKV) MultiGet(keys ...[]byte) ([][]byte, error) {
 	var bufs [][]byte
 
 	for _, key := range keys {
-		buf, err := s.Get(key)
-
-		if err != nil {
-			return nil, err
+		buf, found := s.db.GetValue(key)
+		if !found {
+			return nil, errors.New("key not found")
 		}
 
-		bufs = append(bufs, buf)
+		bufs = append(bufs, buf.([]byte))
 	}
 
 	return bufs, nil
 }
 
 func (s *inmemKV) Put(key, value []byte) error {
-	s.db[string(key)] = value
+	_ = s.db.Set(key, value)
 	return nil
 }
 
@@ -98,10 +100,14 @@ func (s *inmemKV) CommitWriteBatch(batch WriteBatch) error {
 }
 
 func (s *inmemKV) Delete(key []byte) error {
-	delete(s.db, string(key))
+	_ = s.db.Remove(key)
 	return nil
 }
 
 func NewInmem() *inmemKV {
-	return &inmemKV{db: make(map[string][]byte)}
+	var comparator skiplist.GreaterThanFunc = func(lhs, rhs interface{}) bool {
+		return bytes.Compare(lhs.([]byte), rhs.([]byte)) == 1
+	}
+
+	return &inmemKV{db: skiplist.New(comparator)}
 }

@@ -6,11 +6,10 @@ import (
 	"testing"
 )
 
-func BenchmarkRocksDB(b *testing.B) {
+func BenchmarkInmem(b *testing.B) {
 	b.StopTimer()
 
-	db, err := NewRocksDB("db")
-	assert.NoError(b, err)
+	db := NewInmem()
 	defer db.Close()
 
 	b.StartTimer()
