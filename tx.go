@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/payload"
+	"github.com/perlin-network/wavelet/avl"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
@@ -29,6 +30,9 @@ type Transaction struct {
 	Tag byte
 
 	Payload []byte
+
+	// Only set if the transaction is a critical transaction.
+	AccountsMerkleRoot [avl.MerkleRootSize]byte
 
 	SenderSignature, CreatorSignature [SignatureSize]byte
 
@@ -118,6 +122,18 @@ func (t *Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.Errorf("transaction payload is of size %d, but can at most only handle %d bytes", len(t.Payload), MaxTransactionPayloadSize)
 	}
 
+	// If there exists an account merkle root, read it.
+	if reader.Len() > SignatureSize*2 {
+		n, err = reader.Read(t.AccountsMerkleRoot[:])
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to decode accounts merkle root")
+		}
+
+		if n != avl.MerkleRootSize {
+			return nil, errors.New("could not read enough bytes for accounts merkle root")
+		}
+	}
+
 	n, err = reader.Read(t.SenderSignature[:])
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to decode sender signature")
@@ -156,6 +172,8 @@ func (t *Transaction) Write() []byte {
 	writer.WriteUint64(t.Timestamp)
 	writer.WriteByte(t.Tag)
 	writer.WriteBytes(t.Payload)
+
+	_, _ = writer.Write(t.AccountsMerkleRoot[:])
 
 	_, _ = writer.Write(t.SenderSignature[:])
 	_, _ = writer.Write(t.CreatorSignature[:])

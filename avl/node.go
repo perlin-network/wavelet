@@ -10,7 +10,7 @@ import (
 	"math"
 )
 
-const merkleHashSize = 16
+const MerkleRootSize = 16
 
 type nodeType byte
 
@@ -20,7 +20,7 @@ const (
 )
 
 type node struct {
-	id, left, right [merkleHashSize]byte
+	id, left, right [MerkleRootSize]byte
 
 	key, value []byte
 

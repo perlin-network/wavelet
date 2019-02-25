@@ -28,11 +28,11 @@ func New(kv store.KV) *Tree {
 
 	// Load root node if it already exists.
 	if buf, err := t.kv.Get(RootKey); err == nil {
-		if len(buf) != merkleHashSize {
-			panic(errors.Errorf("expected root ID stored in db to be of len %d, not %d", merkleHashSize, len(buf)))
+		if len(buf) != MerkleRootSize {
+			panic(errors.Errorf("expected root ID stored in db to be of len %d, not %d", MerkleRootSize, len(buf)))
 		}
 
-		var rootID [merkleHashSize]byte
+		var rootID [MerkleRootSize]byte
 		copy(rootID[:], buf)
 
 		t.root = t.loadNode(rootID)
@@ -132,7 +132,7 @@ func (t *Tree) Commit() error {
 
 			t.writesTodo.Delete(k)
 
-			id, node := k.([merkleHashSize]byte), v.(*node)
+			id, node := k.([MerkleRootSize]byte), v.(*node)
 
 			var buf bytes.Buffer
 			node.serialize(&buf)
@@ -162,15 +162,15 @@ func (t *Tree) Commit() error {
 	return nil
 }
 
-func (t *Tree) Checksum() [merkleHashSize]byte {
+func (t *Tree) Checksum() [MerkleRootSize]byte {
 	if t.root == nil {
-		return [merkleHashSize]byte{}
+		return [MerkleRootSize]byte{}
 	}
 
 	return t.root.id
 }
 
-func (t *Tree) loadNode(id [merkleHashSize]byte) *node {
+func (t *Tree) loadNode(id [MerkleRootSize]byte) *node {
 	if n, ok := t.writesTodo.Load(id); ok {
 		return n.(*node)
 	}

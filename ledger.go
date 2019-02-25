@@ -36,6 +36,10 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 	return ledger
 }
 
+func (l *Ledger) NewTransaction(tag byte, payload []byte) *Transaction {
+	return nil
+}
+
 func (l *Ledger) RegisterProcessor(tag byte, processor TransactionProcessor) {
 	l.processors[tag] = processor
 }
