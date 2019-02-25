@@ -110,8 +110,10 @@ func BroadcastTransaction(node *noise.Node, tag byte, payload []byte) error {
 		return errors.Wrap(err, "wavelet: failed to create transaction to broadcast")
 	}
 
-	err = ledger.ReceiveTransaction(tx)
-	if err != nil {
+	vote := ledger.ReceiveTransaction(tx)
+	switch errors.Cause(vote) {
+	case wavelet.VoteAccepted:
+	case wavelet.VoteRejected:
 		return errors.Wrap(err, "wavelet: could not place newly created transaction to broadcast into view graph")
 	}
 
