@@ -173,7 +173,9 @@ func (t *Transaction) Write() []byte {
 	writer.WriteByte(t.Tag)
 	writer.WriteBytes(t.Payload)
 
-	_, _ = writer.Write(t.AccountsMerkleRoot[:])
+	if prefixLen(t.AccountsMerkleRoot[:]) != 8*avl.MerkleRootSize {
+		_, _ = writer.Write(t.AccountsMerkleRoot[:])
+	}
 
 	_, _ = writer.Write(t.SenderSignature[:])
 	_, _ = writer.Write(t.CreatorSignature[:])
