@@ -139,7 +139,7 @@ func (t *Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.Wrap(err, "failed to decode sender signature")
 	}
 
-	if n != PublicKeySize {
+	if n != SignatureSize {
 		return nil, errors.New("could not read enough bytes for sender signature")
 	}
 
@@ -148,7 +148,7 @@ func (t *Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.Wrap(err, "failed to decode creator signature")
 	}
 
-	if n != PublicKeySize {
+	if n != SignatureSize {
 		return nil, errors.New("could not read enough bytes for creator signature")
 	}
 
