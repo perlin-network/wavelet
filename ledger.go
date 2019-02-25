@@ -37,7 +37,10 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 
 		kv: kv,
 
-		resolver: conflict.NewSnowball(),
+		resolver: conflict.NewSnowball().
+			WithK(sys.SnowballK).
+			WithAlpha(sys.SnowballAlpha).
+			WithBeta(sys.SnowballBeta),
 
 		processors: make(map[byte]TransactionProcessor),
 		difficulty: sys.MinimumDifficulty,
