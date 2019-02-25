@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/conflict"
@@ -10,7 +11,6 @@ import (
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
-	"sort"
 	"time"
 )
 
@@ -21,6 +21,7 @@ type Ledger struct {
 
 	resolver conflict.Resolver
 	view     graph
+	viewID   uint64
 
 	processors map[byte]TransactionProcessor
 	difficulty int
@@ -133,51 +134,6 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	return VoteAccepted
 }
 
-func (l *Ledger) Tick(tx *Transaction, responses map[[blake2b.Size256]byte]bool) error {
-	// Weigh votes based on each voters stake.
-	var stakes []uint64
-	var maxStake uint64
-
-	for accountID, response := range responses {
-		stake, _ := l.ReadAccountStake(accountID)
-
-		if !response {
-			stake = 0
-		}
-
-		if maxStake < stake {
-			maxStake = stake
-		}
-
-		stakes = append(stakes, stake)
-	}
-
-	var votes []float64
-
-	for _, stake := range stakes {
-		votes = append(votes, float64(stake)/float64(len(stakes)))
-	}
-
-	// Update conflict resolver.
-	l.resolver.Tick(tx.ID, votes)
-
-	// If a consensus has been decided on the next critical transaction, then
-	// reset the view-graph, increment the current view ID, and update the
-	// current ledgers difficulty.
-	if l.resolver.Decided() {
-		rootID := l.resolver.Result()
-		root, recorded := l.view.transactions[rootID]
-
-		if !recorded {
-			return errors.New("wavelet: could not find newly critical tx in view graph")
-		}
-
-		l.view.reset(root)
-	}
-
-	return nil
-}
-
 func (l *Ledger) assertValidParentDepths(tx *Transaction) bool {
 	for _, parentID := range tx.ParentIDs {
 		parent, stored := l.view.transactions[parentID]
@@ -234,17 +190,7 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 		visited[popped.ID] = struct{}{}
 	}
 
-	sort.Slice(timestamps, func(i, j int) bool {
-		return timestamps[i] < timestamps[j]
-	})
-
-	var median uint64
-
-	if len(timestamps)%2 == 0 {
-		median = (timestamps[len(timestamps)/2-1] / 2) + (timestamps[len(timestamps)/2] / 2)
-	} else {
-		median = timestamps[len(timestamps)/2]
-	}
+	median := computeMedianTimestamp(timestamps)
 
 	// Check that the transaction is within the range:
 	// (median(last 10 BFS-ordered transactions in terms of history), nodes current time + 2 hours]
@@ -259,6 +205,109 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 	return true
 }
 
+func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]byte]bool) error {
+	// Weigh votes based on each voters stake.
+	var stakes []uint64
+	var maxStake uint64
+
+	for accountID, response := range responses {
+		stake, _ := l.ReadAccountStake(accountID)
+
+		if !response {
+			stake = 0
+		}
+
+		if maxStake < stake {
+			maxStake = stake
+		}
+
+		stakes = append(stakes, stake)
+	}
+
+	var votes []float64
+
+	for _, stake := range stakes {
+		votes = append(votes, float64(stake)/float64(len(stakes)))
+	}
+
+	// Update conflict resolver.
+	l.resolver.Tick(tx.ID, votes)
+
+	// If a consensus has been decided on the next critical transaction, then
+	// reset the view-graph, increment the current view ID, and update the
+	// current ledgers difficulty.
+	if l.resolver.Decided() {
+		rootID := l.resolver.Result()
+		root, recorded := l.view.transactions[rootID]
+
+		if !recorded {
+			return errors.New("wavelet: could not find newly critical tx in view graph")
+		}
+
+		l.view.reset(root)
+		l.viewID++
+
+		return l.adjustDifficulty(root)
+	}
+
+	return nil
+}
+
+func (l *Ledger) adjustDifficulty(critical *Transaction) error {
+	var timestamps []uint64
+
+	// Load critical timestamp history if it exists.
+	buf, err := l.kv.Get(keyCriticalTimestampHistory[:])
+	if err == nil {
+		reader := payload.NewReader(buf)
+
+		len, err := reader.ReadByte()
+		if err != nil {
+			panic(errors.Wrap(err, "wavelet: failed to read length of critical timestamp history"))
+		}
+
+		for i := 0; i < int(len); i++ {
+			timestamp, err := reader.ReadUint64()
+			if err != nil {
+				panic(errors.Wrap(err, "wavelet: failed to read a single historical critical timestamp"))
+			}
+
+			timestamps = append(timestamps, timestamp)
+		}
+	}
+
+	timestamps = append(timestamps, critical.Timestamp)
+
+	// Prune away critical timestamp history if needed.
+	if len(timestamps) > sys.MaxCriticalTimestampHistoryKept {
+		timestamps = timestamps[len(timestamps)-sys.MaxCriticalTimestampHistoryKept:]
+	}
+
+	mean := computeMeanTimestamp(timestamps)
+
+	// Adjust the current ledgers difficulty to:
+	//
+	// DIFFICULTY = A_0 + (LAST_DIFFICULTY - A_0) * (10 seconds / average(time it took
+	// to create critical transaction for the last 10 critical transactions))
+	l.difficulty = sys.MinimumDifficulty +
+		int(uint64(l.difficulty-sys.MinimumDifficulty)*(sys.ExpectedConsensusTimeMilliseconds/mean))
+
+	// Save critical timestamp history to disk.
+	writer := payload.NewWriter(nil)
+	writer.WriteByte(byte(len(timestamps)))
+
+	for _, timestamp := range timestamps {
+		writer.WriteUint64(timestamp)
+	}
+
+	err = l.kv.Put(keyCriticalTimestampHistory[:], writer.Bytes())
+	if err != nil {
+		return errors.Wrap(err, "wavelet: failed to save critical timestamp history")
+	}
+
+	return nil
+}
+
 func (l *Ledger) RegisterProcessor(tag byte, processor TransactionProcessor) {
 	l.processors[tag] = processor
 }
@@ -268,7 +317,7 @@ func (l *Ledger) RegisterProcessor(tag byte, processor TransactionProcessor) {
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
 func (l *Ledger) collapseTransactions() accounts {
-	snapshot := l.accounts.snapshotAccounts()
+	snapshot := l.snapshotAccounts()
 
 	visited := make(map[[blake2b.Size256]byte]struct{})
 	queue := queue.New()

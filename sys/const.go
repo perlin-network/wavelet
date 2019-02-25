@@ -10,9 +10,9 @@ const (
 
 var (
 	// Snowball consensus protocol parameters.
-	SnowballK     = 1
-	SnowballAlpha = float64(0.8)
-	SnowballBeta  = 10
+	SnowballK             = 1
+	SnowballAlpha float64 = 0.8
+	SnowballBeta          = 10
 
 	// Timeout for querying a transaction to K peers.
 	QueryTimeout = 10000
@@ -26,4 +26,7 @@ var (
 
 	// Number of ancestors to derive a median timestamp from.
 	MedianTimestampNumAncestors = 10
+
+	ExpectedConsensusTimeMilliseconds uint64 = 10 * 1000
+	MaxCriticalTimestampHistoryKept          = 10
 )
