@@ -237,7 +237,7 @@ func (l *Ledger) collapseTransactions() accounts {
 
 		// If any errors occur while applying our transaction to our accounts
 		// snapshot, silently log it and continue applying other transactions.
-		if err := l.applyTransaction(snapshot, popped); err != nil {
+		if err := l.applyTransactionToSnapshot(snapshot, popped); err != nil {
 			log.Warn().Err(err).Msg("Got an error while collapsing down transactions.")
 		}
 	}
@@ -245,8 +245,8 @@ func (l *Ledger) collapseTransactions() accounts {
 	return snapshot
 }
 
-func (l *Ledger) applyTransaction(accounts accounts, tx *Transaction) error {
-	if !accounts.snapshot {
+func (l *Ledger) applyTransactionToSnapshot(ss accounts, tx *Transaction) error {
+	if !ss.snapshot {
 		return errors.New("wavelet: to keep things safe, pass in an accounts instance that is a snapshot")
 	}
 
@@ -255,7 +255,7 @@ func (l *Ledger) applyTransaction(accounts accounts, tx *Transaction) error {
 		return errors.Errorf("wavelet: transaction processor not registered for tag %d", tx.Tag)
 	}
 
-	ctx := newTransactionContext(accounts, tx)
+	ctx := newTransactionContext(ss, tx)
 
 	err := ctx.apply(processor)
 	if err != nil {
