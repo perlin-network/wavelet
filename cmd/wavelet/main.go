@@ -9,7 +9,11 @@ import (
 	"github.com/perlin-network/noise/identity"
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/processor"
+	"github.com/perlin-network/wavelet/store"
+	"github.com/perlin-network/wavelet/sys"
 	"io/ioutil"
 	"os"
 )
@@ -18,6 +22,14 @@ const DefaultC1, DefaultC2 = 16, 16
 
 func main() {
 	walletPath := "config/wallet.txt"
+	genesisPath := "config/genesis.json"
+
+	kv := store.NewInmem()
+
+	ledger := wavelet.NewLedger(kv, genesisPath)
+	ledger.RegisterProcessor(sys.TagNop, new(processor.NopProcessor))
+	ledger.RegisterProcessor(sys.TagTransfer, new(processor.TransferProcessor))
+	ledger.RegisterProcessor(sys.TagStake, new(processor.StakeProcessor))
 
 	var keys identity.Keypair
 

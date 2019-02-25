@@ -136,8 +136,7 @@ func (t *Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.New("could not read enough bytes for creator signature")
 	}
 
-	// TODO(kenta): have payload.Reader expose underlying byte buffer to not have to rewrite all bytes into a buffer and hash
-	t.ID = blake2b.Sum256(t.Write())
+	t.rehash()
 
 	return t, nil
 }
@@ -162,6 +161,10 @@ func (t *Transaction) Write() []byte {
 	_, _ = writer.Write(t.CreatorSignature[:])
 
 	return writer.Bytes()
+}
+
+func (t *Transaction) rehash() {
+	t.ID = blake2b.Sum256(t.Write())
 }
 
 type TransactionProcessor interface {

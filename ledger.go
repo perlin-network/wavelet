@@ -17,13 +17,21 @@ type Ledger struct {
 	processors map[byte]TransactionProcessor
 }
 
-func NewLedger(kv store.KV, genesis *Transaction) *Ledger {
+func NewLedger(kv store.KV, genesisPath string) *Ledger {
 	ledger := &Ledger{
 		accounts: newAccounts(kv),
 
-		view: newGraph(genesis),
-		kv:   kv,
+		kv:         kv,
+		processors: make(map[byte]TransactionProcessor),
 	}
+
+	genesis, err := performInception(ledger.accounts, genesisPath)
+	if err != nil {
+		log.Fatal().Err(err).Msgf("Failed to perform inception with genesis data from %q.", genesisPath)
+	}
+
+	// Instantiate the view-graph for our ledger.
+	ledger.view = newGraph(genesis)
 
 	return ledger
 }
@@ -32,11 +40,11 @@ func (l *Ledger) RegisterProcessor(tag byte, processor TransactionProcessor) {
 	l.processors[tag] = processor
 }
 
-// finalizeTransactions takes all transactions recorded in the graph view so far, and
+// collapseTransactions takes all transactions recorded in the graph view so far, and
 // applies all valid ones to a snapshot of all accounts stored in the ledger.
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
-func (l *Ledger) finalizeTransactions() accounts {
+func (l *Ledger) collapseTransactions() accounts {
 	snapshot := l.accounts.snapshotAccounts()
 
 	visited := make(map[[blake2b.Size256]byte]struct{})
@@ -58,7 +66,7 @@ func (l *Ledger) finalizeTransactions() accounts {
 		// If any errors occur while applying our transaction to our accounts
 		// snapshot, silently log it and continue applying other transactions.
 		if err := l.applyTransaction(snapshot, popped); err != nil {
-			log.Warn().Err(err).Msg("Got an error while applying transactions.")
+			log.Warn().Err(err).Msg("Got an error while collapsing down transactions.")
 		}
 	}
 

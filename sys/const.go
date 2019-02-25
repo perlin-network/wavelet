@@ -3,7 +3,7 @@ package sys
 // Transaction tags.
 const (
 	TagNop byte = iota
-	TagGeneric
+	TagTransfer
 	TagCreateContract
 	TagStake
 )
@@ -20,7 +20,6 @@ var (
 	// parents from for our node.
 	MaxEligibleParentsDepthDiff uint64 = 5
 
-	// The max length of the entire entire history spanning
-	// a specified amount of critical transactions.
-	MaxHistoryWindowSize = 10
+	// Minimum difficulty to define a critical transaction.
+	MinimumDifficulty = 7
 )
