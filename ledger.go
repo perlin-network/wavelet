@@ -247,7 +247,12 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 		l.view.reset(root)
 		l.viewID++
 
-		return l.adjustDifficulty(root)
+		err := l.adjustDifficulty(root)
+		if err != nil {
+			return errors.Wrap(err, "wavelet: failed to adjust difficulty")
+		}
+
+		l.resolver.Reset()
 	}
 
 	return nil
