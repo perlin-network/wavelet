@@ -2,7 +2,6 @@ package wavelet
 
 import (
 	"crypto/rand"
-	"fmt"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/store"
@@ -53,7 +52,6 @@ func createCriticalTransaction(t *testing.T, ledger *Ledger, keys *skademlia.Key
 		tx := createNormalTransaction(t, ledger, keys)
 
 		if tx.IsCritical(ledger.Difficulty()) {
-			fmt.Println(tx.AccountsMerkleRoot)
 			return tx
 		}
 	}

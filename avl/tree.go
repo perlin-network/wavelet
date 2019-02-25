@@ -27,11 +27,7 @@ func New(kv store.KV) *Tree {
 	t := &Tree{kv: kv}
 
 	// Load root node if it already exists.
-	if buf, err := t.kv.Get(RootKey); err == nil {
-		if len(buf) != MerkleRootSize {
-			panic(errors.Errorf("expected root ID stored in db to be of len %d, not %d", MerkleRootSize, len(buf)))
-		}
-
+	if buf, err := t.kv.Get(RootKey); err == nil && len(buf) == MerkleRootSize {
 		var rootID [MerkleRootSize]byte
 		copy(rootID[:], buf)
 
@@ -177,7 +173,7 @@ func (t *Tree) loadNode(id [MerkleRootSize]byte) *node {
 
 	buf, err := t.kv.Get(append(NodeKeyPrefix, id[:]...))
 
-	if err != nil {
+	if err != nil || len(buf) == 0 {
 		panic(errors.Errorf("avl: could not find node %x", id))
 	}
 
