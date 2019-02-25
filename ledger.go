@@ -1,9 +1,9 @@
 package wavelet
 
 import (
+	"github.com/perlin-network/noise/identity"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/noise/signature/eddsa"
-	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/conflict"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
@@ -63,7 +63,7 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 //
 // Afterwards, it attaches a sender (see *Ledger.AttachSenderToTransaction(...))
 // such that the transaction is ready to be broadcasted out to the network.
-func (l *Ledger) NewTransaction(keys *skademlia.Keypair, tag byte, payload []byte) (*Transaction, error) {
+func (l *Ledger) NewTransaction(keys identity.Keypair, tag byte, payload []byte) (*Transaction, error) {
 	// Perform 'creator' portion of a transaction.
 	tx := &Transaction{
 		Tag:     tag,
@@ -97,7 +97,7 @@ func (l *Ledger) NewTransaction(keys *skademlia.Keypair, tag byte, payload []byt
 //
 // It returns an error if the key pair provided is ineligible to be used for signing
 // transactions under the EdDSA signature scheme.
-func (l *Ledger) AttachSenderToTransaction(keys *skademlia.Keypair, tx *Transaction) error {
+func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transaction) error {
 	copy(tx.Sender[:], keys.PublicKey())
 
 	tx.ParentIDs = l.view.findEligibleParents()

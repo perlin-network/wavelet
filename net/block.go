@@ -105,7 +105,7 @@ func (b *block) OnEnd(p *protocol.Protocol, peer *noise.Peer) error {
 func BroadcastTransaction(node *noise.Node, tag byte, payload []byte) error {
 	ledger := node.Get(keyLedger).(*wavelet.Ledger)
 
-	tx, err := ledger.NewTransaction(node.Keys.(*skademlia.Keypair), tag, payload)
+	tx, err := ledger.NewTransaction(node.Keys, tag, payload)
 	if err != nil {
 		return errors.Wrap(err, "wavelet: failed to create transaction to broadcast")
 	}
