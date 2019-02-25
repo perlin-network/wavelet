@@ -6,7 +6,7 @@ import (
 
 const (
 	SnowballDefaultK     = 1
-	SnowballDefaultAlpha = 0.8
+	SnowballDefaultAlpha = float64(0.8)
 	SnowballDefaultBeta  = 10
 )
 
@@ -14,7 +14,7 @@ var _ Resolver = (*snowball)(nil)
 
 type snowball struct {
 	k, beta int
-	alpha   float32
+	alpha   float64
 
 	preferred, last [blake2b.Size256]byte
 
@@ -39,7 +39,7 @@ func (s *snowball) WithK(k int) *snowball {
 	return s
 }
 
-func (s *snowball) WithAlpha(alpha float32) *snowball {
+func (s *snowball) WithAlpha(alpha float64) *snowball {
 	s.alpha = alpha
 	return s
 }
@@ -49,13 +49,23 @@ func (s *snowball) WithBeta(beta int) *snowball {
 	return s
 }
 
-func (s *snowball) Tick(id [blake2b.Size256]byte, votes []bool) {
-	tally := make(map[bool]int)
+func (s *snowball) Reset() {
+	s.preferred = [blake2b.Size256]byte{}
+	s.last = [blake2b.Size256]byte{}
+
+	s.counts = make(map[[blake2b.Size256]byte]int)
+	s.count = 0
+
+	s.decided = false
+}
+
+func (s *snowball) Tick(id [blake2b.Size256]byte, votes []float64) {
+	var tally float64
 
 	for _, vote := range votes {
-		tally[vote]++
+		tally += vote
 
-		if tally[true] >= int(float32(s.k)*s.alpha) {
+		if tally >= s.alpha {
 			s.counts[id]++
 
 			if s.counts[id] > s.counts[s.preferred] {

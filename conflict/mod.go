@@ -5,7 +5,8 @@ import (
 )
 
 type Resolver interface {
-	Tick(id [blake2b.Size256]byte, votes []bool)
+	Reset()
+	Tick(id [blake2b.Size256]byte, votes []float64)
 
 	Result() [blake2b.Size256]byte
 	Decided() bool

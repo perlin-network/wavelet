@@ -11,7 +11,7 @@ const (
 var (
 	// Snowball consensus protocol parameters.
 	SnowballK     = 1
-	SnowballAlpha = float32(0.8)
+	SnowballAlpha = float64(0.8)
 	SnowballBeta  = 10
 
 	// Timeout for querying a transaction to K peers.

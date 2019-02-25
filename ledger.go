@@ -3,6 +3,7 @@ package wavelet
 import (
 	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/conflict"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
@@ -16,8 +17,10 @@ import (
 type Ledger struct {
 	accounts
 
-	view graph
-	kv   store.KV
+	kv store.KV
+
+	resolver conflict.Resolver
+	view     graph
 
 	processors map[byte]TransactionProcessor
 	difficulty int
@@ -27,7 +30,10 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 	ledger := &Ledger{
 		accounts: newAccounts(kv),
 
-		kv:         kv,
+		kv: kv,
+
+		resolver: conflict.NewSnowball(),
+
 		processors: make(map[byte]TransactionProcessor),
 		difficulty: sys.MinimumDifficulty,
 	}
@@ -125,6 +131,51 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	}
 
 	return VoteAccepted
+}
+
+func (l *Ledger) Tick(tx *Transaction, responses map[[blake2b.Size256]byte]bool) error {
+	// Weigh votes based on each voters stake.
+	var stakes []uint64
+	var maxStake uint64
+
+	for accountID, response := range responses {
+		stake, _ := l.ReadAccountStake(accountID)
+
+		if !response {
+			stake = 0
+		}
+
+		if maxStake < stake {
+			maxStake = stake
+		}
+
+		stakes = append(stakes, stake)
+	}
+
+	var votes []float64
+
+	for _, stake := range stakes {
+		votes = append(votes, float64(stake)/float64(len(stakes)))
+	}
+
+	// Update conflict resolver.
+	l.resolver.Tick(tx.ID, votes)
+
+	// If a consensus has been decided on the next critical transaction, then
+	// reset the view-graph, increment the current view ID, and update the
+	// current ledgers difficulty.
+	if l.resolver.Decided() {
+		rootID := l.resolver.Result()
+		root, recorded := l.view.transactions[rootID]
+
+		if !recorded {
+			return errors.New("wavelet: could not find newly critical tx in view graph")
+		}
+
+		l.view.reset(root)
+	}
+
+	return nil
 }
 
 func (l *Ledger) assertValidParentDepths(tx *Transaction) bool {

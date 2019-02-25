@@ -69,9 +69,9 @@ func (g graph) addTransaction(tx *Transaction) error {
 	return nil
 }
 
-// setRoot resets the entire graph and sets the graph to start from
+// reset resets the entire graph and sets the graph to start from
 // the specified root (latest critical transaction of the entire ledger).
-func (g graph) setRoot(root *Transaction) {
+func (g graph) reset(root *Transaction) {
 	g.transactions = map[[blake2b.Size256]byte]*Transaction{root.ID: root}
 
 	g.root = root
