@@ -49,31 +49,43 @@ func (s *snowball) WithBeta(beta int) *snowball {
 	return s
 }
 
-func (c *snowball) Tick(id [blake2b.Size256]byte, votes []bool) {
+func (s *snowball) Tick(id [blake2b.Size256]byte, votes []bool) {
 	tally := make(map[bool]int)
 
 	for _, vote := range votes {
 		tally[vote]++
 
-		if tally[true] >= int(float32(c.k)*c.alpha) {
-			c.counts[id]++
+		if tally[true] >= int(float32(s.k)*s.alpha) {
+			s.counts[id]++
 
-			if c.counts[id] > c.counts[c.preferred] {
-				c.preferred = id
+			if s.counts[id] > s.counts[s.preferred] {
+				s.preferred = id
 			}
 
-			if c.last != id {
-				c.last = id
-				c.count = 0
+			if s.last != id {
+				s.last = id
+				s.count = 0
 			} else {
-				c.count++
+				s.count++
 
-				if c.count > c.beta {
-					c.decided = true
+				if s.count > s.beta {
+					s.decided = true
 				}
 			}
 
 			break
 		}
 	}
+}
+
+func (s *snowball) Result() [blake2b.Size256]byte {
+	if !s.decided {
+		return [blake2b.Size256]byte{}
+	}
+
+	return s.preferred
+}
+
+func (s *snowball) Decided() bool {
+	return s.decided
 }

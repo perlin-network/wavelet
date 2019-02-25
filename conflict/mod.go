@@ -6,4 +6,7 @@ import (
 
 type Resolver interface {
 	Tick(id [blake2b.Size256]byte, votes []bool)
+
+	Result() [blake2b.Size256]byte
+	Decided() bool
 }
