@@ -288,6 +288,7 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 
 		l.view.reset(root)
 		viewID := l.viewID.Add(1)
+		l.tree.ViewID = viewID
 
 		err = l.adjustDifficulty(root)
 		if err != nil {
