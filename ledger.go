@@ -106,12 +106,9 @@ func (l *Ledger) NewTransaction(keys identity.Keypair, tag byte, payload []byte)
 func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transaction) error {
 	copy(tx.Sender[:], keys.PublicKey())
 
-	for {
-		tx.ParentIDs = l.view.findEligibleParents()
-
-		if len(tx.ParentIDs) != 0 {
-			break
-		}
+	tx.ParentIDs = l.view.findEligibleParents()
+	if len(tx.ParentIDs) == 0 {
+		return errors.New("wavelet: no eligible parents currently available, please try again")
 	}
 
 	tx.Timestamp = uint64(time.Duration(time.Now().UnixNano()) / time.Millisecond)
