@@ -168,6 +168,10 @@ func QueryTransaction(node *noise.Node, tx *wavelet.Transaction) error {
 
 	peerIDs := skademlia.FindClosestPeers(skademlia.Table(node), protocol.NodeID(node).Hash(), sys.SnowballK)
 
+	if len(peerIDs) < sys.SnowballK {
+		return errors.Errorf("broadcast: only connected to %d peer(s), but consensus requires being connected to at a minimum of %d peer(s). please connect to more peer(s).", len(peerIDs), sys.SnowballK)
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(len(peerIDs))
 

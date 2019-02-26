@@ -158,11 +158,11 @@ func main() {
 				Uint64("stake", stake).
 				Msgf("Account: %s", cmd[1])
 		case "p":
-			recipient := "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"
+			recipientAddress := "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"
 			amount := 1
 
 			if len(cmd) >= 2 {
-				recipient = cmd[1]
+				recipientAddress = cmd[1]
 			}
 
 			if len(cmd) >= 3 {
@@ -173,13 +173,13 @@ func main() {
 				}
 			}
 
-			recipientDecoded, err := hex.DecodeString(recipient)
+			recipient, err := hex.DecodeString(recipientAddress)
 			if err != nil {
-				log.Error().Err(err).Msg("cannot decode recipient")
+				log.Error().Err(err).Msg("The recipient you specified is invalid.")
 				continue
 			}
 
-			payload := payload.NewWriter(recipientDecoded)
+			payload := payload.NewWriter(recipient)
 			payload.WriteUint64(uint64(amount))
 
 			if len(cmd) >= 5 {
@@ -210,12 +210,14 @@ func main() {
 					case 'H':
 						b, err := hex.DecodeString(arg[1:])
 						if err != nil {
-							log.Error().Err(err).Msgf("cannot decode hex: %s", arg[1:])
+							log.Error().Err(err).Msgf("Cannot decode hex: %s", arg[1:])
+							continue
 						}
 
 						payload.WriteBytes(b)
 					default:
-						log.Error().Msgf("invalid arg: %s", arg)
+						log.Error().Msgf("Invalid argument specified: %s", arg)
+						continue
 					}
 				}
 			}
@@ -223,11 +225,13 @@ func main() {
 			tx, err := ledger.NewTransaction(node.Keys, sys.TagTransfer, payload.Bytes())
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to create a transfer transaction.")
+				continue
 			}
 
 			err = net.BroadcastTransaction(node, tx)
 			if err != nil {
-				log.Error().Err(err).Msg("An error occured while broadcasting a transfer transaction.")
+				log.Error().Err(err).Msg("An error occurred while broadcasting a transfer transaction.")
+				continue
 			}
 
 			log.Info().Msgf("Success! Your payment transaction ID: %x", tx.ID)
