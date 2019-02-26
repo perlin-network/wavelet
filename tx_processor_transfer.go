@@ -27,13 +27,14 @@ func (TransferProcessor) OnApplyTransaction(ctx *TransactionContext) error {
 	}
 
 	senderBalance, _ := ctx.ReadAccountBalance(tx.Sender)
-	recipientBalance, _ := ctx.ReadAccountBalance(recipient)
 
 	if senderBalance < amount {
 		return errors.Errorf("transfer: not enough balance, wanting %d PERLs", amount)
 	}
 
 	ctx.WriteAccountBalance(tx.Sender, senderBalance-amount)
+
+	recipientBalance, _ := ctx.ReadAccountBalance(recipient)
 	ctx.WriteAccountBalance(recipient, recipientBalance+amount)
 
 	// TODO(kenta): smart contract execution on transfer
