@@ -25,7 +25,7 @@ type Ledger struct {
 	kv store.KV
 
 	resolver conflict.Resolver
-	view     graph
+	view     *graph
 
 	processors map[byte]TransactionProcessor
 

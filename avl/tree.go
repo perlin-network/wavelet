@@ -69,7 +69,7 @@ func (t *Tree) Delete(k []byte) bool {
 }
 
 func (t *Tree) Snapshot() Snapshot {
-	return Snapshot{root: t.root}
+	return Snapshot{root: t.root.clone()}
 }
 
 func (t *Tree) Revert(snapshot Snapshot) {
