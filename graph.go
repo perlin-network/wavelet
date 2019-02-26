@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
@@ -79,8 +80,38 @@ func (g *graph) reset(root *Transaction) {
 	g.Lock()
 	defer g.Unlock()
 
-	g.transactions = map[[blake2b.Size256]byte]*Transaction{root.ID: root}
 	g.root = root
+
+	// Prune away all of roots ancestors.
+	visited := make(map[[blake2b.Size256]byte]struct{})
+	q := queue.New()
+
+	for _, parentID := range root.ParentIDs {
+		if parent, exists := g.transactions[parentID]; exists {
+			q.PushBack(parent)
+		}
+	}
+
+	count := 0
+
+	for q.Len() > 0 {
+		popped := q.PopFront().(*Transaction)
+
+		visited[popped.ID] = struct{}{}
+
+		for _, parentID := range popped.ParentIDs {
+			if _, seen := visited[parentID]; !seen {
+				if parent, exists := g.transactions[parentID]; exists {
+					q.PushBack(parent)
+				}
+			}
+		}
+
+		delete(g.transactions, popped.ID)
+		count++
+	}
+
+	log.Info().Msgf("Pruned away %d transactions from the view-graph.", count)
 }
 
 func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
@@ -92,18 +123,18 @@ func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
 	}
 
 	visited := make(map[[blake2b.Size256]byte]struct{})
-	queue := queue.New()
+	q := queue.New()
 
-	queue.PushBack(g.root)
+	q.PushBack(g.root)
 
-	for queue.Len() > 0 {
-		popped := queue.PopFront().(*Transaction)
+	for q.Len() > 0 {
+		popped := q.PopFront().(*Transaction)
 
 		if len(popped.children) > 0 {
 			for _, childrenID := range popped.children {
 				if _, seen := visited[childrenID]; !seen {
 					if child, exists := g.transactions[childrenID]; exists {
-						queue.PushBack(child)
+						q.PushBack(child)
 					}
 				}
 			}

@@ -271,7 +271,7 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 		votes = append(votes, float64(stake)/float64(maxStake)/float64(len(responses)))
 	}
 
-	log.Debug().Floats64("weighed_votes", votes).Msg("Weighed votes with stakes, and updated the consensus mechanism.")
+	//log.Debug().Floats64("weighed_votes", votes).Msg("Weighed votes with stakes, and updated the consensus mechanism.")
 
 	// Update conflict resolver.
 	l.resolver.Tick(tx.ID, votes)
