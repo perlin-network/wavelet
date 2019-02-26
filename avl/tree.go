@@ -12,11 +12,15 @@ import (
 var NodeKeyPrefix = []byte("@")
 var RootKey = []byte(".root")
 
+const DefaultCacheSize = 128
+
 type Tree struct {
 	kv store.KV
 
-	root       *node
-	writesTodo sync.Map
+	root *node
+
+	cache   *lru
+	pending sync.Map
 }
 
 type Snapshot struct {
@@ -24,7 +28,7 @@ type Snapshot struct {
 }
 
 func New(kv store.KV) *Tree {
-	t := &Tree{kv: kv}
+	t := &Tree{kv: kv, cache: newLRU(DefaultCacheSize)}
 
 	// Load root node if it already exists.
 	if buf, err := t.kv.Get(RootKey); err == nil && len(buf) == MerkleRootSize {
@@ -38,7 +42,17 @@ func New(kv store.KV) *Tree {
 }
 
 func LoadFromSnapshot(kv store.KV, ss Snapshot) *Tree {
-	return &Tree{root: ss.root, kv: kv}
+	return &Tree{root: ss.root, kv: kv, cache: newLRU(DefaultCacheSize)}
+}
+
+func (t *Tree) WithLRUCache(size *int) *Tree {
+	if size == nil {
+		t.cache = nil
+	} else {
+		t.cache = newLRU(*size)
+	}
+
+	return t
 }
 
 func (t *Tree) Insert(key, value []byte) {
@@ -69,7 +83,7 @@ func (t *Tree) Delete(k []byte) bool {
 }
 
 func (t *Tree) Snapshot() Snapshot {
-	return Snapshot{root: t.root.clone()}
+	return Snapshot{root: t.root}
 }
 
 func (t *Tree) Revert(snapshot Snapshot) {
@@ -114,19 +128,19 @@ func (t *Tree) doPrintContents(n *node, depth int) {
 }
 
 func (t *Tree) queueWrite(n *node) {
-	t.writesTodo.Store(n.id, n)
+	t.pending.Store(n.id, n)
 }
 
 func (t *Tree) Commit() error {
 	for {
 		batch := t.kv.NewWriteBatch()
 
-		t.writesTodo.Range(func(k, v interface{}) bool {
+		t.pending.Range(func(k, v interface{}) bool {
 			if batch.Count() > 1000 {
 				return false
 			}
 
-			t.writesTodo.Delete(k)
+			t.pending.Delete(k)
 
 			id, node := k.([MerkleRootSize]byte), v.(*node)
 
@@ -167,7 +181,11 @@ func (t *Tree) Checksum() [MerkleRootSize]byte {
 }
 
 func (t *Tree) loadNode(id [MerkleRootSize]byte) *node {
-	if n, ok := t.writesTodo.Load(id); ok {
+	if n, ok := t.cache.load(id); ok {
+		return n.(*node)
+	}
+
+	if n, ok := t.pending.Load(id); ok {
 		return n.(*node)
 	}
 
@@ -177,5 +195,8 @@ func (t *Tree) loadNode(id [MerkleRootSize]byte) *node {
 		panic(errors.Errorf("avl: could not find node %x", id))
 	}
 
-	return deserialize(buf)
+	n := deserialize(buf)
+	t.cache.put(id, n)
+
+	return n
 }
