@@ -189,11 +189,11 @@ func (t *Tree) Checksum() [MerkleRootSize]byte {
 }
 
 func (t *Tree) loadNode(id [MerkleRootSize]byte) *node {
-	if n, ok := t.cache.load(id); ok {
+	if n, ok := t.pending.Load(id); ok {
 		return n.(*node)
 	}
 
-	if n, ok := t.pending.Load(id); ok {
+	if n, ok := t.cache.load(id); ok {
 		return n.(*node)
 	}
 
