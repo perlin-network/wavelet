@@ -6,6 +6,7 @@ require (
 	github.com/facebookgo/ensure v0.0.0-20160127193407-b4ab57deab51 // indirect
 	github.com/facebookgo/stack v0.0.0-20160209184415-751773369052 // indirect
 	github.com/facebookgo/subset v0.0.0-20150612182917-8dac2c3c4870 // indirect
+	github.com/go-chi/chi v4.0.2+incompatible
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
 	github.com/perlin-network/life v0.0.0-20190204091834-d05763d11050
 	github.com/perlin-network/noise v0.0.0-20190222080146-e7b0ac2c089f

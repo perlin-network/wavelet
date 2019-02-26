@@ -13,6 +13,7 @@ import (
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/net"
 	"github.com/perlin-network/wavelet/sys"
@@ -28,6 +29,7 @@ func main() {
 	hostFlag := flag.String("h", "127.0.0.1", "host to listen for peers on")
 	portFlag := flag.Uint("p", 3000, "port to listen for peers on")
 	walletFlag := flag.String("w", "config/wallet.txt", "path to file containing hex-encoded private key")
+	apiFlag := flag.Int("api", 0, "port to host HTTP API on")
 	flag.Parse()
 
 	var keys identity.Keypair
@@ -111,6 +113,10 @@ func main() {
 
 		peers := skademlia.FindNode(node, protocol.NodeID(node).(skademlia.ID), skademlia.BucketSize(), 8)
 		log.Info().Msgf("Bootstrapped with peers: %+v", peers)
+	}
+
+	if port := *apiFlag; port > 0 {
+		go api.StartHTTP(node, port)
 	}
 
 	reader := bufio.NewReader(os.Stdin)
