@@ -99,10 +99,7 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 
 	copy(res.signature[:], signature)
 
-	err = peer.SendMessage(res)
-	if err != nil {
-		log.Warn().Err(err).Msg("Failed to send back query response.")
-	}
+	_ = peer.SendMessageAsync(res)
 
 	// Gossip out positively-voted critical transactions.
 	if res.vote && !seen && req.tx.IsCritical(ledger.Difficulty()) {
