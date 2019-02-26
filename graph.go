@@ -117,3 +117,11 @@ func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
 
 	return
 }
+
+func (g *graph) lookupTransaction(id [blake2b.Size256]byte) (*Transaction, bool) {
+	g.Lock()
+	defer g.Unlock()
+
+	tx, exists := g.transactions[id]
+	return tx, exists
+}

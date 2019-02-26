@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 	"golang.org/x/crypto/blake2b"
+	"sync"
 	"time"
 )
 
@@ -33,6 +34,8 @@ type Ledger struct {
 	difficulty atomic.Uint64
 
 	genesis *Transaction
+
+	mu sync.Mutex
 }
 
 func NewLedger(kv store.KV, genesisPath string) *Ledger {
@@ -131,6 +134,9 @@ func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transactio
 }
 
 func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	if !l.assertValidTimestamp(tx) {
 		return errors.Wrap(VoteRejected, "wavelet: either tx timestamp is out of bounds, or parents not available")
 	}
@@ -153,7 +159,7 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 
 func (l *Ledger) assertValidParentDepths(tx *Transaction) bool {
 	for _, parentID := range tx.ParentIDs {
-		parent, stored := l.view.transactions[parentID]
+		parent, stored := l.view.lookupTransaction(parentID)
 
 		if !stored {
 			return false
@@ -172,7 +178,7 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 	queue := queue.New()
 
 	for _, parentID := range tx.ParentIDs {
-		parent, stored := l.view.transactions[parentID]
+		parent, stored := l.view.lookupTransaction(parentID)
 
 		if !stored {
 			return false
@@ -194,7 +200,7 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 
 		for _, parentID := range popped.ParentIDs {
 			if _, seen := visited[parentID]; !seen {
-				parent, stored := l.view.transactions[parentID]
+				parent, stored := l.view.lookupTransaction(parentID)
 
 				if !stored {
 					return false
@@ -224,6 +230,9 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 }
 
 func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]byte]bool) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	if !tx.IsCritical(l.Difficulty()) {
 		return ErrTxNotCritical
 	}
@@ -270,14 +279,17 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 		old := l.view.root
 
 		rootID := l.resolver.Result()
-		root, recorded := l.view.transactions[rootID]
+		root, recorded := l.view.lookupTransaction(rootID)
 
 		if !recorded {
 			return errors.New("wavelet: could not find newly critical tx in view graph")
 		}
 
+		viewID := l.viewID.Add(1)
+
 		ss := l.collapseTransactions()
 		ss.snapshot = false
+		ss.tree.ViewID = viewID
 
 		l.accounts = ss
 
@@ -287,8 +299,6 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 		}
 
 		l.view.reset(root)
-		viewID := l.viewID.Add(1)
-		l.tree.ViewID = viewID
 
 		err = l.adjustDifficulty(root)
 		if err != nil {
@@ -417,7 +427,9 @@ func (l *Ledger) collapseTransactions() accounts {
 
 		for _, childrenID := range popped.children {
 			if _, seen := visited[childrenID]; !seen {
-				queue.PushBack(l.view.transactions[childrenID])
+				if child, exists := l.view.lookupTransaction(childrenID); exists {
+					queue.PushBack(child)
+				}
 			}
 		}
 
@@ -454,7 +466,7 @@ func (l *Ledger) applyTransactionToSnapshot(ss accounts, tx *Transaction) error 
 }
 
 func (l *Ledger) HasTransactionInView(id [blake2b.Size256]byte) bool {
-	_, exists := l.view.transactions[id]
+	_, exists := l.view.lookupTransaction(id)
 	return exists
 }
 
