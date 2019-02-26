@@ -194,7 +194,7 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 
 		timestamps = append(timestamps, popped.Timestamp)
 
-		if popped == l.view.root || len(timestamps) == sys.MedianTimestampNumAncestors {
+		if popped == l.view.Root() || len(timestamps) == sys.MedianTimestampNumAncestors {
 			break
 		}
 
@@ -276,7 +276,7 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 	// the view-graph, increment the current view ID, and update the current ledgers
 	// difficulty.
 	if l.resolver.Decided() {
-		old := l.view.root
+		old := l.view.Root()
 
 		rootID := l.resolver.Result()
 		root, recorded := l.view.lookupTransaction(rootID)
@@ -420,7 +420,7 @@ func (l *Ledger) collapseTransactions() accounts {
 	visited := make(map[[blake2b.Size256]byte]struct{})
 	queue := queue.New()
 
-	queue.PushBack(l.view.root)
+	queue.PushBack(l.view.Root())
 
 	for queue.Len() > 0 {
 		popped := queue.PopFront().(*Transaction)

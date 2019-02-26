@@ -125,3 +125,17 @@ func (g *graph) lookupTransaction(id [blake2b.Size256]byte) (*Transaction, bool)
 	tx, exists := g.transactions[id]
 	return tx, exists
 }
+
+func (g *graph) Root() *Transaction {
+	g.Lock()
+	defer g.Unlock()
+
+	return g.root
+}
+
+func (g *graph) Height() uint64 {
+	g.Lock()
+	defer g.Unlock()
+
+	return g.height
+}
