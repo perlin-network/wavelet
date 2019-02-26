@@ -31,6 +31,8 @@ type Ledger struct {
 
 	viewID     atomic.Uint64
 	difficulty atomic.Uint64
+
+	genesis *Transaction
 }
 
 func NewLedger(kv store.KV, genesisPath string) *Ledger {
@@ -47,7 +49,7 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 		processors: make(map[byte]TransactionProcessor),
 	}
 
-	ledger.difficulty.Store(sys.MinimumDifficulty)
+	ledger.difficulty.Store(uint64(sys.MinDifficulty))
 
 	genesis, err := performInception(ledger.accounts, genesisPath)
 	if err != nil {
@@ -55,6 +57,7 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 	}
 
 	// Instantiate the view-graph for our ledger.
+	ledger.genesis = genesis
 	ledger.view = newGraph(genesis)
 
 	return ledger
@@ -317,23 +320,53 @@ func (l *Ledger) adjustDifficulty(critical *Transaction) error {
 
 			timestamps = append(timestamps, timestamp)
 		}
+	} else {
+		// Assume the genesis timestamp is perfect.
+		timestamps = append(timestamps, critical.Timestamp-sys.ExpectedConsensusTimeMilliseconds)
 	}
 
 	timestamps = append(timestamps, critical.Timestamp)
 
 	// Prune away critical timestamp history if needed.
-	if len(timestamps) > sys.MaxCriticalTimestampHistoryKept {
-		timestamps = timestamps[len(timestamps)-sys.MaxCriticalTimestampHistoryKept:]
+	if len(timestamps) > sys.CriticalTimestampAverageWindowSize+1 {
+		timestamps = timestamps[len(timestamps)-sys.CriticalTimestampAverageWindowSize+1:]
 	}
 
-	mean := computeMeanTimestamp(timestamps)
+	var deltas []uint64
+
+	// Compute first-order differences across timestamps.
+	for i := 1; i < len(timestamps); i++ {
+		deltas = append(deltas, timestamps[i]-timestamps[i-1])
+	}
+
+	mean := computeMeanTimestamp(deltas)
 
 	// Adjust the current ledgers difficulty to:
 	//
-	// DIFFICULTY = A_0 + (LAST_DIFFICULTY - A_0) * (10 seconds / average(time it took
-	// to create critical transaction for the last 10 critical transactions))
-	l.difficulty.Store(sys.MinimumDifficulty + (l.difficulty.Load()-sys.MinimumDifficulty)*
-		(sys.ExpectedConsensusTimeMilliseconds/mean))
+	// DIFFICULTY = max(MIN_DIFFICULTY, (LAST_DIFFICULTY - MAX_DIFFICULTY_DELTA / 2) *
+	// 	(MAX_DIFFICULTY_DELTA / 2 *
+	// 		max(2, 10 seconds / average(time it took to accept critical transaction for the last 10 critical transactions)
+	// 	)
+	// )
+	expectedTimeFactor := float64(sys.ExpectedConsensusTimeMilliseconds) / float64(mean)
+	if expectedTimeFactor > 2.0 {
+		expectedTimeFactor = 2.0
+	}
+
+	new := int(l.Difficulty()) - int(sys.MaxDifficultyDelta/2) + int(float64(sys.MaxDifficultyDelta)/2.0*expectedTimeFactor)
+	if new < sys.MinDifficulty {
+		new = sys.MinDifficulty
+	}
+	if new > sys.MaxDifficulty {
+		new = sys.MaxDifficulty
+	}
+
+	old := l.difficulty.Swap(uint64(new))
+
+	log.Info().
+		Uint64("old_difficulty", old).
+		Int("new_difficulty", new).
+		Msg("Ledger difficulty has been adjusted.")
 
 	// Save critical timestamp history to disk.
 	writer := payload.NewWriter(nil)

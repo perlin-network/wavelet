@@ -24,13 +24,17 @@ var (
 	MaxEligibleParentsDepthDiff uint64 = 5
 
 	// Minimum difficulty to define a critical transaction.
-	MinimumDifficulty uint64 = 3
+	MinDifficulty = 7
+	// Maximum difficulty to define a critical transaction.
+	MaxDifficulty = 14
+	// Maximum difficulty delta to define a critical transaction.
+	MaxDifficultyDelta = 4
 
 	// Number of ancestors to derive a median timestamp from.
-	MedianTimestampNumAncestors = 10
+	MedianTimestampNumAncestors = 5
 
-	ExpectedConsensusTimeMilliseconds uint64 = 10 * 1000
-	MaxCriticalTimestampHistoryKept          = 10
+	ExpectedConsensusTimeMilliseconds  uint64 = 4 * 1000
+	CriticalTimestampAverageWindowSize        = 3
 
 	MinimumStake uint64 = 100
 )

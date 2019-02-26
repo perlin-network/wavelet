@@ -2,12 +2,10 @@ package wavelet
 
 import "sort"
 
-func computeMedianTimestamp(timestamps []uint64) uint64 {
+func computeMedianTimestamp(timestamps []uint64) (median uint64) {
 	sort.Slice(timestamps, func(i, j int) bool {
 		return timestamps[i] < timestamps[j]
 	})
-
-	var median uint64
 
 	if len(timestamps)%2 == 0 {
 		median = (timestamps[len(timestamps)/2-1] / 2) + (timestamps[len(timestamps)/2] / 2)
@@ -15,7 +13,7 @@ func computeMedianTimestamp(timestamps []uint64) uint64 {
 		median = timestamps[len(timestamps)/2]
 	}
 
-	return median
+	return
 }
 
 func computeMeanTimestamp(timestamps []uint64) (mean uint64) {
