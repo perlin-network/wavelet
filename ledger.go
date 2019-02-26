@@ -117,7 +117,7 @@ func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transactio
 	tx.Timestamp = uint64(time.Duration(time.Now().UnixNano()) / time.Millisecond)
 
 	if tx.IsCritical(l.Difficulty()) {
-		snapshot := l.collapseTransactions()
+		snapshot := l.collapseTransactions(tx)
 		tx.AccountsMerkleRoot = snapshot.tree.Checksum()
 	}
 
@@ -291,7 +291,7 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 
 		viewID := l.viewID.Add(1)
 
-		ss := l.collapseTransactions()
+		ss := l.collapseTransactions(root)
 		ss.tree.SetViewID(viewID)
 		ss.snapshot = false
 
@@ -418,26 +418,41 @@ func (l *Ledger) RegisterProcessor(tag byte, processor TransactionProcessor) {
 // applies all valid ones to a snapshot of all accounts stored in the ledger.
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
-func (l *Ledger) collapseTransactions() accounts {
+func (l *Ledger) collapseTransactions(critical *Transaction) accounts {
 	snapshot := l.snapshotAccounts()
 
 	visited := make(map[[blake2b.Size256]byte]struct{})
+	visited[l.view.Root().ID] = struct{}{}
+
 	q := queue.New()
 
-	q.PushBack(l.view.Root())
+	for _, parentID := range critical.ParentIDs {
+		if parent, exists := l.view.lookupTransaction(parentID); exists {
+			q.PushBack(parent)
+		}
+	}
+
+	applyQueue := queue.New()
 
 	for q.Len() > 0 {
 		popped := q.PopFront().(*Transaction)
 
-		for _, childrenID := range popped.children {
-			if _, seen := visited[childrenID]; !seen {
-				if child, exists := l.view.lookupTransaction(childrenID); exists {
-					q.PushBack(child)
+		for _, parentID := range popped.ParentIDs {
+			if _, seen := visited[parentID]; !seen {
+				if parent, exists := l.view.lookupTransaction(parentID); exists {
+					q.PushBack(parent)
 				}
 			}
 		}
 
+		applyQueue.PushBack(popped)
 		visited[popped.ID] = struct{}{}
+	}
+
+	// Apply transactions in reverse order from the root of the view-graph all
+	// the way up to the newly created critical transaction.
+	for applyQueue.Len() > 0 {
+		popped := applyQueue.PopFront().(*Transaction)
 
 		// If any errors occur while applying our transaction to our accounts
 		// snapshot, silently log it and continue applying other transactions.
