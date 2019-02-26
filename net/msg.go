@@ -18,12 +18,13 @@ type QueryRequest struct {
 }
 
 func (q QueryRequest) Read(reader payload.Reader) (noise.Message, error) {
-	tx, err := new(wavelet.Transaction).Read(reader)
+	msg, err := wavelet.Transaction{}.Read(reader)
 	if err != nil {
 		return nil, errors.Wrap(err, "wavelet: failed to read query request tx")
 	}
 
-	q.tx = tx.(*wavelet.Transaction)
+	tx := msg.(wavelet.Transaction)
+	q.tx = &tx
 
 	return q, nil
 }

@@ -19,6 +19,7 @@ var _ protocol.Block = (*block)(nil)
 
 const (
 	keyLedger        = "wavelet.ledger"
+	keyAuthChannel   = "wavelet.auth.ch"
 	keyGossipChannel = "wavelet.gossip.ch"
 )
 
@@ -57,7 +58,13 @@ func (b *block) OnBegin(p *protocol.Protocol, peer *noise.Peer) error {
 	go b.receiveLoop(ledger, peer)
 	go b.gossipLoop(ledger, peer)
 
+	close(peer.LoadOrStore(keyAuthChannel, make(chan struct{})).(chan struct{}))
+
 	return nil
+}
+
+func WaitUntilAuthenticated(peer *noise.Peer) {
+	<-peer.LoadOrStore(keyAuthChannel, make(chan struct{})).(chan struct{})
 }
 
 func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
@@ -88,6 +95,12 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 		log.Warn().Err(vote).Msg("Rejected an incoming transaction.")
 	}
 
+	if res.vote {
+		log.Debug().Msgf("Gave a positive vote to transaction %x.", req.tx.ID)
+	} else {
+		log.Debug().Msgf("Gave a negative vote to transaction %x.", req.tx.ID)
+	}
+
 	signature, err := eddsa.Sign(peer.Node().Keys.PrivateKey(), res.Write())
 	if err != nil {
 		panic("wavelet: failed to sign query response")
@@ -102,26 +115,56 @@ func (b *block) OnEnd(p *protocol.Protocol, peer *noise.Peer) error {
 	return nil
 }
 
-func BroadcastTransaction(node *noise.Node, tag byte, payload []byte) error {
-	ledger := node.Get(keyLedger).(*wavelet.Ledger)
-
-	tx, err := ledger.NewTransaction(node.Keys, tag, payload)
-	if err != nil {
-		return errors.Wrap(err, "wavelet: failed to create transaction to broadcast")
-	}
+func BroadcastTransaction(node *noise.Node, tx *wavelet.Transaction) error {
+	ledger := Ledger(node)
 
 	vote := ledger.ReceiveTransaction(tx)
 	switch errors.Cause(vote) {
 	case wavelet.VoteAccepted:
 	case wavelet.VoteRejected:
-		return errors.Wrap(err, "wavelet: could not place newly created transaction to broadcast into view graph")
+		return errors.Wrap(vote, "broadcast: could not place newly created transaction to broadcast into view graph")
 	}
 
-	return QueryTransaction(node, tx)
+	err := QueryTransaction(node, tx)
+	if err != nil {
+		return errors.Wrap(err, "broadcast: failed to gossip out transaction")
+	}
+
+	// If the transaction was critical, then we safely don't have to
+	// send out any nops.
+	//
+	// Otherwise, contribute to the network by sending out nops to get
+	// this nodes transaction accepted.
+	if tx.IsCritical(ledger.Difficulty()) {
+		return nil
+	}
+
+	for {
+		nop, err := ledger.NewTransaction(node.Keys, sys.TagNop, nil)
+		if err != nil {
+			return errors.Wrap(err, "broadcast: failed to create nop")
+		}
+
+		vote = ledger.ReceiveTransaction(nop)
+		switch errors.Cause(vote) {
+		case wavelet.VoteAccepted:
+		case wavelet.VoteRejected:
+			return errors.Wrap(vote, "broadcast: could not place newly created nop to broadcast into view graph")
+		}
+
+		err = QueryTransaction(node, nop)
+		if err != nil {
+			return errors.Wrap(err, "broadcast: failed to gossip out transaction")
+		}
+
+		if nop.IsCritical(ledger.Difficulty()) {
+			return nil
+		}
+	}
 }
 
 func QueryTransaction(node *noise.Node, tx *wavelet.Transaction) error {
-	ledger := node.Get(keyLedger).(*wavelet.Ledger)
+	ledger := Ledger(node)
 
 	peerIDs := skademlia.FindClosestPeers(skademlia.Table(node), protocol.NodeID(node).Hash(), sys.SnowballK)
 
@@ -201,4 +244,8 @@ func QueryTransaction(node *noise.Node, tx *wavelet.Transaction) error {
 	}
 
 	return nil
+}
+
+func Ledger(node *noise.Node) *wavelet.Ledger {
+	return node.Get(keyLedger).(*wavelet.Ledger)
 }

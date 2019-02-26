@@ -4,17 +4,22 @@ import (
 	"bufio"
 	"encoding/hex"
 	"flag"
+	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher/aead"
 	"github.com/perlin-network/noise/handshake/ecdh"
 	"github.com/perlin-network/noise/identity"
+	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/net"
+	"github.com/perlin-network/wavelet/sys"
 	"io/ioutil"
 	"os"
 	"strconv"
+	"strings"
 )
 
 const DefaultC1, DefaultC2 = 16, 16
@@ -98,20 +103,134 @@ func main() {
 				log.Fatal().Err(err).Msg("Failed to dial specified peer.")
 			}
 
-			skademlia.WaitUntilAuthenticated(peer)
+			net.WaitUntilAuthenticated(peer)
 		}
 
 		peers := skademlia.FindNode(node, protocol.NodeID(node).(skademlia.ID), skademlia.BucketSize(), 8)
 		log.Info().Msgf("Bootstrapped with peers: %+v", peers)
 	}
 
+	ledger := net.Ledger(node)
 	reader := bufio.NewReader(os.Stdin)
 
+	var nodeID [wavelet.PublicKeySize]byte
+	copy(nodeID[:], node.Keys.PublicKey())
+
 	for {
-		_, err := reader.ReadString('\n')
+		bytes, _, err := reader.ReadLine()
 
 		if err != nil {
 			log.Fatal().Err(err).Msg("Failed to read input from user.")
+		}
+
+		cmd := strings.Split(string(bytes), " ")
+
+		switch cmd[0] {
+		case "w":
+			if len(cmd) < 2 {
+				balance, _ := ledger.ReadAccountBalance(nodeID)
+				stake, _ := ledger.ReadAccountStake(nodeID)
+
+				log.Info().
+					Str("id", hex.EncodeToString(node.Keys.PublicKey())).
+					Uint64("balance", balance).
+					Uint64("stake", stake).
+					Msg("Here is your wallet information.")
+
+				continue
+			}
+
+			buf, err := hex.DecodeString(cmd[1])
+
+			if err != nil || len(buf) != wavelet.PublicKeySize {
+				log.Error().Msg("The account ID you specified is invalid.")
+				continue
+			}
+
+			var accountID [wavelet.PublicKeySize]byte
+			copy(accountID[:], buf)
+
+			balance, _ := ledger.ReadAccountBalance(accountID)
+			stake, _ := ledger.ReadAccountStake(accountID)
+
+			log.Info().
+				Uint64("balance", balance).
+				Uint64("stake", stake).
+				Msgf("Account: %s", cmd[1])
+		case "p":
+			recipient := "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"
+			amount := 1
+
+			if len(cmd) >= 2 {
+				recipient = cmd[1]
+			}
+
+			if len(cmd) >= 3 {
+				amount, err = strconv.Atoi(cmd[2])
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to convert payment amount to an uint64.")
+					continue
+				}
+			}
+
+			recipientDecoded, err := hex.DecodeString(recipient)
+			if err != nil {
+				log.Error().Err(err).Msg("cannot decode recipient")
+				continue
+			}
+
+			payload := payload.NewWriter(recipientDecoded)
+			payload.WriteUint64(uint64(amount))
+
+			if len(cmd) >= 5 {
+				payload.WriteString(cmd[3])
+
+				for i := 4; i < len(cmd); i++ {
+					arg := cmd[i]
+
+					switch arg[0] {
+					case 'S':
+						payload.WriteString(arg[1:])
+					case 'B':
+						payload.WriteBytes([]byte(arg[1:]))
+					case '1', '2', '4', '8':
+						var val uint64
+						fmt.Sscanf(arg[1:], "%d", &val)
+
+						switch arg[0] {
+						case '1':
+							payload.WriteByte(byte(val))
+						case '2':
+							payload.WriteUint16(uint16(val))
+						case '4':
+							payload.WriteUint32(uint32(val))
+						case '8':
+							payload.WriteUint64(uint64(val))
+						}
+					case 'H':
+						b, err := hex.DecodeString(arg[1:])
+						if err != nil {
+							log.Error().Err(err).Msgf("cannot decode hex: %s", arg[1:])
+						}
+
+						payload.WriteBytes(b)
+					default:
+						log.Error().Msgf("invalid arg: %s", arg)
+					}
+				}
+			}
+
+			tx, err := ledger.NewTransaction(node.Keys, sys.TagTransfer, payload.Bytes())
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to create a transfer transaction.")
+			}
+
+			err = net.BroadcastTransaction(node, tx)
+			if err != nil {
+				log.Error().Err(err).Msg("An error occured while broadcasting a transfer transaction.")
+			}
+
+			log.Info().Msgf("Success! Your payment transaction ID: %x", tx.ID)
 		}
 	}
 }

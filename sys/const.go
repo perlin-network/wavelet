@@ -22,7 +22,7 @@ var (
 	MaxEligibleParentsDepthDiff uint64 = 5
 
 	// Minimum difficulty to define a critical transaction.
-	MinimumDifficulty = 7
+	MinimumDifficulty = 5
 
 	// Number of ancestors to derive a median timestamp from.
 	MedianTimestampNumAncestors = 10
