@@ -106,7 +106,14 @@ func (l *Ledger) NewTransaction(keys identity.Keypair, tag byte, payload []byte)
 func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transaction) error {
 	copy(tx.Sender[:], keys.PublicKey())
 
-	tx.ParentIDs = l.view.findEligibleParents()
+	for {
+		tx.ParentIDs = l.view.findEligibleParents()
+
+		if len(tx.ParentIDs) != 0 {
+			break
+		}
+	}
+
 	tx.Timestamp = uint64(time.Duration(time.Now().UnixNano()) / time.Millisecond)
 
 	if tx.IsCritical(l.Difficulty()) {
@@ -222,6 +229,10 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]byte]bool) error {
 	if !tx.IsCritical(l.Difficulty()) {
 		return ErrTxNotCritical
+	}
+
+	if len(responses) == 0 {
+		return errors.New("wavelet: got 0 responses")
 	}
 
 	// Weigh votes based on each voters stake.

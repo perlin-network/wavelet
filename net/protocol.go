@@ -76,20 +76,13 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 
 	vote := ledger.ReceiveTransaction(req.tx)
 
-	res := new(QueryResponse)
+	res := &QueryResponse{vote: errors.Cause(vote) == wavelet.VoteAccepted}
 	copy(res.id[:], peer.Node().Keys.PublicKey())
-
-	switch errors.Cause(vote) {
-	case wavelet.VoteAccepted:
-		res.vote = true
-	case wavelet.VoteRejected:
-		log.Warn().Err(vote).Msg("Rejected an incoming transaction.")
-	}
 
 	if res.vote {
 		log.Debug().Msgf("Gave a positive vote to transaction %x.", req.tx.ID)
 	} else {
-		log.Debug().Msgf("Gave a negative vote to transaction %x.", req.tx.ID)
+		log.Debug().Err(vote).Msgf("Gave a negative vote to transaction %x.", req.tx.ID)
 	}
 
 	signature, err := eddsa.Sign(peer.Node().Keys.PrivateKey(), res.Write())
@@ -140,6 +133,8 @@ func BroadcastTransaction(node *noise.Node, tx *wavelet.Transaction) error {
 	}
 
 	for {
+		time.Sleep(1 * time.Millisecond)
+
 		nop, err := ledger.NewTransaction(node.Keys, sys.TagNop, nil)
 		if err != nil {
 			return errors.Wrap(err, "broadcast: failed to create nop")

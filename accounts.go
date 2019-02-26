@@ -24,7 +24,7 @@ func (a accounts) snapshotAccounts() accounts {
 
 func (a accounts) ReadAccountBalance(id [PublicKeySize]byte) (uint64, bool) {
 	buf, exists := a.readUnderAccounts(id, keyAccountBalance[:])
-	if !exists {
+	if !exists || len(buf) == 0 {
 		return 0, false
 	}
 
@@ -40,7 +40,7 @@ func (a accounts) WriteAccountBalance(id [PublicKeySize]byte, balance uint64) {
 
 func (a accounts) ReadAccountStake(id [PublicKeySize]byte) (uint64, bool) {
 	buf, exists := a.readUnderAccounts(id, keyAccountStake[:])
-	if !exists {
+	if !exists || len(buf) == 0 {
 		return 0, false
 	}
 

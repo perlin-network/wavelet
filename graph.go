@@ -5,6 +5,7 @@ import (
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
+	"sync"
 )
 
 var (
@@ -13,6 +14,8 @@ var (
 )
 
 type graph struct {
+	sync.Mutex
+
 	transactions map[[blake2b.Size256]byte]*Transaction
 
 	root   *Transaction // The current root (the latest critical transaction) of the graph.
@@ -27,6 +30,9 @@ func newGraph(root *Transaction) *graph {
 }
 
 func (g *graph) addTransaction(tx *Transaction) error {
+	g.Lock()
+	defer g.Unlock()
+
 	// Return an error if the transaction is already inside the graph.
 	if _, stored := g.transactions[tx.ID]; stored {
 		return ErrTxAlreadyExists
@@ -70,13 +76,23 @@ func (g *graph) addTransaction(tx *Transaction) error {
 // reset resets the entire graph and sets the graph to start from
 // the specified root (latest critical transaction of the entire ledger).
 func (g *graph) reset(root *Transaction) {
-	g.transactions = map[[blake2b.Size256]byte]*Transaction{root.ID: root}
+	g.Lock()
+	defer g.Unlock()
 
+	g.transactions[root.ID] = root
 	g.root = root
-	g.height = 0
+
+	// TODO(kenta): optionally prune transactions here
 }
 
 func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
+	g.Lock()
+	defer g.Unlock()
+
+	if g.root == nil {
+		return
+	}
+
 	visited := make(map[[blake2b.Size256]byte]struct{})
 	queue := queue.New()
 
@@ -88,7 +104,9 @@ func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
 		if len(popped.children) > 0 {
 			for _, childrenID := range popped.children {
 				if _, seen := visited[childrenID]; !seen {
-					queue.PushBack(g.transactions[childrenID])
+					if child, exists := g.transactions[childrenID]; exists {
+						queue.PushBack(child)
+					}
 				}
 			}
 		} else if popped.depth+sys.MaxEligibleParentsDepthDiff >= g.height {
