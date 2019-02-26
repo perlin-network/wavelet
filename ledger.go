@@ -250,7 +250,7 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 		votes = append(votes, float64(stake)/float64(maxStake))
 	}
 
-	log.Debug().Floats64("weighed_votes", votes).Msg("Weighed votes with stakes, and queued critical transaction for consensus.")
+	log.Debug().Floats64("weighed_votes", votes).Msg("Weighed votes with stakes, and updated the consensus mechanism.")
 
 	// Update conflict resolver.
 	l.resolver.Tick(tx.ID, votes)
@@ -343,11 +343,14 @@ func (l *Ledger) adjustDifficulty(critical *Transaction) error {
 
 	// Adjust the current ledgers difficulty to:
 	//
-	// DIFFICULTY = max(MIN_DIFFICULTY, (LAST_DIFFICULTY - MAX_DIFFICULTY_DELTA / 2) *
-	// 	(MAX_DIFFICULTY_DELTA / 2 *
-	// 		max(2, 10 seconds / average(time it took to accept critical transaction for the last 10 critical transactions)
+	// DIFFICULTY = min(MAX_DIFFICULTY,
+	// 	max(MIN_DIFFICULTY,
+	// 		(DIFFICULTY - MAX_DIFFICULTY_DELTA / 2) *
+	// 			(MAX_DIFFICULTY_DELTA / 2 * max(2,
+	// 				10 seconds / average(time it took to accept critical transaction for the last 5 critical transactions)
+	// 			)
+	// 		)
 	// 	)
-	// )
 	expectedTimeFactor := float64(sys.ExpectedConsensusTimeMilliseconds) / float64(mean)
 	if expectedTimeFactor > 2.0 {
 		expectedTimeFactor = 2.0
