@@ -450,14 +450,9 @@ func (l *Ledger) applyTransactionToSnapshot(ss accounts, tx *Transaction) error 
 		return errors.New("wavelet: to keep things safe, pass in an accounts instance that is a snapshot")
 	}
 
-	processor, exists := l.processors[tx.Tag]
-	if !exists {
-		return errors.Errorf("wavelet: transaction processor not registered for tag %d", tx.Tag)
-	}
-
 	ctx := newTransactionContext(ss, tx)
 
-	err := ctx.apply(processor)
+	err := ctx.apply(l.processors)
 	if err != nil {
 		return errors.Wrap(err, "wavelet: could not apply transaction")
 	}

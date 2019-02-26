@@ -54,7 +54,7 @@ func (a accounts) WriteAccountStake(id [PublicKeySize]byte, stake uint64) {
 	a.writeUnderAccounts(id, keyAccountStake[:], buf[:])
 }
 
-func (a accounts) ReadAccountContractCode(id [PublicKeySize]byte) ([]byte, bool) {
+func (a accounts) ReadAccountContractCode(id [TransactionIDSize]byte) ([]byte, bool) {
 	buf, exists := a.readUnderAccounts(id, keyAccountContractCode[:])
 	if !exists || len(buf) == 0 {
 		return nil, false
@@ -63,8 +63,43 @@ func (a accounts) ReadAccountContractCode(id [PublicKeySize]byte) ([]byte, bool)
 	return buf, true
 }
 
-func (a accounts) WriteAccountContractCode(id [PublicKeySize]byte, code []byte) {
+func (a accounts) WriteAccountContractCode(id [TransactionIDSize]byte, code []byte) {
 	a.writeUnderAccounts(id, keyAccountContractCode[:], code[:])
+}
+
+func (a accounts) ReadAccountContractNumPages(id [TransactionIDSize]byte) (uint64, bool) {
+	buf, exists := a.readUnderAccounts(id, keyAccountContractNumPages[:])
+	if !exists || len(buf) == 0 {
+		return 0, false
+	}
+
+	return binary.LittleEndian.Uint64(buf), true
+}
+
+func (a accounts) WriteAccountContractNumPages(id [TransactionIDSize]byte, numPages uint64) {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], numPages)
+
+	a.writeUnderAccounts(id, keyAccountContractNumPages[:], buf[:])
+}
+
+func (a accounts) ReadAccountContractPage(id [TransactionIDSize]byte, idx uint64) ([]byte, bool) {
+	var idxBuf [8]byte
+	binary.LittleEndian.PutUint64(idxBuf[:], idx)
+
+	buf, exists := a.readUnderAccounts(id, append(keyAccountContractPages[:], idxBuf[:]...))
+	if !exists || len(buf) == 0 {
+		return nil, false
+	}
+
+	return buf, true
+}
+
+func (a accounts) WriteAccountContractPage(id [TransactionIDSize]byte, idx uint64, page []byte) {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], idx)
+
+	a.writeUnderAccounts(id, append(keyAccountContractPages[:], buf[:]...), page)
 }
 
 func (a accounts) readUnderAccounts(id [PublicKeySize]byte, key []byte) ([]byte, bool) {

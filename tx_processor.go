@@ -12,9 +12,12 @@ type TransactionProcessor interface {
 type TransactionContext struct {
 	accounts accounts
 
-	balances  map[[PublicKeySize]byte]uint64
-	stakes    map[[PublicKeySize]byte]uint64
-	contracts map[[PublicKeySize]byte][]byte
+	balances map[[PublicKeySize]byte]uint64
+	stakes   map[[PublicKeySize]byte]uint64
+
+	contracts        map[[TransactionIDSize]byte][]byte
+	contractNumPages map[[TransactionIDSize]byte]uint64
+	contractPages    map[[TransactionIDSize]byte]map[uint64][]byte
 
 	transactions queue.Queue
 	tx           *Transaction
@@ -22,10 +25,13 @@ type TransactionContext struct {
 
 func newTransactionContext(accounts accounts, tx *Transaction) *TransactionContext {
 	ctx := &TransactionContext{
-		accounts:  accounts,
-		balances:  make(map[[PublicKeySize]byte]uint64),
-		stakes:    make(map[[PublicKeySize]byte]uint64),
-		contracts: make(map[[PublicKeySize]byte][]byte),
+		accounts: accounts,
+		balances: make(map[[PublicKeySize]byte]uint64),
+		stakes:   make(map[[PublicKeySize]byte]uint64),
+
+		contracts:        make(map[[TransactionIDSize]byte][]byte),
+		contractNumPages: make(map[[TransactionIDSize]byte]uint64),
+		contractPages:    make(map[[TransactionIDSize]byte]map[uint64][]byte),
 
 		tx: tx,
 	}
@@ -63,7 +69,7 @@ func (c *TransactionContext) ReadAccountStake(id [PublicKeySize]byte) (uint64, b
 	return stake, exists
 }
 
-func (c *TransactionContext) ReadAccountContractCode(id [PublicKeySize]byte) ([]byte, bool) {
+func (c *TransactionContext) ReadAccountContractCode(id [TransactionIDSize]byte) ([]byte, bool) {
 	if code, ok := c.contracts[id]; ok {
 		return code, true
 	}
@@ -71,6 +77,36 @@ func (c *TransactionContext) ReadAccountContractCode(id [PublicKeySize]byte) ([]
 	code, exists := c.accounts.ReadAccountContractCode(id)
 	c.contracts[id] = code
 	return code, exists
+}
+
+func (c *TransactionContext) ReadAccountContractNumPages(id [PublicKeySize]byte) (uint64, bool) {
+	if numPages, ok := c.contractNumPages[id]; ok {
+		return numPages, true
+	}
+
+	numPages, exists := c.accounts.ReadAccountContractNumPages(id)
+	c.contractNumPages[id] = numPages
+	return numPages, exists
+}
+
+func (c *TransactionContext) ReadAccountContractPage(id [PublicKeySize]byte, idx uint64) ([]byte, bool) {
+	if pages, ok := c.contractPages[id]; ok {
+		if page, ok := pages[idx]; ok {
+			return page, true
+		}
+	}
+
+	page, exists := c.accounts.ReadAccountContractPage(id, idx)
+
+	pages, exist := c.contractPages[id]
+	if !exist {
+		pages = make(map[uint64][]byte)
+		c.contractPages[id] = pages
+	}
+
+	pages[idx] = page
+
+	return page, exists
 }
 
 func (c *TransactionContext) WriteAccountBalance(id [PublicKeySize]byte, balance uint64) {
@@ -81,13 +117,32 @@ func (c *TransactionContext) WriteAccountStake(id [PublicKeySize]byte, stake uin
 	c.stakes[id] = stake
 }
 
-func (c *TransactionContext) WriteAccountContractCode(id [PublicKeySize]byte, code []byte) {
+func (c *TransactionContext) WriteAccountContractCode(id [TransactionIDSize]byte, code []byte) {
 	c.contracts[id] = code
 }
 
-func (c *TransactionContext) apply(processor TransactionProcessor) error {
+func (c *TransactionContext) WriteAccountContractNumPages(id [TransactionIDSize]byte, numPages uint64) {
+	c.contractNumPages[id] = numPages
+}
+
+func (c *TransactionContext) WriteAccountContractPage(id [TransactionIDSize]byte, idx uint64, page []byte) {
+	pages, exist := c.contractPages[id]
+	if !exist {
+		pages = make(map[uint64][]byte)
+		c.contractPages[id] = pages
+	}
+
+	pages[idx] = page
+}
+
+func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) error {
 	for c.transactions.Len() > 0 {
 		c.tx = c.transactions.PopFront().(*Transaction)
+
+		processor, exists := processors[c.tx.Tag]
+		if !exists {
+			return errors.Errorf("wavelet: transaction processor not registered for tag %d", c.tx.Tag)
+		}
 
 		err := processor.OnApplyTransaction(c)
 		if err != nil {
@@ -108,6 +163,16 @@ func (c *TransactionContext) apply(processor TransactionProcessor) error {
 
 	for id, code := range c.contracts {
 		c.accounts.WriteAccountContractCode(id, code)
+	}
+
+	for id, numPages := range c.contractNumPages {
+		c.accounts.WriteAccountContractNumPages(id, numPages)
+	}
+
+	for id, pages := range c.contractPages {
+		for idx, page := range pages {
+			c.accounts.WriteAccountContractPage(id, idx, page)
+		}
 	}
 
 	return nil

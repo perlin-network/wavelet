@@ -11,8 +11,9 @@ import (
 )
 
 const (
-	PublicKeySize  = 32
-	PrivateKeySize = 64
+	TransactionIDSize = blake2b.Size256
+	PublicKeySize     = 32
+	PrivateKeySize    = 64
 
 	SignatureSize = 64
 
@@ -23,7 +24,7 @@ var _ noise.Message = (*Transaction)(nil)
 
 type Transaction struct {
 	// WIRE FORMAT
-	ID [blake2b.Size256]byte
+	ID [TransactionIDSize]byte
 
 	Sender, Creator [PublicKeySize]byte
 

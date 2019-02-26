@@ -37,7 +37,35 @@ func (TransferProcessor) OnApplyTransaction(ctx *TransactionContext) error {
 	recipientBalance, _ := ctx.ReadAccountBalance(recipient)
 	ctx.WriteAccountBalance(recipient, recipientBalance+amount)
 
-	// TODO(kenta): smart contract execution on transfer
+	if _, isContract := ctx.ReadAccountContractCode(tx.ID); !isContract {
+		return nil
+	}
+
+	executor, err := NewContractExecutor(ctx, 50000000)
+	if err != nil {
+		return errors.Wrap(err, "transfer: failed to load and init smart contract vm")
+	}
+	executor.EnableLogging = true
+
+	if reader.Len() > 0 {
+		funcName, err := reader.ReadString()
+		if err != nil {
+			return err
+		}
+
+		funcParams, err := reader.ReadBytes()
+		if err != nil {
+			return err
+		}
+
+		err = executor.Run(amount, funcName, funcParams...)
+	} else {
+		err = executor.Run(amount, "on_money_received")
+	}
+
+	if err != nil && errors.Cause(err) != ErrContractFunctionNotFound {
+		return errors.Wrap(err, "transfer: failed to execute smart contract method")
+	}
 
 	return nil
 }
