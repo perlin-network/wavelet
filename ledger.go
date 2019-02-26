@@ -45,8 +45,9 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 			WithBeta(sys.SnowballBeta),
 
 		processors: make(map[byte]TransactionProcessor),
-		difficulty: *atomic.NewUint64(sys.MinimumDifficulty),
 	}
+
+	ledger.difficulty.Store(sys.MinimumDifficulty)
 
 	genesis, err := performInception(ledger.accounts, genesisPath)
 	if err != nil {
