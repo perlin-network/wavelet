@@ -12,8 +12,9 @@ type TransactionProcessor interface {
 type TransactionContext struct {
 	accounts accounts
 
-	balances map[[PublicKeySize]byte]uint64
-	stakes   map[[PublicKeySize]byte]uint64
+	balances  map[[PublicKeySize]byte]uint64
+	stakes    map[[PublicKeySize]byte]uint64
+	contracts map[[PublicKeySize]byte][]byte
 
 	transactions queue.Queue
 	tx           *Transaction
@@ -21,9 +22,10 @@ type TransactionContext struct {
 
 func newTransactionContext(accounts accounts, tx *Transaction) *TransactionContext {
 	ctx := &TransactionContext{
-		accounts: accounts,
-		balances: make(map[[PublicKeySize]byte]uint64),
-		stakes:   make(map[[PublicKeySize]byte]uint64),
+		accounts:  accounts,
+		balances:  make(map[[PublicKeySize]byte]uint64),
+		stakes:    make(map[[PublicKeySize]byte]uint64),
+		contracts: make(map[[PublicKeySize]byte][]byte),
 
 		tx: tx,
 	}
@@ -61,12 +63,26 @@ func (c *TransactionContext) ReadAccountStake(id [PublicKeySize]byte) (uint64, b
 	return stake, exists
 }
 
+func (c *TransactionContext) ReadAccountContractCode(id [PublicKeySize]byte) ([]byte, bool) {
+	if code, ok := c.contracts[id]; ok {
+		return code, true
+	}
+
+	code, exists := c.accounts.ReadAccountContractCode(id)
+	c.contracts[id] = code
+	return code, exists
+}
+
 func (c *TransactionContext) WriteAccountBalance(id [PublicKeySize]byte, balance uint64) {
 	c.balances[id] = balance
 }
 
 func (c *TransactionContext) WriteAccountStake(id [PublicKeySize]byte, stake uint64) {
 	c.stakes[id] = stake
+}
+
+func (c *TransactionContext) WriteAccountContractCode(id [PublicKeySize]byte, code []byte) {
+	c.contracts[id] = code
 }
 
 func (c *TransactionContext) apply(processor TransactionProcessor) error {
@@ -88,6 +104,10 @@ func (c *TransactionContext) apply(processor TransactionProcessor) error {
 
 	for id, stake := range c.stakes {
 		c.accounts.WriteAccountStake(id, stake)
+	}
+
+	for id, code := range c.contracts {
+		c.accounts.WriteAccountContractCode(id, code)
 	}
 
 	return nil

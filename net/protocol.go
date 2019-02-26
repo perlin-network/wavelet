@@ -42,6 +42,7 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 	ledger := wavelet.NewLedger(kv, genesisPath)
 	ledger.RegisterProcessor(sys.TagNop, new(wavelet.NopProcessor))
 	ledger.RegisterProcessor(sys.TagTransfer, new(wavelet.TransferProcessor))
+	ledger.RegisterProcessor(sys.TagContract, new(wavelet.ContractProcessor))
 	ledger.RegisterProcessor(sys.TagStake, new(wavelet.StakeProcessor))
 
 	node.Set(keyLedger, ledger)

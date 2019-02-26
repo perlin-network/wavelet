@@ -6,7 +6,7 @@ import "time"
 const (
 	TagNop byte = iota
 	TagTransfer
-	TagCreateContract
+	TagContract
 	TagStake
 )
 

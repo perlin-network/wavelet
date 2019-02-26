@@ -20,6 +20,7 @@ func createLedger() *Ledger {
 	ledger := NewLedger(kv, genesisPath)
 	ledger.RegisterProcessor(sys.TagNop, new(NopProcessor))
 	ledger.RegisterProcessor(sys.TagTransfer, new(TransferProcessor))
+	ledger.RegisterProcessor(sys.TagContract, new(ContractProcessor))
 	ledger.RegisterProcessor(sys.TagStake, new(StakeProcessor))
 
 	return ledger

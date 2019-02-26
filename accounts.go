@@ -54,6 +54,19 @@ func (a accounts) WriteAccountStake(id [PublicKeySize]byte, stake uint64) {
 	a.writeUnderAccounts(id, keyAccountStake[:], buf[:])
 }
 
+func (a accounts) ReadAccountContractCode(id [PublicKeySize]byte) ([]byte, bool) {
+	buf, exists := a.readUnderAccounts(id, keyAccountContractCode[:])
+	if !exists || len(buf) == 0 {
+		return nil, false
+	}
+
+	return buf, true
+}
+
+func (a accounts) WriteAccountContractCode(id [PublicKeySize]byte, code []byte) {
+	a.writeUnderAccounts(id, keyAccountContractCode[:], code[:])
+}
+
 func (a accounts) readUnderAccounts(id [PublicKeySize]byte, key []byte) ([]byte, bool) {
 	buf, exists := a.tree.Lookup(append(keyAccounts[:], append(key, id[:]...)...))
 
