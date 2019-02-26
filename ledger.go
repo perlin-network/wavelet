@@ -227,6 +227,8 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 
 		if !response {
 			stake = 0
+		} else if stake < sys.MinimumStake {
+			stake = sys.MinimumStake
 		}
 
 		if maxStake < stake {
@@ -239,8 +241,10 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 	var votes []float64
 
 	for _, stake := range stakes {
-		votes = append(votes, float64(stake)/float64(len(stakes)))
+		votes = append(votes, float64(stake)/float64(maxStake))
 	}
+
+	log.Debug().Floats64("weighed_votes", votes).Msg("Weighed votes with stakes, and queued critical transaction for consensus.")
 
 	// Update conflict resolver.
 	l.resolver.Tick(tx.ID, votes)

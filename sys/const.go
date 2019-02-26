@@ -29,4 +29,6 @@ var (
 
 	ExpectedConsensusTimeMilliseconds uint64 = 10 * 1000
 	MaxCriticalTimestampHistoryKept          = 10
+
+	MinimumStake uint64 = 100
 )
