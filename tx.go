@@ -36,7 +36,7 @@ type Transaction struct {
 	Payload []byte
 
 	// Only set if the transaction is a critical transaction.
-	AccountsMerkleRoot [avl.MerkleRootSize]byte
+	AccountsMerkleRoot [avl.MerkleHashSize]byte
 
 	SenderSignature, CreatorSignature [SignatureSize]byte
 
@@ -133,7 +133,7 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 			return nil, errors.Wrap(err, "failed to decode accounts merkle root")
 		}
 
-		if n != avl.MerkleRootSize {
+		if n != avl.MerkleHashSize {
 			return nil, errors.New("could not read enough bytes for accounts merkle root")
 		}
 	}
@@ -177,7 +177,7 @@ func (t Transaction) Write() []byte {
 	writer.WriteByte(t.Tag)
 	writer.WriteBytes(t.Payload)
 
-	if prefixLen(t.AccountsMerkleRoot[:]) != 8*avl.MerkleRootSize {
+	if prefixLen(t.AccountsMerkleRoot[:]) != 8*avl.MerkleHashSize {
 		_, _ = writer.Write(t.AccountsMerkleRoot[:])
 	}
 

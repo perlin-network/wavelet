@@ -8,22 +8,22 @@ import (
 func TestLRU(t *testing.T) {
 	lru := newLRU(2)
 
-	lru.put([MerkleRootSize]byte{'a'}, 1)
-	lru.put([MerkleRootSize]byte{'b'}, 2)
-	_, ok := lru.load([MerkleRootSize]byte{'b'})
+	lru.put([MerkleHashSize]byte{'a'}, 1)
+	lru.put([MerkleHashSize]byte{'b'}, 2)
+	_, ok := lru.load([MerkleHashSize]byte{'b'})
 	assert.True(t, ok)
-	_, ok = lru.load([MerkleRootSize]byte{'a'})
+	_, ok = lru.load([MerkleHashSize]byte{'a'})
 	assert.True(t, ok)
 
-	lru.put([MerkleRootSize]byte{'c'}, 3)
-	_, ok = lru.load([MerkleRootSize]byte{'b'})
+	lru.put([MerkleHashSize]byte{'c'}, 3)
+	_, ok = lru.load([MerkleHashSize]byte{'b'})
 	assert.False(t, ok)
 
-	val, ok := lru.load([MerkleRootSize]byte{'a'})
+	val, ok := lru.load([MerkleHashSize]byte{'a'})
 	assert.True(t, ok)
 	assert.Equal(t, 1, val.(int))
 
-	val, ok = lru.load([MerkleRootSize]byte{'c'})
+	val, ok = lru.load([MerkleHashSize]byte{'c'})
 	assert.True(t, ok)
 	assert.Equal(t, 3, val.(int))
 }

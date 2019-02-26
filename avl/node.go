@@ -10,7 +10,7 @@ import (
 	"math"
 )
 
-const MerkleRootSize = 16
+const MerkleHashSize = 16
 
 type nodeType byte
 
@@ -20,7 +20,9 @@ const (
 )
 
 type node struct {
-	id, left, right [MerkleRootSize]byte
+	id, left, right [MerkleHashSize]byte
+
+	viewID uint64
 
 	key, value []byte
 
@@ -287,6 +289,7 @@ func (n *node) update(t *Tree, fn func(node *node)) *node {
 	cpy.rehash()
 
 	if cpy.id != n.id {
+		cpy.viewID = t.ViewID
 		t.queueWrite(cpy)
 	}
 
@@ -312,15 +315,18 @@ func (n *node) serialize(buf *bytes.Buffer) {
 		buf.Write(n.right[:])
 	}
 
-	var lenBuf [8]byte
+	var buf64 [8]byte
+
+	binary.LittleEndian.PutUint64(buf64[:], n.viewID)
+	buf.Write(buf64[:])
 
 	// Write key.
 	if len(n.key) > math.MaxUint32 {
 		panic("avl: key is too long")
 	}
 
-	binary.LittleEndian.PutUint32(lenBuf[:4], uint32(len(n.key)))
-	buf.Write(lenBuf[:4])
+	binary.LittleEndian.PutUint32(buf64[:4], uint32(len(n.key)))
+	buf.Write(buf64[:4])
 	buf.Write(n.key)
 
 	if n.kind == NodeLeafValue {
@@ -329,8 +335,8 @@ func (n *node) serialize(buf *bytes.Buffer) {
 			panic("avl: value is too long")
 		}
 
-		binary.LittleEndian.PutUint32(lenBuf[:4], uint32(len(n.value)))
-		buf.Write(lenBuf[:4])
+		binary.LittleEndian.PutUint32(buf64[:4], uint32(len(n.value)))
+		buf.Write(buf64[:4])
 		buf.Write(n.value)
 	}
 
@@ -338,8 +344,8 @@ func (n *node) serialize(buf *bytes.Buffer) {
 	buf.WriteByte(n.depth)
 
 	// Write size.
-	binary.LittleEndian.PutUint64(lenBuf[:], n.size)
-	buf.Write(lenBuf[:])
+	binary.LittleEndian.PutUint64(buf64[:], n.size)
+	buf.Write(buf64[:])
 }
 
 func deserialize(buf []byte) *node {
@@ -365,27 +371,34 @@ func deserialize(buf []byte) *node {
 		}
 	}
 
-	var lenBuf [8]byte
+	var buf64 [8]byte
 
-	// Read key.
-	_, err = r.Read(lenBuf[:4])
+	_, err = r.Read(buf64[:])
 	if err != nil {
 		panic(err)
 	}
 
-	n.key = make([]byte, binary.LittleEndian.Uint32(lenBuf[:4]))
+	n.viewID = binary.LittleEndian.Uint64(buf64[:])
+
+	// Read key.
+	_, err = r.Read(buf64[:4])
+	if err != nil {
+		panic(err)
+	}
+
+	n.key = make([]byte, binary.LittleEndian.Uint32(buf64[:4]))
 	_, err = r.Read(n.key)
 	if err != nil {
 		panic(err)
 	}
 
 	if n.kind == NodeLeafValue {
-		_, err = r.Read(lenBuf[:4])
+		_, err = r.Read(buf64[:4])
 		if err != nil {
 			panic(err)
 		}
 
-		n.value = make([]byte, binary.LittleEndian.Uint32(lenBuf[:4]))
+		n.value = make([]byte, binary.LittleEndian.Uint32(buf64[:4]))
 		_, err = r.Read(n.value)
 		if err != nil {
 			panic(err)
@@ -399,12 +412,12 @@ func deserialize(buf []byte) *node {
 	}
 
 	// Read size.
-	_, err = r.Read(lenBuf[:])
+	_, err = r.Read(buf64[:])
 	if err != nil {
 		panic(err)
 	}
 
-	n.size = binary.LittleEndian.Uint64(lenBuf[:])
+	n.size = binary.LittleEndian.Uint64(buf64[:])
 
 	n.rehash()
 

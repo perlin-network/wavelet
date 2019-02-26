@@ -24,6 +24,8 @@ type Tree struct {
 
 	cache   *lru
 	pending sync.Map
+
+	ViewID uint64
 }
 
 type Snapshot struct {
@@ -34,8 +36,8 @@ func New(kv store.KV) *Tree {
 	t := &Tree{kv: kv, cache: newLRU(DefaultCacheSize), maxWriteBatchSize: MaxWriteBatchSize}
 
 	// Load root node if it already exists.
-	if buf, err := t.kv.Get(RootKey); err == nil && len(buf) == MerkleRootSize {
-		var rootID [MerkleRootSize]byte
+	if buf, err := t.kv.Get(RootKey); err == nil && len(buf) == MerkleHashSize {
+		var rootID [MerkleHashSize]byte
 		copy(rootID[:], buf)
 
 		t.root = t.loadNode(rootID)
@@ -150,7 +152,7 @@ func (t *Tree) Commit() error {
 
 			t.pending.Delete(k)
 
-			id, node := k.([MerkleRootSize]byte), v.(*node)
+			id, node := k.([MerkleHashSize]byte), v.(*node)
 
 			var buf bytes.Buffer
 			node.serialize(&buf)
@@ -180,15 +182,15 @@ func (t *Tree) Commit() error {
 	return nil
 }
 
-func (t *Tree) Checksum() [MerkleRootSize]byte {
+func (t *Tree) Checksum() [MerkleHashSize]byte {
 	if t.root == nil {
-		return [MerkleRootSize]byte{}
+		return [MerkleHashSize]byte{}
 	}
 
 	return t.root.id
 }
 
-func (t *Tree) loadNode(id [MerkleRootSize]byte) *node {
+func (t *Tree) loadNode(id [MerkleHashSize]byte) *node {
 	if n, ok := t.pending.Load(id); ok {
 		return n.(*node)
 	}

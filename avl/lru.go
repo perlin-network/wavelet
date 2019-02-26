@@ -10,24 +10,24 @@ type lru struct {
 
 	size int
 
-	elements map[[MerkleRootSize]byte]*list.Element
+	elements map[[MerkleHashSize]byte]*list.Element
 	access   *list.List // *objectInfo
 }
 
 type objectInfo struct {
-	key [MerkleRootSize]byte
+	key [MerkleHashSize]byte
 	obj interface{}
 }
 
 func newLRU(size int) *lru {
 	return &lru{
 		size:     size,
-		elements: make(map[[MerkleRootSize]byte]*list.Element),
+		elements: make(map[[MerkleHashSize]byte]*list.Element),
 		access:   list.New(),
 	}
 }
 
-func (l *lru) load(key [MerkleRootSize]byte) (interface{}, bool) {
+func (l *lru) load(key [MerkleHashSize]byte) (interface{}, bool) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -40,7 +40,7 @@ func (l *lru) load(key [MerkleRootSize]byte) (interface{}, bool) {
 	return elem.Value.(*objectInfo).obj, ok
 }
 
-func (l *lru) put(key [MerkleRootSize]byte, val interface{}) {
+func (l *lru) put(key [MerkleHashSize]byte, val interface{}) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -64,7 +64,7 @@ func (l *lru) put(key [MerkleRootSize]byte, val interface{}) {
 	}
 }
 
-func (l *lru) remove(key [MerkleRootSize]byte) {
+func (l *lru) remove(key [MerkleHashSize]byte) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -75,11 +75,11 @@ func (l *lru) remove(key [MerkleRootSize]byte) {
 	}
 }
 
-func (l *lru) mostRecentlyUsed(n int) [][MerkleRootSize]byte {
+func (l *lru) mostRecentlyUsed(n int) [][MerkleHashSize]byte {
 	l.Lock()
 	defer l.Unlock()
 
-	out := make([][MerkleRootSize]byte, 0)
+	out := make([][MerkleHashSize]byte, 0)
 
 	current := l.access.Front()
 	for current != nil {
