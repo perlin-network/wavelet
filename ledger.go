@@ -10,6 +10,7 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
+	"go.uber.org/atomic"
 	"golang.org/x/crypto/blake2b"
 	"time"
 )
@@ -25,10 +26,11 @@ type Ledger struct {
 
 	resolver conflict.Resolver
 	view     graph
-	viewID   uint64
 
 	processors map[byte]TransactionProcessor
-	difficulty int
+
+	viewID     atomic.Uint64
+	difficulty atomic.Uint64
 }
 
 func NewLedger(kv store.KV, genesisPath string) *Ledger {
@@ -43,7 +45,7 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 			WithBeta(sys.SnowballBeta),
 
 		processors: make(map[byte]TransactionProcessor),
-		difficulty: sys.MinimumDifficulty,
+		difficulty: *atomic.NewUint64(sys.MinimumDifficulty),
 	}
 
 	genesis, err := performInception(ledger.accounts, genesisPath)
@@ -103,7 +105,7 @@ func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transactio
 	tx.ParentIDs = l.view.findEligibleParents()
 	tx.Timestamp = uint64(time.Duration(time.Now().UnixNano()) / time.Millisecond)
 
-	if tx.IsCritical(l.difficulty) {
+	if tx.IsCritical(l.Difficulty()) {
 		snapshot := l.collapseTransactions()
 		tx.AccountsMerkleRoot = snapshot.tree.Checksum()
 	}
@@ -214,7 +216,7 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 }
 
 func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]byte]bool) error {
-	if !tx.IsCritical(l.difficulty) {
+	if !tx.IsCritical(l.Difficulty()) {
 		return ErrTxNotCritical
 	}
 
@@ -253,6 +255,8 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 	// the view-graph, increment the current view ID, and update the current ledgers
 	// difficulty.
 	if l.resolver.Decided() {
+		old := l.view.root
+
 		rootID := l.resolver.Result()
 		root, recorded := l.view.transactions[rootID]
 
@@ -271,7 +275,7 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 		}
 
 		l.view.reset(root)
-		l.viewID++
+		viewID := l.viewID.Add(1)
 
 		err = l.adjustDifficulty(root)
 		if err != nil {
@@ -281,9 +285,10 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 		l.resolver.Reset()
 
 		log.Info().
-			Uint64("old_view_id", l.viewID-1).
-			Uint64("new_view_id", l.viewID).
-			Hex("new_root_tx_id", rootID[:]).
+			Uint64("old_view_id", viewID-1).
+			Uint64("new_view_id", viewID).
+			Hex("new_root", rootID[:]).
+			Hex("old_root", old.ID[:]).
 			Msg("Finalized consensus round, and incremented view ID.")
 	}
 
@@ -326,8 +331,8 @@ func (l *Ledger) adjustDifficulty(critical *Transaction) error {
 	//
 	// DIFFICULTY = A_0 + (LAST_DIFFICULTY - A_0) * (10 seconds / average(time it took
 	// to create critical transaction for the last 10 critical transactions))
-	l.difficulty = sys.MinimumDifficulty +
-		int(uint64(l.difficulty-sys.MinimumDifficulty)*(sys.ExpectedConsensusTimeMilliseconds/mean))
+	l.difficulty.Store(sys.MinimumDifficulty + (l.difficulty.Load()-sys.MinimumDifficulty)*
+		(sys.ExpectedConsensusTimeMilliseconds/mean))
 
 	// Save critical timestamp history to disk.
 	writer := payload.NewWriter(nil)
@@ -408,9 +413,9 @@ func (l *Ledger) HasTransactionInView(id [blake2b.Size256]byte) bool {
 }
 
 func (l *Ledger) ViewID() uint64 {
-	return l.viewID
+	return l.viewID.Load()
 }
 
-func (l *Ledger) Difficulty() int {
-	return l.difficulty
+func (l *Ledger) Difficulty() uint64 {
+	return l.difficulty.Load()
 }

@@ -55,7 +55,7 @@ func prefixLen(buf []byte) int {
 	return len(buf)*8 - 1
 }
 
-func (t *Transaction) IsCritical(difficulty int) bool {
+func (t *Transaction) IsCritical(difficulty uint64) bool {
 	var buf bytes.Buffer
 	_, _ = buf.Write(t.Sender[:])
 
@@ -65,7 +65,7 @@ func (t *Transaction) IsCritical(difficulty int) bool {
 
 	checksum := blake2b.Sum256(buf.Bytes())
 
-	return prefixLen(checksum[:]) >= difficulty
+	return prefixLen(checksum[:]) >= int(difficulty)
 }
 
 func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {

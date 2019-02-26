@@ -158,7 +158,7 @@ func BroadcastTransaction(node *noise.Node, tx *wavelet.Transaction) error {
 		}
 
 		if nop.IsCritical(ledger.Difficulty()) {
-			gossipOutTransaction(node, tx)
+			gossipOutTransaction(node, nop)
 			return nil
 		}
 	}
