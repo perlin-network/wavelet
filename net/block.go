@@ -18,18 +18,13 @@ import (
 var _ protocol.Block = (*block)(nil)
 
 const (
-	keyLedger        = "wavelet.ledger"
-	keyAuthChannel   = "wavelet.auth.ch"
-	keyGossipChannel = "wavelet.gossip.ch"
+	keyLedger      = "wavelet.ledger"
+	keyAuthChannel = "wavelet.auth.ch"
 )
 
 type block struct {
 	opcodeQueryRequest  noise.Opcode
 	opcodeQueryResponse noise.Opcode
-}
-
-func gossipChannel(node *noise.Node) chan interface{} {
-	return node.LoadOrStore(keyGossipChannel, make(chan interface{})).(chan interface{})
 }
 
 func New() *block {
@@ -55,8 +50,8 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 func (b *block) OnBegin(p *protocol.Protocol, peer *noise.Peer) error {
 	ledger := peer.Node().Get(keyLedger).(*wavelet.Ledger)
 
+	go gossipLoop(ledger, peer)
 	go b.receiveLoop(ledger, peer)
-	go b.gossipLoop(ledger, peer)
 
 	close(peer.LoadOrStore(keyAuthChannel, make(chan struct{})).(chan struct{}))
 
@@ -76,13 +71,9 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 	}
 }
 
-func (b *block) gossipLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
-	for range gossipChannel(peer.Node()) {
-		// TODO(kenta): handle message gossiping here
-	}
-}
-
 func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryRequest) {
+	seen := ledger.HasTransactionInView(req.tx.ID)
+
 	vote := ledger.ReceiveTransaction(req.tx)
 
 	res := new(QueryResponse)
@@ -108,7 +99,19 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 
 	copy(res.signature[:], signature)
 
-	_ = peer.SendMessageAsync(res)
+	err = peer.SendMessage(res)
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to send back query response.")
+	}
+
+	// Gossip out positively-voted critical transactions.
+	if res.vote && !seen && req.tx.IsCritical(ledger.Difficulty()) {
+		gossipChannel(peer.Node()) <- gossipStatus{
+			tx:     req.tx,
+			viewID: ledger.ViewID(),
+			count:  0,
+		}
+	}
 }
 
 func (b *block) OnEnd(p *protocol.Protocol, peer *noise.Peer) error {
@@ -136,6 +139,13 @@ func BroadcastTransaction(node *noise.Node, tx *wavelet.Transaction) error {
 	// Otherwise, contribute to the network by sending out nops to get
 	// this nodes transaction accepted.
 	if tx.IsCritical(ledger.Difficulty()) {
+		// Start gossiping out our critical transaction.
+		gossipChannel(node) <- gossipStatus{
+			tx:     tx,
+			viewID: ledger.ViewID(),
+			count:  0,
+		}
+
 		return nil
 	}
 
@@ -158,6 +168,13 @@ func BroadcastTransaction(node *noise.Node, tx *wavelet.Transaction) error {
 		}
 
 		if nop.IsCritical(ledger.Difficulty()) {
+			// Start gossiping out our critical transaction.
+			gossipChannel(node) <- gossipStatus{
+				tx:     nop,
+				viewID: ledger.ViewID(),
+				count:  0,
+			}
+
 			return nil
 		}
 	}

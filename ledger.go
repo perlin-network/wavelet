@@ -260,15 +260,31 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 			return errors.New("wavelet: could not find newly critical tx in view graph")
 		}
 
+		ss := l.collapseTransactions()
+		ss.snapshot = false
+
+		l.accounts = ss
+
+		err := l.CommitAccounts()
+		if err != nil {
+			return errors.Wrap(err, "wavelet: failed to collapse and commit new ledger state to db")
+		}
+
 		l.view.reset(root)
 		l.viewID++
 
-		err := l.adjustDifficulty(root)
+		err = l.adjustDifficulty(root)
 		if err != nil {
 			return errors.Wrap(err, "wavelet: failed to adjust difficulty")
 		}
 
 		l.resolver.Reset()
+
+		log.Info().
+			Uint64("old_view_id", l.viewID-1).
+			Uint64("new_round_id", l.viewID).
+			Hex("new_root_tx_id", rootID[:]).
+			Msg("Finalized consensus round, and incremented view ID.")
 	}
 
 	return nil
@@ -384,6 +400,15 @@ func (l *Ledger) applyTransactionToSnapshot(ss accounts, tx *Transaction) error 
 	}
 
 	return nil
+}
+
+func (l *Ledger) HasTransactionInView(id [blake2b.Size256]byte) bool {
+	_, exists := l.view.transactions[id]
+	return exists
+}
+
+func (l *Ledger) ViewID() uint64 {
+	return l.viewID
 }
 
 func (l *Ledger) Difficulty() int {
