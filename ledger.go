@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"encoding/binary"
 	"github.com/perlin-network/noise/identity"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/noise/signature/eddsa"
@@ -459,6 +460,10 @@ func (l *Ledger) collapseTransactions(critical *Transaction) accounts {
 		if err := l.applyTransactionToSnapshot(snapshot, popped); err != nil {
 			log.Warn().Err(err).Msg("Got an error while collapsing down transactions.")
 		}
+
+		if err := l.rewardValidators(snapshot, popped); err != nil {
+			log.Warn().Err(err).Msg("Failed to reward a validator while collapsing down transactions.")
+		}
 	}
 
 	return snapshot
@@ -473,8 +478,103 @@ func (l *Ledger) applyTransactionToSnapshot(ss accounts, tx *Transaction) error 
 
 	err := ctx.apply(l.processors)
 	if err != nil {
-		return errors.Wrap(err, "wavelet: could not apply transaction")
+		return errors.Wrap(err, "wavelet: could not apply transaction to snapshot")
 	}
+
+	return nil
+}
+
+func (l *Ledger) rewardValidators(ss accounts, tx *Transaction) error {
+	var candidates []*Transaction
+	var stakes []uint64
+	var totalStake uint64
+
+	visited := make(map[[PublicKeySize]byte]struct{})
+	q := queue.New()
+
+	for _, parentID := range tx.ParentIDs {
+		if parent, exists := l.view.lookupTransaction(parentID); exists {
+			q.PushBack(parent)
+		}
+	}
+
+	// Ignore error; should be impossible as not using HMAC mode.
+	hasher, _ := blake2b.New256(nil)
+
+	for q.Len() > 0 {
+		popped := q.PopFront().(*Transaction)
+		visited[popped.ID] = struct{}{}
+
+		// If we exceed the max eligible depth we search for candidate
+		// validators to reward from, stop traversing.
+		if popped.depth+sys.MaxEligibleParentsDepthDiff < tx.depth {
+			continue
+		}
+
+		// Filter for all ancestral transactions not from the same sender,
+		// and within the desired graph depth.
+		if popped.Sender != tx.Sender {
+			stake, _ := ss.ReadAccountStake(popped.Sender)
+
+			candidates = append(candidates, popped)
+			stakes = append(stakes, stake)
+
+			totalStake += stake
+
+			// Record entropy source.
+			_, err := hasher.Write(popped.ID[:])
+			if err != nil {
+				return errors.Wrap(err, "stake: failed to hash transaction ID for entropy src")
+			}
+		}
+
+		for _, parentID := range popped.ParentIDs {
+			if _, seen := visited[parentID]; !seen {
+				if parent, exists := l.view.lookupTransaction(parentID); exists {
+					q.PushBack(parent)
+				}
+			}
+		}
+	}
+
+	// If there are no eligible rewardee candidates, do not reward anyone.
+	if len(candidates) == 0 || totalStake == 0 {
+		return nil
+	}
+
+	entropy := hasher.Sum(nil)
+	acc, threshold := float64(0), float64(binary.LittleEndian.Uint64(entropy)%uint64(0xffff))/float64(0xffff)
+
+	var rewardee *Transaction
+
+	// Model a weighted uniform distribution by a random variable X, and select
+	// whichever validator has a weight X ≥ X' as a reward recipient.
+	for i, tx := range candidates {
+		acc += float64(stakes[i]) / float64(totalStake)
+
+		if acc >= threshold {
+			rewardee = tx
+			break
+		}
+	}
+
+	// If there is no selected transaction that deserves a reward, give the
+	// reward to the last reward candidate.
+	if rewardee == nil {
+		rewardee = candidates[len(candidates)-1]
+	}
+
+	senderBalance, _ := ss.ReadAccountBalance(tx.Sender)
+	recipientBalance, _ := ss.ReadAccountBalance(rewardee.Sender)
+
+	deducted := sys.ValidatorRewardAmount
+
+	if senderBalance < deducted {
+		return errors.Errorf("stake: sender does not have enough PERLs to pay transaction fees (requested %d PERLs)", deducted)
+	}
+
+	ss.WriteAccountBalance(tx.Sender, senderBalance-deducted)
+	ss.WriteAccountBalance(rewardee.Sender, recipientBalance+deducted)
 
 	return nil
 }

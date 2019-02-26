@@ -96,7 +96,6 @@ func (g *graph) reset(root *Transaction) {
 
 	for q.Len() > 0 {
 		popped := q.PopFront().(*Transaction)
-
 		visited[popped.ID] = struct{}{}
 
 		for _, parentID := range popped.ParentIDs {
@@ -129,6 +128,7 @@ func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
 
 	for q.Len() > 0 {
 		popped := q.PopFront().(*Transaction)
+		visited[popped.ID] = struct{}{}
 
 		if len(popped.children) > 0 {
 			for _, childrenID := range popped.children {
@@ -142,8 +142,6 @@ func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
 			// All eligible parents are within the graph depth [frontier_depth - max_depth_diff, frontier_depth].
 			eligible = append(eligible, popped.ID)
 		}
-
-		visited[popped.ID] = struct{}{}
 	}
 
 	return
