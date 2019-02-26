@@ -288,8 +288,8 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 		viewID := l.viewID.Add(1)
 
 		ss := l.collapseTransactions()
+		ss.tree.SetViewID(viewID)
 		ss.snapshot = false
-		ss.tree.ViewID = viewID
 
 		l.accounts = ss
 

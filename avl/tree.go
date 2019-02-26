@@ -25,7 +25,7 @@ type Tree struct {
 	cache   *lru
 	pending sync.Map
 
-	ViewID uint64
+	viewID uint64
 }
 
 type Snapshot struct {
@@ -209,4 +209,8 @@ func (t *Tree) loadNode(id [MerkleHashSize]byte) *node {
 	t.cache.put(id, n)
 
 	return n
+}
+
+func (t *Tree) SetViewID(viewID uint64) {
+	t.viewID = viewID
 }

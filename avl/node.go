@@ -36,9 +36,13 @@ func newLeafNode(t *Tree, key, value []byte) *node {
 	n := &node{
 		key:   key,
 		value: value,
-		kind:  NodeLeafValue,
+
+		kind: NodeLeafValue,
+
 		depth: 0,
 		size:  1,
+
+		viewID: t.viewID,
 	}
 
 	n.rehash()
@@ -275,6 +279,8 @@ func (n *node) clone() *node {
 		kind:  n.kind,
 		depth: n.depth,
 		size:  n.size,
+
+		viewID: n.viewID,
 	}
 
 	copy(clone.key, n.key)
@@ -286,10 +292,10 @@ func (n *node) clone() *node {
 func (n *node) update(t *Tree, fn func(node *node)) *node {
 	cpy := n.clone()
 	fn(cpy)
+	cpy.viewID = t.viewID
 	cpy.rehash()
 
 	if cpy.id != n.id {
-		cpy.viewID = t.ViewID
 		t.queueWrite(cpy)
 	}
 
