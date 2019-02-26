@@ -13,8 +13,11 @@ var NodeKeyPrefix = []byte("@")
 var RootKey = []byte(".root")
 
 const DefaultCacheSize = 128
+const MaxWriteBatchSize = 1024
 
 type Tree struct {
+	maxWriteBatchSize int
+
 	kv store.KV
 
 	root *node
@@ -28,7 +31,7 @@ type Snapshot struct {
 }
 
 func New(kv store.KV) *Tree {
-	t := &Tree{kv: kv, cache: newLRU(DefaultCacheSize)}
+	t := &Tree{kv: kv, cache: newLRU(DefaultCacheSize), maxWriteBatchSize: MaxWriteBatchSize}
 
 	// Load root node if it already exists.
 	if buf, err := t.kv.Get(RootKey); err == nil && len(buf) == MerkleRootSize {
@@ -42,7 +45,7 @@ func New(kv store.KV) *Tree {
 }
 
 func LoadFromSnapshot(kv store.KV, ss Snapshot) *Tree {
-	return &Tree{root: ss.root, kv: kv, cache: newLRU(DefaultCacheSize)}
+	return &Tree{root: ss.root, kv: kv, cache: newLRU(DefaultCacheSize), maxWriteBatchSize: MaxWriteBatchSize}
 }
 
 func (t *Tree) WithLRUCache(size *int) *Tree {
@@ -52,6 +55,11 @@ func (t *Tree) WithLRUCache(size *int) *Tree {
 		t.cache = newLRU(*size)
 	}
 
+	return t
+}
+
+func (t *Tree) WithMaxWriteBatchSize(maxWriteBatchSize int) *Tree {
+	t.maxWriteBatchSize = maxWriteBatchSize
 	return t
 }
 
@@ -136,7 +144,7 @@ func (t *Tree) Commit() error {
 		batch := t.kv.NewWriteBatch()
 
 		t.pending.Range(func(k, v interface{}) bool {
-			if batch.Count() > 1000 {
+			if batch.Count() > t.maxWriteBatchSize {
 				return false
 			}
 
