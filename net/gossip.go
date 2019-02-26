@@ -16,12 +16,18 @@ type gossipStatus struct {
 	count  int
 }
 
-func gossipChannel(node *noise.Node) chan gossipStatus {
-	return node.LoadOrStore(keyGossipChannel, make(chan gossipStatus, 1024)).(chan gossipStatus)
+func gossipOutTransaction(node *noise.Node, tx *wavelet.Transaction) {
+	ch := node.LoadOrStore(keyGossipChannel, make(chan gossipStatus, 1024)).(chan gossipStatus)
+
+	ch <- gossipStatus{
+		tx:     tx,
+		viewID: Ledger(node).ViewID(),
+		count:  0,
+	}
 }
 
 func gossipLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
-	ch := gossipChannel(peer.Node())
+	ch := peer.Node().LoadOrStore(keyGossipChannel, make(chan gossipStatus, 1024)).(chan gossipStatus)
 
 	for status := range ch {
 		err := QueryTransaction(peer.Node(), status.tx)

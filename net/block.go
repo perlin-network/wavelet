@@ -106,11 +106,7 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 
 	// Gossip out positively-voted critical transactions.
 	if res.vote && !seen && req.tx.IsCritical(ledger.Difficulty()) {
-		gossipChannel(peer.Node()) <- gossipStatus{
-			tx:     req.tx,
-			viewID: ledger.ViewID(),
-			count:  0,
-		}
+		gossipOutTransaction(peer.Node(), req.tx)
 	}
 }
 
@@ -139,13 +135,7 @@ func BroadcastTransaction(node *noise.Node, tx *wavelet.Transaction) error {
 	// Otherwise, contribute to the network by sending out nops to get
 	// this nodes transaction accepted.
 	if tx.IsCritical(ledger.Difficulty()) {
-		// Start gossiping out our critical transaction.
-		gossipChannel(node) <- gossipStatus{
-			tx:     tx,
-			viewID: ledger.ViewID(),
-			count:  0,
-		}
-
+		gossipOutTransaction(node, tx)
 		return nil
 	}
 
@@ -168,13 +158,7 @@ func BroadcastTransaction(node *noise.Node, tx *wavelet.Transaction) error {
 		}
 
 		if nop.IsCritical(ledger.Difficulty()) {
-			// Start gossiping out our critical transaction.
-			gossipChannel(node) <- gossipStatus{
-				tx:     nop,
-				viewID: ledger.ViewID(),
-				count:  0,
-			}
-
+			gossipOutTransaction(node, tx)
 			return nil
 		}
 	}
@@ -237,7 +221,7 @@ func QueryTransaction(node *noise.Node, tx *wavelet.Transaction) error {
 			select {
 			case msg := <-peer.Receive(opcodeQueryResponse):
 				res = msg.(QueryResponse)
-			case <-time.After(3 * time.Second):
+			case <-time.After(sys.QueryTimeout):
 				recordResponse(peerID.PublicKey(), false)
 				return
 			}

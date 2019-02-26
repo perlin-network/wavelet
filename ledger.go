@@ -282,7 +282,7 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 
 		log.Info().
 			Uint64("old_view_id", l.viewID-1).
-			Uint64("new_round_id", l.viewID).
+			Uint64("new_view_id", l.viewID).
 			Hex("new_root_tx_id", rootID[:]).
 			Msg("Finalized consensus round, and incremented view ID.")
 	}

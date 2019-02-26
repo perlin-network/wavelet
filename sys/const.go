@@ -1,5 +1,7 @@
 package sys
 
+import "time"
+
 // Transaction tags.
 const (
 	TagNop byte = iota
@@ -15,7 +17,7 @@ var (
 	SnowballBeta  = 10
 
 	// Timeout for querying a transaction to K peers.
-	QueryTimeout = 10000
+	QueryTimeout = 10 * time.Second
 
 	// Max graph depth difference to search for eligible transaction
 	// parents from for our node.
