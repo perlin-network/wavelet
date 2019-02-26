@@ -79,10 +79,8 @@ func (g *graph) reset(root *Transaction) {
 	g.Lock()
 	defer g.Unlock()
 
-	g.transactions[root.ID] = root
+	g.transactions = map[[blake2b.Size256]byte]*Transaction{root.ID: root}
 	g.root = root
-
-	// TODO(kenta): optionally prune transactions here
 }
 
 func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {

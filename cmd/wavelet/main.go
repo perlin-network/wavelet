@@ -110,7 +110,6 @@ func main() {
 		log.Info().Msgf("Bootstrapped with peers: %+v", peers)
 	}
 
-	ledger := net.Ledger(node)
 	reader := bufio.NewReader(os.Stdin)
 
 	var nodeID [wavelet.PublicKeySize]byte
@@ -123,6 +122,7 @@ func main() {
 			log.Fatal().Err(err).Msg("Failed to read input from user.")
 		}
 
+		ledger := net.Ledger(node)
 		cmd := strings.Split(string(bytes), " ")
 
 		switch cmd[0] {

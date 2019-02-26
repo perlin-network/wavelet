@@ -72,17 +72,23 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 }
 
 func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryRequest) {
+	res := new(QueryResponse)
+
 	seen := ledger.HasTransactionInView(req.tx.ID)
 
-	vote := ledger.ReceiveTransaction(req.tx)
+	if !seen {
+		vote := ledger.ReceiveTransaction(req.tx)
 
-	res := &QueryResponse{vote: errors.Cause(vote) == wavelet.VoteAccepted}
-	copy(res.id[:], peer.Node().Keys.PublicKey())
+		res.vote = errors.Cause(vote) == wavelet.VoteAccepted
+		copy(res.id[:], peer.Node().Keys.PublicKey())
 
-	if res.vote {
-		log.Debug().Msgf("Gave a positive vote to transaction %x.", req.tx.ID)
+		if res.vote {
+			log.Debug().Msgf("Gave a positive vote to transaction %x.", req.tx.ID)
+		} else {
+			log.Debug().Err(vote).Msgf("Gave a negative vote to transaction %x.", req.tx.ID)
+		}
 	} else {
-		log.Debug().Err(vote).Msgf("Gave a negative vote to transaction %x.", req.tx.ID)
+		res.vote = true
 	}
 
 	signature, err := eddsa.Sign(peer.Node().Keys.PrivateKey(), res.Write())
