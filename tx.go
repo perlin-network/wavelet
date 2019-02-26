@@ -16,8 +16,6 @@ const (
 	PrivateKeySize    = 64
 
 	SignatureSize = 64
-
-	MaxTransactionPayloadSize = 1024 * 100
 )
 
 var _ noise.Message = (*Transaction)(nil)
@@ -121,10 +119,6 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 	t.Payload, err = reader.ReadBytes()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not read transaction payload")
-	}
-
-	if len(t.Payload) > MaxTransactionPayloadSize {
-		return nil, errors.Errorf("transaction payload is of size %d, but can at most only handle %d bytes", len(t.Payload), MaxTransactionPayloadSize)
 	}
 
 	// If there exists an account merkle root, read it.

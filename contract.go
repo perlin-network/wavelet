@@ -26,19 +26,20 @@ type ContractExecutor struct {
 
 	gasTable map[string]int64
 
-	ctx *TransactionContext
+	contractID [TransactionIDSize]byte
+	ctx        *TransactionContext
 
-	header, result []byte
+	payload, result []byte
 
 	vm *exec.VirtualMachine
 }
 
-func NewContractExecutor(ctx *TransactionContext, gasLimit uint64) (*ContractExecutor, error) {
-	executor := &ContractExecutor{ctx: ctx}
+func NewContractExecutor(contractID [TransactionIDSize]byte, ctx *TransactionContext, gasLimit uint64) (*ContractExecutor, error) {
+	executor := &ContractExecutor{contractID: contractID, ctx: ctx}
 
-	code, available := ctx.ReadAccountContractCode(ctx.Transaction().ID)
+	code, available := ctx.ReadAccountContractCode(contractID)
 	if !available {
-		return nil, errors.Wrapf(ErrNotSmartContract, "%x", ctx.Transaction().ID)
+		return nil, errors.Wrapf(ErrNotSmartContract, "%x", contractID)
 	}
 
 	config := exec.VMConfig{
@@ -69,7 +70,7 @@ func (c *ContractExecutor) WithGasTable(gasTable map[string]int64) *ContractExec
 }
 
 func (c *ContractExecutor) loadMemorySnapshot() ([]byte, error) {
-	numPages, exists := c.ctx.ReadAccountContractNumPages(c.ctx.Transaction().ID)
+	numPages, exists := c.ctx.ReadAccountContractNumPages(c.contractID)
 	if !exists {
 		return nil, nil
 	}
@@ -77,7 +78,7 @@ func (c *ContractExecutor) loadMemorySnapshot() ([]byte, error) {
 	mem := make([]byte, PageSize*numPages)
 
 	for pageIdx := uint64(0); pageIdx < numPages; pageIdx++ {
-		page, _ := c.ctx.ReadAccountContractPage(c.ctx.Transaction().ID, pageIdx)
+		page, _ := c.ctx.ReadAccountContractPage(c.contractID, pageIdx)
 
 		// Zero-filled by default.
 		if len(page) > 0 {
@@ -95,15 +96,20 @@ func (c *ContractExecutor) loadMemorySnapshot() ([]byte, error) {
 func (c *ContractExecutor) saveMemorySnapshot(mem []byte) {
 	numPages := uint64(len(mem) / PageSize)
 
-	c.ctx.WriteAccountContractNumPages(c.ctx.Transaction().ID, numPages)
+	c.ctx.WriteAccountContractNumPages(c.contractID, numPages)
 
 	for pageIdx := uint64(0); pageIdx < numPages; pageIdx++ {
-		old, _ := c.ctx.ReadAccountContractPage(c.ctx.Transaction().ID, pageIdx)
+		old, _ := c.ctx.ReadAccountContractPage(c.contractID, pageIdx)
 
 		identical := true
 
 		for idx := uint64(0); idx < PageSize; idx++ {
-			if len(old) == 0 && (mem[pageIdx*PageSize+idx] != 0 || mem[pageIdx*PageSize+idx] != old[idx]) {
+			if len(old) == 0 && mem[pageIdx*PageSize+idx] != 0 {
+				identical = false
+				break
+			}
+
+			if len(old) != 0 && mem[pageIdx*PageSize+idx] != old[idx] {
 				identical = false
 				break
 			}
@@ -121,20 +127,23 @@ func (c *ContractExecutor) saveMemorySnapshot(mem []byte) {
 
 			// If the page is empty, save an empty byte array. Else, save the pages content.
 			if allZero {
-				c.ctx.WriteAccountContractPage(c.ctx.Transaction().ID, pageIdx, []byte{})
+				c.ctx.WriteAccountContractPage(c.contractID, pageIdx, []byte{})
 			} else {
-				c.ctx.WriteAccountContractPage(c.ctx.Transaction().ID, pageIdx, mem[pageIdx*PageSize:(pageIdx+1)*PageSize])
+				c.ctx.WriteAccountContractPage(c.contractID, pageIdx, mem[pageIdx*PageSize:(pageIdx+1)*PageSize])
 			}
 		}
 	}
 }
 
 func (c *ContractExecutor) Run(amount uint64, entry string, params ...byte) error {
-	c.header = payload.NewWriter(nil).
-		WriteBytes(c.ctx.Transaction().ID[:]).
-		WriteBytes(c.ctx.Transaction().Sender[:]).
+	id := c.ctx.Transaction().ID
+	sender := c.ctx.Transaction().Sender
+
+	c.payload = append(payload.NewWriter(nil).
+		WriteBytes(id[:]).
+		WriteBytes(sender[:]).
 		WriteUint64(amount).
-		Bytes()
+		Bytes(), params...)
 
 	entry = "_contract_" + entry
 
@@ -153,7 +162,7 @@ func (c *ContractExecutor) Run(amount uint64, entry string, params ...byte) erro
 		c.vm.Memory = mem
 	}
 
-	// Execute virtual maachine.
+	// Execute virtual machine.
 	c.vm.Ignite(entryID)
 
 	for !c.vm.Exited {
@@ -205,26 +214,26 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				payloadPtr := int(uint32(frame.Locals[1]))
 				payloadLen := int(uint32(frame.Locals[2]))
 
-				payload := vm.Memory[payloadPtr : payloadPtr+payloadLen]
+				inputs := vm.Memory[payloadPtr : payloadPtr+payloadLen]
 
 				c.ctx.transactions.PushBack(&Transaction{
-					Sender:  c.ctx.Transaction().ID,
+					Sender:  c.contractID,
 					Tag:     tag,
-					Payload: payload,
+					Payload: inputs,
 				})
 
 				return 0
 			}
 		case "_payload_len":
 			return func(vm *exec.VirtualMachine) int64 {
-				return int64(len(c.header) + len(c.ctx.Transaction().Payload))
+				return int64(len(c.payload))
 			}
 		case "_payload":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
 
 				outPtr := int(uint32(frame.Locals[0]))
-				copy(vm.Memory[outPtr:], append(c.header, c.ctx.Transaction().Payload...))
+				copy(vm.Memory[outPtr:], c.payload)
 				return 0
 			}
 		case "_provide_result":
@@ -244,8 +253,10 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 					dataPtr := int(uint32(frame.Locals[0]))
 					dataLen := int(uint32(frame.Locals[1]))
 
+					contractID := c.contractID
+
 					log.Info().
-						Hex("contract_id", c.ctx.Transaction().ID[:]).
+						Hex("contract_id", contractID[:]).
 						Msgf(string(vm.Memory[dataPtr : dataPtr+dataLen]))
 				}
 				return 0

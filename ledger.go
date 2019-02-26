@@ -175,7 +175,7 @@ func (l *Ledger) assertValidParentDepths(tx *Transaction) bool {
 
 func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 	visited := make(map[[blake2b.Size256]byte]struct{})
-	queue := queue.New()
+	q := queue.New()
 
 	for _, parentID := range tx.ParentIDs {
 		parent, stored := l.view.lookupTransaction(parentID)
@@ -184,13 +184,13 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 			return false
 		}
 
-		queue.PushBack(parent)
+		q.PushBack(parent)
 	}
 
 	var timestamps []uint64
 
-	for queue.Len() > 0 {
-		popped := queue.PopFront().(*Transaction)
+	for q.Len() > 0 {
+		popped := q.PopFront().(*Transaction)
 
 		timestamps = append(timestamps, popped.Timestamp)
 
@@ -206,7 +206,7 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 					return false
 				}
 
-				queue.PushBack(parent)
+				q.PushBack(parent)
 			}
 		}
 
@@ -238,7 +238,7 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 	}
 
 	if len(responses) == 0 {
-		return errors.New("wavelet: got 0 responses")
+		return errors.New("wavelet: got no query responses for critical transaction")
 	}
 
 	// Weigh votes based on each voters stake.
@@ -262,6 +262,10 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 	}
 
 	var votes []float64
+
+	if maxStake == 0 {
+		return errors.New("wavelet: all nodes rejected critical transaction; couldn't compute max stake")
+	}
 
 	for _, stake := range stakes {
 		votes = append(votes, float64(stake)/float64(maxStake)/float64(len(responses)))
@@ -375,19 +379,19 @@ func (l *Ledger) adjustDifficulty(critical *Transaction) error {
 		expectedTimeFactor = 2.0
 	}
 
-	new := int(l.Difficulty()) - int(sys.MaxDifficultyDelta/2) + int(float64(sys.MaxDifficultyDelta)/2.0*expectedTimeFactor)
-	if new < sys.MinDifficulty {
-		new = sys.MinDifficulty
+	adjusted := int(l.Difficulty()) - int(sys.MaxDifficultyDelta/2) + int(float64(sys.MaxDifficultyDelta)/2.0*expectedTimeFactor)
+	if adjusted < sys.MinDifficulty {
+		adjusted = sys.MinDifficulty
 	}
-	if new > sys.MaxDifficulty {
-		new = sys.MaxDifficulty
+	if adjusted > sys.MaxDifficulty {
+		adjusted = sys.MaxDifficulty
 	}
 
-	old := l.difficulty.Swap(uint64(new))
+	original := l.difficulty.Swap(uint64(adjusted))
 
 	log.Info().
-		Uint64("old_difficulty", old).
-		Int("new_difficulty", new).
+		Uint64("old_difficulty", original).
+		Int("new_difficulty", adjusted).
 		Msg("Ledger difficulty has been adjusted.")
 
 	// Save critical timestamp history to disk.
@@ -418,17 +422,17 @@ func (l *Ledger) collapseTransactions() accounts {
 	snapshot := l.snapshotAccounts()
 
 	visited := make(map[[blake2b.Size256]byte]struct{})
-	queue := queue.New()
+	q := queue.New()
 
-	queue.PushBack(l.view.Root())
+	q.PushBack(l.view.Root())
 
-	for queue.Len() > 0 {
-		popped := queue.PopFront().(*Transaction)
+	for q.Len() > 0 {
+		popped := q.PopFront().(*Transaction)
 
 		for _, childrenID := range popped.children {
 			if _, seen := visited[childrenID]; !seen {
 				if child, exists := l.view.lookupTransaction(childrenID); exists {
-					queue.PushBack(child)
+					q.PushBack(child)
 				}
 			}
 		}

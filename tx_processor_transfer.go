@@ -16,10 +16,16 @@ func (TransferProcessor) OnApplyTransaction(ctx *TransactionContext) error {
 
 	var recipient [PublicKeySize]byte
 
-	_, err := reader.Read(recipient[:])
+	recipientBuf, err := reader.ReadBytes()
 	if err != nil {
-		return errors.Wrap(err, "transfer: failed to decode recipient address")
+		return errors.Wrap(err, "transfer: failed to decode recipient")
 	}
+
+	if len(recipientBuf) != PublicKeySize {
+		return errors.Errorf("transfer: provided recipient is not %d bytes, but %d bytes instead", PublicKeySize, len(recipientBuf))
+	}
+
+	copy(recipient[:], recipientBuf)
 
 	amount, err := reader.ReadUint64()
 	if err != nil {
@@ -37,11 +43,11 @@ func (TransferProcessor) OnApplyTransaction(ctx *TransactionContext) error {
 	recipientBalance, _ := ctx.ReadAccountBalance(recipient)
 	ctx.WriteAccountBalance(recipient, recipientBalance+amount)
 
-	if _, isContract := ctx.ReadAccountContractCode(tx.ID); !isContract {
+	if _, isContract := ctx.ReadAccountContractCode(recipient); !isContract {
 		return nil
 	}
 
-	executor, err := NewContractExecutor(ctx, 50000000)
+	executor, err := NewContractExecutor(recipient, ctx, 50000000)
 	if err != nil {
 		return errors.Wrap(err, "transfer: failed to load and init smart contract vm")
 	}
@@ -50,7 +56,7 @@ func (TransferProcessor) OnApplyTransaction(ctx *TransactionContext) error {
 	if reader.Len() > 0 {
 		funcName, err := reader.ReadString()
 		if err != nil {
-			return err
+			return errors.Wrap(err, "transfer: failed to read smart contract func name")
 		}
 
 		funcParams, err := reader.ReadBytes()

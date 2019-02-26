@@ -55,7 +55,9 @@ func (c *TransactionContext) ReadAccountBalance(id [PublicKeySize]byte) (uint64,
 	}
 
 	balance, exists := c.accounts.ReadAccountBalance(id)
-	c.balances[id] = balance
+	if exists {
+		c.WriteAccountBalance(id, balance)
+	}
 	return balance, exists
 }
 
@@ -65,7 +67,9 @@ func (c *TransactionContext) ReadAccountStake(id [PublicKeySize]byte) (uint64, b
 	}
 
 	stake, exists := c.accounts.ReadAccountStake(id)
-	c.stakes[id] = stake
+	if exists {
+		c.WriteAccountStake(id, stake)
+	}
 	return stake, exists
 }
 
@@ -75,7 +79,9 @@ func (c *TransactionContext) ReadAccountContractCode(id [TransactionIDSize]byte)
 	}
 
 	code, exists := c.accounts.ReadAccountContractCode(id)
-	c.contracts[id] = code
+	if exists {
+		c.WriteAccountContractCode(id, code)
+	}
 	return code, exists
 }
 
@@ -85,7 +91,9 @@ func (c *TransactionContext) ReadAccountContractNumPages(id [PublicKeySize]byte)
 	}
 
 	numPages, exists := c.accounts.ReadAccountContractNumPages(id)
-	c.contractNumPages[id] = numPages
+	if exists {
+		c.WriteAccountContractNumPages(id, numPages)
+	}
 	return numPages, exists
 }
 
@@ -98,13 +106,9 @@ func (c *TransactionContext) ReadAccountContractPage(id [PublicKeySize]byte, idx
 
 	page, exists := c.accounts.ReadAccountContractPage(id, idx)
 
-	pages, exist := c.contractPages[id]
-	if !exist {
-		pages = make(map[uint64][]byte)
-		c.contractPages[id] = pages
+	if exists {
+		c.WriteAccountContractPage(id, idx, page)
 	}
-
-	pages[idx] = page
 
 	return page, exists
 }

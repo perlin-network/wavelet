@@ -64,6 +64,9 @@ func main() {
 	params.Host = *hostFlag
 	params.Port = uint16(*portFlag)
 
+	// TODO(kenta): choose a feasible max-message size
+	params.MaxMessageSize = 4 * 1024 * 1024
+
 	node, err := noise.NewNode(params)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to start listening for peers.")
@@ -179,33 +182,40 @@ func main() {
 				continue
 			}
 
-			payload := payload.NewWriter(recipient)
-			payload.WriteUint64(uint64(amount))
+			params := payload.NewWriter(nil)
+
+			params.WriteBytes(recipient)
+			params.WriteUint64(uint64(amount))
 
 			if len(cmd) >= 5 {
-				payload.WriteString(cmd[3])
+				params.WriteString(cmd[3])
+
+				inputs := payload.NewWriter(nil)
 
 				for i := 4; i < len(cmd); i++ {
 					arg := cmd[i]
 
 					switch arg[0] {
 					case 'S':
-						payload.WriteString(arg[1:])
+						inputs.WriteString(arg[1:])
 					case 'B':
-						payload.WriteBytes([]byte(arg[1:]))
+						inputs.WriteBytes([]byte(arg[1:]))
 					case '1', '2', '4', '8':
 						var val uint64
-						fmt.Sscanf(arg[1:], "%d", &val)
+						_, err = fmt.Sscanf(arg[1:], "%d", &val)
+						if err != nil {
+							log.Error().Err(err).Msgf("Got an error parsing integer: %+v", arg[1:])
+						}
 
 						switch arg[0] {
 						case '1':
-							payload.WriteByte(byte(val))
+							inputs.WriteByte(byte(val))
 						case '2':
-							payload.WriteUint16(uint16(val))
+							inputs.WriteUint16(uint16(val))
 						case '4':
-							payload.WriteUint32(uint32(val))
+							inputs.WriteUint32(uint32(val))
 						case '8':
-							payload.WriteUint64(uint64(val))
+							inputs.WriteUint64(uint64(val))
 						}
 					case 'H':
 						b, err := hex.DecodeString(arg[1:])
@@ -214,15 +224,17 @@ func main() {
 							continue
 						}
 
-						payload.WriteBytes(b)
+						inputs.WriteBytes(b)
 					default:
 						log.Error().Msgf("Invalid argument specified: %s", arg)
 						continue
 					}
 				}
+
+				params.WriteBytes(inputs.Bytes())
 			}
 
-			tx, err := ledger.NewTransaction(node.Keys, sys.TagTransfer, payload.Bytes())
+			tx, err := ledger.NewTransaction(node.Keys, sys.TagTransfer, params.Bytes())
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to create a transfer transaction.")
 				continue
@@ -235,6 +247,79 @@ func main() {
 			}
 
 			log.Info().Msgf("Success! Your payment transaction ID: %x", tx.ID)
+		case "ps":
+			if len(cmd) < 2 {
+				continue
+			}
+
+			amount, err := strconv.Atoi(cmd[1])
+			if err != nil {
+				log.Fatal().Err(err).Msg("Failed to convert staking amount to a uint64.")
+			}
+
+			tx, err := ledger.NewTransaction(node.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to create a stake placement transaction.")
+				continue
+			}
+
+			err = net.BroadcastTransaction(node, tx)
+			if err != nil {
+				log.Error().Err(err).Msg("An error occurred while broadcasting a stake placement transaction.")
+				continue
+			}
+
+			log.Info().Msgf("Success! Your stake placement transaction ID: %x", tx.ID)
+		case "ws":
+			if len(cmd) < 2 {
+				continue
+			}
+
+			amount, err := strconv.Atoi(cmd[1])
+			if err != nil {
+				log.Fatal().Err(err).Msg("Failed to convert withdraw amount to an uint64.")
+			}
+
+			tx, err := ledger.NewTransaction(node.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to create a stake withdrawal transaction.")
+				continue
+			}
+
+			err = net.BroadcastTransaction(node, tx)
+			if err != nil {
+				log.Error().Err(err).Msg("An error occurred while broadcasting a stake withdrawal transaction.")
+				continue
+			}
+
+			log.Info().Msgf("Success! Your stake withdrawal transaction ID: %x", tx.ID)
+		case "c":
+			if len(cmd) < 2 {
+				continue
+			}
+
+			code, err := ioutil.ReadFile(cmd[1])
+			if err != nil {
+				log.Error().
+					Err(err).
+					Str("path", cmd[1]).
+					Msg("Failed to find/load the smart contract code from the given path.")
+				continue
+			}
+
+			tx, err := ledger.NewTransaction(node.Keys, sys.TagContract, code)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to create a smart contract creation transaction.")
+				continue
+			}
+
+			err = net.BroadcastTransaction(node, tx)
+			if err != nil {
+				log.Error().Err(err).Msg("An error occurred while broadcasting a smart contract creation transaction.")
+				continue
+			}
+
+			log.Info().Msgf("Success! Your smart contract ID: %x", tx.ID)
 		}
 	}
 }

@@ -10,7 +10,9 @@ func BenchmarkInmem(b *testing.B) {
 	b.StopTimer()
 
 	db := NewInmem()
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+	}()
 
 	b.StartTimer()
 	defer b.StopTimer()
@@ -32,4 +34,21 @@ func BenchmarkInmem(b *testing.B) {
 
 		assert.EqualValues(b, randomValue[:], value)
 	}
+}
+
+func TestExistence(t *testing.T) {
+	db := NewInmem()
+	defer func() {
+		_ = db.Close()
+	}()
+
+	_, err := db.Get([]byte("not_exist"))
+	assert.Error(t, err)
+
+	err = db.Put([]byte("exist"), []byte{})
+	assert.NoError(t, err)
+
+	val, err := db.Get([]byte("exist"))
+	assert.NoError(t, err)
+	assert.Equal(t, []byte{}, val)
 }
