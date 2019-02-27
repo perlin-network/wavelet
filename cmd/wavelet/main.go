@@ -21,6 +21,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const DefaultC1, DefaultC2 = 16, 16
@@ -68,6 +69,7 @@ func main() {
 
 	// TODO(kenta): choose a feasible max-message size
 	params.MaxMessageSize = 4 * 1024 * 1024
+	params.SendMessageTimeout = 1 * time.Second
 
 	node, err := noise.NewNode(params)
 	if err != nil {
@@ -240,19 +242,22 @@ func main() {
 				params.WriteBytes(inputs.Bytes())
 			}
 
-			tx, err := ledger.NewTransaction(node.Keys, sys.TagTransfer, params.Bytes())
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to create a transfer transaction.")
-				continue
-			}
+			go func() {
+				tx, err := ledger.NewTransaction(node.Keys, sys.TagTransfer, params.Bytes())
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to create a transfer transaction.")
+					return
+				}
 
-			err = net.BroadcastTransaction(node, tx)
-			if err != nil {
-				log.Error().Err(err).Msg("An error occurred while broadcasting a transfer transaction.")
-				continue
-			}
+				err = net.BroadcastTransaction(node, tx)
+				if err != nil {
+					log.Error().Err(err).Msg("An error occurred while broadcasting a transfer transaction.")
+					return
+				}
 
-			log.Info().Msgf("Success! Your payment transaction ID: %x", tx.ID)
+				log.Info().Msgf("Success! Your payment transaction ID: %x", tx.ID)
+			}()
+
 		case "ps":
 			if len(cmd) < 2 {
 				continue

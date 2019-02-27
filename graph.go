@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"fmt"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/phf/go-queue/queue"
@@ -131,6 +132,7 @@ func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
 		visited[popped.ID] = struct{}{}
 
 		if len(popped.children) > 0 {
+			fmt.Println(len(popped.children), g.height)
 			for _, childrenID := range popped.children {
 				if _, seen := visited[childrenID]; !seen {
 					if child, exists := g.transactions[childrenID]; exists {

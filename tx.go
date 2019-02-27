@@ -91,7 +91,7 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.Wrap(err, "failed to read num parents")
 	}
 
-	for i := 0; i < int(numParents); i++ {
+	for i := byte(0); i < numParents; i++ {
 		var parentID [PublicKeySize]byte
 
 		n, err = reader.Read(parentID[:])
