@@ -24,9 +24,8 @@ var (
 	MaxEligibleParentsDepthDiff uint64 = 5
 
 	// Minimum difficulty to define a critical transaction.
-	MinDifficulty = 5
-	// Maximum difficulty to define a critical transaction.
-	MaxDifficulty = 8
+	MinDifficulty = 7
+
 	// Maximum difficulty delta to define a critical transaction.
 	MaxDifficultyDelta = 4
 
@@ -35,7 +34,7 @@ var (
 
 	ValidatorRewardAmount uint64 = 2
 
-	ExpectedConsensusTimeMilliseconds  uint64 = 4 * 1000
+	ExpectedConsensusTimeMilliseconds  uint64 = 1500
 	CriticalTimestampAverageWindowSize        = 3
 
 	MinimumStake uint64 = 100

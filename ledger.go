@@ -402,9 +402,6 @@ func (l *Ledger) adjustDifficulty(critical *Transaction) error {
 	if adjusted < sys.MinDifficulty {
 		adjusted = sys.MinDifficulty
 	}
-	if adjusted > sys.MaxDifficulty {
-		adjusted = sys.MaxDifficulty
-	}
 
 	original := l.difficulty.Swap(uint64(adjusted))
 
