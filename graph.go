@@ -91,19 +91,20 @@ func (g *graph) reset(root *Transaction) {
 		if parent, exists := g.transactions[parentID]; exists {
 			q.PushBack(parent)
 		}
+		visited[parentID] = struct{}{}
 	}
 
 	count := 0
 
 	for q.Len() > 0 {
 		popped := q.PopFront().(*Transaction)
-		visited[popped.ID] = struct{}{}
 
 		for _, parentID := range popped.ParentIDs {
 			if _, seen := visited[parentID]; !seen {
 				if parent, exists := g.transactions[parentID]; exists {
 					q.PushBack(parent)
 				}
+				visited[parentID] = struct{}{}
 			}
 		}
 
