@@ -8,7 +8,7 @@ import (
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/net"
+	"github.com/perlin-network/wavelet/node"
 	"github.com/pkg/errors"
 	"net/http"
 	"strconv"
@@ -22,8 +22,8 @@ type hub struct {
 	registry *sessionRegistry
 }
 
-func StartHTTP(node *noise.Node, port int) {
-	h := &hub{node: node, ledger: net.Ledger(node), registry: newSessionRegistry()}
+func StartHTTP(n *noise.Node, port int) {
+	h := &hub{node: n, ledger: node.Ledger(n), registry: newSessionRegistry()}
 
 	r := chi.NewRouter()
 
@@ -85,7 +85,7 @@ func (h *hub) sendTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := net.BroadcastTransaction(h.node, tx); err != nil {
+	if err := node.BroadcastTransaction(h.node, tx); err != nil {
 		render.Render(w, r, ErrInternal(errors.Wrap(err, "failed to broadcast transaction")))
 		return
 	}

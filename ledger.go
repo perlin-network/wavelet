@@ -138,35 +138,40 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	//if !l.assertValidTimestamp(tx) {
-	//	return errors.Wrap(VoteRejected, "wavelet: either tx timestamp is out of bounds, or parents not available")
-	//}
+	if tx.ID == l.view.Root().ID {
+		return VoteAccepted
+	}
 
-	err := l.view.addTransaction(tx)
+	var zero [blake2b.Size256]byte
 
-	// Reject transaction if the parents are not available.
-	switch errors.Cause(err) {
-	case ErrParentsNotAvailable:
-		return errors.Wrap(VoteRejected, "wavelet: parents are not available")
-	case ErrTxAlreadyExists:
+	critical := tx.IsCritical(l.Difficulty())
+	preferred := l.resolver.Preferred()
+
+	// If our node already prefers a critical transaction, reject the
+	// incoming transaction.
+	if critical && preferred != zero && tx.ID != preferred {
+		return errors.Wrap(VoteRejected, "wavelet: prefer other critical transaction")
+	}
+
+	if !l.assertValidTimestamp(tx) {
+		return errors.Wrap(VoteRejected, "wavelet: either tx timestamp is out of bounds, or parents not available")
 	}
 
 	if !l.assertValidParentDepths(tx) {
-		return errors.Wrap(VoteRejected, "wavelet: parent depths are out of bounds")
+		return errors.Wrap(VoteRejected, "wavelet: either parent depths are out of bounds, or parents not available")
 	}
 
-	if tx.IsCritical(l.Difficulty()) {
-		var zero [blake2b.Size256]byte
+	// Reject transaction if the parents are not available.
+	switch errors.Cause(l.view.addTransaction(tx)) {
+	case ErrParentsNotAvailable:
+		return errors.Wrap(VoteRejected, "wavelet: parents for transaction are not in our view-graph")
+	case ErrTxAlreadyExists:
+	}
 
-		if preferredID := l.resolver.Preferred(); preferredID == zero {
-			// If our node does not prefer any critical transaction yet, set a critical
-			// transaction to initially prefer.
-			l.resolver.Prefer(tx.ID)
-		} else if preferredID != tx.ID {
-			// If we received a critical transaction that is not what we prefer, reject
-			// the transaction.
-			return errors.Wrap(VoteRejected, "wavelet: prefer other critical transaction")
-		}
+	// If our node does not prefer any critical transaction yet, set a critical
+	// transaction to initially prefer.
+	if critical && preferred == zero {
+		l.resolver.Prefer(tx.ID)
 	}
 
 	return VoteAccepted
@@ -596,6 +601,11 @@ func (l *Ledger) rewardValidators(ss accounts, tx *Transaction) error {
 	ss.WriteAccountBalance(rewardee.Sender, recipientBalance+deducted)
 
 	return nil
+}
+
+func (l *Ledger) FindTransaction(id [blake2b.Size256]byte) *Transaction {
+	tx, _ := l.view.lookupTransaction(id)
+	return tx
 }
 
 func (l *Ledger) HasTransactionInView(id [blake2b.Size256]byte) bool {

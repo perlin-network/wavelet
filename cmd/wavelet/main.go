@@ -15,7 +15,7 @@ import (
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/net"
+	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/sys"
 	"io/ioutil"
 	"os"
@@ -71,7 +71,7 @@ func main() {
 	params.MaxMessageSize = 4 * 1024 * 1024
 	params.SendMessageTimeout = 1 * time.Second
 
-	node, err := noise.NewNode(params)
+	n, err := noise.NewNode(params)
 	if err != nil {
 		log.Fatal().Err(err).Msg("Failed to start listening for peers.")
 	}
@@ -80,10 +80,10 @@ func main() {
 		Register(ecdh.New()).
 		Register(aead.New()).
 		Register(skademlia.New().WithC1(DefaultC1).WithC2(DefaultC2)).
-		Register(net.New()).
-		Enforce(node)
+		Register(node.New()).
+		Enforce(n)
 
-	node.OnPeerInit(func(node *noise.Node, peer *noise.Peer) error {
+	n.OnPeerInit(func(node *noise.Node, peer *noise.Peer) error {
 		peer.OnConnError(func(node *noise.Node, peer *noise.Peer, err error) error {
 			log.Info().Msgf("Got an error: %v", err)
 
@@ -99,32 +99,32 @@ func main() {
 		return nil
 	})
 
-	go node.Listen()
+	go n.Listen()
 
-	log.Info().Uint16("port", node.ExternalPort()).Msg("Listening for peers.")
+	log.Info().Uint16("port", n.ExternalPort()).Msg("Listening for peers.")
 
 	if len(flag.Args()) > 0 {
 		for _, address := range flag.Args() {
-			peer, err := node.Dial(address)
+			peer, err := n.Dial(address)
 			if err != nil {
 				log.Fatal().Err(err).Msg("Failed to dial specified peer.")
 			}
 
-			net.WaitUntilAuthenticated(peer)
+			node.WaitUntilAuthenticated(peer)
 		}
 
-		peers := skademlia.FindNode(node, protocol.NodeID(node).(skademlia.ID), skademlia.BucketSize(), 8)
+		peers := skademlia.FindNode(n, protocol.NodeID(n).(skademlia.ID), skademlia.BucketSize(), 8)
 		log.Info().Msgf("Bootstrapped with peers: %+v", peers)
 	}
 
 	if port := *apiFlag; port > 0 {
-		go api.StartHTTP(node, port)
+		go api.StartHTTP(n, port)
 	}
 
 	reader := bufio.NewReader(os.Stdin)
 
 	var nodeID [wavelet.PublicKeySize]byte
-	copy(nodeID[:], node.Keys.PublicKey())
+	copy(nodeID[:], n.Keys.PublicKey())
 
 	for {
 		bytes, _, err := reader.ReadLine()
@@ -133,7 +133,7 @@ func main() {
 			log.Fatal().Err(err).Msg("Failed to read input from user.")
 		}
 
-		ledger := net.Ledger(node)
+		ledger := node.Ledger(n)
 		cmd := strings.Split(string(bytes), " ")
 
 		switch cmd[0] {
@@ -143,7 +143,7 @@ func main() {
 				stake, _ := ledger.ReadAccountStake(nodeID)
 
 				log.Info().
-					Str("id", hex.EncodeToString(node.Keys.PublicKey())).
+					Str("id", hex.EncodeToString(n.Keys.PublicKey())).
 					Uint64("balance", balance).
 					Uint64("stake", stake).
 					Msg("Here is your wallet information.")
@@ -243,13 +243,13 @@ func main() {
 			}
 
 			go func() {
-				tx, err := ledger.NewTransaction(node.Keys, sys.TagTransfer, params.Bytes())
+				tx, err := ledger.NewTransaction(n.Keys, sys.TagTransfer, params.Bytes())
 				if err != nil {
 					log.Error().Err(err).Msg("Failed to create a transfer transaction.")
 					return
 				}
 
-				err = net.BroadcastTransaction(node, tx)
+				err = node.BroadcastTransaction(n, tx)
 				if err != nil {
 					log.Error().Err(err).Msg("An error occurred while broadcasting a transfer transaction.")
 					return
@@ -268,13 +268,13 @@ func main() {
 				log.Fatal().Err(err).Msg("Failed to convert staking amount to a uint64.")
 			}
 
-			tx, err := ledger.NewTransaction(node.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
+			tx, err := ledger.NewTransaction(n.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to create a stake placement transaction.")
 				continue
 			}
 
-			err = net.BroadcastTransaction(node, tx)
+			err = node.BroadcastTransaction(n, tx)
 			if err != nil {
 				log.Error().Err(err).Msg("An error occurred while broadcasting a stake placement transaction.")
 				continue
@@ -291,13 +291,13 @@ func main() {
 				log.Fatal().Err(err).Msg("Failed to convert withdraw amount to an uint64.")
 			}
 
-			tx, err := ledger.NewTransaction(node.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
+			tx, err := ledger.NewTransaction(n.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to create a stake withdrawal transaction.")
 				continue
 			}
 
-			err = net.BroadcastTransaction(node, tx)
+			err = node.BroadcastTransaction(n, tx)
 			if err != nil {
 				log.Error().Err(err).Msg("An error occurred while broadcasting a stake withdrawal transaction.")
 				continue
@@ -318,13 +318,13 @@ func main() {
 				continue
 			}
 
-			tx, err := ledger.NewTransaction(node.Keys, sys.TagContract, code)
+			tx, err := ledger.NewTransaction(n.Keys, sys.TagContract, code)
 			if err != nil {
 				log.Error().Err(err).Msg("Failed to create a smart contract creation transaction.")
 				continue
 			}
 
-			err = net.BroadcastTransaction(node, tx)
+			err = node.BroadcastTransaction(n, tx)
 			if err != nil {
 				log.Error().Err(err).Msg("An error occurred while broadcasting a smart contract creation transaction.")
 				continue

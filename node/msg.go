@@ -1,4 +1,4 @@
-package net
+package node
 
 import (
 	"github.com/perlin-network/noise"
