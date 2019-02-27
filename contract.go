@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"fmt"
 	"github.com/perlin-network/life/compiler"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
@@ -177,6 +178,8 @@ func (c *ContractExecutor) Run(amount uint64, entry string, params ...byte) erro
 	if c.vm.ExitError != nil {
 		return utils.UnifyError(c.vm.ExitError)
 	}
+
+	fmt.Println(c.vm.Gas)
 
 	// Save memory snapshot.
 	c.saveMemorySnapshot(c.vm.Memory)

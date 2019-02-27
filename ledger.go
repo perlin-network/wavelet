@@ -179,13 +179,13 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 	q := queue.New()
 
 	for _, parentID := range tx.ParentIDs {
-		parent, stored := l.view.lookupTransaction(parentID)
-
-		if !stored {
+		if parent, stored := l.view.lookupTransaction(parentID); stored {
+			q.PushBack(parent)
+		} else {
 			return false
 		}
 
-		q.PushBack(parent)
+		visited[parentID] = struct{}{}
 	}
 
 	var timestamps []uint64
@@ -208,10 +208,9 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 				}
 
 				q.PushBack(parent)
+				visited[popped.ID] = struct{}{}
 			}
 		}
-
-		visited[popped.ID] = struct{}{}
 	}
 
 	median := computeMedianTimestamp(timestamps)
@@ -431,6 +430,8 @@ func (l *Ledger) collapseTransactions(critical *Transaction) accounts {
 		if parent, exists := l.view.lookupTransaction(parentID); exists {
 			q.PushBack(parent)
 		}
+
+		visited[parentID] = struct{}{}
 	}
 
 	applyQueue := queue.New()
@@ -443,11 +444,12 @@ func (l *Ledger) collapseTransactions(critical *Transaction) accounts {
 				if parent, exists := l.view.lookupTransaction(parentID); exists {
 					q.PushBack(parent)
 				}
+
+				visited[parentID] = struct{}{}
 			}
 		}
 
 		applyQueue.PushBack(popped)
-		visited[popped.ID] = struct{}{}
 	}
 
 	// Apply transactions in reverse order from the root of the view-graph all
@@ -496,6 +498,8 @@ func (l *Ledger) rewardValidators(ss accounts, tx *Transaction) error {
 		if parent, exists := l.view.lookupTransaction(parentID); exists {
 			q.PushBack(parent)
 		}
+
+		visited[parentID] = struct{}{}
 	}
 
 	// Ignore error; should be impossible as not using HMAC mode.
@@ -503,7 +507,6 @@ func (l *Ledger) rewardValidators(ss accounts, tx *Transaction) error {
 
 	for q.Len() > 0 {
 		popped := q.PopFront().(*Transaction)
-		visited[popped.ID] = struct{}{}
 
 		// If we exceed the max eligible depth we search for candidate
 		// validators to reward from, stop traversing.
@@ -533,6 +536,8 @@ func (l *Ledger) rewardValidators(ss accounts, tx *Transaction) error {
 				if parent, exists := l.view.lookupTransaction(parentID); exists {
 					q.PushBack(parent)
 				}
+
+				visited[parentID] = struct{}{}
 			}
 		}
 	}

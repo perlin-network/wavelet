@@ -1,7 +1,6 @@
 package wavelet
 
 import (
-	"fmt"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/phf/go-queue/queue"
@@ -91,6 +90,7 @@ func (g *graph) reset(root *Transaction) {
 		if parent, exists := g.transactions[parentID]; exists {
 			q.PushBack(parent)
 		}
+
 		visited[parentID] = struct{}{}
 	}
 
@@ -127,18 +127,19 @@ func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
 	q := queue.New()
 
 	q.PushBack(g.root)
+	visited[g.root.ID] = struct{}{}
 
 	for q.Len() > 0 {
 		popped := q.PopFront().(*Transaction)
-		visited[popped.ID] = struct{}{}
 
 		if len(popped.children) > 0 {
-			fmt.Println(len(popped.children), g.height)
+			//fmt.Println(len(popped.children), g.height)
 			for _, childrenID := range popped.children {
 				if _, seen := visited[childrenID]; !seen {
 					if child, exists := g.transactions[childrenID]; exists {
 						q.PushBack(child)
 					}
+					visited[childrenID] = struct{}{}
 				}
 			}
 		} else if popped.depth+sys.MaxEligibleParentsDepthDiff >= g.height {
