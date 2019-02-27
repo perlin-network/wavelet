@@ -1,7 +1,6 @@
 package wavelet
 
 import (
-	"bytes"
 	"encoding/binary"
 	"github.com/perlin-network/noise/identity"
 	"github.com/perlin-network/noise/payload"
@@ -139,9 +138,9 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if !l.assertValidTimestamp(tx) {
-		return errors.Wrap(VoteRejected, "wavelet: either tx timestamp is out of bounds, or parents not available")
-	}
+	//if !l.assertValidTimestamp(tx) {
+	//	return errors.Wrap(VoteRejected, "wavelet: either tx timestamp is out of bounds, or parents not available")
+	//}
 
 	err := l.view.addTransaction(tx)
 
@@ -156,13 +155,17 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 		return errors.Wrap(VoteRejected, "wavelet: parent depths are out of bounds")
 	}
 
-	// If our node does not prefer any critical transaction yet, set a
-	// critical transaction to initially prefer.
 	if tx.IsCritical(l.Difficulty()) {
 		var zero [blake2b.Size256]byte
 
-		if preferred := l.resolver.Preferred(); bytes.Equal(preferred[:], zero[:]) {
+		if preferredID := l.resolver.Preferred(); preferredID == zero {
+			// If our node does not prefer any critical transaction yet, set a critical
+			// transaction to initially prefer.
 			l.resolver.Prefer(tx.ID)
+		} else if preferredID != tx.ID {
+			// If we received a critical transaction that is not what we prefer, reject
+			// the transaction.
+			return errors.Wrap(VoteRejected, "wavelet: prefer other critical transaction")
 		}
 	}
 

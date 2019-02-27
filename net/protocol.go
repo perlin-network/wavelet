@@ -1,7 +1,6 @@
 package net
 
 import (
-	"bytes"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/noise/signature/eddsa"
@@ -76,9 +75,9 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryRequest) {
 	res := new(QueryResponse)
 
-	seen := ledger.HasTransactionInView(req.tx.ID)
-
-	if !seen {
+	if ledger.HasTransactionInView(req.tx.ID) {
+		res.vote = true
+	} else {
 		vote := ledger.ReceiveTransaction(req.tx)
 
 		res.vote = errors.Cause(vote) == wavelet.VoteAccepted
@@ -86,11 +85,14 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 
 		if res.vote {
 			log.Debug().Msgf("Gave a positive vote to transaction %x.", req.tx.ID)
+
+			// Gossip out our preferred critical transaction.
+			if ledger.Resolver().Preferred() == req.tx.ID {
+				gossipOutTransaction(peer.Node(), req.tx)
+			}
 		} else {
 			log.Debug().Err(vote).Msgf("Gave a negative vote to transaction %x.", req.tx.ID)
 		}
-	} else {
-		res.vote = true
 	}
 
 	signature, err := eddsa.Sign(peer.Node().Keys.PrivateKey(), res.Write())
@@ -101,11 +103,6 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 	copy(res.signature[:], signature)
 
 	_ = peer.SendMessageAsync(res)
-
-	// Gossip out positively-voted critical transactions.
-	if preferred := ledger.Resolver().Preferred(); !seen && bytes.Equal(preferred[:], req.tx.ID[:]) {
-		gossipOutTransaction(peer.Node(), req.tx)
-	}
 }
 
 func (b *block) OnEnd(p *protocol.Protocol, peer *noise.Peer) error {
