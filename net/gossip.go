@@ -29,20 +29,23 @@ func gossipLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 	ch := peer.Node().LoadOrStore(keyGossipChannel, make(chan gossipStatus, 1024)).(chan gossipStatus)
 
 	for status := range ch {
-		err := QueryTransaction(peer.Node(), status.tx)
-
-		if err != nil {
-			log.Warn().Err(err).Msgf("Failed to further gossip out transaction %x.", status.tx.ID)
-		}
-
-		status.count++
-
 		// Only continue to gossip critical transactions that are not out-of-sync
 		// with our current view ID.
-		if status.viewID == ledger.ViewID() && status.tx.IsCritical(ledger.Difficulty()) {
-			log.Debug().Int("count", status.count+1).Hex("tx_id", status.tx.ID[:]).Msg("Gossiped out transaction.")
 
-			ch <- status
+		if status.viewID == ledger.ViewID() {
+			err := QueryTransaction(peer.Node(), status.tx)
+
+			if err != nil {
+				log.Warn().Err(err).Msgf("Failed to further gossip out transaction %x.", status.tx.ID)
+			}
+
+			status.count++
+
+			log.Debug().Int("count", status.count).Hex("tx_id", status.tx.ID[:]).Msg("Gossiped out transaction.")
+
+			if status.tx.IsCritical(ledger.Difficulty()) {
+				ch <- status
+			}
 		}
 	}
 }

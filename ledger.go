@@ -303,6 +303,8 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 			return errors.New("wavelet: could not find newly critical tx in view graph")
 		}
 
+		l.resolver.Reset()
+
 		viewID := l.viewID.Add(1)
 
 		ss := l.collapseTransactions(root)
@@ -322,8 +324,6 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 		if err != nil {
 			return errors.Wrap(err, "wavelet: failed to adjust difficulty")
 		}
-
-		l.resolver.Reset()
 
 		log.Info().
 			Uint64("old_view_id", viewID-1).

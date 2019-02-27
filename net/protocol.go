@@ -86,8 +86,9 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 		if res.vote {
 			log.Debug().Msgf("Gave a positive vote to transaction %x.", req.tx.ID)
 
-			// Gossip out our preferred critical transaction.
-			if ledger.Resolver().Preferred() == req.tx.ID {
+			// Gossip out our preferred critical transaction multiple time, or
+			// other transactions exactly once.
+			if critical := req.tx.IsCritical(ledger.Difficulty()); !critical || (critical && ledger.Resolver().Preferred() == req.tx.ID) {
 				gossipOutTransaction(peer.Node(), req.tx)
 			}
 		} else {
