@@ -58,10 +58,6 @@ func (b *broadcaster) work() {
 		select {
 		case popped := <-b.queue:
 			item = popped
-
-			// Start broadcasting nops if we started broadcasting an arbitrary
-			// transaction.
-			b.broadcastingNops = true
 		case <-time.After(1 * time.Millisecond):
 			// If there is nothing we need to broadcast urgently, then either broadcast
 			// our preferred transaction, or a nop (if we have previously broadcasted
@@ -111,6 +107,10 @@ func (b *broadcaster) work() {
 			}
 			continue
 		}
+
+		// Start broadcasting nops if we have successfully broadcasted
+		// some arbitrary transaction.
+		b.broadcastingNops = true
 
 		if item.result != nil {
 			item.result <- nil
