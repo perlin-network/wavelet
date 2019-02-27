@@ -10,8 +10,11 @@ import (
 )
 
 func TestSerialize(t *testing.T) {
+	kv := store.NewInmem()
+	tree := New(kv)
+
 	fn := func(key, value []byte) bool {
-		node := newLeafNode(nil, []byte("key"), []byte("value"))
+		node := newLeafNode(tree, []byte("key"), []byte("value"))
 
 		var buf bytes.Buffer
 		node.serialize(&buf)
