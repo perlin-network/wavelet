@@ -35,12 +35,13 @@ func gossipLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 			log.Warn().Err(err).Msgf("Failed to further gossip out transaction %x.", status.tx.ID)
 		}
 
-		//log.Debug().Int("count", status.count+1).Hex("tx_id", status.tx.ID[:]).Msg("Gossiped out transaction.")
-
 		status.count++
 
-		// Only continue to gossip if we are still in the same consensus view ID.
-		if status.viewID == ledger.ViewID() {
+		// Only continue to gossip critical transactions that are not out-of-sync
+		// with our current view ID.
+		if status.viewID == ledger.ViewID() && status.tx.IsCritical(ledger.Difficulty()) {
+			log.Debug().Int("count", status.count+1).Hex("tx_id", status.tx.ID[:]).Msg("Gossiped out transaction.")
+
 			ch <- status
 		}
 	}

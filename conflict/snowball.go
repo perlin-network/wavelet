@@ -2,6 +2,7 @@ package conflict
 
 import (
 	"golang.org/x/crypto/blake2b"
+	"sync"
 )
 
 const (
@@ -13,6 +14,8 @@ const (
 var _ Resolver = (*snowball)(nil)
 
 type snowball struct {
+	sync.Mutex
+
 	k, beta int
 	alpha   float64
 
@@ -35,21 +38,33 @@ func NewSnowball() *snowball {
 }
 
 func (s *snowball) WithK(k int) *snowball {
+	s.Lock()
+	defer s.Unlock()
+
 	s.k = k
 	return s
 }
 
 func (s *snowball) WithAlpha(alpha float64) *snowball {
+	s.Lock()
+	defer s.Unlock()
+
 	s.alpha = alpha
 	return s
 }
 
 func (s *snowball) WithBeta(beta int) *snowball {
+	s.Lock()
+	defer s.Unlock()
+
 	s.beta = beta
 	return s
 }
 
 func (s *snowball) Reset() {
+	s.Lock()
+	defer s.Unlock()
+
 	s.preferred = [blake2b.Size256]byte{}
 	s.last = [blake2b.Size256]byte{}
 
@@ -60,6 +75,9 @@ func (s *snowball) Reset() {
 }
 
 func (s *snowball) Tick(id [blake2b.Size256]byte, votes []float64) {
+	s.Lock()
+	defer s.Unlock()
+
 	var tally float64
 
 	for _, vote := range votes {
@@ -88,14 +106,23 @@ func (s *snowball) Tick(id [blake2b.Size256]byte, votes []float64) {
 	}
 }
 
-func (s *snowball) Result() [blake2b.Size256]byte {
-	if !s.decided {
-		return [blake2b.Size256]byte{}
-	}
+func (s *snowball) Prefer(id [blake2b.Size256]byte) {
+	s.Lock()
+	defer s.Unlock()
+
+	s.preferred = id
+}
+
+func (s *snowball) Preferred() [blake2b.Size256]byte {
+	s.Lock()
+	defer s.Unlock()
 
 	return s.preferred
 }
 
 func (s *snowball) Decided() bool {
+	s.Lock()
+	defer s.Unlock()
+
 	return s.decided
 }

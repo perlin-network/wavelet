@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"bytes"
 	"encoding/binary"
 	"github.com/perlin-network/noise/identity"
 	"github.com/perlin-network/noise/payload"
@@ -155,6 +156,16 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 		return errors.Wrap(VoteRejected, "wavelet: parent depths are out of bounds")
 	}
 
+	// If our node does not prefer any critical transaction yet, set a
+	// critical transaction to initially prefer.
+	if tx.IsCritical(l.Difficulty()) {
+		var zero [blake2b.Size256]byte
+
+		if preferred := l.resolver.Preferred(); bytes.Equal(preferred[:], zero[:]) {
+			l.resolver.Prefer(tx.ID)
+		}
+	}
+
 	return VoteAccepted
 }
 
@@ -282,7 +293,7 @@ func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]by
 	if l.resolver.Decided() {
 		old := l.view.Root()
 
-		rootID := l.resolver.Result()
+		rootID := l.resolver.Preferred()
 		root, recorded := l.view.lookupTransaction(rootID)
 
 		if !recorded {
@@ -595,4 +606,8 @@ func (l *Ledger) ViewID() uint64 {
 
 func (l *Ledger) Difficulty() uint64 {
 	return l.difficulty.Load()
+}
+
+func (l *Ledger) Resolver() conflict.Resolver {
+	return l.resolver
 }

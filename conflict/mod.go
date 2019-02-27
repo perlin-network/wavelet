@@ -8,6 +8,8 @@ type Resolver interface {
 	Reset()
 	Tick(id [blake2b.Size256]byte, votes []float64)
 
-	Result() [blake2b.Size256]byte
+	Prefer(id [blake2b.Size256]byte)
+	Preferred() [blake2b.Size256]byte
+
 	Decided() bool
 }

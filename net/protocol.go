@@ -1,6 +1,7 @@
 package net
 
 import (
+	"bytes"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/noise/signature/eddsa"
@@ -102,7 +103,7 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 	_ = peer.SendMessageAsync(res)
 
 	// Gossip out positively-voted critical transactions.
-	if res.vote && !seen && req.tx.IsCritical(ledger.Difficulty()) {
+	if preferred := ledger.Resolver().Preferred(); !seen && bytes.Equal(preferred[:], req.tx.ID[:]) {
 		gossipOutTransaction(peer.Node(), req.tx)
 	}
 }
