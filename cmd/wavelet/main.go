@@ -268,19 +268,21 @@ func main() {
 				log.Fatal().Err(err).Msg("Failed to convert staking amount to a uint64.")
 			}
 
-			tx, err := ledger.NewTransaction(n.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to create a stake placement transaction.")
-				continue
-			}
+			go func() {
+				tx, err := ledger.NewTransaction(n.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to create a stake placement transaction.")
+					return
+				}
 
-			err = node.BroadcastTransaction(n, tx)
-			if err != nil {
-				log.Error().Err(err).Msg("An error occurred while broadcasting a stake placement transaction.")
-				continue
-			}
+				err = node.BroadcastTransaction(n, tx)
+				if err != nil {
+					log.Error().Err(err).Msg("An error occurred while broadcasting a stake placement transaction.")
+					return
+				}
 
-			log.Info().Msgf("Success! Your stake placement transaction ID: %x", tx.ID)
+				log.Info().Msgf("Success! Your stake placement transaction ID: %x", tx.ID)
+			}()
 		case "ws":
 			if len(cmd) < 2 {
 				continue
@@ -291,19 +293,21 @@ func main() {
 				log.Fatal().Err(err).Msg("Failed to convert withdraw amount to an uint64.")
 			}
 
-			tx, err := ledger.NewTransaction(n.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to create a stake withdrawal transaction.")
-				continue
-			}
+			go func() {
+				tx, err := ledger.NewTransaction(n.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to create a stake withdrawal transaction.")
+					return
+				}
 
-			err = node.BroadcastTransaction(n, tx)
-			if err != nil {
-				log.Error().Err(err).Msg("An error occurred while broadcasting a stake withdrawal transaction.")
-				continue
-			}
+				err = node.BroadcastTransaction(n, tx)
+				if err != nil {
+					log.Error().Err(err).Msg("An error occurred while broadcasting a stake withdrawal transaction.")
+					return
+				}
 
-			log.Info().Msgf("Success! Your stake withdrawal transaction ID: %x", tx.ID)
+				log.Info().Msgf("Success! Your stake withdrawal transaction ID: %x", tx.ID)
+			}()
 		case "c":
 			if len(cmd) < 2 {
 				continue
@@ -318,19 +322,21 @@ func main() {
 				continue
 			}
 
-			tx, err := ledger.NewTransaction(n.Keys, sys.TagContract, code)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to create a smart contract creation transaction.")
-				continue
-			}
+			go func() {
+				tx, err := ledger.NewTransaction(n.Keys, sys.TagContract, code)
+				if err != nil {
+					log.Error().Err(err).Msg("Failed to create a smart contract creation transaction.")
+					return
+				}
 
-			err = node.BroadcastTransaction(n, tx)
-			if err != nil {
-				log.Error().Err(err).Msg("An error occurred while broadcasting a smart contract creation transaction.")
-				continue
-			}
+				err = node.BroadcastTransaction(n, tx)
+				if err != nil {
+					log.Error().Err(err).Msg("An error occurred while broadcasting a smart contract creation transaction.")
+					return
+				}
 
-			log.Info().Msgf("Success! Your smart contract ID: %x", tx.ID)
+				log.Info().Msgf("Success! Your smart contract ID: %x", tx.ID)
+			}()
 		}
 	}
 }
