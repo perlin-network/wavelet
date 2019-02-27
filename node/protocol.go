@@ -5,7 +5,6 @@ import (
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -75,11 +74,11 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 	res.vote = errors.Cause(vote) == wavelet.VoteAccepted
 	copy(res.id[:], peer.Node().Keys.PublicKey())
 
-	if res.vote {
-		log.Debug().Msgf("Gave a positive vote to transaction %x.", req.tx.ID)
-	} else {
-		log.Debug().Err(vote).Msgf("Gave a negative vote to transaction %x.", req.tx.ID)
-	}
+	//if res.vote {
+	//	log.Debug().Msgf("Gave a positive vote to transaction %x.", req.tx.ID)
+	//} else {
+	//	log.Debug().Err(vote).Msgf("Gave a negative vote to transaction %x.", req.tx.ID)
+	//}
 
 	signature, err := eddsa.Sign(peer.Node().Keys.PrivateKey(), res.Write())
 	if err != nil {

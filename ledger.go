@@ -248,7 +248,7 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 	return true
 }
 
-func (l *Ledger) ReceiveQuery(tx *Transaction, responses map[[blake2b.Size256]byte]bool) error {
+func (l *Ledger) ProcessQuery(tx *Transaction, responses map[[blake2b.Size256]byte]bool) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 

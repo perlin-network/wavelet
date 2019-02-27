@@ -213,7 +213,7 @@ func (b *broadcaster) query(tx *wavelet.Transaction) error {
 		return errors.Wrap(err, "broadcast: failed to add successfully queried transaction to view-graph")
 	}
 
-	if err = b.ledger.ReceiveQuery(tx, responses); errors.Cause(err) != wavelet.ErrTxNotCritical {
+	if err = b.ledger.ProcessQuery(tx, responses); errors.Cause(err) != wavelet.ErrTxNotCritical {
 		return errors.Wrap(err, "broadcast: failed to handle critical transaction")
 	}
 
