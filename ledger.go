@@ -610,6 +610,10 @@ func (l *Ledger) HasTransactionInView(id [blake2b.Size256]byte) bool {
 	return exists
 }
 
+func (l *Ledger) Root() *Transaction {
+	return l.view.Root()
+}
+
 func (l *Ledger) ViewID() uint64 {
 	return l.viewID.Load()
 }

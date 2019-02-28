@@ -4,7 +4,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/go-chi/render"
+	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/signature/eddsa"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -21,6 +23,8 @@ var (
 
 	_ render.Binder   = (*SendTransactionRequest)(nil)
 	_ render.Renderer = (*SendTransactionResponse)(nil)
+
+	_ render.Renderer = (*LedgerStatusResponse)(nil)
 )
 
 type SessionInitRequest struct {
@@ -119,8 +123,8 @@ type SendTransactionResponse struct {
 }
 
 func (s *SendTransactionResponse) Render(w http.ResponseWriter, r *http.Request) error {
-	if s.tx == nil {
-		return errors.New("no tx was generated")
+	if s.ledger == nil || s.tx == nil {
+		return errors.New("insufficient parameters were provided")
 	}
 
 	s.ID = hex.EncodeToString(s.tx.ID[:])
@@ -130,6 +134,35 @@ func (s *SendTransactionResponse) Render(w http.ResponseWriter, r *http.Request)
 	}
 
 	s.Critical = s.tx.IsCritical(s.ledger.Difficulty())
+
+	return nil
+}
+
+type LedgerStatusResponse struct {
+	PublicKey     string   `json:"public_key"`
+	HostAddress   string   `json:"address"`
+	PeerAddresses []string `json:"peers"`
+
+	RootID     string `json:"root_id"`
+	ViewID     uint64 `json:"view_id"`
+	Difficulty uint64 `json:"difficulty"`
+
+	node   *noise.Node
+	ledger *wavelet.Ledger
+}
+
+func (s *LedgerStatusResponse) Render(w http.ResponseWriter, r *http.Request) error {
+	if s.node == nil || s.ledger == nil {
+		return errors.New("insufficient parameters were provided")
+	}
+
+	s.PublicKey = hex.EncodeToString(s.node.Keys.PublicKey())
+	s.HostAddress = s.node.ExternalAddress()
+	s.PeerAddresses = skademlia.Table(s.node).GetPeers()
+
+	s.RootID = hex.EncodeToString(s.ledger.Root().ID[:])
+	s.ViewID = s.ledger.ViewID()
+	s.Difficulty = s.ledger.Difficulty()
 
 	return nil
 }
