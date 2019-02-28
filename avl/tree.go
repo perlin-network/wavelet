@@ -190,27 +190,84 @@ func (t *Tree) Checksum() [MerkleHashSize]byte {
 	return t.root.id
 }
 
-func (t *Tree) loadNode(id [MerkleHashSize]byte) *node {
+func (t *Tree) loadNodeChecked(id [MerkleHashSize]byte) (*node, error) {
 	if n, ok := t.pending.Load(id); ok {
-		return n.(*node)
+		return n.(*node), nil
 	}
 
 	if n, ok := t.cache.load(id); ok {
-		return n.(*node)
+		return n.(*node), nil
 	}
 
 	buf, err := t.kv.Get(append(NodeKeyPrefix, id[:]...))
 
 	if err != nil || len(buf) == 0 {
-		panic(errors.Errorf("avl: could not find node %x", id))
+		return nil, errors.Errorf("avl: could not find node %x", id)
 	}
 
-	n := deserialize(buf)
+	n := deserialize(bytes.NewReader(buf))
 	t.cache.put(id, n)
 
+	return n, nil
+}
+
+func (t *Tree) loadNode(id [MerkleHashSize]byte) *node {
+	n, err := t.loadNodeChecked(id)
+	if err != nil {
+		panic(err)
+	}
 	return n
 }
 
 func (t *Tree) SetViewID(viewID uint64) {
 	t.viewID = viewID
+}
+
+func (t *Tree) DumpDifference(prevViewID uint64) []byte {
+	stack := []*node{t.root}
+	buf := bytes.NewBuffer(nil)
+
+	for len(stack) > 0 {
+		current := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if current.viewID <= prevViewID {
+			continue
+		}
+
+		current.serialize(buf)
+		if current.size > 1 {
+			stack = append(stack, t.loadNode(current.right), t.loadNode(current.left))
+		}
+	}
+
+	return buf.Bytes()
+}
+
+func (t *Tree) LoadDifference(diff []byte) error {
+	reader := bytes.NewReader(diff)
+	var root *node
+	unresolved := make(map[[MerkleHashSize]byte]struct{})
+
+	for reader.Len() > 0 {
+		n := deserialize(reader) // TODO: check invalid date
+		if root == nil {
+			root = n
+		}
+		t.pending.Store(n.id, n)
+		delete(unresolved, n.id)
+		if n.size > 1 {
+			unresolved[n.left] = struct{}{}
+			unresolved[n.right] = struct{}{}
+		}
+	}
+	for k, _ := range unresolved {
+		if _, err := t.loadNodeChecked(k); err != nil {
+			return errors.Wrap(err, "difference referenced unknown node")
+		}
+	}
+	// TODO: validate AVL properties
+	t.viewID = root.viewID
+	t.root = root
+
+	return nil
 }

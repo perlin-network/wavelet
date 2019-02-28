@@ -19,7 +19,7 @@ func TestSerialize(t *testing.T) {
 		var buf bytes.Buffer
 		node.serialize(&buf)
 
-		assert.ObjectsAreEqual(node, deserialize(buf.Bytes()))
+		assert.ObjectsAreEqual(node, deserialize(bytes.NewReader(buf.Bytes())))
 
 		return true
 	}
@@ -64,6 +64,42 @@ func TestTree_Snapshot(t *testing.T) {
 
 	_, ok = tree.Lookup([]byte("k2"))
 	assert.False(t, ok)
+}
+
+func TestTree_Difference(t *testing.T) {
+	kv := store.NewInmem()
+	kv2 := store.NewInmem()
+
+	tree := New(kv)
+	tree.SetViewID(1)
+	tree.Insert([]byte("k1"), []byte("1"))
+
+	tree2 := New(kv2)
+	tree2.SetViewID(0)
+	tree2.LoadDifference(tree.DumpDifference(0))
+	assert.Equal(t, tree2.viewID, uint64(1))
+	tree2.SetViewID(2)
+	tree2.Insert([]byte("k2"), []byte("2"))
+
+	result, _ := tree2.Lookup([]byte("k1"))
+	assert.Equal(t, []byte("1"), result)
+
+	result, _ = tree2.Lookup([]byte("k2"))
+	assert.Equal(t, []byte("2"), result)
+
+	tree.LoadDifference(tree2.DumpDifference(1))
+	assert.Equal(t, tree.viewID, uint64(2))
+
+	result, _ = tree.Lookup([]byte("k2"))
+	assert.Equal(t, []byte("2"), result)
+
+	len1 := len(tree.DumpDifference(0))
+	len2 := len(tree.DumpDifference(1))
+	len3 := len(tree.DumpDifference(2))
+
+	assert.Equal(t, len3, 0)
+	assert.True(t, len1 > len2)
+	assert.True(t, len2 > len3)
 }
 
 func BenchmarkAVL(b *testing.B) {
