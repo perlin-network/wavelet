@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/perlin-network/noise/identity/ed25519"
 	"github.com/perlin-network/noise/signature/eddsa"
+	"github.com/perlin-network/wavelet"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -22,19 +23,19 @@ func TestInitSession(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		wantCode int
 		req      SessionInitRequest
+		wantCode int
 	}{
 
 		{
 			name:     "bad request",
-			wantCode: http.StatusBadRequest,
 			req:      getBadCredentialRequest(),
+			wantCode: http.StatusBadRequest,
 		},
 		{
 			name:     "good request",
-			wantCode: http.StatusOK,
 			req:      getGoodCredentialRequest(t, randomKeyPair),
+			wantCode: http.StatusOK,
 		},
 	}
 
@@ -70,8 +71,8 @@ func TestListTransaction(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		wantCode     int
 		sessionToken string
+		wantCode     int
 	}{
 		{
 			name:     "missing token",
@@ -79,8 +80,8 @@ func TestListTransaction(t *testing.T) {
 		},
 		{
 			name:         "token not exist",
-			wantCode:     http.StatusBadRequest,
 			sessionToken: "invalid token",
+			wantCode:     http.StatusBadRequest,
 		},
 	}
 
@@ -103,6 +104,66 @@ func TestListTransaction(t *testing.T) {
 
 			if w.Code != tc.wantCode {
 				t.Fatalf("expected status code %d, found %d: %s", tc.wantCode, w.Code, string(raw))
+			}
+		})
+	}
+}
+
+func TestGetTransaction(t *testing.T) {
+	hub := &hub{registry: newSessionRegistry()}
+	hub.setRoutes()
+
+	sess, err := hub.registry.newSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name         string
+		sessionToken string
+		id           string
+		wantCode     int
+		wantError    string
+	}{
+		{
+			name:         "invalid id length",
+			sessionToken: sess.id,
+			id:           "1c331c1d",
+			wantCode:     http.StatusBadRequest,
+			wantError:    fmt.Sprintf("transaction ID must be %d bytes long", wavelet.TransactionIDSize),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest("GET", "/tx/"+tc.id, nil)
+
+			if tc.sessionToken != "" {
+				request.Header.Add(HeaderSessionToken, tc.sessionToken)
+			}
+
+			w := httptest.NewRecorder()
+
+			hub.router.ServeHTTP(w, request)
+
+			raw, err := ioutil.ReadAll(w.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var response ErrResponse
+			err = json.Unmarshal(raw, &response)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if w.Code != tc.wantCode {
+				t.Fatalf("expected status code %d, found %d: %s", tc.wantCode, w.Code, string(raw))
+			}
+
+			if response.ErrorText != tc.wantError {
+				t.Fatalf("expected error %s, found %s: %s", tc.wantError, response.ErrorText, string(raw))
+
 			}
 		})
 	}
