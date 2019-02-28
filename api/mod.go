@@ -22,11 +22,18 @@ type hub struct {
 	ledger *wavelet.Ledger
 
 	registry *sessionRegistry
+	router   chi.Router
 }
 
-func StartHTTP(n *noise.Node, port int) {
+func newHub(n *noise.Node) *hub {
 	h := &hub{node: n, ledger: node.Ledger(n), registry: newSessionRegistry()}
 
+	h.setRoutes()
+
+	return h
+}
+
+func (h *hub) setRoutes() {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -60,32 +67,40 @@ func StartHTTP(n *noise.Node, port int) {
 		r.Get("/state", h.ledgerStatus)
 	})
 
+	h.router = r
+}
+
+func StartHTTP(n *noise.Node, port int) {
+	h := newHub(n)
+
 	log.Info().Msgf("Started HTTP API server on port %d.", port)
 
-	http.ListenAndServe(":"+strconv.Itoa(port), r)
+	if err := http.ListenAndServe(":"+strconv.Itoa(port), h.router); err != nil {
+		log.Fatal().Err(err).Msg("failed to start http server")
+	}
 }
 
 func (h *hub) initSession(w http.ResponseWriter, r *http.Request) {
 	req := new(SessionInitRequest)
 
 	if err := render.Bind(r, req); err != nil {
-		render.Render(w, r, ErrBadRequest(err))
+		h.render(w, r, ErrBadRequest(err))
 		return
 	}
 
 	session, err := h.registry.newSession()
 	if err != nil {
-		render.Render(w, r, ErrBadRequest(errors.Wrap(err, "failed to create session")))
+		h.render(w, r, ErrBadRequest(errors.Wrap(err, "failed to create session")))
 	}
 
-	render.Render(w, r, &SessionInitResponse{Token: session.id})
+	h.render(w, r, &SessionInitResponse{Token: session.id})
 }
 
 func (h *hub) sendTransaction(w http.ResponseWriter, r *http.Request) {
 	req := new(SendTransactionRequest)
 
 	if err := render.Bind(r, req); err != nil {
-		render.Render(w, r, ErrBadRequest(err))
+		h.render(w, r, ErrBadRequest(err))
 		return
 	}
 
@@ -98,20 +113,20 @@ func (h *hub) sendTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.ledger.AttachSenderToTransaction(h.node.Keys, tx); err != nil {
-		render.Render(w, r, ErrInternal(errors.Wrap(err, "failed to attach sender to transaction")))
+		h.render(w, r, ErrInternal(errors.Wrap(err, "failed to attach sender to transaction")))
 		return
 	}
 
 	if err := node.BroadcastTransaction(h.node, tx); err != nil {
-		render.Render(w, r, ErrInternal(errors.Wrap(err, "failed to broadcast transaction")))
+		h.render(w, r, ErrInternal(errors.Wrap(err, "failed to broadcast transaction")))
 		return
 	}
 
-	render.Render(w, r, &SendTransactionResponse{ledger: h.ledger, tx: tx})
+	h.render(w, r, &SendTransactionResponse{ledger: h.ledger, tx: tx})
 }
 
 func (h *hub) ledgerStatus(w http.ResponseWriter, r *http.Request) {
-	render.Render(w, r, &LedgerStatusResponse{node: h.node, ledger: h.ledger})
+	h.render(w, r, &LedgerStatusResponse{node: h.node, ledger: h.ledger})
 }
 
 func (h *hub) listTransactions(w http.ResponseWriter, r *http.Request) {
@@ -122,7 +137,7 @@ func (h *hub) listTransactions(w http.ResponseWriter, r *http.Request) {
 		offset, err = strconv.ParseUint(raw, 10, 64)
 
 		if err != nil {
-			render.Render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
+			h.render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
 			return
 		}
 	}
@@ -131,7 +146,7 @@ func (h *hub) listTransactions(w http.ResponseWriter, r *http.Request) {
 		limit, err = strconv.ParseUint(raw, 10, 64)
 
 		if err != nil {
-			render.Render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
+			h.render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
 		}
 	}
 
@@ -141,7 +156,7 @@ func (h *hub) listTransactions(w http.ResponseWriter, r *http.Request) {
 		transactions = append(transactions, &Transaction{tx: tx})
 	}
 
-	render.RenderList(w, r, transactions)
+	h.renderList(w, r, transactions)
 }
 
 func (h *hub) getTransaction(w http.ResponseWriter, r *http.Request) {
@@ -149,12 +164,12 @@ func (h *hub) getTransaction(w http.ResponseWriter, r *http.Request) {
 
 	slice, err := hex.DecodeString(param)
 	if err != nil {
-		render.Render(w, r, ErrBadRequest(errors.Wrap(err, "transaction ID must be presented as valid hex")))
+		h.render(w, r, ErrBadRequest(errors.Wrap(err, "transaction ID must be presented as valid hex")))
 		return
 	}
 
 	if len(slice) != wavelet.TransactionIDSize {
-		render.Render(w, r, ErrBadRequest(errors.Errorf("transaction ID must be %d bytes long", wavelet.TransactionIDSize)))
+		h.render(w, r, ErrBadRequest(errors.Errorf("transaction ID must be %d bytes long", wavelet.TransactionIDSize)))
 		return
 	}
 
@@ -164,11 +179,11 @@ func (h *hub) getTransaction(w http.ResponseWriter, r *http.Request) {
 	tx := h.ledger.FindTransaction(id)
 
 	if tx == nil {
-		render.Render(w, r, ErrBadRequest(errors.Errorf("could not find transaction with ID ", param)))
+		h.render(w, r, ErrBadRequest(errors.Errorf("could not find transaction with ID %s", param)))
 		return
 	}
 
-	render.Render(w, r, &Transaction{tx: tx})
+	h.render(w, r, &Transaction{tx: tx})
 }
 
 func (h *hub) authenticated(next http.Handler) http.Handler {
@@ -176,17 +191,35 @@ func (h *hub) authenticated(next http.Handler) http.Handler {
 		token := r.Header.Get(HeaderSessionToken)
 
 		if len(token) == 0 {
-			render.Render(w, r, ErrBadRequest(errors.Errorf("missing HTTP header %q", HeaderSessionToken)))
+			h.render(w, r, ErrBadRequest(errors.Errorf("missing HTTP header %s", HeaderSessionToken)))
 			return
 		}
 
 		session, exists := h.registry.getSession(token)
 		if !exists {
-			render.Render(w, r, ErrBadRequest(errors.Errorf("could not find session %q", token)))
+			h.render(w, r, ErrBadRequest(errors.Errorf("could not find session %s", token)))
 			return
 		}
 
 		ctx := context.WithValue(r.Context(), "session", session)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// A helper to handle the error returned by render.Render()
+func (h *hub) render(w http.ResponseWriter, r *http.Request, v render.Renderer) {
+	err := render.Render(w, r, v)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("render error:  " + err.Error()))
+	}
+}
+
+// A helper to handle the error returned by render.RenderList()
+func (h *hub) renderList(w http.ResponseWriter, r *http.Request, l []render.Renderer) {
+	err := render.RenderList(w, r, l)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte("renderList error: " + err.Error()))
+	}
 }
