@@ -12,6 +12,7 @@ require (
 	github.com/go-chi/cors v1.0.0
 	github.com/go-chi/render v1.0.1
 	github.com/google/uuid v1.1.0
+	github.com/gorilla/websocket v1.4.0 // indirect
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
 	github.com/perlin-network/life v0.0.0-20190204091834-d05763d11050
 	github.com/perlin-network/noise v0.0.0-20190222080146-e7b0ac2c089f
@@ -22,4 +23,5 @@ require (
 	github.com/tecbot/gorocksdb v0.0.0-20181010114359-8752a9433481
 	go.uber.org/atomic v1.3.2
 	golang.org/x/crypto v0.0.0-20190123085648-057139ce5d2b
+	gopkg.in/olahol/melody.v1 v1.0.0-20170518105555-d52139073376
 )

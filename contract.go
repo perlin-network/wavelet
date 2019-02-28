@@ -1,12 +1,12 @@
 package wavelet
 
 import (
-	"fmt"
 	"github.com/perlin-network/life/compiler"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/payload"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 )
 
@@ -27,7 +27,7 @@ type ContractExecutor struct {
 
 	gasTable map[string]int64
 
-	contractID [TransactionIDSize]byte
+	contractID [sys.TransactionIDSize]byte
 	ctx        *TransactionContext
 
 	payload, result []byte
@@ -35,7 +35,7 @@ type ContractExecutor struct {
 	vm *exec.VirtualMachine
 }
 
-func NewContractExecutor(contractID [TransactionIDSize]byte, ctx *TransactionContext, gasLimit uint64) (*ContractExecutor, error) {
+func NewContractExecutor(contractID [sys.TransactionIDSize]byte, ctx *TransactionContext, gasLimit uint64) (*ContractExecutor, error) {
 	executor := &ContractExecutor{contractID: contractID, ctx: ctx}
 
 	code, available := ctx.ReadAccountContractCode(contractID)
@@ -179,7 +179,10 @@ func (c *ContractExecutor) Run(amount uint64, entry string, params ...byte) erro
 		return utils.UnifyError(c.vm.ExitError)
 	}
 
-	fmt.Println(c.vm.Gas)
+	log.Contract(c.contractID, "gas").
+		Info().
+		Uint64("gas", c.vm.Gas).
+		Msg("Computed gas cost for executing smart contract function.")
 
 	// Save memory snapshot.
 	c.saveMemorySnapshot(c.vm.Memory)
@@ -196,7 +199,7 @@ func (c *ContractExecutor) GetCost(key string) int64 {
 		return cost
 	}
 
-	log.Fatal().Msgf("Instruction %s not found in gas table.", key)
+	log.Contracts().Fatal().Msgf("Instruction %s not found in gas table.", key)
 
 	return 1
 }
@@ -256,10 +259,8 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 					dataPtr := int(uint32(frame.Locals[0]))
 					dataLen := int(uint32(frame.Locals[1]))
 
-					contractID := c.contractID
-
-					log.Info().
-						Hex("contract_id", contractID[:]).
+					log.Contract(c.contractID, "log").
+						Info().
 						Msgf(string(vm.Memory[dataPtr : dataPtr+dataLen]))
 				}
 				return 0

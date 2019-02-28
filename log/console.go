@@ -24,10 +24,6 @@ const (
 	colorRed
 	colorGreen
 	colorYellow
-	colorBlue
-	colorMagenta
-	colorCyan
-	colorWhite
 )
 
 var (
@@ -38,7 +34,7 @@ var (
 	}
 
 	consoleDefaultTimeFormat = time.Kitchen
-	consoleDefaultFormatter  = func(i interface{}) string { return fmt.Sprintf("%s", i) }
+
 	consoleDefaultPartsOrder = func() []string {
 		return []string{
 			zerolog.TimestampFieldName,
@@ -116,22 +112,31 @@ func (w ConsoleWriter) Write(p []byte) (n int, err error) {
 	var buf = consoleBufPool.Get().(*bytes.Buffer)
 	defer consoleBufPool.Put(buf)
 
-	var evt map[string]interface{}
-	d := json.NewDecoder(bytes.NewReader(p))
-	d.UseNumber()
-	err = d.Decode(&evt)
+	var event map[string]interface{}
+
+	decoder := json.NewDecoder(bytes.NewReader(p))
+	decoder.UseNumber()
+
+	err = decoder.Decode(&event)
 	if err != nil {
 		return n, fmt.Errorf("cannot decode event: %s", err)
 	}
 
-	for _, p := range w.PartsOrder {
-		w.writePart(buf, evt, p)
+	if module := event[KeyModule]; module != ModuleNode && module != ModuleConsensus {
+		return len(p), nil
 	}
 
-	w.writeFields(evt, buf)
+	delete(event, KeyModule)
 
-	buf.WriteByte('\n')
-	buf.WriteTo(w.Out)
+	for _, p := range w.PartsOrder {
+		w.writePart(buf, event, p)
+	}
+
+	w.writeFields(event, buf)
+
+	_ = buf.WriteByte('\n')
+	_, _ = buf.WriteTo(w.Out)
+
 	return len(p), nil
 }
 
@@ -210,9 +215,9 @@ func (w ConsoleWriter) writeFields(evt map[string]interface{}, buf *bytes.Buffer
 		default:
 			b, err := json.Marshal(fValue)
 			if err != nil {
-				fmt.Fprintf(buf, colorize("[error: %v]", colorRed, w.NoColor), err)
+				_, _ = fmt.Fprintf(buf, colorize("[error: %v]", colorRed, w.NoColor), err)
 			} else {
-				fmt.Fprint(buf, fv(b))
+				_, _ = fmt.Fprint(buf, fv(b))
 			}
 		}
 
@@ -326,7 +331,7 @@ var (
 				l = colorize("???", colorBold, consoleNoColor)
 			}
 		} else {
-			l = strings.ToUpper(fmt.Sprintf("%s", i))[0:3]
+			l = ""
 		}
 		return l
 	}

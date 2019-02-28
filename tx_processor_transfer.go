@@ -2,6 +2,7 @@ package wavelet
 
 import (
 	"github.com/perlin-network/wavelet/payload"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 )
 
@@ -14,15 +15,15 @@ func (TransferProcessor) OnApplyTransaction(ctx *TransactionContext) error {
 
 	reader := payload.NewReader(tx.Payload)
 
-	var recipient [PublicKeySize]byte
+	var recipient [sys.PublicKeySize]byte
 
 	recipientBuf, err := reader.ReadBytes()
 	if err != nil {
 		return errors.Wrap(err, "transfer: failed to decode recipient")
 	}
 
-	if len(recipientBuf) != PublicKeySize {
-		return errors.Errorf("transfer: provided recipient is not %d bytes, but %d bytes instead", PublicKeySize, len(recipientBuf))
+	if len(recipientBuf) != sys.PublicKeySize {
+		return errors.Errorf("transfer: provided recipient is not %d bytes, but %d bytes instead", sys.PublicKeySize, len(recipientBuf))
 	}
 
 	copy(recipient[:], recipientBuf)

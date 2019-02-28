@@ -4,6 +4,7 @@ import (
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 )
@@ -37,7 +38,7 @@ type QueryResponse struct {
 	id   [blake2b.Size256]byte
 	vote bool
 
-	signature [wavelet.SignatureSize]byte
+	signature [sys.SignatureSize]byte
 }
 
 func (q QueryResponse) Read(reader payload.Reader) (noise.Message, error) {

@@ -3,13 +3,14 @@ package wavelet
 import (
 	"bytes"
 	"github.com/perlin-network/wavelet/store"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"testing/quick"
 )
 
 func TestSmartContract(t *testing.T) {
-	fn := func(id [TransactionIDSize]byte, code [2 * 1024]byte) bool {
+	fn := func(id [sys.TransactionIDSize]byte, code [2 * 1024]byte) bool {
 		db := store.NewInmem()
 		defer func() {
 			_ = db.Close()

@@ -43,8 +43,8 @@ func (s *SessionInitRequest) Bind(r *http.Request) error {
 		return errors.Wrap(err, "public key provided is not hex-formatted")
 	}
 
-	if len(publicKey) != wavelet.PublicKeySize {
-		return errors.Errorf("public key must be size %d", wavelet.PublicKeySize)
+	if len(publicKey) != sys.PublicKeySize {
+		return errors.Errorf("public key must be size %d", sys.PublicKeySize)
 	}
 
 	signature, err := hex.DecodeString(s.Signature)
@@ -52,8 +52,8 @@ func (s *SessionInitRequest) Bind(r *http.Request) error {
 		return errors.Wrap(err, "signature provided is not hex-formatted")
 	}
 
-	if len(signature) != wavelet.SignatureSize {
-		return errors.Errorf("signature must be size %d", wavelet.SignatureSize)
+	if len(signature) != sys.SignatureSize {
+		return errors.Errorf("signature must be size %d", sys.SignatureSize)
 	}
 
 	err = eddsa.Verify(publicKey, []byte(fmt.Sprintf("%s%d", SessionInitMessage, s.TimeMillis)), signature)
@@ -79,8 +79,8 @@ type SendTransactionRequest struct {
 	Signature string `json:"signature"`
 
 	// Internal fields.
-	creator   [wavelet.PublicKeySize]byte
-	signature [wavelet.SignatureSize]byte
+	creator   [sys.PublicKeySize]byte
+	signature [sys.SignatureSize]byte
 }
 
 func (s *SendTransactionRequest) Bind(r *http.Request) error {
@@ -89,8 +89,8 @@ func (s *SendTransactionRequest) Bind(r *http.Request) error {
 		return errors.Wrap(err, "sender public key provided is not hex-formatted")
 	}
 
-	if len(sender) != wavelet.PublicKeySize {
-		return errors.Errorf("sender public key must be size %d", wavelet.PublicKeySize)
+	if len(sender) != sys.PublicKeySize {
+		return errors.Errorf("sender public key must be size %d", sys.PublicKeySize)
 	}
 
 	if s.Tag > sys.TagStake {
@@ -102,8 +102,8 @@ func (s *SendTransactionRequest) Bind(r *http.Request) error {
 		return errors.Wrap(err, "sender signature provided is not hex-formatted")
 	}
 
-	if len(signature) != wavelet.SignatureSize {
-		return errors.Errorf("sender signature must be size %d", wavelet.SignatureSize)
+	if len(signature) != sys.SignatureSize {
+		return errors.Errorf("sender signature must be size %d", sys.SignatureSize)
 	}
 
 	err = eddsa.Verify(sender, append([]byte{s.Tag}, s.Payload...), signature)
@@ -228,12 +228,12 @@ type Account struct {
 	NumPages   uint64 `json:"num_mem_pages,omitempty"`
 
 	// Internal fields.
-	id     [wavelet.PublicKeySize]byte
+	id     [sys.PublicKeySize]byte
 	ledger *wavelet.Ledger
 }
 
 func (s *Account) Render(w http.ResponseWriter, r *http.Request) error {
-	var zero [wavelet.PublicKeySize]byte
+	var zero [sys.PublicKeySize]byte
 
 	if s.ledger == nil || s.id == zero {
 		return errors.New("insufficient fields specified")

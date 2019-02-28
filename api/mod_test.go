@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"github.com/perlin-network/noise/identity/ed25519"
 	"github.com/perlin-network/noise/signature/eddsa"
-	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/sys"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -18,8 +18,8 @@ import (
 func TestInitSession(t *testing.T) {
 	randomKeyPair := ed25519.RandomKeys()
 
-	hub := &hub{registry: newSessionRegistry()}
-	hub.setRoutes()
+	hub := &Hub{registry: newSessionRegistry()}
+	hub.setupRouter()
 
 	tests := []struct {
 		name     string
@@ -66,8 +66,8 @@ func TestInitSession(t *testing.T) {
 }
 
 func TestListTransaction(t *testing.T) {
-	hub := &hub{registry: newSessionRegistry()}
-	hub.setRoutes()
+	hub := &Hub{registry: newSessionRegistry()}
+	hub.setupRouter()
 
 	tests := []struct {
 		name         string
@@ -110,8 +110,8 @@ func TestListTransaction(t *testing.T) {
 }
 
 func TestGetTransaction(t *testing.T) {
-	hub := &hub{registry: newSessionRegistry()}
-	hub.setRoutes()
+	hub := &Hub{registry: newSessionRegistry()}
+	hub.setupRouter()
 
 	sess, err := hub.registry.newSession()
 	if err != nil {
@@ -130,7 +130,7 @@ func TestGetTransaction(t *testing.T) {
 			sessionToken: sess.id,
 			id:           "1c331c1d",
 			wantCode:     http.StatusBadRequest,
-			wantError:    fmt.Sprintf("transaction ID must be %d bytes long", wavelet.TransactionIDSize),
+			wantError:    fmt.Sprintf("transaction ID must be %d bytes long", sys.TransactionIDSize),
 		},
 	}
 
@@ -170,8 +170,8 @@ func TestGetTransaction(t *testing.T) {
 }
 
 func TestSendTransaction(t *testing.T) {
-	hub := &hub{registry: newSessionRegistry()}
-	hub.setRoutes()
+	hub := &Hub{registry: newSessionRegistry()}
+	hub.setupRouter()
 
 	tests := []struct {
 		name         string

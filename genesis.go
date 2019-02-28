@@ -3,6 +3,7 @@ package wavelet
 import (
 	"encoding/hex"
 	"encoding/json"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"os"
@@ -16,7 +17,12 @@ func performInception(accounts accounts, path string) (*Transaction, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+
+	defer func() {
+		if err := file.Close(); err != nil {
+			panic(err)
+		}
+	}()
 
 	buf, err := ioutil.ReadAll(file)
 	if err != nil {
@@ -35,7 +41,7 @@ func performInception(accounts accounts, path string) (*Transaction, error) {
 			return nil, err
 		}
 
-		var id [PublicKeySize]byte
+		var id [sys.PublicKeySize]byte
 		copy(id[:], encodedIDBuf)
 
 		for key, val := range pairs {

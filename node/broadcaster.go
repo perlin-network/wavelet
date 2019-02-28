@@ -50,7 +50,7 @@ func (b *broadcaster) Broadcast(tx *wavelet.Transaction) error {
 }
 
 func (b *broadcaster) work() {
-	var zero [wavelet.TransactionIDSize]byte
+	var zero [sys.TransactionIDSize]byte
 
 	for {
 		var item broadcastItem
@@ -58,6 +58,11 @@ func (b *broadcaster) work() {
 		select {
 		case popped := <-b.queue:
 			item = popped
+
+			log.Broadcaster().Log().
+				Bool("broadcast_nops", b.broadcastingNops).
+				Hex("tx_id", popped.tx.ID[:]).
+				Msg("Broadcasting out queued transaction.")
 		case <-time.After(1 * time.Millisecond):
 			// If there is nothing we need to broadcast urgently, then either broadcast
 			// our preferred transaction, or a nop (if we have previously broadcasted
@@ -76,6 +81,11 @@ func (b *broadcaster) work() {
 				}
 
 				item = broadcastItem{tx: nop, result: nil, viewID: b.ledger.ViewID()}
+
+				log.Broadcaster().Log().
+					Bool("broadcast_nops", true).
+					Hex("tx_id", nop.ID[:]).
+					Msg("Broadcasting out nop transaction.")
 			} else {
 				preferred := b.ledger.FindTransaction(preferredID)
 
@@ -84,6 +94,11 @@ func (b *broadcaster) work() {
 				}
 
 				item = broadcastItem{tx: preferred, result: nil, viewID: b.ledger.ViewID()}
+
+				log.Broadcaster().Log().
+					Bool("broadcast_nops", false).
+					Hex("tx_id", preferred.ID[:]).
+					Msg("Broadcasting out our preferred transaction.")
 			}
 		}
 
@@ -94,7 +109,9 @@ func (b *broadcaster) work() {
 			if item.result != nil {
 				item.result <- err
 			} else {
-				log.Warn().Err(err).Msg("Stopped a broadcast during assertions.")
+				log.Broadcaster().Warn().
+					Err(err).
+					Msg("Stopped a broadcast during assertions.")
 			}
 			continue
 		}
@@ -103,14 +120,27 @@ func (b *broadcaster) work() {
 			if item.result != nil {
 				item.result <- err
 			} else {
-				log.Warn().Err(err).Msg("Got an error while querying.")
+				log.Broadcaster().Warn().
+					Err(err).
+					Msg("Got an error while querying.")
 			}
 			continue
 		}
 
+		log.Broadcaster().Debug().
+			Hex("tx_id", item.tx.ID[:]).
+			Bool("broadcast_nops", b.broadcastingNops).
+			Msg("Successfully broadcasted out transaction.")
+
 		// Start broadcasting nops if we have successfully broadcasted
 		// some arbitrary transaction.
-		b.broadcastingNops = true
+		if !b.broadcastingNops {
+			b.broadcastingNops = true
+
+			log.Broadcaster().Log().
+				Bool("broadcast_nops", true).
+				Msg("Started broadcasting nops.")
+		}
 
 		if item.result != nil {
 			item.result <- nil
@@ -119,6 +149,10 @@ func (b *broadcaster) work() {
 		// If we have advanced one view ID, stop broadcasting nops.
 		if b.ledger.ViewID() != item.viewID {
 			b.broadcastingNops = false
+
+			log.Broadcaster().Log().
+				Bool("broadcast_nops", true).
+				Msg("Stopped broadcasting nops.")
 		}
 	}
 }
@@ -195,7 +229,7 @@ func (b *broadcaster) query(tx *wavelet.Transaction) error {
 
 			// Verify query response signature.
 			signature := res.signature
-			res.signature = [wavelet.SignatureSize]byte{}
+			res.signature = [sys.SignatureSize]byte{}
 
 			err = eddsa.Verify(peerID.PublicKey(), res.Write(), signature[:])
 			if err != nil {
