@@ -76,7 +76,8 @@ func TestTree_Difference(t *testing.T) {
 
 	tree2 := New(kv2)
 	tree2.SetViewID(0)
-	tree2.LoadDifference(tree.DumpDifference(0))
+	err := tree2.LoadDifference(tree.DumpDifference(0))
+	assert.NoError(t, err)
 	assert.Equal(t, tree2.viewID, uint64(1))
 	tree2.SetViewID(2)
 	tree2.Insert([]byte("k2"), []byte("2"))
@@ -87,7 +88,8 @@ func TestTree_Difference(t *testing.T) {
 	result, _ = tree2.Lookup([]byte("k2"))
 	assert.Equal(t, []byte("2"), result)
 
-	tree.LoadDifference(tree2.DumpDifference(1))
+	err = tree.LoadDifference(tree2.DumpDifference(1))
+	assert.NoError(t, err)
 	assert.Equal(t, tree.viewID, uint64(2))
 
 	result, _ = tree.Lookup([]byte("k2"))

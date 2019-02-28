@@ -131,7 +131,7 @@ func (t *Tree) doPrintContents(n *node, depth int) {
 		fmt.Print(" ")
 	}
 
-	fmt.Printf("%s: %s\n", hex.EncodeToString(n.id[:]), n.String())
+	fmt.Printf("%s: %s\n", hex.EncodeToString(n.id[:]), n.getString())
 
 	t.doPrintContents(t.loadNode(n.left), depth+1)
 	t.doPrintContents(t.loadNode(n.right), depth+1)
@@ -234,7 +234,7 @@ func (t *Tree) DumpDifference(prevViewID uint64) []byte {
 			continue
 		}
 
-		current.serialize(buf)
+		current.serializeForDifference(buf)
 		if current.size > 1 {
 			stack = append(stack, t.loadNode(current.right), t.loadNode(current.left))
 		}
@@ -247,14 +247,14 @@ func (t *Tree) LoadDifference(diff []byte) error {
 	reader := bytes.NewReader(diff)
 	var root *node
 	unresolved := make(map[[MerkleHashSize]byte]struct{})
-	loaded := make([]*node, 0)
+	preloaded := make(map[[MerkleHashSize]byte]*node, 0)
 
 	for reader.Len() > 0 {
-		n, err := deserializeChecked(reader)
+		n, err := deserializeFromDifference(reader, t.viewID)
 		if err != nil {
 			return err
 		}
-		loaded = append(loaded, n)
+		preloaded[n.id] = n
 		if root == nil {
 			root = n
 		} else {
@@ -263,17 +263,17 @@ func (t *Tree) LoadDifference(diff []byte) error {
 			}
 			delete(unresolved, n.id)
 		}
-		if n.size > 1 {
+		if n.kind == NodeNonLeaf {
 			unresolved[n.left] = struct{}{}
 			unresolved[n.right] = struct{}{}
 		}
 	}
-	for k, _ := range unresolved {
-		if _, err := t.loadNodeChecked(k); err != nil {
-			return errors.Wrap(err, "difference referenced unknown node")
-		}
+	_, _, _, _, err := populateDifference(t, root.id, preloaded, make(map[[MerkleHashSize]byte]struct{}))
+	if err != nil {
+		return errors.Wrap(err, "invalid difference")
 	}
-	for _, n := range loaded {
+
+	for _, n := range preloaded {
 		t.pending.Store(n.id, n)
 	}
 	// TODO: validate AVL properties

@@ -261,10 +261,13 @@ func (n *node) delete(t *Tree, key []byte) (*node, bool) {
 }
 
 func (n *node) rehash() {
+	n.id = n.rehashNoWrite()
+}
+
+func (n *node) rehashNoWrite() [MerkleHashSize]byte {
 	var buf bytes.Buffer
 	n.serialize(&buf)
-
-	n.id = md5.Sum(buf.Bytes())
+	return md5.Sum(buf.Bytes())
 }
 
 func (n *node) clone() *node {
@@ -302,7 +305,7 @@ func (n *node) update(t *Tree, fn func(node *node)) *node {
 	return cpy
 }
 
-func (n *node) String() string {
+func (n *node) getString() string {
 	switch n.kind {
 	case NodeNonLeaf:
 		return "(non-leaf)" + hex.EncodeToString(n.key)
@@ -310,6 +313,110 @@ func (n *node) String() string {
 		return fmt.Sprintf("%s -> %s", hex.EncodeToString(n.key), hex.EncodeToString(n.value))
 	default:
 		return "(unknown)"
+	}
+}
+
+func (n *node) serializeForDifference(buf *bytes.Buffer) {
+	var buf64 [8]byte
+
+	buf.Write(n.id[:])
+	binary.LittleEndian.PutUint64(buf64[:], n.viewID)
+	buf.Write(buf64[:])
+	buf.WriteByte(byte(n.kind))
+
+	if n.kind == NodeLeafValue {
+		if len(n.key) > math.MaxUint32 {
+			panic("avl: key is too long")
+		}
+
+		binary.LittleEndian.PutUint32(buf64[:4], uint32(len(n.key)))
+		buf.Write(buf64[:4])
+		buf.Write(n.key)
+
+		if len(n.value) > math.MaxUint32 {
+			panic("avl: value is too long")
+		}
+
+		binary.LittleEndian.PutUint32(buf64[:4], uint32(len(n.value)))
+		buf.Write(buf64[:4])
+		buf.Write(n.value)
+	} else {
+		buf.Write(n.left[:])
+		buf.Write(n.right[:])
+	}
+}
+
+func deserializeFromDifference(r *bytes.Reader, localViewID uint64) (*node, error) {
+	var buf64 [8]byte
+
+	var id [MerkleHashSize]byte
+	_, err := r.Read(id[:])
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = r.Read(buf64[:])
+	if err != nil {
+		return nil, err
+	}
+	viewID := binary.LittleEndian.Uint64(buf64[:])
+	if viewID <= localViewID {
+		return nil, errors.New("got view id < local view id")
+	}
+
+	_kind, err := r.ReadByte()
+	if err != nil {
+		return nil, err
+	}
+	kind := nodeType(_kind)
+
+	if kind == NodeLeafValue {
+		_, err = r.Read(buf64[:4])
+		if err != nil {
+			return nil, err
+		}
+		key := make([]byte, binary.LittleEndian.Uint32(buf64[:4]))
+		_, err = r.Read(key)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = r.Read(buf64[:4])
+		if err != nil {
+			return nil, err
+		}
+		value := make([]byte, binary.LittleEndian.Uint32(buf64[:4]))
+		_, err = r.Read(value)
+		if err != nil {
+			return nil, err
+		}
+		return &node{
+			id:     id,
+			viewID: viewID,
+			key:    key,
+			value:  value,
+			kind:   kind,
+		}, nil
+
+	} else if kind == NodeNonLeaf {
+		var left, right [MerkleHashSize]byte
+		_, err = r.Read(left[:])
+		if err != nil {
+			return nil, err
+		}
+		_, err = r.Read(right[:])
+		if err != nil {
+			return nil, err
+		}
+		return &node{
+			id:     id,
+			viewID: viewID,
+			kind:   kind,
+			left:   left,
+			right:  right,
+		}, nil
+	} else {
+		return nil, errors.New("invalid kind")
 	}
 }
 
@@ -434,4 +541,76 @@ func deserialize(r *bytes.Reader) *node {
 		panic(err)
 	}
 	return n
+}
+
+// populateDifference constructs a valid AVL tree from the incoming preloaded tree difference.
+func populateDifference(t *Tree, id [MerkleHashSize]byte, preloaded map[[MerkleHashSize]byte]*node, visited map[[MerkleHashSize]byte]struct{}) (uint64 /* size */, byte /* depth */, uint64 /* view id */, []byte /* key */, error) {
+	if _, seen := visited[id]; seen {
+		return 0, 0, 0, nil, errors.New("Cycle detected")
+	}
+	visited[id] = struct{}{}
+
+	var err error
+	n := preloaded[id]
+	if n == nil {
+		n, err = t.loadNodeChecked(id)
+		if err != nil {
+			return 0, 0, 0, nil, err
+		}
+		return n.size, n.depth, n.viewID, n.key, nil
+	}
+
+	if n.size != 0 || n.depth != 0 {
+		panic("BUG: Size != 0 || Depth != 0, possible inconsistency")
+	}
+
+	if n.kind == NodeLeafValue {
+		n.size = 1
+		n.depth = 0
+		if n.id != n.rehashNoWrite() {
+			return 0, 0, 0, nil, errors.New("hash mismatch")
+		}
+		return n.size, n.depth, n.viewID, n.key, nil
+	} else if n.kind == NodeNonLeaf {
+		leftSize, leftDepth, leftViewID, leftKey, err := populateDifference(t, n.left, preloaded, visited)
+		if err != nil {
+			return 0, 0, 0, nil, err
+		}
+		rightSize, rightDepth, rightViewID, rightKey, err := populateDifference(t, n.right, preloaded, visited)
+		if err != nil {
+			return 0, 0, 0, nil, err
+		}
+		n.size = leftSize + rightSize
+		newDepth := leftDepth
+		if rightDepth > leftDepth {
+			newDepth = rightDepth
+		}
+		if newDepth+1 < newDepth {
+			return 0, 0, 0, nil, errors.New("depth overflow")
+		}
+		n.depth = newDepth + 1
+
+		if bytes.Compare(leftKey, rightKey) > 0 {
+			n.key = leftKey
+		} else {
+			n.key = rightKey
+		}
+
+		balanceFactor := int(leftDepth) - int(rightDepth)
+		if balanceFactor < -1 || balanceFactor > 1 {
+			return 0, 0, 0, nil, errors.New("invalid balance factor")
+		}
+
+		if n.viewID < leftViewID || n.viewID < rightViewID {
+			return 0, 0, 0, nil, errors.New("invalid view id")
+		}
+
+		if n.id != n.rehashNoWrite() {
+			return 0, 0, 0, nil, errors.New("hash mismatch")
+		}
+		return n.size, n.depth, n.viewID, n.key, nil
+	} else {
+		return 0, 0, 0, nil, errors.New("unknown node kind")
+	}
+
 }
