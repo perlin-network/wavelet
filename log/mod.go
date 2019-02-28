@@ -72,8 +72,8 @@ func Node() *zerolog.Logger {
 	return node
 }
 
-func Account(id [sys.PublicKeySize]byte) *zerolog.Logger {
-	accounts := accounts.With().Hex("account_id", id[:]).Logger()
+func Account(id [sys.PublicKeySize]byte, event string) *zerolog.Logger {
+	accounts := accounts.With().Hex("account_id", id[:]).Str(KeyEvent, event).Logger()
 	return &accounts
 }
 

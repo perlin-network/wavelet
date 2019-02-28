@@ -37,7 +37,9 @@ func (a accounts) WriteAccountBalance(id [sys.PublicKeySize]byte, balance uint64
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], balance)
 
-	log.Account(id).Log().Uint64("balance", balance).Str(log.KeyEvent, "balance_updated").Msg("Updated balance.")
+	log.Account(id, "balance_updated").Log().
+		Uint64("balance", balance).
+		Msg("Updated balance.")
 
 	a.writeUnderAccounts(id, keyAccountBalance[:], buf[:])
 }
@@ -55,7 +57,9 @@ func (a accounts) WriteAccountStake(id [sys.PublicKeySize]byte, stake uint64) {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], stake)
 
-	log.Account(id).Log().Uint64("stake", stake).Str(log.KeyEvent, "stake_updated").Msg("Updated stake.")
+	log.Account(id, "stake_updated").Log().
+		Uint64("stake", stake).
+		Msg("Updated stake.")
 
 	a.writeUnderAccounts(id, keyAccountStake[:], buf[:])
 }
@@ -86,7 +90,9 @@ func (a accounts) WriteAccountContractNumPages(id [sys.TransactionIDSize]byte, n
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], numPages)
 
-	log.Account(id).Log().Uint64("num_pages", numPages).Str(log.KeyEvent, "num_pages_updated").Msg("Updated number of memory pages for a contract.")
+	log.Account(id, "num_pages_updated").Log().
+		Uint64("num_pages", numPages).
+		Msg("Updated number of memory pages for a contract.")
 
 	a.writeUnderAccounts(id, keyAccountContractNumPages[:], buf[:])
 }
