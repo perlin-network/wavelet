@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/hex"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/cors"
@@ -49,9 +50,10 @@ func StartHTTP(n *noise.Node, port int) {
 		r.Post("/init", h.initSession)
 	})
 
-	r.Route("/transaction", func(r chi.Router) {
-		r.Use(h.authenticated)
-		r.Post("/send", h.sendTransaction)
+	r.Route("/tx", func(r chi.Router) {
+		r.With(h.authenticated).Get("/", h.listTransactions)
+		r.Get("/{id:^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$}", h.getTransaction)
+		r.With(h.authenticated).Post("/send", h.sendTransaction)
 	})
 
 	r.Route("/ledger", func(r chi.Router) {
@@ -110,6 +112,63 @@ func (h *hub) sendTransaction(w http.ResponseWriter, r *http.Request) {
 
 func (h *hub) ledgerStatus(w http.ResponseWriter, r *http.Request) {
 	render.Render(w, r, &LedgerStatusResponse{node: h.node, ledger: h.ledger})
+}
+
+func (h *hub) listTransactions(w http.ResponseWriter, r *http.Request) {
+	var offset, limit uint64
+	var err error
+
+	if raw := chi.URLParam(r, "offset"); len(raw) > 0 {
+		offset, err = strconv.ParseUint(raw, 10, 64)
+
+		if err != nil {
+			render.Render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
+			return
+		}
+	}
+
+	if raw := chi.URLParam(r, "limit"); len(raw) > 0 {
+		limit, err = strconv.ParseUint(raw, 10, 64)
+
+		if err != nil {
+			render.Render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
+		}
+	}
+
+	var transactions []render.Renderer
+
+	for _, tx := range h.ledger.Transactions(offset, limit) {
+		transactions = append(transactions, &Transaction{tx: tx})
+	}
+
+	render.RenderList(w, r, transactions)
+}
+
+func (h *hub) getTransaction(w http.ResponseWriter, r *http.Request) {
+	param := chi.URLParam(r, "id")
+
+	slice, err := hex.DecodeString(param)
+	if err != nil {
+		render.Render(w, r, ErrBadRequest(errors.Wrap(err, "transaction ID must be presented as valid hex")))
+		return
+	}
+
+	if len(slice) != wavelet.TransactionIDSize {
+		render.Render(w, r, ErrBadRequest(errors.Errorf("transaction ID must be %d bytes long", wavelet.TransactionIDSize)))
+		return
+	}
+
+	var id [wavelet.TransactionIDSize]byte
+	copy(id[:], slice)
+
+	tx := h.ledger.FindTransaction(id)
+
+	if tx == nil {
+		render.Render(w, r, ErrBadRequest(errors.Errorf("could not find transaction with ID ", param)))
+		return
+	}
+
+	render.Render(w, r, &Transaction{tx: tx})
 }
 
 func (h *hub) authenticated(next http.Handler) http.Handler {

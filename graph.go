@@ -6,6 +6,7 @@ import (
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
+	"sort"
 	"sync"
 )
 
@@ -171,4 +172,23 @@ func (g *graph) Height() uint64 {
 	defer g.Unlock()
 
 	return g.height
+}
+
+func (g *graph) Transactions(offset, limit uint64) (transactions []*Transaction) {
+	g.Lock()
+	defer g.Unlock()
+
+	for _, tx := range g.transactions {
+		transactions = append(transactions, tx)
+	}
+
+	sort.Slice(transactions, func(i, j int) bool {
+		return transactions[i].depth < transactions[j].depth
+	})
+
+	if offset != 0 || limit != 0 {
+		transactions = transactions[offset:limit]
+	}
+
+	return
 }

@@ -71,8 +71,8 @@ func performInception(accounts accounts, path string) (*Transaction, error) {
 	inception := time.Date(2018, time.Month(4), 26, 0, 0, 0, 0, time.UTC)
 
 	tx := &Transaction{
-		Timestamp: uint64(time.Duration(inception.UnixNano()) / time.Millisecond),
-		Payload:   merkleRoot[:],
+		Timestamp:          uint64(time.Duration(inception.UnixNano()) / time.Millisecond),
+		AccountsMerkleRoot: merkleRoot,
 	}
 	tx.rehash()
 

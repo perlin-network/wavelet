@@ -25,6 +25,8 @@ var (
 	_ render.Renderer = (*SendTransactionResponse)(nil)
 
 	_ render.Renderer = (*LedgerStatusResponse)(nil)
+
+	_ render.Renderer = (*Transaction)(nil)
 )
 
 type SessionInitRequest struct {
@@ -118,6 +120,7 @@ type SendTransactionResponse struct {
 	Parents  []string `json:"parent_ids"`
 	Critical bool     `json:"is_critical"`
 
+	// Internal fields.
 	ledger *wavelet.Ledger
 	tx     *wavelet.Transaction
 }
@@ -163,6 +166,53 @@ func (s *LedgerStatusResponse) Render(w http.ResponseWriter, r *http.Request) er
 	s.RootID = hex.EncodeToString(s.ledger.Root().ID[:])
 	s.ViewID = s.ledger.ViewID()
 	s.Difficulty = s.ledger.Difficulty()
+
+	return nil
+}
+
+type Transaction struct {
+	ID string `json:"id"`
+
+	Sender  string `json:"sender"`
+	Creator string `json:"creator"`
+
+	Parents []string `json:"parents"`
+
+	Timestamp uint64 `json:"timestamp"`
+
+	Tag     byte   `json:"tag"`
+	Payload []byte `json:"payload"`
+
+	AccountsMerkleRoot string `json:"accounts_root"`
+
+	SenderSignature  string `json:"sender_signature"`
+	CreatorSignature string `json:"creator_signature"`
+
+	Depth uint64 `json:"depth"`
+
+	// Internal fields.
+	tx *wavelet.Transaction
+}
+
+func (s *Transaction) Render(w http.ResponseWriter, r *http.Request) error {
+	if s.tx == nil {
+		return errors.New("insufficient fields specified")
+	}
+
+	s.ID = hex.EncodeToString(s.tx.ID[:])
+	s.Sender = hex.EncodeToString(s.tx.Sender[:])
+	s.Creator = hex.EncodeToString(s.tx.Creator[:])
+	s.Timestamp = s.tx.Timestamp
+	s.Tag = s.tx.Tag
+	s.Payload = s.tx.Payload
+	s.AccountsMerkleRoot = hex.EncodeToString(s.tx.AccountsMerkleRoot[:])
+	s.SenderSignature = hex.EncodeToString(s.tx.SenderSignature[:])
+	s.CreatorSignature = hex.EncodeToString(s.tx.CreatorSignature[:])
+	s.Depth = s.tx.Depth()
+
+	for _, parentID := range s.tx.ParentIDs {
+		s.Parents = append(s.Parents, hex.EncodeToString(parentID[:]))
+	}
 
 	return nil
 }

@@ -188,3 +188,7 @@ func (t *Transaction) rehash() *Transaction {
 	t.ID = blake2b.Sum256(t.Write())
 	return t
 }
+
+func (t *Transaction) Depth() uint64 {
+	return t.depth
+}
