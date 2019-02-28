@@ -1,37 +1,37 @@
 package wavelet
 
 import (
+	"bytes"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/stretchr/testify/assert"
-	"math/rand"
 	"testing"
+	"testing/quick"
 )
 
 func TestSmartContract(t *testing.T) {
-	db := store.NewInmem()
-	defer func() {
-		_ = db.Close()
-	}()
+	fn := func(id [TransactionIDSize]byte, code [2 * 1024]byte) bool {
+		db := store.NewInmem()
+		defer func() {
+			_ = db.Close()
+		}()
 
-	accounts := newAccounts(db)
+		accounts := newAccounts(db)
 
-	var id [TransactionIDSize]byte
-	var code [2 * 1024 * 1024]byte
+		returned, available := accounts.ReadAccountContractCode(id)
+		if returned != nil || available == true {
+			return false
+		}
 
-	_, err := rand.Read(id[:])
-	assert.NoError(t, err)
+		accounts.WriteAccountContractCode(id, code[:])
 
-	_, err = rand.Read(code[:])
-	assert.NoError(t, err)
+		returned, available = accounts.ReadAccountContractCode(id)
+		if !bytes.Equal(code[:], returned) || available == false {
+			return false
+		}
 
-	// Not exist.
-	returned, available := accounts.ReadAccountContractCode(id)
-	assert.Nil(t, returned)
-	assert.False(t, available)
+		return true
+	}
 
-	accounts.WriteAccountContractCode(id, code[:])
+	assert.NoError(t, quick.Check(fn, nil))
 
-	returned, available = accounts.ReadAccountContractCode(id)
-	assert.Equal(t, code[:], returned)
-	assert.True(t, available)
 }
