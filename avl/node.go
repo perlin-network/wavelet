@@ -308,7 +308,7 @@ func (n *node) update(t *Tree, fn func(node *node)) *node {
 func (n *node) getString() string {
 	switch n.kind {
 	case NodeNonLeaf:
-		return "(non-leaf)" + hex.EncodeToString(n.key)
+		return "(non-leaf) " + hex.EncodeToString(n.key)
 	case NodeLeafValue:
 		return fmt.Sprintf("%s -> %s", hex.EncodeToString(n.key), hex.EncodeToString(n.value))
 	default:

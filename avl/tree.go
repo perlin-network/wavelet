@@ -132,9 +132,10 @@ func (t *Tree) doPrintContents(n *node, depth int) {
 	}
 
 	fmt.Printf("%s: %s\n", hex.EncodeToString(n.id[:]), n.getString())
-
-	t.doPrintContents(t.loadNode(n.left), depth+1)
-	t.doPrintContents(t.loadNode(n.right), depth+1)
+	if n.kind == NodeNonLeaf {
+		t.doPrintContents(t.loadNode(n.left), depth+1)
+		t.doPrintContents(t.loadNode(n.right), depth+1)
+	}
 }
 
 func (t *Tree) queueWrite(n *node) {
@@ -268,6 +269,11 @@ func (t *Tree) LoadDifference(diff []byte) error {
 			unresolved[n.right] = struct{}{}
 		}
 	}
+
+	if root == nil {
+		return nil
+	}
+
 	_, _, _, _, err := populateDifference(t, root.id, preloaded, make(map[[MerkleHashSize]byte]struct{}))
 	if err != nil {
 		return errors.Wrap(err, "invalid difference")
