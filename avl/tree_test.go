@@ -66,6 +66,41 @@ func TestTree_Snapshot(t *testing.T) {
 	assert.False(t, ok)
 }
 
+func TestTree_Difference_Randomized(t *testing.T) {
+	tree1 := New(store.NewInmem())
+	tree2 := New(store.NewInmem())
+
+	for i := 1; i <= 10000; i++ {
+		key, value := make([]byte, 32), make([]byte, 32)
+		_, err := rand.Read(key)
+		if err != nil {
+			panic(err)
+		}
+		_, err = rand.Read(value)
+		if err != nil {
+			panic(err)
+		}
+
+		var a, b *Tree
+		if rand.Int()%2 == 0 {
+			a, b = tree1, tree2
+		} else {
+			a, b = tree2, tree1
+		}
+
+		if a.viewID != uint64(i-1) {
+			assert.Equal(t, b.viewID, uint64(i-1))
+			a.LoadDifference(b.DumpDifference(a.viewID))
+		}
+		a.SetViewID(uint64(i))
+		a.Insert(key, value)
+	}
+
+	tree1.LoadDifference(tree2.DumpDifference(tree1.viewID))
+	tree2.LoadDifference(tree1.DumpDifference(tree2.viewID))
+	assert.Equal(t, tree1.root.id, tree2.root.id)
+}
+
 func TestTree_Difference(t *testing.T) {
 	kv := store.NewInmem()
 	kv2 := store.NewInmem()
