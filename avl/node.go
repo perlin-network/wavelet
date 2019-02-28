@@ -354,24 +354,24 @@ func (n *node) serialize(buf *bytes.Buffer) {
 	buf.Write(buf64[:])
 }
 
-func deserialize(r *bytes.Reader) *node {
+func deserializeChecked(r *bytes.Reader) (*node, error) {
 	n := new(node)
 
 	kindBuf, err := r.ReadByte()
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	n.kind = nodeType(kindBuf)
 
 	if n.kind != NodeLeafValue {
 		_, err = r.Read(n.left[:])
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 
 		_, err = r.Read(n.right[:])
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 	}
 
@@ -379,7 +379,7 @@ func deserialize(r *bytes.Reader) *node {
 
 	_, err = r.Read(buf64[:])
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	n.viewID = binary.LittleEndian.Uint64(buf64[:])
@@ -387,43 +387,51 @@ func deserialize(r *bytes.Reader) *node {
 	// Read key.
 	_, err = r.Read(buf64[:4])
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	n.key = make([]byte, binary.LittleEndian.Uint32(buf64[:4]))
 	_, err = r.Read(n.key)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if n.kind == NodeLeafValue {
 		_, err = r.Read(buf64[:4])
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 
 		n.value = make([]byte, binary.LittleEndian.Uint32(buf64[:4]))
 		_, err = r.Read(n.value)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 	}
 
 	// Read depth.
 	n.depth, err = r.ReadByte()
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	// Read size.
 	_, err = r.Read(buf64[:])
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	n.size = binary.LittleEndian.Uint64(buf64[:])
 
 	n.rehash()
 
+	return n, nil
+}
+
+func deserialize(r *bytes.Reader) *node {
+	n, err := deserializeChecked(r)
+	if err != nil {
+		panic(err)
+	}
 	return n
 }

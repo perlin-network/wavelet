@@ -247,14 +247,22 @@ func (t *Tree) LoadDifference(diff []byte) error {
 	reader := bytes.NewReader(diff)
 	var root *node
 	unresolved := make(map[[MerkleHashSize]byte]struct{})
+	loaded := make([]*node, 0)
 
 	for reader.Len() > 0 {
-		n := deserialize(reader) // TODO: check invalid date
+		n, err := deserializeChecked(reader)
+		if err != nil {
+			return err
+		}
+		loaded = append(loaded, n)
 		if root == nil {
 			root = n
+		} else {
+			if _, ok := unresolved[n.id]; !ok {
+				return errors.Errorf("unexpected node")
+			}
+			delete(unresolved, n.id)
 		}
-		t.pending.Store(n.id, n)
-		delete(unresolved, n.id)
 		if n.size > 1 {
 			unresolved[n.left] = struct{}{}
 			unresolved[n.right] = struct{}{}
@@ -264,6 +272,9 @@ func (t *Tree) LoadDifference(diff []byte) error {
 		if _, err := t.loadNodeChecked(k); err != nil {
 			return errors.Wrap(err, "difference referenced unknown node")
 		}
+	}
+	for _, n := range loaded {
+		t.pending.Store(n.id, n)
 	}
 	// TODO: validate AVL properties
 	t.viewID = root.viewID
