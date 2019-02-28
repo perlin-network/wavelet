@@ -354,9 +354,7 @@ func (n *node) serialize(buf *bytes.Buffer) {
 	buf.Write(buf64[:])
 }
 
-func deserialize(buf []byte) *node {
-	r := bytes.NewReader(buf)
-
+func deserialize(r *bytes.Reader) *node {
 	n := new(node)
 
 	kindBuf, err := r.ReadByte()
