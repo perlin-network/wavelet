@@ -57,9 +57,13 @@ func (h *hub) setRoutes() {
 		r.Post("/init", h.initSession)
 	})
 
+	r.Route("/account", func(r chi.Router) {
+		r.With(h.authenticated).Get("/{id}", h.getAccount)
+	})
+
 	r.Route("/tx", func(r chi.Router) {
 		r.With(h.authenticated).Get("/", h.listTransactions)
-		r.Get("/{id:^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$}", h.getTransaction)
+		r.With(h.authenticated).Get("/{id}", h.getTransaction)
 		r.With(h.authenticated).Post("/send", h.sendTransaction)
 	})
 
@@ -184,6 +188,24 @@ func (h *hub) getTransaction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.render(w, r, &Transaction{tx: tx})
+}
+
+func (h *hub) getAccount(w http.ResponseWriter, r *http.Request) {
+	param := chi.URLParam(r, "id")
+
+	slice, err := hex.DecodeString(param)
+	if err != nil {
+		h.render(w, r, ErrBadRequest(errors.Wrap(err, "account ID must be presented as valid hex")))
+		return
+	}
+
+	if len(slice) != wavelet.PublicKeySize {
+		h.render(w, r, ErrBadRequest(errors.Errorf("account ID must be %d bytes long", wavelet.PublicKeySize)))
+		return
+	}
+
+	var id [wavelet.PublicKeySize]byte
+	copy(id[:], slice)
 }
 
 func (h *hub) authenticated(next http.Handler) http.Handler {

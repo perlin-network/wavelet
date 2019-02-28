@@ -27,6 +27,8 @@ var (
 	_ render.Renderer = (*LedgerStatusResponse)(nil)
 
 	_ render.Renderer = (*Transaction)(nil)
+
+	_ render.Renderer = (*Account)(nil)
 )
 
 type SessionInitRequest struct {
@@ -213,6 +215,34 @@ func (s *Transaction) Render(w http.ResponseWriter, r *http.Request) error {
 	for _, parentID := range s.tx.ParentIDs {
 		s.Parents = append(s.Parents, hex.EncodeToString(parentID[:]))
 	}
+
+	return nil
+}
+
+type Account struct {
+	PublicKey string `json:"public_key"`
+	Balance   uint64 `json:"balance"`
+	Stake     uint64 `json:"stake"`
+
+	IsContract bool   `json:"is_contract"`
+	NumPages   uint64 `json:"num_mem_pages,omitempty"`
+
+	// Internal fields.
+	publicKey [wavelet.PublicKeySize]byte
+	ledger    *wavelet.Ledger
+}
+
+func (s *Account) Render(w http.ResponseWriter, r *http.Request) error {
+	var zero [wavelet.PublicKeySize]byte
+
+	if s.ledger == nil || s.publicKey == zero {
+		return errors.New("insufficient fields specified")
+	}
+
+	s.PublicKey = hex.EncodeToString(s.publicKey[:])
+	s.Balance, _ = s.ledger.ReadAccountBalance(s.publicKey)
+	s.Stake, _ = s.ledger.ReadAccountStake(s.publicKey)
+	s.NumPages, s.IsContract = s.ledger.ReadAccountContractNumPages(s.publicKey)
 
 	return nil
 }

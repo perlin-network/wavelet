@@ -40,7 +40,7 @@ func New(kv store.KV) *Tree {
 		var rootID [MerkleHashSize]byte
 		copy(rootID[:], buf)
 
-		t.root = t.loadNode(rootID)
+		t.root = t.mustLoadNode(rootID)
 	}
 
 	return t
@@ -114,8 +114,8 @@ func (t *Tree) doRange(callback func(k []byte, v []byte), n *node) {
 		return
 	}
 
-	t.doRange(callback, t.loadNode(n.left))
-	t.doRange(callback, t.loadNode(n.right))
+	t.doRange(callback, t.mustLoadNode(n.left))
+	t.doRange(callback, t.mustLoadNode(n.right))
 }
 
 func (t *Tree) PrintContents() {
@@ -133,8 +133,8 @@ func (t *Tree) doPrintContents(n *node, depth int) {
 
 	fmt.Printf("%s: %s\n", hex.EncodeToString(n.id[:]), n.getString())
 	if n.kind == NodeNonLeaf {
-		t.doPrintContents(t.loadNode(n.left), depth+1)
-		t.doPrintContents(t.loadNode(n.right), depth+1)
+		t.doPrintContents(t.mustLoadNode(n.left), depth+1)
+		t.doPrintContents(t.mustLoadNode(n.right), depth+1)
 	}
 }
 
@@ -191,7 +191,7 @@ func (t *Tree) Checksum() [MerkleHashSize]byte {
 	return t.root.id
 }
 
-func (t *Tree) loadNodeChecked(id [MerkleHashSize]byte) (*node, error) {
+func (t *Tree) loadNode(id [MerkleHashSize]byte) (*node, error) {
 	if n, ok := t.pending.Load(id); ok {
 		return n.(*node), nil
 	}
@@ -206,14 +206,14 @@ func (t *Tree) loadNodeChecked(id [MerkleHashSize]byte) (*node, error) {
 		return nil, errors.Errorf("avl: could not find node %x", id)
 	}
 
-	n := deserialize(bytes.NewReader(buf))
+	n := mustDeserialize(bytes.NewReader(buf))
 	t.cache.put(id, n)
 
 	return n, nil
 }
 
-func (t *Tree) loadNode(id [MerkleHashSize]byte) *node {
-	n, err := t.loadNodeChecked(id)
+func (t *Tree) mustLoadNode(id [MerkleHashSize]byte) *node {
+	n, err := t.loadNode(id)
 	if err != nil {
 		panic(err)
 	}
@@ -224,7 +224,7 @@ func (t *Tree) SetViewID(viewID uint64) {
 	t.viewID = viewID
 }
 
-func (t *Tree) DumpDifference(prevViewID uint64) []byte {
+func (t *Tree) DumpDiff(prevViewID uint64) []byte {
 	stack := []*node{t.root}
 	buf := bytes.NewBuffer(nil)
 
@@ -237,14 +237,14 @@ func (t *Tree) DumpDifference(prevViewID uint64) []byte {
 
 		current.serializeForDifference(buf)
 		if current.size > 1 {
-			stack = append(stack, t.loadNode(current.right), t.loadNode(current.left))
+			stack = append(stack, t.mustLoadNode(current.right), t.mustLoadNode(current.left))
 		}
 	}
 
 	return buf.Bytes()
 }
 
-func (t *Tree) LoadDifference(diff []byte) error {
+func (t *Tree) ApplyDiff(diff []byte) error {
 	reader := bytes.NewReader(diff)
 	var root *node
 	unresolved := make(map[[MerkleHashSize]byte]struct{})

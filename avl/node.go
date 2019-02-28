@@ -56,11 +56,11 @@ func newLeafNode(t *Tree, key, value []byte) *node {
 
 func (n *node) balanceFactor(t *Tree, left *node, right *node) int {
 	if left == nil {
-		left = t.loadNode(n.left)
+		left = t.mustLoadNode(n.left)
 	}
 
 	if right == nil {
-		right = t.loadNode(n.right)
+		right = t.mustLoadNode(n.right)
 	}
 
 	return int(left.depth) - int(right.depth)
@@ -68,11 +68,11 @@ func (n *node) balanceFactor(t *Tree, left *node, right *node) int {
 
 func (n *node) sync(t *Tree, left *node, right *node) {
 	if left == nil {
-		left = t.loadNode(n.left)
+		left = t.mustLoadNode(n.left)
 	}
 
 	if right == nil {
-		right = t.loadNode(n.right)
+		right = t.mustLoadNode(n.right)
 	}
 
 	if left.depth > right.depth {
@@ -91,7 +91,7 @@ func (n *node) sync(t *Tree, left *node, right *node) {
 }
 
 func (n *node) leftRotate(t *Tree) *node {
-	right := t.loadNode(n.right)
+	right := t.mustLoadNode(n.right)
 
 	n = n.update(t, func(node *node) {
 		node.right = right.left
@@ -107,7 +107,7 @@ func (n *node) leftRotate(t *Tree) *node {
 }
 
 func (n *node) rightRotate(t *Tree) *node {
-	left := t.loadNode(n.left)
+	left := t.mustLoadNode(n.left)
 
 	n = n.update(t, func(node *node) {
 		node.left = left.right
@@ -123,8 +123,8 @@ func (n *node) rightRotate(t *Tree) *node {
 }
 
 func (n *node) rebalance(t *Tree) *node {
-	left := t.loadNode(n.left)
-	right := t.loadNode(n.right)
+	left := t.mustLoadNode(n.left)
+	right := t.mustLoadNode(n.right)
 
 	balance := n.balanceFactor(t, left, right)
 
@@ -151,8 +151,8 @@ func (n *node) rebalance(t *Tree) *node {
 
 func (n *node) insert(t *Tree, key, value []byte) *node {
 	if n.kind == NodeNonLeaf {
-		left := t.loadNode(n.left)
-		right := t.loadNode(n.right)
+		left := t.mustLoadNode(n.left)
+		right := t.mustLoadNode(n.right)
 
 		if bytes.Compare(key, left.key) <= 0 {
 			return n.update(t, func(node *node) {
@@ -203,12 +203,12 @@ func (n *node) lookup(t *Tree, key []byte) ([]byte, bool) {
 			return nil, false
 		}
 	} else if n.kind == NodeNonLeaf {
-		child := t.loadNode(n.left)
+		child := t.mustLoadNode(n.left)
 
 		if bytes.Compare(key, child.key) <= 0 {
 			return child.lookup(t, key)
 		} else {
-			return t.loadNode(n.right).lookup(t, key)
+			return t.mustLoadNode(n.right).lookup(t, key)
 		}
 	}
 
@@ -225,8 +225,8 @@ func (n *node) delete(t *Tree, key []byte) (*node, bool) {
 	} else if n.kind == NodeNonLeaf {
 		var deleted bool
 
-		left := t.loadNode(n.left)
-		right := t.loadNode(n.right)
+		left := t.mustLoadNode(n.left)
+		right := t.mustLoadNode(n.right)
 
 		if bytes.Compare(key, left.key) <= 0 {
 			left, deleted = left.delete(t, key)
@@ -461,7 +461,7 @@ func (n *node) serialize(buf *bytes.Buffer) {
 	buf.Write(buf64[:])
 }
 
-func deserializeChecked(r *bytes.Reader) (*node, error) {
+func deserialize(r *bytes.Reader) (*node, error) {
 	n := new(node)
 
 	kindBuf, err := r.ReadByte()
@@ -535,8 +535,8 @@ func deserializeChecked(r *bytes.Reader) (*node, error) {
 	return n, nil
 }
 
-func deserialize(r *bytes.Reader) *node {
-	n, err := deserializeChecked(r)
+func mustDeserialize(r *bytes.Reader) *node {
+	n, err := deserialize(r)
 	if err != nil {
 		panic(err)
 	}
@@ -546,14 +546,14 @@ func deserialize(r *bytes.Reader) *node {
 // populateDifference constructs a valid AVL tree from the incoming preloaded tree difference.
 func populateDifference(t *Tree, id [MerkleHashSize]byte, preloaded map[[MerkleHashSize]byte]*node, visited map[[MerkleHashSize]byte]struct{}) (uint64 /* size */, byte /* depth */, uint64 /* view id */, []byte /* key */, error) {
 	if _, seen := visited[id]; seen {
-		return 0, 0, 0, nil, errors.New("Cycle detected")
+		return 0, 0, 0, nil, errors.New("cycle detected")
 	}
 	visited[id] = struct{}{}
 
 	var err error
 	n := preloaded[id]
 	if n == nil {
-		n, err = t.loadNodeChecked(id)
+		n, err = t.loadNode(id)
 		if err != nil {
 			return 0, 0, 0, nil, err
 		}
@@ -576,18 +576,23 @@ func populateDifference(t *Tree, id [MerkleHashSize]byte, preloaded map[[MerkleH
 		if err != nil {
 			return 0, 0, 0, nil, err
 		}
+
 		rightSize, rightDepth, rightViewID, rightKey, err := populateDifference(t, n.right, preloaded, visited)
 		if err != nil {
 			return 0, 0, 0, nil, err
 		}
+
 		n.size = leftSize + rightSize
+
 		newDepth := leftDepth
 		if rightDepth > leftDepth {
 			newDepth = rightDepth
 		}
+
 		if newDepth+1 < newDepth {
 			return 0, 0, 0, nil, errors.New("depth overflow")
 		}
+
 		n.depth = newDepth + 1
 
 		if bytes.Compare(leftKey, rightKey) > 0 {
@@ -608,6 +613,7 @@ func populateDifference(t *Tree, id [MerkleHashSize]byte, preloaded map[[MerkleH
 		if n.id != n.rehashNoWrite() {
 			return 0, 0, 0, nil, errors.New("hash mismatch")
 		}
+
 		return n.size, n.depth, n.viewID, n.key, nil
 	} else {
 		return 0, 0, 0, nil, errors.New("unknown node kind")
