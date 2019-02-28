@@ -228,21 +228,21 @@ type Account struct {
 	NumPages   uint64 `json:"num_mem_pages,omitempty"`
 
 	// Internal fields.
-	publicKey [wavelet.PublicKeySize]byte
-	ledger    *wavelet.Ledger
+	id     [wavelet.PublicKeySize]byte
+	ledger *wavelet.Ledger
 }
 
 func (s *Account) Render(w http.ResponseWriter, r *http.Request) error {
 	var zero [wavelet.PublicKeySize]byte
 
-	if s.ledger == nil || s.publicKey == zero {
+	if s.ledger == nil || s.id == zero {
 		return errors.New("insufficient fields specified")
 	}
 
-	s.PublicKey = hex.EncodeToString(s.publicKey[:])
-	s.Balance, _ = s.ledger.ReadAccountBalance(s.publicKey)
-	s.Stake, _ = s.ledger.ReadAccountStake(s.publicKey)
-	s.NumPages, s.IsContract = s.ledger.ReadAccountContractNumPages(s.publicKey)
+	s.PublicKey = hex.EncodeToString(s.id[:])
+	s.Balance, _ = s.ledger.ReadAccountBalance(s.id)
+	s.Stake, _ = s.ledger.ReadAccountStake(s.id)
+	s.NumPages, s.IsContract = s.ledger.ReadAccountContractNumPages(s.id)
 
 	return nil
 }

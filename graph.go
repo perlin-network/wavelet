@@ -176,18 +176,31 @@ func (g *graph) Height() uint64 {
 
 func (g *graph) Transactions(offset, limit uint64) (transactions []*Transaction) {
 	g.Lock()
-	defer g.Unlock()
 
 	for _, tx := range g.transactions {
 		transactions = append(transactions, tx)
 	}
 
+	g.Unlock()
+
 	sort.Slice(transactions, func(i, j int) bool {
 		return transactions[i].depth < transactions[j].depth
 	})
 
+	if limit == 0 {
+		return nil
+	}
+
 	if offset != 0 || limit != 0 {
-		transactions = transactions[offset:limit]
+		if offset >= limit || offset >= uint64(len(transactions)) {
+			return nil
+		}
+
+		if offset+limit > uint64(len(transactions)) {
+			limit = uint64(len(transactions)) - offset
+		}
+
+		transactions = transactions[offset : offset+limit]
 	}
 
 	return
