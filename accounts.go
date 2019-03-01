@@ -2,6 +2,7 @@ package wavelet
 
 import (
 	"encoding/binary"
+	"github.com/golang/snappy"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
@@ -104,14 +105,22 @@ func (a accounts) ReadAccountContractPage(id [sys.TransactionIDSize]byte, idx ui
 		return nil, false
 	}
 
-	return buf, true
+	decoded, err := snappy.Decode(nil, buf)
+	if err != nil {
+		log.Account(id, "page_decode_error").Error().Msg("Failed to decode contract page")
+		return nil, false
+	}
+
+	return decoded, true
 }
 
 func (a accounts) WriteAccountContractPage(id [sys.TransactionIDSize]byte, idx uint64, page []byte) {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], idx)
 
-	a.writeUnderAccounts(id, append(keyAccountContractPages[:], buf[:]...), page)
+	encoded := snappy.Encode(nil, page)
+
+	a.writeUnderAccounts(id, append(keyAccountContractPages[:], buf[:]...), encoded)
 }
 
 func (a accounts) readUnderAccounts(id [sys.PublicKeySize]byte, key []byte) ([]byte, bool) {
