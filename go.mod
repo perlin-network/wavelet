@@ -2,8 +2,6 @@ module github.com/perlin-network/wavelet
 
 replace github.com/go-interpreter/wagon => github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39
 
-replace github.com/perlin-network/noise => /home/kenta/Desktop/noise
-
 require (
 	github.com/facebookgo/ensure v0.0.0-20160127193407-b4ab57deab51 // indirect
 	github.com/facebookgo/stack v0.0.0-20160209184415-751773369052 // indirect
@@ -11,6 +9,7 @@ require (
 	github.com/go-chi/chi v4.0.2+incompatible
 	github.com/go-chi/cors v1.0.0
 	github.com/go-chi/render v1.0.1
+	github.com/golang/snappy v0.0.1
 	github.com/google/uuid v1.1.0
 	github.com/gorilla/websocket v1.4.0 // indirect
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
