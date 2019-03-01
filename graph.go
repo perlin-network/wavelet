@@ -181,11 +181,15 @@ func (g *graph) Height() uint64 {
 	return g.height
 }
 
-func (g *graph) Transactions(offset, limit uint64) (transactions []*Transaction) {
+func (g *graph) Transactions(offset, limit uint64, sender, creator [sys.PublicKeySize]byte) (transactions []*Transaction) {
+	var zero [sys.PublicKeySize]byte
+
 	g.Lock()
 
 	for _, tx := range g.transactions {
-		transactions = append(transactions, tx)
+		if (sender == zero && creator == zero) || (sender != zero && tx.Sender == sender) || (creator != zero && tx.Creator == creator) {
+			transactions = append(transactions, tx)
+		}
 	}
 
 	g.Unlock()

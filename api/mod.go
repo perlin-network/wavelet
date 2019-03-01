@@ -311,8 +311,52 @@ func (h *Hub) ledgerStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Hub) listTransactions(w http.ResponseWriter, r *http.Request) {
+	var sender [sys.PublicKeySize]byte
+	var creator [sys.PublicKeySize]byte
 	var offset, limit uint64
 	var err error
+
+	if raw := r.URL.Query().Get("sender"); len(raw) > 0 {
+		slice, err := hex.DecodeString(raw)
+
+		if err != nil {
+			h.render(w, r, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
+			return
+		}
+
+		if len(slice) != sys.PublicKeySize {
+			h.render(w, r, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", sys.PublicKeySize)))
+			return
+		}
+
+		if err != nil {
+			h.render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse sender")))
+			return
+		}
+
+		copy(sender[:], slice)
+	}
+
+	if raw := r.URL.Query().Get("creator"); len(raw) > 0 {
+		slice, err := hex.DecodeString(raw)
+
+		if err != nil {
+			h.render(w, r, ErrBadRequest(errors.Wrap(err, "creator ID must be presented as valid hex")))
+			return
+		}
+
+		if len(slice) != sys.PublicKeySize {
+			h.render(w, r, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", sys.PublicKeySize)))
+			return
+		}
+
+		if err != nil {
+			h.render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse creator")))
+			return
+		}
+
+		copy(creator[:], slice)
+	}
 
 	if raw := r.URL.Query().Get("offset"); len(raw) > 0 {
 		offset, err = strconv.ParseUint(raw, 10, 64)
@@ -334,7 +378,7 @@ func (h *Hub) listTransactions(w http.ResponseWriter, r *http.Request) {
 
 	var transactions []render.Renderer
 
-	for _, tx := range h.ledger.Transactions(offset, limit) {
+	for _, tx := range h.ledger.Transactions(offset, limit, sender, creator) {
 		transactions = append(transactions, &Transaction{tx: tx})
 	}
 

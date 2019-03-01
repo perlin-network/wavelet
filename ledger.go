@@ -628,8 +628,8 @@ func (l *Ledger) HasTransactionInView(id [blake2b.Size256]byte) bool {
 	return exists
 }
 
-func (l *Ledger) Transactions(offset, limit uint64) []*Transaction {
-	return l.view.Transactions(offset, limit)
+func (l *Ledger) Transactions(offset, limit uint64, sender, creator [sys.PublicKeySize]byte) []*Transaction {
+	return l.view.Transactions(offset, limit, sender, creator)
 }
 
 func (l *Ledger) Root() *Transaction {
