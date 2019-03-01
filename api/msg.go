@@ -75,12 +75,13 @@ func (s *SessionInitResponse) Render(w http.ResponseWriter, r *http.Request) err
 type SendTransactionRequest struct {
 	Sender    string `json:"sender"`
 	Tag       byte   `json:"tag"`
-	Payload   []byte `json:"payload"`
+	Payload   string `json:"payload"`
 	Signature string `json:"signature"`
 
 	// Internal fields.
 	creator   [sys.PublicKeySize]byte
 	signature [sys.SignatureSize]byte
+	payload   []byte
 }
 
 func (s *SendTransactionRequest) Bind(r *http.Request) error {
@@ -97,6 +98,11 @@ func (s *SendTransactionRequest) Bind(r *http.Request) error {
 		return errors.New("unknown transaction tag specified")
 	}
 
+	s.payload, err = hex.DecodeString(s.Payload)
+	if err != nil {
+		errors.Wrap(err, "payload provided is not hex-formatted")
+	}
+
 	signature, err := hex.DecodeString(s.Signature)
 	if err != nil {
 		return errors.Wrap(err, "sender signature provided is not hex-formatted")
@@ -106,7 +112,7 @@ func (s *SendTransactionRequest) Bind(r *http.Request) error {
 		return errors.Errorf("sender signature must be size %d", sys.SignatureSize)
 	}
 
-	err = eddsa.Verify(sender, append([]byte{s.Tag}, s.Payload...), signature)
+	err = eddsa.Verify(sender, append([]byte{s.Tag}, s.payload...), signature)
 	if err != nil {
 		return errors.Wrap(err, "sender signature verification failed")
 	}

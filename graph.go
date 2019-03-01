@@ -72,7 +72,7 @@ func (g *graph) addTransaction(tx *Transaction) error {
 		parent.children = append(parent.children, tx.ID)
 	}
 
-	log.TX(tx.ID, "added").Debug().
+	log.TX(tx.ID, tx.Sender, tx.Creator, "new").Log().
 		Uint64("depth", tx.depth).
 		Msg("Added transaction to view-graph.")
 
@@ -116,7 +116,7 @@ func (g *graph) reset(root *Transaction) {
 		delete(g.transactions, popped.ID)
 		count++
 
-		log.TX(popped.ID, "pruned").Debug().
+		log.TX(popped.ID, popped.Sender, popped.Creator, "pruned").Log().
 			Msg("Pruned transaction away from view-graph.")
 	}
 
@@ -197,10 +197,6 @@ func (g *graph) Transactions(offset, limit uint64, sender, creator [sys.PublicKe
 	sort.Slice(transactions, func(i, j int) bool {
 		return transactions[i].depth < transactions[j].depth
 	})
-
-	if limit == 0 {
-		return nil
-	}
 
 	if offset != 0 || limit != 0 {
 		if offset >= limit || offset >= uint64(len(transactions)) {

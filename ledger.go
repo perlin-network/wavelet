@@ -317,7 +317,6 @@ func (l *Ledger) ProcessQuery(tx *Transaction, responses map[[blake2b.Size256]by
 
 		ss := l.collapseTransactions(root)
 		ss.tree.SetViewID(viewID)
-		ss.snapshot = false
 
 		l.accounts = ss
 
@@ -438,7 +437,7 @@ func (l *Ledger) RegisterProcessor(tag byte, processor TransactionProcessor) {
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
 func (l *Ledger) collapseTransactions(critical *Transaction) accounts {
-	snapshot := l.snapshotAccounts()
+	ss := l.snapshotAccounts()
 
 	visited := make(map[[blake2b.Size256]byte]struct{})
 	visited[l.view.Root().ID] = struct{}{}
@@ -478,29 +477,23 @@ func (l *Ledger) collapseTransactions(critical *Transaction) accounts {
 
 		// If any errors occur while applying our transaction to our accounts
 		// snapshot, silently log it and continue applying other transactions.
-		if err := l.applyTransactionToSnapshot(snapshot, popped); err != nil {
-			log.TX(popped.ID, "applied").
-				Warn().
-				Err(err).
-				Msg("Got an error while collapsing down transactions.")
+		if err := l.applyTransactionToSnapshot(ss, popped); err != nil {
+			log.TX(popped.ID, popped.Sender, popped.Creator, "failed").Log().Err(err).
+				Msg("Failed to apply transaction to the ledger.")
+		} else {
+			log.TX(popped.ID, popped.Sender, popped.Creator, "applied").Log().
+				Msg("Successfully applied transaction to the ledger.")
 		}
 
-		if err := l.rewardValidators(snapshot, popped); err != nil {
-			log.TX(popped.ID, "rewarded").
-				Warn().
-				Err(err).
-				Msg("Failed to reward a validator while collapsing down transactions.")
+		if err := l.rewardValidators(ss, popped); err != nil {
+			log.Node().Warn().Err(err).Msg("Failed to reward a validator while collapsing down transactions.")
 		}
 	}
 
-	return snapshot
+	return ss
 }
 
 func (l *Ledger) applyTransactionToSnapshot(ss accounts, tx *Transaction) error {
-	if !ss.snapshot {
-		return errors.New("wavelet: to keep things safe, pass in an accounts instance that is a snapshot")
-	}
-
 	ctx := newTransactionContext(ss, tx)
 
 	err := ctx.apply(l.processors)

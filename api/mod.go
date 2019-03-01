@@ -89,7 +89,7 @@ func (h *Hub) Write(p []byte) (n int, err error) {
 
 		if poller := h.accountsPoller.Load(); poller != nil {
 			err := poller.(*melody.Melody).BroadcastFilter(line, func(s *melody.Session) bool {
-				if expectedID, ok := s.Get("id"); ok && accountID != expectedID {
+				if expectedID, ok := s.Get("account_id"); ok && accountID != expectedID {
 					return false
 				}
 
@@ -120,7 +120,7 @@ func (h *Hub) Write(p []byte) (n int, err error) {
 
 		if poller := h.contractPoller.Load(); poller != nil {
 			err := poller.(*melody.Melody).BroadcastFilter(line, func(s *melody.Session) bool {
-				if expectedID, ok := s.Get("id"); ok && contractID != expectedID {
+				if expectedID, ok := s.Get("contract_id"); ok && contractID != expectedID {
 					return false
 				}
 
@@ -143,9 +143,27 @@ func (h *Hub) Write(p []byte) (n int, err error) {
 			return n, errors.New("tx log does not have field 'tx_id'")
 		}
 
+		senderID, exists := event["sender_id"]
+		if !exists {
+			return n, errors.New("tx log does not have field 'sender_id'")
+		}
+
+		creatorID, exists := event["creator_id"]
+		if !exists {
+			return n, errors.New("tx log does not have field 'creator_id'")
+		}
+
 		if poller := h.txPoller.Load(); poller != nil {
 			err := poller.(*melody.Melody).BroadcastFilter(line, func(s *melody.Session) bool {
-				if expectedID, ok := s.Get("id"); ok && txID != expectedID {
+				if expectedID, ok := s.Get("tx_id"); ok && txID != expectedID {
+					return false
+				}
+
+				if expectedID, ok := s.Get("sender_id"); ok && senderID != expectedID {
+					return false
+				}
+
+				if expectedID, ok := s.Get("creator_id"); ok && creatorID != expectedID {
 					return false
 				}
 
@@ -161,27 +179,36 @@ func (h *Hub) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+func (h *Hub) setupWebsocketPoller(poller *atomic.Value, params map[string]pollerParam) {
+	p := melody.New()
+	p.HandleConnect(h.parseWebsocketParams(params))
+	poller.Store(p)
+}
+
 func (h *Hub) setupRouter() {
 	// Setup websocket routers.
-	h.nodePoller.Store(melody.New())
-	h.broadcasterPoller.Store(melody.New())
-	h.consensusPoller.Store(melody.New())
-	h.stakePoller.Store(melody.New())
 
-	accountsPoller := melody.New()
-	accountsPoller.HandleConnect(h.parseWebsocketParams(sys.PublicKeySize))
+	h.setupWebsocketPoller(&h.nodePoller, nil)
+	h.setupWebsocketPoller(&h.broadcasterPoller, nil)
+	h.setupWebsocketPoller(&h.consensusPoller, nil)
+	h.setupWebsocketPoller(&h.stakePoller, nil)
 
-	contractPoller := melody.New()
-	contractPoller.HandleConnect(h.parseWebsocketParams(sys.TransactionIDSize))
+	h.setupWebsocketPoller(&h.accountsPoller, map[string]pollerParam{
+		"id": {"account_id", sys.PublicKeySize},
+	})
 
-	txPoller := melody.New()
-	txPoller.HandleConnect(h.parseWebsocketParams(sys.TransactionIDSize))
+	h.setupWebsocketPoller(&h.contractPoller, map[string]pollerParam{
+		"id": {"contract_id", sys.TransactionIDSize},
+	})
 
-	h.accountsPoller.Store(accountsPoller)
-	h.contractPoller.Store(contractPoller)
-	h.txPoller.Store(txPoller)
+	h.setupWebsocketPoller(&h.txPoller, map[string]pollerParam{
+		"id":      {"tx_id", sys.TransactionIDSize},
+		"sender":  {"sender_id", sys.PublicKeySize},
+		"creator": {"creator_id", sys.PublicKeySize},
+	})
 
 	// Setup HTTP router.
+
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -207,13 +234,9 @@ func (h *Hub) setupRouter() {
 		r.With(h.authenticated).Get("/", h.ledgerStatus)
 	})
 
-	r.Route("/broadcaster", func(r chi.Router) {
-		r.With(h.authenticated).Get("/poll", h.poll(h.broadcasterPoller))
-	})
+	r.Get("/broadcaster/poll", h.poll(h.broadcasterPoller))
 
-	r.Route("/consensus", func(r chi.Router) {
-		r.With(h.authenticated).Get("/poll", h.poll(h.consensusPoller))
-	})
+	r.Get("/consensus/poll", h.poll(h.consensusPoller))
 
 	r.Route("/stake", func(r chi.Router) {
 		r.With(h.authenticated).Get("/poll", h.poll(h.stakePoller))
@@ -221,7 +244,8 @@ func (h *Hub) setupRouter() {
 
 	r.Route("/accounts", func(r chi.Router) {
 		r.With(h.authenticated).Get("/{id}", h.getAccount)
-		r.With(h.authenticated).Get("/poll", h.poll(h.accountsPoller))
+
+		r.Get("/poll", h.poll(h.accountsPoller))
 	})
 
 	r.Route("/contract/{id}", func(r chi.Router) {
@@ -234,7 +258,7 @@ func (h *Hub) setupRouter() {
 			r.Get("/{index}", h.getContractPages)
 		})
 
-		r.With(h.authenticated).Get("/poll", h.poll(h.contractPoller))
+		r.Get("/poll", h.poll(h.contractPoller))
 	})
 
 	r.Route("/tx", func(r chi.Router) {
@@ -242,7 +266,7 @@ func (h *Hub) setupRouter() {
 		r.With(h.authenticated).Get("/{id}", h.getTransaction)
 		r.With(h.authenticated).Post("/send", h.sendTransaction)
 
-		r.With(h.authenticated).Get("/poll", h.poll(h.txPoller))
+		r.Get("/poll", h.poll(h.txPoller))
 	})
 
 	h.router = r
@@ -290,7 +314,7 @@ func (h *Hub) sendTransaction(w http.ResponseWriter, r *http.Request) {
 		CreatorSignature: req.signature,
 
 		Tag:     req.Tag,
-		Payload: req.Payload,
+		Payload: req.payload,
 	}
 
 	if err := h.ledger.AttachSenderToTransaction(h.node.Keys, tx); err != nil {
@@ -516,9 +540,8 @@ func (h *Hub) getContractPages(w http.ResponseWriter, r *http.Request) {
 func (h *Hub) authenticated(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get(HeaderSessionToken)
-
 		if len(token) == 0 {
-			h.render(w, r, ErrBadRequest(errors.Errorf("missing HTTP header %s", HeaderSessionToken)))
+			h.render(w, r, ErrBadRequest(errors.Errorf("session token not specified via HTTP header %q", HeaderSessionToken)))
 			return
 		}
 
@@ -542,23 +565,42 @@ func (h *Hub) pollNode(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Hub) parseWebsocketParams(size int) func(*melody.Session) {
+type pollerParam struct {
+	key  string
+	size int
+}
+
+func (h *Hub) parseWebsocketParams(params map[string]pollerParam) func(s *melody.Session) {
 	return func(s *melody.Session) {
-		param := s.Request.URL.Query().Get("id")
+		token := s.Request.URL.Query().Get("token")
+		if len(token) == 0 {
+			_ = s.CloseWithMsg([]byte("specify a session token through url query params"))
+			return
+		}
 
-		if len(param) > 0 {
-			slice, err := hex.DecodeString(param)
-			if err != nil {
-				_ = s.CloseWithMsg([]byte(errors.Wrap(err, "id must be presented as valid hex").Error()))
-				return
+		_, exists := h.registry.getSession(token)
+		if !exists {
+			_ = s.CloseWithMsg([]byte(fmt.Sprintf("could not find session %s", token)))
+			return
+		}
+
+		for queryKey, val := range params {
+			param := s.Request.URL.Query().Get(queryKey)
+
+			if len(param) > 0 {
+				slice, err := hex.DecodeString(param)
+				if err != nil {
+					_ = s.CloseWithMsg([]byte(errors.Wrap(err, "must be presented as valid hex").Error()))
+					return
+				}
+
+				if len(slice) != val.size {
+					_ = s.CloseWithMsg([]byte(fmt.Sprintf("must be %d bytes long", val.size)))
+					return
+				}
+
+				s.Set(val.key, param)
 			}
-
-			if len(slice) != size {
-				_ = s.CloseWithMsg([]byte(fmt.Sprintf("id must be %d bytes long", size)))
-				return
-			}
-
-			s.Set("id", param)
 		}
 	}
 }

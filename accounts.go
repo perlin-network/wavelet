@@ -12,16 +12,14 @@ import (
 type accounts struct {
 	kv   store.KV
 	tree *avl.Tree
-
-	snapshot bool
 }
 
 func newAccounts(kv store.KV) accounts {
-	return accounts{kv: kv, tree: avl.New(kv), snapshot: false}
+	return accounts{kv: kv, tree: avl.New(kv)}
 }
 
 func (a accounts) snapshotAccounts() accounts {
-	return accounts{kv: a.kv, tree: avl.LoadFromSnapshot(a.kv, a.tree.Snapshot()), snapshot: true}
+	return accounts{kv: a.kv, tree: avl.LoadFromSnapshot(a.kv, a.tree.Snapshot())}
 }
 
 func (a accounts) ReadAccountBalance(id [sys.PublicKeySize]byte) (uint64, bool) {
@@ -131,12 +129,6 @@ func (a accounts) writeUnderAccounts(id [sys.PublicKeySize]byte, key, value []by
 }
 
 func (a accounts) CommitAccounts() error {
-	// If we are operating on a snapshot, we shouldn't be allowed to commit
-	// any changes to our snapshot to the disk.
-	if a.snapshot == true {
-		return nil
-	}
-
 	err := a.tree.Commit()
 	if err != nil {
 		return errors.Wrap(err, "accounts: failed to write")

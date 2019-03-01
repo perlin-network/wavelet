@@ -90,8 +90,12 @@ func Broadcaster() *zerolog.Logger {
 	return broadcaster
 }
 
-func TX(id [sys.TransactionIDSize]byte, event string) *zerolog.Logger {
-	tx := tx.With().Hex("tx_id", id[:]).Str(KeyEvent, event).Logger()
+func TX(id [sys.TransactionIDSize]byte, sender, creator [sys.PublicKeySize]byte, event string) *zerolog.Logger {
+	tx := tx.With().
+		Hex("tx_id", id[:]).
+		Hex("sender_id", sender[:]).
+		Hex("creator_id", creator[:]).
+		Str(KeyEvent, event).Logger()
 	return &tx
 }
 
