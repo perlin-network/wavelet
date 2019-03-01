@@ -107,7 +107,6 @@ func (a accounts) ReadAccountContractPage(id [sys.TransactionIDSize]byte, idx ui
 
 	decoded, err := snappy.Decode(nil, buf)
 	if err != nil {
-		log.Account(id, "page_decode_error").Error().Msg("Failed to decode contract page")
 		return nil, false
 	}
 
