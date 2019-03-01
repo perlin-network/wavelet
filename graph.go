@@ -72,7 +72,7 @@ func (g *graph) addTransaction(tx *Transaction) error {
 		parent.children = append(parent.children, tx.ID)
 	}
 
-	log.TX(tx.ID, tx.Sender, tx.Creator, "new").Log().
+	log.TX(tx.ID, tx.Sender, tx.Creator, tx.ParentIDs, tx.Tag, tx.Payload, "new").Log().
 		Uint64("depth", tx.depth).
 		Msg("Added transaction to view-graph.")
 
@@ -116,7 +116,7 @@ func (g *graph) reset(root *Transaction) {
 		delete(g.transactions, popped.ID)
 		count++
 
-		log.TX(popped.ID, popped.Sender, popped.Creator, "pruned").Log().
+		log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "pruned").Log().
 			Msg("Pruned transaction away from view-graph.")
 	}
 

@@ -478,11 +478,11 @@ func (l *Ledger) collapseTransactions(critical *Transaction) accounts {
 		// If any errors occur while applying our transaction to our accounts
 		// snapshot, silently log it and continue applying other transactions.
 		if err := l.applyTransactionToSnapshot(ss, popped); err != nil {
-			log.TX(popped.ID, popped.Sender, popped.Creator, "failed").Log().Err(err).
-				Msg("Failed to apply transaction to the ledger.")
+			log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "failed").
+				Log().Err(err).Msg("Failed to apply transaction to the ledger.")
 		} else {
-			log.TX(popped.ID, popped.Sender, popped.Creator, "applied").Log().
-				Msg("Successfully applied transaction to the ledger.")
+			log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "applied").
+				Log().Msg("Successfully applied transaction to the ledger.")
 		}
 
 		if err := l.rewardValidators(ss, popped); err != nil {

@@ -1,6 +1,7 @@
 package log
 
 import (
+	"encoding/hex"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/rs/zerolog"
 	"io"
@@ -90,11 +91,20 @@ func Broadcaster() *zerolog.Logger {
 	return broadcaster
 }
 
-func TX(id [sys.TransactionIDSize]byte, sender, creator [sys.PublicKeySize]byte, event string) *zerolog.Logger {
+func TX(id [sys.TransactionIDSize]byte, sender, creator [sys.PublicKeySize]byte, parentIDs [][sys.PublicKeySize]byte, tag byte, payload []byte, event string) *zerolog.Logger {
+	var parents []string
+
+	for _, parentID := range parentIDs {
+		parents = append(parents, hex.EncodeToString(parentID[:]))
+	}
+
 	tx := tx.With().
 		Hex("tx_id", id[:]).
 		Hex("sender_id", sender[:]).
 		Hex("creator_id", creator[:]).
+		Strs("parents", parents).
+		Uint8("tag", tag).
+		Hex("payload", payload).
 		Str(KeyEvent, event).Logger()
 	return &tx
 }
