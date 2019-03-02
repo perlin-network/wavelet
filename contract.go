@@ -136,7 +136,7 @@ func (c *ContractExecutor) saveMemorySnapshot(mem []byte) {
 	}
 }
 
-func (c *ContractExecutor) Run(amount uint64, entry string, params ...byte) error {
+func (c *ContractExecutor) Run(amount uint64, entry string, params ...byte) ([]byte, uint64, error) {
 	id := c.ctx.Transaction().ID
 	sender := c.ctx.Transaction().Sender
 
@@ -150,13 +150,13 @@ func (c *ContractExecutor) Run(amount uint64, entry string, params ...byte) erro
 
 	entryID, exists := c.vm.GetFunctionExport(entry)
 	if !exists {
-		return errors.Wrapf(ErrContractFunctionNotFound, "`%s` does not exist", entry)
+		return nil, 0, errors.Wrapf(ErrContractFunctionNotFound, "`%s` does not exist", entry)
 	}
 
 	// Load memory snapshot if available.
 	mem, err := c.loadMemorySnapshot()
 	if err != nil {
-		return errors.Wrap(err, "contract: failed to load memory snapshot")
+		return nil, 0, errors.Wrap(err, "contract: failed to load memory snapshot")
 	}
 
 	if mem != nil {
@@ -176,7 +176,7 @@ func (c *ContractExecutor) Run(amount uint64, entry string, params ...byte) erro
 	}
 
 	if c.vm.ExitError != nil {
-		return utils.UnifyError(c.vm.ExitError)
+		return nil, 0, utils.UnifyError(c.vm.ExitError)
 	}
 
 	log.Contract(c.contractID, "gas").
@@ -187,7 +187,7 @@ func (c *ContractExecutor) Run(amount uint64, entry string, params ...byte) erro
 	// Save memory snapshot.
 	c.saveMemorySnapshot(c.vm.Memory)
 
-	return nil
+	return c.result, c.vm.Gas, nil
 }
 
 func (c *ContractExecutor) GetCost(key string) int64 {

@@ -65,10 +65,12 @@ func (TransferProcessor) OnApplyTransaction(ctx *TransactionContext) error {
 			return err
 		}
 
-		err = executor.Run(amount, funcName, funcParams...)
+		_, _, err = executor.Run(amount, funcName, funcParams...)
 	} else {
-		err = executor.Run(amount, "on_money_received")
+		_, _, err = executor.Run(amount, "on_money_received")
 	}
+
+	// TODO(kenta): deduct gas cost here
 
 	if err != nil && errors.Cause(err) != ErrContractFunctionNotFound {
 		return errors.Wrap(err, "transfer: failed to execute smart contract method")

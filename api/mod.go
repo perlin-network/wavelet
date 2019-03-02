@@ -19,17 +19,8 @@ import (
 	"gopkg.in/olahol/melody.v1"
 	"net/http"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
-)
-
-var (
-	pollBufPool = sync.Pool{
-		New: func() interface{} {
-			return bytes.NewBuffer(make([]byte, 0, 100))
-		},
-	}
 )
 
 type Hub struct {
@@ -53,9 +44,6 @@ func New() *Hub {
 }
 
 func (h *Hub) Write(p []byte) (n int, err error) {
-	var buf = pollBufPool.Get().(*bytes.Buffer)
-	defer pollBufPool.Put(buf)
-
 	var event map[string]interface{}
 
 	decoder := json.NewDecoder(bytes.NewReader(p))
