@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/wavelet/store"
+	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"sync"
 )
@@ -225,19 +226,23 @@ func (t *Tree) SetViewID(viewID uint64) {
 }
 
 func (t *Tree) DumpDiff(prevViewID uint64) []byte {
-	stack := []*node{t.root}
+	var stack queue.Queue
+	stack.PushBack(t.root)
+
 	buf := bytes.NewBuffer(nil)
 
-	for len(stack) > 0 {
-		current := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
+	for stack.Len() > 0 {
+		current := stack.PopBack().(*node)
+
 		if current.viewID <= prevViewID {
 			continue
 		}
 
 		current.serializeForDifference(buf)
+
 		if current.size > 1 {
-			stack = append(stack, t.mustLoadNode(current.right), t.mustLoadNode(current.left))
+			stack.PushBack(t.mustLoadNode(current.right))
+			stack.PushBack(t.mustLoadNode(current.left))
 		}
 	}
 
@@ -246,6 +251,7 @@ func (t *Tree) DumpDiff(prevViewID uint64) []byte {
 
 func (t *Tree) ApplyDiff(diff []byte) error {
 	reader := bytes.NewReader(diff)
+
 	var root *node
 	unresolved := make(map[[MerkleHashSize]byte]struct{})
 	preloaded := make(map[[MerkleHashSize]byte]*node, 0)
@@ -274,7 +280,7 @@ func (t *Tree) ApplyDiff(diff []byte) error {
 		return nil
 	}
 
-	_, _, _, _, err := populateDifference(t, root.id, preloaded, make(map[[MerkleHashSize]byte]struct{}))
+	_, _, _, _, err := populateDiffs(t, root.id, preloaded, make(map[[MerkleHashSize]byte]struct{}))
 	if err != nil {
 		return errors.Wrap(err, "invalid difference")
 	}
@@ -282,6 +288,7 @@ func (t *Tree) ApplyDiff(diff []byte) error {
 	for _, n := range preloaded {
 		t.pending.Store(n.id, n)
 	}
+
 	// TODO: validate AVL properties
 	t.viewID = root.viewID
 	t.root = root

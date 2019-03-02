@@ -12,6 +12,8 @@ import (
 var (
 	_ noise.Message = (*QueryRequest)(nil)
 	_ noise.Message = (*QueryResponse)(nil)
+	_ noise.Message = (*SyncRequest)(nil)
+	_ noise.Message = (*SyncResponse)(nil)
 )
 
 type QueryRequest struct {
@@ -86,4 +88,56 @@ func (q QueryResponse) Write() []byte {
 
 	_, _ = writer.Write(q.signature[:])
 	return writer.Bytes()
+}
+
+type SyncRequest struct {
+	viewID uint64
+}
+
+func (s SyncRequest) Read(reader payload.Reader) (noise.Message, error) {
+	var err error
+
+	s.viewID, err = reader.ReadUint64()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read view ID")
+	}
+
+	return s, nil
+}
+
+func (s SyncRequest) Write() []byte {
+	return payload.NewWriter(nil).WriteUint64(s.viewID).Bytes()
+}
+
+type SyncResponse struct {
+	root   wavelet.Transaction
+	viewID uint64
+	diff   []byte
+}
+
+func (s SyncResponse) Read(reader payload.Reader) (noise.Message, error) {
+	msg, err := wavelet.Transaction{}.Read(reader)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read root tx")
+	}
+
+	viewID, err := reader.ReadUint64()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read view id")
+	}
+
+	diff, err := reader.ReadBytes()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read merkle tree diff")
+	}
+
+	s.root = msg.(wavelet.Transaction)
+	s.viewID = viewID
+	s.diff = diff
+
+	return s, nil
+}
+
+func (s SyncResponse) Write() []byte {
+	return payload.NewWriter(s.root.Write()).WriteUint64(s.viewID).WriteBytes(s.diff).Bytes()
 }

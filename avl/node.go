@@ -543,8 +543,8 @@ func mustDeserialize(r *bytes.Reader) *node {
 	return n
 }
 
-// populateDifference constructs a valid AVL tree from the incoming preloaded tree difference.
-func populateDifference(t *Tree, id [MerkleHashSize]byte, preloaded map[[MerkleHashSize]byte]*node, visited map[[MerkleHashSize]byte]struct{}) (uint64 /* size */, byte /* depth */, uint64 /* view id */, []byte /* key */, error) {
+// populateDiffs constructs a valid AVL tree from the incoming preloaded tree difference.
+func populateDiffs(t *Tree, id [MerkleHashSize]byte, preloaded map[[MerkleHashSize]byte]*node, visited map[[MerkleHashSize]byte]struct{}) (uint64 /* size */, byte /* depth */, uint64 /* view id */, []byte /* key */, error) {
 	if _, seen := visited[id]; seen {
 		return 0, 0, 0, nil, errors.New("cycle detected")
 	}
@@ -572,12 +572,12 @@ func populateDifference(t *Tree, id [MerkleHashSize]byte, preloaded map[[MerkleH
 		}
 		return n.size, n.depth, n.viewID, n.key, nil
 	} else if n.kind == NodeNonLeaf {
-		leftSize, leftDepth, leftViewID, leftKey, err := populateDifference(t, n.left, preloaded, visited)
+		leftSize, leftDepth, leftViewID, leftKey, err := populateDiffs(t, n.left, preloaded, visited)
 		if err != nil {
 			return 0, 0, 0, nil, err
 		}
 
-		rightSize, rightDepth, rightViewID, rightKey, err := populateDifference(t, n.right, preloaded, visited)
+		rightSize, rightDepth, rightViewID, rightKey, err := populateDiffs(t, n.right, preloaded, visited)
 		if err != nil {
 			return 0, 0, 0, nil, err
 		}
