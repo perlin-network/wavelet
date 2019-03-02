@@ -219,6 +219,103 @@ func TestSendTransaction(t *testing.T) {
 	}
 }
 
+// Test the authenticate checking of all the APIs that require authentication
+func TestAuthenticatedAPI(t *testing.T) {
+	hub := &Hub{registry: newSessionRegistry()}
+	hub.setupRouter()
+
+	contractId := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
+
+	tests := []struct {
+		url    string
+		method string
+	}{
+		{
+			url:    "/ledger",
+			method: "GET",
+		},
+		{
+			url:    "/stake/poll",
+			method: "GET",
+		},
+		{
+			url:    "/accounts/1",
+			method: "GET",
+		},
+		{
+			url:    "/contract/" + contractId,
+			method: "GET",
+		},
+		{
+			url:    "/contract/" + contractId + "/page",
+			method: "GET",
+		},
+		{
+			url:    "/contract/" + contractId + "/page/1",
+			method: "GET",
+		},
+		{
+			url:    "/tx",
+			method: "GET",
+		},
+		{
+			url:    "/tx/1",
+			method: "GET",
+		},
+		{
+			url:    "/tx/send",
+			method: "POST",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.url, func(t *testing.T) {
+			// Without session header
+			{
+				request := httptest.NewRequest(tc.method, tc.url, nil)
+
+				testAuthenticatedAPI(t, hub, request, "session token not specified via HTTP header \"X-Session-Token\"")
+
+			}
+
+			// With invalid session
+			{
+				request := httptest.NewRequest(tc.method, tc.url, nil)
+				request.Header.Add(HeaderSessionToken, "invalid token")
+
+				testAuthenticatedAPI(t, hub, request, "could not find session invalid token")
+			}
+
+		})
+	}
+}
+
+func testAuthenticatedAPI(t *testing.T, hub *Hub, request *http.Request, expectedErrorText string) {
+	w := httptest.NewRecorder()
+
+	hub.router.ServeHTTP(w, request)
+
+	raw, err := ioutil.ReadAll(w.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status code %d, found %d: %s", http.StatusBadRequest, w.Code, string(raw))
+	}
+
+	var response ErrResponse
+	err = json.Unmarshal(raw, &response)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if response.ErrorText != expectedErrorText {
+		t.Fatalf("expected error text `%s`, found `%s`: %s", expectedErrorText, response.ErrorText, string(raw))
+
+	}
+}
+
 func getGoodCredentialRequest(t *testing.T, keypair *ed25519.Keypair) SessionInitRequest {
 	millis := time.Now().Unix() * 1000
 	authStr := fmt.Sprintf("%s%d", SessionInitMessage, millis)
