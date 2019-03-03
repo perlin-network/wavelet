@@ -24,7 +24,7 @@ var genesisPath = "../cmd/wavelet/config/genesis.json"
 func TestInitSession(t *testing.T) {
 	randomKeyPair := ed25519.RandomKeys()
 
-	hub := &Hub{registry: newSessionRegistry()}
+	hub := &Gateway{registry: newSessionRegistry()}
 	hub.setupRouter()
 
 	tests := []struct {
@@ -67,7 +67,7 @@ func TestInitSession(t *testing.T) {
 }
 
 func TestListTransaction(t *testing.T) {
-	hub := &Hub{registry: newSessionRegistry()}
+	hub := &Gateway{registry: newSessionRegistry()}
 	hub.setupRouter()
 
 	tests := []struct {
@@ -107,7 +107,7 @@ func TestListTransaction(t *testing.T) {
 }
 
 func TestGetTransaction(t *testing.T) {
-	hub := &Hub{registry: newSessionRegistry()}
+	hub := &Gateway{registry: newSessionRegistry()}
 	hub.setupRouter()
 
 	sess, err := hub.registry.newSession()
@@ -157,7 +157,7 @@ func TestGetTransaction(t *testing.T) {
 }
 
 func TestSendTransaction(t *testing.T) {
-	hub := &Hub{registry: newSessionRegistry()}
+	hub := &Gateway{registry: newSessionRegistry()}
 	hub.setupRouter()
 
 	tests := []struct {
@@ -201,7 +201,7 @@ func TestSendTransaction(t *testing.T) {
 }
 
 func TestGetAccount(t *testing.T) {
-	hub := &Hub{registry: newSessionRegistry()}
+	hub := &Gateway{registry: newSessionRegistry()}
 	hub.setupRouter()
 
 	sess, err := hub.registry.newSession()
@@ -278,7 +278,7 @@ func TestGetAccount(t *testing.T) {
 }
 
 func TestGetContractCode(t *testing.T) {
-	hub := &Hub{registry: newSessionRegistry()}
+	hub := &Gateway{registry: newSessionRegistry()}
 	hub.setupRouter()
 
 	sess, err := hub.registry.newSession()
@@ -348,7 +348,7 @@ func TestGetContractCode(t *testing.T) {
 
 // Test the authenticate checking of all the APIs that require authentication
 func TestAuthenticatedAPI(t *testing.T) {
-	hub := &Hub{registry: newSessionRegistry()}
+	hub := &Gateway{registry: newSessionRegistry()}
 	hub.setupRouter()
 
 	contractId := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
@@ -359,10 +359,6 @@ func TestAuthenticatedAPI(t *testing.T) {
 	}{
 		{
 			url:    "/ledger",
-			method: "GET",
-		},
-		{
-			url:    "/stake/poll",
 			method: "GET",
 		},
 		{
@@ -421,7 +417,7 @@ func TestAuthenticatedAPI(t *testing.T) {
 	}
 }
 
-func testAuthenticatedAPI(t *testing.T, hub *Hub, request *http.Request, res ErrResponse) {
+func testAuthenticatedAPI(t *testing.T, hub *Gateway, request *http.Request, res ErrResponse) {
 	w := httptest.NewRecorder()
 
 	hub.router.ServeHTTP(w, request)

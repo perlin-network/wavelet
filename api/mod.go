@@ -23,14 +23,13 @@ import (
 	"time"
 )
 
-type Hub struct {
+type Gateway struct {
 	node   *noise.Node
 	ledger *wavelet.Ledger
 
 	registry *sessionRegistry
 	router   chi.Router
 
-	nodePoller        atomic.Value
 	accountsPoller    atomic.Value
 	broadcasterPoller atomic.Value
 	consensusPoller   atomic.Value
@@ -39,11 +38,11 @@ type Hub struct {
 	txPoller          atomic.Value
 }
 
-func New() *Hub {
-	return &Hub{registry: newSessionRegistry()}
+func New() *Gateway {
+	return &Gateway{registry: newSessionRegistry()}
 }
 
-func (h *Hub) Write(p []byte) (n int, err error) {
+func (g *Gateway) Write(p []byte) (n int, err error) {
 	var event map[string]interface{}
 
 	decoder := json.NewDecoder(bytes.NewReader(p))
@@ -63,19 +62,13 @@ func (h *Hub) Write(p []byte) (n int, err error) {
 	copy(line, p)
 
 	switch mod {
-	case log.ModuleNode:
-		if poller := h.nodePoller.Load(); poller != nil {
-			if err := poller.(*melody.Melody).Broadcast(line); err != nil {
-				return n, err
-			}
-		}
 	case log.ModuleAccounts:
 		accountID, exists := event["account_id"]
 		if !exists {
 			return n, errors.New("accounts log does not have field 'account_id'")
 		}
 
-		if poller := h.accountsPoller.Load(); poller != nil {
+		if poller := g.accountsPoller.Load(); poller != nil {
 			err := poller.(*melody.Melody).BroadcastFilter(line, func(s *melody.Session) bool {
 				if expectedID, ok := s.Get("account_id"); ok && accountID != expectedID {
 					return false
@@ -89,13 +82,13 @@ func (h *Hub) Write(p []byte) (n int, err error) {
 			}
 		}
 	case log.ModuleBroadcaster:
-		if poller := h.broadcasterPoller.Load(); poller != nil {
+		if poller := g.broadcasterPoller.Load(); poller != nil {
 			if err := poller.(*melody.Melody).Broadcast(line); err != nil {
 				return n, err
 			}
 		}
 	case log.ModuleConsensus:
-		if poller := h.consensusPoller.Load(); poller != nil {
+		if poller := g.consensusPoller.Load(); poller != nil {
 			if err := poller.(*melody.Melody).Broadcast(line); err != nil {
 				return n, err
 			}
@@ -106,7 +99,7 @@ func (h *Hub) Write(p []byte) (n int, err error) {
 			return n, errors.New("contract log does not have field 'contract_id'")
 		}
 
-		if poller := h.contractPoller.Load(); poller != nil {
+		if poller := g.contractPoller.Load(); poller != nil {
 			err := poller.(*melody.Melody).BroadcastFilter(line, func(s *melody.Session) bool {
 				if expectedID, ok := s.Get("contract_id"); ok && contractID != expectedID {
 					return false
@@ -120,7 +113,7 @@ func (h *Hub) Write(p []byte) (n int, err error) {
 			}
 		}
 	case log.ModuleStake:
-		if poller := h.stakePoller.Load(); poller != nil {
+		if poller := g.stakePoller.Load(); poller != nil {
 			if err := poller.(*melody.Melody).Broadcast(line); err != nil {
 				return n, err
 			}
@@ -141,7 +134,7 @@ func (h *Hub) Write(p []byte) (n int, err error) {
 			return n, errors.New("tx log does not have field 'creator_id'")
 		}
 
-		if poller := h.txPoller.Load(); poller != nil {
+		if poller := g.txPoller.Load(); poller != nil {
 			err := poller.(*melody.Melody).BroadcastFilter(line, func(s *melody.Session) bool {
 				if expectedID, ok := s.Get("tx_id"); ok && txID != expectedID {
 					return false
@@ -167,32 +160,31 @@ func (h *Hub) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func (h *Hub) setupWebsocketPoller(poller *atomic.Value, params map[string]pollerParam) {
-	p := melody.New()
-	p.HandleConnect(h.parseWebsocketParams(params))
-	poller.Store(p)
+func (g *Gateway) setupWebsocketPoller(poller *atomic.Value, params map[string]string) {
+	hub := melody.New()
+	hub.HandleConnect(g.parseWebsocketParams(params))
+	poller.Store(hub)
 }
 
-func (h *Hub) setupRouter() {
+func (g *Gateway) setupRouter() {
 	// Setup websocket routers.
 
-	h.setupWebsocketPoller(&h.nodePoller, nil)
-	h.setupWebsocketPoller(&h.broadcasterPoller, nil)
-	h.setupWebsocketPoller(&h.consensusPoller, nil)
-	h.setupWebsocketPoller(&h.stakePoller, nil)
+	g.setupWebsocketPoller(&g.broadcasterPoller, nil)
+	g.setupWebsocketPoller(&g.consensusPoller, nil)
+	g.setupWebsocketPoller(&g.stakePoller, nil)
 
-	h.setupWebsocketPoller(&h.accountsPoller, map[string]pollerParam{
-		"id": {"account_id", sys.PublicKeySize},
+	g.setupWebsocketPoller(&g.accountsPoller, map[string]string{
+		"id": "account_id",
 	})
 
-	h.setupWebsocketPoller(&h.contractPoller, map[string]pollerParam{
-		"id": {"contract_id", sys.TransactionIDSize},
+	g.setupWebsocketPoller(&g.contractPoller, map[string]string{
+		"id": "contract_id",
 	})
 
-	h.setupWebsocketPoller(&h.txPoller, map[string]pollerParam{
-		"id":      {"tx_id", sys.TransactionIDSize},
-		"sender":  {"sender_id", sys.PublicKeySize},
-		"creator": {"creator_id", sys.PublicKeySize},
+	g.setupWebsocketPoller(&g.txPoller, map[string]string{
+		"id":      "tx_id",
+		"sender":  "sender_id",
+		"creator": "creator_id",
 	})
 
 	// Setup HTTP router.
@@ -212,89 +204,80 @@ func (h *Hub) setupRouter() {
 	}).Handler)
 	r.Use(middleware.Timeout(60 * time.Second))
 
+	// Websocket endpoints.
+
+	r.Get("/broadcaster/poll", g.poll(g.broadcasterPoller))
+	r.Get("/consensus/poll", g.poll(g.consensusPoller))
+	r.Get("/stake/poll", g.poll(g.stakePoller))
+	r.Get("/accounts/poll", g.poll(g.accountsPoller))
+	r.Get("/contract/poll", g.poll(g.contractPoller))
+	r.Get("/tx/poll", g.poll(g.txPoller))
+
+	// HTTP endpoints.
+
+	r.Post("/session/init", g.initSession)
 	r.Handle("/debug/vars", http.DefaultServeMux)
 
-	r.Route("/session", func(r chi.Router) {
-		r.Post("/init", h.initSession)
-	})
+	r.With(g.authenticated).Get("/ledger", g.ledgerStatus)
+	r.With(g.authenticated).Get("/accounts/{id}", g.getAccount)
 
-	r.Route("/ledger", func(r chi.Router) {
-		r.With(h.authenticated).Get("/", h.ledgerStatus)
-	})
+	r.With(g.authenticated).Route("/contract/{id}", func(r chi.Router) {
+		r.Use(g.contractScope)
 
-	r.Get("/broadcaster/poll", h.poll(h.broadcasterPoller))
+		r.Get("/", g.getContractCode)
 
-	r.Get("/consensus/poll", h.poll(h.consensusPoller))
-
-	r.Route("/stake", func(r chi.Router) {
-		r.With(h.authenticated).Get("/poll", h.poll(h.stakePoller))
-	})
-
-	r.Route("/accounts", func(r chi.Router) {
-		r.With(h.authenticated).Get("/{id}", h.getAccount)
-
-		r.Get("/poll", h.poll(h.accountsPoller))
-	})
-
-	r.Route("/contract/{id}", func(r chi.Router) {
-		r.Use(h.contractScope)
-
-		r.With(h.authenticated).Get("/", h.getContractCode)
-
-		r.With(h.authenticated).Route("/page", func(r chi.Router) {
-			r.Get("/", h.getContractPages)
-			r.Get("/{index}", h.getContractPages)
+		r.Route("/page", func(r chi.Router) {
+			r.Get("/", g.getContractPages)
+			r.Get("/{index}", g.getContractPages)
 		})
-
-		r.Get("/poll", h.poll(h.contractPoller))
 	})
 
-	r.Route("/tx", func(r chi.Router) {
-		r.With(h.authenticated).Get("/", h.listTransactions)
-		r.With(h.authenticated).Get("/{id}", h.getTransaction)
-		r.With(h.authenticated).Post("/send", h.sendTransaction)
-
-		r.Get("/poll", h.poll(h.txPoller))
+	r.With(g.authenticated).Route("/tx", func(r chi.Router) {
+		r.Get("/", g.listTransactions)
+		r.Get("/{id}", g.getTransaction)
+		r.Post("/send", g.sendTransaction)
 	})
 
-	h.router = r
+	g.router = r
 }
 
-func (h *Hub) StartHTTP(n *noise.Node, port int) {
-	h.ledger = node.Ledger(n)
-	h.node = n
+func (g *Gateway) StartHTTP(n *noise.Node, port int) {
+	log.Register(g)
 
-	h.setupRouter()
+	g.ledger = node.Ledger(n)
+	g.node = n
+
+	g.setupRouter()
 
 	logger := log.Node()
 	logger.Info().Msgf("Started HTTP API server on port %d.", port)
 
-	if err := http.ListenAndServe(":"+strconv.Itoa(port), h.router); err != nil {
+	if err := http.ListenAndServe(":"+strconv.Itoa(port), g.router); err != nil {
 		logger.Fatal().Err(err).Msg("Failed to start HTTP server.")
 	}
 }
 
-func (h *Hub) initSession(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) initSession(w http.ResponseWriter, r *http.Request) {
 	req := new(SessionInitRequest)
 
 	if err := render.Bind(r, req); err != nil {
-		h.render(w, r, ErrBadRequest(err))
+		g.render(w, r, ErrBadRequest(err))
 		return
 	}
 
-	session, err := h.registry.newSession()
+	session, err := g.registry.newSession()
 	if err != nil {
-		h.render(w, r, ErrBadRequest(errors.Wrap(err, "failed to create session")))
+		g.render(w, r, ErrBadRequest(errors.Wrap(err, "failed to create session")))
 	}
 
-	h.render(w, r, &SessionInitResponse{Token: session.id})
+	g.render(w, r, &SessionInitResponse{Token: session.id})
 }
 
-func (h *Hub) sendTransaction(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) sendTransaction(w http.ResponseWriter, r *http.Request) {
 	req := new(SendTransactionRequest)
 
 	if err := render.Bind(r, req); err != nil {
-		h.render(w, r, ErrBadRequest(err))
+		g.render(w, r, ErrBadRequest(err))
 		return
 	}
 
@@ -306,24 +289,24 @@ func (h *Hub) sendTransaction(w http.ResponseWriter, r *http.Request) {
 		Payload: req.payload,
 	}
 
-	if err := h.ledger.AttachSenderToTransaction(h.node.Keys, tx); err != nil {
-		h.render(w, r, ErrInternal(errors.Wrap(err, "failed to attach sender to transaction")))
+	if err := g.ledger.AttachSenderToTransaction(g.node.Keys, tx); err != nil {
+		g.render(w, r, ErrInternal(errors.Wrap(err, "failed to attach sender to transaction")))
 		return
 	}
 
-	if err := node.BroadcastTransaction(h.node, tx); err != nil {
-		h.render(w, r, ErrInternal(errors.Wrap(err, "failed to broadcast transaction")))
+	if err := node.BroadcastTransaction(g.node, tx); err != nil {
+		g.render(w, r, ErrInternal(errors.Wrap(err, "failed to broadcast transaction")))
 		return
 	}
 
-	h.render(w, r, &SendTransactionResponse{ledger: h.ledger, tx: tx})
+	g.render(w, r, &SendTransactionResponse{ledger: g.ledger, tx: tx})
 }
 
-func (h *Hub) ledgerStatus(w http.ResponseWriter, r *http.Request) {
-	h.render(w, r, &LedgerStatusResponse{node: h.node, ledger: h.ledger})
+func (g *Gateway) ledgerStatus(w http.ResponseWriter, r *http.Request) {
+	g.render(w, r, &LedgerStatusResponse{node: g.node, ledger: g.ledger})
 }
 
-func (h *Hub) listTransactions(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) listTransactions(w http.ResponseWriter, r *http.Request) {
 	var sender [sys.PublicKeySize]byte
 	var creator [sys.PublicKeySize]byte
 	var offset, limit uint64
@@ -333,17 +316,17 @@ func (h *Hub) listTransactions(w http.ResponseWriter, r *http.Request) {
 		slice, err := hex.DecodeString(raw)
 
 		if err != nil {
-			h.render(w, r, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
+			g.render(w, r, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
 			return
 		}
 
 		if len(slice) != sys.PublicKeySize {
-			h.render(w, r, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", sys.PublicKeySize)))
+			g.render(w, r, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", sys.PublicKeySize)))
 			return
 		}
 
 		if err != nil {
-			h.render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse sender")))
+			g.render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse sender")))
 			return
 		}
 
@@ -354,17 +337,17 @@ func (h *Hub) listTransactions(w http.ResponseWriter, r *http.Request) {
 		slice, err := hex.DecodeString(raw)
 
 		if err != nil {
-			h.render(w, r, ErrBadRequest(errors.Wrap(err, "creator ID must be presented as valid hex")))
+			g.render(w, r, ErrBadRequest(errors.Wrap(err, "creator ID must be presented as valid hex")))
 			return
 		}
 
 		if len(slice) != sys.PublicKeySize {
-			h.render(w, r, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", sys.PublicKeySize)))
+			g.render(w, r, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", sys.PublicKeySize)))
 			return
 		}
 
 		if err != nil {
-			h.render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse creator")))
+			g.render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse creator")))
 			return
 		}
 
@@ -375,7 +358,7 @@ func (h *Hub) listTransactions(w http.ResponseWriter, r *http.Request) {
 		offset, err = strconv.ParseUint(raw, 10, 64)
 
 		if err != nil {
-			h.render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
+			g.render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
 			return
 		}
 	}
@@ -384,79 +367,79 @@ func (h *Hub) listTransactions(w http.ResponseWriter, r *http.Request) {
 		limit, err = strconv.ParseUint(raw, 10, 64)
 
 		if err != nil {
-			h.render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
+			g.render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
 			return
 		}
 	}
 
 	var transactions []render.Renderer
 
-	for _, tx := range h.ledger.Transactions(offset, limit, sender, creator) {
+	for _, tx := range g.ledger.Transactions(offset, limit, sender, creator) {
 		transactions = append(transactions, &Transaction{tx: tx})
 	}
 
-	h.renderList(w, r, transactions)
+	g.renderList(w, r, transactions)
 }
 
-func (h *Hub) getTransaction(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) getTransaction(w http.ResponseWriter, r *http.Request) {
 	param := chi.URLParam(r, "id")
 
 	slice, err := hex.DecodeString(param)
 	if err != nil {
-		h.render(w, r, ErrBadRequest(errors.Wrap(err, "transaction ID must be presented as valid hex")))
+		g.render(w, r, ErrBadRequest(errors.Wrap(err, "transaction ID must be presented as valid hex")))
 		return
 	}
 
 	if len(slice) != sys.TransactionIDSize {
-		h.render(w, r, ErrBadRequest(errors.Errorf("transaction ID must be %d bytes long", sys.TransactionIDSize)))
+		g.render(w, r, ErrBadRequest(errors.Errorf("transaction ID must be %d bytes long", sys.TransactionIDSize)))
 		return
 	}
 
 	var id [sys.TransactionIDSize]byte
 	copy(id[:], slice)
 
-	tx := h.ledger.FindTransaction(id)
+	tx := g.ledger.FindTransaction(id)
 
 	if tx == nil {
-		h.render(w, r, ErrBadRequest(errors.Errorf("could not find transaction with ID %x", id)))
+		g.render(w, r, ErrBadRequest(errors.Errorf("could not find transaction with ID %x", id)))
 		return
 	}
 
-	h.render(w, r, &Transaction{tx: tx})
+	g.render(w, r, &Transaction{tx: tx})
 }
 
-func (h *Hub) getAccount(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) getAccount(w http.ResponseWriter, r *http.Request) {
 	param := chi.URLParam(r, "id")
 
 	slice, err := hex.DecodeString(param)
 	if err != nil {
-		h.render(w, r, ErrBadRequest(errors.Wrap(err, "account ID must be presented as valid hex")))
+		g.render(w, r, ErrBadRequest(errors.Wrap(err, "account ID must be presented as valid hex")))
 		return
 	}
 
 	if len(slice) != sys.PublicKeySize {
-		h.render(w, r, ErrBadRequest(errors.Errorf("account ID must be %d bytes long", sys.PublicKeySize)))
+		g.render(w, r, ErrBadRequest(errors.Errorf("account ID must be %d bytes long", sys.PublicKeySize)))
 		return
 	}
 
 	var id [sys.PublicKeySize]byte
 	copy(id[:], slice)
 
-	h.render(w, r, &Account{ledger: h.ledger, id: id})
+	g.render(w, r, &Account{ledger: g.ledger, id: id})
 }
 
-func (h *Hub) contractScope(next http.Handler) http.Handler {
+func (g *Gateway) contractScope(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		param := chi.URLParam(r, "id")
 
 		slice, err := hex.DecodeString(param)
 		if err != nil {
-			h.render(w, r, ErrBadRequest(errors.Wrap(err, "contract ID must be presented as valid hex")))
+			g.render(w, r, ErrBadRequest(errors.Wrap(err, "contract ID must be presented as valid hex")))
 			return
 		}
 
 		if len(slice) != sys.TransactionIDSize {
-			h.render(w, r, ErrBadRequest(errors.Errorf("contract ID must be %d bytes long", sys.TransactionIDSize)))
+			g.render(w, r, ErrBadRequest(errors.Errorf("contract ID must be %d bytes long", sys.TransactionIDSize)))
 			return
 		}
 
@@ -468,24 +451,24 @@ func (h *Hub) contractScope(next http.Handler) http.Handler {
 	})
 }
 
-func (h *Hub) getContractCode(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) getContractCode(w http.ResponseWriter, r *http.Request) {
 	id, ok := r.Context().Value("contract_id").([sys.TransactionIDSize]byte)
 
 	if !ok {
 		return
 	}
 
-	code, available := h.ledger.ReadAccountContractCode(id)
+	code, available := g.ledger.ReadAccountContractCode(id)
 
 	if len(code) == 0 || !available {
-		h.render(w, r, ErrBadRequest(errors.Errorf("could not find contract with ID %x", id)))
+		g.render(w, r, ErrBadRequest(errors.Errorf("could not find contract with ID %x", id)))
 		return
 	}
 
 	_, _ = w.Write(code)
 }
 
-func (h *Hub) getContractPages(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) getContractPages(w http.ResponseWriter, r *http.Request) {
 	id, ok := r.Context().Value("contract_id").([sys.TransactionIDSize]byte)
 
 	if !ok {
@@ -499,44 +482,44 @@ func (h *Hub) getContractPages(w http.ResponseWriter, r *http.Request) {
 		idx, err = strconv.ParseUint(raw, 10, 64)
 
 		if err != nil {
-			h.render(w, r, ErrBadRequest(errors.New("could not parse page index")))
+			g.render(w, r, ErrBadRequest(errors.New("could not parse page index")))
 			return
 		}
 	}
 
-	numPages, available := h.ledger.ReadAccountContractNumPages(id)
+	numPages, available := g.ledger.ReadAccountContractNumPages(id)
 
 	if !available {
-		h.render(w, r, ErrBadRequest(errors.Errorf("could not find any pages for contract with ID %x", id)))
+		g.render(w, r, ErrBadRequest(errors.Errorf("could not find any pages for contract with ID %x", id)))
 		return
 	}
 
 	if idx >= numPages {
-		h.render(w, r, ErrBadRequest(errors.Errorf("contract with ID %x only has %d pages, but you requested page %d", id, numPages, idx)))
+		g.render(w, r, ErrBadRequest(errors.Errorf("contract with ID %x only has %d pages, but you requested page %d", id, numPages, idx)))
 		return
 	}
 
-	page, available := h.ledger.ReadAccountContractPage(id, idx)
+	page, available := g.ledger.ReadAccountContractPage(id, idx)
 
 	if len(page) == 0 || !available {
-		h.render(w, r, ErrBadRequest(errors.Errorf("page %d is either empty, or does not exist", idx)))
+		g.render(w, r, ErrBadRequest(errors.Errorf("page %d is either empty, or does not exist", idx)))
 		return
 	}
 
 	_, _ = w.Write(page)
 }
 
-func (h *Hub) authenticated(next http.Handler) http.Handler {
+func (g *Gateway) authenticated(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get(HeaderSessionToken)
 		if len(token) == 0 {
-			h.render(w, r, ErrBadRequest(errors.Errorf("session token not specified via HTTP header %q", HeaderSessionToken)))
+			g.render(w, r, ErrBadRequest(errors.Errorf("session token not specified via HTTP header %q", HeaderSessionToken)))
 			return
 		}
 
-		session, exists := h.registry.getSession(token)
+		session, exists := g.registry.getSession(token)
 		if !exists {
-			h.render(w, r, ErrBadRequest(errors.Errorf("could not find session %s", token)))
+			g.render(w, r, ErrBadRequest(errors.Errorf("could not find session %s", token)))
 			return
 		}
 
@@ -545,21 +528,7 @@ func (h *Hub) authenticated(next http.Handler) http.Handler {
 	})
 }
 
-func (h *Hub) pollNode(w http.ResponseWriter, r *http.Request) {
-	poller := h.nodePoller.Load().(*melody.Melody)
-
-	if err := poller.HandleRequest(w, r); err != nil {
-		h.render(w, r, ErrInternal(err))
-		return
-	}
-}
-
-type pollerParam struct {
-	key  string
-	size int
-}
-
-func (h *Hub) parseWebsocketParams(params map[string]pollerParam) func(s *melody.Session) {
+func (g *Gateway) parseWebsocketParams(params map[string]string) func(s *melody.Session) {
 	return func(s *melody.Session) {
 		token := s.Request.URL.Query().Get("token")
 		if len(token) == 0 {
@@ -567,46 +536,34 @@ func (h *Hub) parseWebsocketParams(params map[string]pollerParam) func(s *melody
 			return
 		}
 
-		_, exists := h.registry.getSession(token)
+		_, exists := g.registry.getSession(token)
 		if !exists {
 			_ = s.CloseWithMsg([]byte(fmt.Sprintf("could not find session %s", token)))
 			return
 		}
 
-		for queryKey, val := range params {
-			param := s.Request.URL.Query().Get(queryKey)
-
-			if len(param) > 0 {
-				slice, err := hex.DecodeString(param)
-				if err != nil {
-					_ = s.CloseWithMsg([]byte(errors.Wrap(err, "must be presented as valid hex").Error()))
-					return
-				}
-
-				if len(slice) != val.size {
-					_ = s.CloseWithMsg([]byte(fmt.Sprintf("must be %d bytes long", val.size)))
-					return
-				}
-
-				s.Set(val.key, param)
+		for query, key := range params {
+			if condition := s.Request.URL.Query().Get(query); len(condition) > 0 {
+				s.Set(key, condition)
 			}
 		}
 	}
 }
 
-func (h *Hub) poll(poller atomic.Value) func(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) poll(poller atomic.Value) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println(r.URL.Query())
 		poller := poller.Load().(*melody.Melody)
 
 		if err := poller.HandleRequest(w, r); err != nil {
-			h.render(w, r, ErrInternal(err))
+			g.render(w, r, ErrInternal(err))
 			return
 		}
 	}
 }
 
 // A helper to handle the error returned by render.Render()
-func (h *Hub) render(w http.ResponseWriter, r *http.Request, v render.Renderer) {
+func (g *Gateway) render(w http.ResponseWriter, r *http.Request, v render.Renderer) {
 	err := render.Render(w, r, v)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -615,7 +572,7 @@ func (h *Hub) render(w http.ResponseWriter, r *http.Request, v render.Renderer) 
 }
 
 // A helper to handle the error returned by render.RenderList()
-func (h *Hub) renderList(w http.ResponseWriter, r *http.Request, l []render.Renderer) {
+func (g *Gateway) renderList(w http.ResponseWriter, r *http.Request, l []render.Renderer) {
 	err := render.RenderList(w, r, l)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)

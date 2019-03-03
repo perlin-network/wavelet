@@ -33,14 +33,8 @@ func main() {
 
 	flag.Parse()
 
+	log.Register(log.NewConsoleWriter())
 	logger := log.Node()
-
-	var hub *api.Hub
-
-	if port := *apiFlag; port > 0 {
-		hub = api.New()
-		log.Register(hub)
-	}
 
 	var keys identity.Keypair
 
@@ -75,8 +69,6 @@ func main() {
 	params.Keys = keys
 	params.Host = *hostFlag
 	params.Port = uint16(*portFlag)
-
-	// TODO(kenta): choose a feasible max-message size
 	params.MaxMessageSize = 4 * 1024 * 1024
 	params.SendMessageTimeout = 1 * time.Second
 
@@ -127,7 +119,7 @@ func main() {
 	}
 
 	if port := *apiFlag; port > 0 {
-		go hub.StartHTTP(n, port)
+		go api.New().StartHTTP(n, port)
 	}
 
 	reader := bufio.NewReader(os.Stdin)

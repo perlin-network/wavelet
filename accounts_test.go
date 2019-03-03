@@ -2,6 +2,7 @@ package wavelet
 
 import (
 	"bytes"
+	"github.com/golang/snappy"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
@@ -34,5 +35,12 @@ func TestSmartContract(t *testing.T) {
 	}
 
 	assert.NoError(t, quick.Check(fn, nil))
+}
 
+func TestSnappyDeterministic(t *testing.T) {
+	fn := func(src [2 * 1024]byte) bool {
+		return bytes.Equal(snappy.Encode(nil, src[:]), snappy.Encode(nil, src[:]))
+	}
+
+	assert.NoError(t, quick.Check(fn, &quick.Config{MaxCount: 10000}))
 }

@@ -34,15 +34,13 @@ const (
 	ModuleTx          = "tx"
 )
 
-func Register(w io.Writer) {
-	if w != nil {
-		output.Register(w)
+func Register(w ...io.Writer) {
+	for _, writer := range w {
+		output.Register(writer)
 	}
 }
 
 func init() {
-	Register(NewConsoleWriter())
-
 	setupChildLoggers()
 }
 
