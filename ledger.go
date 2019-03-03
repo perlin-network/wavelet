@@ -344,10 +344,8 @@ func (l *Ledger) ProcessQuery(tx *Transaction, responses map[[blake2b.Size256]by
 
 		l.resolver.Reset()
 
-		viewID := l.viewID.Add(1)
-
 		ss := l.collapseTransactions(root.ParentIDs, true)
-		ss.tree.SetViewID(viewID)
+		viewID := l.viewID.Add(1)
 
 		l.accounts = ss
 
@@ -471,6 +469,7 @@ func (l *Ledger) RegisterProcessor(tag byte, processor TransactionProcessor) {
 // It returns an updated accounts snapshot after applying all finalized transactions.
 func (l *Ledger) collapseTransactions(parentIDs [][sys.PublicKeySize]byte, logging bool) accounts {
 	ss := l.snapshotAccounts()
+	ss.tree.IncrementViewID()
 
 	visited := make(map[[blake2b.Size256]byte]struct{})
 	visited[l.view.Root().ID] = struct{}{}

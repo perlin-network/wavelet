@@ -225,6 +225,10 @@ func (t *Tree) SetViewID(viewID uint64) {
 	t.viewID = viewID
 }
 
+func (t *Tree) IncrementViewID() {
+	t.viewID++
+}
+
 func (t *Tree) DumpDiff(prevViewID uint64) []byte {
 	var stack queue.Queue
 	stack.PushBack(t.root)
