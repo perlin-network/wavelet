@@ -9,7 +9,6 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
-	"golang.org/x/crypto/blake2b"
 	"sync"
 	"time"
 )
@@ -183,13 +182,13 @@ func (b *broadcaster) query(tx *wavelet.Transaction) error {
 	var wg sync.WaitGroup
 	wg.Add(len(peerIDs))
 
-	responses := make(map[[blake2b.Size256]byte]bool)
+	responses := make(map[common.TransactionID]bool)
 
 	recordResponse := func(rawID []byte, response bool) {
 		mu.Lock()
 		defer mu.Unlock()
 
-		var id [blake2b.Size256]byte
+		var id common.TransactionID
 		copy(id[:], rawID)
 
 		responses[id] = response

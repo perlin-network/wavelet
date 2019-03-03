@@ -4,8 +4,8 @@ import (
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
-	"golang.org/x/crypto/blake2b"
 )
 
 var (
@@ -36,7 +36,7 @@ func (q QueryRequest) Write() []byte {
 }
 
 type QueryResponse struct {
-	id   [blake2b.Size256]byte
+	id   common.TransactionID
 	vote bool
 }
 

@@ -6,7 +6,6 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
-	"golang.org/x/crypto/blake2b"
 	"sort"
 	"sync"
 )
@@ -19,7 +18,7 @@ var (
 type graph struct {
 	sync.Mutex
 
-	transactions map[[blake2b.Size256]byte]*Transaction
+	transactions map[common.TransactionID]*Transaction
 
 	root   *Transaction // The current root (the latest critical transaction) of the graph.
 	height uint64       // The current depth of the frontier of the graph.
@@ -27,7 +26,7 @@ type graph struct {
 
 func newGraph(root *Transaction) *graph {
 	return &graph{
-		transactions: map[[blake2b.Size256]byte]*Transaction{root.ID: root},
+		transactions: map[common.TransactionID]*Transaction{root.ID: root},
 		root:         root,
 	}
 }
@@ -88,7 +87,7 @@ func (g *graph) reset(root *Transaction) {
 	g.root = root
 
 	// Prune away all of roots ancestors.
-	visited := make(map[[blake2b.Size256]byte]struct{})
+	visited := make(map[common.TransactionID]struct{})
 	q := queue.New()
 
 	for _, parentID := range root.ParentIDs {
@@ -124,7 +123,7 @@ func (g *graph) reset(root *Transaction) {
 	logger.Info().Int("count", count).Msg("Pruned away transactions from the view-graph.")
 }
 
-func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
+func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 	g.Lock()
 	defer g.Unlock()
 
@@ -132,7 +131,7 @@ func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
 		return
 	}
 
-	visited := make(map[[blake2b.Size256]byte]struct{})
+	visited := make(map[common.TransactionID]struct{})
 	q := queue.New()
 
 	q.PushBack(g.root)
@@ -160,7 +159,7 @@ func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {
 	return
 }
 
-func (g *graph) lookupTransaction(id [blake2b.Size256]byte) (*Transaction, bool) {
+func (g *graph) lookupTransaction(id common.TransactionID) (*Transaction, bool) {
 	g.Lock()
 	defer g.Unlock()
 

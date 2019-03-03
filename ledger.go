@@ -246,7 +246,7 @@ func (l *Ledger) assertValidParentDepths(tx *Transaction) bool {
 }
 
 func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
-	visited := make(map[[blake2b.Size256]byte]struct{})
+	visited := make(map[common.TransactionID]struct{})
 	q := queue.New()
 
 	for _, parentID := range tx.ParentIDs {
@@ -300,7 +300,7 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 	return true
 }
 
-func (l *Ledger) ProcessQuery(tx *Transaction, responses map[[blake2b.Size256]byte]bool) error {
+func (l *Ledger) ProcessQuery(tx *Transaction, responses map[common.TransactionID]bool) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -493,7 +493,7 @@ func (l *Ledger) collapseTransactions(parentIDs []common.AccountID, logging bool
 	ss := l.snapshotAccounts()
 	ss.tree.IncrementViewID()
 
-	visited := make(map[[blake2b.Size256]byte]struct{})
+	visited := make(map[common.TransactionID]struct{})
 	visited[l.view.Root().ID] = struct{}{}
 
 	q := queue.New()
@@ -673,12 +673,12 @@ func (l *Ledger) rewardValidators(ss accounts, tx *Transaction) error {
 	return nil
 }
 
-func (l *Ledger) FindTransaction(id [blake2b.Size256]byte) *Transaction {
+func (l *Ledger) FindTransaction(id common.TransactionID) *Transaction {
 	tx, _ := l.view.lookupTransaction(id)
 	return tx
 }
 
-func (l *Ledger) HasTransactionInView(id [blake2b.Size256]byte) bool {
+func (l *Ledger) HasTransactionInView(id common.TransactionID) bool {
 	_, exists := l.view.lookupTransaction(id)
 	return exists
 }

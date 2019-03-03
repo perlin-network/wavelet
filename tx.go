@@ -33,7 +33,7 @@ type Transaction struct {
 	SenderSignature, CreatorSignature common.Signature
 
 	// IN-MEMORY DATA
-	children [][blake2b.Size256]byte
+	children []common.TransactionID
 	depth    uint64
 }
 
