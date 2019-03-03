@@ -3,7 +3,6 @@ package node
 import (
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/protocol"
-	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
@@ -223,16 +222,6 @@ func (b *broadcaster) query(tx *wavelet.Transaction) error {
 			case msg := <-peer.Receive(opcode):
 				res = msg.(QueryResponse)
 			case <-time.After(sys.QueryTimeout):
-				recordResponse(peerID.PublicKey(), false)
-				return
-			}
-
-			// Verify query response signature.
-			signature := res.signature
-			res.signature = [sys.SignatureSize]byte{}
-
-			err = eddsa.Verify(peerID.PublicKey(), res.Write(), signature[:])
-			if err != nil {
 				recordResponse(peerID.PublicKey(), false)
 				return
 			}

@@ -3,7 +3,6 @@ package node
 import (
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/protocol"
-	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
@@ -80,13 +79,6 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 	} else {
 		log.Consensus("vote").Debug().Hex("tx_id", req.tx.ID[:]).Err(vote).Msg("Gave a positive vote to a transaction.")
 	}
-
-	signature, err := eddsa.Sign(peer.Node().Keys.PrivateKey(), res.Write())
-	if err != nil {
-		log.Node().Fatal().Msg("Failed to sign query response.")
-	}
-
-	copy(res.signature[:], signature)
 
 	_ = peer.SendMessageAsync(res)
 }

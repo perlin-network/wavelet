@@ -157,6 +157,10 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 		return errors.Wrap(VoteRejected, "wavelet: tx is critical but has invalid accounts root checksum")
 	}
 
+	if !l.assertValidSignature(tx) {
+		return errors.Wrap(VoteRejected, "wavelet: tx has either invalid creator or sender signatures")
+	}
+
 	if !l.assertValidTimestamp(tx) {
 		return errors.Wrap(VoteRejected, "wavelet: either tx timestamp is out of bounds, or parents not available")
 	}
@@ -179,6 +183,24 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	}
 
 	return VoteAccepted
+}
+
+func (l *Ledger) assertValidSignature(tx *Transaction) bool {
+	err := eddsa.Verify(tx.Creator[:], append([]byte{tx.Tag}, tx.Payload...), tx.CreatorSignature[:])
+	if err != nil {
+		return false
+	}
+
+	cpy := *tx
+	cpy.SenderSignature = [sys.SignatureSize]byte{}
+
+	err = eddsa.Verify(tx.Sender[:], cpy.Write(), tx.SenderSignature[:])
+	if err != nil {
+		return false
+	}
+
+	return true
+
 }
 
 func (l *Ledger) assertValidAccountsChecksum(tx *Transaction) bool {

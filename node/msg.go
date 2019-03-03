@@ -4,7 +4,6 @@ import (
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 )
@@ -39,8 +38,6 @@ func (q QueryRequest) Write() []byte {
 type QueryResponse struct {
 	id   [blake2b.Size256]byte
 	vote bool
-
-	signature [sys.SignatureSize]byte
 }
 
 func (q QueryResponse) Read(reader payload.Reader) (noise.Message, error) {
@@ -63,16 +60,6 @@ func (q QueryResponse) Read(reader payload.Reader) (noise.Message, error) {
 		q.vote = true
 	}
 
-	n, err = reader.Read(q.signature[:])
-
-	if err != nil {
-		return nil, errors.Wrap(err, "wavelet: failed to read query response signature")
-	}
-
-	if n != len(q.signature) {
-		return nil, errors.New("wavelet: didn't read enough bytes for query response signature")
-	}
-
 	return q, nil
 }
 
@@ -86,7 +73,6 @@ func (q QueryResponse) Write() []byte {
 		writer.WriteByte(0)
 	}
 
-	_, _ = writer.Write(q.signature[:])
 	return writer.Bytes()
 }
 
