@@ -13,6 +13,7 @@ import (
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/api"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/sys"
@@ -124,7 +125,7 @@ func main() {
 
 	reader := bufio.NewReader(os.Stdin)
 
-	var nodeID [sys.PublicKeySize]byte
+	var nodeID common.AccountID
 	copy(nodeID[:], n.Keys.PublicKey())
 
 	for {
@@ -154,12 +155,12 @@ func main() {
 
 			buf, err := hex.DecodeString(cmd[1])
 
-			if err != nil || len(buf) != sys.PublicKeySize {
+			if err != nil || len(buf) != common.SizeAccountID {
 				logger.Error().Msg("The account ID you specified is invalid.")
 				continue
 			}
 
-			var accountID [sys.PublicKeySize]byte
+			var accountID common.AccountID
 			copy(accountID[:], buf)
 
 			balance, _ := ledger.ReadAccountBalance(accountID)

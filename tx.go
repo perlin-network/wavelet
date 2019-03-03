@@ -5,7 +5,7 @@ import (
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet/avl"
-	"github.com/perlin-network/wavelet/sys"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"math/bits"
@@ -15,11 +15,11 @@ var _ noise.Message = (*Transaction)(nil)
 
 type Transaction struct {
 	// WIRE FORMAT
-	ID [sys.TransactionIDSize]byte
+	ID common.TransactionID
 
-	Sender, Creator [sys.PublicKeySize]byte
+	Sender, Creator common.AccountID
 
-	ParentIDs [][sys.TransactionIDSize]byte
+	ParentIDs []common.TransactionID
 
 	Timestamp uint64
 
@@ -30,7 +30,7 @@ type Transaction struct {
 	// Only set if the transaction is a critical transaction.
 	AccountsMerkleRoot [avl.MerkleHashSize]byte
 
-	SenderSignature, CreatorSignature [sys.SignatureSize]byte
+	SenderSignature, CreatorSignature common.Signature
 
 	// IN-MEMORY DATA
 	children [][blake2b.Size256]byte
@@ -66,7 +66,7 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.Wrap(err, "failed to decode transaction sender")
 	}
 
-	if n != sys.PublicKeySize {
+	if n != common.SizeAccountID {
 		return nil, errors.New("could not read enough bytes for transaction sender")
 	}
 
@@ -75,7 +75,7 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.Wrap(err, "failed to decode transaction creator")
 	}
 
-	if n != sys.PublicKeySize {
+	if n != common.SizeAccountID {
 		return nil, errors.New("could not read enough bytes for transaction creator")
 	}
 
@@ -85,14 +85,14 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 	}
 
 	for i := byte(0); i < numParents; i++ {
-		var parentID [sys.TransactionIDSize]byte
+		var parentID common.TransactionID
 
 		n, err = reader.Read(parentID[:])
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to decode parent %d", i)
 		}
 
-		if n != sys.PublicKeySize {
+		if n != common.SizeAccountID {
 			return nil, errors.Errorf("could not read enough bytes for parent %d", i)
 		}
 
@@ -115,7 +115,7 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 	}
 
 	// If there exists an account merkle root, read it.
-	if reader.Len() > sys.SignatureSize*2 {
+	if reader.Len() > common.SizeSignature*2 {
 		n, err = reader.Read(t.AccountsMerkleRoot[:])
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to decode accounts merkle root")
@@ -131,7 +131,7 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.Wrap(err, "failed to decode sender signature")
 	}
 
-	if n != sys.SignatureSize {
+	if n != common.SizeSignature {
 		return nil, errors.New("could not read enough bytes for sender signature")
 	}
 
@@ -140,7 +140,7 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.Wrap(err, "failed to decode creator signature")
 	}
 
-	if n != sys.SignatureSize {
+	if n != common.SizeSignature {
 		return nil, errors.New("could not read enough bytes for creator signature")
 	}
 

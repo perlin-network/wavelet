@@ -1,7 +1,7 @@
 package conflict
 
 import (
-	"golang.org/x/crypto/blake2b"
+	"github.com/perlin-network/wavelet/common"
 	"sync"
 )
 
@@ -19,9 +19,9 @@ type snowball struct {
 	k, beta int
 	alpha   float64
 
-	preferred, last [blake2b.Size256]byte
+	preferred, last common.TransactionID
 
-	counts map[[blake2b.Size256]byte]int
+	counts map[common.TransactionID]int
 	count  int
 
 	decided bool
@@ -33,7 +33,7 @@ func NewSnowball() *snowball {
 		beta:  SnowballDefaultBeta,
 		alpha: SnowballDefaultAlpha,
 
-		counts: make(map[[blake2b.Size256]byte]int),
+		counts: make(map[common.TransactionID]int),
 	}
 }
 
@@ -65,16 +65,16 @@ func (s *snowball) Reset() {
 	s.Lock()
 	defer s.Unlock()
 
-	s.preferred = [blake2b.Size256]byte{}
-	s.last = [blake2b.Size256]byte{}
+	s.preferred = common.ZeroTransactionID
+	s.last = common.ZeroTransactionID
 
-	s.counts = make(map[[blake2b.Size256]byte]int)
+	s.counts = make(map[common.TransactionID]int)
 	s.count = 0
 
 	s.decided = false
 }
 
-func (s *snowball) Tick(id [blake2b.Size256]byte, votes []float64) {
+func (s *snowball) Tick(id common.TransactionID, votes []float64) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -106,14 +106,14 @@ func (s *snowball) Tick(id [blake2b.Size256]byte, votes []float64) {
 	}
 }
 
-func (s *snowball) Prefer(id [blake2b.Size256]byte) {
+func (s *snowball) Prefer(id common.TransactionID) {
 	s.Lock()
 	defer s.Unlock()
 
 	s.preferred = id
 }
 
-func (s *snowball) Preferred() [blake2b.Size256]byte {
+func (s *snowball) Preferred() common.TransactionID {
 	s.Lock()
 	defer s.Unlock()
 

@@ -1,7 +1,7 @@
 package wavelet
 
 import (
-	"github.com/perlin-network/wavelet/sys"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 )
@@ -13,12 +13,12 @@ type TransactionProcessor interface {
 type TransactionContext struct {
 	accounts accounts
 
-	balances map[[sys.PublicKeySize]byte]uint64
-	stakes   map[[sys.PublicKeySize]byte]uint64
+	balances map[common.AccountID]uint64
+	stakes   map[common.AccountID]uint64
 
-	contracts        map[[sys.TransactionIDSize]byte][]byte
-	contractNumPages map[[sys.TransactionIDSize]byte]uint64
-	contractPages    map[[sys.TransactionIDSize]byte]map[uint64][]byte
+	contracts        map[common.TransactionID][]byte
+	contractNumPages map[common.TransactionID]uint64
+	contractPages    map[common.TransactionID]map[uint64][]byte
 
 	transactions queue.Queue
 	tx           *Transaction
@@ -27,12 +27,12 @@ type TransactionContext struct {
 func newTransactionContext(accounts accounts, tx *Transaction) *TransactionContext {
 	ctx := &TransactionContext{
 		accounts: accounts,
-		balances: make(map[[sys.PublicKeySize]byte]uint64),
-		stakes:   make(map[[sys.PublicKeySize]byte]uint64),
+		balances: make(map[common.AccountID]uint64),
+		stakes:   make(map[common.AccountID]uint64),
 
-		contracts:        make(map[[sys.TransactionIDSize]byte][]byte),
-		contractNumPages: make(map[[sys.TransactionIDSize]byte]uint64),
-		contractPages:    make(map[[sys.TransactionIDSize]byte]map[uint64][]byte),
+		contracts:        make(map[common.TransactionID][]byte),
+		contractNumPages: make(map[common.TransactionID]uint64),
+		contractPages:    make(map[common.TransactionID]map[uint64][]byte),
 
 		tx: tx,
 	}
@@ -50,7 +50,7 @@ func (c *TransactionContext) SendTransaction(tx *Transaction) {
 	c.transactions.PushBack(tx)
 }
 
-func (c *TransactionContext) ReadAccountBalance(id [sys.PublicKeySize]byte) (uint64, bool) {
+func (c *TransactionContext) ReadAccountBalance(id common.AccountID) (uint64, bool) {
 	if balance, ok := c.balances[id]; ok {
 		return balance, true
 	}
@@ -62,7 +62,7 @@ func (c *TransactionContext) ReadAccountBalance(id [sys.PublicKeySize]byte) (uin
 	return balance, exists
 }
 
-func (c *TransactionContext) ReadAccountStake(id [sys.PublicKeySize]byte) (uint64, bool) {
+func (c *TransactionContext) ReadAccountStake(id common.AccountID) (uint64, bool) {
 	if stake, ok := c.stakes[id]; ok {
 		return stake, true
 	}
@@ -74,7 +74,7 @@ func (c *TransactionContext) ReadAccountStake(id [sys.PublicKeySize]byte) (uint6
 	return stake, exists
 }
 
-func (c *TransactionContext) ReadAccountContractCode(id [sys.TransactionIDSize]byte) ([]byte, bool) {
+func (c *TransactionContext) ReadAccountContractCode(id common.TransactionID) ([]byte, bool) {
 	if code, ok := c.contracts[id]; ok {
 		return code, true
 	}
@@ -86,7 +86,7 @@ func (c *TransactionContext) ReadAccountContractCode(id [sys.TransactionIDSize]b
 	return code, exists
 }
 
-func (c *TransactionContext) ReadAccountContractNumPages(id [sys.PublicKeySize]byte) (uint64, bool) {
+func (c *TransactionContext) ReadAccountContractNumPages(id common.AccountID) (uint64, bool) {
 	if numPages, ok := c.contractNumPages[id]; ok {
 		return numPages, true
 	}
@@ -98,7 +98,7 @@ func (c *TransactionContext) ReadAccountContractNumPages(id [sys.PublicKeySize]b
 	return numPages, exists
 }
 
-func (c *TransactionContext) ReadAccountContractPage(id [sys.PublicKeySize]byte, idx uint64) ([]byte, bool) {
+func (c *TransactionContext) ReadAccountContractPage(id common.AccountID, idx uint64) ([]byte, bool) {
 	if pages, ok := c.contractPages[id]; ok {
 		if page, ok := pages[idx]; ok {
 			return page, true
@@ -114,23 +114,23 @@ func (c *TransactionContext) ReadAccountContractPage(id [sys.PublicKeySize]byte,
 	return page, exists
 }
 
-func (c *TransactionContext) WriteAccountBalance(id [sys.PublicKeySize]byte, balance uint64) {
+func (c *TransactionContext) WriteAccountBalance(id common.AccountID, balance uint64) {
 	c.balances[id] = balance
 }
 
-func (c *TransactionContext) WriteAccountStake(id [sys.PublicKeySize]byte, stake uint64) {
+func (c *TransactionContext) WriteAccountStake(id common.AccountID, stake uint64) {
 	c.stakes[id] = stake
 }
 
-func (c *TransactionContext) WriteAccountContractCode(id [sys.TransactionIDSize]byte, code []byte) {
+func (c *TransactionContext) WriteAccountContractCode(id common.TransactionID, code []byte) {
 	c.contracts[id] = code
 }
 
-func (c *TransactionContext) WriteAccountContractNumPages(id [sys.TransactionIDSize]byte, numPages uint64) {
+func (c *TransactionContext) WriteAccountContractNumPages(id common.TransactionID, numPages uint64) {
 	c.contractNumPages[id] = numPages
 }
 
-func (c *TransactionContext) WriteAccountContractPage(id [sys.TransactionIDSize]byte, idx uint64, page []byte) {
+func (c *TransactionContext) WriteAccountContractPage(id common.TransactionID, idx uint64, page []byte) {
 	pages, exist := c.contractPages[id]
 	if !exist {
 		pages = make(map[uint64][]byte)

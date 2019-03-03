@@ -6,6 +6,7 @@ import (
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/conflict"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
@@ -140,13 +141,11 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	var zero [blake2b.Size256]byte
-
 	if tx.ID == l.view.Root().ID {
 		return VoteAccepted
 	}
 
-	if tx.Sender == zero || tx.Creator == zero {
+	if tx.Sender == common.ZeroAccountID || tx.Creator == common.ZeroAccountID {
 		return errors.Wrap(VoteRejected, "wavelet: tx must have sender or creator")
 	}
 
@@ -167,7 +166,7 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 
 	// If our node already prefers a critical transaction, reject the
 	// incoming transaction.
-	if critical && preferred != zero && tx.ID != preferred {
+	if critical && preferred != common.ZeroTransactionID && tx.ID != preferred {
 		return errors.Wrap(VoteRejected, "wavelet: prefer other critical transaction")
 	}
 
@@ -200,7 +199,7 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 
 	// If our node does not prefer any critical transaction yet, set a critical
 	// transaction to initially prefer.
-	if critical && preferred == zero {
+	if critical && preferred == common.ZeroTransactionID {
 		l.resolver.Prefer(tx.ID)
 	}
 
@@ -214,7 +213,7 @@ func (l *Ledger) assertValidSignature(tx *Transaction) bool {
 	}
 
 	cpy := *tx
-	cpy.SenderSignature = [sys.SignatureSize]byte{}
+	cpy.SenderSignature = common.ZeroSignature
 
 	err = eddsa.Verify(tx.Sender[:], cpy.Write(), tx.SenderSignature[:])
 	if err != nil {
@@ -490,7 +489,7 @@ func (l *Ledger) RegisterProcessor(tag byte, processor TransactionProcessor) {
 // applies all valid ones to a snapshot of all accounts stored in the ledger.
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
-func (l *Ledger) collapseTransactions(parentIDs [][sys.PublicKeySize]byte, logging bool) accounts {
+func (l *Ledger) collapseTransactions(parentIDs []common.AccountID, logging bool) accounts {
 	ss := l.snapshotAccounts()
 	ss.tree.IncrementViewID()
 
@@ -571,7 +570,7 @@ func (l *Ledger) rewardValidators(ss accounts, tx *Transaction) error {
 	var stakes []uint64
 	var totalStake uint64
 
-	visited := make(map[[sys.PublicKeySize]byte]struct{})
+	visited := make(map[common.AccountID]struct{})
 	q := queue.New()
 
 	for _, parentID := range tx.ParentIDs {
@@ -684,7 +683,7 @@ func (l *Ledger) HasTransactionInView(id [blake2b.Size256]byte) bool {
 	return exists
 }
 
-func (l *Ledger) Transactions(offset, limit uint64, sender, creator [sys.PublicKeySize]byte) []*Transaction {
+func (l *Ledger) Transactions(offset, limit uint64, sender, creator common.AccountID) []*Transaction {
 	return l.view.Transactions(offset, limit, sender, creator)
 }
 

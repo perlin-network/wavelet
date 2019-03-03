@@ -2,7 +2,7 @@ package log
 
 import (
 	"encoding/hex"
-	"github.com/perlin-network/wavelet/sys"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/rs/zerolog"
 	"io"
 	"os"
@@ -58,7 +58,7 @@ func Node() zerolog.Logger {
 	return node
 }
 
-func Account(id [sys.PublicKeySize]byte, event string) zerolog.Logger {
+func Account(id common.AccountID, event string) zerolog.Logger {
 	return accounts.With().Hex("account_id", id[:]).Str(KeyEvent, event).Logger()
 }
 
@@ -66,7 +66,7 @@ func Contracts() zerolog.Logger {
 	return contract
 }
 
-func Contract(id [sys.TransactionIDSize]byte, event string) zerolog.Logger {
+func Contract(id common.TransactionID, event string) zerolog.Logger {
 	return contract.With().Hex("contract_id", id[:]).Str(KeyEvent, event).Logger()
 }
 
@@ -74,7 +74,7 @@ func Broadcaster() zerolog.Logger {
 	return broadcaster
 }
 
-func TX(id [sys.TransactionIDSize]byte, sender, creator [sys.PublicKeySize]byte, parentIDs [][sys.PublicKeySize]byte, tag byte, payload []byte, event string) zerolog.Logger {
+func TX(id common.TransactionID, sender, creator common.AccountID, parentIDs []common.AccountID, tag byte, payload []byte, event string) zerolog.Logger {
 	var parents []string
 
 	for _, parentID := range parentIDs {

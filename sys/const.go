@@ -1,7 +1,6 @@
 package sys
 
 import (
-	"golang.org/x/crypto/blake2b"
 	"time"
 )
 
@@ -41,10 +40,4 @@ var (
 	CriticalTimestampAverageWindowSize        = 3
 
 	MinimumStake uint64 = 100
-)
-
-const (
-	TransactionIDSize = blake2b.Size256
-	PublicKeySize     = 32
-	SignatureSize     = 64
 )

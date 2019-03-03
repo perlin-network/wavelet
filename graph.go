@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/phf/go-queue/queue"
@@ -181,13 +182,11 @@ func (g *graph) Height() uint64 {
 	return g.height
 }
 
-func (g *graph) Transactions(offset, limit uint64, sender, creator [sys.PublicKeySize]byte) (transactions []*Transaction) {
-	var zero [sys.PublicKeySize]byte
-
+func (g *graph) Transactions(offset, limit uint64, sender, creator common.AccountID) (transactions []*Transaction) {
 	g.Lock()
 
 	for _, tx := range g.transactions {
-		if (sender == zero && creator == zero) || (sender != zero && tx.Sender == sender) || (creator != zero && tx.Creator == creator) {
+		if (sender == common.ZeroAccountID && creator == common.ZeroAccountID) || (sender != common.ZeroAccountID && tx.Sender == sender) || (creator != common.ZeroAccountID && tx.Creator == creator) {
 			transactions = append(transactions, tx)
 		}
 	}

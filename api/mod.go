@@ -11,9 +11,9 @@ import (
 	"github.com/go-chi/render"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
-	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"gopkg.in/olahol/melody.v1"
 	"net/http"
@@ -306,8 +306,8 @@ func (g *Gateway) ledgerStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g *Gateway) listTransactions(w http.ResponseWriter, r *http.Request) {
-	var sender [sys.PublicKeySize]byte
-	var creator [sys.PublicKeySize]byte
+	var sender common.AccountID
+	var creator common.AccountID
 	var offset, limit uint64
 	var err error
 
@@ -319,8 +319,8 @@ func (g *Gateway) listTransactions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if len(slice) != sys.PublicKeySize {
-			g.render(w, r, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", sys.PublicKeySize)))
+		if len(slice) != common.SizeAccountID {
+			g.render(w, r, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", common.SizeAccountID)))
 			return
 		}
 
@@ -340,8 +340,8 @@ func (g *Gateway) listTransactions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if len(slice) != sys.PublicKeySize {
-			g.render(w, r, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", sys.PublicKeySize)))
+		if len(slice) != common.SizeAccountID {
+			g.render(w, r, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", common.SizeAccountID)))
 			return
 		}
 
@@ -389,12 +389,12 @@ func (g *Gateway) getTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(slice) != sys.TransactionIDSize {
-		g.render(w, r, ErrBadRequest(errors.Errorf("transaction ID must be %d bytes long", sys.TransactionIDSize)))
+	if len(slice) != common.SizeTransactionID {
+		g.render(w, r, ErrBadRequest(errors.Errorf("transaction ID must be %d bytes long", common.SizeTransactionID)))
 		return
 	}
 
-	var id [sys.TransactionIDSize]byte
+	var id common.TransactionID
 	copy(id[:], slice)
 
 	tx := g.ledger.FindTransaction(id)
@@ -416,12 +416,12 @@ func (g *Gateway) getAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(slice) != sys.PublicKeySize {
-		g.render(w, r, ErrBadRequest(errors.Errorf("account ID must be %d bytes long", sys.PublicKeySize)))
+	if len(slice) != common.SizeAccountID {
+		g.render(w, r, ErrBadRequest(errors.Errorf("account ID must be %d bytes long", common.SizeAccountID)))
 		return
 	}
 
-	var id [sys.PublicKeySize]byte
+	var id common.AccountID
 	copy(id[:], slice)
 
 	g.render(w, r, &Account{ledger: g.ledger, id: id})
@@ -437,12 +437,12 @@ func (g *Gateway) contractScope(next http.Handler) http.Handler {
 			return
 		}
 
-		if len(slice) != sys.TransactionIDSize {
-			g.render(w, r, ErrBadRequest(errors.Errorf("contract ID must be %d bytes long", sys.TransactionIDSize)))
+		if len(slice) != common.SizeTransactionID {
+			g.render(w, r, ErrBadRequest(errors.Errorf("contract ID must be %d bytes long", common.SizeTransactionID)))
 			return
 		}
 
-		var contractID [sys.TransactionIDSize]byte
+		var contractID common.TransactionID
 		copy(contractID[:], slice)
 
 		ctx := context.WithValue(r.Context(), "contract_id", contractID)
@@ -451,7 +451,7 @@ func (g *Gateway) contractScope(next http.Handler) http.Handler {
 }
 
 func (g *Gateway) getContractCode(w http.ResponseWriter, r *http.Request) {
-	id, ok := r.Context().Value("contract_id").([sys.TransactionIDSize]byte)
+	id, ok := r.Context().Value("contract_id").(common.TransactionID)
 
 	if !ok {
 		return
@@ -468,7 +468,7 @@ func (g *Gateway) getContractCode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g *Gateway) getContractPages(w http.ResponseWriter, r *http.Request) {
-	id, ok := r.Context().Value("contract_id").([sys.TransactionIDSize]byte)
+	id, ok := r.Context().Value("contract_id").(common.TransactionID)
 
 	if !ok {
 		return

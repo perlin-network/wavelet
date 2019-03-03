@@ -31,7 +31,7 @@ func createNormalTransaction(t *testing.T, ledger *Ledger, keys *skademlia.Keypa
 	_, err := rand.Read(buf[:])
 	assert.NoError(t, err)
 
-	tx, err := ledger.NewTransaction(keys, sys.TagNop, buf[:])
+	tx, err := ledger.NewTransaction(keys, sys.TagTransfer, buf[:])
 	assert.NoError(t, err)
 
 	return tx

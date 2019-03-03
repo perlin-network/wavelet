@@ -4,9 +4,9 @@ import (
 	"github.com/perlin-network/life/compiler"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/payload"
-	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 )
 
@@ -27,7 +27,7 @@ type ContractExecutor struct {
 
 	gasTable map[string]int64
 
-	contractID [sys.TransactionIDSize]byte
+	contractID common.TransactionID
 	ctx        *TransactionContext
 
 	payload, result []byte
@@ -35,7 +35,7 @@ type ContractExecutor struct {
 	vm *exec.VirtualMachine
 }
 
-func NewContractExecutor(contractID [sys.TransactionIDSize]byte, ctx *TransactionContext, gasLimit uint64) (*ContractExecutor, error) {
+func NewContractExecutor(contractID common.TransactionID, ctx *TransactionContext, gasLimit uint64) (*ContractExecutor, error) {
 	executor := &ContractExecutor{contractID: contractID, ctx: ctx}
 
 	code, available := ctx.ReadAccountContractCode(contractID)

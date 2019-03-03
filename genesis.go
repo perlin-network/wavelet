@@ -3,7 +3,7 @@ package wavelet
 import (
 	"encoding/hex"
 	"encoding/json"
-	"github.com/perlin-network/wavelet/sys"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"os"
@@ -41,7 +41,7 @@ func performInception(accounts accounts, path string) (*Transaction, error) {
 			return nil, err
 		}
 
-		var id [sys.PublicKeySize]byte
+		var id common.AccountID
 		copy(id[:], encodedIDBuf)
 
 		for key, val := range pairs {

@@ -1,15 +1,15 @@
 package conflict
 
 import (
-	"golang.org/x/crypto/blake2b"
+	"github.com/perlin-network/wavelet/common"
 )
 
 type Resolver interface {
 	Reset()
-	Tick(id [blake2b.Size256]byte, votes []float64)
+	Tick(id common.TransactionID, votes []float64)
 
-	Prefer(id [blake2b.Size256]byte)
-	Preferred() [blake2b.Size256]byte
+	Prefer(id common.TransactionID)
+	Preferred() common.TransactionID
 
 	Decided() bool
 }

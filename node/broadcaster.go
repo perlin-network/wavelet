@@ -5,6 +5,7 @@ import (
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -49,7 +50,6 @@ func (b *broadcaster) Broadcast(tx *wavelet.Transaction) error {
 }
 
 func (b *broadcaster) work() {
-	var zero [sys.TransactionIDSize]byte
 	logger := log.Broadcaster()
 
 	for {
@@ -70,7 +70,7 @@ func (b *broadcaster) work() {
 
 			preferredID := b.ledger.Resolver().Preferred()
 
-			if preferredID == zero {
+			if preferredID == common.ZeroTransactionID {
 				if !b.broadcastingNops {
 					continue
 				}

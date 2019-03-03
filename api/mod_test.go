@@ -8,6 +8,7 @@ import (
 	"github.com/perlin-network/noise/identity/ed25519"
 	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -127,7 +128,7 @@ func TestGetTransaction(t *testing.T) {
 			wantCode:     http.StatusBadRequest,
 			wantResponse: &ErrResponse{
 				StatusText: "Bad request.",
-				ErrorText:  fmt.Sprintf("transaction ID must be %d bytes long", sys.TransactionIDSize),
+				ErrorText:  fmt.Sprintf("transaction ID must be %d bytes long", common.SizeTransactionID),
 			},
 		},
 	}
@@ -213,7 +214,7 @@ func TestGetAccount(t *testing.T) {
 	idBytes, err := hex.DecodeString(idHex)
 	assert.NoError(t, err)
 
-	var id32 [sys.PublicKeySize]byte
+	var id32 common.AccountID
 	copy(id32[:], idBytes)
 
 	hub.ledger.WriteAccountBalance(id32, 10)
@@ -290,7 +291,7 @@ func TestGetContractCode(t *testing.T) {
 	idBytes, err := hex.DecodeString(idHex)
 	assert.NoError(t, err)
 
-	var id32 [sys.PublicKeySize]byte
+	var id32 common.AccountID
 	copy(id32[:], idBytes)
 
 	hub.ledger.WriteAccountContractCode(id32, []byte("contract code"))
