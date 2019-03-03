@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/cors"
@@ -530,18 +529,6 @@ func (g *Gateway) authenticated(next http.Handler) http.Handler {
 
 func (g *Gateway) parseWebsocketParams(params map[string]string) func(s *melody.Session) {
 	return func(s *melody.Session) {
-		token := s.Request.URL.Query().Get("token")
-		if len(token) == 0 {
-			_ = s.CloseWithMsg([]byte("specify a session token through url query params"))
-			return
-		}
-
-		_, exists := g.registry.getSession(token)
-		if !exists {
-			_ = s.CloseWithMsg([]byte(fmt.Sprintf("could not find session %s", token)))
-			return
-		}
-
 		for query, key := range params {
 			if condition := s.Request.URL.Query().Get(query); len(condition) > 0 {
 				s.Set(key, condition)
@@ -552,7 +539,18 @@ func (g *Gateway) parseWebsocketParams(params map[string]string) func(s *melody.
 
 func (g *Gateway) poll(poller atomic.Value) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println(r.URL.Query())
+		token := r.URL.Query().Get("token")
+		if len(token) == 0 {
+			g.render(w, r, ErrBadRequest(errors.New("specify a session token through url query params")))
+			return
+		}
+
+		_, exists := g.registry.getSession(token)
+		if !exists {
+			g.render(w, r, ErrBadRequest(errors.Errorf("could not find session %s", token)))
+			return
+		}
+
 		poller := poller.Load().(*melody.Melody)
 
 		if err := poller.HandleRequest(w, r); err != nil {
