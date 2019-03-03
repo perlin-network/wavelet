@@ -138,11 +138,27 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
+	var zero [blake2b.Size256]byte
+
 	if tx.ID == l.view.Root().ID {
 		return VoteAccepted
 	}
 
-	var zero [blake2b.Size256]byte
+	if tx.Sender == zero || tx.Creator == zero {
+		return errors.Wrap(VoteRejected, "wavelet: tx must have sender or creator")
+	}
+
+	if len(tx.ParentIDs) == 0 {
+		return errors.Wrap(VoteRejected, "wavelet: tx must have parents")
+	}
+
+	if tx.Tag != sys.TagNop && len(tx.Payload) == 0 {
+		return errors.Wrap(VoteRejected, "wavelet: tx must have payload if not a nop transaction")
+	}
+
+	if tx.Tag == sys.TagNop && len(tx.Payload) != 0 {
+		return errors.Wrap(VoteRejected, "wavelet: tx must have no payload if is a nop transaction")
+	}
 
 	critical := tx.IsCritical(l.Difficulty())
 	preferred := l.resolver.Preferred()
