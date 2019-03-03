@@ -50,6 +50,7 @@ func (b *broadcaster) Broadcast(tx *wavelet.Transaction) error {
 
 func (b *broadcaster) work() {
 	var zero [sys.TransactionIDSize]byte
+	logger := log.Broadcaster()
 
 	for {
 		var item broadcastItem
@@ -58,7 +59,7 @@ func (b *broadcaster) work() {
 		case popped := <-b.queue:
 			item = popped
 
-			log.Broadcaster().Log().
+			logger.Log().
 				Bool("broadcast_nops", b.broadcastingNops).
 				Hex("tx_id", popped.tx.ID[:]).
 				Msg("Broadcasting out queued transaction.")
@@ -81,7 +82,7 @@ func (b *broadcaster) work() {
 
 				item = broadcastItem{tx: nop, result: nil, viewID: b.ledger.ViewID()}
 
-				log.Broadcaster().Log().
+				logger.Log().
 					Bool("broadcast_nops", true).
 					Hex("tx_id", nop.ID[:]).
 					Msg("Broadcasting out nop transaction.")
@@ -94,7 +95,7 @@ func (b *broadcaster) work() {
 
 				item = broadcastItem{tx: preferred, result: nil, viewID: b.ledger.ViewID()}
 
-				log.Broadcaster().Log().
+				logger.Log().
 					Bool("broadcast_nops", false).
 					Hex("tx_id", preferred.ID[:]).
 					Msg("Broadcasting out our preferred transaction.")
@@ -108,7 +109,7 @@ func (b *broadcaster) work() {
 			if item.result != nil {
 				item.result <- err
 			} else {
-				log.Broadcaster().Warn().
+				logger.Warn().
 					Err(err).
 					Msg("Stopped a broadcast during assertions.")
 			}
@@ -119,14 +120,14 @@ func (b *broadcaster) work() {
 			if item.result != nil {
 				item.result <- err
 			} else {
-				log.Broadcaster().Warn().
+				logger.Warn().
 					Err(err).
 					Msg("Got an error while querying.")
 			}
 			continue
 		}
 
-		log.Broadcaster().Debug().
+		logger.Debug().
 			Hex("tx_id", item.tx.ID[:]).
 			Bool("broadcast_nops", b.broadcastingNops).
 			Msg("Successfully broadcasted out transaction.")
@@ -136,7 +137,7 @@ func (b *broadcaster) work() {
 		if !b.broadcastingNops {
 			b.broadcastingNops = true
 
-			log.Broadcaster().Log().
+			logger.Log().
 				Bool("broadcast_nops", true).
 				Msg("Started broadcasting nops.")
 		}
@@ -149,7 +150,7 @@ func (b *broadcaster) work() {
 		if b.ledger.ViewID() != item.viewID {
 			b.broadcastingNops = false
 
-			log.Broadcaster().Log().
+			logger.Log().
 				Bool("broadcast_nops", true).
 				Msg("Stopped broadcasting nops.")
 		}

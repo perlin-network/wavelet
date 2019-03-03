@@ -74,10 +74,12 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 	res.vote = errors.Cause(vote) == wavelet.VoteAccepted
 	copy(res.id[:], peer.Node().Keys.PublicKey())
 
+	logger := log.Consensus("vote")
+
 	if res.vote {
-		log.Consensus("vote").Debug().Hex("tx_id", req.tx.ID[:]).Msg("Gave a positive vote to a transaction.")
+		logger.Debug().Hex("tx_id", req.tx.ID[:]).Msg("Gave a positive vote to a transaction.")
 	} else {
-		log.Consensus("vote").Debug().Hex("tx_id", req.tx.ID[:]).Err(vote).Msg("Gave a positive vote to a transaction.")
+		logger.Debug().Hex("tx_id", req.tx.ID[:]).Err(vote).Msg("Gave a positive vote to a transaction.")
 	}
 
 	_ = peer.SendMessageAsync(res)

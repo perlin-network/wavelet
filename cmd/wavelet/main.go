@@ -33,6 +33,8 @@ func main() {
 
 	flag.Parse()
 
+	logger := log.Node()
+
 	var hub *api.Hub
 
 	if port := *apiFlag; port > 0 {
@@ -44,26 +46,26 @@ func main() {
 
 	privateKey, err := ioutil.ReadFile(*walletFlag)
 	if err != nil {
-		log.Node().Warn().Msgf("Could not find an existing wallet at %q. Generating a new wallet...", *walletFlag)
+		logger.Warn().Msgf("Could not find an existing wallet at %q. Generating a new wallet...", *walletFlag)
 
 		keys = skademlia.NewKeys(DefaultC1, DefaultC2)
 
-		log.Node().Info().
+		logger.Info().
 			Hex("privateKey", keys.PrivateKey()).
 			Hex("publicKey", keys.PublicKey()).
 			Msg("Generated a wallet.")
 	} else {
 		n, err := hex.Decode(privateKey, privateKey)
 		if err != nil {
-			log.Node().Fatal().Err(err).Msgf("Failed to decode your private key from %q.", *walletFlag)
+			logger.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", *walletFlag)
 		}
 
 		keys, err = skademlia.LoadKeys(privateKey[:n], DefaultC1, DefaultC2)
 		if err != nil {
-			log.Node().Fatal().Err(err).Msgf("The private key specified in %q is invalid.", *walletFlag)
+			logger.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", *walletFlag)
 		}
 
-		log.Node().Info().
+		logger.Info().
 			Hex("privateKey", keys.PrivateKey()).
 			Hex("publicKey", keys.PublicKey()).
 			Msg("Loaded wallet.")
@@ -80,7 +82,7 @@ func main() {
 
 	n, err := noise.NewNode(params)
 	if err != nil {
-		log.Node().Fatal().Err(err).Msg("Failed to start listening for peers.")
+		logger.Fatal().Err(err).Msg("Failed to start listening for peers.")
 	}
 
 	protocol.New().
@@ -92,13 +94,13 @@ func main() {
 
 	n.OnPeerInit(func(node *noise.Node, peer *noise.Peer) error {
 		peer.OnConnError(func(node *noise.Node, peer *noise.Peer, err error) error {
-			log.Node().Info().Err(err).Msgf("An error occured over the wire.")
+			logger.Info().Err(err).Msgf("An error occured over the wire.")
 
 			return nil
 		})
 
 		peer.OnDisconnect(func(node *noise.Node, peer *noise.Peer) error {
-			log.Node().Info().Msgf("Peer %v has disconnected.", peer.RemoteIP().String()+":"+strconv.Itoa(int(peer.RemotePort())))
+			logger.Info().Msgf("Peer %v has disconnected.", peer.RemoteIP().String()+":"+strconv.Itoa(int(peer.RemotePort())))
 
 			return nil
 		})
@@ -108,20 +110,20 @@ func main() {
 
 	go n.Listen()
 
-	log.Node().Info().Uint16("port", n.ExternalPort()).Msg("Listening for peers.")
+	logger.Info().Uint16("port", n.ExternalPort()).Msg("Listening for peers.")
 
 	if len(flag.Args()) > 0 {
 		for _, address := range flag.Args() {
 			peer, err := n.Dial(address)
 			if err != nil {
-				log.Node().Fatal().Err(err).Msg("Failed to dial specified peer.")
+				logger.Fatal().Err(err).Msg("Failed to dial specified peer.")
 			}
 
 			node.WaitUntilAuthenticated(peer)
 		}
 
 		peers := skademlia.FindNode(n, protocol.NodeID(n).(skademlia.ID), skademlia.BucketSize(), 8)
-		log.Node().Info().Msgf("Bootstrapped with peers: %+v", peers)
+		logger.Info().Msgf("Bootstrapped with peers: %+v", peers)
 	}
 
 	if port := *apiFlag; port > 0 {
@@ -137,7 +139,7 @@ func main() {
 		bytes, _, err := reader.ReadLine()
 
 		if err != nil {
-			log.Node().Fatal().Err(err).Msg("Failed to read input from user.")
+			logger.Fatal().Err(err).Msg("Failed to read input from user.")
 		}
 
 		ledger := node.Ledger(n)
@@ -149,7 +151,7 @@ func main() {
 				balance, _ := ledger.ReadAccountBalance(nodeID)
 				stake, _ := ledger.ReadAccountStake(nodeID)
 
-				log.Node().Info().
+				logger.Info().
 					Str("id", hex.EncodeToString(n.Keys.PublicKey())).
 					Uint64("balance", balance).
 					Uint64("stake", stake).
@@ -161,7 +163,7 @@ func main() {
 			buf, err := hex.DecodeString(cmd[1])
 
 			if err != nil || len(buf) != sys.PublicKeySize {
-				log.Node().Error().Msg("The account ID you specified is invalid.")
+				logger.Error().Msg("The account ID you specified is invalid.")
 				continue
 			}
 
@@ -171,7 +173,7 @@ func main() {
 			balance, _ := ledger.ReadAccountBalance(accountID)
 			stake, _ := ledger.ReadAccountStake(accountID)
 
-			log.Node().Info().
+			logger.Info().
 				Uint64("balance", balance).
 				Uint64("stake", stake).
 				Msgf("Account: %s", cmd[1])
@@ -186,14 +188,14 @@ func main() {
 			if len(cmd) >= 3 {
 				amount, err = strconv.Atoi(cmd[2])
 				if err != nil {
-					log.Node().Error().Err(err).Msg("Failed to convert payment amount to an uint64.")
+					logger.Error().Err(err).Msg("Failed to convert payment amount to an uint64.")
 					continue
 				}
 			}
 
 			recipient, err := hex.DecodeString(recipientAddress)
 			if err != nil {
-				log.Node().Error().Err(err).Msg("The recipient you specified is invalid.")
+				logger.Error().Err(err).Msg("The recipient you specified is invalid.")
 				continue
 			}
 
@@ -219,7 +221,7 @@ func main() {
 						var val uint64
 						_, err = fmt.Sscanf(arg[1:], "%d", &val)
 						if err != nil {
-							log.Node().Error().Err(err).Msgf("Got an error parsing integer: %+v", arg[1:])
+							logger.Error().Err(err).Msgf("Got an error parsing integer: %+v", arg[1:])
 						}
 
 						switch arg[0] {
@@ -235,13 +237,13 @@ func main() {
 					case 'H':
 						b, err := hex.DecodeString(arg[1:])
 						if err != nil {
-							log.Node().Error().Err(err).Msgf("Cannot decode hex: %s", arg[1:])
+							logger.Error().Err(err).Msgf("Cannot decode hex: %s", arg[1:])
 							continue
 						}
 
 						inputs.WriteBytes(b)
 					default:
-						log.Node().Error().Msgf("Invalid argument specified: %s", arg)
+						logger.Error().Msgf("Invalid argument specified: %s", arg)
 						continue
 					}
 				}
@@ -252,17 +254,17 @@ func main() {
 			go func() {
 				tx, err := ledger.NewTransaction(n.Keys, sys.TagTransfer, params.Bytes())
 				if err != nil {
-					log.Node().Error().Err(err).Msg("Failed to create a transfer transaction.")
+					logger.Error().Err(err).Msg("Failed to create a transfer transaction.")
 					return
 				}
 
 				err = node.BroadcastTransaction(n, tx)
 				if err != nil {
-					log.Node().Error().Err(err).Msg("An error occurred while broadcasting a transfer transaction.")
+					logger.Error().Err(err).Msg("An error occurred while broadcasting a transfer transaction.")
 					return
 				}
 
-				log.Node().Info().Msgf("Success! Your payment transaction ID: %x", tx.ID)
+				logger.Info().Msgf("Success! Your payment transaction ID: %x", tx.ID)
 			}()
 
 		case "ps":
@@ -272,23 +274,23 @@ func main() {
 
 			amount, err := strconv.Atoi(cmd[1])
 			if err != nil {
-				log.Node().Fatal().Err(err).Msg("Failed to convert staking amount to a uint64.")
+				logger.Fatal().Err(err).Msg("Failed to convert staking amount to a uint64.")
 			}
 
 			go func() {
 				tx, err := ledger.NewTransaction(n.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
 				if err != nil {
-					log.Node().Error().Err(err).Msg("Failed to create a stake placement transaction.")
+					logger.Error().Err(err).Msg("Failed to create a stake placement transaction.")
 					return
 				}
 
 				err = node.BroadcastTransaction(n, tx)
 				if err != nil {
-					log.Node().Error().Err(err).Msg("An error occurred while broadcasting a stake placement transaction.")
+					logger.Error().Err(err).Msg("An error occurred while broadcasting a stake placement transaction.")
 					return
 				}
 
-				log.Node().Info().Msgf("Success! Your stake placement transaction ID: %x", tx.ID)
+				logger.Info().Msgf("Success! Your stake placement transaction ID: %x", tx.ID)
 			}()
 		case "ws":
 			if len(cmd) < 2 {
@@ -297,23 +299,23 @@ func main() {
 
 			amount, err := strconv.Atoi(cmd[1])
 			if err != nil {
-				log.Node().Fatal().Err(err).Msg("Failed to convert withdraw amount to an uint64.")
+				logger.Fatal().Err(err).Msg("Failed to convert withdraw amount to an uint64.")
 			}
 
 			go func() {
 				tx, err := ledger.NewTransaction(n.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
 				if err != nil {
-					log.Node().Error().Err(err).Msg("Failed to create a stake withdrawal transaction.")
+					logger.Error().Err(err).Msg("Failed to create a stake withdrawal transaction.")
 					return
 				}
 
 				err = node.BroadcastTransaction(n, tx)
 				if err != nil {
-					log.Node().Error().Err(err).Msg("An error occurred while broadcasting a stake withdrawal transaction.")
+					logger.Error().Err(err).Msg("An error occurred while broadcasting a stake withdrawal transaction.")
 					return
 				}
 
-				log.Node().Info().Msgf("Success! Your stake withdrawal transaction ID: %x", tx.ID)
+				logger.Info().Msgf("Success! Your stake withdrawal transaction ID: %x", tx.ID)
 			}()
 		case "c":
 			if len(cmd) < 2 {
@@ -322,7 +324,7 @@ func main() {
 
 			code, err := ioutil.ReadFile(cmd[1])
 			if err != nil {
-				log.Node().Error().
+				logger.Error().
 					Err(err).
 					Str("path", cmd[1]).
 					Msg("Failed to find/load the smart contract code from the given path.")
@@ -332,17 +334,17 @@ func main() {
 			go func() {
 				tx, err := ledger.NewTransaction(n.Keys, sys.TagContract, code)
 				if err != nil {
-					log.Node().Error().Err(err).Msg("Failed to create a smart contract creation transaction.")
+					logger.Error().Err(err).Msg("Failed to create a smart contract creation transaction.")
 					return
 				}
 
 				err = node.BroadcastTransaction(n, tx)
 				if err != nil {
-					log.Node().Error().Err(err).Msg("An error occurred while broadcasting a smart contract creation transaction.")
+					logger.Error().Err(err).Msg("An error occurred while broadcasting a smart contract creation transaction.")
 					return
 				}
 
-				log.Node().Info().Msgf("Success! Your smart contract ID: %x", tx.ID)
+				logger.Info().Msgf("Success! Your smart contract ID: %x", tx.ID)
 			}()
 		}
 	}

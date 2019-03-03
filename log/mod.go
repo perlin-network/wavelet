@@ -12,13 +12,13 @@ var (
 	output = new(multiWriter)
 	logger = zerolog.New(os.Stderr).With().Timestamp().Logger().Output(output)
 
-	node        *zerolog.Logger
-	accounts    *zerolog.Logger
-	broadcaster *zerolog.Logger
-	consensus   *zerolog.Logger
-	contract    *zerolog.Logger
-	stake       *zerolog.Logger
-	tx          *zerolog.Logger
+	node        zerolog.Logger
+	accounts    zerolog.Logger
+	broadcaster zerolog.Logger
+	consensus   zerolog.Logger
+	contract    zerolog.Logger
+	stake       zerolog.Logger
+	tx          zerolog.Logger
 )
 
 const (
@@ -47,58 +47,43 @@ func init() {
 }
 
 func setupChildLoggers() {
-	a := logger.With().Str(KeyModule, ModuleNode).Logger()
-	node = &a
-
-	b := logger.With().Str(KeyModule, ModuleAccounts).Logger()
-	accounts = &b
-
-	c := logger.With().Str(KeyModule, ModuleBroadcaster).Logger()
-	broadcaster = &c
-
-	d := logger.With().Str(KeyModule, ModuleConsensus).Logger()
-	consensus = &d
-
-	e := logger.With().Str(KeyModule, ModuleContract).Logger()
-	contract = &e
-
-	f := logger.With().Str(KeyModule, ModuleStake).Logger()
-	stake = &f
-
-	g := logger.With().Str(KeyModule, ModuleTx).Logger()
-	tx = &g
+	node = logger.With().Str(KeyModule, ModuleNode).Logger()
+	accounts = logger.With().Str(KeyModule, ModuleAccounts).Logger()
+	broadcaster = logger.With().Str(KeyModule, ModuleBroadcaster).Logger()
+	consensus = logger.With().Str(KeyModule, ModuleConsensus).Logger()
+	contract = logger.With().Str(KeyModule, ModuleContract).Logger()
+	stake = logger.With().Str(KeyModule, ModuleStake).Logger()
+	tx = logger.With().Str(KeyModule, ModuleTx).Logger()
 }
 
-func Node() *zerolog.Logger {
+func Node() zerolog.Logger {
 	return node
 }
 
-func Account(id [sys.PublicKeySize]byte, event string) *zerolog.Logger {
-	accounts := accounts.With().Hex("account_id", id[:]).Str(KeyEvent, event).Logger()
-	return &accounts
+func Account(id [sys.PublicKeySize]byte, event string) zerolog.Logger {
+	return accounts.With().Hex("account_id", id[:]).Str(KeyEvent, event).Logger()
 }
 
-func Contracts() *zerolog.Logger {
+func Contracts() zerolog.Logger {
 	return contract
 }
 
-func Contract(id [sys.TransactionIDSize]byte, event string) *zerolog.Logger {
-	contract := contract.With().Hex("contract_id", id[:]).Str(KeyEvent, event).Logger()
-	return &contract
+func Contract(id [sys.TransactionIDSize]byte, event string) zerolog.Logger {
+	return contract.With().Hex("contract_id", id[:]).Str(KeyEvent, event).Logger()
 }
 
-func Broadcaster() *zerolog.Logger {
+func Broadcaster() zerolog.Logger {
 	return broadcaster
 }
 
-func TX(id [sys.TransactionIDSize]byte, sender, creator [sys.PublicKeySize]byte, parentIDs [][sys.PublicKeySize]byte, tag byte, payload []byte, event string) *zerolog.Logger {
+func TX(id [sys.TransactionIDSize]byte, sender, creator [sys.PublicKeySize]byte, parentIDs [][sys.PublicKeySize]byte, tag byte, payload []byte, event string) zerolog.Logger {
 	var parents []string
 
 	for _, parentID := range parentIDs {
 		parents = append(parents, hex.EncodeToString(parentID[:]))
 	}
 
-	tx := tx.With().
+	return tx.With().
 		Hex("tx_id", id[:]).
 		Hex("sender_id", sender[:]).
 		Hex("creator_id", creator[:]).
@@ -106,15 +91,12 @@ func TX(id [sys.TransactionIDSize]byte, sender, creator [sys.PublicKeySize]byte,
 		Uint8("tag", tag).
 		Hex("payload", payload).
 		Str(KeyEvent, event).Logger()
-	return &tx
 }
 
-func Consensus(event string) *zerolog.Logger {
-	consensus := consensus.With().Str(KeyEvent, event).Logger()
-	return &consensus
+func Consensus(event string) zerolog.Logger {
+	return consensus.With().Str(KeyEvent, event).Logger()
 }
 
-func Stake(event string) *zerolog.Logger {
-	stake := stake.With().Str(KeyEvent, event).Logger()
-	return &stake
+func Stake(event string) zerolog.Logger {
+	return stake.With().Str(KeyEvent, event).Logger()
 }

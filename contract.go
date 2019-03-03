@@ -179,9 +179,8 @@ func (c *ContractExecutor) Run(amount uint64, entry string, params ...byte) ([]b
 		return nil, 0, utils.UnifyError(c.vm.ExitError)
 	}
 
-	log.Contract(c.contractID, "gas").
-		Info().
-		Uint64("gas", c.vm.Gas).
+	logger := log.Contract(c.contractID, "gas")
+	logger.Log().Uint64("gas", c.vm.Gas).
 		Msg("Computed gas cost for executing smart contract function.")
 
 	// Save memory snapshot.
@@ -199,7 +198,8 @@ func (c *ContractExecutor) GetCost(key string) int64 {
 		return cost
 	}
 
-	log.Contracts().Fatal().Msgf("Instruction %s not found in gas table.", key)
+	logger := log.Contracts()
+	logger.Fatal().Msgf("Instruction %s not found in gas table.", key)
 
 	return 1
 }
@@ -259,9 +259,8 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 					dataPtr := int(uint32(frame.Locals[0]))
 					dataLen := int(uint32(frame.Locals[1]))
 
-					log.Contract(c.contractID, "log").
-						Info().
-						Msgf(string(vm.Memory[dataPtr : dataPtr+dataLen]))
+					logger := log.Contract(c.contractID, "log")
+					logger.Log().Msg(string(vm.Memory[dataPtr : dataPtr+dataLen]))
 				}
 				return 0
 			}

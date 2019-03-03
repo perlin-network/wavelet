@@ -72,9 +72,8 @@ func (g *graph) addTransaction(tx *Transaction) error {
 		parent.children = append(parent.children, tx.ID)
 	}
 
-	log.TX(tx.ID, tx.Sender, tx.Creator, tx.ParentIDs, tx.Tag, tx.Payload, "new").Log().
-		Uint64("depth", tx.depth).
-		Msg("Added transaction to view-graph.")
+	logger := log.TX(tx.ID, tx.Sender, tx.Creator, tx.ParentIDs, tx.Tag, tx.Payload, "new")
+	logger.Log().Uint64("depth", tx.depth).Msg("Added transaction to view-graph.")
 
 	return nil
 }
@@ -116,11 +115,12 @@ func (g *graph) reset(root *Transaction) {
 		delete(g.transactions, popped.ID)
 		count++
 
-		log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "pruned").Log().
-			Msg("Pruned transaction away from view-graph.")
+		logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "pruned")
+		logger.Log().Msg("Pruned transaction away from view-graph.")
 	}
 
-	log.Consensus("prune").Debug().Int("count", count).Msg("Pruned away transactions from the view-graph.")
+	logger := log.Consensus("prune")
+	logger.Info().Int("count", count).Msg("Pruned away transactions from the view-graph.")
 }
 
 func (g *graph) findEligibleParents() (eligible [][blake2b.Size256]byte) {

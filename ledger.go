@@ -58,7 +58,8 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 
 	genesis, err := performInception(ledger.accounts, genesisPath)
 	if err != nil {
-		log.Node().Fatal().Err(err).Msgf("Failed to perform inception with genesis data from %q.", genesisPath)
+		logger := log.Node()
+		logger.Fatal().Err(err).Msgf("Failed to perform inception with genesis data from %q.", genesisPath)
 	}
 
 	// Instantiate the view-graph for our ledger.
@@ -342,9 +343,8 @@ func (l *Ledger) ProcessQuery(tx *Transaction, responses map[[blake2b.Size256]by
 		votes = append(votes, float64(stake)/float64(maxStake)/float64(len(responses)))
 	}
 
-	log.Stake("process_query").Log().
-		Hex("tx_id", tx.ID[:]).
-		Floats64("weighed_votes", votes).
+	logger := log.Stake("process_query")
+	logger.Log().Hex("tx_id", tx.ID[:]).Floats64("weighed_votes", votes).
 		Msg("Weighed votes with stakes, and updated our progress on consensus.")
 
 	// Update conflict resolver.
@@ -382,7 +382,8 @@ func (l *Ledger) ProcessQuery(tx *Transaction, responses map[[blake2b.Size256]by
 			return errors.Wrap(err, "wavelet: failed to adjust difficulty")
 		}
 
-		log.Consensus("round_end").Log().
+		logger := log.Consensus("round_end")
+		logger.Info().
 			Uint64("old_view_id", viewID-1).
 			Uint64("new_view_id", viewID).
 			Hex("new_root", root.ID[:]).
@@ -459,7 +460,8 @@ func (l *Ledger) adjustDifficulty(critical *Transaction) error {
 
 	original := l.difficulty.Swap(uint64(adjusted))
 
-	log.Consensus("update_difficulty").Log().
+	logger := log.Consensus("update_difficulty")
+	logger.Info().
 		Uint64("old_difficulty", original).
 		Int("new_difficulty", adjusted).
 		Msg("Ledger difficulty has been adjusted.")
@@ -532,19 +534,20 @@ func (l *Ledger) collapseTransactions(parentIDs [][sys.PublicKeySize]byte, loggi
 		// snapshot, silently log it and continue applying other transactions.
 		if err := l.applyTransactionToSnapshot(ss, popped); err != nil {
 			if logging {
-				log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "failed").
-					Log().Err(err).Msg("Failed to apply transaction to the ledger.")
+				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
+				logger.Log().Err(err).Msg("Failed to apply transaction to the ledger.")
 			}
 		} else {
 			if logging {
-				log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "applied").
-					Log().Msg("Successfully applied transaction to the ledger.")
+				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "applied")
+				logger.Log().Msg("Successfully applied transaction to the ledger.")
 			}
 		}
 
 		if err := l.rewardValidators(ss, popped); err != nil {
 			if logging {
-				log.Node().Warn().Err(err).Msg("Failed to reward a validator while collapsing down transactions.")
+				logger := log.Node()
+				logger.Warn().Err(err).Msg("Failed to reward a validator while collapsing down transactions.")
 			}
 		}
 	}
@@ -658,7 +661,8 @@ func (l *Ledger) rewardValidators(ss accounts, tx *Transaction) error {
 	ss.WriteAccountBalance(tx.Sender, senderBalance-deducted)
 	ss.WriteAccountBalance(rewardee.Sender, recipientBalance+deducted)
 
-	log.Stake("reward_validator").Log().
+	logger := log.Stake("reward_validator")
+	logger.Log().
 		Hex("sender", tx.Sender[:]).
 		Hex("recipient", rewardee.Sender[:]).
 		Hex("sender_tx_id", tx.ID[:]).

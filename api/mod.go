@@ -266,10 +266,11 @@ func (h *Hub) StartHTTP(n *noise.Node, port int) {
 
 	h.setupRouter()
 
-	log.Node().Info().Msgf("Started HTTP API server on port %d.", port)
+	logger := log.Node()
+	logger.Info().Msgf("Started HTTP API server on port %d.", port)
 
 	if err := http.ListenAndServe(":"+strconv.Itoa(port), h.router); err != nil {
-		log.Node().Fatal().Err(err).Msg("Failed to start HTTP server.")
+		logger.Fatal().Err(err).Msg("Failed to start HTTP server.")
 	}
 }
 
