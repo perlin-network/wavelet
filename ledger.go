@@ -5,6 +5,7 @@ import (
 	"github.com/perlin-network/noise/identity"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/noise/signature/eddsa"
+	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/conflict"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
@@ -169,8 +170,12 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 		return errors.Wrap(VoteRejected, "wavelet: prefer other critical transaction")
 	}
 
-	if critical && !l.assertValidAccountsChecksum(tx) {
-		return errors.Wrap(VoteRejected, "wavelet: tx is critical but has invalid accounts root checksum")
+	if critical {
+		if valid, root := l.assertValidAccountsChecksum(tx); !valid {
+			return errors.Wrapf(VoteRejected, "wavelet: tx is critical but has invalid accounts root"+
+				"checksum; collapsing down the critical transactions parents gives %x as the root,"+
+				"but the tx has %x as a root", root, tx.AccountsMerkleRoot)
+		}
 	}
 
 	if !l.assertValidSignature(tx) {
@@ -219,9 +224,9 @@ func (l *Ledger) assertValidSignature(tx *Transaction) bool {
 
 }
 
-func (l *Ledger) assertValidAccountsChecksum(tx *Transaction) bool {
+func (l *Ledger) assertValidAccountsChecksum(tx *Transaction) (bool, [avl.MerkleHashSize]byte) {
 	snapshot := l.collapseTransactions(tx.ParentIDs, false)
-	return snapshot.tree.Checksum() == tx.AccountsMerkleRoot
+	return snapshot.tree.Checksum() == tx.AccountsMerkleRoot, snapshot.tree.Checksum()
 }
 
 func (l *Ledger) assertValidParentDepths(tx *Transaction) bool {
