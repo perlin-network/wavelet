@@ -118,7 +118,7 @@ func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transactio
 	tx.Timestamp = uint64(time.Duration(time.Now().UnixNano()) / time.Millisecond)
 
 	if tx.IsCritical(l.Difficulty()) {
-		snapshot := l.collapseTransactions(tx)
+		snapshot := l.collapseTransactions(tx.ParentIDs, false)
 		tx.AccountsMerkleRoot = snapshot.tree.Checksum()
 	}
 
@@ -153,6 +153,10 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 		return errors.Wrap(VoteRejected, "wavelet: prefer other critical transaction")
 	}
 
+	if critical && !l.assertValidAccountsChecksum(tx) {
+		return errors.Wrap(VoteRejected, "wavelet: tx is critical but has invalid accounts root checksum")
+	}
+
 	if !l.assertValidTimestamp(tx) {
 		return errors.Wrap(VoteRejected, "wavelet: either tx timestamp is out of bounds, or parents not available")
 	}
@@ -175,6 +179,11 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	}
 
 	return VoteAccepted
+}
+
+func (l *Ledger) assertValidAccountsChecksum(tx *Transaction) bool {
+	snapshot := l.collapseTransactions(tx.ParentIDs, false)
+	return snapshot.tree.Checksum() == tx.AccountsMerkleRoot
 }
 
 func (l *Ledger) assertValidParentDepths(tx *Transaction) bool {
@@ -315,7 +324,7 @@ func (l *Ledger) ProcessQuery(tx *Transaction, responses map[[blake2b.Size256]by
 
 		viewID := l.viewID.Add(1)
 
-		ss := l.collapseTransactions(root)
+		ss := l.collapseTransactions(root.ParentIDs, true)
 		ss.tree.SetViewID(viewID)
 
 		l.accounts = ss
@@ -335,8 +344,10 @@ func (l *Ledger) ProcessQuery(tx *Transaction, responses map[[blake2b.Size256]by
 		log.Consensus("round_end").Log().
 			Uint64("old_view_id", viewID-1).
 			Uint64("new_view_id", viewID).
-			Hex("new_root", rootID[:]).
+			Hex("new_root", root.ID[:]).
 			Hex("old_root", old.ID[:]).
+			Hex("new_accounts_checksum", root.AccountsMerkleRoot[:]).
+			Hex("old_accounts_checksum", old.AccountsMerkleRoot[:]).
 			Msg("Finalized consensus round, and incremented view ID.")
 	}
 
@@ -436,7 +447,7 @@ func (l *Ledger) RegisterProcessor(tag byte, processor TransactionProcessor) {
 // applies all valid ones to a snapshot of all accounts stored in the ledger.
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
-func (l *Ledger) collapseTransactions(critical *Transaction) accounts {
+func (l *Ledger) collapseTransactions(parentIDs [][sys.PublicKeySize]byte, logging bool) accounts {
 	ss := l.snapshotAccounts()
 
 	visited := make(map[[blake2b.Size256]byte]struct{})
@@ -444,7 +455,7 @@ func (l *Ledger) collapseTransactions(critical *Transaction) accounts {
 
 	q := queue.New()
 
-	for _, parentID := range critical.ParentIDs {
+	for _, parentID := range parentIDs {
 		if parent, exists := l.view.lookupTransaction(parentID); exists {
 			q.PushBack(parent)
 		}
@@ -478,15 +489,21 @@ func (l *Ledger) collapseTransactions(critical *Transaction) accounts {
 		// If any errors occur while applying our transaction to our accounts
 		// snapshot, silently log it and continue applying other transactions.
 		if err := l.applyTransactionToSnapshot(ss, popped); err != nil {
-			log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "failed").
-				Log().Err(err).Msg("Failed to apply transaction to the ledger.")
+			if logging {
+				log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "failed").
+					Log().Err(err).Msg("Failed to apply transaction to the ledger.")
+			}
 		} else {
-			log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "applied").
-				Log().Msg("Successfully applied transaction to the ledger.")
+			if logging {
+				log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "applied").
+					Log().Msg("Successfully applied transaction to the ledger.")
+			}
 		}
 
 		if err := l.rewardValidators(ss, popped); err != nil {
-			log.Node().Warn().Err(err).Msg("Failed to reward a validator while collapsing down transactions.")
+			if logging {
+				log.Node().Warn().Err(err).Msg("Failed to reward a validator while collapsing down transactions.")
+			}
 		}
 	}
 
