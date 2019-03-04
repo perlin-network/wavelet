@@ -5,8 +5,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/perlin-network/noise"
+	"github.com/perlin-network/noise/cipher/aead"
+	"github.com/perlin-network/noise/handshake/ecdh"
 	"github.com/perlin-network/noise/identity/ed25519"
+	"github.com/perlin-network/noise/payload"
+	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/noise/signature/eddsa"
+	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/noise/transport"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/store"
@@ -145,13 +152,13 @@ func TestGetTransaction(t *testing.T) {
 
 			gateway.router.ServeHTTP(w, request)
 
-			raw, err := ioutil.ReadAll(w.Body)
+			response, err := ioutil.ReadAll(w.Body)
 			assert.Nil(t, err)
 
 			assert.Equal(t, tc.wantCode, w.Code, "status code")
 
 			if tc.wantResponse != nil {
-				assert.NoError(t, compareJson(tc.wantResponse, raw))
+				assert.NoError(t, compareJson(tc.wantResponse, response))
 			}
 		})
 	}
@@ -266,13 +273,13 @@ func TestGetAccount(t *testing.T) {
 
 			gateway.router.ServeHTTP(w, request)
 
-			raw, err := ioutil.ReadAll(w.Body)
+			response, err := ioutil.ReadAll(w.Body)
 			assert.NoError(t, err)
 
 			assert.Equal(t, tc.wantCode, w.Code, "status code")
 
 			if tc.wantResponse != nil {
-				assert.NoError(t, compareJson(tc.wantResponse, raw))
+				assert.NoError(t, compareJson(tc.wantResponse, response))
 			}
 		})
 	}
@@ -335,16 +342,66 @@ func TestGetContractCode(t *testing.T) {
 
 			gateway.router.ServeHTTP(w, request)
 
-			raw, err := ioutil.ReadAll(w.Body)
+			response, err := ioutil.ReadAll(w.Body)
 			assert.NoError(t, err)
 
 			assert.Equal(t, tc.wantCode, w.Code, "status code")
 
 			if tc.wantResponse != "" {
-				assert.Equal(t, tc.wantResponse, string(raw))
+				assert.Equal(t, tc.wantResponse, string(response))
 			}
 		})
 	}
+}
+
+func TestGetLedger(t *testing.T) {
+	gateway := New()
+	gateway.setup()
+
+	sess, err := gateway.registry.newSession()
+	assert.NoError(t, err)
+
+	gateway.ledger = createLedger()
+
+	keys := skademlia.RandomKeys()
+
+	// create a node
+	params := noise.DefaultParams()
+	params.Keys = keys
+	params.Port = 9000
+	params.Transport = transport.NewBuffered()
+	node, err := noise.NewNode(params)
+	assert.Nil(t, err)
+	p := protocol.New()
+	p.Register(ecdh.New())
+	p.Register(aead.New())
+	p.Register(skademlia.New())
+	p.Enforce(node)
+
+	gateway.node = node
+
+	request := httptest.NewRequest("GET", "/ledger", nil)
+	request.Header.Add(HeaderSessionToken, sess.id)
+
+	w := httptest.NewRecorder()
+
+	gateway.router.ServeHTTP(w, request)
+
+	response, err := ioutil.ReadAll(w.Body)
+	assert.NoError(t, err)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	expected := LedgerStatusResponse{
+		PublicKey:     hex.EncodeToString(keys.PublicKey()),
+		HostAddress:   "127.0.0.1:9000",
+		PeerAddresses: nil,
+		RootID:        "39f6d7d2738eeff5d812639f39d6bb3cdd9dbaa7e02aa65ca9e90af13f446d51",
+		ViewID:        0,
+		Difficulty:    7,
+	}
+
+	assert.NoError(t, compareJson(expected, response))
 }
 
 // Test the authenticate checking of all the APIs that require authentication
@@ -423,12 +480,12 @@ func testAuthenticatedAPI(t *testing.T, gateway *Gateway, request *http.Request,
 
 	gateway.router.ServeHTTP(w, request)
 
-	raw, err := ioutil.ReadAll(w.Body)
+	response, err := ioutil.ReadAll(w.Body)
 	assert.Nil(t, err)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code, "status code")
 
-	assert.NoError(t, compareJson(res, raw))
+	assert.NoError(t, compareJson(res, response))
 }
 
 func getGoodCredentialRequest(t *testing.T, keypair *ed25519.Keypair) SessionInitRequest {
@@ -453,17 +510,17 @@ func getBadCredentialRequest() SessionInitRequest {
 	}
 }
 
-func compareJson(expected interface{}, found []byte) error {
+func compareJson(expected interface{}, response []byte) error {
 	b, err := json.Marshal(expected)
 	if err != nil {
 		return err
 	}
 
-	if bytes.Equal(bytes.TrimSpace(found), b) {
+	if bytes.Equal(bytes.TrimSpace(response), b) {
 		return nil
 	}
 
-	return errors.Errorf("expected response `%s`, found `%s`", string(b), string(found))
+	return errors.Errorf("expected response `%s`, found `%s`", string(b), string(response))
 }
 
 func createLedger() *wavelet.Ledger {
@@ -476,4 +533,21 @@ func createLedger() *wavelet.Ledger {
 	ledger.RegisterProcessor(sys.TagStake, new(wavelet.StakeProcessor))
 
 	return ledger
+}
+
+type testMsg struct {
+	Text string
+}
+
+func (testMsg) Read(reader payload.Reader) (noise.Message, error) {
+	text, err := reader.ReadString()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read test message")
+	}
+
+	return testMsg{Text: text}, nil
+}
+
+func (m testMsg) Write() []byte {
+	return payload.NewWriter(nil).WriteString(m.Text).Bytes()
 }
