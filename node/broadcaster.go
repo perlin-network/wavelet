@@ -2,15 +2,12 @@ package node
 
 import (
 	"github.com/perlin-network/noise"
-	"github.com/perlin-network/noise/protocol"
-	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
-	"sync"
 	"time"
 )
 
@@ -53,7 +50,7 @@ func (b *broadcaster) work() {
 	for {
 		preferredID := b.ledger.Resolver().Preferred()
 
-		if preferredID == common.ZeroTransactionID {
+		if preferredID == nil {
 			b.gossiping(logger)
 		} else {
 			b.broadcastingNops = false
@@ -64,7 +61,12 @@ func (b *broadcaster) work() {
 
 func (b *broadcaster) querying(logger zerolog.Logger) {
 	preferredID := b.ledger.Resolver().Preferred()
-	preferred, exists := b.ledger.FindTransaction(preferredID)
+
+	if preferredID == nil {
+		return
+	}
+
+	preferred, exists := b.ledger.FindTransaction(preferredID.(common.TransactionID))
 
 	if !exists {
 		return
@@ -168,81 +170,13 @@ func (b *broadcaster) gossiping(logger zerolog.Logger) {
 	}
 }
 
-func (b *broadcaster) selectPeers(amount int) ([]protocol.ID, error) {
-	peerIDs := skademlia.FindClosestPeers(skademlia.Table(b.node), protocol.NodeID(b.node).Hash(), amount)
-
-	if len(peerIDs) < sys.SnowballK {
-		return nil, errors.Errorf("broadcast: only connected to %d peer(s) "+
-			"but require a minimum of %d peer(s)", len(peerIDs), sys.SnowballK)
-	}
-
-	return peerIDs, nil
-}
-
-func (b *broadcaster) broadcast(req noise.Message, res noise.Opcode) ([]common.AccountID, []noise.Message, error) {
-	peerIDs, err := b.selectPeers(sys.SnowballK)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var accounts []common.AccountID
-	var responses []noise.Message
-
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	wg.Add(len(peerIDs))
-
-	record := func(account common.AccountID, res noise.Message) {
-		mu.Lock()
-		defer mu.Unlock()
-
-		accounts = append(accounts, account)
-		responses = append(responses, res)
-	}
-
-	for _, peerID := range peerIDs {
-		peerID := peerID
-
-		var account common.AccountID
-		copy(account[:], peerID.PublicKey())
-
-		go func() {
-			defer wg.Done()
-
-			peer := protocol.Peer(b.node, peerID)
-			if peer == nil {
-				record(account, nil)
-				return
-			}
-
-			// Send query request.
-			err := peer.SendMessage(req)
-			if err != nil {
-				record(account, nil)
-				return
-			}
-
-			select {
-			case msg := <-peer.Receive(res):
-				record(account, msg)
-			case <-time.After(sys.QueryTimeout):
-				record(account, nil)
-			}
-		}()
-	}
-
-	wg.Wait()
-
-	return accounts, responses, nil
-}
-
 func (b *broadcaster) query(preferred *wavelet.Transaction) error {
 	opcodeQueryResponse, err := noise.OpcodeFromMessage((*QueryResponse)(nil))
 	if err != nil {
 		return errors.Wrap(err, "broadcast: response opcode not registered")
 	}
 
-	accounts, responses, err := b.broadcast(QueryRequest{tx: preferred}, opcodeQueryResponse)
+	accounts, responses, err := broadcast(b.node, QueryRequest{tx: preferred}, opcodeQueryResponse)
 	if err != nil {
 		return err
 	}
@@ -256,7 +190,7 @@ func (b *broadcaster) query(preferred *wavelet.Transaction) error {
 
 	weights := b.ledger.ComputeStakeDistribution(accounts)
 
-	counts := make(map[common.TransactionID]float64)
+	counts := make(map[interface{}]float64)
 
 	for account, preferred := range votes {
 		counts[preferred] += weights[account]
@@ -275,7 +209,7 @@ func (b *broadcaster) gossip(tx *wavelet.Transaction) error {
 		return errors.Wrap(err, "broadcast: response opcode not registered")
 	}
 
-	accounts, responses, err := b.broadcast(GossipRequest{tx: tx}, opcodeGossipResponse)
+	accounts, responses, err := broadcast(b.node, GossipRequest{tx: tx}, opcodeGossipResponse)
 	if err != nil {
 		return err
 	}

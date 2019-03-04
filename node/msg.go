@@ -128,8 +128,7 @@ func (s SyncViewRequest) Write() []byte {
 }
 
 type SyncViewResponse struct {
-	root   wavelet.Transaction
-	viewID uint64
+	root *wavelet.Transaction
 }
 
 func (s SyncViewResponse) Read(reader payload.Reader) (noise.Message, error) {
@@ -138,17 +137,12 @@ func (s SyncViewResponse) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.Wrap(err, "failed to read root tx")
 	}
 
-	viewID, err := reader.ReadUint64()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read view id")
-	}
-
-	s.root = msg.(wavelet.Transaction)
-	s.viewID = viewID
+	root := msg.(wavelet.Transaction)
+	s.root = &root
 
 	return s, nil
 }
 
 func (s SyncViewResponse) Write() []byte {
-	return payload.NewWriter(s.root.Write()).WriteUint64(s.viewID).Bytes()
+	return s.root.Write()
 }

@@ -196,13 +196,13 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 
 		// If our node already prefers a critical transaction, reject the
 		// incoming transaction.
-		if preferred != common.ZeroTransactionID && tx.ID != preferred {
+		if preferred != nil && tx.ID != preferred {
 			return errors.Wrap(VoteRejected, "wavelet: prefer other critical transaction")
 		}
 
 		// If our node does not prefer any critical transaction yet, set a critical
 		// transaction to initially prefer.
-		if preferred == common.ZeroTransactionID && tx.ID != l.view.Root().ID {
+		if preferred == nil && tx.ID != l.view.Root().ID {
 			l.resolver.Prefer(tx.ID)
 		}
 	}
@@ -339,7 +339,7 @@ func (l *Ledger) ComputeStakeDistribution(accounts []common.AccountID) map[commo
 	return weights
 }
 
-func (l *Ledger) ProcessQuery(counts map[common.TransactionID]float64) error {
+func (l *Ledger) ProcessQuery(counts map[interface{}]float64) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
@@ -356,7 +356,7 @@ func (l *Ledger) ProcessQuery(counts map[common.TransactionID]float64) error {
 	if l.resolver.Decided() {
 		old := l.view.Root()
 
-		rootID := l.resolver.Preferred()
+		rootID := l.resolver.Preferred().(common.TransactionID)
 		root, recorded := l.view.lookupTransaction(rootID)
 
 		if !recorded {

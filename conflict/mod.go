@@ -1,15 +1,11 @@
 package conflict
 
-import (
-	"github.com/perlin-network/wavelet/common"
-)
-
 type Resolver interface {
 	Reset()
-	Tick(counts map[common.TransactionID]float64)
+	Tick(counts map[interface{}]float64)
 
-	Prefer(id common.TransactionID)
-	Preferred() common.TransactionID
+	Prefer(id interface{})
+	Preferred() interface{}
 
 	Decided() bool
 }

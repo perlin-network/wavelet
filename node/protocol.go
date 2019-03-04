@@ -4,6 +4,7 @@ import (
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
@@ -84,7 +85,7 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 	if req.tx.ViewID == ledger.ViewID()-1 {
 		res.preferred = ledger.Root().ID
 	} else {
-		res.preferred = ledger.Resolver().Preferred()
+		res.preferred = ledger.Resolver().Preferred().(common.TransactionID)
 	}
 
 	logger := log.Consensus("query")

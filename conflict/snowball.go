@@ -1,7 +1,6 @@
 package conflict
 
 import (
-	"github.com/perlin-network/wavelet/common"
 	"sync"
 )
 
@@ -19,9 +18,9 @@ type snowball struct {
 	k, beta int
 	alpha   float64
 
-	preferred, last common.TransactionID
+	preferred, last interface{}
 
-	counts map[common.TransactionID]int
+	counts map[interface{}]int
 	count  int
 
 	decided bool
@@ -33,7 +32,7 @@ func NewSnowball() *snowball {
 		beta:  SnowballDefaultBeta,
 		alpha: SnowballDefaultAlpha,
 
-		counts: make(map[common.TransactionID]int),
+		counts: make(map[interface{}]int),
 	}
 }
 
@@ -65,16 +64,16 @@ func (s *snowball) Reset() {
 	s.Lock()
 	defer s.Unlock()
 
-	s.preferred = common.ZeroTransactionID
-	s.last = common.ZeroTransactionID
+	s.preferred = nil
+	s.last = nil
 
-	s.counts = make(map[common.TransactionID]int)
+	s.counts = make(map[interface{}]int)
 	s.count = 0
 
 	s.decided = false
 }
 
-func (s *snowball) Tick(counts map[common.TransactionID]float64) {
+func (s *snowball) Tick(counts map[interface{}]float64) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -102,14 +101,14 @@ func (s *snowball) Tick(counts map[common.TransactionID]float64) {
 	}
 }
 
-func (s *snowball) Prefer(id common.TransactionID) {
+func (s *snowball) Prefer(id interface{}) {
 	s.Lock()
 	defer s.Unlock()
 
 	s.preferred = id
 }
 
-func (s *snowball) Preferred() common.TransactionID {
+func (s *snowball) Preferred() interface{} {
 	s.Lock()
 	defer s.Unlock()
 
