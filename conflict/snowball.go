@@ -77,6 +77,10 @@ func (s *snowball) Tick(counts map[interface{}]float64) {
 	s.Lock()
 	defer s.Unlock()
 
+	if s.decided {
+		return
+	}
+
 	for preferred, count := range counts {
 		if count >= s.alpha {
 			s.counts[preferred]++

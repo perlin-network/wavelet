@@ -16,6 +16,7 @@ var _ protocol.Block = (*block)(nil)
 const (
 	keyLedger      = "wavelet.ledger"
 	keyBroadcaster = "wavelet.broadcaster"
+	keySyncer      = "wavelet.syncer"
 	keyAuthChannel = "wavelet.auth.ch"
 )
 
@@ -25,6 +26,9 @@ type block struct {
 
 	opcodeQueryRequest  noise.Opcode
 	opcodeQueryResponse noise.Opcode
+
+	opcodeSyncViewRequest  noise.Opcode
+	opcodeSyncViewResponse noise.Opcode
 }
 
 func New() *block {
@@ -36,6 +40,8 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 	b.opcodeGossipResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*GossipResponse)(nil))
 	b.opcodeQueryRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*QueryRequest)(nil))
 	b.opcodeQueryResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*QueryResponse)(nil))
+	b.opcodeSyncViewRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncViewRequest)(nil))
+	b.opcodeSyncViewResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncViewResponse)(nil))
 
 	genesisPath := "config/genesis.json"
 
@@ -53,6 +59,9 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 	broadcaster.init()
 
 	node.Set(keyBroadcaster, broadcaster)
+
+	syncer := newSyncer(node)
+	syncer.init()
 }
 
 func (b *block) OnBegin(p *protocol.Protocol, peer *noise.Peer) error {
@@ -70,8 +79,28 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 			handleGossipRequest(ledger, peer, req.(GossipRequest))
 		case req := <-peer.Receive(b.opcodeQueryRequest):
 			handleQueryRequest(ledger, peer, req.(QueryRequest))
+		case req := <-peer.Receive(b.opcodeSyncViewRequest):
+			handleSyncViewRequest(ledger, peer, req.(SyncViewRequest))
 		}
 	}
+}
+
+func handleSyncViewRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncViewRequest) {
+	syncer := Syncer(peer.Node())
+
+	// TODO(kenta): add additional checks to see if the incoming root is valid
+	if preferred := syncer.resolver.Preferred(); ledger.ViewID() < req.root.ViewID && preferred == nil {
+		syncer.resolver.Prefer(req.root)
+	}
+
+	res := new(SyncViewResponse)
+	if preferred := syncer.resolver.Preferred(); preferred == nil {
+		res.root = *ledger.Root()
+	} else {
+		res.root = preferred.(wavelet.Transaction)
+	}
+
+	_ = <-peer.SendMessageAsync(res)
 }
 
 func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryRequest) {
@@ -130,4 +159,8 @@ func Ledger(node *noise.Node) *wavelet.Ledger {
 
 func Broadcaster(node *noise.Node) *broadcaster {
 	return node.Get(keyBroadcaster).(*broadcaster)
+}
+
+func Syncer(node *noise.Node) *syncer {
+	return node.Get(keySyncer).(*syncer)
 }
