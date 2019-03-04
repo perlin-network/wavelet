@@ -62,6 +62,8 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 
 	syncer := newSyncer(node)
 	syncer.init()
+
+	node.Set(keySyncer, syncer)
 }
 
 func (b *block) OnBegin(p *protocol.Protocol, peer *noise.Peer) error {
@@ -86,18 +88,20 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 }
 
 func handleSyncViewRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncViewRequest) {
-	syncer := Syncer(peer.Node())
-
 	// TODO(kenta): add additional checks to see if the incoming root is valid
+
+	syncer := Syncer(peer.Node())
+	syncer.addRootIfNotExists(req.root)
+
 	if preferred := syncer.resolver.Preferred(); ledger.ViewID() < req.root.ViewID && preferred == nil {
-		syncer.resolver.Prefer(req.root)
+		syncer.resolver.Prefer(req.root.ID)
 	}
 
 	res := new(SyncViewResponse)
 	if preferred := syncer.resolver.Preferred(); preferred == nil {
-		res.root = *ledger.Root()
+		res.root = ledger.Root()
 	} else {
-		res.root = preferred.(wavelet.Transaction)
+		res.root = syncer.getRootByID(preferred.(common.TransactionID))
 	}
 
 	_ = <-peer.SendMessageAsync(res)
