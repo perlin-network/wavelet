@@ -43,7 +43,7 @@ func (s *syncer) work() {
 			rootID = s.resolver.Preferred().(common.TransactionID)
 			s.resolver.Reset()
 
-			if root = s.getRootByID(rootID); root.ViewID <= s.ledger.ViewID() {
+			if root = s.getRootByID(rootID); s.ledger.Root().ID == rootID || root.ViewID+1 <= s.ledger.ViewID() {
 				time.Sleep(1 * time.Second)
 				continue
 			}
