@@ -9,7 +9,6 @@ import (
 	"github.com/perlin-network/noise/cipher/aead"
 	"github.com/perlin-network/noise/handshake/ecdh"
 	"github.com/perlin-network/noise/identity/ed25519"
-	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/noise/skademlia"
@@ -69,7 +68,6 @@ func TestInitSession(t *testing.T) {
 			assert.Nil(t, err)
 
 			assert.Equal(t, tc.wantCode, w.Code, "status code")
-
 		})
 	}
 }
@@ -307,7 +305,7 @@ func TestGetContractCode(t *testing.T) {
 		name         string
 		url          string
 		wantCode     int
-		wantError    string
+		wantError    interface{}
 		wantResponse string
 	}{
 		{
@@ -326,7 +324,16 @@ func TestGetContractCode(t *testing.T) {
 			wantCode: http.StatusBadRequest,
 		},
 		{
-			name:         "valid id",
+			name:     "id not exist",
+			url:      "/contract/" + "3132333435363738393031323334353637383930313233343536373839303132",
+			wantCode: http.StatusBadRequest,
+			wantError: ErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  fmt.Sprintf("could not find contract with ID %s", "3132333435363738393031323334353637383930313233343536373839303132"),
+			},
+		},
+		{
+			name:         "id exist",
 			url:          "/contract/" + idHex,
 			wantCode:     http.StatusOK,
 			wantResponse: "contract code",
@@ -349,6 +356,114 @@ func TestGetContractCode(t *testing.T) {
 
 			if tc.wantResponse != "" {
 				assert.Equal(t, tc.wantResponse, string(response))
+			}
+
+			if tc.wantError != nil {
+				assert.NoError(t, compareJson(tc.wantError, response))
+			}
+		})
+	}
+}
+
+func TestGetContractPages(t *testing.T) {
+	gateway := New()
+	gateway.setup()
+
+	sess, err := gateway.registry.newSession()
+	assert.NoError(t, err)
+
+	gateway.ledger = createLedger()
+
+	// string: u1mf2g3b2477y5btco22txqxuc41cav6
+	var id = "75316d66326733623234373779356274636f3232747871787563343163617636"
+	{
+		var id32 common.AccountID
+		copy(id32[:], []byte("u1mf2g3b2477y5btco22txqxuc41cav6"))
+
+		gateway.ledger.WriteAccountContractPage(id32, 1, []byte("page"))
+		gateway.ledger.WriteAccountContractNumPages(id32, 2)
+	}
+
+	// string: limo9msslzoeecf2tiy4qdsk42s3t2hd
+	var idEmpty = "6c696d6f396d73736c7a6f6565636632746979347164736b3432733374326864"
+	{
+		var id32 common.AccountID
+		copy(id32[:], []byte("limo9msslzoeecf2tiy4qdsk42s3t2hd"))
+		gateway.ledger.WriteAccountContractPage(id32, 1, nil)
+		gateway.ledger.WriteAccountContractNumPages(id32, 2)
+	}
+
+	tests := []struct {
+		name         string
+		url          string
+		wantCode     int
+		wantError    interface{}
+		wantResponse string
+	}{
+		{
+			name:     "id not uint",
+			url:      "/contract/" + id + "/page/-1",
+			wantCode: http.StatusBadRequest,
+			wantError: ErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  "could not parse page index",
+			},
+		},
+		{
+			name:     "id not exist",
+			url:      "/contract/3132333435363738393031323334353637383930313233343536373839303132/page/1",
+			wantCode: http.StatusBadRequest,
+			wantError: ErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  fmt.Sprintf("could not find any pages for contract with ID %s", "3132333435363738393031323334353637383930313233343536373839303132"),
+			},
+		},
+		{
+			name:     "index not exist",
+			url:      "/contract/" + id + "/page/3",
+			wantCode: http.StatusBadRequest,
+			wantError: ErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  fmt.Sprintf("contract with ID %s only has %d pages, but you requested page %d", id, 2, 3),
+			},
+		},
+		{
+			name:     "empty page",
+			url:      "/contract/" + idEmpty + "/page/1",
+			wantCode: http.StatusBadRequest,
+			wantError: ErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  fmt.Sprintf("page %d is either empty, or does not exist", 1),
+			},
+		},
+		{
+			name:         "index ok",
+			url:          "/contract/" + id + "/page/1",
+			wantCode:     http.StatusOK,
+			wantResponse: "page",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			request := httptest.NewRequest("GET", tc.url, nil)
+			request.Header.Add(HeaderSessionToken, sess.id)
+
+			w := httptest.NewRecorder()
+
+			gateway.router.ServeHTTP(w, request)
+
+			response, err := ioutil.ReadAll(w.Body)
+			assert.NoError(t, err)
+
+			assert.Equal(t, tc.wantCode, w.Code, "status code")
+
+			if tc.wantResponse != "" {
+				assert.Equal(t, tc.wantResponse, string(response))
+			}
+
+			if tc.wantError != nil {
+				assert.NoError(t, compareJson(tc.wantError, response))
 			}
 		})
 	}
@@ -533,21 +648,4 @@ func createLedger() *wavelet.Ledger {
 	ledger.RegisterProcessor(sys.TagStake, new(wavelet.StakeProcessor))
 
 	return ledger
-}
-
-type testMsg struct {
-	Text string
-}
-
-func (testMsg) Read(reader payload.Reader) (noise.Message, error) {
-	text, err := reader.ReadString()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read test message")
-	}
-
-	return testMsg{Text: text}, nil
-}
-
-func (m testMsg) Write() []byte {
-	return payload.NewWriter(nil).WriteString(m.Text).Bytes()
 }
