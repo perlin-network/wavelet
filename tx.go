@@ -33,8 +33,7 @@ type Transaction struct {
 	SenderSignature, CreatorSignature common.Signature
 
 	// IN-MEMORY DATA
-	children []common.TransactionID
-	depth    uint64
+	depth uint64
 }
 
 func prefixLen(buf []byte) int {

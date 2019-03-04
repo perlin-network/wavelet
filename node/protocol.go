@@ -79,7 +79,7 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 	if res.vote {
 		logger.Debug().Hex("tx_id", req.tx.ID[:]).Msg("Gave a positive vote to a transaction.")
 	} else {
-		logger.Debug().Hex("tx_id", req.tx.ID[:]).Err(vote).Msg("Gave a positive vote to a transaction.")
+		logger.Warn().Hex("tx_id", req.tx.ID[:]).Err(vote).Msg("Gave a negative vote to a transaction.")
 	}
 
 	_ = peer.SendMessageAsync(res)

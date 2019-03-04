@@ -72,8 +72,7 @@ func performInception(accounts accounts, path string) (*Transaction, error) {
 
 	merkleRoot := accounts.tree.Checksum()
 
-	// Spawn a genesis transaction whose payload is the checksum of all of
-	// our accounts data.
+	// Spawn a genesis transaction.
 	inception := time.Date(2018, time.Month(4), 26, 0, 0, 0, 0, time.UTC)
 
 	tx := &Transaction{
