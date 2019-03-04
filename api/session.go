@@ -9,6 +9,9 @@ import (
 )
 
 const (
+	KeyToken   = "token"
+	KeySession = "session"
+
 	HeaderSessionToken   = "X-Session-Token"
 	MaxAllowableSessions = 50000
 )

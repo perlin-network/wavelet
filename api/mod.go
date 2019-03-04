@@ -67,12 +67,12 @@ func (g *Gateway) setup() {
 
 	// Websocket endpoints.
 
-	r.Get("/broadcaster/poll", g.poll(sinkBroadcaster))
-	r.Get("/consensus/poll", g.poll(sinkConsensus))
-	r.Get("/stake/poll", g.poll(sinkStake))
-	r.Get("/accounts/poll", g.poll(sinkAccounts))
-	r.Get("/contract/poll", g.poll(sinkContracts))
-	r.Get("/tx/poll", g.poll(sinkTransactions))
+	r.Get("/broadcaster/poll", g.securePoll(sinkBroadcaster))
+	r.Get("/consensus/poll", g.securePoll(sinkConsensus))
+	r.Get("/stake/poll", g.securePoll(sinkStake))
+	r.Get("/accounts/poll", g.securePoll(sinkAccounts))
+	r.Get("/contract/poll", g.securePoll(sinkContracts))
+	r.Get("/tx/poll", g.securePoll(sinkTransactions))
 
 	// HTTP endpoints.
 
@@ -103,8 +103,8 @@ func (g *Gateway) setup() {
 }
 
 func (g *Gateway) StartHTTP(n *noise.Node, port int) {
-	g.ledger = node.Ledger(n)
 	g.node = n
+	g.ledger = node.Ledger(n)
 
 	g.setup()
 
@@ -382,14 +382,14 @@ func (g *Gateway) authenticated(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), "session", session)
+		ctx := context.WithValue(r.Context(), KeySession, session)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func (g *Gateway) poll(sink *sink) func(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) securePoll(sink *sink) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		token := r.URL.Query().Get("token")
+		token := r.URL.Query().Get(KeyToken)
 
 		if len(token) == 0 {
 			g.render(w, r, ErrBadRequest(errors.New("specify a session token through url query params")))
@@ -424,7 +424,7 @@ func (g *Gateway) registerWebsocketSink(rawURL string) *sink {
 
 	sink := &sink{
 		filters:   filters,
-		broadcast: make(chan broadcastMsg),
+		broadcast: make(chan broadcastItem),
 		join:      make(chan *client),
 		leave:     make(chan *client),
 		clients:   make(map[*client]struct{}),
@@ -437,19 +437,19 @@ func (g *Gateway) registerWebsocketSink(rawURL string) *sink {
 }
 
 func (g *Gateway) Write(buf []byte) (n int, err error) {
-	var event map[string]interface{}
+	var fields map[string]interface{}
 
 	decoder := json.NewDecoder(bytes.NewReader(buf))
 	decoder.UseNumber()
 
-	err = decoder.Decode(&event)
+	err = decoder.Decode(&fields)
 	if err != nil {
-		return n, errors.Errorf("cannot decode event: %s", err)
+		return n, errors.Errorf("cannot decode field: %q", err)
 	}
 
-	mod, exists := event["mod"]
+	mod, exists := fields[log.KeyModule]
 	if !exists {
-		return n, errors.New("mod does not exist")
+		return n, errors.Errorf("all logs must have the field %q", log.KeyModule)
 	}
 
 	sink, exists := g.sinks[mod.(string)]
@@ -460,7 +460,7 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 	cpy := make([]byte, len(buf))
 	copy(cpy, buf)
 
-	sink.broadcast <- broadcastMsg{event: event, buf: cpy}
+	sink.broadcast <- broadcastItem{fields: fields, buf: cpy}
 
 	return len(buf), nil
 }

@@ -29,12 +29,6 @@ type client struct {
 	send    chan []byte
 }
 
-type Client struct {
-	hub  *sink
-	conn *websocket.Conn
-	send chan []byte
-}
-
 func (c *client) readWorker() {
 	defer func() {
 		c.sink.leave <- c
@@ -113,16 +107,16 @@ func (s *sink) serve(w http.ResponseWriter, r *http.Request) error {
 	return nil
 }
 
-type broadcastMsg struct {
-	event map[string]interface{}
-	buf   []byte
+type broadcastItem struct {
+	fields map[string]interface{}
+	buf    []byte
 }
 
 type sink struct {
 	clients map[*client]struct{}
 	filters map[string]string
 
-	broadcast   chan broadcastMsg
+	broadcast   chan broadcastItem
 	join, leave chan *client
 }
 
@@ -140,7 +134,7 @@ func (s *sink) run() {
 		L:
 			for client := range s.clients {
 				for key, condition := range client.filters {
-					if value, exists := msg.event[key]; (exists && value != condition) || !exists {
+					if value, exists := msg.fields[key]; (exists && value != condition) || !exists {
 						continue L
 					}
 				}
