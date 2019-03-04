@@ -25,8 +25,8 @@ var genesisPath = "../cmd/wavelet/config/genesis.json"
 func TestInitSession(t *testing.T) {
 	randomKeyPair := ed25519.RandomKeys()
 
-	hub := &Gateway{registry: newSessionRegistry()}
-	hub.setup()
+	gateway := New()
+	gateway.setup()
 
 	tests := []struct {
 		name     string
@@ -56,7 +56,7 @@ func TestInitSession(t *testing.T) {
 
 			w := httptest.NewRecorder()
 
-			hub.router.ServeHTTP(w, request)
+			gateway.router.ServeHTTP(w, request)
 
 			_, err = ioutil.ReadAll(w.Body)
 			assert.Nil(t, err)
@@ -68,8 +68,8 @@ func TestInitSession(t *testing.T) {
 }
 
 func TestListTransaction(t *testing.T) {
-	hub := &Gateway{registry: newSessionRegistry()}
-	hub.setup()
+	gateway := New()
+	gateway.setup()
 
 	tests := []struct {
 		name         string
@@ -97,7 +97,7 @@ func TestListTransaction(t *testing.T) {
 
 			w := httptest.NewRecorder()
 
-			hub.router.ServeHTTP(w, request)
+			gateway.router.ServeHTTP(w, request)
 
 			_, err := ioutil.ReadAll(w.Body)
 			assert.Nil(t, err)
@@ -108,10 +108,10 @@ func TestListTransaction(t *testing.T) {
 }
 
 func TestGetTransaction(t *testing.T) {
-	hub := &Gateway{registry: newSessionRegistry()}
-	hub.setup()
+	gateway := New()
+	gateway.setup()
 
-	sess, err := hub.registry.newSession()
+	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
 
 	tests := []struct {
@@ -143,7 +143,7 @@ func TestGetTransaction(t *testing.T) {
 
 			w := httptest.NewRecorder()
 
-			hub.router.ServeHTTP(w, request)
+			gateway.router.ServeHTTP(w, request)
 
 			raw, err := ioutil.ReadAll(w.Body)
 			assert.Nil(t, err)
@@ -158,8 +158,8 @@ func TestGetTransaction(t *testing.T) {
 }
 
 func TestSendTransaction(t *testing.T) {
-	hub := &Gateway{registry: newSessionRegistry()}
-	hub.setup()
+	gateway := New()
+	gateway.setup()
 
 	tests := []struct {
 		name         string
@@ -191,7 +191,7 @@ func TestSendTransaction(t *testing.T) {
 
 			w := httptest.NewRecorder()
 
-			hub.router.ServeHTTP(w, request)
+			gateway.router.ServeHTTP(w, request)
 
 			_, err = ioutil.ReadAll(w.Body)
 			assert.Nil(t, err)
@@ -202,13 +202,13 @@ func TestSendTransaction(t *testing.T) {
 }
 
 func TestGetAccount(t *testing.T) {
-	hub := &Gateway{registry: newSessionRegistry()}
-	hub.setup()
+	gateway := New()
+	gateway.setup()
 
-	sess, err := hub.registry.newSession()
+	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
 
-	hub.ledger = createLedger()
+	gateway.ledger = createLedger()
 
 	idHex := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
 	idBytes, err := hex.DecodeString(idHex)
@@ -217,9 +217,9 @@ func TestGetAccount(t *testing.T) {
 	var id32 common.AccountID
 	copy(id32[:], idBytes)
 
-	hub.ledger.WriteAccountBalance(id32, 10)
-	hub.ledger.WriteAccountStake(id32, 11)
-	hub.ledger.WriteAccountContractNumPages(id32, 12)
+	gateway.ledger.WriteAccountBalance(id32, 10)
+	gateway.ledger.WriteAccountStake(id32, 11)
+	gateway.ledger.WriteAccountContractNumPages(id32, 12)
 
 	tests := []struct {
 		name         string
@@ -264,7 +264,7 @@ func TestGetAccount(t *testing.T) {
 
 			w := httptest.NewRecorder()
 
-			hub.router.ServeHTTP(w, request)
+			gateway.router.ServeHTTP(w, request)
 
 			raw, err := ioutil.ReadAll(w.Body)
 			assert.NoError(t, err)
@@ -279,13 +279,13 @@ func TestGetAccount(t *testing.T) {
 }
 
 func TestGetContractCode(t *testing.T) {
-	hub := &Gateway{registry: newSessionRegistry()}
-	hub.setup()
+	gateway := New()
+	gateway.setup()
 
-	sess, err := hub.registry.newSession()
+	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
 
-	hub.ledger = createLedger()
+	gateway.ledger = createLedger()
 
 	idHex := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
 	idBytes, err := hex.DecodeString(idHex)
@@ -294,7 +294,7 @@ func TestGetContractCode(t *testing.T) {
 	var id32 common.AccountID
 	copy(id32[:], idBytes)
 
-	hub.ledger.WriteAccountContractCode(id32, []byte("contract code"))
+	gateway.ledger.WriteAccountContractCode(id32, []byte("contract code"))
 
 	tests := []struct {
 		name         string
@@ -333,7 +333,7 @@ func TestGetContractCode(t *testing.T) {
 
 			w := httptest.NewRecorder()
 
-			hub.router.ServeHTTP(w, request)
+			gateway.router.ServeHTTP(w, request)
 
 			raw, err := ioutil.ReadAll(w.Body)
 			assert.NoError(t, err)
@@ -349,8 +349,8 @@ func TestGetContractCode(t *testing.T) {
 
 // Test the authenticate checking of all the APIs that require authentication
 func TestAuthenticatedAPI(t *testing.T) {
-	hub := &Gateway{registry: newSessionRegistry()}
-	hub.setup()
+	gateway := New()
+	gateway.setup()
 
 	contractId := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
 
@@ -398,7 +398,7 @@ func TestAuthenticatedAPI(t *testing.T) {
 			{
 				request := httptest.NewRequest(tc.method, tc.url, nil)
 
-				testAuthenticatedAPI(t, hub, request, ErrResponse{
+				testAuthenticatedAPI(t, gateway, request, ErrResponse{
 					StatusText: "Bad request.",
 					ErrorText:  "session token not specified via HTTP header \"X-Session-Token\"",
 				})
@@ -409,7 +409,7 @@ func TestAuthenticatedAPI(t *testing.T) {
 				request := httptest.NewRequest(tc.method, tc.url, nil)
 				request.Header.Add(HeaderSessionToken, "invalid token")
 
-				testAuthenticatedAPI(t, hub, request, ErrResponse{
+				testAuthenticatedAPI(t, gateway, request, ErrResponse{
 					StatusText: "Bad request.",
 					ErrorText:  "could not find session invalid token",
 				})
@@ -418,10 +418,10 @@ func TestAuthenticatedAPI(t *testing.T) {
 	}
 }
 
-func testAuthenticatedAPI(t *testing.T, hub *Gateway, request *http.Request, res ErrResponse) {
+func testAuthenticatedAPI(t *testing.T, gateway *Gateway, request *http.Request, res ErrResponse) {
 	w := httptest.NewRecorder()
 
-	hub.router.ServeHTTP(w, request)
+	gateway.router.ServeHTTP(w, request)
 
 	raw, err := ioutil.ReadAll(w.Body)
 	assert.Nil(t, err)

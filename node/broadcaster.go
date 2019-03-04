@@ -86,9 +86,9 @@ func (b *broadcaster) work() {
 					Hex("tx_id", nop.ID[:]).
 					Msg("Broadcasting out nop transaction.")
 			} else {
-				preferred := b.ledger.FindTransaction(preferredID)
+				preferred, exists := b.ledger.FindTransaction(preferredID)
 
-				if preferred == nil {
+				if !exists {
 					continue
 				}
 

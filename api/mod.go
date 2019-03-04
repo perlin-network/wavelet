@@ -257,9 +257,9 @@ func (g *Gateway) getTransaction(w http.ResponseWriter, r *http.Request) {
 	var id common.TransactionID
 	copy(id[:], slice)
 
-	tx := g.ledger.FindTransaction(id)
+	tx, exists := g.ledger.FindTransaction(id)
 
-	if tx == nil {
+	if !exists {
 		g.render(w, r, ErrBadRequest(errors.Errorf("could not find transaction with ID %x", id)))
 		return
 	}

@@ -673,14 +673,9 @@ func (l *Ledger) rewardValidators(ss accounts, tx *Transaction) error {
 	return nil
 }
 
-func (l *Ledger) FindTransaction(id common.TransactionID) *Transaction {
-	tx, _ := l.view.lookupTransaction(id)
-	return tx
-}
-
-func (l *Ledger) HasTransactionInView(id common.TransactionID) bool {
-	_, exists := l.view.lookupTransaction(id)
-	return exists
+func (l *Ledger) FindTransaction(id common.TransactionID) (*Transaction, bool) {
+	tx, exists := l.view.lookupTransaction(id)
+	return tx, exists
 }
 
 func (l *Ledger) Transactions(offset, limit uint64, sender, creator common.AccountID) []*Transaction {
