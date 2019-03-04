@@ -74,14 +74,25 @@ type ConsoleWriter struct {
 	FormatFieldValue    Formatter
 	FormatErrFieldName  Formatter
 	FormatErrFieldValue Formatter
+
+	FilteredModules map[string]struct{}
+}
+
+func FilterFor(modules ...string) func(w *ConsoleWriter) {
+	return func(w *ConsoleWriter) {
+		for _, module := range modules {
+			w.FilteredModules[module] = struct{}{}
+		}
+	}
 }
 
 // NewConsoleWriter creates and initializes a new ConsoleWriter.
 func NewConsoleWriter(options ...func(w *ConsoleWriter)) ConsoleWriter {
 	w := ConsoleWriter{
-		Out:        os.Stdout,
-		TimeFormat: consoleDefaultTimeFormat,
-		PartsOrder: consoleDefaultPartsOrder(),
+		Out:             os.Stdout,
+		TimeFormat:      consoleDefaultTimeFormat,
+		PartsOrder:      consoleDefaultPartsOrder(),
+		FilteredModules: make(map[string]struct{}),
 	}
 
 	for _, opt := range options {
@@ -122,7 +133,7 @@ func (w ConsoleWriter) Write(p []byte) (n int, err error) {
 		return n, fmt.Errorf("cannot decode event: %s", err)
 	}
 
-	if module := event[KeyModule]; module != ModuleNode && module != ModuleConsensus {
+	if _, filtered := w.FilteredModules[event[KeyModule].(string)]; !filtered {
 		return len(p), nil
 	}
 

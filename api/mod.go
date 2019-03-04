@@ -15,10 +15,9 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/pkg/errors"
-	"gopkg.in/olahol/melody.v1"
 	"net/http"
+	"net/url"
 	"strconv"
-	"sync/atomic"
 	"time"
 )
 
@@ -26,165 +25,26 @@ type Gateway struct {
 	node   *noise.Node
 	ledger *wavelet.Ledger
 
-	registry *sessionRegistry
-	router   chi.Router
+	router chi.Router
 
-	accountsPoller    atomic.Value
-	broadcasterPoller atomic.Value
-	consensusPoller   atomic.Value
-	contractPoller    atomic.Value
-	stakePoller       atomic.Value
-	txPoller          atomic.Value
+	registry *sessionRegistry
+	sinks    map[string]*sink
 }
 
 func New() *Gateway {
-	return &Gateway{registry: newSessionRegistry()}
-}
-
-func (g *Gateway) Write(p []byte) (n int, err error) {
-	var event map[string]interface{}
-
-	decoder := json.NewDecoder(bytes.NewReader(p))
-	decoder.UseNumber()
-
-	err = decoder.Decode(&event)
-	if err != nil {
-		return n, errors.Errorf("cannot decode event: %s", err)
-	}
-
-	mod, exists := event["mod"]
-	if !exists {
-		return n, errors.New("mod does not exist")
-	}
-
-	line := make([]byte, len(p))
-	copy(line, p)
-
-	switch mod {
-	case log.ModuleAccounts:
-		accountID, exists := event["account_id"]
-		if !exists {
-			return n, errors.New("accounts log does not have field 'account_id'")
-		}
-
-		if poller := g.accountsPoller.Load(); poller != nil {
-			err := poller.(*melody.Melody).BroadcastFilter(line, func(s *melody.Session) bool {
-				if expectedID, ok := s.Get("account_id"); ok && accountID != expectedID {
-					return false
-				}
-
-				return true
-			})
-
-			if err != nil {
-				return n, err
-			}
-		}
-	case log.ModuleBroadcaster:
-		if poller := g.broadcasterPoller.Load(); poller != nil {
-			if err := poller.(*melody.Melody).Broadcast(line); err != nil {
-				return n, err
-			}
-		}
-	case log.ModuleConsensus:
-		if poller := g.consensusPoller.Load(); poller != nil {
-			if err := poller.(*melody.Melody).Broadcast(line); err != nil {
-				return n, err
-			}
-		}
-	case log.ModuleContract:
-		contractID, exists := event["contract_id"]
-		if !exists {
-			return n, errors.New("contract log does not have field 'contract_id'")
-		}
-
-		if poller := g.contractPoller.Load(); poller != nil {
-			err := poller.(*melody.Melody).BroadcastFilter(line, func(s *melody.Session) bool {
-				if expectedID, ok := s.Get("contract_id"); ok && contractID != expectedID {
-					return false
-				}
-
-				return true
-			})
-
-			if err != nil {
-				return n, err
-			}
-		}
-	case log.ModuleStake:
-		if poller := g.stakePoller.Load(); poller != nil {
-			if err := poller.(*melody.Melody).Broadcast(line); err != nil {
-				return n, err
-			}
-		}
-	case log.ModuleTx:
-		txID, exists := event["tx_id"]
-		if !exists {
-			return n, errors.New("tx log does not have field 'tx_id'")
-		}
-
-		senderID, exists := event["sender_id"]
-		if !exists {
-			return n, errors.New("tx log does not have field 'sender_id'")
-		}
-
-		creatorID, exists := event["creator_id"]
-		if !exists {
-			return n, errors.New("tx log does not have field 'creator_id'")
-		}
-
-		if poller := g.txPoller.Load(); poller != nil {
-			err := poller.(*melody.Melody).BroadcastFilter(line, func(s *melody.Session) bool {
-				if expectedID, ok := s.Get("tx_id"); ok && txID != expectedID {
-					return false
-				}
-
-				if expectedID, ok := s.Get("sender_id"); ok && senderID != expectedID {
-					return false
-				}
-
-				if expectedID, ok := s.Get("creator_id"); ok && creatorID != expectedID {
-					return false
-				}
-
-				return true
-			})
-
-			if err != nil {
-				return n, err
-			}
-		}
-	}
-
-	return len(p), nil
-}
-
-func (g *Gateway) setupWebsocketPoller(poller *atomic.Value, params map[string]string) {
-	hub := melody.New()
-	hub.HandleConnect(g.parseWebsocketParams(params))
-	poller.Store(hub)
+	return &Gateway{registry: newSessionRegistry(), sinks: make(map[string]*sink)}
 }
 
 func (g *Gateway) setupRouter() {
-	// Setup websocket routers.
+	// Setup websocket sinks.
 
-	g.setupWebsocketPoller(&g.broadcasterPoller, nil)
-	g.setupWebsocketPoller(&g.consensusPoller, nil)
-	g.setupWebsocketPoller(&g.stakePoller, nil)
+	sinkBroadcaster := g.registerWebsocketSink("ws://broadcaster/")
+	sinkConsensus := g.registerWebsocketSink("ws://consensus/")
+	sinkStake := g.registerWebsocketSink("ws://stake/")
 
-	g.setupWebsocketPoller(&g.accountsPoller, map[string]string{
-		"id": "account_id",
-	})
-
-	g.setupWebsocketPoller(&g.contractPoller, map[string]string{
-		"id": "contract_id",
-	})
-
-	g.setupWebsocketPoller(&g.txPoller, map[string]string{
-		"id":      "tx_id",
-		"sender":  "sender_id",
-		"creator": "creator_id",
-	})
+	sinkAccounts := g.registerWebsocketSink("ws://accounts/?id=account_id")
+	sinkContracts := g.registerWebsocketSink("ws://contract/?id=contract_id")
+	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id")
 
 	// Setup HTTP router.
 
@@ -205,12 +65,12 @@ func (g *Gateway) setupRouter() {
 
 	// Websocket endpoints.
 
-	r.Get("/broadcaster/poll", g.poll(g.broadcasterPoller))
-	r.Get("/consensus/poll", g.poll(g.consensusPoller))
-	r.Get("/stake/poll", g.poll(g.stakePoller))
-	r.Get("/accounts/poll", g.poll(g.accountsPoller))
-	r.Get("/contract/poll", g.poll(g.contractPoller))
-	r.Get("/tx/poll", g.poll(g.txPoller))
+	r.Get("/broadcaster/poll", g.poll(sinkBroadcaster))
+	r.Get("/consensus/poll", g.poll(sinkConsensus))
+	r.Get("/stake/poll", g.poll(sinkStake))
+	r.Get("/accounts/poll", g.poll(sinkAccounts))
+	r.Get("/contract/poll", g.poll(sinkContracts))
+	r.Get("/tx/poll", g.poll(sinkTransactions))
 
 	// HTTP endpoints.
 
@@ -527,37 +387,82 @@ func (g *Gateway) authenticated(next http.Handler) http.Handler {
 	})
 }
 
-func (g *Gateway) parseWebsocketParams(params map[string]string) func(s *melody.Session) {
-	return func(s *melody.Session) {
-		for query, key := range params {
-			if condition := s.Request.URL.Query().Get(query); len(condition) > 0 {
-				s.Set(key, condition)
-			}
-		}
-	}
-}
-
-func (g *Gateway) poll(poller atomic.Value) func(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) poll(sink *sink) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := r.URL.Query().Get("token")
+
 		if len(token) == 0 {
 			g.render(w, r, ErrBadRequest(errors.New("specify a session token through url query params")))
 			return
 		}
 
-		_, exists := g.registry.getSession(token)
-		if !exists {
+		if _, exists := g.registry.getSession(token); !exists {
 			g.render(w, r, ErrBadRequest(errors.Errorf("could not find session %s", token)))
 			return
 		}
 
-		poller := poller.Load().(*melody.Melody)
-
-		if err := poller.HandleRequest(w, r); err != nil {
-			g.render(w, r, ErrInternal(err))
-			return
+		if err := sink.serve(w, r); err != nil {
+			g.render(w, r, ErrBadRequest(errors.Wrap(err, "failed to init websocket session")))
 		}
 	}
+}
+
+func (g *Gateway) registerWebsocketSink(rawURL string) *sink {
+	u, err := url.Parse(rawURL)
+
+	if err != nil {
+		panic(err)
+	}
+
+	// Map JSON log keys to HTTP query parameters.
+	filters := make(map[string]string)
+	values := u.Query()
+
+	for key := range values {
+		filters[key] = values.Get(key)
+	}
+
+	sink := &sink{
+		filters:   filters,
+		broadcast: make(chan broadcastMsg),
+		join:      make(chan *client),
+		leave:     make(chan *client),
+		clients:   make(map[*client]struct{}),
+	}
+	go sink.run()
+
+	g.sinks[u.Hostname()] = sink
+
+	return sink
+}
+
+func (g *Gateway) Write(buf []byte) (n int, err error) {
+	var event map[string]interface{}
+
+	decoder := json.NewDecoder(bytes.NewReader(buf))
+	decoder.UseNumber()
+
+	err = decoder.Decode(&event)
+	if err != nil {
+		return n, errors.Errorf("cannot decode event: %s", err)
+	}
+
+	mod, exists := event["mod"]
+	if !exists {
+		return n, errors.New("mod does not exist")
+	}
+
+	sink, exists := g.sinks[mod.(string)]
+	if !exists {
+		return len(buf), nil
+	}
+
+	cpy := make([]byte, len(buf))
+	copy(cpy, buf)
+
+	sink.broadcast <- broadcastMsg{event: event, buf: cpy}
+
+	return len(buf), nil
 }
 
 // A helper to handle the error returned by render.Render()

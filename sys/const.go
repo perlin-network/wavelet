@@ -29,14 +29,14 @@ var (
 	MinDifficulty = 7
 
 	// Maximum difficulty delta to define a critical transaction.
-	MaxDifficultyDelta = 4
+	MaxDifficultyDelta = 2
 
 	// Number of ancestors to derive a median timestamp from.
 	MedianTimestampNumAncestors = 5
 
 	ValidatorRewardAmount uint64 = 2
 
-	ExpectedConsensusTimeMilliseconds  uint64 = 1500
+	ExpectedConsensusTimeMilliseconds  uint64 = 1000
 	CriticalTimestampAverageWindowSize        = 3
 
 	MinimumStake uint64 = 100

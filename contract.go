@@ -242,7 +242,7 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				copy(vm.Memory[outPtr:], c.payload)
 				return 0
 			}
-		case "_provide_result":
+		case "_result":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
 				dataPtr := int(uint32(frame.Locals[0]))
