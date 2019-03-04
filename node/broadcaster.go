@@ -16,8 +16,6 @@ import (
 type broadcastItem struct {
 	tx     *wavelet.Transaction
 	result chan error
-
-	viewID uint64
 }
 
 type broadcaster struct {
@@ -37,7 +35,7 @@ func (b *broadcaster) init() {
 }
 
 func (b *broadcaster) Broadcast(tx *wavelet.Transaction) error {
-	item := broadcastItem{tx: tx, result: make(chan error, 1), viewID: b.ledger.ViewID()}
+	item := broadcastItem{tx: tx, result: make(chan error, 1)}
 	b.queue <- item
 
 	select {
@@ -79,7 +77,7 @@ func (b *broadcaster) work() {
 					continue
 				}
 
-				item = broadcastItem{tx: nop, result: nil, viewID: b.ledger.ViewID()}
+				item = broadcastItem{tx: nop, result: nil}
 
 				logger.Log().
 					Bool("broadcast_nops", true).
@@ -92,7 +90,7 @@ func (b *broadcaster) work() {
 					continue
 				}
 
-				item = broadcastItem{tx: preferred, result: nil, viewID: b.ledger.ViewID()}
+				item = broadcastItem{tx: preferred, result: nil}
 
 				logger.Log().
 					Bool("broadcast_nops", false).
@@ -101,7 +99,7 @@ func (b *broadcaster) work() {
 			}
 		}
 
-		if b.ledger.ViewID() != item.viewID {
+		if b.ledger.ViewID() != item.tx.ViewID {
 			err := errors.New("broadcast: consensus round already finalized; submit transaction again")
 			err = errors.Wrapf(err, "tx %x", item.tx.ID)
 
@@ -146,7 +144,7 @@ func (b *broadcaster) work() {
 		}
 
 		// If we have advanced one view ID, stop broadcasting nops.
-		if b.ledger.ViewID() != item.viewID {
+		if b.ledger.ViewID() != item.tx.ViewID {
 			b.broadcastingNops = false
 
 			logger.Log().
