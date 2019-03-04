@@ -74,24 +74,20 @@ func (s *snowball) Reset() {
 	s.decided = false
 }
 
-func (s *snowball) Tick(id common.TransactionID, votes []float64) {
+func (s *snowball) Tick(counts map[common.TransactionID]float64) {
 	s.Lock()
 	defer s.Unlock()
 
-	var tally float64
+	for preferred, count := range counts {
+		if count >= s.alpha {
+			s.counts[preferred]++
 
-	for _, vote := range votes {
-		tally += vote
-
-		if tally >= s.alpha {
-			s.counts[id]++
-
-			if s.counts[id] > s.counts[s.preferred] {
-				s.preferred = id
+			if s.counts[preferred] > s.counts[s.preferred] {
+				s.preferred = preferred
 			}
 
-			if s.last != id {
-				s.last = id
+			if s.last != preferred {
+				s.last = preferred
 				s.count = 0
 			} else {
 				s.count++

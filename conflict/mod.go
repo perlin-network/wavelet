@@ -6,7 +6,7 @@ import (
 
 type Resolver interface {
 	Reset()
-	Tick(id common.TransactionID, votes []float64)
+	Tick(counts map[common.TransactionID]float64)
 
 	Prefer(id common.TransactionID)
 	Preferred() common.TransactionID

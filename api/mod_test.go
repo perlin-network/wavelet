@@ -396,7 +396,7 @@ func TestGetLedger(t *testing.T) {
 		PublicKey:     hex.EncodeToString(keys.PublicKey()),
 		HostAddress:   "127.0.0.1:9000",
 		PeerAddresses: nil,
-		RootID:        "39f6d7d2738eeff5d812639f39d6bb3cdd9dbaa7e02aa65ca9e90af13f446d51",
+		RootID:        "55ee4ac81aae8159a57bbdc4cc9a8152b78523eaf8a8f939beefcd836da9323b",
 		ViewID:        0,
 		Difficulty:    7,
 	}
@@ -409,7 +409,7 @@ func TestAuthenticatedAPI(t *testing.T) {
 	gateway := New()
 	gateway.setup()
 
-	contractId := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
+	contractID := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
 
 	tests := []struct {
 		url    string
@@ -424,15 +424,15 @@ func TestAuthenticatedAPI(t *testing.T) {
 			method: "GET",
 		},
 		{
-			url:    "/contract/" + contractId,
+			url:    "/contract/" + contractID,
 			method: "GET",
 		},
 		{
-			url:    "/contract/" + contractId + "/page",
+			url:    "/contract/" + contractID + "/page",
 			method: "GET",
 		},
 		{
-			url:    "/contract/" + contractId + "/page/1",
+			url:    "/contract/" + contractID + "/page/1",
 			method: "GET",
 		},
 		{

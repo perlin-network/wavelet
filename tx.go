@@ -23,6 +23,8 @@ type Transaction struct {
 
 	Timestamp uint64
 
+	ViewID uint64
+
 	Tag byte
 
 	Payload []byte
@@ -110,6 +112,11 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.Wrap(err, "could not read transaction timestamp")
 	}
 
+	t.ViewID, err = reader.ReadUint64()
+	if err != nil {
+		return nil, errors.Wrap(err, "could not read transaction view ID")
+	}
+
 	t.Tag, err = reader.ReadByte()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not read transaction tag")
@@ -168,6 +175,7 @@ func (t Transaction) Write() []byte {
 	}
 
 	writer.WriteUint64(t.Timestamp)
+	writer.WriteUint64(t.ViewID)
 	writer.WriteByte(t.Tag)
 	writer.WriteBytes(t.Payload)
 

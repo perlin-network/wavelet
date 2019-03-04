@@ -44,7 +44,7 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 	node.Set(keyLedger, ledger)
 
 	broadcaster := newBroadcaster(node)
-	broadcaster.Init()
+	broadcaster.init()
 
 	node.Set(keyBroadcaster, broadcaster)
 }
@@ -71,8 +71,13 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 
 	vote := ledger.ReceiveTransaction(req.tx)
 
+	if req.tx.ViewID == ledger.ViewID()-1 {
+		res.preferred = ledger.Root().ID
+	} else {
+		res.preferred = ledger.Resolver().Preferred()
+	}
+
 	res.vote = errors.Cause(vote) == wavelet.VoteAccepted
-	copy(res.id[:], peer.Node().Keys.PublicKey())
 
 	logger := log.Consensus("vote")
 
@@ -82,7 +87,7 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 		logger.Warn().Hex("tx_id", req.tx.ID[:]).Err(vote).Msg("Gave a negative vote to a transaction.")
 	}
 
-	_ = peer.SendMessageAsync(res)
+	_ = <-peer.SendMessageAsync(res)
 }
 
 func (b *block) OnEnd(p *protocol.Protocol, peer *noise.Peer) error {

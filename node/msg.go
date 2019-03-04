@@ -36,24 +36,24 @@ func (q QueryRequest) Write() []byte {
 }
 
 type QueryResponse struct {
-	id   common.TransactionID
-	vote bool
+	preferred common.TransactionID
+	vote      bool
 }
 
 func (q QueryResponse) Read(reader payload.Reader) (noise.Message, error) {
-	n, err := reader.Read(q.id[:])
+	n, err := reader.Read(q.preferred[:])
 
 	if err != nil {
-		return nil, errors.Wrap(err, "wavelet: failed to read query response id")
+		return nil, errors.Wrap(err, "wavelet: failed to read query response preferred id")
 	}
 
-	if n != len(q.id) {
-		return nil, errors.New("wavelet: didn't read enough bytes for query response id")
+	if n != len(q.preferred) {
+		return nil, errors.New("wavelet: didn't read enough bytes for query response preferred id")
 	}
 
 	vote, err := reader.ReadByte()
 	if err != nil {
-		return nil, errors.Wrap(err, "wavelet: faile to read query response vote")
+		return nil, errors.Wrap(err, "wavelet: failed to read query response vote")
 	}
 
 	if vote == 1 {
@@ -65,7 +65,7 @@ func (q QueryResponse) Read(reader payload.Reader) (noise.Message, error) {
 
 func (q QueryResponse) Write() []byte {
 	writer := payload.NewWriter(nil)
-	_, _ = writer.Write(q.id[:])
+	_, _ = writer.Write(q.preferred[:])
 
 	if q.vote {
 		writer.WriteByte(1)

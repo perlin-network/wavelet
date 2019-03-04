@@ -18,10 +18,6 @@ import (
 	"time"
 )
 
-var (
-	ErrTxNotCritical = errors.New("wavelet: tx is not critical")
-)
-
 type Ledger struct {
 	accounts
 
@@ -123,6 +119,14 @@ func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transactio
 
 	tx.Timestamp = uint64(time.Duration(time.Now().UnixNano()) / time.Millisecond)
 
+	for _, parentID := range tx.ParentIDs {
+		if parent, exists := l.view.lookupTransaction(parentID); exists && tx.Timestamp <= parent.Timestamp {
+			tx.Timestamp = parent.Timestamp + 1
+		}
+	}
+
+	tx.ViewID = l.ViewID()
+
 	if tx.IsCritical(l.Difficulty()) {
 		snapshot := l.collapseTransactions(tx.ParentIDs, false)
 		tx.AccountsMerkleRoot = snapshot.tree.Checksum()
@@ -148,6 +152,10 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 		return VoteAccepted
 	}
 
+	if tx.ViewID < l.ViewID() {
+		return errors.Wrapf(VoteRejected, "wavelet: tx has view ID %d, but current view ID is %d", tx.ViewID, l.ViewID())
+	}
+
 	if tx.Sender == common.ZeroAccountID || tx.Creator == common.ZeroAccountID {
 		return errors.Wrap(VoteRejected, "wavelet: tx must have sender or creator")
 	}
@@ -164,23 +172,6 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 		return errors.Wrap(VoteRejected, "wavelet: tx must have no payload if is a nop transaction")
 	}
 
-	critical := tx.IsCritical(l.Difficulty())
-	preferred := l.resolver.Preferred()
-
-	// If our node already prefers a critical transaction, reject the
-	// incoming transaction.
-	if critical && preferred != common.ZeroTransactionID && tx.ID != preferred {
-		return errors.Wrap(VoteRejected, "wavelet: prefer other critical transaction")
-	}
-
-	if critical {
-		if valid, root := l.assertValidAccountsChecksum(tx); !valid {
-			return errors.Wrapf(VoteRejected, "wavelet: tx is critical but has invalid accounts root"+
-				"checksum; collapsing down the critical transactions parents gives %x as the root,"+
-				"but the tx has %x as a root", root, tx.AccountsMerkleRoot)
-		}
-	}
-
 	if !l.assertValidSignature(tx) {
 		return errors.Wrap(VoteRejected, "wavelet: tx has either invalid creator or sender signatures")
 	}
@@ -193,17 +184,35 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 		return errors.Wrap(VoteRejected, "wavelet: either parent depths are out of bounds, or parents not available")
 	}
 
-	// Reject transaction if the parents are not available.
-	switch errors.Cause(l.view.addTransaction(tx)) {
-	case ErrParentsNotAvailable:
-		return errors.Wrap(VoteRejected, "wavelet: parents for transaction are not in our view-graph")
-	case ErrTxAlreadyExists:
+	critical := tx.IsCritical(l.Difficulty())
+	preferred := l.resolver.Preferred()
+
+	if critical {
+		if valid, root := l.assertValidAccountsChecksum(tx); !valid {
+			return errors.Wrapf(VoteRejected, "wavelet: tx is critical but has invalid accounts root "+
+				"checksum; collapsing down the critical transactions parents gives %x as the root, "+
+				"but the tx has %x as a root", root, tx.AccountsMerkleRoot)
+		}
+
+		// If our node already prefers a critical transaction, reject the
+		// incoming transaction.
+		if preferred != common.ZeroTransactionID && tx.ID != preferred {
+			return errors.Wrap(VoteRejected, "wavelet: prefer other critical transaction")
+		}
+
+		// If our node does not prefer any critical transaction yet, set a critical
+		// transaction to initially prefer.
+		if preferred == common.ZeroTransactionID && tx.ID != l.view.Root().ID {
+			l.resolver.Prefer(tx.ID)
+		}
 	}
 
-	// If our node does not prefer any critical transaction yet, set a critical
-	// transaction to initially prefer.
-	if critical && preferred == common.ZeroTransactionID {
-		l.resolver.Prefer(tx.ID)
+	if err := l.view.addTransaction(tx); err != nil {
+		switch errors.Cause(err) {
+		case ErrParentsNotAvailable:
+			return errors.Wrap(VoteRejected, "wavelet: parents for transaction are not in our view-graph")
+		case ErrTxAlreadyExists:
+		}
 	}
 
 	return VoteAccepted
@@ -303,28 +312,14 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 	return true
 }
 
-func (l *Ledger) ProcessQuery(tx *Transaction, responses map[common.TransactionID]bool) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	if !tx.IsCritical(l.Difficulty()) {
-		return ErrTxNotCritical
-	}
-
-	if len(responses) == 0 {
-		return errors.New("wavelet: got no query responses for critical transaction")
-	}
-
-	// Weigh votes based on each voters stake.
-	var stakes []uint64
+func (l *Ledger) ComputeStakeDistribution(accounts []common.AccountID) map[common.AccountID]float64 {
+	stakes := make(map[common.AccountID]uint64)
 	var maxStake uint64
 
-	for accountID, response := range responses {
-		stake, _ := l.ReadAccountStake(accountID)
+	for _, account := range accounts {
+		stake, _ := l.ReadAccountStake(account)
 
-		if !response {
-			stake = 0
-		} else if stake < sys.MinimumStake {
+		if stake < sys.MinimumStake {
 			stake = sys.MinimumStake
 		}
 
@@ -332,25 +327,36 @@ func (l *Ledger) ProcessQuery(tx *Transaction, responses map[common.TransactionI
 			maxStake = stake
 		}
 
-		stakes = append(stakes, stake)
+		stakes[account] = stake
 	}
 
-	var votes []float64
+	weights := make(map[common.AccountID]float64)
 
-	if maxStake == 0 {
-		return errors.New("wavelet: all nodes rejected critical transaction; couldn't compute max stake")
+	for account, stake := range stakes {
+		weights[account] = float64(stake) / float64(maxStake) / float64(sys.SnowballK)
 	}
 
-	for _, stake := range stakes {
-		votes = append(votes, float64(stake)/float64(maxStake)/float64(len(responses)))
-	}
+	return weights
+}
 
-	logger := log.Stake("process_query")
-	logger.Log().Hex("tx_id", tx.ID[:]).Floats64("weighed_votes", votes).
-		Msg("Weighed votes with stakes, and updated our progress on consensus.")
+func (l *Ledger) ProcessQuery(weights map[common.AccountID]float64, responses map[common.AccountID]common.TransactionID) error {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	// If there are zero preferred critical transactions from other
+	// nodes, return nil.
+	if len(responses) == 0 {
+		return nil
+	}
 
 	// Update conflict resolver.
-	l.resolver.Tick(tx.ID, votes)
+	counts := make(map[common.TransactionID]float64)
+
+	for account, preferred := range responses {
+		counts[preferred] += weights[account]
+	}
+
+	l.resolver.Tick(counts)
 
 	// If a consensus has been decided on the next critical transaction, then reset
 	// the view-graph, increment the current view ID, and update the current ledgers

@@ -32,7 +32,7 @@ func newBroadcaster(node *noise.Node) *broadcaster {
 	return &broadcaster{node: node, ledger: Ledger(node), queue: make(chan broadcastItem, 1024)}
 }
 
-func (b *broadcaster) Init() {
+func (b *broadcaster) init() {
 	go b.work()
 }
 
@@ -178,20 +178,23 @@ func (b *broadcaster) query(tx *wavelet.Transaction) error {
 		return err
 	}
 
+	var accounts []common.AccountID
+
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(len(peerIDs))
 
-	responses := make(map[common.TransactionID]bool)
+	responses := make(map[common.AccountID]common.TransactionID)
+	votes := make(map[common.AccountID]bool)
 
-	recordResponse := func(rawID []byte, response bool) {
-		mu.Lock()
-		defer mu.Unlock()
+	recordResponse := func(account common.AccountID, preferred common.TransactionID) {
+		if preferred != common.ZeroTransactionID {
+			responses[account] = preferred
+		}
+	}
 
-		var id common.TransactionID
-		copy(id[:], rawID)
-
-		responses[id] = response
+	recordVote := func(account common.AccountID, vote bool) {
+		votes[account] = vote
 	}
 
 	req := QueryRequest{tx: tx}
@@ -199,19 +202,30 @@ func (b *broadcaster) query(tx *wavelet.Transaction) error {
 	for _, peerID := range peerIDs {
 		peerID := peerID
 
+		var account common.AccountID
+		copy(account[:], peerID.PublicKey())
+
+		accounts = append(accounts, account)
+
 		go func() {
 			defer wg.Done()
 
 			peer := protocol.Peer(b.node, peerID)
 			if peer == nil {
-				recordResponse(peerID.PublicKey(), false)
+				mu.Lock()
+				recordVote(account, false)
+				mu.Unlock()
+
 				return
 			}
 
 			// Send query request.
 			err := peer.SendMessage(req)
 			if err != nil {
-				recordResponse(peerID.PublicKey(), false)
+				mu.Lock()
+				recordVote(account, false)
+				mu.Unlock()
+
 				return
 			}
 
@@ -222,25 +236,43 @@ func (b *broadcaster) query(tx *wavelet.Transaction) error {
 			case msg := <-peer.Receive(opcode):
 				res = msg.(QueryResponse)
 			case <-time.After(sys.QueryTimeout):
-				recordResponse(peerID.PublicKey(), false)
+				mu.Lock()
+				recordVote(account, false)
+				mu.Unlock()
+
 				return
 			}
 
-			recordResponse(peerID.PublicKey(), res.vote)
+			mu.Lock()
+			recordVote(account, res.vote)
+			recordResponse(account, res.preferred)
+			mu.Unlock()
 		}()
 	}
 
 	wg.Wait()
 
-	var e error
+	weights := b.ledger.ComputeStakeDistribution(accounts)
 
-	if err := b.ledger.ReceiveTransaction(tx); errors.Cause(err) != wavelet.VoteAccepted {
-		e = errors.Wrap(err, "broadcast: failed to add successfully queried transaction to view-graph")
+	var accum float64
+
+	for account, vote := range votes {
+		if vote {
+			accum += weights[account]
+		}
 	}
 
-	if err := b.ledger.ProcessQuery(tx, responses); errors.Cause(err) != wavelet.ErrTxNotCritical {
-		e = errors.Wrap(errors.Wrap(err, "broadcast: failed to handle critical transaction"), e.Error())
+	if accum < sys.SnowballAlpha {
+		return errors.Errorf("broadcast: less than %.1f%% of queried K peers find tx %x valid", sys.SnowballAlpha*100, tx.ID)
 	}
 
-	return e
+	if err := b.ledger.ReceiveTransaction(tx); err != nil && errors.Cause(err) != wavelet.VoteAccepted {
+		return errors.Wrap(err, "broadcast: failed to add successfully queried tx to view-graph")
+	}
+
+	if err := b.ledger.ProcessQuery(weights, responses); err != nil {
+		return errors.Wrap(err, "broadcast: failed to process query results")
+	}
+
+	return nil
 }
