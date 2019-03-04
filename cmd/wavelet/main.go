@@ -24,7 +24,10 @@ import (
 	"time"
 )
 
-const DefaultC1, DefaultC2 = 16, 16
+const (
+	DefaultC2 = 16
+	DefaultC1 = 16
+)
 
 func main() {
 	hostFlag := flag.String("h", "127.0.0.1", "host to listen for peers on")

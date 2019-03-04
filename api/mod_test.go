@@ -26,7 +26,7 @@ func TestInitSession(t *testing.T) {
 	randomKeyPair := ed25519.RandomKeys()
 
 	hub := &Gateway{registry: newSessionRegistry()}
-	hub.setupRouter()
+	hub.setup()
 
 	tests := []struct {
 		name     string
@@ -69,7 +69,7 @@ func TestInitSession(t *testing.T) {
 
 func TestListTransaction(t *testing.T) {
 	hub := &Gateway{registry: newSessionRegistry()}
-	hub.setupRouter()
+	hub.setup()
 
 	tests := []struct {
 		name         string
@@ -109,7 +109,7 @@ func TestListTransaction(t *testing.T) {
 
 func TestGetTransaction(t *testing.T) {
 	hub := &Gateway{registry: newSessionRegistry()}
-	hub.setupRouter()
+	hub.setup()
 
 	sess, err := hub.registry.newSession()
 	assert.NoError(t, err)
@@ -159,7 +159,7 @@ func TestGetTransaction(t *testing.T) {
 
 func TestSendTransaction(t *testing.T) {
 	hub := &Gateway{registry: newSessionRegistry()}
-	hub.setupRouter()
+	hub.setup()
 
 	tests := []struct {
 		name         string
@@ -203,7 +203,7 @@ func TestSendTransaction(t *testing.T) {
 
 func TestGetAccount(t *testing.T) {
 	hub := &Gateway{registry: newSessionRegistry()}
-	hub.setupRouter()
+	hub.setup()
 
 	sess, err := hub.registry.newSession()
 	assert.NoError(t, err)
@@ -280,7 +280,7 @@ func TestGetAccount(t *testing.T) {
 
 func TestGetContractCode(t *testing.T) {
 	hub := &Gateway{registry: newSessionRegistry()}
-	hub.setupRouter()
+	hub.setup()
 
 	sess, err := hub.registry.newSession()
 	assert.NoError(t, err)
@@ -350,7 +350,7 @@ func TestGetContractCode(t *testing.T) {
 // Test the authenticate checking of all the APIs that require authentication
 func TestAuthenticatedAPI(t *testing.T) {
 	hub := &Gateway{registry: newSessionRegistry()}
-	hub.setupRouter()
+	hub.setup()
 
 	contractId := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
 

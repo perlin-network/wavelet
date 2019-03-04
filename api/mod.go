@@ -35,8 +35,8 @@ func New() *Gateway {
 	return &Gateway{registry: newSessionRegistry(), sinks: make(map[string]*sink)}
 }
 
-func (g *Gateway) setupRouter() {
-	// Setup websocket sinks.
+func (g *Gateway) setup() {
+	// Setup websocket logging sinks.
 
 	sinkBroadcaster := g.registerWebsocketSink("ws://broadcaster/")
 	sinkConsensus := g.registerWebsocketSink("ws://consensus/")
@@ -45,6 +45,8 @@ func (g *Gateway) setupRouter() {
 	sinkAccounts := g.registerWebsocketSink("ws://accounts/?id=account_id")
 	sinkContracts := g.registerWebsocketSink("ws://contract/?id=contract_id")
 	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id")
+
+	log.Register(g)
 
 	// Setup HTTP router.
 
@@ -101,12 +103,10 @@ func (g *Gateway) setupRouter() {
 }
 
 func (g *Gateway) StartHTTP(n *noise.Node, port int) {
-	log.Register(g)
-
 	g.ledger = node.Ledger(n)
 	g.node = n
 
-	g.setupRouter()
+	g.setup()
 
 	logger := log.Node()
 	logger.Info().Msgf("Started HTTP API server on port %d.", port)
