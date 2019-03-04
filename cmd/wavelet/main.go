@@ -142,6 +142,13 @@ func main() {
 		cmd := strings.Split(string(bytes), " ")
 
 		switch cmd[0] {
+		case "l":
+			logger.Info().
+				Uint64("difficulty", ledger.Difficulty()).
+				Uint64("view_id", ledger.ViewID()).
+				Hex("root_id", ledger.Root().ID[:]).
+				Uint64("height", ledger.Height()).
+				Msg("Here is the current state of the ledger.")
 		case "w":
 			if len(cmd) < 2 {
 				balance, _ := ledger.ReadAccountBalance(nodeID)

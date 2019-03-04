@@ -33,8 +33,7 @@ type Transaction struct {
 	SenderSignature, CreatorSignature common.Signature
 
 	// IN-MEMORY DATA
-	children []common.TransactionID
-	depth    uint64
+	depth uint64
 }
 
 func prefixLen(buf []byte) int {
@@ -84,6 +83,8 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.Wrap(err, "failed to read num parents")
 	}
 
+	check := make(map[common.TransactionID]struct{})
+
 	for i := byte(0); i < numParents; i++ {
 		var parentID common.TransactionID
 
@@ -95,6 +96,11 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		if n != common.SizeAccountID {
 			return nil, errors.Errorf("could not read enough bytes for parent %d", i)
 		}
+
+		if _, duplicate := check[parentID]; duplicate {
+			return nil, errors.New("found duplicate parent inside transaction")
+		}
+		check[parentID] = struct{}{}
 
 		t.ParentIDs = append(t.ParentIDs, parentID)
 	}

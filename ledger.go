@@ -13,7 +13,6 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
-	"go.uber.org/atomic"
 	"golang.org/x/crypto/blake2b"
 	"sync"
 	"time"
@@ -33,11 +32,6 @@ type Ledger struct {
 
 	processors map[byte]TransactionProcessor
 
-	viewID     atomic.Uint64
-	difficulty atomic.Uint64
-
-	genesis *Transaction
-
 	mu sync.Mutex
 }
 
@@ -55,7 +49,16 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 		processors: make(map[byte]TransactionProcessor),
 	}
 
-	ledger.difficulty.Store(uint64(sys.MinDifficulty))
+	buf, err := kv.Get(keyLedgerGenesis[:])
+
+	// If the database has existed before, load all details of the ledger.
+	if len(buf) != 0 && err == nil {
+		ledger.view = newGraph(kv, nil)
+		return ledger
+	}
+
+	ledger.saveViewID(0)
+	ledger.saveDifficulty(uint64(sys.MinDifficulty))
 
 	genesis, err := performInception(ledger.accounts, genesisPath)
 	if err != nil {
@@ -63,9 +66,9 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 		logger.Fatal().Err(err).Msgf("Failed to perform inception with genesis data from %q.", genesisPath)
 	}
 
-	// Instantiate the view-graph for our ledger.
-	ledger.genesis = genesis
-	ledger.view = newGraph(genesis)
+	ledger.view = newGraph(kv, genesis)
+
+	_ = kv.Put(keyLedgerGenesis[:], []byte{0x1})
 
 	return ledger
 }
@@ -266,7 +269,7 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 
 		timestamps = append(timestamps, popped.Timestamp)
 
-		if popped == l.view.Root() || len(timestamps) == sys.MedianTimestampNumAncestors {
+		if popped.ID == l.view.Root().ID || len(timestamps) == sys.MedianTimestampNumAncestors {
 			break
 		}
 
@@ -365,7 +368,9 @@ func (l *Ledger) ProcessQuery(tx *Transaction, responses map[common.TransactionI
 		l.resolver.Reset()
 
 		ss := l.collapseTransactions(root.ParentIDs, true)
-		viewID := l.viewID.Add(1)
+
+		viewID := l.ViewID() + 1
+		l.saveViewID(viewID)
 
 		l.accounts = ss
 
@@ -400,7 +405,7 @@ func (l *Ledger) adjustDifficulty(critical *Transaction) error {
 
 	// Load critical timestamp history if it exists.
 	buf, err := l.kv.Get(keyCriticalTimestampHistory[:])
-	if err == nil {
+	if len(buf) > 0 && err == nil {
 		reader := payload.NewReader(buf)
 
 		size, err := reader.ReadByte()
@@ -452,12 +457,14 @@ func (l *Ledger) adjustDifficulty(critical *Transaction) error {
 		expectedTimeFactor = 2.0
 	}
 
-	adjusted := int(l.Difficulty()) - int(sys.MaxDifficultyDelta/2) + int(float64(sys.MaxDifficultyDelta)/2.0*expectedTimeFactor)
+	original := l.Difficulty()
+
+	adjusted := int(original) - int(sys.MaxDifficultyDelta/2) + int(float64(sys.MaxDifficultyDelta)/2.0*expectedTimeFactor)
 	if adjusted < sys.MinDifficulty {
 		adjusted = sys.MinDifficulty
 	}
 
-	original := l.difficulty.Swap(uint64(adjusted))
+	l.saveDifficulty(uint64(adjusted))
 
 	logger := log.Consensus("update_difficulty")
 	logger.Info().
@@ -686,12 +693,40 @@ func (l *Ledger) Root() *Transaction {
 	return l.view.Root()
 }
 
+func (l *Ledger) Height() uint64 {
+	return l.view.Height()
+}
+
 func (l *Ledger) ViewID() uint64 {
-	return l.viewID.Load()
+	buf, err := l.kv.Get(keyLedgerViewID[:])
+	if len(buf) != 8 || err != nil {
+		return 0
+	}
+
+	return binary.LittleEndian.Uint64(buf)
 }
 
 func (l *Ledger) Difficulty() uint64 {
-	return l.difficulty.Load()
+	buf, err := l.kv.Get(keyLedgerDifficulty[:])
+	if len(buf) != 8 || err != nil {
+		return uint64(sys.MinDifficulty)
+	}
+
+	return binary.LittleEndian.Uint64(buf)
+}
+
+func (l *Ledger) saveDifficulty(difficulty uint64) {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], difficulty)
+
+	_ = l.kv.Put(keyLedgerDifficulty[:], buf[:])
+}
+
+func (l *Ledger) saveViewID(viewID uint64) {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], viewID)
+
+	_ = l.kv.Put(keyLedgerViewID[:], buf[:])
 }
 
 func (l *Ledger) Resolver() conflict.Resolver {
