@@ -19,6 +19,9 @@ const (
 )
 
 type block struct {
+	opcodeGossipRequest  noise.Opcode
+	opcodeGossipResponse noise.Opcode
+
 	opcodeQueryRequest  noise.Opcode
 	opcodeQueryResponse noise.Opcode
 }
@@ -28,6 +31,8 @@ func New() *block {
 }
 
 func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
+	b.opcodeGossipRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*GossipRequest)(nil))
+	b.opcodeGossipResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*GossipResponse)(nil))
 	b.opcodeQueryRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*QueryRequest)(nil))
 	b.opcodeQueryResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*QueryResponse)(nil))
 
@@ -60,6 +65,8 @@ func (b *block) OnBegin(p *protocol.Protocol, peer *noise.Peer) error {
 func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 	for {
 		select {
+		case req := <-peer.Receive(b.opcodeGossipRequest):
+			handleGossipRequest(ledger, peer, req.(GossipRequest))
 		case req := <-peer.Receive(b.opcodeQueryRequest):
 			handleQueryRequest(ledger, peer, req.(QueryRequest))
 		}
@@ -67,9 +74,12 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 }
 
 func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryRequest) {
-	res := new(QueryResponse)
+	// Only verify the transaction if it is a critical transaction.
+	if req.tx.IsCritical(ledger.Difficulty()) {
+		_ = ledger.ReceiveTransaction(req.tx)
+	}
 
-	vote := ledger.ReceiveTransaction(req.tx)
+	res := new(QueryResponse)
 
 	if req.tx.ViewID == ledger.ViewID()-1 {
 		res.preferred = ledger.Root().ID
@@ -77,11 +87,22 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 		res.preferred = ledger.Resolver().Preferred()
 	}
 
+	logger := log.Consensus("query")
+	logger.Debug().
+		Hex("preferred_id", res.preferred[:]).
+		Uint64("view_id", ledger.ViewID()).
+		Msg("Responded to finality query with our preferred transaction.")
+
+	_ = <-peer.SendMessageAsync(res)
+}
+
+func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipRequest) {
+	res := new(GossipResponse)
+
+	vote := ledger.ReceiveTransaction(req.tx)
 	res.vote = errors.Cause(vote) == wavelet.VoteAccepted
 
-	logger := log.Consensus("vote")
-
-	if res.vote {
+	if logger := log.Consensus("vote"); res.vote {
 		logger.Debug().Hex("tx_id", req.tx.ID[:]).Msg("Gave a positive vote to a transaction.")
 	} else {
 		logger.Warn().Hex("tx_id", req.tx.ID[:]).Err(vote).Msg("Gave a negative vote to a transaction.")

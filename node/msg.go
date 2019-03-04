@@ -9,6 +9,8 @@ import (
 )
 
 var (
+	_ noise.Message = (*GossipRequest)(nil)
+	_ noise.Message = (*GossipResponse)(nil)
 	_ noise.Message = (*QueryRequest)(nil)
 	_ noise.Message = (*QueryResponse)(nil)
 	_ noise.Message = (*SyncViewRequest)(nil)
@@ -37,7 +39,6 @@ func (q QueryRequest) Write() []byte {
 
 type QueryResponse struct {
 	preferred common.TransactionID
-	vote      bool
 }
 
 func (q QueryResponse) Read(reader payload.Reader) (noise.Message, error) {
@@ -51,9 +52,41 @@ func (q QueryResponse) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.New("wavelet: didn't read enough bytes for query response preferred id")
 	}
 
+	return q, nil
+}
+
+func (q QueryResponse) Write() []byte {
+	return q.preferred[:]
+}
+
+type GossipRequest struct {
+	tx *wavelet.Transaction
+}
+
+func (q GossipRequest) Read(reader payload.Reader) (noise.Message, error) {
+	msg, err := wavelet.Transaction{}.Read(reader)
+	if err != nil {
+		return nil, errors.Wrap(err, "wavelet: failed to read gossip request tx")
+	}
+
+	tx := msg.(wavelet.Transaction)
+	q.tx = &tx
+
+	return q, nil
+}
+
+func (q GossipRequest) Write() []byte {
+	return q.tx.Write()
+}
+
+type GossipResponse struct {
+	vote bool
+}
+
+func (q GossipResponse) Read(reader payload.Reader) (noise.Message, error) {
 	vote, err := reader.ReadByte()
 	if err != nil {
-		return nil, errors.Wrap(err, "wavelet: failed to read query response vote")
+		return nil, errors.Wrap(err, "wavelet: failed to read gossip response vote")
 	}
 
 	if vote == 1 {
@@ -63,9 +96,8 @@ func (q QueryResponse) Read(reader payload.Reader) (noise.Message, error) {
 	return q, nil
 }
 
-func (q QueryResponse) Write() []byte {
+func (q GossipResponse) Write() []byte {
 	writer := payload.NewWriter(nil)
-	_, _ = writer.Write(q.preferred[:])
 
 	if q.vote {
 		writer.WriteByte(1)

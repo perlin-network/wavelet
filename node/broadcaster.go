@@ -9,6 +9,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 	"sync"
 	"time"
 )
@@ -50,107 +51,120 @@ func (b *broadcaster) work() {
 	logger := log.Broadcaster()
 
 	for {
-		var item broadcastItem
+		preferredID := b.ledger.Resolver().Preferred()
 
-		select {
-		case popped := <-b.queue:
-			item = popped
-
-			logger.Log().
-				Bool("broadcast_nops", b.broadcastingNops).
-				Hex("tx_id", popped.tx.ID[:]).
-				Msg("Broadcasting out queued transaction.")
-		case <-time.After(1 * time.Millisecond):
-			// If there is nothing we need to broadcast urgently, then either broadcast
-			// our preferred transaction, or a nop (if we have previously broadcasted
-			// a transaction beforehand).
-
-			preferredID := b.ledger.Resolver().Preferred()
-
-			if preferredID == common.ZeroTransactionID {
-				if !b.broadcastingNops {
-					continue
-				}
-
-				nop, err := b.ledger.NewTransaction(b.node.Keys, sys.TagNop, nil)
-				if err != nil {
-					continue
-				}
-
-				item = broadcastItem{tx: nop, result: nil}
-
-				logger.Log().
-					Bool("broadcast_nops", true).
-					Hex("tx_id", nop.ID[:]).
-					Msg("Broadcasting out nop transaction.")
-			} else {
-				preferred, exists := b.ledger.FindTransaction(preferredID)
-
-				if !exists {
-					continue
-				}
-
-				item = broadcastItem{tx: preferred, result: nil}
-
-				logger.Log().
-					Bool("broadcast_nops", false).
-					Hex("tx_id", preferred.ID[:]).
-					Msg("Broadcasting out our preferred transaction.")
-			}
+		if preferredID == common.ZeroTransactionID {
+			b.gossiping(logger)
+		} else {
+			b.broadcastingNops = false
+			b.querying(logger)
 		}
+	}
+}
 
-		if b.ledger.ViewID() != item.tx.ViewID {
-			err := errors.New("broadcast: consensus round already finalized; submit transaction again")
-			err = errors.Wrapf(err, "tx %x", item.tx.ID)
+func (b *broadcaster) querying(logger zerolog.Logger) {
+	preferredID := b.ledger.Resolver().Preferred()
+	preferred, exists := b.ledger.FindTransaction(preferredID)
 
-			if item.result != nil {
-				item.result <- err
-			} else {
-				logger.Warn().
-					Err(err).
-					Msg("Stopped a broadcast during assertions.")
-			}
-			continue
-		}
+	if !exists {
+		return
+	}
 
-		if err := b.query(item.tx); err != nil {
-			if item.result != nil {
-				item.result <- err
-			} else {
-				logger.Warn().
-					Err(err).
-					Msg("Got an error while querying.")
-			}
-			continue
-		}
+	logger.Log().
+		Bool("broadcast_nops", false).
+		Hex("tx_id", preferred.ID[:]).
+		Msg("Broadcasting out our preferred transaction.")
 
-		logger.Debug().
-			Hex("tx_id", item.tx.ID[:]).
+	if err := b.query(preferred); err != nil {
+		logger.Warn().
+			Err(err).
+			Msg("Got an error while querying.")
+		return
+	}
+}
+
+func (b *broadcaster) gossiping(logger zerolog.Logger) {
+	var item broadcastItem
+
+	select {
+	case popped := <-b.queue:
+		item = popped
+
+		logger.Log().
 			Bool("broadcast_nops", b.broadcastingNops).
-			Msg("Successfully broadcasted out transaction.")
-
-		// Start broadcasting nops if we have successfully broadcasted
-		// some arbitrary transaction.
+			Hex("tx_id", popped.tx.ID[:]).
+			Msg("Broadcasting out queued transaction.")
+	case <-time.After(1 * time.Millisecond):
+		// If there is nothing we need to broadcast urgently, then broadcast
+		// a nop (if we have previously broadcasted a transaction beforehand).
 		if !b.broadcastingNops {
-			b.broadcastingNops = true
-
-			logger.Log().
-				Bool("broadcast_nops", true).
-				Msg("Started broadcasting nops.")
+			return
 		}
+
+		nop, err := b.ledger.NewTransaction(b.node.Keys, sys.TagNop, nil)
+		if err != nil {
+			return
+		}
+
+		item = broadcastItem{tx: nop, result: nil}
+
+		logger.Log().
+			Bool("broadcast_nops", true).
+			Hex("tx_id", nop.ID[:]).
+			Msg("Broadcasting out nop transaction.")
+	}
+
+	if b.ledger.ViewID() != item.tx.ViewID {
+		err := errors.New("broadcast: consensus round already finalized; submit transaction again")
+		err = errors.Wrapf(err, "tx %x", item.tx.ID)
 
 		if item.result != nil {
-			item.result <- nil
+			item.result <- err
+		} else {
+			logger.Warn().
+				Err(err).
+				Msg("Stopped a broadcast during assertions.")
 		}
+		return
+	}
 
-		// If we have advanced one view ID, stop broadcasting nops.
-		if b.ledger.ViewID() != item.tx.ViewID {
-			b.broadcastingNops = false
-
-			logger.Log().
-				Bool("broadcast_nops", true).
-				Msg("Stopped broadcasting nops.")
+	if err := b.gossip(item.tx); err != nil {
+		if item.result != nil {
+			item.result <- err
+		} else {
+			logger.Warn().
+				Err(err).
+				Msg("Got an error while gossiping.")
 		}
+		return
+	}
+
+	logger.Debug().
+		Hex("tx_id", item.tx.ID[:]).
+		Bool("broadcast_nops", b.broadcastingNops).
+		Msg("Successfully broadcasted out transaction.")
+
+	// Start broadcasting nops if we have successfully broadcasted
+	// some arbitrary transaction.
+	if !b.broadcastingNops {
+		b.broadcastingNops = true
+
+		logger.Log().
+			Bool("broadcast_nops", true).
+			Msg("Started broadcasting nops.")
+	}
+
+	if item.result != nil {
+		item.result <- nil
+	}
+
+	// If we have advanced one view ID, stop broadcasting nops.
+	if b.ledger.ViewID() != item.tx.ViewID {
+		b.broadcastingNops = false
+
+		logger.Log().
+			Bool("broadcast_nops", true).
+			Msg("Stopped broadcasting nops.")
 	}
 }
 
@@ -165,37 +179,26 @@ func (b *broadcaster) selectPeers(amount int) ([]protocol.ID, error) {
 	return peerIDs, nil
 }
 
-func (b *broadcaster) broadcast(tx *wavelet.Transaction) (map[common.AccountID]common.TransactionID, error) {
-	opcode, err := noise.OpcodeFromMessage((*QueryResponse)(nil))
-	if err != nil {
-		return nil, errors.Wrap(err, "broadcast: query response opcode not registered")
-	}
-
+func (b *broadcaster) broadcast(req noise.Message, res noise.Opcode) ([]common.AccountID, []noise.Message, error) {
 	peerIDs, err := b.selectPeers(sys.SnowballK)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var accounts []common.AccountID
+	var responses []noise.Message
 
 	var mu sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(len(peerIDs))
 
-	responses := make(map[common.AccountID]common.TransactionID)
-	votes := make(map[common.AccountID]bool)
+	record := func(account common.AccountID, res noise.Message) {
+		mu.Lock()
+		defer mu.Unlock()
 
-	recordResponse := func(account common.AccountID, preferred common.TransactionID) {
-		if preferred != common.ZeroTransactionID {
-			responses[account] = preferred
-		}
+		accounts = append(accounts, account)
+		responses = append(responses, res)
 	}
-
-	recordVote := func(account common.AccountID, vote bool) {
-		votes[account] = vote
-	}
-
-	req := QueryRequest{tx: tx}
 
 	for _, peerID := range peerIDs {
 		peerID := peerID
@@ -203,52 +206,86 @@ func (b *broadcaster) broadcast(tx *wavelet.Transaction) (map[common.AccountID]c
 		var account common.AccountID
 		copy(account[:], peerID.PublicKey())
 
-		accounts = append(accounts, account)
-
 		go func() {
 			defer wg.Done()
 
 			peer := protocol.Peer(b.node, peerID)
 			if peer == nil {
-				mu.Lock()
-				recordVote(account, false)
-				mu.Unlock()
-
+				record(account, nil)
 				return
 			}
 
 			// Send query request.
 			err := peer.SendMessage(req)
 			if err != nil {
-				mu.Lock()
-				recordVote(account, false)
-				mu.Unlock()
-
+				record(account, nil)
 				return
 			}
-
-			// Receive query response.
-			var res QueryResponse
 
 			select {
-			case msg := <-peer.Receive(opcode):
-				res = msg.(QueryResponse)
+			case msg := <-peer.Receive(res):
+				record(account, msg)
 			case <-time.After(sys.QueryTimeout):
-				mu.Lock()
-				recordVote(account, false)
-				mu.Unlock()
-
-				return
+				record(account, nil)
 			}
-
-			mu.Lock()
-			recordVote(account, res.vote)
-			recordResponse(account, res.preferred)
-			mu.Unlock()
 		}()
 	}
 
 	wg.Wait()
+
+	return accounts, responses, nil
+}
+
+func (b *broadcaster) query(preferred *wavelet.Transaction) error {
+	opcodeQueryResponse, err := noise.OpcodeFromMessage((*QueryResponse)(nil))
+	if err != nil {
+		return errors.Wrap(err, "broadcast: response opcode not registered")
+	}
+
+	accounts, responses, err := b.broadcast(QueryRequest{tx: preferred}, opcodeQueryResponse)
+	if err != nil {
+		return err
+	}
+
+	votes := make(map[common.AccountID]common.TransactionID)
+	for i, res := range responses {
+		if res != nil {
+			votes[accounts[i]] = res.(QueryResponse).preferred
+		}
+	}
+
+	weights := b.ledger.ComputeStakeDistribution(accounts)
+
+	counts := make(map[common.TransactionID]float64)
+
+	for account, preferred := range votes {
+		counts[preferred] += weights[account]
+	}
+
+	if err := b.ledger.ProcessQuery(counts); err != nil {
+		return errors.Wrap(err, "broadcast: failed to process query results")
+	}
+
+	return nil
+}
+
+func (b *broadcaster) gossip(tx *wavelet.Transaction) error {
+	opcodeGossipResponse, err := noise.OpcodeFromMessage((*GossipResponse)(nil))
+	if err != nil {
+		return errors.Wrap(err, "broadcast: response opcode not registered")
+	}
+
+	accounts, responses, err := b.broadcast(GossipRequest{tx: tx}, opcodeGossipResponse)
+	if err != nil {
+		return err
+	}
+
+	votes := make(map[common.AccountID]bool)
+	for i, res := range responses {
+		if res != nil {
+			votes[accounts[i]] = res.(GossipResponse).vote
+		}
+	}
 
 	weights := b.ledger.ComputeStakeDistribution(accounts)
 
@@ -261,24 +298,11 @@ func (b *broadcaster) broadcast(tx *wavelet.Transaction) (map[common.AccountID]c
 	}
 
 	if accum < sys.SnowballAlpha {
-		return nil, errors.Errorf("broadcast: less than %.1f%% of queried K peers find tx %x valid", sys.SnowballAlpha*100, tx.ID)
+		return errors.Errorf("broadcast: less than %.1f%% of queried K peers find tx %x valid", sys.SnowballAlpha*100, tx.ID)
 	}
 
 	if err := b.ledger.ReceiveTransaction(tx); err != nil && errors.Cause(err) != wavelet.VoteAccepted {
-		return nil, errors.Wrap(err, "broadcast: failed to add successfully queried tx to view-graph")
-	}
-
-	return responses, nil
-}
-
-func (b *broadcaster) query(tx *wavelet.Transaction) error {
-	responses, err := b.broadcast(tx)
-	if err != nil {
-		return err
-	}
-
-	if err := b.ledger.ProcessQuery(responses); err != nil {
-		return errors.Wrap(err, "broadcast: failed to process query results")
+		return errors.Wrap(err, "broadcast: failed to add successfully queried tx to view-graph")
 	}
 
 	return nil
