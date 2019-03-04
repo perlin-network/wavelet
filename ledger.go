@@ -339,17 +339,22 @@ func (l *Ledger) ComputeStakeDistribution(accounts []common.AccountID) map[commo
 	return weights
 }
 
-func (l *Ledger) ProcessQuery(weights map[common.AccountID]float64, responses map[common.AccountID]common.TransactionID) error {
+func (l *Ledger) ProcessQuery(responses map[common.AccountID]common.TransactionID) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	// If there are zero preferred critical transactions from other
-	// nodes, return nil.
+	// If there are zero preferred critical transactions from other nodes, return nil.
 	if len(responses) == 0 {
 		return nil
 	}
 
 	// Update conflict resolver.
+	var accounts []common.AccountID
+	for account := range responses {
+		accounts = append(accounts, account)
+	}
+
+	weights := l.ComputeStakeDistribution(accounts)
 	counts := make(map[common.TransactionID]float64)
 
 	for account, preferred := range responses {

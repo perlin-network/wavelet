@@ -167,15 +167,15 @@ func (b *broadcaster) selectPeers(amount int) ([]protocol.ID, error) {
 	return peerIDs, nil
 }
 
-func (b *broadcaster) query(tx *wavelet.Transaction) error {
+func (b *broadcaster) broadcast(tx *wavelet.Transaction) (map[common.AccountID]common.TransactionID, error) {
 	opcode, err := noise.OpcodeFromMessage((*QueryResponse)(nil))
 	if err != nil {
-		return errors.Wrap(err, "broadcast: query response opcode not registered")
+		return nil, errors.Wrap(err, "broadcast: query response opcode not registered")
 	}
 
 	peerIDs, err := b.selectPeers(sys.SnowballK)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	var accounts []common.AccountID
@@ -263,14 +263,23 @@ func (b *broadcaster) query(tx *wavelet.Transaction) error {
 	}
 
 	if accum < sys.SnowballAlpha {
-		return errors.Errorf("broadcast: less than %.1f%% of queried K peers find tx %x valid", sys.SnowballAlpha*100, tx.ID)
+		return nil, errors.Errorf("broadcast: less than %.1f%% of queried K peers find tx %x valid", sys.SnowballAlpha*100, tx.ID)
 	}
 
 	if err := b.ledger.ReceiveTransaction(tx); err != nil && errors.Cause(err) != wavelet.VoteAccepted {
-		return errors.Wrap(err, "broadcast: failed to add successfully queried tx to view-graph")
+		return nil, errors.Wrap(err, "broadcast: failed to add successfully queried tx to view-graph")
 	}
 
-	if err := b.ledger.ProcessQuery(weights, responses); err != nil {
+	return responses, nil
+}
+
+func (b *broadcaster) query(tx *wavelet.Transaction) error {
+	responses, err := b.broadcast(tx)
+	if err != nil {
+		return err
+	}
+
+	if err := b.ledger.ProcessQuery(responses); err != nil {
 		return errors.Wrap(err, "broadcast: failed to process query results")
 	}
 
