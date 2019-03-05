@@ -104,25 +104,20 @@ func (s *syncer) loop() {
 
 		Broadcaster(s.node).Pause()
 
-		err := s.queryAndApplyDiff(peerIDs, root)
-
-		Broadcaster(s.node).Resume()
-
-		if err != nil {
+		if err := s.queryAndApplyDiff(peerIDs, root); err != nil {
 			logger = log.Sync("error")
 			logger.Error().
 				Err(err).
 				Msg("Failed to find and apply ledger state differences from our peers.")
-			continue
+		} else {
+			logger = log.Sync("success")
+			logger.Info().
+				Hex("new_root_id", rootID[:]).
+				Uint64("new_view_id", s.ledger.ViewID()).
+				Msg("Successfully synchronized with our peers.")
 		}
 
-		logger = log.Sync("success")
-		logger.Info().
-			Hex("new_root_id", rootID[:]).
-			Uint64("new_view_id", s.ledger.ViewID()).
-			Msg("Successfully synchronized with our peers.")
-
-		// TODO(kenta): have the ledger start serving broadcasts/queries again
+		Broadcaster(s.node).Resume()
 	}
 }
 
