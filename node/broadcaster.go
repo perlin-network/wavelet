@@ -8,6 +8,7 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
+	"go.uber.org/atomic"
 	"time"
 )
 
@@ -19,35 +20,77 @@ type broadcastItem struct {
 type broadcaster struct {
 	node   *noise.Node
 	ledger *wavelet.Ledger
-	queue  chan broadcastItem
+
+	queue chan broadcastItem
+
+	pause  chan struct{}
+	Paused atomic.Bool
 
 	broadcastingNops bool
 }
 
 func newBroadcaster(node *noise.Node) *broadcaster {
-	return &broadcaster{node: node, ledger: Ledger(node), queue: make(chan broadcastItem, 1024)}
+	return &broadcaster{
+		node:             node,
+		ledger:           Ledger(node),
+		queue:            make(chan broadcastItem, 1024),
+		pause:            make(chan struct{}),
+		broadcastingNops: false,
+	}
+}
+
+func (b *broadcaster) Pause() {
+	b.Paused.Store(true)
+	b.pause <- struct{}{}
+}
+
+func (b *broadcaster) Resume() {
+	b.Paused.Store(false)
+	b.init()
 }
 
 func (b *broadcaster) init() {
-	go b.work()
+	go b.loop()
 }
 
 func (b *broadcaster) Broadcast(tx *wavelet.Transaction) error {
+	if b.Paused.Load() {
+		return errors.New("broadcast: broadcaster was paused")
+	}
+
 	item := broadcastItem{tx: tx, result: make(chan error, 1)}
+
 	b.queue <- item
 
 	select {
-	case err := <-item.result:
+	case err, available := <-item.result:
+		if !available {
+			return errors.New("broadcast: broadcaster was paused")
+		}
+
 		return err
 	case <-time.After(3 * time.Second):
 		return errors.New("broadcast: timed out")
 	}
 }
 
-func (b *broadcaster) work() {
+func (b *broadcaster) loop() {
 	logger := log.Broadcaster()
 
 	for {
+		select {
+		case <-b.pause: // Empty out broadcast queue and stop worker.
+			n := len(b.queue)
+
+			for i := 0; i < n; i++ {
+				item := <-b.queue
+				close(item.result)
+			}
+
+			return
+		default:
+		}
+
 		preferredID := b.ledger.Resolver().Preferred()
 
 		if preferredID == nil {
@@ -56,15 +99,10 @@ func (b *broadcaster) work() {
 			b.broadcastingNops = false
 			b.querying(logger)
 		}
-
-		time.Sleep(100 * time.Millisecond) // TODO: Figure out a good period to sleep (seems that we are already sleeping in gossiping)
 	}
 }
 
 func (b *broadcaster) querying(logger zerolog.Logger) {
-	b.ledger.ConsensusLock().RLock()
-	defer b.ledger.ConsensusLock().RUnlock()
-
 	preferredID := b.ledger.Resolver().Preferred()
 
 	if preferredID == nil {
@@ -120,9 +158,6 @@ func (b *broadcaster) gossiping(logger zerolog.Logger) {
 			Hex("tx_id", nop.ID[:]).
 			Msg("Broadcasting out nop transaction.")
 	}
-
-	b.ledger.ConsensusLock().RLock()
-	defer b.ledger.ConsensusLock().RUnlock()
 
 	if b.ledger.ViewID() != item.tx.ViewID {
 		err := errors.New("broadcast: consensus round already finalized; submit transaction again")

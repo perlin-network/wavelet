@@ -45,10 +45,10 @@ func newSyncer(node *noise.Node) *syncer {
 }
 
 func (s *syncer) init() {
-	//go s.work()
+	go s.loop()
 }
 
-func (s *syncer) work() {
+func (s *syncer) loop() {
 	var rootID common.TransactionID
 	var root *wavelet.Transaction
 
@@ -102,12 +102,11 @@ func (s *syncer) work() {
 		s.accounts = make(map[common.TransactionID]map[protocolID]struct{})
 		s.mu.Unlock()
 
-		// TODO(heyang): Implement TryRLock at places where RLock is used.
-		s.ledger.ConsensusLock().Lock()
+		Broadcaster(s.node).Pause()
 
 		err := s.queryAndApplyDiff(peerIDs, root)
 
-		s.ledger.ConsensusLock().Unlock()
+		Broadcaster(s.node).Resume()
 
 		if err != nil {
 			logger = log.Sync("error")

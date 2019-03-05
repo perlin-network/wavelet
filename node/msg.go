@@ -36,7 +36,11 @@ func (q QueryRequest) Read(reader payload.Reader) (noise.Message, error) {
 }
 
 func (q QueryRequest) Write() []byte {
-	return q.tx.Write()
+	if q.tx != nil {
+		return q.tx.Write()
+	}
+
+	return nil
 }
 
 type QueryResponse struct {
@@ -78,7 +82,11 @@ func (q GossipRequest) Read(reader payload.Reader) (noise.Message, error) {
 }
 
 func (q GossipRequest) Write() []byte {
-	return q.tx.Write()
+	if q.tx != nil {
+		return q.tx.Write()
+	}
+
+	return nil
 }
 
 type GossipResponse struct {
@@ -127,7 +135,11 @@ func (s SyncViewRequest) Read(reader payload.Reader) (noise.Message, error) {
 }
 
 func (s SyncViewRequest) Write() []byte {
-	return s.root.Write()
+	if s.root != nil {
+		return s.root.Write()
+	}
+
+	return nil
 }
 
 type SyncViewResponse struct {
@@ -147,7 +159,11 @@ func (s SyncViewResponse) Read(reader payload.Reader) (noise.Message, error) {
 }
 
 func (s SyncViewResponse) Write() []byte {
-	return s.root.Write()
+	if s.root != nil {
+		return s.root.Write()
+	}
+
+	return nil
 }
 
 type SyncDiffRequest struct {
@@ -192,5 +208,13 @@ func (s SyncDiffResponse) Read(reader payload.Reader) (noise.Message, error) {
 }
 
 func (s SyncDiffResponse) Write() []byte {
-	return payload.NewWriter(s.root.Write()).WriteBytes(s.diff).Bytes()
+	writer := payload.NewWriter(nil)
+
+	if s.root != nil {
+		_, _ = writer.Write(s.root.Write())
+	}
+
+	writer.WriteBytes(s.diff)
+
+	return writer.Bytes()
 }

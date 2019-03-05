@@ -95,14 +95,19 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 }
 
 func handleSyncDiffRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffRequest) {
-	res := new(SyncDiffResponse)
-	res.root = ledger.Root()
-	res.diff = ledger.DumpDiff(req.viewID)
+	res := &SyncDiffResponse{
+		root: ledger.Root(),
+		diff: ledger.DumpDiff(req.viewID),
+	}
 
-	_ = <-peer.SendMessageAsync(res)
+	if err := <-peer.SendMessageAsync(res); err != nil {
+		_ = peer.DisconnectAsync()
+	}
 }
 
 func handleSyncViewRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncViewRequest) {
+	res := new(SyncViewResponse)
+
 	// TODO(kenta): add additional checks to see if the incoming root is valid
 
 	syncer := Syncer(peer.Node())
@@ -112,26 +117,33 @@ func handleSyncViewRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncVie
 		syncer.resolver.Prefer(req.root.ID)
 	}
 
-	res := new(SyncViewResponse)
 	if preferred := syncer.resolver.Preferred(); preferred == nil {
 		res.root = ledger.Root()
 	} else {
 		res.root = syncer.getRootByID(preferred.(common.TransactionID))
 	}
 
-	_ = <-peer.SendMessageAsync(res)
+	if err := <-peer.SendMessageAsync(res); err != nil {
+		_ = peer.DisconnectAsync()
+	}
 }
 
 func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryRequest) {
-	ledger.ConsensusLock().RLock()
-	defer ledger.ConsensusLock().RUnlock()
+	res := new(QueryResponse)
+	defer func() {
+		if err := <-peer.SendMessageAsync(res); err != nil {
+			_ = peer.DisconnectAsync()
+		}
+	}()
+
+	if Broadcaster(peer.Node()).Paused.Load() {
+		return
+	}
 
 	// Only verify the transaction if it is a critical transaction.
 	if req.tx.IsCritical(ledger.Difficulty()) {
 		_ = ledger.ReceiveTransaction(req.tx)
 	}
-
-	res := new(QueryResponse)
 
 	if req.tx.ViewID == ledger.ViewID()-1 {
 		res.preferred = ledger.Root().ID
@@ -144,15 +156,19 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 		Hex("preferred_id", res.preferred[:]).
 		Uint64("view_id", ledger.ViewID()).
 		Msg("Responded to finality query with our preferred transaction.")
-
-	_ = <-peer.SendMessageAsync(res)
 }
 
 func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipRequest) {
-	ledger.ConsensusLock().RLock()
-	defer ledger.ConsensusLock().RUnlock()
-
 	res := new(GossipResponse)
+	defer func() {
+		if err := <-peer.SendMessageAsync(res); err != nil {
+			_ = peer.DisconnectAsync()
+		}
+	}()
+
+	if Broadcaster(peer.Node()).Paused.Load() {
+		return
+	}
 
 	vote := ledger.ReceiveTransaction(req.tx)
 	res.vote = errors.Cause(vote) == wavelet.VoteAccepted
@@ -162,8 +178,6 @@ func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipReq
 	} else {
 		logger.Warn().Hex("tx_id", req.tx.ID[:]).Err(vote).Msg("Gave a negative vote to a transaction.")
 	}
-
-	_ = <-peer.SendMessageAsync(res)
 }
 
 func (b *block) OnEnd(p *protocol.Protocol, peer *noise.Peer) error {

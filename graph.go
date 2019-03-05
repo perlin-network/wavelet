@@ -139,8 +139,10 @@ func (g *graph) reset(root *Transaction) {
 		logger.Log().Msg("Pruned transaction away from view-graph.")
 	}
 
-	logger := log.Consensus("prune")
-	logger.Info().Int("count", count).Msg("Pruned away transactions from the view-graph.")
+	if count > 0 {
+		logger := log.Consensus("prune")
+		logger.Info().Int("count", count).Msg("Pruned away transactions from the view-graph.")
+	}
 }
 
 func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
