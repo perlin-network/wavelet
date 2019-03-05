@@ -234,7 +234,7 @@ func (b *broadcaster) query(preferred *wavelet.Transaction) error {
 
 	votes := make(map[common.AccountID]common.TransactionID)
 	for i, res := range responses {
-		if res != nil {
+		if res != nil && res.(QueryResponse).preferred != common.ZeroTransactionID {
 			votes[accounts[i]] = res.(QueryResponse).preferred
 		}
 	}
