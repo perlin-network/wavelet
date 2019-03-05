@@ -1,7 +1,6 @@
 package wavelet
 
 import (
-	"encoding/binary"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
@@ -24,6 +23,8 @@ type graph struct {
 	transactions map[common.TransactionID]*Transaction
 	children     map[common.TransactionID][]common.TransactionID
 
+	height uint64
+
 	kv store.KV
 }
 
@@ -35,7 +36,6 @@ func newGraph(kv store.KV, genesis *Transaction) *graph {
 	}
 
 	if genesis != nil {
-		g.saveHeight(0)
 		g.saveRoot(genesis)
 	} else {
 		genesis = g.loadRoot()
@@ -77,8 +77,8 @@ func (g *graph) addTransaction(tx *Transaction) error {
 	tx.depth = maxParentsDepth + 1
 
 	// Update the graphs height.
-	if g.loadHeight() < tx.depth {
-		g.saveHeight(tx.depth)
+	if g.height < tx.depth {
+		g.height = tx.depth
 	}
 
 	// Update the parents children.
@@ -100,6 +100,9 @@ func (g *graph) reset(root *Transaction) {
 	g.Lock()
 	defer g.Unlock()
 
+	g.height = 0
+
+	g.transactions[root.ID] = root
 	g.saveRoot(root)
 
 	// Prune away all of roots ancestors.
@@ -145,7 +148,6 @@ func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 	defer g.Unlock()
 
 	root := g.loadRoot()
-	height := g.loadHeight()
 
 	if root == nil {
 		return
@@ -169,7 +171,7 @@ func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 					visited[childrenID] = struct{}{}
 				}
 			}
-		} else if popped.depth+sys.MaxEligibleParentsDepthDiff >= height {
+		} else if popped.depth+sys.MaxEligibleParentsDepthDiff >= g.height {
 			// All eligible parents are within the graph depth [frontier_depth - max_depth_diff, frontier_depth].
 			eligible = append(eligible, popped.ID)
 		}
@@ -190,13 +192,6 @@ func (g *graph) saveRoot(root *Transaction) {
 	_ = g.kv.Put(keyGraphRoot[:], root.Write())
 }
 
-func (g *graph) saveHeight(height uint64) {
-	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], height)
-
-	_ = g.kv.Put(keyGraphHeight[:], buf[:])
-}
-
 func (g *graph) loadRoot() *Transaction {
 	buf, err := g.kv.Get(keyGraphRoot[:])
 	if len(buf) == 0 || err != nil {
@@ -209,18 +204,8 @@ func (g *graph) loadRoot() *Transaction {
 	}
 
 	tx := msg.(Transaction)
-	tx.depth = g.loadHeight()
 
 	return &tx
-}
-
-func (g *graph) loadHeight() uint64 {
-	buf, err := g.kv.Get(keyGraphHeight[:])
-	if len(buf) != 8 || err != nil {
-		return 0
-	}
-
-	return binary.LittleEndian.Uint64(buf)
 }
 
 // Root returns the current root (the latest critical transaction) of the graph.
@@ -236,7 +221,7 @@ func (g *graph) Height() uint64 {
 	g.Lock()
 	defer g.Unlock()
 
-	return g.loadHeight()
+	return g.height
 }
 
 func (g *graph) Transactions(offset, limit uint64, sender, creator common.AccountID) (transactions []*Transaction) {

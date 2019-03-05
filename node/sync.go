@@ -1,7 +1,6 @@
 package node
 
 import (
-	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/noise/protocol"
@@ -12,6 +11,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"sync"
 	"time"
 )
 
@@ -27,8 +27,10 @@ type syncer struct {
 	node   *noise.Node
 	ledger *wavelet.Ledger
 
+	mu       sync.RWMutex
 	roots    map[common.TransactionID]*wavelet.Transaction
 	accounts map[common.TransactionID]map[protocolID]struct{}
+
 	resolver conflict.Resolver
 }
 
@@ -95,8 +97,10 @@ func (s *syncer) work() {
 		}
 
 		// Reset all state used for coming to consensus about the latest view-graph root.
+		s.mu.Lock()
 		s.roots = make(map[common.TransactionID]*wavelet.Transaction)
 		s.accounts = make(map[common.TransactionID]map[protocolID]struct{})
+		s.mu.Unlock()
 
 		// TODO(kenta): stop any broadcasting/querying
 
@@ -112,7 +116,7 @@ func (s *syncer) work() {
 		logger = log.Sync("success")
 		logger.Info().
 			Hex("new_root_id", rootID[:]).
-			Uint64("new_view_id", root.ViewID).
+			Uint64("new_view_id", s.ledger.ViewID()).
 			Msg("Successfully synchronized with our peers.")
 
 		// TODO(kenta): have the ledger start serving broadcasts/queries again
@@ -120,6 +124,9 @@ func (s *syncer) work() {
 }
 
 func (s *syncer) addRootIfNotExists(account protocol.ID, root *wavelet.Transaction) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	if _, exists := s.roots[root.ID]; !exists {
 		s.roots[root.ID] = root
 	}
@@ -135,6 +142,9 @@ func (s *syncer) addRootIfNotExists(account protocol.ID, root *wavelet.Transacti
 }
 
 func (s *syncer) getRootByID(id common.TransactionID) *wavelet.Transaction {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	return s.roots[id]
 }
 
@@ -224,7 +234,6 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 
 		// The diff did not get us the intended merkle root we wanted. Skip.
 		if snapshot.Checksum() != root.AccountsMerkleRoot {
-			fmt.Println("NO CHECKSUM")
 			continue
 		}
 

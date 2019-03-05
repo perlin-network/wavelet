@@ -513,7 +513,7 @@ func TestGetLedger(t *testing.T) {
 		PeerAddresses: nil,
 		RootID:        "55ee4ac81aae8159a57bbdc4cc9a8152b78523eaf8a8f939beefcd836da9323b",
 		ViewID:        0,
-		Difficulty:    7,
+		Difficulty:    5,
 	}
 
 	assert.NoError(t, compareJson(expected, response))

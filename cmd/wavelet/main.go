@@ -81,28 +81,28 @@ func main() {
 		logger.Fatal().Err(err).Msg("Failed to start listening for peers.")
 	}
 
-	protocol.New().
-		Register(ecdh.New()).
-		Register(aead.New()).
-		Register(skademlia.New().WithC1(DefaultC1).WithC2(DefaultC2)).
-		Register(node.New()).
-		Enforce(n)
-
 	n.OnPeerInit(func(node *noise.Node, peer *noise.Peer) error {
 		peer.OnConnError(func(node *noise.Node, peer *noise.Peer, err error) error {
-			logger.Info().Err(err).Msgf("An error occured over the wire.")
+			logger.Info().Err(err).Msgf("An error occurred over the wire.")
 
 			return nil
 		})
 
 		peer.OnDisconnect(func(node *noise.Node, peer *noise.Peer) error {
 			logger.Info().Msgf("Peer %v has disconnected.", peer.RemoteIP().String()+":"+strconv.Itoa(int(peer.RemotePort())))
-
+			protocol.DeletePeerID(peer)
 			return nil
 		})
 
 		return nil
 	})
+
+	protocol.New().
+		Register(ecdh.New()).
+		Register(aead.New()).
+		Register(skademlia.New().WithC1(DefaultC1).WithC2(DefaultC2)).
+		Register(node.New()).
+		Enforce(n)
 
 	go n.Listen()
 

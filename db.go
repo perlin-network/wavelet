@@ -15,6 +15,5 @@ var (
 	keyLedgerViewID     = [...]byte{0x9}
 	keyLedgerGenesis    = [...]byte{0x10}
 
-	keyGraphRoot   = [...]byte{0x11}
-	keyGraphHeight = [...]byte{0x12}
+	keyGraphRoot = [...]byte{0x11}
 )
