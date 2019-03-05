@@ -3,14 +3,21 @@ package node
 import (
 	"fmt"
 	"github.com/perlin-network/noise"
+	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/noise/protocol"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/conflict"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"time"
 )
+
+type protocolID = [sizeProtocolID]byte
+
+const sizeProtocolID = 90
 
 var (
 	ErrNoDiffFound = errors.New("sync: could not find a suitable diff to apply to the ledger")
@@ -21,7 +28,7 @@ type syncer struct {
 	ledger *wavelet.Ledger
 
 	roots    map[common.TransactionID]*wavelet.Transaction
-	accounts map[common.TransactionID]map[protocol.ID]struct{}
+	accounts map[common.TransactionID]map[protocolID]struct{}
 	resolver conflict.Resolver
 }
 
@@ -30,7 +37,7 @@ func newSyncer(node *noise.Node) *syncer {
 		node:     node,
 		ledger:   Ledger(node),
 		roots:    make(map[common.TransactionID]*wavelet.Transaction),
-		accounts: make(map[common.TransactionID]map[protocol.ID]struct{}),
+		accounts: make(map[common.TransactionID]map[protocolID]struct{}),
 		resolver: conflict.NewSnowball(),
 	}
 }
@@ -69,24 +76,44 @@ func (s *syncer) work() {
 			time.Sleep(1 * time.Millisecond)
 		}
 
+		logger := log.Sync("new")
+		logger.Info().
+			Hex("peer_proposed_root_id", rootID[:]).
+			Uint64("peer_proposed_view_id", root.ViewID).
+			Uint64("our_view_id", s.ledger.ViewID()).
+			Msg("It looks like the majority of our peers has a larger view ID than us. Instantiating sync...")
+
 		var peerIDs []protocol.ID
 
 		for peerID := range s.accounts[rootID] {
-			peerIDs = append(peerIDs, peerID)
+			id, err := skademlia.ID{}.Read(payload.NewReader(peerID[:]))
+			if err != nil {
+				continue
+			}
+
+			peerIDs = append(peerIDs, id.(skademlia.ID))
 		}
 
 		// Reset all state used for coming to consensus about the latest view-graph root.
 		s.roots = make(map[common.TransactionID]*wavelet.Transaction)
-		s.accounts = make(map[common.TransactionID]map[protocol.ID]struct{})
+		s.accounts = make(map[common.TransactionID]map[protocolID]struct{})
 
 		// TODO(kenta): stop any broadcasting/querying
 
-		fmt.Println(root)
-
 		err := s.queryAndApplyDiff(peerIDs, root)
 		if err != nil {
-			fmt.Println(err)
+			logger = log.Sync("error")
+			logger.Error().
+				Err(err).
+				Msg("Failed to find and apply ledger state differences from our peers.")
+			continue
 		}
+
+		logger = log.Sync("success")
+		logger.Info().
+			Hex("new_root_id", rootID[:]).
+			Uint64("new_view_id", root.ViewID).
+			Msg("Successfully synchronized with our peers.")
 
 		// TODO(kenta): have the ledger start serving broadcasts/queries again
 	}
@@ -98,10 +125,13 @@ func (s *syncer) addRootIfNotExists(account protocol.ID, root *wavelet.Transacti
 	}
 
 	if _, instantiated := s.accounts[root.ID]; !instantiated {
-		s.accounts[root.ID] = make(map[protocol.ID]struct{})
+		s.accounts[root.ID] = make(map[protocolID]struct{})
 	}
 
-	s.accounts[root.ID][account] = struct{}{}
+	var id protocolID
+	copy(id[:], account.Write())
+
+	s.accounts[root.ID][id] = struct{}{}
 }
 
 func (s *syncer) getRootByID(id common.TransactionID) *wavelet.Transaction {
@@ -194,12 +224,17 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 
 		// The diff did not get us the intended merkle root we wanted. Skip.
 		if snapshot.Checksum() != root.AccountsMerkleRoot {
+			fmt.Println("NO CHECKSUM")
 			continue
 		}
+
+		// TODO(kenta): sync difficulty and view-graph height
 
 		if _, err := s.ledger.Reset(root, snapshot); err != nil {
 			return err
 		}
+
+		return nil
 	}
 
 	return ErrNoDiffFound

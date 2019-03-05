@@ -17,6 +17,7 @@ var (
 	broadcaster zerolog.Logger
 	consensus   zerolog.Logger
 	contract    zerolog.Logger
+	syncer      zerolog.Logger
 	stake       zerolog.Logger
 	tx          zerolog.Logger
 )
@@ -30,6 +31,7 @@ const (
 	ModuleBroadcaster = "broadcaster"
 	ModuleConsensus   = "consensus"
 	ModuleContract    = "contract"
+	ModuleSync        = "sync"
 	ModuleStake       = "stake"
 	ModuleTx          = "tx"
 )
@@ -50,6 +52,7 @@ func setupChildLoggers() {
 	broadcaster = logger.With().Str(KeyModule, ModuleBroadcaster).Logger()
 	consensus = logger.With().Str(KeyModule, ModuleConsensus).Logger()
 	contract = logger.With().Str(KeyModule, ModuleContract).Logger()
+	syncer = logger.With().Str(KeyModule, ModuleSync).Logger()
 	stake = logger.With().Str(KeyModule, ModuleStake).Logger()
 	tx = logger.With().Str(KeyModule, ModuleTx).Logger()
 }
@@ -97,4 +100,8 @@ func Consensus(event string) zerolog.Logger {
 
 func Stake(event string) zerolog.Logger {
 	return stake.With().Str(KeyEvent, event).Logger()
+}
+
+func Sync(event string) zerolog.Logger {
+	return syncer.With().Str(KeyEvent, event).Logger()
 }

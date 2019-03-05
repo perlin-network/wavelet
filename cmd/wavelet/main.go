@@ -37,7 +37,7 @@ func main() {
 
 	flag.Parse()
 
-	log.Register(log.NewConsoleWriter(log.FilterFor("node", "consensus")))
+	log.Register(log.NewConsoleWriter(log.FilterFor("node", "consensus", "sync")))
 	logger := log.Node()
 
 	var keys identity.Keypair
