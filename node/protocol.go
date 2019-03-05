@@ -123,6 +123,9 @@ func handleSyncViewRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncVie
 }
 
 func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryRequest) {
+	ledger.ConsensusLock().RLock()
+	defer ledger.ConsensusLock().RUnlock()
+
 	// Only verify the transaction if it is a critical transaction.
 	if req.tx.IsCritical(ledger.Difficulty()) {
 		_ = ledger.ReceiveTransaction(req.tx)
@@ -146,6 +149,9 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 }
 
 func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipRequest) {
+	ledger.ConsensusLock().RLock()
+	defer ledger.ConsensusLock().RUnlock()
+
 	res := new(GossipResponse)
 
 	vote := ledger.ReceiveTransaction(req.tx)

@@ -29,6 +29,8 @@ type Ledger struct {
 	processors map[byte]TransactionProcessor
 
 	mu sync.Mutex
+
+	consensusLock sync.RWMutex
 }
 
 func NewLedger(kv store.KV, genesisPath string) *Ledger {
@@ -735,4 +737,8 @@ func (l *Ledger) saveViewID(viewID uint64) {
 
 func (l *Ledger) Resolver() conflict.Resolver {
 	return l.resolver
+}
+
+func (l *Ledger) ConsensusLock() *sync.RWMutex {
+	return &l.consensusLock
 }

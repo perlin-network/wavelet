@@ -56,10 +56,15 @@ func (b *broadcaster) work() {
 			b.broadcastingNops = false
 			b.querying(logger)
 		}
+
+		time.Sleep(100 * time.Millisecond) // TODO: Figure out a good period to sleep (seems that we are already sleeping in gossiping)
 	}
 }
 
 func (b *broadcaster) querying(logger zerolog.Logger) {
+	b.ledger.ConsensusLock().RLock()
+	defer b.ledger.ConsensusLock().RUnlock()
+
 	preferredID := b.ledger.Resolver().Preferred()
 
 	if preferredID == nil {
@@ -115,6 +120,9 @@ func (b *broadcaster) gossiping(logger zerolog.Logger) {
 			Hex("tx_id", nop.ID[:]).
 			Msg("Broadcasting out nop transaction.")
 	}
+
+	b.ledger.ConsensusLock().RLock()
+	defer b.ledger.ConsensusLock().RUnlock()
 
 	if b.ledger.ViewID() != item.tx.ViewID {
 		err := errors.New("broadcast: consensus round already finalized; submit transaction again")

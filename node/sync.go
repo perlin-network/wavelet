@@ -102,9 +102,13 @@ func (s *syncer) work() {
 		s.accounts = make(map[common.TransactionID]map[protocolID]struct{})
 		s.mu.Unlock()
 
-		// TODO(kenta): stop any broadcasting/querying
+		// TODO(heyang): Implement TryRLock at places where RLock is used.
+		s.ledger.ConsensusLock().Lock()
 
 		err := s.queryAndApplyDiff(peerIDs, root)
+
+		s.ledger.ConsensusLock().Unlock()
+
 		if err != nil {
 			logger = log.Sync("error")
 			logger.Error().
