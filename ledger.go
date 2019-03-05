@@ -3,7 +3,6 @@ package wavelet
 import (
 	"encoding/binary"
 	"github.com/perlin-network/noise/identity"
-	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
@@ -128,8 +127,19 @@ func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transactio
 	tx.ViewID = l.ViewID()
 
 	if tx.IsCritical(l.Difficulty()) {
+		// Insert account state Merkle tree root.
 		snapshot := l.collapseTransactions(tx.ParentIDs, false)
 		tx.AccountsMerkleRoot = snapshot.tree.Checksum()
+
+		// Insert difficulty timestamps.
+		tx.DifficultyTimestamps = make([]uint64, len(l.Root().DifficultyTimestamps))
+		copy(tx.DifficultyTimestamps, l.Root().DifficultyTimestamps)
+
+		tx.DifficultyTimestamps = append(tx.DifficultyTimestamps, l.Root().Timestamp)
+
+		if size := computeCriticalTimestampWindowSize(tx.ViewID); len(tx.DifficultyTimestamps) > size {
+			tx.DifficultyTimestamps = tx.DifficultyTimestamps[len(tx.DifficultyTimestamps)-size:]
+		}
 	}
 
 	senderSignature, err := eddsa.Sign(keys.PrivateKey(), tx.Write())
@@ -153,43 +163,47 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	}
 
 	if tx.ViewID < l.ViewID() {
-		return errors.Wrapf(VoteRejected, "wavelet: tx has view ID %d, but current view ID is %d", tx.ViewID, l.ViewID())
+		return errors.Wrapf(VoteRejected, "tx has view ID %d, but current view ID is %d", tx.ViewID, l.ViewID())
 	}
 
 	if tx.Sender == common.ZeroAccountID || tx.Creator == common.ZeroAccountID {
-		return errors.Wrap(VoteRejected, "wavelet: tx must have sender or creator")
+		return errors.Wrap(VoteRejected, "tx must have sender or creator")
 	}
 
 	if len(tx.ParentIDs) == 0 {
-		return errors.Wrap(VoteRejected, "wavelet: tx must have parents")
+		return errors.Wrap(VoteRejected, "tx must have parents")
 	}
 
 	if tx.Tag != sys.TagNop && len(tx.Payload) == 0 {
-		return errors.Wrap(VoteRejected, "wavelet: tx must have payload if not a nop transaction")
+		return errors.Wrap(VoteRejected, "tx must have payload if not a nop transaction")
 	}
 
 	if tx.Tag == sys.TagNop && len(tx.Payload) != 0 {
-		return errors.Wrap(VoteRejected, "wavelet: tx must have no payload if is a nop transaction")
+		return errors.Wrap(VoteRejected, "tx must have no payload if is a nop transaction")
 	}
 
 	if !l.assertValidSignature(tx) {
-		return errors.Wrap(VoteRejected, "wavelet: tx has either invalid creator or sender signatures")
+		return errors.Wrap(VoteRejected, "tx has either invalid creator or sender signatures")
 	}
 
 	if !l.assertValidTimestamp(tx) {
-		return errors.Wrap(VoteRejected, "wavelet: either tx timestamp is out of bounds, or parents not available")
+		return errors.Wrap(VoteRejected, "either tx timestamp is out of bounds, or parents not available")
 	}
 
 	if !l.assertValidParentDepths(tx) {
-		return errors.Wrap(VoteRejected, "wavelet: either parent depths are out of bounds, or parents not available")
+		return errors.Wrap(VoteRejected, "either parent depths are out of bounds, or parents not available")
 	}
 
 	critical := tx.IsCritical(l.Difficulty())
 	preferred := l.resolver.Preferred()
 
 	if critical {
+		if !l.assertValidCriticalTimestamps(tx) {
+			return errors.Wrap(VoteRejected, "tx is critical but has an invalid number of critical timestamps")
+		}
+
 		if valid, root := l.assertValidAccountsChecksum(tx); !valid {
-			return errors.Wrapf(VoteRejected, "wavelet: tx is critical but has invalid accounts root "+
+			return errors.Wrapf(VoteRejected, "tx is critical but has invalid accounts root "+
 				"checksum; collapsing down the critical transactions parents gives %x as the root, "+
 				"but the tx has %x as a root", root, tx.AccountsMerkleRoot)
 		}
@@ -197,7 +211,7 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 		// If our node already prefers a critical transaction, reject the
 		// incoming transaction.
 		if preferred != nil && tx.ID != preferred {
-			return errors.Wrap(VoteRejected, "wavelet: prefer other critical transaction")
+			return errors.Wrap(VoteRejected, "prefer other critical transaction")
 		}
 
 		// If our node does not prefer any critical transaction yet, set a critical
@@ -210,7 +224,7 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	if err := l.view.addTransaction(tx); err != nil {
 		switch errors.Cause(err) {
 		case ErrParentsNotAvailable:
-			return errors.Wrap(VoteRejected, "wavelet: parents for transaction are not in our view-graph")
+			return errors.Wrap(VoteRejected, "parents for transaction are not in our view-graph")
 		case ErrTxAlreadyExists:
 		}
 	}
@@ -250,6 +264,21 @@ func (l *Ledger) assertValidParentDepths(tx *Transaction) bool {
 		}
 
 		if parent.depth+sys.MaxEligibleParentsDepthDiff < tx.depth {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (l *Ledger) assertValidCriticalTimestamps(tx *Transaction) bool {
+	if len(tx.DifficultyTimestamps) != computeCriticalTimestampWindowSize(tx.ViewID) {
+		return false
+	}
+
+	// Check that difficulty timestamps are in ascending order.
+	for i := 1; i < len(tx.DifficultyTimestamps); i++ {
+		if tx.DifficultyTimestamps[i] < tx.DifficultyTimestamps[i-1] {
 			return false
 		}
 	}
@@ -339,21 +368,35 @@ func (l *Ledger) ComputeStakeDistribution(accounts []common.AccountID) map[commo
 	return weights
 }
 
-func (l *Ledger) Reset(newRoot *Transaction, newState accounts) (uint64, error) {
+func (l *Ledger) Reset(newRoot *Transaction, newState accounts) error {
+	// Reset any conflict resolving-related data.
 	l.resolver.Reset()
 
+	// Increment the view ID by 1.
 	l.saveViewID(newRoot.ViewID + 1)
 
 	l.accounts = newState
 
-	err := l.CommitAccounts()
-	if err != nil {
-		return newRoot.ViewID + 1, errors.Wrap(err, "wavelet: failed to collapse and commit new ledger state to db")
+	// Commit all account state to the database.
+	if err := l.CommitAccounts(); err != nil {
+		return errors.Wrap(err, "wavelet: failed to collapse and commit new ledger state to db")
 	}
 
+	// Reset the view-graph with the new root.
 	l.view.reset(newRoot)
 
-	return newRoot.ViewID + 1, nil
+	// Update ledgers difficulty.
+	original, adjusted := l.Difficulty(), l.computeNextDifficulty(newRoot)
+
+	logger := log.Consensus("update_difficulty")
+	logger.Info().
+		Uint64("old_difficulty", original).
+		Uint64("new_difficulty", adjusted).
+		Msg("Ledger difficulty has been adjusted.")
+
+	l.saveDifficulty(adjusted)
+
+	return nil
 }
 
 func (l *Ledger) ProcessQuery(counts map[interface{}]float64) error {
@@ -380,20 +423,14 @@ func (l *Ledger) ProcessQuery(counts map[interface{}]float64) error {
 			return errors.New("wavelet: could not find newly critical tx in view graph")
 		}
 
-		viewID, err := l.Reset(root, l.collapseTransactions(root.ParentIDs, true))
-		if err != nil {
+		if err := l.Reset(root, l.collapseTransactions(root.ParentIDs, true)); err != nil {
 			return errors.Wrap(err, "wavelet: failed to reset ledger to advance to new view ID")
-		}
-
-		err = l.adjustDifficulty(root)
-		if err != nil {
-			return errors.Wrap(err, "wavelet: failed to adjust difficulty")
 		}
 
 		logger := log.Consensus("round_end")
 		logger.Info().
-			Uint64("old_view_id", viewID-1).
-			Uint64("new_view_id", viewID).
+			Uint64("old_view_id", old.ViewID).
+			Uint64("new_view_id", root.ViewID+1).
 			Hex("new_root", root.ID[:]).
 			Hex("old_root", old.ID[:]).
 			Hex("new_accounts_checksum", root.AccountsMerkleRoot[:]).
@@ -404,37 +441,15 @@ func (l *Ledger) ProcessQuery(counts map[interface{}]float64) error {
 	return nil
 }
 
-func (l *Ledger) adjustDifficulty(critical *Transaction) error {
-	var timestamps []uint64
-
-	// Load critical timestamp history if it exists.
-	buf, err := l.kv.Get(keyCriticalTimestampHistory[:])
-	if len(buf) > 0 && err == nil {
-		reader := payload.NewReader(buf)
-
-		size, err := reader.ReadByte()
-		if err != nil {
-			panic(errors.Wrap(err, "wavelet: failed to read length of critical timestamp history"))
-		}
-
-		for i := 0; i < int(size); i++ {
-			timestamp, err := reader.ReadUint64()
-			if err != nil {
-				panic(errors.Wrap(err, "wavelet: failed to read a single historical critical timestamp"))
-			}
-
-			timestamps = append(timestamps, timestamp)
-		}
-	} else {
-		// Assume the genesis timestamp is perfect.
-		timestamps = append(timestamps, critical.Timestamp-sys.ExpectedConsensusTimeMilliseconds)
-	}
+func (l *Ledger) computeNextDifficulty(critical *Transaction) uint64 {
+	timestamps := make([]uint64, len(critical.DifficultyTimestamps))
+	copy(timestamps, critical.DifficultyTimestamps)
 
 	timestamps = append(timestamps, critical.Timestamp)
 
 	// Prune away critical timestamp history if needed.
-	if len(timestamps) > sys.CriticalTimestampAverageWindowSize+1 {
-		timestamps = timestamps[len(timestamps)-sys.CriticalTimestampAverageWindowSize+1:]
+	if size := computeCriticalTimestampWindowSize(critical.ViewID); len(timestamps) > size+1 {
+		timestamps = timestamps[len(timestamps)-size+1:]
 	}
 
 	var deltas []uint64
@@ -457,39 +472,13 @@ func (l *Ledger) adjustDifficulty(critical *Transaction) error {
 	// 		)
 	// 	)
 	expectedTimeFactor := float64(sys.ExpectedConsensusTimeMilliseconds) / float64(mean)
-	if expectedTimeFactor > 2.0 {
-		expectedTimeFactor = 2.0
+	if expectedTimeFactor > 10.0 {
+		expectedTimeFactor = 10.0
 	}
 
-	original := l.Difficulty()
+	difficulty := sys.MinDifficulty + int(float64(sys.MaxDifficulty-sys.MinDifficulty)/10.0*expectedTimeFactor)
 
-	adjusted := int(original) - int(sys.MaxDifficultyDelta/2) + int(float64(sys.MaxDifficultyDelta)/2.0*expectedTimeFactor)
-	if adjusted < sys.MinDifficulty {
-		adjusted = sys.MinDifficulty
-	}
-
-	l.saveDifficulty(uint64(adjusted))
-
-	logger := log.Consensus("update_difficulty")
-	logger.Info().
-		Uint64("old_difficulty", original).
-		Int("new_difficulty", adjusted).
-		Msg("Ledger difficulty has been adjusted.")
-
-	// Save critical timestamp history to disk.
-	writer := payload.NewWriter(nil)
-	writer.WriteByte(byte(len(timestamps)))
-
-	for _, timestamp := range timestamps {
-		writer.WriteUint64(timestamp)
-	}
-
-	err = l.kv.Put(keyCriticalTimestampHistory[:], writer.Bytes())
-	if err != nil {
-		return errors.Wrap(err, "wavelet: failed to save critical timestamp history")
-	}
-
-	return nil
+	return uint64(difficulty)
 }
 
 func (l *Ledger) RegisterProcessor(tag byte, processor TransactionProcessor) {

@@ -235,9 +235,7 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 			continue
 		}
 
-		// TODO(kenta): sync difficulty and view-graph height
-
-		if _, err := s.ledger.Reset(root, snapshot); err != nil {
+		if err := s.ledger.Reset(root, snapshot); err != nil {
 			return err
 		}
 

@@ -9,11 +9,9 @@ var (
 	keyAccountContractNumPages = [...]byte{0x5}
 	keyAccountContractPages    = [...]byte{0x6}
 
-	keyCriticalTimestampHistory = [...]byte{0x7}
+	keyLedgerDifficulty = [...]byte{0x7}
+	keyLedgerViewID     = [...]byte{0x8}
+	keyLedgerGenesis    = [...]byte{0x9}
 
-	keyLedgerDifficulty = [...]byte{0x8}
-	keyLedgerViewID     = [...]byte{0x9}
-	keyLedgerGenesis    = [...]byte{0x10}
-
-	keyGraphRoot = [...]byte{0x11}
+	keyGraphRoot = [...]byte{0x10}
 )

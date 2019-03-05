@@ -6,6 +6,7 @@ import (
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"math/bits"
@@ -31,6 +32,9 @@ type Transaction struct {
 
 	// Only set if the transaction is a critical transaction.
 	AccountsMerkleRoot [avl.MerkleHashSize]byte
+
+	// Only set if the transaction is a critical transaction.
+	DifficultyTimestamps []uint64
 
 	SenderSignature, CreatorSignature common.Signature
 
@@ -137,6 +141,24 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		if n != avl.MerkleHashSize {
 			return nil, errors.New("could not read enough bytes for accounts merkle root")
 		}
+
+		n, err := reader.ReadByte()
+		if err != nil {
+			return nil, errors.Wrap(err, "could not read number of difficulty timestamps")
+		}
+
+		if int(n) > sys.CriticalTimestampAverageWindowSize {
+			return nil, errors.Errorf("got %d difficulty timestamps when only expected %d timestamps", int(n), sys.CriticalTimestampAverageWindowSize)
+		}
+
+		for i := 0; i < int(n); i++ {
+			timestamp, err := reader.ReadUint64()
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to read difficulty timestamp")
+			}
+
+			t.DifficultyTimestamps = append(t.DifficultyTimestamps, timestamp)
+		}
 	}
 
 	n, err = reader.Read(t.SenderSignature[:])
@@ -183,6 +205,11 @@ func (t Transaction) Write() []byte {
 
 	if t.AccountsMerkleRoot != zero {
 		_, _ = writer.Write(t.AccountsMerkleRoot[:])
+
+		writer.WriteByte(byte(len(t.DifficultyTimestamps)))
+		for _, timestamp := range t.DifficultyTimestamps {
+			writer.WriteUint64(timestamp)
+		}
 	}
 
 	_, _ = writer.Write(t.SenderSignature[:])

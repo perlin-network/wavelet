@@ -1,6 +1,9 @@
 package wavelet
 
-import "sort"
+import (
+	"github.com/perlin-network/wavelet/sys"
+	"sort"
+)
 
 func computeMedianTimestamp(timestamps []uint64) (median uint64) {
 	sort.Slice(timestamps, func(i, j int) bool {
@@ -22,4 +25,13 @@ func computeMeanTimestamp(timestamps []uint64) (mean uint64) {
 	}
 
 	return
+}
+
+func computeCriticalTimestampWindowSize(viewID uint64) int {
+	size := sys.CriticalTimestampAverageWindowSize
+	if viewID+1 < uint64(size) {
+		size = int(viewID) + 1
+	}
+
+	return size
 }
