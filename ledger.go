@@ -166,6 +166,10 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 		return errors.Wrapf(VoteRejected, "tx has view ID %d, but current view ID is %d", tx.ViewID, l.ViewID())
 	}
 
+	if tx.ID == common.ZeroTransactionID {
+		return errors.Wrap(VoteRejected, "tx must not be empty")
+	}
+
 	if tx.Sender == common.ZeroAccountID || tx.Creator == common.ZeroAccountID {
 		return errors.Wrap(VoteRejected, "tx must have sender or creator")
 	}

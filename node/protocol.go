@@ -140,9 +140,12 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 		return
 	}
 
-	// Only verify the transaction if it is a critical transaction.
-	if req.tx.IsCritical(ledger.Difficulty()) {
-		_ = ledger.ReceiveTransaction(req.tx)
+	// If our node does not prefer any critical transaction yet, set a critical
+	// transaction to initially prefer.
+	//
+	// TODO(kenta): assert some properties about the transaction
+	if req.tx.IsCritical(ledger.Difficulty()) && ledger.Resolver().Preferred() == nil && req.tx.ID != ledger.Root().ID {
+		ledger.Resolver().Prefer(req.tx.ID)
 	}
 
 	if req.tx.ViewID == ledger.ViewID()-1 {
