@@ -44,34 +44,52 @@ func (s *syncer) work() {
 	var root *wavelet.Transaction
 
 	for {
-		err := s.queryForLatestView()
+		for {
+			err := s.queryForLatestView()
 
-		if err != nil {
-			continue
-		}
-
-		if s.resolver.Decided() {
-			// The view ID we came to consensus to being the latest within the network
-			// is less than or equal to ours. Go back to square one.
-			rootID = s.resolver.Preferred().(common.TransactionID)
-			s.resolver.Reset()
-
-			if root = s.getRootByID(rootID); s.ledger.Root().ID == rootID || root.ViewID+1 <= s.ledger.ViewID() {
-				time.Sleep(1 * time.Second)
+			if err != nil {
 				continue
 			}
 
-			break
+			if s.resolver.Decided() {
+				// The view ID we came to consensus to being the latest within the network
+				// is less than or equal to ours. Go back to square one.
+				rootID = s.resolver.Preferred().(common.TransactionID)
+
+				s.resolver.Reset()
+
+				if root = s.getRootByID(rootID); s.ledger.Root().ID == rootID || root.ViewID+1 <= s.ledger.ViewID() {
+					time.Sleep(1 * time.Second)
+					continue
+				}
+
+				break
+			}
+
+			time.Sleep(1 * time.Millisecond)
 		}
 
-		time.Sleep(1 * time.Millisecond)
+		var peerIDs []protocol.ID
+
+		for peerID := range s.accounts[rootID] {
+			peerIDs = append(peerIDs, peerID)
+		}
+
+		// Reset all state used for coming to consensus about the latest view-graph root.
+		s.roots = make(map[common.TransactionID]*wavelet.Transaction)
+		s.accounts = make(map[common.TransactionID]map[protocol.ID]struct{})
+
+		// TODO(kenta): stop any broadcasting/querying
+
+		fmt.Println(root)
+
+		err := s.queryAndApplyDiff(peerIDs, root)
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		// TODO(kenta): have the ledger start serving broadcasts/queries again
 	}
-
-	// Reset all state used for coming to consensus about the latest view-graphr oot.
-	s.roots = make(map[common.TransactionID]*wavelet.Transaction)
-
-	// TODO(kenta): stop any broadcasting/querying and download account state tree diffs
-	fmt.Println(root)
 }
 
 func (s *syncer) addRootIfNotExists(account protocol.ID, root *wavelet.Transaction) {
@@ -179,7 +197,9 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 			continue
 		}
 
-		s.ledger.Reset(root, snapshot)
+		if _, err := s.ledger.Reset(root, snapshot); err != nil {
+			return err
+		}
 	}
 
 	return ErrNoDiffFound
