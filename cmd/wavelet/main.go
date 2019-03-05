@@ -90,7 +90,9 @@ func main() {
 
 		peer.OnDisconnect(func(node *noise.Node, peer *noise.Peer) error {
 			logger.Info().Msgf("Peer %v has disconnected.", peer.RemoteIP().String()+":"+strconv.Itoa(int(peer.RemotePort())))
-			protocol.DeletePeerID(peer)
+
+			// TODO(kenta): don't immediately evict from table
+			skademlia.Table(node).Delete(protocol.PeerID(peer))
 			return nil
 		})
 
