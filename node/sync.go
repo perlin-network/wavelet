@@ -3,11 +3,17 @@ package node
 import (
 	"fmt"
 	"github.com/perlin-network/noise"
+	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/conflict"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"time"
+)
+
+var (
+	ErrNoDiffFound = errors.New("sync: could not find a suitable diff to apply to the ledger")
 )
 
 type syncer struct {
@@ -15,11 +21,18 @@ type syncer struct {
 	ledger *wavelet.Ledger
 
 	roots    map[common.TransactionID]*wavelet.Transaction
+	accounts map[common.TransactionID]map[protocol.ID]struct{}
 	resolver conflict.Resolver
 }
 
 func newSyncer(node *noise.Node) *syncer {
-	return &syncer{node: node, ledger: Ledger(node), roots: make(map[common.TransactionID]*wavelet.Transaction), resolver: conflict.NewSnowball()}
+	return &syncer{
+		node:     node,
+		ledger:   Ledger(node),
+		roots:    make(map[common.TransactionID]*wavelet.Transaction),
+		accounts: make(map[common.TransactionID]map[protocol.ID]struct{}),
+		resolver: conflict.NewSnowball(),
+	}
 }
 
 func (s *syncer) init() {
@@ -61,10 +74,16 @@ func (s *syncer) work() {
 	fmt.Println(root)
 }
 
-func (s *syncer) addRootIfNotExists(root *wavelet.Transaction) {
+func (s *syncer) addRootIfNotExists(account protocol.ID, root *wavelet.Transaction) {
 	if _, exists := s.roots[root.ID]; !exists {
 		s.roots[root.ID] = root
 	}
+
+	if _, instantiated := s.accounts[root.ID]; !instantiated {
+		s.accounts[root.ID] = make(map[protocol.ID]struct{})
+	}
+
+	s.accounts[root.ID][account] = struct{}{}
 }
 
 func (s *syncer) getRootByID(id common.TransactionID) *wavelet.Transaction {
@@ -77,16 +96,24 @@ func (s *syncer) queryForLatestView() error {
 		return errors.Wrap(err, "sync: response opcode not registered")
 	}
 
-	accounts, responses, err := broadcast(s.node, SyncViewRequest{root: s.ledger.Root()}, opcodeSyncViewResponse)
+	peerIDs, responses, err := broadcast(s.node, SyncViewRequest{root: s.ledger.Root()}, opcodeSyncViewResponse)
 	if err != nil {
 		return err
+	}
+
+	var accounts []common.AccountID
+	for _, peerID := range peerIDs {
+		var account common.AccountID
+		copy(account[:], peerID.PublicKey())
+
+		accounts = append(accounts, account)
 	}
 
 	votes := make(map[common.AccountID]common.TransactionID)
 	for i, res := range responses {
 		if res != nil {
 			root := res.(SyncViewResponse).root
-			s.addRootIfNotExists(root)
+			s.addRootIfNotExists(peerIDs[i], root)
 
 			votes[accounts[i]] = root.ID
 		}
@@ -103,4 +130,57 @@ func (s *syncer) queryForLatestView() error {
 	s.resolver.Tick(counts)
 
 	return nil
+}
+
+func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transaction) error {
+	opcodeSyncDiffResponse, err := noise.OpcodeFromMessage((*SyncDiffResponse)(nil))
+	if err != nil {
+		return errors.Wrap(err, "sync: response opcode not registered")
+	}
+
+	req := &SyncDiffRequest{viewID: s.ledger.ViewID()}
+
+	for _, peerID := range peerIDs {
+		var account common.AccountID
+		copy(account[:], peerID.PublicKey())
+
+		peer := protocol.Peer(s.node, peerID)
+		if peer == nil {
+			continue
+		}
+
+		// Send query request.
+		err := peer.SendMessage(req)
+		if err != nil {
+			continue
+		}
+
+		var res SyncDiffResponse
+
+		select {
+		case msg := <-peer.Receive(opcodeSyncDiffResponse):
+			res = msg.(SyncDiffResponse)
+		case <-time.After(sys.QueryTimeout):
+			continue
+		}
+
+		// The peer that originally gave us the root is giving us a different root! Skip.
+		if res.root.ID != root.ID {
+			continue
+		}
+
+		snapshot, err := s.ledger.SnapshotAccounts().ApplyDiff(res.diff)
+		if err != nil {
+			continue
+		}
+
+		// The diff did not get us the intended merkle root we wanted. Skip.
+		if snapshot.Checksum() != root.AccountsMerkleRoot {
+			continue
+		}
+
+		s.ledger.Reset(root, snapshot)
+	}
+
+	return ErrNoDiffFound
 }

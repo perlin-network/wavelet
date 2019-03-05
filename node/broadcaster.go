@@ -176,9 +176,17 @@ func (b *broadcaster) query(preferred *wavelet.Transaction) error {
 		return errors.Wrap(err, "broadcast: response opcode not registered")
 	}
 
-	accounts, responses, err := broadcast(b.node, QueryRequest{tx: preferred}, opcodeQueryResponse)
+	peerIDs, responses, err := broadcast(b.node, QueryRequest{tx: preferred}, opcodeQueryResponse)
 	if err != nil {
 		return err
+	}
+
+	var accounts []common.AccountID
+	for _, peerID := range peerIDs {
+		var account common.AccountID
+		copy(account[:], peerID.PublicKey())
+
+		accounts = append(accounts, account)
 	}
 
 	votes := make(map[common.AccountID]common.TransactionID)
@@ -209,9 +217,17 @@ func (b *broadcaster) gossip(tx *wavelet.Transaction) error {
 		return errors.Wrap(err, "broadcast: response opcode not registered")
 	}
 
-	accounts, responses, err := broadcast(b.node, GossipRequest{tx: tx}, opcodeGossipResponse)
+	peerIDs, responses, err := broadcast(b.node, GossipRequest{tx: tx}, opcodeGossipResponse)
 	if err != nil {
 		return err
+	}
+
+	var accounts []common.AccountID
+	for _, peerID := range peerIDs {
+		var account common.AccountID
+		copy(account[:], peerID.PublicKey())
+
+		accounts = append(accounts, account)
 	}
 
 	votes := make(map[common.AccountID]bool)

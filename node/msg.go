@@ -15,6 +15,8 @@ var (
 	_ noise.Message = (*QueryResponse)(nil)
 	_ noise.Message = (*SyncViewRequest)(nil)
 	_ noise.Message = (*SyncViewResponse)(nil)
+	_ noise.Message = (*SyncDiffRequest)(nil)
+	_ noise.Message = (*SyncDiffResponse)(nil)
 )
 
 type QueryRequest struct {
@@ -146,4 +148,49 @@ func (s SyncViewResponse) Read(reader payload.Reader) (noise.Message, error) {
 
 func (s SyncViewResponse) Write() []byte {
 	return s.root.Write()
+}
+
+type SyncDiffRequest struct {
+	viewID uint64
+}
+
+func (s SyncDiffRequest) Read(reader payload.Reader) (noise.Message, error) {
+	var err error
+
+	s.viewID, err = reader.ReadUint64()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read view ID")
+	}
+
+	return s, nil
+}
+
+func (s SyncDiffRequest) Write() []byte {
+	return payload.NewWriter(nil).WriteUint64(s.viewID).Bytes()
+}
+
+type SyncDiffResponse struct {
+	root *wavelet.Transaction
+	diff []byte
+}
+
+func (s SyncDiffResponse) Read(reader payload.Reader) (noise.Message, error) {
+	msg, err := wavelet.Transaction{}.Read(reader)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read root tx")
+	}
+
+	root := msg.(wavelet.Transaction)
+	s.root = &root
+
+	s.diff, err = reader.ReadBytes()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read diff")
+	}
+
+	return s, nil
+}
+
+func (s SyncDiffResponse) Write() []byte {
+	return payload.NewWriter(s.root.Write()).WriteBytes(s.diff).Bytes()
 }

@@ -29,6 +29,9 @@ type block struct {
 
 	opcodeSyncViewRequest  noise.Opcode
 	opcodeSyncViewResponse noise.Opcode
+
+	opcodeSyncDiffRequest  noise.Opcode
+	opcodeSyncDiffResponse noise.Opcode
 }
 
 func New() *block {
@@ -42,6 +45,8 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 	b.opcodeQueryResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*QueryResponse)(nil))
 	b.opcodeSyncViewRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncViewRequest)(nil))
 	b.opcodeSyncViewResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncViewResponse)(nil))
+	b.opcodeSyncDiffRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncDiffRequest)(nil))
+	b.opcodeSyncDiffResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncDiffResponse)(nil))
 
 	genesisPath := "config/genesis.json"
 
@@ -83,15 +88,25 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 			handleQueryRequest(ledger, peer, req.(QueryRequest))
 		case req := <-peer.Receive(b.opcodeSyncViewRequest):
 			handleSyncViewRequest(ledger, peer, req.(SyncViewRequest))
+		case req := <-peer.Receive(b.opcodeSyncDiffRequest):
+			handleSyncDiffRequest(ledger, peer, req.(SyncDiffRequest))
 		}
 	}
+}
+
+func handleSyncDiffRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffRequest) {
+	res := new(SyncDiffResponse)
+	res.root = ledger.Root()
+	res.diff = ledger.DumpDiff(req.viewID)
+
+	_ = <-peer.SendMessageAsync(res)
 }
 
 func handleSyncViewRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncViewRequest) {
 	// TODO(kenta): add additional checks to see if the incoming root is valid
 
 	syncer := Syncer(peer.Node())
-	syncer.addRootIfNotExists(req.root)
+	syncer.addRootIfNotExists(protocol.PeerID(peer), req.root)
 
 	if preferred := syncer.resolver.Preferred(); ledger.ViewID() < req.root.ViewID && preferred == nil {
 		syncer.resolver.Prefer(req.root.ID)
@@ -117,8 +132,8 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 
 	if req.tx.ViewID == ledger.ViewID()-1 {
 		res.preferred = ledger.Root().ID
-	} else {
-		res.preferred = ledger.Resolver().Preferred().(common.TransactionID)
+	} else if preferred := ledger.Resolver().Preferred(); preferred != nil {
+		res.preferred = preferred.(common.TransactionID)
 	}
 
 	logger := log.Consensus("query")

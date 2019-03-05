@@ -339,6 +339,23 @@ func (l *Ledger) ComputeStakeDistribution(accounts []common.AccountID) map[commo
 	return weights
 }
 
+func (l *Ledger) Reset(newRoot *Transaction, newState accounts) (uint64, error) {
+	l.resolver.Reset()
+
+	l.saveViewID(newRoot.ViewID + 1)
+
+	l.accounts = newState
+
+	err := l.CommitAccounts()
+	if err != nil {
+		return newRoot.ViewID + 1, errors.Wrap(err, "wavelet: failed to collapse and commit new ledger state to db")
+	}
+
+	l.view.reset(newRoot)
+
+	return newRoot.ViewID + 1, nil
+}
+
 func (l *Ledger) ProcessQuery(counts map[interface{}]float64) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -363,21 +380,10 @@ func (l *Ledger) ProcessQuery(counts map[interface{}]float64) error {
 			return errors.New("wavelet: could not find newly critical tx in view graph")
 		}
 
-		l.resolver.Reset()
-
-		ss := l.collapseTransactions(root.ParentIDs, true)
-
-		viewID := l.ViewID() + 1
-		l.saveViewID(viewID)
-
-		l.accounts = ss
-
-		err := l.CommitAccounts()
+		viewID, err := l.Reset(root, l.collapseTransactions(root.ParentIDs, true))
 		if err != nil {
-			return errors.Wrap(err, "wavelet: failed to collapse and commit new ledger state to db")
+			return errors.Wrap(err, "wavelet: failed to reset ledger to advance to new view ID")
 		}
-
-		l.view.reset(root)
 
 		err = l.adjustDifficulty(root)
 		if err != nil {
@@ -495,7 +501,7 @@ func (l *Ledger) RegisterProcessor(tag byte, processor TransactionProcessor) {
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
 func (l *Ledger) collapseTransactions(parentIDs []common.AccountID, logging bool) accounts {
-	ss := l.snapshotAccounts()
+	ss := l.SnapshotAccounts()
 	ss.tree.IncrementViewID()
 
 	visited := make(map[common.TransactionID]struct{})

@@ -19,8 +19,25 @@ func newAccounts(kv store.KV) accounts {
 	return accounts{kv: kv, tree: avl.New(kv)}
 }
 
-func (a accounts) snapshotAccounts() accounts {
+func (a accounts) Checksum() [avl.MerkleHashSize]byte {
+	return a.tree.Checksum()
+}
+
+func (a accounts) SnapshotAccounts() accounts {
 	return accounts{kv: a.kv, tree: avl.LoadFromSnapshot(a.kv, a.tree.Snapshot())}
+}
+
+func (a accounts) ApplyDiff(diff []byte) (accounts, error) {
+	err := a.tree.ApplyDiff(diff)
+	if err != nil {
+		return a, err
+	}
+
+	return accounts{kv: a.kv, tree: a.tree}, nil
+}
+
+func (a accounts) DumpDiff(viewID uint64) []byte {
+	return a.tree.DumpDiff(viewID)
 }
 
 func (a accounts) ReadAccountBalance(id common.AccountID) (uint64, bool) {

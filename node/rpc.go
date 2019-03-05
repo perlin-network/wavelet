@@ -22,13 +22,12 @@ func selectPeers(node *noise.Node, amount int) ([]protocol.ID, error) {
 	return peerIDs, nil
 }
 
-func broadcast(node *noise.Node, req noise.Message, res noise.Opcode) ([]common.AccountID, []noise.Message, error) {
+func broadcast(node *noise.Node, req noise.Message, resOpcode noise.Opcode) ([]protocol.ID, []noise.Message, error) {
 	peerIDs, err := selectPeers(node, sys.SnowballK)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	var accounts []common.AccountID
 	var responses []noise.Message
 
 	var mu sync.Mutex
@@ -39,7 +38,6 @@ func broadcast(node *noise.Node, req noise.Message, res noise.Opcode) ([]common.
 		mu.Lock()
 		defer mu.Unlock()
 
-		accounts = append(accounts, account)
 		responses = append(responses, res)
 	}
 
@@ -66,7 +64,7 @@ func broadcast(node *noise.Node, req noise.Message, res noise.Opcode) ([]common.
 			}
 
 			select {
-			case msg := <-peer.Receive(res):
+			case msg := <-peer.Receive(resOpcode):
 				record(account, msg)
 			case <-time.After(sys.QueryTimeout):
 				record(account, nil)
@@ -76,5 +74,5 @@ func broadcast(node *noise.Node, req noise.Message, res noise.Opcode) ([]common.
 
 	wg.Wait()
 
-	return accounts, responses, nil
+	return peerIDs, responses, nil
 }
