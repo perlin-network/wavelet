@@ -1,6 +1,7 @@
 package node
 
 import (
+	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/noise/protocol"
@@ -222,20 +223,24 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 
 		// The peer that originally gave us the root is giving us a different root! Skip.
 		if res.root.ID != root.ID {
+			fmt.Printf("Got ID %x instead of roots ID %x", res.root.ID, root.ID)
 			continue
 		}
 
 		snapshot, err := s.ledger.SnapshotAccounts().ApplyDiff(res.diff)
 		if err != nil {
+			panic(fmt.Sprintln("failed to apply diff", err))
 			continue
 		}
 
 		// The diff did not get us the intended merkle root we wanted. Skip.
 		if snapshot.Checksum() != root.AccountsMerkleRoot {
+			fmt.Printf("Got checksum %x instead of roots checksum %x\n", snapshot.Checksum(), root.AccountsMerkleRoot)
 			continue
 		}
 
 		if err := s.ledger.Reset(root, snapshot); err != nil {
+			fmt.Println("Failed to reset ledger", err)
 			return err
 		}
 
