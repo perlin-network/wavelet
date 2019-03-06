@@ -2,6 +2,8 @@ package wavelet
 
 import (
 	"encoding/binary"
+	"encoding/hex"
+	"fmt"
 	"github.com/perlin-network/noise/identity"
 	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/wavelet/avl"
@@ -158,7 +160,7 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if tx.ID == l.view.Root().ID {
+	if tx.ID == l.Root().ID {
 		return VoteAccepted
 	}
 
@@ -191,6 +193,11 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	}
 
 	if !l.assertValidTimestamp(tx) {
+		fmt.Println("TIMESTAMP", tx.Timestamp)
+		for _, parentID := range tx.ParentIDs {
+			fmt.Println(hex.EncodeToString(parentID[:]))
+		}
+		fmt.Println()
 		return errors.Wrap(VoteRejected, "either tx timestamp is out of bounds, or parents not available")
 	}
 
@@ -220,7 +227,7 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 
 		// If our node does not prefer any critical transaction yet, set a critical
 		// transaction to initially prefer.
-		if preferred == nil && tx.ID != l.view.Root().ID {
+		if preferred == nil && tx.ID != l.Root().ID {
 			l.resolver.Prefer(tx.ID)
 		}
 	}
@@ -311,7 +318,7 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 
 		timestamps = append(timestamps, popped.Timestamp)
 
-		if popped.ID == l.view.Root().ID || len(timestamps) == sys.MedianTimestampNumAncestors {
+		if popped.ID == l.Root().ID || len(timestamps) == sys.MedianTimestampNumAncestors {
 			break
 		}
 
@@ -418,7 +425,7 @@ func (l *Ledger) ProcessQuery(counts map[interface{}]float64) error {
 	// the view-graph, increment the current view ID, and update the current ledgers
 	// difficulty.
 	if l.resolver.Decided() {
-		old := l.view.Root()
+		old := l.Root()
 
 		rootID := l.resolver.Preferred().(common.TransactionID)
 		root, recorded := l.view.lookupTransaction(rootID)
@@ -498,7 +505,7 @@ func (l *Ledger) collapseTransactions(parentIDs []common.AccountID, logging bool
 	ss.SetViewID(l.Root().ViewID + 1)
 
 	visited := make(map[common.TransactionID]struct{})
-	visited[l.view.Root().ID] = struct{}{}
+	visited[l.Root().ID] = struct{}{}
 
 	q := queue.New()
 

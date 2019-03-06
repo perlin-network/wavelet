@@ -151,6 +151,41 @@ func main() {
 				Hex("root_id", ledger.Root().ID[:]).
 				Uint64("height", ledger.Height()).
 				Msg("Here is the current state of the ledger.")
+		case "tx":
+			if len(cmd) < 2 {
+				logger.Error().Msg("Please specify a transaction ID.")
+			}
+
+			buf, err := hex.DecodeString(cmd[1])
+
+			if err != nil || len(buf) != common.SizeTransactionID {
+				logger.Error().Msg("The transaction ID you specified is invalid.")
+				continue
+			}
+
+			var id common.TransactionID
+			copy(id[:], buf)
+
+			tx, exists := ledger.FindTransaction(id)
+			if !exists {
+				logger.Error().Msg("Could not find transaction in the ledger.")
+				continue
+			}
+
+			var parents []string
+			for _, parentID := range tx.ParentIDs {
+				parents = append(parents, hex.EncodeToString(parentID[:]))
+			}
+
+			logger.Info().
+				Strs("parents", parents).
+				Hex("accounts_merkle_root", tx.AccountsMerkleRoot[:]).
+				Uints64("difficulty_timestamps", tx.DifficultyTimestamps).
+				Hex("sender", tx.Sender[:]).
+				Hex("creator", tx.Creator[:]).
+				Uint8("tag", tx.Tag).
+				Uint64("timestamp", tx.Timestamp).
+				Msgf("Transaction: %s", cmd[1])
 		case "w":
 			if len(cmd) < 2 {
 				balance, _ := ledger.ReadAccountBalance(nodeID)
