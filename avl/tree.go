@@ -289,7 +289,6 @@ func (t *Tree) ApplyDiff(diff []byte) error {
 		t.pending.Store(n.id, n)
 	}
 
-	// TODO: validate AVL properties
 	t.viewID = root.viewID
 	t.root = root
 
