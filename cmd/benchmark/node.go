@@ -8,11 +8,15 @@ import (
 	"strings"
 )
 
-func spawn(port uint16, apiPort uint16, peers ...string) {
+func spawn(port uint16, apiPort uint16, randomWallet bool, peers ...string) {
 	cmd := exec.Command("./wavelet", "-p", strconv.Itoa(int(port)))
 
 	if apiPort != 0 {
 		cmd.Args = append(cmd.Args, "-api", strconv.Itoa(int(apiPort)))
+	}
+
+	if randomWallet {
+		cmd.Args = append(cmd.Args, "-w", " ")
 	}
 
 	if len(peers) > 0 {
