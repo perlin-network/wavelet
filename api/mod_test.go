@@ -76,38 +76,92 @@ func TestListTransaction(t *testing.T) {
 	gateway := New()
 	gateway.setup()
 
+	sess, err := gateway.registry.newSession()
+	assert.NoError(t, err)
+
 	tests := []struct {
 		name         string
-		sessionToken string
+		url          string
 		wantCode     int
+		wantError    string
+		wantResponse interface{}
 	}{
 		{
-			name:     "missing token",
+			name:     "sender not hex",
+			url:      "/tx/?sender=1",
+			wantCode: http.StatusBadRequest,
+			wantResponse: ErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  "sender ID must be presented as valid hex: encoding/hex: odd length hex string",
+			},
+		},
+		{
+			name:     "sender invalid length",
+			url:      "/tx/?sender=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
+			wantCode: http.StatusBadRequest,
+			wantResponse: ErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  "sender ID must be 32 bytes long",
+			},
+		},
+		{
+			name:     "creator not hex",
+			url:      "/tx/?creator=1",
+			wantCode: http.StatusBadRequest,
+			wantResponse: ErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  "creator ID must be presented as valid hex: encoding/hex: odd length hex string",
+			},
+		},
+		{
+			name:     "creator invalid length",
+			url:      "/tx/?creator=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
+			wantCode: http.StatusBadRequest,
+			wantResponse: ErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  "creator ID must be 32 bytes long",
+			},
+		},
+		{
+			name:     "creator not hex",
+			url:      "/tx/?creator=1",
+			wantCode: http.StatusBadRequest,
+			wantResponse: ErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  "creator ID must be presented as valid hex: encoding/hex: odd length hex string",
+			},
+		},
+		{
+			name:     "offset negative invalid",
+			url:      "/tx/?offset=-1",
 			wantCode: http.StatusBadRequest,
 		},
 		{
-			name:         "token not exist",
-			sessionToken: "invalid token",
-			wantCode:     http.StatusBadRequest,
+			name:     "limit negative invalid",
+			url:      "/tx/?limit=-1",
+			wantCode: http.StatusBadRequest,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			request := httptest.NewRequest("GET", "/tx/", nil)
-
-			if tc.sessionToken != "" {
-				request.Header.Add(HeaderSessionToken, tc.sessionToken)
-			}
+			request := httptest.NewRequest("GET", tc.url, nil)
+			request.Header.Add(HeaderSessionToken, sess.id)
 
 			w := httptest.NewRecorder()
 
 			gateway.router.ServeHTTP(w, request)
 
-			_, err := ioutil.ReadAll(w.Body)
+			response, err := ioutil.ReadAll(w.Body)
 			assert.Nil(t, err)
 
+			t.Log(string(response))
+
 			assert.Equal(t, tc.wantCode, w.Code, "status code")
+
+			if tc.wantResponse != nil {
+				assert.NoError(t, compareJson(tc.wantResponse, response))
+			}
 		})
 	}
 }
