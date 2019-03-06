@@ -8,12 +8,15 @@ import (
 	"strings"
 )
 
-func spawn(port uint16, peers ...string) {
-	var cmd *exec.Cmd
+func spawn(port uint16, apiPort uint16, peers ...string) {
+	cmd := exec.Command("./wavelet", "-p", strconv.Itoa(int(port)))
+
+	if apiPort != 0 {
+		cmd.Args = append(cmd.Args, "-api", strconv.Itoa(int(apiPort)))
+	}
+
 	if len(peers) > 0 {
-		cmd = exec.Command("./wavelet", "-p", strconv.Itoa(int(port)), strings.Join(peers, " "))
-	} else {
-		cmd = exec.Command("./wavelet", "-p", strconv.Itoa(int(port)))
+		cmd.Args = append(cmd.Args, strings.Join(peers, " "))
 	}
 
 	cmd.Stdout = os.Stdout

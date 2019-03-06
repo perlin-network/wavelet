@@ -12,9 +12,9 @@ func main() {
 
 	build()
 
-	spawn(nextAvailablePort())
-	spawn(nextAvailablePort())
-	spawn(nextAvailablePort())
+	spawn(nextAvailablePort(), nextAvailablePort())
+	spawn(nextAvailablePort(), nextAvailablePort())
+	spawn(nextAvailablePort(), nextAvailablePort())
 
 	select {}
 }
