@@ -152,7 +152,12 @@ func (s *syncer) queryForLatestView() error {
 		return errors.Wrap(err, "sync: response opcode not registered")
 	}
 
-	peerIDs, responses, err := broadcast(s.node, SyncViewRequest{root: s.ledger.Root()}, opcodeSyncViewResponse)
+	peerIDs, err := selectPeers(s.node, sys.SnowballK)
+	if err != nil {
+		return errors.Wrap(err, "sync: cannot query for peer view IDs")
+	}
+
+	responses, err := broadcast(s.node, peerIDs, SyncViewRequest{root: s.ledger.Root()}, opcodeSyncViewResponse)
 	if err != nil {
 		return err
 	}

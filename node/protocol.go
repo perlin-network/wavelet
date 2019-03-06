@@ -173,6 +173,8 @@ func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipReq
 		return
 	}
 
+	_, seen := ledger.FindTransaction(req.tx.ID)
+
 	vote := ledger.ReceiveTransaction(req.tx)
 	res.vote = errors.Cause(vote) == wavelet.VoteAccepted
 
@@ -180,6 +182,13 @@ func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipReq
 		logger.Debug().Hex("tx_id", req.tx.ID[:]).Msg("Gave a positive vote to a transaction.")
 	} else {
 		logger.Warn().Hex("tx_id", req.tx.ID[:]).Err(vote).Msg("Gave a negative vote to a transaction.")
+	}
+
+	// Gossip transaction out to our peers just once. Ignore any errors if gossiping out fails.
+	if !seen && res.vote {
+		go func() {
+			_ = BroadcastTransaction(peer.Node(), req.tx)
+		}()
 	}
 }
 

@@ -2,6 +2,7 @@ package node
 
 import (
 	"github.com/perlin-network/noise"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
@@ -219,7 +220,12 @@ func (b *broadcaster) query(preferred *wavelet.Transaction) error {
 		return errors.Wrap(err, "broadcast: response opcode not registered")
 	}
 
-	peerIDs, responses, err := broadcast(b.node, QueryRequest{tx: preferred}, opcodeQueryResponse)
+	peerIDs, err := selectPeers(b.node, sys.SnowballK)
+	if err != nil {
+		return errors.Wrap(err, "broadcast: cannot query")
+	}
+
+	responses, err := broadcast(b.node, peerIDs, QueryRequest{tx: preferred}, opcodeQueryResponse)
 	if err != nil {
 		return err
 	}
@@ -260,7 +266,12 @@ func (b *broadcaster) gossip(tx *wavelet.Transaction) error {
 		return errors.Wrap(err, "broadcast: response opcode not registered")
 	}
 
-	peerIDs, responses, err := broadcast(b.node, GossipRequest{tx: tx}, opcodeGossipResponse)
+	peerIDs, _ := selectPeers(b.node, skademlia.BucketSize())
+	if len(peerIDs) == 0 {
+		return errors.New("broadcast: cannot gossip because not connected to any peers")
+	}
+
+	responses, err := broadcast(b.node, peerIDs, GossipRequest{tx: tx}, opcodeGossipResponse)
 	if err != nil {
 		return err
 	}
