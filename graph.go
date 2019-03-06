@@ -101,48 +101,11 @@ func (g *graph) reset(root *Transaction) {
 	defer g.Unlock()
 
 	g.height = 0
+	g.transactions = make(map[common.TransactionID]*Transaction)
+	g.children = make(map[common.TransactionID][]common.TransactionID)
 
 	g.transactions[root.ID] = root
 	g.saveRoot(root)
-
-	// Prune away all of roots ancestors.
-	visited := make(map[common.TransactionID]struct{})
-	q := queue.New()
-
-	for _, parentID := range root.ParentIDs {
-		if parent, exists := g.transactions[parentID]; exists {
-			q.PushBack(parent)
-		}
-
-		visited[parentID] = struct{}{}
-	}
-
-	count := 0
-
-	for q.Len() > 0 {
-		popped := q.PopFront().(*Transaction)
-
-		for _, parentID := range popped.ParentIDs {
-			if _, seen := visited[parentID]; !seen {
-				if parent, exists := g.transactions[parentID]; exists {
-					q.PushBack(parent)
-				}
-				visited[parentID] = struct{}{}
-			}
-		}
-
-		delete(g.transactions, popped.ID)
-		delete(g.children, popped.ID)
-		count++
-
-		logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "pruned")
-		logger.Log().Msg("Pruned transaction away from view-graph.")
-	}
-
-	if count > 0 {
-		logger := log.Consensus("prune")
-		logger.Info().Int("count", count).Msg("Pruned away transactions from the view-graph.")
-	}
 }
 
 func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
