@@ -68,7 +68,7 @@ func (s *syncer) loop() {
 
 				s.resolver.Reset()
 
-				if root = s.getRootByID(rootID); s.ledger.Root().ID == rootID || root.ViewID+1 <= s.ledger.ViewID() {
+				if root = s.getRootByID(rootID); s.ledger.Root().ID == rootID || s.ledger.ViewID() >= root.ViewID+1 {
 					time.Sleep(1 * time.Second)
 					continue
 				}

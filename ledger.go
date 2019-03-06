@@ -495,7 +495,7 @@ func (l *Ledger) RegisterProcessor(tag byte, processor TransactionProcessor) {
 // It returns an updated accounts snapshot after applying all finalized transactions.
 func (l *Ledger) collapseTransactions(parentIDs []common.AccountID, logging bool) accounts {
 	ss := l.SnapshotAccounts()
-	ss.tree.IncrementViewID()
+	ss.SetViewID(l.Root().ViewID + 1)
 
 	visited := make(map[common.TransactionID]struct{})
 	visited[l.view.Root().ID] = struct{}{}

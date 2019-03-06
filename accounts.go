@@ -27,6 +27,10 @@ func (a accounts) SnapshotAccounts() accounts {
 	return accounts{kv: a.kv, tree: avl.LoadFromSnapshot(a.kv, a.tree.Snapshot())}
 }
 
+func (a accounts) SetViewID(viewID uint64) {
+	a.tree.SetViewID(viewID)
+}
+
 func (a accounts) ApplyDiff(diff []byte) (accounts, error) {
 	err := a.tree.ApplyDiff(diff)
 	if err != nil {
