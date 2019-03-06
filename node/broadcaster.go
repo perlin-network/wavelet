@@ -141,9 +141,16 @@ func (b *broadcaster) gossiping(logger zerolog.Logger) {
 			Hex("tx_id", popped.tx.ID[:]).
 			Msg("Broadcasting out queued transaction.")
 	case <-time.After(1 * time.Millisecond):
+		var self common.AccountID
+		copy(self[:], b.node.Keys.PublicKey())
+
+		balance, _ := b.ledger.ReadAccountBalance(self)
+
 		// If there is nothing we need to broadcast urgently, then broadcast
 		// a nop (if we have previously broadcasted a transaction beforehand).
-		if !b.broadcastingNops {
+		//
+		// If we do not have any balance either, do not broadcast any nops.
+		if !b.broadcastingNops || balance < sys.TransactionFeeAmount {
 			return
 		}
 

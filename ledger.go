@@ -518,7 +518,7 @@ func (l *Ledger) rewardValidators(ss accounts, tx *Transaction) error {
 		if popped.Sender != tx.Sender {
 			stake, _ := ss.ReadAccountStake(popped.Sender)
 
-			if stake > 0 {
+			if stake > sys.MinimumStake {
 				candidates = append(candidates, popped)
 				stakes = append(stakes, stake)
 
@@ -573,10 +573,10 @@ func (l *Ledger) rewardValidators(ss accounts, tx *Transaction) error {
 	senderBalance, _ := ss.ReadAccountBalance(tx.Sender)
 	recipientBalance, _ := ss.ReadAccountBalance(rewardee.Sender)
 
-	deducted := sys.ValidatorRewardAmount
+	deducted := sys.TransactionFeeAmount
 
 	if senderBalance < deducted {
-		return errors.Errorf("stake: sender does not have enough PERLs to pay transaction fees (requested %d PERLs)", deducted)
+		return errors.Errorf("stake: sender %x does not have enough PERLs to pay transaction fees (requested %d PERLs) to %x", tx.Sender, deducted, rewardee.Sender)
 	}
 
 	ss.WriteAccountBalance(tx.Sender, senderBalance-deducted)
