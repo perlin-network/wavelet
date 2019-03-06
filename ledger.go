@@ -162,7 +162,7 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 		return VoteAccepted
 	}
 
-	if tx.ViewID < l.ViewID() {
+	if tx.ViewID != l.ViewID() {
 		return errors.Wrapf(VoteRejected, "tx has view ID %d, but current view ID is %d", tx.ViewID, l.ViewID())
 	}
 
