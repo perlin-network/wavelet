@@ -12,6 +12,7 @@ require (
 	github.com/golang/snappy v0.0.1
 	github.com/google/uuid v1.1.0
 	github.com/gorilla/websocket v1.4.0
+	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
 	github.com/perlin-network/life v0.0.0-20190204091834-d05763d11050
 	github.com/perlin-network/noise v0.0.0-20190305074834-c3dca79c3e2a

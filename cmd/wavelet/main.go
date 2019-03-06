@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
+	"github.com/hashicorp/hcl"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher/aead"
 	"github.com/perlin-network/noise/handshake/ecdh"
@@ -17,6 +18,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/sys"
+	"github.com/pkg/errors"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -29,22 +31,48 @@ const (
 	DefaultC1 = 16
 )
 
+type Config struct {
+	Host    string
+	Port    uint
+	Wallet  string
+	APIPort uint
+}
+
 func main() {
+	configFlag := flag.String("c", "", "path to HCL config file, will override other arguments")
 	hostFlag := flag.String("h", "127.0.0.1", "host to listen for peers on")
 	portFlag := flag.Uint("p", 3000, "port to listen for peers on")
 	walletFlag := flag.String("w", "config/wallet.txt", "path to file containing hex-encoded private key")
-	apiFlag := flag.Int("api", 0, "port to host HTTP API on")
+	apiFlag := flag.Uint("api", 0, "port to host HTTP API on")
 
 	flag.Parse()
 
 	log.Register(log.NewConsoleWriter(log.FilterFor("node", "consensus", "sync")))
 	logger := log.Node()
 
+	var config Config
+	// If the config flag is not empty, read the configurations from the file.
+	// Otherwise, we read the configurations from the flags
+	if configFlag != nil && *configFlag != "" {
+		c, err := ReadConfigFile(*configFlag)
+		if err != nil {
+			logger.Fatal().Err(err)
+		}
+
+		config = *c
+	} else {
+		config = Config{}
+		config.Host = *hostFlag
+		config.Port = *portFlag
+		config.Wallet = *walletFlag
+		config.APIPort = *apiFlag
+	}
+
 	var keys identity.Keypair
 
-	privateKey, err := ioutil.ReadFile(*walletFlag)
+	privateKey, err := ioutil.ReadFile(config.Wallet)
 	if err != nil {
-		logger.Warn().Msgf("Could not find an existing wallet at %q. Generating a new wallet...", *walletFlag)
+		logger.Warn().Msgf("Could not find an existing wallet at %q. Generating a new wallet...", config.Wallet)
 
 		keys = skademlia.NewKeys(DefaultC1, DefaultC2)
 
@@ -55,12 +83,12 @@ func main() {
 	} else {
 		n, err := hex.Decode(privateKey, privateKey)
 		if err != nil {
-			logger.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", *walletFlag)
+			logger.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", config.Wallet)
 		}
 
 		keys, err = skademlia.LoadKeys(privateKey[:n], DefaultC1, DefaultC2)
 		if err != nil {
-			logger.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", *walletFlag)
+			logger.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", config.Wallet)
 		}
 
 		logger.Info().
@@ -71,8 +99,8 @@ func main() {
 
 	params := noise.DefaultParams()
 	params.Keys = keys
-	params.Host = *hostFlag
-	params.Port = uint16(*portFlag)
+	params.Host = config.Host
+	params.Port = uint16(config.Port)
 	params.MaxMessageSize = 4 * 1024 * 1024
 	params.SendMessageTimeout = 1 * time.Second
 
@@ -124,8 +152,8 @@ func main() {
 		logger.Info().Msgf("Bootstrapped with peers: %+v", peers)
 	}
 
-	if port := *apiFlag; port > 0 {
-		go api.New().StartHTTP(n, port)
+	if port := config.APIPort; port > 0 {
+		go api.New().StartHTTP(n, int(config.APIPort))
 	}
 
 	reader := bufio.NewReader(os.Stdin)
@@ -353,4 +381,62 @@ func main() {
 			}()
 		}
 	}
+}
+
+func ReadConfigFile(path string) (*Config, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open config file: %v", err)
+	}
+	defer f.Close()
+
+	data, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %v", err)
+	}
+
+	type hclconfig struct {
+		Host   string `hcl:"host"`
+		Port   int    `hcl:"port"`
+		Wallet string `hcl:"wallet"`
+
+		API struct {
+			Port int `hcl:"port"`
+		} `hcl:"api"`
+	}
+
+	var c hclconfig
+	err = hcl.Unmarshal(data, &c)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed unmarshal config file")
+	}
+
+	if c.Host == "" {
+		return nil, errors.New("host must be empty")
+	}
+
+	if c.Port == 0 {
+		return nil, errors.New("port must be empty")
+	}
+
+	if c.Wallet == "" {
+		return nil, errors.New("wallet must be empty")
+	}
+
+	if c.Port < 0 {
+		return nil, errors.New("port must be a positive number")
+	}
+
+	if c.API.Port < 0 {
+		return nil, errors.New("API port must be a positive number")
+	}
+
+	config := Config{
+		Host:    c.Host,
+		Port:    uint(c.Port),
+		Wallet:  c.Wallet,
+		APIPort: uint(c.API.Port),
+	}
+
+	return &config, nil
 }
