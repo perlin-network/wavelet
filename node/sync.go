@@ -227,6 +227,8 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 			continue
 		}
 
+		fmt.Println("Diff", res.diff)
+
 		snapshot, err := s.ledger.SnapshotAccounts().ApplyDiff(res.diff)
 		if err != nil {
 			panic(fmt.Sprintln("failed to apply diff", err))

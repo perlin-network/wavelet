@@ -110,6 +110,34 @@ func TestTree_Diff_Randomized(t *testing.T) {
 	assert.Equal(t, tree1.root.id, tree2.root.id)
 }
 
+func TestTree_ApplyEmptyDiff(t *testing.T) {
+	kv := store.NewInmem()
+	kv2 := store.NewInmem()
+
+	tree1 := New(kv)
+
+	for i := uint64(0); i < 50; i++ {
+		tree1.Insert([]byte("a"), []byte("b"))
+		tree1.viewID++
+	}
+
+	tree1.Insert([]byte("b"), []byte("c"))
+	tree1.viewID++
+
+	for i := uint64(0); i < 50; i++ {
+		tree1.Insert([]byte("a"), []byte("b"))
+		tree1.viewID++
+	}
+
+	tree2 := New(kv2)
+	tree2.Insert([]byte("a"), []byte("b"))
+	tree2.viewID++
+
+	assert.NoError(t, tree2.ApplyDiff(tree1.DumpDiff(tree2.viewID)))
+
+	assert.Equal(t, tree1.root.id, tree2.root.id)
+}
+
 func TestTree_Difference(t *testing.T) {
 	kv := store.NewInmem()
 	kv2 := store.NewInmem()

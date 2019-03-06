@@ -1,6 +1,7 @@
 package node
 
 import (
+	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/wavelet"
@@ -95,6 +96,7 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 }
 
 func handleSyncDiffRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffRequest) {
+	fmt.Println("Finding the diff between view IDs", req.viewID, "and", ledger.ViewID())
 	res := &SyncDiffResponse{
 		root: ledger.Root(),
 		diff: ledger.DumpDiff(req.viewID),
