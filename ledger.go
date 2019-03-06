@@ -518,15 +518,17 @@ func (l *Ledger) rewardValidators(ss accounts, tx *Transaction) error {
 		if popped.Sender != tx.Sender {
 			stake, _ := ss.ReadAccountStake(popped.Sender)
 
-			candidates = append(candidates, popped)
-			stakes = append(stakes, stake)
+			if stake > 0 {
+				candidates = append(candidates, popped)
+				stakes = append(stakes, stake)
 
-			totalStake += stake
+				totalStake += stake
 
-			// Record entropy source.
-			_, err := hasher.Write(popped.ID[:])
-			if err != nil {
-				return errors.Wrap(err, "stake: failed to hash transaction ID for entropy src")
+				// Record entropy source.
+				_, err := hasher.Write(popped.ID[:])
+				if err != nil {
+					return errors.Wrap(err, "stake: failed to hash transaction ID for entropy src")
+				}
 			}
 		}
 
