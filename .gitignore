@@ -27,3 +27,4 @@ vendor
 go.sum
 
 cmd/wavelet/testdb*
+cmd/benchmark/wavelet

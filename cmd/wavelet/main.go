@@ -37,7 +37,7 @@ func main() {
 
 	flag.Parse()
 
-	log.Register(log.NewConsoleWriter(log.FilterFor("node", "consensus", "sync")))
+	log.Register(log.NewConsoleWriter(log.FilterFor("node", "sync", "contract")))
 	logger := log.Node()
 
 	var keys identity.Keypair
@@ -137,7 +137,7 @@ func main() {
 		bytes, _, err := reader.ReadLine()
 
 		if err != nil {
-			logger.Fatal().Err(err).Msg("Failed to read input from user.")
+			continue
 		}
 
 		ledger := node.Ledger(n)
