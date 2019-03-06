@@ -2,8 +2,6 @@ package wavelet
 
 import (
 	"encoding/binary"
-	"encoding/hex"
-	"fmt"
 	"github.com/perlin-network/noise/identity"
 	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/wavelet/avl"
@@ -193,11 +191,6 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	}
 
 	if !l.assertValidTimestamp(tx) {
-		fmt.Println("TIMESTAMP", tx.Timestamp)
-		for _, parentID := range tx.ParentIDs {
-			fmt.Println(hex.EncodeToString(parentID[:]))
-		}
-		fmt.Println()
 		return errors.Wrap(VoteRejected, "either tx timestamp is out of bounds, or parents not available")
 	}
 
