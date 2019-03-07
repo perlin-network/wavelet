@@ -23,10 +23,9 @@ require (
 	github.com/rs/zerolog v1.11.0
 	github.com/stretchr/testify v1.3.0
 	github.com/tecbot/gorocksdb v0.0.0-20181010114359-8752a9433481
-	github.com/urfave/cli v1.20.0
 	github.com/valyala/fasthttp v1.2.0
 	go.uber.org/atomic v1.3.2
 	golang.org/x/crypto v0.0.0-20190123085648-057139ce5d2b
-	gopkg.in/urfave/cli.v1 v1.20.0 // indirect
+	gopkg.in/urfave/cli.v1 v1.20.0
 	gopkg.in/yaml.v2 v2.2.2 // indirect
 )
