@@ -117,6 +117,7 @@ func (n *node) init() error {
 	}
 
 	// Attempt to instantiate a session 100 times max.
+
 	for i := 0; i < 100; i++ {
 		if err = n.client.Init(); err == nil {
 			break
