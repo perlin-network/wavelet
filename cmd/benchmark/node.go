@@ -84,7 +84,7 @@ func (n *node) parseMessage(fields map[string]interface{}, msg string) error {
 	return nil
 }
 
-// wait waits until the node is fully initialized and ready for commanding
+// wait waits until the node is fully initialized and ready for commanding.
 func (n *node) wait() {
 	<-n.ready
 }

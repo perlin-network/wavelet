@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	logger "github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"os"
@@ -25,4 +26,11 @@ func main() {
 	wait(nodes...)
 
 	fmt.Println("Nodes are initialized!")
+
+	res, err := nodes[0].client.SendTransaction(sys.TagNop, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Sent a new transaction.", res.ID)
 }

@@ -95,6 +95,8 @@ func (c *Client) Request(path string, body, out interface{}) error {
 
 // Init instantiates a new session with the Wavelet nodes HTTP API.
 func (c *Client) Init() error {
+	var res SessionInitResponse
+
 	time := time.Now().UnixNano() * 1000
 	message := []byte(fmt.Sprintf("%s%d", SessionInitMessage, time))
 
@@ -109,8 +111,6 @@ func (c *Client) Init() error {
 		Signature:  hex.EncodeToString(signature),
 	}
 
-	var res SessionInitResponse
-
 	if err := c.Request(RouteSessionInit, &req, &res); err != nil {
 		return err
 	}
@@ -118,4 +118,26 @@ func (c *Client) Init() error {
 	c.SessionToken = res.Token
 
 	return nil
+}
+
+func (c *Client) SendTransaction(tag byte, payload []byte) (SendTransactionResponse, error) {
+	var res SendTransactionResponse
+
+	signature, err := eddsa.Sign(c.PrivateKey(), append([]byte{tag}, payload...))
+	if err != nil {
+		return res, errors.Wrap(err, "failed to sign send transaction message")
+	}
+
+	req := SendTransactionRequest{
+		Sender:    hex.EncodeToString(c.PublicKey()),
+		Tag:       tag,
+		Payload:   hex.EncodeToString(payload),
+		Signature: hex.EncodeToString(signature),
+	}
+
+	if err := c.Request(RouteTxSend, &req, &res); err != nil {
+		return res, err
+	}
+
+	return res, nil
 }
