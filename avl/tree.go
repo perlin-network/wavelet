@@ -17,6 +17,8 @@ const DefaultCacheSize = 128
 const MaxWriteBatchSize = 1024
 
 type Tree struct {
+	sync.RWMutex
+
 	maxWriteBatchSize int
 
 	kv store.KV
@@ -52,6 +54,9 @@ func LoadFromSnapshot(kv store.KV, ss Snapshot) *Tree {
 }
 
 func (t *Tree) WithLRUCache(size *int) *Tree {
+	t.Lock()
+	defer t.Unlock()
+
 	if size == nil {
 		t.cache = nil
 	} else {
@@ -62,11 +67,17 @@ func (t *Tree) WithLRUCache(size *int) *Tree {
 }
 
 func (t *Tree) WithMaxWriteBatchSize(maxWriteBatchSize int) *Tree {
+	t.Lock()
+	defer t.Unlock()
+
 	t.maxWriteBatchSize = maxWriteBatchSize
 	return t
 }
 
 func (t *Tree) Insert(key, value []byte) {
+	t.Lock()
+	defer t.Unlock()
+
 	if t.root == nil {
 		t.root = newLeafNode(t, key, value)
 	} else {
@@ -75,6 +86,9 @@ func (t *Tree) Insert(key, value []byte) {
 }
 
 func (t *Tree) Lookup(k []byte) ([]byte, bool) {
+	t.RLock()
+	defer t.RUnlock()
+
 	if t.root == nil {
 		return nil, false
 	}
@@ -83,6 +97,9 @@ func (t *Tree) Lookup(k []byte) ([]byte, bool) {
 }
 
 func (t *Tree) Delete(k []byte) bool {
+	t.Lock()
+	defer t.Unlock()
+
 	if t.root == nil {
 		return false
 	}
@@ -98,10 +115,16 @@ func (t *Tree) Snapshot() Snapshot {
 }
 
 func (t *Tree) Revert(snapshot Snapshot) {
+	t.Lock()
+	defer t.Unlock()
+
 	t.root = snapshot.root
 }
 
 func (t *Tree) Range(callback func(key, value []byte)) {
+	t.RLock()
+	defer t.RUnlock()
+
 	t.doRange(callback, t.root)
 }
 
@@ -120,6 +143,9 @@ func (t *Tree) doRange(callback func(k []byte, v []byte), n *node) {
 }
 
 func (t *Tree) PrintContents() {
+	t.RLock()
+	defer t.RUnlock()
+
 	if t.root != nil {
 		t.doPrintContents(t.root, 0)
 	} else {
@@ -128,6 +154,9 @@ func (t *Tree) PrintContents() {
 }
 
 func (t *Tree) doPrintContents(n *node, depth int) {
+	t.RLock()
+	defer t.RUnlock()
+
 	for i := 0; i < depth; i++ {
 		fmt.Print(" ")
 	}
@@ -144,6 +173,9 @@ func (t *Tree) queueWrite(n *node) {
 }
 
 func (t *Tree) Commit() error {
+	t.Lock()
+	defer t.Unlock()
+
 	for {
 		batch := t.kv.NewWriteBatch()
 
@@ -185,6 +217,9 @@ func (t *Tree) Commit() error {
 }
 
 func (t *Tree) Checksum() [MerkleHashSize]byte {
+	t.RLock()
+	defer t.RUnlock()
+
 	if t.root == nil {
 		return [MerkleHashSize]byte{}
 	}
@@ -222,10 +257,16 @@ func (t *Tree) mustLoadNode(id [MerkleHashSize]byte) *node {
 }
 
 func (t *Tree) SetViewID(viewID uint64) {
+	t.Lock()
+	defer t.Unlock()
+
 	t.viewID = viewID
 }
 
 func (t *Tree) DumpDiff(prevViewID uint64) []byte {
+	t.RLock()
+	defer t.RUnlock()
+
 	var stack queue.Queue
 	stack.PushBack(t.root)
 
@@ -250,6 +291,9 @@ func (t *Tree) DumpDiff(prevViewID uint64) []byte {
 }
 
 func (t *Tree) ApplyDiff(diff []byte) error {
+	t.Lock()
+	defer t.Unlock()
+
 	reader := bytes.NewReader(diff)
 
 	var root *node

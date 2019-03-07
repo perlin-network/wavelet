@@ -22,7 +22,7 @@ func main() {
 
 	nodes = append(nodes, spawn(port, nextAvailablePort(), false))
 
-	for i := 0; i < 1; i++ {
+	for i := 0; i < 2; i++ {
 		nodes = append(nodes, spawn(nextAvailablePort(), nextAvailablePort(), true, fmt.Sprintf("127.0.0.1:%d", port)))
 	}
 
@@ -40,19 +40,21 @@ func main() {
 
 	for {
 		var wg sync.WaitGroup
-		wg.Add(len(nodes))
+		wg.Add(len(nodes) * 10)
 
-		for _, node := range nodes {
-			go func() {
-				defer wg.Done()
+		for i := 0; i < 10; i++ {
+			for _, node := range nodes {
+				go func() {
+					defer wg.Done()
 
-				_, err := node.client.SendTransaction(sys.TagNop, nil)
-				if err != nil {
-					return
-				}
+					_, err := node.client.SendTransaction(sys.TagNop, nil)
+					if err != nil {
+						return
+					}
 
-				tps.Add(1)
-			}()
+					tps.Add(1)
+				}()
+			}
 		}
 
 		wg.Wait()
