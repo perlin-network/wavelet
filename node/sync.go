@@ -261,6 +261,9 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 
 	wg.Wait()
 
+	// Select a set of chunk hashes which more than 2/3rds of all
+	// queried peers believes provides a sufficient diff from our
+	// current view ID to our peers latest view ID.
 	for _, peers := range viewChunkHashes {
 		if len(peers) >= len(peerIDs)*2/3 {
 			selected = peers
@@ -316,7 +319,7 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 
 	collectedChunks := make([][]byte, len(chunkSources))
 
-	var successCount atomic.Uint32
+	var numCollectedChunks atomic.Uint32
 
 	wg.Add(len(chunkSources))
 
@@ -367,7 +370,7 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 				}
 
 				collectedChunks[chunkID] = res.diff
-				successCount.Add(1)
+				numCollectedChunks.Add(1)
 
 				break
 			}
@@ -376,7 +379,7 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 
 	wg.Wait()
 
-	if int(successCount.Load()) != len(chunkSources) {
+	if int(numCollectedChunks.Load()) != len(chunkSources) {
 		return errors.New("failed to fetch some chunks from our peers")
 	}
 
