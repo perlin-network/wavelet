@@ -11,6 +11,9 @@ const (
 	RouteTxSend      = "/tx/send"
 
 	HeaderSessionToken = "X-Session-Token"
+
+	ReqPost = "POST"
+	ReqGet  = "GET"
 )
 
 type SessionInitRequest struct {

@@ -37,7 +37,7 @@ func NewClient(config Config) (*Client, error) {
 }
 
 // Request will make a request to a given path, with a given body and return result in out.
-func (c *Client) Request(path string, body, out interface{}) error {
+func (c *Client) Request(path string, method string, body, out interface{}) error {
 	protocol := "http"
 	if c.Config.UseHTTPS {
 		protocol = "https"
@@ -49,7 +49,7 @@ func (c *Client) Request(path string, body, out interface{}) error {
 	}
 
 	req := &http.Request{
-		Method: "POST",
+		Method: method,
 		URL:    u,
 		Header: map[string][]string{
 			"Content-Type":         {"application/json"},
@@ -111,7 +111,7 @@ func (c *Client) Init() error {
 		Signature:  hex.EncodeToString(signature),
 	}
 
-	if err := c.Request(RouteSessionInit, &req, &res); err != nil {
+	if err := c.Request(RouteSessionInit, ReqPost, &req, &res); err != nil {
 		return err
 	}
 
@@ -135,7 +135,19 @@ func (c *Client) SendTransaction(tag byte, payload []byte) (SendTransactionRespo
 		Signature: hex.EncodeToString(signature),
 	}
 
-	if err := c.Request(RouteTxSend, &req, &res); err != nil {
+	if err := c.Request(RouteTxSend, ReqPost, &req, &res); err != nil {
+		return res, err
+	}
+
+	return res, nil
+}
+
+func (c *Client) GetTxnByID(txID string) (Transaction, error) {
+	var res Transaction
+
+	routeTxGet := fmt.Sprintf("/tx/%s", txID)
+
+	if err := c.Request(routeTxGet, ReqGet, nil, &res); err != nil {
 		return res, err
 	}
 

@@ -47,24 +47,6 @@ func main() {
 
 	app.Commands = []cli.Command{
 		{
-			Name:  "server_version",
-			Usage: "get the version information of the api server",
-			Flags: commonFlags,
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-				res, err := client.ServerVersion()
-				if err != nil {
-					return err
-				}
-				jsonOut, _ := json.Marshal(res)
-				fmt.Printf("%s\n", jsonOut)
-				return nil
-			},
-		},
-		{
 			Name:      "send_transaction",
 			Usage:     "send a transaction",
 			ArgsUsage: "<tag> <json payload>",
@@ -81,7 +63,7 @@ func main() {
 				}
 
 				payload := c.Args().Get(1)
-				tx, err := client.SendTransaction(uint32(tag), []byte(payload))
+				tx, err := client.SendTransaction(byte(tag), []byte(payload))
 				if err != nil {
 					return err
 				}
@@ -91,177 +73,24 @@ func main() {
 			},
 		},
 		{
-			Name:  "recent_transactions",
-			Usage: "get recent transactions",
-			Flags: commonFlags,
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-				transactions, err := client.RecentTransactions(nil)
-				if err != nil {
-					return err
-				}
-				for _, tx := range transactions {
-					jsonOut, _ := json.Marshal(tx)
-					fmt.Printf("%s\n", jsonOut)
-				}
-				return nil
-			},
-		},
-		cli.Command{
-			Name:  "poll_accounts",
-			Usage: "continuously receive account updates",
-			Flags: commonFlags,
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-				evChan, err := client.PollAccountUpdates(nil)
-				if err != nil {
-					return err
-				}
-				for ev := range evChan {
-					logger.Info().Msgf("%v", ev)
-				}
-				return nil
-			},
-		},
-		{
-			Name:      "poll_transactions",
-			Usage:     "continuously receive transaction updates",
-			ArgsUsage: "<accepted | applied>",
+			Name:      "get_transaction",
+			Usage:     "get a transaction",
+			ArgsUsage: "<transaction ID>",
 			Flags:     commonFlags,
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
 				if err != nil {
 					return err
 				}
-				event := c.Args().Get(0)
+				txID := c.Args().Get(0)
 
-				var evChan <-chan wire.Transaction
-				switch event {
-				case "accepted":
-					evChan, err = client.PollAcceptedTransactions(nil)
-				case "applied":
-					evChan, err = client.PollAppliedTransactions(nil)
-				default:
-					return errors.Errorf("invalid event type specified: %v", event)
-				}
+				tx, err := client.GetTxnByID(txID)
 				if err != nil {
 					return err
 				}
 
-				for ev := range evChan {
-					logger.Info().Msgf("%v", ev)
-				}
-				return nil
-			},
-		},
-		{
-			Name:  "stats_reset",
-			Usage: "reset the stats counters",
-			Flags: commonFlags,
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-				res := new(interface{})
-				if err := client.StatsReset(res); err != nil {
-					return err
-				}
-				jsonOut, _ := json.Marshal(res)
-				logger.Info().Msgf("%s", string(jsonOut))
-				return nil
-			},
-		},
-		{
-			Name:      "send_contract",
-			Usage:     "send a smart contract",
-			Flags:     commonFlags,
-			ArgsUsage: "<contract_filename>",
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-				filename := c.Args().Get(0)
-				tx, err := client.SendContract(filename)
-				if err != nil {
-					return err
-				}
 				jsonOut, _ := json.Marshal(tx)
 				fmt.Printf("%s\n", jsonOut)
-				return nil
-			},
-		},
-		{
-			Name:      "get_contract",
-			Usage:     "get smart contract by transaction ID",
-			Flags:     commonFlags,
-			ArgsUsage: "<transaction_id> <output_filename>",
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-
-				contractID := c.Args().Get(0)
-				filename := c.Args().Get(1)
-				if _, err = client.GetContract(contractID, filename); err != nil {
-					return err
-				}
-				logger.Info().Msgf("saved contract %s to file %s", contractID, filename)
-				return nil
-			},
-		},
-		{
-			Name:  "list_contracts",
-			Usage: "lists the most recent smart contracts",
-			Flags: commonFlags,
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-				contracts, err := client.ListContracts(nil, nil)
-				if err != nil {
-					return err
-				}
-				fmt.Println("Contract IDs:")
-				if len(contracts) == 0 {
-					fmt.Println("    none found")
-				} else {
-					for i, contract := range contracts {
-						fmt.Printf(" %d) %s\n", i+1, contract.TransactionID)
-					}
-				}
-				return nil
-			},
-		},
-		{
-			Name:  "execute_contract",
-			Usage: "executes a contract",
-			Flags: commonFlags,
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-
-				contractID := c.Args().Get(0)
-				entry := c.Args().Get(1)
-				param := c.Args().Get(2)
-
-				result, err := client.ExecuteContract(contractID, entry, []byte(param))
-				if err != nil {
-					return err
-				}
-
-				fmt.Println(string(result.Result))
 				return nil
 			},
 		},
@@ -293,12 +122,13 @@ func setup(c *cli.Context) (*wctl.Client, error) {
 		return nil, errors.Wrapf(err, "Unable to open api private key file: %s", privateKeyFile)
 	}
 
-	client, err := wctl.NewClient(wctl.Config{
-		APIHost:    host,
-		APIPort:    port,
-		PrivateKey: common.PrivateKey(privateKeyBytes),
-		UseHTTPS:   false,
-	})
+	config := wctl.Config{
+		APIHost:  host,
+		APIPort:  uint16(port),
+		UseHTTPS: false,
+	}
+	copy(config.RawPrivateKey[:], privateKeyBytes)
+	client, err := wctl.NewClient(config)
 	if err != nil {
 		return nil, err
 	}
