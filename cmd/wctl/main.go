@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
@@ -16,8 +15,6 @@ import (
 )
 
 func main() {
-
-	logger := log.Node()
 	app := cli.NewApp()
 
 	app.Name = "wctl"
@@ -63,6 +60,7 @@ func main() {
 				}
 
 				payload := c.Args().Get(1)
+
 				tx, err := client.SendTransaction(byte(tag), []byte(payload))
 				if err != nil {
 					return err
@@ -100,7 +98,7 @@ func main() {
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	if err := app.Run(os.Args); err != nil {
-		logger.Error().Msgf("Failed to parse configuration/command-line arguments: %v", err)
+		fmt.Printf("Failed to parse configuration/command-line arguments: %v\n", err)
 	}
 }
 
