@@ -79,10 +79,6 @@ func main() {
 			Value: 0,
 			Usage: "Host a local HTTP API at port.",
 		}),
-		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
-			Name:  "peers",
-			Usage: "Bootstrap to peers whose address are formatted as tcp://[host]:[port] from `PEERS`.",
-		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "sys.query_timeout",
 			Value: 10,
@@ -174,7 +170,7 @@ func main() {
 			Port:    c.Uint("port"),
 			Wallet:  c.String("wallet"),
 			APIPort: c.Uint("api.port"),
-			Peers:   c.StringSlice("peers"),
+			Peers:   c.Args(),
 		}
 
 		// set the the sys variables
