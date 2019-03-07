@@ -7,7 +7,7 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
-	"github.com/urfave/cli"
+	"gopkg.in/urfave/cli.v1"
 	"io/ioutil"
 	"os"
 	"sort"
@@ -121,17 +121,29 @@ func main() {
 		{
 			Name:  "poll_accounts",
 			Usage: "continuously receive account updates",
-			Flags: commonFlags,
+			Flags: append(commonFlags,
+				[]cli.Flag{
+					cli.StringFlag{
+						Name:  "account_id",
+						Usage: "account id to list (default: all)",
+					},
+				}...,
+			),
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
 				if err != nil {
 					return err
 				}
-				// TODO:
-				// accountID :=
+
+				// get these optional variables
+				var accountID *string
+				if len(c.String("account_id")) > 0 {
+					tmp := c.String("account_id")
+					accountID = &tmp
+				}
 
 				client.UseHTTPS = true
-				evChan, err := client.PollAccounts(nil, nil)
+				evChan, err := client.PollAccounts(nil, accountID)
 				if err != nil {
 					return err
 				}
@@ -146,17 +158,29 @@ func main() {
 		{
 			Name:  "poll_contracts",
 			Usage: "continuously receive contract updates",
-			Flags: commonFlags,
+			Flags: append(commonFlags,
+				[]cli.Flag{
+					cli.StringFlag{
+						Name:  "contract_id",
+						Usage: "contract id to list (default: all)",
+					},
+				}...,
+			),
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
 				if err != nil {
 					return err
 				}
-				// TODO:
-				// contractID :=
+
+				// get these optional variables
+				var contractID *string
+				if len(c.String("contract_id")) > 0 {
+					tmp := c.String("contract_id")
+					contractID = &tmp
+				}
 
 				client.UseHTTPS = true
-				evChan, err := client.PollContracts(nil, nil)
+				evChan, err := client.PollContracts(nil, contractID)
 				if err != nil {
 					return err
 				}
@@ -171,19 +195,47 @@ func main() {
 		{
 			Name:  "poll_transactions",
 			Usage: "continuously receive transaction updates",
-			Flags: commonFlags,
+			Flags: append(commonFlags,
+				[]cli.Flag{
+					cli.StringFlag{
+						Name:  "tx_id",
+						Usage: "transactions to list (default: all)",
+					},
+					cli.StringFlag{
+						Name:  "sender_id",
+						Usage: "sender id of transactions to list (default: all)",
+					},
+					cli.StringFlag{
+						Name:  "creator_id",
+						Usage: "creator id of transactions to list (default: all)",
+					},
+				}...,
+			),
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
 				if err != nil {
 					return err
 				}
-				// TODO:
-				// txID :=
-				// senderID :=
-				// creatorID :=
+
+				// get these optional variables
+				var txID *string
+				var senderID *string
+				var creatorID *string
+				if len(c.String("tx_id")) > 0 {
+					tmp := c.String("tx_id")
+					txID = &tmp
+				}
+				if len(c.String("sender_id")) > 0 {
+					tmp := c.String("sender_id")
+					senderID = &tmp
+				}
+				if len(c.String("creator_id")) > 0 {
+					tmp := c.String("creator_id")
+					creatorID = &tmp
+				}
 
 				client.UseHTTPS = true
-				evChan, err := client.PollTransactions(nil, nil, nil, nil)
+				evChan, err := client.PollTransactions(nil, txID, senderID, creatorID)
 				if err != nil {
 					return err
 				}
@@ -198,15 +250,55 @@ func main() {
 		{
 			Name:  "ledger_status",
 			Usage: "get the status of the ledger",
-			Flags: commonFlags,
+			Flags: append(commonFlags,
+				[]cli.Flag{
+					cli.StringFlag{
+						Name:  "sender_id",
+						Usage: "sender id of transactions to list (default: all)",
+					},
+					cli.StringFlag{
+						Name:  "creator_id",
+						Usage: "creator id of transactions to list (default: all)",
+					},
+					cli.IntFlag{
+						Name:  "offset",
+						Usage: "an offset of the number of transactions to list",
+					},
+					cli.IntFlag{
+						Name:  "limit",
+						Usage: "limit to max number of transactions to list",
+					},
+				}...,
+			),
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
 				if err != nil {
 					return err
 				}
-				// TODO: get optional parameters
 
-				txns, err := client.GetLedgerStatus(nil, nil, nil, nil)
+				// get these optional variables
+				var senderID *string
+				var creatorID *string
+				var offset *uint64
+				var limit *uint64
+				if len(c.String("sender_id")) > 0 {
+					tmp := c.String("sender_id")
+					senderID = &tmp
+				}
+				if len(c.String("creator_id")) > 0 {
+					tmp := c.String("creator_id")
+					creatorID = &tmp
+				}
+				if c.Uint("offset") > 0 {
+					tmp := uint64(c.Uint("offset"))
+					offset = &tmp
+				}
+				if c.Uint("limit") > 0 {
+					tmp := uint64(c.Uint("limit"))
+					limit = &tmp
+				}
+
+				txns, err := client.GetLedgerStatus(senderID, creatorID, offset, limit)
 				if err != nil {
 					return err
 				}
@@ -264,17 +356,30 @@ func main() {
 		{
 			Name:      "get_contract_pages",
 			Usage:     "get the page of a contract",
-			ArgsUsage: "<contract ID> <page index>",
-			Flags:     commonFlags,
+			ArgsUsage: "<contract ID>",
+			Flags: append(commonFlags,
+				[]cli.Flag{
+					cli.StringFlag{
+						Name:  "page_idx",
+						Usage: "page offset of the contract",
+					},
+				}...,
+			),
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
 				if err != nil {
 					return err
 				}
 				contractID := c.Args().Get(0)
-				// TODO: get optional page idx
 
-				_, err = client.GetContractPages(contractID, nil)
+				// get these optional variables
+				var pageIdx *uint64
+				if c.Uint("page_idx") > 0 {
+					tmp := uint64(c.Uint("page_idx"))
+					pageIdx = &tmp
+				}
+
+				_, err = client.GetContractPages(contractID, pageIdx)
 				if err != nil {
 					return err
 				}
@@ -335,16 +440,55 @@ func main() {
 		{
 			Name:  "list_transactions",
 			Usage: "list recent transactions",
-			Flags: commonFlags,
+			Flags: append(commonFlags,
+				[]cli.Flag{
+					cli.StringFlag{
+						Name:  "sender_id",
+						Usage: "sender id of transactions to list (default: all)",
+					},
+					cli.StringFlag{
+						Name:  "creator_id",
+						Usage: "creator id of transactions to list (default: all)",
+					},
+					cli.IntFlag{
+						Name:  "offset",
+						Usage: "an offset of the number of transactions to list",
+					},
+					cli.IntFlag{
+						Name:  "limit",
+						Usage: "limit to max number of transactions to list",
+					},
+				}...,
+			),
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
 				if err != nil {
 					return err
 				}
 
-				// TODO: get all these optional parameters
+				// get these optional variables
+				var senderID *string
+				var creatorID *string
+				var offset *uint64
+				var limit *uint64
+				if len(c.String("sender_id")) > 0 {
+					tmp := c.String("sender_id")
+					senderID = &tmp
+				}
+				if len(c.String("creator_id")) > 0 {
+					tmp := c.String("creator_id")
+					creatorID = &tmp
+				}
+				if c.Uint("offset") > 0 {
+					tmp := uint64(c.Uint("offset"))
+					offset = &tmp
+				}
+				if c.Uint("limit") > 0 {
+					tmp := uint64(c.Uint("limit"))
+					limit = &tmp
+				}
 
-				txns, err := client.ListTransactions(nil, nil, nil, nil)
+				txns, err := client.ListTransactions(senderID, creatorID, offset, limit)
 				if err != nil {
 					return err
 				}

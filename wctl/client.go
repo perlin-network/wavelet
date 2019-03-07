@@ -272,15 +272,15 @@ func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *
 	return evChan, nil
 }
 
-func (c *Client) GetLedgerStatus(sender *string, creator *string, offset *uint64, limit *uint64) ([]Transaction, error) {
+func (c *Client) GetLedgerStatus(senderID *string, creatorID *string, offset *uint64, limit *uint64) ([]Transaction, error) {
 	var res []Transaction
 
 	path := fmt.Sprintf("%s?", RouteLedger)
-	if sender != nil {
-		path = fmt.Sprintf("%ssender=%s&", path, *sender)
+	if senderID != nil {
+		path = fmt.Sprintf("%ssender=%s&", path, *senderID)
 	}
-	if creator != nil {
-		path = fmt.Sprintf("%screator=%s&", path, *creator)
+	if creatorID != nil {
+		path = fmt.Sprintf("%screator=%s&", path, *creatorID)
 	}
 	if offset != nil {
 		path = fmt.Sprintf("%soffset=%d&", path, *offset)
@@ -335,15 +335,15 @@ func (c *Client) GetContractPages(contractID string, index *uint64) (interface{}
 	return res, nil
 }
 
-func (c *Client) ListTransactions(sender *string, creator *string, offset *uint64, limit *uint64) ([]Transaction, error) {
+func (c *Client) ListTransactions(senderID *string, creatorID *string, offset *uint64, limit *uint64) ([]Transaction, error) {
 	var res []Transaction
 
 	path := fmt.Sprintf("%s?", RouteTxList)
-	if sender != nil {
-		path = fmt.Sprintf("%ssender=%s&", path, *sender)
+	if senderID != nil {
+		path = fmt.Sprintf("%ssender=%s&", path, *senderID)
 	}
-	if creator != nil {
-		path = fmt.Sprintf("%screator=%s&", path, *creator)
+	if creatorID != nil {
+		path = fmt.Sprintf("%screator=%s&", path, *creatorID)
 	}
 	if offset != nil {
 		path = fmt.Sprintf("%soffset=%d&", path, *offset)
