@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"encoding/hex"
-	"flag"
 	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher/aead"
@@ -39,6 +38,7 @@ type Config struct {
 	Port    uint
 	Wallet  string
 	APIPort uint
+	Peers   []string
 }
 
 func main() {
@@ -79,6 +79,10 @@ func main() {
 			Value: 0,
 			Usage: "Host a local HTTP API at port.",
 		}),
+		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
+			Name:  "peers",
+			Usage: "Bootstrap to peers whose address are formatted as tcp://[host]:[port] from `PEERS`.",
+		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "sys.query_timeout",
 			Value: 10,
@@ -93,6 +97,10 @@ func main() {
 			Name:  "sys.median_timestamp_num_ancestors",
 			Value: 5,
 			Usage: "Number of ancestors to derive a median timestamp from.",
+		}),
+		altsrc.NewUint64Flag(cli.Uint64Flag{
+			Name:  "sys.transaction_fee_amount",
+			Value: 2,
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.validator_reward_amount",
@@ -166,7 +174,22 @@ func main() {
 			Port:    c.Uint("port"),
 			Wallet:  c.String("wallet"),
 			APIPort: c.Uint("api.port"),
+			Peers:   c.StringSlice("peers"),
 		}
+
+		// set the the sys variables
+		sys.SnowballK = c.Int("sys.snowball.k")
+		sys.SnowballAlpha = c.Float64("sys.snowball.alpha")
+		sys.SnowballBeta = c.Int("sys.snowball.beta")
+		sys.QueryTimeout = time.Duration(c.Int("sys.query_timeout")) * time.Second
+		sys.MaxEligibleParentsDepthDiff = c.Uint64("sys.max_eligible_parents_depth_diff")
+		sys.MinDifficulty = c.Int("sys.difficulty.min")
+		sys.MaxDifficulty = c.Int("sys.difficulty.max")
+		sys.MedianTimestampNumAncestors = c.Int("sys.median_timestamp_num_ancestors")
+		sys.TransactionFeeAmount = c.Uint64("transaction_fee_amount")
+		sys.ExpectedConsensusTimeMilliseconds = c.Uint64("sys.expected_consensus_time")
+		sys.CriticalTimestampAverageWindowSize = c.Int("sys.critical_timestamp_average_window_size")
+		sys.MinimumStake = c.Uint64("sys.min_stake")
 
 		// start the server
 		n := runServer(config, logger)
@@ -257,8 +280,8 @@ func runServer(config *Config, logger zerolog.Logger) *noise.Node {
 
 	logger.Info().Uint16("port", n.ExternalPort()).Msg("Listening for peers.")
 
-	if len(flag.Args()) > 0 {
-		for _, address := range flag.Args() {
+	if len(config.Peers) > 0 {
+		for _, address := range config.Peers {
 			peer, err := n.Dial(address)
 			if err != nil {
 				logger.Fatal().Err(err).Msg("Failed to dial specified peer.")
