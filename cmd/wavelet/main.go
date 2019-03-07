@@ -5,8 +5,6 @@ import (
 	"encoding/hex"
 	"flag"
 	"fmt"
-	"github.com/hashicorp/hcl"
-	"github.com/jessevdk/go-flags"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher/aead"
 	"github.com/perlin-network/noise/handshake/ecdh"
@@ -19,9 +17,12 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/sys"
-	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+	"gopkg.in/urfave/cli.v1"
+	"gopkg.in/urfave/cli.v1/altsrc"
 	"io/ioutil"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -43,11 +44,143 @@ func main() {
 	log.Register(log.NewConsoleWriter(log.FilterFor("node", "consensus", "sync")))
 	logger := log.Node()
 
-	config, err := ReadConfig()
-	if err != nil {
-		logger.Fatal().Err(err).Msg("failed to parse config")
+	app := cli.NewApp()
+
+	app.Name = "wavelet"
+	app.Author = "Perlin Network"
+	app.Email = "support@perlin.net"
+	app.Version = sys.Version
+	app.Usage = "a bleeding fast ledger with a powerful compute layer"
+
+	app.Flags = []cli.Flag{
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:  "host",
+			Value: "127.0.0.1",
+			Usage: "Listen for peers on host address.",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "port",
+			Value: 3000,
+			Usage: "Listen for peers on port.",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:  "wallet",
+			Value: "config/wallet.txt",
+			Usage: "path to file containing hex-encoded private key. If empty, a random wallet will be generated.",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "api.port",
+			Value: 0,
+			Usage: "Host a local HTTP API at port.",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "sys.query_timeout",
+			Value: 10,
+			Usage: "Timeout in seconds for querying a transaction to K peers.",
+		}),
+		altsrc.NewUint64Flag(cli.Uint64Flag{
+			Name:  "sys.max_eligible_parents_depth_diff",
+			Value: 5,
+			Usage: "Max graph depth difference to search for eligible transaction parents from for our node.",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "sys.median_timestamp_num_ancestors",
+			Value: 5,
+			Usage: "Number of ancestors to derive a median timestamp from.",
+		}),
+		altsrc.NewUint64Flag(cli.Uint64Flag{
+			Name:  "sys.validator_reward_amount",
+			Value: 2,
+		}),
+		altsrc.NewUint64Flag(cli.Uint64Flag{
+			Name:  "sys.expected_consensus_time",
+			Value: 1000,
+			Usage: "In milliseconds.",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "sys.critical_timestamp_average_window_size",
+			Value: 3,
+		}),
+		altsrc.NewUint64Flag(cli.Uint64Flag{
+			Name:  "sys.min_stake",
+			Value: 100,
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "sys.snowball.k",
+			Value: 1,
+			Usage: "Snowball consensus protocol parameter k",
+		}),
+		altsrc.NewFloat64Flag(cli.Float64Flag{
+			Name:  "sys.snowball.alpha",
+			Value: 0.8,
+			Usage: "Snowball consensus protocol parameter alpha",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "sys.snowball.beta",
+			Value: 10,
+			Usage: "Snowball consensus protocol parameter beta",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "sys.difficulty.min",
+			Value: 5,
+			Usage: "Maximum difficulty to define a critical transaction",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "sys.difficulty.max",
+			Value: 16,
+			Usage: "Minimum difficulty to define a critical transaction",
+		}),
+		cli.StringFlag{
+			Name:  "config, c",
+			Usage: "Path to HCL config file, will override other arguments.",
+		},
 	}
 
+	// apply the hcl before processing the flags
+	app.Before = altsrc.InitInputSourceWithContext(app.Flags, func(c *cli.Context) (altsrc.InputSourceContext, error) {
+		filePath := c.String("config")
+		if len(filePath) > 0 {
+			return altsrc.NewTomlSourceFromFile(filePath)
+		}
+		return &altsrc.MapInputSource{}, nil
+	})
+
+	cli.VersionPrinter = func(c *cli.Context) {
+		fmt.Printf("Version:    %s\n", c.App.Version)
+		fmt.Printf("Go Version: %s\n", sys.GoVersion)
+		fmt.Printf("Git Commit: %s\n", sys.GitCommit)
+		fmt.Printf("OS/Arch:    %s\n", sys.OSArch)
+		fmt.Printf("Built:      %s\n", c.App.Compiled.Format(time.ANSIC))
+	}
+
+	app.Action = func(c *cli.Context) error {
+		c.String("config")
+		config := &Config{
+			Host:    c.String("host"),
+			Port:    c.Uint("port"),
+			Wallet:  c.String("wallet"),
+			APIPort: c.Uint("api.port"),
+		}
+
+		// start the server
+		n := runServer(config, logger)
+
+		// run the shell version of the node
+		runShell(n, logger)
+
+		return nil
+	}
+
+	sort.Sort(cli.FlagsByName(app.Flags))
+	sort.Sort(cli.CommandsByName(app.Commands))
+
+	err := app.Run(os.Args)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to parse configuration/command-line arguments.")
+	}
+}
+
+func runServer(config *Config, logger zerolog.Logger) *noise.Node {
 	var keys identity.Keypair
 
 	privateKey, err := ioutil.ReadFile(config.Wallet)
@@ -136,6 +269,10 @@ func main() {
 		go api.New().StartHTTP(n, int(config.APIPort))
 	}
 
+	return n
+}
+
+func runShell(n *noise.Node, logger zerolog.Logger) {
 	reader := bufio.NewReader(os.Stdin)
 
 	var nodeID common.AccountID
@@ -361,111 +498,4 @@ func main() {
 			}()
 		}
 	}
-}
-
-func ReadConfig() (*Config, error) {
-	type options struct {
-		ConfigFile string `short:"c" description:"path to HCL config file, will override other arguments"`
-		Wallet     string `hcl:"wallet" short:"w" default:"config/wallet.txt" description:"path to file containing hex-encoded private key. If empty, a random wallet will be generated"`
-		Host string `hcl:"host" short:"h" default:"127.0.0.1" description:"host to listen for peers on"`
-		Port int    `hcl:"port" short:"p" default:"3000" description:"port to listen for peers on"`
-
-		API struct {
-			Port int `hcl:"port" long:"api.port" default:"0" description:"port to host HTTP API on"`
-		} `hcl:"api"`
-
-		System struct {
-			QueryTimeout                       int   `hcl:"query_timeout" long:"sys.query_timeout" default:"10" description:"Timeout for querying a transaction to K peers. In seconds"`
-			MaxEligibleParentsDepthDiff        int   `hcl:"max_eligible_parents_depth_diff" long:"sys.max_eligible_parents_depth_diff" default:"5" description:"Max graph depth difference to search for eligible transaction parents from for our node."`
-			MedianTimestampNumAncestors        int   `hcl:"median_timestamp_num_ancestors" long:"sys.median_timestamp_num_ancestors" default:"5" description:"Number of ancestors to derive a median timestamp from"`
-			ValidatorRewardAmount              int64 `hcl:"validator_reward_amount" long:"sys.validator_reward_amount" default:"2"`
-			ExpectedConsensusTimeMilliseconds  int64 `hcl:"expected_consensus_time" long:"sys.expected_consensus_time" default:"1000" description:"In milliseconds."`
-			CriticalTimestampAverageWindowSize int   `hcl:"critical_timestamp_average_window_size" long:"sys.critical_timestamp_average_window_size" default:"3"`
-			MinimumStake                       int64 `hcl:"min_stake" long:"sys.min_stake" default:"100" `
-
-			Snowball struct {
-				K     int     `hcl:"k" long:"sys.snowball.k" default:"1" description:"Snowball consensus protocol parameter k"`
-				Alpha float64 `hcl:"alpha" long:"sys.snowball.alpha" default:"0.8" description:"Snowball consensus protocol parameter alpha"`
-				Beta  int     `hcl:"beta" long:"sys.snowball.beta" default:"10" description:"Snowball consensus protocol parameter beta"`
-			} `hcl:"snowball"`
-
-			Difficulty struct {
-				Max int `hcl:"max" long:"sys.difficulty.min" default:"5" description:"Minimum difficulty to define a critical transaction"`
-				Min int `hcl:"min" long:"sys.difficulty.max" default:"16" description:"Maximum difficulty to define a critical transaction"`
-			} `hcl:"difficulty"`
-		}
-	}
-
-	var opts options
-
-	// parse the flags
-	_, err := flags.Parse(&opts)
-	if err != nil {
-		errFlag, ok := err.(*flags.Error)
-		// if the error is the help error, we ignore it
-		if ok && errFlag.Type == flags.ErrHelp {
-			os.Exit(2)
-		}
-
-		return nil, fmt.Errorf("failed to parse flags: %v", err)
-	}
-
-	// If config file is not empty, override the options with the config file
-	if opts.ConfigFile != "" {
-		f, err := os.Open(opts.ConfigFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open config file: %v", err)
-		}
-		defer f.Close()
-
-		data, err := ioutil.ReadAll(f)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read config file: %v", err)
-		}
-
-		opts = options{}
-		err = hcl.Unmarshal(data, &opts)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed unmarshal config file")
-		}
-	}
-
-	if opts.Host == "" {
-		return nil, errors.New("host is empty")
-	}
-
-	if opts.Port == 0 {
-		return nil, errors.New("port is empty")
-	}
-
-	if opts.Port < 0 {
-		return nil, errors.New("port is negative number")
-	}
-
-	if opts.API.Port < 0 {
-		return nil, errors.New("API port is negative number")
-	}
-
-	// set the sys variables
-	sys.SnowballK = opts.System.Snowball.K
-	sys.SnowballAlpha = opts.System.Snowball.Alpha
-	sys.SnowballBeta = opts.System.Snowball.Beta
-	sys.QueryTimeout = time.Duration(int64(opts.System.QueryTimeout)) * time.Second
-	sys.MaxEligibleParentsDepthDiff = uint64(opts.System.MaxEligibleParentsDepthDiff)
-	sys.MinDifficulty = opts.System.Difficulty.Min
-	sys.MaxDifficulty = opts.System.Difficulty.Max
-	sys.MedianTimestampNumAncestors = opts.System.MedianTimestampNumAncestors
-	sys.ValidatorRewardAmount = uint64(opts.System.ValidatorRewardAmount)
-	sys.ExpectedConsensusTimeMilliseconds = uint64(opts.System.ExpectedConsensusTimeMilliseconds)
-	sys.CriticalTimestampAverageWindowSize = opts.System.CriticalTimestampAverageWindowSize
-	sys.MinimumStake = uint64(opts.System.MinimumStake)
-
-	config := Config{
-		Host:    opts.Host,
-		Port:    uint(opts.Port),
-		Wallet:  opts.Wallet,
-		APIPort: uint(opts.API.Port),
-	}
-
-	return &config, nil
 }
