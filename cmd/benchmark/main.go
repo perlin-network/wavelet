@@ -8,7 +8,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"go.uber.org/atomic"
 	"os"
-	"sync"
 	"time"
 )
 
@@ -39,25 +38,15 @@ func main() {
 	}()
 
 	for {
-		var wg sync.WaitGroup
-		wg.Add(len(nodes) * 10)
-
-		for i := 0; i < 10; i++ {
-			for _, node := range nodes {
-				go func() {
-					defer wg.Done()
-
-					_, err := node.client.SendTransaction(sys.TagNop, nil)
-					if err != nil {
-						return
-					}
-
-					tps.Add(1)
-				}()
+		for _, node := range nodes {
+			_, err := node.client.SendTransaction(sys.TagNop, nil)
+			if err != nil {
+				fmt.Println(err)
+				return
 			}
-		}
 
-		wg.Wait()
+			tps.Add(1)
+		}
 	}
 
 	kill(nodes...)

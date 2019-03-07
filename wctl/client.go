@@ -64,9 +64,9 @@ func (c *Client) Request(path string, body, out interface{}) error {
 		return err
 	}
 
-	if code := res.StatusCode(); code != fasthttp.StatusOK {
-		return errors.Errorf("unexpected status code: %d", code)
-	}
+	//if code := res.StatusCode(); code != fasthttp.StatusOK {
+	//	return errors.Errorf("unexpected status code: %d", code)
+	//}
 
 	if out == nil {
 		return nil
