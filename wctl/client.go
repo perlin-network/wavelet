@@ -122,7 +122,7 @@ func (c *Client) Init() error {
 }
 
 func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan string, error) {
-	path := fmt.Sprintf("%s?", sinkRoute)
+	path := fmt.Sprintf("%s", sinkRoute)
 
 	if stop == nil {
 		stop = make(chan struct{})

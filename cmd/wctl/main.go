@@ -59,6 +59,7 @@ func main() {
 					return err
 				}
 
+				client.UseHTTPS = true
 				evChan, err := client.PollLoggerSink(nil, wctl.RouteWSBroadcaster)
 				if err != nil {
 					return err
@@ -81,6 +82,7 @@ func main() {
 					return err
 				}
 
+				client.UseHTTPS = true
 				evChan, err := client.PollLoggerSink(nil, wctl.RouteWSConsensus)
 				if err != nil {
 					return err
@@ -103,6 +105,7 @@ func main() {
 					return err
 				}
 
+				client.UseHTTPS = true
 				evChan, err := client.PollLoggerSink(nil, wctl.RouteWSStake)
 				if err != nil {
 					return err
@@ -127,6 +130,7 @@ func main() {
 				// TODO:
 				// accountID :=
 
+				client.UseHTTPS = true
 				evChan, err := client.PollAccounts(nil, nil)
 				if err != nil {
 					return err
@@ -151,6 +155,7 @@ func main() {
 				// TODO:
 				// contractID :=
 
+				client.UseHTTPS = true
 				evChan, err := client.PollContracts(nil, nil)
 				if err != nil {
 					return err
@@ -177,6 +182,7 @@ func main() {
 				// senderID :=
 				// creatorID :=
 
+				client.UseHTTPS = true
 				evChan, err := client.PollTransactions(nil, nil, nil, nil)
 				if err != nil {
 					return err
