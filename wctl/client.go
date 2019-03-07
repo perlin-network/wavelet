@@ -1,18 +1,17 @@
 package wctl
 
 import (
-	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/gorilla/websocket"
 	"github.com/perlin-network/noise/identity/ed25519"
 	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
-	"io/ioutil"
+	"github.com/valyala/fasthttp"
 	"net/http"
-	"net/url"
 	"time"
 )
 
@@ -43,19 +42,13 @@ func (c *Client) Request(path string, method string, body, out interface{}) erro
 		protocol = "https"
 	}
 
-	u, err := url.Parse(fmt.Sprintf("%s://%s:%d%s", protocol, c.Config.APIHost, c.Config.APIPort, path))
-	if err != nil {
-		return err
-	}
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
 
-	req := &http.Request{
-		Method: method,
-		URL:    u,
-		Header: map[string][]string{
-			"Content-Type":         {"application/json"},
-			api.HeaderSessionToken: {c.SessionToken},
-		},
-	}
+	req.URI().Update(fmt.Sprintf("%s://%s:%d%s", protocol, c.Config.APIHost, c.Config.APIPort, path))
+	req.Header.SetMethod(method)
+	req.Header.SetContentType("application/json")
+	req.Header.Add(api.HeaderSessionToken, c.SessionToken)
 
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -63,34 +56,42 @@ func (c *Client) Request(path string, method string, body, out interface{}) erro
 			return err
 		}
 
-		req.Body = ioutil.NopCloser(bytes.NewReader(raw))
+		req.SetBody(raw)
 	}
 
-	client := new(http.Client)
+	res := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(res)
 
-	res, err := client.Do(req)
-	if err != nil {
+	if err := fasthttp.Do(req, res); err != nil {
 		return err
 	}
 
-	defer func() {
-		_ = res.Body.Close()
-	}()
-
-	data, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return err
-	}
-
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return errors.Errorf("got an error code %v: %v", res.Status, string(data))
+	if code := res.StatusCode(); code != fasthttp.StatusOK {
+		return errors.Errorf("unexpected status code: %d", code)
 	}
 
 	if out == nil {
 		return nil
 	}
 
-	return json.Unmarshal(data, out)
+	return json.Unmarshal(res.Body(), out)
+}
+
+// EstablishWS will create a websocket connection.
+func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
+	prot := "ws"
+	if c.Config.UseHTTPS {
+		prot = "wss"
+	}
+
+	url := fmt.Sprintf("%s://%s:%d%s", prot, c.Config.APIHost, c.Config.APIPort, path)
+
+	header := make(http.Header)
+	header.Add(api.HeaderSessionToken, c.SessionToken)
+
+	dialer := &websocket.Dialer{}
+	conn, _, err := dialer.Dial(url, header)
+	return conn, err
 }
 
 // Init instantiates a new session with the Wavelet nodes HTTP API.
@@ -120,6 +121,148 @@ func (c *Client) Init() error {
 	return nil
 }
 
+func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *string, creatorID *string) (<-chan Transaction, error) {
+	path := fmt.Sprintf("%s?", RouteLedger)
+	if txID != nil {
+		path = fmt.Sprintf("%stx_id=%s&", path, *txID)
+	}
+	if senderID != nil {
+		path = fmt.Sprintf("%ssender=%s&", path, *senderID)
+	}
+	if creatorID != nil {
+		path = fmt.Sprintf("%screator=%s&", path, *creatorID)
+	}
+
+	if stop == nil {
+		stop = make(chan struct{})
+	}
+
+	ws, err := c.EstablishWS(path)
+	if err != nil {
+		return nil, err
+	}
+
+	evChan := make(chan Transaction)
+
+	go func() {
+		defer close(evChan)
+
+		for {
+			var ev Transaction
+
+			if err = ws.ReadJSON(&ev); err != nil {
+				return
+			}
+			select {
+			case <-stop:
+				return
+			case evChan <- ev:
+			}
+		}
+	}()
+
+	return evChan, nil
+}
+
+func (c *Client) GetLedgerStatus(sender *string, creator *string, offset *uint64, limit *uint64) ([]Transaction, error) {
+	var res []Transaction
+
+	path := fmt.Sprintf("%s?", RouteLedger)
+	if sender != nil {
+		path = fmt.Sprintf("%ssender=%s&", path, *sender)
+	}
+	if creator != nil {
+		path = fmt.Sprintf("%screator=%s&", path, *creator)
+	}
+	if offset != nil {
+		path = fmt.Sprintf("%soffset=%d&", path, *offset)
+	}
+	if limit != nil {
+		path = fmt.Sprintf("%slimit=%d&", path, *limit)
+	}
+
+	if err := c.Request(path, ReqGet, nil, &res); err != nil {
+		return res, err
+	}
+
+	return res, nil
+}
+
+func (c *Client) GetAccount(accountID string) (Account, error) {
+	var res Account
+
+	path := fmt.Sprintf("%s/%s", RouteAccount, accountID)
+
+	if err := c.Request(path, ReqGet, nil, &res); err != nil {
+		return res, err
+	}
+
+	return res, nil
+}
+
+func (c *Client) GetContractCode(contractID string) (interface{}, error) {
+	var res Transaction
+
+	path := fmt.Sprintf("%s/%s", RouteContract, contractID)
+
+	if err := c.Request(path, ReqGet, nil, &res); err != nil {
+		return res, err
+	}
+
+	return res, nil
+}
+
+func (c *Client) GetContractPages(contractID string, index *uint64) (interface{}, error) {
+	var res Transaction
+
+	path := fmt.Sprintf("%s/%s/page", RouteContract, contractID)
+	if index != nil {
+		path = fmt.Sprintf("%s/%d", path, *index)
+	}
+
+	if err := c.Request(path, ReqGet, nil, &res); err != nil {
+		return res, err
+	}
+
+	return res, nil
+}
+
+func (c *Client) ListTransactions(sender *string, creator *string, offset *uint64, limit *uint64) ([]Transaction, error) {
+	var res []Transaction
+
+	path := fmt.Sprintf("%s?", RouteTxList)
+	if sender != nil {
+		path = fmt.Sprintf("%ssender=%s&", path, *sender)
+	}
+	if creator != nil {
+		path = fmt.Sprintf("%screator=%s&", path, *creator)
+	}
+	if offset != nil {
+		path = fmt.Sprintf("%soffset=%d&", path, *offset)
+	}
+	if limit != nil {
+		path = fmt.Sprintf("%slimit=%d&", path, *limit)
+	}
+
+	if err := c.Request(path, ReqGet, nil, &res); err != nil {
+		return res, err
+	}
+
+	return res, nil
+}
+
+func (c *Client) GetTransaction(txID string) (Transaction, error) {
+	var res Transaction
+
+	path := fmt.Sprintf("%s/%s", RouteTxList, txID)
+
+	if err := c.Request(path, ReqGet, nil, &res); err != nil {
+		return res, err
+	}
+
+	return res, nil
+}
+
 func (c *Client) SendTransaction(tag byte, payload []byte) (SendTransactionResponse, error) {
 	var res SendTransactionResponse
 
@@ -136,18 +279,6 @@ func (c *Client) SendTransaction(tag byte, payload []byte) (SendTransactionRespo
 	}
 
 	if err := c.Request(RouteTxSend, ReqPost, &req, &res); err != nil {
-		return res, err
-	}
-
-	return res, nil
-}
-
-func (c *Client) GetTxnByID(txID string) (Transaction, error) {
-	var res Transaction
-
-	routeTxGet := fmt.Sprintf("/tx/%s", txID)
-
-	if err := c.Request(routeTxGet, ReqGet, nil, &res); err != nil {
 		return res, err
 	}
 

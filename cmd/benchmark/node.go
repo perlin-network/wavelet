@@ -174,7 +174,7 @@ func spawn(nodePort, apiPort uint16, randomWallet bool, peers ...string) *node {
 		log.Fatal().Err(err).Msg("Failed to spawn a single Wavelet node.")
 	}
 
-	<-n.nodeReady
+	//<-n.nodeReady
 
 	return n
 }
