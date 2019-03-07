@@ -32,17 +32,136 @@ func main() {
 	}
 
 	commonFlags := []cli.Flag{
+		cli.StringFlag{
+			Name:  "api.host",
+			Value: "localhost",
+			Usage: "Host of the local HTTP API.",
+		},
 		cli.IntFlag{
-			Name:  "p",
-			Usage: "port to host HTTP API on",
+			Name:  "api.port",
+			Usage: "Port a local HTTP API.",
 		},
 		cli.StringFlag{
-			Name:  "w",
+			Name:  "wallet",
 			Usage: "path to file containing hex-encoded private key",
 		},
 	}
 
 	app.Commands = []cli.Command{
+		{
+			Name:  "poll_transactions",
+			Usage: "continuously receive transaction updates",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				// TODO:
+				// txID :=
+				// senderID :=
+				// creatorID :=
+
+				evChan, err := client.PollTransactions(nil, nil, nil, nil)
+				if err != nil {
+					return err
+				}
+
+				for ev := range evChan {
+					jsonOut, _ := json.Marshal(ev)
+					fmt.Printf("%s\n", jsonOut)
+				}
+				return nil
+			},
+		},
+		{
+			Name:  "ledger_status",
+			Usage: "get the status of the ledger",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				// TODO: get optional parameters
+
+				txns, err := client.GetLedgerStatus(nil, nil, nil, nil)
+				if err != nil {
+					return err
+				}
+
+				for _, tx := range txns {
+					jsonOut, _ := json.Marshal(tx)
+					fmt.Printf("%s\n", jsonOut)
+				}
+				return nil
+			},
+		},
+		{
+			Name:      "get_account",
+			Usage:     "get an account",
+			ArgsUsage: "<account ID>",
+			Flags:     commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				acctID := c.Args().Get(0)
+
+				acct, err := client.GetAccount(acctID)
+				if err != nil {
+					return err
+				}
+
+				jsonOut, _ := json.Marshal(acct)
+				fmt.Printf("%s\n", jsonOut)
+				return nil
+			},
+		},
+		{
+			Name:      "get_contract_code",
+			Usage:     "get the payload of a contract",
+			ArgsUsage: "<contract ID>",
+			Flags:     commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				contractID := c.Args().Get(0)
+
+				_, err = client.GetContractCode(contractID)
+				if err != nil {
+					return err
+				}
+
+				// TODO: process the output
+				return nil
+			},
+		},
+		{
+			Name:      "get_contract_pages",
+			Usage:     "get the page of a contract",
+			ArgsUsage: "<contract ID> <page index>",
+			Flags:     commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				contractID := c.Args().Get(0)
+				// TODO: get optional page idx
+
+				_, err = client.GetContractPages(contractID, nil)
+				if err != nil {
+					return err
+				}
+
+				// TODO: process the output
+				return nil
+			},
+		},
 		{
 			Name:      "send_transaction",
 			Usage:     "send a transaction",
@@ -82,13 +201,37 @@ func main() {
 				}
 				txID := c.Args().Get(0)
 
-				tx, err := client.GetTxnByID(txID)
+				tx, err := client.GetTransaction(txID)
 				if err != nil {
 					return err
 				}
 
 				jsonOut, _ := json.Marshal(tx)
 				fmt.Printf("%s\n", jsonOut)
+				return nil
+			},
+		},
+		{
+			Name:  "list_transactions",
+			Usage: "list recent transactions",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+
+				// TODO: get all these optional parameters
+
+				txns, err := client.ListTransactions(nil, nil, nil, nil)
+				if err != nil {
+					return err
+				}
+
+				for _, tx := range txns {
+					jsonOut, _ := json.Marshal(tx)
+					fmt.Printf("%s\n", jsonOut)
+				}
 				return nil
 			},
 		},
@@ -103,9 +246,9 @@ func main() {
 }
 
 func setup(c *cli.Context) (*wctl.Client, error) {
-	host := "localhost"
-	port := c.Uint("p")
-	privateKeyFile := c.String("w")
+	host := c.String("api.host")
+	port := c.Uint("api.port")
+	privateKeyFile := c.String("wallet")
 
 	if port == 0 {
 		return nil, errors.New("port is missing")
