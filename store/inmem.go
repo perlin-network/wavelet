@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"github.com/huandu/skiplist"
 	"github.com/pkg/errors"
+	"sync"
 )
 
 type kvPair struct {
@@ -41,6 +42,7 @@ func (b *inmemWriteBatch) Destroy() {
 var _ KV = (*inmemKV)(nil)
 
 type inmemKV struct {
+	sync.RWMutex
 	db *skiplist.SkipList
 }
 
@@ -51,6 +53,9 @@ func (s *inmemKV) Close() error {
 }
 
 func (s *inmemKV) Get(key []byte) ([]byte, error) {
+	s.RLock()
+	defer s.RUnlock()
+
 	buf, found := s.db.GetValue(key)
 	if !found {
 		return nil, errors.New("key not found")
@@ -60,6 +65,9 @@ func (s *inmemKV) Get(key []byte) ([]byte, error) {
 }
 
 func (s *inmemKV) MultiGet(keys ...[]byte) ([][]byte, error) {
+	s.RLock()
+	defer s.RUnlock()
+
 	var bufs [][]byte
 
 	for _, key := range keys {
@@ -75,6 +83,9 @@ func (s *inmemKV) MultiGet(keys ...[]byte) ([][]byte, error) {
 }
 
 func (s *inmemKV) Put(key, value []byte) error {
+	s.Lock()
+	defer s.Unlock()
+
 	_ = s.db.Set(key, value)
 	return nil
 }
@@ -84,13 +95,12 @@ func (s *inmemKV) NewWriteBatch() WriteBatch {
 }
 
 func (s *inmemKV) CommitWriteBatch(batch WriteBatch) error {
+	s.Lock()
+	defer s.Unlock()
+
 	if wb, ok := batch.(*inmemWriteBatch); ok {
 		for _, pair := range wb.pairs {
-			err := s.Put(pair.key, pair.value)
-
-			if err != nil {
-				return errors.Wrap(err, "inmem: failed to commit write batch")
-			}
+			_ = s.db.Set(pair.key, pair.value)
 		}
 
 		return nil
@@ -100,6 +110,9 @@ func (s *inmemKV) CommitWriteBatch(batch WriteBatch) error {
 }
 
 func (s *inmemKV) Delete(key []byte) error {
+	s.Lock()
+	defer s.Unlock()
+
 	_ = s.db.Remove(key)
 	return nil
 }

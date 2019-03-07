@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"encoding/hex"
-	"flag"
 	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher/aead"
@@ -17,8 +16,13 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/sys"
+	"github.com/rs/zerolog"
+	"golang.org/x/crypto/ssh/terminal"
+	"gopkg.in/urfave/cli.v1"
+	"gopkg.in/urfave/cli.v1/altsrc"
 	"io/ioutil"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -29,22 +33,184 @@ const (
 	DefaultC1 = 16
 )
 
+type Config struct {
+	Host    string
+	Port    uint
+	Wallet  string
+	APIPort uint
+	Peers   []string
+}
+
 func main() {
-	hostFlag := flag.String("h", "127.0.0.1", "host to listen for peers on")
-	portFlag := flag.Uint("p", 3000, "port to listen for peers on")
-	walletFlag := flag.String("w", "config/wallet.txt", "path to file containing hex-encoded private key")
-	apiFlag := flag.Int("api", 0, "port to host HTTP API on")
+	if terminal.IsTerminal(int(os.Stdout.Fd())) {
+		log.Register(log.NewConsoleWriter(log.FilterFor("node", "sync", "consensus", "contract")))
+	} else {
+		log.Register(os.Stderr)
+	}
 
-	flag.Parse()
-
-	log.Register(log.NewConsoleWriter(log.FilterFor("node", "sync", "contract")))
 	logger := log.Node()
 
+	app := cli.NewApp()
+
+	app.Name = "wavelet"
+	app.Author = "Perlin Network"
+	app.Email = "support@perlin.net"
+	app.Version = sys.Version
+	app.Usage = "a bleeding fast ledger with a powerful compute layer"
+
+	app.Flags = []cli.Flag{
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:  "host",
+			Value: "127.0.0.1",
+			Usage: "Listen for peers on host address.",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "port",
+			Value: 3000,
+			Usage: "Listen for peers on port.",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:  "wallet",
+			Value: "config/wallet.txt",
+			Usage: "path to file containing hex-encoded private key. If empty, a random wallet will be generated.",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "api.port",
+			Value: 0,
+			Usage: "Host a local HTTP API at port.",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "sys.query_timeout",
+			Value: 10,
+			Usage: "Timeout in seconds for querying a transaction to K peers.",
+		}),
+		altsrc.NewUint64Flag(cli.Uint64Flag{
+			Name:  "sys.max_eligible_parents_depth_diff",
+			Value: 5,
+			Usage: "Max graph depth difference to search for eligible transaction parents from for our node.",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "sys.median_timestamp_num_ancestors",
+			Value: 5,
+			Usage: "Number of ancestors to derive a median timestamp from.",
+		}),
+		altsrc.NewUint64Flag(cli.Uint64Flag{
+			Name:  "sys.transaction_fee_amount",
+			Value: 2,
+		}),
+		altsrc.NewUint64Flag(cli.Uint64Flag{
+			Name:  "sys.validator_reward_amount",
+			Value: 2,
+		}),
+		altsrc.NewUint64Flag(cli.Uint64Flag{
+			Name:  "sys.expected_consensus_time",
+			Value: 1000,
+			Usage: "In milliseconds.",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "sys.critical_timestamp_average_window_size",
+			Value: 3,
+		}),
+		altsrc.NewUint64Flag(cli.Uint64Flag{
+			Name:  "sys.min_stake",
+			Value: 100,
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "sys.snowball.k",
+			Value: 1,
+			Usage: "Snowball consensus protocol parameter k",
+		}),
+		altsrc.NewFloat64Flag(cli.Float64Flag{
+			Name:  "sys.snowball.alpha",
+			Value: 0.8,
+			Usage: "Snowball consensus protocol parameter alpha",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "sys.snowball.beta",
+			Value: 10,
+			Usage: "Snowball consensus protocol parameter beta",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "sys.difficulty.min",
+			Value: 5,
+			Usage: "Maximum difficulty to define a critical transaction",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "sys.difficulty.max",
+			Value: 16,
+			Usage: "Minimum difficulty to define a critical transaction",
+		}),
+		cli.StringFlag{
+			Name:  "config, c",
+			Usage: "Path to HCL config file, will override other arguments.",
+		},
+	}
+
+	// apply the hcl before processing the flags
+	app.Before = altsrc.InitInputSourceWithContext(app.Flags, func(c *cli.Context) (altsrc.InputSourceContext, error) {
+		filePath := c.String("config")
+		if len(filePath) > 0 {
+			return altsrc.NewTomlSourceFromFile(filePath)
+		}
+		return &altsrc.MapInputSource{}, nil
+	})
+
+	cli.VersionPrinter = func(c *cli.Context) {
+		fmt.Printf("Version:    %s\n", c.App.Version)
+		fmt.Printf("Go Version: %s\n", sys.GoVersion)
+		fmt.Printf("Git Commit: %s\n", sys.GitCommit)
+		fmt.Printf("OS/Arch:    %s\n", sys.OSArch)
+		fmt.Printf("Built:      %s\n", c.App.Compiled.Format(time.ANSIC))
+	}
+
+	app.Action = func(c *cli.Context) error {
+		c.String("config")
+		config := &Config{
+			Host:    c.String("host"),
+			Port:    c.Uint("port"),
+			Wallet:  c.String("wallet"),
+			APIPort: c.Uint("api.port"),
+			Peers:   c.Args(),
+		}
+
+		// set the the sys variables
+		sys.SnowballK = c.Int("sys.snowball.k")
+		sys.SnowballAlpha = c.Float64("sys.snowball.alpha")
+		sys.SnowballBeta = c.Int("sys.snowball.beta")
+		sys.QueryTimeout = time.Duration(c.Int("sys.query_timeout")) * time.Second
+		sys.MaxEligibleParentsDepthDiff = c.Uint64("sys.max_eligible_parents_depth_diff")
+		sys.MinDifficulty = c.Int("sys.difficulty.min")
+		sys.MaxDifficulty = c.Int("sys.difficulty.max")
+		sys.MedianTimestampNumAncestors = c.Int("sys.median_timestamp_num_ancestors")
+		sys.TransactionFeeAmount = c.Uint64("transaction_fee_amount")
+		sys.ExpectedConsensusTimeMilliseconds = c.Uint64("sys.expected_consensus_time")
+		sys.CriticalTimestampAverageWindowSize = c.Int("sys.critical_timestamp_average_window_size")
+		sys.MinimumStake = c.Uint64("sys.min_stake")
+
+		// start the server
+		n := runServer(config, logger)
+
+		// run the shell version of the node
+		runShell(n, logger)
+
+		return nil
+	}
+
+	sort.Sort(cli.FlagsByName(app.Flags))
+	sort.Sort(cli.CommandsByName(app.Commands))
+
+	err := app.Run(os.Args)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to parse configuration/command-line arguments.")
+	}
+}
+
+func runServer(config *Config, logger zerolog.Logger) *noise.Node {
 	var keys identity.Keypair
 
-	privateKey, err := ioutil.ReadFile(*walletFlag)
+	privateKey, err := ioutil.ReadFile(config.Wallet)
 	if err != nil {
-		logger.Warn().Msgf("Could not find an existing wallet at %q. Generating a new wallet...", *walletFlag)
+		logger.Warn().Msgf("Could not find an existing wallet at %q. Generating a new wallet...", config.Wallet)
 
 		keys = skademlia.NewKeys(DefaultC1, DefaultC2)
 
@@ -55,12 +221,12 @@ func main() {
 	} else {
 		n, err := hex.Decode(privateKey, privateKey)
 		if err != nil {
-			logger.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", *walletFlag)
+			logger.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", config.Wallet)
 		}
 
 		keys, err = skademlia.LoadKeys(privateKey[:n], DefaultC1, DefaultC2)
 		if err != nil {
-			logger.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", *walletFlag)
+			logger.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", config.Wallet)
 		}
 
 		logger.Info().
@@ -71,8 +237,8 @@ func main() {
 
 	params := noise.DefaultParams()
 	params.Keys = keys
-	params.Host = *hostFlag
-	params.Port = uint16(*portFlag)
+	params.Host = config.Host
+	params.Port = uint16(config.Port)
 	params.MaxMessageSize = 4 * 1024 * 1024
 	params.SendMessageTimeout = 1 * time.Second
 
@@ -110,8 +276,8 @@ func main() {
 
 	logger.Info().Uint16("port", n.ExternalPort()).Msg("Listening for peers.")
 
-	if len(flag.Args()) > 0 {
-		for _, address := range flag.Args() {
+	if len(config.Peers) > 0 {
+		for _, address := range config.Peers {
 			peer, err := n.Dial(address)
 			if err != nil {
 				logger.Fatal().Err(err).Msg("Failed to dial specified peer.")
@@ -124,10 +290,14 @@ func main() {
 		logger.Info().Msgf("Bootstrapped with peers: %+v", peers)
 	}
 
-	if port := *apiFlag; port > 0 {
-		go api.New().StartHTTP(n, port)
+	if port := config.APIPort; port > 0 {
+		go api.New().StartHTTP(n, int(config.APIPort))
 	}
 
+	return n
+}
+
+func runShell(n *noise.Node, logger zerolog.Logger) {
 	reader := bufio.NewReader(os.Stdin)
 
 	var nodeID common.AccountID

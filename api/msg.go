@@ -101,7 +101,7 @@ func (s *SendTransactionRequest) Bind(r *http.Request) error {
 
 	s.payload, err = hex.DecodeString(s.Payload)
 	if err != nil {
-		errors.Wrap(err, "payload provided is not hex-formatted")
+		return errors.Wrap(err, "payload provided is not hex-formatted")
 	}
 
 	signature, err := hex.DecodeString(s.Signature)
@@ -159,6 +159,7 @@ type LedgerStatusResponse struct {
 	ViewID     uint64 `json:"view_id"`
 	Difficulty uint64 `json:"difficulty"`
 
+	// Internal fields.
 	node   *noise.Node
 	ledger *wavelet.Ledger
 }
