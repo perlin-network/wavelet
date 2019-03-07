@@ -49,6 +49,120 @@ func main() {
 
 	app.Commands = []cli.Command{
 		{
+			Name:  "poll_broadcaster",
+			Usage: "continuously receive broadcaster updates",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+
+				evChan, err := client.PollLoggerSink(nil, wctl.RouteWSBroadcaster)
+				if err != nil {
+					return err
+				}
+
+				for ev := range evChan {
+					jsonOut, _ := json.Marshal(ev)
+					fmt.Printf("%s\n", jsonOut)
+				}
+				return nil
+			},
+		},
+		{
+			Name:  "poll_consensus",
+			Usage: "continuously receive consensus updates",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+
+				evChan, err := client.PollLoggerSink(nil, wctl.RouteWSConsensus)
+				if err != nil {
+					return err
+				}
+
+				for ev := range evChan {
+					jsonOut, _ := json.Marshal(ev)
+					fmt.Printf("%s\n", jsonOut)
+				}
+				return nil
+			},
+		},
+		{
+			Name:  "poll_stake",
+			Usage: "continuously receive stake updates",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+
+				evChan, err := client.PollLoggerSink(nil, wctl.RouteWSStake)
+				if err != nil {
+					return err
+				}
+
+				for ev := range evChan {
+					jsonOut, _ := json.Marshal(ev)
+					fmt.Printf("%s\n", jsonOut)
+				}
+				return nil
+			},
+		},
+		{
+			Name:  "poll_accounts",
+			Usage: "continuously receive account updates",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				// TODO:
+				// accountID :=
+
+				evChan, err := client.PollAccounts(nil, nil)
+				if err != nil {
+					return err
+				}
+
+				for ev := range evChan {
+					jsonOut, _ := json.Marshal(ev)
+					fmt.Printf("%s\n", jsonOut)
+				}
+				return nil
+			},
+		},
+		{
+			Name:  "poll_contracts",
+			Usage: "continuously receive contract updates",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				// TODO:
+				// contractID :=
+
+				evChan, err := client.PollContracts(nil, nil)
+				if err != nil {
+					return err
+				}
+
+				for ev := range evChan {
+					jsonOut, _ := json.Marshal(ev)
+					fmt.Printf("%s\n", jsonOut)
+				}
+				return nil
+			},
+		},
+		{
 			Name:  "poll_transactions",
 			Usage: "continuously receive transaction updates",
 			Flags: commonFlags,

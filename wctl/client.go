@@ -121,8 +121,116 @@ func (c *Client) Init() error {
 	return nil
 }
 
+func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan string, error) {
+	path := fmt.Sprintf("%s?", sinkRoute)
+
+	if stop == nil {
+		stop = make(chan struct{})
+	}
+
+	ws, err := c.EstablishWS(path)
+	if err != nil {
+		return nil, err
+	}
+
+	evChan := make(chan string)
+
+	go func() {
+		defer close(evChan)
+
+		for {
+			var ev string
+
+			if err = ws.ReadJSON(&ev); err != nil {
+				return
+			}
+			select {
+			case <-stop:
+				return
+			case evChan <- ev:
+			}
+		}
+	}()
+
+	return evChan, nil
+}
+
+func (c *Client) PollAccounts(stop <-chan struct{}, accountID *string) (<-chan Account, error) {
+	path := fmt.Sprintf("%s?", RouteWSAccounts)
+	if accountID != nil {
+		path = fmt.Sprintf("%sid=%s&", path, *accountID)
+	}
+
+	if stop == nil {
+		stop = make(chan struct{})
+	}
+
+	ws, err := c.EstablishWS(path)
+	if err != nil {
+		return nil, err
+	}
+
+	evChan := make(chan Account)
+
+	go func() {
+		defer close(evChan)
+
+		for {
+			var ev Account
+
+			if err = ws.ReadJSON(&ev); err != nil {
+				return
+			}
+			select {
+			case <-stop:
+				return
+			case evChan <- ev:
+			}
+		}
+	}()
+
+	return evChan, nil
+}
+
+func (c *Client) PollContracts(stop <-chan struct{}, contractID *string) (<-chan interface{}, error) {
+	path := fmt.Sprintf("%s?", RouteWSContracts)
+	if contractID != nil {
+		path = fmt.Sprintf("%sid=%s&", path, *contractID)
+	}
+
+	if stop == nil {
+		stop = make(chan struct{})
+	}
+
+	ws, err := c.EstablishWS(path)
+	if err != nil {
+		return nil, err
+	}
+
+	evChan := make(chan interface{})
+
+	go func() {
+		defer close(evChan)
+
+		for {
+			var ev interface{}
+
+			if err = ws.ReadJSON(&ev); err != nil {
+				return
+			}
+			select {
+			case <-stop:
+				return
+			case evChan <- ev:
+			}
+		}
+	}()
+
+	return evChan, nil
+}
+
 func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *string, creatorID *string) (<-chan Transaction, error) {
-	path := fmt.Sprintf("%s?", RouteLedger)
+	path := fmt.Sprintf("%s?", RouteWSTransactions)
 	if txID != nil {
 		path = fmt.Sprintf("%stx_id=%s&", path, *txID)
 	}

@@ -10,6 +10,13 @@ const (
 	RouteTxList      = "/tx"
 	RouteTxSend      = "/tx/send"
 
+	RouteWSBroadcaster  = "/broadcaster"
+	RouteWSConsensus    = "/consensus"
+	RouteWSStake        = "/stake"
+	RouteWSAccounts     = "/accounts"
+	RouteWSContracts    = "/contract"
+	RouteWSTransactions = "/tx"
+
 	HeaderSessionToken = "X-Session-Token"
 
 	ReqPost = "POST"
