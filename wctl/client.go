@@ -1,7 +1,6 @@
 package wctl
 
 import (
-	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -10,9 +9,7 @@ import (
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
-	"io/ioutil"
-	"net/http"
-	"net/url"
+	"github.com/valyala/fasthttp"
 	"time"
 )
 
@@ -43,19 +40,13 @@ func (c *Client) Request(path string, body, out interface{}) error {
 		protocol = "https"
 	}
 
-	u, err := url.Parse(fmt.Sprintf("%s://%s:%d%s", protocol, c.Config.APIHost, c.Config.APIPort, path))
-	if err != nil {
-		return err
-	}
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
 
-	req := &http.Request{
-		Method: "POST",
-		URL:    u,
-		Header: map[string][]string{
-			"Content-Type":         {"application/json"},
-			api.HeaderSessionToken: {c.SessionToken},
-		},
-	}
+	req.URI().Update(fmt.Sprintf("%s://%s:%d%s", protocol, c.Config.APIHost, c.Config.APIPort, path))
+	req.Header.SetMethod("POST")
+	req.Header.SetContentType("application/json")
+	req.Header.Add(api.HeaderSessionToken, c.SessionToken)
 
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -63,34 +54,25 @@ func (c *Client) Request(path string, body, out interface{}) error {
 			return err
 		}
 
-		req.Body = ioutil.NopCloser(bytes.NewReader(raw))
+		req.SetBody(raw)
 	}
 
-	client := new(http.Client)
+	res := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(res)
 
-	res, err := client.Do(req)
-	if err != nil {
+	if err := fasthttp.Do(req, res); err != nil {
 		return err
 	}
 
-	defer func() {
-		_ = res.Body.Close()
-	}()
-
-	data, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return err
-	}
-
-	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		return errors.Errorf("got an error code %v: %v", res.Status, string(data))
+	if code := res.StatusCode(); code != fasthttp.StatusOK {
+		return errors.Errorf("unexpected status code: %d", code)
 	}
 
 	if out == nil {
 		return nil
 	}
 
-	return json.Unmarshal(data, out)
+	return json.Unmarshal(res.Body(), out)
 }
 
 // Init instantiates a new session with the Wavelet nodes HTTP API.

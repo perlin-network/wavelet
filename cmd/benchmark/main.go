@@ -6,7 +6,10 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"go.uber.org/atomic"
 	"os"
+	"sync"
+	"time"
 )
 
 func main() {
@@ -19,7 +22,7 @@ func main() {
 
 	nodes = append(nodes, spawn(port, nextAvailablePort(), false))
 
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 1; i++ {
 		nodes = append(nodes, spawn(nextAvailablePort(), nextAvailablePort(), true, fmt.Sprintf("127.0.0.1:%d", port)))
 	}
 
@@ -27,14 +30,32 @@ func main() {
 
 	fmt.Println("Nodes are initialized!")
 
-	for i := 0; i < 1000; i++ {
-		res, err := nodes[0].client.SendTransaction(sys.TagNop, nil)
-		if err != nil {
-			log.Error().Err(err).Msg("Got an error sending a transaction.")
-			continue
+	tps := atomic.NewUint64(0)
+
+	go func() {
+		for range time.Tick(1 * time.Second) {
+			log.Info().Uint64("tps", tps.Swap(0)).Int("num_nodes", len(nodes)).Msg("Benchmarking...")
+		}
+	}()
+
+	for {
+		var wg sync.WaitGroup
+		wg.Add(len(nodes))
+
+		for _, node := range nodes {
+			go func() {
+				defer wg.Done()
+
+				_, err := node.client.SendTransaction(sys.TagNop, nil)
+				if err != nil {
+					return
+				}
+
+				tps.Add(1)
+			}()
 		}
 
-		log.Info().Str("tx_id", res.ID).Msg("Sent a new transaction.")
+		wg.Wait()
 	}
 
 	kill(nodes...)
