@@ -12,7 +12,6 @@ import (
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
-	"sync"
 	"time"
 )
 
@@ -25,8 +24,6 @@ type Ledger struct {
 	view     *graph
 
 	processors map[byte]TransactionProcessor
-
-	mu sync.Mutex
 }
 
 func NewLedger(kv store.KV, genesisPath string) *Ledger {
@@ -154,9 +151,6 @@ func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transactio
 }
 
 func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
 	// If the transaction is our root transaction, assume that we have already voted positively for it.
 	if tx.ID == l.Root().ID {
 		return VoteAccepted
@@ -306,7 +300,7 @@ func (l *Ledger) ComputeStakeDistribution(accounts []common.AccountID) map[commo
 	var maxStake uint64
 
 	for _, account := range accounts {
-		stake, _ := l.ReadAccountStake(account)
+		stake, _ := l.accounts.ReadAccountStake(account)
 
 		if stake < sys.MinimumStake {
 			stake = sys.MinimumStake
@@ -360,9 +354,6 @@ func (l *Ledger) Reset(newRoot *Transaction, newState accounts) error {
 }
 
 func (l *Ledger) ProcessQuery(counts map[interface{}]float64) error {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
 	// If there are zero preferred critical transactions from other nodes, return nil.
 	if len(counts) == 0 {
 		return nil
