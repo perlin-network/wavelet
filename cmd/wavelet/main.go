@@ -39,13 +39,6 @@ type Config struct {
 	APIPort uint
 }
 
-var (
-	Host string
-	Port uint
-	Wallet string
-	APIPort uint
-)
-
 func main() {
 	log.Register(log.NewConsoleWriter(log.FilterFor("node", "consensus", "sync")))
 	logger := log.Node()
