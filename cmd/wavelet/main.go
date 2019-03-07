@@ -17,6 +17,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/sys"
+	"golang.org/x/crypto/ssh/terminal"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -37,7 +38,12 @@ func main() {
 
 	flag.Parse()
 
-	log.Register(log.NewConsoleWriter(log.FilterFor("node", "sync", "contract")))
+	if terminal.IsTerminal(int(os.Stdout.Fd())) {
+		log.Register(log.NewConsoleWriter(log.FilterFor("node", "sync", "contract")))
+	} else {
+		log.Register(os.Stderr)
+	}
+
 	logger := log.Node()
 
 	var keys identity.Keypair

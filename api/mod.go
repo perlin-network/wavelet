@@ -109,7 +109,7 @@ func (g *Gateway) StartHTTP(n *noise.Node, port int) {
 	g.setup()
 
 	logger := log.Node()
-	logger.Info().Msgf("Started HTTP API server on port %d.", port)
+	logger.Info().Int("port", port).Msg("Started HTTP API server.")
 
 	if err := http.ListenAndServe(":"+strconv.Itoa(port), g.router); err != nil {
 		logger.Fatal().Err(err).Msg("Failed to start HTTP server.")

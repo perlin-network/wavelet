@@ -14,6 +14,7 @@ func main() {
 	build()
 
 	port := nextAvailablePort()
+
 	spawn(port, nextAvailablePort(), false)
 
 	for i := 0; i < 3; i++ {
