@@ -79,6 +79,7 @@ func (n *node) parseMessage(fields map[string]interface{}, msg string) error {
 		if err := n.init(); err != nil {
 			return errors.Wrap(err, "failed to init wavelet node")
 		}
+	default:
 	}
 
 	return nil
@@ -104,11 +105,18 @@ func (n *node) init() error {
 	var err error
 
 	if n.client, err = wctl.NewClient(config); err != nil {
-		return errors.Wrap(err, "failed to init node HTTP API client")
+		return errors.Wrap(err, "failed to create a new http api client")
 	}
 
-	if err = n.client.Init(); err != nil {
-		return errors.Wrap(err, "failed to init session with HTTP API")
+	// Attempt to instantiate a session 100 times max.
+	for i := 0; i < 100; i++ {
+		if err = n.client.Init(); err == nil {
+			break
+		}
+	}
+
+	if len(n.client.SessionToken) == 0 {
+		return errors.New("failed to init session with HTTP API")
 	}
 
 	log.Info().

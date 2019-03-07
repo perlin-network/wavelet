@@ -27,12 +27,14 @@ func main() {
 
 	fmt.Println("Nodes are initialized!")
 
-	res, err := nodes[0].client.SendTransaction(sys.TagNop, nil)
-	if err != nil {
-		panic(err)
-	}
+	for i := 0; i < 1000; i++ {
+		res, err := nodes[0].client.SendTransaction(sys.TagNop, nil)
+		if err != nil {
+			log.Error().Err(err).Msg("Got an error sending a transaction.")
+		}
 
-	fmt.Println("Sent a new transaction.", res.ID)
+		log.Info().Str("tx_id", res.ID).Msg("Sent a new transaction.")
+	}
 
 	kill(nodes...)
 }
