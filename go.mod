@@ -27,4 +27,6 @@ require (
 	github.com/valyala/fasthttp v1.2.0
 	go.uber.org/atomic v1.3.2
 	golang.org/x/crypto v0.0.0-20190123085648-057139ce5d2b
+	gopkg.in/urfave/cli.v1 v1.20.0 // indirect
+	gopkg.in/yaml.v2 v2.2.2 // indirect
 )
