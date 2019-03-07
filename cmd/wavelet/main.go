@@ -53,7 +53,7 @@ func main() {
 	app := cli.NewApp()
 
 	app.Name = "wavelet"
-	app.Author = "Perlin Network"
+	app.Author = "Perlin"
 	app.Email = "support@perlin.net"
 	app.Version = sys.Version
 	app.Usage = "a bleeding fast ledger with a powerful compute layer"
@@ -81,63 +81,60 @@ func main() {
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "sys.query_timeout",
-			Value: 10,
+			Value: int(sys.QueryTimeout.Seconds()),
 			Usage: "Timeout in seconds for querying a transaction to K peers.",
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.max_eligible_parents_depth_diff",
-			Value: 5,
+			Value: sys.MaxEligibleParentsDepthDiff,
 			Usage: "Max graph depth difference to search for eligible transaction parents from for our node.",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "sys.median_timestamp_num_ancestors",
-			Value: 5,
+			Value: sys.MedianTimestampNumAncestors,
 			Usage: "Number of ancestors to derive a median timestamp from.",
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.transaction_fee_amount",
-			Value: 2,
-		}),
-		altsrc.NewUint64Flag(cli.Uint64Flag{
-			Name:  "sys.validator_reward_amount",
-			Value: 2,
+			Value: sys.TransactionFeeAmount,
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.expected_consensus_time",
-			Value: 1000,
-			Usage: "In milliseconds.",
+			Value: sys.ExpectedConsensusTimeMilliseconds,
+			Usage: "a hardcoded consensus time in milliseconds used to compute difficulty",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "sys.critical_timestamp_average_window_size",
-			Value: 3,
+			Value: sys.CriticalTimestampAverageWindowSize,
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.min_stake",
-			Value: 100,
+			Value: sys.MinimumStake,
+			Usage: "minimum stake to garner validator rewards and have importance in consensus",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "sys.snowball.k",
-			Value: 1,
+			Value: sys.SnowballK,
 			Usage: "Snowball consensus protocol parameter k",
 		}),
 		altsrc.NewFloat64Flag(cli.Float64Flag{
 			Name:  "sys.snowball.alpha",
-			Value: 0.8,
+			Value: sys.SnowballAlpha,
 			Usage: "Snowball consensus protocol parameter alpha",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "sys.snowball.beta",
-			Value: 10,
+			Value: sys.SnowballBeta,
 			Usage: "Snowball consensus protocol parameter beta",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "sys.difficulty.min",
-			Value: 5,
+			Value: sys.MinDifficulty,
 			Usage: "Maximum difficulty to define a critical transaction",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "sys.difficulty.max",
-			Value: 16,
+			Value: sys.MaxDifficulty,
 			Usage: "Minimum difficulty to define a critical transaction",
 		}),
 		cli.StringFlag{

@@ -19,7 +19,7 @@ func main() {
 	app := cli.NewApp()
 
 	app.Name = "wctl"
-	app.Author = "Perlin Network"
+	app.Author = "Perlin"
 	app.Email = "support@perlin.net"
 	app.Version = sys.Version
 	app.Usage = "a cli client to interact with the wavelet node"

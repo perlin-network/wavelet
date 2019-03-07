@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/perlin-network/noise/identity/ed25519"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -107,28 +108,13 @@ func (n *node) kill() {
 }
 
 func (n *node) init() error {
-	config := wctl.Config{
-		APIHost: "127.0.0.1",
-		APIPort: n.apiPort,
-	}
-	copy(config.RawPrivateKey[:], n.keys.PrivateKey())
-
+	var privateKey common.PrivateKey
 	var err error
 
-	if n.client, err = wctl.NewClient(config); err != nil {
-		return errors.Wrap(err, "failed to create a new http api client")
-	}
+	copy(privateKey[:], n.keys.PrivateKey())
 
-	// Attempt to instantiate a session 100 times max.
-
-	for i := 0; i < 100; i++ {
-		if err = n.client.Init(); err == nil {
-			break
-		}
-	}
-
-	if len(n.client.SessionToken) == 0 {
-		return errors.New("failed to init session with HTTP API")
+	if n.client, err = connectToAPI("127.0.0.1", n.apiPort, privateKey); err != nil {
+		return err
 	}
 
 	log.Info().
