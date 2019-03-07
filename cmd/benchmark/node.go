@@ -46,6 +46,12 @@ func (n *node) Write(buf []byte) (num int, err error) {
 		return num, errors.Wrapf(err, "cannot decode field: %q", err)
 	}
 
+	if val, exists := fields["error"]; exists {
+		if error, ok := val.(string); ok {
+			log.Error().Str("node", fmt.Sprintf("%s:%d", n.host, n.nodePort)).Str("error", error).Msg("Node reported an error.")
+		}
+	}
+
 	if msg, exists := fields["message"]; exists {
 		if msg, ok := msg.(string); ok {
 			err = n.parseMessage(fields, msg)
