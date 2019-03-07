@@ -1,6 +1,7 @@
 package node
 
 import (
+	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/noise/protocol"
@@ -227,11 +228,13 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 
 		// The peer that originally gave us the root is giving us a different root! Skip.
 		if res.root.ID != root.ID {
+			fmt.Println("root id is wrong")
 			continue
 		}
 
 		snapshot, err := s.ledger.SnapshotAccounts().ApplyDiff(res.diff)
 		if err != nil {
+			fmt.Println("checksum is invalid")
 			continue
 		}
 
