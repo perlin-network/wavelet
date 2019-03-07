@@ -199,7 +199,7 @@ func (b *broadcaster) gossiping(logger zerolog.Logger) {
 
 	// Start broadcasting nops if we have successfully broadcasted
 	// some arbitrary transaction.
-	if !b.broadcastingNops {
+	if b.ledger.ViewID() == item.tx.ViewID && !b.broadcastingNops {
 		b.broadcastingNops = true
 
 		logger.Log().
@@ -212,11 +212,11 @@ func (b *broadcaster) gossiping(logger zerolog.Logger) {
 	}
 
 	// If we have advanced one view ID, stop broadcasting nops.
-	if b.ledger.ViewID() != item.tx.ViewID {
+	if b.ledger.ViewID() != item.tx.ViewID && b.broadcastingNops {
 		b.broadcastingNops = false
 
 		logger.Log().
-			Bool("broadcast_nops", true).
+			Bool("broadcast_nops", false).
 			Msg("Stopped broadcasting nops.")
 	}
 }
