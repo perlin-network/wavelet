@@ -143,14 +143,14 @@ func (n *node) init() error {
 }
 
 func spawn(nodePort, apiPort uint16, randomWallet bool, peers ...string) *node {
-	cmd := exec.Command("./wavelet", "-p", strconv.Itoa(int(nodePort)))
+	cmd := exec.Command("./wavelet", "-port", strconv.Itoa(int(nodePort)))
 
 	if apiPort != 0 {
-		cmd.Args = append(cmd.Args, "-api", strconv.Itoa(int(apiPort)))
+		cmd.Args = append(cmd.Args, "-api.port", strconv.Itoa(int(apiPort)))
 	}
 
 	if randomWallet {
-		cmd.Args = append(cmd.Args, "-w", "0")
+		cmd.Args = append(cmd.Args, "-wallet", "random")
 	}
 
 	if len(peers) > 0 {
@@ -177,7 +177,7 @@ func spawn(nodePort, apiPort uint16, randomWallet bool, peers ...string) *node {
 		log.Fatal().Err(err).Msg("Failed to spawn a single Wavelet node.")
 	}
 
-	//<-n.nodeReady
+	<-n.nodeReady
 
 	return n
 }

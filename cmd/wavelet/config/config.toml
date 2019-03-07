@@ -19,6 +19,7 @@ validator_reward_amount = 2
 expected_consensus_time = 1000
 critical_timestamp_average_window_size = 3
 min_stake = 100
+transaction_fee_amount = 2
 
 # Snowball consensus protocol parameters.
 [system.snowball]

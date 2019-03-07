@@ -22,7 +22,7 @@ func main() {
 
 	nodes = append(nodes, spawn(port, nextAvailablePort(), false))
 
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 1; i++ {
 		nodes = append(nodes, spawn(nextAvailablePort(), nextAvailablePort(), true, fmt.Sprintf("127.0.0.1:%d", port)))
 	}
 
