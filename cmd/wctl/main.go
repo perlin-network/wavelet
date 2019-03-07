@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/perlin-network/wavelet/sys"
@@ -355,7 +356,7 @@ func main() {
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	if err := app.Run(os.Args); err != nil {
-		fmt.Printf("Failed to parse configuration/command-line arguments: %v\n", err)
+		fmt.Printf("Failed to parse configuration/command-line arguments: %+v\n", err)
 	}
 }
 
@@ -373,8 +374,9 @@ func setup(c *cli.Context) (*wctl.Client, error) {
 	}
 
 	privateKeyBytes, err := ioutil.ReadFile(privateKeyFile)
+	rawPrivateKey, err := hex.DecodeString(string(privateKeyBytes))
 	if err != nil {
-		return nil, errors.Wrapf(err, "Unable to open api private key file: %s", privateKeyFile)
+		return nil, err
 	}
 
 	config := wctl.Config{
@@ -382,7 +384,8 @@ func setup(c *cli.Context) (*wctl.Client, error) {
 		APIPort:  uint16(port),
 		UseHTTPS: false,
 	}
-	copy(config.RawPrivateKey[:], privateKeyBytes)
+	copy(config.RawPrivateKey[:], rawPrivateKey)
+
 	client, err := wctl.NewClient(config)
 	if err != nil {
 		return nil, err
