@@ -52,6 +52,10 @@ func AssertValidTransaction(tx *Transaction) error {
 		return errors.New("tx must have sender or creator")
 	}
 
+	// TODO(kenta): check if the parents are lexicographically sorted to further
+	// 	prevent possible ways in varying the transaction ID to create a critical
+	// 	transaction through some variant of 'mining'.
+
 	if len(tx.ParentIDs) == 0 {
 		return errors.New("tx must have parents")
 	}
