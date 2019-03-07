@@ -34,7 +34,7 @@ var (
 	// Number of ancestors to derive a median timestamp from.
 	MedianTimestampNumAncestors = 5
 
-	ValidatorRewardAmount uint64 = 2
+	TransactionFeeAmount uint64 = 2
 
 	ExpectedConsensusTimeMilliseconds  uint64 = 1000
 	CriticalTimestampAverageWindowSize        = 3

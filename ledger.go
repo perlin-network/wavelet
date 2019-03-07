@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"github.com/perlin-network/noise/identity"
 	"github.com/perlin-network/noise/signature/eddsa"
-	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/conflict"
 	"github.com/perlin-network/wavelet/log"
@@ -158,60 +157,34 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	if tx.ID == l.view.Root().ID {
+	// If the transaction is our root transaction, assume that we have already voted positively for it.
+	if tx.ID == l.Root().ID {
 		return VoteAccepted
 	}
 
-	if tx.ViewID < l.ViewID() {
-		return errors.Wrapf(VoteRejected, "tx has view ID %d, but current view ID is %d", tx.ViewID, l.ViewID())
+	// Assert the transaction is valid.
+	if err := AssertValidTransaction(tx); err != nil {
+		return errors.Wrap(VoteRejected, err.Error())
 	}
 
-	if tx.ID == common.ZeroTransactionID {
-		return errors.Wrap(VoteRejected, "tx must not be empty")
+	// Assert the transaction was made within our current view ID.
+	if err := l.AssertValidViewID(tx); err != nil {
+		return errors.Wrap(VoteRejected, err.Error())
 	}
 
-	if tx.Sender == common.ZeroAccountID || tx.Creator == common.ZeroAccountID {
-		return errors.Wrap(VoteRejected, "tx must have sender or creator")
-	}
-
-	if len(tx.ParentIDs) == 0 {
-		return errors.Wrap(VoteRejected, "tx must have parents")
-	}
-
-	if tx.Tag != sys.TagNop && len(tx.Payload) == 0 {
-		return errors.Wrap(VoteRejected, "tx must have payload if not a nop transaction")
-	}
-
-	if tx.Tag == sys.TagNop && len(tx.Payload) != 0 {
-		return errors.Wrap(VoteRejected, "tx must have no payload if is a nop transaction")
-	}
-
-	if !l.assertValidSignature(tx) {
-		return errors.Wrap(VoteRejected, "tx has either invalid creator or sender signatures")
-	}
-
+	// Assert that the transaction has a sane timestamp, and that we have the transactions parents in-store.
 	if !l.assertValidTimestamp(tx) {
 		return errors.Wrap(VoteRejected, "either tx timestamp is out of bounds, or parents not available")
 	}
 
+	// Assert that the transaction has sane parents, and that we have the transactions parents in-store.
 	if !l.assertValidParentDepths(tx) {
 		return errors.Wrap(VoteRejected, "either parent depths are out of bounds, or parents not available")
 	}
 
-	critical := tx.IsCritical(l.Difficulty())
 	preferred := l.resolver.Preferred()
 
-	if critical {
-		if !l.assertValidCriticalTimestamps(tx) {
-			return errors.Wrap(VoteRejected, "tx is critical but has an invalid number of critical timestamps")
-		}
-
-		if valid, root := l.assertValidAccountsChecksum(tx); !valid {
-			return errors.Wrapf(VoteRejected, "tx is critical but has invalid accounts root "+
-				"checksum; collapsing down the critical transactions parents gives %x as the root, "+
-				"but the tx has %x as a root", root, tx.AccountsMerkleRoot)
-		}
-
+	if tx.IsCritical(l.Difficulty()) {
 		// If our node already prefers a critical transaction, reject the
 		// incoming transaction.
 		if preferred != nil && tx.ID != preferred {
@@ -220,11 +193,12 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 
 		// If our node does not prefer any critical transaction yet, set a critical
 		// transaction to initially prefer.
-		if preferred == nil && tx.ID != l.view.Root().ID {
+		if preferred == nil && tx.ID != l.Root().ID {
 			l.resolver.Prefer(tx.ID)
 		}
 	}
 
+	// Add the transaction to our view-graph if we have its parents in-store.
 	if err := l.view.addTransaction(tx); err != nil {
 		switch errors.Cause(err) {
 		case ErrParentsNotAvailable:
@@ -236,27 +210,24 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	return VoteAccepted
 }
 
-func (l *Ledger) assertValidSignature(tx *Transaction) bool {
-	err := eddsa.Verify(tx.Creator[:], append([]byte{tx.Tag}, tx.Payload...), tx.CreatorSignature[:])
-	if err != nil {
-		return false
+func (l *Ledger) AssertValidViewID(tx *Transaction) error {
+	// Assert the transaction was made within our current view ID.
+	if tx.ViewID != l.ViewID() {
+		return errors.Errorf("tx has view ID %d, but current view ID is %d", tx.ViewID, l.ViewID())
 	}
 
-	cpy := *tx
-	cpy.SenderSignature = common.ZeroSignature
+	// If the transaction is critical, assert the transaction has a valid accounts merkle root.
+	if tx.IsCritical(l.Difficulty()) {
+		snapshot := l.collapseTransactions(tx.ParentIDs, false)
 
-	err = eddsa.Verify(tx.Sender[:], cpy.Write(), tx.SenderSignature[:])
-	if err != nil {
-		return false
+		if snapshot.tree.Checksum() != tx.AccountsMerkleRoot {
+			return errors.Wrapf(VoteRejected, "tx is critical but has invalid accounts root "+
+				"checksum; collapsing down the critical transactions parents gives %x as the root, "+
+				"but the tx has %x as a root", snapshot.tree.Checksum(), tx.AccountsMerkleRoot)
+		}
 	}
 
-	return true
-
-}
-
-func (l *Ledger) assertValidAccountsChecksum(tx *Transaction) (bool, [avl.MerkleHashSize]byte) {
-	snapshot := l.collapseTransactions(tx.ParentIDs, false)
-	return snapshot.tree.Checksum() == tx.AccountsMerkleRoot, snapshot.tree.Checksum()
+	return nil
 }
 
 func (l *Ledger) assertValidParentDepths(tx *Transaction) bool {
@@ -268,21 +239,6 @@ func (l *Ledger) assertValidParentDepths(tx *Transaction) bool {
 		}
 
 		if parent.depth+sys.MaxEligibleParentsDepthDiff < tx.depth {
-			return false
-		}
-	}
-
-	return true
-}
-
-func (l *Ledger) assertValidCriticalTimestamps(tx *Transaction) bool {
-	if len(tx.DifficultyTimestamps) != computeCriticalTimestampWindowSize(tx.ViewID) {
-		return false
-	}
-
-	// Check that difficulty timestamps are in ascending order.
-	for i := 1; i < len(tx.DifficultyTimestamps); i++ {
-		if tx.DifficultyTimestamps[i] < tx.DifficultyTimestamps[i-1] {
 			return false
 		}
 	}
@@ -311,7 +267,7 @@ func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
 
 		timestamps = append(timestamps, popped.Timestamp)
 
-		if popped.ID == l.view.Root().ID || len(timestamps) == sys.MedianTimestampNumAncestors {
+		if popped.ID == l.Root().ID || len(timestamps) == sys.MedianTimestampNumAncestors {
 			break
 		}
 
@@ -390,7 +346,7 @@ func (l *Ledger) Reset(newRoot *Transaction, newState accounts) error {
 	l.view.reset(newRoot)
 
 	// Update ledgers difficulty.
-	original, adjusted := l.Difficulty(), l.computeNextDifficulty(newRoot)
+	original, adjusted := l.Difficulty(), computeNextDifficulty(newRoot)
 
 	logger := log.Consensus("update_difficulty")
 	logger.Info().
@@ -418,7 +374,7 @@ func (l *Ledger) ProcessQuery(counts map[interface{}]float64) error {
 	// the view-graph, increment the current view ID, and update the current ledgers
 	// difficulty.
 	if l.resolver.Decided() {
-		old := l.view.Root()
+		old := l.Root()
 
 		rootID := l.resolver.Preferred().(common.TransactionID)
 		root, recorded := l.view.lookupTransaction(rootID)
@@ -445,46 +401,6 @@ func (l *Ledger) ProcessQuery(counts map[interface{}]float64) error {
 	return nil
 }
 
-func (l *Ledger) computeNextDifficulty(critical *Transaction) uint64 {
-	timestamps := make([]uint64, len(critical.DifficultyTimestamps))
-	copy(timestamps, critical.DifficultyTimestamps)
-
-	timestamps = append(timestamps, critical.Timestamp)
-
-	// Prune away critical timestamp history if needed.
-	if size := computeCriticalTimestampWindowSize(critical.ViewID); len(timestamps) > size+1 {
-		timestamps = timestamps[len(timestamps)-size+1:]
-	}
-
-	var deltas []uint64
-
-	// Compute first-order differences across timestamps.
-	for i := 1; i < len(timestamps); i++ {
-		deltas = append(deltas, timestamps[i]-timestamps[i-1])
-	}
-
-	mean := computeMeanTimestamp(deltas)
-
-	// Adjust the current ledgers difficulty to:
-	//
-	// DIFFICULTY = min(MAX_DIFFICULTY,
-	// 	max(MIN_DIFFICULTY,
-	// 		(DIFFICULTY - MAX_DIFFICULTY_DELTA / 2) *
-	// 			(MAX_DIFFICULTY_DELTA / 2 * max(2,
-	// 				10 seconds / average(time it took to accept critical transaction for the last 5 critical transactions)
-	// 			)
-	// 		)
-	// 	)
-	expectedTimeFactor := float64(sys.ExpectedConsensusTimeMilliseconds) / float64(mean)
-	if expectedTimeFactor > 10.0 {
-		expectedTimeFactor = 10.0
-	}
-
-	difficulty := sys.MinDifficulty + int(float64(sys.MaxDifficulty-sys.MinDifficulty)/10.0*expectedTimeFactor)
-
-	return uint64(difficulty)
-}
-
 func (l *Ledger) RegisterProcessor(tag byte, processor TransactionProcessor) {
 	l.processors[tag] = processor
 }
@@ -498,7 +414,7 @@ func (l *Ledger) collapseTransactions(parentIDs []common.AccountID, logging bool
 	ss.SetViewID(l.Root().ViewID + 1)
 
 	visited := make(map[common.TransactionID]struct{})
-	visited[l.view.Root().ID] = struct{}{}
+	visited[l.Root().ID] = struct{}{}
 
 	q := queue.New()
 
@@ -602,15 +518,17 @@ func (l *Ledger) rewardValidators(ss accounts, tx *Transaction) error {
 		if popped.Sender != tx.Sender {
 			stake, _ := ss.ReadAccountStake(popped.Sender)
 
-			candidates = append(candidates, popped)
-			stakes = append(stakes, stake)
+			if stake > sys.MinimumStake {
+				candidates = append(candidates, popped)
+				stakes = append(stakes, stake)
 
-			totalStake += stake
+				totalStake += stake
 
-			// Record entropy source.
-			_, err := hasher.Write(popped.ID[:])
-			if err != nil {
-				return errors.Wrap(err, "stake: failed to hash transaction ID for entropy src")
+				// Record entropy source.
+				_, err := hasher.Write(popped.ID[:])
+				if err != nil {
+					return errors.Wrap(err, "stake: failed to hash transaction ID for entropy src")
+				}
 			}
 		}
 
@@ -655,10 +573,10 @@ func (l *Ledger) rewardValidators(ss accounts, tx *Transaction) error {
 	senderBalance, _ := ss.ReadAccountBalance(tx.Sender)
 	recipientBalance, _ := ss.ReadAccountBalance(rewardee.Sender)
 
-	deducted := sys.ValidatorRewardAmount
+	deducted := sys.TransactionFeeAmount
 
 	if senderBalance < deducted {
-		return errors.Errorf("stake: sender does not have enough PERLs to pay transaction fees (requested %d PERLs)", deducted)
+		return errors.Errorf("stake: sender %x does not have enough PERLs to pay transaction fees (requested %d PERLs) to %x", tx.Sender, deducted, rewardee.Sender)
 	}
 
 	ss.WriteAccountBalance(tx.Sender, senderBalance-deducted)

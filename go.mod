@@ -14,6 +14,8 @@ require (
 	github.com/google/uuid v1.1.0
 	github.com/gorilla/websocket v1.4.0
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
+	github.com/klauspost/compress v1.4.1 // indirect
+	github.com/klauspost/cpuid v1.2.0 // indirect
 	github.com/perlin-network/life v0.0.0-20190204091834-d05763d11050
 	github.com/perlin-network/noise v0.0.0-20190305074834-c3dca79c3e2a
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
@@ -21,8 +23,10 @@ require (
 	github.com/rs/zerolog v1.11.0
 	github.com/stretchr/testify v1.3.0
 	github.com/tecbot/gorocksdb v0.0.0-20181010114359-8752a9433481
+	github.com/valyala/fasthttp v1.2.0
 	go.uber.org/atomic v1.3.2
 	golang.org/x/crypto v0.0.0-20190123085648-057139ce5d2b
+	golang.org/x/net v0.0.0-20190301231341-16b79f2e4e95 // indirect
 	gopkg.in/urfave/cli.v1 v1.20.0
 	gopkg.in/yaml.v2 v2.2.2 // indirect
 )

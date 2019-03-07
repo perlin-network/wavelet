@@ -1,7 +1,6 @@
 package node
 
 import (
-	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/wavelet"
@@ -96,7 +95,6 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 }
 
 func handleSyncDiffRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffRequest) {
-	fmt.Println("Finding the diff between view IDs", req.viewID, "and", ledger.ViewID())
 	res := &SyncDiffResponse{
 		root: ledger.Root(),
 		diff: ledger.DumpDiff(req.viewID),
@@ -110,13 +108,15 @@ func handleSyncDiffRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDif
 func handleSyncViewRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncViewRequest) {
 	res := new(SyncViewResponse)
 
-	// TODO(kenta): add additional checks to see if the incoming root is valid
-
 	syncer := Syncer(peer.Node())
 	syncer.addRootIfNotExists(protocol.PeerID(peer), req.root)
 
-	if preferred := syncer.resolver.Preferred(); ledger.ViewID() < req.root.ViewID && preferred == nil {
-		syncer.resolver.Prefer(req.root.ID)
+	if err := wavelet.AssertValidTransaction(req.root); err == nil {
+		preferred := syncer.resolver.Preferred()
+
+		if ledger.ViewID() < req.root.ViewID && preferred == nil {
+			syncer.resolver.Prefer(req.root.ID)
+		}
 	}
 
 	if preferred := syncer.resolver.Preferred(); preferred == nil {
@@ -144,10 +144,17 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 
 	// If our node does not prefer any critical transaction yet, set a critical
 	// transaction to initially prefer.
-	//
-	// TODO(kenta): assert some properties about the transaction
-	if req.tx.IsCritical(ledger.Difficulty()) && ledger.Resolver().Preferred() == nil && req.tx.ID != ledger.Root().ID {
-		ledger.Resolver().Prefer(req.tx.ID)
+	if err := wavelet.AssertValidTransaction(req.tx); err == nil {
+		preferred := ledger.Resolver().Preferred()
+
+		if req.tx.IsCritical(ledger.Difficulty()) {
+			correctViewID := ledger.AssertValidViewID(req.tx) == nil
+			preferredNotSet := preferred == nil && req.tx.ID != ledger.Root().ID
+
+			if correctViewID && preferredNotSet {
+				ledger.Resolver().Prefer(req.tx.ID)
+			}
+		}
 	}
 
 	if req.tx.ViewID == ledger.ViewID()-1 {
@@ -175,6 +182,8 @@ func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipReq
 		return
 	}
 
+	_, seen := ledger.FindTransaction(req.tx.ID)
+
 	vote := ledger.ReceiveTransaction(req.tx)
 	res.vote = errors.Cause(vote) == wavelet.VoteAccepted
 
@@ -182,6 +191,13 @@ func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipReq
 		logger.Debug().Hex("tx_id", req.tx.ID[:]).Msg("Gave a positive vote to a transaction.")
 	} else {
 		logger.Warn().Hex("tx_id", req.tx.ID[:]).Err(vote).Msg("Gave a negative vote to a transaction.")
+	}
+
+	// Gossip transaction out to our peers just once. Ignore any errors if gossiping out fails.
+	if !seen && res.vote {
+		go func() {
+			_ = BroadcastTransaction(peer.Node(), req.tx)
+		}()
 	}
 }
 

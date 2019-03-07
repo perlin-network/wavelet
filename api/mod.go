@@ -15,6 +15,8 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/pkg/errors"
+	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpadaptor"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -109,9 +111,9 @@ func (g *Gateway) StartHTTP(n *noise.Node, port int) {
 	g.setup()
 
 	logger := log.Node()
-	logger.Info().Msgf("Started HTTP API server on port %d.", port)
+	logger.Info().Int("port", port).Msg("Started HTTP API server.")
 
-	if err := http.ListenAndServe(":"+strconv.Itoa(port), g.router); err != nil {
+	if err := fasthttp.ListenAndServe(":"+strconv.Itoa(port), fasthttpadaptor.NewFastHTTPHandler(g.router)); err != nil {
 		logger.Fatal().Err(err).Msg("Failed to start HTTP server.")
 	}
 }

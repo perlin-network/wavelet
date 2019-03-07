@@ -15,19 +15,13 @@ func selectPeers(node *noise.Node, amount int) ([]protocol.ID, error) {
 	peerIDs := skademlia.FindClosestPeers(skademlia.Table(node), protocol.NodeID(node).Hash(), amount)
 
 	if len(peerIDs) < sys.SnowballK {
-		return nil, errors.Errorf("sync: only connected to %d peer(s) "+
-			"but require a minimum of %d peer(s)", len(peerIDs), sys.SnowballK)
+		return peerIDs, errors.Errorf("only connected to %d peer(s), but require a minimum of %d peer(s)", len(peerIDs), sys.SnowballK)
 	}
 
 	return peerIDs, nil
 }
 
-func broadcast(node *noise.Node, req noise.Message, resOpcode noise.Opcode) ([]protocol.ID, []noise.Message, error) {
-	peerIDs, err := selectPeers(node, sys.SnowballK)
-	if err != nil {
-		return nil, nil, err
-	}
-
+func broadcast(node *noise.Node, peerIDs []protocol.ID, req noise.Message, resOpcode noise.Opcode) ([]noise.Message, error) {
 	var responses []noise.Message
 
 	var mu sync.Mutex
@@ -74,5 +68,5 @@ func broadcast(node *noise.Node, req noise.Message, resOpcode noise.Opcode) ([]p
 
 	wg.Wait()
 
-	return peerIDs, responses, nil
+	return responses, nil
 }

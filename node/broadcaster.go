@@ -2,6 +2,7 @@ package node
 
 import (
 	"github.com/perlin-network/noise"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
@@ -140,9 +141,16 @@ func (b *broadcaster) gossiping(logger zerolog.Logger) {
 			Hex("tx_id", popped.tx.ID[:]).
 			Msg("Broadcasting out queued transaction.")
 	case <-time.After(1 * time.Millisecond):
+		var self common.AccountID
+		copy(self[:], b.node.Keys.PublicKey())
+
+		balance, _ := b.ledger.ReadAccountBalance(self)
+
 		// If there is nothing we need to broadcast urgently, then broadcast
 		// a nop (if we have previously broadcasted a transaction beforehand).
-		if !b.broadcastingNops {
+		//
+		// If we do not have any balance either, do not broadcast any nops.
+		if !b.broadcastingNops || balance < sys.TransactionFeeAmount {
 			return
 		}
 
@@ -219,7 +227,12 @@ func (b *broadcaster) query(preferred *wavelet.Transaction) error {
 		return errors.Wrap(err, "broadcast: response opcode not registered")
 	}
 
-	peerIDs, responses, err := broadcast(b.node, QueryRequest{tx: preferred}, opcodeQueryResponse)
+	peerIDs, err := selectPeers(b.node, sys.SnowballK)
+	if err != nil {
+		return errors.Wrap(err, "broadcast: cannot query")
+	}
+
+	responses, err := broadcast(b.node, peerIDs, QueryRequest{tx: preferred}, opcodeQueryResponse)
 	if err != nil {
 		return err
 	}
@@ -260,7 +273,12 @@ func (b *broadcaster) gossip(tx *wavelet.Transaction) error {
 		return errors.Wrap(err, "broadcast: response opcode not registered")
 	}
 
-	peerIDs, responses, err := broadcast(b.node, GossipRequest{tx: tx}, opcodeGossipResponse)
+	peerIDs, _ := selectPeers(b.node, skademlia.BucketSize())
+	if len(peerIDs) == 0 {
+		return errors.New("broadcast: cannot gossip because not connected to any peers")
+	}
+
+	responses, err := broadcast(b.node, peerIDs, GossipRequest{tx: tx}, opcodeGossipResponse)
 	if err != nil {
 		return err
 	}

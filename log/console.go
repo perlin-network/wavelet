@@ -133,8 +133,10 @@ func (w ConsoleWriter) Write(p []byte) (n int, err error) {
 		return n, fmt.Errorf("cannot decode event: %s", err)
 	}
 
-	if _, filtered := w.FilteredModules[event[KeyModule].(string)]; !filtered {
-		return len(p), nil
+	if module := event[KeyModule]; module != nil {
+		if _, filtered := w.FilteredModules[module.(string)]; !filtered {
+			return len(p), nil
+		}
 	}
 
 	delete(event, KeyModule)

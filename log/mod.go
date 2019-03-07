@@ -5,12 +5,11 @@ import (
 	"github.com/perlin-network/wavelet/common"
 	"github.com/rs/zerolog"
 	"io"
-	"os"
 )
 
 var (
 	output = new(multiWriter)
-	logger = zerolog.New(os.Stderr).With().Timestamp().Logger().Output(output)
+	logger = zerolog.New(output).With().Timestamp().Logger()
 
 	node        zerolog.Logger
 	accounts    zerolog.Logger
