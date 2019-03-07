@@ -28,7 +28,7 @@ type node struct {
 	keys   *ed25519.Keypair
 	client *wctl.Client
 
-	args              []string
+	cmd               *exec.Cmd
 	host              string
 	nodePort, apiPort uint16
 
@@ -89,6 +89,11 @@ func (n *node) wait() {
 	<-n.ready
 }
 
+// kill kills the nodes process.
+func (n *node) kill() {
+	_ = n.cmd.Process.Kill()
+}
+
 func (n *node) init() error {
 	config := wctl.Config{
 		APIHost: "127.0.0.1",
@@ -134,7 +139,7 @@ func spawn(nodePort, apiPort uint16, randomWallet bool, peers ...string) *node {
 
 	// TODO(kenta): allow external hosts
 	n := &node{
-		args: cmd.Args,
+		cmd: cmd,
 
 		host: "127.0.0.1",
 

@@ -17,3 +17,19 @@ func wait(nodes ...*node) {
 
 	wg.Wait()
 }
+
+func kill(nodes ...*node) {
+	var wg sync.WaitGroup
+	wg.Add(len(nodes))
+
+	for _, node := range nodes {
+		node := node
+
+		go func() {
+			node.kill()
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+}

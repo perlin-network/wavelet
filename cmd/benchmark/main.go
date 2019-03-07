@@ -33,4 +33,6 @@ func main() {
 	}
 
 	fmt.Println("Sent a new transaction.", res.ID)
+
+	kill(nodes...)
 }
