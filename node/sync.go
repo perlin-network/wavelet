@@ -1,7 +1,6 @@
 package node
 
 import (
-	"encoding/hex"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/noise/protocol"
@@ -12,10 +11,10 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"go.uber.org/atomic"
 	"golang.org/x/crypto/blake2b"
 	"math/rand"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -127,7 +126,6 @@ func (s *syncer) loop() {
 
 func (s *syncer) addRootIfNotExists(account protocol.ID, root *wavelet.Transaction) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	if _, exists := s.roots[root.ID]; !exists {
 		s.roots[root.ID] = root
@@ -141,6 +139,8 @@ func (s *syncer) addRootIfNotExists(account protocol.ID, root *wavelet.Transacti
 	copy(id[:], account.Write())
 
 	s.accounts[root.ID][id] = struct{}{}
+
+	s.mu.Unlock()
 }
 
 func (s *syncer) getRootByID(id common.TransactionID) *wavelet.Transaction {
@@ -202,35 +202,40 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 
 	type peerInfo struct {
 		id     protocol.ID
-		hashes [][]byte
+		hashes [][blake2b.Size256]byte
 	}
+
 	opcodeSyncDiffMetadataResponse, err := noise.OpcodeFromMessage((*SyncDiffMetadataResponse)(nil))
 	if err != nil {
-		return errors.Wrap(err, "sync: response opcode not registered")
+		return errors.Wrap(err, "sync: diff metadata response opcode not registered")
 	}
 
 	opcodeSyncDiffChunkResponse, err := noise.OpcodeFromMessage((*SyncDiffChunkResponse)(nil))
 	if err != nil {
-		return errors.Wrap(err, "sync: response opcode not registered")
+		return errors.Wrap(err, "sync: diff chunk response opcode not registered")
 	}
 
-	req := &SyncDiffMetadataRequest{viewID: s.ledger.Root().ViewID}
-	viewIDHashes := make(map[uint64][]peerInfo)
-	var selectedPeerSet []peerInfo
+	req := SyncDiffMetadataRequest{viewID: s.ledger.Root().ViewID}
 
-	wg := sync.WaitGroup{}
-	viHashMutex := sync.Mutex{}
+	var selected []peerInfo
+
+	viewChunkHashes := make(map[uint64][]peerInfo)
+	var mu sync.Mutex
+
+	var wg sync.WaitGroup
+	wg.Add(len(peerIDs))
 
 	for _, peerID := range peerIDs {
-		wg.Add(1)
+		peerID := peerID
+
 		go func() {
 			defer wg.Done()
+
 			peer := protocol.Peer(s.node, peerID)
 			if peer == nil {
 				return
 			}
 
-			// Send query request.
 			err := peer.SendMessage(req)
 			if err != nil {
 				return
@@ -245,57 +250,60 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 				return
 			}
 
-			viHashMutex.Lock()
-			viewIDHashes[res.latestViewID] = append(viewIDHashes[res.latestViewID], peerInfo{
+			mu.Lock()
+			viewChunkHashes[res.latestViewID] = append(viewChunkHashes[res.latestViewID], peerInfo{
 				id:     peerID,
 				hashes: res.chunkHashes,
 			})
-			viHashMutex.Unlock()
+			mu.Unlock()
 		}()
 	}
+
 	wg.Wait()
 
-	for _, peers := range viewIDHashes {
+	for _, peers := range viewChunkHashes {
 		if len(peers) >= len(peerIDs)*2/3 {
-			selectedPeerSet = peers
+			selected = peers
 			break
 		}
 	}
 
-	if len(selectedPeerSet) == 0 {
+	if len(selected) == 0 {
 		return errors.New("inconsistent view ids")
 	}
 
-	viewIDHashes = nil
+	viewChunkHashes = nil
 
 	type chunkSource struct {
-		hash  [blake2bHashSize]byte
+		hash  [blake2b.Size256]byte
 		peers []protocol.ID
 	}
 
-	chunkSources := make([]chunkSource, 0)
+	var chunkSources []chunkSource
 
 	for i := 0; ; i++ {
-		hashCount := make(map[[blake2bHashSize]byte][]protocol.ID)
+		hashCount := make(map[[blake2b.Size256]byte][]protocol.ID)
 		hashInRange := false
-		for _, peer := range selectedPeerSet {
+
+		for _, peer := range selected {
 			if i >= len(peer.hashes) {
 				continue
 			}
+
+			hashCount[peer.hashes[i]] = append(hashCount[peer.hashes[i]], peer.id)
 			hashInRange = true
-			var hash [blake2bHashSize]byte
-			copy(hash[:], peer.hashes[i])
-			hashCount[hash] = append(hashCount[hash], peer.id)
 		}
+
 		if !hashInRange {
 			break
 		}
 
 		consistent := false
 
-		for hash, ps := range hashCount {
-			if len(ps) >= len(selectedPeerSet)*2/3 && len(ps) > 0 {
-				chunkSources = append(chunkSources, chunkSource{hash, ps})
+		for hash, peers := range hashCount {
+			if len(peers) >= len(selected)*2/3 && len(peers) > 0 {
+				chunkSources = append(chunkSources, chunkSource{hash: hash, peers: peers})
+
 				consistent = true
 				break
 			}
@@ -307,25 +315,28 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 	}
 
 	collectedChunks := make([][]byte, len(chunkSources))
-	successCount := uint32(0)
 
-	for chunkID, cs := range chunkSources {
-		cs := cs
-		wg.Add(1)
+	var successCount atomic.Uint32
+
+	wg.Add(len(chunkSources))
+
+	for chunkID, src := range chunkSources {
+		src := src
 
 		// FIXME: Noise does not support concurrent request/response on a single peer.
 		// go func() {
 		func() {
 			defer wg.Done()
+
 			for i := 0; i < 5; i++ {
-				peerID := cs.peers[rand.Intn(len(cs.peers))]
+				peerID := src.peers[rand.Intn(len(src.peers))]
+
 				peer := protocol.Peer(s.node, peerID)
 				if peer == nil {
 					continue
 				}
 
-				// Send query request.
-				err := peer.SendMessage(&SyncDiffChunkRequest{hash: cs.hash[:]})
+				err := peer.SendMessage(SyncDiffChunkRequest{chunkHash: src.hash})
 				if err != nil {
 					continue
 				}
@@ -340,29 +351,37 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 				}
 
 				if !res.found {
-					logger.Info().Msg("Chunk not found on remote peer")
+					logger.Info().
+						Hex("peer_id", peerID.PublicKey()).
+						Msg("Chunk not found on remote peer.")
 					continue
 				}
 
-				remoteHash := blake2b.Sum256(res.diff)
-				if remoteHash != cs.hash {
-					logger.Info().Msgf("Chunk hash mismatch: %s %s", hex.EncodeToString(remoteHash[:]), hex.EncodeToString(cs.hash[:]))
+				if remoteHash := blake2b.Sum256(res.diff); remoteHash != src.hash {
+					logger.Info().
+						Hex("remote_checksum", remoteHash[:]).
+						Hex("source_checksum", src.hash[:]).
+						Msg("Chunk hash mismatch.")
+
 					continue
 				}
 
 				collectedChunks[chunkID] = res.diff
-				atomic.AddUint32(&successCount, 1)
+				successCount.Add(1)
+
 				break
 			}
 		}()
 	}
 
 	wg.Wait()
-	if int(successCount) != len(chunkSources) {
+
+	if int(successCount.Load()) != len(chunkSources) {
 		return errors.New("failed to fetch some chunks from our peers")
 	}
 
 	var diff []byte
+
 	for _, chunk := range collectedChunks {
 		diff = append(diff, chunk...)
 	}
@@ -381,7 +400,9 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 		return err
 	}
 
-	logger.Info().Msgf("Successfully built a new state tree from %d chunk(s).", len(collectedChunks))
+	logger.Info().
+		Int("num_chunks", len(collectedChunks)).
+		Msg("Successfully built a new state tree out of chunk(s) we have received from peers.")
 
 	return nil
 }

@@ -6,6 +6,7 @@ import (
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/blake2b"
 )
 
 var (
@@ -174,11 +175,11 @@ type SyncDiffMetadataRequest struct {
 
 type SyncDiffMetadataResponse struct {
 	latestViewID uint64
-	chunkHashes  [][]byte
+	chunkHashes  [][blake2b.Size256]byte
 }
 
 type SyncDiffChunkRequest struct {
-	hash []byte
+	chunkHash [blake2b.Size256]byte
 }
 
 type SyncDiffChunkResponse struct {
@@ -211,14 +212,22 @@ func (s SyncDiffMetadataResponse) Read(reader payload.Reader) (noise.Message, er
 
 	numChunks, err := reader.ReadUint32()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read numChunks")
+		return nil, errors.Wrap(err, "failed to read num chunks")
 	}
 
 	for i := uint32(0); i < numChunks; i++ {
-		chunkHash, err := reader.ReadBytes()
+		var chunkHash [blake2b.Size256]byte
+
+		n, err := reader.Read(chunkHash[:])
+
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to read chunk hash")
 		}
+
+		if n != blake2b.Size256 {
+			return nil, errors.New("did not read enough bytes for chunk hash")
+		}
+
 		s.chunkHashes = append(s.chunkHashes, chunkHash)
 	}
 
@@ -227,27 +236,32 @@ func (s SyncDiffMetadataResponse) Read(reader payload.Reader) (noise.Message, er
 
 func (s SyncDiffMetadataResponse) Write() []byte {
 	writer := payload.NewWriter(nil)
+
 	writer.WriteUint64(s.latestViewID)
 	writer.WriteUint32(uint32(len(s.chunkHashes)))
+
 	for _, h := range s.chunkHashes {
-		writer.WriteBytes(h)
+		_, _ = writer.Write(h[:])
 	}
+
 	return writer.Bytes()
 }
 
 func (s SyncDiffChunkRequest) Read(reader payload.Reader) (noise.Message, error) {
-	var err error
-
-	s.hash, err = reader.ReadBytes()
+	n, err := reader.Read(s.chunkHash[:])
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read hash")
+		return nil, errors.Wrap(err, "failed to read chunk hash")
+	}
+
+	if n != blake2b.Size256 {
+		return nil, errors.New("did not read enough bytes for chunk hash")
 	}
 
 	return s, nil
 }
 
 func (s SyncDiffChunkRequest) Write() []byte {
-	return payload.NewWriter(nil).WriteBytes(s.hash).Bytes()
+	return s.chunkHash[:]
 }
 
 func (s SyncDiffChunkResponse) Read(reader payload.Reader) (noise.Message, error) {
@@ -273,9 +287,11 @@ func (s SyncDiffChunkResponse) Read(reader payload.Reader) (noise.Message, error
 }
 
 func (s SyncDiffChunkResponse) Write() []byte {
-	found := byte(0)
+	var found byte
+
 	if s.found {
 		found = 1
 	}
+
 	return payload.NewWriter(nil).WriteByte(found).WriteBytes(s.diff).Bytes()
 }

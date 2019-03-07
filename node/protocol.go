@@ -1,7 +1,6 @@
 package node
 
 import (
-	"encoding/hex"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/wavelet"
@@ -107,22 +106,25 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 }
 
 func handleSyncDiffMetadataRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffMetadataRequest, chunkCache *lru) {
-	vid := ledger.ViewID()
 	diff := ledger.DumpDiff(req.viewID)
-	chunkHashes := make([][]byte, 0)
+
+	var chunkHashes [][blake2b.Size256]byte
 
 	for i := 0; i < len(diff); i += syncChunkSize {
 		end := i + syncChunkSize
+
 		if end > len(diff) {
 			end = len(diff)
 		}
+
 		hash := blake2b.Sum256(diff[i:end])
+
 		chunkCache.put(hash, diff[i:end])
-		chunkHashes = append(chunkHashes, hash[:])
+		chunkHashes = append(chunkHashes, hash)
 	}
 
 	if err := <-peer.SendMessageAsync(&SyncDiffMetadataResponse{
-		latestViewID: vid,
+		latestViewID: ledger.ViewID(),
 		chunkHashes:  chunkHashes,
 	}); err != nil {
 		_ = peer.DisconnectAsync()
@@ -130,17 +132,19 @@ func handleSyncDiffMetadataRequest(ledger *wavelet.Ledger, peer *noise.Peer, req
 }
 
 func handleSyncDiffChunkRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffChunkRequest, chunkCache *lru) {
-	var hash [32]byte
-	copy(hash[:], req.hash)
-
 	var res SyncDiffChunkResponse
-	chunk, found := chunkCache.load(hash)
-	if found {
-		res.found = true
+
+	if chunk, found := chunkCache.load(req.chunkHash); found {
 		res.diff = chunk.([]byte)
-		logger := log.Node()
+		res.found = true
+
 		providedHash := blake2b.Sum256(res.diff)
-		logger.Info().Msgf("Got %s, provided %s", hex.EncodeToString(req.hash), hex.EncodeToString(providedHash[:]))
+
+		logger := log.Node()
+		logger.Info().
+			Hex("requested_hash", req.chunkHash[:]).
+			Hex("provided_hash", providedHash[:]).
+			Msg("Responded to sync chunk request.")
 	}
 
 	if err := <-peer.SendMessageAsync(&res); err != nil {

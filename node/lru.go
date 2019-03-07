@@ -2,34 +2,33 @@ package node
 
 import (
 	"container/list"
+	"golang.org/x/crypto/blake2b"
 	"sync"
 )
-
-const blake2bHashSize = 32
 
 type lru struct {
 	sync.Mutex
 
 	size int
 
-	elements map[[blake2bHashSize]byte]*list.Element
+	elements map[[blake2b.Size256]byte]*list.Element
 	access   *list.List // *objectInfo
 }
 
 type objectInfo struct {
-	key [blake2bHashSize]byte
+	key [blake2b.Size256]byte
 	obj interface{}
 }
 
 func newLRU(size int) *lru {
 	return &lru{
 		size:     size,
-		elements: make(map[[blake2bHashSize]byte]*list.Element),
+		elements: make(map[[blake2b.Size256]byte]*list.Element),
 		access:   list.New(),
 	}
 }
 
-func (l *lru) load(key [blake2bHashSize]byte) (interface{}, bool) {
+func (l *lru) load(key [blake2b.Size256]byte) (interface{}, bool) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -42,7 +41,7 @@ func (l *lru) load(key [blake2bHashSize]byte) (interface{}, bool) {
 	return elem.Value.(*objectInfo).obj, ok
 }
 
-func (l *lru) put(key [blake2bHashSize]byte, val interface{}) {
+func (l *lru) put(key [blake2b.Size256]byte, val interface{}) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -66,7 +65,7 @@ func (l *lru) put(key [blake2bHashSize]byte, val interface{}) {
 	}
 }
 
-func (l *lru) remove(key [blake2bHashSize]byte) {
+func (l *lru) remove(key [blake2b.Size256]byte) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -77,11 +76,11 @@ func (l *lru) remove(key [blake2bHashSize]byte) {
 	}
 }
 
-func (l *lru) mostRecentlyUsed(n int) [][blake2bHashSize]byte {
+func (l *lru) mostRecentlyUsed(n int) [][blake2b.Size256]byte {
 	l.Lock()
 	defer l.Unlock()
 
-	out := make([][blake2bHashSize]byte, 0)
+	out := make([][blake2b.Size256]byte, 0)
 
 	current := l.access.Front()
 	for current != nil {
