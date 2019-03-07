@@ -1,6 +1,7 @@
 package node
 
 import (
+	"encoding/hex"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/wavelet"
@@ -9,6 +10,7 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/blake2b"
 )
 
 var _ protocol.Block = (*block)(nil)
@@ -18,6 +20,8 @@ const (
 	keyBroadcaster = "wavelet.broadcaster"
 	keySyncer      = "wavelet.syncer"
 	keyAuthChannel = "wavelet.auth.ch"
+
+	syncChunkSize = 1048576 // change this to a smaller value for debugging.
 )
 
 type block struct {
@@ -30,8 +34,10 @@ type block struct {
 	opcodeSyncViewRequest  noise.Opcode
 	opcodeSyncViewResponse noise.Opcode
 
-	opcodeSyncDiffRequest  noise.Opcode
-	opcodeSyncDiffResponse noise.Opcode
+	opcodeSyncDiffMetadataRequest  noise.Opcode
+	opcodeSyncDiffMetadataResponse noise.Opcode
+	opcodeSyncDiffChunkRequest     noise.Opcode
+	opcodeSyncDiffChunkResponse    noise.Opcode
 }
 
 func New() *block {
@@ -45,8 +51,10 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 	b.opcodeQueryResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*QueryResponse)(nil))
 	b.opcodeSyncViewRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncViewRequest)(nil))
 	b.opcodeSyncViewResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncViewResponse)(nil))
-	b.opcodeSyncDiffRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncDiffRequest)(nil))
-	b.opcodeSyncDiffResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncDiffResponse)(nil))
+	b.opcodeSyncDiffMetadataRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncDiffMetadataRequest)(nil))
+	b.opcodeSyncDiffMetadataResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncDiffMetadataResponse)(nil))
+	b.opcodeSyncDiffChunkRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncDiffChunkRequest)(nil))
+	b.opcodeSyncDiffChunkResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncDiffChunkResponse)(nil))
 
 	genesisPath := "config/genesis.json"
 
@@ -80,6 +88,8 @@ func (b *block) OnBegin(p *protocol.Protocol, peer *noise.Peer) error {
 }
 
 func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
+	chunkCache := newLRU(1024) // 1024 * 4MB
+
 	for {
 		select {
 		case req := <-peer.Receive(b.opcodeGossipRequest):
@@ -88,19 +98,52 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 			handleQueryRequest(ledger, peer, req.(QueryRequest))
 		case req := <-peer.Receive(b.opcodeSyncViewRequest):
 			handleSyncViewRequest(ledger, peer, req.(SyncViewRequest))
-		case req := <-peer.Receive(b.opcodeSyncDiffRequest):
-			handleSyncDiffRequest(ledger, peer, req.(SyncDiffRequest))
+		case req := <-peer.Receive(b.opcodeSyncDiffMetadataRequest):
+			handleSyncDiffMetadataRequest(ledger, peer, req.(SyncDiffMetadataRequest), chunkCache)
+		case req := <-peer.Receive(b.opcodeSyncDiffChunkRequest):
+			handleSyncDiffChunkRequest(ledger, peer, req.(SyncDiffChunkRequest), chunkCache)
 		}
 	}
 }
 
-func handleSyncDiffRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffRequest) {
-	res := &SyncDiffResponse{
-		root: ledger.Root(),
-		diff: ledger.DumpDiff(req.viewID),
+func handleSyncDiffMetadataRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffMetadataRequest, chunkCache *lru) {
+	vid := ledger.ViewID()
+	diff := ledger.DumpDiff(req.viewID)
+	chunkHashes := make([][]byte, 0)
+
+	for i := 0; i < len(diff); i += syncChunkSize {
+		end := i + syncChunkSize
+		if end > len(diff) {
+			end = len(diff)
+		}
+		hash := blake2b.Sum256(diff[i:end])
+		chunkCache.put(hash, diff[i:end])
+		chunkHashes = append(chunkHashes, hash[:])
 	}
 
-	if err := <-peer.SendMessageAsync(res); err != nil {
+	if err := <-peer.SendMessageAsync(&SyncDiffMetadataResponse{
+		latestViewID: vid,
+		chunkHashes:  chunkHashes,
+	}); err != nil {
+		_ = peer.DisconnectAsync()
+	}
+}
+
+func handleSyncDiffChunkRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffChunkRequest, chunkCache *lru) {
+	var hash [32]byte
+	copy(hash[:], req.hash)
+
+	var res SyncDiffChunkResponse
+	chunk, found := chunkCache.load(hash)
+	if found {
+		res.found = true
+		res.diff = chunk.([]byte)
+		logger := log.Node()
+		providedHash := blake2b.Sum256(res.diff)
+		logger.Info().Msgf("Got %s, provided %s", hex.EncodeToString(req.hash), hex.EncodeToString(providedHash[:]))
+	}
+
+	if err := <-peer.SendMessageAsync(&res); err != nil {
 		_ = peer.DisconnectAsync()
 	}
 }

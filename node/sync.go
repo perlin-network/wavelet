@@ -1,6 +1,7 @@
 package node
 
 import (
+	"encoding/hex"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/noise/protocol"
@@ -11,7 +12,10 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/blake2b"
+	"math/rand"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -194,58 +198,190 @@ func (s *syncer) queryForLatestView() error {
 }
 
 func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transaction) error {
-	opcodeSyncDiffResponse, err := noise.OpcodeFromMessage((*SyncDiffResponse)(nil))
+	logger := log.Sync("query_and_apply_diff")
+
+	type peerInfo struct {
+		id     protocol.ID
+		hashes [][]byte
+	}
+	opcodeSyncDiffMetadataResponse, err := noise.OpcodeFromMessage((*SyncDiffMetadataResponse)(nil))
 	if err != nil {
 		return errors.Wrap(err, "sync: response opcode not registered")
 	}
 
-	req := &SyncDiffRequest{viewID: s.ledger.Root().ViewID}
-
-	for _, peerID := range peerIDs {
-		var account common.AccountID
-		copy(account[:], peerID.PublicKey())
-
-		peer := protocol.Peer(s.node, peerID)
-		if peer == nil {
-			continue
-		}
-
-		// Send query request.
-		err := peer.SendMessage(req)
-		if err != nil {
-			continue
-		}
-
-		var res SyncDiffResponse
-
-		select {
-		case msg := <-peer.Receive(opcodeSyncDiffResponse):
-			res = msg.(SyncDiffResponse)
-		case <-time.After(sys.QueryTimeout):
-			continue
-		}
-
-		// The peer that originally gave us the root is giving us a different root! Skip.
-		if res.root.ID != root.ID {
-			continue
-		}
-
-		snapshot, err := s.ledger.SnapshotAccounts().ApplyDiff(res.diff)
-		if err != nil {
-			continue
-		}
-
-		// The diff did not get us the intended merkle root we wanted. Skip.
-		if snapshot.Checksum() != root.AccountsMerkleRoot {
-			continue
-		}
-
-		if err := s.ledger.Reset(root, snapshot); err != nil {
-			return err
-		}
-
-		return nil
+	opcodeSyncDiffChunkResponse, err := noise.OpcodeFromMessage((*SyncDiffChunkResponse)(nil))
+	if err != nil {
+		return errors.Wrap(err, "sync: response opcode not registered")
 	}
 
-	return ErrNoDiffFound
+	req := &SyncDiffMetadataRequest{viewID: s.ledger.Root().ViewID}
+	viewIDHashes := make(map[uint64][]peerInfo)
+	var selectedPeerSet []peerInfo
+
+	wg := sync.WaitGroup{}
+	viHashMutex := sync.Mutex{}
+
+	for _, peerID := range peerIDs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			peer := protocol.Peer(s.node, peerID)
+			if peer == nil {
+				return
+			}
+
+			// Send query request.
+			err := peer.SendMessage(req)
+			if err != nil {
+				return
+			}
+
+			var res SyncDiffMetadataResponse
+
+			select {
+			case msg := <-peer.Receive(opcodeSyncDiffMetadataResponse):
+				res = msg.(SyncDiffMetadataResponse)
+			case <-time.After(sys.QueryTimeout):
+				return
+			}
+
+			viHashMutex.Lock()
+			viewIDHashes[res.latestViewID] = append(viewIDHashes[res.latestViewID], peerInfo{
+				id:     peerID,
+				hashes: res.chunkHashes,
+			})
+			viHashMutex.Unlock()
+		}()
+	}
+	wg.Wait()
+
+	for _, peers := range viewIDHashes {
+		if len(peers) >= len(peerIDs)*2/3 {
+			selectedPeerSet = peers
+			break
+		}
+	}
+
+	if len(selectedPeerSet) == 0 {
+		return errors.New("inconsistent view ids")
+	}
+
+	viewIDHashes = nil
+
+	type chunkSource struct {
+		hash  [blake2bHashSize]byte
+		peers []protocol.ID
+	}
+
+	chunkSources := make([]chunkSource, 0)
+
+	for i := 0; ; i++ {
+		hashCount := make(map[[blake2bHashSize]byte][]protocol.ID)
+		hashInRange := false
+		for _, peer := range selectedPeerSet {
+			if i >= len(peer.hashes) {
+				continue
+			}
+			hashInRange = true
+			var hash [blake2bHashSize]byte
+			copy(hash[:], peer.hashes[i])
+			hashCount[hash] = append(hashCount[hash], peer.id)
+		}
+		if !hashInRange {
+			break
+		}
+
+		consistent := false
+
+		for hash, ps := range hashCount {
+			if len(ps) >= len(selectedPeerSet)*2/3 && len(ps) > 0 {
+				chunkSources = append(chunkSources, chunkSource{hash, ps})
+				consistent = true
+				break
+			}
+		}
+
+		if !consistent {
+			return errors.New("inconsistent chunk hashes")
+		}
+	}
+
+	collectedChunks := make([][]byte, len(chunkSources))
+	successCount := uint32(0)
+
+	for chunkID, cs := range chunkSources {
+		cs := cs
+		wg.Add(1)
+
+		// FIXME: Noise does not support concurrent request/response on a single peer.
+		// go func() {
+		func() {
+			defer wg.Done()
+			for i := 0; i < 5; i++ {
+				peerID := cs.peers[rand.Intn(len(cs.peers))]
+				peer := protocol.Peer(s.node, peerID)
+				if peer == nil {
+					continue
+				}
+
+				// Send query request.
+				err := peer.SendMessage(&SyncDiffChunkRequest{hash: cs.hash[:]})
+				if err != nil {
+					continue
+				}
+
+				var res SyncDiffChunkResponse
+
+				select {
+				case msg := <-peer.Receive(opcodeSyncDiffChunkResponse):
+					res = msg.(SyncDiffChunkResponse)
+				case <-time.After(sys.QueryTimeout):
+					continue
+				}
+
+				if !res.found {
+					logger.Info().Msg("Chunk not found on remote peer")
+					continue
+				}
+
+				remoteHash := blake2b.Sum256(res.diff)
+				if remoteHash != cs.hash {
+					logger.Info().Msgf("Chunk hash mismatch: %s %s", hex.EncodeToString(remoteHash[:]), hex.EncodeToString(cs.hash[:]))
+					continue
+				}
+
+				collectedChunks[chunkID] = res.diff
+				atomic.AddUint32(&successCount, 1)
+				break
+			}
+		}()
+	}
+
+	wg.Wait()
+	if int(successCount) != len(chunkSources) {
+		return errors.New("failed to fetch some chunks from our peers")
+	}
+
+	var diff []byte
+	for _, chunk := range collectedChunks {
+		diff = append(diff, chunk...)
+	}
+
+	snapshot, err := s.ledger.SnapshotAccounts().ApplyDiff(diff)
+	if err != nil {
+		return err
+	}
+
+	// The diff did not get us the intended merkle root we wanted. Skip.
+	if snapshot.Checksum() != root.AccountsMerkleRoot {
+		return errors.New("merkle root mismatch")
+	}
+
+	if err := s.ledger.Reset(root, snapshot); err != nil {
+		return err
+	}
+
+	logger.Info().Msgf("Successfully built a new state tree from %d chunk(s).", len(collectedChunks))
+
+	return nil
 }
