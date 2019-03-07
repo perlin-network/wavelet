@@ -32,7 +32,7 @@ type node struct {
 	host              string
 	nodePort, apiPort uint16
 
-	ready chan struct{}
+	nodeReady, apiReady chan struct{}
 }
 
 func (n *node) Write(buf []byte) (num int, err error) {
@@ -85,6 +85,8 @@ func (n *node) parseMessage(fields map[string]interface{}, msg string) error {
 		if err := n.init(); err != nil {
 			return errors.Wrap(err, "failed to init wavelet node")
 		}
+	case ListeningForPeers:
+		close(n.nodeReady)
 	default:
 	}
 
@@ -93,7 +95,7 @@ func (n *node) parseMessage(fields map[string]interface{}, msg string) error {
 
 // wait waits until the node is fully initialized and ready for commanding.
 func (n *node) wait() {
-	<-n.ready
+	<-n.apiReady
 }
 
 // kill kills the nodes process.
@@ -131,7 +133,7 @@ func (n *node) init() error {
 		Hex("public_key", n.keys.PublicKey()).
 		Msg("Spawned a new Wavelet node.")
 
-	close(n.ready)
+	close(n.apiReady)
 
 	return nil
 }
@@ -160,7 +162,8 @@ func spawn(nodePort, apiPort uint16, randomWallet bool, peers ...string) *node {
 		nodePort: nodePort,
 		apiPort:  apiPort,
 
-		ready: make(chan struct{}),
+		nodeReady: make(chan struct{}),
+		apiReady:  make(chan struct{}),
 	}
 
 	cmd.Stdout = n
@@ -169,6 +172,8 @@ func spawn(nodePort, apiPort uint16, randomWallet bool, peers ...string) *node {
 	if err := cmd.Start(); err != nil {
 		log.Fatal().Err(err).Msg("Failed to spawn a single Wavelet node.")
 	}
+
+	<-n.nodeReady
 
 	return n
 }
