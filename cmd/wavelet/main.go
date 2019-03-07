@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/hashicorp/hcl"
+	"github.com/jessevdk/go-flags"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher/aead"
 	"github.com/perlin-network/noise/handshake/ecdh"
@@ -38,34 +39,20 @@ type Config struct {
 	APIPort uint
 }
 
+var (
+	Host string
+	Port uint
+	Wallet string
+	APIPort uint
+)
+
 func main() {
-	configFlag := flag.String("c", "", "path to HCL config file, will override other arguments")
-	hostFlag := flag.String("h", "127.0.0.1", "host to listen for peers on")
-	portFlag := flag.Uint("p", 3000, "port to listen for peers on")
-	walletFlag := flag.String("w", "config/wallet.txt", "path to file containing hex-encoded private key")
-	apiFlag := flag.Uint("api", 0, "port to host HTTP API on")
-
-	flag.Parse()
-
 	log.Register(log.NewConsoleWriter(log.FilterFor("node", "consensus", "sync")))
 	logger := log.Node()
 
-	var config Config
-	// If the config flag is not empty, read the configurations from the file.
-	// Otherwise, we read the configurations from the flags
-	if configFlag != nil && *configFlag != "" {
-		c, err := ReadConfigFile(*configFlag)
-		if err != nil {
-			logger.Fatal().Err(err)
-		}
-
-		config = *c
-	} else {
-		config = Config{}
-		config.Host = *hostFlag
-		config.Port = *portFlag
-		config.Wallet = *walletFlag
-		config.APIPort = *apiFlag
+	config, err := ReadConfig()
+	if err != nil {
+		logger.Fatal().Err(err).Msg("failed to parse config")
 	}
 
 	var keys identity.Keypair
@@ -383,59 +370,108 @@ func main() {
 	}
 }
 
-func ReadConfigFile(path string) (*Config, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open config file: %v", err)
-	}
-	defer f.Close()
-
-	data, err := ioutil.ReadAll(f)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %v", err)
-	}
-
-	type hclconfig struct {
-		Host   string `hcl:"host"`
-		Port   int    `hcl:"port"`
-		Wallet string `hcl:"wallet"`
+func ReadConfig() (*Config, error) {
+	type options struct {
+		ConfigFile string `short:"c" description:"path to HCL config file, will override other arguments"`
+		Wallet     string `hcl:"wallet" short:"w" default:"config/wallet.txt" description:"path to file containing hex-encoded private key. If empty, a random wallet will be generated"`
+		Host string `hcl:"host" short:"h" default:"127.0.0.1" description:"host to listen for peers on"`
+		Port int    `hcl:"port" short:"p" default:"3000" description:"port to listen for peers on"`
 
 		API struct {
-			Port int `hcl:"port"`
+			Port int `hcl:"port" long:"api.port" default:"0" description:"port to host HTTP API on"`
 		} `hcl:"api"`
+
+		System struct {
+			QueryTimeout                       int   `hcl:"query_timeout" long:"sys.query_timeout" default:"10" description:"Timeout for querying a transaction to K peers. In seconds"`
+			MaxEligibleParentsDepthDiff        int   `hcl:"max_eligible_parents_depth_diff" long:"sys.max_eligible_parents_depth_diff" default:"5" description:"Max graph depth difference to search for eligible transaction parents from for our node."`
+			MedianTimestampNumAncestors        int   `hcl:"median_timestamp_num_ancestors" long:"sys.median_timestamp_num_ancestors" default:"5" description:"Number of ancestors to derive a median timestamp from"`
+			ValidatorRewardAmount              int64 `hcl:"validator_reward_amount" long:"sys.validator_reward_amount" default:"2"`
+			ExpectedConsensusTimeMilliseconds  int64 `hcl:"expected_consensus_time" long:"sys.expected_consensus_time" default:"1000" description:"In milliseconds."`
+			CriticalTimestampAverageWindowSize int   `hcl:"critical_timestamp_average_window_size" long:"sys.critical_timestamp_average_window_size" default:"3"`
+			MinimumStake                       int64 `hcl:"min_stake" long:"sys.min_stake" default:"100" `
+
+			Snowball struct {
+				K     int     `hcl:"k" long:"sys.snowball.k" default:"1" description:"Snowball consensus protocol parameter k"`
+				Alpha float64 `hcl:"alpha" long:"sys.snowball.alpha" default:"0.8" description:"Snowball consensus protocol parameter alpha"`
+				Beta  int     `hcl:"beta" long:"sys.snowball.beta" default:"10" description:"Snowball consensus protocol parameter beta"`
+			} `hcl:"snowball"`
+
+			Difficulty struct {
+				Max int `hcl:"max" long:"sys.difficulty.min" default:"5" description:"Minimum difficulty to define a critical transaction"`
+				Min int `hcl:"min" long:"sys.difficulty.max" default:"16" description:"Maximum difficulty to define a critical transaction"`
+			} `hcl:"difficulty"`
+		}
 	}
 
-	var c hclconfig
-	err = hcl.Unmarshal(data, &c)
+	var opts options
+
+	// parse the flags
+	_, err := flags.Parse(&opts)
 	if err != nil {
-		return nil, errors.Wrap(err, "failed unmarshal config file")
+		errFlag, ok := err.(*flags.Error)
+		// if the error is the help error, we ignore it
+		if ok && errFlag.Type == flags.ErrHelp {
+			os.Exit(2)
+		}
+
+		return nil, fmt.Errorf("failed to parse flags: %v", err)
 	}
 
-	if c.Host == "" {
-		return nil, errors.New("host must be empty")
+	// If config file is not empty, override the options with the config file
+	if opts.ConfigFile != "" {
+		f, err := os.Open(opts.ConfigFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open config file: %v", err)
+		}
+		defer f.Close()
+
+		data, err := ioutil.ReadAll(f)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read config file: %v", err)
+		}
+
+		opts = options{}
+		err = hcl.Unmarshal(data, &opts)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed unmarshal config file")
+		}
 	}
 
-	if c.Port == 0 {
-		return nil, errors.New("port must be empty")
+	if opts.Host == "" {
+		return nil, errors.New("host is empty")
 	}
 
-	if c.Wallet == "" {
-		return nil, errors.New("wallet must be empty")
+	if opts.Port == 0 {
+		return nil, errors.New("port is empty")
 	}
 
-	if c.Port < 0 {
-		return nil, errors.New("port must be a positive number")
+	if opts.Port < 0 {
+		return nil, errors.New("port is negative number")
 	}
 
-	if c.API.Port < 0 {
-		return nil, errors.New("API port must be a positive number")
+	if opts.API.Port < 0 {
+		return nil, errors.New("API port is negative number")
 	}
+
+	// set the sys variables
+	sys.SnowballK = opts.System.Snowball.K
+	sys.SnowballAlpha = opts.System.Snowball.Alpha
+	sys.SnowballBeta = opts.System.Snowball.Beta
+	sys.QueryTimeout = time.Duration(int64(opts.System.QueryTimeout)) * time.Second
+	sys.MaxEligibleParentsDepthDiff = uint64(opts.System.MaxEligibleParentsDepthDiff)
+	sys.MinDifficulty = opts.System.Difficulty.Min
+	sys.MaxDifficulty = opts.System.Difficulty.Max
+	sys.MedianTimestampNumAncestors = opts.System.MedianTimestampNumAncestors
+	sys.ValidatorRewardAmount = uint64(opts.System.ValidatorRewardAmount)
+	sys.ExpectedConsensusTimeMilliseconds = uint64(opts.System.ExpectedConsensusTimeMilliseconds)
+	sys.CriticalTimestampAverageWindowSize = opts.System.CriticalTimestampAverageWindowSize
+	sys.MinimumStake = uint64(opts.System.MinimumStake)
 
 	config := Config{
-		Host:    c.Host,
-		Port:    uint(c.Port),
-		Wallet:  c.Wallet,
-		APIPort: uint(c.API.Port),
+		Host:    opts.Host,
+		Port:    uint(opts.Port),
+		Wallet:  opts.Wallet,
+		APIPort: uint(opts.API.Port),
 	}
 
 	return &config, nil

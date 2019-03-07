@@ -14,6 +14,7 @@ require (
 	github.com/gorilla/websocket v1.4.0
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
+	github.com/jessevdk/go-flags v1.4.0 // indirect
 	github.com/perlin-network/life v0.0.0-20190204091834-d05763d11050
 	github.com/perlin-network/noise v0.0.0-20190305074834-c3dca79c3e2a
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
