@@ -140,7 +140,7 @@ func (b *broadcaster) gossiping(logger zerolog.Logger) {
 			Bool("broadcast_nops", b.broadcastingNops).
 			Hex("tx_id", popped.tx.ID[:]).
 			Msg("Broadcasting out queued transaction.")
-	case <-time.After(1 * time.Millisecond):
+	default:
 		var self common.AccountID
 		copy(self[:], b.node.Keys.PublicKey())
 
