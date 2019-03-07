@@ -10,23 +10,37 @@ import (
 	"time"
 )
 
+const defaultGenesis = `
+{
+  "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405": {
+    "balance": 100000000
+  }
+}
+`
+
 // performInception loads data expected to exist at the birth of any node in this ledgers network.
 // The data is fed in as .json.
 func performInception(accounts accounts, path string) (*Transaction, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
+	file, _ := os.Open(path)
 
 	defer func() {
-		if err := file.Close(); err != nil {
-			panic(err)
+		if file != nil {
+			if err := file.Close(); err != nil {
+				panic(err)
+			}
 		}
 	}()
 
-	buf, err := ioutil.ReadAll(file)
-	if err != nil {
-		return nil, err
+	var buf []byte
+	var err error
+
+	if file != nil {
+		buf, err = ioutil.ReadAll(file)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		buf = []byte(defaultGenesis)
 	}
 
 	var entries map[string]map[string]interface{}

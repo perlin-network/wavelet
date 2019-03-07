@@ -98,7 +98,6 @@ func (g *graph) addTransaction(tx *Transaction) error {
 // the specified root (latest critical transaction of the entire ledger).
 func (g *graph) reset(root *Transaction) {
 	g.Lock()
-	defer g.Unlock()
 
 	g.height = 0
 	g.transactions = make(map[common.TransactionID]*Transaction)
@@ -106,6 +105,8 @@ func (g *graph) reset(root *Transaction) {
 
 	g.transactions[root.ID] = root
 	g.saveRoot(root)
+
+	g.Unlock()
 }
 
 func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
@@ -147,9 +148,9 @@ func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 
 func (g *graph) lookupTransaction(id common.TransactionID) (*Transaction, bool) {
 	g.Lock()
-	defer g.Unlock()
-
 	tx, exists := g.transactions[id]
+	g.Unlock()
+
 	return tx, exists
 }
 
@@ -176,17 +177,19 @@ func (g *graph) loadRoot() *Transaction {
 // Root returns the current root (the latest critical transaction) of the graph.
 func (g *graph) Root() *Transaction {
 	g.Lock()
-	defer g.Unlock()
+	root := g.loadRoot()
+	g.Unlock()
 
-	return g.loadRoot()
+	return root
 }
 
 // Height returns the current depth of the frontier of the graph.
 func (g *graph) Height() uint64 {
 	g.Lock()
-	defer g.Unlock()
+	height := g.height
+	g.Unlock()
 
-	return g.height
+	return height
 }
 
 func (g *graph) Transactions(offset, limit uint64, sender, creator common.AccountID) (transactions []*Transaction) {

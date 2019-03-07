@@ -42,7 +42,7 @@ func main() {
 			_, err := node.client.SendTransaction(sys.TagNop, nil)
 			if err != nil {
 				fmt.Println(err)
-				return
+				continue
 			}
 
 			tps.Add(1)

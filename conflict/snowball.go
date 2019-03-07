@@ -13,7 +13,7 @@ const (
 var _ Resolver = (*snowball)(nil)
 
 type snowball struct {
-	sync.Mutex
+	sync.RWMutex
 
 	k, beta int
 	alpha   float64
@@ -38,31 +38,30 @@ func NewSnowball() *snowball {
 
 func (s *snowball) WithK(k int) *snowball {
 	s.Lock()
-	defer s.Unlock()
-
 	s.k = k
+	s.Unlock()
+
 	return s
 }
 
 func (s *snowball) WithAlpha(alpha float64) *snowball {
 	s.Lock()
-	defer s.Unlock()
-
 	s.alpha = alpha
+	s.Unlock()
+
 	return s
 }
 
 func (s *snowball) WithBeta(beta int) *snowball {
 	s.Lock()
-	defer s.Unlock()
-
 	s.beta = beta
+	s.Unlock()
+
 	return s
 }
 
 func (s *snowball) Reset() {
 	s.Lock()
-	defer s.Unlock()
 
 	s.preferred = nil
 	s.last = nil
@@ -71,6 +70,8 @@ func (s *snowball) Reset() {
 	s.count = 0
 
 	s.decided = false
+
+	s.Unlock()
 }
 
 func (s *snowball) Tick(counts map[interface{}]float64) {
@@ -107,21 +108,22 @@ func (s *snowball) Tick(counts map[interface{}]float64) {
 
 func (s *snowball) Prefer(id interface{}) {
 	s.Lock()
-	defer s.Unlock()
-
 	s.preferred = id
+	s.Unlock()
 }
 
 func (s *snowball) Preferred() interface{} {
-	s.Lock()
-	defer s.Unlock()
+	s.RLock()
+	preferred := s.preferred
+	s.RUnlock()
 
-	return s.preferred
+	return preferred
 }
 
 func (s *snowball) Decided() bool {
-	s.Lock()
-	defer s.Unlock()
+	s.RLock()
+	decided := s.decided
+	defer s.RUnlock()
 
-	return s.decided
+	return decided
 }
