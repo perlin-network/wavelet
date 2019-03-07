@@ -58,11 +58,12 @@ func (c *Client) Request(path string, body, out interface{}) error {
 	}
 
 	if body != nil {
-		rawBody, err := json.Marshal(body)
+		raw, err := json.Marshal(body)
 		if err != nil {
 			return err
 		}
-		req.Body = ioutil.NopCloser(bytes.NewReader(rawBody))
+
+		req.Body = ioutil.NopCloser(bytes.NewReader(raw))
 	}
 
 	client := new(http.Client)

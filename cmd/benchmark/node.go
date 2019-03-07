@@ -29,8 +29,10 @@ type node struct {
 	client *wctl.Client
 
 	args              []string
-	nodeHost          string
+	host              string
 	nodePort, apiPort uint16
+
+	ready chan struct{}
 }
 
 func (n *node) Write(buf []byte) (num int, err error) {
@@ -82,6 +84,11 @@ func (n *node) parseMessage(fields map[string]interface{}, msg string) error {
 	return nil
 }
 
+// wait waits until the node is fully initialized and ready for commanding
+func (n *node) wait() {
+	<-n.ready
+}
+
 func (n *node) init() error {
 	config := wctl.Config{
 		APIHost: "127.0.0.1",
@@ -105,6 +112,8 @@ func (n *node) init() error {
 		Hex("public_key", n.keys.PublicKey()).
 		Msg("Spawned a new Wavelet node.")
 
+	close(n.ready)
+
 	return nil
 }
 
@@ -116,7 +125,7 @@ func spawn(nodePort, apiPort uint16, randomWallet bool, peers ...string) *node {
 	}
 
 	if randomWallet {
-		cmd.Args = append(cmd.Args, "-w", " ")
+		cmd.Args = append(cmd.Args, "-w", "0")
 	}
 
 	if len(peers) > 0 {
@@ -124,7 +133,16 @@ func spawn(nodePort, apiPort uint16, randomWallet bool, peers ...string) *node {
 	}
 
 	// TODO(kenta): allow external hosts
-	n := &node{args: cmd.Args, nodeHost: "127.0.0.1", nodePort: nodePort, apiPort: apiPort}
+	n := &node{
+		args: cmd.Args,
+
+		host: "127.0.0.1",
+
+		nodePort: nodePort,
+		apiPort:  apiPort,
+
+		ready: make(chan struct{}),
+	}
 
 	cmd.Stdout = n
 	cmd.Stderr = n

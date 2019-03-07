@@ -13,13 +13,16 @@ func main() {
 
 	build()
 
+	var nodes []*node
 	port := nextAvailablePort()
 
-	spawn(port, nextAvailablePort(), false)
+	nodes = append(nodes, spawn(port, nextAvailablePort(), false))
 
 	for i := 0; i < 3; i++ {
-		spawn(nextAvailablePort(), nextAvailablePort(), true, fmt.Sprintf("127.0.0.1:%d", port))
+		nodes = append(nodes, spawn(nextAvailablePort(), nextAvailablePort(), true, fmt.Sprintf("127.0.0.1:%d", port)))
 	}
 
-	select {}
+	wait(nodes...)
+
+	fmt.Println("Nodes are initialized!")
 }
