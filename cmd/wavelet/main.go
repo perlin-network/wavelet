@@ -139,11 +139,11 @@ func main() {
 		}),
 		cli.StringFlag{
 			Name:  "config, c",
-			Usage: "Path to HCL config file, will override other arguments.",
+			Usage: "Path to TOML config file, will override the arguments.",
 		},
 	}
 
-	// apply the hcl before processing the flags
+	// apply the toml before processing the flags
 	app.Before = altsrc.InitInputSourceWithContext(app.Flags, func(c *cli.Context) (altsrc.InputSourceContext, error) {
 		filePath := c.String("config")
 		if len(filePath) > 0 {
