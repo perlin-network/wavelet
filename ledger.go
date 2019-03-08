@@ -499,8 +499,34 @@ func (l *Ledger) FindTransaction(id common.TransactionID) (*Transaction, bool) {
 	return tx, exists
 }
 
-func (l *Ledger) Transactions(offset, limit uint64, sender, creator common.AccountID) []*Transaction {
-	return l.view.Transactions(offset, limit, sender, creator)
+func (l *Ledger) Transactions(offset, limit uint64, sender, creator common.AccountID) (transactions []*Transaction) {
+	l.view.Lock()
+
+	for _, tx := range l.view.transactions {
+		if (sender == common.ZeroAccountID && creator == common.ZeroAccountID) || (sender != common.ZeroAccountID && tx.Sender == sender) || (creator != common.ZeroAccountID && tx.Creator == creator) {
+			transactions = append(transactions, tx)
+		}
+	}
+
+	l.view.Unlock()
+
+	sort.Slice(transactions, func(i, j int) bool {
+		return transactions[i].depth < transactions[j].depth
+	})
+
+	if offset != 0 || limit != 0 {
+		if offset >= limit || offset >= uint64(len(transactions)) {
+			return nil
+		}
+
+		if offset+limit > uint64(len(transactions)) {
+			limit = uint64(len(transactions)) - offset
+		}
+
+		transactions = transactions[offset : offset+limit]
+	}
+
+	return
 }
 
 func (l *Ledger) Root() *Transaction {

@@ -8,7 +8,6 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
-	"sort"
 	"sync"
 )
 
@@ -190,34 +189,4 @@ func (g *graph) Height() uint64 {
 	g.Unlock()
 
 	return height
-}
-
-func (g *graph) Transactions(offset, limit uint64, sender, creator common.AccountID) (transactions []*Transaction) {
-	g.Lock()
-
-	for _, tx := range g.transactions {
-		if (sender == common.ZeroAccountID && creator == common.ZeroAccountID) || (sender != common.ZeroAccountID && tx.Sender == sender) || (creator != common.ZeroAccountID && tx.Creator == creator) {
-			transactions = append(transactions, tx)
-		}
-	}
-
-	g.Unlock()
-
-	sort.Slice(transactions, func(i, j int) bool {
-		return transactions[i].depth < transactions[j].depth
-	})
-
-	if offset != 0 || limit != 0 {
-		if offset >= limit || offset >= uint64(len(transactions)) {
-			return nil
-		}
-
-		if offset+limit > uint64(len(transactions)) {
-			limit = uint64(len(transactions)) - offset
-		}
-
-		transactions = transactions[offset : offset+limit]
-	}
-
-	return
 }
