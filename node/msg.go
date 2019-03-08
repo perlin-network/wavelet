@@ -26,15 +26,13 @@ type QueryRequest struct {
 }
 
 func (q QueryRequest) Read(reader payload.Reader) (noise.Message, error) {
-	if reader.Len() > 0 {
-		msg, err := wavelet.Transaction{}.Read(reader)
-		if err != nil {
-			return nil, errors.Wrap(err, "wavelet: failed to read query request tx")
-		}
-
-		tx := msg.(wavelet.Transaction)
-		q.tx = &tx
+	msg, err := wavelet.Transaction{}.Read(reader)
+	if err != nil {
+		return nil, errors.Wrap(err, "wavelet: failed to read query request tx")
 	}
+
+	tx := msg.(wavelet.Transaction)
+	q.tx = &tx
 
 	return q, nil
 }
@@ -78,15 +76,13 @@ type GossipRequest struct {
 }
 
 func (q GossipRequest) Read(reader payload.Reader) (noise.Message, error) {
-	if reader.Len() > 0 {
-		msg, err := wavelet.Transaction{}.Read(reader)
-		if err != nil {
-			return nil, errors.Wrap(err, "wavelet: failed to read gossip request tx")
-		}
-
-		tx := msg.(wavelet.Transaction)
-		q.tx = &tx
+	msg, err := wavelet.Transaction{}.Read(reader)
+	if err != nil {
+		return nil, errors.Wrap(err, "wavelet: failed to read gossip request tx")
 	}
+
+	tx := msg.(wavelet.Transaction)
+	q.tx = &tx
 
 	return q, nil
 }
@@ -133,15 +129,13 @@ type SyncViewRequest struct {
 }
 
 func (s SyncViewRequest) Read(reader payload.Reader) (noise.Message, error) {
-	if reader.Len() > 0 {
-		msg, err := wavelet.Transaction{}.Read(reader)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to read root tx")
-		}
-
-		root := msg.(wavelet.Transaction)
-		s.root = &root
+	msg, err := wavelet.Transaction{}.Read(reader)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read root tx")
 	}
+
+	root := msg.(wavelet.Transaction)
+	s.root = &root
 
 	return s, nil
 }
