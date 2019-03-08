@@ -276,9 +276,9 @@ func TestGetAccount(t *testing.T) {
 	var id32 common.AccountID
 	copy(id32[:], idBytes)
 
-	gateway.ledger.WriteAccountBalance(id32, 10)
-	gateway.ledger.WriteAccountStake(id32, 11)
-	gateway.ledger.WriteAccountContractNumPages(id32, 12)
+	gateway.ledger.Accounts.WriteAccountBalance(id32, 10)
+	gateway.ledger.Accounts.WriteAccountStake(id32, 11)
+	gateway.ledger.Accounts.WriteAccountContractNumPages(id32, 12)
 
 	tests := []struct {
 		name         string
@@ -353,7 +353,7 @@ func TestGetContractCode(t *testing.T) {
 	var id32 common.AccountID
 	copy(id32[:], idBytes)
 
-	gateway.ledger.WriteAccountContractCode(id32, []byte("contract code"))
+	gateway.ledger.Accounts.WriteAccountContractCode(id32, []byte("contract code"))
 
 	tests := []struct {
 		name         string
@@ -434,8 +434,8 @@ func TestGetContractPages(t *testing.T) {
 		var id32 common.AccountID
 		copy(id32[:], []byte("u1mf2g3b2477y5btco22txqxuc41cav6"))
 
-		gateway.ledger.WriteAccountContractPage(id32, 1, []byte("page"))
-		gateway.ledger.WriteAccountContractNumPages(id32, 2)
+		gateway.ledger.Accounts.WriteAccountContractPage(id32, 1, []byte("page"))
+		gateway.ledger.Accounts.WriteAccountContractNumPages(id32, 2)
 	}
 
 	// string: limo9msslzoeecf2tiy4qdsk42s3t2hd
@@ -443,8 +443,8 @@ func TestGetContractPages(t *testing.T) {
 	{
 		var id32 common.AccountID
 		copy(id32[:], []byte("limo9msslzoeecf2tiy4qdsk42s3t2hd"))
-		gateway.ledger.WriteAccountContractPage(id32, 1, nil)
-		gateway.ledger.WriteAccountContractNumPages(id32, 2)
+		gateway.ledger.Accounts.WriteAccountContractPage(id32, 1, nil)
+		gateway.ledger.Accounts.WriteAccountContractNumPages(id32, 2)
 	}
 
 	tests := []struct {
@@ -565,7 +565,7 @@ func TestGetLedger(t *testing.T) {
 		PublicKey:     hex.EncodeToString(keys.PublicKey()),
 		HostAddress:   "127.0.0.1:9000",
 		PeerAddresses: nil,
-		RootID:        "55ee4ac81aae8159a57bbdc4cc9a8152b78523eaf8a8f939beefcd836da9323b",
+		RootID:        "15981d398c1642c7601992e79dd6e4f208ec96f59548c82dccfc4c011b22d210",
 		ViewID:        0,
 		Difficulty:    5,
 	}
