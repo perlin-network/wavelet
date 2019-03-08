@@ -160,7 +160,7 @@ func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transactio
 func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	// If the transaction is our root transaction, assume that we have already voted positively for it.
 	if tx.ID == l.Root().ID {
-		return VoteAccepted
+		return errors.Wrap(VoteAccepted, "tx is our view-graphs root")
 	}
 
 	// Assert the transaction is valid.
@@ -174,18 +174,22 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	}
 
 	// Assert that the transaction has a sane timestamp, and that we have the transactions parents in-store.
-	if !AssertValidTimestamp(l.view, tx) {
-		return errors.Wrap(VoteRejected, "either tx timestamp is out of bounds, or parents not available")
+	if err := AssertValidTimestamp(l.view, tx); err != nil {
+		return errors.Wrap(VoteRejected, err.Error())
 	}
 
 	// Assert that the transaction has sane parents, and that we have the transactions parents in-store.
-	if !AssertValidParentDepths(l.view, tx) {
-		return errors.Wrap(VoteRejected, "either parent depths are out of bounds, or parents not available")
+	if err := AssertValidParentDepths(l.view, tx); err != nil {
+		return errors.Wrap(VoteRejected, err.Error())
 	}
 
 	preferred := l.resolver.Preferred()
 
 	if tx.IsCritical(l.Difficulty()) {
+		if err := AssertValidCriticalTimestamps(tx); err != nil {
+			return errors.Wrap(VoteRejected, err.Error())
+		}
+
 		// If our node already prefers a critical transaction, reject the
 		// incoming transaction.
 		if preferred != nil && tx.ID != preferred.Hash().(common.TransactionID) {
@@ -205,6 +209,7 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 		case ErrParentsNotAvailable:
 			return errors.Wrap(VoteRejected, "parents for transaction are not in our view-graph")
 		case ErrTxAlreadyExists:
+			return errors.Wrap(VoteAccepted, "tx already accepted beforehand")
 		}
 	}
 
@@ -222,7 +227,7 @@ func (l *Ledger) AssertInView(tx *Transaction) error {
 		snapshot := l.collapseTransactions(tx.ParentIDs, false)
 
 		if snapshot.tree.Checksum() != tx.AccountsMerkleRoot {
-			return errors.Wrapf(VoteRejected, "tx is critical but has invalid accounts root "+
+			return errors.Errorf("tx is critical but has invalid accounts root "+
 				"checksum; collapsing down the critical transactions parents gives %x as the root, "+
 				"but the tx has %x as a root", snapshot.tree.Checksum(), tx.AccountsMerkleRoot)
 		}

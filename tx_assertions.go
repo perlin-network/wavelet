@@ -51,21 +51,15 @@ func AssertValidTransaction(tx *Transaction) error {
 		return errors.New("tx must have no payload if is a nop transaction")
 	}
 
-	err := eddsa.Verify(tx.Creator[:], append([]byte{tx.Tag}, tx.Payload...), tx.CreatorSignature[:])
-	if err != nil {
+	if err := eddsa.Verify(tx.Creator[:], append([]byte{tx.Tag}, tx.Payload...), tx.CreatorSignature[:]); err != nil {
 		return errors.New("tx has invalid creator signature")
 	}
 
 	cpy := *tx
 	cpy.SenderSignature = common.ZeroSignature
 
-	err = eddsa.Verify(tx.Sender[:], cpy.Write(), tx.SenderSignature[:])
-	if err != nil {
+	if err := eddsa.Verify(tx.Sender[:], cpy.Write(), tx.SenderSignature[:]); err != nil {
 		return errors.New("tx has either invalid sender signature")
-	}
-
-	if len(tx.DifficultyTimestamps) > 0 && !AssertValidCriticalTimestamps(tx) {
-		return errors.Wrap(VoteRejected, "tx is critical but has an invalid number of critical timestamps")
 	}
 
 	return nil
@@ -73,25 +67,25 @@ func AssertValidTransaction(tx *Transaction) error {
 
 // AssertValidParentDepths asserts that the transaction has sane
 // parents, and that we have the transactions parents in-store.
-func AssertValidParentDepths(view *graph, tx *Transaction) bool {
+func AssertValidParentDepths(view *graph, tx *Transaction) error {
 	for _, parentID := range tx.ParentIDs {
 		parent, stored := view.lookupTransaction(parentID)
 
 		if !stored {
-			return false
+			return errors.New("do not have tx parents in view-graph")
 		}
 
 		if parent.depth+sys.MaxEligibleParentsDepthDiff < tx.depth {
-			return false
+			return errors.New("tx parents exceeds max eligible parents depth diff")
 		}
 	}
 
-	return true
+	return nil
 }
 
 // Assert that the transaction has a sane timestamp, and that we
 // have the transactions parents in-store.
-func AssertValidTimestamp(view *graph, tx *Transaction) bool {
+func AssertValidTimestamp(view *graph, tx *Transaction) error {
 	visited := make(map[common.TransactionID]struct{})
 	q := queue.New()
 
@@ -99,7 +93,7 @@ func AssertValidTimestamp(view *graph, tx *Transaction) bool {
 		if parent, stored := view.lookupTransaction(parentID); stored {
 			q.PushBack(parent)
 		} else {
-			return false
+			return errors.New("do not have tx parents in view-graph")
 		}
 
 		visited[parentID] = struct{}{}
@@ -121,7 +115,7 @@ func AssertValidTimestamp(view *graph, tx *Transaction) bool {
 				parent, stored := view.lookupTransaction(parentID)
 
 				if !stored {
-					return false
+					return errors.New("do not have tx ancestors in view-graph")
 				}
 
 				q.PushBack(parent)
@@ -136,19 +130,19 @@ func AssertValidTimestamp(view *graph, tx *Transaction) bool {
 	//
 	// TIMESTAMP ∈ (median(last 10 BFS-ordered transactions in terms of history), nodes current time + 2 hours]
 	if tx.Timestamp <= median {
-		return false
+		return errors.Errorf("tx timestamp %d is lower than the median timestamp %d", tx.Timestamp, median)
 	}
 
 	if tx.Timestamp > uint64(time.Duration(time.Now().Add(2*time.Hour).UnixNano())/time.Millisecond) {
-		return false
+		return errors.Errorf("tx timestamp %d is greater than 2 hours from now", tx.Timestamp)
 	}
 
-	return true
+	return nil
 }
 
-func AssertValidCriticalTimestamps(tx *Transaction) bool {
-	if len(tx.DifficultyTimestamps) != computeCriticalTimestampWindowSize(tx.ViewID) {
-		return false
+func AssertValidCriticalTimestamps(tx *Transaction) error {
+	if size := computeCriticalTimestampWindowSize(tx.ViewID); len(tx.DifficultyTimestamps) != size {
+		return errors.Errorf("expected tx to only have %d timestamp(s), but has %d timestamp(s)", size, len(tx.DifficultyTimestamps))
 	}
 
 	// TODO(kenta): check if we have stored a log of the last 10 critical
@@ -157,9 +151,9 @@ func AssertValidCriticalTimestamps(tx *Transaction) bool {
 	// Check that difficulty timestamps are in ascending order.
 	for i := 1; i < len(tx.DifficultyTimestamps); i++ {
 		if tx.DifficultyTimestamps[i] < tx.DifficultyTimestamps[i-1] {
-			return false
+			return errors.New("tx critical timestamps are not in ascending order")
 		}
 	}
 
-	return true
+	return nil
 }
