@@ -181,7 +181,7 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	if tx.IsCritical(l.Difficulty()) {
 		// If our node already prefers a critical transaction, reject the
 		// incoming transaction.
-		if preferred != nil && tx.ID != preferred.Hash() {
+		if preferred != nil && tx.ID != preferred.Hash().(common.TransactionID) {
 			return errors.Wrap(VoteRejected, "prefer other critical transaction")
 		}
 
