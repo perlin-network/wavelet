@@ -45,7 +45,7 @@ func (a accounts) DumpDiff(viewID uint64) []byte {
 }
 
 func (a accounts) ReadAccountBalance(id common.AccountID) (uint64, bool) {
-	buf, exists := a.readUnderAccounts(id, keyAccountBalance[:])
+	buf, exists := a.read(id, keyAccountBalance[:])
 	if !exists || len(buf) == 0 {
 		return 0, false
 	}
@@ -60,11 +60,11 @@ func (a accounts) WriteAccountBalance(id common.AccountID, balance uint64) {
 	logger := log.Account(id, "balance_updated")
 	logger.Log().Uint64("balance", balance).Msg("Updated balance.")
 
-	a.writeUnderAccounts(id, keyAccountBalance[:], buf[:])
+	a.write(id, keyAccountBalance[:], buf[:])
 }
 
 func (a accounts) ReadAccountStake(id common.AccountID) (uint64, bool) {
-	buf, exists := a.readUnderAccounts(id, keyAccountStake[:])
+	buf, exists := a.read(id, keyAccountStake[:])
 	if !exists || len(buf) == 0 {
 		return 0, false
 	}
@@ -79,11 +79,11 @@ func (a accounts) WriteAccountStake(id common.AccountID, stake uint64) {
 	logger := log.Account(id, "stake_updated")
 	logger.Log().Uint64("stake", stake).Msg("Updated stake.")
 
-	a.writeUnderAccounts(id, keyAccountStake[:], buf[:])
+	a.write(id, keyAccountStake[:], buf[:])
 }
 
 func (a accounts) ReadAccountContractCode(id common.TransactionID) ([]byte, bool) {
-	buf, exists := a.readUnderAccounts(id, keyAccountContractCode[:])
+	buf, exists := a.read(id, keyAccountContractCode[:])
 	if !exists || len(buf) == 0 {
 		return nil, false
 	}
@@ -92,11 +92,11 @@ func (a accounts) ReadAccountContractCode(id common.TransactionID) ([]byte, bool
 }
 
 func (a accounts) WriteAccountContractCode(id common.TransactionID, code []byte) {
-	a.writeUnderAccounts(id, keyAccountContractCode[:], code[:])
+	a.write(id, keyAccountContractCode[:], code[:])
 }
 
 func (a accounts) ReadAccountContractNumPages(id common.TransactionID) (uint64, bool) {
-	buf, exists := a.readUnderAccounts(id, keyAccountContractNumPages[:])
+	buf, exists := a.read(id, keyAccountContractNumPages[:])
 	if !exists || len(buf) == 0 {
 		return 0, false
 	}
@@ -111,14 +111,14 @@ func (a accounts) WriteAccountContractNumPages(id common.TransactionID, numPages
 	logger := log.Account(id, "num_pages_updated")
 	logger.Log().Uint64("num_pages", numPages).Msg("Updated number of memory pages for a contract.")
 
-	a.writeUnderAccounts(id, keyAccountContractNumPages[:], buf[:])
+	a.write(id, keyAccountContractNumPages[:], buf[:])
 }
 
 func (a accounts) ReadAccountContractPage(id common.TransactionID, idx uint64) ([]byte, bool) {
 	var idxBuf [8]byte
 	binary.LittleEndian.PutUint64(idxBuf[:], idx)
 
-	buf, exists := a.readUnderAccounts(id, append(keyAccountContractPages[:], idxBuf[:]...))
+	buf, exists := a.read(id, append(keyAccountContractPages[:], idxBuf[:]...))
 	if !exists || len(buf) == 0 {
 		return nil, false
 	}
@@ -137,10 +137,10 @@ func (a accounts) WriteAccountContractPage(id common.TransactionID, idx uint64, 
 
 	encoded := snappy.Encode(nil, page)
 
-	a.writeUnderAccounts(id, append(keyAccountContractPages[:], buf[:]...), encoded)
+	a.write(id, append(keyAccountContractPages[:], buf[:]...), encoded)
 }
 
-func (a accounts) readUnderAccounts(id common.AccountID, key []byte) ([]byte, bool) {
+func (a accounts) read(id common.AccountID, key []byte) ([]byte, bool) {
 	buf, exists := a.tree.Lookup(append(keyAccounts[:], append(key, id[:]...)...))
 
 	if !exists {
@@ -150,11 +150,11 @@ func (a accounts) readUnderAccounts(id common.AccountID, key []byte) ([]byte, bo
 	return buf, true
 }
 
-func (a accounts) writeUnderAccounts(id common.AccountID, key, value []byte) {
+func (a accounts) write(id common.AccountID, key, value []byte) {
 	a.tree.Insert(append(keyAccounts[:], append(key, id[:]...)...), value[:])
 }
 
-func (a accounts) CommitAccounts() error {
+func (a accounts) Commit() error {
 	err := a.tree.Commit()
 	if err != nil {
 		return errors.Wrap(err, "accounts: failed to write")

@@ -105,7 +105,7 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 }
 
 func handleSyncDiffMetadataRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffMetadataRequest, chunkCache *lru) {
-	diff := ledger.DumpDiff(req.viewID)
+	diff := ledger.Accounts.DumpDiff(req.viewID)
 
 	var chunkHashes [][blake2b.Size256]byte
 
@@ -194,7 +194,7 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 		preferred := ledger.Resolver().Preferred()
 
 		if req.tx.IsCritical(ledger.Difficulty()) {
-			correctViewID := ledger.AssertValidViewID(req.tx) == nil
+			correctViewID := ledger.AssertInView(req.tx) == nil
 			preferredNotSet := preferred == nil && req.tx.ID != ledger.Root().ID
 
 			if correctViewID && preferredNotSet {

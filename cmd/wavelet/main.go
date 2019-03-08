@@ -355,8 +355,8 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 				Msgf("Transaction: %s", cmd[1])
 		case "w":
 			if len(cmd) < 2 {
-				balance, _ := ledger.ReadAccountBalance(nodeID)
-				stake, _ := ledger.ReadAccountStake(nodeID)
+				balance, _ := ledger.Accounts.ReadAccountBalance(nodeID)
+				stake, _ := ledger.Accounts.ReadAccountStake(nodeID)
 
 				logger.Info().
 					Str("id", hex.EncodeToString(n.Keys.PublicKey())).
@@ -377,8 +377,8 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 			var accountID common.AccountID
 			copy(accountID[:], buf)
 
-			balance, _ := ledger.ReadAccountBalance(accountID)
-			stake, _ := ledger.ReadAccountStake(accountID)
+			balance, _ := ledger.Accounts.ReadAccountBalance(accountID)
+			stake, _ := ledger.Accounts.ReadAccountStake(accountID)
 
 			logger.Info().
 				Uint64("balance", balance).

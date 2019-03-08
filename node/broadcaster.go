@@ -131,7 +131,7 @@ func (b *broadcaster) gossiping(logger zerolog.Logger) {
 		var self common.AccountID
 		copy(self[:], b.node.Keys.PublicKey())
 
-		balance, _ := b.ledger.ReadAccountBalance(self)
+		balance, _ := b.ledger.Accounts.ReadAccountBalance(self)
 
 		// If there is nothing we need to broadcast urgently, then broadcast
 		// a nop (if we have previously broadcasted a transaction beforehand).
@@ -225,22 +225,23 @@ func (b *broadcaster) query(preferred *wavelet.Transaction) error {
 		return err
 	}
 
-	var accounts []common.AccountID
-	for _, peerID := range peerIDs {
-		var account common.AccountID
-		copy(account[:], peerID.PublicKey())
+	var accountIDs []common.AccountID
 
-		accounts = append(accounts, account)
+	for _, peerID := range peerIDs {
+		var accountID common.AccountID
+		copy(accountID[:], peerID.PublicKey())
+
+		accountIDs = append(accountIDs, accountID)
 	}
 
 	votes := make(map[common.AccountID]*wavelet.Transaction)
 	for i, res := range responses {
 		if res != nil && res.(QueryResponse).preferred != nil {
-			votes[accounts[i]] = res.(QueryResponse).preferred
+			votes[accountIDs[i]] = res.(QueryResponse).preferred
 		}
 	}
 
-	weights := b.ledger.ComputeStakeDistribution(accounts)
+	weights := wavelet.ComputeStakeDistribution(b.ledger.Accounts, accountIDs)
 
 	counts := make(map[conflict.Item]float64)
 
@@ -271,22 +272,24 @@ func (b *broadcaster) gossip(tx *wavelet.Transaction) error {
 		return err
 	}
 
-	var accounts []common.AccountID
-	for _, peerID := range peerIDs {
-		var account common.AccountID
-		copy(account[:], peerID.PublicKey())
+	var accountIDs []common.AccountID
 
-		accounts = append(accounts, account)
+	for _, peerID := range peerIDs {
+		var accountID common.AccountID
+		copy(accountID[:], peerID.PublicKey())
+
+		accountIDs = append(accountIDs, accountID)
 	}
 
 	votes := make(map[common.AccountID]bool)
+
 	for i, res := range responses {
 		if res != nil {
-			votes[accounts[i]] = res.(GossipResponse).vote
+			votes[accountIDs[i]] = res.(GossipResponse).vote
 		}
 	}
 
-	weights := b.ledger.ComputeStakeDistribution(accounts)
+	weights := wavelet.ComputeStakeDistribution(b.ledger.Accounts, accountIDs)
 
 	var accum float64
 

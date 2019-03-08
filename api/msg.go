@@ -246,9 +246,9 @@ func (s *Account) Render(w http.ResponseWriter, r *http.Request) error {
 	}
 
 	s.PublicKey = hex.EncodeToString(s.id[:])
-	s.Balance, _ = s.ledger.ReadAccountBalance(s.id)
-	s.Stake, _ = s.ledger.ReadAccountStake(s.id)
-	s.NumPages, s.IsContract = s.ledger.ReadAccountContractNumPages(s.id)
+	s.Balance, _ = s.ledger.Accounts.ReadAccountBalance(s.id)
+	s.Stake, _ = s.ledger.Accounts.ReadAccountStake(s.id)
+	s.NumPages, s.IsContract = s.ledger.Accounts.ReadAccountContractNumPages(s.id)
 
 	return nil
 }

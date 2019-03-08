@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/payload"
-	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/conflict"
@@ -12,7 +11,6 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"math/bits"
-	"sort"
 )
 
 var _ noise.Message = (*Transaction)(nil)
@@ -44,66 +42,6 @@ type Transaction struct {
 
 	// IN-MEMORY DATA
 	depth uint64
-}
-
-func AssertValidTransaction(tx *Transaction) error {
-	if tx.ID == common.ZeroTransactionID {
-		return errors.New("tx must not be empty")
-	}
-
-	if tx.Sender == common.ZeroAccountID || tx.Creator == common.ZeroAccountID {
-		return errors.New("tx must have sender or creator")
-	}
-
-	if len(tx.ParentIDs) == 0 {
-		return errors.New("tx must have parents")
-	}
-
-	// Check that parents are lexicographically sorted, and are unique.
-	set := make(map[common.TransactionID]struct{})
-
-	for i := len(tx.ParentIDs) - 1; i > 0; i-- {
-		if bytes.Compare(tx.ParentIDs[i-1][:], tx.ParentIDs[i][:]) >= 0 {
-			return errors.New("tx must have sorted parent ids")
-		}
-
-		if _, duplicate := set[tx.ParentIDs[i]]; duplicate {
-			return errors.New("tx must not have duplicate parent ids")
-		}
-
-		set[tx.ParentIDs[i]] = struct{}{}
-	}
-
-	sort.SliceIsSorted(tx.ParentIDs, func(i, j int) bool {
-		return bytes.Compare(tx.ParentIDs[i][:], tx.ParentIDs[j][:]) < 0
-	})
-
-	if tx.Tag != sys.TagNop && len(tx.Payload) == 0 {
-		return errors.New("tx must have payload if not a nop transaction")
-	}
-
-	if tx.Tag == sys.TagNop && len(tx.Payload) != 0 {
-		return errors.New("tx must have no payload if is a nop transaction")
-	}
-
-	err := eddsa.Verify(tx.Creator[:], append([]byte{tx.Tag}, tx.Payload...), tx.CreatorSignature[:])
-	if err != nil {
-		return errors.New("tx has invalid creator signature")
-	}
-
-	cpy := *tx
-	cpy.SenderSignature = common.ZeroSignature
-
-	err = eddsa.Verify(tx.Sender[:], cpy.Write(), tx.SenderSignature[:])
-	if err != nil {
-		return errors.New("tx has either invalid sender signature")
-	}
-
-	if len(tx.DifficultyTimestamps) > 0 && !assertValidCriticalTimestamps(tx) {
-		return errors.Wrap(VoteRejected, "tx is critical but has an invalid number of critical timestamps")
-	}
-
-	return nil
 }
 
 func prefixLen(buf []byte) int {

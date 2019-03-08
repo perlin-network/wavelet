@@ -35,21 +35,3 @@ func computeCriticalTimestampWindowSize(viewID uint64) int {
 
 	return size
 }
-
-func assertValidCriticalTimestamps(tx *Transaction) bool {
-	if len(tx.DifficultyTimestamps) != computeCriticalTimestampWindowSize(tx.ViewID) {
-		return false
-	}
-
-	// TODO(kenta): check if we have stored a log of the last 10 critical
-	//  transactions timestamps to assert that the timestamps are the same.
-
-	// Check that difficulty timestamps are in ascending order.
-	for i := 1; i < len(tx.DifficultyTimestamps); i++ {
-		if tx.DifficultyTimestamps[i] < tx.DifficultyTimestamps[i-1] {
-			return false
-		}
-	}
-
-	return true
-}

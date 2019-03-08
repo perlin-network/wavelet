@@ -18,7 +18,7 @@ import (
 )
 
 type Ledger struct {
-	accounts
+	Accounts accounts
 
 	kv store.KV
 
@@ -30,7 +30,7 @@ type Ledger struct {
 
 func NewLedger(kv store.KV, genesisPath string) *Ledger {
 	ledger := &Ledger{
-		accounts: newAccounts(kv),
+		Accounts: newAccounts(kv),
 
 		kv: kv,
 
@@ -53,7 +53,7 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 	ledger.saveViewID(0)
 	ledger.saveDifficulty(uint64(sys.MinDifficulty))
 
-	genesis, err := performInception(ledger.accounts, genesisPath)
+	genesis, err := performInception(ledger.Accounts, genesisPath)
 	if err != nil {
 		logger := log.Node()
 		logger.Fatal().Err(err).Msgf("Failed to perform inception with genesis data from %q.", genesisPath)
@@ -169,17 +169,17 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	}
 
 	// Assert the transaction was made within our current view ID.
-	if err := l.AssertValidViewID(tx); err != nil {
+	if err := l.AssertInView(tx); err != nil {
 		return errors.Wrap(VoteRejected, err.Error())
 	}
 
 	// Assert that the transaction has a sane timestamp, and that we have the transactions parents in-store.
-	if !l.assertValidTimestamp(tx) {
+	if !AssertValidTimestamp(l.view, tx) {
 		return errors.Wrap(VoteRejected, "either tx timestamp is out of bounds, or parents not available")
 	}
 
 	// Assert that the transaction has sane parents, and that we have the transactions parents in-store.
-	if !l.assertValidParentDepths(tx) {
+	if !AssertValidParentDepths(l.view, tx) {
 		return errors.Wrap(VoteRejected, "either parent depths are out of bounds, or parents not available")
 	}
 
@@ -211,7 +211,7 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	return VoteAccepted
 }
 
-func (l *Ledger) AssertValidViewID(tx *Transaction) error {
+func (l *Ledger) AssertInView(tx *Transaction) error {
 	// Assert the transaction was made within our current view ID.
 	if tx.ViewID != l.ViewID() {
 		return errors.Errorf("tx has view ID %d, but current view ID is %d", tx.ViewID, l.ViewID())
@@ -231,104 +231,6 @@ func (l *Ledger) AssertValidViewID(tx *Transaction) error {
 	return nil
 }
 
-func (l *Ledger) assertValidParentDepths(tx *Transaction) bool {
-	for _, parentID := range tx.ParentIDs {
-		parent, stored := l.view.lookupTransaction(parentID)
-
-		if !stored {
-			return false
-		}
-
-		if parent.depth+sys.MaxEligibleParentsDepthDiff < tx.depth {
-			return false
-		}
-	}
-
-	return true
-}
-
-func (l *Ledger) assertValidTimestamp(tx *Transaction) bool {
-	visited := make(map[common.TransactionID]struct{})
-	q := queue.New()
-
-	for _, parentID := range tx.ParentIDs {
-		if parent, stored := l.view.lookupTransaction(parentID); stored {
-			q.PushBack(parent)
-		} else {
-			return false
-		}
-
-		visited[parentID] = struct{}{}
-	}
-
-	var timestamps []uint64
-
-	for q.Len() > 0 {
-		popped := q.PopFront().(*Transaction)
-
-		timestamps = append(timestamps, popped.Timestamp)
-
-		if popped.ID == l.Root().ID || len(timestamps) == sys.MedianTimestampNumAncestors {
-			break
-		}
-
-		for _, parentID := range popped.ParentIDs {
-			if _, seen := visited[parentID]; !seen {
-				parent, stored := l.view.lookupTransaction(parentID)
-
-				if !stored {
-					return false
-				}
-
-				q.PushBack(parent)
-				visited[popped.ID] = struct{}{}
-			}
-		}
-	}
-
-	median := computeMedianTimestamp(timestamps)
-
-	// Check that the transactions timestamp is within the range:
-	//
-	// TIMESTAMP ∈ (median(last 10 BFS-ordered transactions in terms of history), nodes current time + 2 hours]
-	if tx.Timestamp <= median {
-		return false
-	}
-
-	if tx.Timestamp > uint64(time.Duration(time.Now().Add(2*time.Hour).UnixNano())/time.Millisecond) {
-		return false
-	}
-
-	return true
-}
-
-func (l *Ledger) ComputeStakeDistribution(accounts []common.AccountID) map[common.AccountID]float64 {
-	stakes := make(map[common.AccountID]uint64)
-	var maxStake uint64
-
-	for _, account := range accounts {
-		stake, _ := l.accounts.ReadAccountStake(account)
-
-		if stake < sys.MinimumStake {
-			stake = sys.MinimumStake
-		}
-
-		if maxStake < stake {
-			maxStake = stake
-		}
-
-		stakes[account] = stake
-	}
-
-	weights := make(map[common.AccountID]float64)
-
-	for account, stake := range stakes {
-		weights[account] = float64(stake) / float64(maxStake) / float64(sys.SnowballK)
-	}
-
-	return weights
-}
-
 func (l *Ledger) Reset(newRoot *Transaction, newState accounts) error {
 	// Reset any conflict resolving-related data.
 	l.resolver.Reset()
@@ -336,10 +238,10 @@ func (l *Ledger) Reset(newRoot *Transaction, newState accounts) error {
 	// Increment the view ID by 1.
 	l.saveViewID(newRoot.ViewID + 1)
 
-	l.accounts = newState
+	l.Accounts = newState
 
 	// Commit all account state to the database.
-	if err := l.CommitAccounts(); err != nil {
+	if err := l.Accounts.Commit(); err != nil {
 		return errors.Wrap(err, "wavelet: failed to collapse and commit new ledger state to db")
 	}
 
@@ -402,7 +304,7 @@ func (l *Ledger) RegisterProcessor(tag byte, processor TransactionProcessor) {
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
 func (l *Ledger) collapseTransactions(parentIDs []common.AccountID, logging bool) accounts {
-	ss := l.SnapshotAccounts()
+	ss := l.Accounts.SnapshotAccounts()
 	ss.SetViewID(l.Root().ViewID + 1)
 
 	visited := make(map[common.TransactionID]struct{})

@@ -150,25 +150,27 @@ func (s *syncer) queryForLatestView() error {
 		return err
 	}
 
-	var accounts []common.AccountID
-	for _, peerID := range peerIDs {
-		var account common.AccountID
-		copy(account[:], peerID.PublicKey())
+	var accountIDs []common.AccountID
 
-		accounts = append(accounts, account)
+	for _, peerID := range peerIDs {
+		var accountID common.AccountID
+		copy(accountID[:], peerID.PublicKey())
+
+		accountIDs = append(accountIDs, accountID)
 	}
 
 	votes := make(map[common.AccountID]*wavelet.Transaction)
+
 	for i, res := range responses {
 		if res != nil && res.(SyncViewResponse).root != nil {
 			root := res.(SyncViewResponse).root
 			s.recordRootFromAccount(peerIDs[i], root)
 
-			votes[accounts[i]] = root
+			votes[accountIDs[i]] = root
 		}
 	}
 
-	weights := s.ledger.ComputeStakeDistribution(accounts)
+	weights := wavelet.ComputeStakeDistribution(s.ledger.Accounts, accountIDs)
 
 	counts := make(map[conflict.Item]float64)
 
@@ -373,7 +375,7 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 		diff = append(diff, chunk...)
 	}
 
-	snapshot, err := s.ledger.SnapshotAccounts().ApplyDiff(diff)
+	snapshot, err := s.ledger.Accounts.SnapshotAccounts().ApplyDiff(diff)
 	if err != nil {
 		return err
 	}

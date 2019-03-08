@@ -319,7 +319,7 @@ func (g *Gateway) getContractCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	code, available := g.ledger.ReadAccountContractCode(id)
+	code, available := g.ledger.Accounts.ReadAccountContractCode(id)
 
 	if len(code) == 0 || !available {
 		g.render(w, r, ErrBadRequest(errors.Errorf("could not find contract with ID %x", id)))
@@ -348,7 +348,7 @@ func (g *Gateway) getContractPages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	numPages, available := g.ledger.ReadAccountContractNumPages(id)
+	numPages, available := g.ledger.Accounts.ReadAccountContractNumPages(id)
 
 	if !available {
 		g.render(w, r, ErrBadRequest(errors.Errorf("could not find any pages for contract with ID %x", id)))
@@ -360,7 +360,7 @@ func (g *Gateway) getContractPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page, available := g.ledger.ReadAccountContractPage(id, idx)
+	page, available := g.ledger.Accounts.ReadAccountContractPage(id, idx)
 
 	if len(page) == 0 || !available {
 		g.render(w, r, ErrBadRequest(errors.Errorf("page %d is either empty, or does not exist", idx)))

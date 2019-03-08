@@ -79,7 +79,7 @@ func performInception(accounts accounts, path string) (*Transaction, error) {
 	}
 
 	// Commit all genesis changes to the ledger.
-	err = accounts.CommitAccounts()
+	err = accounts.Commit()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to commit genesis changes to ledger")
 	}
