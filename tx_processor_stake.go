@@ -1,7 +1,7 @@
 package wavelet
 
 import (
-	"github.com/perlin-network/wavelet/payload"
+	"github.com/perlin-network/noise/payload"
 	"github.com/pkg/errors"
 )
 

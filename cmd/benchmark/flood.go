@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/perlin-network/wavelet/payload"
+	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/rs/zerolog/log"
