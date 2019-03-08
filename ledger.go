@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"bytes"
 	"encoding/binary"
 	"github.com/perlin-network/noise/identity"
 	"github.com/perlin-network/noise/signature/eddsa"
@@ -12,6 +13,7 @@ import (
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
+	"sort"
 	"time"
 )
 
@@ -112,6 +114,11 @@ func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transactio
 		return errors.New("wavelet: no eligible parents currently available, please try again")
 	}
 
+	// Lexicographically sort parent IDs.
+	sort.Slice(tx.ParentIDs, func(i, j int) bool {
+		return bytes.Compare(tx.ParentIDs[i][:], tx.ParentIDs[j][:]) < 0
+	})
+
 	tx.Timestamp = uint64(time.Duration(time.Now().UnixNano()) / time.Millisecond)
 
 	for _, parentID := range tx.ParentIDs {
@@ -182,7 +189,7 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 		// If our node already prefers a critical transaction, reject the
 		// incoming transaction.
 		if preferred != nil && tx.ID != preferred.Hash().(common.TransactionID) {
-			return errors.Wrap(VoteRejected, "prefer other critical transaction")
+			return errors.Wrapf(VoteRejected, "prefer other critical transaction %x", preferred.Hash())
 		}
 
 		// If our node does not prefer any critical transaction yet, set a critical

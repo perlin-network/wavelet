@@ -12,6 +12,7 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"math/bits"
+	"sort"
 )
 
 var _ noise.Message = (*Transaction)(nil)
@@ -54,13 +55,28 @@ func AssertValidTransaction(tx *Transaction) error {
 		return errors.New("tx must have sender or creator")
 	}
 
-	// TODO(kenta): check if the parents are lexicographically sorted to further
-	// 	prevent possible ways in varying the transaction ID to create a critical
-	// 	transaction through some variant of 'mining'.
-
 	if len(tx.ParentIDs) == 0 {
 		return errors.New("tx must have parents")
 	}
+
+	// Check that parents are lexicographically sorted, and are unique.
+	set := make(map[common.TransactionID]struct{})
+
+	for i := len(tx.ParentIDs) - 1; i > 0; i-- {
+		if bytes.Compare(tx.ParentIDs[i-1][:], tx.ParentIDs[i][:]) >= 0 {
+			return errors.New("tx must have sorted parent ids")
+		}
+
+		if _, duplicate := set[tx.ParentIDs[i]]; duplicate {
+			return errors.New("tx must not have duplicate parent ids")
+		}
+
+		set[tx.ParentIDs[i]] = struct{}{}
+	}
+
+	sort.SliceIsSorted(tx.ParentIDs, func(i, j int) bool {
+		return bytes.Compare(tx.ParentIDs[i][:], tx.ParentIDs[j][:]) < 0
+	})
 
 	if tx.Tag != sys.TagNop && len(tx.Payload) == 0 {
 		return errors.New("tx must have payload if not a nop transaction")
@@ -141,8 +157,6 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.Wrap(err, "failed to read num parents")
 	}
 
-	check := make(map[common.TransactionID]struct{})
-
 	for i := byte(0); i < numParents; i++ {
 		var parentID common.TransactionID
 
@@ -154,11 +168,6 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		if n != common.SizeAccountID {
 			return nil, errors.Errorf("could not read enough bytes for parent %d", i)
 		}
-
-		if _, duplicate := check[parentID]; duplicate {
-			return nil, errors.New("found duplicate parent inside transaction")
-		}
-		check[parentID] = struct{}{}
 
 		t.ParentIDs = append(t.ParentIDs, parentID)
 	}

@@ -43,7 +43,7 @@ type Config struct {
 
 func main() {
 	if terminal.IsTerminal(int(os.Stdout.Fd())) {
-		log.Register(log.NewConsoleWriter(log.FilterFor("node", "sync", "consensus", "contract")))
+		log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
 	} else {
 		log.Register(os.Stderr)
 	}
