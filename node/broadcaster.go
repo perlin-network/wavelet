@@ -5,6 +5,7 @@ import (
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/conflict"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -92,30 +93,16 @@ func (b *broadcaster) loop() {
 		default:
 		}
 
-		preferredID := b.ledger.Resolver().Preferred()
-
-		if preferredID == nil {
-			b.gossiping(logger)
-		} else {
+		if preferred := b.ledger.Resolver().Preferred(); preferred != nil {
 			b.broadcastingNops = false
-			b.querying(logger)
+			b.querying(logger, preferred.(*wavelet.Transaction))
+		} else {
+			b.gossiping(logger)
 		}
 	}
 }
 
-func (b *broadcaster) querying(logger zerolog.Logger) {
-	preferredID := b.ledger.Resolver().Preferred()
-
-	if preferredID == nil {
-		return
-	}
-
-	preferred, exists := b.ledger.FindTransaction(preferredID.(common.TransactionID))
-
-	if !exists {
-		return
-	}
-
+func (b *broadcaster) querying(logger zerolog.Logger, preferred *wavelet.Transaction) {
 	logger.Log().
 		Bool("broadcast_nops", false).
 		Hex("tx_id", preferred.ID[:]).
@@ -246,16 +233,16 @@ func (b *broadcaster) query(preferred *wavelet.Transaction) error {
 		accounts = append(accounts, account)
 	}
 
-	votes := make(map[common.AccountID]common.TransactionID)
+	votes := make(map[common.AccountID]*wavelet.Transaction)
 	for i, res := range responses {
-		if res != nil && res.(QueryResponse).preferred != common.ZeroTransactionID {
+		if res != nil && res.(QueryResponse).preferred != nil {
 			votes[accounts[i]] = res.(QueryResponse).preferred
 		}
 	}
 
 	weights := b.ledger.ComputeStakeDistribution(accounts)
 
-	counts := make(map[interface{}]float64)
+	counts := make(map[conflict.Item]float64)
 
 	for account, preferred := range votes {
 		counts[preferred] += weights[account]

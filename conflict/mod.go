@@ -1,11 +1,15 @@
 package conflict
 
+type Item interface {
+	Hash() interface{}
+}
+
 type Resolver interface {
 	Reset()
-	Tick(counts map[interface{}]float64)
+	Tick(counts map[Item]float64)
 
-	Prefer(id interface{})
-	Preferred() interface{}
+	Prefer(id Item)
+	Preferred() Item
 
 	Decided() bool
 }

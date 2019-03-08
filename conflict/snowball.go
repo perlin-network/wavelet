@@ -18,7 +18,7 @@ type snowball struct {
 	k, beta int
 	alpha   float64
 
-	preferred, last interface{}
+	preferred, last Item
 
 	counts map[interface{}]int
 	count  int
@@ -74,7 +74,7 @@ func (s *snowball) Reset() {
 	s.Unlock()
 }
 
-func (s *snowball) Tick(counts map[interface{}]float64) {
+func (s *snowball) Tick(counts map[Item]float64) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -84,13 +84,13 @@ func (s *snowball) Tick(counts map[interface{}]float64) {
 
 	for preferred, count := range counts {
 		if count >= s.alpha {
-			s.counts[preferred]++
+			s.counts[preferred.Hash()]++
 
-			if s.counts[preferred] > s.counts[s.preferred] {
+			if s.preferred == nil || s.counts[preferred.Hash()] > s.counts[s.preferred.Hash()] {
 				s.preferred = preferred
 			}
 
-			if s.last != preferred {
+			if s.last == nil || s.last.Hash() != preferred.Hash() {
 				s.last = preferred
 				s.count = 0
 			} else {
@@ -106,13 +106,13 @@ func (s *snowball) Tick(counts map[interface{}]float64) {
 	}
 }
 
-func (s *snowball) Prefer(id interface{}) {
+func (s *snowball) Prefer(id Item) {
 	s.Lock()
 	s.preferred = id
 	s.Unlock()
 }
 
-func (s *snowball) Preferred() interface{} {
+func (s *snowball) Preferred() Item {
 	s.RLock()
 	preferred := s.preferred
 	s.RUnlock()

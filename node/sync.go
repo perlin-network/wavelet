@@ -31,7 +31,6 @@ type syncer struct {
 	ledger *wavelet.Ledger
 
 	mu       sync.RWMutex
-	roots    map[common.TransactionID]*wavelet.Transaction
 	accounts map[common.TransactionID]map[protocolID]struct{}
 
 	resolver conflict.Resolver
@@ -41,7 +40,6 @@ func newSyncer(node *noise.Node) *syncer {
 	return &syncer{
 		node:     node,
 		ledger:   Ledger(node),
-		roots:    make(map[common.TransactionID]*wavelet.Transaction),
 		accounts: make(map[common.TransactionID]map[protocolID]struct{}),
 		resolver: conflict.NewSnowball(),
 	}
@@ -52,7 +50,6 @@ func (s *syncer) init() {
 }
 
 func (s *syncer) loop() {
-	var rootID common.TransactionID
 	var root *wavelet.Transaction
 
 	for {
@@ -67,11 +64,11 @@ func (s *syncer) loop() {
 			if s.resolver.Decided() {
 				// The view ID we came to consensus to being the latest within the network
 				// is less than or equal to ours. Go back to square one.
-				rootID = s.resolver.Preferred().(common.TransactionID)
+				root = s.resolver.Preferred().(*wavelet.Transaction)
 
 				s.resolver.Reset()
 
-				if root = s.getRootByID(rootID); s.ledger.Root().ID == rootID || s.ledger.ViewID() >= root.ViewID+1 {
+				if s.ledger.Root().ID == root.ID || s.ledger.ViewID() >= root.ViewID+1 {
 					time.Sleep(1 * time.Second)
 					continue
 				}
@@ -82,14 +79,14 @@ func (s *syncer) loop() {
 
 		logger := log.Sync("new")
 		logger.Info().
-			Hex("peer_proposed_root_id", rootID[:]).
+			Hex("peer_proposed_root_id", root.ID[:]).
 			Uint64("peer_proposed_view_id", root.ViewID).
 			Uint64("our_view_id", s.ledger.ViewID()).
 			Msg("It looks like the majority of our peers has a larger view ID than us. Instantiating sync...")
 
 		var peerIDs []protocol.ID
 
-		for peerID := range s.accounts[rootID] {
+		for peerID := range s.accounts[root.ID] {
 			id, err := skademlia.ID{}.Read(payload.NewReader(peerID[:]))
 			if err != nil {
 				continue
@@ -100,7 +97,6 @@ func (s *syncer) loop() {
 
 		// Reset all state used for coming to consensus about the latest view-graph root.
 		s.mu.Lock()
-		s.roots = make(map[common.TransactionID]*wavelet.Transaction)
 		s.accounts = make(map[common.TransactionID]map[protocolID]struct{})
 		s.mu.Unlock()
 
@@ -114,7 +110,7 @@ func (s *syncer) loop() {
 		} else {
 			logger = log.Sync("success")
 			logger.Info().
-				Hex("new_root_id", rootID[:]).
+				Hex("new_root_id", root.ID[:]).
 				Uint64("new_view_id", s.ledger.ViewID()).
 				Msg("Successfully synchronized with our peers.")
 		}
@@ -123,12 +119,8 @@ func (s *syncer) loop() {
 	}
 }
 
-func (s *syncer) addRootIfNotExists(account protocol.ID, root *wavelet.Transaction) {
+func (s *syncer) recordRootFromAccount(account protocol.ID, root *wavelet.Transaction) {
 	s.mu.Lock()
-
-	if _, exists := s.roots[root.ID]; !exists {
-		s.roots[root.ID] = root
-	}
 
 	if _, instantiated := s.accounts[root.ID]; !instantiated {
 		s.accounts[root.ID] = make(map[protocolID]struct{})
@@ -140,13 +132,6 @@ func (s *syncer) addRootIfNotExists(account protocol.ID, root *wavelet.Transacti
 	s.accounts[root.ID][id] = struct{}{}
 
 	s.mu.Unlock()
-}
-
-func (s *syncer) getRootByID(id common.TransactionID) *wavelet.Transaction {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	return s.roots[id]
 }
 
 func (s *syncer) queryForLatestView() error {
@@ -173,19 +158,19 @@ func (s *syncer) queryForLatestView() error {
 		accounts = append(accounts, account)
 	}
 
-	votes := make(map[common.AccountID]common.TransactionID)
+	votes := make(map[common.AccountID]*wavelet.Transaction)
 	for i, res := range responses {
-		if res != nil {
+		if res != nil && res.(SyncViewResponse).root != nil {
 			root := res.(SyncViewResponse).root
-			s.addRootIfNotExists(peerIDs[i], root)
+			s.recordRootFromAccount(peerIDs[i], root)
 
-			votes[accounts[i]] = root.ID
+			votes[accounts[i]] = root
 		}
 	}
 
 	weights := s.ledger.ComputeStakeDistribution(accounts)
 
-	counts := make(map[interface{}]float64)
+	counts := make(map[conflict.Item]float64)
 
 	for account, preferred := range votes {
 		counts[preferred] += weights[account]

@@ -7,6 +7,7 @@ import (
 	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/conflict"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
@@ -14,6 +15,7 @@ import (
 )
 
 var _ noise.Message = (*Transaction)(nil)
+var _ conflict.Item = (*Transaction)(nil)
 
 type Transaction struct {
 	// WIRE FORMAT
@@ -98,7 +100,11 @@ func prefixLen(buf []byte) int {
 	return len(buf)*8 - 1
 }
 
-func (t *Transaction) IsCritical(difficulty uint64) bool {
+func (t Transaction) Hash() interface{} {
+	return t.ID
+}
+
+func (t Transaction) IsCritical(difficulty uint64) bool {
 	var buf bytes.Buffer
 	_, _ = buf.Write(t.Sender[:])
 

@@ -4,7 +4,6 @@ import (
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
@@ -156,20 +155,20 @@ func handleSyncViewRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncVie
 	res := new(SyncViewResponse)
 
 	syncer := Syncer(peer.Node())
-	syncer.addRootIfNotExists(protocol.PeerID(peer), req.root)
+	syncer.recordRootFromAccount(protocol.PeerID(peer), req.root)
 
 	if err := wavelet.AssertValidTransaction(req.root); err == nil {
 		preferred := syncer.resolver.Preferred()
 
 		if ledger.ViewID() < req.root.ViewID && preferred == nil {
-			syncer.resolver.Prefer(req.root.ID)
+			syncer.resolver.Prefer(req.root)
 		}
 	}
 
 	if preferred := syncer.resolver.Preferred(); preferred == nil {
 		res.root = ledger.Root()
 	} else {
-		res.root = syncer.getRootByID(preferred.(common.TransactionID))
+		res.root = preferred.(*wavelet.Transaction)
 	}
 
 	if err := <-peer.SendMessageAsync(res); err != nil {
@@ -199,20 +198,20 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 			preferredNotSet := preferred == nil && req.tx.ID != ledger.Root().ID
 
 			if correctViewID && preferredNotSet {
-				ledger.Resolver().Prefer(req.tx.ID)
+				ledger.Resolver().Prefer(req.tx)
 			}
 		}
 	}
 
 	if req.tx.ViewID == ledger.ViewID()-1 {
-		res.preferred = ledger.Root().ID
+		res.preferred = ledger.Root()
 	} else if preferred := ledger.Resolver().Preferred(); preferred != nil {
-		res.preferred = preferred.(common.TransactionID)
+		res.preferred = preferred.(*wavelet.Transaction)
 	}
 
 	logger := log.Consensus("query")
 	logger.Debug().
-		Hex("preferred_id", res.preferred[:]).
+		Hex("preferred_id", res.preferred.ID[:]).
 		Uint64("view_id", ledger.ViewID()).
 		Msg("Responded to finality query with our preferred transaction.")
 }

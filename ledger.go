@@ -181,14 +181,14 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	if tx.IsCritical(l.Difficulty()) {
 		// If our node already prefers a critical transaction, reject the
 		// incoming transaction.
-		if preferred != nil && tx.ID != preferred {
+		if preferred != nil && tx.ID != preferred.Hash() {
 			return errors.Wrap(VoteRejected, "prefer other critical transaction")
 		}
 
 		// If our node does not prefer any critical transaction yet, set a critical
 		// transaction to initially prefer.
 		if preferred == nil && tx.ID != l.Root().ID {
-			l.resolver.Prefer(tx.ID)
+			l.resolver.Prefer(tx)
 		}
 	}
 
@@ -353,7 +353,7 @@ func (l *Ledger) Reset(newRoot *Transaction, newState accounts) error {
 	return nil
 }
 
-func (l *Ledger) ProcessQuery(counts map[interface{}]float64) error {
+func (l *Ledger) ProcessQuery(counts map[conflict.Item]float64) error {
 	// If there are zero preferred critical transactions from other nodes, return nil.
 	if len(counts) == 0 {
 		return nil
@@ -365,14 +365,8 @@ func (l *Ledger) ProcessQuery(counts map[interface{}]float64) error {
 	// the view-graph, increment the current view ID, and update the current ledgers
 	// difficulty.
 	if l.resolver.Decided() {
+		root := l.resolver.Preferred().(*Transaction)
 		old := l.Root()
-
-		rootID := l.resolver.Preferred().(common.TransactionID)
-		root, recorded := l.view.lookupTransaction(rootID)
-
-		if !recorded {
-			return errors.New("wavelet: could not find newly critical tx in view graph")
-		}
 
 		if err := l.Reset(root, l.collapseTransactions(root.ParentIDs, true)); err != nil {
 			return errors.Wrap(err, "wavelet: failed to reset ledger to advance to new view ID")

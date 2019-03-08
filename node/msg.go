@@ -4,7 +4,6 @@ import (
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 )
@@ -47,25 +46,27 @@ func (q QueryRequest) Write() []byte {
 }
 
 type QueryResponse struct {
-	preferred common.TransactionID
+	preferred *wavelet.Transaction
 }
 
 func (q QueryResponse) Read(reader payload.Reader) (noise.Message, error) {
-	n, err := reader.Read(q.preferred[:])
-
+	msg, err := wavelet.Transaction{}.Read(reader)
 	if err != nil {
-		return nil, errors.Wrap(err, "wavelet: failed to read query response preferred id")
+		return nil, errors.Wrap(err, "wavelet: failed to read query response preferred tx")
 	}
 
-	if n != len(q.preferred) {
-		return nil, errors.New("wavelet: didn't read enough bytes for query response preferred id")
-	}
+	preferred := msg.(wavelet.Transaction)
+	q.preferred = &preferred
 
 	return q, nil
 }
 
 func (q QueryResponse) Write() []byte {
-	return q.preferred[:]
+	if q.preferred != nil {
+		return q.preferred.Write()
+	}
+
+	return nil
 }
 
 type GossipRequest struct {
