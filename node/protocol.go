@@ -153,17 +153,13 @@ func handleSyncDiffChunkRequest(ledger *wavelet.Ledger, peer *noise.Peer, req Sy
 
 func handleSyncViewRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncViewRequest) {
 	res := new(SyncViewResponse)
+	defer func() {
+		if err := <-peer.SendMessageAsync(res); err != nil {
+			_ = peer.DisconnectAsync()
+		}
+	}()
 
 	syncer := Syncer(peer.Node())
-	syncer.recordRootFromAccount(protocol.PeerID(peer), req.root)
-
-	if err := wavelet.AssertValidTransaction(req.root); err == nil {
-		preferred := syncer.resolver.Preferred()
-
-		if ledger.ViewID() < req.root.ViewID && preferred == nil {
-			syncer.resolver.Prefer(req.root)
-		}
-	}
 
 	if preferred := syncer.resolver.Preferred(); preferred == nil {
 		res.root = ledger.Root()
@@ -171,14 +167,29 @@ func handleSyncViewRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncVie
 		res.root = preferred.(*wavelet.Transaction)
 	}
 
-	if err := <-peer.SendMessageAsync(res); err != nil {
-		_ = peer.DisconnectAsync()
+	if err := wavelet.AssertValidTransaction(req.root); err != nil {
+		return
 	}
+
+	if ledger.ViewID() < req.root.ViewID && syncer.resolver.Preferred() == nil {
+		res.root = req.root
+		syncer.resolver.Prefer(req.root)
+	}
+
+	syncer.recordRootFromAccount(protocol.PeerID(peer), req.root)
 }
 
 func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryRequest) {
 	res := new(QueryResponse)
 	defer func() {
+		if res.preferred != nil {
+			logger := log.Consensus("query")
+			logger.Debug().
+				Hex("preferred_id", res.preferred.ID[:]).
+				Uint64("view_id", ledger.ViewID()).
+				Msg("Responded to finality query with our preferred transaction.")
+		}
+
 		if err := <-peer.SendMessageAsync(res); err != nil {
 			_ = peer.DisconnectAsync()
 		}
@@ -188,34 +199,35 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 		return
 	}
 
-	// If our node does not prefer any critical transaction yet, set a critical
-	// transaction to initially prefer.
-	if err := wavelet.AssertValidTransaction(req.tx); err == nil {
-		preferred := ledger.Resolver().Preferred()
-
-		if req.tx.IsCritical(ledger.Difficulty()) {
-			correctViewID := ledger.AssertInView(req.tx) == nil
-			preferredNotSet := preferred == nil && req.tx.ID != ledger.Root().ID
-
-			if correctViewID && preferredNotSet {
-				ledger.Resolver().Prefer(req.tx)
-			}
-		}
-	}
-
 	if req.tx.ViewID == ledger.ViewID()-1 {
 		res.preferred = ledger.Root()
 	} else if preferred := ledger.Resolver().Preferred(); preferred != nil {
 		res.preferred = preferred.(*wavelet.Transaction)
 	}
 
-	if res.preferred != nil {
-		logger := log.Consensus("query")
-		logger.Debug().
-			Hex("preferred_id", res.preferred.ID[:]).
-			Uint64("view_id", ledger.ViewID()).
-			Msg("Responded to finality query with our preferred transaction.")
+	// If our node does not prefer any critical transaction yet, set a critical
+	// transaction to initially prefer.
+
+	if err := wavelet.AssertValidTransaction(req.tx); err != nil {
+		return
 	}
+
+	if !req.tx.IsCritical(ledger.Difficulty()) {
+		return
+	}
+
+	if err := ledger.AssertInView(req.tx); err != nil {
+		return
+	}
+
+	preferred := ledger.Resolver().Preferred()
+
+	if preferred != nil || req.tx.ID == ledger.Root().ID {
+		return
+	}
+
+	res.preferred = req.tx
+	ledger.Resolver().Prefer(req.tx)
 }
 
 func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipRequest) {
