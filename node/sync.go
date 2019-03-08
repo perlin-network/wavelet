@@ -60,6 +60,7 @@ func (s *syncer) loop() {
 			err := s.queryForLatestView()
 
 			if err != nil {
+				time.Sleep(100 * time.Millisecond)
 				continue
 			}
 
@@ -77,8 +78,6 @@ func (s *syncer) loop() {
 
 				break
 			}
-
-			time.Sleep(1 * time.Millisecond)
 		}
 
 		logger := log.Sync("new")

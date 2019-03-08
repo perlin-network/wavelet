@@ -151,6 +151,7 @@ func (b *broadcaster) gossiping(logger zerolog.Logger) {
 		//
 		// If we do not have any balance either, do not broadcast any nops.
 		if !b.broadcastingNops || balance < sys.TransactionFeeAmount {
+			time.Sleep(100 * time.Millisecond)
 			return
 		}
 
