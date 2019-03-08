@@ -154,6 +154,10 @@ func handleSyncDiffChunkRequest(ledger *wavelet.Ledger, peer *noise.Peer, req Sy
 func handleSyncViewRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncViewRequest) {
 	res := new(SyncViewResponse)
 
+	if req.root == nil {
+		return
+	}
+
 	syncer := Syncer(peer.Node())
 	syncer.recordRootFromAccount(protocol.PeerID(peer), req.root)
 
@@ -183,6 +187,10 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 			_ = peer.DisconnectAsync()
 		}
 	}()
+
+	if req.tx == nil {
+		return
+	}
 
 	if Broadcaster(peer.Node()).Paused.Load() {
 		return
@@ -225,6 +233,10 @@ func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipReq
 			_ = peer.DisconnectAsync()
 		}
 	}()
+
+	if req.tx == nil {
+		return
+	}
 
 	if Broadcaster(peer.Node()).Paused.Load() {
 		return
