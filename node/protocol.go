@@ -209,11 +209,13 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 		res.preferred = preferred.(*wavelet.Transaction)
 	}
 
-	logger := log.Consensus("query")
-	logger.Debug().
-		Hex("preferred_id", res.preferred.ID[:]).
-		Uint64("view_id", ledger.ViewID()).
-		Msg("Responded to finality query with our preferred transaction.")
+	if res.preferred != nil {
+		logger := log.Consensus("query")
+		logger.Debug().
+			Hex("preferred_id", res.preferred.ID[:]).
+			Uint64("view_id", ledger.ViewID()).
+			Msg("Responded to finality query with our preferred transaction.")
+	}
 }
 
 func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipRequest) {
