@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/perlin-network/wavelet/payload"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/rs/zerolog/log"
@@ -18,7 +19,7 @@ func floodTransactions() func(client *wctl.Client) (wctl.SendTransactionResponse
 	}()
 
 	return func(client *wctl.Client) (wctl.SendTransactionResponse, error) {
-		res, err := client.SendTransaction(sys.TagNop, nil)
+		res, err := client.SendTransaction(sys.TagStake, payload.NewWriter(nil).WriteUint64(1).Bytes())
 		if err != nil {
 			return res, err
 		}
