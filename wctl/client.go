@@ -7,7 +7,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/perlin-network/noise/identity/ed25519"
 	"github.com/perlin-network/noise/signature/eddsa"
-	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
@@ -48,7 +47,7 @@ func (c *Client) Request(path string, method string, body, out interface{}) erro
 	req.URI().Update(fmt.Sprintf("%s://%s:%d%s", protocol, c.Config.APIHost, c.Config.APIPort, path))
 	req.Header.SetMethod(method)
 	req.Header.SetContentType("application/json")
-	req.Header.Add(api.HeaderSessionToken, c.SessionToken)
+	req.Header.Add(HeaderSessionToken, c.SessionToken)
 
 	if body != nil {
 		raw, err := json.Marshal(body)
@@ -87,7 +86,7 @@ func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 	url := fmt.Sprintf("%s://%s:%d%s", prot, c.Config.APIHost, c.Config.APIPort, path)
 
 	header := make(http.Header)
-	header.Add(api.HeaderSessionToken, c.SessionToken)
+	header.Add(HeaderSessionToken, c.SessionToken)
 
 	dialer := &websocket.Dialer{}
 	conn, _, err := dialer.Dial(url, header)
