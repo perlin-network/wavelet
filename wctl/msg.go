@@ -5,7 +5,7 @@ const (
 
 	RouteSessionInit = "/session/init"
 	RouteLedger      = "/ledger"
-	RouteAccount     = "/account"
+	RouteAccount     = "/accounts"
 	RouteContract    = "/contract"
 	RouteTxList      = "/tx"
 	RouteTxSend      = "/tx/send"
