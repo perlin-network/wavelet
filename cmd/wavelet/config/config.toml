@@ -14,7 +14,6 @@ query_timeout = 10
 max_eligible_parents_depth_diff = 5
 # Number of ancestors to derive a median timestamp from.
 median_timestamp_num_ancestors = 5
-validator_reward_amount = 2
 # In milliseconds.
 expected_consensus_time = 1000
 critical_timestamp_average_window_size = 3
