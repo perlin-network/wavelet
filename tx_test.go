@@ -56,10 +56,6 @@ func createCriticalTransaction(t *testing.T, ledger *Ledger, keys *skademlia.Key
 			return tx
 		}
 	}
-
-	t.Fatal("failed to create critical transaction")
-
-	return nil
 }
 
 func TestSerializeNormalTransaction(t *testing.T) {

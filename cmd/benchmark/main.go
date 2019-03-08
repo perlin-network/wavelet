@@ -127,8 +127,6 @@ func commandRemote(c *cli.Context) error {
 			fmt.Println(err)
 		}
 	}
-
-	return nil
 }
 
 func commandLocal(c *cli.Context) error {
@@ -159,8 +157,4 @@ func commandLocal(c *cli.Context) error {
 			}
 		}
 	}
-
-	kill(nodes...)
-
-	return nil
 }
