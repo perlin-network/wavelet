@@ -123,7 +123,7 @@ func (s *snowball) Preferred() interface{} {
 func (s *snowball) Decided() bool {
 	s.RLock()
 	decided := s.decided
-	defer s.RUnlock()
+	s.RUnlock()
 
 	return decided
 }
