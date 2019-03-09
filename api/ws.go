@@ -87,7 +87,7 @@ func (s *sink) serve(w http.ResponseWriter, r *http.Request) error {
 	filters := make(map[string]string)
 	values := r.URL.Query()
 
-	for key, queryKey := range s.filters {
+	for queryKey, key := range s.filters {
 		if queryValue := values.Get(queryKey); queryValue != "" {
 			filters[key] = queryValue
 		}
@@ -134,7 +134,7 @@ func (s *sink) run() {
 		L:
 			for client := range s.clients {
 				for key, condition := range client.filters {
-					if value, exists := msg.fields[key]; (exists && value != condition) || !exists {
+					if value, exists := msg.fields[key]; exists && value != condition {
 						continue L
 					}
 				}
