@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	ErrParentsNotAvailable = errors.New("graph: do not have parents available")
-	ErrTxAlreadyExists     = errors.New("graph: transaction already exists")
+	ErrParentsNotAvailable = errors.New("parents for transaction are not in our view-graph")
+	ErrTxAlreadyExists     = errors.New("transaction already exists")
 )
 
 type graph struct {
@@ -45,6 +45,16 @@ func newGraph(kv store.KV, genesis *Transaction) *graph {
 	return g
 }
 
+func maxDepth(parents []*Transaction) (max uint64) {
+	for _, parent := range parents {
+		if max < parent.depth {
+			max = parent.depth
+		}
+	}
+
+	return
+}
+
 func (g *graph) addTransaction(tx *Transaction) error {
 	g.Lock()
 	defer g.Unlock()
@@ -65,26 +75,20 @@ func (g *graph) addTransaction(tx *Transaction) error {
 		}
 	}
 
-	// Update transaction and graph frontiers depth.
-	maxParentsDepth := parents[0].depth
-	for _, parent := range parents[1:] {
-		if maxParentsDepth < parent.depth {
-			maxParentsDepth = parent.depth
-		}
-	}
-
-	tx.depth = maxParentsDepth + 1
-
-	// Update the graphs height.
-	if g.height < tx.depth {
-		g.height = tx.depth
-	}
-
 	// Update the parents children.
 	for _, parent := range parents {
 		g.children[parent.ID] = append(g.children[parent.ID], tx.ID)
 	}
 
+	// Update the transactions depth.
+	tx.depth = maxDepth(parents) + 1
+
+	// Update the graphs frontier depth/height.
+	if g.height < tx.depth {
+		g.height = tx.depth
+	}
+
+	// Add the transaction to our view-graph.
 	g.transactions[tx.ID] = tx
 
 	logger := log.TX(tx.ID, tx.Sender, tx.Creator, tx.ParentIDs, tx.Tag, tx.Payload, "new")

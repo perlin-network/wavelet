@@ -65,8 +65,8 @@ func AssertValidTransaction(tx *Transaction) error {
 	return nil
 }
 
-// AssertValidParentDepths asserts that the transaction has sane
-// parents, and that we have the transactions parents in-store.
+// AssertValidParentDepths asserts that the transaction has parents at a valid graph
+// depth,and that we have the transactions parents in-store.
 func AssertValidParentDepths(view *graph, tx *Transaction) error {
 	for _, parentID := range tx.ParentIDs {
 		parent, stored := view.lookupTransaction(parentID)
@@ -83,7 +83,7 @@ func AssertValidParentDepths(view *graph, tx *Transaction) error {
 	return nil
 }
 
-// Assert that the transaction has a sane timestamp, and that we
+// AssertValidTimestamp asserts that the transaction has a sane timestamp, and that we
 // have the transactions parents in-store.
 func AssertValidTimestamp(view *graph, tx *Transaction) error {
 	visited := make(map[common.TransactionID]struct{})

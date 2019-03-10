@@ -14,6 +14,7 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -26,6 +27,10 @@ type Ledger struct {
 	view     *graph
 
 	processors map[byte]TransactionProcessor
+
+	awaiting map[common.TransactionID][]common.TransactionID
+	buffered map[common.TransactionID]*Transaction
+	bufferMu sync.Mutex
 }
 
 func NewLedger(kv store.KV, genesisPath string) *Ledger {
@@ -40,6 +45,9 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 			WithBeta(sys.SnowballBeta),
 
 		processors: make(map[byte]TransactionProcessor),
+
+		awaiting: make(map[common.TransactionID][]common.TransactionID),
+		buffered: make(map[common.TransactionID]*Transaction),
 	}
 
 	buf, err := kv.Get(keyLedgerGenesis[:])
@@ -158,79 +166,186 @@ func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transactio
 }
 
 func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
+	return l.receiveTransaction(tx, true)
+}
+
+func (l *Ledger) receiveTransaction(tx *Transaction, lockBuffer bool) error {
+	/** BASIC ASSERTIONS **/
+
 	// If the transaction is our root transaction, assume that we have already voted positively for it.
 	if tx.ID == l.Root().ID {
 		return errors.Wrap(VoteAccepted, "tx is our view-graphs root")
 	}
 
-	// Assert the transaction is valid.
+	// Assert that the transactions content is valid.
 	if err := AssertValidTransaction(tx); err != nil {
 		return errors.Wrap(VoteRejected, err.Error())
 	}
 
-	// Assert the transaction was made within our current view ID.
+	// Assert that the transaction was made within our current view ID.
 	if err := l.AssertInView(tx); err != nil {
 		return errors.Wrap(VoteRejected, err.Error())
 	}
 
-	// Assert that the transaction has a sane timestamp, and that we have the transactions parents in-store.
-	if err := AssertValidTimestamp(l.view, tx); err != nil {
-		return errors.Wrap(VoteRejected, err.Error())
-	}
+	critical := tx.IsCritical(l.Difficulty())
 
-	// Assert that the transaction has sane parents, and that we have the transactions parents in-store.
-	if err := AssertValidParentDepths(l.view, tx); err != nil {
-		return errors.Wrap(VoteRejected, err.Error())
-	}
-
-	preferred := l.resolver.Preferred()
-
-	if tx.IsCritical(l.Difficulty()) {
-		if err := AssertValidCriticalTimestamps(tx); err != nil {
-			return errors.Wrap(VoteRejected, err.Error())
-		}
-
-		// If our node already prefers a critical transaction, reject the
-		// incoming transaction.
-		if preferred != nil && tx.ID != preferred.Hash().(common.TransactionID) {
+	if critical {
+		// If our node already prefers a critical transaction, reject the incoming transaction.
+		if preferred := l.resolver.Preferred(); preferred != nil && tx.ID != preferred.Hash().(common.TransactionID) {
 			return errors.Wrapf(VoteRejected, "prefer other critical transaction %x", preferred.Hash())
 		}
 
-		// If our node does not prefer any critical transaction yet, set a critical
-		// transaction to initially prefer.
-		if preferred == nil && tx.ID != l.Root().ID {
-			l.resolver.Prefer(tx)
+		// Assert that the critical transaction has a valid timestamp history.
+		if err := AssertValidCriticalTimestamps(tx); err != nil {
+			return errors.Wrap(VoteRejected, err.Error())
+		}
+	}
+
+	/** PARENT ASSERTIONS **/
+
+	// Assert that we have all of the transactions parents in our view-graph.
+	// TODO(kenta): this code is kind of ugly; any clean way to do recursive
+	// 	locks?
+	if lockBuffer {
+		l.bufferMu.Lock()
+		if err := l.bufferIfMissingParents(tx); err != nil {
+			l.bufferMu.Unlock()
+			return errors.Wrap(VoteRejected, err.Error())
+		}
+		l.bufferMu.Unlock()
+	} else {
+		if err := l.bufferIfMissingParents(tx); err != nil {
+			return errors.Wrap(VoteRejected, err.Error())
+		}
+	}
+
+	// Assert that the transaction has a sane timestamp with respect to its parents.
+	if err := AssertValidTimestamp(l.view, tx); err != nil {
+		return err
+	}
+
+	// Assert that the transactions parents are at an eligible graph depth.
+	if err := AssertValidParentDepths(l.view, tx); err != nil {
+		return err
+	}
+
+	// Assert that we have the entire transactions ancestry, which is needed
+	// to collapse down the transaction.
+	if critical {
+		if err := l.AssertCollapsible(tx); err != nil {
+			return err
 		}
 	}
 
 	// Add the transaction to our view-graph if we have its parents in-store.
 	if err := l.view.addTransaction(tx); err != nil {
 		switch errors.Cause(err) {
-		case ErrParentsNotAvailable:
-			return errors.Wrap(VoteRejected, "parents for transaction are not in our view-graph")
 		case ErrTxAlreadyExists:
 			return errors.Wrap(VoteAccepted, "tx already accepted beforehand")
+		default:
+			return errors.Wrap(VoteRejected, err.Error())
 		}
+	}
+
+	// If our node does not prefer any critical transaction yet, set a critical
+	// transaction to initially prefer.
+	if critical {
+		if preferred := l.resolver.Preferred(); preferred == nil && tx.ID != l.Root().ID {
+			l.resolver.Prefer(tx)
+		}
+	}
+
+	// TODO(kenta): this code is kind of ugly; any clean way to do recursive
+	// 	locks?
+	if lockBuffer {
+		l.bufferMu.Lock()
+		l.revisitBufferedTransactions(tx, lockBuffer)
+		l.bufferMu.Unlock()
+	} else {
+		l.revisitBufferedTransactions(tx, lockBuffer)
 	}
 
 	return VoteAccepted
 }
 
+// bufferIfMissingParents asserts that we have all of the transactions parents
+// in our view-graph.
+//
+// If not, we buffer the transaction such that some day, once we have its
+// parents, we will attempt to re-add the transaction to the view-graph.
+//
+// It assumes that `*Ledger.bufferMu` has already been locked.
+func (l *Ledger) bufferIfMissingParents(tx *Transaction) error {
+	parentsAvailable := true
+
+	for _, parentID := range tx.ParentIDs {
+		_, exists := l.view.lookupTransaction(parentID)
+
+		if !exists {
+			parentsAvailable = false
+
+			l.awaiting[parentID] = append(l.awaiting[parentID], tx.ID)
+		}
+	}
+
+	if !parentsAvailable {
+		l.buffered[tx.ID] = tx
+
+		return ErrParentsNotAvailable
+	}
+
+	return nil
+}
+
+// revisitBufferedTransactions checks that once a specified transaction is added
+// to the view-graph, if any buffered transactions may then be eligible to be
+// provided another attempt at being added to the view-graph.
+//
+// It assumes that `*Ledger.bufferMu` has already been locked.
+func (l *Ledger) revisitBufferedTransactions(tx *Transaction, lock bool) {
+	buffer, exists := l.awaiting[tx.ID]
+
+	if !exists {
+		return
+	}
+
+	for _, id := range buffer {
+		txx, exists := l.buffered[id]
+
+		// This can happen if we already unbuffered the transaction beforehand.
+		if !exists {
+			continue
+		}
+
+		if err := l.receiveTransaction(txx, false); errors.Cause(err) == VoteAccepted {
+			delete(l.buffered, tx.ID)
+		}
+	}
+
+	delete(l.awaiting, tx.ID)
+}
+
+// AssertInView asserts if the transaction was proposed and broadcasted
+// at the present view ID our ledger is at.
 func (l *Ledger) AssertInView(tx *Transaction) error {
-	// Assert the transaction was made within our current view ID.
 	if tx.ViewID != l.ViewID() {
 		return errors.Errorf("tx has view ID %d, but current view ID is %d", tx.ViewID, l.ViewID())
 	}
 
-	// If the transaction is critical, assert the transaction has a valid accounts merkle root.
-	if tx.IsCritical(l.Difficulty()) {
-		snapshot := l.collapseTransactions(tx.ParentIDs, false)
+	return nil
+}
 
-		if snapshot.tree.Checksum() != tx.AccountsMerkleRoot {
-			return errors.Errorf("tx is critical but has invalid accounts root "+
-				"checksum; collapsing down the critical transactions parents gives %x as the root, "+
-				"but the tx has %x as a root", snapshot.tree.Checksum(), tx.AccountsMerkleRoot)
-		}
+// AssertCollapsible asserts if the transactions ancestry, once collapsed, yields a
+// Merkle root hash which is equivalent to the provided transactions Merkle root
+// hash.
+func (l *Ledger) AssertCollapsible(tx *Transaction) error {
+	// If the transaction is critical, assert the transaction has a valid accounts merkle root.
+	snapshot := l.collapseTransactions(tx.ParentIDs, false)
+
+	if snapshot.tree.Checksum() != tx.AccountsMerkleRoot {
+		return errors.Errorf("tx is critical but has invalid accounts root "+
+			"checksum; collapsing down the critical transactions parents gives %x as the root, "+
+			"but the tx has %x as a root", snapshot.tree.Checksum(), tx.AccountsMerkleRoot)
 	}
 
 	return nil
@@ -252,6 +367,11 @@ func (l *Ledger) Reset(newRoot *Transaction, newState accounts) error {
 
 	// Reset the view-graph with the new root.
 	l.view.reset(newRoot)
+
+	l.bufferMu.Lock()
+	l.awaiting = make(map[common.TransactionID][]common.TransactionID)
+	l.buffered = make(map[common.TransactionID]*Transaction)
+	l.bufferMu.Unlock()
 
 	// Update ledgers difficulty.
 	original, adjusted := l.Difficulty(), computeNextDifficulty(newRoot)
@@ -346,7 +466,7 @@ func (l *Ledger) collapseTransactions(parentIDs []common.AccountID, logging bool
 	// Apply transactions in reverse order from the root of the view-graph all
 	// the way up to the newly created critical transaction.
 	for applyQueue.Len() > 0 {
-		popped := applyQueue.PopFront().(*Transaction)
+		popped := applyQueue.PopBack().(*Transaction)
 
 		// If any errors occur while applying our transaction to our accounts
 		// snapshot, silently log it and continue applying other transactions.
