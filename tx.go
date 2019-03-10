@@ -130,8 +130,13 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 		return nil, errors.Wrap(err, "could not read transaction payload")
 	}
 
+	critical, err := reader.ReadByte()
+	if err != nil {
+		return nil, errors.Wrap(err, "could not read checking bit to see if tx is critical")
+	}
+
 	// If there exists an account merkle root, read it.
-	if reader.Len() > common.SizeSignature*2 {
+	if critical == 1 {
 		n, err = reader.Read(t.AccountsMerkleRoot[:])
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to decode accounts merkle root")
@@ -201,14 +206,19 @@ func (t Transaction) Write() []byte {
 	writer.WriteBytes(t.Payload)
 
 	var zero [avl.MerkleHashSize]byte
+	critical := t.AccountsMerkleRoot != zero
 
-	if t.AccountsMerkleRoot != zero {
+	if critical {
+		writer.WriteByte(1)
+
 		_, _ = writer.Write(t.AccountsMerkleRoot[:])
 
 		writer.WriteByte(byte(len(t.DifficultyTimestamps)))
 		for _, timestamp := range t.DifficultyTimestamps {
 			writer.WriteUint64(timestamp)
 		}
+	} else {
+		writer.WriteByte(0)
 	}
 
 	_, _ = writer.Write(t.SenderSignature[:])
