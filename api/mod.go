@@ -15,9 +15,11 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/pkg/errors"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -314,10 +316,11 @@ func (g *Gateway) getContractCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Disposition", "attachment; filename="+hex.EncodeToString(id[:])+".wasm")
 	w.Header().Set("Content-Type", "application/wasm")
 	w.Header().Set("Content-Length", strconv.Itoa(len(code)))
 
-	http.ServeContent(w, r, hex.EncodeToString(id[:])+".wasm", time.Now(), bytes.NewReader(code))
+	_, _ = io.Copy(w, strings.NewReader(hex.EncodeToString(code)))
 }
 
 func (g *Gateway) getContractPages(w http.ResponseWriter, r *http.Request) {
