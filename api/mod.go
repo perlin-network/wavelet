@@ -15,7 +15,6 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/pkg/errors"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -185,11 +184,6 @@ func (g *Gateway) listTransactions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if err != nil {
-			g.render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse sender")))
-			return
-		}
-
 		copy(sender[:], slice)
 	}
 
@@ -203,11 +197,6 @@ func (g *Gateway) listTransactions(w http.ResponseWriter, r *http.Request) {
 
 		if len(slice) != common.SizeAccountID {
 			g.render(w, r, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", common.SizeAccountID)))
-			return
-		}
-
-		if err != nil {
-			g.render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse creator")))
 			return
 		}
 
@@ -325,11 +314,10 @@ func (g *Gateway) getContractCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Disposition", "attachment; filename="+hex.EncodeToString(id[:])+".wasm")
 	w.Header().Set("Content-Type", "application/wasm")
 	w.Header().Set("Content-Length", strconv.Itoa(len(code)))
 
-	_, _ = io.Copy(w, bytes.NewReader(code))
+	http.ServeContent(w, r, hex.EncodeToString(id[:])+".wasm", time.Now(), bytes.NewReader(code))
 }
 
 func (g *Gateway) getContractPages(w http.ResponseWriter, r *http.Request) {

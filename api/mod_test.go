@@ -565,7 +565,7 @@ func TestGetLedger(t *testing.T) {
 		PublicKey:     hex.EncodeToString(keys.PublicKey()),
 		HostAddress:   "127.0.0.1:9000",
 		PeerAddresses: nil,
-		RootID:        "15981d398c1642c7601992e79dd6e4f208ec96f59548c82dccfc4c011b22d210",
+		RootID:        "c22fbeb1ba6db929f8f2a03aec9406374e3c9bd4bd1c6d2bed950ebd940a66ab",
 		ViewID:        0,
 		Difficulty:    5,
 	}
