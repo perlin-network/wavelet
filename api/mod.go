@@ -318,7 +318,7 @@ func (g *Gateway) getContractCode(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Disposition", "attachment; filename="+hex.EncodeToString(id[:])+".wasm")
 	w.Header().Set("Content-Type", "application/wasm")
-	w.Header().Set("Content-Length", strconv.Itoa(len(code)))
+	w.Header().Set("Content-Length", strconv.Itoa(hex.EncodedLen(len(code))))
 
 	_, _ = io.Copy(w, strings.NewReader(hex.EncodeToString(code)))
 }
