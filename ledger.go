@@ -31,6 +31,8 @@ type Ledger struct {
 	awaiting map[common.TransactionID][]common.TransactionID
 	buffered map[common.TransactionID]*Transaction
 	bufferMu sync.Mutex
+
+	cacheCollapsible *lru
 }
 
 func NewLedger(kv store.KV, genesisPath string) *Ledger {
@@ -48,6 +50,8 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 
 		awaiting: make(map[common.TransactionID][]common.TransactionID),
 		buffered: make(map[common.TransactionID]*Transaction),
+
+		cacheCollapsible: newLRU(128),
 	}
 
 	buf, err := kv.Get(keyLedgerGenesis[:])
@@ -339,6 +343,10 @@ func (l *Ledger) AssertInView(tx *Transaction) error {
 // Merkle root hash which is equivalent to the provided transactions Merkle root
 // hash.
 func (l *Ledger) AssertCollapsible(tx *Transaction) error {
+	if collapsible, hit := l.cacheCollapsible.load(tx.ID); hit && collapsible.(bool) {
+		return nil
+	}
+
 	// If the transaction is critical, assert the transaction has a valid accounts merkle root.
 	snapshot := l.collapseTransactions(tx.ParentIDs, false)
 
@@ -348,6 +356,7 @@ func (l *Ledger) AssertCollapsible(tx *Transaction) error {
 			"but the tx has %x as a root", snapshot.tree.Checksum(), tx.AccountsMerkleRoot)
 	}
 
+	l.cacheCollapsible.put(tx.ID, true)
 	return nil
 }
 

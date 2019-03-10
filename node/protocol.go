@@ -220,6 +220,10 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 		return
 	}
 
+	if err := ledger.AssertCollapsible(req.tx); err != nil {
+		return
+	}
+
 	preferred := ledger.Resolver().Preferred()
 
 	if preferred != nil || req.tx.ID == ledger.Root().ID {
