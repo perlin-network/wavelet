@@ -17,7 +17,7 @@ var (
 )
 
 type graph struct {
-	sync.Mutex
+	sync.RWMutex
 
 	transactions map[common.TransactionID]*Transaction
 	children     map[common.TransactionID][]common.TransactionID
@@ -113,8 +113,8 @@ func (g *graph) reset(root *Transaction) {
 }
 
 func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
-	g.Lock()
-	defer g.Unlock()
+	g.RLock()
+	defer g.RUnlock()
 
 	root := g.loadRoot()
 
@@ -150,9 +150,9 @@ func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 }
 
 func (g *graph) lookupTransaction(id common.TransactionID) (*Transaction, bool) {
-	g.Lock()
+	g.RLock()
 	tx, exists := g.transactions[id]
-	g.Unlock()
+	g.RUnlock()
 
 	return tx, exists
 }
@@ -179,18 +179,18 @@ func (g *graph) loadRoot() *Transaction {
 
 // Root returns the current root (the latest critical transaction) of the graph.
 func (g *graph) Root() *Transaction {
-	g.Lock()
+	g.RLock()
 	root := g.loadRoot()
-	g.Unlock()
+	g.RUnlock()
 
 	return root
 }
 
 // Height returns the current depth of the frontier of the graph.
 func (g *graph) Height() uint64 {
-	g.Lock()
+	g.RLock()
 	height := g.height
-	g.Unlock()
+	g.RUnlock()
 
 	return height
 }
