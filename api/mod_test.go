@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -79,6 +80,25 @@ func TestListTransaction(t *testing.T) {
 	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
 
+	gateway.ledger = createLedger()
+
+	// Create a transaction
+	keys := skademlia.RandomKeys()
+	var buf [200]byte
+	_, err = rand.Read(buf[:])
+	assert.NoError(t, err)
+	_, err = gateway.ledger.NewTransaction(keys, sys.TagTransfer, buf[:])
+	assert.NoError(t, err)
+
+	// Build an expected response
+	var expectedResponse []*Transaction
+	for _, tx := range gateway.ledger.Transactions(0, 0, common.AccountID{}, common.AccountID{}) {
+		txRes := &Transaction{tx: tx,}
+
+		assert.NoError(t, txRes.Render(nil, nil))
+		expectedResponse = append(expectedResponse, txRes)
+	}
+
 	tests := []struct {
 		name         string
 		url          string
@@ -141,6 +161,12 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx/?limit=-1",
 			wantCode: http.StatusBadRequest,
 		},
+		{
+			name:         "success",
+			url:          "/tx/?limit=1&offset=0",
+			wantCode:     http.StatusOK,
+			wantResponse: expectedResponse,
+		},
 	}
 
 	for _, tc := range tests {
@@ -173,6 +199,31 @@ func TestGetTransaction(t *testing.T) {
 	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
 
+	gateway.ledger = createLedger()
+
+	// Create a transaction
+	keys := skademlia.RandomKeys()
+	var buf [200]byte
+	_, err = rand.Read(buf[:])
+	assert.NoError(t, err)
+	_, err = gateway.ledger.NewTransaction(keys, sys.TagTransfer, buf[:])
+	assert.NoError(t, err)
+
+	var txId common.TransactionID
+	for _, tx := range gateway.ledger.Transactions(0, 0, common.AccountID{}, common.AccountID{}) {
+		txId = tx.ID
+		break
+	}
+
+	tx, found := gateway.ledger.FindTransaction(txId)
+	if !found {
+		t.Fatal("not found")
+	}
+
+	// Build an expected response
+	txRes := &Transaction{tx: tx,}
+	assert.NoError(t, txRes.Render(nil, nil))
+
 	tests := []struct {
 		name         string
 		sessionToken string
@@ -189,6 +240,13 @@ func TestGetTransaction(t *testing.T) {
 				StatusText: "Bad request.",
 				ErrorText:  fmt.Sprintf("transaction ID must be %d bytes long", common.SizeTransactionID),
 			},
+		},
+		{
+			name:         "success",
+			sessionToken: sess.id,
+			id:           hex.EncodeToString(txId[:]),
+			wantCode:     http.StatusOK,
+			wantResponse: txRes,
 		},
 	}
 
@@ -390,7 +448,7 @@ func TestGetContractCode(t *testing.T) {
 			name:         "id exist",
 			url:          "/contract/" + idHex,
 			wantCode:     http.StatusOK,
-			wantResponse: "contract code",
+			wantResponse: hex.EncodeToString([]byte("contract code")),
 		},
 	}
 
