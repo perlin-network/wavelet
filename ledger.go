@@ -220,19 +220,19 @@ func (l *Ledger) receiveTransaction(tx *Transaction, lockBuffer bool) error {
 
 	// Assert that the transaction has a sane timestamp with respect to its parents.
 	if err := AssertValidTimestamp(l.view, tx); err != nil {
-		return err
+		return errors.Wrap(VoteRejected, err.Error())
 	}
 
 	// Assert that the transactions parents are at an eligible graph depth.
 	if err := AssertValidParentDepths(l.view, tx); err != nil {
-		return err
+		return errors.Wrap(VoteRejected, err.Error())
 	}
 
 	// Assert that we have the entire transactions ancestry, which is needed
 	// to collapse down the transaction.
 	if critical {
 		if err := l.AssertCollapsible(tx); err != nil {
-			return err
+			return errors.Wrap(VoteRejected, err.Error())
 		}
 	}
 
