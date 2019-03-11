@@ -245,7 +245,7 @@ func (b *broadcaster) query(preferred *wavelet.Transaction) error {
 		}
 	}
 
-	weights := wavelet.ComputeStakeDistribution(b.ledger.Accounts, accountIDs)
+	weights := wavelet.ComputeStakeDistribution(b.ledger.Accounts, accountIDs, sys.SnowballQueryK)
 
 	counts := make(map[common.TransactionID]float64)
 
@@ -293,7 +293,7 @@ func (b *broadcaster) gossip(tx *wavelet.Transaction) error {
 		}
 	}
 
-	weights := wavelet.ComputeStakeDistribution(b.ledger.Accounts, accountIDs)
+	weights := wavelet.ComputeStakeDistribution(b.ledger.Accounts, accountIDs, sys.SnowballQueryK)
 
 	var accum float64
 

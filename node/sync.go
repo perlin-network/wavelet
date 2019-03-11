@@ -21,10 +21,6 @@ type protocolID = [sizeProtocolID]byte
 
 const sizeProtocolID = 90
 
-var (
-	ErrNoDiffFound = errors.New("sync: could not find a suitable diff to apply to the ledger")
-)
-
 type syncer struct {
 	node   *noise.Node
 	ledger *wavelet.Ledger
@@ -175,7 +171,7 @@ func (s *syncer) queryForLatestView() error {
 		}
 	}
 
-	weights := wavelet.ComputeStakeDistribution(s.ledger.Accounts, accountIDs)
+	weights := wavelet.ComputeStakeDistribution(s.ledger.Accounts, accountIDs, sys.SnowballSyncK)
 
 	counts := make(map[common.TransactionID]float64)
 

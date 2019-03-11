@@ -5,7 +5,7 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 )
 
-func ComputeStakeDistribution(a accounts, accountIDs []common.AccountID) map[common.AccountID]float64 {
+func ComputeStakeDistribution(a accounts, accountIDs []common.AccountID, numAccounts int) map[common.AccountID]float64 {
 	stakes := make(map[common.AccountID]uint64)
 	var maxStake uint64
 
@@ -26,7 +26,7 @@ func ComputeStakeDistribution(a accounts, accountIDs []common.AccountID) map[com
 	weights := make(map[common.AccountID]float64)
 
 	for account, stake := range stakes {
-		weights[account] = float64(stake) / float64(maxStake) / float64(sys.SnowballQueryK)
+		weights[account] = float64(stake) / float64(maxStake) / float64(numAccounts)
 	}
 
 	return weights

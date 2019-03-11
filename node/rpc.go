@@ -14,8 +14,8 @@ import (
 func selectPeers(node *noise.Node, amount int) ([]protocol.ID, error) {
 	peerIDs := skademlia.FindClosestPeers(skademlia.Table(node), protocol.NodeID(node).Hash(), amount)
 
-	if len(peerIDs) < sys.SnowballQueryK {
-		return peerIDs, errors.Errorf("only connected to %d peer(s), but require a minimum of %d peer(s)", len(peerIDs), sys.SnowballQueryK)
+	if len(peerIDs) < amount {
+		return peerIDs, errors.Errorf("only connected to %d peer(s), but require a minimum of %d peer(s)", len(peerIDs), amount)
 	}
 
 	return peerIDs, nil
