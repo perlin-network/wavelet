@@ -93,7 +93,7 @@ func TestListTransaction(t *testing.T) {
 	// Build an expected response
 	var expectedResponse []*Transaction
 	for _, tx := range gateway.ledger.Transactions(0, 0, common.AccountID{}, common.AccountID{}) {
-		txRes := &Transaction{tx: tx,}
+		txRes := &Transaction{tx: tx}
 
 		assert.NoError(t, txRes.Render(nil, nil))
 		expectedResponse = append(expectedResponse, txRes)
@@ -221,7 +221,7 @@ func TestGetTransaction(t *testing.T) {
 	}
 
 	// Build an expected response
-	txRes := &Transaction{tx: tx,}
+	txRes := &Transaction{tx: tx}
 	assert.NoError(t, txRes.Render(nil, nil))
 
 	tests := []struct {
@@ -625,7 +625,7 @@ func TestGetLedger(t *testing.T) {
 		PeerAddresses: nil,
 		RootID:        "c22fbeb1ba6db929f8f2a03aec9406374e3c9bd4bd1c6d2bed950ebd940a66ab",
 		ViewID:        0,
-		Difficulty:    5,
+		Difficulty:    uint64(sys.MinDifficulty),
 	}
 
 	assert.NoError(t, compareJson(expected, response))

@@ -33,14 +33,14 @@ var (
 	MinDifficulty = 5
 
 	// Maximum difficulty to define a critical transaction.
-	MaxDifficulty = 10
+	MaxDifficulty = 12
 
 	// Number of ancestors to derive a median timestamp from.
 	MedianTimestampNumAncestors = 5
 
 	TransactionFeeAmount uint64 = 2
 
-	ExpectedConsensusTimeMilliseconds  uint64 = 1000
+	ExpectedConsensusTimeMilliseconds  uint64 = 3000
 	CriticalTimestampAverageWindowSize        = 3
 
 	MinimumStake uint64 = 100
