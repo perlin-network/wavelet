@@ -197,15 +197,6 @@ func (b *broadcaster) gossiping(logger zerolog.Logger) {
 	if item.result != nil {
 		item.result <- nil
 	}
-
-	// If we have advanced one view ID, stop broadcasting nops.
-	if b.ledger.ViewID() != item.tx.ViewID && b.broadcastingNops {
-		b.broadcastingNops = false
-
-		logger.Log().
-			Bool("broadcast_nops", false).
-			Msg("Stopped broadcasting nops.")
-	}
 }
 
 func (b *broadcaster) query(preferred *wavelet.Transaction) error {
@@ -293,7 +284,7 @@ func (b *broadcaster) gossip(tx *wavelet.Transaction) error {
 		}
 	}
 
-	weights := wavelet.ComputeStakeDistribution(b.ledger.Accounts, accountIDs, sys.SnowballQueryK)
+	weights := wavelet.ComputeStakeDistribution(b.ledger.Accounts, accountIDs, skademlia.BucketSize())
 
 	var accum float64
 
