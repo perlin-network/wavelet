@@ -205,33 +205,9 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 		res.preferred = preferred
 	}
 
-	// If our node does not prefer any critical transaction yet, set a critical
-	// transaction to initially prefer.
-
-	if err := wavelet.AssertValidTransaction(req.tx); err != nil {
-		return
+	if err := ledger.ReceiveTransaction(req.tx); errors.Cause(err) == wavelet.VoteAccepted {
+		res.preferred = req.tx
 	}
-
-	if !req.tx.IsCritical(ledger.Difficulty()) {
-		return
-	}
-
-	if err := ledger.AssertInView(req.tx); err != nil {
-		return
-	}
-
-	if err := ledger.AssertCollapsible(req.tx); err != nil {
-		return
-	}
-
-	preferred := ledger.Resolver().Preferred()
-
-	if preferred != nil || req.tx.ID == ledger.Root().ID {
-		return
-	}
-
-	res.preferred = req.tx
-	ledger.Resolver().Prefer(req.tx)
 }
 
 func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipRequest) {

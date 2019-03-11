@@ -284,7 +284,7 @@ func (b *broadcaster) gossip(tx *wavelet.Transaction) error {
 		}
 	}
 
-	weights := wavelet.ComputeStakeDistribution(b.ledger.Accounts, accountIDs, skademlia.BucketSize())
+	weights := wavelet.ComputeStakeDistribution(b.ledger.Accounts, accountIDs, len(accountIDs))
 
 	var accum float64
 
