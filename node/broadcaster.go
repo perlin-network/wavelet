@@ -215,7 +215,7 @@ func (b *broadcaster) query(preferred *wavelet.Transaction) error {
 		return errors.Wrap(err, "broadcast: response opcode not registered")
 	}
 
-	peerIDs, err := selectPeers(b.node, sys.SnowballK)
+	peerIDs, err := selectPeers(b.node, sys.SnowballQueryK)
 	if err != nil {
 		return errors.Wrap(err, "broadcast: cannot query")
 	}
@@ -299,8 +299,8 @@ func (b *broadcaster) gossip(tx *wavelet.Transaction) error {
 		}
 	}
 
-	if accum < sys.SnowballAlpha {
-		return errors.Errorf("broadcast: less than %.1f%% of queried K peers find tx %x valid", sys.SnowballAlpha*100, tx.ID)
+	if accum < sys.SnowballQueryAlpha {
+		return errors.Errorf("broadcast: less than %.1f%% of queried K peers find tx %x valid", sys.SnowballQueryAlpha*100, tx.ID)
 	}
 
 	if err := b.ledger.ReceiveTransaction(tx); err != nil && errors.Cause(err) != wavelet.VoteAccepted {

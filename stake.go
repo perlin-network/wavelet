@@ -26,7 +26,7 @@ func ComputeStakeDistribution(a accounts, accountIDs []common.AccountID) map[com
 	weights := make(map[common.AccountID]float64)
 
 	for account, stake := range stakes {
-		weights[account] = float64(stake) / float64(maxStake) / float64(sys.SnowballK)
+		weights[account] = float64(stake) / float64(maxStake) / float64(sys.SnowballQueryK)
 	}
 
 	return weights
