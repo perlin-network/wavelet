@@ -208,19 +208,15 @@ func (l *Ledger) receiveTransaction(tx *Transaction, lockBuffer bool) error {
 	/** PARENT ASSERTIONS **/
 
 	// Assert that we have all of the transactions parents in our view-graph.
-	// TODO(kenta): this code is kind of ugly; any clean way to do recursive
-	// 	locks?
-	if lockBuffer {
-		l.bufferMu.Lock()
-		if err := l.bufferIfMissingParents(tx); err != nil {
-			l.bufferMu.Unlock()
-			return errors.Wrap(VoteRejected, err.Error())
+	if err := func() error {
+		if lockBuffer {
+			l.bufferMu.Lock()
+			defer l.bufferMu.Unlock()
 		}
-		l.bufferMu.Unlock()
-	} else {
-		if err := l.bufferIfMissingParents(tx); err != nil {
-			return errors.Wrap(VoteRejected, err.Error())
-		}
+
+		return l.bufferIfMissingParents(tx)
+	}(); err != nil {
+		return errors.Wrap(VoteRejected, err.Error())
 	}
 
 	// Assert that the transaction has a sane timestamp with respect to its parents.
@@ -259,15 +255,14 @@ func (l *Ledger) receiveTransaction(tx *Transaction, lockBuffer bool) error {
 		}
 	}
 
-	// TODO(kenta): this code is kind of ugly; any clean way to do recursive
-	// 	locks?
-	if lockBuffer {
-		l.bufferMu.Lock()
+	func() {
+		if lockBuffer {
+			l.bufferMu.Lock()
+			defer l.bufferMu.Unlock()
+		}
+
 		l.revisitBufferedTransactions(tx, lockBuffer)
-		l.bufferMu.Unlock()
-	} else {
-		l.revisitBufferedTransactions(tx, lockBuffer)
-	}
+	}()
 
 	return VoteAccepted
 }
