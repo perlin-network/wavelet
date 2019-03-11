@@ -41,7 +41,10 @@ func newSyncer(node *noise.Node) *syncer {
 		node:     node,
 		ledger:   Ledger(node),
 		accounts: make(map[common.TransactionID]map[protocolID]struct{}),
-		resolver: conflict.NewSnowball(),
+		resolver: conflict.NewSnowball().
+			WithK(sys.SnowballSyncK).
+			WithAlpha(sys.SnowballSyncAlpha).
+			WithBeta(sys.SnowballSyncBeta),
 	}
 }
 
@@ -140,7 +143,7 @@ func (s *syncer) queryForLatestView() error {
 		return errors.Wrap(err, "sync: response opcode not registered")
 	}
 
-	peerIDs, err := selectPeers(s.node, sys.SnowballK)
+	peerIDs, err := selectPeers(s.node, sys.SnowballSyncK)
 	if err != nil {
 		return errors.Wrap(err, "sync: cannot query for peer view IDs")
 	}

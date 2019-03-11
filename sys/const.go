@@ -14,9 +14,13 @@ const (
 
 var (
 	// Snowball consensus protocol parameters.
-	SnowballK     = 1
-	SnowballAlpha = 0.8
-	SnowballBeta  = 150
+	SnowballQueryK     = 1
+	SnowballQueryAlpha = 0.8
+	SnowballQueryBeta  = 150
+
+	SnowballSyncK     = 1
+	SnowballSyncAlpha = 0.8
+	SnowballSyncBeta  = 150
 
 	// Timeout for querying a transaction to K peers.
 	QueryTimeout = 10 * time.Second
