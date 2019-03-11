@@ -30,7 +30,7 @@ var (
 	MaxEligibleParentsDepthDiff uint64 = 5
 
 	// Minimum difficulty to define a critical transaction.
-	MinDifficulty = 5
+	MinDifficulty = 8
 
 	// Maximum difficulty to define a critical transaction.
 	MaxDifficulty = 12
