@@ -6,7 +6,6 @@ import (
 	"github.com/perlin-network/noise/identity"
 	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/wavelet/common"
-	"github.com/perlin-network/wavelet/conflict"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
@@ -23,7 +22,7 @@ type Ledger struct {
 
 	kv store.KV
 
-	resolver conflict.Resolver
+	resolver *Snowball
 	view     *graph
 
 	processors map[byte]TransactionProcessor
@@ -41,7 +40,7 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 
 		kv: kv,
 
-		resolver: conflict.NewSnowball().
+		resolver: NewSnowball().
 			WithK(sys.SnowballQueryK).
 			WithAlpha(sys.SnowballQueryAlpha).
 			WithBeta(sys.SnowballQueryBeta),
@@ -195,8 +194,8 @@ func (l *Ledger) receiveTransaction(tx *Transaction, lockBuffer bool) error {
 
 	if critical {
 		// If our node already prefers a critical transaction, reject the incoming transaction.
-		if preferred := l.resolver.Preferred(); preferred != nil && tx.ID != preferred.Hash().(common.TransactionID) {
-			return errors.Wrapf(VoteRejected, "prefer other critical transaction %x", preferred.Hash())
+		if preferred := l.resolver.Preferred(); preferred != nil && tx.ID != preferred.ID {
+			return errors.Wrapf(VoteRejected, "prefer other critical transaction %x", preferred.ID)
 		}
 
 		// Assert that the critical transaction has a valid timestamp history.
@@ -391,19 +390,19 @@ func (l *Ledger) Reset(newRoot *Transaction, newState accounts) error {
 	return nil
 }
 
-func (l *Ledger) ProcessQuery(counts map[conflict.Item]float64) error {
+func (l *Ledger) ProcessQuery(counts map[common.TransactionID]float64, transactions map[common.TransactionID]*Transaction) error {
 	// If there are zero preferred critical transactions from other nodes, return nil.
 	if len(counts) == 0 {
 		return nil
 	}
 
-	l.resolver.Tick(counts)
+	l.resolver.Tick(counts, transactions)
 
 	// If a consensus has been decided on the next critical transaction, then reset
 	// the view-graph, increment the current view ID, and update the current ledgers
 	// difficulty.
 	if l.resolver.Decided() {
-		root := l.resolver.Preferred().(*Transaction)
+		root := l.resolver.Preferred()
 		old := l.Root()
 
 		if err := l.Reset(root, l.collapseTransactions(root.ParentIDs, true)); err != nil {
@@ -693,6 +692,6 @@ func (l *Ledger) saveViewID(viewID uint64) {
 	_ = l.kv.Put(keyLedgerViewID[:], buf[:])
 }
 
-func (l *Ledger) Resolver() conflict.Resolver {
+func (l *Ledger) Resolver() *Snowball {
 	return l.resolver
 }

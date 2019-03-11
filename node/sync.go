@@ -7,7 +7,6 @@ import (
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
-	"github.com/perlin-network/wavelet/conflict"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -33,7 +32,7 @@ type syncer struct {
 	mu       sync.RWMutex
 	accounts map[common.TransactionID]map[protocolID]struct{}
 
-	resolver conflict.Resolver
+	resolver *wavelet.Snowball
 }
 
 func newSyncer(node *noise.Node) *syncer {
@@ -41,7 +40,7 @@ func newSyncer(node *noise.Node) *syncer {
 		node:     node,
 		ledger:   Ledger(node),
 		accounts: make(map[common.TransactionID]map[protocolID]struct{}),
-		resolver: conflict.NewSnowball().
+		resolver: wavelet.NewSnowball().
 			WithK(sys.SnowballSyncK).
 			WithAlpha(sys.SnowballSyncAlpha).
 			WithBeta(sys.SnowballSyncBeta),
@@ -65,12 +64,12 @@ func (s *syncer) loop() {
 			}
 
 			if s.resolver.Decided() {
-				// The view ID we came to consensus to being the latest within the network
-				// is less than or equal to ours. Go back to square one.
-				root = s.resolver.Preferred().(*wavelet.Transaction)
+				root = s.resolver.Preferred()
 
 				s.resolver.Reset()
 
+				// The view ID we came to consensus to being the latest within the network
+				// is less than or equal to ours. Go back to square one.
 				if s.ledger.Root().ID == root.ID || s.ledger.ViewID() >= root.ViewID+1 {
 					time.Sleep(1 * time.Second)
 					continue
@@ -122,17 +121,17 @@ func (s *syncer) loop() {
 	}
 }
 
-func (s *syncer) recordRootFromAccount(account protocol.ID, root *wavelet.Transaction) {
+func (s *syncer) recordRootFromAccount(accountID protocol.ID, rootID common.TransactionID) {
 	s.mu.Lock()
 
-	if _, instantiated := s.accounts[root.ID]; !instantiated {
-		s.accounts[root.ID] = make(map[protocolID]struct{})
+	if _, instantiated := s.accounts[rootID]; !instantiated {
+		s.accounts[rootID] = make(map[protocolID]struct{})
 	}
 
 	var id protocolID
-	copy(id[:], account.Write())
+	copy(id[:], accountID.Write())
 
-	s.accounts[root.ID][id] = struct{}{}
+	s.accounts[rootID][id] = struct{}{}
 
 	s.mu.Unlock()
 }
@@ -162,26 +161,29 @@ func (s *syncer) queryForLatestView() error {
 		accountIDs = append(accountIDs, accountID)
 	}
 
-	votes := make(map[common.AccountID]*wavelet.Transaction)
+	votes := make(map[common.AccountID]common.TransactionID)
+	transactions := make(map[common.TransactionID]*wavelet.Transaction)
 
 	for i, res := range responses {
-		if res != nil && res.(SyncViewResponse).root != nil {
-			root := res.(SyncViewResponse).root
-			s.recordRootFromAccount(peerIDs[i], root)
+		if res != nil {
+			if root := res.(SyncViewResponse).root; root != nil {
+				s.recordRootFromAccount(peerIDs[i], root.ID)
 
-			votes[accountIDs[i]] = root
+				transactions[root.ID] = root
+				votes[accountIDs[i]] = root.ID
+			}
 		}
 	}
 
 	weights := wavelet.ComputeStakeDistribution(s.ledger.Accounts, accountIDs)
 
-	counts := make(map[conflict.Item]float64)
+	counts := make(map[common.TransactionID]float64)
 
-	for account, preferred := range votes {
-		counts[preferred] += weights[account]
+	for account, preferredID := range votes {
+		counts[preferredID] += weights[account]
 	}
 
-	s.resolver.Tick(counts)
+	s.resolver.Tick(counts, transactions)
 
 	return nil
 }

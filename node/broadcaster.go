@@ -5,7 +5,6 @@ import (
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
-	"github.com/perlin-network/wavelet/conflict"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -95,7 +94,7 @@ func (b *broadcaster) loop() {
 
 		if preferred := b.ledger.Resolver().Preferred(); preferred != nil {
 			b.broadcastingNops = false
-			b.querying(logger, preferred.(*wavelet.Transaction))
+			b.querying(logger, preferred)
 		} else {
 			b.gossiping(logger)
 		}
@@ -234,22 +233,27 @@ func (b *broadcaster) query(preferred *wavelet.Transaction) error {
 		accountIDs = append(accountIDs, accountID)
 	}
 
-	votes := make(map[common.AccountID]*wavelet.Transaction)
+	votes := make(map[common.AccountID]common.TransactionID)
+	transactions := make(map[common.TransactionID]*wavelet.Transaction)
+
 	for i, res := range responses {
-		if res != nil && res.(QueryResponse).preferred != nil {
-			votes[accountIDs[i]] = res.(QueryResponse).preferred
+		if res != nil {
+			if preferred := res.(QueryResponse).preferred; preferred != nil {
+				transactions[preferred.ID] = preferred
+				votes[accountIDs[i]] = preferred.ID
+			}
 		}
 	}
 
 	weights := wavelet.ComputeStakeDistribution(b.ledger.Accounts, accountIDs)
 
-	counts := make(map[conflict.Item]float64)
+	counts := make(map[common.TransactionID]float64)
 
-	for account, preferred := range votes {
-		counts[preferred] += weights[account]
+	for account, preferredID := range votes {
+		counts[preferredID] += weights[account]
 	}
 
-	if err := b.ledger.ProcessQuery(counts); err != nil {
+	if err := b.ledger.ProcessQuery(counts, transactions); err != nil {
 		return errors.Wrap(err, "broadcast: failed to process query results")
 	}
 

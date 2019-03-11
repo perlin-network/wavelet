@@ -164,7 +164,7 @@ func handleSyncViewRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncVie
 	if preferred := syncer.resolver.Preferred(); preferred == nil {
 		res.root = ledger.Root()
 	} else {
-		res.root = preferred.(*wavelet.Transaction)
+		res.root = preferred
 	}
 
 	if err := wavelet.AssertValidTransaction(req.root); err != nil {
@@ -176,7 +176,7 @@ func handleSyncViewRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncVie
 		syncer.resolver.Prefer(req.root)
 	}
 
-	syncer.recordRootFromAccount(protocol.PeerID(peer), req.root)
+	syncer.recordRootFromAccount(protocol.PeerID(peer), req.root.ID)
 }
 
 func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryRequest) {
@@ -202,7 +202,7 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 	if req.tx.ViewID == ledger.ViewID()-1 {
 		res.preferred = ledger.Root()
 	} else if preferred := ledger.Resolver().Preferred(); preferred != nil {
-		res.preferred = preferred.(*wavelet.Transaction)
+		res.preferred = preferred
 	}
 
 	// If our node does not prefer any critical transaction yet, set a critical
