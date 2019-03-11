@@ -29,7 +29,9 @@ type Ledger struct {
 
 	awaiting map[common.TransactionID][]common.TransactionID
 	buffered map[common.TransactionID]*Transaction
+
 	bufferMu sync.Mutex
+	resetMu  sync.Mutex
 
 	cacheCollapsible *lru
 }
@@ -355,6 +357,9 @@ func (l *Ledger) AssertCollapsible(tx *Transaction) error {
 }
 
 func (l *Ledger) Reset(newRoot *Transaction, newState accounts) error {
+	l.resetMu.Lock()
+	defer l.resetMu.Unlock()
+
 	// Reset any conflict resolving-related data.
 	l.resolver.Reset()
 
