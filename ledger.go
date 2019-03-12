@@ -12,6 +12,7 @@ import (
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
+	"math"
 	"sort"
 	"sync"
 	"time"
@@ -701,19 +702,24 @@ func (l *Ledger) Resolver() *Snowball {
 	return l.resolver
 }
 
-func (l *Ledger) PickAwaitingTransaction() (common.TransactionID, bool) {
+func (l *Ledger) QueryMissingTransactions() ([]common.TransactionID, bool) {
 	l.bufferMu.Lock()
 	defer l.bufferMu.Unlock()
 
-	for k, _ := range l.awaiting {
-		return k, true
+	var ids []common.TransactionID
+
+	for id, _ := range l.awaiting {
+		ids = append(ids, id)
+
+		// Only request at most 255 awaiting transactions.
+		if len(ids) == math.MaxUint8 {
+			break
+		}
 	}
 
-	return common.TransactionID{}, false
-}
+	if len(ids) > 0 {
+		return ids, true
+	}
 
-func (l *Ledger) FulfillAwaitingTransaction(tx *Transaction) {
-	l.bufferMu.Lock()
-	l.revisitBufferedTransactions(tx, false)
-	l.bufferMu.Unlock()
+	return nil, false
 }

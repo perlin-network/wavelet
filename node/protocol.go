@@ -107,22 +107,27 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 			handleSyncDiffChunkRequest(ledger, peer, req.(SyncDiffChunkRequest), chunkCache)
 		case req := <-peer.Receive(b.opcodeSyncTransactionRequest):
 			handleSyncTransactionRequest(ledger, peer, req.(SyncTransactionRequest))
-		case req := <-peer.Receive(b.opcodeSyncTransactionResponse):
-			handleSyncTransactionResponse(ledger, peer, req.(SyncTransactionResponse))
 		}
 	}
 }
 
 func handleSyncTransactionRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncTransactionRequest) {
-	tx, ok := ledger.FindTransaction(req.id)
-	if !ok {
-		return
-	}
-	peer.SendMessage(SyncTransactionResponse{tx})
-}
+	res := new(SyncTransactionResponse)
+	defer func() {
+		if err := <-peer.SendMessageAsync(res); err != nil {
+			_ = peer.DisconnectAsync()
+		}
+	}()
 
-func handleSyncTransactionResponse(ledger *wavelet.Ledger, peer *noise.Peer, req SyncTransactionResponse) {
-	ledger.FulfillAwaitingTransaction(req.tx)
+	for _, id := range req.ids {
+		tx, ok := ledger.FindTransaction(id)
+
+		if !ok {
+			continue
+		}
+
+		res.transactions = append(res.transactions, tx)
+	}
 }
 
 func handleSyncDiffMetadataRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffMetadataRequest, chunkCache *lru) {
@@ -248,11 +253,11 @@ func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipReq
 	vote := ledger.ReceiveTransaction(req.tx)
 	res.vote = errors.Cause(vote) == wavelet.VoteAccepted
 
-	if logger := log.Consensus("vote"); res.vote {
-		logger.Debug().Hex("tx_id", req.tx.ID[:]).Msg("Gave a positive vote to a transaction.")
-	} else {
-		logger.Warn().Hex("tx_id", req.tx.ID[:]).Err(vote).Msg("Gave a negative vote to a transaction.")
-	}
+	//if logger := log.Consensus("vote"); res.vote {
+	//	logger.Debug().Hex("tx_id", req.tx.ID[:]).Msg("Gave a positive vote to a transaction.")
+	//} else {
+	//	logger.Warn().Hex("tx_id", req.tx.ID[:]).Err(vote).Msg("Gave a negative vote to a transaction.")
+	//}
 
 	// Gossip transaction out to our peers just once. Ignore any errors if gossiping out fails.
 	if !seen && res.vote {

@@ -119,29 +119,35 @@ func (s *syncer) stateLoop() {
 }
 
 func (s *syncer) transactionLoop() {
-	logger := log.Sync("transaction_loop")
+	opcodeSyncTransactionResponse, err := noise.OpcodeFromMessage((*SyncTransactionResponse)(nil))
+	if err != nil {
+		panic(errors.Wrap(err, "sync: response opcode not registered"))
+	}
+
 	for {
 		time.Sleep(100 * time.Millisecond)
-		id, ok := s.ledger.PickAwaitingTransaction()
+
+		ids, ok := s.ledger.QueryMissingTransactions()
 		if !ok {
 			continue
 		}
 
-		peerIDs, err := selectPeers(s.node, 1)
-		if err != nil || len(peerIDs) != 1 {
+		peerIDs, err := selectPeers(s.node, sys.SnowballSyncK)
+		if err != nil || len(peerIDs) != sys.SnowballSyncK {
 			continue
 		}
 
-		peerID := peerIDs[0]
-		peer := protocol.Peer(s.node, peerID)
-		if peer == nil {
-			continue
-		}
-
-		err = peer.SendMessage(&SyncTransactionRequest{id})
+		responses, err := broadcast(s.node, peerIDs, SyncTransactionRequest{ids: ids}, opcodeSyncTransactionResponse)
 		if err != nil {
-			logger.Warn().Err(err).Msg("failed to send message")
 			continue
+		}
+
+		for _, res := range responses {
+			if res != nil {
+				for _, tx := range res.(SyncTransactionResponse).transactions {
+					_ = s.ledger.ReceiveTransaction(tx)
+				}
+			}
 		}
 	}
 }

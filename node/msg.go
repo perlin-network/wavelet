@@ -305,47 +305,78 @@ func (s SyncDiffChunkResponse) Write() []byte {
 }
 
 type SyncTransactionResponse struct {
-	tx *wavelet.Transaction
+	transactions []*wavelet.Transaction
 }
 
 func (s SyncTransactionResponse) Read(reader payload.Reader) (noise.Message, error) {
 	if reader.Len() > 0 {
-		msg, err := wavelet.Transaction{}.Read(reader)
+		numTransactions, err := reader.ReadByte()
 		if err != nil {
-			return nil, errors.Wrap(err, "failed to read root tx")
+			return nil, errors.Wrap(err, "failed to read number of transactions in sync transaction response")
 		}
 
-		root := msg.(wavelet.Transaction)
-		s.tx = &root
+		for i := byte(0); i < numTransactions; i++ {
+			msg, err := wavelet.Transaction{}.Read(reader)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to read root tx")
+			}
+
+			tx := msg.(wavelet.Transaction)
+			s.transactions = append(s.transactions, &tx)
+		}
 	}
 
 	return s, nil
 }
 
 func (s SyncTransactionResponse) Write() []byte {
-	if s.tx != nil {
-		return s.tx.Write()
+	writer := payload.NewWriter(nil)
+
+	writer.WriteByte(byte(len(s.transactions)))
+
+	for _, tx := range s.transactions {
+		_, _ = writer.Write(tx.Write())
 	}
 
-	return nil
+	return writer.Bytes()
 }
 
 type SyncTransactionRequest struct {
-	id common.TransactionID
+	ids []common.TransactionID
 }
 
 func (s SyncTransactionRequest) Read(reader payload.Reader) (noise.Message, error) {
-	id, err := reader.ReadBytes()
+	numIDs, err := reader.ReadByte()
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read id")
+		return nil, errors.Wrap(err, "failed to read number of ids in sync transaction request")
 	}
-	if len(id) != len(common.TransactionID{}) {
-		return nil, errors.New("invalid transaction id")
+
+	for i := byte(0); i < numIDs; i++ {
+		var id common.TransactionID
+
+		n, err := reader.Read(id[:])
+
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to read id")
+		}
+
+		if n != common.SizeTransactionID {
+			return nil, errors.New("invalid transaction id")
+		}
+
+		s.ids = append(s.ids, id)
 	}
-	copy(s.id[:], id)
 	return s, nil
 }
 
 func (s SyncTransactionRequest) Write() []byte {
-	return payload.NewWriter(nil).WriteBytes(s.id[:]).Bytes()
+	writer := payload.NewWriter(nil)
+
+	writer.WriteByte(byte(len(s.ids)))
+
+	for _, id := range s.ids {
+		_, _ = writer.Write(id[:])
+	}
+
+	return writer.Bytes()
 }

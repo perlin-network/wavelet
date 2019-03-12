@@ -103,8 +103,8 @@ func (g *graph) reset(root *Transaction) {
 	g.Lock()
 
 	g.height = 0
-	g.transactions = make(map[common.TransactionID]*Transaction)
-	g.children = make(map[common.TransactionID][]common.TransactionID)
+	//g.transactions = make(map[common.TransactionID]*Transaction)
+	//g.children = make(map[common.TransactionID][]common.TransactionID)
 
 	g.transactions[root.ID] = root
 	g.saveRoot(root)
