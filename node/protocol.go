@@ -114,7 +114,11 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 }
 
 func handleSyncTransactionRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncTransactionRequest) {
-	// TODO: Where should we fetch the transaction from?
+	tx, ok := ledger.FindTransaction(req.id)
+	if !ok {
+		return
+	}
+	peer.SendMessage(SyncTransactionResponse{tx})
 }
 
 func handleSyncTransactionResponse(ledger *wavelet.Ledger, peer *noise.Peer, req SyncTransactionResponse) {
