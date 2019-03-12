@@ -36,6 +36,9 @@ type block struct {
 	opcodeSyncDiffMetadataResponse noise.Opcode
 	opcodeSyncDiffChunkRequest     noise.Opcode
 	opcodeSyncDiffChunkResponse    noise.Opcode
+
+	opcodeSyncTransactionRequest  noise.Opcode
+	opcodeSyncTransactionResponse noise.Opcode
 }
 
 func New() *block {
@@ -53,6 +56,8 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 	b.opcodeSyncDiffMetadataResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncDiffMetadataResponse)(nil))
 	b.opcodeSyncDiffChunkRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncDiffChunkRequest)(nil))
 	b.opcodeSyncDiffChunkResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncDiffChunkResponse)(nil))
+	b.opcodeSyncTransactionRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncTransactionRequest)(nil))
+	b.opcodeSyncTransactionResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncTransactionResponse)(nil))
 
 	genesisPath := "config/genesis.json"
 
@@ -100,8 +105,20 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 			handleSyncDiffMetadataRequest(ledger, peer, req.(SyncDiffMetadataRequest), chunkCache)
 		case req := <-peer.Receive(b.opcodeSyncDiffChunkRequest):
 			handleSyncDiffChunkRequest(ledger, peer, req.(SyncDiffChunkRequest), chunkCache)
+		case req := <-peer.Receive(b.opcodeSyncTransactionRequest):
+			handleSyncTransactionRequest(ledger, peer, req.(SyncTransactionRequest))
+		case req := <-peer.Receive(b.opcodeSyncTransactionResponse):
+			handleSyncTransactionResponse(ledger, peer, req.(SyncTransactionResponse))
 		}
 	}
+}
+
+func handleSyncTransactionRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncTransactionRequest) {
+	// TODO: Where should we fetch the transaction from?
+}
+
+func handleSyncTransactionResponse(ledger *wavelet.Ledger, peer *noise.Peer, req SyncTransactionResponse) {
+	ledger.FulfillAwaitingTransaction(req.tx)
 }
 
 func handleSyncDiffMetadataRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffMetadataRequest, chunkCache *lru) {

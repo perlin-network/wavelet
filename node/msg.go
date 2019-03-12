@@ -4,6 +4,7 @@ import (
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 )
@@ -19,6 +20,8 @@ var (
 	_ noise.Message = (*SyncDiffMetadataResponse)(nil)
 	_ noise.Message = (*SyncDiffChunkRequest)(nil)
 	_ noise.Message = (*SyncDiffChunkResponse)(nil)
+	_ noise.Message = (*SyncTransactionRequest)(nil)
+	_ noise.Message = (*SyncTransactionResponse)(nil)
 )
 
 type QueryRequest struct {
@@ -299,4 +302,50 @@ func (s SyncDiffChunkResponse) Write() []byte {
 	}
 
 	return payload.NewWriter(nil).WriteByte(found).WriteBytes(s.diff).Bytes()
+}
+
+type SyncTransactionResponse struct {
+	tx *wavelet.Transaction
+}
+
+func (s SyncTransactionResponse) Read(reader payload.Reader) (noise.Message, error) {
+	if reader.Len() > 0 {
+		msg, err := wavelet.Transaction{}.Read(reader)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to read root tx")
+		}
+
+		root := msg.(wavelet.Transaction)
+		s.tx = &root
+	}
+
+	return s, nil
+}
+
+func (s SyncTransactionResponse) Write() []byte {
+	if s.tx != nil {
+		return s.tx.Write()
+	}
+
+	return nil
+}
+
+type SyncTransactionRequest struct {
+	id common.TransactionID
+}
+
+func (s SyncTransactionRequest) Read(reader payload.Reader) (noise.Message, error) {
+	id, err := reader.ReadBytes()
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to read id")
+	}
+	if len(id) != len(common.TransactionID{}) {
+		return nil, errors.New("invalid transaction id")
+	}
+	copy(s.id[:], id)
+	return s, nil
+}
+
+func (s SyncTransactionRequest) Write() []byte {
+	return payload.NewWriter(nil).WriteBytes(s.id[:]).Bytes()
 }

@@ -700,3 +700,20 @@ func (l *Ledger) saveViewID(viewID uint64) {
 func (l *Ledger) Resolver() *Snowball {
 	return l.resolver
 }
+
+func (l *Ledger) PickAwaitingTransaction() (common.TransactionID, bool) {
+	l.bufferMu.Lock()
+	defer l.bufferMu.Unlock()
+
+	for k, _ := range l.awaiting {
+		return k, true
+	}
+
+	return common.TransactionID{}, false
+}
+
+func (l *Ledger) FulfillAwaitingTransaction(tx *Transaction) {
+	l.bufferMu.Lock()
+	l.revisitBufferedTransactions(tx, false)
+	l.bufferMu.Unlock()
+}

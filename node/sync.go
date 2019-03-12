@@ -44,10 +44,11 @@ func newSyncer(node *noise.Node) *syncer {
 }
 
 func (s *syncer) init() {
-	go s.loop()
+	go s.stateLoop()
+	go s.transactionLoop()
 }
 
-func (s *syncer) loop() {
+func (s *syncer) stateLoop() {
 	var root *wavelet.Transaction
 
 	for {
@@ -114,6 +115,34 @@ func (s *syncer) loop() {
 		}
 
 		Broadcaster(s.node).Resume()
+	}
+}
+
+func (s *syncer) transactionLoop() {
+	logger := log.Sync("transaction_loop")
+	for {
+		time.Sleep(100 * time.Millisecond)
+		id, ok := s.ledger.PickAwaitingTransaction()
+		if !ok {
+			continue
+		}
+
+		peerIDs, err := selectPeers(s.node, 1)
+		if err != nil || len(peerIDs) != 1 {
+			continue
+		}
+
+		peerID := peerIDs[0]
+		peer := protocol.Peer(s.node, peerID)
+		if peer == nil {
+			continue
+		}
+
+		err = peer.SendMessage(&SyncTransactionRequest{id})
+		if err != nil {
+			logger.Warn().Err(err).Msg("failed to send message")
+			continue
+		}
 	}
 }
 
