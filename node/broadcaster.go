@@ -2,7 +2,6 @@ package node
 
 import (
 	"github.com/perlin-network/noise"
-	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
@@ -261,7 +260,7 @@ func (b *broadcaster) gossip(tx *wavelet.Transaction) error {
 		return errors.Wrap(err, "broadcast: response opcode not registered")
 	}
 
-	peerIDs, _ := selectPeers(b.node, skademlia.BucketSize())
+	peerIDs, _ := selectPeers(b.node, sys.SnowballQueryK)
 	if len(peerIDs) == 0 {
 		return errors.New("broadcast: cannot gossip because not connected to any peers")
 	}
@@ -288,7 +287,7 @@ func (b *broadcaster) gossip(tx *wavelet.Transaction) error {
 		}
 	}
 
-	weights := wavelet.ComputeStakeDistribution(b.ledger.Accounts, accountIDs, len(accountIDs))
+	weights := wavelet.ComputeStakeDistribution(b.ledger.Accounts, accountIDs, sys.SnowballQueryK)
 
 	var accum float64
 
