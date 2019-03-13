@@ -11,10 +11,10 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
-	"github.com/sasha-s/go-deadlock"
 	"golang.org/x/crypto/blake2b"
 	"math"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -31,8 +31,8 @@ type Ledger struct {
 	awaiting map[common.TransactionID][]common.TransactionID
 	buffered map[common.TransactionID]*Transaction
 
-	bufferMu deadlock.Mutex
-	resetMu  deadlock.Mutex
+	bufferMu sync.Mutex
+	resetMu  sync.Mutex
 
 	cacheCollapsible *lru
 }
@@ -270,9 +270,10 @@ func (l *Ledger) bufferIfMissingParents(tx *Transaction) error {
 	}
 
 	if len(missing) > 0 {
+
 		l.bufferMu.Lock()
-		for _, parentID := range missing {
-			l.awaiting[parentID] = append(l.awaiting[parentID], tx.ID)
+		for _, missingID := range missing {
+			l.awaiting[missingID] = append(l.awaiting[missingID], tx.ID)
 		}
 		l.buffered[tx.ID] = tx
 		l.bufferMu.Unlock()

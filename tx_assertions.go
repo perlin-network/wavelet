@@ -103,9 +103,11 @@ func AssertValidTimestamp(view *graph, tx *Transaction) error {
 		visited[parentID] = struct{}{}
 	}
 
-	var timestamps []uint64
+	for _, rootParentID := range view.Root().ParentIDs {
+		visited[rootParentID] = struct{}{}
+	}
 
-	visited[view.Root().ID] = struct{}{}
+	var timestamps []uint64
 
 	for q.Len() > 0 && len(timestamps) < sys.MedianTimestampNumAncestors {
 		popped := q.PopFront().(*Transaction)

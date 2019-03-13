@@ -96,17 +96,17 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 	for {
 		select {
 		case req := <-peer.Receive(b.opcodeGossipRequest):
-			handleGossipRequest(ledger, peer, req.(GossipRequest))
+			go handleGossipRequest(ledger, peer, req.(GossipRequest))
 		case req := <-peer.Receive(b.opcodeQueryRequest):
-			handleQueryRequest(ledger, peer, req.(QueryRequest))
+			go handleQueryRequest(ledger, peer, req.(QueryRequest))
 		case req := <-peer.Receive(b.opcodeSyncViewRequest):
-			handleSyncViewRequest(ledger, peer, req.(SyncViewRequest))
+			go handleSyncViewRequest(ledger, peer, req.(SyncViewRequest))
 		case req := <-peer.Receive(b.opcodeSyncDiffMetadataRequest):
-			handleSyncDiffMetadataRequest(ledger, peer, req.(SyncDiffMetadataRequest), chunkCache)
+			go handleSyncDiffMetadataRequest(ledger, peer, req.(SyncDiffMetadataRequest), chunkCache)
 		case req := <-peer.Receive(b.opcodeSyncDiffChunkRequest):
-			handleSyncDiffChunkRequest(ledger, peer, req.(SyncDiffChunkRequest), chunkCache)
+			go handleSyncDiffChunkRequest(ledger, peer, req.(SyncDiffChunkRequest), chunkCache)
 		case req := <-peer.Receive(b.opcodeSyncTransactionRequest):
-			handleSyncTransactionRequest(ledger, peer, req.(SyncTransactionRequest))
+			go handleSyncTransactionRequest(ledger, peer, req.(SyncTransactionRequest))
 		}
 	}
 }
@@ -130,7 +130,9 @@ func handleSyncTransactionRequest(ledger *wavelet.Ledger, peer *noise.Peer, req 
 	}
 
 	logger := log.Sync("tx_req")
-	logger.Debug().Int("num_tx", len(req.ids)).Msg("Responded to request for transactions data.")
+	logger.Debug().
+		Int("num_tx", len(req.ids)).
+		Msg("Responded to request for transactions data.")
 }
 
 func handleSyncDiffMetadataRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffMetadataRequest, chunkCache *lru) {

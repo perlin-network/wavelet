@@ -152,7 +152,10 @@ func (s *syncer) transactionLoop() {
 			if res != nil {
 				for _, tx := range res.(SyncTransactionResponse).transactions {
 					if err := s.ledger.ReceiveTransaction(tx); errors.Cause(err) == wavelet.VoteRejected {
-						logger.Debug().Err(err).Msg("Got an error.")
+						logger.Debug().
+							Hex("tx_id", tx.ID[:]).
+							Err(err).
+							Msg("Got an error.")
 					}
 				}
 			}

@@ -17,7 +17,6 @@ import (
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/rs/zerolog"
-	"github.com/sasha-s/go-deadlock"
 	"golang.org/x/crypto/ssh/terminal"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
@@ -44,7 +43,6 @@ type Config struct {
 }
 
 func main() {
-	deadlock.Opts.DeadlockTimeout = 3 * time.Second
 	runtime.SetBlockProfileRate(1)
 	runtime.SetMutexProfileFraction(1)
 
