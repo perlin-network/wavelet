@@ -116,6 +116,8 @@ func (g *graph) reset(root *Transaction) {
 	g.Lock()
 
 	g.height = 0
+	root.depth = 0
+
 	//g.transactions = make(map[common.TransactionID]*Transaction)
 	//g.children = make(map[common.TransactionID][]common.TransactionID)
 	g.candidates = make(map[common.TransactionID]struct{})
