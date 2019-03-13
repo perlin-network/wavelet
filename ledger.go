@@ -210,7 +210,7 @@ func (l *Ledger) receiveTransaction(tx *Transaction) error {
 	/** PARENT ASSERTIONS **/
 
 	// Assert that we have all of the transactions parents in our view-graph.
-	if err := l.bufferIfMissingParents(tx); err != nil {
+	if err := l.bufferIfMissingAncestors(tx); err != nil {
 		return errors.Wrap(VoteRejected, err.Error())
 	}
 
@@ -255,22 +255,48 @@ func (l *Ledger) receiveTransaction(tx *Transaction) error {
 	return VoteAccepted
 }
 
-// bufferIfMissingParents asserts that we have all of the transactions parents
+// bufferIfMissingAncestors asserts that we have all of the transactions ancestors
 // in our view-graph.
 //
 // If not, we buffer the transaction such that some day, once we have its
 // parents, we will attempt to re-add the transaction to the view-graph.
-func (l *Ledger) bufferIfMissingParents(tx *Transaction) error {
+func (l *Ledger) bufferIfMissingAncestors(tx *Transaction) error {
+	visited := make(map[common.TransactionID]struct{})
+	visited[l.Root().ID] = struct{}{}
+
+	q := queue.New()
+
 	var missing []common.TransactionID
 
 	for _, parentID := range tx.ParentIDs {
-		if _, exists := l.view.lookupTransaction(parentID); !exists {
+		if parent, exists := l.view.lookupTransaction(parentID); exists {
+			q.PushBack(parent)
+		} else {
 			missing = append(missing, parentID)
+		}
+
+		visited[parentID] = struct{}{}
+	}
+
+	for q.Len() > 0 {
+		popped := q.PopFront().(*Transaction)
+
+		for _, parentID := range popped.ParentIDs {
+			if _, seen := visited[parentID]; !seen {
+				if parent, exists := l.view.lookupTransaction(parentID); exists {
+					q.PushBack(parent)
+				}
+
+				visited[parentID] = struct{}{}
+			}
+		}
+
+		if _, exists := l.view.lookupTransaction(popped.ID); !exists {
+			missing = append(missing, popped.ID)
 		}
 	}
 
 	if len(missing) > 0 {
-
 		l.bufferMu.Lock()
 		for _, missingID := range missing {
 			l.awaiting[missingID] = append(l.awaiting[missingID], tx.ID)
