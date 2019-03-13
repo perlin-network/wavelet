@@ -22,20 +22,13 @@ func selectPeers(node *noise.Node, amount int) ([]protocol.ID, error) {
 }
 
 func broadcast(node *noise.Node, peerIDs []protocol.ID, req noise.Message, resOpcode noise.Opcode) ([]noise.Message, error) {
-	var responses []noise.Message
+	responses := make([]noise.Message, len(peerIDs))
 
-	var mu sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(len(peerIDs))
 
-	record := func(account common.AccountID, res noise.Message) {
-		mu.Lock()
-		defer mu.Unlock()
-
-		responses = append(responses, res)
-	}
-
-	for _, peerID := range peerIDs {
+	for i, peerID := range peerIDs {
+		i := i
 		peerID := peerID
 
 		var account common.AccountID
@@ -46,22 +39,19 @@ func broadcast(node *noise.Node, peerIDs []protocol.ID, req noise.Message, resOp
 
 			peer := protocol.Peer(node, peerID)
 			if peer == nil {
-				record(account, nil)
 				return
 			}
 
 			// Send query request.
 			err := peer.SendMessage(req)
 			if err != nil {
-				record(account, nil)
 				return
 			}
 
 			select {
 			case msg := <-peer.Receive(resOpcode):
-				record(account, msg)
+				responses[i] = msg
 			case <-time.After(sys.QueryTimeout):
-				record(account, nil)
 			}
 		}()
 	}

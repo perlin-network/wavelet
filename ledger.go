@@ -11,10 +11,10 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
+	"github.com/sasha-s/go-deadlock"
 	"golang.org/x/crypto/blake2b"
 	"math"
 	"sort"
-	"sync"
 	"time"
 )
 
@@ -31,8 +31,8 @@ type Ledger struct {
 	awaiting map[common.TransactionID][]common.TransactionID
 	buffered map[common.TransactionID]*Transaction
 
-	bufferMu sync.Mutex
-	resetMu  sync.Mutex
+	bufferMu deadlock.Mutex
+	resetMu  deadlock.Mutex
 
 	cacheCollapsible *lru
 }
@@ -172,10 +172,10 @@ func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transactio
 }
 
 func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
-	return l.receiveTransaction(tx, true)
+	return l.receiveTransaction(tx)
 }
 
-func (l *Ledger) receiveTransaction(tx *Transaction, lockBuffer bool) error {
+func (l *Ledger) receiveTransaction(tx *Transaction) error {
 	/** BASIC ASSERTIONS **/
 
 	// If the transaction is our root transaction, assume that we have already voted positively for it.
@@ -210,14 +210,7 @@ func (l *Ledger) receiveTransaction(tx *Transaction, lockBuffer bool) error {
 	/** PARENT ASSERTIONS **/
 
 	// Assert that we have all of the transactions parents in our view-graph.
-	if err := func() error {
-		if lockBuffer {
-			l.bufferMu.Lock()
-			defer l.bufferMu.Unlock()
-		}
-
-		return l.bufferIfMissingParents(tx)
-	}(); err != nil {
+	if err := l.bufferIfMissingParents(tx); err != nil {
 		return errors.Wrap(VoteRejected, err.Error())
 	}
 
@@ -257,14 +250,7 @@ func (l *Ledger) receiveTransaction(tx *Transaction, lockBuffer bool) error {
 		}
 	}
 
-	func() {
-		if lockBuffer {
-			l.bufferMu.Lock()
-			defer l.bufferMu.Unlock()
-		}
-
-		l.revisitBufferedTransactions(tx, lockBuffer)
-	}()
+	l.revisitBufferedTransactions(tx)
 
 	return VoteAccepted
 }
@@ -274,23 +260,22 @@ func (l *Ledger) receiveTransaction(tx *Transaction, lockBuffer bool) error {
 //
 // If not, we buffer the transaction such that some day, once we have its
 // parents, we will attempt to re-add the transaction to the view-graph.
-//
-// It assumes that `*Ledger.bufferMu` has already been locked.
 func (l *Ledger) bufferIfMissingParents(tx *Transaction) error {
-	parentsAvailable := true
+	var missing []common.TransactionID
 
 	for _, parentID := range tx.ParentIDs {
-		_, exists := l.view.lookupTransaction(parentID)
-
-		if !exists {
-			parentsAvailable = false
-
-			l.awaiting[parentID] = append(l.awaiting[parentID], tx.ID)
+		if _, exists := l.view.lookupTransaction(parentID); !exists {
+			missing = append(missing, parentID)
 		}
 	}
 
-	if !parentsAvailable {
+	if len(missing) > 0 {
+		l.bufferMu.Lock()
+		for _, parentID := range missing {
+			l.awaiting[parentID] = append(l.awaiting[parentID], tx.ID)
+		}
 		l.buffered[tx.ID] = tx
+		l.bufferMu.Unlock()
 
 		return ErrParentsNotAvailable
 	}
@@ -301,29 +286,41 @@ func (l *Ledger) bufferIfMissingParents(tx *Transaction) error {
 // revisitBufferedTransactions checks that once a specified transaction is added
 // to the view-graph, if any buffered transactions may then be eligible to be
 // provided another attempt at being added to the view-graph.
-//
-// It assumes that `*Ledger.bufferMu` has already been locked.
-func (l *Ledger) revisitBufferedTransactions(tx *Transaction, lock bool) {
+func (l *Ledger) revisitBufferedTransactions(tx *Transaction) {
+	l.bufferMu.Lock()
 	buffer, exists := l.awaiting[tx.ID]
+	l.bufferMu.Unlock()
 
 	if !exists {
 		return
 	}
 
-	for _, id := range buffer {
-		txx, exists := l.buffered[id]
+	unbuffered := make(map[common.TransactionID]struct{})
 
-		// This can happen if we already unbuffered the transaction beforehand.
+	for _, id := range buffer {
+		l.bufferMu.Lock()
+		txx, exists := l.buffered[id]
+		l.bufferMu.Unlock()
+
 		if !exists {
 			continue
 		}
 
-		if err := l.receiveTransaction(txx, false); errors.Cause(err) == VoteAccepted {
-			delete(l.buffered, tx.ID)
+		if _, unbuffered := unbuffered[txx.ID]; unbuffered {
+			continue
+		}
+
+		if err := l.receiveTransaction(txx); errors.Cause(err) == VoteAccepted {
+			unbuffered[txx.ID] = struct{}{}
 		}
 	}
 
+	l.bufferMu.Lock()
+	for id := range unbuffered {
+		delete(l.buffered, id)
+	}
 	delete(l.awaiting, tx.ID)
+	l.bufferMu.Unlock()
 }
 
 // AssertInView asserts if the transaction was proposed and broadcasted
@@ -572,7 +569,7 @@ func (l *Ledger) rewardValidators(ss accounts, tx *Transaction) error {
 	}
 
 	// If there are no eligible rewardee candidates, do not reward anyone.
-	if len(candidates) == 0 || totalStake == 0 {
+	if len(candidates) == 0 || len(candidates) != len(stakes) || totalStake == 0 {
 		return nil
 	}
 
@@ -708,7 +705,7 @@ func (l *Ledger) QueryMissingTransactions() ([]common.TransactionID, bool) {
 
 	var ids []common.TransactionID
 
-	for id, _ := range l.awaiting {
+	for id := range l.awaiting {
 		ids = append(ids, id)
 
 		// Only request at most 255 awaiting transactions.

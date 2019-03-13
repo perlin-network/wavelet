@@ -237,55 +237,28 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 		return errors.Wrap(err, "sync: diff chunk response opcode not registered")
 	}
 
-	req := SyncDiffMetadataRequest{viewID: s.ledger.Root().ViewID}
-
-	var selected []peerInfo
-
-	viewChunkHashes := make(map[uint64][]peerInfo)
-	var mu sync.Mutex
-
-	var wg sync.WaitGroup
-	wg.Add(len(peerIDs))
-
-	for _, peerID := range peerIDs {
-		peerID := peerID
-
-		go func() {
-			defer wg.Done()
-
-			peer := protocol.Peer(s.node, peerID)
-			if peer == nil {
-				return
-			}
-
-			err := peer.SendMessage(req)
-			if err != nil {
-				return
-			}
-
-			var res SyncDiffMetadataResponse
-
-			select {
-			case msg := <-peer.Receive(opcodeSyncDiffMetadataResponse):
-				res = msg.(SyncDiffMetadataResponse)
-			case <-time.After(sys.QueryTimeout):
-				return
-			}
-
-			mu.Lock()
-			viewChunkHashes[res.latestViewID] = append(viewChunkHashes[res.latestViewID], peerInfo{
-				id:     peerID,
-				hashes: res.chunkHashes,
-			})
-			mu.Unlock()
-		}()
+	responses, err := broadcast(s.node, peerIDs, SyncDiffMetadataRequest{viewID: s.ledger.Root().ViewID}, opcodeSyncDiffMetadataResponse)
+	if err != nil {
+		return errors.Wrap(err, "sync: failed to brodacast request for sync diffing metadata")
 	}
 
-	wg.Wait()
+	viewChunkHashes := make(map[uint64][]peerInfo)
+
+	for i, res := range responses {
+		if res != nil {
+			res := res.(SyncDiffMetadataResponse)
+			viewChunkHashes[res.latestViewID] = append(viewChunkHashes[res.latestViewID], peerInfo{
+				id:     peerIDs[i],
+				hashes: res.chunkHashes,
+			})
+		}
+	}
 
 	// Select a set of chunk hashes which more than 2/3rds of all
 	// queried peers believes provides a sufficient diff from our
 	// current view ID to our peers latest view ID.
+	var selected []peerInfo
+
 	for _, peers := range viewChunkHashes {
 		if len(peers) >= len(peerIDs)*2/3 {
 			selected = peers
@@ -343,6 +316,7 @@ func (s *syncer) queryAndApplyDiff(peerIDs []protocol.ID, root *wavelet.Transact
 
 	var numCollectedChunks atomic.Uint32
 
+	var wg sync.WaitGroup
 	wg.Add(len(chunkSources))
 
 	for chunkID, src := range chunkSources {

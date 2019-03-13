@@ -17,6 +17,7 @@ import (
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/rs/zerolog"
+	"github.com/sasha-s/go-deadlock"
 	"golang.org/x/crypto/ssh/terminal"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
@@ -42,6 +43,8 @@ type Config struct {
 }
 
 func main() {
+	deadlock.Opts.DeadlockTimeout = 10 * time.Second
+
 	if terminal.IsTerminal(int(os.Stdout.Fd())) {
 		log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
 	} else {

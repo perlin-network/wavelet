@@ -8,7 +8,7 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
-	"sync"
+	"github.com/sasha-s/go-deadlock"
 )
 
 var (
@@ -17,7 +17,7 @@ var (
 )
 
 type graph struct {
-	sync.RWMutex
+	deadlock.RWMutex
 
 	transactions map[common.TransactionID]*Transaction
 	children     map[common.TransactionID][]common.TransactionID

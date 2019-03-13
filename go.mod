@@ -18,9 +18,11 @@ require (
 	github.com/klauspost/cpuid v1.2.0 // indirect
 	github.com/perlin-network/life v0.0.0-20190204091834-d05763d11050
 	github.com/perlin-network/noise v0.0.0-20190305074834-c3dca79c3e2a
+	github.com/petermattis/goid v0.0.0-20180202154549-b0b1615b78e5 // indirect
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
 	github.com/pkg/errors v0.8.1
 	github.com/rs/zerolog v1.11.0
+	github.com/sasha-s/go-deadlock v0.2.0
 	github.com/stretchr/testify v1.3.0
 	github.com/tecbot/gorocksdb v0.0.0-20181010114359-8752a9433481
 	github.com/valyala/fasthttp v1.2.0
