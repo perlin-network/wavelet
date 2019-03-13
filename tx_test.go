@@ -26,7 +26,7 @@ func createLedger() *Ledger {
 	return ledger
 }
 
-func createNormalTransaction(t *testing.T, ledger *Ledger, keys *skademlia.Keypair) *Transaction {
+func createNormalTransaction(t testing.TB, ledger *Ledger, keys *skademlia.Keypair) *Transaction {
 	var buf [200]byte
 	_, err := rand.Read(buf[:])
 	assert.NoError(t, err)
@@ -37,7 +37,7 @@ func createNormalTransaction(t *testing.T, ledger *Ledger, keys *skademlia.Keypa
 	return tx
 }
 
-func createCriticalTransaction(t *testing.T, ledger *Ledger, keys *skademlia.Keypair) *Transaction {
+func createCriticalTransaction(t testing.TB, ledger *Ledger, keys *skademlia.Keypair) *Transaction {
 	for {
 		// Add a transaction that might be a parent that lets our next transaction
 		// be a critical transaction.
@@ -80,4 +80,17 @@ func TestSerializeCriticalTransaction(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.ObjectsAreEqual(tx, msg)
+}
+
+func BenchmarkNewTransaction(b *testing.B) {
+	b.StopTimer()
+
+	ledger := createLedger()
+	keys := skademlia.RandomKeys()
+
+	b.StartTimer()
+
+	for i := 0; i < b.N; i++ {
+		createNormalTransaction(b, ledger, keys)
+	}
 }
