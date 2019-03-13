@@ -61,7 +61,11 @@ func (b *broadcaster) Broadcast(tx *wavelet.Transaction) error {
 
 	item := broadcastItem{tx: tx, result: make(chan error, 1)}
 
-	b.queue <- item
+	select {
+	case b.queue <- item:
+	case <-time.After(3 * time.Second):
+		return errors.New("broadcaster: queue is full")
+	}
 
 	select {
 	case err, available := <-item.result:
