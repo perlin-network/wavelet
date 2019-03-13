@@ -67,7 +67,7 @@ func (s *syncer) stateLoop() {
 
 				// The view ID we came to consensus to being the latest within the network
 				// is less than or equal to ours. Go back to square one.
-				if s.ledger.Root().ID == root.ID || s.ledger.ViewID() >= root.ViewID {
+				if s.ledger.Root().ID == root.ID || s.ledger.ViewID() >= root.ViewID+1 {
 					time.Sleep(1 * time.Second)
 					continue
 				}
