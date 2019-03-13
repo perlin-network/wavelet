@@ -23,6 +23,7 @@ import (
 	"gopkg.in/urfave/cli.v1/altsrc"
 	"io/ioutil"
 	"os"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -44,6 +45,8 @@ type Config struct {
 
 func main() {
 	deadlock.Opts.DeadlockTimeout = 3 * time.Second
+	runtime.SetBlockProfileRate(1)
+	runtime.SetMutexProfileFraction(1)
 
 	if terminal.IsTerminal(int(os.Stdout.Fd())) {
 		log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))

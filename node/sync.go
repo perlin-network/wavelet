@@ -67,7 +67,7 @@ func (s *syncer) stateLoop() {
 
 				// The view ID we came to consensus to being the latest within the network
 				// is less than or equal to ours. Go back to square one.
-				if s.ledger.Root().ID == root.ID || s.ledger.ViewID() >= root.ViewID+1 {
+				if s.ledger.Root().ID == root.ID || s.ledger.ViewID() >= root.ViewID {
 					time.Sleep(1 * time.Second)
 					continue
 				}
@@ -126,11 +126,13 @@ func (s *syncer) transactionLoop() {
 		panic(errors.Wrap(err, "sync: response opcode not registered"))
 	}
 
+	logger := log.Sync("tx_sync")
+
 	for {
 		time.Sleep(100 * time.Millisecond)
 
-		ids, ok := s.ledger.QueryMissingTransactions()
-		if !ok {
+		missingIDs, available := s.ledger.QueryMissingTransactions()
+		if !available {
 			continue
 		}
 
@@ -139,7 +141,9 @@ func (s *syncer) transactionLoop() {
 			continue
 		}
 
-		responses, err := broadcast(s.node, peerIDs, SyncTransactionRequest{ids: ids}, opcodeSyncTransactionResponse)
+		logger.Debug().Int("num_tx", len(missingIDs)).Msg("Syncing for missing transactions.")
+
+		responses, err := broadcast(s.node, peerIDs, SyncTransactionRequest{ids: missingIDs}, opcodeSyncTransactionResponse)
 		if err != nil {
 			continue
 		}
@@ -147,7 +151,9 @@ func (s *syncer) transactionLoop() {
 		for _, res := range responses {
 			if res != nil {
 				for _, tx := range res.(SyncTransactionResponse).transactions {
-					_ = s.ledger.ReceiveTransaction(tx)
+					if err := s.ledger.ReceiveTransaction(tx); errors.Cause(err) == wavelet.VoteRejected {
+						logger.Debug().Err(err).Msg("Got an error.")
+					}
 				}
 			}
 		}

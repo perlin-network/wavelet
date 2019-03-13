@@ -24,10 +24,14 @@ func AssertValidTransaction(tx *Transaction) error {
 		return errors.New("tx must have parents")
 	}
 
-	// Check that parents are lexicographically sorted, and are unique.
+	// Check that parents are lexicographically sorted, are not itself, and are unique.
 	set := make(map[common.TransactionID]struct{})
 
 	for i := len(tx.ParentIDs) - 1; i > 0; i-- {
+		if tx.ID == tx.ParentIDs[i] {
+			return errors.New("tx must not include itself in its parents")
+		}
+
 		if bytes.Compare(tx.ParentIDs[i-1][:], tx.ParentIDs[i][:]) >= 0 {
 			return errors.New("tx must have sorted parent ids")
 		}
@@ -101,14 +105,12 @@ func AssertValidTimestamp(view *graph, tx *Transaction) error {
 
 	var timestamps []uint64
 
-	for q.Len() > 0 {
+	visited[view.Root().ID] = struct{}{}
+
+	for q.Len() > 0 && len(timestamps) < sys.MedianTimestampNumAncestors {
 		popped := q.PopFront().(*Transaction)
 
 		timestamps = append(timestamps, popped.Timestamp)
-
-		if popped.ID == view.Root().ID || len(timestamps) == sys.MedianTimestampNumAncestors {
-			break
-		}
 
 		for _, parentID := range popped.ParentIDs {
 			if _, seen := visited[parentID]; !seen {

@@ -79,7 +79,7 @@ func (g *Gateway) setup() {
 	// HTTP endpoints.
 
 	r.Post("/session/init", g.initSession)
-	r.Handle("/debug/vars", http.DefaultServeMux)
+	r.Mount("/debug", middleware.Profiler())
 
 	r.With(g.authenticated).Get("/ledger", g.ledgerStatus)
 	r.With(g.authenticated).Get("/accounts/{id}", g.getAccount)
