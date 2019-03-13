@@ -128,6 +128,9 @@ func handleSyncTransactionRequest(ledger *wavelet.Ledger, peer *noise.Peer, req 
 
 		res.transactions = append(res.transactions, tx)
 	}
+
+	logger := log.Sync("tx_req")
+	logger.Debug().Int("num_tx", len(req.ids)).Msg("Responded to request for transactions data.")
 }
 
 func handleSyncDiffMetadataRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffMetadataRequest, chunkCache *lru) {

@@ -43,7 +43,7 @@ type Config struct {
 }
 
 func main() {
-	deadlock.Opts.DeadlockTimeout = 10 * time.Second
+	deadlock.Opts.DeadlockTimeout = 3 * time.Second
 
 	if terminal.IsTerminal(int(os.Stdout.Fd())) {
 		log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))

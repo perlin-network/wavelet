@@ -85,6 +85,8 @@ func (s *syncer) stateLoop() {
 
 		var peerIDs []protocol.ID
 
+		s.mu.Lock()
+
 		for peerID := range s.accounts[root.ID] {
 			id, err := skademlia.ID{}.Read(payload.NewReader(peerID[:]))
 			if err != nil {
@@ -95,8 +97,8 @@ func (s *syncer) stateLoop() {
 		}
 
 		// Reset all state used for coming to consensus about the latest view-graph root.
-		s.mu.Lock()
 		s.accounts = make(map[common.TransactionID]map[protocolID]struct{})
+
 		s.mu.Unlock()
 
 		Broadcaster(s.node).Pause()
