@@ -441,7 +441,7 @@ func (l *Ledger) ProcessQuery(counts map[common.TransactionID]float64, transacti
 
 		logger := log.Consensus("round_end")
 		logger.Info().
-			Uint64("old_view_id", old.ViewID).
+			Uint64("old_view_id", old.ViewID+1).
 			Uint64("new_view_id", root.ViewID+1).
 			Hex("new_root", root.ID[:]).
 			Hex("old_root", old.ID[:]).

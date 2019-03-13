@@ -79,7 +79,7 @@ func (s *syncer) stateLoop() {
 		logger := log.Sync("new")
 		logger.Info().
 			Hex("peer_proposed_root_id", root.ID[:]).
-			Uint64("peer_proposed_view_id", root.ViewID).
+			Uint64("peer_proposed_view_id", root.ViewID+1).
 			Uint64("our_view_id", s.ledger.ViewID()).
 			Msg("It looks like the majority of our peers has a larger view ID than us. Instantiating sync...")
 
