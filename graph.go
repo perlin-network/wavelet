@@ -25,6 +25,8 @@ type graph struct {
 	height uint64
 
 	kv store.KV
+
+	resetCounter int
 }
 
 func newGraph(kv store.KV, genesis *Transaction) *graph {
@@ -105,8 +107,21 @@ func (g *graph) reset(root *Transaction) {
 	g.height = 0
 	root.depth = 0
 
-	//g.transactions = make(map[common.TransactionID]*Transaction)
-	//g.children = make(map[common.TransactionID][]common.TransactionID)
+	// Prune every 5 resets.
+	g.resetCounter++
+
+	if g.resetCounter >= 3 {
+		logger := log.Consensus("prune")
+		logger.Debug().
+			Int("num_tx", len(g.transactions)).
+			Uint64("view_id", root.ViewID+1).
+			Msg("Pruned transactions.")
+
+		g.transactions = make(map[common.TransactionID]*Transaction)
+		g.children = make(map[common.TransactionID][]common.TransactionID)
+
+		g.resetCounter = 0
+	}
 
 	g.transactions[root.ID] = root
 
