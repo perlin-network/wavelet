@@ -6,6 +6,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
+	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"sync"
 )
@@ -20,7 +21,6 @@ type graph struct {
 
 	transactions map[common.TransactionID]*Transaction
 	children     map[common.TransactionID][]common.TransactionID
-	candidates   map[common.TransactionID]struct{}
 
 	height uint64
 
@@ -32,7 +32,6 @@ func newGraph(kv store.KV, genesis *Transaction) *graph {
 		kv:           kv,
 		transactions: make(map[common.TransactionID]*Transaction),
 		children:     make(map[common.TransactionID][]common.TransactionID),
-		candidates:   make(map[common.TransactionID]struct{}),
 	}
 
 	if genesis != nil {
@@ -42,7 +41,6 @@ func newGraph(kv store.KV, genesis *Transaction) *graph {
 	}
 
 	g.transactions[genesis.ID] = genesis
-	g.candidates[genesis.ID] = struct{}{}
 
 	return g
 }
@@ -80,10 +78,6 @@ func (g *graph) addTransaction(tx *Transaction) error {
 	// Update the parents children.
 	for _, parent := range parents {
 		g.children[parent.ID] = append(g.children[parent.ID], tx.ID)
-
-		// Any parent that has children should not be an eligible candidate parent
-		// for future transactions our node makes.
-		delete(g.candidates, parent.ID)
 	}
 
 	// Update the transactions depth.
@@ -96,13 +90,6 @@ func (g *graph) addTransaction(tx *Transaction) error {
 
 	// Add the transaction to our view-graph.
 	g.transactions[tx.ID] = tx
-
-	// Assumption: When a transaction is added to the view-graph, they must have
-	// no children.
-	//
-	// Therefore, we may assume the transaction is an eligible parent candidate
-	// for future transactions we create.
-	g.candidates[tx.ID] = struct{}{}
 
 	logger := log.TX(tx.ID, tx.Sender, tx.Creator, tx.ParentIDs, tx.Tag, tx.Payload, "new")
 	logger.Log().Uint64("depth", tx.depth).Msg("Added transaction to view-graph.")
@@ -120,10 +107,8 @@ func (g *graph) reset(root *Transaction) {
 
 	//g.transactions = make(map[common.TransactionID]*Transaction)
 	//g.children = make(map[common.TransactionID][]common.TransactionID)
-	g.candidates = make(map[common.TransactionID]struct{})
 
 	g.transactions[root.ID] = root
-	g.candidates[root.ID] = struct{}{}
 
 	g.saveRoot(root)
 
@@ -134,16 +119,33 @@ func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 	g.RLock()
 	defer g.RUnlock()
 
-	for candidateID := range g.candidates {
-		candidate, exists := g.transactions[candidateID]
+	root := g.loadRoot()
 
-		if !exists {
-			continue
-		}
+	if root == nil {
+		return
+	}
 
-		// All eligible parents are within the graph depth [frontier_depth - max_depth_diff, frontier_depth].
-		if candidate.depth+sys.MaxEligibleParentsDepthDiff >= g.height {
-			eligible = append(eligible, candidateID)
+	visited := make(map[common.TransactionID]struct{})
+	visited[root.ID] = struct{}{}
+
+	q := queue.New()
+	q.PushBack(root)
+
+	for q.Len() > 0 {
+		popped := q.PopFront().(*Transaction)
+
+		if children := g.children[popped.ID]; len(children) > 0 {
+			for _, childrenID := range children {
+				if _, seen := visited[childrenID]; !seen {
+					if child, exists := g.transactions[childrenID]; exists {
+						q.PushBack(child)
+					}
+					visited[childrenID] = struct{}{}
+				}
+			}
+		} else if popped.depth+sys.MaxEligibleParentsDepthDiff >= g.height {
+			// All eligible parents are within the graph depth [frontier_depth - max_depth_diff, frontier_depth].
+			eligible = append(eligible, popped.ID)
 		}
 	}
 
