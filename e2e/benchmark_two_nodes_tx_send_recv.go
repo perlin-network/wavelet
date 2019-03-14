@@ -40,7 +40,9 @@ func main() {
 					continue
 				}
 
-				_ = peer.SendMessageAsync(tx)
+				if err = <-peer.SendMessageAsync(tx); err != nil {
+					fmt.Println(err)
+				}
 
 				serverSent.Add(1)
 			}

@@ -172,10 +172,6 @@ func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transactio
 }
 
 func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
-	return l.receiveTransaction(tx)
-}
-
-func (l *Ledger) receiveTransaction(tx *Transaction) error {
 	/** BASIC ASSERTIONS **/
 
 	// If the transaction is our root transaction, assume that we have already voted positively for it.
@@ -197,9 +193,9 @@ func (l *Ledger) receiveTransaction(tx *Transaction) error {
 
 	if critical {
 		// If our node already prefers a critical transaction, reject the incoming transaction.
-		if preferred := l.resolver.Preferred(); preferred != nil && tx.ID != preferred.ID {
-			return errors.Wrapf(VoteRejected, "prefer other critical transaction %x", preferred.ID)
-		}
+		//if preferred := l.resolver.Preferred(); preferred != nil && tx.ID != preferred.ID {
+		//	return errors.Wrapf(VoteRejected, "prefer other critical transaction %x", preferred.ID)
+		//}
 
 		// Assert that the critical transaction has a valid timestamp history.
 		if err := AssertValidCriticalTimestamps(tx); err != nil {
@@ -209,28 +205,28 @@ func (l *Ledger) receiveTransaction(tx *Transaction) error {
 
 	/** PARENT ASSERTIONS **/
 
-	// Assert that we have all of the transactions parents in our view-graph.
-	if err := l.bufferIfMissingAncestors(tx); err != nil {
-		return errors.Wrap(VoteRejected, err.Error())
-	}
+	//// Assert that we have all of the transactions parents in our view-graph.
+	//if err := l.bufferIfMissingAncestors(tx); err != nil {
+	//	return errors.Wrap(VoteRejected, err.Error())
+	//}
 
-	// Assert that the transaction has a sane timestamp with respect to its parents.
-	if err := AssertValidTimestamp(l.view, tx); err != nil {
-		return errors.Wrap(VoteRejected, err.Error())
-	}
-
-	// Assert that the transactions parents are at an eligible graph depth.
-	if err := AssertValidParentDepths(l.view, tx); err != nil {
-		return errors.Wrap(VoteRejected, err.Error())
-	}
+	//// Assert that the transaction has a sane timestamp with respect to its parents.
+	//if err := AssertValidTimestamp(l.view, tx); err != nil {
+	//	return errors.Wrap(VoteRejected, err.Error())
+	//}
+	//
+	//// Assert that the transactions parents are at an eligible graph depth.
+	//if err := AssertValidParentDepths(l.view, tx); err != nil {
+	//	return errors.Wrap(VoteRejected, err.Error())
+	//}
 
 	// Assert that we have the entire transactions ancestry, which is needed
 	// to collapse down the transaction.
-	if critical {
-		if err := l.AssertCollapsible(tx); err != nil {
-			return errors.Wrap(VoteRejected, err.Error())
-		}
-	}
+	//if critical {
+	//	if err := l.AssertCollapsible(tx); err != nil {
+	//		return errors.Wrap(VoteRejected, err.Error())
+	//	}
+	//}
 
 	// Add the transaction to our view-graph if we have its parents in-store.
 	if err := l.view.addTransaction(tx); err != nil {
@@ -250,7 +246,7 @@ func (l *Ledger) receiveTransaction(tx *Transaction) error {
 		}
 	}
 
-	l.revisitBufferedTransactions(tx)
+	//l.revisitBufferedTransactions(tx)
 
 	return VoteAccepted
 }
@@ -337,7 +333,7 @@ func (l *Ledger) revisitBufferedTransactions(tx *Transaction) {
 			continue
 		}
 
-		if err := l.receiveTransaction(txx); errors.Cause(err) == VoteAccepted {
+		if err := l.ReceiveTransaction(txx); errors.Cause(err) == VoteAccepted {
 			unbuffered[txx.ID] = struct{}{}
 		}
 	}

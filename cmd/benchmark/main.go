@@ -151,10 +151,8 @@ func commandLocal(c *cli.Context) error {
 	flood := floodTransactions()
 
 	for {
-		for _, node := range nodes {
-			if _, err := flood(node.client); err != nil {
-				fmt.Println(err)
-			}
+		if _, err := flood(nodes[0].client); err != nil {
+			fmt.Println(err)
 		}
 	}
 }
