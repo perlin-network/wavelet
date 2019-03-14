@@ -33,7 +33,7 @@ var (
 	MinDifficulty = 8
 
 	// Maximum difficulty to define a critical transaction.
-	MaxDifficulty = 13
+	MaxDifficulty = 11
 
 	// Number of ancestors to derive a median timestamp from.
 	MedianTimestampNumAncestors = 5

@@ -205,10 +205,10 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 
 	/** PARENT ASSERTIONS **/
 
-	//// Assert that we have all of the transactions parents in our view-graph.
-	//if err := l.bufferIfMissingAncestors(tx); err != nil {
-	//	return errors.Wrap(VoteRejected, err.Error())
-	//}
+	// Assert that we have all of the transactions parents in our view-graph.
+	if err := l.bufferIfMissingAncestors(tx); err != nil {
+		return errors.Wrap(VoteRejected, err.Error())
+	}
 
 	// Assert that the transaction has a sane timestamp with respect to its parents.
 	if err := AssertValidTimestamp(l.view, tx); err != nil {
@@ -246,7 +246,7 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 		}
 	}
 
-	//l.revisitBufferedTransactions(tx)
+	l.revisitBufferedTransactions(tx)
 
 	return VoteAccepted
 }
