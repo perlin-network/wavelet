@@ -6,6 +6,7 @@ import (
 	"github.com/perlin-network/wavelet"
 	waveletnode "github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/sys"
+	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 	"time"
 )
@@ -54,7 +55,9 @@ func main() {
 				msg := <-peer.Receive(opcodeTransaction)
 				tx := msg.(wavelet.Transaction)
 
-				ledger.ReceiveTransaction(&tx)
+				if err := ledger.ReceiveTransaction(&tx); errors.Cause(err) != wavelet.VoteAccepted {
+					fmt.Println(err)
+				}
 
 				serverRecv.Add(1)
 			}
@@ -73,11 +76,13 @@ func main() {
 				msg := <-peer.Receive(opcodeTransaction)
 				tx := msg.(wavelet.Transaction)
 
-				ledger.ReceiveTransaction(&tx)
+				if err := ledger.ReceiveTransaction(&tx); errors.Cause(err) != wavelet.VoteAccepted {
+					fmt.Println(err)
+				}
 
 				clientRecv.Add(1)
 
-				//go peer.SendMessageAsync(tx)
+				_ = peer.SendMessageAsync(tx)
 			}
 		}()
 
