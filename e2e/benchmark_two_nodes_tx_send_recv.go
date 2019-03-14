@@ -22,7 +22,7 @@ func main() {
 	client := spawnNode(0)
 
 	go func() {
-		for range time.Tick(3 * time.Second) {
+		for range time.Tick(1 * time.Second) {
 			fmt.Printf("Server sent %d, client received %d TPS, and server received %d TPS.\n",
 				serverSent.Swap(0), clientRecv.Swap(0), serverRecv.Swap(0))
 		}
@@ -49,16 +49,8 @@ func main() {
 		go func() {
 			waveletnode.WaitUntilAuthenticated(peer)
 
-			ledger := waveletnode.Ledger(node)
-
 			for {
-				msg := <-peer.Receive(opcodeTransaction)
-				tx := msg.(wavelet.Transaction)
-
-				if err := ledger.ReceiveTransaction(&tx); errors.Cause(err) != wavelet.VoteAccepted {
-					fmt.Println(err)
-				}
-
+				_ = <-peer.Receive(opcodeTransaction)
 				serverRecv.Add(1)
 			}
 		}()

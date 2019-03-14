@@ -21,7 +21,7 @@ func main() {
 	client := spawnNode(0)
 
 	go func() {
-		for range time.Tick(3 * time.Second) {
+		for range time.Tick(1 * time.Second) {
 			fmt.Printf("Server sent %d, client received %d TPS, and server received %d TPS.\n",
 				serverSent.Swap(0), clientRecv.Swap(0), serverRecv.Swap(0))
 		}

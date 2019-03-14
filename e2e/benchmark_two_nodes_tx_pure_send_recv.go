@@ -20,7 +20,7 @@ func main() {
 	client := spawnNode(0)
 
 	go func() {
-		for range time.Tick(3 * time.Second) {
+		for range time.Tick(1 * time.Second) {
 			sent, received := serverSent.Swap(0), clientRecv.Swap(0)
 
 			fmt.Printf("Sent %d, and received %d TPS.\n", sent, received)
