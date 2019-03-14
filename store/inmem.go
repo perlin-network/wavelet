@@ -18,13 +18,7 @@ type inmemWriteBatch struct {
 }
 
 func (b *inmemWriteBatch) Put(key, value []byte) {
-	k := make([]byte, len(key))
-	v := make([]byte, len(value))
-
-	copy(k, key)
-	copy(v, value)
-
-	b.pairs = append(b.pairs, kvPair{key: k, value: v})
+	b.pairs = append(b.pairs, kvPair{key: key, value: value})
 }
 
 func (b *inmemWriteBatch) Clear() {
