@@ -84,8 +84,16 @@ func (s *inmemKV) Put(key, value []byte) error {
 	return nil
 }
 
+var (
+	writeBatchPool = sync.Pool{
+		New: func() interface{} {
+			return new(inmemWriteBatch)
+		},
+	}
+)
+
 func (s *inmemKV) NewWriteBatch() WriteBatch {
-	return new(inmemWriteBatch)
+	return writeBatchPool.Get().(WriteBatch)
 }
 
 func (s *inmemKV) CommitWriteBatch(batch WriteBatch) error {
@@ -97,6 +105,7 @@ func (s *inmemKV) CommitWriteBatch(batch WriteBatch) error {
 			_ = s.db.Set(pair.key, pair.value)
 		}
 
+		writeBatchPool.Put(wb)
 		return nil
 	}
 

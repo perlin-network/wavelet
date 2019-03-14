@@ -6,7 +6,7 @@ import (
 )
 
 func ComputeStakeDistribution(a accounts, accountIDs []common.AccountID, numAccounts int) map[common.AccountID]float64 {
-	stakes := make(map[common.AccountID]uint64)
+	stakes := make(map[common.AccountID]uint64, len(accountIDs))
 	var maxStake uint64
 
 	for _, accountID := range accountIDs {
@@ -23,7 +23,7 @@ func ComputeStakeDistribution(a accounts, accountIDs []common.AccountID, numAcco
 		stakes[accountID] = stake
 	}
 
-	weights := make(map[common.AccountID]float64)
+	weights := make(map[common.AccountID]float64, len(stakes))
 
 	for account, stake := range stakes {
 		weights[account] = float64(stake) / float64(maxStake) / float64(numAccounts)

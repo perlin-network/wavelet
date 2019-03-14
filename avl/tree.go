@@ -176,9 +176,9 @@ func (t *Tree) Commit() error {
 	t.Lock()
 	defer t.Unlock()
 
-	for {
-		batch := t.kv.NewWriteBatch()
+	batch := t.kv.NewWriteBatch()
 
+	for {
 		t.pending.Range(func(k, v interface{}) bool {
 			if batch.Count() > t.maxWriteBatchSize {
 				return false
@@ -204,6 +204,8 @@ func (t *Tree) Commit() error {
 		if err != nil {
 			return errors.Wrap(err, "failed to commit write batch to db")
 		}
+
+		batch.Clear()
 	}
 
 	if t.root != nil {
