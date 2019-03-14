@@ -79,6 +79,8 @@ func (b *broadcaster) Broadcast(tx *wavelet.Transaction) error {
 }
 
 func (b *broadcaster) loop() {
+	b.broadcastingNops = false
+
 	logger := log.Broadcaster()
 
 	for {
