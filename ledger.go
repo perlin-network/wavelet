@@ -416,10 +416,10 @@ func (l *Ledger) Reset(newRoot *Transaction, newState accounts) error {
 	return nil
 }
 
-func (l *Ledger) ProcessQuery(counts map[common.TransactionID]float64, transactions map[common.TransactionID]*Transaction) error {
+func (l *Ledger) ProcessQuery(counts map[common.TransactionID]float64, transactions map[common.TransactionID]*Transaction) (bool, error) {
 	// If there are zero preferred critical transactions from other nodes, return nil.
 	if len(counts) == 0 {
-		return nil
+		return false, nil
 	}
 
 	l.resolver.Tick(counts, transactions)
@@ -432,7 +432,7 @@ func (l *Ledger) ProcessQuery(counts map[common.TransactionID]float64, transacti
 		old := l.Root()
 
 		if err := l.Reset(root, l.collapseTransactions(root.ParentIDs, true)); err != nil {
-			return errors.Wrap(err, "wavelet: failed to reset ledger to advance to new view ID")
+			return false, errors.Wrap(err, "wavelet: failed to reset ledger to advance to new view ID")
 		}
 
 		logger := log.Consensus("round_end")
@@ -444,9 +444,11 @@ func (l *Ledger) ProcessQuery(counts map[common.TransactionID]float64, transacti
 			Hex("new_accounts_checksum", root.AccountsMerkleRoot[:]).
 			Hex("old_accounts_checksum", old.AccountsMerkleRoot[:]).
 			Msg("Finalized consensus round, and incremented view ID.")
+
+		return true, nil
 	}
 
-	return nil
+	return false, nil
 }
 
 func (l *Ledger) RegisterProcessor(tag byte, processor TransactionProcessor) {

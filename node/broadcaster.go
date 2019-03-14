@@ -79,8 +79,6 @@ func (b *broadcaster) Broadcast(tx *wavelet.Transaction) error {
 }
 
 func (b *broadcaster) loop() {
-	b.broadcastingNops = false
-
 	logger := log.Broadcaster()
 
 	for {
@@ -98,7 +96,6 @@ func (b *broadcaster) loop() {
 		}
 
 		if preferred := b.ledger.Resolver().Preferred(); preferred != nil {
-			b.broadcastingNops = false
 			b.querying(logger, preferred)
 		} else {
 			b.gossiping(logger)
@@ -112,11 +109,17 @@ func (b *broadcaster) querying(logger zerolog.Logger, preferred *wavelet.Transac
 		Hex("tx_id", preferred.ID[:]).
 		Msg("Broadcasting out our preferred transaction.")
 
-	if err := b.query(preferred); err != nil {
+	finalized, err := b.query(preferred)
+
+	if err != nil {
 		logger.Warn().
 			Err(err).
 			Msg("Got an error while querying.")
 		return
+	}
+
+	if finalized {
+		b.broadcastingNops = false
 	}
 }
 
@@ -132,17 +135,20 @@ func (b *broadcaster) gossiping(logger zerolog.Logger) {
 			Hex("tx_id", popped.tx.ID[:]).
 			Msg("Broadcasting out queued transaction.")
 	default:
-		var self common.AccountID
-		copy(self[:], b.node.Keys.PublicKey())
-
-		balance, _ := b.ledger.Accounts.ReadAccountBalance(self)
-
 		// If there is nothing we need to broadcast urgently, then broadcast
 		// a nop (if we have previously broadcasted a transaction beforehand).
 		//
 		// If we do not have any balance either, do not broadcast any nops.
-		if !b.broadcastingNops || balance < sys.TransactionFeeAmount {
+		if !b.broadcastingNops {
 			time.Sleep(10 * time.Millisecond)
+			return
+		}
+
+		var self common.AccountID
+		copy(self[:], b.node.Keys.PublicKey())
+
+		if balance, _ := b.ledger.Accounts.ReadAccountBalance(self); balance < sys.TransactionFeeAmount {
+			time.Sleep(100 * time.Millisecond)
 			return
 		}
 
@@ -204,20 +210,20 @@ func (b *broadcaster) gossiping(logger zerolog.Logger) {
 	}
 }
 
-func (b *broadcaster) query(preferred *wavelet.Transaction) error {
+func (b *broadcaster) query(preferred *wavelet.Transaction) (bool, error) {
 	opcodeQueryResponse, err := noise.OpcodeFromMessage((*QueryResponse)(nil))
 	if err != nil {
-		return errors.Wrap(err, "broadcast: response opcode not registered")
+		return false, errors.Wrap(err, "broadcast: response opcode not registered")
 	}
 
 	peerIDs, err := selectPeers(b.node, sys.SnowballQueryK)
 	if err != nil {
-		return errors.Wrap(err, "broadcast: cannot query")
+		return false, errors.Wrap(err, "broadcast: cannot query")
 	}
 
 	responses, err := broadcast(b.node, peerIDs, QueryRequest{tx: preferred}, opcodeQueryResponse)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	var accountIDs []common.AccountID
@@ -249,11 +255,13 @@ func (b *broadcaster) query(preferred *wavelet.Transaction) error {
 		counts[preferredID] += weights[account]
 	}
 
-	if err := b.ledger.ProcessQuery(counts, transactions); err != nil {
-		return errors.Wrap(err, "broadcast: failed to process query results")
+	finalized, err := b.ledger.ProcessQuery(counts, transactions)
+
+	if err != nil {
+		return false, errors.Wrap(err, "broadcast: failed to process query results")
 	}
 
-	return nil
+	return finalized, nil
 }
 
 func (b *broadcaster) gossip(tx *wavelet.Transaction) error {
