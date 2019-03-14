@@ -75,7 +75,7 @@ func (q QueryResponse) Write() []byte {
 }
 
 type GossipRequest struct {
-	tx *wavelet.Transaction
+	TX *wavelet.Transaction
 }
 
 func (q GossipRequest) Read(reader payload.Reader) (noise.Message, error) {
@@ -85,14 +85,14 @@ func (q GossipRequest) Read(reader payload.Reader) (noise.Message, error) {
 	}
 
 	tx := msg.(wavelet.Transaction)
-	q.tx = &tx
+	q.TX = &tx
 
 	return q, nil
 }
 
 func (q GossipRequest) Write() []byte {
-	if q.tx != nil {
-		return q.tx.Write()
+	if q.TX != nil {
+		return q.TX.Write()
 	}
 
 	return nil

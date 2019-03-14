@@ -265,7 +265,7 @@ func (b *broadcaster) gossip(tx *wavelet.Transaction) error {
 		return errors.New("broadcast: cannot gossip because not connected to any peers")
 	}
 
-	responses, err := broadcast(b.node, peerIDs, GossipRequest{tx: tx}, opcodeGossipResponse)
+	responses, err := broadcast(b.node, peerIDs, GossipRequest{TX: tx}, opcodeGossipResponse)
 	if err != nil {
 		return err
 	}
