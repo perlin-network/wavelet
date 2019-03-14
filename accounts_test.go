@@ -42,5 +42,5 @@ func TestSnappyDeterministic(t *testing.T) {
 		return bytes.Equal(snappy.Encode(nil, src[:]), snappy.Encode(nil, src[:]))
 	}
 
-	assert.NoError(t, quick.Check(fn, &quick.Config{MaxCount: 10000}))
+	assert.NoError(t, quick.Check(fn, &quick.Config{MaxCount: 1000}))
 }

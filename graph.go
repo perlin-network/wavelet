@@ -115,7 +115,7 @@ func (g *graph) reset(root *Transaction) {
 	g.Unlock()
 }
 
-func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
+func (g *graph) findEligibleParents(currentViewID uint64) (eligible []common.TransactionID) {
 	g.RLock()
 	defer g.RUnlock()
 
@@ -143,7 +143,7 @@ func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 					visited[childrenID] = struct{}{}
 				}
 			}
-		} else if popped.depth+sys.MaxEligibleParentsDepthDiff >= g.height {
+		} else if popped.depth+sys.MaxEligibleParentsDepthDiff >= g.height && (popped.ID == root.ID || popped.ViewID == currentViewID) {
 			// All eligible parents are within the graph depth [frontier_depth - max_depth_diff, frontier_depth].
 			eligible = append(eligible, popped.ID)
 		}

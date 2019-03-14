@@ -36,7 +36,7 @@ func TestGraph(t *testing.T) {
 	_, found := g.lookupTransaction(tx.ID)
 	assert.True(t, found)
 
-	eligibleParents := g.findEligibleParents()
+	eligibleParents := g.findEligibleParents(0)
 	assert.Equal(t, 1, len(eligibleParents))
 	assert.Equal(t, genesis.ID, eligibleParents[0])
 
@@ -73,7 +73,7 @@ func TestGraphReset(t *testing.T) {
 	_, found = g.lookupTransaction(resetTx.ID)
 	assert.True(t, found)
 
-	eligibleParents := g.findEligibleParents()
+	eligibleParents := g.findEligibleParents(0)
 	assert.Equal(t, 1, len(eligibleParents))
 	assert.Equal(t, resetTx.ID, eligibleParents[0])
 

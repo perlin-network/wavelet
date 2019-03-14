@@ -123,7 +123,7 @@ func (l *Ledger) NewTransaction(keys identity.Keypair, tag byte, payload []byte)
 func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transaction) error {
 	copy(tx.Sender[:], keys.PublicKey())
 
-	tx.ParentIDs = l.view.findEligibleParents()
+	tx.ParentIDs = l.view.findEligibleParents(l.ViewID())
 	if len(tx.ParentIDs) == 0 {
 		return errors.New("wavelet: no eligible parents currently available, please try again")
 	}
@@ -206,27 +206,27 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 	/** PARENT ASSERTIONS **/
 
 	//// Assert that we have all of the transactions parents in our view-graph.
-	//if err := l.bufferIfMissingAncestors(tx); err != nil {
-	//	return errors.Wrap(VoteRejected, err.Error())
-	//}
+	if err := l.bufferIfMissingAncestors(tx); err != nil {
+		return errors.Wrap(VoteRejected, err.Error())
+	}
 
-	//// Assert that the transaction has a sane timestamp with respect to its parents.
-	//if err := AssertValidTimestamp(l.view, tx); err != nil {
-	//	return errors.Wrap(VoteRejected, err.Error())
-	//}
-	//
-	//// Assert that the transactions parents are at an eligible graph depth.
-	//if err := AssertValidParentDepths(l.view, tx); err != nil {
-	//	return errors.Wrap(VoteRejected, err.Error())
-	//}
+	// Assert that the transaction has a sane timestamp with respect to its parents.
+	if err := AssertValidTimestamp(l.view, tx); err != nil {
+		return errors.Wrap(VoteRejected, err.Error())
+	}
+
+	// Assert that the transactions parents are at an eligible graph depth.
+	if err := AssertValidParentDepths(l.view, tx); err != nil {
+		return errors.Wrap(VoteRejected, err.Error())
+	}
 
 	// Assert that we have the entire transactions ancestry, which is needed
 	// to collapse down the transaction.
-	//if critical {
-	//	if err := l.AssertCollapsible(tx); err != nil {
-	//		return errors.Wrap(VoteRejected, err.Error())
-	//	}
-	//}
+	if critical {
+		if err := l.AssertCollapsible(tx); err != nil {
+			return errors.Wrap(VoteRejected, err.Error())
+		}
+	}
 
 	// Add the transaction to our view-graph if we have its parents in-store.
 	if err := l.view.addTransaction(tx); err != nil {
@@ -246,7 +246,7 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 		}
 	}
 
-	//l.revisitBufferedTransactions(tx)
+	l.revisitBufferedTransactions(tx)
 
 	return VoteAccepted
 }

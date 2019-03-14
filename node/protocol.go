@@ -1,7 +1,6 @@
 package node
 
 import (
-	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/wavelet"
@@ -78,7 +77,7 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 	node.Set(keyBroadcaster, broadcaster)
 
 	syncer := newSyncer(node)
-	//syncer.init()
+	syncer.init()
 
 	node.Set(keySyncer, syncer)
 }
@@ -243,7 +242,6 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 }
 
 func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipRequest) {
-	fmt.Println("GOT")
 	res := new(GossipResponse)
 	defer func() {
 		if err := <-peer.SendMessageAsync(res); err != nil {
