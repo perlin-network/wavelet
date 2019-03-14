@@ -258,9 +258,9 @@ func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipReq
 	vote := ledger.ReceiveTransaction(req.TX)
 	res.vote = errors.Cause(vote) == wavelet.VoteAccepted
 
-	if logger := log.Consensus("vote"); !res.vote {
-		//	logger.Debug().Hex("tx_id", req.tx.ID[:]).Msg("Gave a positive vote to a transaction.")
-		//} else {
+	if logger := log.Consensus("vote"); res.vote {
+		//logger.Debug().Hex("tx_id", req.TX.ID[:]).Msg("Gave a positive vote to a transaction.")
+	} else {
 		logger.Warn().Hex("tx_id", req.TX.ID[:]).Err(vote).Msg("Gave a negative vote to a transaction.")
 	}
 

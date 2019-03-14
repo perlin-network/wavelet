@@ -1,6 +1,7 @@
 package node
 
 import (
+	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
@@ -33,7 +34,7 @@ func newBroadcaster(node *noise.Node) *broadcaster {
 	return &broadcaster{
 		node:             node,
 		ledger:           Ledger(node),
-		queue:            make(chan broadcastItem, 1024),
+		queue:            make(chan broadcastItem, 4096),
 		pause:            make(chan struct{}),
 		broadcastingNops: false,
 	}
@@ -41,7 +42,10 @@ func newBroadcaster(node *noise.Node) *broadcaster {
 
 func (b *broadcaster) Pause() {
 	b.Paused.Store(true)
+	fmt.Println("BEFORE PAUSE")
 	b.pause <- struct{}{}
+
+	fmt.Println("AFTER PUASE")
 }
 
 func (b *broadcaster) Resume() {
@@ -62,7 +66,7 @@ func (b *broadcaster) Broadcast(tx *wavelet.Transaction) error {
 
 	select {
 	case b.queue <- item:
-	case <-time.After(3 * time.Second):
+	default:
 		return errors.New("broadcaster: queue is full")
 	}
 
@@ -85,6 +89,8 @@ func (b *broadcaster) loop() {
 		select {
 		case <-b.pause: // Empty out broadcast queue and stop worker.
 			n := len(b.queue)
+
+			fmt.Println("PAUSE SHOULD BE CALLED")
 
 			for i := 0; i < n; i++ {
 				item := <-b.queue
@@ -129,32 +135,32 @@ func (b *broadcaster) gossiping(logger zerolog.Logger) {
 			Bool("broadcast_nops", b.broadcastingNops).
 			Hex("tx_id", popped.tx.ID[:]).
 			Msg("Broadcasting out queued transaction.")
-	default:
-		var self common.AccountID
-		copy(self[:], b.node.Keys.PublicKey())
-
-		balance, _ := b.ledger.Accounts.ReadAccountBalance(self)
-
-		// If there is nothing we need to broadcast urgently, then broadcast
-		// a nop (if we have previously broadcasted a transaction beforehand).
+		//default:
+		//	var self common.AccountID
+		//	copy(self[:], b.node.Keys.PublicKey())
 		//
-		// If we do not have any balance either, do not broadcast any nops.
-		if !b.broadcastingNops || balance < sys.TransactionFeeAmount {
-			time.Sleep(100 * time.Millisecond)
-			return
-		}
-
-		nop, err := b.ledger.NewTransaction(b.node.Keys, sys.TagNop, nil)
-		if err != nil {
-			return
-		}
-
-		item = broadcastItem{tx: nop, result: nil}
-
-		logger.Log().
-			Bool("broadcast_nops", true).
-			Hex("tx_id", nop.ID[:]).
-			Msg("Broadcasting out nop transaction.")
+		//	balance, _ := b.ledger.Accounts.ReadAccountBalance(self)
+		//
+		//	// If there is nothing we need to broadcast urgently, then broadcast
+		//	// a nop (if we have previously broadcasted a transaction beforehand).
+		//	//
+		//	// If we do not have any balance either, do not broadcast any nops.
+		//	if !b.broadcastingNops || balance < sys.TransactionFeeAmount {
+		//		time.Sleep(100 * time.Millisecond)
+		//		return
+		//	}
+		//
+		//	nop, err := b.ledger.NewTransaction(b.node.Keys, sys.TagNop, nil)
+		//	if err != nil {
+		//		return
+		//	}
+		//
+		//	item = broadcastItem{tx: nop, result: nil}
+		//
+		//	logger.Log().
+		//		Bool("broadcast_nops", true).
+		//		Hex("tx_id", nop.ID[:]).
+		//		Msg("Broadcasting out nop transaction.")
 	}
 
 	if b.ledger.ViewID() != item.tx.ViewID {
