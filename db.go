@@ -1,5 +1,7 @@
 package wavelet
 
+import "golang.org/x/crypto/blake2b"
+
 var (
 	keyAccounts       = [...]byte{0x1}
 	keyAccountBalance = [...]byte{0x2}
@@ -15,3 +17,13 @@ var (
 
 	keyGraphRoot = [...]byte{0x10}
 )
+
+func hashOfParentIDs(tx *Transaction) [blake2b.Size256]byte {
+	var buf []byte
+
+	for _, id := range tx.ParentIDs {
+		buf = append(buf, id[:]...)
+	}
+
+	return blake2b.Sum256(buf)
+}

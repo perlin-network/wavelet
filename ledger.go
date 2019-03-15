@@ -34,7 +34,7 @@ type Ledger struct {
 	bufferMu sync.Mutex
 	resetMu  sync.Mutex
 
-	cacheCollapsible *lru
+	cacheCollapseTransactions *lru
 }
 
 func NewLedger(kv store.KV, genesisPath string) *Ledger {
@@ -53,7 +53,7 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 		awaiting: make(map[common.TransactionID][]common.TransactionID),
 		buffered: make(map[common.TransactionID]*Transaction),
 
-		cacheCollapsible: newLRU(128),
+		cacheCollapseTransactions: newLRU(128),
 	}
 
 	buf, err := kv.Get(keyLedgerGenesis[:])
@@ -145,7 +145,11 @@ func (l *Ledger) AttachSenderToTransaction(keys identity.Keypair, tx *Transactio
 
 	if tx.IsCritical(l.Difficulty()) {
 		// Insert account state Merkle tree root.
-		snapshot := l.collapseTransactions(tx.ParentIDs, false)
+		snapshot, err := l.collapseTransactions(tx, false)
+		if err != nil {
+			return errors.Wrap(err, "wavelet: unable to collapse ancestry to create critical tx")
+		}
+
 		tx.AccountsMerkleRoot = snapshot.tree.Checksum()
 
 		// Insert difficulty timestamps.
@@ -360,12 +364,10 @@ func (l *Ledger) AssertInView(tx *Transaction) error {
 // Merkle root hash which is equivalent to the provided transactions Merkle root
 // hash.
 func (l *Ledger) AssertCollapsible(tx *Transaction) error {
-	if collapsible, hit := l.cacheCollapsible.load(tx.ID); hit && collapsible.(bool) {
-		return nil
+	snapshot, err := l.collapseTransactions(tx, false)
+	if err != nil {
+		return err
 	}
-
-	// If the transaction is critical, assert the transaction has a valid accounts merkle root.
-	snapshot := l.collapseTransactions(tx.ParentIDs, false)
 
 	if snapshot.tree.Checksum() != tx.AccountsMerkleRoot {
 		return errors.Errorf("tx is critical but has invalid accounts root "+
@@ -373,7 +375,6 @@ func (l *Ledger) AssertCollapsible(tx *Transaction) error {
 			"but the tx has %x as a root", snapshot.tree.Checksum(), tx.AccountsMerkleRoot)
 	}
 
-	l.cacheCollapsible.put(tx.ID, true)
 	return nil
 }
 
@@ -428,21 +429,28 @@ func (l *Ledger) ProcessQuery(counts map[common.TransactionID]float64, transacti
 	// the view-graph, increment the current view ID, and update the current ledgers
 	// difficulty.
 	if l.resolver.Decided() {
-		root := l.resolver.Preferred()
-		old := l.Root()
+		newRoot := l.resolver.Preferred()
+		oldRoot := l.Root()
 
-		if err := l.Reset(root, l.collapseTransactions(root.ParentIDs, true)); err != nil {
+		newState, err := l.collapseTransactions(newRoot, true)
+		if err != nil {
+			l.resolver.Reset()
+
+			return false, errors.Wrap(err, "wavelet: unable to collapse down new state after consensus")
+		}
+
+		if err := l.Reset(newRoot, newState); err != nil {
 			return false, errors.Wrap(err, "wavelet: failed to reset ledger to advance to new view ID")
 		}
 
 		logger := log.Consensus("round_end")
 		logger.Info().
-			Uint64("old_view_id", old.ViewID+1).
-			Uint64("new_view_id", root.ViewID+1).
-			Hex("new_root", root.ID[:]).
-			Hex("old_root", old.ID[:]).
-			Hex("new_accounts_checksum", root.AccountsMerkleRoot[:]).
-			Hex("old_accounts_checksum", old.AccountsMerkleRoot[:]).
+			Uint64("old_view_id", oldRoot.ViewID+1).
+			Uint64("new_view_id", newRoot.ViewID+1).
+			Hex("new_root", newRoot.ID[:]).
+			Hex("old_root", oldRoot.ID[:]).
+			Hex("new_accounts_checksum", newRoot.AccountsMerkleRoot[:]).
+			Hex("old_accounts_checksum", oldRoot.AccountsMerkleRoot[:]).
 			Msg("Finalized consensus round, and incremented view ID.")
 
 		return true, nil
@@ -459,7 +467,11 @@ func (l *Ledger) RegisterProcessor(tag byte, processor TransactionProcessor) {
 // applies all valid ones to a snapshot of all accounts stored in the ledger.
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
-func (l *Ledger) collapseTransactions(parentIDs []common.AccountID, logging bool) accounts {
+func (l *Ledger) collapseTransactions(tx *Transaction, logging bool) (accounts, error) {
+	if collapsed, hit := l.cacheCollapseTransactions.load(hashOfParentIDs(tx)); hit {
+		return collapsed.(accounts), nil
+	}
+
 	ss := l.Accounts.SnapshotAccounts()
 	ss.SetViewID(l.Root().ViewID + 1)
 
@@ -468,9 +480,11 @@ func (l *Ledger) collapseTransactions(parentIDs []common.AccountID, logging bool
 
 	q := queue.New()
 
-	for _, parentID := range parentIDs {
+	for _, parentID := range tx.ParentIDs {
 		if parent, exists := l.view.lookupTransaction(parentID); exists {
 			q.PushBack(parent)
+		} else {
+			return ss, errors.New("not all ancestry of tx provided are available")
 		}
 
 		visited[parentID] = struct{}{}
@@ -485,6 +499,8 @@ func (l *Ledger) collapseTransactions(parentIDs []common.AccountID, logging bool
 			if _, seen := visited[parentID]; !seen {
 				if parent, exists := l.view.lookupTransaction(parentID); exists {
 					q.PushBack(parent)
+				} else {
+					return ss, errors.New("not all ancestry of tx provided are available")
 				}
 
 				visited[parentID] = struct{}{}
@@ -521,7 +537,8 @@ func (l *Ledger) collapseTransactions(parentIDs []common.AccountID, logging bool
 		}
 	}
 
-	return ss
+	l.cacheCollapseTransactions.put(hashOfParentIDs(tx), ss)
+	return ss, nil
 }
 
 func (l *Ledger) applyTransactionToSnapshot(ss accounts, tx *Transaction) error {
