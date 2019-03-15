@@ -28,11 +28,14 @@ type Ledger struct {
 
 	processors map[byte]TransactionProcessor
 
-	awaiting map[common.TransactionID][]common.TransactionID
-	buffered map[common.TransactionID]*Transaction
+	// Variables to do with buffering for missing transactions.
+	awaiting  map[common.TransactionID][]common.TransactionID
+	buffered  map[common.TransactionID]*Transaction
+	checked   map[common.TransactionID]struct{}
+	bufferMu  sync.Mutex
+	checkedMu sync.Mutex
 
-	bufferMu sync.Mutex
-	resetMu  sync.Mutex
+	resetMu sync.Mutex
 
 	cacheCollapseTransactions *lru
 }
@@ -52,6 +55,7 @@ func NewLedger(kv store.KV, genesisPath string) *Ledger {
 
 		awaiting: make(map[common.TransactionID][]common.TransactionID),
 		buffered: make(map[common.TransactionID]*Transaction),
+		checked:  make(map[common.TransactionID]struct{}),
 
 		cacheCollapseTransactions: newLRU(128),
 	}
@@ -261,8 +265,10 @@ func (l *Ledger) ReceiveTransaction(tx *Transaction) error {
 // If not, we buffer the transaction such that some day, once we have its
 // parents, we will attempt to re-add the transaction to the view-graph.
 func (l *Ledger) bufferIfMissingAncestors(tx *Transaction) error {
-	visited := make(map[common.TransactionID]struct{})
-	visited[l.Root().ID] = struct{}{}
+	l.checkedMu.Lock()
+	defer l.checkedMu.Unlock()
+
+	l.checked[l.Root().ID] = struct{}{}
 
 	q := queue.New()
 
@@ -275,19 +281,19 @@ func (l *Ledger) bufferIfMissingAncestors(tx *Transaction) error {
 			missing = append(missing, parentID)
 		}
 
-		visited[parentID] = struct{}{}
+		l.checked[parentID] = struct{}{}
 	}
 
 	for q.Len() > 0 {
 		popped := q.PopFront().(*Transaction)
 
 		for _, parentID := range popped.ParentIDs {
-			if _, seen := visited[parentID]; !seen {
+			if _, seen := l.checked[parentID]; !seen {
 				if parent, exists := l.view.lookupTransaction(parentID); exists {
 					q.PushBack(parent)
 				}
 
-				visited[parentID] = struct{}{}
+				l.checked[parentID] = struct{}{}
 			}
 		}
 
@@ -402,6 +408,10 @@ func (l *Ledger) Reset(newRoot *Transaction, newState accounts) error {
 	l.awaiting = make(map[common.TransactionID][]common.TransactionID)
 	l.buffered = make(map[common.TransactionID]*Transaction)
 	l.bufferMu.Unlock()
+
+	l.checkedMu.Lock()
+	l.checked = make(map[common.TransactionID]struct{})
+	l.checkedMu.Unlock()
 
 	// Update ledgers difficulty.
 	original, adjusted := l.Difficulty(), computeNextDifficulty(newRoot)
