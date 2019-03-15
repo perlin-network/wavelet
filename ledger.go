@@ -758,6 +758,10 @@ func (l *Ledger) QueryMissingTransactions() ([]common.TransactionID, bool) {
 	var ids []common.TransactionID
 
 	for id := range l.awaiting {
+		if _, buffered := l.buffered[id]; buffered {
+			continue
+		}
+
 		ids = append(ids, id)
 
 		// Only request at most 255 awaiting transactions.
