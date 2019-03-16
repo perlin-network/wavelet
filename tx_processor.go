@@ -6,9 +6,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-type TransactionProcessor interface {
-	OnApplyTransaction(ctx *TransactionContext) error
-}
+type TransactionProcessor func(ctx *TransactionContext) error
 
 type TransactionContext struct {
 	accounts accounts
@@ -149,7 +147,7 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 			return errors.Errorf("wavelet: transaction processor not registered for tag %d", c.tx.Tag)
 		}
 
-		err := processor.OnApplyTransaction(c)
+		err := processor(c)
 		if err != nil {
 			return errors.Wrap(err, "failed to apply transaction")
 		}

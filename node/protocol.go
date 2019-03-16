@@ -64,10 +64,10 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 	kv := store.NewInmem()
 
 	ledger := wavelet.NewLedger(kv, genesisPath)
-	ledger.RegisterProcessor(sys.TagNop, new(wavelet.NopProcessor))
-	ledger.RegisterProcessor(sys.TagTransfer, new(wavelet.TransferProcessor))
-	ledger.RegisterProcessor(sys.TagContract, new(wavelet.ContractProcessor))
-	ledger.RegisterProcessor(sys.TagStake, new(wavelet.StakeProcessor))
+	ledger.RegisterProcessor(sys.TagNop, wavelet.ProcessNopTransaction)
+	ledger.RegisterProcessor(sys.TagTransfer, wavelet.ProcessTransferTransaction)
+	ledger.RegisterProcessor(sys.TagContract, wavelet.ProcessContractTransaction)
+	ledger.RegisterProcessor(sys.TagStake, wavelet.ProcessStakeTransaction)
 
 	node.Set(keyLedger, ledger)
 

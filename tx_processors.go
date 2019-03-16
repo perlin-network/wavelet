@@ -6,11 +6,53 @@ import (
 	"github.com/pkg/errors"
 )
 
-var _ TransactionProcessor = (*TransferProcessor)(nil)
+func ProcessNopTransaction(ctx *TransactionContext) error {
+	return nil
+}
 
-type TransferProcessor struct{}
+func ProcessContractTransaction(ctx *TransactionContext) error {
+	ctx.WriteAccountContractCode(ctx.Transaction().ID, ctx.Transaction().Payload)
+	return nil
+}
 
-func (TransferProcessor) OnApplyTransaction(ctx *TransactionContext) error {
+func ProcessStakeTransaction(ctx *TransactionContext) error {
+	tx := ctx.Transaction()
+
+	raw, err := payload.NewReader(tx.Payload).ReadUint64()
+
+	if err != nil {
+		return errors.Wrap(err, "stake: failed to decode stake delta amount")
+	}
+
+	balance, _ := ctx.ReadAccountBalance(tx.Sender)
+	stake, _ := ctx.ReadAccountStake(tx.Sender)
+
+	delta := int64(raw)
+
+	if delta >= 0 {
+		delta := uint64(delta)
+
+		if balance < delta {
+			return errors.New("stake: balance < delta")
+		}
+
+		ctx.WriteAccountBalance(tx.Sender, balance-delta)
+		ctx.WriteAccountStake(tx.Sender, stake+delta)
+	} else {
+		delta := uint64(-delta)
+
+		if stake < delta {
+			return errors.New("stake: stake < delta")
+		}
+
+		ctx.WriteAccountBalance(tx.Sender, stake-delta)
+		ctx.WriteAccountBalance(tx.Sender, balance+delta)
+	}
+
+	return nil
+}
+
+func ProcessTransferTransaction(ctx *TransactionContext) error {
 	tx := ctx.Transaction()
 
 	reader := payload.NewReader(tx.Payload)
