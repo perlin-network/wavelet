@@ -238,6 +238,9 @@ func (t *Tree) Commit() error {
 }
 
 func (t *Tree) CollectGarbage(historyDepth uint64) {
+	t.Lock()
+	defer t.Unlock()
+
 	index := t.getNextOldRootIndex()
 	if index == 0 {
 		return
