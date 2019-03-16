@@ -359,8 +359,10 @@ func (l *Ledger) revisitBufferedTransactions(tx *Transaction) {
 // AssertInView asserts if the transaction was proposed and broadcasted
 // at the present view ID our ledger is at.
 func (l *Ledger) AssertInView(tx *Transaction) error {
-	if tx.ViewID != l.ViewID() {
-		return errors.Errorf("tx has view ID %d, but current view ID is %d", tx.ViewID, l.ViewID())
+	if tx.IsCritical(l.Difficulty()) && tx.ViewID != l.ViewID() {
+		return errors.Errorf("tx is critical and has view ID %d, but current view ID is %d", tx.ViewID, l.ViewID())
+	} else if tx.ViewID < l.ViewID() {
+		return errors.Errorf("tx has view ID %d, which is less than our current view ID %D", tx.ViewID, l.ViewID())
 	}
 
 	return nil

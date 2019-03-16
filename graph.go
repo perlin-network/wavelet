@@ -107,10 +107,10 @@ func (g *graph) reset(root *Transaction) {
 	g.height = 0
 	root.depth = 0
 
-	// Prune every 5 resets.
+	// Prune every 30 resets.
 	g.resetCounter++
 
-	if g.resetCounter >= 3 {
+	if g.resetCounter >= 30 {
 		logger := log.Consensus("prune")
 		logger.Debug().
 			Int("num_tx", len(g.transactions)).

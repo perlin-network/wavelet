@@ -4,11 +4,8 @@ import (
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
-	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"go.uber.org/atomic"
-	"runtime"
-	"sync"
 	"time"
 )
 
@@ -22,46 +19,53 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 	}()
 
 	return func(client *wctl.Client) ([]wctl.SendTransactionResponse, error) {
-		numWorkers := runtime.NumCPU()
-
-		var wg sync.WaitGroup
-		wg.Add(numWorkers)
-
-		chRes := make(chan wctl.SendTransactionResponse, numWorkers)
-		chErr := make(chan error, numWorkers)
-
-		for i := 0; i < numWorkers; i++ {
-			go func() {
-				defer wg.Done()
-
-				res, err := client.SendTransaction(sys.TagStake, payload.NewWriter(nil).WriteUint64(1).Bytes())
-				if err != nil {
-					chRes <- res
-					chErr <- err
-				}
-
-				chRes <- res
-				chErr <- nil
-			}()
+		res, err := client.SendTransaction(sys.TagStake, payload.NewWriter(nil).WriteUint64(1).Bytes())
+		if err != nil {
+			return nil, err
 		}
 
-		wg.Wait()
+		tps.Add(1)
 
-		var responses []wctl.SendTransactionResponse
-		var err error
+		return []wctl.SendTransactionResponse{res}, nil
 
-		for i := 0; i < numWorkers; i++ {
-			if e := <-chErr; err == nil {
-				err = e
-			} else {
-				err = errors.Wrap(err, e.Error())
-			}
+		//numWorkers := runtime.NumCPU()
+		//
+		//var wg sync.WaitGroup
+		//wg.Add(numWorkers)
+		//
+		//chRes := make(chan wctl.SendTransactionResponse, numWorkers)
+		//chErr := make(chan error, numWorkers)
+		//
+		//for i := 0; i < numWorkers; i++ {
+		//	go func() {
+		//		defer wg.Done()
+		//
+		//		res, err := client.SendTransaction(sys.TagStake, payload.NewWriter(nil).WriteUint64(1).Bytes())
+		//		if err != nil {
+		//			chRes <- res
+		//			chErr <- err
+		//		}
+		//
+		//		chRes <- res
+		//		chErr <- nil
+		//	}()
+		//}
+		//
+		//wg.Wait()
+		//
+		//var responses []wctl.SendTransactionResponse
+		//var err error
+		//
+		//for i := 0; i < numWorkers; i++ {
+		//	if e := <-chErr; err == nil {
+		//		err = e
+		//	} else {
+		//		err = errors.Wrap(err, e.Error())
+		//	}
+		//
+		//	responses = append(responses, <-chRes)
+		//}
 
-			responses = append(responses, <-chRes)
-		}
-
-		tps.Add(uint64(numWorkers))
-
-		return responses, nil
+		//return responses, nil
 	}
 }
