@@ -2,16 +2,22 @@ package avl
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
+	"math"
 	"sync"
 )
 
-var NodeKeyPrefix = []byte("@")
+var NodeKeyPrefix = []byte("@1:")
+var NodeLastReferencePrefix = []byte("@2:")
+var OldRootsPrefix = []byte("@3:")
 var RootKey = []byte(".root")
+var NextOldRootIndexKey = []byte(".next_old_root")
 
 const DefaultCacheSize = 128
 const MaxWriteBatchSize = 1024
@@ -208,7 +214,20 @@ func (t *Tree) Commit() error {
 		batch.Clear()
 	}
 
+	{
+		oldRootID, err := t.kv.Get(RootKey)
+
+		// If we want to include null roots here, getOldRoot() also needs to be fixed.
+		if err == nil && len(oldRootID) == MerkleHashSize {
+			nextOldRootIndex := t.getNextOldRootIndex()
+			t.setOldRoot(nextOldRootIndex, oldRootID)
+			t.setNextOldRootIndex(nextOldRootIndex + 1)
+		}
+	}
+
 	if t.root != nil {
+		updated := t.root.updateBorderReferences(t)
+		log.Info().Uint64("updated", updated).Msg("Updated border references")
 		return t.kv.Put(RootKey, t.root.id[:])
 	}
 
@@ -216,6 +235,84 @@ func (t *Tree) Commit() error {
 	_ = t.kv.Delete(RootKey)
 
 	return nil
+}
+
+func (t *Tree) CollectGarbage(historyDepth uint64) {
+	index := t.getNextOldRootIndex()
+	if index == 0 {
+		return
+	}
+	index--
+
+	if index >= historyDepth {
+		index -= historyDepth
+	} else {
+		return
+	}
+
+	pendingRoots := make([][MerkleHashSize]byte, 0)
+
+	for i := index; i != math.MaxUint64; /* overflow */ i-- {
+		rootID, ok := t.getOldRoot(i)
+		if !ok {
+			break
+		}
+		pendingRoots = append(pendingRoots, rootID)
+		t.deleteOldRoot(i)
+	}
+
+	count := uint64(0)
+
+	for i := len(pendingRoots) - 1; i >= 0; i-- {
+		rootID := pendingRoots[i]
+		n := t.mustLoadNode(rootID)
+		count += n.recursivelyDestroy(t, n.viewID)
+	}
+
+	log.Info().Uint64("count", count).Msg("Garbage collected")
+}
+
+func (t *Tree) getNextOldRootIndex() uint64 {
+	nextOldRootIndexBuf, err := t.kv.Get(NextOldRootIndexKey)
+	if err != nil || len(nextOldRootIndexBuf) == 0 {
+		return 0
+	} else {
+		return binary.LittleEndian.Uint64(nextOldRootIndexBuf)
+	}
+}
+
+func (t *Tree) setNextOldRootIndex(x uint64) {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], x)
+	t.kv.Put(NextOldRootIndexKey, buf[:])
+}
+
+func (t *Tree) getOldRoot(idx uint64) ([MerkleHashSize]byte, bool) {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], idx)
+
+	out, err := t.kv.Get(append(OldRootsPrefix, buf[:]...))
+	if err != nil || len(out) == 0 {
+		return [MerkleHashSize]byte{}, false
+	} else {
+		var ret [MerkleHashSize]byte
+		copy(ret[:], out)
+		return ret, true
+	}
+}
+
+func (t *Tree) setOldRoot(idx uint64, value []byte) {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], idx)
+
+	t.kv.Put(append(OldRootsPrefix, buf[:]...), value)
+}
+
+func (t *Tree) deleteOldRoot(idx uint64) {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], idx)
+
+	t.kv.Delete(append(OldRootsPrefix, buf[:]...))
 }
 
 func (t *Tree) Checksum() [MerkleHashSize]byte {
@@ -256,6 +353,48 @@ func (t *Tree) mustLoadNode(id [MerkleHashSize]byte) *node {
 		panic(err)
 	}
 	return n
+}
+
+func (t *Tree) deleteNodeAndMetadata(id [MerkleHashSize]byte) {
+	t.pending.Delete(id)
+	t.cache.remove(id)
+	t.kv.Delete(append(NodeKeyPrefix, id[:]...))
+	t.kv.Delete(append(NodeLastReferencePrefix, id[:]...))
+}
+
+func (t *Tree) loadLastReference(id [MerkleHashSize]byte) (uint64, bool, error) {
+	buf, err := t.kv.Get(append(NodeLastReferencePrefix, id[:]...))
+
+	if err != nil || len(buf) == 0 {
+		return 0, false, nil
+	}
+
+	if len(buf) != 8 {
+		return 0, false, errors.Errorf("avl: invalid encoding of last reference value")
+	}
+
+	return binary.LittleEndian.Uint64(buf), true, nil
+}
+
+func (t *Tree) mustLoadLastReference(id [MerkleHashSize]byte) (uint64, bool) {
+	x, found, err := t.loadLastReference(id)
+	if err != nil {
+		panic(err)
+	}
+	return x, found
+}
+
+func (t *Tree) storeLastReference(id [MerkleHashSize]byte, x uint64) error {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], x)
+	return t.kv.Put(append(NodeLastReferencePrefix, id[:]...), buf[:])
+}
+
+func (t *Tree) mustStoreLastReference(id [MerkleHashSize]byte, x uint64) {
+	err := t.storeLastReference(id, x)
+	if err != nil {
+		panic(err)
+	}
 }
 
 func (t *Tree) SetViewID(viewID uint64) {

@@ -160,5 +160,7 @@ func (a accounts) Commit() error {
 		return errors.Wrap(err, "accounts: failed to write")
 	}
 
+	a.tree.CollectGarbage(0)
+
 	return nil
 }

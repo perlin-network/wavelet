@@ -305,6 +305,51 @@ func (n *node) update(t *Tree, fn func(node *node)) *node {
 	return cpy
 }
 
+func (n *node) updateBorderReferences(t *Tree) uint64 {
+	if n.kind == NodeLeafValue {
+		return 0
+	}
+
+	left, right := t.mustLoadNode(n.left), t.mustLoadNode(n.right)
+	if left.viewID > n.viewID || right.viewID > n.viewID {
+		panic("BUG(avl): unexpected view id in tree")
+	}
+
+	var updated uint64
+
+	if left.viewID < n.viewID {
+		t.mustStoreLastReference(left.id, n.viewID)
+		updated++
+	} else {
+		updated += left.updateBorderReferences(t)
+	}
+
+	if right.viewID < n.viewID {
+		t.mustStoreLastReference(right.id, n.viewID)
+		updated++
+	} else {
+		updated += right.updateBorderReferences(t)
+	}
+
+	return updated
+}
+
+func (n *node) recursivelyDestroy(t *Tree, viewID uint64) uint64 {
+	lastRef, _ := t.mustLoadLastReference(n.id)
+	if lastRef > viewID {
+		return 0
+	}
+
+	t.deleteNodeAndMetadata(n.id)
+
+	if n.kind != NodeLeafValue {
+		left, right := t.mustLoadNode(n.left), t.mustLoadNode(n.right)
+		return left.recursivelyDestroy(t, viewID) + right.recursivelyDestroy(t, viewID) + 1
+	} else {
+		return 1
+	}
+}
+
 func (n *node) getString() string {
 	switch n.kind {
 	case NodeNonLeaf:
