@@ -638,7 +638,7 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 			if Error != nil {
 				Error <- errors.Wrap(err, "failed to sign off transaction")
 			}
-			return err
+			return nil
 		}
 
 		evt := EventGossip{
@@ -792,6 +792,17 @@ func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
 			// If we got a query while we were gossiping, check if the queried transaction
 			// is valid. If it is, then we prefer it and move on to querying.
 
+			// Respond to the query with either:
+			//
+			// a) the queriers transaction indicating that we will now query with their transaction.
+			// b) should they be in a prior view ID, the prior consensus rounds root.
+			// c) no response indicating that we do not prefer any transaction.
+
+			if root := l.v.loadRoot(); root.ViewID != 0 && evt.TX.ViewID == root.ViewID-1 {
+				evt.Response <- root
+				return nil
+			}
+
 			critical := evt.TX.IsCritical(l.v.loadDifficulty())
 
 			if !critical {
@@ -830,18 +841,7 @@ func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
 			// queried transaction and move on to querying.
 			if critical && l.r.Preferred() == nil && evt.TX.ID != l.v.loadRoot().ID {
 				l.r.Prefer(evt.TX)
-			}
-
-			// Respond to the query with either:
-			//
-			// a) the queriers transaction indicating that we will now query with their transaction.
-			// b) should they be in a prior view ID, the prior consensus rounds root.
-			// c) no response indicating that we do not prefer any transaction.
-
-			if root := l.v.loadRoot(); root.ViewID != 0 && evt.TX.ViewID == root.ViewID-1 {
-				evt.Response <- root
-			} else if preferred := l.r.Preferred(); preferred != nil {
-				evt.Response <- preferred
+				evt.Response <- &evt.TX
 			} else {
 				evt.Response <- nil
 			}
