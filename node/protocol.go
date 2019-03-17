@@ -1,21 +1,21 @@
 package node
 
 import (
+	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
-	"golang.org/x/crypto/blake2b"
+	"time"
 )
 
 var _ protocol.Block = (*block)(nil)
 
 const (
 	keyLedger      = "wavelet.ledger"
-	keyBroadcaster = "wavelet.broadcaster"
 	keySyncer      = "wavelet.syncer"
 	keyAuthChannel = "wavelet.auth.ch"
 
@@ -59,30 +59,16 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 	b.opcodeSyncTransactionRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncTransactionRequest)(nil))
 	b.opcodeSyncTransactionResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncTransactionResponse)(nil))
 
-	genesisPath := "config/genesis.json"
-
 	kv := store.NewInmem()
 
-	ledger := wavelet.NewLedger(kv, genesisPath)
-	ledger.RegisterProcessor(sys.TagNop, wavelet.ProcessNopTransaction)
-	ledger.RegisterProcessor(sys.TagTransfer, wavelet.ProcessTransferTransaction)
-	ledger.RegisterProcessor(sys.TagContract, wavelet.ProcessContractTransaction)
-	ledger.RegisterProcessor(sys.TagStake, wavelet.ProcessStakeTransaction)
-
+	ledger := wavelet.NewLedger(node.Keys, kv)
 	node.Set(keyLedger, ledger)
 
-	broadcaster := newBroadcaster(node)
-	broadcaster.init()
-
-	node.Set(keyBroadcaster, broadcaster)
-
-	syncer := newSyncer(node)
-	syncer.init()
-
-	node.Set(keySyncer, syncer)
+	go wavelet.Run(ledger)
 }
 
 func (b *block) OnBegin(p *protocol.Protocol, peer *noise.Peer) error {
+	go b.sendLoop(Ledger(peer.Node()), peer)
 	go b.receiveLoop(Ledger(peer.Node()), peer)
 
 	close(peer.LoadOrStore(keyAuthChannel, make(chan struct{})).(chan struct{}))
@@ -90,186 +76,158 @@ func (b *block) OnBegin(p *protocol.Protocol, peer *noise.Peer) error {
 	return nil
 }
 
-func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
-	chunkCache := newLRU(1024) // 1024 * 4MB
+func (b *block) sendLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
+	go b.broadcastGossip(ledger, peer.Node(), peer)
+	go b.broadcastQueries(ledger, peer.Node(), peer)
+}
 
+func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 	for {
 		select {
-		case req := <-peer.Receive(b.opcodeGossipRequest):
-			go handleGossipRequest(ledger, peer, req.(GossipRequest))
+		case msg := <-peer.Receive(b.opcodeGossipRequest):
+			go handleGossipRequest(ledger, peer, msg.(GossipRequest))
 		case req := <-peer.Receive(b.opcodeQueryRequest):
 			go handleQueryRequest(ledger, peer, req.(QueryRequest))
-		case req := <-peer.Receive(b.opcodeSyncViewRequest):
-			go handleSyncViewRequest(ledger, peer, req.(SyncViewRequest))
-		case req := <-peer.Receive(b.opcodeSyncDiffMetadataRequest):
-			go handleSyncDiffMetadataRequest(ledger, peer, req.(SyncDiffMetadataRequest), chunkCache)
-		case req := <-peer.Receive(b.opcodeSyncDiffChunkRequest):
-			go handleSyncDiffChunkRequest(ledger, peer, req.(SyncDiffChunkRequest), chunkCache)
-		case req := <-peer.Receive(b.opcodeSyncTransactionRequest):
-			go handleSyncTransactionRequest(ledger, peer, req.(SyncTransactionRequest))
 		}
 	}
 }
 
-func handleSyncTransactionRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncTransactionRequest) {
-	res := new(SyncTransactionResponse)
-	defer func() {
-		if err := <-peer.SendMessageAsync(res); err != nil {
-			_ = peer.DisconnectAsync()
-		}
-	}()
+func (b *block) broadcastGossip(ledger *wavelet.Ledger, node *noise.Node, peer *noise.Peer) {
+	for evt := range ledger.GossipOut {
+		func() {
+			defer close(evt.Result)
+			defer close(evt.Error)
 
-	for _, id := range req.ids {
-		tx, ok := ledger.FindTransaction(id)
+			peers, err := selectPeers(node, sys.SnowballQueryK)
+			if err != nil {
+				fmt.Println("failed to select peers while gossiping:", err)
+				evt.Error <- errors.Wrap(err, "failed to select peers while gossiping")
+				return
+			}
 
-		if !ok {
-			continue
-		}
+			responses, err := broadcast(node, peers, GossipRequest{TX: &evt.TX}, b.opcodeGossipResponse)
+			if err != nil {
+				fmt.Println("got an error gossiping:", err)
+				evt.Error <- errors.Wrap(err, "got an error while gossiping")
+				return
+			}
 
-		res.transactions = append(res.transactions, tx)
-	}
+			var votes []wavelet.VoteGossip
 
-	logger := log.Sync("tx_req")
-	logger.Debug().
-		Int("num_tx", len(req.ids)).
-		Msg("Responded to request for transactions data.")
-}
+			for i, res := range responses {
+				if res != nil {
+					res := res.(GossipResponse)
 
-func handleSyncDiffMetadataRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffMetadataRequest, chunkCache *lru) {
-	diff := ledger.Accounts.DumpDiff(req.viewID)
+					var voter common.AccountID
+					copy(voter[:], peers[i].PublicKey())
 
-	var chunkHashes [][blake2b.Size256]byte
+					votes = append(votes, wavelet.VoteGossip{
+						Voter: voter,
+						Ok:    res.vote,
+					})
+				}
+			}
 
-	for i := 0; i < len(diff); i += syncChunkSize {
-		end := i + syncChunkSize
-
-		if end > len(diff) {
-			end = len(diff)
-		}
-
-		hash := blake2b.Sum256(diff[i:end])
-
-		chunkCache.put(hash, diff[i:end])
-		chunkHashes = append(chunkHashes, hash)
-	}
-
-	if err := <-peer.SendMessageAsync(&SyncDiffMetadataResponse{
-		latestViewID: ledger.ViewID(),
-		chunkHashes:  chunkHashes,
-	}); err != nil {
-		_ = peer.DisconnectAsync()
+			evt.Result <- votes
+		}()
 	}
 }
 
-func handleSyncDiffChunkRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffChunkRequest, chunkCache *lru) {
-	var res SyncDiffChunkResponse
+func (b *block) broadcastQueries(ledger *wavelet.Ledger, node *noise.Node, peer *noise.Peer) {
+	for evt := range ledger.QueryOut {
+		func() {
+			defer close(evt.Result)
+			defer close(evt.Error)
 
-	if chunk, found := chunkCache.load(req.chunkHash); found {
-		res.diff = chunk.([]byte)
-		res.found = true
+			peers, err := selectPeers(node, sys.SnowballQueryK)
+			if err != nil {
+				fmt.Println("failed to select peers while querying:", err)
+				evt.Error <- errors.Wrap(err, "failed to select peers while querying")
+				return
+			}
 
-		providedHash := blake2b.Sum256(res.diff)
+			responses, err := broadcast(node, peers, QueryRequest{tx: &evt.TX}, b.opcodeQueryResponse)
+			if err != nil {
+				fmt.Println("got an error querying:", err)
+				evt.Error <- errors.Wrap(err, "got an error while querying")
+				return
+			}
 
-		logger := log.Node()
-		logger.Info().
-			Hex("requested_hash", req.chunkHash[:]).
-			Hex("provided_hash", providedHash[:]).
-			Msg("Responded to sync chunk request.")
+			var votes []wavelet.VoteQuery
+
+			for i, res := range responses {
+				if res != nil {
+					res := res.(QueryResponse)
+
+					var voter common.AccountID
+					copy(voter[:], peers[i].PublicKey())
+
+					vote := wavelet.VoteQuery{Voter: voter}
+
+					if res.preferred != nil {
+						vote.Preferred = *res.preferred
+					}
+
+					votes = append(votes, vote)
+				}
+			}
+
+			evt.Result <- votes
+		}()
 	}
-
-	if err := <-peer.SendMessageAsync(&res); err != nil {
-		_ = peer.DisconnectAsync()
-	}
-}
-
-func handleSyncViewRequest(ledger *wavelet.Ledger, peer *noise.Peer, req SyncViewRequest) {
-	res := new(SyncViewResponse)
-	defer func() {
-		if err := <-peer.SendMessageAsync(res); err != nil {
-			_ = peer.DisconnectAsync()
-		}
-	}()
-
-	syncer := Syncer(peer.Node())
-
-	if preferred := syncer.resolver.Preferred(); preferred == nil {
-		res.root = ledger.Root()
-	} else {
-		res.root = preferred
-	}
-
-	if err := wavelet.AssertValidTransaction(req.root); err != nil {
-		return
-	}
-
-	if ledger.ViewID() < req.root.ViewID && syncer.resolver.Preferred() == nil {
-		res.root = req.root
-		syncer.resolver.Prefer(req.root)
-	}
-
-	syncer.recordRootFromAccount(protocol.PeerID(peer), req.root.ID)
 }
 
 func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryRequest) {
-	res := new(QueryResponse)
+	var res QueryResponse
 	defer func() {
-		//if res.preferred != nil {
-		//	logger := log.Consensus("query")
-		//	logger.Debug().
-		//		Hex("preferred_id", res.preferred.ID[:]).
-		//		Uint64("view_id", ledger.ViewID()).
-		//		Msg("Responded to finality query with our preferred transaction.")
-		//}
-
 		if err := <-peer.SendMessageAsync(res); err != nil {
-			_ = peer.DisconnectAsync()
+			fmt.Println(err)
 		}
 	}()
 
-	if Broadcaster(peer.Node()).Paused.Load() {
-		return
+	evt := wavelet.EventIncomingQuery{TX: *req.tx, Response: make(chan *wavelet.Transaction, 1), Error: make(chan error, 1)}
+
+	select {
+	case <-time.After(3 * time.Second):
+		fmt.Println("timed out sending query request to ledger")
+	case ledger.QueryIn <- evt:
 	}
 
-	if req.tx.ViewID == ledger.ViewID()-1 {
-		res.preferred = ledger.Root()
-	} else if preferred := ledger.Resolver().Preferred(); preferred != nil {
-		res.preferred = preferred
-	}
-
-	if err := ledger.ReceiveTransaction(req.tx); errors.Cause(err) == wavelet.VoteAccepted {
-		res.preferred = req.tx
+	select {
+	case <-time.After(3 * time.Second):
+		fmt.Println("timed out getting query result from ledger")
+	case err := <-evt.Error:
+		fmt.Println("got an error processing query request:", err)
+	case res.preferred = <-evt.Response:
 	}
 }
 
 func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipRequest) {
-	res := new(GossipResponse)
+	var res GossipResponse
 	defer func() {
 		if err := <-peer.SendMessageAsync(res); err != nil {
-			_ = peer.DisconnectAsync()
+			fmt.Println(err)
 		}
 	}()
 
-	if Broadcaster(peer.Node()).Paused.Load() {
-		return
+	evt := wavelet.EventIncomingGossip{TX: *req.TX, Vote: make(chan error, 1)}
+
+	select {
+	case <-time.After(3 * time.Second):
+		fmt.Println("timed out sending gossip request to ledger")
+	case ledger.GossipIn <- evt:
 	}
 
-	//_, seen := ledger.FindTransaction(req.TX.ID)
+	select {
+	case <-time.After(3 * time.Second):
+		fmt.Println("timed out getting vote from ledger")
+	case err := <-evt.Vote:
+		res.vote = err == nil
 
-	vote := ledger.ReceiveTransaction(req.TX)
-	res.vote = errors.Cause(vote) == wavelet.VoteAccepted
-
-	if logger := log.Consensus("vote"); res.vote {
-		//logger.Debug().Hex("tx_id", req.TX.ID[:]).Msg("Gave a positive vote to a transaction.")
-	} else {
-		logger.Warn().Hex("tx_id", req.TX.ID[:]).Err(vote).Msg("Gave a negative vote to a transaction.")
+		if err != nil {
+			fmt.Println(err)
+		}
 	}
-
-	// Gossip transaction out to our peers just once. Ignore any errors if gossiping out fails.
-	//if !seen && res.vote {
-	//	go func() {
-	//		_ = BroadcastTransaction(peer.Node(), req.TX)
-	//	}()
-	//}
 }
 
 func (b *block) OnEnd(p *protocol.Protocol, peer *noise.Peer) error {
@@ -280,18 +238,6 @@ func WaitUntilAuthenticated(peer *noise.Peer) {
 	<-peer.LoadOrStore(keyAuthChannel, make(chan struct{})).(chan struct{})
 }
 
-func BroadcastTransaction(node *noise.Node, tx *wavelet.Transaction) error {
-	return Broadcaster(node).Broadcast(tx)
-}
-
 func Ledger(node *noise.Node) *wavelet.Ledger {
 	return node.Get(keyLedger).(*wavelet.Ledger)
-}
-
-func Broadcaster(node *noise.Node) *broadcaster {
-	return node.Get(keyBroadcaster).(*broadcaster)
-}
-
-func Syncer(node *noise.Node) *syncer {
-	return node.Get(keySyncer).(*syncer)
 }

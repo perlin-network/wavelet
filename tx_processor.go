@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
@@ -9,7 +10,7 @@ import (
 type TransactionProcessor func(ctx *TransactionContext) error
 
 type TransactionContext struct {
-	accounts accounts
+	tree *avl.Tree
 
 	balances map[common.AccountID]uint64
 	stakes   map[common.AccountID]uint64
@@ -22,9 +23,9 @@ type TransactionContext struct {
 	tx           *Transaction
 }
 
-func newTransactionContext(accounts accounts, tx *Transaction) *TransactionContext {
+func newTransactionContext(tree *avl.Tree, tx *Transaction) *TransactionContext {
 	ctx := &TransactionContext{
-		accounts: accounts,
+		tree:     tree,
 		balances: make(map[common.AccountID]uint64),
 		stakes:   make(map[common.AccountID]uint64),
 
@@ -48,15 +49,30 @@ func (c *TransactionContext) SendTransaction(tx *Transaction) {
 	c.transactions.PushBack(tx)
 }
 
+func (c *TransactionContext) read(id common.AccountID, key []byte) ([]byte, bool) {
+	buf, exists := c.tree.Lookup(append(keyAccounts[:], append(key, id[:]...)...))
+
+	if !exists {
+		return nil, false
+	}
+
+	return buf, true
+}
+
+func (c *TransactionContext) write(id common.AccountID, key, value []byte) {
+	c.tree.Insert(append(keyAccounts[:], append(key, id[:]...)...), value[:])
+}
+
 func (c *TransactionContext) ReadAccountBalance(id common.AccountID) (uint64, bool) {
 	if balance, ok := c.balances[id]; ok {
 		return balance, true
 	}
 
-	balance, exists := c.accounts.ReadAccountBalance(id)
+	balance, exists := ReadAccountBalance(c.tree, id)
 	if exists {
 		c.WriteAccountBalance(id, balance)
 	}
+
 	return balance, exists
 }
 
@@ -65,10 +81,11 @@ func (c *TransactionContext) ReadAccountStake(id common.AccountID) (uint64, bool
 		return stake, true
 	}
 
-	stake, exists := c.accounts.ReadAccountStake(id)
+	stake, exists := ReadAccountStake(c.tree, id)
 	if exists {
 		c.WriteAccountStake(id, stake)
 	}
+
 	return stake, exists
 }
 
@@ -77,10 +94,11 @@ func (c *TransactionContext) ReadAccountContractCode(id common.TransactionID) ([
 		return code, true
 	}
 
-	code, exists := c.accounts.ReadAccountContractCode(id)
+	code, exists := ReadAccountContractCode(c.tree, id)
 	if exists {
 		c.WriteAccountContractCode(id, code)
 	}
+
 	return code, exists
 }
 
@@ -89,10 +107,11 @@ func (c *TransactionContext) ReadAccountContractNumPages(id common.AccountID) (u
 		return numPages, true
 	}
 
-	numPages, exists := c.accounts.ReadAccountContractNumPages(id)
+	numPages, exists := ReadAccountContractNumPages(c.tree, id)
 	if exists {
 		c.WriteAccountContractNumPages(id, numPages)
 	}
+
 	return numPages, exists
 }
 
@@ -103,8 +122,7 @@ func (c *TransactionContext) ReadAccountContractPage(id common.AccountID, idx ui
 		}
 	}
 
-	page, exists := c.accounts.ReadAccountContractPage(id, idx)
-
+	page, exists := ReadAccountContractPage(c.tree, id, idx)
 	if exists {
 		c.WriteAccountContractPage(id, idx, page)
 	}
@@ -157,24 +175,24 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 	// the transactions context over to our accounts snapshot.
 
 	for id, balance := range c.balances {
-		c.accounts.WriteAccountBalance(id, balance)
+		WriteAccountBalance(c.tree, id, balance)
 	}
 
 	for id, stake := range c.stakes {
-		c.accounts.WriteAccountStake(id, stake)
+		WriteAccountStake(c.tree, id, stake)
 	}
 
 	for id, code := range c.contracts {
-		c.accounts.WriteAccountContractCode(id, code)
+		WriteAccountContractCode(c.tree, id, code)
 	}
 
 	for id, numPages := range c.contractNumPages {
-		c.accounts.WriteAccountContractNumPages(id, numPages)
+		WriteAccountContractNumPages(c.tree, id, numPages)
 	}
 
 	for id, pages := range c.contractPages {
 		for idx, page := range pages {
-			c.accounts.WriteAccountContractPage(id, idx, page)
+			WriteAccountContractPage(c.tree, id, idx, page)
 		}
 	}
 

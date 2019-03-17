@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"encoding/binary"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
@@ -8,6 +9,7 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
+	"go.uber.org/atomic"
 	"sync"
 )
 
@@ -22,7 +24,7 @@ type graph struct {
 	transactions map[common.TransactionID]*Transaction
 	children     map[common.TransactionID][]common.TransactionID
 
-	height uint64
+	height atomic.Uint64
 
 	kv store.KV
 
@@ -36,10 +38,16 @@ func newGraph(kv store.KV, genesis *Transaction) *graph {
 		children:     make(map[common.TransactionID][]common.TransactionID),
 	}
 
+	// Initialize difficulty if not exist.
+	if difficulty := g.loadDifficulty(); difficulty == 0 {
+		g.saveDifficulty(uint64(sys.MinDifficulty))
+	}
+
+	// Initialize genesis if not spawned.
 	if genesis != nil {
 		g.saveRoot(genesis)
-	} else {
-		genesis = g.loadRoot()
+	} else if genesis = g.loadRoot(); genesis == nil {
+		panic("genesis transaction must be specified")
 	}
 
 	g.transactions[genesis.ID] = genesis
@@ -86,8 +94,8 @@ func (g *graph) addTransaction(tx *Transaction) error {
 	tx.depth = maxDepth(parents) + 1
 
 	// Update the graphs frontier depth/height.
-	if g.height < tx.depth {
-		g.height = tx.depth
+	if g.height.Load() < tx.depth {
+		g.height.Store(tx.depth)
 	}
 
 	// Add the transaction to our view-graph.
@@ -103,9 +111,6 @@ func (g *graph) addTransaction(tx *Transaction) error {
 // the specified root (latest critical transaction of the entire ledger).
 func (g *graph) reset(root *Transaction) {
 	g.Lock()
-
-	g.height = 0
-	root.depth = 0
 
 	// Prune every 30 resets.
 	g.resetCounter++
@@ -123,14 +128,28 @@ func (g *graph) reset(root *Transaction) {
 		g.resetCounter = 0
 	}
 
+	g.height.Store(0)
+
+	root.depth = 0
 	g.transactions[root.ID] = root
+
+	original, adjusted := g.loadDifficulty(), computeNextDifficulty(root)
+
+	logger := log.Consensus("update_difficulty")
+	logger.Info().
+		Uint64("old_difficulty", original).
+		Uint64("new_difficulty", adjusted).
+		Msg("Ledger difficulty has been adjusted.")
+
+	g.saveDifficulty(adjusted)
+	g.saveViewID(root.ViewID + 1)
 
 	g.saveRoot(root)
 
 	g.Unlock()
 }
 
-func (g *graph) findEligibleParents(currentViewID uint64) (eligible []common.TransactionID) {
+func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 	g.RLock()
 	defer g.RUnlock()
 
@@ -146,6 +165,9 @@ func (g *graph) findEligibleParents(currentViewID uint64) (eligible []common.Tra
 	q := queue.New()
 	q.PushBack(root)
 
+	height := g.height.Load()
+	viewID := g.loadViewID()
+
 	for q.Len() > 0 {
 		popped := q.PopFront().(*Transaction)
 
@@ -158,7 +180,7 @@ func (g *graph) findEligibleParents(currentViewID uint64) (eligible []common.Tra
 					visited[childrenID] = struct{}{}
 				}
 			}
-		} else if popped.depth+sys.MaxEligibleParentsDepthDiff >= g.height && (popped.ID == root.ID || popped.ViewID == currentViewID) {
+		} else if popped.depth+sys.MaxEligibleParentsDepthDiff >= height && (popped.ID == root.ID || popped.ViewID == viewID) {
 			// All eligible parents are within the graph depth [frontier_depth - max_depth_diff, frontier_depth].
 			eligible = append(eligible, popped.ID)
 		}
@@ -195,20 +217,34 @@ func (g *graph) loadRoot() *Transaction {
 	return &tx
 }
 
-// Root returns the current root (the latest critical transaction) of the graph.
-func (g *graph) Root() *Transaction {
-	g.RLock()
-	root := g.loadRoot()
-	g.RUnlock()
+func (g *graph) loadViewID() uint64 {
+	buf, err := g.kv.Get(keyLedgerViewID[:])
+	if len(buf) != 8 || err != nil {
+		return 0
+	}
 
-	return root
+	return binary.LittleEndian.Uint64(buf)
 }
 
-// Height returns the current depth of the frontier of the graph.
-func (g *graph) Height() uint64 {
-	g.RLock()
-	height := g.height
-	g.RUnlock()
+func (g *graph) loadDifficulty() uint64 {
+	buf, err := g.kv.Get(keyLedgerDifficulty[:])
+	if len(buf) != 8 || err != nil {
+		return uint64(sys.MinDifficulty)
+	}
 
-	return height
+	return binary.LittleEndian.Uint64(buf)
+}
+
+func (g *graph) saveDifficulty(difficulty uint64) {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], difficulty)
+
+	_ = g.kv.Put(keyLedgerDifficulty[:], buf[:])
+}
+
+func (g *graph) saveViewID(viewID uint64) {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], viewID)
+
+	_ = g.kv.Put(keyLedgerViewID[:], buf[:])
 }

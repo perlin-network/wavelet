@@ -11,6 +11,7 @@ import (
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
@@ -241,11 +242,13 @@ func runServer(config *Config, logger zerolog.Logger) *noise.Node {
 		n, err := hex.Decode(privateKey, privateKey)
 		if err != nil {
 			logger.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", config.Wallet)
+			return nil
 		}
 
 		keys, err = skademlia.LoadKeys(privateKey[:n], DefaultC1, DefaultC2)
 		if err != nil {
 			logger.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", config.Wallet)
+			return nil
 		}
 
 		logger.Info().
@@ -264,6 +267,7 @@ func runServer(config *Config, logger zerolog.Logger) *noise.Node {
 	n, err := noise.NewNode(params)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to start listening for peers.")
+		return nil
 	}
 
 	n.OnPeerInit(func(node *noise.Node, peer *noise.Peer) error {
@@ -376,9 +380,11 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 				Uint64("timestamp", tx.Timestamp).
 				Msgf("Transaction: %s", cmd[1])
 		case "w":
+			snapshot := ledger.Snapshot()
+
 			if len(cmd) < 2 {
-				balance, _ := ledger.Accounts.ReadAccountBalance(nodeID)
-				stake, _ := ledger.Accounts.ReadAccountStake(nodeID)
+				balance, _ := wavelet.ReadAccountBalance(snapshot, nodeID)
+				stake, _ := wavelet.ReadAccountStake(snapshot, nodeID)
 
 				logger.Info().
 					Str("id", hex.EncodeToString(n.Keys.PublicKey())).
@@ -399,8 +405,8 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 			var accountID common.AccountID
 			copy(accountID[:], buf)
 
-			balance, _ := ledger.Accounts.ReadAccountBalance(accountID)
-			stake, _ := ledger.Accounts.ReadAccountStake(accountID)
+			balance, _ := wavelet.ReadAccountBalance(snapshot, accountID)
+			stake, _ := wavelet.ReadAccountStake(snapshot, accountID)
 
 			logger.Info().
 				Uint64("balance", balance).
@@ -481,19 +487,38 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 			}
 
 			go func() {
-				tx, err := ledger.NewTransaction(n.Keys, sys.TagTransfer, params.Bytes())
+				tx, err := wavelet.NewTransaction(n.Keys, sys.TagTransfer, params.Bytes())
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to create a transfer transaction.")
 					return
 				}
 
-				err = node.BroadcastTransaction(n, tx)
-				if err != nil {
-					logger.Error().Err(err).Msg("An error occurred while broadcasting a transfer transaction.")
-					return
+				evt := wavelet.EventBroadcast{
+					Tag:       tx.Tag,
+					Payload:   tx.Payload,
+					Creator:   tx.Creator,
+					Signature: tx.CreatorSignature,
+					Result:    make(chan wavelet.Transaction, 1),
+					Error:     make(chan error, 1),
 				}
 
-				logger.Info().Msgf("Success! Your payment transaction ID: %x", tx.ID)
+				select {
+				case <-time.After(3 * time.Second):
+					logger.Info().Msg("It looks like the broadcasting queue is full. Please try again.")
+					return
+				case ledger.BroadcastQueue <- evt:
+				}
+
+				select {
+				case <-time.After(3 * time.Second):
+					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
+					return
+				case err := <-evt.Error:
+					logger.Error().Err(err).Msg("An error occurred while broadcasting a transfer transaction.")
+					return
+				case tx = <-evt.Result:
+					logger.Info().Msgf("Success! Your payment transaction ID: %x", tx.ID)
+				}
 			}()
 
 		case "ps":
@@ -507,19 +532,38 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 			}
 
 			go func() {
-				tx, err := ledger.NewTransaction(n.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
+				tx, err := wavelet.NewTransaction(n.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to create a stake placement transaction.")
 					return
 				}
 
-				err = node.BroadcastTransaction(n, tx)
-				if err != nil {
-					logger.Error().Err(err).Msg("An error occurred while broadcasting a stake placement transaction.")
-					return
+				evt := wavelet.EventBroadcast{
+					Tag:       tx.Tag,
+					Payload:   tx.Payload,
+					Creator:   tx.Creator,
+					Signature: tx.CreatorSignature,
+					Result:    make(chan wavelet.Transaction, 1),
+					Error:     make(chan error, 1),
 				}
 
-				logger.Info().Msgf("Success! Your stake placement transaction ID: %x", tx.ID)
+				select {
+				case <-time.After(3 * time.Second):
+					logger.Info().Msg("It looks like the broadcasting queue is full. Please try again.")
+					return
+				case ledger.BroadcastQueue <- evt:
+				}
+
+				select {
+				case <-time.After(3 * time.Second):
+					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
+					return
+				case err := <-evt.Error:
+					logger.Error().Err(err).Msg("An error occurred while broadcasting a stake placement transaction.")
+					return
+				case tx = <-evt.Result:
+					logger.Info().Msgf("Success! Your stake placement transaction ID: %x", tx.ID)
+				}
 			}()
 		case "ws":
 			if len(cmd) < 2 {
@@ -532,19 +576,38 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 			}
 
 			go func() {
-				tx, err := ledger.NewTransaction(n.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
+				tx, err := wavelet.NewTransaction(n.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to create a stake withdrawal transaction.")
 					return
 				}
 
-				err = node.BroadcastTransaction(n, tx)
-				if err != nil {
-					logger.Error().Err(err).Msg("An error occurred while broadcasting a stake withdrawal transaction.")
-					return
+				evt := wavelet.EventBroadcast{
+					Tag:       tx.Tag,
+					Payload:   tx.Payload,
+					Creator:   tx.Creator,
+					Signature: tx.CreatorSignature,
+					Result:    make(chan wavelet.Transaction, 1),
+					Error:     make(chan error, 1),
 				}
 
-				logger.Info().Msgf("Success! Your stake withdrawal transaction ID: %x", tx.ID)
+				select {
+				case <-time.After(3 * time.Second):
+					logger.Info().Msg("It looks like the broadcasting queue is full. Please try again.")
+					return
+				case ledger.BroadcastQueue <- evt:
+				}
+
+				select {
+				case <-time.After(3 * time.Second):
+					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
+					return
+				case err := <-evt.Error:
+					logger.Error().Err(err).Msg("An error occurred while broadcasting a stake withdrawal transaction.")
+					return
+				case tx = <-evt.Result:
+					logger.Info().Msgf("Success! Your stake withdrawal transaction ID: %x", tx.ID)
+				}
 			}()
 		case "c":
 			if len(cmd) < 2 {
@@ -561,19 +624,38 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 			}
 
 			go func() {
-				tx, err := ledger.NewTransaction(n.Keys, sys.TagContract, code)
+				tx, err := wavelet.NewTransaction(n.Keys, sys.TagContract, code)
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to create a smart contract creation transaction.")
 					return
 				}
 
-				err = node.BroadcastTransaction(n, tx)
-				if err != nil {
-					logger.Error().Err(err).Msg("An error occurred while broadcasting a smart contract creation transaction.")
-					return
+				evt := wavelet.EventBroadcast{
+					Tag:       tx.Tag,
+					Payload:   tx.Payload,
+					Creator:   tx.Creator,
+					Signature: tx.CreatorSignature,
+					Result:    make(chan wavelet.Transaction, 1),
+					Error:     make(chan error, 1),
 				}
 
-				logger.Info().Msgf("Success! Your smart contract ID: %x", tx.ID)
+				select {
+				case <-time.After(3 * time.Second):
+					logger.Info().Msg("It looks like the broadcasting queue is full. Please try again.")
+					return
+				case ledger.BroadcastQueue <- evt:
+				}
+
+				select {
+				case <-time.After(3 * time.Second):
+					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
+					return
+				case err := <-evt.Error:
+					logger.Error().Err(err).Msg("An error occurred while broadcasting a smart contract creation transaction.")
+					return
+				case tx = <-evt.Result:
+					logger.Info().Msgf("Success! Your smart contracts ID is: %x", tx.ID)
+				}
 			}()
 		}
 	}

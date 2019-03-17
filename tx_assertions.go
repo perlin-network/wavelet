@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func AssertValidTransaction(tx *Transaction) error {
+func AssertValidTransaction(tx Transaction) error {
 	if tx.ID == common.ZeroTransactionID {
 		return errors.New("tx must not be empty")
 	}
@@ -59,7 +59,7 @@ func AssertValidTransaction(tx *Transaction) error {
 		return errors.New("tx has invalid creator signature")
 	}
 
-	cpy := *tx
+	cpy := tx
 	cpy.SenderSignature = common.ZeroSignature
 
 	if err := eddsa.Verify(tx.Sender[:], cpy.Write(), tx.SenderSignature[:]); err != nil {
@@ -69,9 +69,17 @@ func AssertValidTransaction(tx *Transaction) error {
 	return nil
 }
 
-// AssertValidParentDepths asserts that the transaction has parents at a valid graph
-// depth,and that we have the transactions parents in-store.
-func AssertValidParentDepths(view *graph, tx *Transaction) error {
+// AssertValidAncestry asserts that:
+//
+// 1) we have the transactions ancestral data in our view-graph.
+// 2) the transaction has parents that are at a valid graph depth.
+// 3) the transaction has a sane timestamp with respect to its ancestry.
+func AssertValidAncestry(view *graph, tx Transaction) error {
+	visited := make(map[common.TransactionID]struct{})
+	q := queue.New()
+
+	root := view.loadRoot()
+
 	for _, parentID := range tx.ParentIDs {
 		parent, stored := view.lookupTransaction(parentID)
 
@@ -79,31 +87,17 @@ func AssertValidParentDepths(view *graph, tx *Transaction) error {
 			return errors.New("do not have tx parents in view-graph")
 		}
 
+		// Check if the depth of each parents is acceptable.
 		if parent.depth+sys.MaxEligibleParentsDepthDiff < tx.depth {
 			return errors.New("tx parents exceeds max eligible parents depth diff")
 		}
-	}
 
-	return nil
-}
-
-// AssertValidTimestamp asserts that the transaction has a sane timestamp, and that we
-// have the transactions parents in-store.
-func AssertValidTimestamp(view *graph, tx *Transaction) error {
-	visited := make(map[common.TransactionID]struct{})
-	q := queue.New()
-
-	for _, parentID := range tx.ParentIDs {
-		if parent, stored := view.lookupTransaction(parentID); stored {
-			q.PushBack(parent)
-		} else {
-			return errors.New("do not have tx parents in view-graph")
-		}
+		q.PushBack(parent)
 
 		visited[parentID] = struct{}{}
 	}
 
-	for _, rootParentID := range view.Root().ParentIDs {
+	for _, rootParentID := range root.ParentIDs {
 		visited[rootParentID] = struct{}{}
 	}
 
@@ -130,8 +124,6 @@ func AssertValidTimestamp(view *graph, tx *Transaction) error {
 
 	median := computeMedianTimestamp(timestamps)
 
-	// Check that the transactions timestamp is within the range:
-	//
 	// TIMESTAMP ∈ (median(last 10 BFS-ordered transactions in terms of history), nodes current time + 2 hours]
 	if tx.Timestamp <= median {
 		return errors.Errorf("tx timestamp %d is lower than the median timestamp %d", tx.Timestamp, median)
@@ -144,18 +136,24 @@ func AssertValidTimestamp(view *graph, tx *Transaction) error {
 	return nil
 }
 
-func AssertValidCriticalTimestamps(tx *Transaction) error {
-	if size := computeCriticalTimestampWindowSize(tx.ViewID); len(tx.DifficultyTimestamps) != size {
-		return errors.Errorf("expected tx to only have %d timestamp(s), but has %d timestamp(s)", size, len(tx.DifficultyTimestamps))
+func AssertInView(view *graph, tx Transaction) error {
+	if ourViewID := view.loadViewID(); tx.ViewID != ourViewID {
+		return errors.Errorf("transaction was made for view ID %d, but our view ID is %d", tx.ViewID, ourViewID)
 	}
 
-	// TODO(kenta): check if we have stored a log of the last 10 critical
-	//  transactions timestamps to assert that the timestamps are the same.
+	if tx.IsCritical(view.loadDifficulty()) {
+		if size := computeCriticalTimestampWindowSize(tx.ViewID); len(tx.DifficultyTimestamps) != size {
+			return errors.Errorf("expected tx to have %d timestamp(s), but has %d timestamp(s)", size, len(tx.DifficultyTimestamps))
+		}
 
-	// Check that difficulty timestamps are in ascending order.
-	for i := 1; i < len(tx.DifficultyTimestamps); i++ {
-		if tx.DifficultyTimestamps[i] < tx.DifficultyTimestamps[i-1] {
-			return errors.New("tx critical timestamps are not in ascending order")
+		// TODO(kenta): check if we have stored a log of the last 10 critical
+		//  transactions timestamps to assert that the timestamps are the same.
+
+		// Check that difficulty timestamps are in ascending order.
+		for i := 1; i < len(tx.DifficultyTimestamps); i++ {
+			if tx.DifficultyTimestamps[i] < tx.DifficultyTimestamps[i-1] {
+				return errors.New("tx critical timestamps are not in ascending order")
+			}
 		}
 	}
 

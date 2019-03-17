@@ -13,6 +13,7 @@ require (
 	github.com/golang/snappy v0.0.1
 	github.com/google/uuid v1.1.0
 	github.com/gorilla/websocket v1.4.0
+	github.com/heptio/workgroup v0.8.0-beta.1
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
 	github.com/klauspost/compress v1.4.1 // indirect
 	github.com/klauspost/cpuid v1.2.0 // indirect

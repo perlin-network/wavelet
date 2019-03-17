@@ -129,6 +129,7 @@ func (g *Gateway) initSession(w http.ResponseWriter, r *http.Request) {
 	session, err := g.registry.newSession()
 	if err != nil {
 		g.render(w, r, ErrBadRequest(errors.Wrap(err, "failed to create session")))
+		return
 	}
 
 	g.render(w, r, &SessionInitResponse{Token: session.id})
@@ -142,25 +143,32 @@ func (g *Gateway) sendTransaction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tx := &wavelet.Transaction{
-		Creator:          req.creator,
-		CreatorSignature: req.signature,
-
-		Tag:     req.Tag,
-		Payload: req.payload,
+	evt := wavelet.EventBroadcast{
+		Tag:       req.Tag,
+		Payload:   req.payload,
+		Creator:   req.creator,
+		Signature: req.signature,
+		Result:    make(chan wavelet.Transaction, 1),
+		Error:     make(chan error, 1),
 	}
 
-	if err := g.ledger.AttachSenderToTransaction(g.node.Keys, tx); err != nil {
-		g.render(w, r, ErrInternal(errors.Wrap(err, "failed to attach sender to transaction")))
+	select {
+	case <-time.After(3 * time.Second):
+		g.render(w, r, ErrInternal(errors.New("broadcasting queue is full")))
 		return
+	case g.ledger.BroadcastQueue <- evt:
 	}
 
-	if err := node.BroadcastTransaction(g.node, tx); err != nil {
-		g.render(w, r, ErrInternal(errors.Wrap(err, "failed to broadcast transaction")))
+	select {
+	case <-time.After(3 * time.Second):
+		g.render(w, r, ErrInternal(errors.New("its taking too long to broadcast your transaction")))
 		return
+	case err := <-evt.Error:
+		g.render(w, r, ErrInternal(errors.Wrap(err, "got an error broadcasting yourt ransaction")))
+		return
+	case tx := <-evt.Result:
+		g.render(w, r, &SendTransactionResponse{ledger: g.ledger, tx: &tx})
 	}
-
-	g.render(w, r, &SendTransactionResponse{ledger: g.ledger, tx: tx})
 }
 
 func (g *Gateway) ledgerStatus(w http.ResponseWriter, r *http.Request) {
@@ -225,7 +233,7 @@ func (g *Gateway) listTransactions(w http.ResponseWriter, r *http.Request) {
 
 	var transactions []render.Renderer
 
-	for _, tx := range g.ledger.Transactions(offset, limit, sender, creator) {
+	for _, tx := range g.ledger.ListTransactions(offset, limit, sender, creator) {
 		transactions = append(transactions, &Transaction{tx: tx})
 	}
 
@@ -309,7 +317,7 @@ func (g *Gateway) getContractCode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	code, available := g.ledger.Accounts.ReadAccountContractCode(id)
+	code, available := wavelet.ReadAccountContractCode(g.ledger.Snapshot(), id)
 
 	if len(code) == 0 || !available {
 		g.render(w, r, ErrBadRequest(errors.Errorf("could not find contract with ID %x", id)))
@@ -342,7 +350,9 @@ func (g *Gateway) getContractPages(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	numPages, available := g.ledger.Accounts.ReadAccountContractNumPages(id)
+	snapshot := g.ledger.Snapshot()
+
+	numPages, available := wavelet.ReadAccountContractNumPages(snapshot, id)
 
 	if !available {
 		g.render(w, r, ErrBadRequest(errors.Errorf("could not find any pages for contract with ID %x", id)))
@@ -354,7 +364,7 @@ func (g *Gateway) getContractPages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page, available := g.ledger.Accounts.ReadAccountContractPage(id, idx)
+	page, available := wavelet.ReadAccountContractPage(snapshot, id, idx)
 
 	if len(page) == 0 || !available {
 		g.render(w, r, ErrBadRequest(errors.Errorf("page %d is either empty, or does not exist", idx)))

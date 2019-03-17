@@ -245,10 +245,12 @@ func (s *Account) Render(w http.ResponseWriter, r *http.Request) error {
 		return errors.New("insufficient fields specified")
 	}
 
+	snapshot := s.ledger.Snapshot()
+
 	s.PublicKey = hex.EncodeToString(s.id[:])
-	s.Balance, _ = s.ledger.Accounts.ReadAccountBalance(s.id)
-	s.Stake, _ = s.ledger.Accounts.ReadAccountStake(s.id)
-	s.NumPages, s.IsContract = s.ledger.Accounts.ReadAccountContractNumPages(s.id)
+	s.Balance, _ = wavelet.ReadAccountBalance(snapshot, s.id)
+	s.Stake, _ = wavelet.ReadAccountStake(snapshot, s.id)
+	s.NumPages, s.IsContract = wavelet.ReadAccountContractNumPages(snapshot, s.id)
 
 	return nil
 }

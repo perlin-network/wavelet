@@ -8,7 +8,6 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
 	"math"
 	"sync"
 )
@@ -23,8 +22,6 @@ const DefaultCacheSize = 128
 const MaxWriteBatchSize = 1024
 
 type Tree struct {
-	sync.RWMutex
-
 	maxWriteBatchSize int
 
 	kv store.KV
@@ -35,10 +32,6 @@ type Tree struct {
 	pending sync.Map
 
 	viewID uint64
-}
-
-type Snapshot struct {
-	root *node
 }
 
 func New(kv store.KV) *Tree {
@@ -55,14 +48,7 @@ func New(kv store.KV) *Tree {
 	return t
 }
 
-func LoadFromSnapshot(kv store.KV, ss Snapshot) *Tree {
-	return &Tree{root: ss.root, kv: kv, cache: newLRU(DefaultCacheSize), maxWriteBatchSize: MaxWriteBatchSize}
-}
-
 func (t *Tree) WithLRUCache(size *int) *Tree {
-	t.Lock()
-	defer t.Unlock()
-
 	if size == nil {
 		t.cache = nil
 	} else {
@@ -73,17 +59,11 @@ func (t *Tree) WithLRUCache(size *int) *Tree {
 }
 
 func (t *Tree) WithMaxWriteBatchSize(maxWriteBatchSize int) *Tree {
-	t.Lock()
-	defer t.Unlock()
-
 	t.maxWriteBatchSize = maxWriteBatchSize
 	return t
 }
 
 func (t *Tree) Insert(key, value []byte) {
-	t.Lock()
-	defer t.Unlock()
-
 	if t.root == nil {
 		t.root = newLeafNode(t, key, value)
 	} else {
@@ -92,9 +72,6 @@ func (t *Tree) Insert(key, value []byte) {
 }
 
 func (t *Tree) Lookup(k []byte) ([]byte, bool) {
-	t.RLock()
-	defer t.RUnlock()
-
 	if t.root == nil {
 		return nil, false
 	}
@@ -103,9 +80,6 @@ func (t *Tree) Lookup(k []byte) ([]byte, bool) {
 }
 
 func (t *Tree) Delete(k []byte) bool {
-	t.Lock()
-	defer t.Unlock()
-
 	if t.root == nil {
 		return false
 	}
@@ -116,21 +90,15 @@ func (t *Tree) Delete(k []byte) bool {
 	return deleted
 }
 
-func (t *Tree) Snapshot() Snapshot {
-	return Snapshot{root: t.root}
+func (t *Tree) Snapshot() *Tree {
+	return &Tree{kv: t.kv, cache: t.cache, maxWriteBatchSize: t.maxWriteBatchSize, root: t.root}
 }
 
-func (t *Tree) Revert(snapshot Snapshot) {
-	t.Lock()
-	defer t.Unlock()
-
+func (t *Tree) Revert(snapshot *Tree) {
 	t.root = snapshot.root
 }
 
 func (t *Tree) Range(callback func(key, value []byte)) {
-	t.RLock()
-	defer t.RUnlock()
-
 	t.doRange(callback, t.root)
 }
 
@@ -149,9 +117,6 @@ func (t *Tree) doRange(callback func(k []byte, v []byte), n *node) {
 }
 
 func (t *Tree) PrintContents() {
-	t.RLock()
-	defer t.RUnlock()
-
 	if t.root != nil {
 		t.doPrintContents(t.root, 0)
 	} else {
@@ -160,9 +125,6 @@ func (t *Tree) PrintContents() {
 }
 
 func (t *Tree) doPrintContents(n *node, depth int) {
-	t.RLock()
-	defer t.RUnlock()
-
 	for i := 0; i < depth; i++ {
 		fmt.Print(" ")
 	}
@@ -179,9 +141,6 @@ func (t *Tree) queueWrite(n *node) {
 }
 
 func (t *Tree) Commit() error {
-	t.Lock()
-	defer t.Unlock()
-
 	batch := t.kv.NewWriteBatch()
 
 	for {
@@ -226,8 +185,7 @@ func (t *Tree) Commit() error {
 	}
 
 	if t.root != nil {
-		updated := t.root.updateBorderReferences(t)
-		log.Info().Uint64("updated", updated).Msg("Updated border references")
+		t.root.updateBorderReferences(t)
 		return t.kv.Put(RootKey, t.root.id[:])
 	}
 
@@ -237,10 +195,7 @@ func (t *Tree) Commit() error {
 	return nil
 }
 
-func (t *Tree) CollectGarbage(historyDepth uint64) {
-	t.Lock()
-	defer t.Unlock()
-
+func (t *Tree) GC(historyDepth uint64) {
 	index := t.getNextOldRootIndex()
 	if index == 0 {
 		return
@@ -268,11 +223,10 @@ func (t *Tree) CollectGarbage(historyDepth uint64) {
 
 	for i := len(pendingRoots) - 1; i >= 0; i-- {
 		rootID := pendingRoots[i]
-		n := t.mustLoadNode(rootID)
-		count += n.recursivelyDestroy(t, n.viewID)
-	}
+		rootNode := t.mustLoadNode(rootID)
 
-	log.Info().Uint64("count", count).Msg("Garbage collected")
+		count += rootNode.recursivelyDestroy(t, rootNode.viewID)
+	}
 }
 
 func (t *Tree) getNextOldRootIndex() uint64 {
@@ -319,9 +273,6 @@ func (t *Tree) deleteOldRoot(idx uint64) {
 }
 
 func (t *Tree) Checksum() [MerkleHashSize]byte {
-	t.RLock()
-	defer t.RUnlock()
-
 	if t.root == nil {
 		return [MerkleHashSize]byte{}
 	}
@@ -401,16 +352,10 @@ func (t *Tree) mustStoreLastReference(id [MerkleHashSize]byte, x uint64) {
 }
 
 func (t *Tree) SetViewID(viewID uint64) {
-	t.Lock()
-	defer t.Unlock()
-
 	t.viewID = viewID
 }
 
 func (t *Tree) DumpDiff(prevViewID uint64) []byte {
-	t.RLock()
-	defer t.RUnlock()
-
 	var stack queue.Queue
 	stack.PushBack(t.root)
 
@@ -435,9 +380,6 @@ func (t *Tree) DumpDiff(prevViewID uint64) []byte {
 }
 
 func (t *Tree) ApplyDiff(diff []byte) error {
-	t.Lock()
-	defer t.Unlock()
-
 	reader := bytes.NewReader(diff)
 
 	var root *node

@@ -8,44 +8,54 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/pkg/errors"
+	"sync"
 )
 
 type accounts struct {
 	kv   store.KV
 	tree *avl.Tree
+
+	mu sync.RWMutex
 }
 
-func newAccounts(kv store.KV) accounts {
-	return accounts{kv: kv, tree: avl.New(kv)}
+func newAccounts(kv store.KV) *accounts {
+	return &accounts{kv: kv, tree: avl.New(kv)}
 }
 
-func (a accounts) Checksum() [avl.MerkleHashSize]byte {
+func (a *accounts) checksum() [avl.MerkleHashSize]byte {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
 	return a.tree.Checksum()
 }
 
-func (a accounts) SnapshotAccounts() accounts {
-	return accounts{kv: a.kv, tree: avl.LoadFromSnapshot(a.kv, a.tree.Snapshot())}
+func (a *accounts) snapshot() *avl.Tree {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	return a.tree.Snapshot()
 }
 
-func (a accounts) SetViewID(viewID uint64) {
-	a.tree.SetViewID(viewID)
-}
+func (a *accounts) commit(new *avl.Tree) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 
-func (a accounts) ApplyDiff(diff []byte) (accounts, error) {
-	err := a.tree.ApplyDiff(diff)
-	if err != nil {
-		return a, err
+	if new != nil {
+		a.tree = new
 	}
 
-	return accounts{kv: a.kv, tree: a.tree}, nil
+	err := a.tree.Commit()
+	if err != nil {
+		return errors.Wrap(err, "accounts: failed to write")
+	}
+
+	//a.tree.GC(0)
+
+	return nil
 }
 
-func (a accounts) DumpDiff(viewID uint64) []byte {
-	return a.tree.DumpDiff(viewID)
-}
-
-func (a accounts) ReadAccountBalance(id common.AccountID) (uint64, bool) {
-	buf, exists := a.read(id, keyAccountBalance[:])
+func ReadAccountBalance(tree *avl.Tree, id common.AccountID) (uint64, bool) {
+	buf, exists := readUnderAccounts(tree, id, keyAccountBalance[:])
 	if !exists || len(buf) == 0 {
 		return 0, false
 	}
@@ -53,18 +63,18 @@ func (a accounts) ReadAccountBalance(id common.AccountID) (uint64, bool) {
 	return binary.LittleEndian.Uint64(buf), true
 }
 
-func (a accounts) WriteAccountBalance(id common.AccountID, balance uint64) {
+func WriteAccountBalance(tree *avl.Tree, id common.AccountID, balance uint64) {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], balance)
 
 	logger := log.Account(id, "balance_updated")
 	logger.Log().Uint64("balance", balance).Msg("Updated balance.")
 
-	a.write(id, keyAccountBalance[:], buf[:])
+	writeUnderAccounts(tree, id, keyAccountBalance[:], buf[:])
 }
 
-func (a accounts) ReadAccountStake(id common.AccountID) (uint64, bool) {
-	buf, exists := a.read(id, keyAccountStake[:])
+func ReadAccountStake(tree *avl.Tree, id common.AccountID) (uint64, bool) {
+	buf, exists := readUnderAccounts(tree, id, keyAccountStake[:])
 	if !exists || len(buf) == 0 {
 		return 0, false
 	}
@@ -72,18 +82,18 @@ func (a accounts) ReadAccountStake(id common.AccountID) (uint64, bool) {
 	return binary.LittleEndian.Uint64(buf), true
 }
 
-func (a accounts) WriteAccountStake(id common.AccountID, stake uint64) {
+func WriteAccountStake(tree *avl.Tree, id common.AccountID, stake uint64) {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], stake)
 
 	logger := log.Account(id, "stake_updated")
 	logger.Log().Uint64("stake", stake).Msg("Updated stake.")
 
-	a.write(id, keyAccountStake[:], buf[:])
+	writeUnderAccounts(tree, id, keyAccountStake[:], buf[:])
 }
 
-func (a accounts) ReadAccountContractCode(id common.TransactionID) ([]byte, bool) {
-	buf, exists := a.read(id, keyAccountContractCode[:])
+func ReadAccountContractCode(tree *avl.Tree, id common.TransactionID) ([]byte, bool) {
+	buf, exists := readUnderAccounts(tree, id, keyAccountContractCode[:])
 	if !exists || len(buf) == 0 {
 		return nil, false
 	}
@@ -91,12 +101,12 @@ func (a accounts) ReadAccountContractCode(id common.TransactionID) ([]byte, bool
 	return buf, true
 }
 
-func (a accounts) WriteAccountContractCode(id common.TransactionID, code []byte) {
-	a.write(id, keyAccountContractCode[:], code[:])
+func WriteAccountContractCode(tree *avl.Tree, id common.TransactionID, code []byte) {
+	writeUnderAccounts(tree, id, keyAccountContractCode[:], code[:])
 }
 
-func (a accounts) ReadAccountContractNumPages(id common.TransactionID) (uint64, bool) {
-	buf, exists := a.read(id, keyAccountContractNumPages[:])
+func ReadAccountContractNumPages(tree *avl.Tree, id common.TransactionID) (uint64, bool) {
+	buf, exists := readUnderAccounts(tree, id, keyAccountContractNumPages[:])
 	if !exists || len(buf) == 0 {
 		return 0, false
 	}
@@ -104,21 +114,21 @@ func (a accounts) ReadAccountContractNumPages(id common.TransactionID) (uint64, 
 	return binary.LittleEndian.Uint64(buf), true
 }
 
-func (a accounts) WriteAccountContractNumPages(id common.TransactionID, numPages uint64) {
+func WriteAccountContractNumPages(tree *avl.Tree, id common.TransactionID, numPages uint64) {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], numPages)
 
 	logger := log.Account(id, "num_pages_updated")
 	logger.Log().Uint64("num_pages", numPages).Msg("Updated number of memory pages for a contract.")
 
-	a.write(id, keyAccountContractNumPages[:], buf[:])
+	writeUnderAccounts(tree, id, keyAccountContractNumPages[:], buf[:])
 }
 
-func (a accounts) ReadAccountContractPage(id common.TransactionID, idx uint64) ([]byte, bool) {
+func ReadAccountContractPage(tree *avl.Tree, id common.TransactionID, idx uint64) ([]byte, bool) {
 	var idxBuf [8]byte
 	binary.LittleEndian.PutUint64(idxBuf[:], idx)
 
-	buf, exists := a.read(id, append(keyAccountContractPages[:], idxBuf[:]...))
+	buf, exists := readUnderAccounts(tree, id, append(keyAccountContractPages[:], idxBuf[:]...))
 	if !exists || len(buf) == 0 {
 		return nil, false
 	}
@@ -131,17 +141,17 @@ func (a accounts) ReadAccountContractPage(id common.TransactionID, idx uint64) (
 	return decoded, true
 }
 
-func (a accounts) WriteAccountContractPage(id common.TransactionID, idx uint64, page []byte) {
+func WriteAccountContractPage(tree *avl.Tree, id common.TransactionID, idx uint64, page []byte) {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], idx)
 
 	encoded := snappy.Encode(nil, page)
 
-	a.write(id, append(keyAccountContractPages[:], buf[:]...), encoded)
+	writeUnderAccounts(tree, id, append(keyAccountContractPages[:], buf[:]...), encoded)
 }
 
-func (a accounts) read(id common.AccountID, key []byte) ([]byte, bool) {
-	buf, exists := a.tree.Lookup(append(keyAccounts[:], append(key, id[:]...)...))
+func readUnderAccounts(tree *avl.Tree, id common.AccountID, key []byte) ([]byte, bool) {
+	buf, exists := tree.Lookup(append(keyAccounts[:], append(key, id[:]...)...))
 
 	if !exists {
 		return nil, false
@@ -150,17 +160,6 @@ func (a accounts) read(id common.AccountID, key []byte) ([]byte, bool) {
 	return buf, true
 }
 
-func (a accounts) write(id common.AccountID, key, value []byte) {
-	a.tree.Insert(append(keyAccounts[:], append(key, id[:]...)...), value[:])
-}
-
-func (a accounts) Commit() error {
-	err := a.tree.Commit()
-	if err != nil {
-		return errors.Wrap(err, "accounts: failed to write")
-	}
-
-	a.tree.CollectGarbage(0)
-
-	return nil
+func writeUnderAccounts(tree *avl.Tree, id common.AccountID, key, value []byte) {
+	tree.Insert(append(keyAccounts[:], append(key, id[:]...)...), value[:])
 }

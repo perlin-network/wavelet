@@ -18,15 +18,16 @@ func TestSmartContract(t *testing.T) {
 		}()
 
 		accounts := newAccounts(db)
+		tree := accounts.snapshot()
 
-		returned, available := accounts.ReadAccountContractCode(id)
+		returned, available := ReadAccountContractCode(tree, id)
 		if returned != nil || available == true {
 			return false
 		}
 
-		accounts.WriteAccountContractCode(id, code[:])
+		WriteAccountContractCode(tree, id, code[:])
 
-		returned, available = accounts.ReadAccountContractCode(id)
+		returned, available = ReadAccountContractCode(tree, id)
 		if !bytes.Equal(code[:], returned) || available == false {
 			return false
 		}

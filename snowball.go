@@ -24,7 +24,7 @@ type Snowball struct {
 
 	decided bool
 
-	transactions map[common.TransactionID]*Transaction
+	transactions map[common.TransactionID]Transaction
 }
 
 func NewSnowball() *Snowball {
@@ -34,7 +34,7 @@ func NewSnowball() *Snowball {
 		alpha: SnowballDefaultAlpha,
 
 		counts:       make(map[common.TransactionID]int),
-		transactions: make(map[common.TransactionID]*Transaction),
+		transactions: make(map[common.TransactionID]Transaction),
 	}
 }
 
@@ -73,12 +73,12 @@ func (s *Snowball) Reset() {
 
 	s.decided = false
 
-	s.transactions = make(map[common.TransactionID]*Transaction)
+	s.transactions = make(map[common.TransactionID]Transaction)
 
 	s.Unlock()
 }
 
-func (s *Snowball) Tick(counts map[common.TransactionID]float64, values map[common.TransactionID]*Transaction) {
+func (s *Snowball) Tick(counts map[common.TransactionID]float64, transactions map[common.TransactionID]Transaction) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -86,7 +86,7 @@ func (s *Snowball) Tick(counts map[common.TransactionID]float64, values map[comm
 		return
 	}
 
-	for id, tx := range values {
+	for id, tx := range transactions {
 		if _, exists := s.transactions[id]; !exists {
 			s.transactions[id] = tx
 		}
@@ -96,7 +96,7 @@ func (s *Snowball) Tick(counts map[common.TransactionID]float64, values map[comm
 		if count >= s.alpha {
 			s.counts[preferredID]++
 
-			if s.preferredID == common.ZeroTransactionID || s.counts[preferredID] > s.counts[s.preferredID] {
+			if s.counts[preferredID] > s.counts[s.preferredID] {
 				s.preferredID = preferredID
 			}
 
@@ -116,7 +116,7 @@ func (s *Snowball) Tick(counts map[common.TransactionID]float64, values map[comm
 	}
 }
 
-func (s *Snowball) Prefer(tx *Transaction) {
+func (s *Snowball) Prefer(tx Transaction) {
 	s.Lock()
 
 	if _, exists := s.transactions[tx.ID]; !exists {
@@ -132,8 +132,12 @@ func (s *Snowball) Preferred() *Transaction {
 	s.RLock()
 	defer s.RUnlock()
 
+	if s.preferredID == common.ZeroTransactionID {
+		return nil
+	}
+
 	if preferred, exists := s.transactions[s.preferredID]; exists {
-		return preferred
+		return &preferred
 	}
 
 	return nil
