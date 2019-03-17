@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/heptio/workgroup"
 	"github.com/perlin-network/noise/identity"
+	"github.com/perlin-network/noise/protocol"
 	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
@@ -19,6 +20,10 @@ import (
 	"sort"
 	"sync"
 	"time"
+)
+
+const (
+	SyncChunkSize = 1048576
 )
 
 type EventBroadcast struct {
@@ -68,13 +73,70 @@ type EventQuery struct {
 	Error  chan error
 }
 
+type VoteOutOfSync struct {
+	Voter common.AccountID
+	Root  Transaction
+}
+
+type EventOutOfSyncCheck struct {
+	Root Transaction
+
+	Result chan []VoteOutOfSync
+	Error  chan error
+}
+
+type EventIncomingOutOfSyncCheck struct {
+	Root Transaction
+
+	Response chan *Transaction
+}
+
+type SyncInitMetadata struct {
+	User        protocol.ID
+	ViewID      uint64
+	ChunkHashes [][blake2b.Size256]byte
+}
+
+type EventSyncInit struct {
+	ViewID uint64
+
+	Result chan []SyncInitMetadata
+	Error  chan error
+}
+
+type EventIncomingSyncInit struct {
+	ViewID uint64
+
+	Response chan SyncInitMetadata
+}
+
+type ChunkSource struct {
+	Hash  [blake2b.Size256]byte
+	Peers []protocol.ID
+}
+
+type EventSyncDiff struct {
+	Sources []ChunkSource
+
+	Result chan [][]byte
+	Error  chan error
+}
+
+type EventIncomingSyncDiff struct {
+	ChunkHash [blake2b.Size256]byte
+
+	Response chan []byte
+}
+
 type Ledger struct {
 	keys identity.Keypair
 	kv   store.KV
 
 	v *graph
 	a *accounts
-	r *Snowball
+
+	cr *Snowball
+	sr *Snowball
 
 	processors map[byte]TransactionProcessor
 
@@ -93,17 +155,46 @@ type Ledger struct {
 	QueryOut <-chan EventQuery
 	queryOut chan<- EventQuery
 
+	OutOfSyncIn chan<- EventIncomingOutOfSyncCheck
+	outOfSyncIn <-chan EventIncomingOutOfSyncCheck
+
+	OutOfSyncOut <-chan EventOutOfSyncCheck
+	outOfSyncOut chan<- EventOutOfSyncCheck
+
+	SyncInitIn chan<- EventIncomingSyncInit
+	syncInitIn <-chan EventIncomingSyncInit
+
+	SyncInitOut <-chan EventSyncInit
+	syncInitOut chan<- EventSyncInit
+
+	SyncDiffIn chan<- EventIncomingSyncDiff
+	syncDiffIn <-chan EventIncomingSyncDiff
+
+	SyncDiffOut <-chan EventSyncDiff
+	syncDiffOut chan<- EventSyncDiff
+
+	cacheChunk *lru
+
 	kill chan struct{}
 }
 
 func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
-	broadcastQueue := make(chan EventBroadcast, 128)
+	broadcastQueue := make(chan EventBroadcast, 1024)
 
 	gossipIn := make(chan EventIncomingGossip, 128)
 	gossipOut := make(chan EventGossip, 128)
 
 	queryIn := make(chan EventIncomingQuery, 128)
 	queryOut := make(chan EventQuery, 128)
+
+	outOfSyncIn := make(chan EventIncomingOutOfSyncCheck, 16)
+	outOfSyncOut := make(chan EventOutOfSyncCheck, 16)
+
+	syncInitIn := make(chan EventIncomingSyncInit, 16)
+	syncInitOut := make(chan EventSyncInit, 16)
+
+	syncDiffIn := make(chan EventIncomingSyncDiff, 128)
+	syncDiffOut := make(chan EventSyncDiff, 128)
 
 	accounts := newAccounts(kv)
 
@@ -125,7 +216,9 @@ func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
 
 		v: view,
 		a: accounts,
-		r: NewSnowball().WithK(sys.SnowballQueryK).WithAlpha(sys.SnowballQueryAlpha).WithBeta(sys.SnowballQueryBeta),
+
+		cr: NewSnowball().WithK(sys.SnowballQueryK).WithAlpha(sys.SnowballQueryAlpha).WithBeta(sys.SnowballQueryBeta),
+		sr: NewSnowball().WithK(sys.SnowballSyncK).WithAlpha(sys.SnowballSyncAlpha).WithBeta(sys.SnowballSyncBeta),
 
 		processors: map[byte]TransactionProcessor{
 			sys.TagNop:      ProcessNopTransaction,
@@ -148,6 +241,26 @@ func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
 
 		QueryOut: queryOut,
 		queryOut: queryOut,
+
+		OutOfSyncIn: outOfSyncIn,
+		outOfSyncIn: outOfSyncIn,
+
+		OutOfSyncOut: outOfSyncOut,
+		outOfSyncOut: outOfSyncOut,
+
+		SyncInitIn: syncInitIn,
+		syncInitIn: syncInitIn,
+
+		SyncInitOut: syncInitOut,
+		syncInitOut: syncInitOut,
+
+		SyncDiffIn: syncDiffIn,
+		syncDiffIn: syncDiffIn,
+
+		SyncDiffOut: syncDiffOut,
+		syncDiffOut: syncDiffOut,
+
+		cacheChunk: newLRU(1024), // 1024 * 4MB
 
 		kill: make(chan struct{}),
 	}
@@ -503,10 +616,17 @@ func gossiping(l *Ledger) transition {
 		g.Add(continuously(listenForGossip(l)))
 	}
 
+	g.Add(continuously(checkIfOutOfSync(l)))
+	g.Add(continuously(listenForOutOfSyncChecks(l)))
+	g.Add(continuously(listenForSyncInits(l)))
+	g.Add(continuously(listenForSyncDiffChunks(l)))
+
 	if err := g.Run(); err != nil {
 		switch errors.Cause(err) {
 		case ErrPreferredSelected:
 			return querying
+		case ErrOutOfSync:
+			return syncing
 		default:
 			fmt.Println(err)
 		}
@@ -531,22 +651,52 @@ func querying(l *Ledger) transition {
 		g.Add(continuously(listenForQueries(l)))
 	}
 
+	g.Add(continuously(checkIfOutOfSync(l)))
+	g.Add(continuously(listenForOutOfSyncChecks(l)))
+	g.Add(continuously(listenForSyncInits(l)))
+	g.Add(continuously(listenForSyncDiffChunks(l)))
+
+	defer func() {
+		num := len(l.QueryOut)
+
+		for i := 0; i < num; i++ {
+			<-l.QueryOut
+		}
+	}()
+
 	if err := g.Run(); err != nil {
 		switch errors.Cause(err) {
 		case ErrConsensusRoundFinished:
-			num := len(l.QueryOut)
-
-			for i := 0; i < num; i++ {
-				<-l.QueryOut
-			}
-
 			return gossiping
+		case ErrOutOfSync:
+			return syncing
 		default:
 			fmt.Println(err)
 		}
 	}
 
 	return nil
+}
+
+func syncing(l *Ledger) transition {
+	fmt.Println("NOW SYNCING")
+	var g workgroup.Group
+
+	root := l.sr.Preferred()
+	l.sr.Reset()
+
+	g.Add(syncUp(l, *root))
+
+	if err := g.Run(); err != nil {
+		switch errors.Cause(err) {
+		case ErrSyncFailed:
+			fmt.Println("failed to sync:", err)
+		default:
+			fmt.Println(err)
+		}
+	}
+
+	return gossiping
 }
 
 func continuously(fn func(stop <-chan struct{}) error) func(stop <-chan struct{}) error {
@@ -577,6 +727,9 @@ var (
 
 	ErrPreferredSelected      = errors.New("attempting to finalize consensus round")
 	ErrConsensusRoundFinished = errors.New("consensus round finalized")
+
+	ErrOutOfSync  = errors.New("need to sync up with peers")
+	ErrSyncFailed = errors.New("sync failed")
 )
 
 func gossip(l *Ledger) func(stop <-chan struct{}) error {
@@ -751,8 +904,8 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 
 			// If the transaction we created is critical, then stop gossiping and
 			// start querying to peers our critical transaction.
-			if critical && l.r.Preferred() == nil && tx.ID != l.v.loadRoot().ID {
-				l.r.Prefer(tx)
+			if critical && l.cr.Preferred() == nil && tx.ID != l.v.loadRoot().ID {
+				l.cr.Prefer(tx)
 			}
 
 			// If we have nothing else to broadcast and we are not broadcasting out
@@ -770,7 +923,7 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 			}
 		}
 
-		if l.r.Preferred() != nil {
+		if l.cr.Preferred() != nil {
 			return ErrPreferredSelected
 		}
 
@@ -798,7 +951,7 @@ func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
 			// b) should they be in a prior view ID, the prior consensus rounds root.
 			// c) no response indicating that we do not prefer any transaction.
 
-			if root := l.v.loadRoot(); root.ViewID != 0 && evt.TX.ViewID == root.ViewID-1 {
+			if root := l.v.loadRoot(); root.ViewID != 0 && evt.TX.ViewID == root.ViewID {
 				evt.Response <- root
 				return nil
 			}
@@ -839,8 +992,8 @@ func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
 
 			// If the transaction we were queried with is critical, then prefer the incoming
 			// queried transaction and move on to querying.
-			if critical && l.r.Preferred() == nil && evt.TX.ID != l.v.loadRoot().ID {
-				l.r.Prefer(evt.TX)
+			if critical && l.cr.Preferred() == nil && evt.TX.ID != l.v.loadRoot().ID {
+				l.cr.Prefer(evt.TX)
 				evt.Response <- &evt.TX
 			} else {
 				evt.Response <- nil
@@ -893,14 +1046,14 @@ func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
 
 			// If the transaction we received is critical, then stop gossiping and start querying
 			// to peers the provided critical transaction.
-			if critical && l.r.Preferred() == nil && evt.TX.ID != l.v.loadRoot().ID {
-				l.r.Prefer(evt.TX)
+			if critical && l.cr.Preferred() == nil && evt.TX.ID != l.v.loadRoot().ID {
+				l.cr.Prefer(evt.TX)
 			}
 
 			evt.Vote <- nil
 		}
 
-		if l.r.Preferred() != nil {
+		if l.cr.Preferred() != nil {
 			return ErrPreferredSelected
 		}
 
@@ -911,7 +1064,7 @@ func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
 func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
 		snapshot := l.a.snapshot()
-		preferred := l.r.Preferred()
+		preferred := l.cr.Preferred()
 
 		if preferred == nil {
 			return ErrConsensusRoundFinished
@@ -966,16 +1119,16 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 				}
 			}
 
-			l.r.Tick(counts, transactions)
+			l.cr.Tick(counts, transactions)
 
 			// Once Snowball has finalized, collapse down our transactions, reset everything, and
 			// commit the newly officiated ledger state to our database.
 
-			if l.r.Decided() {
+			if l.cr.Decided() {
 				var exception error
 
 				state.resetOnce.Do(func() {
-					newRoot := l.r.Preferred()
+					newRoot := l.cr.Preferred()
 					oldRoot := l.v.loadRoot()
 
 					state, err := l.collapseTransactions(*newRoot, true)
@@ -989,7 +1142,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 						return
 					}
 
-					l.r.Reset()
+					l.cr.Reset()
 					l.v.reset(newRoot)
 
 					logger := log.Consensus("round_end")
@@ -1033,18 +1186,326 @@ func listenForQueries(l *Ledger) func(stop <-chan struct{}) error {
 			// a) our own preferred transaction.
 			// b) should they be in a prior view ID, the prior consensus rounds root.
 
-			if root := l.v.loadRoot(); root.ViewID != 0 && evt.TX.ViewID == root.ViewID-1 {
+			if root := l.v.loadRoot(); root.ViewID != 0 && evt.TX.ViewID == root.ViewID {
 				evt.Response <- root
-			} else if preferred := l.r.Preferred(); preferred != nil {
+			} else if preferred := l.cr.Preferred(); preferred != nil {
 				evt.Response <- preferred
 			} else {
 				evt.Response <- nil
 			}
 		}
 
-		if l.r.Preferred() == nil {
+		if l.cr.Preferred() == nil {
 			return ErrConsensusRoundFinished
 		}
+
+		return nil
+	}
+}
+
+func checkIfOutOfSync(l *Ledger) func(stop <-chan struct{}) error {
+	return func(stop <-chan struct{}) error {
+		time.Sleep(10 * time.Millisecond)
+
+		snapshot := l.a.snapshot()
+
+		evt := EventOutOfSyncCheck{
+			Root:   *l.v.loadRoot(),
+			Result: make(chan []VoteOutOfSync, 1),
+			Error:  make(chan error, 1),
+		}
+
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case l.outOfSyncOut <- evt:
+		}
+
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case err, ok := <-evt.Error:
+			if err != nil || ok {
+				fmt.Println("got error while checking if out of sync:", err)
+			}
+			return nil
+		case votes := <-evt.Result:
+			if len(votes) == 0 {
+				return nil
+			}
+
+			voters := make([]common.AccountID, len(votes))
+			counts := make(map[common.TransactionID]float64)
+			transactions := make(map[common.TransactionID]Transaction)
+
+			for i, vote := range votes {
+				if vote.Root.ID != common.ZeroTransactionID {
+					transactions[vote.Root.ID] = vote.Root
+					voters[i] = vote.Voter
+				}
+			}
+
+			weights := computeStakeDistribution(snapshot, voters, sys.SnowballSyncK)
+
+			for _, vote := range votes {
+				if vote.Root.ID != common.ZeroTransactionID {
+					counts[vote.Root.ID] += weights[vote.Voter]
+				}
+			}
+
+			l.sr.Tick(counts, transactions)
+
+			if l.sr.Decided() {
+				root := l.sr.Preferred()
+
+				// The view ID we came to consensus to being the latest within the network
+				// is less than or equal to ours. Go back to square one.
+				if l.v.loadRoot().ID == root.ID || l.v.loadViewID() >= root.ViewID+1 {
+					time.Sleep(1 * time.Second)
+
+					l.sr.Reset()
+					return nil
+				}
+
+				return ErrOutOfSync
+			}
+		}
+
+		return nil
+	}
+}
+
+func listenForOutOfSyncChecks(l *Ledger) func(stop <-chan struct{}) error {
+	return func(stop <-chan struct{}) error {
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case evt := <-l.outOfSyncIn:
+			evt.Response <- l.v.loadRoot()
+			close(evt.Response)
+		}
+
+		return nil
+	}
+}
+
+func listenForSyncInits(l *Ledger) func(stop <-chan struct{}) error {
+	return func(stop <-chan struct{}) error {
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case evt := <-l.syncInitIn:
+			data := SyncInitMetadata{
+				ViewID: l.v.loadViewID(),
+			}
+
+			diff := l.a.snapshot().DumpDiff(evt.ViewID)
+
+			for i := 0; i < len(diff); i += SyncChunkSize {
+				end := i + SyncChunkSize
+
+				if end > len(diff) {
+					end = len(diff)
+				}
+
+				hash := blake2b.Sum256(diff[i:end])
+
+				l.cacheChunk.put(hash, diff[i:end])
+				data.ChunkHashes = append(data.ChunkHashes, hash)
+			}
+
+			evt.Response <- data
+			close(evt.Response)
+		}
+
+		return nil
+	}
+}
+
+func listenForSyncDiffChunks(l *Ledger) func(stop <-chan struct{}) error {
+	return func(stop <-chan struct{}) error {
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case evt := <-l.syncDiffIn:
+			if chunk, found := l.cacheChunk.load(evt.ChunkHash); found {
+				chunk := chunk.([]byte)
+
+				providedHash := blake2b.Sum256(chunk)
+
+				logger := log.Sync("provide-chunk")
+				logger.Info().
+					Hex("requested_hash", evt.ChunkHash[:]).
+					Hex("provided_hash", providedHash[:]).
+					Msg("Responded to sync chunk request.")
+
+				evt.Response <- chunk
+			} else {
+				evt.Response <- nil
+			}
+
+			close(evt.Response)
+		}
+
+		return nil
+	}
+}
+
+func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
+	return func(stop <-chan struct{}) error {
+		evt := EventSyncInit{
+			ViewID: l.v.loadViewID(),
+			Result: make(chan []SyncInitMetadata, 1),
+			Error:  make(chan error, 1),
+		}
+
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case l.syncInitOut <- evt:
+		}
+
+		var votes []SyncInitMetadata
+
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case err := <-evt.Error:
+			return errors.Wrap(ErrSyncFailed, err.Error())
+		case v := <-evt.Result:
+			votes = v
+		}
+
+		votesByViewID := make(map[uint64][]SyncInitMetadata)
+
+		for _, vote := range votes {
+			votesByViewID[vote.ViewID] = append(votesByViewID[vote.ViewID], vote)
+		}
+
+		var selected []SyncInitMetadata
+
+		for _, v := range votesByViewID {
+			if len(v) >= len(votes)*2/3 {
+				selected = votes
+				break
+			}
+		}
+
+		// There is no consensus on view IDs to sync towards; cancel the sync.
+		if selected == nil {
+			return errors.Wrap(ErrSyncFailed, "no consensus on which view ID to sync towards")
+		}
+
+		var sources []ChunkSource
+
+		for i := 0; ; i++ {
+			hashCount := make(map[[blake2b.Size256]byte][]protocol.ID)
+			hashInRange := false
+
+			for _, vote := range selected {
+				if i >= len(vote.ChunkHashes) {
+					continue
+				}
+
+				hashCount[vote.ChunkHashes[i]] = append(hashCount[vote.ChunkHashes[i]], vote.User)
+				hashInRange = true
+			}
+
+			if !hashInRange {
+				break
+			}
+
+			consistent := false
+
+			for hash, peers := range hashCount {
+				if len(peers) >= len(selected)*2/3 && len(peers) > 0 {
+					sources = append(sources, ChunkSource{Hash: hash, Peers: peers})
+
+					consistent = true
+					break
+				}
+			}
+
+			if !consistent {
+				return errors.Wrap(ErrSyncFailed, "chunk IDs are not consistent")
+			}
+		}
+
+		evtc := EventSyncDiff{
+			Sources: sources,
+			Result:  make(chan [][]byte, 1),
+			Error:   make(chan error, 1),
+		}
+
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case <-time.After(3 * time.Second):
+			return errors.Wrap(ErrSyncFailed, "timed out while waiting for sync chunk queue to empty up")
+		case l.syncDiffOut <- evtc:
+		}
+
+		var chunks [][]byte
+
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case err := <-evtc.Error:
+			fmt.Println("got an error while getting sync diffs:", err)
+			return errors.Wrap(ErrSyncFailed, err.Error())
+		case c := <-evtc.Result:
+			chunks = c
+		}
+
+		var diff []byte
+
+		for _, chunk := range chunks {
+			diff = append(diff, chunk...)
+		}
+
+		// Attempt to apply the diff to a snapshot of our ledger state.
+		snapshot := l.a.snapshot()
+
+		if err := snapshot.ApplyDiff(diff); err != nil {
+			return errors.Wrapf(ErrSyncFailed, "failed to apply diff to state - got error: %+v", err.Error())
+		}
+
+		// The diff did not get us the intended merkle root we wanted. Stop syncing.
+		if snapshot.Checksum() != root.AccountsMerkleRoot {
+			return errors.Wrap(ErrSyncFailed, "applying the diff yielded an unexpected merkle root representative our expected state")
+		}
+
+		// Apply the diff to our official ledger state.
+		if err := l.a.commit(snapshot); err != nil {
+			return errors.Wrapf(ErrSyncFailed, "failed to commit collapsed state to our database - got error %+v", err.Error())
+		}
+
+		l.cr.Reset()
+		l.v.reset(&root)
+
+		// Sync successful.
+		logger := log.Sync("apply")
+		logger.Info().
+			Int("num_chunks", len(chunks)).
+			Msg("Successfully built a new state tree out of chunk(s) we have received from peers.")
 
 		return nil
 	}

@@ -28,7 +28,7 @@ func TestKill(t *testing.T) {
 
 	// Test if we can gracefully stop the ledger while it is querying.
 	l = NewLedger(ed25519.RandomKeys(), store.NewInmem())
-	l.r.Prefer(Transaction{})
+	l.cr.Prefer(Transaction{})
 
 	wg.Add(1)
 	go signalWhenComplete(&wg, l, querying)
@@ -86,7 +86,7 @@ func TestTransitionFromGossipingToQuerying(t *testing.T) {
 
 	preferred.rehash()
 
-	l.r.Prefer(preferred)
+	l.cr.Prefer(preferred)
 
 	// Create a dummy broadcast event.
 	tx, err := NewTransaction(l.keys, sys.TagTransfer, []byte("lorem ipsum"))
