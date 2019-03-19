@@ -166,7 +166,7 @@ func TestEnsureGossipReturnsNetworkErrors(t *testing.T) {
 	assert.Equal(t, nil, <-next)
 }
 
-// This test takes a few seconds because of the timeout test
+// Note: This test will take about (2 * timeout) seconds because of the timeout tests.
 func TestQuery(t *testing.T) {
 	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
 
@@ -177,25 +177,38 @@ func TestQuery(t *testing.T) {
 
 	l.cr.Prefer(preferred)
 	l.cr.decided = true
+	l.v.saveViewID(1)
 
 	stop := make(chan struct{})
 	state := new(stateQuerying)
+
 	query := func() error {
 		return query(l, state)(stop)
 	}
 
 	var wg sync.WaitGroup
+	var evt EventQuery
 
-	// test query
+	// Test query empty votes.
+
+	wg.Add(1)
+	go func() {
+		assert.Equal(t, nil, call(&wg, query))
+	}()
+	evt = <-l.QueryOut
+	evt.Result <- []VoteQuery{}
+	wg.Wait()
+
+	// Test query.
 
 	wg.Add(2)
 	go func() {
 		assert.Equal(t, ErrConsensusRoundFinished, call(&wg, query))
 
-		// test preferred nil
+		// Test preferred nil.
 		assert.Equal(t, ErrConsensusRoundFinished, call(&wg, query))
 	}()
-	evt := <-l.QueryOut
+	evt = <-l.QueryOut
 	evt.Result <- []VoteQuery{
 		{
 			Voter: common.AccountID{},
@@ -207,14 +220,14 @@ func TestQuery(t *testing.T) {
 	}
 	wg.Wait()
 
-	// re-set the preferred
+	// Re-set the preferred.
 
 	preferred, err = NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
 	preferred.rehash()
 	l.cr.Prefer(preferred)
 
-	// test query error
+	// Test query error.
 
 	wg.Add(1)
 	evtError := errors.New("query error")
@@ -227,20 +240,51 @@ func TestQuery(t *testing.T) {
 	evt.Error <- evtError
 	wg.Wait()
 
-	// test timeout
+	// Test the second select.
 
+	// Test the second select: stop
+	wg.Add(1)
+	go func() {
+		assert.Equal(t, ErrStopped, call(&wg, query))
+	}()
+	evt = <-l.QueryOut
+	close(stop)
+	wg.Wait()
+	stop = make(chan struct{})
+
+	// Test the second select: kill.
+	wg.Add(1)
+	go func() {
+		assert.Equal(t, ErrStopped, call(&wg, query))
+	}()
+	evt = <-l.QueryOut
+	close(l.kill)
+	wg.Wait()
+	l.kill = make(chan struct{})
+
+	// Test the second select: timeout.
+	wg.Add(1)
+	go func() {
+		assert.Equal(t, ErrTimeout, errors.Cause(call(&wg, query)))
+	}()
+	evt = <-l.QueryOut
+	wg.Wait()
+
+	// Test the first select.
+
+	// Disable the queryOut case.
+	l.queryOut = nil
+
+	// Test the first select: timeout.
 	err = query()
 	assert.Equal(t, ErrTimeout, errors.Cause(err))
 
-	// test stop
-
+	// Test the first select: stop.
 	close(stop)
 	assert.Equal(t, ErrStopped, query())
-
 	stop = make(chan struct{})
 
-	// test kill
-
+	// Test the first select: kill.
 	close(l.kill)
 	assert.Equal(t, ErrStopped, query())
 }
@@ -264,7 +308,7 @@ func TestListenForQueries(t *testing.T) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	// test root response
+	// Test root response.
 
 	evt := EventIncomingQuery{
 		TX: Transaction{
@@ -278,14 +322,14 @@ func TestListenForQueries(t *testing.T) {
 	tx := <-evt.Response
 	assert.Equal(t, l.v.loadRoot().ID, tx.ID)
 
-	// check the response channel should be closed
+	// Check the response channel should be closed.
 	_, ok := <-evt.Response
 	assert.False(t, ok)
-	// check the error channel should be closed
+	// Check the error channel should be closed.
 	_, ok = <-evt.Error
 	assert.False(t, ok)
 
-	// test nil response
+	// Test nil response.
 
 	evt = EventIncomingQuery{
 		TX:       Transaction{},
@@ -297,7 +341,7 @@ func TestListenForQueries(t *testing.T) {
 	tx = <-evt.Response
 	assert.Nil(t, tx)
 
-	// test preferred response
+	// Test preferred response.
 
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
@@ -314,14 +358,14 @@ func TestListenForQueries(t *testing.T) {
 	tx = <-evt.Response
 	assert.Equal(t, preferred.ID, tx.ID)
 
-	// test stop
+	// Test stop.
 
 	close(stop)
 	assert.Equal(t, ErrStopped, listenForQueries())
 
 	stop = make(chan struct{})
 
-	// test kill
+	// Test kill.
 
 	close(l.kill)
 	assert.Equal(t, ErrStopped, listenForQueries())
