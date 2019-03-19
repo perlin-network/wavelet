@@ -268,6 +268,20 @@ func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
 
 /** BEGIN EXPORTED METHODS **/
 
+func NewTransaction(sender identity.Keypair, tag byte, payload []byte) (Transaction, error) {
+	tx := Transaction{Tag: tag, Payload: payload}
+
+	signature, err := eddsa.Sign(sender.PrivateKey(), append([]byte{tx.Tag}, tx.Payload...))
+	if err != nil {
+		return tx, err
+	}
+
+	copy(tx.Creator[:], sender.PublicKey())
+	copy(tx.CreatorSignature[:], signature)
+
+	return tx, nil
+}
+
 func (l *Ledger) ViewID() uint64 {
 	return l.v.loadViewID()
 }
@@ -324,20 +338,6 @@ func (l *Ledger) ListTransactions(offset, limit uint64, sender, creator common.A
 
 /** END EXPORTED METHODS **/
 
-func NewTransaction(sender identity.Keypair, tag byte, payload []byte) (Transaction, error) {
-	tx := Transaction{Tag: tag, Payload: payload}
-
-	signature, err := eddsa.Sign(sender.PrivateKey(), append([]byte{tx.Tag}, tx.Payload...))
-	if err != nil {
-		return tx, err
-	}
-
-	copy(tx.Creator[:], sender.PublicKey())
-	copy(tx.CreatorSignature[:], signature)
-
-	return tx, nil
-}
-
 func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) {
 	copy(tx.Sender[:], l.keys.PublicKey())
 
@@ -386,6 +386,38 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 	tx.rehash()
 
 	return tx, nil
+}
+
+func (l *Ledger) addTransaction(tx Transaction) error {
+	if err := AssertInView(l.v, tx); err != nil {
+		return err
+	}
+
+	if err := AssertValidTransaction(tx); err != nil {
+		return err
+	}
+
+	if err := AssertValidAncestry(l.v, tx); err != nil {
+		return err
+	}
+
+	critical := tx.IsCritical(l.v.loadDifficulty())
+
+	if critical {
+		if err := l.assertCollapsible(tx); err != nil {
+			return err
+		}
+	}
+
+	if err := l.v.addTransaction(&tx); err != nil && errors.Cause(err) != ErrTxAlreadyExists {
+		return errors.Wrap(err, "got an error adding queried transaction to view-graph")
+	}
+
+	if critical && l.cr.Preferred() == nil && tx.ID != l.v.loadRoot().ID {
+		l.cr.Prefer(tx)
+	}
+
+	return nil
 }
 
 // collapseTransactions takes all transactions recorded in the graph view so far, and
@@ -646,7 +678,7 @@ func querying(l *Ledger) transition {
 
 	var g workgroup.Group
 
-	for i := 0; i < runtime.NumCPU(); i++ {
+	for i := 0; i < 1; i++ {
 		g.Add(continuously(query(l, state)))
 		g.Add(continuously(listenForQueries(l)))
 	}
@@ -874,7 +906,7 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 			// Double-check that after gossiping, we have not progressed a single view ID and
 			// that the transaction is still valid for us to add to our view-graph.
 
-			if err := AssertInView(l.v, tx); err != nil {
+			if err := l.addTransaction(tx); err != nil {
 				if Error != nil {
 					Error <- err
 				}
@@ -882,31 +914,7 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 				return nil
 			}
 
-			if err := AssertValidTransaction(tx); err != nil {
-				if Error != nil {
-					Error <- errors.Wrap(err, "transaction is not valid")
-				}
-				return nil
-			}
-
-			/** At this point, the transaction was successfully gossiped out to our peers. **/
-
-			if err := l.v.addTransaction(&tx); err != nil && errors.Cause(err) != ErrTxAlreadyExists {
-				if Error != nil {
-					Error <- errors.Wrap(err, "got an error adding transaction to view-graph")
-				}
-				return nil
-			}
-
 			/** At this point, the transaction was successfully added to our view-graph. **/
-
-			critical := tx.IsCritical(l.v.loadDifficulty())
-
-			// If the transaction we created is critical, then stop gossiping and
-			// start querying to peers our critical transaction.
-			if critical && l.cr.Preferred() == nil && tx.ID != l.v.loadRoot().ID {
-				l.cr.Prefer(tx)
-			}
 
 			// If we have nothing else to broadcast and we are not broadcasting out
 			// nop transactions, then start broadcasting out nop transactions.
@@ -963,41 +971,15 @@ func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
 				return nil
 			}
 
-			if err := AssertInView(l.v, evt.TX); err != nil {
+			if err := l.addTransaction(evt.TX); err != nil {
 				evt.Error <- err
-				return nil
-			}
-
-			if err := AssertValidTransaction(evt.TX); err != nil {
-				evt.Error <- err
-				return nil
-			}
-
-			if err := AssertValidAncestry(l.v, evt.TX); err != nil {
-				evt.Error <- err
-				return nil
-			}
-
-			if critical {
-				if err := l.assertCollapsible(evt.TX); err != nil {
-					evt.Error <- err
-					return nil
-				}
-			}
-
-			if err := l.v.addTransaction(&evt.TX); err != nil && errors.Cause(err) != ErrTxAlreadyExists {
-				evt.Error <- errors.Wrap(err, "got an error adding queried transaction to view-graph")
 				return nil
 			}
 
 			// If the transaction we were queried with is critical, then prefer the incoming
 			// queried transaction and move on to querying.
-			if critical && l.cr.Preferred() == nil && evt.TX.ID != l.v.loadRoot().ID {
-				l.cr.Prefer(evt.TX)
-				evt.Response <- &evt.TX
-			} else {
-				evt.Response <- nil
-			}
+
+			evt.Response <- l.cr.Preferred()
 		case evt := <-l.gossipIn:
 			defer close(evt.Vote)
 
@@ -1013,41 +995,9 @@ func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
 				return nil
 			}
 
-			if err := AssertInView(l.v, evt.TX); err != nil {
+			if err := l.addTransaction(evt.TX); err != nil {
 				evt.Vote <- err
 				return nil
-			}
-
-			if err := AssertValidTransaction(evt.TX); err != nil {
-				evt.Vote <- err
-				return nil
-			}
-
-			if err := AssertValidAncestry(l.v, evt.TX); err != nil {
-				evt.Vote <- err
-				return nil
-			}
-
-			critical := evt.TX.IsCritical(l.v.loadDifficulty())
-
-			if critical {
-				if err := l.assertCollapsible(evt.TX); err != nil {
-					evt.Vote <- err
-					return nil
-				}
-			}
-
-			if err := l.v.addTransaction(&evt.TX); err != nil && errors.Cause(err) != ErrTxAlreadyExists {
-				evt.Vote <- errors.Wrap(err, "got an error adding transaction to view-graph")
-				return nil
-			}
-
-			/** At this point, the incoming transaction was successfully added to our view-graph. **/
-
-			// If the transaction we received is critical, then stop gossiping and start querying
-			// to peers the provided critical transaction.
-			if critical && l.cr.Preferred() == nil && evt.TX.ID != l.v.loadRoot().ID {
-				l.cr.Prefer(evt.TX)
 			}
 
 			evt.Vote <- nil
