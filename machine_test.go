@@ -1,7 +1,6 @@
 package wavelet
 
 import (
-	"crypto/rand"
 	"github.com/perlin-network/noise/identity/ed25519"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/store"
@@ -9,9 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"sync"
-	"sync/atomic"
 	"testing"
-	"unsafe"
 )
 
 func signalWhenComplete(wg *sync.WaitGroup, l *Ledger, fn transition) {
@@ -19,9 +16,9 @@ func signalWhenComplete(wg *sync.WaitGroup, l *Ledger, fn transition) {
 	wg.Done()
 }
 
-func call(wg *sync.WaitGroup, stop chan struct{}, fn func(stop <-chan struct{}) error) error {
+func call(wg *sync.WaitGroup, fn func() error) error {
 	defer wg.Done()
-	return fn(stop)
+	return fn()
 }
 
 func TestKill(t *testing.T) {
@@ -169,7 +166,7 @@ func TestEnsureGossipReturnsNetworkErrors(t *testing.T) {
 	assert.Equal(t, nil, <-next)
 }
 
-// This test may take a few seconds because of the timeout test
+// This test takes a few seconds because of the timeout test
 func TestQuery(t *testing.T) {
 	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
 
@@ -183,7 +180,9 @@ func TestQuery(t *testing.T) {
 
 	stop := make(chan struct{})
 	state := new(stateQuerying)
-	query := query(l, state)
+	query := func() error {
+		return query(l, state)(stop)
+	}
 
 	var wg sync.WaitGroup
 
@@ -191,10 +190,10 @@ func TestQuery(t *testing.T) {
 
 	wg.Add(2)
 	go func() {
-		assert.Equal(t, ErrConsensusRoundFinished, call(&wg, stop, query))
+		assert.Equal(t, ErrConsensusRoundFinished, call(&wg, query))
 
 		// test preferred nil
-		assert.Equal(t, ErrConsensusRoundFinished, call(&wg, stop, query))
+		assert.Equal(t, ErrConsensusRoundFinished, call(&wg, query))
 	}()
 	evt := <-l.QueryOut
 	evt.Result <- []VoteQuery{
@@ -220,7 +219,7 @@ func TestQuery(t *testing.T) {
 	wg.Add(1)
 	evtError := errors.New("query error")
 	go func() {
-		err := call(&wg, stop, query)
+		err := call(&wg, query)
 		assert.Equal(t, evtError, errors.Cause(err))
 	}()
 
@@ -230,84 +229,61 @@ func TestQuery(t *testing.T) {
 
 	// test timeout
 
-	err = query(stop)
+	err = query()
 	assert.Equal(t, ErrTimeout, errors.Cause(err))
 
 	// test stop
 
 	close(stop)
-	assert.Equal(t, ErrStopped, query(stop))
+	assert.Equal(t, ErrStopped, query())
 
 	stop = make(chan struct{})
 
 	// test kill
 
-	stop = make(chan struct{})
 	close(l.kill)
-	assert.Equal(t, ErrStopped, query(stop))
+	assert.Equal(t, ErrStopped, query())
 }
 
 func TestListenForQueries(t *testing.T) {
 	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
 
-	var rootId common.TransactionID
-	var rootViewId uint64 = 100
-	_, err := rand.Read(rootId[:])
+	root, err := NewTransaction(l.keys, sys.TagNop, nil)
+	root.ViewID = 1
 	assert.NoError(t, err)
-	root := &Transaction{
-		ID:     rootId,
-		ViewID: rootViewId,
-	}
 
-	l.v.saveRoot(root)
+	root.rehash()
 
-	var expectedErr unsafe.Pointer
-
-	fn := listenForQueries(l)
+	l.v.saveRoot(&root)
 
 	stop := make(chan struct{})
+	listenForQueries := func() error {
+		return listenForQueries(l)(stop)
+	}
 
-	var done sync.WaitGroup
-	done.Add(1)
-
-	proceed := make(chan struct{})
-
-	go func() {
-		defer done.Done()
-		var err error
-
-		for {
-			_, ok := <-proceed
-			if !ok {
-				return
-			}
-
-			err = fn(stop)
-
-			if val := atomic.LoadPointer(&expectedErr); val != nil {
-				expected := *(*error)(val)
-
-				assert.Equal(t, expected, errors.Cause(err))
-			}
-		}
-	}()
-
-	proceed <- struct{}{}
+	var wg sync.WaitGroup
+	wg.Add(1)
 
 	// test root response
 
 	evt := EventIncomingQuery{
 		TX: Transaction{
-			ViewID: rootViewId,
+			ViewID: root.ViewID,
 		},
 		Response: make(chan *Transaction, 1),
 		Error:    make(chan error, 1),
 	}
 	l.QueryIn <- evt
+	assert.Error(t, ErrConsensusRoundFinished, listenForQueries())
 	tx := <-evt.Response
 	assert.Equal(t, l.v.loadRoot().ID, tx.ID)
 
-	proceed <- struct{}{}
+	// check the response channel should be closed
+	_, ok := <-evt.Response
+	assert.False(t, ok)
+	// check the error channel should be closed
+	_, ok = <-evt.Error
+	assert.False(t, ok)
 
 	// test nil response
 
@@ -317,17 +293,15 @@ func TestListenForQueries(t *testing.T) {
 		Error:    make(chan error, 1),
 	}
 	l.QueryIn <- evt
+	assert.Error(t, ErrConsensusRoundFinished, listenForQueries())
 	tx = <-evt.Response
 	assert.Nil(t, tx)
 
-	proceed <- struct{}{}
-
 	// test preferred response
 
-	var preferredId common.TransactionID
-	_, err = rand.Read(preferredId[:])
+	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
-	preferred := Transaction{ID: preferredId}
+	preferred.rehash()
 	l.cr.Prefer(preferred)
 
 	evt = EventIncomingQuery{
@@ -336,22 +310,19 @@ func TestListenForQueries(t *testing.T) {
 	}
 
 	l.QueryIn <- evt
+	assert.NoError(t, listenForQueries())
 	tx = <-evt.Response
 	assert.Equal(t, preferred.ID, tx.ID)
 
-	proceed <- struct{}{}
+	// test stop
+
+	close(stop)
+	assert.Equal(t, ErrStopped, listenForQueries())
+
+	stop = make(chan struct{})
 
 	// test kill
-	atomic.StorePointer(&expectedErr, unsafe.Pointer(&ErrStopped))
-	l.kill <- struct{}{}
 
-	proceed <- struct{}{}
-
-	// test stop
-	atomic.StorePointer(&expectedErr, unsafe.Pointer(&ErrStopped))
-	stop <- struct{}{}
-
-	close(proceed)
-
-	done.Wait()
+	close(l.kill)
+	assert.Equal(t, ErrStopped, listenForQueries())
 }
