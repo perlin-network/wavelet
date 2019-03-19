@@ -1,13 +1,18 @@
 package wavelet
 
 import (
+	"crypto/rand"
 	"github.com/perlin-network/noise/identity/ed25519"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
+	"unsafe"
 )
 
 func signalWhenComplete(wg *sync.WaitGroup, l *Ledger, fn transition) {
@@ -158,4 +163,211 @@ func TestEnsureGossipReturnsNetworkErrors(t *testing.T) {
 
 	// Assert that we received no signal.
 	assert.Equal(t, nil, <-next)
+}
+
+func TestQuery(t *testing.T) {
+	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
+
+	// set the preferred with random transaction
+	var txId common.TransactionID
+	_, err := rand.Read(txId[:])
+	assert.NoError(t, err)
+	l.cr.Prefer(Transaction{ID: txId})
+
+	var expectedErr unsafe.Pointer
+
+	state := new(stateQuerying)
+	fn := query(l, state)
+
+	stop := make(chan struct{})
+
+	var done sync.WaitGroup
+	done.Add(1)
+
+	proceed := make(chan struct{})
+
+	go func() {
+		defer done.Done()
+		var err error
+
+		for {
+			_, ok := <-proceed
+			if !ok {
+				return
+			}
+
+			err = fn(stop)
+
+			expected := *(*error)(atomic.LoadPointer(&expectedErr))
+
+			assert.Equal(t, expected, errors.Cause(err))
+		}
+	}()
+
+	proceed <- struct{}{}
+
+	// test query
+
+	l.cr.decided = true
+	atomic.StorePointer(&expectedErr, unsafe.Pointer(&ErrConsensusRoundFinished))
+	evt := <-l.QueryOut
+
+	evt.Result <- []VoteQuery{
+		{
+			Voter: common.AccountID{},
+			Preferred: Transaction{
+				ID:     txId,
+				ViewID: 1,
+			},
+		},
+	}
+
+	// re-set the preferred
+
+	time.Sleep(30 * time.Millisecond) // prevent race condition
+	_, err = rand.Read(txId[:])
+	assert.NoError(t, err)
+	l.cr.Prefer(Transaction{ID: txId})
+
+	proceed <- struct{}{}
+
+	// test query error
+
+	evtError := errors.New("query error")
+	atomic.StorePointer(&expectedErr, unsafe.Pointer(&evtError))
+	evt = <-l.QueryOut
+	evt.Error <- evtError
+
+	proceed <- struct{}{}
+
+	// test kill
+
+	atomic.StorePointer(&expectedErr, unsafe.Pointer(&ErrStopped))
+	l.kill <- struct{}{}
+
+	proceed <- struct{}{}
+
+	// test stop
+
+	atomic.StorePointer(&expectedErr, unsafe.Pointer(&ErrStopped))
+	stop <- struct{}{}
+
+	proceed <- struct{}{}
+
+	// test timeout
+
+	atomic.StorePointer(&expectedErr, unsafe.Pointer(&ErrTimeout))
+
+	close(proceed)
+
+	done.Wait()
+}
+
+func TestListenForQueries(t *testing.T) {
+	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
+
+	var rootId common.TransactionID
+	var rootViewId uint64 = 100
+	_, err := rand.Read(rootId[:])
+	assert.NoError(t, err)
+	root := &Transaction{
+		ID:     rootId,
+		ViewID: rootViewId,
+	}
+
+	l.v.saveRoot(root)
+
+	var expectedErr unsafe.Pointer
+
+	fn := listenForQueries(l)
+
+	stop := make(chan struct{})
+
+	var done sync.WaitGroup
+	done.Add(1)
+
+	proceed := make(chan struct{})
+
+	go func() {
+		defer done.Done()
+		var err error
+
+		for {
+			_, ok := <-proceed
+			if !ok {
+				return
+			}
+
+			err = fn(stop)
+
+			if val := atomic.LoadPointer(&expectedErr); val != nil {
+				expected := *(*error)(val)
+
+				assert.Equal(t, expected, errors.Cause(err))
+			}
+		}
+	}()
+
+	proceed <- struct{}{}
+
+	// test root response
+
+	evt := EventIncomingQuery{
+		TX: Transaction{
+			ViewID: rootViewId,
+		},
+		Response: make(chan *Transaction, 1),
+		Error:    make(chan error, 1),
+	}
+	l.QueryIn <- evt
+	tx := <-evt.Response
+	assert.Equal(t, l.v.loadRoot().ID, tx.ID)
+
+	proceed <- struct{}{}
+
+	// test nil response
+
+	evt = EventIncomingQuery{
+		TX:       Transaction{},
+		Response: make(chan *Transaction, 1),
+		Error:    make(chan error, 1),
+	}
+	l.QueryIn <- evt
+	tx = <-evt.Response
+	assert.Nil(t, tx)
+
+	proceed <- struct{}{}
+
+	// test preferred response
+
+	var preferredId common.TransactionID
+	_, err = rand.Read(preferredId[:])
+	assert.NoError(t, err)
+	preferred := Transaction{ID: preferredId}
+	l.cr.Prefer(preferred)
+
+	evt = EventIncomingQuery{
+		Response: make(chan *Transaction, 1),
+		Error:    make(chan error, 1),
+	}
+
+	l.QueryIn <- evt
+	tx = <-evt.Response
+	assert.Equal(t, preferred.ID, tx.ID)
+
+	proceed <- struct{}{}
+
+	// test kill
+	atomic.StorePointer(&expectedErr, unsafe.Pointer(&ErrStopped))
+	l.kill <- struct{}{}
+
+	proceed <- struct{}{}
+
+	// test stop
+	atomic.StorePointer(&expectedErr, unsafe.Pointer(&ErrStopped))
+	stop <- struct{}{}
+
+	close(proceed)
+
+	done.Wait()
 }
