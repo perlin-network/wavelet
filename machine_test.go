@@ -11,13 +11,17 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 	"unsafe"
 )
 
 func signalWhenComplete(wg *sync.WaitGroup, l *Ledger, fn transition) {
 	fn(l)
 	wg.Done()
+}
+
+func call(wg *sync.WaitGroup, stop chan struct{}, fn func(stop <-chan struct{}) error) error {
+	defer wg.Done()
+	return fn(stop)
 }
 
 func TestKill(t *testing.T) {
@@ -165,110 +169,82 @@ func TestEnsureGossipReturnsNetworkErrors(t *testing.T) {
 	assert.Equal(t, nil, <-next)
 }
 
+// This test may take a few seconds because of the timeout test
 func TestQuery(t *testing.T) {
 	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
 
-	// set the preferred with random transaction
-	var txId common.TransactionID
-	_, err := rand.Read(txId[:])
+	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
-	l.cr.Prefer(Transaction{ID: txId})
 
-	var expectedErr unsafe.Pointer
+	preferred.rehash()
 
-	state := new(stateQuerying)
-	fn := query(l, state)
+	l.cr.Prefer(preferred)
+	l.cr.decided = true
 
 	stop := make(chan struct{})
+	state := new(stateQuerying)
+	query := query(l, state)
 
-	var done sync.WaitGroup
-	done.Add(1)
-
-	proceed := make(chan struct{})
-
-	go func() {
-		defer done.Done()
-		var err error
-
-		for {
-			_, ok := <-proceed
-			if !ok {
-				return
-			}
-
-			err = fn(stop)
-
-			expected := *(*error)(atomic.LoadPointer(&expectedErr))
-
-			assert.Equal(t, expected, errors.Cause(err))
-		}
-	}()
-
-	proceed <- struct{}{}
+	var wg sync.WaitGroup
 
 	// test query
 
-	l.cr.decided = true
-	atomic.StorePointer(&expectedErr, unsafe.Pointer(&ErrConsensusRoundFinished))
-	evt := <-l.QueryOut
+	wg.Add(2)
+	go func() {
+		assert.Equal(t, ErrConsensusRoundFinished, call(&wg, stop, query))
 
+		// test preferred nil
+		assert.Equal(t, ErrConsensusRoundFinished, call(&wg, stop, query))
+	}()
+	evt := <-l.QueryOut
 	evt.Result <- []VoteQuery{
 		{
 			Voter: common.AccountID{},
 			Preferred: Transaction{
-				ID:     txId,
+				ID:     preferred.ID,
 				ViewID: 1,
 			},
 		},
 	}
-
-	proceed <- struct{}{}
-
-	// test preferred nil
-
-	atomic.StorePointer(&expectedErr, unsafe.Pointer(&ErrConsensusRoundFinished))
-
-	proceed <- struct{}{}
+	wg.Wait()
 
 	// re-set the preferred
 
-	time.Sleep(30 * time.Millisecond) // prevent race condition
-	_, err = rand.Read(txId[:])
+	preferred, err = NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
-	l.cr.Prefer(Transaction{ID: txId})
-
-	proceed <- struct{}{}
+	preferred.rehash()
+	l.cr.Prefer(preferred)
 
 	// test query error
 
+	wg.Add(1)
 	evtError := errors.New("query error")
-	atomic.StorePointer(&expectedErr, unsafe.Pointer(&evtError))
+	go func() {
+		err := call(&wg, stop, query)
+		assert.Equal(t, evtError, errors.Cause(err))
+	}()
+
 	evt = <-l.QueryOut
 	evt.Error <- evtError
-
-	proceed <- struct{}{}
-
-	// test kill
-
-	atomic.StorePointer(&expectedErr, unsafe.Pointer(&ErrStopped))
-	l.kill <- struct{}{}
-
-	proceed <- struct{}{}
-
-	// test stop
-
-	atomic.StorePointer(&expectedErr, unsafe.Pointer(&ErrStopped))
-	stop <- struct{}{}
-
-	proceed <- struct{}{}
+	wg.Wait()
 
 	// test timeout
 
-	atomic.StorePointer(&expectedErr, unsafe.Pointer(&ErrTimeout))
+	err = query(stop)
+	assert.Equal(t, ErrTimeout, errors.Cause(err))
 
-	close(proceed)
+	// test stop
 
-	done.Wait()
+	close(stop)
+	assert.Equal(t, ErrStopped, query(stop))
+
+	stop = make(chan struct{})
+
+	// test kill
+
+	stop = make(chan struct{})
+	close(l.kill)
+	assert.Equal(t, ErrStopped, query(stop))
 }
 
 func TestListenForQueries(t *testing.T) {
