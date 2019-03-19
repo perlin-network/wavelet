@@ -222,6 +222,14 @@ func TestQuery(t *testing.T) {
 		},
 	}
 
+	proceed <- struct{}{}
+
+	// test preferred nil
+
+	atomic.StorePointer(&expectedErr, unsafe.Pointer(&ErrConsensusRoundFinished))
+
+	proceed <- struct{}{}
+
 	// re-set the preferred
 
 	time.Sleep(30 * time.Millisecond) // prevent race condition
