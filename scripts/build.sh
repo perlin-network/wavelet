@@ -19,7 +19,6 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null && pwd )"
 HOST_BUILD_BIN="${SCRIPT_DIR}/../build/bin/pkg"
 OS_ARCH="${PLATFORM}-amd64"
 CLEAR_BUILDS=false
-DOCKER_IMAGE_TAG="perlin-network/wavelet"
 
 function show_help {
     echo "Usage: build.sh [-h] [-d] [-a arch] [-o output]"
@@ -45,7 +44,7 @@ while getopts "h?a:o:d" opt; do
 done
 shift $((OPTIND-1))
 
-# build the container image
+# go to project root directory
 cd ${SCRIPT_DIR}/..
 
 # clear out old builds
@@ -55,6 +54,10 @@ fi
 
 mkdir -p ${HOST_BUILD_BIN}
 
+# pull dependencies
+go mod vendor
+
+# run the build helper script
 BUILD_BIN="${HOST_BUILD_BIN}" \
 PROJ_DIR="github.com/perlin-network/wavelet" \
 OS_ARCH=${OS_ARCH} \
