@@ -388,7 +388,7 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 		}
 	}()
 
-	evt := wavelet.EventIncomingQuery{TX: *req.tx, Response: make(chan *wavelet.Transaction, 1), Error: make(chan error, 1)}
+	evt := wavelet.EventIncomingQuery{TX: *req.tx, Response: make(chan *wavelet.Transaction), Error: make(chan error)}
 
 	select {
 	case <-time.After(3 * time.Second):
@@ -413,7 +413,7 @@ func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipReq
 		}
 	}()
 
-	evt := wavelet.EventIncomingGossip{TX: *req.TX, Vote: make(chan error, 1)}
+	evt := wavelet.EventIncomingGossip{TX: *req.TX, Vote: make(chan error)}
 
 	select {
 	case <-time.After(3 * time.Second):
@@ -443,7 +443,7 @@ func handleOutOfSyncCheck(ledger *wavelet.Ledger, peer *noise.Peer, req SyncView
 		}
 	}()
 
-	evt := wavelet.EventIncomingOutOfSyncCheck{Root: *req.root, Response: make(chan *wavelet.Transaction, 1)}
+	evt := wavelet.EventIncomingOutOfSyncCheck{Root: *req.root, Response: make(chan *wavelet.Transaction)}
 
 	select {
 	case <-time.After(3 * time.Second):
@@ -469,7 +469,7 @@ func handleSyncInits(ledger *wavelet.Ledger, peer *noise.Peer, req SyncInitReque
 		}
 	}()
 
-	evt := wavelet.EventIncomingSyncInit{ViewID: req.viewID, Response: make(chan wavelet.SyncInitMetadata, 1)}
+	evt := wavelet.EventIncomingSyncInit{ViewID: req.viewID, Response: make(chan wavelet.SyncInitMetadata)}
 
 	select {
 	case <-time.After(3 * time.Second):
@@ -496,7 +496,7 @@ func handleSyncChunks(ledger *wavelet.Ledger, peer *noise.Peer, req SyncChunkReq
 		}
 	}()
 
-	evt := wavelet.EventIncomingSyncDiff{ChunkHash: req.chunkHash, Response: make(chan []byte, 1)}
+	evt := wavelet.EventIncomingSyncDiff{ChunkHash: req.chunkHash, Response: make(chan []byte)}
 
 	select {
 	case <-time.After(3 * time.Second):
@@ -522,7 +522,7 @@ func handleSyncMissingTXs(ledger *wavelet.Ledger, peer *noise.Peer, req SyncMiss
 		}
 	}()
 
-	evt := wavelet.EventIncomingSyncTX{IDs: req.ids, Response: make(chan []wavelet.Transaction, 1)}
+	evt := wavelet.EventIncomingSyncTX{IDs: req.ids, Response: make(chan []wavelet.Transaction)}
 
 	select {
 	case <-time.After(3 * time.Second):
