@@ -16,12 +16,12 @@ var (
 	_ noise.Message = (*QueryResponse)(nil)
 	_ noise.Message = (*SyncViewRequest)(nil)
 	_ noise.Message = (*SyncViewResponse)(nil)
-	_ noise.Message = (*SyncDiffMetadataRequest)(nil)
-	_ noise.Message = (*SyncDiffMetadataResponse)(nil)
-	_ noise.Message = (*SyncDiffChunkRequest)(nil)
-	_ noise.Message = (*SyncDiffChunkResponse)(nil)
-	_ noise.Message = (*SyncTransactionRequest)(nil)
-	_ noise.Message = (*SyncTransactionResponse)(nil)
+	_ noise.Message = (*SyncInitRequest)(nil)
+	_ noise.Message = (*SyncInitResponse)(nil)
+	_ noise.Message = (*SyncChunkRequest)(nil)
+	_ noise.Message = (*SyncChunkResponse)(nil)
+	_ noise.Message = (*SyncMissingTxRequest)(nil)
+	_ noise.Message = (*SyncMissingTxResponse)(nil)
 )
 
 type QueryRequest struct {
@@ -177,25 +177,25 @@ func (s SyncViewResponse) Write() []byte {
 	return nil
 }
 
-type SyncDiffMetadataRequest struct {
+type SyncInitRequest struct {
 	viewID uint64
 }
 
-type SyncDiffMetadataResponse struct {
+type SyncInitResponse struct {
 	latestViewID uint64
 	chunkHashes  [][blake2b.Size256]byte
 }
 
-type SyncDiffChunkRequest struct {
+type SyncChunkRequest struct {
 	chunkHash [blake2b.Size256]byte
 }
 
-type SyncDiffChunkResponse struct {
+type SyncChunkResponse struct {
 	found bool
 	diff  []byte
 }
 
-func (s SyncDiffMetadataRequest) Read(reader payload.Reader) (noise.Message, error) {
+func (s SyncInitRequest) Read(reader payload.Reader) (noise.Message, error) {
 	var err error
 
 	s.viewID, err = reader.ReadUint64()
@@ -206,11 +206,11 @@ func (s SyncDiffMetadataRequest) Read(reader payload.Reader) (noise.Message, err
 	return s, nil
 }
 
-func (s SyncDiffMetadataRequest) Write() []byte {
+func (s SyncInitRequest) Write() []byte {
 	return payload.NewWriter(nil).WriteUint64(s.viewID).Bytes()
 }
 
-func (s SyncDiffMetadataResponse) Read(reader payload.Reader) (noise.Message, error) {
+func (s SyncInitResponse) Read(reader payload.Reader) (noise.Message, error) {
 	var err error
 
 	s.latestViewID, err = reader.ReadUint64()
@@ -242,7 +242,7 @@ func (s SyncDiffMetadataResponse) Read(reader payload.Reader) (noise.Message, er
 	return s, nil
 }
 
-func (s SyncDiffMetadataResponse) Write() []byte {
+func (s SyncInitResponse) Write() []byte {
 	writer := payload.NewWriter(nil)
 
 	writer.WriteUint64(s.latestViewID)
@@ -255,7 +255,7 @@ func (s SyncDiffMetadataResponse) Write() []byte {
 	return writer.Bytes()
 }
 
-func (s SyncDiffChunkRequest) Read(reader payload.Reader) (noise.Message, error) {
+func (s SyncChunkRequest) Read(reader payload.Reader) (noise.Message, error) {
 	n, err := reader.Read(s.chunkHash[:])
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read chunk hash")
@@ -268,11 +268,11 @@ func (s SyncDiffChunkRequest) Read(reader payload.Reader) (noise.Message, error)
 	return s, nil
 }
 
-func (s SyncDiffChunkRequest) Write() []byte {
+func (s SyncChunkRequest) Write() []byte {
 	return s.chunkHash[:]
 }
 
-func (s SyncDiffChunkResponse) Read(reader payload.Reader) (noise.Message, error) {
+func (s SyncChunkResponse) Read(reader payload.Reader) (noise.Message, error) {
 	var err error
 
 	found, err := reader.ReadByte()
@@ -294,7 +294,7 @@ func (s SyncDiffChunkResponse) Read(reader payload.Reader) (noise.Message, error
 	return s, nil
 }
 
-func (s SyncDiffChunkResponse) Write() []byte {
+func (s SyncChunkResponse) Write() []byte {
 	var found byte
 
 	if s.found {
@@ -304,11 +304,11 @@ func (s SyncDiffChunkResponse) Write() []byte {
 	return payload.NewWriter(nil).WriteByte(found).WriteBytes(s.diff).Bytes()
 }
 
-type SyncTransactionResponse struct {
-	transactions []*wavelet.Transaction
+type SyncMissingTxResponse struct {
+	transactions []wavelet.Transaction
 }
 
-func (s SyncTransactionResponse) Read(reader payload.Reader) (noise.Message, error) {
+func (s SyncMissingTxResponse) Read(reader payload.Reader) (noise.Message, error) {
 	if reader.Len() > 0 {
 		numTransactions, err := reader.ReadByte()
 		if err != nil {
@@ -321,15 +321,14 @@ func (s SyncTransactionResponse) Read(reader payload.Reader) (noise.Message, err
 				return nil, errors.Wrap(err, "failed to read root tx")
 			}
 
-			tx := msg.(wavelet.Transaction)
-			s.transactions = append(s.transactions, &tx)
+			s.transactions = append(s.transactions, msg.(wavelet.Transaction))
 		}
 	}
 
 	return s, nil
 }
 
-func (s SyncTransactionResponse) Write() []byte {
+func (s SyncMissingTxResponse) Write() []byte {
 	writer := payload.NewWriter(nil)
 
 	writer.WriteByte(byte(len(s.transactions)))
@@ -341,11 +340,11 @@ func (s SyncTransactionResponse) Write() []byte {
 	return writer.Bytes()
 }
 
-type SyncTransactionRequest struct {
+type SyncMissingTxRequest struct {
 	ids []common.TransactionID
 }
 
-func (s SyncTransactionRequest) Read(reader payload.Reader) (noise.Message, error) {
+func (s SyncMissingTxRequest) Read(reader payload.Reader) (noise.Message, error) {
 	numIDs, err := reader.ReadByte()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to read number of ids in sync transaction request")
@@ -369,7 +368,7 @@ func (s SyncTransactionRequest) Read(reader payload.Reader) (noise.Message, erro
 	return s, nil
 }
 
-func (s SyncTransactionRequest) Write() []byte {
+func (s SyncMissingTxRequest) Write() []byte {
 	writer := payload.NewWriter(nil)
 
 	writer.WriteByte(byte(len(s.ids)))

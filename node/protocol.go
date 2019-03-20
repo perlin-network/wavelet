@@ -33,13 +33,13 @@ type block struct {
 	opcodeSyncViewRequest  noise.Opcode
 	opcodeSyncViewResponse noise.Opcode
 
-	opcodeSyncDiffMetadataRequest  noise.Opcode
-	opcodeSyncDiffMetadataResponse noise.Opcode
-	opcodeSyncDiffChunkRequest     noise.Opcode
-	opcodeSyncDiffChunkResponse    noise.Opcode
+	opcodeSyncInitRequest   noise.Opcode
+	opcodeSyncInitResponse  noise.Opcode
+	opcodeSyncChunkRequest  noise.Opcode
+	opcodeSyncChunkResponse noise.Opcode
 
-	opcodeSyncTransactionRequest  noise.Opcode
-	opcodeSyncTransactionResponse noise.Opcode
+	opcodeSyncMissingTxRequest  noise.Opcode
+	opcodeSyncMissingTxResponse noise.Opcode
 }
 
 func New() *block {
@@ -53,12 +53,12 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 	b.opcodeQueryResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*QueryResponse)(nil))
 	b.opcodeSyncViewRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncViewRequest)(nil))
 	b.opcodeSyncViewResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncViewResponse)(nil))
-	b.opcodeSyncDiffMetadataRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncDiffMetadataRequest)(nil))
-	b.opcodeSyncDiffMetadataResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncDiffMetadataResponse)(nil))
-	b.opcodeSyncDiffChunkRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncDiffChunkRequest)(nil))
-	b.opcodeSyncDiffChunkResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncDiffChunkResponse)(nil))
-	b.opcodeSyncTransactionRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncTransactionRequest)(nil))
-	b.opcodeSyncTransactionResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncTransactionResponse)(nil))
+	b.opcodeSyncInitRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncInitRequest)(nil))
+	b.opcodeSyncInitResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncInitResponse)(nil))
+	b.opcodeSyncChunkRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncChunkRequest)(nil))
+	b.opcodeSyncChunkResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncChunkResponse)(nil))
+	b.opcodeSyncMissingTxRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncMissingTxRequest)(nil))
+	b.opcodeSyncMissingTxResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncMissingTxResponse)(nil))
 
 	kv := store.NewInmem()
 
@@ -83,6 +83,7 @@ func (b *block) sendLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 	go b.broadcastOutOfSyncChecks(ledger, peer.Node(), peer)
 	go b.broadcastSyncInitRequests(ledger, peer.Node(), peer)
 	go b.broadcastSyncDiffRequests(ledger, peer.Node(), peer)
+	go b.broadcastSyncMissingTXs(ledger, peer.Node(), peer)
 }
 
 func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
@@ -94,10 +95,12 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 			go handleQueryRequest(ledger, peer, msg.(QueryRequest))
 		case msg := <-peer.Receive(b.opcodeSyncViewRequest):
 			go handleOutOfSyncCheck(ledger, peer, msg.(SyncViewRequest))
-		case msg := <-peer.Receive(b.opcodeSyncDiffMetadataRequest):
-			go handleSyncInits(ledger, peer, msg.(SyncDiffMetadataRequest))
-		case msg := <-peer.Receive(b.opcodeSyncDiffChunkRequest):
-			go handleSyncChunks(ledger, peer, msg.(SyncDiffChunkRequest))
+		case msg := <-peer.Receive(b.opcodeSyncInitRequest):
+			go handleSyncInits(ledger, peer, msg.(SyncInitRequest))
+		case msg := <-peer.Receive(b.opcodeSyncChunkRequest):
+			go handleSyncChunks(ledger, peer, msg.(SyncChunkRequest))
+		case msg := <-peer.Receive(b.opcodeSyncMissingTxRequest):
+			go handleSyncMissingTXs(ledger, peer, msg.(SyncMissingTxRequest))
 		}
 	}
 }
@@ -241,7 +244,7 @@ func (b *block) broadcastSyncInitRequests(ledger *wavelet.Ledger, node *noise.No
 				return
 			}
 
-			responses, err := broadcast(node, peers, SyncDiffMetadataRequest{viewID: evt.ViewID}, b.opcodeSyncDiffMetadataResponse)
+			responses, err := broadcast(node, peers, SyncInitRequest{viewID: evt.ViewID}, b.opcodeSyncInitResponse)
 			if err != nil {
 				fmt.Println("got an error while sending request to sync:", err)
 				evt.Error <- errors.Wrap(err, "got an error while sending request to sync")
@@ -252,7 +255,7 @@ func (b *block) broadcastSyncInitRequests(ledger *wavelet.Ledger, node *noise.No
 
 			for i, res := range responses {
 				if res != nil {
-					res := res.(SyncDiffMetadataResponse)
+					res := res.(SyncInitResponse)
 
 					votes = append(votes, wavelet.SyncInitMetadata{
 						User:        peers[i],
@@ -263,6 +266,46 @@ func (b *block) broadcastSyncInitRequests(ledger *wavelet.Ledger, node *noise.No
 			}
 
 			evt.Result <- votes
+		}()
+	}
+}
+
+func (b *block) broadcastSyncMissingTXs(ledger *wavelet.Ledger, node *noise.Node, peer *noise.Peer) {
+	for evt := range ledger.SyncTxOut {
+		func() {
+			defer close(evt.Result)
+
+			peers, err := selectPeers(node, sys.SnowballSyncK)
+			if err != nil {
+				return
+			}
+
+			responses, err := broadcast(node, peers, SyncMissingTxRequest{ids: evt.IDs}, b.opcodeSyncMissingTxResponse)
+			if err != nil {
+				fmt.Println("got an error while requesting for missing transactions:", err)
+				evt.Error <- errors.Wrap(err, "got an error while sending request ofr misisng transactions")
+				return
+			}
+
+			set := make(map[common.TransactionID]wavelet.Transaction)
+
+			for _, res := range responses {
+				if res != nil {
+					res := res.(SyncMissingTxResponse)
+
+					for _, tx := range res.transactions {
+						set[tx.ID] = tx
+					}
+				}
+			}
+
+			var txs []wavelet.Transaction
+
+			for _, tx := range set {
+				txs = append(txs, tx)
+			}
+
+			evt.Result <- txs
 		}()
 	}
 }
@@ -295,16 +338,16 @@ func (b *block) broadcastSyncDiffRequests(ledger *wavelet.Ledger, node *noise.No
 							continue
 						}
 
-						err := peer.SendMessage(SyncDiffChunkRequest{chunkHash: src.Hash})
+						err := peer.SendMessage(SyncChunkRequest{chunkHash: src.Hash})
 						if err != nil {
 							continue
 						}
 
-						var res SyncDiffChunkResponse
+						var res SyncChunkResponse
 
 						select {
-						case msg := <-peer.Receive(b.opcodeSyncDiffChunkResponse):
-							res = msg.(SyncDiffChunkResponse)
+						case msg := <-peer.Receive(b.opcodeSyncChunkResponse):
+							res = msg.(SyncChunkResponse)
 						case <-time.After(sys.QueryTimeout):
 							continue
 						}
@@ -418,8 +461,8 @@ func handleOutOfSyncCheck(ledger *wavelet.Ledger, peer *noise.Peer, req SyncView
 	}
 }
 
-func handleSyncInits(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffMetadataRequest) {
-	var res SyncDiffMetadataResponse
+func handleSyncInits(ledger *wavelet.Ledger, peer *noise.Peer, req SyncInitRequest) {
+	var res SyncInitResponse
 	defer func() {
 		if err := <-peer.SendMessageAsync(res); err != nil {
 			fmt.Println(err)
@@ -445,8 +488,8 @@ func handleSyncInits(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffMetad
 	}
 }
 
-func handleSyncChunks(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffChunkRequest) {
-	var res SyncDiffChunkResponse
+func handleSyncChunks(ledger *wavelet.Ledger, peer *noise.Peer, req SyncChunkRequest) {
+	var res SyncChunkResponse
 	defer func() {
 		if err := <-peer.SendMessageAsync(res); err != nil {
 			fmt.Println(err)
@@ -468,6 +511,32 @@ func handleSyncChunks(ledger *wavelet.Ledger, peer *noise.Peer, req SyncDiffChun
 		return
 	case chunk := <-evt.Response:
 		res.diff = chunk
+	}
+}
+
+func handleSyncMissingTXs(ledger *wavelet.Ledger, peer *noise.Peer, req SyncMissingTxRequest) {
+	var res SyncMissingTxResponse
+	defer func() {
+		if err := <-peer.SendMessageAsync(res); err != nil {
+			fmt.Println(err)
+		}
+	}()
+
+	evt := wavelet.EventIncomingSyncTX{IDs: req.ids, Response: make(chan []wavelet.Transaction, 1)}
+
+	select {
+	case <-time.After(3 * time.Second):
+		fmt.Println("timed out sending missing tx sync request to ledger")
+		return
+	case ledger.SyncTxIn <- evt:
+	}
+
+	select {
+	case <-time.After(3 * time.Second):
+		fmt.Println("timed out getting missing tx sync results from ledger")
+		return
+	case txs := <-evt.Response:
+		res.transactions = txs
 	}
 }
 

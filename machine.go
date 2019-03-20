@@ -122,6 +122,19 @@ type EventSyncDiff struct {
 	Error  chan error
 }
 
+type EventSyncTX struct {
+	IDs []common.TransactionID
+
+	Result chan []Transaction
+	Error  chan error
+}
+
+type EventIncomingSyncTX struct {
+	IDs []common.TransactionID
+
+	Response chan []Transaction
+}
+
 type EventIncomingSyncDiff struct {
 	ChunkHash [blake2b.Size256]byte
 
@@ -173,9 +186,16 @@ type Ledger struct {
 	SyncDiffOut <-chan EventSyncDiff
 	syncDiffOut chan<- EventSyncDiff
 
+	SyncTxIn chan<- EventIncomingSyncTX
+	syncTxIn <-chan EventIncomingSyncTX
+
+	SyncTxOut <-chan EventSyncTX
+	syncTxOut chan<- EventSyncTX
+
 	cacheChunk *lru
 
-	kill chan struct{}
+	kill chan struct {
+	}
 }
 
 func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
@@ -195,6 +215,9 @@ func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
 
 	syncDiffIn := make(chan EventIncomingSyncDiff, 128)
 	syncDiffOut := make(chan EventSyncDiff, 128)
+
+	syncTxIn := make(chan EventIncomingSyncTX, 16)
+	syncTxOut := make(chan EventSyncTX, 16)
 
 	accounts := newAccounts(kv)
 
@@ -259,6 +282,12 @@ func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
 
 		SyncDiffOut: syncDiffOut,
 		syncDiffOut: syncDiffOut,
+
+		SyncTxIn: syncTxIn,
+		syncTxIn: syncTxIn,
+
+		SyncTxOut: syncTxOut,
+		syncTxOut: syncTxOut,
 
 		cacheChunk: newLRU(1024), // 1024 * 4MB
 
@@ -565,7 +594,7 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction) error {
 	}
 
 	// If there are no eligible rewardee candidates, do not reward anyone.
-	if len(candidates) == 0 || len(candidates) != len(stakes) || totalStake == 0 {
+	if len(candidates) == 0 || len(stakes) == 0 || totalStake == 0 {
 		return nil
 	}
 
@@ -1305,6 +1334,68 @@ func listenForSyncDiffChunks(l *Ledger) func(stop <-chan struct{}) error {
 			}
 
 			close(evt.Response)
+		}
+
+		return nil
+	}
+}
+
+func syncMissingTX(l *Ledger) func(stop <-chan struct{}) error {
+	return func(stop <-chan struct{}) error {
+		time.Sleep(100 * time.Millisecond)
+
+		evt := EventSyncTX{}
+
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case l.syncTxOut <- evt:
+		}
+
+		var txs []Transaction
+
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case err := <-evt.Error:
+			return err
+		case t := <-evt.Result:
+			txs = t
+		}
+
+		for _, tx := range txs {
+			if err := l.addTransaction(tx); err != nil {
+				fmt.Println(err)
+			}
+		}
+
+		return nil
+	}
+}
+
+func listenForMissingTXs(l *Ledger) func(stop <-chan struct{}) error {
+	return func(stop <-chan struct{}) error {
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case evt := <-l.syncTxIn:
+			defer close(evt.Response)
+
+			var txs []Transaction
+
+			for _, id := range evt.IDs {
+				if tx, available := l.v.lookupTransaction(id); available {
+					txs = append(txs, *tx)
+				}
+			}
+
+			evt.Response <- txs
 		}
 
 		return nil
