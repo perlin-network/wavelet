@@ -12,15 +12,10 @@ set -eu
 GIT_COMMIT=$(git rev-parse --short HEAD)
 GO_VERSION=$(go version | awk '{print $3}')
 
-# TODO: not sure why these flags are needed when not necessary before
-export CGO_CFLAGS="-I/usr/local/include/rocksdb"
-export CGO_LDFLAGS="-L/usr/local/lib -lrocksdb -lstdc++ -lm -lz -lbz2 -lsnappy -llz4 -lzstd"
-
 # loop through each architecture and build to an output
 for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
-    IFS="-" read -r -a array <<< ${os_arch}
-    OS=${array[0]}
-    ARCH=${array[1]}
+    OS=$(echo "${os_arch}" | cut -d- -f1)
+    ARCH=$(echo "${os_arch}" | cut -d- -f2)
 
     echo "Building binaries for ${os_arch}."
 
