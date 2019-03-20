@@ -497,8 +497,8 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 					Payload:   tx.Payload,
 					Creator:   tx.Creator,
 					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction, 1),
-					Error:     make(chan error, 1),
+					Result:    make(chan wavelet.Transaction),
+					Error:     make(chan error),
 				}
 
 				select {
@@ -542,8 +542,8 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 					Payload:   tx.Payload,
 					Creator:   tx.Creator,
 					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction, 1),
-					Error:     make(chan error, 1),
+					Result:    make(chan wavelet.Transaction),
+					Error:     make(chan error),
 				}
 
 				select {
@@ -586,8 +586,8 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 					Payload:   tx.Payload,
 					Creator:   tx.Creator,
 					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction, 1),
-					Error:     make(chan error, 1),
+					Result:    make(chan wavelet.Transaction),
+					Error:     make(chan error),
 				}
 
 				select {
@@ -634,8 +634,8 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 					Payload:   tx.Payload,
 					Creator:   tx.Creator,
 					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction, 1),
-					Error:     make(chan error, 1),
+					Result:    make(chan wavelet.Transaction),
+					Error:     make(chan error),
 				}
 
 				select {

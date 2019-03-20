@@ -148,8 +148,8 @@ func (g *Gateway) sendTransaction(w http.ResponseWriter, r *http.Request) {
 		Payload:   req.payload,
 		Creator:   req.creator,
 		Signature: req.signature,
-		Result:    make(chan wavelet.Transaction, 1),
-		Error:     make(chan error, 1),
+		Result:    make(chan wavelet.Transaction),
+		Error:     make(chan error),
 	}
 
 	select {

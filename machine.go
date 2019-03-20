@@ -707,7 +707,7 @@ func querying(l *Ledger) transition {
 
 	var g workgroup.Group
 
-	for i := 0; i < 1; i++ {
+	for i := 0; i < runtime.NumCPU(); i++ {
 		g.Add(continuously(query(l, state)))
 		g.Add(continuously(listenForQueries(l)))
 	}
