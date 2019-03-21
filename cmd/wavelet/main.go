@@ -497,19 +497,19 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 					Payload:   tx.Payload,
 					Creator:   tx.Creator,
 					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction),
-					Error:     make(chan error),
+					Result:    make(chan wavelet.Transaction, 1),
+					Error:     make(chan error, 1),
 				}
 
 				select {
-				case <-time.After(3 * time.Second):
+				case <-time.After(1 * time.Second):
 					logger.Info().Msg("It looks like the broadcasting queue is full. Please try again.")
 					return
 				case ledger.BroadcastQueue <- evt:
 				}
 
 				select {
-				case <-time.After(3 * time.Second):
+				case <-time.After(1 * time.Second):
 					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
 					return
 				case err := <-evt.Error:
@@ -542,19 +542,19 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 					Payload:   tx.Payload,
 					Creator:   tx.Creator,
 					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction),
-					Error:     make(chan error),
+					Result:    make(chan wavelet.Transaction, 1),
+					Error:     make(chan error, 1),
 				}
 
 				select {
-				case <-time.After(3 * time.Second):
+				case <-time.After(1 * time.Second):
 					logger.Info().Msg("It looks like the broadcasting queue is full. Please try again.")
 					return
 				case ledger.BroadcastQueue <- evt:
 				}
 
 				select {
-				case <-time.After(3 * time.Second):
+				case <-time.After(1 * time.Second):
 					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
 					return
 				case err := <-evt.Error:
@@ -586,19 +586,19 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 					Payload:   tx.Payload,
 					Creator:   tx.Creator,
 					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction),
-					Error:     make(chan error),
+					Result:    make(chan wavelet.Transaction, 1),
+					Error:     make(chan error, 1),
 				}
 
 				select {
-				case <-time.After(3 * time.Second):
+				case <-time.After(1 * time.Second):
 					logger.Info().Msg("It looks like the broadcasting queue is full. Please try again.")
 					return
 				case ledger.BroadcastQueue <- evt:
 				}
 
 				select {
-				case <-time.After(3 * time.Second):
+				case <-time.After(1 * time.Second):
 					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
 					return
 				case err := <-evt.Error:
@@ -634,19 +634,19 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 					Payload:   tx.Payload,
 					Creator:   tx.Creator,
 					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction),
-					Error:     make(chan error),
+					Result:    make(chan wavelet.Transaction, 1),
+					Error:     make(chan error, 1),
 				}
 
 				select {
-				case <-time.After(3 * time.Second):
+				case <-time.After(1 * time.Second):
 					logger.Info().Msg("It looks like the broadcasting queue is full. Please try again.")
 					return
 				case ledger.BroadcastQueue <- evt:
 				}
 
 				select {
-				case <-time.After(3 * time.Second):
+				case <-time.After(1 * time.Second):
 					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
 					return
 				case err := <-evt.Error:

@@ -16,7 +16,6 @@ import (
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
-	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -672,12 +671,10 @@ func gossiping(l *Ledger) transition {
 	fmt.Println("NOW GOSSIPING")
 	var g workgroup.Group
 
-	for i := 0; i < runtime.NumCPU(); i++ {
-		g.Add(continuously(gossip(l)))
-		g.Add(continuously(listenForGossip(l)))
-	}
-
+	g.Add(continuously(gossip(l)))
 	g.Add(continuously(checkIfOutOfSync(l)))
+
+	g.Add(continuously(listenForGossip(l)))
 	g.Add(continuously(listenForOutOfSyncChecks(l)))
 	g.Add(continuously(listenForSyncInits(l)))
 	g.Add(continuously(listenForSyncDiffChunks(l)))
@@ -707,12 +704,10 @@ func querying(l *Ledger) transition {
 
 	var g workgroup.Group
 
-	for i := 0; i < runtime.NumCPU(); i++ {
-		g.Add(continuously(query(l, state)))
-		g.Add(continuously(listenForQueries(l)))
-	}
-
+	g.Add(continuously(query(l, state)))
 	g.Add(continuously(checkIfOutOfSync(l)))
+
+	g.Add(continuously(listenForQueries(l)))
 	g.Add(continuously(listenForOutOfSyncChecks(l)))
 	g.Add(continuously(listenForSyncInits(l)))
 	g.Add(continuously(listenForSyncDiffChunks(l)))
@@ -820,9 +815,6 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 
 			Result = item.Result
 			Error = item.Error
-
-			defer close(Result)
-			defer close(Error)
 		default:
 			if !broadcastNops {
 				time.Sleep(100 * time.Millisecond)
@@ -874,7 +866,7 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 			}
 
 			return ErrStopped
-		case <-time.After(3 * time.Second):
+		case <-time.After(1 * time.Second):
 			if Error != nil {
 				Error <- errors.Wrap(ErrTimeout, "gossip queue is full")
 			}
@@ -954,7 +946,7 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 			if Result != nil {
 				Result <- tx
 			}
-		case <-time.After(3 * time.Second):
+		case <-time.After(1 * time.Second):
 			if Error != nil {
 				Error <- errors.Wrap(ErrTimeout, "did not get back a gossip response")
 			}
@@ -976,9 +968,6 @@ func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
 		case <-stop:
 			return ErrStopped
 		case evt := <-l.queryIn:
-			defer close(evt.Response)
-			defer close(evt.Error)
-
 			// If we got a query while we were gossiping, check if the queried transaction
 			// is valid. If it is, then we prefer it and move on to querying.
 
@@ -1010,8 +999,6 @@ func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
 
 			evt.Response <- l.cr.Preferred()
 		case evt := <-l.gossipIn:
-			defer close(evt.Vote)
-
 			// Handle some incoming gossip.
 
 			// Sending `nil` to `evt.Vote` is equivalent to voting that the
@@ -1060,7 +1047,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
-		case <-time.After(3 * time.Second):
+		case <-time.After(1 * time.Second):
 			return errors.Wrap(ErrTimeout, "query queue is full")
 		case l.queryOut <- evt:
 		}
@@ -1141,7 +1128,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 
 				return ErrConsensusRoundFinished
 			}
-		case <-time.After(3 * time.Second):
+		case <-time.After(1 * time.Second):
 			return errors.Wrap(ErrTimeout, "did not get back a query response")
 		}
 
@@ -1157,9 +1144,6 @@ func listenForQueries(l *Ledger) func(stop <-chan struct{}) error {
 		case <-stop:
 			return ErrStopped
 		case evt := <-l.queryIn:
-			defer close(evt.Response)
-			defer close(evt.Error)
-
 			// Respond to the query with either:
 			//
 			// a) our own preferred transaction.
@@ -1267,7 +1251,6 @@ func listenForOutOfSyncChecks(l *Ledger) func(stop <-chan struct{}) error {
 			return ErrStopped
 		case evt := <-l.outOfSyncIn:
 			evt.Response <- l.v.loadRoot()
-			close(evt.Response)
 		}
 
 		return nil
@@ -1302,7 +1285,6 @@ func listenForSyncInits(l *Ledger) func(stop <-chan struct{}) error {
 			}
 
 			evt.Response <- data
-			close(evt.Response)
 		}
 
 		return nil
@@ -1332,8 +1314,6 @@ func listenForSyncDiffChunks(l *Ledger) func(stop <-chan struct{}) error {
 			} else {
 				evt.Response <- nil
 			}
-
-			close(evt.Response)
 		}
 
 		return nil
@@ -1385,8 +1365,6 @@ func listenForMissingTXs(l *Ledger) func(stop <-chan struct{}) error {
 		case <-stop:
 			return ErrStopped
 		case evt := <-l.syncTxIn:
-			defer close(evt.Response)
-
 			var txs []Transaction
 
 			for _, id := range evt.IDs {
@@ -1497,7 +1475,7 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
-		case <-time.After(3 * time.Second):
+		case <-time.After(1 * time.Second):
 			return errors.Wrap(ErrSyncFailed, "timed out while waiting for sync chunk queue to empty up")
 		case l.syncDiffOut <- evtc:
 		}

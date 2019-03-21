@@ -108,9 +108,6 @@ func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 func (b *block) broadcastGossip(ledger *wavelet.Ledger, node *noise.Node, peer *noise.Peer) {
 	for evt := range ledger.GossipOut {
 		func() {
-			defer close(evt.Result)
-			defer close(evt.Error)
-
 			peers, err := selectPeers(node, sys.SnowballQueryK)
 			if err != nil {
 				fmt.Println("failed to select peers while gossiping:", err)
@@ -149,9 +146,6 @@ func (b *block) broadcastGossip(ledger *wavelet.Ledger, node *noise.Node, peer *
 func (b *block) broadcastQueries(ledger *wavelet.Ledger, node *noise.Node, peer *noise.Peer) {
 	for evt := range ledger.QueryOut {
 		func() {
-			defer close(evt.Result)
-			defer close(evt.Error)
-
 			peers, err := selectPeers(node, sys.SnowballQueryK)
 			if err != nil {
 				fmt.Println("failed to select peers while querying:", err)
@@ -193,9 +187,6 @@ func (b *block) broadcastQueries(ledger *wavelet.Ledger, node *noise.Node, peer 
 func (b *block) broadcastOutOfSyncChecks(ledger *wavelet.Ledger, node *noise.Node, peer *noise.Peer) {
 	for evt := range ledger.OutOfSyncOut {
 		func() {
-			defer close(evt.Result)
-			defer close(evt.Error)
-
 			peers, err := selectPeers(node, sys.SnowballSyncK)
 			if err != nil {
 				// Do not send an error if we do not have any peers to broadcast out-of-sync checks to.
@@ -236,9 +227,6 @@ func (b *block) broadcastOutOfSyncChecks(ledger *wavelet.Ledger, node *noise.Nod
 func (b *block) broadcastSyncInitRequests(ledger *wavelet.Ledger, node *noise.Node, peer *noise.Peer) {
 	for evt := range ledger.SyncInitOut {
 		func() {
-			defer close(evt.Result)
-			defer close(evt.Error)
-
 			peers, err := selectPeers(node, sys.SnowballSyncK)
 			if err != nil {
 				return
@@ -273,8 +261,6 @@ func (b *block) broadcastSyncInitRequests(ledger *wavelet.Ledger, node *noise.No
 func (b *block) broadcastSyncMissingTXs(ledger *wavelet.Ledger, node *noise.Node, peer *noise.Peer) {
 	for evt := range ledger.SyncTxOut {
 		func() {
-			defer close(evt.Result)
-
 			peers, err := selectPeers(node, sys.SnowballSyncK)
 			if err != nil {
 				return
@@ -313,9 +299,6 @@ func (b *block) broadcastSyncMissingTXs(ledger *wavelet.Ledger, node *noise.Node
 func (b *block) broadcastSyncDiffRequests(ledger *wavelet.Ledger, node *noise.Node, peer *noise.Peer) {
 	for evt := range ledger.SyncDiffOut {
 		func() {
-			defer close(evt.Result)
-			defer close(evt.Error)
-
 			collected := make([][]byte, len(evt.Sources))
 			var count atomic.Uint32
 
@@ -388,16 +371,16 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 		}
 	}()
 
-	evt := wavelet.EventIncomingQuery{TX: *req.tx, Response: make(chan *wavelet.Transaction), Error: make(chan error)}
+	evt := wavelet.EventIncomingQuery{TX: *req.tx, Response: make(chan *wavelet.Transaction, 1), Error: make(chan error, 1)}
 
 	select {
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending query request to ledger")
 	case ledger.QueryIn <- evt:
 	}
 
 	select {
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		fmt.Println("timed out getting query result from ledger")
 	case err := <-evt.Error:
 		fmt.Println("got an error processing query request:", err)
@@ -413,17 +396,17 @@ func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipReq
 		}
 	}()
 
-	evt := wavelet.EventIncomingGossip{TX: *req.TX, Vote: make(chan error)}
+	evt := wavelet.EventIncomingGossip{TX: *req.TX, Vote: make(chan error, 1)}
 
 	select {
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending gossip request to ledger")
 		return
 	case ledger.GossipIn <- evt:
 	}
 
 	select {
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		fmt.Println("timed out getting vote from ledger")
 		return
 	case err := <-evt.Vote:
@@ -443,17 +426,17 @@ func handleOutOfSyncCheck(ledger *wavelet.Ledger, peer *noise.Peer, req SyncView
 		}
 	}()
 
-	evt := wavelet.EventIncomingOutOfSyncCheck{Root: *req.root, Response: make(chan *wavelet.Transaction)}
+	evt := wavelet.EventIncomingOutOfSyncCheck{Root: *req.root, Response: make(chan *wavelet.Transaction, 1)}
 
 	select {
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending out of sync check to ledger")
 		return
 	case ledger.OutOfSyncIn <- evt:
 	}
 
 	select {
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		fmt.Println("timed out getting sync check results from ledger")
 		return
 	case root := <-evt.Response:
@@ -469,17 +452,17 @@ func handleSyncInits(ledger *wavelet.Ledger, peer *noise.Peer, req SyncInitReque
 		}
 	}()
 
-	evt := wavelet.EventIncomingSyncInit{ViewID: req.viewID, Response: make(chan wavelet.SyncInitMetadata)}
+	evt := wavelet.EventIncomingSyncInit{ViewID: req.viewID, Response: make(chan wavelet.SyncInitMetadata, 1)}
 
 	select {
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending sync init request to ledger")
 		return
 	case ledger.SyncInitIn <- evt:
 	}
 
 	select {
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		fmt.Println("timed out getting sync init results from ledger")
 		return
 	case data := <-evt.Response:
@@ -496,17 +479,17 @@ func handleSyncChunks(ledger *wavelet.Ledger, peer *noise.Peer, req SyncChunkReq
 		}
 	}()
 
-	evt := wavelet.EventIncomingSyncDiff{ChunkHash: req.chunkHash, Response: make(chan []byte)}
+	evt := wavelet.EventIncomingSyncDiff{ChunkHash: req.chunkHash, Response: make(chan []byte, 1)}
 
 	select {
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending sync diff request to ledger")
 		return
 	case ledger.SyncDiffIn <- evt:
 	}
 
 	select {
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		fmt.Println("timed out getting sync diff results from ledger")
 		return
 	case chunk := <-evt.Response:
@@ -522,17 +505,17 @@ func handleSyncMissingTXs(ledger *wavelet.Ledger, peer *noise.Peer, req SyncMiss
 		}
 	}()
 
-	evt := wavelet.EventIncomingSyncTX{IDs: req.ids, Response: make(chan []wavelet.Transaction)}
+	evt := wavelet.EventIncomingSyncTX{IDs: req.ids, Response: make(chan []wavelet.Transaction, 1)}
 
 	select {
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending missing tx sync request to ledger")
 		return
 	case ledger.SyncTxIn <- evt:
 	}
 
 	select {
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		fmt.Println("timed out getting missing tx sync results from ledger")
 		return
 	case txs := <-evt.Response:

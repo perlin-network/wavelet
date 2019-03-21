@@ -148,19 +148,19 @@ func (g *Gateway) sendTransaction(w http.ResponseWriter, r *http.Request) {
 		Payload:   req.payload,
 		Creator:   req.creator,
 		Signature: req.signature,
-		Result:    make(chan wavelet.Transaction),
-		Error:     make(chan error),
+		Result:    make(chan wavelet.Transaction, 1),
+		Error:     make(chan error, 1),
 	}
 
 	select {
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		g.render(w, r, ErrInternal(errors.New("broadcasting queue is full")))
 		return
 	case g.ledger.BroadcastQueue <- evt:
 	}
 
 	select {
-	case <-time.After(3 * time.Second):
+	case <-time.After(1 * time.Second):
 		g.render(w, r, ErrInternal(errors.New("its taking too long to broadcast your transaction")))
 		return
 	case err := <-evt.Error:

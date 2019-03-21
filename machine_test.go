@@ -434,7 +434,7 @@ func TestListenForSyncDiffChunks(t *testing.T) {
 }
 
 func TestListenForSyncInits(t *testing.T) {
-	l := NewLedger(ed25519.RandomKeys(),  store.NewInmem())
+	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
 
 	stop := make(chan struct{})
 	listenForSyncInits := func() error {
@@ -461,13 +461,13 @@ func TestListenForSyncInits(t *testing.T) {
 	// Test diff
 
 	// Create the tree and commit it into ledger accounts
-	tree := avl.New( store.NewInmem())
+	tree := avl.New(store.NewInmem())
 	for i := uint64(0); i < 50; i++ {
 		tree.Insert([]byte("a"), []byte("b"))
 		tree.SetViewID(i)
 	}
 	assert.NoError(t, l.a.commit(tree))
-	expectedChunkHashes := [][blake2b.Size256]byte {
+	expectedChunkHashes := [][blake2b.Size256]byte{
 		blake2b.Sum256(tree.DumpDiff(viewID)),
 	}
 
@@ -497,7 +497,7 @@ func TestListenForSyncInits(t *testing.T) {
 }
 
 func TestListenForOutOfSyncChecks(t *testing.T) {
-	l := NewLedger(ed25519.RandomKeys(),  store.NewInmem())
+	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
 
 	stop := make(chan struct{})
 	listenForOutOfSyncChecks := func() error {
@@ -529,7 +529,7 @@ func TestListenForOutOfSyncChecks(t *testing.T) {
 }
 
 func TestListenForMissingTXs(t *testing.T) {
-	l := NewLedger(ed25519.RandomKeys(),  store.NewInmem())
+	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
 
 	stop := make(chan struct{})
 	listenForMissingTXs := func() error {
@@ -543,7 +543,7 @@ func TestListenForMissingTXs(t *testing.T) {
 	assert.NoError(t, l.v.addTransaction(&tx))
 
 	evt := EventIncomingSyncTX{
-		IDs: []common.TransactionID{tx.ID},
+		IDs:      []common.TransactionID{tx.ID},
 		Response: make(chan []Transaction, 1),
 	}
 
@@ -562,7 +562,6 @@ func TestListenForMissingTXs(t *testing.T) {
 	stop = make(chan struct{})
 
 	// Test kill.
-
 	close(l.kill)
 	assert.Equal(t, ErrStopped, listenForMissingTXs())
 }
