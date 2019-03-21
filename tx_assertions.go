@@ -137,11 +137,13 @@ func AssertValidAncestry(view *graph, tx Transaction) error {
 }
 
 func AssertInView(view *graph, tx Transaction) error {
-	if ourViewID := view.loadViewID(); tx.ViewID != ourViewID {
-		return errors.Errorf("transaction was made for view ID %d, but our view ID is %d", tx.ViewID, ourViewID)
-	}
+	ourViewID := view.loadViewID()
 
 	if tx.IsCritical(view.loadDifficulty()) {
+		if tx.ViewID != ourViewID {
+			return errors.Errorf("critical transaction was made for view ID %d, but our view ID is %d", tx.ViewID, ourViewID)
+		}
+
 		if size := computeCriticalTimestampWindowSize(tx.ViewID); len(tx.DifficultyTimestamps) != size {
 			return errors.Errorf("expected tx to have %d timestamp(s), but has %d timestamp(s)", size, len(tx.DifficultyTimestamps))
 		}
@@ -154,6 +156,10 @@ func AssertInView(view *graph, tx Transaction) error {
 			if tx.DifficultyTimestamps[i] < tx.DifficultyTimestamps[i-1] {
 				return errors.New("tx critical timestamps are not in ascending order")
 			}
+		}
+	} else {
+		if tx.ViewID < ourViewID {
+			return errors.Errorf("transaction was made for view ID %d, but our view ID is %d", tx.ViewID, ourViewID)
 		}
 	}
 

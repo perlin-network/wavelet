@@ -1156,6 +1156,25 @@ func listenForQueries(l *Ledger) func(stop <-chan struct{}) error {
 			} else {
 				evt.Response <- nil
 			}
+		case evt := <-l.gossipIn:
+			// Handle some incoming gossip.
+
+			// Sending `nil` to `evt.Vote` is equivalent to voting that the
+			// incoming gossiped transaction has been accepted by our node.
+
+			// If we already have the transaction in our view-graph, we tell the gossiper
+			// that the transaction has already been well-received by us.
+			if _, exists := l.v.lookupTransaction(evt.TX.ID); exists {
+				evt.Vote <- nil
+				return nil
+			}
+
+			if err := l.addTransaction(evt.TX); err != nil {
+				evt.Vote <- err
+				return nil
+			}
+
+			evt.Vote <- nil
 		}
 
 		if l.cr.Preferred() == nil {
