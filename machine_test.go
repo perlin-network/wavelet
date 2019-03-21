@@ -2,6 +2,7 @@ package wavelet
 
 import (
 	"github.com/perlin-network/noise/identity/ed25519"
+	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
@@ -430,4 +431,70 @@ func TestListenForSyncDiffChunks(t *testing.T) {
 
 	close(l.kill)
 	assert.Equal(t, ErrStopped, listenForSyncDiffChunks())
+}
+
+func TestListenForSyncInits(t *testing.T) {
+	l := NewLedger(ed25519.RandomKeys(),  store.NewInmem())
+
+	stop := make(chan struct{})
+	listenForSyncInits := func() error {
+		return listenForSyncInits(l)(stop)
+	}
+
+	var viewID uint64 = 1
+	var evt EventIncomingSyncInit
+	var res SyncInitMetadata
+
+	// Test empty
+
+	evt = EventIncomingSyncInit{
+		ViewID:   viewID,
+		Response: make(chan SyncInitMetadata, 1),
+	}
+
+	l.SyncInitIn <- evt
+	assert.NoError(t, listenForSyncInits())
+	res = <-evt.Response
+	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 0, ChunkHashes: nil}, res)
+	// Check the response channel should be closed.
+	_, ok := <-evt.Response
+	assert.False(t, ok)
+
+	// Test diff
+
+	// Create the tree and commit it into ledger accounts
+	tree := avl.New( store.NewInmem())
+	for i := uint64(0); i < 50; i++ {
+		tree.Insert([]byte("a"), []byte("b"))
+		tree.SetViewID(i)
+	}
+	assert.NoError(t, l.a.commit(tree))
+	expectedChunkHashes := [][blake2b.Size256]byte {
+		blake2b.Sum256(tree.DumpDiff(viewID)),
+	}
+
+	evt = EventIncomingSyncInit{
+		ViewID:   viewID,
+		Response: make(chan SyncInitMetadata, 1),
+	}
+
+	l.SyncInitIn <- evt
+	assert.NoError(t, listenForSyncInits())
+	res = <-evt.Response
+	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 0, ChunkHashes: expectedChunkHashes}, res)
+	// Check the response channel should be closed.
+	_, ok = <-evt.Response
+	assert.False(t, ok)
+
+	// Test stop
+
+	close(stop)
+	assert.Equal(t, ErrStopped, listenForSyncInits())
+
+	stop = make(chan struct{})
+
+	// Test kill.
+
+	close(l.kill)
+	assert.Equal(t, ErrStopped, listenForSyncInits())
 }
