@@ -22,7 +22,7 @@ type graph struct {
 	sync.RWMutex
 
 	transactions map[common.TransactionID]*Transaction
-	children     map[common.TransactionID][]common.TransactionID
+	children     map[common.TransactionID][]*Transaction
 
 	height atomic.Uint64
 
@@ -35,7 +35,7 @@ func newGraph(kv store.KV, genesis *Transaction) *graph {
 	g := &graph{
 		kv:           kv,
 		transactions: make(map[common.TransactionID]*Transaction),
-		children:     make(map[common.TransactionID][]common.TransactionID),
+		children:     make(map[common.TransactionID][]*Transaction),
 	}
 
 	// Initialize difficulty if not exist.
@@ -87,7 +87,7 @@ func (g *graph) addTransaction(tx *Transaction) error {
 
 	// Update the parents children.
 	for _, parent := range parents {
-		g.children[parent.ID] = append(g.children[parent.ID], tx.ID)
+		g.children[parent.ID] = append(g.children[parent.ID], tx)
 	}
 
 	// Update the transactions depth.
@@ -123,7 +123,7 @@ func (g *graph) reset(root *Transaction) {
 			Msg("Pruned transactions.")
 
 		g.transactions = make(map[common.TransactionID]*Transaction)
-		g.children = make(map[common.TransactionID][]common.TransactionID)
+		g.children = make(map[common.TransactionID][]*Transaction)
 
 		g.resetCounter = 0
 	}
@@ -172,12 +172,10 @@ func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 		popped := q.PopFront().(*Transaction)
 
 		if children := g.children[popped.ID]; len(children) > 0 {
-			for _, childrenID := range children {
-				if _, seen := visited[childrenID]; !seen {
-					if child, exists := g.transactions[childrenID]; exists {
-						q.PushBack(child)
-					}
-					visited[childrenID] = struct{}{}
+			for _, child := range children {
+				if _, seen := visited[child.ID]; !seen {
+					q.PushBack(child)
+					visited[child.ID] = struct{}{}
 				}
 			}
 		} else if popped.depth+sys.MaxEligibleParentsDepthDiff >= height && (popped.ID == root.ID || popped.ViewID == viewID) {
