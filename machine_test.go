@@ -7,6 +7,8 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/crypto/blake2b"
+	"math/rand"
 	"sync"
 	"testing"
 )
@@ -369,4 +371,63 @@ func TestListenForQueries(t *testing.T) {
 
 	close(l.kill)
 	assert.Equal(t, ErrStopped, listenForQueries())
+}
+
+func TestListenForSyncDiffChunks(t *testing.T) {
+	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
+
+	stop := make(chan struct{})
+	listenForSyncDiffChunks := func() error {
+		return listenForSyncDiffChunks(l)(stop)
+	}
+
+	var chunkHash [blake2b.Size256]byte
+	_, err := rand.Read(chunkHash[:])
+	assert.NoError(t, err)
+
+	var evt EventIncomingSyncDiff
+
+	// Test ChunkHash not found
+	evt = EventIncomingSyncDiff{
+		ChunkHash: chunkHash,
+		Response:  make(chan []byte, 1),
+	}
+
+	l.SyncDiffIn <- evt
+	assert.NoError(t, listenForSyncDiffChunks())
+	// check the response should be nil
+	assert.Nil(t, <-evt.Response)
+	// Check the response channel should be closed.
+	_, ok := <-evt.Response
+	assert.False(t, ok)
+
+	// Test ChunkHash found
+
+	// Save the ChunkHash
+	var value = []byte("chunk")
+	l.cacheChunk.put(chunkHash, value)
+
+	evt = EventIncomingSyncDiff{
+		ChunkHash: chunkHash,
+		Response:  make(chan []byte, 1),
+	}
+	l.SyncDiffIn <- evt
+	assert.NoError(t, listenForSyncDiffChunks())
+	// check the response
+	assert.Equal(t, value, <-evt.Response)
+	// Check the response channel should be closed.
+	_, ok = <-evt.Response
+	assert.False(t, ok)
+
+	// Test stop
+
+	close(stop)
+	assert.Equal(t, ErrStopped, listenForSyncDiffChunks())
+
+	stop = make(chan struct{})
+
+	// Test kill.
+
+	close(l.kill)
+	assert.Equal(t, ErrStopped, listenForSyncDiffChunks())
 }
