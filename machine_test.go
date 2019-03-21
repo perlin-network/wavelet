@@ -495,3 +495,74 @@ func TestListenForSyncInits(t *testing.T) {
 	close(l.kill)
 	assert.Equal(t, ErrStopped, listenForSyncInits())
 }
+
+func TestListenForOutOfSyncChecks(t *testing.T) {
+	l := NewLedger(ed25519.RandomKeys(),  store.NewInmem())
+
+	stop := make(chan struct{})
+	listenForOutOfSyncChecks := func() error {
+		return listenForOutOfSyncChecks(l)(stop)
+	}
+
+	evt := EventIncomingOutOfSyncCheck{
+		Response: make(chan *Transaction, 1),
+	}
+
+	l.OutOfSyncIn <- evt
+	assert.NoError(t, listenForOutOfSyncChecks())
+	assert.Equal(t, l.v.loadRoot(), <-evt.Response)
+	// Check the response channel should be closed.
+	_, ok := <-evt.Response
+	assert.False(t, ok)
+
+	// Test stop
+
+	close(stop)
+	assert.Equal(t, ErrStopped, listenForOutOfSyncChecks())
+
+	stop = make(chan struct{})
+
+	// Test kill.
+
+	close(l.kill)
+	assert.Equal(t, ErrStopped, listenForOutOfSyncChecks())
+}
+
+func TestListenForMissingTXs(t *testing.T) {
+	l := NewLedger(ed25519.RandomKeys(),  store.NewInmem())
+
+	stop := make(chan struct{})
+	listenForMissingTXs := func() error {
+		return listenForMissingTXs(l)(stop)
+	}
+
+	tx, err := NewTransaction(l.keys, sys.TagTransfer, []byte("lorem ipsum"))
+	assert.NoError(t, err)
+	tx.rehash()
+
+	assert.NoError(t, l.v.addTransaction(&tx))
+
+	evt := EventIncomingSyncTX{
+		IDs: []common.TransactionID{tx.ID},
+		Response: make(chan []Transaction, 1),
+	}
+
+	l.SyncTxIn <- evt
+	assert.NoError(t, listenForMissingTXs())
+	assert.Equal(t, []Transaction{tx}, <-evt.Response)
+	// Check the response channel should be closed.
+	_, ok := <-evt.Response
+	assert.False(t, ok)
+
+	// Test stop
+
+	close(stop)
+	assert.Equal(t, ErrStopped, listenForMissingTXs())
+
+	stop = make(chan struct{})
+
+	// Test kill.
+
+	close(l.kill)
+	assert.Equal(t, ErrStopped, listenForMissingTXs())
+}
