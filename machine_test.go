@@ -443,7 +443,6 @@ func TestListenForSyncInits(t *testing.T) {
 
 	var viewID uint64 = 1
 	var evt EventIncomingSyncInit
-	var res SyncInitMetadata
 
 	// Test empty
 
@@ -454,8 +453,7 @@ func TestListenForSyncInits(t *testing.T) {
 
 	l.SyncInitIn <- evt
 	assert.NoError(t, listenForSyncInits())
-	res = <-evt.Response
-	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 0, ChunkHashes: nil}, res)
+	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 0, ChunkHashes: nil}, <-evt.Response)
 	// Check the response channel should be closed.
 	_, ok := <-evt.Response
 	assert.False(t, ok)
@@ -480,8 +478,7 @@ func TestListenForSyncInits(t *testing.T) {
 
 	l.SyncInitIn <- evt
 	assert.NoError(t, listenForSyncInits())
-	res = <-evt.Response
-	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 0, ChunkHashes: expectedChunkHashes}, res)
+	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 0, ChunkHashes: expectedChunkHashes}, <-evt.Response)
 	// Check the response channel should be closed.
 	_, ok = <-evt.Response
 	assert.False(t, ok)
