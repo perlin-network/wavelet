@@ -394,7 +394,22 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 	tx.ViewID = l.v.loadViewID(root)
 
 	if tx.IsCritical(l.v.loadDifficulty()) {
-		snapshot, _, err := l.collapseTransactions(tx, false)
+		snapshot, missing, err := l.collapseTransactions(tx, false)
+
+		if len(missing) > 0 {
+			l.muMissing.Lock()
+			for _, id := range missing {
+				_, ok := l.missing[id]
+
+				if !ok {
+					l.missing[id] = make(map[common.TransactionID]Transaction)
+				}
+
+				l.missing[id][tx.ID] = tx
+			}
+			l.muMissing.Unlock()
+		}
+
 		if err != nil {
 			return tx, errors.Wrap(err, "unable to collapse ancestry to create critical transaction")
 		}
@@ -749,6 +764,21 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction) error {
 
 func (l *Ledger) assertCollapsible(tx Transaction) (missing []common.TransactionID, err error) {
 	snapshot, missing, err := l.collapseTransactions(tx, false)
+
+	if len(missing) > 0 {
+		l.muMissing.Lock()
+		for _, id := range missing {
+			_, ok := l.missing[id]
+
+			if !ok {
+				l.missing[id] = make(map[common.TransactionID]Transaction)
+			}
+
+			l.missing[id][tx.ID] = tx
+		}
+		l.muMissing.Unlock()
+	}
+
 	if err != nil {
 		return missing, err
 	}
@@ -1195,7 +1225,22 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 				state.resetOnce.Do(func() {
 					newRoot := l.cr.Preferred()
 
-					state, _, err := l.collapseTransactions(*newRoot, true)
+					state, missing, err := l.collapseTransactions(*newRoot, true)
+
+					if len(missing) > 0 {
+						l.muMissing.Lock()
+						for _, id := range missing {
+							_, ok := l.missing[id]
+
+							if !ok {
+								l.missing[id] = make(map[common.TransactionID]Transaction)
+							}
+
+							l.missing[id][newRoot.ID] = *newRoot
+						}
+						l.muMissing.Unlock()
+					}
+
 					if err != nil {
 						exception = errors.Wrap(err, "decided a new root, but got an error collapsing down its ancestry")
 						return
