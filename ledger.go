@@ -1031,18 +1031,20 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 				return nil
 			}
 
-			responses := make(map[common.AccountID]bool)
+			accounts := make(map[common.AccountID]struct{})
 
 			for _, vote := range votes {
-				responses[vote.Voter] = vote.Ok
+				accounts[vote.Voter] = struct{}{}
 			}
 
-			weights := computeStakeDistribution(snapshot, responses)
+			weights := computeStakeDistribution(snapshot, accounts)
 
 			positives := 0.0
 
 			for _, vote := range votes {
-				positives += weights[vote.Voter]
+				if vote.Ok {
+					positives += weights[vote.Voter]
+				}
 			}
 
 			if positives < sys.SnowballQueryAlpha {
@@ -1193,20 +1195,18 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 			ourViewID := l.v.loadViewID(oldRoot)
 
 			counts := make(map[common.TransactionID]float64)
-			responses := make(map[common.AccountID]bool, len(votes))
+			accounts := make(map[common.AccountID]struct{}, len(votes))
 			transactions := make(map[common.TransactionID]Transaction)
-
-			preferred := l.cr.Preferred()
 
 			for _, vote := range votes {
 				if vote.Preferred.ViewID == ourViewID && vote.Preferred.ID != common.ZeroTransactionID {
 					transactions[vote.Preferred.ID] = vote.Preferred
 				}
 
-				responses[vote.Voter] = preferred != nil && vote.Preferred.ID == preferred.ID
+				accounts[vote.Voter] = struct{}{}
 			}
 
-			weights := computeStakeDistribution(snapshot, responses)
+			weights := computeStakeDistribution(snapshot, accounts)
 
 			for _, vote := range votes {
 				if vote.Preferred.ViewID == ourViewID && vote.Preferred.ID != common.ZeroTransactionID {
@@ -1381,20 +1381,18 @@ func checkIfOutOfSync(l *Ledger) func(stop <-chan struct{}) error {
 			}
 
 			counts := make(map[common.TransactionID]float64)
-			responses := make(map[common.AccountID]bool)
+			accounts := make(map[common.AccountID]struct{})
 			transactions := make(map[common.TransactionID]Transaction)
-
-			preferred := l.sr.Preferred()
 
 			for _, vote := range votes {
 				if vote.Root.ID != common.ZeroTransactionID {
 					transactions[vote.Root.ID] = vote.Root
 				}
 
-				responses[vote.Voter] = preferred != nil && preferred.ID == vote.Root.ID
+				accounts[vote.Voter] = struct{}{}
 			}
 
-			weights := computeStakeDistribution(snapshot, responses)
+			weights := computeStakeDistribution(snapshot, accounts)
 
 			for _, vote := range votes {
 				if vote.Root.ID != common.ZeroTransactionID {

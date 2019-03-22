@@ -6,23 +6,18 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 )
 
-func computeStakeDistribution(tree *avl.Tree, responses map[common.AccountID]bool) map[common.AccountID]float64 {
-	stakes := make(map[common.AccountID]uint64, len(responses))
+func computeStakeDistribution(tree *avl.Tree, accounts map[common.AccountID]struct{}) map[common.AccountID]float64 {
+	stakes := make(map[common.AccountID]uint64, len(accounts))
 	var totalStake uint64
 
-	for accountID, vote := range responses {
+	for accountID := range accounts {
 		stake, _ := ReadAccountStake(tree, accountID)
 
 		if stake < sys.MinimumStake {
 			stake = sys.MinimumStake
 		}
 
-		if vote == false {
-			stakes[accountID] = 0
-		} else {
-			stakes[accountID] = stake
-		}
-
+		stakes[accountID] = stake
 		totalStake += stake
 	}
 
