@@ -29,8 +29,8 @@ func computeMeanTimestamp(timestamps []uint64) (mean uint64) {
 
 func computeCriticalTimestampWindowSize(viewID uint64) int {
 	size := sys.CriticalTimestampAverageWindowSize
-	if viewID+1 < uint64(size) {
-		size = int(viewID) + 1
+	if viewID < uint64(size) {
+		size = int(viewID)
 	}
 
 	return size

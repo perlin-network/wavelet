@@ -145,7 +145,7 @@ func AssertValidAncestry(view *graph, tx Transaction) (missing []common.Transact
 }
 
 func AssertInView(view *graph, tx Transaction) error {
-	ourViewID := view.loadViewID()
+	ourViewID := view.loadViewID(nil)
 
 	if tx.IsCritical(view.loadDifficulty()) {
 		if tx.ViewID != ourViewID {

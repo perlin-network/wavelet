@@ -164,8 +164,6 @@ func (g *graph) reset(root *Transaction) {
 		Msg("Ledger difficulty has been adjusted.")
 
 	g.saveDifficulty(adjusted)
-	g.saveViewID(newViewID)
-
 	g.saveRoot(root)
 
 	g.Unlock()
@@ -188,7 +186,7 @@ func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 	q.PushBack(root)
 
 	height := g.height.Load()
-	viewID := g.loadViewID()
+	viewID := g.loadViewID(root)
 
 	for q.Len() > 0 {
 		popped := q.PopFront().(*Transaction)
@@ -237,13 +235,12 @@ func (g *graph) loadRoot() *Transaction {
 	return &tx
 }
 
-func (g *graph) loadViewID() uint64 {
-	buf, err := g.kv.Get(keyLedgerViewID[:])
-	if len(buf) != 8 || err != nil {
-		return 0
+func (g *graph) loadViewID(root *Transaction) uint64 {
+	if root == nil {
+		root = g.loadRoot()
 	}
 
-	return binary.LittleEndian.Uint64(buf)
+	return root.ViewID + 1
 }
 
 func (g *graph) loadDifficulty() uint64 {
@@ -260,11 +257,4 @@ func (g *graph) saveDifficulty(difficulty uint64) {
 	binary.LittleEndian.PutUint64(buf[:], difficulty)
 
 	_ = g.kv.Put(keyLedgerDifficulty[:], buf[:])
-}
-
-func (g *graph) saveViewID(viewID uint64) {
-	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], viewID)
-
-	_ = g.kv.Put(keyLedgerViewID[:], buf[:])
 }

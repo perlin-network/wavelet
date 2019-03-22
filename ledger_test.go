@@ -180,7 +180,6 @@ func TestQuery(t *testing.T) {
 
 	l.cr.Prefer(preferred)
 	l.cr.decided = true
-	l.v.saveViewID(1)
 
 	stop := make(chan struct{})
 	state := new(stateQuerying)
@@ -296,8 +295,9 @@ func TestListenForQueries(t *testing.T) {
 	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
 
 	root, err := NewTransaction(l.keys, sys.TagNop, nil)
-	root.ViewID = 1
 	assert.NoError(t, err)
+
+	root.ViewID = 1
 
 	root.rehash()
 
@@ -545,7 +545,6 @@ func TestCheckIfOutOfSync(t *testing.T) {
 	preferred.rehash()
 
 	l.sr.Prefer(preferred)
-	l.v.saveViewID(0)
 
 	stop := make(chan struct{})
 	checkIfOutOfSync := func() error {
