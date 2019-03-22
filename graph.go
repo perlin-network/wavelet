@@ -24,11 +24,11 @@ type graph struct {
 	transactions map[common.TransactionID]*Transaction
 	children     map[common.TransactionID][]*Transaction
 
+	indexViewID map[uint64][]*Transaction
+
 	height atomic.Uint64
 
 	kv store.KV
-
-	resetCounter int
 }
 
 func newGraph(kv store.KV, genesis *Transaction) *graph {
@@ -36,6 +36,8 @@ func newGraph(kv store.KV, genesis *Transaction) *graph {
 		kv:           kv,
 		transactions: make(map[common.TransactionID]*Transaction),
 		children:     make(map[common.TransactionID][]*Transaction),
+
+		indexViewID: make(map[uint64][]*Transaction),
 	}
 
 	// Initialize difficulty if not exist.
@@ -51,6 +53,7 @@ func newGraph(kv store.KV, genesis *Transaction) *graph {
 	}
 
 	g.transactions[genesis.ID] = genesis
+	g.updateIndices(genesis)
 
 	return g
 }
@@ -63,6 +66,10 @@ func maxDepth(parents []*Transaction) (max uint64) {
 	}
 
 	return
+}
+
+func (g *graph) updateIndices(tx *Transaction) {
+	g.indexViewID[tx.ViewID] = append(g.indexViewID[tx.ViewID], tx)
 }
 
 func (g *graph) addTransaction(tx *Transaction) error {
@@ -100,6 +107,7 @@ func (g *graph) addTransaction(tx *Transaction) error {
 
 	// Add the transaction to our view-graph.
 	g.transactions[tx.ID] = tx
+	g.updateIndices(tx)
 
 	logger := log.TX(tx.ID, tx.Sender, tx.Creator, tx.ParentIDs, tx.Tag, tx.Payload, "new")
 	logger.Log().Uint64("depth", tx.depth).Msg("Added transaction to view-graph.")
@@ -107,31 +115,45 @@ func (g *graph) addTransaction(tx *Transaction) error {
 	return nil
 }
 
+const pruningDepth = 30
+
 // reset resets the entire graph and sets the graph to start from
 // the specified root (latest critical transaction of the entire ledger).
 func (g *graph) reset(root *Transaction) {
+	currentViewID := root.ViewID + 1
+
 	g.Lock()
 
-	// Prune every 30 resets.
-	g.resetCounter++
+	// Prune away all transactions and indices with a view ID < (current view ID - pruningDepth).
+	for viewID, transactions := range g.indexViewID {
+		if viewID+pruningDepth < currentViewID {
+			for _, tx := range transactions {
+				delete(g.transactions, tx.ID)
+				delete(g.children, tx.ID)
+			}
 
-	if g.resetCounter >= 30 {
-		logger := log.Consensus("prune")
-		logger.Debug().
-			Int("num_tx", len(g.transactions)).
-			Uint64("view_id", root.ViewID+1).
-			Msg("Pruned transactions.")
+			logger := log.Consensus("prune")
+			logger.Debug().
+				Int("num_tx", len(g.transactions)).
+				Uint64("view_id", viewID).
+				Uint64("current_view_id", currentViewID).
+				Msg("Pruned transactions.")
 
-		g.transactions = make(map[common.TransactionID]*Transaction)
-		g.children = make(map[common.TransactionID][]*Transaction)
-
-		g.resetCounter = 0
+			delete(g.indexViewID, viewID)
+		}
 	}
 
 	g.height.Store(0)
 
 	root.depth = 0
+
+	_, existed := g.transactions[root.ID]
+
 	g.transactions[root.ID] = root
+
+	if !existed {
+		g.updateIndices(root)
+	}
 
 	original, adjusted := g.loadDifficulty(), computeNextDifficulty(root)
 
