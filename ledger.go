@@ -765,20 +765,6 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction) error {
 func (l *Ledger) assertCollapsible(tx Transaction) (missing []common.TransactionID, err error) {
 	snapshot, missing, err := l.collapseTransactions(tx, false)
 
-	if len(missing) > 0 {
-		l.muMissing.Lock()
-		for _, id := range missing {
-			_, ok := l.missing[id]
-
-			if !ok {
-				l.missing[id] = make(map[common.TransactionID]Transaction)
-			}
-
-			l.missing[id][tx.ID] = tx
-		}
-		l.muMissing.Unlock()
-	}
-
 	if err != nil {
 		return missing, err
 	}
