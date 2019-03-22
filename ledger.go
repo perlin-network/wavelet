@@ -1106,7 +1106,7 @@ func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
 			// b) should they be in a prior view ID, the prior consensus rounds root.
 			// c) no response indicating that we do not prefer any transaction.
 
-			if root := l.v.loadRoot(); root.ViewID != 0 && evt.TX.ViewID == root.ViewID {
+			if root := l.v.loadRoot(); evt.TX.ViewID == root.ViewID {
 				evt.Response <- root
 				return nil
 			}
@@ -1306,7 +1306,14 @@ func listenForQueries(l *Ledger) func(stop <-chan struct{}) error {
 			// a) our own preferred transaction.
 			// b) should they be in a prior view ID, the prior consensus rounds root.
 
-			if root := l.v.loadRoot(); root.ViewID != 0 && evt.TX.ViewID == root.ViewID {
+			critical := evt.TX.IsCritical(l.v.loadDifficulty())
+
+			if !critical {
+				evt.Error <- errors.New("transaction which was queried is not critical")
+				return nil
+			}
+
+			if root := l.v.loadRoot(); evt.TX.ViewID == root.ViewID {
 				evt.Response <- root
 			} else if preferred := l.cr.Preferred(); preferred != nil {
 				evt.Response <- preferred
