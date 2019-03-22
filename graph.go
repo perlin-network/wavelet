@@ -120,13 +120,13 @@ const pruningDepth = 30
 // reset resets the entire graph and sets the graph to start from
 // the specified root (latest critical transaction of the entire ledger).
 func (g *graph) reset(root *Transaction) {
-	currentViewID := root.ViewID + 1
+	newViewID := root.ViewID + 1
 
 	g.Lock()
 
 	// Prune away all transactions and indices with a view ID < (current view ID - pruningDepth).
 	for viewID, transactions := range g.indexViewID {
-		if viewID+pruningDepth < currentViewID {
+		if viewID+pruningDepth < newViewID {
 			for _, tx := range transactions {
 				delete(g.transactions, tx.ID)
 				delete(g.children, tx.ID)
@@ -134,8 +134,8 @@ func (g *graph) reset(root *Transaction) {
 
 			logger := log.Consensus("prune")
 			logger.Debug().
-				Int("num_tx", len(g.transactions)).
-				Uint64("current_view_id", currentViewID).
+				Int("num_tx", len(transactions)).
+				Uint64("current_view_id", newViewID).
 				Uint64("pruned_view_id", viewID).
 				Msg("Pruned transactions.")
 
@@ -164,7 +164,7 @@ func (g *graph) reset(root *Transaction) {
 		Msg("Ledger difficulty has been adjusted.")
 
 	g.saveDifficulty(adjusted)
-	g.saveViewID(root.ViewID + 1)
+	g.saveViewID(newViewID)
 
 	g.saveRoot(root)
 
