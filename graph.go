@@ -135,8 +135,8 @@ func (g *graph) reset(root *Transaction) {
 			logger := log.Consensus("prune")
 			logger.Debug().
 				Int("num_tx", len(g.transactions)).
-				Uint64("view_id", viewID).
 				Uint64("current_view_id", currentViewID).
+				Uint64("pruned_view_id", viewID).
 				Msg("Pruned transactions.")
 
 			delete(g.indexViewID, viewID)

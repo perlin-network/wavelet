@@ -388,7 +388,7 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 	tx.ViewID = l.v.loadViewID()
 
 	if tx.IsCritical(l.v.loadDifficulty()) {
-		snapshot, err := l.collapseTransactions(tx, false)
+		snapshot, _, err := l.collapseTransactions(tx, false)
 		if err != nil {
 			return tx, errors.Wrap(err, "unable to collapse ancestry to create critical transaction")
 		}
@@ -425,7 +425,7 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 		return err
 	}
 
-	if err := AssertValidAncestry(l.v, tx); err != nil {
+	if _, err := AssertValidAncestry(l.v, tx); err != nil {
 		return err
 	}
 
@@ -452,10 +452,10 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 // applies all valid ones to a snapshot of all accounts stored in the ledger.
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
-func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (*avl.Tree, error) {
+func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tree, missing []common.TransactionID, err error) {
 	root := l.v.loadRoot()
 
-	ss := l.a.snapshot()
+	ss = l.a.snapshot()
 	ss.SetViewID(root.ViewID + 1)
 
 	visited := make(map[common.TransactionID]struct{})
@@ -464,13 +464,16 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (*avl.Tree, 
 	q := queue.New()
 
 	for _, parentID := range tx.ParentIDs {
-		if parent, exists := l.v.lookupTransaction(parentID); exists {
-			q.PushBack(parent)
-		} else {
-			return ss, errors.New("not all ancestry of tx provided are available")
+		visited[parentID] = struct{}{}
+
+		parent, exists := l.v.lookupTransaction(parentID)
+
+		if !exists {
+			missing = append(missing, parentID)
+			continue
 		}
 
-		visited[parentID] = struct{}{}
+		q.PushBack(parent)
 	}
 
 	applyQueue := queue.New()
@@ -480,17 +483,24 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (*avl.Tree, 
 
 		for _, parentID := range popped.ParentIDs {
 			if _, seen := visited[parentID]; !seen {
-				if parent, exists := l.v.lookupTransaction(parentID); exists {
-					q.PushBack(parent)
-				} else {
-					return ss, errors.New("not all ancestry of tx provided are available")
+				visited[parentID] = struct{}{}
+
+				parent, exists := l.v.lookupTransaction(parentID)
+
+				if !exists {
+					missing = append(missing, parentID)
+					continue
 				}
 
-				visited[parentID] = struct{}{}
+				q.PushBack(parent)
 			}
 		}
 
 		applyQueue.PushBack(popped)
+	}
+
+	if len(missing) > 0 {
+		return ss, missing, errors.Errorf("missing %d necessary ancestor(s) to correctly collapse down ledger state from critical transaction %x", len(missing), tx.ID)
 	}
 
 	// Apply transactions in reverse order from the root of the view-graph all
@@ -520,7 +530,7 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (*avl.Tree, 
 		}
 	}
 
-	return ss, nil
+	return
 }
 
 func (l *Ledger) applyTransactionToSnapshot(ss *avl.Tree, tx *Transaction) error {
@@ -645,7 +655,7 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction) error {
 }
 
 func (l *Ledger) assertCollapsible(tx Transaction) error {
-	snapshot, err := l.collapseTransactions(tx, false)
+	snapshot, _, err := l.collapseTransactions(tx, false)
 	if err != nil {
 		return err
 	}
@@ -1097,7 +1107,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 					newRoot := l.cr.Preferred()
 					oldRoot := l.v.loadRoot()
 
-					state, err := l.collapseTransactions(*newRoot, true)
+					state, _, err := l.collapseTransactions(*newRoot, true)
 					if err != nil {
 						exception = errors.Wrap(err, "decided a new root, but got an error collapsing down its ancestry")
 						return

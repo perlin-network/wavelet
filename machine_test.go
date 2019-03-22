@@ -572,11 +572,7 @@ func TestCheckIfOutOfSync(t *testing.T) {
 		assert.NoError(t, call(&wg, checkIfOutOfSync))
 	}()
 	evt = <-l.OutOfSyncOut
-	evt.Result <- []VoteOutOfSync{
-		{
-
-		},
-	}
+	evt.Result <- []VoteOutOfSync{{}}
 	wg.Wait()
 
 	l.sr.decided = true

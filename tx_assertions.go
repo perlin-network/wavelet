@@ -74,27 +74,28 @@ func AssertValidTransaction(tx Transaction) error {
 // 1) we have the transactions ancestral data in our view-graph.
 // 2) the transaction has parents that are at a valid graph depth.
 // 3) the transaction has a sane timestamp with respect to its ancestry.
-func AssertValidAncestry(view *graph, tx Transaction) error {
+func AssertValidAncestry(view *graph, tx Transaction) (missing []common.TransactionID, err error) {
 	visited := make(map[common.TransactionID]struct{})
 	q := queue.New()
 
 	root := view.loadRoot()
 
 	for _, parentID := range tx.ParentIDs {
+		visited[parentID] = struct{}{}
+
 		parent, stored := view.lookupTransaction(parentID)
 
 		if !stored {
-			return errors.New("do not have tx parents in view-graph")
+			missing = append(missing, parentID)
+			continue
 		}
 
 		// Check if the depth of each parents is acceptable.
 		if parent.depth+sys.MaxEligibleParentsDepthDiff < tx.depth {
-			return errors.New("tx parents exceeds max eligible parents depth diff")
+			return missing, errors.New("tx parents exceeds max eligible parents depth diff")
 		}
 
 		q.PushBack(parent)
-
-		visited[parentID] = struct{}{}
 	}
 
 	for _, rootParentID := range root.ParentIDs {
@@ -110,30 +111,37 @@ func AssertValidAncestry(view *graph, tx Transaction) error {
 
 		for _, parentID := range popped.ParentIDs {
 			if _, seen := visited[parentID]; !seen {
+				visited[popped.ID] = struct{}{}
+
 				parent, stored := view.lookupTransaction(parentID)
 
 				if !stored {
-					return errors.New("do not have tx ancestors in view-graph")
+					missing = append(missing, parentID)
+					continue
 				}
 
 				q.PushBack(parent)
-				visited[popped.ID] = struct{}{}
+
 			}
 		}
+	}
+
+	if len(missing) > 0 {
+		return missing, errors.Errorf("missing %d ancestor(s) in view-graph for tx %x", len(missing), tx.ID)
 	}
 
 	median := computeMedianTimestamp(timestamps)
 
 	// TIMESTAMP ∈ (median(last 10 BFS-ordered transactions in terms of history), nodes current time + 2 hours]
 	if tx.Timestamp <= median {
-		return errors.Errorf("tx timestamp %d is lower than the median timestamp %d", tx.Timestamp, median)
+		return nil, errors.Errorf("tx timestamp %d is lower than the median timestamp %d", tx.Timestamp, median)
 	}
 
 	if tx.Timestamp > uint64(time.Duration(time.Now().Add(2*time.Hour).UnixNano())/time.Millisecond) {
-		return errors.Errorf("tx timestamp %d is greater than 2 hours from now", tx.Timestamp)
+		return nil, errors.Errorf("tx timestamp %d is greater than 2 hours from now", tx.Timestamp)
 	}
 
-	return nil
+	return nil, nil
 }
 
 func AssertInView(view *graph, tx Transaction) error {
