@@ -31,10 +31,12 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 		chErr := make(chan error, numWorkers)
 
 		for i := 0; i < numWorkers; i++ {
+			i := i + 1
+
 			go func() {
 				defer wg.Done()
 
-				res, err := client.SendTransaction(sys.TagStake, payload.NewWriter(nil).WriteUint64(1).Bytes())
+				res, err := client.SendTransaction(sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(i)).Bytes())
 				if err != nil {
 					chRes <- res
 					chErr <- err
