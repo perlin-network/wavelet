@@ -152,6 +152,9 @@ type Ledger struct {
 
 	processors map[byte]TransactionProcessor
 
+	missing   map[common.TransactionID]map[common.TransactionID]Transaction
+	muMissing sync.RWMutex
+
 	BroadcastQueue chan<- EventBroadcast
 	broadcastQueue <-chan EventBroadcast
 
@@ -193,8 +196,7 @@ type Ledger struct {
 
 	cacheChunk *lru
 
-	kill chan struct {
-	}
+	kill chan struct{}
 }
 
 func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
@@ -248,6 +250,8 @@ func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
 			sys.TagContract: ProcessContractTransaction,
 			sys.TagStake:    ProcessStakeTransaction,
 		},
+
+		missing: make(map[common.TransactionID]map[common.TransactionID]Transaction),
 
 		BroadcastQueue: broadcastQueue,
 		broadcastQueue: broadcastQueue,
@@ -417,6 +421,10 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 }
 
 func (l *Ledger) addTransaction(tx Transaction) error {
+	if _, exists := l.v.lookupTransaction(tx.ID); exists {
+		return nil
+	}
+
 	if err := AssertInView(l.v, tx); err != nil {
 		return err
 	}
@@ -425,14 +433,48 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 		return err
 	}
 
-	if _, err := AssertValidAncestry(l.v, tx); err != nil {
-		return err
+	{
+		missing, err := AssertValidAncestry(l.v, tx)
+
+		if len(missing) > 0 {
+			l.muMissing.Lock()
+			for _, id := range missing {
+				_, ok := l.missing[id]
+
+				if !ok {
+					l.missing[id] = make(map[common.TransactionID]Transaction)
+				}
+
+				l.missing[id][tx.ID] = tx
+			}
+			l.muMissing.Unlock()
+		}
+
+		if err != nil {
+			return err
+		}
 	}
 
 	critical := tx.IsCritical(l.v.loadDifficulty())
 
 	if critical {
-		if err := l.assertCollapsible(tx); err != nil {
+		missing, err := l.assertCollapsible(tx)
+
+		if len(missing) > 0 {
+			l.muMissing.Lock()
+			for _, id := range missing {
+				_, ok := l.missing[id]
+
+				if !ok {
+					l.missing[id] = make(map[common.TransactionID]Transaction)
+				}
+
+				l.missing[id][tx.ID] = tx
+			}
+			l.muMissing.Unlock()
+		}
+
+		if err != nil {
 			return err
 		}
 	}
@@ -445,7 +487,58 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 		l.cr.Prefer(tx)
 	}
 
+	l.revisitMissingTransactions(tx.ID)
+
 	return nil
+}
+
+func (l *Ledger) revisitMissingTransactions(id common.TransactionID) {
+	l.muMissing.RLock()
+	buffered, exists := l.missing[id]
+	l.muMissing.RUnlock()
+
+	if !exists {
+		return
+	}
+
+	unbuffered := make(map[common.TransactionID]Transaction)
+
+	for _, tx := range buffered {
+		err := l.addTransaction(tx)
+
+		if err != nil {
+			continue
+		}
+
+		unbuffered[tx.ID] = tx
+	}
+
+	l.muMissing.Lock()
+	if len(unbuffered) > 0 {
+		fmt.Println("unbuffered", len(unbuffered), "transactions, and in total the buffer is of size", len(l.missing))
+	}
+
+	for unbufferedID, unbufferedTX := range unbuffered {
+		// If a transaction T is unbuffered, make sure no other transactions we have yet
+		// to receive is awaiting for the arrival of T.
+
+		for _, parentID := range unbufferedTX.ParentIDs {
+			buffered, exists = l.missing[parentID]
+
+			if !exists {
+				continue
+			}
+
+			delete(l.missing[parentID], unbufferedID)
+
+			if len(l.missing[parentID]) == 0 {
+				delete(l.missing, parentID)
+			}
+		}
+	}
+
+	delete(l.missing, id)
+	l.muMissing.Unlock()
 }
 
 // collapseTransactions takes all transactions recorded in the graph view so far, and
@@ -654,17 +747,17 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction) error {
 	return nil
 }
 
-func (l *Ledger) assertCollapsible(tx Transaction) error {
-	snapshot, _, err := l.collapseTransactions(tx, false)
+func (l *Ledger) assertCollapsible(tx Transaction) (missing []common.TransactionID, err error) {
+	snapshot, missing, err := l.collapseTransactions(tx, false)
 	if err != nil {
-		return err
+		return missing, err
 	}
 
 	if snapshot.Checksum() != tx.AccountsMerkleRoot {
-		return errors.Errorf("collapsing down tranasction %x's ancestry gives an accounts checksum of %x, but the transaction has %x recorded as an accounts checksum instead", tx.ID, snapshot.Checksum(), tx.AccountsMerkleRoot)
+		return nil, errors.Errorf("collapsing down tranasction %x's ancestry gives an accounts checksum of %x, but the transaction has %x recorded as an accounts checksum instead", tx.ID, snapshot.Checksum(), tx.AccountsMerkleRoot)
 	}
 
-	return nil
+	return nil, nil
 }
 
 func Run(l *Ledger) {
@@ -1016,10 +1109,6 @@ func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
 
 			// If we already have the transaction in our view-graph, we tell the gossiper
 			// that the transaction has already been well-received by us.
-			if _, exists := l.v.lookupTransaction(evt.TX.ID); exists {
-				evt.Vote <- nil
-				return nil
-			}
 
 			if err := l.addTransaction(evt.TX); err != nil {
 				evt.Vote <- err
@@ -1120,6 +1209,20 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 
 					l.cr.Reset()
 					l.v.reset(newRoot)
+
+					//l.muMissing.Lock()
+					//for id, buffered := range l.missing {
+					//	for _, tx := range buffered {
+					//		if tx.ViewID < newRoot.ViewID+1 {
+					//			delete(buffered, tx.ID)
+					//		}
+					//	}
+					//
+					//	if len(buffered) == 0 {
+					//		delete(l.missing, id)
+					//	}
+					//}
+					//l.muMissing.Unlock()
 
 					logger := log.Consensus("round_end")
 					logger.Info().
