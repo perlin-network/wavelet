@@ -1343,7 +1343,10 @@ func syncMissingTX(l *Ledger) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
 		time.Sleep(100 * time.Millisecond)
 
-		evt := EventSyncTX{}
+		evt := EventSyncTX{
+			Result: make(chan []Transaction, 1),
+			Error:  make(chan error, 1),
+		}
 
 		select {
 		case <-l.kill:
