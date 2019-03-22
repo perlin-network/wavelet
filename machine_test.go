@@ -565,3 +565,137 @@ func TestListenForMissingTXs(t *testing.T) {
 	close(l.kill)
 	assert.Equal(t, ErrStopped, listenForMissingTXs())
 }
+
+func TestCheckIfOutOfSync(t *testing.T) {
+	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
+	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
+	assert.NoError(t, err)
+	preferred.rehash()
+
+	l.sr.Prefer(preferred)
+	l.v.saveViewID(0)
+
+	stop := make(chan struct{})
+	checkIfOutOfSync := func() error {
+		return checkIfOutOfSync(l)(stop)
+	}
+
+	var wg sync.WaitGroup
+	var evt EventOutOfSyncCheck
+
+	// Test empty.
+
+	wg.Add(1)
+	go func() {
+		assert.NoError(t, call(&wg, checkIfOutOfSync))
+	}()
+	evt = <-l.OutOfSyncOut
+	evt.Result <- []VoteOutOfSync{}
+	wg.Wait()
+
+	// Test empty out of sync.
+
+	wg.Add(1)
+	go func() {
+		assert.NoError(t, call(&wg, checkIfOutOfSync))
+	}()
+	evt = <-l.OutOfSyncOut
+	evt.Result <- []VoteOutOfSync{
+		{
+
+		},
+	}
+	wg.Wait()
+
+	l.sr.decided = true
+
+	// Test out of sync.
+
+	root, err := NewTransaction(l.keys, sys.TagNop, nil)
+	assert.NoError(t, err)
+	root.rehash()
+
+	wg.Add(1)
+	go func() {
+		assert.Equal(t, ErrOutOfSync, call(&wg, checkIfOutOfSync))
+	}()
+	evt = <-l.OutOfSyncOut
+	evt.Result <- []VoteOutOfSync{
+		{
+			Voter: common.AccountID{},
+			Root: Transaction{
+				ID:     root.ID,
+				ViewID: 1,
+			},
+		},
+	}
+	wg.Wait()
+
+	// Test not out of sync.
+
+	l.v.saveRoot(&root)
+
+	wg.Add(1)
+	go func() {
+		assert.NoError(t, call(&wg, checkIfOutOfSync))
+	}()
+	evt = <-l.OutOfSyncOut
+	evt.Result <- []VoteOutOfSync{
+		{
+			Voter: common.AccountID{},
+			Root: Transaction{
+				ID:     preferred.ID,
+				ViewID: 1,
+			},
+		},
+	}
+	wg.Wait()
+
+	// Test error
+
+	wg.Add(1)
+	evtError := errors.New("error")
+	go func() {
+		_ = call(&wg, checkIfOutOfSync)
+	}()
+
+	evt = <-l.OutOfSyncOut
+	evt.Error <- evtError
+	wg.Wait()
+
+	// Test the second select.
+
+	// Test the second select: stop
+	wg.Add(1)
+	go func() {
+		assert.Equal(t, ErrStopped, call(&wg, checkIfOutOfSync))
+	}()
+	evt = <-l.OutOfSyncOut
+	close(stop)
+	wg.Wait()
+	stop = make(chan struct{})
+
+	// Test the second select: kill.
+	wg.Add(1)
+	go func() {
+		assert.Equal(t, ErrStopped, call(&wg, checkIfOutOfSync))
+	}()
+	evt = <-l.OutOfSyncOut
+	close(l.kill)
+	wg.Wait()
+	l.kill = make(chan struct{})
+
+	// Test the first select.
+
+	// Disable the syncTxOut case.
+	l.outOfSyncOut = nil
+
+	// Test the first select: stop.
+	close(stop)
+	assert.Equal(t, ErrStopped, checkIfOutOfSync())
+	stop = make(chan struct{})
+
+	// Test the first select: kill.
+	close(l.kill)
+	assert.Equal(t, ErrStopped, checkIfOutOfSync())
+}
