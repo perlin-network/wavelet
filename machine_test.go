@@ -308,9 +308,6 @@ func TestListenForQueries(t *testing.T) {
 		return listenForQueries(l)(stop)
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
 	// Test root response.
 
 	evt := EventIncomingQuery{
@@ -324,13 +321,6 @@ func TestListenForQueries(t *testing.T) {
 	assert.Error(t, ErrConsensusRoundFinished, listenForQueries())
 	tx := <-evt.Response
 	assert.Equal(t, l.v.loadRoot().ID, tx.ID)
-
-	// Check the response channel should be closed.
-	_, ok := <-evt.Response
-	assert.False(t, ok)
-	// Check the error channel should be closed.
-	_, ok = <-evt.Error
-	assert.False(t, ok)
 
 	// Test nil response.
 
@@ -398,9 +388,6 @@ func TestListenForSyncDiffChunks(t *testing.T) {
 	assert.NoError(t, listenForSyncDiffChunks())
 	// check the response should be nil
 	assert.Nil(t, <-evt.Response)
-	// Check the response channel should be closed.
-	_, ok := <-evt.Response
-	assert.False(t, ok)
 
 	// Test ChunkHash found
 
@@ -416,9 +403,6 @@ func TestListenForSyncDiffChunks(t *testing.T) {
 	assert.NoError(t, listenForSyncDiffChunks())
 	// check the response
 	assert.Equal(t, value, <-evt.Response)
-	// Check the response channel should be closed.
-	_, ok = <-evt.Response
-	assert.False(t, ok)
 
 	// Test stop
 
@@ -454,9 +438,6 @@ func TestListenForSyncInits(t *testing.T) {
 	l.SyncInitIn <- evt
 	assert.NoError(t, listenForSyncInits())
 	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 0, ChunkHashes: nil}, <-evt.Response)
-	// Check the response channel should be closed.
-	_, ok := <-evt.Response
-	assert.False(t, ok)
 
 	// Test diff
 
@@ -479,9 +460,6 @@ func TestListenForSyncInits(t *testing.T) {
 	l.SyncInitIn <- evt
 	assert.NoError(t, listenForSyncInits())
 	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 0, ChunkHashes: expectedChunkHashes}, <-evt.Response)
-	// Check the response channel should be closed.
-	_, ok = <-evt.Response
-	assert.False(t, ok)
 
 	// Test stop
 
@@ -511,9 +489,6 @@ func TestListenForOutOfSyncChecks(t *testing.T) {
 	l.OutOfSyncIn <- evt
 	assert.NoError(t, listenForOutOfSyncChecks())
 	assert.Equal(t, l.v.loadRoot(), <-evt.Response)
-	// Check the response channel should be closed.
-	_, ok := <-evt.Response
-	assert.False(t, ok)
 
 	// Test stop
 
@@ -550,9 +525,6 @@ func TestListenForMissingTXs(t *testing.T) {
 	l.SyncTxIn <- evt
 	assert.NoError(t, listenForMissingTXs())
 	assert.Equal(t, []Transaction{tx}, <-evt.Response)
-	// Check the response channel should be closed.
-	_, ok := <-evt.Response
-	assert.False(t, ok)
 
 	// Test stop
 
