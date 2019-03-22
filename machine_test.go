@@ -699,3 +699,83 @@ func TestCheckIfOutOfSync(t *testing.T) {
 	close(l.kill)
 	assert.Equal(t, ErrStopped, checkIfOutOfSync())
 }
+
+func TestSyncMissingTX(t *testing.T) {
+	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
+
+	stop := make(chan struct{})
+	syncMissingTX := func() error {
+		return syncMissingTX(l)(stop)
+	}
+
+	var wg sync.WaitGroup
+	var evt EventSyncTX
+
+	// Test transaction
+
+	tx, err := NewTransaction(l.keys, sys.TagTransfer, []byte("lorem ipsum"))
+	assert.NoError(t, err)
+	tx.rehash()
+	tx, err = l.attachSenderToTransaction(tx)
+	assert.NoError(t, err)
+
+	wg.Add(1)
+	go func() {
+		assert.NoError(t, call(&wg, syncMissingTX))
+	}()
+	evt = <-l.SyncTxOut
+	evt.Result <- []Transaction{tx}
+	wg.Wait()
+
+	_, found := l.v.lookupTransaction(tx.ID)
+	assert.True(t, found)
+
+	// Test error
+
+	wg.Add(1)
+	evtError := errors.New("error")
+	go func() {
+		err := call(&wg, syncMissingTX)
+		assert.Equal(t, evtError, errors.Cause(err))
+	}()
+
+	evt = <-l.SyncTxOut
+	evt.Error <- evtError
+	wg.Wait()
+
+	// Test the second select.
+
+	// Test the second select: stop
+	wg.Add(1)
+	go func() {
+		assert.Equal(t, ErrStopped, call(&wg, syncMissingTX))
+	}()
+	evt = <-l.SyncTxOut
+	close(stop)
+	wg.Wait()
+	stop = make(chan struct{})
+
+	// Test the second select: kill.
+	wg.Add(1)
+	go func() {
+		assert.Equal(t, ErrStopped, call(&wg, syncMissingTX))
+	}()
+	evt = <-l.SyncTxOut
+	close(l.kill)
+	wg.Wait()
+	l.kill = make(chan struct{})
+
+	// Test the first select.
+
+	// Disable the syncTxOut case.
+	l.syncTxOut = nil
+
+	// Test the first select: stop.
+	close(stop)
+	assert.Equal(t, ErrStopped, syncMissingTX())
+	stop = make(chan struct{})
+
+	// Test the first select: kill.
+	close(l.kill)
+	assert.Equal(t, ErrStopped, syncMissingTX())
+}
