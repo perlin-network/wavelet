@@ -3,6 +3,7 @@ package wavelet
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"github.com/heptio/workgroup"
 	"github.com/perlin-network/noise/identity"
@@ -390,10 +391,10 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 	}
 
 	root := l.v.loadRoot()
-
 	tx.ViewID = l.v.loadViewID(root)
+	critical := tx.IsCritical(l.v.loadDifficulty())
 
-	if tx.IsCritical(l.v.loadDifficulty()) {
+	if critical {
 		snapshot, missing, err := l.collapseTransactions(tx, false)
 
 		if len(missing) > 0 {
@@ -431,6 +432,21 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 	copy(tx.SenderSignature[:], senderSignature)
 
 	tx.rehash()
+
+	if critical {
+		var parentHexIDs []string
+
+		for _, parentID := range tx.ParentIDs {
+			parentHexIDs = append(parentHexIDs, hex.EncodeToString(parentID[:]))
+		}
+
+		logger := log.Consensus("created_critical_tx")
+		logger.Info().
+			Hex("tx_id", tx.ID[:]).
+			Strs("parents", parentHexIDs).
+			Msg("Created a critical transaction.")
+
+	}
 
 	return tx, nil
 }
@@ -477,10 +493,6 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 	critical := tx.IsCritical(l.v.loadDifficulty())
 
 	if critical {
-		if preferred := l.cr.Preferred(); preferred != nil && tx.ID != preferred.ID {
-			return errors.Errorf("prefer other critical transaction %x", preferred.ID)
-		}
-
 		missing, err := l.assertCollapsible(tx)
 
 		if len(missing) > 0 {
@@ -1111,13 +1123,6 @@ func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
 				return nil
 			}
 
-			critical := evt.TX.IsCritical(l.v.loadDifficulty())
-
-			if !critical {
-				evt.Error <- errors.New("transaction which was queried is not critical")
-				return nil
-			}
-
 			if err := l.addTransaction(evt.TX); err != nil {
 				evt.Error <- err
 				return nil
@@ -1268,6 +1273,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 
 					logger := log.Consensus("round_end")
 					logger.Info().
+						Int("num_tx", l.v.numTransactions(oldRoot.ViewID)).
 						Uint64("old_view_id", oldRoot.ViewID).
 						Uint64("new_view_id", newRoot.ViewID).
 						Hex("new_root", newRoot.ID[:]).
@@ -1303,13 +1309,6 @@ func listenForQueries(l *Ledger) func(stop <-chan struct{}) error {
 			//
 			// a) our own preferred transaction.
 			// b) should they be in a prior view ID, the prior consensus rounds root.
-
-			critical := evt.TX.IsCritical(l.v.loadDifficulty())
-
-			if !critical {
-				evt.Error <- errors.New("transaction which was queried is not critical")
-				return nil
-			}
 
 			if root := l.v.loadRoot(); evt.TX.ViewID == root.ViewID {
 				evt.Response <- root

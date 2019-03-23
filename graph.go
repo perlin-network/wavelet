@@ -207,6 +207,14 @@ func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 	return
 }
 
+func (g *graph) numTransactions(viewID uint64) int {
+	g.RLock()
+	num := len(g.indexViewID[viewID])
+	g.RUnlock()
+
+	return num
+}
+
 func (g *graph) lookupTransaction(id common.TransactionID) (*Transaction, bool) {
 	g.RLock()
 	tx, exists := g.transactions[id]
