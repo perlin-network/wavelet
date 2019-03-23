@@ -435,6 +435,10 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 	return tx, nil
 }
 
+var (
+	ErrMissingParents = errors.New("missing parent transactions")
+)
+
 func (l *Ledger) addTransaction(tx Transaction) error {
 	if _, exists := l.v.lookupTransaction(tx.ID); exists {
 		return nil
@@ -473,6 +477,10 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 	critical := tx.IsCritical(l.v.loadDifficulty())
 
 	if critical {
+		if preferred := l.cr.Preferred(); preferred != nil && tx.ID != preferred.ID {
+			return errors.Errorf("prefer other critical transaction %x", preferred.ID)
+		}
+
 		missing, err := l.assertCollapsible(tx)
 
 		if len(missing) > 0 {
@@ -521,7 +529,7 @@ func (l *Ledger) revisitBufferedTransactions(id common.TransactionID) {
 	for _, tx := range buffered {
 		err := l.addTransaction(tx)
 
-		if err != nil {
+		if err != nil && errors.Cause(err) != ErrMissingParents {
 			continue
 		}
 
@@ -572,6 +580,10 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tre
 	q := queue.New()
 
 	for _, parentID := range tx.ParentIDs {
+		if parentID == root.ID {
+			continue
+		}
+
 		visited[parentID] = struct{}{}
 
 		parent, exists := l.v.lookupTransaction(parentID)
@@ -608,7 +620,7 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tre
 	}
 
 	if len(missing) > 0 {
-		return ss, missing, errors.Errorf("missing %d necessary ancestor(s) to correctly collapse down ledger state from critical transaction %x", len(missing), tx.ID)
+		return ss, missing, errors.Wrapf(ErrMissingParents, "missing %d necessary ancestor(s) to correctly collapse down ledger state from critical transaction %x", len(missing), tx.ID)
 	}
 
 	// Apply transactions in reverse order from the root of the view-graph all
@@ -770,7 +782,7 @@ func (l *Ledger) assertCollapsible(tx Transaction) (missing []common.Transaction
 	}
 
 	if snapshot.Checksum() != tx.AccountsMerkleRoot {
-		return nil, errors.Errorf("collapsing down tranasction %x's ancestry gives an accounts checksum of %x, but the transaction has %x recorded as an accounts checksum instead", tx.ID, snapshot.Checksum(), tx.AccountsMerkleRoot)
+		return nil, errors.Errorf("collapsing down transaction %x's ancestry gives an accounts checksum of %x, but the transaction has %x recorded as an accounts checksum instead", tx.ID, snapshot.Checksum(), tx.AccountsMerkleRoot)
 	}
 
 	return nil, nil

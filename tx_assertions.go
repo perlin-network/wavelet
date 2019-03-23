@@ -127,7 +127,7 @@ func AssertValidAncestry(view *graph, tx Transaction) (missing []common.Transact
 	}
 
 	if len(missing) > 0 {
-		return missing, errors.Errorf("missing %d ancestor(s) in view-graph for tx %x", len(missing), tx.ID)
+		return missing, errors.Wrapf(ErrMissingParents, "missing %d ancestor(s) in view-graph for tx %x", len(missing), tx.ID)
 	}
 
 	median := computeMedianTimestamp(timestamps)
