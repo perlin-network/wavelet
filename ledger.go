@@ -541,7 +541,7 @@ func (l *Ledger) revisitBufferedTransactions(id common.TransactionID) {
 	for _, tx := range buffered {
 		err := l.addTransaction(tx)
 
-		if err != nil && errors.Cause(err) != ErrMissingParents {
+		if err != nil {
 			continue
 		}
 
@@ -958,8 +958,9 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 
 			Result = item.Result
 			Error = item.Error
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(1 * time.Millisecond):
 			if !broadcastNops {
+				time.Sleep(100 * time.Millisecond)
 				return nil
 			}
 
@@ -968,6 +969,7 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 			copy(self[:], l.keys.PublicKey())
 
 			if balance, _ := ReadAccountBalance(snapshot, self); balance < sys.TransactionFeeAmount {
+				time.Sleep(100 * time.Millisecond)
 				return nil
 			}
 
@@ -1257,19 +1259,19 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 					l.cr.Reset()
 					l.v.reset(newRoot)
 
-					//l.muMissing.Lock()
-					//for id, buffered := range l.missing {
-					//	for _, tx := range buffered {
-					//		if tx.ViewID < newRoot.ViewID+1 {
-					//			delete(buffered, tx.ID)
-					//		}
-					//	}
-					//
-					//	if len(buffered) == 0 {
-					//		delete(l.missing, id)
-					//	}
-					//}
-					//l.muMissing.Unlock()
+					l.muMissing.Lock()
+					for id, buffered := range l.missing {
+						for _, tx := range buffered {
+							if tx.ViewID < l.v.loadViewID(newRoot) {
+								delete(buffered, tx.ID)
+							}
+						}
+
+						if len(buffered) == 0 {
+							delete(l.missing, id)
+						}
+					}
+					l.muMissing.Unlock()
 
 					logger := log.Consensus("round_end")
 					logger.Info().
@@ -1344,7 +1346,7 @@ func listenForQueries(l *Ledger) func(stop <-chan struct{}) error {
 
 func checkIfOutOfSync(l *Ledger) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(1 * time.Millisecond)
 
 		snapshot := l.a.snapshot()
 
@@ -1405,7 +1407,8 @@ func checkIfOutOfSync(l *Ledger) func(stop <-chan struct{}) error {
 
 				// The view ID we came to consensus to being the latest within the network
 				// is less than or equal to ours. Go back to square one.
-				if currentRoot.ID == proposedRoot.ID || currentRoot.ViewID+1 >= proposedRoot.ViewID+1 {
+
+				if currentRoot.ID == proposedRoot.ID || currentRoot.ViewID >= l.v.loadViewID(proposedRoot) {
 					time.Sleep(1 * time.Second)
 
 					l.sr.Reset()
@@ -1482,7 +1485,7 @@ func listenForSyncDiffChunks(l *Ledger) func(stop <-chan struct{}) error {
 
 				providedHash := blake2b.Sum256(chunk)
 
-				logger := log.Sync("provide-chunk")
+				logger := log.Sync("provide_chunk")
 				logger.Info().
 					Hex("requested_hash", evt.ChunkHash[:]).
 					Hex("provided_hash", providedHash[:]).
