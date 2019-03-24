@@ -584,7 +584,7 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tre
 	root := l.v.loadRoot()
 
 	ss = l.a.snapshot()
-	ss.SetViewID(l.v.loadViewID(root))
+	ss.SetViewID(l.v.loadViewID(root) + 1)
 
 	visited := make(map[common.TransactionID]struct{})
 	visited[root.ID] = struct{}{}
@@ -1672,7 +1672,6 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 		case <-stop:
 			return ErrStopped
 		case err := <-evtc.Error:
-			fmt.Println("got an error while getting sync diffs:", err)
 			return errors.Wrap(ErrSyncFailed, err.Error())
 		case c := <-evtc.Result:
 			chunks = c
@@ -1693,7 +1692,7 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 
 		// The diff did not get us the intended merkle root we wanted. Stop syncing.
 		if snapshot.Checksum() != root.AccountsMerkleRoot {
-			return errors.Wrap(ErrSyncFailed, "applying the diff yielded an unexpected merkle root representative our expected state")
+			return errors.Wrapf(ErrSyncFailed, "applying the diff yielded a merkle root of %x, but the root recorded a merkle root of %x", snapshot.Checksum(), root.AccountsMerkleRoot)
 		}
 
 		// Apply the diff to our official ledger state.
@@ -1708,6 +1707,7 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 		logger := log.Sync("apply")
 		logger.Info().
 			Int("num_chunks", len(chunks)).
+			Uint64("new_view_id", l.v.loadViewID(nil)).
 			Msg("Successfully built a new state tree out of chunk(s) we have received from peers.")
 
 		return nil
