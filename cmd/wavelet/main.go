@@ -280,7 +280,9 @@ func runServer(config *Config, logger zerolog.Logger) *noise.Node {
 			logger.Info().Msgf("Peer %v has disconnected.", peer.RemoteIP().String()+":"+strconv.Itoa(int(peer.RemotePort())))
 
 			// TODO(kenta): don't immediately evict from table
-			skademlia.Table(node).Delete(protocol.PeerID(peer))
+			if id := protocol.PeerID(peer); id != nil {
+				skademlia.Table(node).Delete(id)
+			}
 			return nil
 		})
 
