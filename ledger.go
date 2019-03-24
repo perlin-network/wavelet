@@ -1157,7 +1157,6 @@ func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
 			}
 
 			if err := l.addTransaction(evt.TX); err != nil {
-				fmt.Println("error handling query during gossip:", err)
 				evt.Error <- err
 				return nil
 			}
