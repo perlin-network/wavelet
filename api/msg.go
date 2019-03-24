@@ -250,7 +250,8 @@ func (s *Account) Render(w http.ResponseWriter, r *http.Request) error {
 	s.PublicKey = hex.EncodeToString(s.id[:])
 	s.Balance, _ = wavelet.ReadAccountBalance(snapshot, s.id)
 	s.Stake, _ = wavelet.ReadAccountStake(snapshot, s.id)
-	s.NumPages, s.IsContract = wavelet.ReadAccountContractNumPages(snapshot, s.id)
+	_, s.IsContract = wavelet.ReadAccountContractCode(snapshot, s.id)
+	s.NumPages, _ = wavelet.ReadAccountContractNumPages(snapshot, s.id)
 
 	return nil
 }
