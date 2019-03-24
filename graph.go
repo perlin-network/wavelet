@@ -221,6 +221,10 @@ func (g *graph) numTransactions(viewID uint64) int {
 }
 
 func (g *graph) lookupTransaction(id common.TransactionID) (*Transaction, bool) {
+	if id == common.ZeroTransactionID {
+		return nil, false
+	}
+
 	g.RLock()
 	tx, exists := g.transactions[id]
 	g.RUnlock()

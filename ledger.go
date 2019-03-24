@@ -466,45 +466,37 @@ var (
 	ErrMissingParents = errors.New("missing parent transactions")
 )
 
-func (l *Ledger) addTransaction(tx Transaction) error {
-	if tx.ID == l.v.loadRoot().ID {
-		return nil
-	}
-
-	if err := AssertInView(l.v, tx); err != nil {
-		return err
-	}
-
-	if err := AssertValidTransaction(tx); err != nil {
-		return err
-	}
-
-	{
-		missing, err := AssertValidAncestry(l.v, tx)
-
-		if len(missing) > 0 {
-			l.muMissing.Lock()
-			for _, id := range missing {
-				_, ok := l.missing[id]
-
-				if !ok {
-					l.missing[id] = make(map[common.TransactionID]Transaction)
-				}
-
-				l.missing[id][tx.ID] = tx
-			}
-			l.muMissing.Unlock()
-		}
-
-		if err != nil {
-			return err
-		}
-	}
-
+func (l *Ledger) addTransaction(tx Transaction) (err error) {
 	critical := tx.IsCritical(l.v.loadDifficulty())
 
-	if critical {
-		missing, err := l.assertCollapsible(tx)
+	defer func() {
+		if err != nil {
+			return
+		}
+
+		if critical && l.cr.Preferred() == nil && tx.ID != l.v.loadRoot().ID {
+			l.cr.Prefer(tx)
+		}
+
+		l.revisitBufferedTransactions(tx.ID)
+	}()
+
+	if _, found := l.v.lookupTransaction(tx.ID); found {
+		return
+	}
+
+	if err = AssertInView(l.v, tx, critical); err != nil {
+		return
+	}
+
+	if err = AssertValidTransaction(tx); err != nil {
+		return
+	}
+
+	var missing []common.TransactionID
+
+	{
+		missing, err = AssertValidAncestry(l.v, tx)
 
 		if len(missing) > 0 {
 			l.muMissing.Lock()
@@ -521,21 +513,37 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 		}
 
 		if err != nil {
-			return err
+			return
 		}
 	}
 
-	if err := l.v.addTransaction(&tx); err != nil && errors.Cause(err) != ErrTxAlreadyExists {
-		return errors.Wrap(err, "got an error adding queried transaction to view-graph")
+	if critical {
+		missing, err = l.assertCollapsible(tx)
+
+		if len(missing) > 0 {
+			l.muMissing.Lock()
+			for _, id := range missing {
+				_, ok := l.missing[id]
+
+				if !ok {
+					l.missing[id] = make(map[common.TransactionID]Transaction)
+				}
+
+				l.missing[id][tx.ID] = tx
+			}
+			l.muMissing.Unlock()
+		}
+
+		if err != nil {
+			return
+		}
 	}
 
-	if critical && l.cr.Preferred() == nil && tx.ID != l.v.loadRoot().ID {
-		l.cr.Prefer(tx)
+	if err = l.v.addTransaction(&tx); err != nil && errors.Cause(err) != ErrTxAlreadyExists {
+		err = errors.Wrap(err, "got an error adding queried transaction to view-graph")
 	}
 
-	l.revisitBufferedTransactions(tx.ID)
-
-	return nil
+	return
 }
 
 func (l *Ledger) revisitBufferedTransactions(id common.TransactionID) {
