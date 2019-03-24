@@ -302,7 +302,8 @@ func runServer(config *Config, logger zerolog.Logger) *noise.Node {
 		for _, address := range config.Peers {
 			peer, err := n.Dial(address)
 			if err != nil {
-				logger.Fatal().Err(err).Msg("Failed to dial specified peer.")
+				logger.Error().Err(err).Msg("Failed to dial specified peer.")
+				continue
 			}
 
 			node.WaitUntilAuthenticated(peer)
@@ -536,7 +537,8 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 
 			amount, err := strconv.Atoi(cmd[1])
 			if err != nil {
-				logger.Fatal().Err(err).Msg("Failed to convert staking amount to a uint64.")
+				logger.Error().Err(err).Msg("Failed to convert staking amount to a uint64.")
+				return
 			}
 
 			go func() {
@@ -580,7 +582,8 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 
 			amount, err := strconv.Atoi(cmd[1])
 			if err != nil {
-				logger.Fatal().Err(err).Msg("Failed to convert withdraw amount to an uint64.")
+				logger.Error().Err(err).Msg("Failed to convert withdraw amount to an uint64.")
+				return
 			}
 
 			go func() {
