@@ -195,7 +195,8 @@ type Ledger struct {
 	SyncTxOut <-chan EventSyncTX
 	syncTxOut chan<- EventSyncTX
 
-	cacheChunk *lru
+	cacheAccounts   *lru
+	cacheDiffChunks *lru
 
 	kill chan struct{}
 }
@@ -293,7 +294,8 @@ func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
 		SyncTxOut: syncTxOut,
 		syncTxOut: syncTxOut,
 
-		cacheChunk: newLRU(1024), // 1024 * 4MB
+		cacheAccounts:   newLRU(128),
+		cacheDiffChunks: newLRU(1024), // 1024 * 4MB
 
 		kill: make(chan struct{}),
 	}
@@ -600,6 +602,10 @@ func (l *Ledger) revisitBufferedTransactions(id common.TransactionID) {
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
 func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tree, missing []common.TransactionID, err error) {
+	if state, hit := l.cacheAccounts.load(tx.getCriticalSeed()); hit {
+		return state.(*avl.Tree), nil, nil
+	}
+
 	root := l.v.loadRoot()
 
 	ss = l.a.snapshot()
@@ -689,6 +695,7 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tre
 		}
 	}
 
+	l.cacheAccounts.put(tx.getCriticalSeed(), ss)
 	return
 }
 
@@ -1495,7 +1502,7 @@ func listenForSyncInits(l *Ledger) func(stop <-chan struct{}) error {
 
 				hash := blake2b.Sum256(diff[i:end])
 
-				l.cacheChunk.put(hash, diff[i:end])
+				l.cacheDiffChunks.put(hash, diff[i:end])
 				data.ChunkHashes = append(data.ChunkHashes, hash)
 			}
 
@@ -1514,7 +1521,7 @@ func listenForSyncDiffChunks(l *Ledger) func(stop <-chan struct{}) error {
 		case <-stop:
 			return ErrStopped
 		case evt := <-l.syncDiffIn:
-			if chunk, found := l.cacheChunk.load(evt.ChunkHash); found {
+			if chunk, found := l.cacheDiffChunks.load(evt.ChunkHash); found {
 				chunk := chunk.([]byte)
 
 				providedHash := blake2b.Sum256(chunk)

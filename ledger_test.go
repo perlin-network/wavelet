@@ -393,7 +393,7 @@ func TestListenForSyncDiffChunks(t *testing.T) {
 
 	// Save the ChunkHash
 	var value = []byte("chunk")
-	l.cacheChunk.put(chunkHash, value)
+	l.cacheDiffChunks.put(chunkHash, value)
 
 	evt = EventIncomingSyncDiff{
 		ChunkHash: chunkHash,

@@ -52,7 +52,7 @@ func prefixLen(buf []byte) int {
 	return len(buf)*8 - 1
 }
 
-func (t Transaction) IsCritical(difficulty uint64) bool {
+func (t Transaction) getCriticalSeed() [blake2b.Size256]byte {
 	var buf bytes.Buffer
 	_, _ = buf.Write(t.Sender[:])
 
@@ -60,7 +60,11 @@ func (t Transaction) IsCritical(difficulty uint64) bool {
 		_, _ = buf.Write(parentID[:])
 	}
 
-	checksum := blake2b.Sum256(buf.Bytes())
+	return blake2b.Sum256(buf.Bytes())
+}
+
+func (t Transaction) IsCritical(difficulty uint64) bool {
+	checksum := t.getCriticalSeed()
 
 	return prefixLen(checksum[:]) >= int(difficulty)
 }
