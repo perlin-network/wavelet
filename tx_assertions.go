@@ -76,7 +76,11 @@ func AssertValidTransaction(tx Transaction) error {
 // 3) the transaction has a sane timestamp with respect to its ancestry.
 func AssertValidAncestry(view *graph, tx Transaction) (missing []common.TransactionID, err error) {
 	visited := make(map[common.TransactionID]struct{})
-	q := queue.New()
+	q := queuePool.Get().(*queue.Queue)
+	defer func() {
+		q.Init()
+		queuePool.Put(q)
+	}()
 
 	root := view.loadRoot()
 

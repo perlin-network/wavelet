@@ -182,7 +182,12 @@ func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 	visited := make(map[common.TransactionID]struct{})
 	visited[root.ID] = struct{}{}
 
-	q := queue.New()
+	q := queuePool.Get().(*queue.Queue)
+	defer func() {
+		q.Init()
+		queuePool.Put(q)
+	}()
+
 	q.PushBack(root)
 
 	height := g.height.Load()

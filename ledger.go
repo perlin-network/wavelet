@@ -600,7 +600,11 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tre
 	visited := make(map[common.TransactionID]struct{})
 	visited[root.ID] = struct{}{}
 
-	q := queue.New()
+	q := queuePool.Get().(*queue.Queue)
+	defer func() {
+		q.Init()
+		queuePool.Put(q)
+	}()
 
 	for _, parentID := range tx.ParentIDs {
 		if parentID == root.ID {
@@ -619,7 +623,11 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tre
 		q.PushBack(parent)
 	}
 
-	applyQueue := queue.New()
+	applyQueue := queuePool.Get().(*queue.Queue)
+	defer func() {
+		applyQueue.Init()
+		queuePool.Put(applyQueue)
+	}()
 
 	for q.Len() > 0 {
 		popped := q.PopFront().(*Transaction)
@@ -693,7 +701,11 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction) error {
 	var totalStake uint64
 
 	visited := make(map[common.AccountID]struct{})
-	q := queue.New()
+	q := queuePool.Get().(*queue.Queue)
+	defer func() {
+		q.Init()
+		queuePool.Put(q)
+	}()
 
 	for _, parentID := range tx.ParentIDs {
 		if parent, exists := l.v.lookupTransaction(parentID); exists {
