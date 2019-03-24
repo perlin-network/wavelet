@@ -695,9 +695,8 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tre
 func (l *Ledger) applyTransactionToSnapshot(ss *avl.Tree, tx *Transaction) error {
 	ctx := newTransactionContext(ss, tx)
 
-	err := ctx.apply(l.processors)
-	if err != nil {
-		return errors.Wrap(err, "wavelet: could not apply transaction to snapshot")
+	if err := ctx.apply(l.processors); err != nil {
+		return errors.Wrap(err, "could not apply transaction to snapshot")
 	}
 
 	return nil
@@ -747,9 +746,8 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction) error {
 				totalStake += stake
 
 				// Record entropy source.
-				_, err := hasher.Write(popped.ID[:])
-				if err != nil {
-					return errors.Wrap(err, "stake: failed to hash transaction ID for entropy src")
+				if _, err := hasher.Write(popped.ID[:]); err != nil {
+					return errors.Wrap(err, "stake: failed to hash transaction id for entropy source")
 				}
 			}
 		}
@@ -1008,7 +1006,8 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 			tx, err = NewTransaction(l.keys, sys.TagNop, nil)
 
 			if err != nil {
-				return err
+				fmt.Printf("%+v\n", err)
+				return nil
 			}
 		}
 
@@ -1221,7 +1220,10 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 		case <-stop:
 			return ErrStopped
 		case err := <-evt.Error:
-			return errors.Wrap(err, "error while querying")
+			if err != nil {
+				fmt.Printf("%+v\n", err)
+			}
+			return nil
 		case votes := <-evt.Result:
 			if len(votes) == 0 {
 				return nil
@@ -1317,7 +1319,8 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 				})
 
 				if exception != nil {
-					return exception
+					fmt.Printf("%+v\n", exception)
+					return nil
 				}
 
 				return ErrConsensusRoundFinished
@@ -1400,9 +1403,9 @@ func checkIfOutOfSync(l *Ledger) func(stop <-chan struct{}) error {
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
-		case err, ok := <-evt.Error:
-			if err != nil || ok {
-				fmt.Println("got error while checking if out of sync:", err)
+		case err := <-evt.Error:
+			if err != nil {
+				fmt.Printf("%+v\n", err)
 			}
 			return nil
 		case votes := <-evt.Result:
@@ -1557,7 +1560,10 @@ func syncMissingTX(l *Ledger) func(stop <-chan struct{}) error {
 		case <-stop:
 			return ErrStopped
 		case err := <-evt.Error:
-			return err
+			if err != nil {
+				fmt.Printf("%+v\n", err)
+			}
+			return nil
 		case t := <-evt.Result:
 			txs = t
 		}

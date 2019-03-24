@@ -110,14 +110,12 @@ func (b *block) broadcastGossip(ledger *wavelet.Ledger, node *noise.Node, peer *
 		func() {
 			peers, err := selectPeers(node, sys.SnowballQueryK)
 			if err != nil {
-				fmt.Println("failed to select peers while gossiping:", err)
 				evt.Error <- errors.Wrap(err, "failed to select peers while gossiping")
 				return
 			}
 
 			responses, err := broadcast(node, peers, GossipRequest{TX: &evt.TX}, b.opcodeGossipResponse)
 			if err != nil {
-				fmt.Println("got an error gossiping:", err)
 				evt.Error <- errors.Wrap(err, "got an error while gossiping")
 				return
 			}
@@ -148,14 +146,12 @@ func (b *block) broadcastQueries(ledger *wavelet.Ledger, node *noise.Node, peer 
 		func() {
 			peers, err := selectPeers(node, sys.SnowballQueryK)
 			if err != nil {
-				fmt.Println("failed to select peers while querying:", err)
 				evt.Error <- errors.Wrap(err, "failed to select peers while querying")
 				return
 			}
 
 			responses, err := broadcast(node, peers, QueryRequest{tx: &evt.TX}, b.opcodeQueryResponse)
 			if err != nil {
-				fmt.Println("got an error querying:", err)
 				evt.Error <- errors.Wrap(err, "got an error while querying")
 				return
 			}
@@ -195,7 +191,6 @@ func (b *block) broadcastOutOfSyncChecks(ledger *wavelet.Ledger, node *noise.Nod
 
 			responses, err := broadcast(node, peers, SyncViewRequest{root: &evt.Root}, b.opcodeSyncViewResponse)
 			if err != nil {
-				fmt.Println("got an error while checking if out of sync:", err)
 				evt.Error <- errors.Wrap(err, "got an error while checking if out of sync")
 				return
 			}
@@ -234,7 +229,6 @@ func (b *block) broadcastSyncInitRequests(ledger *wavelet.Ledger, node *noise.No
 
 			responses, err := broadcast(node, peers, SyncInitRequest{viewID: evt.ViewID}, b.opcodeSyncInitResponse)
 			if err != nil {
-				fmt.Println("got an error while sending request to sync:", err)
 				evt.Error <- errors.Wrap(err, "got an error while sending request to sync")
 				return
 			}
@@ -268,8 +262,7 @@ func (b *block) broadcastSyncMissingTXs(ledger *wavelet.Ledger, node *noise.Node
 
 			responses, err := broadcast(node, peers, SyncMissingTxRequest{ids: evt.IDs}, b.opcodeSyncMissingTxResponse)
 			if err != nil {
-				fmt.Println("got an error while requesting for missing transactions:", err)
-				evt.Error <- errors.Wrap(err, "got an error while sending request ofr misisng transactions")
+				evt.Error <- errors.Wrap(err, "got an error while sending request for missing transactions")
 				return
 			}
 
@@ -383,7 +376,9 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out getting query result from ledger")
 	case err := <-evt.Error:
-		fmt.Println("got an error processing query request:", err)
+		if err != nil {
+			fmt.Println("got an error processing query request:", err)
+		}
 	case res.preferred = <-evt.Response:
 	}
 }
