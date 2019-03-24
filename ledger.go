@@ -339,6 +339,14 @@ func (l *Ledger) FindTransaction(id common.TransactionID) (*Transaction, bool) {
 	return l.v.lookupTransaction(id)
 }
 
+func (l *Ledger) NumTransactions() int {
+	return l.v.numTransactions(l.v.loadViewID(nil))
+}
+
+func (l *Ledger) Preferred() *Transaction {
+	return l.cr.Preferred()
+}
+
 func (l *Ledger) ListTransactions(offset, limit uint64, sender, creator common.AccountID) (transactions []*Transaction) {
 	l.v.Lock()
 
@@ -392,7 +400,9 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 
 	root := l.v.loadRoot()
 	tx.ViewID = l.v.loadViewID(root)
-	critical := tx.IsCritical(l.v.loadDifficulty())
+
+	difficulty := l.v.loadDifficulty()
+	critical := tx.IsCritical(difficulty)
 
 	if critical {
 		snapshot, missing, err := l.collapseTransactions(tx, false)
@@ -444,6 +454,7 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 		logger.Info().
 			Hex("tx_id", tx.ID[:]).
 			Strs("parents", parentHexIDs).
+			Uint64("difficulty", difficulty).
 			Msg("Created a critical transaction.")
 
 	}
@@ -456,7 +467,7 @@ var (
 )
 
 func (l *Ledger) addTransaction(tx Transaction) error {
-	if _, exists := l.v.lookupTransaction(tx.ID); exists {
+	if tx.ID == l.v.loadRoot().ID {
 		return nil
 	}
 
@@ -1126,6 +1137,7 @@ func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
 			}
 
 			if err := l.addTransaction(evt.TX); err != nil {
+				fmt.Println("error handling query during gossip:", err)
 				evt.Error <- err
 				return nil
 			}

@@ -14,7 +14,7 @@ const (
 
 var (
 	// Snowball consensus protocol parameters.
-	SnowballQueryK     = 1
+	SnowballQueryK     = 2
 	SnowballQueryAlpha = 0.8
 	SnowballQueryBeta  = 150
 

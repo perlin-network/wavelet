@@ -337,11 +337,19 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 
 		switch cmd[0] {
 		case "l":
+			preferredID := "N/A"
+
+			if preferred := ledger.Preferred(); preferred != nil {
+				preferredID = hex.EncodeToString(preferred.ID[:])
+			}
+
 			logger.Info().
 				Uint64("difficulty", ledger.Difficulty()).
 				Uint64("view_id", ledger.ViewID()).
 				Hex("root_id", ledger.Root().ID[:]).
 				Uint64("height", ledger.Height()).
+				Int("num_tx", ledger.NumTransactions()).
+				Str("preferred_id", preferredID).
 				Msg("Here is the current state of the ledger.")
 		case "tx":
 			if len(cmd) < 2 {
@@ -373,6 +381,7 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 				Strs("parents", parents).
 				Hex("accounts_merkle_root", tx.AccountsMerkleRoot[:]).
 				Uints64("difficulty_timestamps", tx.DifficultyTimestamps).
+				Uint64("view_id", tx.ViewID).
 				Hex("sender", tx.Sender[:]).
 				Hex("creator", tx.Creator[:]).
 				Uint8("tag", tx.Tag).
