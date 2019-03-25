@@ -630,9 +630,9 @@ func (l *Ledger) revisitBufferedTransactions(id common.TransactionID) {
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
 func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tree, missing []common.TransactionID, err error) {
-	//if state, hit := l.cacheAccounts.load(tx.getCriticalSeed()); hit {
-	//	return state.(*avl.Tree), nil, nil
-	//}
+	if state, hit := l.cacheAccounts.load(tx.getCriticalSeed()); hit {
+		return state.(*avl.Tree), nil, nil
+	}
 
 	root := l.v.loadRoot()
 
@@ -723,7 +723,7 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tre
 		}
 	}
 
-	//l.cacheAccounts.put(tx.getCriticalSeed(), ss)
+	l.cacheAccounts.put(tx.getCriticalSeed(), ss)
 	return
 }
 
