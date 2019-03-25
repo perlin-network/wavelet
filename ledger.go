@@ -504,10 +504,24 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 		return
 	}
 
-	if err = l.validators[tx.Tag](l.a.snapshot(), tx); err != nil {
+	// START ASSERT PRE-ACCEPTANCE
+
+	snapshot := l.a.snapshot()
+	balance, _ := ReadAccountBalance(snapshot, tx.Creator)
+
+	if balance < sys.TransactionFeeAmount {
+		err = errors.New("tx creator does not have enough PERLs to pay for fees")
+		return
+	}
+
+	WriteAccountBalance(snapshot, tx.Creator, balance-sys.TransactionFeeAmount)
+
+	if err = l.validators[tx.Tag](snapshot, tx); err != nil {
 		err = errors.Wrapf(err, "tx fails to fulfill tag-scoped validation for view id %d", l.v.loadViewID(nil))
 		return
 	}
+
+	// END ASSERT PRE-ACCEPTANCE
 
 	var missing []common.TransactionID
 
@@ -811,21 +825,21 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction) error {
 		rewardee = candidates[len(candidates)-1]
 	}
 
-	senderBalance, _ := ReadAccountBalance(ss, tx.Sender)
+	creatorBalance, _ := ReadAccountBalance(ss, tx.Creator)
 	recipientBalance, _ := ReadAccountBalance(ss, rewardee.Sender)
 
 	deducted := sys.TransactionFeeAmount
 
-	if senderBalance < deducted {
-		return errors.Errorf("stake: sender %x does not have enough PERLs to pay transaction fees (requested %d PERLs) to %x", tx.Sender, deducted, rewardee.Sender)
+	if creatorBalance < deducted {
+		return errors.Errorf("stake: creator %x does not have enough PERLs to pay transaction fees (requested %d PERLs) to %x", tx.Creator, deducted, rewardee.Sender)
 	}
 
-	WriteAccountBalance(ss, tx.Sender, senderBalance-deducted)
+	WriteAccountBalance(ss, tx.Creator, creatorBalance-deducted)
 	WriteAccountBalance(ss, rewardee.Sender, recipientBalance+deducted)
 
 	logger := log.Stake("reward_validator")
-	logger.Log().
-		Hex("sender", tx.Sender[:]).
+	logger.Info().
+		Hex("creator", tx.Creator[:]).
 		Hex("recipient", rewardee.Sender[:]).
 		Hex("sender_tx_id", tx.ID[:]).
 		Hex("rewardee_tx_id", rewardee.ID[:]).

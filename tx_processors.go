@@ -35,13 +35,13 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 		return errors.Wrap(err, "transfer: failed to decode amount to transfer")
 	}
 
-	senderBalance, _ := ctx.ReadAccountBalance(tx.Sender)
+	creatorBalance, _ := ctx.ReadAccountBalance(tx.Creator)
 
-	if senderBalance < amount {
+	if creatorBalance < amount {
 		return errors.Errorf("transfer: not enough balance, wanting %d PERLs", amount)
 	}
 
-	ctx.WriteAccountBalance(tx.Sender, senderBalance-amount)
+	ctx.WriteAccountBalance(tx.Creator, creatorBalance-amount)
 
 	recipientBalance, _ := ctx.ReadAccountBalance(recipient)
 	ctx.WriteAccountBalance(recipient, recipientBalance+amount)
@@ -50,12 +50,7 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 		return nil
 	}
 
-	executor, err := NewContractExecutor(recipient, ctx)
-	if err != nil {
-		return errors.Wrap(err, "transfer: failed to load and init smart contract vm")
-	}
-	executor.WithGasTable(sys.GasTable)
-	executor.EnableLogging()
+	executor := NewContractExecutor(recipient, ctx).WithGasTable(sys.GasTable).EnableLogging()
 
 	var gas uint64
 
@@ -79,16 +74,16 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 		return errors.Wrap(err, "transfer: failed to execute smart contract method")
 	}
 
-	if senderBalance-amount < gas {
-		return errors.Errorf("transfer: sender only has %d PERLs, but must pay for gas fees which are %d PERLs", senderBalance-amount, gas)
+	if creatorBalance < amount {
+		return errors.Errorf("transfer: transaction creator tried to send %d PERLs, but only has %d PERLs", amount, creatorBalance)
 	}
 
-	ctx.WriteAccountBalance(tx.Sender, senderBalance-amount-gas)
+	ctx.WriteAccountBalance(tx.Creator, creatorBalance-amount-gas)
 
 	logger := log.Contract(recipient, "gas")
 	logger.Info().
 		Uint64("gas", gas).
-		Hex("sender_id", tx.Sender[:]).
+		Hex("creator_id", tx.Creator[:]).
 		Hex("contract_id", recipient[:]).
 		Msg("Deducted PERLs for invoking smart contract function.")
 
@@ -104,8 +99,8 @@ func ProcessStakeTransaction(ctx *TransactionContext) error {
 		return errors.Wrap(err, "stake: failed to decode stake delta amount")
 	}
 
-	balance, _ := ctx.ReadAccountBalance(tx.Sender)
-	stake, _ := ctx.ReadAccountStake(tx.Sender)
+	balance, _ := ctx.ReadAccountBalance(tx.Creator)
+	stake, _ := ctx.ReadAccountStake(tx.Creator)
 
 	delta := int64(raw)
 
@@ -116,8 +111,8 @@ func ProcessStakeTransaction(ctx *TransactionContext) error {
 			return errors.New("stake: balance < delta")
 		}
 
-		ctx.WriteAccountBalance(tx.Sender, balance-delta)
-		ctx.WriteAccountStake(tx.Sender, stake+delta)
+		ctx.WriteAccountBalance(tx.Creator, balance-delta)
+		ctx.WriteAccountStake(tx.Creator, stake+delta)
 	} else {
 		delta := uint64(-delta)
 
@@ -125,8 +120,8 @@ func ProcessStakeTransaction(ctx *TransactionContext) error {
 			return errors.New("stake: stake < delta")
 		}
 
-		ctx.WriteAccountBalance(tx.Sender, stake-delta)
-		ctx.WriteAccountBalance(tx.Sender, balance+delta)
+		ctx.WriteAccountBalance(tx.Creator, stake-delta)
+		ctx.WriteAccountBalance(tx.Creator, balance+delta)
 	}
 
 	return nil
@@ -143,6 +138,15 @@ func ProcessContractTransaction(ctx *TransactionContext) error {
 		return errors.New("contract: there already exists a contract spawned with the specified code")
 	}
 
+	executor := NewContractExecutor(tx.ID, ctx).WithGasTable(sys.GasTable)
+
+	vm, err := executor.Init(tx.Payload, 50000000)
+	if err != nil {
+		return errors.New("contract: code for contract is not valid WebAssembly code")
+	}
+
 	ctx.WriteAccountContractCode(tx.ID, tx.Payload)
+	executor.SaveMemorySnapshot(tx.ID, vm.Memory)
+
 	return nil
 }

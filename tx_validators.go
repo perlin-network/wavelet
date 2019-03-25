@@ -4,6 +4,7 @@ import (
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 )
 
@@ -34,10 +35,10 @@ func ValidateTransferTransaction(snapshot *avl.Tree, tx Transaction) error {
 		return errors.Wrap(err, "transfer: failed to decode amount to transfer")
 	}
 
-	senderBalance, _ := ReadAccountBalance(snapshot, tx.Sender)
+	creatorBalance, _ := ReadAccountBalance(snapshot, tx.Creator)
 
-	if senderBalance < amount {
-		return errors.Errorf("transfer: not enough balance, wanting %d PERLs", amount)
+	if creatorBalance < amount {
+		return errors.Errorf("transfer: transaction creator tried to send %d PERLs, but only has %d PERLs", amount, creatorBalance)
 	}
 
 	return nil
@@ -50,8 +51,8 @@ func ValidateStakeTransaction(snapshot *avl.Tree, tx Transaction) error {
 		return errors.Wrap(err, "stake: failed to decode stake delta amount")
 	}
 
-	balance, _ := ReadAccountBalance(snapshot, tx.Sender)
-	stake, _ := ReadAccountStake(snapshot, tx.Sender)
+	balance, _ := ReadAccountBalance(snapshot, tx.Creator)
+	stake, _ := ReadAccountStake(snapshot, tx.Creator)
 
 	delta := int64(raw)
 
@@ -79,6 +80,12 @@ func ValidateContractTransaction(snapshot *avl.Tree, tx Transaction) error {
 
 	if _, exists := ReadAccountContractCode(snapshot, tx.ID); exists {
 		return errors.New("contract: there already exists a contract spawned with the specified code")
+	}
+
+	executor := NewContractExecutor(tx.ID, nil).WithGasTable(sys.GasTable)
+
+	if _, err := executor.Init(tx.Payload, 50000000); err != nil {
+		return errors.New("contract: code for contract is not valid WebAssembly code")
 	}
 
 	return nil
