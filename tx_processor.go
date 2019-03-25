@@ -49,20 +49,6 @@ func (c *TransactionContext) SendTransaction(tx *Transaction) {
 	c.transactions.PushBack(tx)
 }
 
-func (c *TransactionContext) read(id common.AccountID, key []byte) ([]byte, bool) {
-	buf, exists := c.tree.Lookup(append(keyAccounts[:], append(key, id[:]...)...))
-
-	if !exists {
-		return nil, false
-	}
-
-	return buf, true
-}
-
-func (c *TransactionContext) write(id common.AccountID, key, value []byte) {
-	c.tree.Insert(append(keyAccounts[:], append(key, id[:]...)...), value[:])
-}
-
 func (c *TransactionContext) ReadAccountBalance(id common.AccountID) (uint64, bool) {
 	if balance, ok := c.balances[id]; ok {
 		return balance, true

@@ -152,6 +152,7 @@ type Ledger struct {
 	sr *Snowball
 
 	processors map[byte]TransactionProcessor
+	validators map[byte]TransactionValidator
 
 	missing   map[common.TransactionID]map[common.TransactionID]Transaction
 	muMissing sync.RWMutex
@@ -251,6 +252,13 @@ func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
 			sys.TagTransfer: ProcessTransferTransaction,
 			sys.TagContract: ProcessContractTransaction,
 			sys.TagStake:    ProcessStakeTransaction,
+		},
+
+		validators: map[byte]TransactionValidator{
+			sys.TagNop:      ValidateNopTransaction,
+			sys.TagTransfer: ValidateTransferTransaction,
+			sys.TagContract: ValidateContractTransaction,
+			sys.TagStake:    ValidateStakeTransaction,
 		},
 
 		missing: make(map[common.TransactionID]map[common.TransactionID]Transaction),
@@ -492,6 +500,11 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 	}
 
 	if err = AssertValidTransaction(tx); err != nil {
+		return
+	}
+
+	if err = l.validators[tx.Tag](l.a.snapshot(), tx); err != nil {
+		err = errors.Wrapf(err, "tx fails to fulfill tag-scoped validation for view id %d", l.v.loadViewID(nil))
 		return
 	}
 

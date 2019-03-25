@@ -47,6 +47,10 @@ func AssertValidTransaction(tx Transaction) error {
 		return bytes.Compare(tx.ParentIDs[i][:], tx.ParentIDs[j][:]) < 0
 	})
 
+	if tx.Tag > sys.TagStake {
+		return errors.New("tx has an unknown tag")
+	}
+
 	if tx.Tag != sys.TagNop && len(tx.Payload) == 0 {
 		return errors.New("tx must have payload if not a nop transaction")
 	}
