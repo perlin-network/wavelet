@@ -23,50 +23,28 @@ const (
 )
 
 type ContractExecutor struct {
-	EnableLogging bool
-
-	gasTable map[string]int64
+	gasTable      map[string]uint64
+	enableLogging bool
 
 	contractID common.TransactionID
 	ctx        *TransactionContext
 
 	payload, result []byte
-
-	vm *exec.VirtualMachine
 }
 
-func NewContractExecutor(contractID common.TransactionID, ctx *TransactionContext, gasLimit uint64) (*ContractExecutor, error) {
+func NewContractExecutor(contractID common.TransactionID, ctx *TransactionContext) (*ContractExecutor, error) {
 	executor := &ContractExecutor{contractID: contractID, ctx: ctx}
-
-	code, available := ctx.ReadAccountContractCode(contractID)
-	if !available {
-		return nil, errors.Wrapf(ErrNotSmartContract, "%x", contractID)
-	}
-
-	config := exec.VMConfig{
-		DefaultMemoryPages: 16,
-		MaxMemoryPages:     32,
-
-		DefaultTableSize: PageSize,
-		MaxTableSize:     PageSize,
-
-		MaxValueSlots:     4096,
-		MaxCallStackDepth: 256,
-		GasLimit:          gasLimit,
-	}
-
-	vm, err := exec.NewVirtualMachine(code, config, executor, executor)
-	if err != nil {
-		return nil, errors.Wrap(err, "contract: failed to init smart contract vm")
-	}
-
-	executor.vm = vm
 
 	return executor, nil
 }
 
-func (c *ContractExecutor) WithGasTable(gasTable map[string]int64) *ContractExecutor {
+func (c *ContractExecutor) WithGasTable(gasTable map[string]uint64) *ContractExecutor {
 	c.gasTable = gasTable
+	return c
+}
+
+func (c *ContractExecutor) EnableLogging() *ContractExecutor {
+	c.enableLogging = true
 	return c
 }
 
@@ -136,9 +114,31 @@ func (c *ContractExecutor) saveMemorySnapshot(mem []byte) {
 	}
 }
 
-func (c *ContractExecutor) Run(amount uint64, entry string, params ...byte) ([]byte, uint64, error) {
+func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, params ...byte) ([]byte, uint64, error) {
 	id := c.ctx.Transaction().ID
 	sender := c.ctx.Transaction().Sender
+
+	code, available := c.ctx.ReadAccountContractCode(c.contractID)
+	if !available {
+		return nil, 0, errors.Wrapf(ErrNotSmartContract, "%x", c.contractID)
+	}
+
+	config := exec.VMConfig{
+		DefaultMemoryPages: 16,
+		MaxMemoryPages:     32,
+
+		DefaultTableSize: PageSize,
+		MaxTableSize:     PageSize,
+
+		MaxValueSlots:     4096,
+		MaxCallStackDepth: 256,
+		GasLimit:          gasLimit,
+	}
+
+	vm, err := exec.NewVirtualMachine(code, config, c, c)
+	if err != nil {
+		return nil, 0, errors.Wrap(err, "contract: failed to init smart contract vm")
+	}
 
 	c.payload = append(payload.NewWriter(nil).
 		WriteBytes(id[:]).
@@ -148,7 +148,7 @@ func (c *ContractExecutor) Run(amount uint64, entry string, params ...byte) ([]b
 
 	entry = "_contract_" + entry
 
-	entryID, exists := c.vm.GetFunctionExport(entry)
+	entryID, exists := vm.GetFunctionExport(entry)
 	if !exists {
 		return nil, 0, errors.Wrapf(ErrContractFunctionNotFound, "`%s` does not exist", entry)
 	}
@@ -160,33 +160,33 @@ func (c *ContractExecutor) Run(amount uint64, entry string, params ...byte) ([]b
 	}
 
 	if mem != nil {
-		c.vm.Memory = mem
+		vm.Memory = mem
 	}
 
 	// Execute virtual machine.
-	c.vm.Ignite(entryID)
+	vm.Ignite(entryID)
 
-	for !c.vm.Exited {
-		c.vm.Execute()
+	for !vm.Exited {
+		vm.Execute()
 
-		if c.vm.Delegate != nil {
-			c.vm.Delegate()
-			c.vm.Delegate = nil
+		if vm.Delegate != nil {
+			vm.Delegate()
+			vm.Delegate = nil
 		}
 	}
 
-	if c.vm.ExitError != nil {
-		return nil, 0, utils.UnifyError(c.vm.ExitError)
+	if vm.ExitError != nil {
+		return nil, 0, utils.UnifyError(vm.ExitError)
 	}
 
 	logger := log.Contract(c.contractID, "gas")
-	logger.Log().Uint64("gas", c.vm.Gas).
+	logger.Log().Uint64("gas", vm.Gas).
 		Msg("Computed gas cost for executing smart contract function.")
 
 	// Save memory snapshot.
-	c.saveMemorySnapshot(c.vm.Memory)
+	c.saveMemorySnapshot(vm.Memory)
 
-	return c.result, c.vm.Gas, nil
+	return c.result, vm.Gas, nil
 }
 
 func (c *ContractExecutor) GetCost(key string) int64 {
@@ -194,14 +194,13 @@ func (c *ContractExecutor) GetCost(key string) int64 {
 		return 1
 	}
 
-	if cost, ok := c.gasTable[key]; ok {
-		return cost
+	cost, ok := c.gasTable[key]
+
+	if !ok {
+		return 1
 	}
 
-	logger := log.Contracts()
-	logger.Fatal().Msgf("Instruction %s not found in gas table.", key)
-
-	return 1
+	return int64(cost)
 }
 
 func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport {
@@ -254,7 +253,7 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 			}
 		case "_log":
 			return func(vm *exec.VirtualMachine) int64 {
-				if c.EnableLogging {
+				if c.enableLogging {
 					frame := vm.GetCurrentFrame()
 					dataPtr := int(uint32(frame.Locals[0]))
 					dataLen := int(uint32(frame.Locals[1]))

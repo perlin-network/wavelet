@@ -419,9 +419,14 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 			balance, _ := wavelet.ReadAccountBalance(snapshot, accountID)
 			stake, _ := wavelet.ReadAccountStake(snapshot, accountID)
 
+			_, isContract := wavelet.ReadAccountContractCode(snapshot, accountID)
+			numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, accountID)
+
 			logger.Info().
 				Uint64("balance", balance).
 				Uint64("stake", stake).
+				Bool("is_contract", isContract).
+				Uint64("num_pages", numPages).
 				Msgf("Account: %s", cmd[1])
 		case "p":
 			recipientAddress := "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"

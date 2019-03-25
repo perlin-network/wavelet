@@ -2,10 +2,10 @@ package wavelet
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
+	"github.com/valyala/fastjson"
 	"io/ioutil"
 	"os"
 	"time"
@@ -45,39 +45,77 @@ func performInception(tree *avl.Tree, path *string) (*Transaction, error) {
 		buf = []byte(defaultGenesis)
 	}
 
-	var entries map[string]map[string]interface{}
-	if err := json.Unmarshal(buf, &entries); err != nil {
+	var p fastjson.Parser
+
+	parsed, err := p.ParseBytes(buf)
+
+	if err != nil {
 		return nil, err
 	}
 
-	for encodedID, pairs := range entries {
-		encodedIDBuf, err := hex.DecodeString(encodedID)
+	accounts, err := parsed.Object()
 
+	if err != nil {
+		return nil, err
+	}
+
+	var balance uint64
+	var stake uint64
+
+	accounts.Visit(func(key []byte, val *fastjson.Value) {
 		if err != nil {
-			return nil, err
+			return
 		}
 
+		var fields *fastjson.Object
 		var id common.AccountID
-		copy(id[:], encodedIDBuf)
+		var n int
 
-		for key, val := range pairs {
-			switch key {
+		n, err = hex.Decode(id[:], key)
+
+		if n != cap(id) && err == nil {
+			err = errors.Errorf("got an invalid account id: %s", key)
+		}
+
+		if err != nil {
+			return
+		}
+
+		fields, err = val.Object()
+
+		if err != nil {
+			return
+		}
+
+		fields.Visit(func(key []byte, v *fastjson.Value) {
+			if err != nil {
+				return
+			}
+
+			switch string(key) {
 			case "balance":
-				balance, ok := val.(float64)
-				if !ok {
-					return nil, errors.Errorf("failed to cast type for key %q with value %+v", key, val)
+				balance, err = v.Uint64()
+				if err != nil {
+					err = errors.Wrapf(err, "failed to cast type for key %q", key)
+					return
 				}
 
-				WriteAccountBalance(tree, id, uint64(balance))
+				WriteAccountBalance(tree, id, balance)
 			case "stake":
-				stake, ok := val.(float64)
-				if !ok {
-					return nil, errors.Errorf("failed to cast type for key %q with value %+v", key, val)
+				stake, err = v.Uint64()
+
+				if err != nil {
+					err = errors.Wrapf(err, "failed to cast type for key %q", key)
+					return
 				}
 
 				WriteAccountStake(tree, id, uint64(stake))
 			}
-		}
+		})
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
 	merkleRoot := tree.Checksum()

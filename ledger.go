@@ -465,6 +465,7 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 			Hex("tx_id", tx.ID[:]).
 			Strs("parents", parentHexIDs).
 			Uint64("difficulty", difficulty).
+			Hex("merkle_root", tx.AccountsMerkleRoot[:]).
 			Msg("Created a critical transaction.")
 
 	}
@@ -615,9 +616,9 @@ func (l *Ledger) revisitBufferedTransactions(id common.TransactionID) {
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
 func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tree, missing []common.TransactionID, err error) {
-	if state, hit := l.cacheAccounts.load(tx.getCriticalSeed()); hit {
-		return state.(*avl.Tree), nil, nil
-	}
+	//if state, hit := l.cacheAccounts.load(tx.getCriticalSeed()); hit {
+	//	return state.(*avl.Tree), nil, nil
+	//}
 
 	root := l.v.loadRoot()
 
@@ -708,7 +709,7 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tre
 		}
 	}
 
-	l.cacheAccounts.put(tx.getCriticalSeed(), ss)
+	//l.cacheAccounts.put(tx.getCriticalSeed(), ss)
 	return
 }
 
@@ -1026,7 +1027,7 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 			tx, err = NewTransaction(l.keys, sys.TagNop, nil)
 
 			if err != nil {
-				fmt.Printf("%+v\n", err)
+				fmt.Println(err)
 				return nil
 			}
 		}
@@ -1241,7 +1242,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 			return ErrStopped
 		case err := <-evt.Error:
 			if err != nil {
-				fmt.Printf("%+v\n", err)
+				fmt.Println(err)
 			}
 			return nil
 		case votes := <-evt.Result:
@@ -1425,7 +1426,7 @@ func checkIfOutOfSync(l *Ledger) func(stop <-chan struct{}) error {
 			return ErrStopped
 		case err := <-evt.Error:
 			if err != nil {
-				fmt.Printf("%+v\n", err)
+				fmt.Println(err)
 			}
 			return nil
 		case votes := <-evt.Result:
@@ -1581,7 +1582,7 @@ func syncMissingTX(l *Ledger) func(stop <-chan struct{}) error {
 			return ErrStopped
 		case err := <-evt.Error:
 			if err != nil {
-				fmt.Printf("%+v\n", err)
+				fmt.Println(err)
 			}
 			return nil
 		case t := <-evt.Result:

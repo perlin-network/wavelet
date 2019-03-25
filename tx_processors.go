@@ -3,6 +3,7 @@ package wavelet
 import (
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 )
 
@@ -48,11 +49,12 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 		return nil
 	}
 
-	executor, err := NewContractExecutor(recipient, ctx, 50000000)
+	executor, err := NewContractExecutor(recipient, ctx)
 	if err != nil {
 		return errors.Wrap(err, "transfer: failed to load and init smart contract vm")
 	}
-	executor.EnableLogging = true
+	executor.WithGasTable(sys.GasTable)
+	executor.EnableLogging()
 
 	if reader.Len() > 0 {
 		funcName, err := reader.ReadString()
@@ -65,9 +67,9 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 			return err
 		}
 
-		_, _, err = executor.Run(amount, funcName, funcParams...)
+		_, _, err = executor.Run(amount, 50000000, funcName, funcParams...)
 	} else {
-		_, _, err = executor.Run(amount, "on_money_received")
+		_, _, err = executor.Run(amount, 50000000, "on_money_received")
 	}
 
 	// TODO(kenta): deduct gas cost here
