@@ -415,6 +415,12 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 	critical := tx.IsCritical(difficulty)
 
 	if critical {
+		tx.DifficultyTimestamps = append(root.DifficultyTimestamps, root.Timestamp)
+
+		if size := computeCriticalTimestampWindowSize(tx.ViewID); len(tx.DifficultyTimestamps) > size {
+			tx.DifficultyTimestamps = tx.DifficultyTimestamps[len(tx.DifficultyTimestamps)-size:]
+		}
+
 		snapshot, missing, err := l.collapseTransactions(tx, false)
 
 		if len(missing) > 0 {
@@ -436,12 +442,6 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 		}
 
 		tx.AccountsMerkleRoot = snapshot.Checksum()
-
-		tx.DifficultyTimestamps = append(root.DifficultyTimestamps, root.Timestamp)
-
-		if size := computeCriticalTimestampWindowSize(tx.ViewID); len(tx.DifficultyTimestamps) > size {
-			tx.DifficultyTimestamps = tx.DifficultyTimestamps[len(tx.DifficultyTimestamps)-size:]
-		}
 	}
 
 	senderSignature, err := eddsa.Sign(l.keys.PrivateKey(), tx.Write())
@@ -703,6 +703,13 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tre
 
 		// If any errors occur while applying our transaction to our accounts
 		// snapshot, silently log it and continue applying other transactions.
+		if err := l.rewardValidators(ss, popped, logging); err != nil {
+			if logging {
+				logger := log.Node()
+				logger.Warn().Err(err).Msg("Failed to reward a validator while collapsing down transactions.")
+			}
+		}
+
 		if err := l.applyTransactionToSnapshot(ss, popped); err != nil {
 			if logging {
 				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
@@ -712,13 +719,6 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tre
 			if logging {
 				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "applied")
 				logger.Log().Msg("Successfully applied transaction to the ledger.")
-			}
-		}
-
-		if err := l.rewardValidators(ss, popped); err != nil {
-			if logging {
-				logger := log.Node()
-				logger.Warn().Err(err).Msg("Failed to reward a validator while collapsing down transactions.")
 			}
 		}
 	}
@@ -737,7 +737,7 @@ func (l *Ledger) applyTransactionToSnapshot(ss *avl.Tree, tx *Transaction) error
 	return nil
 }
 
-func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction) error {
+func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) error {
 	var candidates []*Transaction
 	var stakes []uint64
 	var totalStake uint64
@@ -760,13 +760,21 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction) error {
 	// Ignore error; should be impossible as not using HMAC mode.
 	hasher, _ := blake2b.New256(nil)
 
+	var depthCounter uint64
+	var lastDepth = tx.depth
+
 	for q.Len() > 0 {
 		popped := q.PopFront().(*Transaction)
 
+		if popped.depth != lastDepth {
+			lastDepth = popped.depth
+			depthCounter++
+		}
+
 		// If we exceed the max eligible depth we search for candidate
 		// validators to reward from, stop traversing.
-		if popped.depth+sys.MaxEligibleParentsDepthDiff < tx.depth {
-			continue
+		if depthCounter >= sys.MaxEligibleParentsDepthDiff {
+			break
 		}
 
 		// Filter for all ancestral transactions not from the same sender,
@@ -828,24 +836,26 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction) error {
 	creatorBalance, _ := ReadAccountBalance(ss, tx.Creator)
 	recipientBalance, _ := ReadAccountBalance(ss, rewardee.Sender)
 
-	deducted := sys.TransactionFeeAmount
+	fee := sys.TransactionFeeAmount
 
-	if creatorBalance < deducted {
-		return errors.Errorf("stake: creator %x does not have enough PERLs to pay transaction fees (requested %d PERLs) to %x", tx.Creator, deducted, rewardee.Sender)
+	if creatorBalance < fee {
+		return errors.Errorf("stake: creator %x does not have enough PERLs to pay transaction fees (requested %d PERLs) to %x", tx.Creator, fee, rewardee.Sender)
 	}
 
-	WriteAccountBalance(ss, tx.Creator, creatorBalance-deducted)
-	WriteAccountBalance(ss, rewardee.Sender, recipientBalance+deducted)
+	WriteAccountBalance(ss, tx.Creator, creatorBalance-fee)
+	WriteAccountBalance(ss, rewardee.Sender, recipientBalance+fee)
 
-	logger := log.Stake("reward_validator")
-	logger.Info().
-		Hex("creator", tx.Creator[:]).
-		Hex("recipient", rewardee.Sender[:]).
-		Hex("sender_tx_id", tx.ID[:]).
-		Hex("rewardee_tx_id", rewardee.ID[:]).
-		Hex("entropy", entropy).
-		Float64("acc", acc).
-		Float64("threshold", threshold).Msg("Rewarded validator.")
+	if logging {
+		logger := log.Stake("reward_validator")
+		logger.Info().
+			Hex("creator", tx.Creator[:]).
+			Hex("recipient", rewardee.Sender[:]).
+			Hex("sender_tx_id", tx.ID[:]).
+			Hex("rewardee_tx_id", rewardee.ID[:]).
+			Hex("entropy", entropy).
+			Float64("acc", acc).
+			Float64("threshold", threshold).Msg("Rewarded validator.")
+	}
 
 	return nil
 }

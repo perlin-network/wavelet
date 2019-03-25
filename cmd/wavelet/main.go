@@ -201,7 +201,7 @@ func main() {
 		sys.MinDifficulty = c.Int("sys.difficulty.min")
 		sys.MaxDifficulty = c.Int("sys.difficulty.max")
 		sys.MedianTimestampNumAncestors = c.Int("sys.median_timestamp_num_ancestors")
-		sys.TransactionFeeAmount = c.Uint64("transaction_fee_amount")
+		sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
 		sys.ExpectedConsensusTimeMilliseconds = c.Uint64("sys.expected_consensus_time")
 		sys.CriticalTimestampAverageWindowSize = c.Int("sys.critical_timestamp_average_window_size")
 		sys.MinimumStake = c.Uint64("sys.min_stake")
