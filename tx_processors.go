@@ -3,6 +3,7 @@ package wavelet
 import (
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 )
@@ -56,6 +57,8 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 	executor.WithGasTable(sys.GasTable)
 	executor.EnableLogging()
 
+	var gas uint64
+
 	if reader.Len() > 0 {
 		funcName, err := reader.ReadString()
 		if err != nil {
@@ -67,16 +70,27 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 			return err
 		}
 
-		_, _, err = executor.Run(amount, 50000000, funcName, funcParams...)
+		_, gas, err = executor.Run(amount, 50000000, funcName, funcParams...)
 	} else {
-		_, _, err = executor.Run(amount, 50000000, "on_money_received")
+		_, gas, err = executor.Run(amount, 50000000, "on_money_received")
 	}
-
-	// TODO(kenta): deduct gas cost here
 
 	if err != nil && errors.Cause(err) != ErrContractFunctionNotFound {
 		return errors.Wrap(err, "transfer: failed to execute smart contract method")
 	}
+
+	if senderBalance-amount < gas {
+		return errors.Errorf("transfer: sender only has %d PERLs, but must pay for gas fees which are %d PERLs", senderBalance-amount, gas)
+	}
+
+	ctx.WriteAccountBalance(tx.Sender, senderBalance-amount-gas)
+
+	logger := log.Contract(recipient, "gas")
+	logger.Info().
+		Uint64("gas", gas).
+		Hex("sender_id", tx.Sender[:]).
+		Hex("contract_id", recipient[:]).
+		Msg("Deducted PERLs for invoking smart contract function.")
 
 	return nil
 }

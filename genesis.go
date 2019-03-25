@@ -14,7 +14,7 @@ import (
 const defaultGenesis = `
 {
   "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405": {
-    "balance": 100000000
+    "balance": 10000000000000000000
   }
 }
 `

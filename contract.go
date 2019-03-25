@@ -179,10 +179,6 @@ func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, params ...
 		return nil, 0, utils.UnifyError(vm.ExitError)
 	}
 
-	logger := log.Contract(c.contractID, "gas")
-	logger.Log().Uint64("gas", vm.Gas).
-		Msg("Computed gas cost for executing smart contract function.")
-
 	// Save memory snapshot.
 	c.saveMemorySnapshot(vm.Memory)
 
