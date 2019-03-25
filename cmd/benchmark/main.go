@@ -67,7 +67,7 @@ func main() {
 				cli.StringFlag{
 					Name:  "sk",
 					Usage: "private key in hex format to connect to node HTTP API with",
-					Value: "85e7450f7cf0d9cd1d1d7bf4169c2f364eea4ba833a7280e0f931a1d92fd92c2696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a",
+					Value: "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
 				},
 			},
 			Action: commandRemote,
