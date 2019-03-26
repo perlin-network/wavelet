@@ -409,7 +409,7 @@ func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipReq
 		res.vote = err == nil
 
 		if err != nil {
-			fmt.Println(err)
+			fmt.Printf("got an error processing gossip request from %s: %s\n", peer.RemoteIP().String()+":"+strconv.FormatUint(uint64(peer.RemotePort()), 10), err)
 		}
 	}
 }
