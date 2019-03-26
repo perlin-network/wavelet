@@ -143,34 +143,24 @@ func (t *Tree) queueWrite(n *node) {
 func (t *Tree) Commit() error {
 	batch := t.kv.NewWriteBatch()
 
-	for {
-		t.pending.Range(func(k, v interface{}) bool {
-			if batch.Count() > t.maxWriteBatchSize {
-				return false
-			}
-
-			t.pending.Delete(k)
-
-			id, node := k.([MerkleHashSize]byte), v.(*node)
-
-			var buf bytes.Buffer
-			node.serialize(&buf)
-
-			batch.Put(append(NodeKeyPrefix, id[:]...), buf.Bytes())
-
-			return true
-		})
-
-		if batch.Count() == 0 {
-			break
+	err := t.root.dfs(t, false, func(n *node) (bool, error) {
+		if _, ok := t.pending.Load(n.id); !ok {
+			return false, nil
 		}
+		t.pending.Delete(n.id)
+		var buf bytes.Buffer
+		n.serialize(&buf)
 
-		err := t.kv.CommitWriteBatch(batch)
-		if err != nil {
-			return errors.Wrap(err, "failed to commit write batch to db")
-		}
+		batch.Put(append(NodeKeyPrefix, n.id[:]...), buf.Bytes())
+		return true, nil
+	})
+	if err != nil {
+		return err
+	}
 
-		batch.Clear()
+	err = t.kv.CommitWriteBatch(batch)
+	if err != nil {
+		return errors.Wrap(err, "failed to commit write batch to db")
 	}
 
 	{
