@@ -6,6 +6,9 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"sync"
+	"sync/atomic"
+	"time"
+	"unsafe"
 )
 
 type accounts struct {
@@ -14,17 +17,22 @@ type accounts struct {
 
 	mu sync.RWMutex
 
-	gcWorkerChannel chan avl.GCProfile
+	gcProfile *avl.GCProfile
 }
 
 func newAccounts(kv store.KV) *accounts {
-	return &accounts{kv: kv, tree: avl.New(kv), gcWorkerChannel: make(chan avl.GCProfile, 200)}
+	return &accounts{kv: kv, tree: avl.New(kv)}
 }
 
 // Only one instance of GC worker can run at any time.
 func (a *accounts) runGCWorker() {
 	for {
-		profile := <-a.gcWorkerChannel
+		_profile := atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&a.gcProfile)), nil)
+		if _profile == nil {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		profile := (*avl.GCProfile)(_profile)
 		n, err := profile.PerformFullGC()
 		if err != nil {
 			log.Error().Err(err).Msg("Full gc failed")
@@ -61,10 +69,9 @@ func (a *accounts) commit(new *avl.Tree) error {
 		return errors.Wrap(err, "accounts: failed to write")
 	}
 
-	profile, gotProfile := a.tree.GetGCProfile(0)
-	if gotProfile {
-		a.gcWorkerChannel <- profile
+	profile := a.tree.GetGCProfile(0)
+	if profile != nil {
+		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&a.gcProfile)), unsafe.Pointer(profile))
 	}
-
 	return nil
 }

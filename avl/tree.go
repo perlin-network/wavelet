@@ -361,20 +361,20 @@ type GCProfile struct {
 	preserveDepth uint64
 }
 
-func (t *Tree) GetGCProfile(preserveDepth uint64) (GCProfile, bool) {
+func (t *Tree) GetGCProfile(preserveDepth uint64) *GCProfile {
 	nextDepth := t.getNextOldRootIndex()
 	if nextDepth <= preserveDepth {
-		return GCProfile{}, false
+		return nil
 	}
 
-	return GCProfile{
+	return &GCProfile{
 		t:             t,
 		lastDepth:     nextDepth - 1,
 		preserveDepth: preserveDepth,
-	}, true
+	}
 }
 
-func (profile GCProfile) PerformFullGC() (int, error) {
+func (profile *GCProfile) PerformFullGC() (int, error) {
 	var mark [16]byte
 	if _, err := rand.Read(mark[:]); err != nil {
 		return 0, err
