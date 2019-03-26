@@ -486,7 +486,7 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 			return
 		}
 
-		if critical && l.cr.Preferred() == nil && tx.ID != l.v.loadRoot().ID {
+		if critical && l.cr.Preferred() == nil && tx.ViewID == l.v.loadViewID(nil) {
 			l.cr.Prefer(tx)
 		}
 
@@ -1241,6 +1241,11 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 		preferred := l.cr.Preferred()
 
 		if preferred == nil {
+			return ErrConsensusRoundFinished
+		}
+
+		if preferred.ViewID != l.v.loadViewID(nil) {
+			l.cr.Reset()
 			return ErrConsensusRoundFinished
 		}
 

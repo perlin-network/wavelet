@@ -12,6 +12,7 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/crypto/blake2b"
 	"math/rand"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -377,7 +378,7 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 		fmt.Println("timed out getting query result from ledger")
 	case err := <-evt.Error:
 		if err != nil {
-			fmt.Println("got an error processing query request:", err)
+			fmt.Printf("got an error processing query request from %s: %s\n", peer.RemoteIP().String()+":"+strconv.FormatUint(uint64(peer.RemotePort()), 10), err)
 		}
 	case res.preferred = <-evt.Response:
 	}
