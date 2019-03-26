@@ -4,6 +4,7 @@ import (
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
 	"sync"
 )
 
@@ -45,7 +46,14 @@ func (a *accounts) commit(new *avl.Tree) error {
 		return errors.Wrap(err, "accounts: failed to write")
 	}
 
-	//a.tree.GC(0)
+	profile, gotProfile := a.tree.GetGCProfile(0)
+	if gotProfile {
+		n, err := a.tree.PerformFullGC(profile)
+		if err != nil {
+			return err
+		}
+		log.Info().Msgf("Removed %d nodes in full GC", n)
+	}
 
 	return nil
 }

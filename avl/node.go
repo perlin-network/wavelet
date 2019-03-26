@@ -305,51 +305,6 @@ func (n *node) update(t *Tree, fn func(node *node)) *node {
 	return cpy
 }
 
-func (n *node) updateBorderReferences(t *Tree) uint64 {
-	if n.kind == NodeLeafValue {
-		return 0
-	}
-
-	left, right := t.mustLoadNode(n.left), t.mustLoadNode(n.right)
-	if left.viewID > n.viewID || right.viewID > n.viewID {
-		panic("BUG(avl): unexpected view id in tree")
-	}
-
-	var updated uint64
-
-	if left.viewID < n.viewID {
-		t.mustStoreLastReference(left.id, n.viewID)
-		updated++
-	} else {
-		updated += left.updateBorderReferences(t)
-	}
-
-	if right.viewID < n.viewID {
-		t.mustStoreLastReference(right.id, n.viewID)
-		updated++
-	} else {
-		updated += right.updateBorderReferences(t)
-	}
-
-	return updated
-}
-
-func (n *node) recursivelyDestroy(t *Tree, viewID uint64) uint64 {
-	lastRef, _ := t.mustLoadLastReference(n.id)
-	if lastRef > viewID {
-		return 0
-	}
-
-	t.deleteNodeAndMetadata(n.id)
-
-	if n.kind != NodeLeafValue {
-		left, right := t.mustLoadNode(n.left), t.mustLoadNode(n.right)
-		return left.recursivelyDestroy(t, viewID) + right.recursivelyDestroy(t, viewID) + 1
-	} else {
-		return 1
-	}
-}
-
 func (n *node) getString() string {
 	switch n.kind {
 	case NodeNonLeaf:
@@ -389,6 +344,45 @@ func (n *node) serializeForDifference(buf *bytes.Buffer) {
 		buf.Write(n.left[:])
 		buf.Write(n.right[:])
 	}
+}
+
+func (n *node) dfs(t *Tree, allowMissingNodes bool, cb func(*node) (bool, error)) error {
+	recurseInto, err := cb(n)
+	if err != nil {
+		return err
+	}
+	if !recurseInto {
+		return nil
+	}
+	if n.kind == NodeLeafValue {
+		return nil
+	}
+
+	left, err := t.loadNode(n.left)
+	if err != nil {
+		if !allowMissingNodes {
+			return err
+		}
+	} else {
+		err = left.dfs(t, allowMissingNodes, cb)
+		if err != nil {
+			return err
+		}
+	}
+
+	right, err := t.loadNode(n.right)
+	if err != nil {
+		if !allowMissingNodes {
+			return err
+		}
+	} else {
+		err = right.dfs(t, allowMissingNodes, cb)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func deserializeFromDifference(r *bytes.Reader, localViewID uint64) (*node, error) {

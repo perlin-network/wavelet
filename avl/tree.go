@@ -2,18 +2,18 @@ package avl
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
-	"math"
 	"sync"
 )
 
 var NodeKeyPrefix = []byte("@1:")
-var NodeLastReferencePrefix = []byte("@2:")
+var GCAliveMarkPrefix = []byte("@2:")
 var OldRootsPrefix = []byte("@3:")
 var RootKey = []byte(".root")
 var NextOldRootIndexKey = []byte(".next_old_root")
@@ -185,7 +185,6 @@ func (t *Tree) Commit() error {
 	}
 
 	if t.root != nil {
-		t.root.updateBorderReferences(t)
 		return t.kv.Put(RootKey, t.root.id[:])
 	}
 
@@ -193,40 +192,6 @@ func (t *Tree) Commit() error {
 	_ = t.kv.Delete(RootKey)
 
 	return nil
-}
-
-func (t *Tree) GC(historyDepth uint64) {
-	index := t.getNextOldRootIndex()
-	if index == 0 {
-		return
-	}
-	index--
-
-	if index >= historyDepth {
-		index -= historyDepth
-	} else {
-		return
-	}
-
-	pendingRoots := make([][MerkleHashSize]byte, 0)
-
-	for i := index; i != math.MaxUint64; /* overflow */ i-- {
-		rootID, ok := t.getOldRoot(i)
-		if !ok {
-			break
-		}
-		pendingRoots = append(pendingRoots, rootID)
-		t.deleteOldRoot(i)
-	}
-
-	count := uint64(0)
-
-	for i := len(pendingRoots) - 1; i >= 0; i-- {
-		rootID := pendingRoots[i]
-		rootNode := t.mustLoadNode(rootID)
-
-		count += rootNode.recursivelyDestroy(t, rootNode.viewID)
-	}
 }
 
 func (t *Tree) getNextOldRootIndex() uint64 {
@@ -313,42 +278,7 @@ func (t *Tree) deleteNodeAndMetadata(id [MerkleHashSize]byte) {
 	t.pending.Delete(id)
 	t.cache.remove(id)
 	t.kv.Delete(append(NodeKeyPrefix, id[:]...))
-	t.kv.Delete(append(NodeLastReferencePrefix, id[:]...))
-}
-
-func (t *Tree) loadLastReference(id [MerkleHashSize]byte) (uint64, bool, error) {
-	buf, err := t.kv.Get(append(NodeLastReferencePrefix, id[:]...))
-
-	if err != nil || len(buf) == 0 {
-		return 0, false, nil
-	}
-
-	if len(buf) != 8 {
-		return 0, false, errors.Errorf("avl: invalid encoding of last reference value")
-	}
-
-	return binary.LittleEndian.Uint64(buf), true, nil
-}
-
-func (t *Tree) mustLoadLastReference(id [MerkleHashSize]byte) (uint64, bool) {
-	x, found, err := t.loadLastReference(id)
-	if err != nil {
-		panic(err)
-	}
-	return x, found
-}
-
-func (t *Tree) storeLastReference(id [MerkleHashSize]byte, x uint64) error {
-	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], x)
-	return t.kv.Put(append(NodeLastReferencePrefix, id[:]...), buf[:])
-}
-
-func (t *Tree) mustStoreLastReference(id [MerkleHashSize]byte, x uint64) {
-	err := t.storeLastReference(id, x)
-	if err != nil {
-		panic(err)
-	}
+	t.kv.Delete(append(GCAliveMarkPrefix, id[:]...))
 }
 
 func (t *Tree) SetViewID(viewID uint64) {
@@ -423,4 +353,78 @@ func (t *Tree) ApplyDiff(diff []byte) error {
 	t.root = root
 
 	return nil
+}
+
+type GCProfile struct {
+	lastDepth     uint64
+	preserveDepth uint64
+}
+
+func (t *Tree) GetGCProfile(preserveDepth uint64) (GCProfile, bool) {
+	nextDepth := t.getNextOldRootIndex()
+	if nextDepth <= preserveDepth {
+		return GCProfile{}, false
+	}
+
+	return GCProfile{
+		lastDepth:     nextDepth - 1,
+		preserveDepth: preserveDepth,
+	}, true
+}
+
+func (t *Tree) PerformFullGC(profile GCProfile) (int, error) {
+	var mark [16]byte
+	if _, err := rand.Read(mark[:]); err != nil {
+		return 0, err
+	}
+
+	var i int64
+	for i = int64(profile.lastDepth); i >= int64(profile.lastDepth-profile.preserveDepth); i-- {
+		i := uint64(i)
+		id, ok := t.getOldRoot(i)
+		if !ok {
+			return 0, nil
+		}
+
+		n, err := t.loadNode(id)
+		if err != nil {
+			return 0, err
+		}
+		err = n.dfs(t, false, func(n *node) (bool, error) {
+			return true, t.kv.Put(append(GCAliveMarkPrefix, n.id[:]...), mark[:])
+		})
+		if err != nil {
+			return 0, err
+		}
+	}
+
+	deleteCount := 0
+	for ; i >= 0; i-- {
+		i := uint64(i)
+		id, ok := t.getOldRoot(i)
+		if !ok {
+			return deleteCount, nil
+		}
+
+		n, err := t.loadNode(id)
+		if err != nil {
+			return 0, err
+		}
+		err = n.dfs(t, true, func(n *node) (bool, error) {
+			gotMark, _ := t.kv.Get(append(GCAliveMarkPrefix, n.id[:]...))
+			if bytes.Equal(gotMark, mark[:]) {
+				return false, nil
+			}
+			t.deleteNodeAndMetadata(n.id)
+			deleteCount++
+			return true, nil
+		})
+		if err != nil {
+			return 0, err
+		}
+
+		t.deleteOldRoot(i)
+	}
+
+	return deleteCount, nil
 }
