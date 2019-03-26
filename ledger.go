@@ -224,6 +224,7 @@ func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
 	syncTxOut := make(chan EventSyncTX, 16)
 
 	accounts := newAccounts(kv)
+	go accounts.runGCWorker()
 
 	genesis, err := performInception(accounts.tree, nil)
 	if err != nil {

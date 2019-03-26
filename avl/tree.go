@@ -356,6 +356,7 @@ func (t *Tree) ApplyDiff(diff []byte) error {
 }
 
 type GCProfile struct {
+	t             *Tree
 	lastDepth     uint64
 	preserveDepth uint64
 }
@@ -367,12 +368,13 @@ func (t *Tree) GetGCProfile(preserveDepth uint64) (GCProfile, bool) {
 	}
 
 	return GCProfile{
+		t:             t,
 		lastDepth:     nextDepth - 1,
 		preserveDepth: preserveDepth,
 	}, true
 }
 
-func (t *Tree) PerformFullGC(profile GCProfile) (int, error) {
+func (profile GCProfile) PerformFullGC() (int, error) {
 	var mark [16]byte
 	if _, err := rand.Read(mark[:]); err != nil {
 		return 0, err
@@ -381,17 +383,17 @@ func (t *Tree) PerformFullGC(profile GCProfile) (int, error) {
 	var i int64
 	for i = int64(profile.lastDepth); i >= int64(profile.lastDepth-profile.preserveDepth); i-- {
 		i := uint64(i)
-		id, ok := t.getOldRoot(i)
+		id, ok := profile.t.getOldRoot(i)
 		if !ok {
 			return 0, nil
 		}
 
-		n, err := t.loadNode(id)
+		n, err := profile.t.loadNode(id)
 		if err != nil {
 			return 0, err
 		}
-		err = n.dfs(t, false, func(n *node) (bool, error) {
-			return true, t.kv.Put(append(GCAliveMarkPrefix, n.id[:]...), mark[:])
+		err = n.dfs(profile.t, false, func(n *node) (bool, error) {
+			return true, profile.t.kv.Put(append(GCAliveMarkPrefix, n.id[:]...), mark[:])
 		})
 		if err != nil {
 			return 0, err
@@ -401,21 +403,21 @@ func (t *Tree) PerformFullGC(profile GCProfile) (int, error) {
 	deleteCount := 0
 	for ; i >= 0; i-- {
 		i := uint64(i)
-		id, ok := t.getOldRoot(i)
+		id, ok := profile.t.getOldRoot(i)
 		if !ok {
 			return deleteCount, nil
 		}
 
-		n, err := t.loadNode(id)
+		n, err := profile.t.loadNode(id)
 		if err != nil {
 			return 0, err
 		}
-		err = n.dfs(t, true, func(n *node) (bool, error) {
-			gotMark, _ := t.kv.Get(append(GCAliveMarkPrefix, n.id[:]...))
+		err = n.dfs(profile.t, true, func(n *node) (bool, error) {
+			gotMark, _ := profile.t.kv.Get(append(GCAliveMarkPrefix, n.id[:]...))
 			if bytes.Equal(gotMark, mark[:]) {
 				return false, nil
 			}
-			t.deleteNodeAndMetadata(n.id)
+			profile.t.deleteNodeAndMetadata(n.id)
 			deleteCount++
 			return true, nil
 		})
@@ -423,7 +425,7 @@ func (t *Tree) PerformFullGC(profile GCProfile) (int, error) {
 			return 0, err
 		}
 
-		t.deleteOldRoot(i)
+		profile.t.deleteOldRoot(i)
 	}
 
 	return deleteCount, nil

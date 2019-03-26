@@ -13,10 +13,25 @@ type accounts struct {
 	tree *avl.Tree
 
 	mu sync.RWMutex
+
+	gcWorkerChannel chan avl.GCProfile
 }
 
 func newAccounts(kv store.KV) *accounts {
-	return &accounts{kv: kv, tree: avl.New(kv)}
+	return &accounts{kv: kv, tree: avl.New(kv), gcWorkerChannel: make(chan avl.GCProfile, 200)}
+}
+
+// Only one instance of GC worker can run at any time.
+func (a *accounts) runGCWorker() {
+	for {
+		profile := <-a.gcWorkerChannel
+		n, err := profile.PerformFullGC()
+		if err != nil {
+			log.Error().Err(err).Msg("Full gc failed")
+		} else {
+			log.Info().Msgf("Removed %d nodes in full GC", n)
+		}
+	}
 }
 
 func (a *accounts) checksum() [avl.MerkleHashSize]byte {
@@ -48,11 +63,7 @@ func (a *accounts) commit(new *avl.Tree) error {
 
 	profile, gotProfile := a.tree.GetGCProfile(0)
 	if gotProfile {
-		n, err := a.tree.PerformFullGC(profile)
-		if err != nil {
-			return err
-		}
-		log.Info().Msgf("Removed %d nodes in full GC", n)
+		a.gcWorkerChannel <- profile
 	}
 
 	return nil
