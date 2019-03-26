@@ -303,7 +303,7 @@ func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
 		SyncTxOut: syncTxOut,
 		syncTxOut: syncTxOut,
 
-		cacheAccounts:   newLRU(128),
+		cacheAccounts:   newLRU(16),
 		cacheDiffChunks: newLRU(1024), // 1024 * 4MB
 
 		kill: make(chan struct{}),
