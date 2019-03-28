@@ -7,7 +7,6 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
-	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 	"sync"
@@ -21,8 +20,9 @@ var (
 type graph struct {
 	sync.RWMutex
 
-	transactions map[common.TransactionID]*Transaction
-	children     map[common.TransactionID][]*Transaction
+	transactions    map[common.TransactionID]*Transaction
+	children        map[common.TransactionID][]*Transaction
+	eligibleParents map[common.TransactionID]*Transaction
 
 	indexViewID map[uint64][]*Transaction
 
@@ -33,11 +33,11 @@ type graph struct {
 
 func newGraph(kv store.KV, genesis *Transaction) *graph {
 	g := &graph{
-		kv:           kv,
-		transactions: make(map[common.TransactionID]*Transaction),
-		children:     make(map[common.TransactionID][]*Transaction),
-
-		indexViewID: make(map[uint64][]*Transaction),
+		kv:              kv,
+		transactions:    make(map[common.TransactionID]*Transaction),
+		children:        make(map[common.TransactionID][]*Transaction),
+		eligibleParents: make(map[common.TransactionID]*Transaction),
+		indexViewID:     make(map[uint64][]*Transaction),
 	}
 
 	// Initialize difficulty if not exist.
@@ -54,6 +54,7 @@ func newGraph(kv store.KV, genesis *Transaction) *graph {
 
 	g.transactions[genesis.ID] = genesis
 	g.updateIndices(genesis)
+	g.eligibleParents[genesis.ID] = genesis
 
 	return g
 }
@@ -95,14 +96,36 @@ func (g *graph) addTransaction(tx *Transaction) error {
 	// Update the parents children.
 	for _, parent := range parents {
 		g.children[parent.ID] = append(g.children[parent.ID], tx)
+
+		// The parent is no longer eligible
+		delete(g.eligibleParents, parent.ID)
 	}
 
 	// Update the transactions depth.
 	tx.depth = maxDepth(parents) + 1
 
-	// Update the graphs frontier depth/height.
-	if g.height.Load() < tx.depth {
+	// Update the graphs frontier depth/height and update the eligible parents
+	height := g.height.Load()
+	if height < tx.depth {
 		g.height.Store(tx.depth)
+		height = tx.depth
+
+		// Since the height has been updated, check each eligible parents' height
+		for _, v := range g.eligibleParents {
+			if v.depth+sys.MaxEligibleParentsDepthDiff < height {
+				delete(g.eligibleParents, v.ID)
+			}
+		}
+	}
+
+	// Add the transaction to the eligible parents if it's qualified
+	root := g.loadRoot()
+	if root != nil && len(g.children[tx.ID]) == 0 {
+		viewID := g.loadViewID(root)
+
+		if tx.depth+sys.MaxEligibleParentsDepthDiff >= height && tx.ViewID == viewID {
+			g.eligibleParents[tx.ID] = tx
+		}
 	}
 
 	// Add the transaction to our view-graph.
@@ -130,6 +153,7 @@ func (g *graph) reset(root *Transaction) {
 			for _, tx := range transactions {
 				delete(g.transactions, tx.ID)
 				delete(g.children, tx.ID)
+				delete(g.eligibleParents, tx.ID)
 			}
 
 			logger := log.Consensus("prune")
@@ -166,6 +190,11 @@ func (g *graph) reset(root *Transaction) {
 	g.saveDifficulty(adjusted)
 	g.saveRoot(root)
 
+	// Add the root to eligible parents if it does not has children
+	if len(g.children[root.ID]) == 0 {
+		g.eligibleParents[root.ID] = root
+	}
+
 	g.Unlock()
 }
 
@@ -173,40 +202,8 @@ func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 	g.RLock()
 	defer g.RUnlock()
 
-	root := g.loadRoot()
-
-	if root == nil {
-		return
-	}
-
-	visited := make(map[common.TransactionID]struct{})
-	visited[root.ID] = struct{}{}
-
-	q := queuePool.Get().(*queue.Queue)
-	defer func() {
-		q.Init()
-		queuePool.Put(q)
-	}()
-
-	q.PushBack(root)
-
-	height := g.height.Load()
-	viewID := g.loadViewID(root)
-
-	for q.Len() > 0 {
-		popped := q.PopFront().(*Transaction)
-
-		if children := g.children[popped.ID]; len(children) > 0 {
-			for _, child := range children {
-				if _, seen := visited[child.ID]; !seen {
-					q.PushBack(child)
-					visited[child.ID] = struct{}{}
-				}
-			}
-		} else if popped.depth+sys.MaxEligibleParentsDepthDiff >= height && (popped.ID == root.ID || popped.ViewID == viewID) {
-			// All eligible parents are within the graph depth [frontier_depth - max_depth_diff, frontier_depth].
-			eligible = append(eligible, popped.ID)
-		}
+	for id := range g.eligibleParents {
+		eligible = append(eligible, id)
 	}
 
 	return
