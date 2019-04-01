@@ -8,13 +8,13 @@ import (
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/cors"
-	"github.com/go-chi/render"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/pkg/errors"
+	"github.com/valyala/fastjson"
 	"io"
 	"net/http"
 	"net/url"
@@ -31,10 +31,18 @@ type Gateway struct {
 
 	registry *sessionRegistry
 	sinks    map[string]*sink
+
+	parserPool *fastjson.ParserPool
+	arenaPool  *fastjson.ArenaPool
 }
 
 func New() *Gateway {
-	return &Gateway{registry: newSessionRegistry(), sinks: make(map[string]*sink)}
+	return &Gateway{
+		registry:   newSessionRegistry(),
+		sinks:      make(map[string]*sink),
+		parserPool: new(fastjson.ParserPool),
+		arenaPool:  new(fastjson.ArenaPool),
+	}
 }
 
 func (g *Gateway) setup() {
@@ -121,14 +129,18 @@ func (g *Gateway) StartHTTP(n *noise.Node, port int) {
 func (g *Gateway) initSession(w http.ResponseWriter, r *http.Request) {
 	req := new(SessionInitRequest)
 
-	if err := render.Bind(r, req); err != nil {
-		g.render(w, r, ErrBadRequest(err))
+	parser := g.parserPool.Get()
+	err := req.Bind(parser, r)
+	g.parserPool.Put(parser)
+
+	if err != nil {
+		g.renderError(w, r, ErrBadRequest(err))
 		return
 	}
 
 	session, err := g.registry.newSession()
 	if err != nil {
-		g.render(w, r, ErrBadRequest(errors.Wrap(err, "failed to create session")))
+		g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "failed to create session")))
 		return
 	}
 
@@ -138,8 +150,12 @@ func (g *Gateway) initSession(w http.ResponseWriter, r *http.Request) {
 func (g *Gateway) sendTransaction(w http.ResponseWriter, r *http.Request) {
 	req := new(SendTransactionRequest)
 
-	if err := render.Bind(r, req); err != nil {
-		g.render(w, r, ErrBadRequest(err))
+	parser := g.parserPool.Get()
+	err := req.Bind(parser, r)
+	g.parserPool.Put(parser)
+
+	if err != nil {
+		g.renderError(w, r, ErrBadRequest(err))
 		return
 	}
 
@@ -154,17 +170,17 @@ func (g *Gateway) sendTransaction(w http.ResponseWriter, r *http.Request) {
 
 	select {
 	case <-time.After(1 * time.Second):
-		g.render(w, r, ErrInternal(errors.New("broadcasting queue is full")))
+		g.renderError(w, r, ErrInternal(errors.New("broadcasting queue is full")))
 		return
 	case g.ledger.BroadcastQueue <- evt:
 	}
 
 	select {
 	case <-time.After(1 * time.Second):
-		g.render(w, r, ErrInternal(errors.New("its taking too long to broadcast your transaction")))
+		g.renderError(w, r, ErrInternal(errors.New("its taking too long to broadcast your transaction")))
 		return
 	case err := <-evt.Error:
-		g.render(w, r, ErrInternal(errors.Wrap(err, "got an error broadcasting yourt ransaction")))
+		g.renderError(w, r, ErrInternal(errors.Wrap(err, "got an error broadcasting yourt ransaction")))
 		return
 	case tx := <-evt.Result:
 		g.render(w, r, &SendTransactionResponse{ledger: g.ledger, tx: &tx})
@@ -185,12 +201,12 @@ func (g *Gateway) listTransactions(w http.ResponseWriter, r *http.Request) {
 		slice, err := hex.DecodeString(raw)
 
 		if err != nil {
-			g.render(w, r, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
+			g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
 			return
 		}
 
 		if len(slice) != common.SizeAccountID {
-			g.render(w, r, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", common.SizeAccountID)))
+			g.renderError(w, r, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", common.SizeAccountID)))
 			return
 		}
 
@@ -201,12 +217,12 @@ func (g *Gateway) listTransactions(w http.ResponseWriter, r *http.Request) {
 		slice, err := hex.DecodeString(raw)
 
 		if err != nil {
-			g.render(w, r, ErrBadRequest(errors.Wrap(err, "creator ID must be presented as valid hex")))
+			g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "creator ID must be presented as valid hex")))
 			return
 		}
 
 		if len(slice) != common.SizeAccountID {
-			g.render(w, r, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", common.SizeAccountID)))
+			g.renderError(w, r, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", common.SizeAccountID)))
 			return
 		}
 
@@ -217,7 +233,7 @@ func (g *Gateway) listTransactions(w http.ResponseWriter, r *http.Request) {
 		offset, err = strconv.ParseUint(raw, 10, 64)
 
 		if err != nil {
-			g.render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
+			g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
 			return
 		}
 	}
@@ -226,18 +242,18 @@ func (g *Gateway) listTransactions(w http.ResponseWriter, r *http.Request) {
 		limit, err = strconv.ParseUint(raw, 10, 64)
 
 		if err != nil {
-			g.render(w, r, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
+			g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
 			return
 		}
 	}
 
-	var transactions []render.Renderer
+	var transactions TransactionList
 
 	for _, tx := range g.ledger.ListTransactions(offset, limit, sender, creator) {
 		transactions = append(transactions, &Transaction{tx: tx})
 	}
 
-	g.renderList(w, r, transactions)
+	g.render(w, r, transactions)
 }
 
 func (g *Gateway) getTransaction(w http.ResponseWriter, r *http.Request) {
@@ -245,12 +261,12 @@ func (g *Gateway) getTransaction(w http.ResponseWriter, r *http.Request) {
 
 	slice, err := hex.DecodeString(param)
 	if err != nil {
-		g.render(w, r, ErrBadRequest(errors.Wrap(err, "transaction ID must be presented as valid hex")))
+		g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "transaction ID must be presented as valid hex")))
 		return
 	}
 
 	if len(slice) != common.SizeTransactionID {
-		g.render(w, r, ErrBadRequest(errors.Errorf("transaction ID must be %d bytes long", common.SizeTransactionID)))
+		g.renderError(w, r, ErrBadRequest(errors.Errorf("transaction ID must be %d bytes long", common.SizeTransactionID)))
 		return
 	}
 
@@ -260,7 +276,7 @@ func (g *Gateway) getTransaction(w http.ResponseWriter, r *http.Request) {
 	tx, exists := g.ledger.FindTransaction(id)
 
 	if !exists {
-		g.render(w, r, ErrBadRequest(errors.Errorf("could not find transaction with ID %x", id)))
+		g.renderError(w, r, ErrBadRequest(errors.Errorf("could not find transaction with ID %x", id)))
 		return
 	}
 
@@ -272,12 +288,12 @@ func (g *Gateway) getAccount(w http.ResponseWriter, r *http.Request) {
 
 	slice, err := hex.DecodeString(param)
 	if err != nil {
-		g.render(w, r, ErrBadRequest(errors.Wrap(err, "account ID must be presented as valid hex")))
+		g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "account ID must be presented as valid hex")))
 		return
 	}
 
 	if len(slice) != common.SizeAccountID {
-		g.render(w, r, ErrBadRequest(errors.Errorf("account ID must be %d bytes long", common.SizeAccountID)))
+		g.renderError(w, r, ErrBadRequest(errors.Errorf("account ID must be %d bytes long", common.SizeAccountID)))
 		return
 	}
 
@@ -293,12 +309,12 @@ func (g *Gateway) contractScope(next http.Handler) http.Handler {
 
 		slice, err := hex.DecodeString(param)
 		if err != nil {
-			g.render(w, r, ErrBadRequest(errors.Wrap(err, "contract ID must be presented as valid hex")))
+			g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "contract ID must be presented as valid hex")))
 			return
 		}
 
 		if len(slice) != common.SizeTransactionID {
-			g.render(w, r, ErrBadRequest(errors.Errorf("contract ID must be %d bytes long", common.SizeTransactionID)))
+			g.renderError(w, r, ErrBadRequest(errors.Errorf("contract ID must be %d bytes long", common.SizeTransactionID)))
 			return
 		}
 
@@ -320,7 +336,7 @@ func (g *Gateway) getContractCode(w http.ResponseWriter, r *http.Request) {
 	code, available := wavelet.ReadAccountContractCode(g.ledger.Snapshot(), id)
 
 	if len(code) == 0 || !available {
-		g.render(w, r, ErrBadRequest(errors.Errorf("could not find contract with ID %x", id)))
+		g.renderError(w, r, ErrBadRequest(errors.Errorf("could not find contract with ID %x", id)))
 		return
 	}
 
@@ -345,7 +361,7 @@ func (g *Gateway) getContractPages(w http.ResponseWriter, r *http.Request) {
 		idx, err = strconv.ParseUint(raw, 10, 64)
 
 		if err != nil {
-			g.render(w, r, ErrBadRequest(errors.New("could not parse page index")))
+			g.renderError(w, r, ErrBadRequest(errors.New("could not parse page index")))
 			return
 		}
 	}
@@ -355,19 +371,19 @@ func (g *Gateway) getContractPages(w http.ResponseWriter, r *http.Request) {
 	numPages, available := wavelet.ReadAccountContractNumPages(snapshot, id)
 
 	if !available {
-		g.render(w, r, ErrBadRequest(errors.Errorf("could not find any pages for contract with ID %x", id)))
+		g.renderError(w, r, ErrBadRequest(errors.Errorf("could not find any pages for contract with ID %x", id)))
 		return
 	}
 
 	if idx >= numPages {
-		g.render(w, r, ErrBadRequest(errors.Errorf("contract with ID %x only has %d pages, but you requested page %d", id, numPages, idx)))
+		g.renderError(w, r, ErrBadRequest(errors.Errorf("contract with ID %x only has %d pages, but you requested page %d", id, numPages, idx)))
 		return
 	}
 
 	page, available := wavelet.ReadAccountContractPage(snapshot, id, idx)
 
 	if len(page) == 0 || !available {
-		g.render(w, r, ErrBadRequest(errors.Errorf("page %d is either empty, or does not exist", idx)))
+		g.renderError(w, r, ErrBadRequest(errors.Errorf("page %d is either empty, or does not exist", idx)))
 		return
 	}
 
@@ -378,13 +394,13 @@ func (g *Gateway) authenticated(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get(HeaderSessionToken)
 		if len(token) == 0 {
-			g.render(w, r, ErrBadRequest(errors.Errorf("session token not specified via HTTP header %q", HeaderSessionToken)))
+			g.renderError(w, r, ErrBadRequest(errors.Errorf("session token not specified via HTTP header %q", HeaderSessionToken)))
 			return
 		}
 
 		session, exists := g.registry.getSession(token)
 		if !exists {
-			g.render(w, r, ErrBadRequest(errors.Errorf("could not find session %s", token)))
+			g.renderError(w, r, ErrBadRequest(errors.Errorf("could not find session %s", token)))
 			return
 		}
 
@@ -398,17 +414,17 @@ func (g *Gateway) securePoll(sink *sink) func(w http.ResponseWriter, r *http.Req
 		token := r.URL.Query().Get(KeyToken)
 
 		if len(token) == 0 {
-			g.render(w, r, ErrBadRequest(errors.New("specify a session token through url query params")))
+			g.renderError(w, r, ErrBadRequest(errors.New("specify a session token through url query params")))
 			return
 		}
 
 		if _, exists := g.registry.getSession(token); !exists {
-			g.render(w, r, ErrBadRequest(errors.Errorf("could not find session %s", token)))
+			g.renderError(w, r, ErrBadRequest(errors.Errorf("could not find session %s", token)))
 			return
 		}
 
 		if err := sink.serve(w, r); err != nil {
-			g.render(w, r, ErrBadRequest(errors.Wrap(err, "failed to init websocket session")))
+			g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "failed to init websocket session")))
 		}
 	}
 }
@@ -471,20 +487,34 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 	return len(buf), nil
 }
 
-// A helper to handle the error returned by render.Render()
-func (g *Gateway) render(w http.ResponseWriter, r *http.Request, v render.Renderer) {
-	err := render.Render(w, r, v)
+func (g *Gateway) render(w http.ResponseWriter, r *http.Request, m fastjsonMarshal) {
+	arena := g.arenaPool.Get()
+	b, err := m.marshal(arena)
+	g.arenaPool.Put(arena)
+
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte("render error:  " + err.Error()))
+		return
 	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(b)
 }
 
-// A helper to handle the error returned by render.RenderList()
-func (g *Gateway) renderList(w http.ResponseWriter, r *http.Request, l []render.Renderer) {
-	err := render.RenderList(w, r, l)
+func (g *Gateway) renderError(w http.ResponseWriter, r *http.Request, e *ErrResponse) {
+	arena := g.arenaPool.Get()
+	b, err := e.marshal(arena)
+	g.arenaPool.Put(arena)
+
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte("renderList error: " + err.Error()))
+		_, _ = w.Write([]byte("render error:  " + err.Error()))
+		return
 	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(e.HTTPStatusCode)
+	_, _ = w.Write(b)
 }
