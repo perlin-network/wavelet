@@ -183,7 +183,7 @@ func TestListTransaction(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.Code, "status code")
 
 			if tc.wantResponse != nil {
-				r, err := tc.wantResponse.marshal(new(fastjson.ArenaPool))
+				r, err := tc.wantResponse.marshal(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, r, bytes.TrimSpace(response))
 			}
@@ -263,7 +263,7 @@ func TestGetTransaction(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.Code, "status code")
 
 			if tc.wantResponse != nil {
-				r, err := tc.wantResponse.marshal(new(fastjson.ArenaPool))
+				r, err := tc.wantResponse.marshal(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, r, bytes.TrimSpace(response))
 			}
@@ -382,7 +382,7 @@ func TestGetAccount(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.Code, "status code")
 
 			if tc.wantResponse != nil {
-				r, err := tc.wantResponse.marshal(new(fastjson.ArenaPool))
+				r, err := tc.wantResponse.marshal(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, r, bytes.TrimSpace(response))
 			}
@@ -456,7 +456,7 @@ func TestGetContractCode(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.Code, "status code")
 
 			if tc.wantError != nil {
-				r, err := tc.wantError.marshal(new(fastjson.ArenaPool))
+				r, err := tc.wantError.marshal(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, r, bytes.TrimSpace(response))
 			}
@@ -517,7 +517,7 @@ func TestGetContractPages(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.Code, "status code")
 
 			if tc.wantError != nil {
-				r, err := tc.wantError.marshal(new(fastjson.ArenaPool))
+				r, err := tc.wantError.marshal(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, r, bytes.TrimSpace(response))
 			}
@@ -566,11 +566,10 @@ func TestGetLedger(t *testing.T) {
 	ledgerStatusResponse := struct {
 		PublicKey     string   `json:"public_key"`
 		HostAddress   string   `json:"address"`
-		PeerAddresses []string `json:"peers"`
-
 		RootID     string `json:"root_id"`
 		ViewID     uint64 `json:"view_id"`
 		Difficulty uint64 `json:"difficulty"`
+		PeerAddresses []string `json:"peers"`
 	}{
 		PublicKey:     hex.EncodeToString(keys.PublicKey()),
 		HostAddress:   "127.0.0.1:9000",
