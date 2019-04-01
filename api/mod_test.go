@@ -566,9 +566,9 @@ func TestGetLedger(t *testing.T) {
 	ledgerStatusResponse := struct {
 		PublicKey     string   `json:"public_key"`
 		HostAddress   string   `json:"address"`
-		RootID     string `json:"root_id"`
-		ViewID     uint64 `json:"view_id"`
-		Difficulty uint64 `json:"difficulty"`
+		RootID        string   `json:"root_id"`
+		ViewID        uint64   `json:"view_id"`
+		Difficulty    uint64   `json:"difficulty"`
 		PeerAddresses []string `json:"peers"`
 	}{
 		PublicKey:     hex.EncodeToString(keys.PublicKey()),
@@ -711,6 +711,6 @@ type testErrResponse struct {
 	ErrorText  string `json:"error,omitempty"` // application-level error message, for debugging
 }
 
-func (t testErrResponse) marshal(pool *fastjson.ArenaPool) ([]byte, error) {
+func (t testErrResponse) marshal(arena *fastjson.Arena) ([]byte, error) {
 	return json.Marshal(t)
 }

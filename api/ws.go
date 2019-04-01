@@ -2,7 +2,9 @@ package api
 
 import (
 	"github.com/gorilla/websocket"
+	"github.com/valyala/fastjson"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -108,8 +110,8 @@ func (s *sink) serve(w http.ResponseWriter, r *http.Request) error {
 }
 
 type broadcastItem struct {
-	fields map[string]interface{}
-	buf    []byte
+	buf   []byte
+	value *fastjson.Value
 }
 
 type sink struct {
@@ -134,7 +136,8 @@ func (s *sink) run() {
 		L:
 			for client := range s.clients {
 				for key, condition := range client.filters {
-					if value, exists := msg.fields[key]; exists && value != condition {
+					o := msg.value.Get(key)
+					if o != nil && valueEqual(o, condition) {
 						continue L
 					}
 				}
@@ -147,5 +150,27 @@ func (s *sink) run() {
 				}
 			}
 		}
+	}
+}
+
+func valueEqual(v *fastjson.Value, filter string) bool {
+	switch v.Type() {
+	case fastjson.TypeArray:
+		fallthrough
+	case fastjson.TypeNumber:
+		fallthrough
+	case fastjson.TypeObject:
+		return string(v.MarshalTo(nil)) == filter
+	case fastjson.TypeString:
+		b, _ := v.StringBytes()
+		return string(b) == filter
+	case fastjson.TypeTrue, fastjson.TypeFalse:
+		b, err := v.Bool()
+		if err != nil {
+			return false
+		}
+		return strconv.FormatBool(b) == filter
+	default:
+		return false
 	}
 }

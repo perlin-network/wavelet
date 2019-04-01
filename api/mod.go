@@ -469,12 +469,20 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 		return n, errors.Errorf("cannot decode field: %q", err)
 	}
 
-	mod, exists := fields[log.KeyModule]
-	if !exists {
+	p := g.parserPool.Get()
+	v, err := p.ParseBytes(buf)
+	g.parserPool.Put(p)
+
+	if err != nil {
+		return n, errors.Errorf("cannot parse: %q", err)
+	}
+
+	mod := v.GetStringBytes(log.KeyModule)
+	if mod == nil {
 		return n, errors.Errorf("all logs must have the field %q", log.KeyModule)
 	}
 
-	sink, exists := g.sinks[mod.(string)]
+	sink, exists := g.sinks[string(mod)]
 	if !exists {
 		return len(buf), nil
 	}
@@ -482,7 +490,7 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 	cpy := make([]byte, len(buf))
 	copy(cpy, buf)
 
-	sink.broadcast <- broadcastItem{fields: fields, buf: cpy}
+	sink.broadcast <- broadcastItem{value: v, buf: cpy}
 
 	return len(buf), nil
 }
