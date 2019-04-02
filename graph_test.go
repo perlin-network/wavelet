@@ -1,7 +1,6 @@
 package wavelet
 
 import (
-	"crypto/rand"
 	"github.com/perlin-network/wavelet/common"
 	"testing"
 	"time"
@@ -55,15 +54,14 @@ func TestGraphReset(t *testing.T) {
 		return
 	}
 
-	var buf [200]byte
-	_, err = rand.Read(buf[:])
-	assert.NoError(t, err)
-	resetTx := &Transaction{
-		Tag:     sys.TagTransfer,
-		Payload: buf[:],
-		// high view id to ensure all tx will be removed
-		ViewID: pruningDepth + 1,
+	assert.NotEmpty(t, g.eligibleParents)
+
+	resetTx, err := createTx()
+	if !assert.NoError(t, err) {
+		return
 	}
+
+	resetTx.ViewID = genesis.ViewID + pruningDepth + 1
 	resetTx.rehash()
 
 	// Reset
@@ -76,8 +74,12 @@ func TestGraphReset(t *testing.T) {
 	_, found = g.lookupTransaction(resetTx.ID)
 	assert.True(t, found)
 
+	assert.Equal(t, 1, len(g.transactions))
+
 	eligibleParents := g.findEligibleParents()
-	assert.Equal(t, 1, len(eligibleParents))
+	if !assert.Equal(t, 1, len(eligibleParents)) {
+		return
+	}
 	assert.Equal(t, resetTx.ID, eligibleParents[0])
 
 	assert.Equal(t, uint64(0), g.height.Load())
@@ -137,6 +139,19 @@ func TestDefaultDifficulty(t *testing.T) {
 	assert.Equal(t, uint64(sys.MinDifficulty), g.loadDifficulty())
 }
 
+func TestLoadRoot(t *testing.T) {
+	g, _, err := createGraph(100, true)
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	assert.NotNil(t, g.loadRoot())
+
+	// ensure that root will be loaded from storage
+	g = newGraph(g.kv, nil)
+	assert.NotNil(t, g.loadRoot())
+}
+
 func benchmarkGraph(b *testing.B, n int) {
 	for i := 0; i < b.N; i++ {
 		if _, _, err := createGraph(n, true); err != nil {
@@ -168,6 +183,8 @@ func createGraph(txNum int, withParents bool) (*graph, *Transaction, error) {
 		if err != nil {
 			return nil, nil, err
 		}
+
+		tx.ViewID = g.loadViewID(genesis)
 
 		if withParents {
 			tx.ParentIDs = g.findEligibleParents()

@@ -27,6 +27,7 @@ type graph struct {
 	indexViewID map[uint64][]*Transaction
 
 	height atomic.Uint64
+	root *Transaction
 
 	kv store.KV
 }
@@ -172,11 +173,9 @@ func (g *graph) reset(root *Transaction) {
 
 	root.depth = 0
 
-	_, existed := g.transactions[root.ID]
-
-	g.transactions[root.ID] = root
-
-	if !existed {
+	if _, existed := g.transactions[root.ID]; !existed {
+		g.transactions[root.ID] = root
+		g.eligibleParents[root.ID] = root
 		g.updateIndices(root)
 	}
 
@@ -224,10 +223,15 @@ func (g *graph) lookupTransaction(id common.TransactionID) (*Transaction, bool) 
 }
 
 func (g *graph) saveRoot(root *Transaction) {
+	g.root = root
 	_ = g.kv.Put(keyGraphRoot[:], root.Write())
 }
 
 func (g *graph) loadRoot() *Transaction {
+	if g.root != nil {
+		return g.root
+	}
+
 	buf, err := g.kv.Get(keyGraphRoot[:])
 	if len(buf) == 0 || err != nil {
 		return nil
@@ -240,7 +244,8 @@ func (g *graph) loadRoot() *Transaction {
 
 	tx := msg.(Transaction)
 
-	return &tx
+	g.root = &tx
+	return g.root
 }
 
 func (g *graph) loadViewID(root *Transaction) uint64 {
