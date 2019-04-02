@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"github.com/perlin-network/wavelet/common"
 	"testing"
+	"time"
 
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
@@ -11,12 +12,17 @@ import (
 )
 
 func TestGraph(t *testing.T) {
-	g, genesis := createGraph(t)
+	g, genesis, err := createGraph(0, false)
+	if !assert.NoError(t, err) {
+		return
+	}
 
-	tx := createTx(t)
+	tx, err := createTx()
+	if !assert.NoError(t, err) {
+		return
+	}
 
-	err := g.addTransaction(tx)
-	assert.NoError(t, err)
+	assert.NoError(t, g.addTransaction(tx))
 
 	// Test transaction already exist
 	err = g.addTransaction(tx)
@@ -34,17 +40,23 @@ func TestGraph(t *testing.T) {
 	assert.Equal(t, 1, len(eligibleParents))
 	assert.Equal(t, genesis.ID, eligibleParents[0])
 
-	rootTx := createTx(t)
+	rootTx, err := createTx()
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	g.saveRoot(rootTx)
 	assert.Equal(t, rootTx.ID, g.loadRoot().ID)
 }
 
 func TestGraphReset(t *testing.T) {
-	g, genesis := graphWithTxs(t, true)
+	g, genesis, err := createGraph(100, true)
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	var buf [200]byte
-	_, err := rand.Read(buf[:])
+	_, err = rand.Read(buf[:])
 	assert.NoError(t, err)
 	resetTx := &Transaction{
 		Tag:     sys.TagTransfer,
@@ -74,20 +86,35 @@ func TestGraphReset(t *testing.T) {
 }
 
 func TestAddTransactionWithParents(t *testing.T) {
-	g, genesis := createGraph(t)
+	g, genesis, err := createGraph(0, false)
+	if !assert.NoError(t, err) {
+		return
+	}
 
-	tx := createTx(t)
+	tx, err := createTx()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	tx.ParentIDs = []common.TransactionID{genesis.ID}
 	assert.NoError(t, g.addTransaction(tx))
 
 	// adding tx with non existing parents should result in error
-	tx = createTx(t)
+	tx, err = createTx()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	tx.ParentIDs = []common.TransactionID{{}}
 	assert.Equal(t, ErrParentsNotAvailable, g.addTransaction(tx))
 }
 
 func TestLookupTransaction(t *testing.T) {
-	g, genesis := graphWithTxs(t, false)
+	g, genesis, err := createGraph(100,false)
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	_, exists := g.lookupTransaction(genesis.ID)
 	assert.True(t, exists)
 
@@ -97,7 +124,11 @@ func TestLookupTransaction(t *testing.T) {
 }
 
 func TestDefaultDifficulty(t *testing.T) {
-	g, genesis := createGraph(t)
+	g, genesis, err := createGraph(0, false)
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	g.saveDifficulty(0)
 	assert.Equal(t, uint64(0), g.loadDifficulty())
 
@@ -106,45 +137,56 @@ func TestDefaultDifficulty(t *testing.T) {
 	assert.Equal(t, uint64(sys.MinDifficulty), g.loadDifficulty())
 }
 
-func createGraph(t *testing.T) (*graph, *Transaction) {
+func benchmarkGraph(b *testing.B, n int) {
+	for i := 0; i < b.N; i++ {
+		if _, _, err := createGraph(n, true); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+func BenchmarkGraph1000(b *testing.B) {benchmarkGraph(b, 1000)}
+func BenchmarkGraph10000(b *testing.B) {benchmarkGraph(b, 10000)}
+func BenchmarkGraph100000(b *testing.B) {benchmarkGraph(b, 100000)}
+func BenchmarkGraph1000000(b *testing.B) {benchmarkGraph(b, 1000000)}
+
+func createGraph(txNum int, withParents bool) (*graph, *Transaction, error) {
 	kv := store.NewInmem()
 	accounts := newAccounts(kv)
 
 	// We use the default genesis
 	genesis, err := performInception(accounts.tree, nil)
-	assert.NoError(t, err, "Failed to perform inception with default genesis")
+	if err != nil {
+		return nil, nil, err
+	}
 
 	g := newGraph(kv, genesis)
 
-	return g, genesis
-}
-
-func graphWithTxs(t *testing.T, withParents bool) (*graph, *Transaction) {
-	g, genesis := createGraph(t)
-
 	// Add random transactions
-	for i := 0; i < 100; i++ {
-		tx := createTx(t)
+	for i := 0; i < txNum; i++ {
+		tx, err := createTx()
+		if err != nil {
+			return nil, nil, err
+		}
+
 		if withParents {
 			tx.ParentIDs = g.findEligibleParents()
 		}
 
-		assert.NoError(t, g.addTransaction(tx))
+		if err := g.addTransaction(tx); err != nil {
+			return nil, nil, err
+		}
 	}
 
-	return g, genesis
+	return g, genesis, nil
 }
 
-func createTx(t *testing.T) *Transaction {
-	var buf [200]byte
-	_, err := rand.Read(buf[:])
-	assert.NoError(t, err)
-
+func createTx() (*Transaction, error) {
 	tx := &Transaction{
 		Tag:     sys.TagTransfer,
-		Payload: buf[:],
+		Timestamp: uint64(time.Now().UnixNano()),
 	}
 	tx.rehash()
 
-	return tx
+	return tx, nil
 }
