@@ -123,6 +123,7 @@ func (g *graph) reset(root *Transaction) {
 	newViewID := root.ViewID + 1
 
 	g.Lock()
+	defer g.Unlock()
 
 	// Prune away all transactions and indices with a view ID < (current view ID - pruningDepth).
 	for viewID, transactions := range g.indexViewID {
@@ -165,8 +166,6 @@ func (g *graph) reset(root *Transaction) {
 
 	g.saveDifficulty(adjusted)
 	g.saveRoot(root)
-
-	g.Unlock()
 }
 
 func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
