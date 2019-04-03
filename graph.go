@@ -175,8 +175,11 @@ func (g *graph) reset(root *Transaction) {
 
 	if _, existed := g.transactions[root.ID]; !existed {
 		g.transactions[root.ID] = root
-		g.eligibleParents[root.ID] = root
 		g.updateIndices(root)
+	}
+
+	if len(g.children[root.ID]) == 0 {
+		g.eligibleParents[root.ID] = root
 	}
 
 	original, adjusted := g.loadDifficulty(), computeNextDifficulty(root)
