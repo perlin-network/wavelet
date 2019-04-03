@@ -1,7 +1,9 @@
 package wavelet
 
 import (
+	"encoding/hex"
 	"github.com/perlin-network/noise/identity/ed25519"
+	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/store"
@@ -22,6 +24,20 @@ func signalWhenComplete(wg *sync.WaitGroup, l *Ledger, fn transition) {
 func call(wg *sync.WaitGroup, fn func() error) error {
 	defer wg.Done()
 	return fn()
+}
+
+func formPayload(recipient string, amount uint64) ([]byte, error) {
+	b, err := hex.DecodeString(recipient)
+	if err != nil {
+		return nil, err
+	}
+
+	params := payload.NewWriter(nil)
+
+	params.WriteBytes(b)
+	params.WriteUint64(uint64(amount))
+
+	return params.Bytes(), nil
 }
 
 func TestKill(t *testing.T) {
@@ -103,8 +119,17 @@ func TestTransitionFromGossipingToQuerying(t *testing.T) {
 	l.cr.Prefer(preferred)
 
 	// Create a dummy broadcast event.
-	tx, err := NewTransaction(l.keys, sys.TagTransfer, []byte("lorem ipsum"))
+	p, err := formPayload("400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405", 10)
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	tx, err := NewTransaction(l.keys, sys.TagTransfer, p)
 	assert.NoError(t, err)
+
+	snapshot := l.a.snapshot()
+	WriteAccountBalance(snapshot, tx.Creator, 1000)
+	assert.NoError(t, l.a.commit(snapshot))
 
 	evt := EventBroadcast{
 		Tag:       tx.Tag,
@@ -132,13 +157,12 @@ func TestTransitionFromGossipingToQuerying(t *testing.T) {
 	// Assert no errors.
 	select {
 		case err := <-evt.Error:
-			assert.EqualError(t, err, "tx creator does not have enough PERLs to pay for fees")
+			assert.NoError(t, err)
 		case <-evt.Result:
-			assert.FailNow(t, "Tx expected to fail")
 	}
 
 	// Assert that we received a signal to transition to querying.
-	//assert.Equal(t, ErrPreferredSelected, <-next)
+	assert.Equal(t, ErrPreferredSelected, <-next)
 }
 
 func TestEnsureGossipReturnsNetworkErrors(t *testing.T) {
