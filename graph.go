@@ -178,6 +178,15 @@ func (g *graph) reset(root *Transaction) {
 		g.updateIndices(root)
 	}
 
+	// delete eligible parents for old views if there are such
+	newParents := map[common.TransactionID]*Transaction{}
+	for txID, tx := range g.eligibleParents {
+		if tx.ViewID == newViewID {
+			newParents[txID] = tx
+		}
+	}
+	g.eligibleParents = newParents
+
 	if len(g.children[root.ID]) == 0 {
 		g.eligibleParents[root.ID] = root
 	}
@@ -204,6 +213,51 @@ func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 
 	return
 }
+
+// Let it stay here for a while since it was slow but working version
+//
+//func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
+//	g.RLock()
+//	defer g.RUnlock()
+//
+//	root := g.loadRoot()
+//
+//	if root == nil {
+//		return
+//	}
+//
+//	visited := make(map[common.TransactionID]struct{})
+//	visited[root.ID] = struct{}{}
+//
+//	q := queuePool.Get().(*queue.Queue)
+//	defer func() {
+//		q.Init()
+//		queuePool.Put(q)
+//	}()
+//
+//	q.PushBack(root)
+//
+//	height := g.height.Load()
+//	viewID := g.loadViewID(root)
+//
+//	for q.Len() > 0 {
+//		popped := q.PopFront().(*Transaction)
+//
+//		if children := g.children[popped.ID]; len(children) > 0 {
+//			for _, child := range children {
+//				if _, seen := visited[child.ID]; !seen {
+//					q.PushBack(child)
+//					visited[child.ID] = struct{}{}
+//				}
+//			}
+//		} else if popped.depth+sys.MaxEligibleParentsDepthDiff >= height && (popped.ID == root.ID || popped.ViewID == viewID) {
+//			// All eligible parents are within the graph depth [frontier_depth - max_depth_diff, frontier_depth].
+//			eligible = append(eligible, popped.ID)
+//		}
+//	}
+//
+//	return
+//}
 
 func (g *graph) numTransactions(viewID uint64) int {
 	g.RLock()

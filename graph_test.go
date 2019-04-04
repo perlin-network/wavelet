@@ -16,7 +16,7 @@ func TestGraph(t *testing.T) {
 		return
 	}
 
-	tx, err := createTx()
+	tx, err := createTx(genesis.ViewID)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -39,7 +39,7 @@ func TestGraph(t *testing.T) {
 	assert.Equal(t, 1, len(eligibleParents))
 	assert.Equal(t, genesis.ID, eligibleParents[0])
 
-	rootTx, err := createTx()
+	rootTx, err := createTx(0)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -56,13 +56,10 @@ func TestGraphReset(t *testing.T) {
 
 	assert.NotEmpty(t, g.eligibleParents)
 
-	resetTx, err := createTx()
+	resetTx, err := createTx(genesis.ViewID + pruningDepth + 1)
 	if !assert.NoError(t, err) {
 		return
 	}
-
-	resetTx.ViewID = genesis.ViewID + pruningDepth + 1
-	resetTx.rehash()
 
 	// Reset
 	g.reset(resetTx)
@@ -85,6 +82,8 @@ func TestGraphReset(t *testing.T) {
 	assert.Equal(t, uint64(0), g.height.Load())
 
 	assert.Equal(t, 0, g.numTransactions(g.loadViewID(genesis)))
+
+	assert.NoError(t, addTxs(g, 100, true))
 }
 
 func TestAddTransactionWithParents(t *testing.T) {
@@ -93,7 +92,7 @@ func TestAddTransactionWithParents(t *testing.T) {
 		return
 	}
 
-	tx, err := createTx()
+	tx, err := createTx(genesis.ViewID)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -102,7 +101,7 @@ func TestAddTransactionWithParents(t *testing.T) {
 	assert.NoError(t, g.addTransaction(tx))
 
 	// adding tx with non existing parents should result in error
-	tx, err = createTx()
+	tx, err = createTx(genesis.ViewID)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -154,9 +153,17 @@ func TestLoadRoot(t *testing.T) {
 
 func benchmarkGraph(b *testing.B, n int) {
 	for i := 0; i < b.N; i++ {
-		if _, _, err := createGraph(n, true); err != nil {
+		g, genesis, err := createGraph(n, true)
+		if err != nil {
 			b.Fatal(err)
 		}
+
+		newRoot, err := createTx(genesis.ViewID + 1)
+		if err != nil {
+			b.Fatal(err)
+		}
+
+		g.reset(newRoot)
 	}
 }
 
@@ -177,30 +184,33 @@ func createGraph(txNum int, withParents bool) (*graph, *Transaction, error) {
 
 	g := newGraph(kv, genesis)
 
-	// Add random transactions
-	for i := 0; i < txNum; i++ {
-		tx, err := createTx()
-		if err != nil {
-			return nil, nil, err
-		}
+	return g, genesis, addTxs(g, txNum, withParents)
+}
 
-		tx.ViewID = g.loadViewID(genesis)
+func addTxs(g *graph, txNum int, withParents bool) error {
+	viewID := g.loadViewID(g.loadRoot())
+	for i := 0; i < txNum; i++ {
+		tx, err := createTx(viewID)
+		if err != nil {
+			return err
+		}
 
 		if withParents {
 			tx.ParentIDs = g.findEligibleParents()
 		}
 
 		if err := g.addTransaction(tx); err != nil {
-			return nil, nil, err
+			return err
 		}
 	}
 
-	return g, genesis, nil
+	return nil
 }
 
-func createTx() (*Transaction, error) {
+func createTx(viewID uint64) (*Transaction, error) {
 	tx := &Transaction{
 		Tag:     sys.TagTransfer,
+		ViewID: viewID,
 		Timestamp: uint64(time.Now().UnixNano()),
 	}
 	tx.rehash()
