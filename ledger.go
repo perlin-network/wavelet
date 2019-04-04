@@ -339,7 +339,7 @@ func (l *Ledger) Root() *Transaction {
 }
 
 func (l *Ledger) Height() uint64 {
-	return l.v.height.Load()
+	return l.v.loadHeight()
 }
 
 func (l *Ledger) Snapshot() *avl.Tree {

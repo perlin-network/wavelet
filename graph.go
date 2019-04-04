@@ -8,7 +8,6 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
-	"go.uber.org/atomic"
 	"sync"
 )
 
@@ -26,8 +25,8 @@ type graph struct {
 
 	indexViewID map[uint64][]*Transaction
 
-	height atomic.Uint64
-	root *Transaction
+	root   *Transaction
+	height uint64
 
 	kv store.KV
 }
@@ -49,31 +48,35 @@ func newGraph(kv store.KV, genesis *Transaction) *graph {
 	// Initialize genesis if not spawned.
 	if genesis != nil {
 		g.saveRoot(genesis)
-	} else if genesis = g.loadRoot(); genesis == nil {
-		panic("genesis transaction must be specified")
-	}
+	} else {
+		genesis = g.loadRoot()
 
-	g.transactions[genesis.ID] = genesis
-	g.updateIndices(genesis)
-	g.eligibleParents[genesis.ID] = genesis
-
-	return g
-}
-
-func maxDepth(parents []*Transaction) (max uint64) {
-	for _, parent := range parents {
-		if max < parent.depth {
-			max = parent.depth
+		if genesis == nil {
+			panic("genesis transaction must be specified")
 		}
 	}
 
-	return
+	g.eligibleParents[genesis.ID] = genesis
+	g.transactions[genesis.ID] = genesis
+	g.updateIndices(genesis)
+
+	return g
 }
 
 func (g *graph) updateIndices(tx *Transaction) {
 	g.indexViewID[tx.ViewID] = append(g.indexViewID[tx.ViewID], tx)
 }
 
+// addTransaction adds a transaction to the view-graph. Note that it
+// should not be invoked with malformed transaction data.
+//
+// For example, it must be guaranteed that:
+// 1) the transaction has at least 1 parent recorded.
+// 2) the transaction has no children recorded.
+//
+// It will throw an error however if the transaction already exists
+// in the view-graph, or if the transactions parents are not
+// previously recorded in the view-graph.
 func (g *graph) addTransaction(tx *Transaction) error {
 	g.Lock()
 	defer g.Unlock()
@@ -98,33 +101,37 @@ func (g *graph) addTransaction(tx *Transaction) error {
 	for _, parent := range parents {
 		g.children[parent.ID] = append(g.children[parent.ID], tx)
 
-		// The parent is no longer eligible
+		// It is not possible for a parent with children to be eligible.
 		delete(g.eligibleParents, parent.ID)
 	}
 
-	// Update the transactions depth.
-	tx.depth = maxDepth(parents) + 1
-
-	// Update the graphs frontier depth/height and update the eligible parents
-	height := g.height.Load()
-	if height < tx.depth {
-		g.height.Store(tx.depth)
-		height = tx.depth
-
-		// Since the height has been updated, check each eligible parents' height
-		for _, v := range g.eligibleParents {
-			if v.depth+sys.MaxEligibleParentsDepthDiff < height {
-				delete(g.eligibleParents, v.ID)
+	// Update the transactions depth if the transaction is not critical.
+	if !tx.IsCritical(g.loadDifficulty()) {
+		for _, parent := range parents {
+			if tx.depth < parent.depth {
+				tx.depth = parent.depth
 			}
 		}
+
+		tx.depth++
 	}
 
-	// Add the transaction to the eligible parents if it's qualified
-	root := g.loadRoot()
-	if root != nil && len(g.children[tx.ID]) == 0 {
-		viewID := g.loadViewID(root)
+	// Update the graphs frontier depth/height, and set of eligible transactions if the transaction
+	// is eligible to be placed in our current view ID.
+	if viewID := g.loadViewID(nil); tx.ViewID == viewID {
+		if g.height < tx.depth {
+			g.height = tx.depth
 
-		if tx.depth+sys.MaxEligibleParentsDepthDiff >= height && tx.ViewID == viewID {
+			// Since the height has been updated, check each eligible parents' height and if they are within the same view ID.
+			for _, tx := range g.eligibleParents {
+				if tx.depth+sys.MaxEligibleParentsDepthDiff < g.height || tx.ViewID != viewID {
+					delete(g.eligibleParents, tx.ID)
+				}
+			}
+		}
+
+		// If the transaction is a leaf node, and was made within the current view ID, assign it as an eligible parent.
+		if tx.depth+sys.MaxEligibleParentsDepthDiff >= g.height {
 			g.eligibleParents[tx.ID] = tx
 		}
 	}
@@ -141,13 +148,12 @@ func (g *graph) addTransaction(tx *Transaction) error {
 
 const pruningDepth = 30
 
-// reset resets the entire graph and sets the graph to start from
-// the specified root (latest critical transaction of the entire ledger).
+// reset prunes away old transactions, resets the entire graph, and sets the
+// graph root to a specified transaction.
 func (g *graph) reset(root *Transaction) {
-	newViewID := root.ViewID + 1
+	newViewID := g.loadViewID(root)
 
 	g.Lock()
-	defer g.Unlock()
 
 	// Prune away all transactions and indices with a view ID < (current view ID - pruningDepth).
 	for viewID, transactions := range g.indexViewID {
@@ -155,7 +161,6 @@ func (g *graph) reset(root *Transaction) {
 			for _, tx := range transactions {
 				delete(g.transactions, tx.ID)
 				delete(g.children, tx.ID)
-				delete(g.eligibleParents, tx.ID)
 			}
 
 			logger := log.Consensus("prune")
@@ -169,26 +174,10 @@ func (g *graph) reset(root *Transaction) {
 		}
 	}
 
-	g.height.Store(0)
+	g.height = 0
 
-	root.depth = 0
-
-	if _, existed := g.transactions[root.ID]; !existed {
-		g.transactions[root.ID] = root
-		g.updateIndices(root)
-	}
-
-	// delete eligible parents for old views if there are such
-	newParents := map[common.TransactionID]*Transaction{}
-	for txID, tx := range g.eligibleParents {
-		if tx.ViewID == newViewID {
-			newParents[txID] = tx
-		}
-	}
-	g.eligibleParents = newParents
-
-	if len(g.children[root.ID]) == 0 {
-		g.eligibleParents[root.ID] = root
+	for id := range g.eligibleParents {
+		delete(g.eligibleParents, id)
 	}
 
 	original, adjusted := g.loadDifficulty(), computeNextDifficulty(root)
@@ -201,15 +190,27 @@ func (g *graph) reset(root *Transaction) {
 
 	g.saveDifficulty(adjusted)
 	g.saveRoot(root)
+
+	root = g.loadRoot()
+
+	g.transactions[root.ID] = root
+	g.eligibleParents[root.ID] = root
+
+	if _, existed := g.transactions[root.ID]; !existed {
+		g.updateIndices(root)
+	}
+
+	g.Unlock()
 }
 
 func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 	g.RLock()
-	defer g.RUnlock()
 
 	for id := range g.eligibleParents {
 		eligible = append(eligible, id)
 	}
+
+	g.RUnlock()
 
 	return
 }
@@ -279,8 +280,18 @@ func (g *graph) lookupTransaction(id common.TransactionID) (*Transaction, bool) 
 	return tx, exists
 }
 
+func (g *graph) loadHeight() uint64 {
+	g.RLock()
+	height := g.height
+	g.RUnlock()
+
+	return height
+}
+
 func (g *graph) saveRoot(root *Transaction) {
 	g.root = root
+	g.root.depth = 0
+
 	_ = g.kv.Put(keyGraphRoot[:], root.Write())
 }
 
@@ -300,8 +311,8 @@ func (g *graph) loadRoot() *Transaction {
 	}
 
 	tx := msg.(Transaction)
-
 	g.root = &tx
+
 	return g.root
 }
 

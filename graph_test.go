@@ -21,6 +21,10 @@ func TestGraph(t *testing.T) {
 		return
 	}
 
+	eligibleParents := g.findEligibleParents()
+	assert.Equal(t, 1, len(eligibleParents))
+	assert.Equal(t, genesis.ID, eligibleParents[0])
+
 	assert.NoError(t, g.addTransaction(tx))
 
 	// Test transaction already exist
@@ -28,14 +32,16 @@ func TestGraph(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, ErrTxAlreadyExists, err)
 
-	assert.Equal(t, uint64(1), g.height.Load())
-
+	assert.Equal(t, uint64(0), g.height)
 	assert.Equal(t, genesis.ID, g.loadRoot().ID)
 
 	_, found := g.lookupTransaction(tx.ID)
 	assert.True(t, found)
 
-	eligibleParents := g.findEligibleParents()
+	// Checked for undefined behavior adding a transaction with no parents
+	// to the view-graph.
+
+	eligibleParents = g.findEligibleParents()
 	assert.Equal(t, 1, len(eligibleParents))
 	assert.Equal(t, genesis.ID, eligibleParents[0])
 
@@ -79,7 +85,7 @@ func TestGraphReset(t *testing.T) {
 	}
 	assert.Equal(t, resetTx.ID, eligibleParents[0])
 
-	assert.Equal(t, uint64(0), g.height.Load())
+	assert.Equal(t, uint64(0), g.height)
 
 	assert.Equal(t, 0, g.numTransactions(g.loadViewID(genesis)))
 
@@ -111,7 +117,7 @@ func TestAddTransactionWithParents(t *testing.T) {
 }
 
 func TestLookupTransaction(t *testing.T) {
-	g, genesis, err := createGraph(100,false)
+	g, genesis, err := createGraph(100, false)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -167,10 +173,10 @@ func benchmarkGraph(b *testing.B, n int) {
 	}
 }
 
-func BenchmarkGraph1000(b *testing.B) {benchmarkGraph(b, 1000)}
-func BenchmarkGraph10000(b *testing.B) {benchmarkGraph(b, 10000)}
-func BenchmarkGraph100000(b *testing.B) {benchmarkGraph(b, 100000)}
-func BenchmarkGraph1000000(b *testing.B) {benchmarkGraph(b, 1000000)}
+func BenchmarkGraph1000(b *testing.B)    { benchmarkGraph(b, 1000) }
+func BenchmarkGraph10000(b *testing.B)   { benchmarkGraph(b, 10000) }
+func BenchmarkGraph100000(b *testing.B)  { benchmarkGraph(b, 100000) }
+func BenchmarkGraph1000000(b *testing.B) { benchmarkGraph(b, 1000000) }
 
 func createGraph(txNum int, withParents bool) (*graph, *Transaction, error) {
 	kv := store.NewInmem()
@@ -209,8 +215,8 @@ func addTxs(g *graph, txNum int, withParents bool) error {
 
 func createTx(viewID uint64) (*Transaction, error) {
 	tx := &Transaction{
-		Tag:     sys.TagTransfer,
-		ViewID: viewID,
+		Tag:       sys.TagTransfer,
+		ViewID:    viewID,
 		Timestamp: uint64(time.Now().UnixNano()),
 	}
 	tx.rehash()
