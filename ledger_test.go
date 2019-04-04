@@ -129,7 +129,9 @@ func TestTransitionFromGossipingToQuerying(t *testing.T) {
 
 	snapshot := l.a.snapshot()
 	WriteAccountBalance(snapshot, tx.Creator, 1000)
-	assert.NoError(t, l.a.commit(snapshot))
+	if !assert.NoError(t, l.a.commit(snapshot)) {
+		return
+	}
 
 	evt := EventBroadcast{
 		Tag:       tx.Tag,
@@ -212,8 +214,11 @@ func TestQuery(t *testing.T) {
 	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
 
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 
+	preferred.ViewID = l.ViewID()
 	preferred.rehash()
 
 	l.cr.Prefer(preferred)
@@ -230,17 +235,16 @@ func TestQuery(t *testing.T) {
 	var evt EventQuery
 
 	// Test query empty votes.
-
 	wg.Add(1)
 	go func() {
-		assert.Equal(t, nil, call(&wg, query))
+		assert.NoError(t, call(&wg, query))
 	}()
+
 	evt = <-l.QueryOut
 	evt.Result <- []VoteQuery{}
 	wg.Wait()
 
 	// Test query.
-
 	wg.Add(2)
 	go func() {
 		assert.Equal(t, ErrConsensusRoundFinished, call(&wg, query))
@@ -261,14 +265,16 @@ func TestQuery(t *testing.T) {
 	wg.Wait()
 
 	// Re-set the preferred.
-
 	preferred, err = NewTransaction(l.keys, sys.TagNop, nil)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+
+	}
+
+	preferred.ViewID = l.ViewID()
 	preferred.rehash()
 	l.cr.Prefer(preferred)
 
 	// Test query error.
-
 	wg.Add(1)
 	evtError := errors.New("query error")
 	go func() {
@@ -279,8 +285,6 @@ func TestQuery(t *testing.T) {
 	evt = <-l.QueryOut
 	evt.Error <- evtError
 	wg.Wait()
-
-	// Test the second select.
 
 	// Test the second select: stop
 	wg.Add(1)
@@ -467,7 +471,6 @@ func TestListenForSyncInits(t *testing.T) {
 	var evt EventIncomingSyncInit
 
 	// Test empty
-
 	evt = EventIncomingSyncInit{
 		ViewID:   viewID,
 		Response: make(chan SyncInitMetadata, 1),
@@ -475,7 +478,7 @@ func TestListenForSyncInits(t *testing.T) {
 
 	l.SyncInitIn <- evt
 	assert.NoError(t, listenForSyncInits())
-	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 0, ChunkHashes: nil}, <-evt.Response)
+	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 1, ChunkHashes: nil}, <-evt.Response)
 
 	// Test diff
 
@@ -497,10 +500,9 @@ func TestListenForSyncInits(t *testing.T) {
 
 	l.SyncInitIn <- evt
 	assert.NoError(t, listenForSyncInits())
-	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 0, ChunkHashes: expectedChunkHashes}, <-evt.Response)
+	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 1, ChunkHashes: expectedChunkHashes}, <-evt.Response)
 
 	// Test stop
-
 	close(stop)
 	assert.Equal(t, ErrStopped, listenForSyncInits())
 
@@ -717,12 +719,27 @@ func TestSyncMissingTX(t *testing.T) {
 	var evt EventSyncTX
 
 	// Test transaction
+	p, err := formPayload("400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405", 10)
+	if !assert.NoError(t, err) {
+		return
+	}
 
-	tx, err := NewTransaction(l.keys, sys.TagTransfer, []byte("lorem ipsum"))
-	assert.NoError(t, err)
+	tx, err := NewTransaction(l.keys, sys.TagTransfer, p)
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	tx.rehash()
 	tx, err = l.attachSenderToTransaction(tx)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	snapshot := l.a.snapshot()
+	WriteAccountBalance(snapshot, tx.Creator, 1000)
+	if !assert.NoError(t, l.a.commit(snapshot)) {
+		return
+	}
 
 	wg.Add(1)
 	go func() {
@@ -736,16 +753,14 @@ func TestSyncMissingTX(t *testing.T) {
 	assert.True(t, found)
 
 	// Test error
-
 	wg.Add(1)
-	evtError := errors.New("error")
 	go func() {
 		err := call(&wg, syncMissingTX)
-		assert.Equal(t, evtError, errors.Cause(err))
+		assert.EqualError(t, errors.Cause(err), "error")
 	}()
 
 	evt = <-l.SyncTxOut
-	evt.Error <- evtError
+	evt.Error <- errors.New("error")
 	wg.Wait()
 
 	// Test the second select.
