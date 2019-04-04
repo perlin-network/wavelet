@@ -107,6 +107,8 @@ func (g *graph) addTransaction(tx *Transaction) error {
 	}
 
 	// Update the transactions depth if the transaction is not critical.
+	// FIXME(kenta): there should be no knowledge within the view-graph about whethe. or not
+	// 	a transaction is critical; this could potentially be a cause for a data race.
 	if !tx.IsCritical(g.loadDifficulty()) {
 		for _, parent := range parents {
 			if tx.depth < parent.depth {
