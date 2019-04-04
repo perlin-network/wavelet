@@ -32,7 +32,7 @@ func TestGraph(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, ErrTxAlreadyExists, err)
 
-	assert.Equal(t, uint64(0), g.height)
+	assert.Equal(t, uint64(0), g.height.Load())
 	assert.Equal(t, genesis.ID, g.loadRoot().ID)
 
 	_, found := g.lookupTransaction(tx.ID)
@@ -85,7 +85,7 @@ func TestGraphReset(t *testing.T) {
 	}
 	assert.Equal(t, resetTx.ID, eligibleParents[0])
 
-	assert.Equal(t, uint64(0), g.height)
+	assert.Equal(t, uint64(0), g.height.Load())
 
 	assert.Equal(t, 0, g.numTransactions(g.loadViewID(genesis)))
 

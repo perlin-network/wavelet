@@ -8,6 +8,7 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"go.uber.org/atomic"
 	"sync"
 )
 
@@ -25,8 +26,8 @@ type graph struct {
 
 	indexViewID map[uint64][]*Transaction
 
-	root   *Transaction
-	height uint64
+	root   atomic.Value
+	height atomic.Uint64
 
 	kv store.KV
 }
@@ -119,19 +120,23 @@ func (g *graph) addTransaction(tx *Transaction) error {
 	// Update the graphs frontier depth/height, and set of eligible transactions if the transaction
 	// is eligible to be placed in our current view ID.
 	if viewID := g.loadViewID(nil); tx.ViewID == viewID {
-		if g.height < tx.depth {
-			g.height = tx.depth
+		height := g.height.Load()
+
+		if height < tx.depth {
+			height = tx.depth
 
 			// Since the height has been updated, check each eligible parents' height and if they are within the same view ID.
 			for _, tx := range g.eligibleParents {
-				if tx.depth+sys.MaxEligibleParentsDepthDiff < g.height || tx.ViewID != viewID {
+				if tx.depth+sys.MaxEligibleParentsDepthDiff < height || tx.ViewID != viewID {
 					delete(g.eligibleParents, tx.ID)
 				}
 			}
+
+			g.height.Store(height)
 		}
 
 		// If the transaction is a leaf node, and was made within the current view ID, assign it as an eligible parent.
-		if tx.depth+sys.MaxEligibleParentsDepthDiff >= g.height {
+		if tx.depth+sys.MaxEligibleParentsDepthDiff >= height {
 			g.eligibleParents[tx.ID] = tx
 		}
 	}
@@ -174,7 +179,7 @@ func (g *graph) reset(root *Transaction) {
 		}
 	}
 
-	g.height = 0
+	g.height.Store(0)
 
 	for id := range g.eligibleParents {
 		delete(g.eligibleParents, id)
@@ -281,23 +286,19 @@ func (g *graph) lookupTransaction(id common.TransactionID) (*Transaction, bool) 
 }
 
 func (g *graph) loadHeight() uint64 {
-	g.RLock()
-	height := g.height
-	g.RUnlock()
-
-	return height
+	return g.height.Load()
 }
 
 func (g *graph) saveRoot(root *Transaction) {
-	g.root = root
-	g.root.depth = 0
+	root.depth = 0
+	g.root.Store(root)
 
 	_ = g.kv.Put(keyGraphRoot[:], root.Write())
 }
 
 func (g *graph) loadRoot() *Transaction {
-	if g.root != nil {
-		return g.root
+	if root := g.root.Load(); root != nil {
+		return root.(*Transaction)
 	}
 
 	buf, err := g.kv.Get(keyGraphRoot[:])
@@ -311,9 +312,11 @@ func (g *graph) loadRoot() *Transaction {
 	}
 
 	tx := msg.(Transaction)
-	g.root = &tx
+	root := &tx
 
-	return g.root
+	g.root.Store(root)
+
+	return root
 }
 
 func (g *graph) loadViewID(root *Transaction) uint64 {

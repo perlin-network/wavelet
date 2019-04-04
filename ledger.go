@@ -410,13 +410,15 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 	}
 
 	root := l.v.loadRoot()
+	rootVal := *root
+
 	tx.ViewID = l.v.loadViewID(root)
 
 	difficulty := l.v.loadDifficulty()
 	critical := tx.IsCritical(difficulty)
 
 	if critical {
-		tx.DifficultyTimestamps = append(root.DifficultyTimestamps, root.Timestamp)
+		tx.DifficultyTimestamps = append(rootVal.DifficultyTimestamps, rootVal.Timestamp)
 
 		if size := computeCriticalTimestampWindowSize(tx.ViewID); len(tx.DifficultyTimestamps) > size {
 			tx.DifficultyTimestamps = tx.DifficultyTimestamps[len(tx.DifficultyTimestamps)-size:]
