@@ -2,9 +2,9 @@ package wavelet
 
 import (
 	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,22 +27,18 @@ func newAccounts(kv store.KV) *accounts {
 // Only one instance of GC worker can run at any time.
 func (a *accounts) runGCWorker() {
 	for {
-		_profile := atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&a.gcProfile)), nil)
-		if _profile == nil {
+		p := atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&a.gcProfile)), nil)
+		if p == nil {
 			time.Sleep(5 * time.Second)
 			continue
 		}
-		profile := (*avl.GCProfile)(_profile)
-		n, err := profile.PerformFullGC()
-		if err != nil {
-			log.Error().Err(err).Msg("Full gc failed")
-		} else {
-			log.Info().Msgf("Removed %d nodes in full GC", n)
-		}
+
+		profile := (*avl.GCProfile)(p)
+		_, _ = profile.PerformFullGC()
 	}
 }
 
-func (a *accounts) checksum() [avl.MerkleHashSize]byte {
+func (a *accounts) checksum() common.MerkleNodeID {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
