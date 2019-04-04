@@ -196,9 +196,10 @@ func (g *graph) reset(root *Transaction) {
 		Msg("Ledger difficulty has been adjusted.")
 
 	g.saveDifficulty(adjusted)
-	g.saveRoot(root)
 
-	root = g.loadRoot()
+	root.depth = 0
+
+	g.saveRoot(root)
 
 	g.transactions[root.ID] = root
 	g.eligibleParents[root.ID] = root
@@ -292,9 +293,7 @@ func (g *graph) loadHeight() uint64 {
 }
 
 func (g *graph) saveRoot(root *Transaction) {
-	root.depth = 0
 	g.root.Store(root)
-
 	_ = g.kv.Put(keyGraphRoot[:], root.Write())
 }
 
