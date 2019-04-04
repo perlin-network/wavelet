@@ -1273,10 +1273,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 		case <-stop:
 			return ErrStopped
 		case err := <-evt.Error:
-			if err != nil {
-				fmt.Println(err)
-			}
-			return nil
+			return errors.Wrap(err, "query got event error")
 		case votes := <-evt.Result:
 			if len(votes) == 0 {
 				return nil
@@ -1613,21 +1610,23 @@ func syncMissingTX(l *Ledger) func(stop <-chan struct{}) error {
 		case <-stop:
 			return ErrStopped
 		case err := <-evt.Error:
-			if err != nil {
-				fmt.Println(err)
-			}
-			return nil
+			return errors.Wrap(err, "sync missing event got error")
 		case t := <-evt.Result:
 			txs = t
 		}
 
+		var syncErrors error
 		for _, tx := range txs {
 			if err := l.addTransaction(tx); err != nil {
-				fmt.Println(err)
+				if syncErrors == nil {
+					syncErrors = err
+				} else {
+					syncErrors = errors.Wrap(err, syncErrors.Error())
+				}
 			}
 		}
 
-		return nil
+		return syncErrors
 	}
 }
 
@@ -1678,7 +1677,7 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 		case <-stop:
 			return ErrStopped
 		case err := <-evt.Error:
-			return errors.Wrap(ErrSyncFailed, err.Error())
+			return errors.Wrap(err, ErrSyncFailed.Error())
 		case v := <-evt.Result:
 			votes = v
 		}
