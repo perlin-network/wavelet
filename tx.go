@@ -31,7 +31,7 @@ type Transaction struct {
 	Payload []byte
 
 	// Only set if the transaction is a critical transaction.
-	AccountsMerkleRoot [avl.MerkleHashSize]byte
+	AccountsMerkleRoot common.MerkleNodeID
 
 	// Only set if the transaction is a critical transaction.
 	DifficultyTimestamps []uint64
@@ -203,8 +203,7 @@ func (t Transaction) Write() []byte {
 	writer.WriteByte(t.Tag)
 	writer.WriteBytes(t.Payload)
 
-	var zero [avl.MerkleHashSize]byte
-	critical := t.AccountsMerkleRoot != zero
+	critical := t.AccountsMerkleRoot != common.ZeroMerkleNodeID
 
 	if critical {
 		writer.WriteByte(1)

@@ -2,6 +2,7 @@ package wavelet
 
 import (
 	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/pkg/errors"
 	"sync"
@@ -37,7 +38,7 @@ func (a *accounts) runGCWorker() {
 	}
 }
 
-func (a *accounts) checksum() [avl.MerkleHashSize]byte {
+func (a *accounts) checksum() common.MerkleNodeID {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
