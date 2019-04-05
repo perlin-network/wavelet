@@ -91,10 +91,10 @@ func TestGossipOutTransaction(t *testing.T) {
 
 	// Assert no errors
 	select {
-		case err := <-evt.Error:
-			assert.EqualError(t, err, "tx creator does not have enough PERLs to pay for fees")
-		case <-evt.Result:
-			assert.FailNow(t, "Tx expected to fail")
+	case err := <-evt.Error:
+		assert.EqualError(t, err, "tx creator does not have enough PERLs to pay for fees")
+	case <-evt.Result:
+		assert.FailNow(t, "Tx expected to fail")
 	}
 
 	// Assert that the transactions are the same.
@@ -158,9 +158,9 @@ func TestTransitionFromGossipingToQuerying(t *testing.T) {
 
 	// Assert no errors.
 	select {
-		case err := <-evt.Error:
-			assert.NoError(t, err)
-		case <-evt.Result:
+	case err := <-evt.Error:
+		assert.NoError(t, err)
+	case <-evt.Result:
 	}
 
 	// Assert that we received a signal to transition to querying.
@@ -199,10 +199,10 @@ func TestEnsureGossipReturnsNetworkErrors(t *testing.T) {
 	out.Error <- errors.New("failed")
 
 	select {
-		case err := <-evt.Error:
-			assert.EqualError(t, err, "got an error gossiping transaction out: failed")
-		case <-evt.Result:
-			assert.FailNow(t, "Tx expected to fail")
+	case err := <-evt.Error:
+		assert.EqualError(t, err, "got an error gossiping transaction out: failed")
+	case <-evt.Result:
+		assert.FailNow(t, "Tx expected to fail")
 	}
 
 	// Assert that we received no signal.

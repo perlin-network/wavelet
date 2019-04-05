@@ -12,6 +12,7 @@ var (
 	logger = zerolog.New(output).With().Timestamp().Logger()
 
 	node        zerolog.Logger
+	network     zerolog.Logger
 	accounts    zerolog.Logger
 	broadcaster zerolog.Logger
 	consensus   zerolog.Logger
@@ -26,6 +27,7 @@ const (
 	KeyEvent  = "event"
 
 	ModuleNode        = "node"
+	ModuleNetwork     = "network"
 	ModuleAccounts    = "accounts"
 	ModuleBroadcaster = "broadcaster"
 	ModuleConsensus   = "consensus"
@@ -47,6 +49,7 @@ func init() {
 
 func setupChildLoggers() {
 	node = logger.With().Str(KeyModule, ModuleNode).Logger()
+	network = logger.With().Str(KeyModule, ModuleNetwork).Logger()
 	accounts = logger.With().Str(KeyModule, ModuleAccounts).Logger()
 	broadcaster = logger.With().Str(KeyModule, ModuleBroadcaster).Logger()
 	consensus = logger.With().Str(KeyModule, ModuleConsensus).Logger()
@@ -58,6 +61,10 @@ func setupChildLoggers() {
 
 func Node() zerolog.Logger {
 	return node
+}
+
+func Network(event string) zerolog.Logger {
+	return network.With().Str(KeyEvent, event).Logger()
 }
 
 func Account(id common.AccountID, event string) zerolog.Logger {

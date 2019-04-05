@@ -20,8 +20,7 @@ const (
 )
 
 const (
-	colorBlack = iota + 30
-	colorRed
+	colorRed = iota + 31
 	colorGreen
 	colorYellow
 )

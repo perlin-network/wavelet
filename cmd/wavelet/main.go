@@ -18,6 +18,7 @@ import (
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/rs/zerolog"
+	"golang.org/x/crypto/ssh/terminal"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
 	"io/ioutil"
@@ -46,11 +47,11 @@ func main() {
 	runtime.SetBlockProfileRate(1)
 	runtime.SetMutexProfileFraction(1)
 
-	//if terminal.IsTerminal(int(os.Stdout.Fd())) {
-	log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
-	//} else {
-	//	log.Register(os.Stderr)
-	//}
+	if terminal.IsTerminal(int(os.Stdout.Fd())) {
+		log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
+	} else {
+		log.Register(os.Stderr)
+	}
 
 	logger := log.Node()
 
@@ -270,6 +271,11 @@ func runServer(config *Config, logger zerolog.Logger) *noise.Node {
 	}
 
 	n.OnPeerInit(func(node *noise.Node, peer *noise.Peer) error {
+		logger := log.Network("joined")
+		logger.Info().
+			Str("address", peer.RemoteIP().String()+":"+strconv.Itoa(int(peer.RemotePort()))).
+			Msg("Peer has joined.")
+
 		peer.OnConnError(func(node *noise.Node, peer *noise.Peer, err error) error {
 			logger.Info().Err(err).Msgf("An error occurred over the wire.")
 
@@ -277,7 +283,10 @@ func runServer(config *Config, logger zerolog.Logger) *noise.Node {
 		})
 
 		peer.OnDisconnect(func(node *noise.Node, peer *noise.Peer) error {
-			logger.Info().Msgf("Peer %v has disconnected.", peer.RemoteIP().String()+":"+strconv.Itoa(int(peer.RemotePort())))
+			logger := log.Network("left")
+			logger.Info().
+				Str("address", peer.RemoteIP().String()+":"+strconv.Itoa(int(peer.RemotePort()))).
+				Msg("Peer has disconnected.")
 
 			// TODO(kenta): don't immediately evict from table
 			if id := protocol.PeerID(peer); id != nil {

@@ -40,6 +40,7 @@ func New() *Gateway {
 func (g *Gateway) setup() {
 	// Setup websocket logging sinks.
 
+	sinkNetwork := g.registerWebsocketSink("ws://network/")
 	sinkBroadcaster := g.registerWebsocketSink("ws://broadcaster/")
 	sinkConsensus := g.registerWebsocketSink("ws://consensus/")
 	sinkStake := g.registerWebsocketSink("ws://stake/")
@@ -69,6 +70,7 @@ func (g *Gateway) setup() {
 
 	// Websocket endpoints.
 
+	r.Get("/network/poll", g.securePoll(sinkNetwork))
 	r.Get("/broadcaster/poll", g.securePoll(sinkBroadcaster))
 	r.Get("/consensus/poll", g.securePoll(sinkConsensus))
 	r.Get("/stake/poll", g.securePoll(sinkStake))
