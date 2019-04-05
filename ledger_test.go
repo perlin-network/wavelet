@@ -42,6 +42,16 @@ func formPayload(recipient string, amount uint64) ([]byte, error) {
 	return params.Bytes(), nil
 }
 
+func TestStopNoLeaks(t *testing.T) {
+	defer leaktest.Check(t)()
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	l.Stop()
+}
+
 func TestKill(t *testing.T) {
 	defer leaktest.Check(t)()
 
