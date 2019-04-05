@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"context"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/store"
@@ -25,16 +26,21 @@ func newAccounts(kv store.KV) *accounts {
 }
 
 // Only one instance of GC worker can run at any time.
-func (a *accounts) runGCWorker() {
-	for {
-		p := atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&a.gcProfile)), nil)
-		if p == nil {
-			time.Sleep(5 * time.Second)
-			continue
-		}
+func (a *accounts) runGCWorker(ctx context.Context) {
+	timer := time.NewTicker(5 * time.Second)
+	defer timer.Stop()
 
-		profile := (*avl.GCProfile)(p)
-		_, _ = profile.PerformFullGC()
+	for {
+		select {
+			case <-ctx.Done():
+				return
+			case <-timer.C:
+				p := atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&a.gcProfile)), nil)
+				if p != nil {
+					profile := (*avl.GCProfile)(p)
+					_, _ = profile.PerformFullGC()
+				}
+		}
 	}
 }
 
