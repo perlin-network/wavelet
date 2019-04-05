@@ -886,6 +886,10 @@ func Run(l *Ledger) {
 	}
 }
 
+func (l *Ledger) Stop() {
+	close(l.kill)
+}
+
 type transition func(*Ledger) transition
 
 func gossiping(l *Ledger) transition {

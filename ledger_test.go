@@ -55,7 +55,7 @@ func TestKill(t *testing.T) {
 
 	wg.Add(1)
 	go signalWhenComplete(&wg, l, gossiping)
-	close(l.kill)
+	l.Stop()
 	wg.Wait()
 
 	// Test if we can gracefully stop the ledger while it is querying.
@@ -64,7 +64,7 @@ func TestKill(t *testing.T) {
 
 	wg.Add(1)
 	go signalWhenComplete(&wg, l, querying)
-	close(l.kill)
+	l.Stop()
 	wg.Wait()
 }
 
@@ -75,7 +75,7 @@ func TestGossipOutTransaction(t *testing.T) {
 	defer cancel()
 
 	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
-	defer close(l.kill)
+	defer l.Stop()
 
 	go gossiping(l)
 
@@ -126,7 +126,7 @@ func TestTransitionFromGossipingToQuerying(t *testing.T) {
 	defer cancel()
 
 	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
-	defer close(l.kill)
+	defer l.Stop()
 
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
@@ -191,7 +191,7 @@ func TestEnsureGossipReturnsNetworkErrors(t *testing.T) {
 	defer cancel()
 
 	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
-	defer close(l.kill)
+	defer l.Stop()
 
 	// Create a dummy broadcast event.
 	tx, err := NewTransaction(l.keys, sys.TagTransfer, []byte("lorem ipsum"))
@@ -329,7 +329,7 @@ func TestQuery(t *testing.T) {
 		assert.Equal(t, ErrStopped, call(&wg, query))
 	}()
 	evt = <-l.QueryOut
-	close(l.kill)
+	l.Stop()
 	wg.Wait()
 	l.kill = make(chan struct{})
 
@@ -356,7 +356,7 @@ func TestQuery(t *testing.T) {
 	stop = make(chan struct{})
 
 	// Test the first select: kill.
-	close(l.kill)
+	l.Stop()
 	assert.Equal(t, ErrStopped, query())
 }
 
@@ -434,7 +434,7 @@ func TestListenForQueries(t *testing.T) {
 
 	// Test kill.
 
-	close(l.kill)
+	l.Stop()
 	assert.Equal(t, ErrStopped, listenForQueries())
 }
 
@@ -492,7 +492,7 @@ func TestListenForSyncDiffChunks(t *testing.T) {
 
 	// Test kill.
 
-	close(l.kill)
+	l.Stop()
 	assert.Equal(t, ErrStopped, listenForSyncDiffChunks())
 }
 
@@ -552,7 +552,7 @@ func TestListenForSyncInits(t *testing.T) {
 
 	// Test kill.
 
-	close(l.kill)
+	l.Stop()
 	assert.Equal(t, ErrStopped, listenForSyncInits())
 }
 
@@ -586,7 +586,7 @@ func TestListenForOutOfSyncChecks(t *testing.T) {
 
 	// Test kill.
 
-	close(l.kill)
+	l.Stop()
 	assert.Equal(t, ErrStopped, listenForOutOfSyncChecks())
 }
 
@@ -626,7 +626,7 @@ func TestListenForMissingTXs(t *testing.T) {
 	stop = make(chan struct{})
 
 	// Test kill.
-	close(l.kill)
+	l.Stop()
 	assert.Equal(t, ErrStopped, listenForMissingTXs())
 }
 
@@ -745,7 +745,7 @@ func TestCheckIfOutOfSync(t *testing.T) {
 		assert.Equal(t, ErrStopped, call(&wg, checkIfOutOfSync))
 	}()
 	evt = <-l.OutOfSyncOut
-	close(l.kill)
+	l.Stop()
 	wg.Wait()
 	l.kill = make(chan struct{})
 
@@ -760,7 +760,7 @@ func TestCheckIfOutOfSync(t *testing.T) {
 	stop = make(chan struct{})
 
 	// Test the first select: kill.
-	close(l.kill)
+	l.Stop()
 	assert.Equal(t, ErrStopped, checkIfOutOfSync())
 }
 
@@ -843,7 +843,7 @@ func TestSyncMissingTX(t *testing.T) {
 		assert.Equal(t, ErrStopped, call(&wg, syncMissingTX))
 	}()
 	evt = <-l.SyncTxOut
-	close(l.kill)
+	l.Stop()
 	wg.Wait()
 	l.kill = make(chan struct{})
 
@@ -858,6 +858,6 @@ func TestSyncMissingTX(t *testing.T) {
 	stop = make(chan struct{})
 
 	// Test the first select: kill.
-	close(l.kill)
+	l.Stop()
 	assert.Equal(t, ErrStopped, syncMissingTX())
 }
