@@ -524,9 +524,13 @@ func setup(c *cli.Context) (*wctl.Client, error) {
 	}
 
 	privateKeyBytes, err := ioutil.ReadFile(privateKeyFile)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to read private key %s", privateKeyFile)
+	}
+
 	rawPrivateKey, err := hex.DecodeString(string(privateKeyBytes))
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to hex decode private key %s", privateKeyFile)
 	}
 
 	config := wctl.Config{
