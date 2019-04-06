@@ -413,7 +413,7 @@ func main() {
 
 				payload := []byte(c.Args().Get(1))
 
-				if c.String("path") != "" {
+				if c.String("payload") != "" {
 					payload, err = ioutil.ReadFile(c.String("path"))
 					if err != nil {
 						return err
@@ -520,6 +520,7 @@ func main() {
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	if err := app.Run(os.Args); err != nil {
+		fmt.Println("test")
 		fmt.Printf("Failed to parse configuration/command-line arguments: %+v\n", err)
 	}
 }
