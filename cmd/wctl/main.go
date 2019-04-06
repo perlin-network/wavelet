@@ -392,7 +392,14 @@ func main() {
 			Name:      "send_transaction",
 			Usage:     "send a transaction",
 			ArgsUsage: "<tag> <json payload>",
-			Flags:     commonFlags,
+			Flags: append(commonFlags,
+				[]cli.Flag{
+					cli.StringFlag{
+						Name:  "payload",
+						Usage: "the path to the payload file",
+					},
+				}...,
+			),
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
 				if err != nil {
@@ -404,7 +411,14 @@ func main() {
 					return err
 				}
 
-				payload := c.Args().Get(1)
+				payload := []byte(c.Args().Get(1))
+
+				if c.String("path") != "" {
+					payload, err = ioutil.ReadFile(c.String("path"))
+					if err != nil {
+						return err
+					}
+				}
 
 				tx, err := client.SendTransaction(byte(tag), []byte(payload))
 				if err != nil {
