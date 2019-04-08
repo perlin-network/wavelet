@@ -134,7 +134,7 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 }
 
 func (b *block) OnBegin(p *protocol.Protocol, peer *noise.Peer) error {
-	r := NewReceiver(Ledger(peer.Node()), peer, 12, 1000)
+	r := NewReceiver(Ledger(peer.Node()), peer, 4, 1000)
 
 	peer.OnDisconnect(func(node *noise.Node, peer *noise.Peer) error {
 		r.Stop()
