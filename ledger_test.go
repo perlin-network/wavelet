@@ -1,7 +1,9 @@
 package wavelet
 
 import (
+	"encoding/hex"
 	"github.com/perlin-network/noise/identity/ed25519"
+	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/store"
@@ -22,6 +24,20 @@ func signalWhenComplete(wg *sync.WaitGroup, l *Ledger, fn transition) {
 func call(wg *sync.WaitGroup, fn func() error) error {
 	defer wg.Done()
 	return fn()
+}
+
+func formPayload(recipient string, amount uint64) ([]byte, error) {
+	b, err := hex.DecodeString(recipient)
+	if err != nil {
+		return nil, err
+	}
+
+	params := payload.NewWriter(nil)
+
+	params.WriteBytes(b)
+	params.WriteUint64(uint64(amount))
+
+	return params.Bytes(), nil
 }
 
 func TestKill(t *testing.T) {
@@ -73,8 +89,13 @@ func TestGossipOutTransaction(t *testing.T) {
 	// Signal that the gossip was sent out successfully.
 	out.Result <- []VoteGossip{{Ok: true}}
 
-	// Assert no errors.
-	assert.NotNil(t, <-evt.Result)
+	// Assert no errors
+	select {
+	case err := <-evt.Error:
+		assert.EqualError(t, err, "tx creator does not have enough PERLs to pay for fees")
+	case <-evt.Result:
+		assert.FailNow(t, "Tx expected to fail")
+	}
 
 	// Assert that the transactions are the same.
 	assert.Equal(t, evt.Payload, out.TX.Payload)
@@ -98,8 +119,19 @@ func TestTransitionFromGossipingToQuerying(t *testing.T) {
 	l.cr.Prefer(preferred)
 
 	// Create a dummy broadcast event.
-	tx, err := NewTransaction(l.keys, sys.TagTransfer, []byte("lorem ipsum"))
+	p, err := formPayload("400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405", 10)
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	tx, err := NewTransaction(l.keys, sys.TagTransfer, p)
 	assert.NoError(t, err)
+
+	snapshot := l.a.snapshot()
+	WriteAccountBalance(snapshot, tx.Creator, 1000)
+	if !assert.NoError(t, l.a.commit(snapshot)) {
+		return
+	}
 
 	evt := EventBroadcast{
 		Tag:       tx.Tag,
@@ -125,7 +157,11 @@ func TestTransitionFromGossipingToQuerying(t *testing.T) {
 	out.Result <- []VoteGossip{{Ok: true}}
 
 	// Assert no errors.
-	assert.NotNil(t, <-evt.Result)
+	select {
+	case err := <-evt.Error:
+		assert.NoError(t, err)
+	case <-evt.Result:
+	}
 
 	// Assert that we received a signal to transition to querying.
 	assert.Equal(t, ErrPreferredSelected, <-next)
@@ -162,8 +198,12 @@ func TestEnsureGossipReturnsNetworkErrors(t *testing.T) {
 	// Signal that the gossip was unsuccessful.
 	out.Error <- errors.New("failed")
 
-	// Assert that there were errors.
-	assert.NotNil(t, <-evt.Error)
+	select {
+	case err := <-evt.Error:
+		assert.EqualError(t, err, "got an error gossiping transaction out: failed")
+	case <-evt.Result:
+		assert.FailNow(t, "Tx expected to fail")
+	}
 
 	// Assert that we received no signal.
 	assert.Equal(t, nil, <-next)
@@ -174,8 +214,11 @@ func TestQuery(t *testing.T) {
 	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
 
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
 
+	preferred.ViewID = l.ViewID()
 	preferred.rehash()
 
 	l.cr.Prefer(preferred)
@@ -192,17 +235,16 @@ func TestQuery(t *testing.T) {
 	var evt EventQuery
 
 	// Test query empty votes.
-
 	wg.Add(1)
 	go func() {
-		assert.Equal(t, nil, call(&wg, query))
+		assert.NoError(t, call(&wg, query))
 	}()
+
 	evt = <-l.QueryOut
 	evt.Result <- []VoteQuery{}
 	wg.Wait()
 
 	// Test query.
-
 	wg.Add(2)
 	go func() {
 		assert.Equal(t, ErrConsensusRoundFinished, call(&wg, query))
@@ -223,14 +265,16 @@ func TestQuery(t *testing.T) {
 	wg.Wait()
 
 	// Re-set the preferred.
-
 	preferred, err = NewTransaction(l.keys, sys.TagNop, nil)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+
+	}
+
+	preferred.ViewID = l.ViewID()
 	preferred.rehash()
 	l.cr.Prefer(preferred)
 
 	// Test query error.
-
 	wg.Add(1)
 	evtError := errors.New("query error")
 	go func() {
@@ -241,8 +285,6 @@ func TestQuery(t *testing.T) {
 	evt = <-l.QueryOut
 	evt.Error <- evtError
 	wg.Wait()
-
-	// Test the second select.
 
 	// Test the second select: stop
 	wg.Add(1)
@@ -429,7 +471,6 @@ func TestListenForSyncInits(t *testing.T) {
 	var evt EventIncomingSyncInit
 
 	// Test empty
-
 	evt = EventIncomingSyncInit{
 		ViewID:   viewID,
 		Response: make(chan SyncInitMetadata, 1),
@@ -437,7 +478,7 @@ func TestListenForSyncInits(t *testing.T) {
 
 	l.SyncInitIn <- evt
 	assert.NoError(t, listenForSyncInits())
-	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 0, ChunkHashes: nil}, <-evt.Response)
+	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 1, ChunkHashes: nil}, <-evt.Response)
 
 	// Test diff
 
@@ -459,10 +500,9 @@ func TestListenForSyncInits(t *testing.T) {
 
 	l.SyncInitIn <- evt
 	assert.NoError(t, listenForSyncInits())
-	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 0, ChunkHashes: expectedChunkHashes}, <-evt.Response)
+	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 1, ChunkHashes: expectedChunkHashes}, <-evt.Response)
 
 	// Test stop
-
 	close(stop)
 	assert.Equal(t, ErrStopped, listenForSyncInits())
 
@@ -679,12 +719,27 @@ func TestSyncMissingTX(t *testing.T) {
 	var evt EventSyncTX
 
 	// Test transaction
+	p, err := formPayload("400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405", 10)
+	if !assert.NoError(t, err) {
+		return
+	}
 
-	tx, err := NewTransaction(l.keys, sys.TagTransfer, []byte("lorem ipsum"))
-	assert.NoError(t, err)
+	tx, err := NewTransaction(l.keys, sys.TagTransfer, p)
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	tx.rehash()
 	tx, err = l.attachSenderToTransaction(tx)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	snapshot := l.a.snapshot()
+	WriteAccountBalance(snapshot, tx.Creator, 1000)
+	if !assert.NoError(t, l.a.commit(snapshot)) {
+		return
+	}
 
 	wg.Add(1)
 	go func() {
@@ -698,16 +753,14 @@ func TestSyncMissingTX(t *testing.T) {
 	assert.True(t, found)
 
 	// Test error
-
 	wg.Add(1)
-	evtError := errors.New("error")
 	go func() {
 		err := call(&wg, syncMissingTX)
-		assert.Equal(t, evtError, errors.Cause(err))
+		assert.EqualError(t, errors.Cause(err), "error")
 	}()
 
 	evt = <-l.SyncTxOut
-	evt.Error <- evtError
+	evt.Error <- errors.New("error")
 	wg.Wait()
 
 	// Test the second select.

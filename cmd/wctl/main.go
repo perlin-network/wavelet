@@ -142,15 +142,14 @@ func main() {
 					accountID = &tmp
 				}
 
-				client.UseHTTPS = true
+				client.UseHTTPS = false
 				evChan, err := client.PollAccounts(nil, accountID)
 				if err != nil {
 					return err
 				}
 
 				for ev := range evChan {
-					jsonOut, _ := json.Marshal(ev)
-					fmt.Printf("%s\n", jsonOut)
+					fmt.Printf("%s\n", ev)
 				}
 				return nil
 			},
@@ -392,7 +391,14 @@ func main() {
 			Name:      "send_transaction",
 			Usage:     "send a transaction",
 			ArgsUsage: "<tag> <json payload>",
-			Flags:     commonFlags,
+			Flags: append(commonFlags,
+				[]cli.Flag{
+					cli.StringFlag{
+						Name:  "payload",
+						Usage: "the path to the payload file",
+					},
+				}...,
+			),
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
 				if err != nil {
@@ -404,7 +410,14 @@ func main() {
 					return err
 				}
 
-				payload := c.Args().Get(1)
+				payload := []byte(c.Args().Get(1))
+
+				if c.String("payload") != "" {
+					payload, err = ioutil.ReadFile(c.String("payload"))
+					if err != nil {
+						return err
+					}
+				}
 
 				tx, err := client.SendTransaction(byte(tag), []byte(payload))
 				if err != nil {
@@ -524,9 +537,13 @@ func setup(c *cli.Context) (*wctl.Client, error) {
 	}
 
 	privateKeyBytes, err := ioutil.ReadFile(privateKeyFile)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to read private key %s", privateKeyFile)
+	}
+
 	rawPrivateKey, err := hex.DecodeString(string(privateKeyBytes))
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to hex decode private key %s", privateKeyFile)
 	}
 
 	config := wctl.Config{

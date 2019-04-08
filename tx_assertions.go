@@ -160,6 +160,10 @@ func AssertInView(view *graph, tx Transaction, critical bool) error {
 			return errors.Errorf("critical transaction was made for view ID %d, but our view ID is %d", tx.ViewID, ourViewID)
 		}
 
+		if tx.AccountsMerkleRoot == common.ZeroMerkleNodeID {
+			return errors.New("critical transactions merkle root is expected to be not nil")
+		}
+
 		if size := computeCriticalTimestampWindowSize(tx.ViewID); len(tx.DifficultyTimestamps) != size {
 			return errors.Errorf("expected tx to have %d timestamp(s), but has %d timestamp(s)", size, len(tx.DifficultyTimestamps))
 		}
@@ -174,6 +178,14 @@ func AssertInView(view *graph, tx Transaction, critical bool) error {
 			}
 		}
 	} else {
+		if tx.AccountsMerkleRoot != common.ZeroMerkleNodeID {
+			return errors.New("transactions merkle root is expected to be nil")
+		}
+
+		if len(tx.DifficultyTimestamps) > 0 {
+			return errors.New("normal transactions are not expected to have difficulty timestamps")
+		}
+
 		if tx.ViewID < ourViewID {
 			return errors.Errorf("transaction was made for view ID %d, but our view ID is %d", tx.ViewID, ourViewID)
 		}
