@@ -142,15 +142,14 @@ func main() {
 					accountID = &tmp
 				}
 
-				client.UseHTTPS = true
+				client.UseHTTPS = false
 				evChan, err := client.PollAccounts(nil, accountID)
 				if err != nil {
 					return err
 				}
 
 				for ev := range evChan {
-					jsonOut, _ := json.Marshal(ev)
-					fmt.Printf("%s\n", jsonOut)
+					fmt.Printf("%s\n", ev)
 				}
 				return nil
 			},

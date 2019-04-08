@@ -121,7 +121,7 @@ func (c *Client) Init() error {
 }
 
 func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan string, error) {
-	path := fmt.Sprintf("%s", sinkRoute)
+	path := fmt.Sprintf("%stoken=%s", sinkRoute, c.SessionToken)
 
 	if stop == nil {
 		stop = make(chan struct{})
@@ -154,10 +154,10 @@ func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan 
 	return evChan, nil
 }
 
-func (c *Client) PollAccounts(stop <-chan struct{}, accountID *string) (<-chan Account, error) {
-	path := fmt.Sprintf("%s?", RouteWSAccounts)
+func (c *Client) PollAccounts(stop <-chan struct{}, accountID *string) (<-chan string, error) {
+	path := fmt.Sprintf("%s?token=%s", RouteWSAccounts, c.SessionToken)
 	if accountID != nil {
-		path = fmt.Sprintf("%sid=%s&", path, *accountID)
+		path = fmt.Sprintf("%s&id=%s", path, *accountID)
 	}
 
 	if stop == nil {
@@ -169,21 +169,20 @@ func (c *Client) PollAccounts(stop <-chan struct{}, accountID *string) (<-chan A
 		return nil, err
 	}
 
-	evChan := make(chan Account)
+	evChan := make(chan string)
 
 	go func() {
 		defer close(evChan)
 
 		for {
-			var ev Account
-
-			if err = ws.ReadJSON(&ev); err != nil {
+			_, message, err := ws.ReadMessage()
+			if err != nil {
 				return
 			}
 			select {
 			case <-stop:
 				return
-			case evChan <- ev:
+			case evChan <- string(message):
 			}
 		}
 	}()
@@ -192,7 +191,7 @@ func (c *Client) PollAccounts(stop <-chan struct{}, accountID *string) (<-chan A
 }
 
 func (c *Client) PollContracts(stop <-chan struct{}, contractID *string) (<-chan interface{}, error) {
-	path := fmt.Sprintf("%s?", RouteWSContracts)
+	path := fmt.Sprintf("%s?token=%s", RouteWSContracts, c.SessionToken)
 	if contractID != nil {
 		path = fmt.Sprintf("%sid=%s&", path, *contractID)
 	}
@@ -229,7 +228,7 @@ func (c *Client) PollContracts(stop <-chan struct{}, contractID *string) (<-chan
 }
 
 func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *string, creatorID *string) (<-chan Transaction, error) {
-	path := fmt.Sprintf("%s?", RouteWSTransactions)
+	path := fmt.Sprintf("%s?token=%s", RouteWSTransactions, c.SessionToken)
 	if txID != nil {
 		path = fmt.Sprintf("%stx_id=%s&", path, *txID)
 	}
