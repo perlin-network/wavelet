@@ -3,6 +3,7 @@ package wavelet
 import (
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 )
@@ -161,6 +162,9 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 	// the transactions context over to our accounts snapshot.
 
 	for id, balance := range c.balances {
+		logger := log.Account(id, "balance_updated")
+		logger.Log().Uint64("balance", balance).Msg("Updated balance.")
+
 		WriteAccountBalance(c.tree, id, balance)
 	}
 

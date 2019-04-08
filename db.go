@@ -35,9 +35,6 @@ func WriteAccountBalance(tree *avl.Tree, id common.AccountID, balance uint64) {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], balance)
 
-	logger := log.Account(id, "balance_updated")
-	logger.Log().Uint64("balance", balance).Msg("Updated balance.")
-
 	writeUnderAccounts(tree, id, keyAccountBalance[:], buf[:])
 }
 
