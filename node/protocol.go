@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/protocol"
@@ -23,6 +24,69 @@ const (
 	keyLedger      = "wavelet.ledger"
 	keyAuthChannel = "wavelet.auth.ch"
 )
+
+type receiver struct {
+	bus chan noise.Message
+
+	wg sync.WaitGroup
+	cancel func()
+}
+
+func NewReceiver(
+	ledger *wavelet.Ledger,
+	peer *noise.Peer,
+	workersNum int,
+	bufferSize uint32,
+) *receiver {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	r := receiver{
+		bus: make(chan noise.Message, bufferSize),
+		wg: sync.WaitGroup{},
+		cancel: cancel,
+	}
+
+	r.wg.Add(workersNum)
+
+	for i := 0; i < workersNum; i++ {
+		go func(ctx context.Context) {
+			defer r.wg.Done()
+
+			var msg noise.Message
+			for {
+				select {
+					case <-ctx.Done():
+						return
+					case msg =<- r.bus:
+				}
+
+				switch msg.(type) {
+				case GossipRequest:
+					handleGossipRequest(ledger, peer, msg.(GossipRequest))
+				case QueryRequest:
+					handleQueryRequest(ledger, peer, msg.(QueryRequest))
+				case SyncViewRequest:
+					handleOutOfSyncCheck(ledger, peer, msg.(SyncViewRequest))
+				case SyncInitRequest:
+					handleSyncInits(ledger, peer, msg.(SyncInitRequest))
+				case SyncChunkRequest:
+					handleSyncChunks(ledger, peer, msg.(SyncChunkRequest))
+				case SyncMissingTxRequest:
+					handleSyncMissingTXs(ledger, peer, msg.(SyncMissingTxRequest))
+				}
+			}
+		}(ctx)
+	}
+
+	return &r
+}
+
+func (r *receiver) Stop() {
+	r.cancel()
+	r.wg.Wait()
+
+	close(r.bus)
+}
 
 type block struct {
 	opcodeGossipRequest  noise.Opcode
@@ -70,8 +134,15 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 }
 
 func (b *block) OnBegin(p *protocol.Protocol, peer *noise.Peer) error {
+	r := NewReceiver(Ledger(peer.Node()), peer, 12, 1000)
+
+	peer.OnDisconnect(func(node *noise.Node, peer *noise.Peer) error {
+		r.Stop()
+		return nil
+	})
+
 	go b.sendLoop(Ledger(peer.Node()), peer)
-	go b.receiveLoop(Ledger(peer.Node()), peer)
+	go b.receiveLoop(r.bus, peer)
 
 	close(peer.LoadOrStore(keyAuthChannel, make(chan struct{})).(chan struct{}))
 
@@ -87,22 +158,19 @@ func (b *block) sendLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
 	go b.broadcastSyncMissingTXs(ledger, peer.Node(), peer)
 }
 
-func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
+func (b *block) receiveLoop(bus chan<- noise.Message, peer *noise.Peer) {
+	var msg noise.Message
 	for {
 		select {
-		case msg := <-peer.Receive(b.opcodeGossipRequest):
-			go handleGossipRequest(ledger, peer, msg.(GossipRequest))
-		case msg := <-peer.Receive(b.opcodeQueryRequest):
-			go handleQueryRequest(ledger, peer, msg.(QueryRequest))
-		case msg := <-peer.Receive(b.opcodeSyncViewRequest):
-			go handleOutOfSyncCheck(ledger, peer, msg.(SyncViewRequest))
-		case msg := <-peer.Receive(b.opcodeSyncInitRequest):
-			go handleSyncInits(ledger, peer, msg.(SyncInitRequest))
-		case msg := <-peer.Receive(b.opcodeSyncChunkRequest):
-			go handleSyncChunks(ledger, peer, msg.(SyncChunkRequest))
-		case msg := <-peer.Receive(b.opcodeSyncMissingTxRequest):
-			go handleSyncMissingTXs(ledger, peer, msg.(SyncMissingTxRequest))
+		case msg = <-peer.Receive(b.opcodeGossipRequest):
+		case msg = <-peer.Receive(b.opcodeQueryRequest):
+		case msg = <-peer.Receive(b.opcodeSyncViewRequest):
+		case msg = <-peer.Receive(b.opcodeSyncInitRequest):
+		case msg = <-peer.Receive(b.opcodeSyncChunkRequest):
+		case msg = <-peer.Receive(b.opcodeSyncMissingTxRequest):
 		}
+
+		bus<- msg
 	}
 }
 
