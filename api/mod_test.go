@@ -1,11 +1,13 @@
 package api
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher/aead"
 	"github.com/perlin-network/noise/handshake/ecdh"
@@ -20,11 +22,15 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 	"io/ioutil"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
 	"testing"
+	"testing/quick"
 	"time"
 )
 
@@ -32,20 +38,22 @@ func TestInitSession(t *testing.T) {
 	randomKeyPair := ed25519.RandomKeys()
 
 	gateway := New()
-	gateway.setup()
+	gateway.setup(false)
 
 	tests := []struct {
 		name     string
+		url      string
 		req      SessionInitRequest
 		wantCode int
 	}{
-
 		{
+			url:      "/session/init",
 			name:     "bad request",
 			req:      getBadCredentialRequest(),
 			wantCode: http.StatusBadRequest,
 		},
 		{
+			url:      "/session/init",
 			name:     "good request",
 			req:      getGoodCredentialRequest(t, randomKeyPair),
 			wantCode: http.StatusOK,
@@ -57,24 +65,26 @@ func TestInitSession(t *testing.T) {
 			body, err := json.Marshal(tc.req)
 			assert.NoError(t, err)
 
-			request := httptest.NewRequest("POST", "/session/init", bytes.NewReader(body))
-			request.Header.Add("Content-Type", "application/json")
+			request, err := http.NewRequest("POST", "http://localhost"+tc.url, bytes.NewReader(body))
+			assert.Nil(t, err)
 
-			w := httptest.NewRecorder()
+			w, err := serve(gateway.router, request)
+			assert.NoError(t, err)
+			assert.NotNil(t, w)
 
-			gateway.router.ServeHTTP(w, request)
+			assert.NotNil(t, w.Body)
 
 			_, err = ioutil.ReadAll(w.Body)
 			assert.Nil(t, err)
 
-			assert.Equal(t, tc.wantCode, w.Code, "status code")
+			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 		})
 	}
 }
 
 func TestListTransaction(t *testing.T) {
 	gateway := New()
-	gateway.setup()
+	gateway.setup(false)
 
 	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
@@ -107,7 +117,7 @@ func TestListTransaction(t *testing.T) {
 	}{
 		{
 			name:     "sender not hex",
-			url:      "/tx/?sender=1",
+			url:      "/tx?sender=1",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
 				StatusText: "Bad request.",
@@ -116,7 +126,7 @@ func TestListTransaction(t *testing.T) {
 		},
 		{
 			name:     "sender invalid length",
-			url:      "/tx/?sender=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
+			url:      "/tx?sender=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
 				StatusText: "Bad request.",
@@ -125,7 +135,7 @@ func TestListTransaction(t *testing.T) {
 		},
 		{
 			name:     "creator not hex",
-			url:      "/tx/?creator=1",
+			url:      "/tx?creator=1",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
 				StatusText: "Bad request.",
@@ -134,7 +144,7 @@ func TestListTransaction(t *testing.T) {
 		},
 		{
 			name:     "creator invalid length",
-			url:      "/tx/?creator=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
+			url:      "/tx?creator=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
 				StatusText: "Bad request.",
@@ -143,7 +153,7 @@ func TestListTransaction(t *testing.T) {
 		},
 		{
 			name:     "creator not hex",
-			url:      "/tx/?creator=1",
+			url:      "/tx?creator=1",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
 				StatusText: "Bad request.",
@@ -152,17 +162,17 @@ func TestListTransaction(t *testing.T) {
 		},
 		{
 			name:     "offset negative invalid",
-			url:      "/tx/?offset=-1",
+			url:      "/tx?offset=-1",
 			wantCode: http.StatusBadRequest,
 		},
 		{
 			name:     "limit negative invalid",
-			url:      "/tx/?limit=-1",
+			url:      "/tx?limit=-1",
 			wantCode: http.StatusBadRequest,
 		},
 		{
 			name:         "success",
-			url:          "/tx/?limit=1&offset=0",
+			url:          "/tx?limit=1&offset=0",
 			wantCode:     http.StatusOK,
 			wantResponse: expectedResponse,
 		},
@@ -170,22 +180,26 @@ func TestListTransaction(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			request := httptest.NewRequest("GET", tc.url, nil)
+			request, err := http.NewRequest("GET", "http://localhost"+tc.url, nil)
+			assert.NoError(t, err)
 			request.Header.Add(HeaderSessionToken, sess.id)
 
-			w := httptest.NewRecorder()
-
-			gateway.router.ServeHTTP(w, request)
+			w, err := serve(gateway.router, request)
+			if err != nil {
+				t.Fatal(t)
+			}
+			assert.NoError(t, err)
+			assert.NotNil(t, w)
 
 			response, err := ioutil.ReadAll(w.Body)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 
-			assert.Equal(t, tc.wantCode, w.Code, "status code")
+			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantResponse != nil {
 				r, err := tc.wantResponse.marshal(new(fastjson.ArenaPool).Get())
-				assert.Nil(t, err)
-				assert.Equal(t, r, bytes.TrimSpace(response))
+				assert.NoError(t, err)
+				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
 		})
 	}
@@ -193,7 +207,7 @@ func TestListTransaction(t *testing.T) {
 
 func TestGetTransaction(t *testing.T) {
 	gateway := New()
-	gateway.setup()
+	gateway.setup(false)
 
 	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
@@ -247,25 +261,26 @@ func TestGetTransaction(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			request := httptest.NewRequest("GET", "/tx/"+tc.id, nil)
+			request, err := http.NewRequest("GET", "http://localhost/tx/"+tc.id, nil)
+			assert.NoError(t, err)
 
 			if tc.sessionToken != "" {
 				request.Header.Add(HeaderSessionToken, tc.sessionToken)
 			}
 
-			w := httptest.NewRecorder()
-
-			gateway.router.ServeHTTP(w, request)
+			w, err := serve(gateway.router, request)
+			assert.NoError(t, err)
+			assert.NotNil(t, w)
 
 			response, err := ioutil.ReadAll(w.Body)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 
-			assert.Equal(t, tc.wantCode, w.Code, "status code")
+			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantResponse != nil {
 				r, err := tc.wantResponse.marshal(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
-				assert.Equal(t, r, bytes.TrimSpace(response))
+				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
 		})
 	}
@@ -273,7 +288,7 @@ func TestGetTransaction(t *testing.T) {
 
 func TestSendTransaction(t *testing.T) {
 	gateway := New()
-	gateway.setup()
+	gateway.setup(false)
 
 	tests := []struct {
 		name         string
@@ -297,27 +312,158 @@ func TestSendTransaction(t *testing.T) {
 			reqBody, err := json.Marshal(tc.req)
 			assert.NoError(t, err)
 
-			request := httptest.NewRequest("POST", "/tx/send", bytes.NewReader(reqBody))
+			request := httptest.NewRequest("POST", "http://localhost/tx/send", bytes.NewReader(reqBody))
 
 			if tc.sessionToken != "" {
 				request.Header.Add(HeaderSessionToken, tc.sessionToken)
 			}
 
-			w := httptest.NewRecorder()
-
-			gateway.router.ServeHTTP(w, request)
+			w, err := serve(gateway.router, request)
+			assert.NoError(t, err)
+			assert.NotNil(t, w)
 
 			_, err = ioutil.ReadAll(w.Body)
 			assert.Nil(t, err)
 
-			assert.Equal(t, tc.wantCode, w.Code, "status code")
+			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
+		})
+	}
+}
+
+func TestSendTransactionRandom(t *testing.T) {
+	gateway := New()
+	gateway.setup(false)
+
+	sess, err := gateway.registry.newSession()
+	assert.NoError(t, err)
+
+	type request struct {
+		Sender    string `json:"sender"`
+		Tag       byte   `json:"tag"`
+		Payload   string `json:"payload"`
+		Signature string `json:"signature"`
+	}
+
+	f := func(req request) bool {
+		reqBody, err := json.Marshal(req)
+		assert.NoError(t, err)
+
+		request := httptest.NewRequest("POST", "http://localhost/tx/send", bytes.NewReader(reqBody))
+		request.Header.Add(HeaderSessionToken, sess.id)
+
+		res, err := serve(gateway.router, request)
+		assert.NoError(t, err)
+
+		assert.NotNil(t, res)
+		assert.NotEqual(t, http.StatusNotFound, res.StatusCode)
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{
+		MaxCountScale: 10,
+	}); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestInitSessionRandom(t *testing.T) {
+	gateway := New()
+	gateway.setup(false)
+
+	sess, err := gateway.registry.newSession()
+	assert.NoError(t, err)
+
+	type request struct {
+		PublicKey  string `json:"public_key"`
+		Signature  string `json:"signature"`
+		TimeMillis uint64 `json:"time_millis"`
+	}
+
+	f := func(req request) bool {
+		reqBody, err := json.Marshal(req)
+		assert.NoError(t, err)
+
+		request := httptest.NewRequest("POST", "http://localhost/session/init", bytes.NewReader(reqBody))
+		request.Header.Add(HeaderSessionToken, sess.id)
+
+		res, err := serve(gateway.router, request)
+		assert.NoError(t, err)
+
+		assert.NotNil(t, res)
+		assert.NotEqual(t, http.StatusNotFound, res.StatusCode)
+
+		return true
+	}
+
+	if err := quick.Check(f, &quick.Config{
+		MaxCountScale: 10,
+	}); err != nil {
+		t.Error(err)
+	}
+}
+
+// Test POST APIs with completely random payload
+func TestPostPayloadRandom(t *testing.T) {
+	gateway := New()
+	gateway.setup(false)
+
+	sess, err := gateway.registry.newSession()
+	assert.NoError(t, err)
+
+	tests := []struct {
+		url          string
+		sessionToken string
+	}{
+		{
+			url: "/session/init",
+		},
+		{
+			url:          "/tx/send",
+			sessionToken: sess.id,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.url, func(t *testing.T) {
+			f := func(random1 [][]byte, random2 [][]byte) bool {
+
+				var payload []byte
+				for i := range random1 {
+					payload = append(payload, random1[i]...)
+				}
+
+				for i := range random2 {
+					payload = append(payload, random2[i]...)
+				}
+
+				request := httptest.NewRequest("POST", "http://localhost"+tc.url, bytes.NewReader(payload))
+				if tc.sessionToken != "" {
+					request.Header.Add(HeaderSessionToken, tc.sessionToken)
+				}
+
+				res, err := serve(gateway.router, request)
+
+				assert.NoError(t, err)
+
+				assert.NotNil(t, res)
+				assert.NotEmpty(t, res.StatusCode)
+
+				return true
+			}
+
+			if err := quick.Check(f, &quick.Config{
+				MaxCountScale: 10,
+			}); err != nil {
+				t.Error(err)
+			}
 		})
 	}
 }
 
 func TestGetAccount(t *testing.T) {
 	gateway := New()
-	gateway.setup()
+	gateway.setup(false)
 
 	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
@@ -369,22 +515,22 @@ func TestGetAccount(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			request := httptest.NewRequest("GET", tc.url, nil)
+			request := httptest.NewRequest("GET", "http://localhost"+tc.url, nil)
 			request.Header.Add(HeaderSessionToken, sess.id)
 
-			w := httptest.NewRecorder()
-
-			gateway.router.ServeHTTP(w, request)
+			w, err := serve(gateway.router, request)
+			assert.NoError(t, err)
+			assert.NotNil(t, w)
 
 			response, err := ioutil.ReadAll(w.Body)
 			assert.NoError(t, err)
 
-			assert.Equal(t, tc.wantCode, w.Code, "status code")
+			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantResponse != nil {
 				r, err := tc.wantResponse.marshal(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
-				assert.Equal(t, r, bytes.TrimSpace(response))
+				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
 		})
 	}
@@ -392,7 +538,7 @@ func TestGetAccount(t *testing.T) {
 
 func TestGetContractCode(t *testing.T) {
 	gateway := New()
-	gateway.setup()
+	gateway.setup(false)
 
 	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
@@ -443,22 +589,22 @@ func TestGetContractCode(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			request := httptest.NewRequest("GET", tc.url, nil)
+			request := httptest.NewRequest("GET", "http://localhost"+tc.url, nil)
 			request.Header.Add(HeaderSessionToken, sess.id)
 
-			w := httptest.NewRecorder()
-
-			gateway.router.ServeHTTP(w, request)
+			w, err := serve(gateway.router, request)
+			assert.NoError(t, err)
+			assert.NotNil(t, w)
 
 			response, err := ioutil.ReadAll(w.Body)
 			assert.NoError(t, err)
 
-			assert.Equal(t, tc.wantCode, w.Code, "status code")
+			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantError != nil {
 				r, err := tc.wantError.marshal(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
-				assert.Equal(t, r, bytes.TrimSpace(response))
+				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
 		})
 	}
@@ -466,7 +612,7 @@ func TestGetContractCode(t *testing.T) {
 
 func TestGetContractPages(t *testing.T) {
 	gateway := New()
-	gateway.setup()
+	gateway.setup(false)
 
 	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
@@ -504,22 +650,22 @@ func TestGetContractPages(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			request := httptest.NewRequest("GET", tc.url, nil)
+			request := httptest.NewRequest("GET", "http://localhost"+tc.url, nil)
 			request.Header.Add(HeaderSessionToken, sess.id)
 
-			w := httptest.NewRecorder()
-
-			gateway.router.ServeHTTP(w, request)
+			w, err := serve(gateway.router, request)
+			assert.NoError(t, err)
+			assert.NotNil(t, w)
 
 			response, err := ioutil.ReadAll(w.Body)
 			assert.NoError(t, err)
 
-			assert.Equal(t, tc.wantCode, w.Code, "status code")
+			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantError != nil {
 				r, err := tc.wantError.marshal(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
-				assert.Equal(t, r, bytes.TrimSpace(response))
+				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
 		})
 	}
@@ -527,7 +673,7 @@ func TestGetContractPages(t *testing.T) {
 
 func TestGetLedger(t *testing.T) {
 	gateway := New()
-	gateway.setup()
+	gateway.setup(false)
 
 	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
@@ -551,17 +697,17 @@ func TestGetLedger(t *testing.T) {
 
 	gateway.node = node
 
-	request := httptest.NewRequest("GET", "/ledger", nil)
+	request := httptest.NewRequest("GET", "http://localhost/ledger", nil)
 	request.Header.Add(HeaderSessionToken, sess.id)
 
-	w := httptest.NewRecorder()
-
-	gateway.router.ServeHTTP(w, request)
+	w, err := serve(gateway.router, request)
+	assert.NoError(t, err)
+	assert.NotNil(t, w)
 
 	response, err := ioutil.ReadAll(w.Body)
 	assert.NoError(t, err)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusOK, w.StatusCode)
 
 	ledgerStatusResponse := struct {
 		PublicKey     string   `json:"public_key"`
@@ -585,7 +731,7 @@ func TestGetLedger(t *testing.T) {
 // Test the authenticate checking of all the APIs that require authentication
 func TestAuthenticatedAPI(t *testing.T) {
 	gateway := New()
-	gateway.setup()
+	gateway.setup(false)
 
 	contractID := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
 
@@ -631,7 +777,7 @@ func TestAuthenticatedAPI(t *testing.T) {
 		t.Run(tc.url, func(t *testing.T) {
 			// Without session header
 			{
-				request := httptest.NewRequest(tc.method, tc.url, nil)
+				request := httptest.NewRequest(tc.method, "http://localhost"+tc.url, nil)
 
 				testAuthenticatedAPI(t, gateway, request, testErrResponse{
 					StatusText: "Bad request.",
@@ -641,7 +787,7 @@ func TestAuthenticatedAPI(t *testing.T) {
 
 			// With invalid session
 			{
-				request := httptest.NewRequest(tc.method, tc.url, nil)
+				request := httptest.NewRequest(tc.method, "http://localhost"+tc.url, nil)
 				request.Header.Add(HeaderSessionToken, "invalid token")
 
 				testAuthenticatedAPI(t, gateway, request, testErrResponse{
@@ -654,14 +800,14 @@ func TestAuthenticatedAPI(t *testing.T) {
 }
 
 func testAuthenticatedAPI(t *testing.T, gateway *Gateway, request *http.Request, res testErrResponse) {
-	w := httptest.NewRecorder()
-
-	gateway.router.ServeHTTP(w, request)
+	w, err := serve(gateway.router, request)
+	assert.NoError(t, err)
+	assert.NotNil(t, w)
 
 	response, err := ioutil.ReadAll(w.Body)
 	assert.Nil(t, err)
 
-	assert.Equal(t, http.StatusBadRequest, w.Code, "status code")
+	assert.Equal(t, http.StatusBadRequest, w.StatusCode, "status code")
 
 	assert.NoError(t, compareJson(res, response))
 }
@@ -713,4 +859,72 @@ type testErrResponse struct {
 
 func (t testErrResponse) marshal(arena *fastjson.Arena) ([]byte, error) {
 	return json.Marshal(t)
+}
+
+func serve(router *fasthttprouter.Router, req *http.Request) (*http.Response, error) {
+	server := &fasthttp.Server{
+		Handler: router.Handler,
+	}
+
+	requestString, err := httputil.DumpRequestOut(req, true)
+	if err != nil {
+		return nil, err
+	}
+
+	rw := &readWriter{}
+	rw.r.WriteString(string(requestString))
+
+	ch := make(chan error)
+	go func() {
+		ch <- server.ServeConn(rw)
+	}()
+
+	select {
+	case err := <-ch:
+		if err != nil {
+			return nil, err
+		}
+	case <-time.After(10 * time.Second):
+		return nil, errors.New("timeout")
+	}
+
+	return http.ReadResponse(bufio.NewReader(&rw.w), req)
+}
+
+type readWriter struct {
+	net.Conn
+	r bytes.Buffer
+	w bytes.Buffer
+}
+
+func (rw *readWriter) Close() error {
+	return nil
+}
+
+func (rw *readWriter) Read(b []byte) (int, error) {
+	return rw.r.Read(b)
+}
+
+func (rw *readWriter) Write(b []byte) (int, error) {
+	return rw.w.Write(b)
+}
+
+func (rw *readWriter) RemoteAddr() net.Addr {
+	return &net.TCPAddr{
+		IP: net.IPv4zero,
+	}
+}
+
+func (rw *readWriter) LocalAddr() net.Addr {
+	return &net.TCPAddr{
+		IP: net.IPv4zero,
+	}
+}
+
+func (rw *readWriter) SetReadDeadline(t time.Time) error {
+	return nil
+}
+
+func (rw *readWriter) SetWriteDeadline(t time.Time) error {
+	return nil
 }

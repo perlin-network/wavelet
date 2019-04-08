@@ -11,7 +11,6 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/valyala/fastjson"
-	"io/ioutil"
 	"net/http"
 	"strconv"
 )
@@ -42,12 +41,7 @@ type SessionInitRequest struct {
 	TimeMillis uint64 `json:"time_millis"`
 }
 
-func (s *SessionInitRequest) Bind(parser *fastjson.Parser, r *http.Request) error {
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return err
-	}
-
+func (s *SessionInitRequest) bind(parser *fastjson.Parser, body []byte) error {
 	v, err := parser.ParseBytes(body)
 	if err != nil {
 		return err
@@ -107,12 +101,7 @@ type SendTransactionRequest struct {
 	payload   []byte
 }
 
-func (s *SendTransactionRequest) Bind(parser *fastjson.Parser, r *http.Request) error {
-	body, err := ioutil.ReadAll(r.Body)
-	if err != nil {
-		return err
-	}
-
+func (s *SendTransactionRequest) bind(parser *fastjson.Parser, body []byte) error {
 	v, err := parser.ParseBytes(body)
 	if err != nil {
 		return err

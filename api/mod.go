@@ -1,19 +1,17 @@
 package api
 
 import (
-	"bytes"
-	"context"
 	"encoding/hex"
-	"encoding/json"
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
-	"github.com/go-chi/cors"
+	"fmt"
+	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/pkg/errors"
+	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/pprofhandler"
 	"github.com/valyala/fastjson"
 	"io"
 	"net/http"
@@ -27,7 +25,8 @@ type Gateway struct {
 	node   *noise.Node
 	ledger *wavelet.Ledger
 
-	router chi.Router
+	router *fasthttprouter.Router
+	server *fasthttp.Server
 
 	registry *sessionRegistry
 	sinks    map[string]*sink
@@ -45,14 +44,13 @@ func New() *Gateway {
 	}
 }
 
-func (g *Gateway) setup() {
+func (g *Gateway) setup(enableTimeout bool) {
 	// Setup websocket logging sinks.
 
 	sinkNetwork := g.registerWebsocketSink("ws://network/")
 	sinkBroadcaster := g.registerWebsocketSink("ws://broadcaster/")
 	sinkConsensus := g.registerWebsocketSink("ws://consensus/")
 	sinkStake := g.registerWebsocketSink("ws://stake/")
-
 	sinkAccounts := g.registerWebsocketSink("ws://accounts/?id=account_id")
 	sinkContracts := g.registerWebsocketSink("ws://contract/?id=contract_id")
 	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id")
@@ -61,55 +59,43 @@ func (g *Gateway) setup() {
 
 	// Setup HTTP router.
 
-	r := chi.NewRouter()
+	r := fasthttprouter.New()
 
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Recoverer)
-	r.Use(cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"*"},
-		ExposedHeaders:   []string{"Link"},
-		AllowCredentials: true,
-		MaxAge:           300, // Maximum value not ignored by any of major browsers
-	}).Handler)
-	r.Use(middleware.Timeout(60 * time.Second))
+	var base = []middleware{
+		Recoverer,
+		cors(),
+	}
 
-	// Websocket endpoints.
+	if enableTimeout {
+		base = append(base, Timeout(60*time.Second, "Request timeout!"))
+	}
 
-	r.Get("/network/poll", g.securePoll(sinkNetwork))
-	r.Get("/broadcaster/poll", g.securePoll(sinkBroadcaster))
-	r.Get("/consensus/poll", g.securePoll(sinkConsensus))
-	r.Get("/stake/poll", g.securePoll(sinkStake))
-	r.Get("/accounts/poll", g.securePoll(sinkAccounts))
-	r.Get("/contract/poll", g.securePoll(sinkContracts))
-	r.Get("/tx/poll", g.securePoll(sinkTransactions))
+	var authenticated = append(base, g.authenticated)
+	var contract = append(authenticated, g.contractScope)
 
-	// HTTP endpoints.
+	r.GET("/poll/network", g.securePoll(sinkNetwork))
+	r.GET("/poll/broadcaster", chain(g.securePoll(sinkBroadcaster), base))
+	r.GET("/poll/consensus", chain(g.securePoll(sinkConsensus), base))
+	r.GET("/poll/stake", chain(g.securePoll(sinkStake), base))
+	r.GET("/poll/accounts", chain(g.securePoll(sinkAccounts), base))
+	r.GET("/poll/contract", chain(g.securePoll(sinkContracts), base))
+	r.GET("/poll/tx", chain(g.securePoll(sinkTransactions), base))
 
-	r.Post("/session/init", g.initSession)
-	r.Mount("/debug", middleware.Profiler())
+	r.GET("/debug", pprofhandler.PprofHandler)
 
-	r.With(g.authenticated).Get("/ledger", g.ledgerStatus)
-	r.With(g.authenticated).Get("/accounts/{id}", g.getAccount)
+	r.POST("/session/init", chain(g.initSession, base))
+	r.GET("/ledger", chain(g.ledgerStatus, authenticated))
+	r.GET("/accounts/:id", chain(g.getAccount, authenticated))
 
-	r.With(g.authenticated).Route("/contract/{id}", func(r chi.Router) {
-		r.Use(g.contractScope)
+	// Contract endpoints
+	r.GET("/contract/:id/page/:index", chain(g.getContractPages, contract))
+	r.GET("/contract/:id/page", chain(g.getContractPages, contract))
+	r.GET("/contract/:id", chain(g.getContractCode, contract))
 
-		r.Get("/", g.getContractCode)
-
-		r.Route("/page", func(r chi.Router) {
-			r.Get("/", g.getContractPages)
-			r.Get("/{index}", g.getContractPages)
-		})
-	})
-
-	r.With(g.authenticated).Route("/tx", func(r chi.Router) {
-		r.Get("/", g.listTransactions)
-		r.Get("/{id}", g.getTransaction)
-		r.Post("/send", g.sendTransaction)
-	})
+	// Transaction endpoints
+	r.POST("/tx/send", chain(g.sendTransaction, authenticated))
+	r.GET("/tx/:id", chain(g.getTransaction, authenticated))
+	r.GET("/tx", chain(g.listTransactions, authenticated))
 
 	g.router = r
 }
@@ -118,46 +104,57 @@ func (g *Gateway) StartHTTP(n *noise.Node, port int) {
 	g.node = n
 	g.ledger = node.Ledger(n)
 
-	g.setup()
+	g.setup(true)
 
 	logger := log.Node()
 	logger.Info().Int("port", port).Msg("Started HTTP API server.")
 
-	if err := http.ListenAndServe(":"+strconv.Itoa(port), g.router); err != nil {
+	g.server = &fasthttp.Server{
+		Handler: g.router.Handler,
+	}
+
+	if err := g.server.ListenAndServe(":" + strconv.Itoa(port)); err != nil {
 		logger.Fatal().Err(err).Msg("Failed to start HTTP server.")
 	}
 }
 
-func (g *Gateway) initSession(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) Shutdown() {
+	if g.server == nil {
+		return
+	}
+	_ = g.server.Shutdown()
+}
+
+func (g *Gateway) initSession(ctx *fasthttp.RequestCtx) {
 	req := new(SessionInitRequest)
 
 	parser := g.parserPool.Get()
-	err := req.Bind(parser, r)
+	err := req.bind(parser, ctx.PostBody())
 	g.parserPool.Put(parser)
 
 	if err != nil {
-		g.renderError(w, r, ErrBadRequest(err))
+		g.renderError(ctx, ErrBadRequest(err))
 		return
 	}
 
 	session, err := g.registry.newSession()
 	if err != nil {
-		g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "failed to create session")))
+		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "failed to create session")))
 		return
 	}
 
-	g.render(w, r, &SessionInitResponse{Token: session.id})
+	g.render(ctx, &SessionInitResponse{Token: session.id})
 }
 
-func (g *Gateway) sendTransaction(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	req := new(SendTransactionRequest)
 
 	parser := g.parserPool.Get()
-	err := req.Bind(parser, r)
+	err := req.bind(parser, ctx.PostBody())
 	g.parserPool.Put(parser)
 
 	if err != nil {
-		g.renderError(w, r, ErrBadRequest(err))
+		g.renderError(ctx, ErrBadRequest(err))
 		return
 	}
 
@@ -172,79 +169,80 @@ func (g *Gateway) sendTransaction(w http.ResponseWriter, r *http.Request) {
 
 	select {
 	case <-time.After(1 * time.Second):
-		g.renderError(w, r, ErrInternal(errors.New("broadcasting queue is full")))
+		g.renderError(ctx, ErrInternal(errors.New("broadcasting queue is full")))
 		return
 	case g.ledger.BroadcastQueue <- evt:
 	}
 
 	select {
 	case <-time.After(1 * time.Second):
-		g.renderError(w, r, ErrInternal(errors.New("its taking too long to broadcast your transaction")))
+		g.renderError(ctx, ErrInternal(errors.New("its taking too long to broadcast your transaction")))
 		return
 	case err := <-evt.Error:
-		g.renderError(w, r, ErrInternal(errors.Wrap(err, "got an error broadcasting yourt ransaction")))
+		g.renderError(ctx, ErrInternal(errors.Wrap(err, "got an error broadcasting yourt ransaction")))
 		return
 	case tx := <-evt.Result:
-		g.render(w, r, &SendTransactionResponse{ledger: g.ledger, tx: &tx})
+		g.render(ctx, &SendTransactionResponse{ledger: g.ledger, tx: &tx})
 	}
 }
 
-func (g *Gateway) ledgerStatus(w http.ResponseWriter, r *http.Request) {
-	g.render(w, r, &LedgerStatusResponse{node: g.node, ledger: g.ledger})
+func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
+	g.render(ctx, &LedgerStatusResponse{node: g.node, ledger: g.ledger})
 }
 
-func (g *Gateway) listTransactions(w http.ResponseWriter, r *http.Request) {
+func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 	var sender common.AccountID
 	var creator common.AccountID
 	var offset, limit uint64
 	var err error
 
-	if raw := r.URL.Query().Get("sender"); len(raw) > 0 {
+	queryArgs := ctx.QueryArgs()
+	if raw := string(queryArgs.Peek("sender")); len(raw) > 0 {
 		slice, err := hex.DecodeString(raw)
 
 		if err != nil {
-			g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
 			return
 		}
 
 		if len(slice) != common.SizeAccountID {
-			g.renderError(w, r, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", common.SizeAccountID)))
+			g.renderError(ctx, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", common.SizeAccountID)))
 			return
 		}
 
 		copy(sender[:], slice)
 	}
 
-	if raw := r.URL.Query().Get("creator"); len(raw) > 0 {
+	if raw := string(queryArgs.Peek("creator")); len(raw) > 0 {
 		slice, err := hex.DecodeString(raw)
 
 		if err != nil {
-			g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "creator ID must be presented as valid hex")))
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "creator ID must be presented as valid hex")))
 			return
 		}
 
 		if len(slice) != common.SizeAccountID {
-			g.renderError(w, r, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", common.SizeAccountID)))
+			g.renderError(ctx, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", common.SizeAccountID)))
 			return
 		}
 
 		copy(creator[:], slice)
 	}
 
-	if raw := r.URL.Query().Get("offset"); len(raw) > 0 {
+	if raw := string(queryArgs.Peek("offset")); len(raw) > 0 {
 		offset, err = strconv.ParseUint(raw, 10, 64)
 
 		if err != nil {
-			g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
 			return
 		}
 	}
 
-	if raw := r.URL.Query().Get("limit"); len(raw) > 0 {
+	if raw := string(queryArgs.Peek("limit")); len(raw) > 0 {
 		limit, err = strconv.ParseUint(raw, 10, 64)
 
 		if err != nil {
-			g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
 			return
 		}
 	}
@@ -255,20 +253,24 @@ func (g *Gateway) listTransactions(w http.ResponseWriter, r *http.Request) {
 		transactions = append(transactions, &Transaction{tx: tx})
 	}
 
-	g.render(w, r, transactions)
+	g.render(ctx, transactions)
 }
 
-func (g *Gateway) getTransaction(w http.ResponseWriter, r *http.Request) {
-	param := chi.URLParam(r, "id")
+func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
+	param, ok := ctx.UserValue("id").(string)
+	if !ok {
+		g.renderError(ctx, ErrBadRequest(errors.New("id must be a string")))
+		return
+	}
 
 	slice, err := hex.DecodeString(param)
 	if err != nil {
-		g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "transaction ID must be presented as valid hex")))
+		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "transaction ID must be presented as valid hex")))
 		return
 	}
 
 	if len(slice) != common.SizeTransactionID {
-		g.renderError(w, r, ErrBadRequest(errors.Errorf("transaction ID must be %d bytes long", common.SizeTransactionID)))
+		g.renderError(ctx, ErrBadRequest(errors.Errorf("transaction ID must be %d bytes long", common.SizeTransactionID)))
 		return
 	}
 
@@ -278,92 +280,107 @@ func (g *Gateway) getTransaction(w http.ResponseWriter, r *http.Request) {
 	tx, exists := g.ledger.FindTransaction(id)
 
 	if !exists {
-		g.renderError(w, r, ErrBadRequest(errors.Errorf("could not find transaction with ID %x", id)))
+		g.renderError(ctx, ErrBadRequest(errors.Errorf("could not find transaction with ID %x", id)))
 		return
 	}
 
-	g.render(w, r, &Transaction{tx: tx})
+	g.render(ctx, &Transaction{tx: tx})
 }
 
-func (g *Gateway) getAccount(w http.ResponseWriter, r *http.Request) {
-	param := chi.URLParam(r, "id")
+func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
+	param, ok := ctx.UserValue("id").(string)
+	if !ok {
+		g.renderError(ctx, ErrBadRequest(errors.New("id must be a string")))
+		return
+	}
 
 	slice, err := hex.DecodeString(param)
 	if err != nil {
-		g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "account ID must be presented as valid hex")))
+		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "account ID must be presented as valid hex")))
 		return
 	}
 
 	if len(slice) != common.SizeAccountID {
-		g.renderError(w, r, ErrBadRequest(errors.Errorf("account ID must be %d bytes long", common.SizeAccountID)))
+		g.renderError(ctx, ErrBadRequest(errors.Errorf("account ID must be %d bytes long", common.SizeAccountID)))
 		return
 	}
 
 	var id common.AccountID
 	copy(id[:], slice)
 
-	g.render(w, r, &Account{ledger: g.ledger, id: id})
+	g.render(ctx, &Account{ledger: g.ledger, id: id})
 }
 
-func (g *Gateway) contractScope(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		param := chi.URLParam(r, "id")
+func (g *Gateway) contractScope(next fasthttp.RequestHandler) fasthttp.RequestHandler {
+	return fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) {
+		param, ok := ctx.UserValue("id").(string)
+		if !ok {
+			g.renderError(ctx, ErrBadRequest(errors.New("could not cast id into string")))
+			return
+		}
 
 		slice, err := hex.DecodeString(param)
 		if err != nil {
-			g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "contract ID must be presented as valid hex")))
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "contract ID must be presented as valid hex")))
 			return
 		}
 
 		if len(slice) != common.SizeTransactionID {
-			g.renderError(w, r, ErrBadRequest(errors.Errorf("contract ID must be %d bytes long", common.SizeTransactionID)))
+			g.renderError(ctx, ErrBadRequest(errors.Errorf("contract ID must be %d bytes long", common.SizeTransactionID)))
 			return
 		}
 
 		var contractID common.TransactionID
 		copy(contractID[:], slice)
 
-		ctx := context.WithValue(r.Context(), "contract_id", contractID)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		ctx.SetUserValue("contract_id", contractID)
+
+		next(ctx)
 	})
 }
 
-func (g *Gateway) getContractCode(w http.ResponseWriter, r *http.Request) {
-	id, ok := r.Context().Value("contract_id").(common.TransactionID)
-
+func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {
+	id, ok := ctx.UserValue("contract_id").(common.TransactionID)
 	if !ok {
+		g.renderError(ctx, ErrBadRequest(errors.New("id must be a TransactionID")))
 		return
 	}
 
 	code, available := wavelet.ReadAccountContractCode(g.ledger.Snapshot(), id)
 
 	if len(code) == 0 || !available {
-		g.renderError(w, r, ErrBadRequest(errors.Errorf("could not find contract with ID %x", id)))
+		g.renderError(ctx, ErrBadRequest(errors.Errorf("could not find contract with ID %x", id)))
 		return
 	}
 
-	w.Header().Set("Content-Disposition", "attachment; filename="+hex.EncodeToString(id[:])+".wasm")
-	w.Header().Set("Content-Type", "application/wasm")
-	w.Header().Set("Content-Length", strconv.Itoa(hex.EncodedLen(len(code))))
+	ctx.Response.Header.Set("Content-Disposition", "attachment; filename="+hex.EncodeToString(id[:])+".wasm")
+	ctx.Response.Header.Set("Content-Type", "application/wasm")
+	ctx.Response.Header.Set("Content-Length", strconv.Itoa(hex.EncodedLen(len(code))))
 
-	_, _ = io.Copy(w, strings.NewReader(hex.EncodeToString(code)))
+	_, _ = io.Copy(ctx, strings.NewReader(hex.EncodeToString(code)))
 }
 
-func (g *Gateway) getContractPages(w http.ResponseWriter, r *http.Request) {
-	id, ok := r.Context().Value("contract_id").(common.TransactionID)
-
+func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
+	id, ok := ctx.UserValue("contract_id").(common.TransactionID)
 	if !ok {
+		g.renderError(ctx, ErrBadRequest(errors.New("id must be a TransactionID")))
 		return
 	}
 
 	var idx uint64
 	var err error
 
-	if raw := chi.URLParam(r, "index"); len(raw) != 0 {
-		idx, err = strconv.ParseUint(raw, 10, 64)
+	rawIdx, ok := ctx.UserValue("index").(string)
+	if !ok {
+		g.renderError(ctx, ErrBadRequest(errors.New("could not cast index into string")))
+		return
+	}
+
+	if len(rawIdx) != 0 {
+		idx, err = strconv.ParseUint(rawIdx, 10, 64)
 
 		if err != nil {
-			g.renderError(w, r, ErrBadRequest(errors.New("could not parse page index")))
+			g.renderError(ctx, ErrBadRequest(errors.New("could not parse page index")))
 			return
 		}
 	}
@@ -373,60 +390,60 @@ func (g *Gateway) getContractPages(w http.ResponseWriter, r *http.Request) {
 	numPages, available := wavelet.ReadAccountContractNumPages(snapshot, id)
 
 	if !available {
-		g.renderError(w, r, ErrBadRequest(errors.Errorf("could not find any pages for contract with ID %x", id)))
+		g.renderError(ctx, ErrBadRequest(errors.Errorf("could not find any pages for contract with ID %x", id)))
 		return
 	}
 
 	if idx >= numPages {
-		g.renderError(w, r, ErrBadRequest(errors.Errorf("contract with ID %x only has %d pages, but you requested page %d", id, numPages, idx)))
+		g.renderError(ctx, ErrBadRequest(errors.Errorf("contract with ID %x only has %d pages, but you requested page %d", id, numPages, idx)))
 		return
 	}
 
 	page, available := wavelet.ReadAccountContractPage(snapshot, id, idx)
 
 	if len(page) == 0 || !available {
-		g.renderError(w, r, ErrBadRequest(errors.Errorf("page %d is either empty, or does not exist", idx)))
+		g.renderError(ctx, ErrBadRequest(errors.Errorf("page %d is either empty, or does not exist", idx)))
 		return
 	}
 
-	_, _ = w.Write(page)
+	_, _ = ctx.Write(page)
 }
 
-func (g *Gateway) authenticated(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get(HeaderSessionToken)
+func (g *Gateway) authenticated(next fasthttp.RequestHandler) fasthttp.RequestHandler {
+	return fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) {
+		token := string(ctx.Request.Header.Peek(HeaderSessionToken))
 		if len(token) == 0 {
-			g.renderError(w, r, ErrBadRequest(errors.Errorf("session token not specified via HTTP header %q", HeaderSessionToken)))
+			g.renderError(ctx, ErrBadRequest(errors.Errorf("session token not specified via HTTP header %q", HeaderSessionToken)))
 			return
 		}
 
 		session, exists := g.registry.getSession(token)
 		if !exists {
-			g.renderError(w, r, ErrBadRequest(errors.Errorf("could not find session %s", token)))
+			g.renderError(ctx, ErrBadRequest(errors.Errorf("could not find session %s", token)))
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), KeySession, session)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		ctx.SetUserValue(KeySession, session)
+		next(ctx)
 	})
 }
 
-func (g *Gateway) securePoll(sink *sink) func(w http.ResponseWriter, r *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		token := r.URL.Query().Get(KeyToken)
+func (g *Gateway) securePoll(sink *sink) func(ctx *fasthttp.RequestCtx) {
+	return func(ctx *fasthttp.RequestCtx) {
+		token := string(ctx.QueryArgs().Peek(KeyToken))
 
 		if len(token) == 0 {
-			g.renderError(w, r, ErrBadRequest(errors.New("specify a session token through url query params")))
+			g.renderError(ctx, ErrBadRequest(errors.New("specify a session token through url query params")))
 			return
 		}
 
 		if _, exists := g.registry.getSession(token); !exists {
-			g.renderError(w, r, ErrBadRequest(errors.Errorf("could not find session %s", token)))
+			g.renderError(ctx, ErrBadRequest(errors.Errorf("could not find session %s", token)))
 			return
 		}
 
-		if err := sink.serve(w, r); err != nil {
-			g.renderError(w, r, ErrBadRequest(errors.Wrap(err, "failed to init websocket session")))
+		if err := sink.serve(ctx); err != nil {
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "failed to init websocket session")))
 		}
 	}
 }
@@ -461,16 +478,6 @@ func (g *Gateway) registerWebsocketSink(rawURL string) *sink {
 }
 
 func (g *Gateway) Write(buf []byte) (n int, err error) {
-	var fields map[string]interface{}
-
-	decoder := json.NewDecoder(bytes.NewReader(buf))
-	decoder.UseNumber()
-
-	err = decoder.Decode(&fields)
-	if err != nil {
-		return n, errors.Errorf("cannot decode field: %q", err)
-	}
-
 	p := g.parserPool.Get()
 	v, err := p.ParseBytes(buf)
 	g.parserPool.Put(p)
@@ -497,34 +504,32 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 	return len(buf), nil
 }
 
-func (g *Gateway) render(w http.ResponseWriter, r *http.Request, m fastjsonMarshal) {
+func (g *Gateway) render(ctx *fasthttp.RequestCtx, m fastjsonMarshal) {
 	arena := g.arenaPool.Get()
 	b, err := m.marshal(arena)
 	g.arenaPool.Put(arena)
 
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte("render error:  " + err.Error()))
+		ctx.Error(fmt.Sprintf(`{ "error": "render error: %s" }`, err.Error()), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(b)
+	ctx.SetContentType("application/json")
+	ctx.Response.SetStatusCode(http.StatusOK)
+	ctx.Response.SetBody(b)
 }
 
-func (g *Gateway) renderError(w http.ResponseWriter, r *http.Request, e *ErrResponse) {
+func (g *Gateway) renderError(ctx *fasthttp.RequestCtx, e *ErrResponse) {
 	arena := g.arenaPool.Get()
 	b, err := e.marshal(arena)
 	g.arenaPool.Put(arena)
 
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte("render error:  " + err.Error()))
+		ctx.Error(fmt.Sprintf(`{ "error": "render error: %s" |`, err.Error()), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(e.HTTPStatusCode)
-	_, _ = w.Write(b)
+	ctx.SetContentType("application/json")
+	ctx.Response.SetStatusCode(e.HTTPStatusCode)
+	ctx.Response.SetBody(b)
 }

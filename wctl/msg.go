@@ -10,12 +10,12 @@ const (
 	RouteTxList      = "/tx"
 	RouteTxSend      = "/tx/send"
 
-	RouteWSBroadcaster  = "/broadcaster/poll"
-	RouteWSConsensus    = "/consensus/poll"
-	RouteWSStake        = "/stake/poll"
-	RouteWSAccounts     = "/accounts/poll"
-	RouteWSContracts    = "/contract/poll"
-	RouteWSTransactions = "/tx/poll"
+	RouteWSBroadcaster  = "/poll/broadcaster"
+	RouteWSConsensus    = "/poll/consensus"
+	RouteWSStake        = "/poll/stake"
+	RouteWSAccounts     = "/poll/accounts"
+	RouteWSContracts    = "/poll/contract"
+	RouteWSTransactions = "/poll/tx"
 
 	HeaderSessionToken = "X-Session-Token"
 
