@@ -1,7 +1,9 @@
 package wavelet
 
 import (
+	"context"
 	"encoding/hex"
+	"github.com/fortytw2/leaktest"
 	"github.com/perlin-network/noise/identity/ed25519"
 	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet/avl"
@@ -40,30 +42,50 @@ func formPayload(recipient string, amount uint64) ([]byte, error) {
 	return params.Bytes(), nil
 }
 
+func TestStopNoLeaks(t *testing.T) {
+	defer leaktest.Check(t)()
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	l.Stop()
+}
+
 func TestKill(t *testing.T) {
+	defer leaktest.Check(t)()
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
 	var wg sync.WaitGroup
 
 	// Test if we can gracefully stop the ledger while it is gossiping.
-	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
+	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
 
 	wg.Add(1)
 	go signalWhenComplete(&wg, l, gossiping)
-	close(l.kill)
+	l.Stop()
 	wg.Wait()
 
 	// Test if we can gracefully stop the ledger while it is querying.
-	l = NewLedger(ed25519.RandomKeys(), store.NewInmem())
+	l = NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
 	l.cr.Prefer(Transaction{})
 
 	wg.Add(1)
 	go signalWhenComplete(&wg, l, querying)
-	close(l.kill)
+	l.Stop()
 	wg.Wait()
 }
 
 func TestGossipOutTransaction(t *testing.T) {
-	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
-	defer close(l.kill)
+	defer leaktest.Check(t)()
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	defer l.Stop()
 
 	go gossiping(l)
 
@@ -108,8 +130,13 @@ func TestGossipOutTransaction(t *testing.T) {
 }
 
 func TestTransitionFromGossipingToQuerying(t *testing.T) {
-	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
-	defer close(l.kill)
+	defer leaktest.Check(t)()
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	defer l.Stop()
 
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
@@ -168,8 +195,13 @@ func TestTransitionFromGossipingToQuerying(t *testing.T) {
 }
 
 func TestEnsureGossipReturnsNetworkErrors(t *testing.T) {
-	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
-	defer close(l.kill)
+	defer leaktest.Check(t)()
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	defer l.Stop()
 
 	// Create a dummy broadcast event.
 	tx, err := NewTransaction(l.keys, sys.TagTransfer, []byte("lorem ipsum"))
@@ -211,7 +243,12 @@ func TestEnsureGossipReturnsNetworkErrors(t *testing.T) {
 
 // Note: This test will take about (2 * timeout) seconds because of the timeout tests.
 func TestQuery(t *testing.T) {
-	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
+	defer leaktest.Check(t)()
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
 
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
 	if !assert.NoError(t, err) {
@@ -302,7 +339,7 @@ func TestQuery(t *testing.T) {
 		assert.Equal(t, ErrStopped, call(&wg, query))
 	}()
 	evt = <-l.QueryOut
-	close(l.kill)
+	l.Stop()
 	wg.Wait()
 	l.kill = make(chan struct{})
 
@@ -329,12 +366,17 @@ func TestQuery(t *testing.T) {
 	stop = make(chan struct{})
 
 	// Test the first select: kill.
-	close(l.kill)
+	l.Stop()
 	assert.Equal(t, ErrStopped, query())
 }
 
 func TestListenForQueries(t *testing.T) {
-	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
+	defer leaktest.Check(t)()
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
 
 	root, err := NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
@@ -402,12 +444,17 @@ func TestListenForQueries(t *testing.T) {
 
 	// Test kill.
 
-	close(l.kill)
+	l.Stop()
 	assert.Equal(t, ErrStopped, listenForQueries())
 }
 
 func TestListenForSyncDiffChunks(t *testing.T) {
-	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
+	defer leaktest.Check(t)()
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
 
 	stop := make(chan struct{})
 	listenForSyncDiffChunks := func() error {
@@ -455,12 +502,17 @@ func TestListenForSyncDiffChunks(t *testing.T) {
 
 	// Test kill.
 
-	close(l.kill)
+	l.Stop()
 	assert.Equal(t, ErrStopped, listenForSyncDiffChunks())
 }
 
 func TestListenForSyncInits(t *testing.T) {
-	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
+	defer leaktest.Check(t)()
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
 
 	stop := make(chan struct{})
 	listenForSyncInits := func() error {
@@ -510,12 +562,17 @@ func TestListenForSyncInits(t *testing.T) {
 
 	// Test kill.
 
-	close(l.kill)
+	l.Stop()
 	assert.Equal(t, ErrStopped, listenForSyncInits())
 }
 
 func TestListenForOutOfSyncChecks(t *testing.T) {
-	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
+	defer leaktest.Check(t)()
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
 
 	stop := make(chan struct{})
 	listenForOutOfSyncChecks := func() error {
@@ -539,12 +596,17 @@ func TestListenForOutOfSyncChecks(t *testing.T) {
 
 	// Test kill.
 
-	close(l.kill)
+	l.Stop()
 	assert.Equal(t, ErrStopped, listenForOutOfSyncChecks())
 }
 
 func TestListenForMissingTXs(t *testing.T) {
-	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
+	defer leaktest.Check(t)()
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
 
 	stop := make(chan struct{})
 	listenForMissingTXs := func() error {
@@ -574,12 +636,17 @@ func TestListenForMissingTXs(t *testing.T) {
 	stop = make(chan struct{})
 
 	// Test kill.
-	close(l.kill)
+	l.Stop()
 	assert.Equal(t, ErrStopped, listenForMissingTXs())
 }
 
 func TestCheckIfOutOfSync(t *testing.T) {
-	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
+	defer leaktest.Check(t)()
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
 	preferred.rehash()
@@ -688,7 +755,7 @@ func TestCheckIfOutOfSync(t *testing.T) {
 		assert.Equal(t, ErrStopped, call(&wg, checkIfOutOfSync))
 	}()
 	evt = <-l.OutOfSyncOut
-	close(l.kill)
+	l.Stop()
 	wg.Wait()
 	l.kill = make(chan struct{})
 
@@ -703,12 +770,17 @@ func TestCheckIfOutOfSync(t *testing.T) {
 	stop = make(chan struct{})
 
 	// Test the first select: kill.
-	close(l.kill)
+	l.Stop()
 	assert.Equal(t, ErrStopped, checkIfOutOfSync())
 }
 
 func TestSyncMissingTX(t *testing.T) {
-	l := NewLedger(ed25519.RandomKeys(), store.NewInmem())
+	defer leaktest.Check(t)()
+
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
 
 	stop := make(chan struct{})
 	syncMissingTX := func() error {
@@ -781,7 +853,7 @@ func TestSyncMissingTX(t *testing.T) {
 		assert.Equal(t, ErrStopped, call(&wg, syncMissingTX))
 	}()
 	evt = <-l.SyncTxOut
-	close(l.kill)
+	l.Stop()
 	wg.Wait()
 	l.kill = make(chan struct{})
 
@@ -796,6 +868,6 @@ func TestSyncMissingTX(t *testing.T) {
 	stop = make(chan struct{})
 
 	// Test the first select: kill.
-	close(l.kill)
+	l.Stop()
 	assert.Equal(t, ErrStopped, syncMissingTX())
 }
