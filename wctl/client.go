@@ -1,6 +1,7 @@
 package wctl
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -35,7 +36,20 @@ func NewClient(config Config) (*Client, error) {
 }
 
 // Request will make a request to a given path, with a given body and return result in out.
-func (c *Client) Request(path string, method string, body, out interface{}) error {
+func (c *Client) RequestJSON(path string, method string, body, out interface{}) error {
+	resBody, err := c.Request(path, method, body)
+	if err != nil {
+		return err
+	}
+
+	if out == nil {
+		return nil
+	}
+
+	return json.Unmarshal(resBody, out)
+}
+
+func (c *Client) Request(path string, method string, body interface{}) ([]byte, error) {
 	protocol := "http"
 	if c.Config.UseHTTPS {
 		protocol = "https"
@@ -52,7 +66,7 @@ func (c *Client) Request(path string, method string, body, out interface{}) erro
 	if body != nil {
 		raw, err := json.Marshal(body)
 		if err != nil {
-			return err
+			return nil, err
 		}
 
 		req.SetBody(raw)
@@ -62,18 +76,10 @@ func (c *Client) Request(path string, method string, body, out interface{}) erro
 	defer fasthttp.ReleaseResponse(res)
 
 	if err := fasthttp.Do(req, res); err != nil {
-		return err
+		return nil, err
 	}
 
-	//if code := res.StatusCode(); code != fasthttp.StatusOK {
-	//	return errors.Errorf("unexpected status code: %d", code)
-	//}
-
-	if out == nil {
-		return nil
-	}
-
-	return json.Unmarshal(res.Body(), out)
+	return res.Body(), nil
 }
 
 // EstablishWS will create a websocket connection.
@@ -111,7 +117,7 @@ func (c *Client) Init() error {
 		Signature:  hex.EncodeToString(signature),
 	}
 
-	if err := c.Request(RouteSessionInit, ReqPost, &req, &res); err != nil {
+	if err := c.RequestJSON(RouteSessionInit, ReqPost, &req, &res); err != nil {
 		return err
 	}
 
@@ -120,7 +126,7 @@ func (c *Client) Init() error {
 	return nil
 }
 
-func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan string, error) {
+func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan []byte, error) {
 	path := fmt.Sprintf("%stoken=%s", sinkRoute, c.SessionToken)
 
 	if stop == nil {
@@ -132,21 +138,21 @@ func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan 
 		return nil, err
 	}
 
-	evChan := make(chan string)
+	evChan := make(chan []byte)
 
 	go func() {
 		defer close(evChan)
 
 		for {
-			var ev string
-
-			if err = ws.ReadJSON(&ev); err != nil {
+			_, message, err := ws.ReadMessage()
+			if err != nil {
 				return
 			}
+
 			select {
 			case <-stop:
 				return
-			case evChan <- ev:
+			case evChan <- message:
 			}
 		}
 	}()
@@ -154,7 +160,7 @@ func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan 
 	return evChan, nil
 }
 
-func (c *Client) PollAccounts(stop <-chan struct{}, accountID *string) (<-chan string, error) {
+func (c *Client) PollAccounts(stop <-chan struct{}, accountID *string) (<-chan []byte, error) {
 	path := fmt.Sprintf("%s?token=%s", RouteWSAccounts, c.SessionToken)
 	if accountID != nil {
 		path = fmt.Sprintf("%s&id=%s", path, *accountID)
@@ -169,7 +175,7 @@ func (c *Client) PollAccounts(stop <-chan struct{}, accountID *string) (<-chan s
 		return nil, err
 	}
 
-	evChan := make(chan string)
+	evChan := make(chan []byte)
 
 	go func() {
 		defer close(evChan)
@@ -179,10 +185,11 @@ func (c *Client) PollAccounts(stop <-chan struct{}, accountID *string) (<-chan s
 			if err != nil {
 				return
 			}
+
 			select {
 			case <-stop:
 				return
-			case evChan <- string(message):
+			case evChan <- message:
 			}
 		}
 	}()
@@ -190,7 +197,7 @@ func (c *Client) PollAccounts(stop <-chan struct{}, accountID *string) (<-chan s
 	return evChan, nil
 }
 
-func (c *Client) PollContracts(stop <-chan struct{}, contractID *string) (<-chan interface{}, error) {
+func (c *Client) PollContracts(stop <-chan struct{}, contractID *string) (<-chan []byte, error) {
 	path := fmt.Sprintf("%s?token=%s", RouteWSContracts, c.SessionToken)
 	if contractID != nil {
 		path = fmt.Sprintf("%sid=%s&", path, *contractID)
@@ -205,21 +212,21 @@ func (c *Client) PollContracts(stop <-chan struct{}, contractID *string) (<-chan
 		return nil, err
 	}
 
-	evChan := make(chan interface{})
+	evChan := make(chan []byte)
 
 	go func() {
 		defer close(evChan)
 
 		for {
-			var ev interface{}
-
-			if err = ws.ReadJSON(&ev); err != nil {
+			_, message, err := ws.ReadMessage()
+			if err != nil {
 				return
 			}
+
 			select {
 			case <-stop:
 				return
-			case evChan <- ev:
+			case evChan <- message:
 			}
 		}
 	}()
@@ -227,7 +234,7 @@ func (c *Client) PollContracts(stop <-chan struct{}, contractID *string) (<-chan
 	return evChan, nil
 }
 
-func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *string, creatorID *string) (<-chan Transaction, error) {
+func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *string, creatorID *string) (<-chan []byte, error) {
 	path := fmt.Sprintf("%s?token=%s", RouteWSTransactions, c.SessionToken)
 	if txID != nil {
 		path = fmt.Sprintf("%stx_id=%s&", path, *txID)
@@ -248,21 +255,21 @@ func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *
 		return nil, err
 	}
 
-	evChan := make(chan Transaction)
+	evChan := make(chan []byte)
 
 	go func() {
 		defer close(evChan)
 
 		for {
-			var ev Transaction
-
-			if err = ws.ReadJSON(&ev); err != nil {
+			_, message, err := ws.ReadMessage()
+			if err != nil {
 				return
 			}
+
 			select {
 			case <-stop:
 				return
-			case evChan <- ev:
+			case evChan <- message:
 			}
 		}
 	}()
@@ -270,9 +277,7 @@ func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *
 	return evChan, nil
 }
 
-func (c *Client) GetLedgerStatus(senderID *string, creatorID *string, offset *uint64, limit *uint64) ([]Transaction, error) {
-	var res []Transaction
-
+func (c *Client) GetLedgerStatus(senderID *string, creatorID *string, offset *uint64, limit *uint64) ([]byte, error) {
 	path := fmt.Sprintf("%s?", RouteLedger)
 	if senderID != nil {
 		path = fmt.Sprintf("%ssender=%s&", path, *senderID)
@@ -287,55 +292,35 @@ func (c *Client) GetLedgerStatus(senderID *string, creatorID *string, offset *ui
 		path = fmt.Sprintf("%slimit=%d&", path, *limit)
 	}
 
-	if err := c.Request(path, ReqGet, nil, &res); err != nil {
-		return res, err
-	}
-
-	return res, nil
+	res, err := c.Request(path, ReqGet, nil)
+	return res, err
 }
 
-func (c *Client) GetAccount(accountID string) (Account, error) {
-	var res Account
-
+func (c *Client) GetAccount(accountID string) ([]byte, error) {
 	path := fmt.Sprintf("%s/%s", RouteAccount, accountID)
 
-	if err := c.Request(path, ReqGet, nil, &res); err != nil {
-		return res, err
-	}
-
-	return res, nil
+	res, err := c.Request(path, ReqGet, nil)
+	return res, err
 }
 
-func (c *Client) GetContractCode(contractID string) (interface{}, error) {
-	var res Transaction
-
+func (c *Client) GetContractCode(contractID string) (string, error) {
 	path := fmt.Sprintf("%s/%s", RouteContract, contractID)
 
-	if err := c.Request(path, ReqGet, nil, &res); err != nil {
-		return res, err
-	}
-
-	return res, nil
+	res, err := c.Request(path, ReqGet, nil)
+	return string(res), err
 }
 
-func (c *Client) GetContractPages(contractID string, index *uint64) (interface{}, error) {
-	var res Transaction
-
+func (c *Client) GetContractPages(contractID string, index *uint64) (string, error) {
 	path := fmt.Sprintf("%s/%s/page", RouteContract, contractID)
 	if index != nil {
 		path = fmt.Sprintf("%s/%d", path, *index)
 	}
 
-	if err := c.Request(path, ReqGet, nil, &res); err != nil {
-		return res, err
-	}
-
-	return res, nil
+	res, err := c.Request(path, ReqGet, nil)
+	return base64.StdEncoding.EncodeToString(res), err
 }
 
-func (c *Client) ListTransactions(senderID *string, creatorID *string, offset *uint64, limit *uint64) ([]Transaction, error) {
-	var res []Transaction
-
+func (c *Client) ListTransactions(senderID *string, creatorID *string, offset *uint64, limit *uint64) ([]byte, error) {
 	path := fmt.Sprintf("%s?", RouteTxList)
 	if senderID != nil {
 		path = fmt.Sprintf("%ssender=%s&", path, *senderID)
@@ -350,31 +335,21 @@ func (c *Client) ListTransactions(senderID *string, creatorID *string, offset *u
 		path = fmt.Sprintf("%slimit=%d&", path, *limit)
 	}
 
-	if err := c.Request(path, ReqGet, nil, &res); err != nil {
-		return res, err
-	}
-
-	return res, nil
+	res, err := c.Request(path, ReqGet, nil)
+	return res, err
 }
 
-func (c *Client) GetTransaction(txID string) (Transaction, error) {
-	var res Transaction
-
+func (c *Client) GetTransaction(txID string) ([]byte, error) {
 	path := fmt.Sprintf("%s/%s", RouteTxList, txID)
 
-	if err := c.Request(path, ReqGet, nil, &res); err != nil {
-		return res, err
-	}
-
-	return res, nil
+	res, err := c.Request(path, ReqGet, nil)
+	return res, err
 }
 
-func (c *Client) SendTransaction(tag byte, payload []byte) (SendTransactionResponse, error) {
-	var res SendTransactionResponse
-
+func (c *Client) SendTransaction(tag byte, payload []byte) ([]byte, error) {
 	signature, err := eddsa.Sign(c.PrivateKey(), append([]byte{tag}, payload...))
 	if err != nil {
-		return res, errors.Wrap(err, "failed to sign send transaction message")
+		return nil, errors.Wrap(err, "failed to sign send transaction message")
 	}
 
 	req := SendTransactionRequest{
@@ -384,9 +359,6 @@ func (c *Client) SendTransaction(tag byte, payload []byte) (SendTransactionRespo
 		Signature: hex.EncodeToString(signature),
 	}
 
-	if err := c.Request(RouteTxSend, ReqPost, &req, &res); err != nil {
-		return res, err
-	}
-
+	res, err := c.Request(RouteTxSend, ReqPost, &req)
 	return res, nil
 }
