@@ -188,7 +188,7 @@ func (b *Protocol) broadcastGossip(ctx context.Context, node *noise.Node) {
 
 				if err != nil {
 					// TODO (andrii) something needs to be done with this error, at least logging
-					fmt.Println(err)
+					fmt.Println("Error while unmarshaling gossip response", err)
 					continue
 				}
 
@@ -230,7 +230,7 @@ func (b *Protocol) broadcastQueries(ctx context.Context, node *noise.Node) {
 
 				if err != nil {
 					// TODO (andrii) something needs to be done with this error, at least logging
-					fmt.Println(err)
+					fmt.Println("Error while unmarshaling query response", err)
 					continue
 				}
 
@@ -262,20 +262,19 @@ func (b *Protocol) broadcastOutOfSyncChecks(ctx context.Context, node *noise.Nod
 				continue
 			}
 
-			votes := make([]wavelet.VoteOutOfSync, len(responses))
-
+			var votes []wavelet.VoteOutOfSync
 			for i, buf := range responses {
 				res, err := UnmarshalSyncViewResponse(bytes.NewReader(buf))
 
 				if err != nil {
 					// TODO (andrii) something needs to be done with this error, at least logging
-					fmt.Println(err)
+					fmt.Println("Error while unmarshaling sync view response", err)
 					continue
 				}
 
 				id := peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID)
 
-				votes[i] = wavelet.VoteOutOfSync{Voter: id.PublicKey(), Root: res.root}
+				votes = append(votes, wavelet.VoteOutOfSync{Voter: id.PublicKey(), Root: res.root})
 			}
 
 			evt.Result <- votes
@@ -309,7 +308,7 @@ func (b *Protocol) broadcastSyncInitRequests(ctx context.Context, node *noise.No
 
 				if err != nil {
 					// TODO (andrii) something needs to be done with this error, at least logging
-					fmt.Println(err)
+					fmt.Println("Error while unmarshaling sync init response", err)
 					continue
 				}
 
@@ -352,7 +351,7 @@ func (b *Protocol) broadcastSyncMissingTXs(ctx context.Context, node *noise.Node
 
 				if err != nil {
 					// TODO (andrii) something needs to be done with this error, at least logging
-					fmt.Println(err)
+					fmt.Println("Error while unmarshaling sync missing tx response", err)
 					continue
 				}
 
@@ -463,8 +462,8 @@ func (b *Protocol) handleQueryRequest(wire noise.Wire) {
 	}()
 
 	req, err := UnmarshalQueryRequest(bytes.NewReader(wire.Bytes()))
-
 	if err != nil {
+		fmt.Println("Error while unmarshaling query request", err)
 		return
 	}
 
@@ -499,8 +498,8 @@ func (b *Protocol) handleGossipRequest(wire noise.Wire) {
 	}()
 
 	req, err := UnmarshalGossipRequest(bytes.NewReader(wire.Bytes()))
-
 	if err != nil {
+		fmt.Println("Error while unmarshaling gossip request", err)
 		return
 	}
 
@@ -535,8 +534,8 @@ func (b *Protocol) handleOutOfSyncCheck(wire noise.Wire) {
 	}()
 
 	req, err := UnmarshalSyncViewRequest(bytes.NewReader(wire.Bytes()))
-
 	if err != nil {
+		fmt.Println("Error while unmarshaling sync view request", err)
 		return
 	}
 
@@ -567,8 +566,8 @@ func (b *Protocol) handleSyncInits(wire noise.Wire) {
 	}()
 
 	req, err := UnmarshalSyncInitRequest(bytes.NewReader(wire.Bytes()))
-
 	if err != nil {
+		fmt.Println("Error while unmarshaling sync init request", err)
 		return
 	}
 
@@ -600,8 +599,8 @@ func (b *Protocol) handleSyncChunks(wire noise.Wire) {
 	}()
 
 	req, err := UnmarshalSyncChunkRequest(bytes.NewReader(wire.Bytes()))
-
 	if err != nil {
+		fmt.Println("Error while unmarshaling sync chunk request", err)
 		return
 	}
 
@@ -632,8 +631,8 @@ func (b *Protocol) handleSyncMissingTXs(wire noise.Wire) {
 	}()
 
 	req, err := UnmarshalSyncMissingTxRequest(bytes.NewReader(wire.Bytes()))
-
 	if err != nil {
+		fmt.Println("Error while unmarshaling sync missing tx request", err)
 		return
 	}
 
