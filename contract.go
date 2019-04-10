@@ -156,15 +156,12 @@ func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, params ...
 		vm.Memory = mem
 	}
 
-	c.header = make([]byte, 4+common.SizeTransactionID+4+common.SizeAccountID+8)
+	c.header = make([]byte, common.SizeTransactionID+common.SizeAccountID+8)
 
-	binary.LittleEndian.PutUint32(c.header[0:4], uint32(len(tx.ID)))
-	copy(c.header[4:4+common.SizeTransactionID], tx.ID[:])
+	copy(c.header[0:common.SizeTransactionID], tx.ID[:])
+	copy(c.header[common.SizeTransactionID:common.SizeTransactionID+common.SizeAccountID], tx.Creator[:])
 
-	binary.LittleEndian.PutUint32(c.header[4+common.SizeTransactionID:8+common.SizeTransactionID], uint32(len(tx.Creator)))
-	copy(c.header[8+common.SizeTransactionID:8+common.SizeTransactionID+common.SizeAccountID], tx.Creator[:])
-
-	binary.LittleEndian.PutUint64(c.header[8+common.SizeTransactionID+common.SizeAccountID:16+common.SizeTransactionID+common.SizeAccountID], amount)
+	binary.LittleEndian.PutUint64(c.header[common.SizeTransactionID+common.SizeAccountID:8+common.SizeTransactionID+common.SizeAccountID], amount)
 
 	entry = "_contract_" + entry
 
