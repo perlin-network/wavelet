@@ -590,9 +590,9 @@ func setup(c *cli.Context) (*wctl.Client, error) {
 func output(buf []byte) {
 	var out bytes.Buffer
 
-	if err := json.Indent(&out, buf, "", "\t"); err == nil {
-		_, _ = out.WriteString("\n")
+	if err := json.Indent(&out, buf, "", "\t"); err != nil {
+		out.Write(buf)
 	}
 
-	_, _ = out.WriteTo(os.Stdout)
+	fmt.Println(out.Bytes())
 }
