@@ -237,7 +237,7 @@ func main() {
 				}
 
 				for ev := range evChan {
-					fmt.Printf("%s\n", ev)
+					output(ev)
 				}
 				return nil
 			},
@@ -298,8 +298,12 @@ func main() {
 					return err
 				}
 
-				jsonOut, _ := json.Marshal(res)
-				output(jsonOut)
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
+				}
 
 				return nil
 			},
@@ -321,8 +325,12 @@ func main() {
 					return err
 				}
 
-				jsonOut, _ := json.Marshal(res)
-				output(jsonOut)
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
+				}
 
 				return nil
 			},
@@ -422,8 +430,12 @@ func main() {
 					return err
 				}
 
-				jsonOut, _ := json.Marshal(res)
-				output(jsonOut)
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
+				}
 
 				return nil
 			},
@@ -445,8 +457,12 @@ func main() {
 					return err
 				}
 
-				jsonOut, _ := json.Marshal(res)
-				output(jsonOut)
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err.Error())
+				} else {
+					output(buf)
+				}
 
 				return nil
 			},
@@ -507,8 +523,12 @@ func main() {
 					return err
 				}
 
-				jsonOut, _ := json.Marshal(res)
-				output(jsonOut)
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err.Error())
+				} else {
+					output(buf)
+				}
 
 				return nil
 			},
