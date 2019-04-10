@@ -19,7 +19,7 @@ require (
 	github.com/klauspost/compress v1.4.1 // indirect
 	github.com/klauspost/cpuid v1.2.0 // indirect
 	github.com/perlin-network/life v0.0.0-20190204091834-d05763d11050
-	github.com/perlin-network/noise v0.0.0-20190410152234-7ffd87f387a3
+	github.com/perlin-network/noise v0.0.0-20190410161859-7b839e6f4b01
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
 	github.com/pkg/errors v0.8.1
 	github.com/rs/zerolog v1.11.0
