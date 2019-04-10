@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -66,8 +67,7 @@ func main() {
 				}
 
 				for ev := range evChan {
-					jsonOut, _ := json.Marshal(ev)
-					fmt.Printf("%s\n", jsonOut)
+					output(ev)
 				}
 				return nil
 			},
@@ -89,8 +89,7 @@ func main() {
 				}
 
 				for ev := range evChan {
-					jsonOut, _ := json.Marshal(ev)
-					fmt.Printf("%s\n", jsonOut)
+					output(ev)
 				}
 				return nil
 			},
@@ -112,8 +111,7 @@ func main() {
 				}
 
 				for ev := range evChan {
-					jsonOut, _ := json.Marshal(ev)
-					fmt.Printf("%s\n", jsonOut)
+					output(ev)
 				}
 				return nil
 			},
@@ -149,7 +147,7 @@ func main() {
 				}
 
 				for ev := range evChan {
-					fmt.Printf("%s\n", ev)
+					output(ev)
 				}
 				return nil
 			},
@@ -185,8 +183,7 @@ func main() {
 				}
 
 				for ev := range evChan {
-					jsonOut, _ := json.Marshal(ev)
-					fmt.Printf("%s\n", jsonOut)
+					output(ev)
 				}
 				return nil
 			},
@@ -240,8 +237,7 @@ func main() {
 				}
 
 				for ev := range evChan {
-					jsonOut, _ := json.Marshal(ev)
-					fmt.Printf("%s\n", jsonOut)
+					fmt.Printf("%s\n", ev)
 				}
 				return nil
 			},
@@ -297,15 +293,13 @@ func main() {
 					limit = &tmp
 				}
 
-				txns, err := client.GetLedgerStatus(senderID, creatorID, offset, limit)
+				res, err := client.GetLedgerStatus(senderID, creatorID, offset, limit)
 				if err != nil {
 					return err
 				}
 
-				for _, tx := range txns {
-					jsonOut, _ := json.Marshal(tx)
-					fmt.Printf("%s\n", jsonOut)
-				}
+				output(res)
+
 				return nil
 			},
 		},
@@ -321,13 +315,13 @@ func main() {
 				}
 				acctID := c.Args().Get(0)
 
-				acct, err := client.GetAccount(acctID)
+				res, err := client.GetAccount(acctID)
 				if err != nil {
 					return err
 				}
 
-				jsonOut, _ := json.Marshal(acct)
-				fmt.Printf("%s\n", jsonOut)
+				output(res)
+
 				return nil
 			},
 		},
@@ -343,12 +337,13 @@ func main() {
 				}
 				contractID := c.Args().Get(0)
 
-				_, err = client.GetContractCode(contractID)
+				res, err := client.GetContractCode(contractID)
 				if err != nil {
 					return err
 				}
 
-				// TODO: process the output
+				fmt.Println(res)
+
 				return nil
 			},
 		},
@@ -378,12 +373,13 @@ func main() {
 					pageIdx = &tmp
 				}
 
-				_, err = client.GetContractPages(contractID, pageIdx)
+				res, err := client.GetContractPages(contractID, pageIdx)
 				if err != nil {
 					return err
 				}
 
-				// TODO: process the output
+				fmt.Println(res)
+
 				return nil
 			},
 		},
@@ -419,12 +415,13 @@ func main() {
 					}
 				}
 
-				tx, err := client.SendTransaction(byte(tag), []byte(payload))
+				res, err := client.SendTransaction(byte(tag), []byte(payload))
 				if err != nil {
 					return err
 				}
-				jsonOut, _ := json.Marshal(tx)
-				fmt.Printf("%s\n", jsonOut)
+
+				output(res)
+
 				return nil
 			},
 		},
@@ -440,13 +437,13 @@ func main() {
 				}
 				txID := c.Args().Get(0)
 
-				tx, err := client.GetTransaction(txID)
+				res, err := client.GetTransaction(txID)
 				if err != nil {
 					return err
 				}
 
-				jsonOut, _ := json.Marshal(tx)
-				fmt.Printf("%s\n", jsonOut)
+				output(res)
+
 				return nil
 			},
 		},
@@ -501,15 +498,13 @@ func main() {
 					limit = &tmp
 				}
 
-				txns, err := client.ListTransactions(senderID, creatorID, offset, limit)
+				res, err := client.ListTransactions(senderID, creatorID, offset, limit)
 				if err != nil {
 					return err
 				}
 
-				for _, tx := range txns {
-					jsonOut, _ := json.Marshal(tx)
-					fmt.Printf("%s\n", jsonOut)
-				}
+				output(res)
+
 				return nil
 			},
 		},
@@ -564,4 +559,15 @@ func setup(c *cli.Context) (*wctl.Client, error) {
 	}
 
 	return client, nil
+}
+
+// Write the bytes into Stdout, do JSON indent if possible
+func output(b []byte) {
+	var out bytes.Buffer
+	err := json.Indent(&out, b, "", "\t")
+	if err == nil {
+		_, _ = out.WriteTo(os.Stdout)
+	} else {
+		fmt.Println(string(b))
+	}
 }

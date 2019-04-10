@@ -2,6 +2,7 @@ package wavelet
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -202,7 +203,7 @@ type Ledger struct {
 	kill chan struct{}
 }
 
-func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
+func NewLedger(ctx context.Context, keys identity.Keypair, kv store.KV) *Ledger {
 	broadcastQueue := make(chan EventBroadcast, 1024)
 
 	gossipIn := make(chan EventIncomingGossip, 128)
@@ -224,7 +225,7 @@ func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
 	syncTxOut := make(chan EventSyncTX, 16)
 
 	accounts := newAccounts(kv)
-	go accounts.runGCWorker()
+	go accounts.runGCWorker(ctx)
 
 	genesis, err := performInception(accounts.tree, nil)
 	if err != nil {
@@ -883,6 +884,10 @@ func Run(l *Ledger) {
 	for state := initial; state != nil; {
 		state = state(l)
 	}
+}
+
+func (l *Ledger) Stop() {
+	close(l.kill)
 }
 
 type transition func(*Ledger) transition

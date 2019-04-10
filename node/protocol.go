@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/protocol"
@@ -63,7 +64,7 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 
 	kv := store.NewInmem()
 
-	ledger := wavelet.NewLedger(node.Keys, kv)
+	ledger := wavelet.NewLedger(context.TODO(), node.Keys, kv)
 	node.Set(keyLedger, ledger)
 
 	go wavelet.Run(ledger)
