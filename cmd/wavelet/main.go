@@ -297,33 +297,6 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 		//	Msg("Loaded wallet.")
 	}
 
-	//n.OnPeerInit(func(node *noise.Node, peer *noise.Peer) error {
-	//	logger := log.Network("joined")
-	//	logger.Info().
-	//		Str("address", peer.RemoteIP().String()+":"+strconv.Itoa(int(peer.RemotePort()))).
-	//		Msg("Peer has joined.")
-	//
-	//	peer.OnConnError(func(node *noise.Node, peer *noise.Peer, err error) error {
-	//		logger.Info().Err(err).Msgf("An error occurred over the wire.")
-	//
-	//		return nil
-	//	})
-	//
-	//	peer.OnDisconnect(func(node *noise.Node, peer *noise.Peer) error {
-	//		logger := log.Network("left")
-	//		logger.Info().
-	//			Str("address", peer.RemoteIP().String()+":"+strconv.Itoa(int(peer.RemotePort()))).
-	//			Msg("Peer has disconnected.")
-	//
-	//		if id := protocol.PeerID(peer); id != nil {
-	//			skademlia.Table(node).Delete(id)
-	//		}
-	//		return nil
-	//	})
-	//
-	//	return nil
-	//})
-
 	w, network, protocol := protocol(n, k)
 	n.FollowProtocol(protocol)
 

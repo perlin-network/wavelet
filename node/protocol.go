@@ -8,6 +8,7 @@ import (
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -89,10 +90,28 @@ func (b *Protocol) Init(node *noise.Node) {
 
 func (b *Protocol) Protocol() noise.ProtocolBlock {
 	return func(ctx noise.Context) error {
+		id := ctx.Get(skademlia.KeyID).(*skademlia.ID)
+
+		if id == nil {
+			return errors.New("wavelet: user does not have a s/kademlia id registered")
+		}
+
 		signal := ctx.Peer().RegisterSignal(SignalAuthenticated)
 		defer signal()
 
+		ctx.Peer().InterceptErrors(func(err error) {
+			logger := log.Network("left")
+			logger.Info().
+				Str("address", id.Address()).
+				Msg("Peer has disconnected.")
+		})
+
 		go b.receiveLoop(b.ledger, ctx)
+
+		logger := log.Network("joined")
+		logger.Info().
+			Str("address", id.Address()).
+			Msg("Peer has joined.")
 
 		return nil
 	}
