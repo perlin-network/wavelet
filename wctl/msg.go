@@ -1,6 +1,9 @@
 package wctl
 
-import "github.com/valyala/fastjson"
+import (
+	"github.com/valyala/fastjson"
+	"strconv"
+)
 
 const (
 	SessionInitMessage = "perlin_session_init_"
@@ -25,8 +28,24 @@ const (
 	ReqGet  = "GET"
 )
 
-type FastjsonResponse interface {
-	fastjsonUnmarshal([]byte) error
+var (
+	_ UnmarshalableJSON = (*SessionInitResponse)(nil)
+	_ UnmarshalableJSON = (*SendTransactionResponse)(nil)
+	_ UnmarshalableJSON = (*LedgerStatusResponse)(nil)
+	_ UnmarshalableJSON = (*Transaction)(nil)
+	_ UnmarshalableJSON = (*TransactionList)(nil)
+	_ UnmarshalableJSON = (*Account)(nil)
+
+	_ MarshalableJSON = (*SessionInitRequest)(nil)
+	_ MarshalableJSON = (*SendTransactionRequest)(nil)
+)
+
+type UnmarshalableJSON interface {
+	UnmarshalJSON([]byte) error
+}
+
+type MarshalableJSON interface {
+	MarshalJSON() ([]byte, error)
 }
 
 type SessionInitRequest struct {
@@ -35,11 +54,22 @@ type SessionInitRequest struct {
 	TimeMillis uint64 `json:"time_millis"`
 }
 
+func (s *SessionInitRequest) MarshalJSON() ([]byte, error) {
+	var arena fastjson.Arena
+	o := arena.NewObject()
+
+	o.Set("public_key", arena.NewString(s.PublicKey))
+	o.Set("signature", arena.NewString(s.Signature))
+	o.Set("time_millis", arena.NewNumberString(strconv.FormatUint(s.TimeMillis, 10)))
+
+	return o.MarshalTo(nil), nil
+}
+
 type SessionInitResponse struct {
 	Token string `json:"token"`
 }
 
-func (s *SessionInitResponse) fastjsonUnmarshal(b []byte) error {
+func (s *SessionInitResponse) UnmarshalJSON(b []byte) error {
 	var parser fastjson.Parser
 
 	v, err := parser.ParseBytes(b)
@@ -59,13 +89,25 @@ type SendTransactionRequest struct {
 	Signature string `json:"signature"`
 }
 
+func (s *SendTransactionRequest) MarshalJSON() ([]byte, error) {
+	var arena fastjson.Arena
+	o := arena.NewObject()
+
+	o.Set("sender", arena.NewString(s.Sender))
+	o.Set("tag", arena.NewNumberInt(int(s.Tag)))
+	o.Set("payload", arena.NewString(s.Payload))
+	o.Set("signature", arena.NewString(s.Signature))
+
+	return o.MarshalTo(nil), nil
+}
+
 type SendTransactionResponse struct {
 	ID       string   `json:"tx_id"`
 	Parents  []string `json:"parent_ids"`
 	Critical bool     `json:"is_critical"`
 }
 
-func (s *SendTransactionResponse) fastjsonUnmarshal(b []byte) error {
+func (s *SendTransactionResponse) UnmarshalJSON(b []byte) error {
 	var parser fastjson.Parser
 
 	v, err := parser.ParseBytes(b)
@@ -95,7 +137,7 @@ type LedgerStatusResponse struct {
 	Difficulty uint64 `json:"difficulty"`
 }
 
-func (l *LedgerStatusResponse) fastjsonUnmarshal(b []byte) error {
+func (l *LedgerStatusResponse) UnmarshalJSON(b []byte) error {
 	var parser fastjson.Parser
 
 	v, err := parser.ParseBytes(b)
@@ -139,7 +181,7 @@ type Transaction struct {
 	Depth uint64 `json:"depth"`
 }
 
-func (t *Transaction) fastjsonUnmarshal(b []byte) error {
+func (t *Transaction) UnmarshalJSON(b []byte) error {
 	var parser fastjson.Parser
 
 	v, err := parser.ParseBytes(b)
@@ -147,12 +189,12 @@ func (t *Transaction) fastjsonUnmarshal(b []byte) error {
 		return err
 	}
 
-	t.parse(v)
+	t.ParseJSON(v)
 
 	return nil
 }
 
-func (t *Transaction) parse(v *fastjson.Value) {
+func (t *Transaction) ParseJSON(v *fastjson.Value) {
 	t.ID = string(v.GetStringBytes("id"))
 	t.Sender = string(v.GetStringBytes("sender"))
 	t.Creator = string(v.GetStringBytes("creator"))
@@ -173,7 +215,7 @@ func (t *Transaction) parse(v *fastjson.Value) {
 
 type TransactionList []Transaction
 
-func (t *TransactionList) fastjsonUnmarshal(b []byte) error {
+func (t *TransactionList) UnmarshalJSON(b []byte) error {
 	var parser fastjson.Parser
 
 	v, err := parser.ParseBytes(b)
@@ -191,7 +233,7 @@ func (t *TransactionList) fastjsonUnmarshal(b []byte) error {
 	var tx *Transaction
 	for i := range a {
 		tx = &Transaction{}
-		tx.parse(a[i])
+		tx.ParseJSON(a[i])
 
 		list = append(list, *tx)
 	}
@@ -210,7 +252,7 @@ type Account struct {
 	NumPages   uint64 `json:"num_mem_pages,omitempty"`
 }
 
-func (a *Account) fastjsonUnmarshal(b []byte) error {
+func (a *Account) UnmarshalJSON(b []byte) error {
 	var parser fastjson.Parser
 
 	v, err := parser.ParseBytes(b)

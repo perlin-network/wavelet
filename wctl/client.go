@@ -3,7 +3,6 @@ package wctl
 import (
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/perlin-network/noise/identity/ed25519"
@@ -36,7 +35,7 @@ func NewClient(config Config) (*Client, error) {
 }
 
 // Request will make a request to a given path, with a given body and return result in out.
-func (c *Client) RequestJSON(path string, method string, body interface{}, out FastjsonResponse) error {
+func (c *Client) RequestJSON(path string, method string, body MarshalableJSON, out UnmarshalableJSON) error {
 	resBody, err := c.Request(path, method, body)
 	if err != nil {
 		return err
@@ -46,10 +45,10 @@ func (c *Client) RequestJSON(path string, method string, body interface{}, out F
 		return nil
 	}
 
-	return out.fastjsonUnmarshal(resBody)
+	return out.UnmarshalJSON(resBody)
 }
 
-func (c *Client) Request(path string, method string, body interface{}) ([]byte, error) {
+func (c *Client) Request(path string, method string, body MarshalableJSON) ([]byte, error) {
 	protocol := "http"
 	if c.Config.UseHTTPS {
 		protocol = "https"
@@ -64,7 +63,7 @@ func (c *Client) Request(path string, method string, body interface{}) ([]byte, 
 	req.Header.Add(HeaderSessionToken, c.SessionToken)
 
 	if body != nil {
-		raw, err := json.Marshal(body)
+		raw, err := body.MarshalJSON()
 		if err != nil {
 			return nil, err
 		}

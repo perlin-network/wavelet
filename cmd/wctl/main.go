@@ -459,7 +459,7 @@ func main() {
 
 				buf, err := json.Marshal(res)
 				if err != nil {
-					fmt.Println(err.Error())
+					fmt.Println(err)
 				} else {
 					output(buf)
 				}
@@ -525,7 +525,7 @@ func main() {
 
 				buf, err := json.Marshal(res)
 				if err != nil {
-					fmt.Println(err.Error())
+					fmt.Println(err)
 				} else {
 					output(buf)
 				}
