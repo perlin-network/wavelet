@@ -170,7 +170,7 @@ func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, params ...
 
 	entryID, exists := vm.GetFunctionExport(entry)
 	if !exists {
-		return nil, 0, errors.Wrapf(ErrContractFunctionNotFound, "`%s` does not exist", entry)
+		return nil, vm.Gas, errors.Wrapf(ErrContractFunctionNotFound, "`%s` does not exist", entry)
 	}
 
 	// Execute virtual machine.
@@ -186,7 +186,7 @@ func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, params ...
 	}
 
 	if vm.ExitError != nil {
-		return nil, 0, utils.UnifyError(vm.ExitError)
+		return nil, vm.Gas, utils.UnifyError(vm.ExitError)
 	}
 
 	// Save memory snapshot.

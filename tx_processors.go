@@ -141,7 +141,7 @@ func ProcessContractTransaction(ctx *TransactionContext) error {
 	tx := ctx.Transaction()
 
 	if len(tx.Payload) == 0 {
-		return errors.New("contract: no code specified for contract to-be-spawned")
+		return errors.New("contract: no code specified for contract to be spawned")
 	}
 
 	if _, exists := ctx.ReadAccountContractCode(tx.ID); exists {
