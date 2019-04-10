@@ -98,11 +98,10 @@ func (s *sink) serve(ctx *fasthttp.RequestCtx) error {
 		s.join <- client
 
 		go client.readWorker()
-		go client.writeWorker()
 
 		// Block here because we need to keep the FastHTTPHandler active because of the way it works
 		// Refer to https://github.com/fasthttp/websocket/issues/6
-		select {}
+		client.writeWorker()
 	})
 }
 
