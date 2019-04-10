@@ -298,7 +298,8 @@ func main() {
 					return err
 				}
 
-				output(res)
+				jsonOut, _ := json.Marshal(res)
+				output(jsonOut)
 
 				return nil
 			},
@@ -320,7 +321,8 @@ func main() {
 					return err
 				}
 
-				output(res)
+				jsonOut, _ := json.Marshal(res)
+				output(jsonOut)
 
 				return nil
 			},
@@ -342,7 +344,7 @@ func main() {
 					return err
 				}
 
-				fmt.Println(res)
+				fmt.Printf("%s\n", res)
 
 				return nil
 			},
@@ -420,7 +422,8 @@ func main() {
 					return err
 				}
 
-				output(res)
+				jsonOut, _ := json.Marshal(res)
+				output(jsonOut)
 
 				return nil
 			},
@@ -442,7 +445,8 @@ func main() {
 					return err
 				}
 
-				output(res)
+				jsonOut, _ := json.Marshal(res)
+				output(jsonOut)
 
 				return nil
 			},
@@ -503,7 +507,8 @@ func main() {
 					return err
 				}
 
-				output(res)
+				jsonOut, _ := json.Marshal(res)
+				output(jsonOut)
 
 				return nil
 			},
@@ -565,6 +570,7 @@ func setup(c *cli.Context) (*wctl.Client, error) {
 func output(b []byte) {
 	var out bytes.Buffer
 	err := json.Indent(&out, b, "", "\t")
+	out.WriteString("\n")
 	if err == nil {
 		_, _ = out.WriteTo(os.Stdout)
 	} else {
