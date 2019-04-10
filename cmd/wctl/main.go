@@ -352,7 +352,7 @@ func main() {
 					return err
 				}
 
-				fmt.Printf("%s\n", res)
+				fmt.Println(res)
 
 				return nil
 			},
@@ -586,14 +586,13 @@ func setup(c *cli.Context) (*wctl.Client, error) {
 	return client, nil
 }
 
-// Write the bytes into Stdout, do JSON indent if possible
-func output(b []byte) {
+// Write bytes to stdout; do JSON indent if possible.
+func output(buf []byte) {
 	var out bytes.Buffer
-	err := json.Indent(&out, b, "", "\t")
-	out.WriteString("\n")
-	if err == nil {
-		_, _ = out.WriteTo(os.Stdout)
-	} else {
-		fmt.Println(string(b))
+
+	if err := json.Indent(&out, buf, "", "\t"); err == nil {
+		_, _ = out.WriteString("\n")
 	}
+
+	_, _ = out.WriteTo(os.Stdout)
 }

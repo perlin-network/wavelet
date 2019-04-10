@@ -32,14 +32,14 @@ func (a *accounts) runGCWorker(ctx context.Context) {
 
 	for {
 		select {
-			case <-ctx.Done():
-				return
-			case <-timer.C:
-				p := atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&a.gcProfile)), nil)
-				if p != nil {
-					profile := (*avl.GCProfile)(p)
-					_, _ = profile.PerformFullGC()
-				}
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			p := atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&a.gcProfile)), nil)
+			if p != nil {
+				profile := (*avl.GCProfile)(p)
+				_, _ = profile.PerformFullGC()
+			}
 		}
 	}
 }
