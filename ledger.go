@@ -1351,8 +1351,8 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 					logger := log.Consensus("round_end")
 					logger.Info().
 						Int("num_tx", l.v.numTransactions(oldRoot.ViewID)).
-						Uint64("old_view_id", oldRoot.ViewID).
-						Uint64("new_view_id", newRoot.ViewID).
+						Uint64("old_view_id", l.v.loadViewID(oldRoot)).
+						Uint64("new_view_id", l.v.loadViewID(newRoot)).
 						Hex("new_root", newRoot.ID[:]).
 						Hex("old_root", oldRoot.ID[:]).
 						Hex("new_accounts_checksum", newRoot.AccountsMerkleRoot[:]).
