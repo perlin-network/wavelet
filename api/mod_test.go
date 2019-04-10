@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -848,7 +849,7 @@ func compareJson(expected interface{}, response []byte) error {
 }
 
 func createLedger() *wavelet.Ledger {
-	ledger := wavelet.NewLedger(ed25519.RandomKeys(), store.NewInmem())
+	ledger := wavelet.NewLedger(context.TODO(), ed25519.RandomKeys(), store.NewInmem())
 	return ledger
 }
 
