@@ -57,29 +57,39 @@ func (b *Protocol) Ledger() *wavelet.Ledger {
 
 func (b *Protocol) RegisterOpcodes(node *noise.Node) {
 	b.opcodeGossipRequest = node.NextAvailableOpcode()
-	b.opcodeGossipResponse = node.NextAvailableOpcode()
-	b.opcodeQueryRequest = node.NextAvailableOpcode()
-	b.opcodeQueryResponse = node.NextAvailableOpcode()
-	b.opcodeSyncViewRequest = node.NextAvailableOpcode()
-	b.opcodeSyncViewResponse = node.NextAvailableOpcode()
-	b.opcodeSyncInitRequest = node.NextAvailableOpcode()
-	b.opcodeSyncInitResponse = node.NextAvailableOpcode()
-	b.opcodeSyncChunkRequest = node.NextAvailableOpcode()
-	b.opcodeSyncChunkResponse = node.NextAvailableOpcode()
-	b.opcodeSyncMissingTxRequest = node.NextAvailableOpcode()
-	b.opcodeSyncMissingTxResponse = node.NextAvailableOpcode()
-
 	node.RegisterOpcode("gossip request", b.opcodeGossipRequest)
+
+	b.opcodeGossipResponse = node.NextAvailableOpcode()
 	node.RegisterOpcode("gossip response", b.opcodeGossipResponse)
+
+	b.opcodeQueryRequest = node.NextAvailableOpcode()
 	node.RegisterOpcode("query request", b.opcodeQueryRequest)
+
+	b.opcodeQueryResponse = node.NextAvailableOpcode()
 	node.RegisterOpcode("query response", b.opcodeQueryResponse)
+
+	b.opcodeSyncViewRequest = node.NextAvailableOpcode()
 	node.RegisterOpcode("sync view request", b.opcodeSyncViewRequest)
+
+	b.opcodeSyncViewResponse = node.NextAvailableOpcode()
 	node.RegisterOpcode("sync view response", b.opcodeSyncViewResponse)
+
+	b.opcodeSyncInitRequest = node.NextAvailableOpcode()
 	node.RegisterOpcode("sync init request", b.opcodeSyncInitRequest)
+
+	b.opcodeSyncInitResponse = node.NextAvailableOpcode()
 	node.RegisterOpcode("sync init response", b.opcodeSyncInitResponse)
+
+	b.opcodeSyncChunkRequest = node.NextAvailableOpcode()
 	node.RegisterOpcode("sync chunk request", b.opcodeSyncChunkRequest)
+
+	b.opcodeSyncChunkResponse = node.NextAvailableOpcode()
 	node.RegisterOpcode("sync chunk response", b.opcodeSyncChunkResponse)
+
+	b.opcodeSyncMissingTxRequest = node.NextAvailableOpcode()
 	node.RegisterOpcode("sync missing tx request", b.opcodeSyncMissingTxRequest)
+
+	b.opcodeSyncMissingTxResponse = node.NextAvailableOpcode()
 	node.RegisterOpcode("sync missing tx response", b.opcodeSyncMissingTxResponse)
 }
 
@@ -96,6 +106,8 @@ func (b *Protocol) Protocol() noise.ProtocolBlock {
 			return errors.New("wavelet: user does not have a s/kademlia id registered")
 		}
 
+		publicKey := id.PublicKey()
+
 		signal := ctx.Peer().RegisterSignal(SignalAuthenticated)
 		defer signal()
 
@@ -103,6 +115,7 @@ func (b *Protocol) Protocol() noise.ProtocolBlock {
 			logger := log.Network("left")
 			logger.Info().
 				Str("address", id.Address()).
+				Hex("public_key", publicKey[:]).
 				Msg("Peer has disconnected.")
 		})
 
@@ -111,6 +124,7 @@ func (b *Protocol) Protocol() noise.ProtocolBlock {
 		logger := log.Network("joined")
 		logger.Info().
 			Str("address", id.Address()).
+			Hex("public_key", publicKey[:]).
 			Msg("Peer has joined.")
 
 		return nil
@@ -449,7 +463,10 @@ func (b *Protocol) handleQueryRequest(wire noise.Wire) {
 		if err != nil {
 			fmt.Printf("got an error processing query request from %s: %s\n", wire.Peer().Addr(), err)
 		}
-	case res.preferred = <-evt.Response:
+	case preferred := <-evt.Response:
+		if preferred != nil {
+			res.preferred = *preferred
+		}
 	}
 }
 

@@ -86,8 +86,7 @@ func UnmarshalGossipResponse(r io.Reader) (q GossipResponse, err error) {
 	var buf [1]byte
 
 	if _, err := io.ReadFull(r, buf[:]); err != nil {
-		err = errors.Wrap(err, "failed to read vote in gossip response")
-		return
+		return q, errors.Wrap(err, "failed to read vote in gossip response")
 	}
 
 	if buf[0] == 1 {
@@ -186,7 +185,7 @@ func (s SyncInitResponse) Marshal() []byte {
 	binary.BigEndian.PutUint32(buf[8:12], uint32(len(s.chunkHashes)))
 
 	for i, chunkHash := range s.chunkHashes {
-		buf[12+i*blake2b.Size256 : 12+(i+1)*blake2b.Size256] = chunkHash[:]
+		copy(buf[12+i*blake2b.Size256:12+(i+1)*blake2b.Size256], chunkHash[:])
 	}
 
 	return buf
@@ -226,8 +225,8 @@ func UnmarshalSyncChunkRequest(r io.Reader) (q SyncChunkRequest, err error) {
 func (s SyncChunkResponse) Marshal() []byte {
 	buf := make([]byte, 4+len(s.diff))
 
-	binary.BigEndian.PutUint32(buf[1:5], uint32(len(s.diff)))
-	buf[5 : 5+len(s.diff)] = s.diff
+	binary.BigEndian.PutUint32(buf[0:4], uint32(len(s.diff)))
+	copy(buf[4:4+len(s.diff)], s.diff)
 
 	return buf
 }

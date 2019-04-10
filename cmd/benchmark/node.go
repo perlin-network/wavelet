@@ -5,7 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -74,12 +76,15 @@ func (n *node) parseMessage(fields map[string]interface{}, msg string) error {
 	case GeneratedWallet:
 		fallthrough
 	case LoadedWallet:
-		privateKey, err := hex.DecodeString(fields["privateKey"].(string))
+		privateKeyBuf, err := hex.DecodeString(fields["privateKey"].(string))
 		if err != nil {
 			return errors.Wrap(err, "failed to decode nodes private key")
 		}
 
-		n.keys, err = skademlia.LoadKeys(privateKey)
+		var privateKey edwards25519.PrivateKey
+		copy(privateKey[:], privateKeyBuf)
+
+		n.keys, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
 		if err != nil {
 			return errors.Wrap(err, "nodes private keyis invalid")
 		}

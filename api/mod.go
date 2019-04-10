@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/go-chi/render"
 	"github.com/perlin-network/noise"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
@@ -25,6 +26,9 @@ import (
 type Gateway struct {
 	node   *noise.Node
 	ledger *wavelet.Ledger
+
+	network *skademlia.Protocol
+	keys    *skademlia.Keypair
 
 	router chi.Router
 
@@ -105,9 +109,12 @@ func (g *Gateway) setup() {
 	g.router = r
 }
 
-func (g *Gateway) StartHTTP(n *noise.Node, l *wavelet.Ledger, port int) {
+func (g *Gateway) StartHTTP(port int, n *noise.Node, l *wavelet.Ledger, nn *skademlia.Protocol, k *skademlia.Keypair) {
 	g.node = n
 	g.ledger = l
+
+	g.network = nn
+	g.keys = k
 
 	g.setup()
 
@@ -173,7 +180,7 @@ func (g *Gateway) sendTransaction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g *Gateway) ledgerStatus(w http.ResponseWriter, r *http.Request) {
-	g.render(w, r, &LedgerStatusResponse{node: g.node, ledger: g.ledger})
+	g.render(w, r, &LedgerStatusResponse{node: g.node, ledger: g.ledger, network: g.network, publicKey: g.keys.PublicKey()})
 }
 
 func (g *Gateway) listTransactions(w http.ResponseWriter, r *http.Request) {

@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/noise/edwards25519"
-	"github.com/perlin-network/wavelet/common"
 	logger "github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -102,7 +101,7 @@ func commandRemote(c *cli.Context) error {
 
 	privateKeyHex := c.String("sk")
 
-	if len(privateKeyHex) != common.SizePrivateKey*2 {
+	if len(privateKeyHex) != edwards25519.SizePrivateKey*2 {
 		return errors.New("private key size is invalid")
 	}
 

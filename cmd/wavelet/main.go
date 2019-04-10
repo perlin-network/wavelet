@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/handshake"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/noise/xnoise"
@@ -31,11 +32,6 @@ import (
 	"time"
 )
 
-const (
-	DefaultC2 = 16
-	DefaultC1 = 16
-)
-
 type Config struct {
 	Host    string
 	Port    uint
@@ -46,18 +42,15 @@ type Config struct {
 
 func protocol(n *noise.Node, keys *skademlia.Keypair) (*node.Protocol, *skademlia.Protocol, noise.Protocol) {
 	ecdh := handshake.NewECDH()
-	ecdh.Logger().SetOutput(os.Stdout)
 	ecdh.RegisterOpcodes(n)
 
 	aead := cipher.NewAEAD()
-	aead.Logger().SetOutput(os.Stdout)
 	aead.RegisterOpcodes(n)
 
-	overlay := skademlia.New(keys, xnoise.DialTCP)
-	overlay.Logger().SetOutput(os.Stdout)
+	overlay := skademlia.New(net.JoinHostPort("127.0.0.1", strconv.Itoa(n.Addr().(*net.TCPAddr).Port)), keys, xnoise.DialTCP)
 	overlay.RegisterOpcodes(n)
-	overlay.WithC1(DefaultC1)
-	overlay.WithC2(DefaultC2)
+	overlay.WithC1(sys.SKademliaC1)
+	overlay.WithC2(sys.SKademliaC2)
 
 	w := node.New(overlay, keys)
 	w.RegisterOpcodes(n)
@@ -260,12 +253,12 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 
 	var k *skademlia.Keypair
 
-	privateKey, err := ioutil.ReadFile(config.Wallet)
+	privateKeyBuf, err := ioutil.ReadFile(config.Wallet)
 
 	if err != nil {
 		logger.Warn().Msgf("Could not find an existing wallet at %q. Generating a new wallet...", config.Wallet)
 
-		k, err = skademlia.NewKeys(net.JoinHostPort("127.0.0.1", strconv.Itoa(n.Addr().(*net.TCPAddr).Port)), DefaultC1, DefaultC2)
+		k, err = skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
 
 		if err != nil {
 			logger.Fatal().Err(err).Msg("failed to generate a new wallet.")
@@ -279,22 +272,31 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 			Hex("publicKey", publicKey[:]).
 			Msg("Generated a wallet.")
 	} else {
-		//n, err := hex.Decode(privateKey, privateKey)
-		//if err != nil {
-		//	logger.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", config.Wallet)
-		//	return nil
-		//}
-		//
-		//keys, err = skademlia.LoadKeys(privateKey[:n], DefaultC1, DefaultC2)
-		//if err != nil {
-		//	logger.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", config.Wallet)
-		//	return nil
-		//}
-		//
-		//logger.Info().
-		//	Hex("privateKey", keys.PrivateKey()).
-		//	Hex("publicKey", keys.PublicKey()).
-		//	Msg("Loaded wallet.")
+		var privateKey edwards25519.PrivateKey
+
+		n, err := hex.Decode(privateKey[:], privateKeyBuf)
+		if err != nil {
+			logger.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", config.Wallet)
+			return nil, nil, nil
+		}
+
+		if n != edwards25519.SizePrivateKey {
+			logger.Fatal().Msgf("Private key located in %q is not of the right length.", config.Wallet)
+			return nil, nil, nil
+		}
+
+		k, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+		if err != nil {
+			logger.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", config.Wallet)
+			return nil, nil, nil
+		}
+
+		privateKey, publicKey := k.PrivateKey(), k.PublicKey()
+
+		logger.Info().
+			Hex("privateKey", privateKey[:]).
+			Hex("publicKey", publicKey[:]).
+			Msg("Loaded wallet.")
 	}
 
 	w, network, protocol := protocol(n, k)
@@ -327,7 +329,7 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 	}
 
 	if port := config.APIPort; port > 0 {
-		go api.New().StartHTTP(n, w.Ledger(), int(config.APIPort))
+		go api.New().StartHTTP(int(config.APIPort), n, w.Ledger(), network, k)
 	}
 
 	return k, n, w
@@ -619,14 +621,14 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 				continue
 			}
 
-			amount, err := strconv.Atoi(cmd[1])
+			amount, err := strconv.ParseUint(cmd[1], 10, 64)
 			if err != nil {
 				logger.Error().Err(err).Msg("Failed to convert withdraw amount to an uint64.")
 				return
 			}
 
 			payload := bytes.NewBuffer(nil)
-			binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
+			binary.LittleEndian.PutUint64(intBuf[:8], uint64(-int64(amount)))
 			payload.Write(intBuf[:8])
 
 			go func() {

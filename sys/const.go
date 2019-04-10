@@ -13,6 +13,10 @@ const (
 )
 
 var (
+	// S/Kademlia overlay network parameters.
+	SKademliaC1 = 16
+	SKademliaC2 = 16
+
 	// Snowball consensus protocol parameters.
 	SnowballQueryK     = 2
 	SnowballQueryAlpha = 0.8

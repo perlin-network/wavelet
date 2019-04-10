@@ -170,8 +170,11 @@ type LedgerStatusResponse struct {
 	Difficulty uint64 `json:"difficulty"`
 
 	// Internal fields.
-	node   *noise.Node
-	ledger *wavelet.Ledger
+
+	node      *noise.Node
+	ledger    *wavelet.Ledger
+	network   *skademlia.Protocol
+	publicKey edwards25519.PublicKey
 }
 
 func (s *LedgerStatusResponse) Render(w http.ResponseWriter, r *http.Request) error {
@@ -179,9 +182,12 @@ func (s *LedgerStatusResponse) Render(w http.ResponseWriter, r *http.Request) er
 		return errors.New("insufficient parameters were provided")
 	}
 
-	s.PublicKey = hex.EncodeToString(s.node.Keys.PublicKey())
+	s.PublicKey = hex.EncodeToString(s.publicKey[:])
 	s.HostAddress = s.node.Addr().String()
-	s.PeerAddresses = skademlia.Table(s.node).GetPeers()
+
+	for _, peer := range s.network.Peers(s.node) {
+		s.PeerAddresses = append(s.PeerAddresses, peer.Ctx().Get(skademlia.KeyID).(*skademlia.ID).Address())
+	}
 
 	s.RootID = hex.EncodeToString(s.ledger.Root().ID[:])
 	s.ViewID = s.ledger.ViewID()

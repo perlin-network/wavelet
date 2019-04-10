@@ -51,7 +51,7 @@ func TestStopNoLeaks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	keys, err := skademlia.NewKeys("127.0.0.1:3000", 1, 1)
+	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
 	l := NewLedger(ctx, keys, store.NewInmem())
@@ -64,7 +64,7 @@ func TestKill(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	keys, err := skademlia.NewKeys("127.0.0.1:3000", 1, 1)
+	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
 	var wg sync.WaitGroup
@@ -90,7 +90,7 @@ func TestKill(t *testing.T) {
 func TestGossipOutTransaction(t *testing.T) {
 	defer leaktest.Check(t)()
 
-	keys, err := skademlia.NewKeys("127.0.0.1:3000", 1, 1)
+	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.TODO())
@@ -144,7 +144,7 @@ func TestGossipOutTransaction(t *testing.T) {
 func TestTransitionFromGossipingToQuerying(t *testing.T) {
 	defer leaktest.Check(t)()
 
-	keys, err := skademlia.NewKeys("127.0.0.1:3000", 1, 1)
+	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.TODO())
@@ -212,7 +212,7 @@ func TestTransitionFromGossipingToQuerying(t *testing.T) {
 func TestEnsureGossipReturnsNetworkErrors(t *testing.T) {
 	defer leaktest.Check(t)()
 
-	keys, err := skademlia.NewKeys("127.0.0.1:3000", 1, 1)
+	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.TODO())
@@ -263,7 +263,7 @@ func TestEnsureGossipReturnsNetworkErrors(t *testing.T) {
 func TestQuery(t *testing.T) {
 	defer leaktest.Check(t)()
 
-	keys, err := skademlia.NewKeys("127.0.0.1:3000", 1, 1)
+	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.TODO())
@@ -394,7 +394,7 @@ func TestQuery(t *testing.T) {
 func TestListenForQueries(t *testing.T) {
 	defer leaktest.Check(t)()
 
-	keys, err := skademlia.NewKeys("127.0.0.1:3000", 1, 1)
+	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.TODO())
@@ -475,7 +475,7 @@ func TestListenForQueries(t *testing.T) {
 func TestListenForSyncDiffChunks(t *testing.T) {
 	defer leaktest.Check(t)()
 
-	keys, err := skademlia.NewKeys("127.0.0.1:3000", 1, 1)
+	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.TODO())
@@ -536,7 +536,7 @@ func TestListenForSyncDiffChunks(t *testing.T) {
 func TestListenForSyncInits(t *testing.T) {
 	defer leaktest.Check(t)()
 
-	keys, err := skademlia.NewKeys("127.0.0.1:3000", 1, 1)
+	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.TODO())
@@ -599,7 +599,7 @@ func TestListenForSyncInits(t *testing.T) {
 func TestListenForOutOfSyncChecks(t *testing.T) {
 	defer leaktest.Check(t)()
 
-	keys, err := skademlia.NewKeys("127.0.0.1:3000", 1, 1)
+	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.TODO())
@@ -636,7 +636,7 @@ func TestListenForOutOfSyncChecks(t *testing.T) {
 func TestListenForMissingTXs(t *testing.T) {
 	defer leaktest.Check(t)()
 
-	keys, err := skademlia.NewKeys("127.0.0.1:3000", 1, 1)
+	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.TODO())
@@ -679,7 +679,7 @@ func TestListenForMissingTXs(t *testing.T) {
 func TestCheckIfOutOfSync(t *testing.T) {
 	defer leaktest.Check(t)()
 
-	keys, err := skademlia.NewKeys("127.0.0.1:3000", 1, 1)
+	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.TODO())
@@ -816,7 +816,7 @@ func TestCheckIfOutOfSync(t *testing.T) {
 func TestSyncMissingTX(t *testing.T) {
 	defer leaktest.Check(t)()
 
-	keys, err := skademlia.NewKeys("127.0.0.1:3000", 1, 1)
+	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.TODO())
