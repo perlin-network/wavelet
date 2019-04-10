@@ -372,19 +372,19 @@ func (b *Protocol) broadcastSyncDiffRequests(ctx context.Context, node *noise.No
 			wg.Add(len(evt.Sources))
 
 			for chunkID, src := range evt.Sources {
-				src := src
+				chunkID, src := chunkID, src
 
 				go func() {
 					defer wg.Done()
 
 					for i := 0; i < 5; i++ {
-						func() {
-							peer := b.network.PeerByID(node, src.PeerIDs[rand.Intn(len(src.PeerIDs))])
+						peer := b.network.PeerByID(node, src.PeerIDs[rand.Intn(len(src.PeerIDs))])
 
-							if peer == nil {
-								return
-							}
+						if peer == nil {
+							continue
+						}
 
+						diff, err := func() ([]byte, error) {
 							mux := peer.Mux()
 							defer func() {
 								_ = mux.Close()
@@ -392,14 +392,14 @@ func (b *Protocol) broadcastSyncDiffRequests(ctx context.Context, node *noise.No
 
 							err := mux.Send(b.opcodeSyncChunkRequest, SyncChunkRequest{chunkHash: src.Hash}.Marshal())
 							if err != nil {
-								return
+								return nil, err
 							}
 
 							var buf []byte
 
 							select {
 							case <-time.After(sys.QueryTimeout):
-								return
+								return nil, errors.New("timed out querying for chunk")
 							case wire := <-mux.Recv(b.opcodeSyncChunkResponse):
 								buf = wire.Bytes()
 							}
@@ -407,17 +407,24 @@ func (b *Protocol) broadcastSyncDiffRequests(ctx context.Context, node *noise.No
 							res, err := UnmarshalSyncChunkResponse(bytes.NewReader(buf))
 
 							if err != nil {
-								return
+								return nil, err
 							}
 
 							if res.diff == nil || blake2b.Sum256(res.diff) != src.Hash {
-								return
+								return nil, errors.New("sync chunk response was empty")
 							}
 
-							collected[chunkID] = res.diff
-
-							count.Add(1)
+							return res.diff, nil
 						}()
+
+						if err != nil {
+							continue
+						}
+
+						collected[chunkID] = diff
+						count.Add(1)
+
+						break
 					}
 				}()
 			}
