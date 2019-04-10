@@ -147,6 +147,8 @@ func (b *Protocol) receiveLoop(ledger *wavelet.Ledger, ctx noise.Context) {
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case wire := <-peer.Recv(b.opcodeGossipRequest):
 			go b.handleGossipRequest(wire)
 		case wire := <-peer.Recv(b.opcodeQueryRequest):
