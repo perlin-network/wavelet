@@ -61,6 +61,11 @@ func (g *Gateway) setup(enableTimeout bool) {
 
 	r := fasthttprouter.New()
 
+	// If the route does not exist for a method type (e.g. OPTIONS), Fasthttprouter will consider it to be does not exist.
+	// So, we need to override notFound handler for OPTIONS method type to handle CORS.
+	r.HandleOPTIONS = false
+	r.NotFound = g.notFound()
+
 	var base = []middleware{
 		Recoverer,
 		cors(),
@@ -407,6 +412,41 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 	}
 
 	_, _ = ctx.Write(page)
+}
+
+func (g *Gateway) notFound() func(ctx *fasthttp.RequestCtx) {
+	methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH"}
+
+	notFoundHandler := func(ctx *fasthttp.RequestCtx) {
+		ctx.Error(fasthttp.StatusMessage(fasthttp.StatusNotFound),
+			fasthttp.StatusNotFound)
+	}
+
+	// This cors is only for OPTIONS, so we can pass any handler since it will not be triggered.
+	cors := cors()(notFoundHandler)
+
+	lookupCtx := &fasthttp.RequestCtx{}
+
+	return func(ctx *fasthttp.RequestCtx) {
+		if string(ctx.Method()) != "OPTIONS" {
+			notFoundHandler(ctx)
+			return
+		}
+
+		path := string(ctx.Path())
+
+		// Only proceed to cors if the route really exist.
+		// We try to look the route for other method types.
+		for _, m := range methods {
+			h, _ := g.router.Lookup(m, path, lookupCtx)
+			if h != nil {
+				cors(ctx)
+				return
+			}
+		}
+
+		notFoundHandler(ctx)
+	}
 }
 
 func (g *Gateway) authenticated(next fasthttp.RequestHandler) fasthttp.RequestHandler {
