@@ -724,7 +724,6 @@ func (l *Ledger) applyTransactionToSnapshot(ss *avl.Tree, tx *Transaction) error
 	ctx := newTransactionContext(ss, tx)
 
 	if err := ctx.apply(l.processors); err != nil {
-		fmt.Println("fail", err)
 		return errors.Wrap(err, "could not apply transaction to snapshot")
 	}
 
