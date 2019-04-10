@@ -172,13 +172,13 @@ func (b *Protocol) broadcastGossip(ctx context.Context, node *noise.Node) {
 			peers, err := selectPeers(b.network, node, sys.SnowballQueryK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "failed to select peers while gossiping")
-				return
+				continue
 			}
 
 			responses, err := broadcast(peers, b.opcodeGossipRequest, b.opcodeGossipResponse, GossipRequest{tx: evt.TX}.Marshal())
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "got an error while gossiping")
-				return
+				continue
 			}
 
 			votes := make([]wavelet.VoteGossip, len(responses))
@@ -187,6 +187,8 @@ func (b *Protocol) broadcastGossip(ctx context.Context, node *noise.Node) {
 				res, err := UnmarshalGossipResponse(bytes.NewReader(buf))
 
 				if err != nil {
+					// TODO (andrii) something needs to be done with this error, at least logging
+					fmt.Println(err)
 					continue
 				}
 
@@ -212,13 +214,13 @@ func (b *Protocol) broadcastQueries(ctx context.Context, node *noise.Node) {
 			peers, err := selectPeers(b.network, node, sys.SnowballQueryK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "failed to select peers while querying")
-				return
+				continue
 			}
 
 			responses, err := broadcast(peers, b.opcodeQueryRequest, b.opcodeQueryResponse, QueryRequest{tx: evt.TX}.Marshal())
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "got an error while querying")
-				return
+				continue
 			}
 
 			votes := make([]wavelet.VoteQuery, len(responses))
@@ -227,6 +229,8 @@ func (b *Protocol) broadcastQueries(ctx context.Context, node *noise.Node) {
 				res, err := UnmarshalQueryResponse(bytes.NewReader(buf))
 
 				if err != nil {
+					// TODO (andrii) something needs to be done with this error, at least logging
+					fmt.Println(err)
 					continue
 				}
 
@@ -248,13 +252,14 @@ func (b *Protocol) broadcastOutOfSyncChecks(ctx context.Context, node *noise.Nod
 		case evt := <-b.ledger.OutOfSyncOut:
 			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
 			if err != nil {
-				return
+				evt.Error <- errors.Wrap(err, "got an error while selecting peers for sync check")
+				continue
 			}
 
 			responses, err := broadcast(peers, b.opcodeSyncViewRequest, b.opcodeSyncViewResponse, SyncViewRequest{root: evt.Root}.Marshal())
 			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while checking if out of sync")
-				return
+				evt.Error <- errors.Wrap(err, "got an error while broadcasting sync view request")
+				continue
 			}
 
 			votes := make([]wavelet.VoteOutOfSync, len(responses))
@@ -263,6 +268,8 @@ func (b *Protocol) broadcastOutOfSyncChecks(ctx context.Context, node *noise.Nod
 				res, err := UnmarshalSyncViewResponse(bytes.NewReader(buf))
 
 				if err != nil {
+					// TODO (andrii) something needs to be done with this error, at least logging
+					fmt.Println(err)
 					continue
 				}
 
@@ -285,13 +292,14 @@ func (b *Protocol) broadcastSyncInitRequests(ctx context.Context, node *noise.No
 		case evt := <-b.ledger.SyncInitOut:
 			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
 			if err != nil {
-				return
+				evt.Error <- errors.Wrap(err, "got an error while selecting peers for sync init")
+				continue
 			}
 
 			responses, err := broadcast(peers, b.opcodeSyncInitRequest, b.opcodeSyncInitResponse, SyncInitRequest{viewID: evt.ViewID}.Marshal())
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "got an error while sending request to sync")
-				return
+				continue
 			}
 
 			votes := make([]wavelet.SyncInitMetadata, len(responses))
@@ -300,6 +308,8 @@ func (b *Protocol) broadcastSyncInitRequests(ctx context.Context, node *noise.No
 				res, err := UnmarshalSyncInitResponse(bytes.NewReader(buf))
 
 				if err != nil {
+					// TODO (andrii) something needs to be done with this error, at least logging
+					fmt.Println(err)
 					continue
 				}
 
@@ -325,13 +335,14 @@ func (b *Protocol) broadcastSyncMissingTXs(ctx context.Context, node *noise.Node
 		case evt := <-b.ledger.SyncTxOut:
 			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
 			if err != nil {
-				return
+				evt.Error <- errors.Wrap(err, "got an error while selecting peers for sync init")
+				continue
 			}
 
 			responses, err := broadcast(peers, b.opcodeSyncMissingTxRequest, b.opcodeSyncMissingTxResponse, SyncMissingTxRequest{ids: evt.IDs}.Marshal())
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "got an error while sending request for missing transactions")
-				return
+				continue
 			}
 
 			set := make(map[common.TransactionID]wavelet.Transaction)
@@ -340,6 +351,8 @@ func (b *Protocol) broadcastSyncMissingTXs(ctx context.Context, node *noise.Node
 				res, err := UnmarshalSyncMissingTxResponse(bytes.NewReader(buf))
 
 				if err != nil {
+					// TODO (andrii) something needs to be done with this error, at least logging
+					fmt.Println(err)
 					continue
 				}
 
@@ -433,7 +446,7 @@ func (b *Protocol) broadcastSyncDiffRequests(ctx context.Context, node *noise.No
 
 			if int(count.Load()) != len(evt.Sources) {
 				evt.Error <- errors.New("failed to fetch some chunks from our peers")
-				return
+				continue
 			}
 
 			evt.Result <- collected
