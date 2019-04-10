@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/noise"
@@ -243,7 +244,7 @@ func (s *Transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 	o.Set("creator", arena.NewString(hex.EncodeToString(s.tx.Creator[:])))
 	o.Set("timestamp", arena.NewNumberString(strconv.FormatUint(s.tx.Timestamp, 10)))
 	o.Set("tag", arena.NewNumberInt(int(s.tx.Tag)))
-	o.Set("payload", arena.NewStringBytes(s.tx.Payload))
+	o.Set("payload", arena.NewString(base64.StdEncoding.EncodeToString(s.tx.Payload)))
 	o.Set("accounts_root", arena.NewString(hex.EncodeToString(s.tx.AccountsMerkleRoot[:])))
 	o.Set("sender_signature", arena.NewString(hex.EncodeToString(s.tx.SenderSignature[:])))
 	o.Set("creator_signature", arena.NewString(hex.EncodeToString(s.tx.CreatorSignature[:])))
