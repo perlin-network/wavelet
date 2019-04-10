@@ -2,15 +2,15 @@ package main
 
 import (
 	"bufio"
+	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/noise"
-	"github.com/perlin-network/noise/cipher/aead"
-	"github.com/perlin-network/noise/handshake/ecdh"
-	"github.com/perlin-network/noise/identity"
-	"github.com/perlin-network/noise/payload"
-	"github.com/perlin-network/noise/protocol"
+	"github.com/perlin-network/noise/cipher"
+	"github.com/perlin-network/noise/handshake"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/noise/xnoise"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/common"
@@ -22,6 +22,7 @@ import (
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
 	"io/ioutil"
+	"net"
 	"os"
 	"runtime"
 	"sort"
@@ -41,6 +42,30 @@ type Config struct {
 	Wallet  string
 	APIPort uint
 	Peers   []string
+}
+
+func protocol(n *noise.Node, keys *skademlia.Keypair) (*node.Protocol, *skademlia.Protocol, noise.Protocol) {
+	ecdh := handshake.NewECDH()
+	ecdh.Logger().SetOutput(os.Stdout)
+	ecdh.RegisterOpcodes(n)
+
+	aead := cipher.NewAEAD()
+	aead.Logger().SetOutput(os.Stdout)
+	aead.RegisterOpcodes(n)
+
+	overlay := skademlia.New(keys, xnoise.DialTCP)
+	overlay.Logger().SetOutput(os.Stdout)
+	overlay.RegisterOpcodes(n)
+	overlay.WithC1(DefaultC1)
+	overlay.WithC2(DefaultC2)
+
+	w := node.New(overlay, keys)
+	w.RegisterOpcodes(n)
+	w.Init(n)
+
+	protocol := noise.NewProtocol(xnoise.LogErrors, ecdh.Protocol(), aead.Protocol(), overlay.Protocol(), w.Protocol())
+
+	return w, overlay, protocol
 }
 
 func main() {
@@ -208,10 +233,10 @@ func main() {
 		sys.MinimumStake = c.Uint64("sys.min_stake")
 
 		// start the server
-		n := runServer(config, logger)
+		k, _, w := server(config, logger)
 
 		// run the shell version of the node
-		runShell(n, logger)
+		shell(k, w, logger)
 
 		return nil
 	}
@@ -225,127 +250,132 @@ func main() {
 	}
 }
 
-func runServer(config *Config, logger zerolog.Logger) *noise.Node {
-	var keys identity.Keypair
+func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.Node, *node.Protocol) {
+	n, err := xnoise.ListenTCP(uint(config.Port))
+
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to start listening for peers.")
+		return nil, nil, nil
+	}
+
+	var k *skademlia.Keypair
 
 	privateKey, err := ioutil.ReadFile(config.Wallet)
+
 	if err != nil {
 		logger.Warn().Msgf("Could not find an existing wallet at %q. Generating a new wallet...", config.Wallet)
 
-		keys = skademlia.NewKeys(DefaultC1, DefaultC2)
+		k, err = skademlia.NewKeys(net.JoinHostPort("127.0.0.1", strconv.Itoa(n.Addr().(*net.TCPAddr).Port)), DefaultC1, DefaultC2)
+
+		if err != nil {
+			logger.Fatal().Err(err).Msg("failed to generate a new wallet.")
+			return nil, nil, nil
+		}
+
+		privateKey, publicKey := k.PrivateKey(), k.PublicKey()
 
 		logger.Info().
-			Hex("privateKey", keys.PrivateKey()).
-			Hex("publicKey", keys.PublicKey()).
+			Hex("privateKey", privateKey[:]).
+			Hex("publicKey", publicKey[:]).
 			Msg("Generated a wallet.")
 	} else {
-		n, err := hex.Decode(privateKey, privateKey)
-		if err != nil {
-			logger.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", config.Wallet)
-			return nil
-		}
-
-		keys, err = skademlia.LoadKeys(privateKey[:n], DefaultC1, DefaultC2)
-		if err != nil {
-			logger.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", config.Wallet)
-			return nil
-		}
-
-		logger.Info().
-			Hex("privateKey", keys.PrivateKey()).
-			Hex("publicKey", keys.PublicKey()).
-			Msg("Loaded wallet.")
+		//n, err := hex.Decode(privateKey, privateKey)
+		//if err != nil {
+		//	logger.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", config.Wallet)
+		//	return nil
+		//}
+		//
+		//keys, err = skademlia.LoadKeys(privateKey[:n], DefaultC1, DefaultC2)
+		//if err != nil {
+		//	logger.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", config.Wallet)
+		//	return nil
+		//}
+		//
+		//logger.Info().
+		//	Hex("privateKey", keys.PrivateKey()).
+		//	Hex("publicKey", keys.PublicKey()).
+		//	Msg("Loaded wallet.")
 	}
 
-	params := noise.DefaultParams()
-	params.Keys = keys
-	params.Host = config.Host
-	params.Port = uint16(config.Port)
-	params.MaxMessageSize = 4 * 1024 * 1024
-	params.SendMessageTimeout = 1 * time.Second
+	//n.OnPeerInit(func(node *noise.Node, peer *noise.Peer) error {
+	//	logger := log.Network("joined")
+	//	logger.Info().
+	//		Str("address", peer.RemoteIP().String()+":"+strconv.Itoa(int(peer.RemotePort()))).
+	//		Msg("Peer has joined.")
+	//
+	//	peer.OnConnError(func(node *noise.Node, peer *noise.Peer, err error) error {
+	//		logger.Info().Err(err).Msgf("An error occurred over the wire.")
+	//
+	//		return nil
+	//	})
+	//
+	//	peer.OnDisconnect(func(node *noise.Node, peer *noise.Peer) error {
+	//		logger := log.Network("left")
+	//		logger.Info().
+	//			Str("address", peer.RemoteIP().String()+":"+strconv.Itoa(int(peer.RemotePort()))).
+	//			Msg("Peer has disconnected.")
+	//
+	//		if id := protocol.PeerID(peer); id != nil {
+	//			skademlia.Table(node).Delete(id)
+	//		}
+	//		return nil
+	//	})
+	//
+	//	return nil
+	//})
 
-	n, err := noise.NewNode(params)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to start listening for peers.")
-		return nil
-	}
+	w, network, protocol := protocol(n, k)
+	n.FollowProtocol(protocol)
 
-	n.OnPeerInit(func(node *noise.Node, peer *noise.Peer) error {
-		logger := log.Network("joined")
-		logger.Info().
-			Str("address", peer.RemoteIP().String()+":"+strconv.Itoa(int(peer.RemotePort()))).
-			Msg("Peer has joined.")
-
-		peer.OnConnError(func(node *noise.Node, peer *noise.Peer, err error) error {
-			logger.Info().Err(err).Msgf("An error occurred over the wire.")
-
-			return nil
-		})
-
-		peer.OnDisconnect(func(node *noise.Node, peer *noise.Peer) error {
-			logger := log.Network("left")
-			logger.Info().
-				Str("address", peer.RemoteIP().String()+":"+strconv.Itoa(int(peer.RemotePort()))).
-				Msg("Peer has disconnected.")
-
-			// TODO(kenta): don't immediately evict from table
-			if id := protocol.PeerID(peer); id != nil {
-				skademlia.Table(node).Delete(id)
-			}
-			return nil
-		})
-
-		return nil
-	})
-
-	protocol.New().
-		Register(ecdh.New()).
-		Register(aead.New()).
-		Register(skademlia.New().WithC1(DefaultC1).WithC2(DefaultC2)).
-		Register(node.New()).
-		Enforce(n)
-
-	go n.Listen()
-
-	logger.Info().Uint16("port", n.ExternalPort()).Msg("Listening for peers.")
+	logger.Info().Uint("port", uint(n.Addr().(*net.TCPAddr).Port)).Msg("Listening for peers.")
 
 	if len(config.Peers) > 0 {
 		for _, address := range config.Peers {
-			peer, err := n.Dial(address)
+			peer, err := xnoise.DialTCP(n, address)
+
 			if err != nil {
 				logger.Error().Err(err).Msg("Failed to dial specified peer.")
 				continue
 			}
 
-			node.WaitUntilAuthenticated(peer)
+			peer.WaitFor(node.SignalAuthenticated)
 		}
 
-		peers := skademlia.FindNode(n, protocol.NodeID(n).(skademlia.ID), skademlia.BucketSize(), 8)
-		logger.Info().Msgf("Bootstrapped with peers: %+v", peers)
+	}
+
+	if peers := network.Bootstrap(n); len(peers) > 0 {
+		var ids []string
+
+		for _, id := range peers {
+			ids = append(ids, id.String())
+		}
+
+		logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
 	}
 
 	if port := config.APIPort; port > 0 {
-		go api.New().StartHTTP(n, int(config.APIPort))
+		go api.New().StartHTTP(n, w.Ledger(), int(config.APIPort))
 	}
 
-	return n
+	return k, n, w
 }
 
-func runShell(n *noise.Node, logger zerolog.Logger) {
+func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
+	publicKey := k.PublicKey()
+	ledger := w.Ledger()
+
 	reader := bufio.NewReader(os.Stdin)
 
-	var nodeID common.AccountID
-	copy(nodeID[:], n.Keys.PublicKey())
+	var intBuf [8]byte
 
 	for {
-		bytes, _, err := reader.ReadLine()
+		buf, _, err := reader.ReadLine()
 
 		if err != nil {
 			continue
 		}
 
-		ledger := node.Ledger(n)
-		cmd := strings.Split(string(bytes), " ")
+		cmd := strings.Split(string(buf), " ")
 
 		switch cmd[0] {
 		case "l":
@@ -403,11 +433,11 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 			snapshot := ledger.Snapshot()
 
 			if len(cmd) < 2 {
-				balance, _ := wavelet.ReadAccountBalance(snapshot, nodeID)
-				stake, _ := wavelet.ReadAccountStake(snapshot, nodeID)
+				balance, _ := wavelet.ReadAccountBalance(snapshot, publicKey)
+				stake, _ := wavelet.ReadAccountStake(snapshot, publicKey)
 
 				logger.Info().
-					Str("id", hex.EncodeToString(n.Keys.PublicKey())).
+					Str("id", hex.EncodeToString(publicKey[:])).
 					Uint64("balance", balance).
 					Uint64("stake", stake).
 					Msg("Here is your wallet information.")
@@ -459,24 +489,30 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 				continue
 			}
 
-			params := payload.NewWriter(nil)
-
-			params.WriteBytes(recipient)
-			params.WriteUint64(uint64(amount))
+			payload := bytes.NewBuffer(nil)
+			payload.Write(recipient[:])
+			binary.LittleEndian.PutUint64(intBuf[:], uint64(amount))
+			payload.Write(intBuf[:])
 
 			if len(cmd) >= 5 {
-				params.WriteString(cmd[3])
+				binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(cmd[3])))
+				payload.Write(intBuf[:4])
+				payload.WriteString(cmd[3])
 
-				inputs := payload.NewWriter(nil)
+				params := bytes.NewBuffer(nil)
 
 				for i := 4; i < len(cmd); i++ {
 					arg := cmd[i]
 
 					switch arg[0] {
 					case 'S':
-						inputs.WriteString(arg[1:])
+						binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(arg[1:])))
+						params.Write(intBuf[:4])
+						params.WriteString(arg[1:])
 					case 'B':
-						inputs.WriteBytes([]byte(arg[1:]))
+						binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(arg[1:])))
+						params.Write(intBuf[:4])
+						params.Write([]byte(arg[1:]))
 					case '1', '2', '4', '8':
 						var val uint64
 						_, err = fmt.Sscanf(arg[1:], "%d", &val)
@@ -486,33 +522,43 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 
 						switch arg[0] {
 						case '1':
-							inputs.WriteByte(byte(val))
+							params.WriteByte(byte(val))
 						case '2':
-							inputs.WriteUint16(uint16(val))
+							binary.LittleEndian.PutUint16(intBuf[:2], uint16(val))
+							params.Write(intBuf[:2])
 						case '4':
-							inputs.WriteUint32(uint32(val))
+							binary.LittleEndian.PutUint32(intBuf[:4], uint32(val))
+							params.Write(intBuf[:4])
 						case '8':
-							inputs.WriteUint64(uint64(val))
+							binary.LittleEndian.PutUint64(intBuf[:8], uint64(val))
+							params.Write(intBuf[:8])
 						}
 					case 'H':
-						b, err := hex.DecodeString(arg[1:])
+						buf, err := hex.DecodeString(arg[1:])
+
 						if err != nil {
 							logger.Error().Err(err).Msgf("Cannot decode hex: %s", arg[1:])
 							continue
 						}
 
-						inputs.WriteBytes(b)
+						binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(buf)))
+						params.Write(intBuf[:4])
+						params.Write(buf)
 					default:
 						logger.Error().Msgf("Invalid argument specified: %s", arg)
 						continue
 					}
 				}
 
-				params.WriteBytes(inputs.Bytes())
+				buf := params.Bytes()
+
+				binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(buf)))
+				params.Write(intBuf[:4])
+				params.Write(buf)
 			}
 
 			go func() {
-				tx, err := wavelet.NewTransaction(n.Keys, sys.TagTransfer, params.Bytes())
+				tx, err := wavelet.NewTransaction(k, sys.TagTransfer, payload.Bytes())
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to create a transfer transaction.")
 					return
@@ -557,8 +603,12 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 				return
 			}
 
+			payload := bytes.NewBuffer(nil)
+			binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
+			payload.Write(intBuf[:8])
+
 			go func() {
-				tx, err := wavelet.NewTransaction(n.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
+				tx, err := wavelet.NewTransaction(k, sys.TagStake, payload.Bytes())
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to create a stake placement transaction.")
 					return
@@ -602,8 +652,12 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 				return
 			}
 
+			payload := bytes.NewBuffer(nil)
+			binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
+			payload.Write(intBuf[:8])
+
 			go func() {
-				tx, err := wavelet.NewTransaction(n.Keys, sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
+				tx, err := wavelet.NewTransaction(k, sys.TagStake, payload.Bytes())
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to create a stake withdrawal transaction.")
 					return
@@ -651,7 +705,7 @@ func runShell(n *noise.Node, logger zerolog.Logger) {
 			}
 
 			go func() {
-				tx, err := wavelet.NewTransaction(n.Keys, sys.TagContract, code)
+				tx, err := wavelet.NewTransaction(k, sys.TagContract, code)
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to create a smart contract creation transaction.")
 					return

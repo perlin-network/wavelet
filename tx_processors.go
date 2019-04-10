@@ -1,11 +1,13 @@
 package wavelet
 
 import (
-	"github.com/perlin-network/noise/payload"
+	"bytes"
+	"encoding/binary"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"io"
 )
 
 func ProcessNopTransaction(_ *TransactionContext) error {
@@ -15,25 +17,21 @@ func ProcessNopTransaction(_ *TransactionContext) error {
 func ProcessTransferTransaction(ctx *TransactionContext) error {
 	tx := ctx.Transaction()
 
-	reader := payload.NewReader(tx.Payload)
+	r := bytes.NewReader(tx.Payload)
 
 	var recipient common.AccountID
 
-	recipientBuf, err := reader.ReadBytes()
-	if err != nil {
+	if _, err := io.ReadFull(r, recipient[:]); err != nil {
 		return errors.Wrap(err, "transfer: failed to decode recipient")
 	}
 
-	if len(recipientBuf) != common.SizeAccountID {
-		return errors.Errorf("transfer: provided recipient is not %d bytes, but %d bytes instead", common.SizeAccountID, len(recipientBuf))
-	}
+	var buf [8]byte
 
-	copy(recipient[:], recipientBuf)
-
-	amount, err := reader.ReadUint64()
-	if err != nil {
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
 		return errors.Wrap(err, "transfer: failed to decode amount to transfer")
 	}
+
+	amount := binary.LittleEndian.Uint64(buf[:])
 
 	creatorBalance, _ := ctx.ReadAccountBalance(tx.Creator)
 
@@ -53,19 +51,30 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 	executor := NewContractExecutor(recipient, ctx).WithGasTable(sys.GasTable).EnableLogging()
 
 	var gas uint64
+	var err error
 
-	if reader.Len() > 0 {
-		funcName, err := reader.ReadString()
-		if err != nil {
-			return errors.Wrap(err, "transfer: failed to read smart contract func name")
+	if r.Len() > 0 {
+		if _, err := io.ReadFull(r, buf[:4]); err != nil {
+			return errors.Wrap(err, "transfer: failed to decode smart contract function name to invoke")
 		}
 
-		funcParams, err := reader.ReadBytes()
-		if err != nil {
-			return err
+		funcName := make([]byte, binary.LittleEndian.Uint32(buf[:4]))
+
+		if _, err := io.ReadFull(r, funcName); err != nil {
+			return errors.Wrap(err, "transfer: failed to decode smart contract function name to invoke")
 		}
 
-		_, gas, err = executor.Run(amount, 50000000, funcName, funcParams...)
+		if _, err := io.ReadFull(r, buf[:4]); err != nil {
+			return errors.Wrap(err, "transfer: failed to decode smart contract function invocation parameters")
+		}
+
+		funcParams := make([]byte, binary.LittleEndian.Uint32(buf[:4]))
+
+		if _, err := io.ReadFull(r, funcParams); err != nil {
+			return errors.Wrap(err, "transfer: failed to decode smart contract function invocation parameters")
+		}
+
+		_, gas, err = executor.Run(amount, 50000000, string(funcName), funcParams...)
 	} else {
 		_, gas, err = executor.Run(amount, 50000000, "on_money_received")
 	}
@@ -93,16 +102,17 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 func ProcessStakeTransaction(ctx *TransactionContext) error {
 	tx := ctx.Transaction()
 
-	raw, err := payload.NewReader(tx.Payload).ReadUint64()
+	r := bytes.NewReader(tx.Payload)
 
-	if err != nil {
-		return errors.Wrap(err, "stake: failed to decode stake delta amount")
+	var buf [8]byte
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		return errors.Wrap(err, "stake: failed to decode amount of stake to place/withdraw")
 	}
+
+	delta := int64(binary.LittleEndian.Uint64(buf[:]))
 
 	balance, _ := ctx.ReadAccountBalance(tx.Creator)
 	stake, _ := ctx.ReadAccountStake(tx.Creator)
-
-	delta := int64(raw)
 
 	if delta >= 0 {
 		delta := uint64(delta)

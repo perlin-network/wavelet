@@ -7,9 +7,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/heptio/workgroup"
-	"github.com/perlin-network/noise/identity"
-	"github.com/perlin-network/noise/protocol"
-	"github.com/perlin-network/noise/signature/eddsa"
+	"github.com/perlin-network/noise/edwards25519"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
@@ -93,7 +92,7 @@ type EventIncomingOutOfSyncCheck struct {
 }
 
 type SyncInitMetadata struct {
-	User        protocol.ID
+	PeerID      *skademlia.ID
 	ViewID      uint64
 	ChunkHashes [][blake2b.Size256]byte
 }
@@ -112,8 +111,8 @@ type EventIncomingSyncInit struct {
 }
 
 type ChunkSource struct {
-	Hash  [blake2b.Size256]byte
-	Peers []protocol.ID
+	Hash    [blake2b.Size256]byte
+	PeerIDs []*skademlia.ID
 }
 
 type EventSyncDiff struct {
@@ -143,7 +142,7 @@ type EventIncomingSyncDiff struct {
 }
 
 type Ledger struct {
-	keys identity.Keypair
+	keys *skademlia.Keypair
 	kv   store.KV
 
 	v *graph
@@ -203,7 +202,7 @@ type Ledger struct {
 	kill chan struct{}
 }
 
-func NewLedger(ctx context.Context, keys identity.Keypair, kv store.KV) *Ledger {
+func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledger {
 	broadcastQueue := make(chan EventBroadcast, 1024)
 
 	gossipIn := make(chan EventIncomingGossip, 128)
@@ -313,16 +312,11 @@ func NewLedger(ctx context.Context, keys identity.Keypair, kv store.KV) *Ledger 
 
 /** BEGIN EXPORTED METHODS **/
 
-func NewTransaction(sender identity.Keypair, tag byte, payload []byte) (Transaction, error) {
+func NewTransaction(creator *skademlia.Keypair, tag byte, payload []byte) (Transaction, error) {
 	tx := Transaction{Tag: tag, Payload: payload}
 
-	signature, err := eddsa.Sign(sender.PrivateKey(), append([]byte{tx.Tag}, tx.Payload...))
-	if err != nil {
-		return tx, err
-	}
-
-	copy(tx.Creator[:], sender.PublicKey())
-	copy(tx.CreatorSignature[:], signature)
+	tx.Creator = creator.PublicKey()
+	tx.CreatorSignature = edwards25519.Sign(creator.PrivateKey(), append([]byte{tx.Tag}, tx.Payload...))
 
 	return tx, nil
 }
@@ -392,7 +386,7 @@ func (l *Ledger) ListTransactions(offset, limit uint64, sender, creator common.A
 /** END EXPORTED METHODS **/
 
 func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) {
-	copy(tx.Sender[:], l.keys.PublicKey())
+	tx.Sender = l.keys.PublicKey()
 
 	if tx.ParentIDs = l.v.findEligibleParents(); len(tx.ParentIDs) == 0 {
 		return tx, errors.New("no eligible parents available, please try again")
@@ -448,12 +442,7 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 		tx.AccountsMerkleRoot = snapshot.Checksum()
 	}
 
-	senderSignature, err := eddsa.Sign(l.keys.PrivateKey(), tx.Write())
-	if err != nil {
-		return tx, errors.Wrap(err, "failed to make sender signature")
-	}
-
-	copy(tx.SenderSignature[:], senderSignature)
+	tx.SenderSignature = edwards25519.Sign(l.keys.PrivateKey(), tx.Marshal())
 
 	tx.rehash()
 
@@ -1047,10 +1036,8 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 			}
 
 			// Check if we have enough money available to create and broadcast a nop transaction.
-			var self common.AccountID
-			copy(self[:], l.keys.PublicKey())
 
-			if balance, _ := ReadAccountBalance(snapshot, self); balance < sys.TransactionFeeAmount {
+			if balance, _ := ReadAccountBalance(snapshot, l.keys.PublicKey()); balance < sys.TransactionFeeAmount {
 				time.Sleep(100 * time.Millisecond)
 				return nil
 			}
@@ -1710,7 +1697,7 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 		var sources []ChunkSource
 
 		for i := 0; ; i++ {
-			hashCount := make(map[[blake2b.Size256]byte][]protocol.ID)
+			hashCount := make(map[[blake2b.Size256]byte][]*skademlia.ID)
 			hashInRange := false
 
 			for _, vote := range selected {
@@ -1718,7 +1705,7 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 					continue
 				}
 
-				hashCount[vote.ChunkHashes[i]] = append(hashCount[vote.ChunkHashes[i]], vote.User)
+				hashCount[vote.ChunkHashes[i]] = append(hashCount[vote.ChunkHashes[i]], vote.PeerID)
 				hashInRange = true
 			}
 
@@ -1730,7 +1717,7 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 
 			for hash, peers := range hashCount {
 				if len(peers) >= len(selected)*2/3 && len(peers) > 0 {
-					sources = append(sources, ChunkSource{Hash: hash, Peers: peers})
+					sources = append(sources, ChunkSource{Hash: hash, PeerIDs: peers})
 
 					consistent = true
 					break

@@ -1,10 +1,10 @@
 package wavelet
 
 import (
+	"encoding/binary"
 	"github.com/perlin-network/life/compiler"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
-	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
@@ -156,11 +156,15 @@ func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, params ...
 		vm.Memory = mem
 	}
 
-	c.header = append(payload.NewWriter(nil).
-		WriteBytes(tx.ID[:]).
-		WriteBytes(tx.Creator[:]).
-		WriteUint64(amount).
-		Bytes(), params...)
+	c.header = make([]byte, 8+common.SizeTransactionID+8+common.SizeAccountID+8)
+
+	binary.LittleEndian.PutUint64(c.header[0:8], uint64(len(tx.ID)))
+	copy(c.header[8:8+common.SizeTransactionID], tx.ID[:])
+
+	binary.LittleEndian.PutUint64(c.header[8+common.SizeTransactionID:16+common.SizeTransactionID], uint64(len(tx.CreatorSignature)))
+	copy(c.header[16+common.SizeTransactionID:16+common.SizeTransactionID+common.SizeAccountID], tx.Creator[:])
+
+	binary.LittleEndian.PutUint64(c.header[16+common.SizeTransactionID+common.SizeAccountID:24+common.SizeTransactionID+common.SizeAccountID], amount)
 
 	entry = "_contract_" + entry
 

@@ -5,8 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/perlin-network/noise/identity/ed25519"
-	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
@@ -26,7 +25,7 @@ var (
 var _ io.Writer = (*node)(nil)
 
 type node struct {
-	keys   *ed25519.Keypair
+	keys   *skademlia.Keypair
 	client *wctl.Client
 
 	cmd               *exec.Cmd
@@ -48,10 +47,10 @@ func (n *node) Write(buf []byte) (num int, err error) {
 	}
 
 	if val, exists := fields["error"]; exists {
-		if error, ok := val.(string); ok {
+		if err, ok := val.(string); ok {
 			log.Error().
 				Str("node", fmt.Sprintf("%s:%d", n.host, n.nodePort)).
-				Str("error", error).
+				Str("error", err).
 				Msg("Node reported an error.")
 		}
 	}
@@ -80,7 +79,10 @@ func (n *node) parseMessage(fields map[string]interface{}, msg string) error {
 			return errors.Wrap(err, "failed to decode nodes private key")
 		}
 
-		n.keys = ed25519.LoadKeys(privateKey)
+		n.keys, err = skademlia.LoadKeys(privateKey)
+		if err != nil {
+			return errors.Wrap(err, "nodes private keyis invalid")
+		}
 	case StartedAPI:
 		if n.keys == nil {
 			return errors.New("started api before reading wallet keys")
@@ -108,19 +110,18 @@ func (n *node) kill() {
 }
 
 func (n *node) init() error {
-	var privateKey common.PrivateKey
 	var err error
 
-	copy(privateKey[:], n.keys.PrivateKey())
-
-	if n.client, err = connectToAPI("127.0.0.1", n.apiPort, privateKey); err != nil {
+	if n.client, err = connectToAPI("127.0.0.1", n.apiPort, n.keys.PrivateKey()); err != nil {
 		return err
 	}
+
+	publicKey := n.keys.PublicKey()
 
 	log.Info().
 		Uint16("node_port", n.nodePort).
 		Uint16("api_port", n.apiPort).
-		Hex("public_key", n.keys.PublicKey()).
+		Hex("public_key", publicKey[:]).
 		Msg("Spawned a new Wavelet node.")
 
 	close(n.apiReady)

@@ -2,17 +2,14 @@ package wavelet
 
 import (
 	"bytes"
-	"github.com/perlin-network/noise"
-	"github.com/perlin-network/noise/payload"
-	"github.com/perlin-network/wavelet/avl"
+	"encoding/binary"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
+	"io"
 	"math/bits"
 )
-
-var _ noise.Message = (*Transaction)(nil)
 
 type Transaction struct {
 	// WIRE FORMAT
@@ -69,116 +66,158 @@ func (t Transaction) IsCritical(difficulty uint64) bool {
 	return prefixLen(checksum[:]) >= int(difficulty)
 }
 
-func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
-	n, err := reader.Read(t.Sender[:])
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to decode transaction sender")
+func (t Transaction) Marshal() []byte {
+	var w bytes.Buffer
+
+	_, _ = w.Write(t.Sender[:])
+	_, _ = w.Write(t.Creator[:])
+
+	_ = w.WriteByte(byte(len(t.ParentIDs)))
+
+	for _, parentID := range t.ParentIDs {
+		_, _ = w.Write(parentID[:])
 	}
 
-	if n != common.SizeAccountID {
-		return nil, errors.New("could not read enough bytes for transaction sender")
-	}
+	var buf [8]byte
 
-	n, err = reader.Read(t.Creator[:])
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to decode transaction creator")
-	}
+	binary.BigEndian.PutUint64(buf[:], t.Timestamp)
+	_, _ = w.Write(buf[:])
 
-	if n != common.SizeAccountID {
-		return nil, errors.New("could not read enough bytes for transaction creator")
-	}
+	binary.BigEndian.PutUint64(buf[:], t.ViewID)
+	_, _ = w.Write(buf[:])
 
-	numParents, err := reader.ReadByte()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read num parents")
-	}
+	_ = w.WriteByte(t.Tag)
 
-	for i := byte(0); i < numParents; i++ {
-		var parentID common.TransactionID
+	binary.BigEndian.PutUint32(buf[:4], uint32(len(t.Payload)))
+	_, _ = w.Write(buf[:4])
 
-		n, err = reader.Read(parentID[:])
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to decode parent %d", i)
+	_, _ = w.Write(t.Payload)
+
+	critical := t.AccountsMerkleRoot != common.ZeroMerkleNodeID
+
+	if critical {
+		_ = w.WriteByte(1)
+		_, _ = w.Write(t.AccountsMerkleRoot[:])
+
+		_ = w.WriteByte(byte(len(t.DifficultyTimestamps)))
+
+		for _, timestamp := range t.DifficultyTimestamps {
+			binary.BigEndian.PutUint64(buf[:], timestamp)
+			_, _ = w.Write(buf[:])
 		}
+	} else {
+		_ = w.WriteByte(0)
+	}
 
-		if n != common.SizeAccountID {
-			return nil, errors.Errorf("could not read enough bytes for parent %d", i)
+	_, _ = w.Write(t.SenderSignature[:])
+	_, _ = w.Write(t.CreatorSignature[:])
+
+	return w.Bytes()
+}
+
+func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
+	if _, err = io.ReadFull(r, t.Sender[:]); err != nil {
+		err = errors.Wrap(err, "failed to decode transaction sender")
+		return
+	}
+
+	if _, err = io.ReadFull(r, t.Creator[:]); err != nil {
+		err = errors.Wrap(err, "failed to decode transaction creator")
+		return
+	}
+
+	var buf [8]byte
+
+	if _, err = io.ReadFull(r, buf[:1]); err != nil {
+		err = errors.Wrap(err, "failed to read num parents")
+		return
+	}
+
+	t.ParentIDs = make([]common.TransactionID, buf[0])
+
+	for i := range t.ParentIDs {
+		if _, err = io.ReadFull(r, t.ParentIDs[i][:]); err != nil {
+			err = errors.Wrapf(err, "failed to decode parent %d", i)
+			return
 		}
-
-		t.ParentIDs = append(t.ParentIDs, parentID)
 	}
 
-	t.Timestamp, err = reader.ReadUint64()
-	if err != nil {
-		return nil, errors.Wrap(err, "could not read transaction timestamp")
+	if _, err = io.ReadFull(r, buf[:]); err != nil {
+		err = errors.Wrap(err, "could not read transaction timestamp")
+		return
 	}
 
-	t.ViewID, err = reader.ReadUint64()
-	if err != nil {
-		return nil, errors.Wrap(err, "could not read transaction view ID")
+	t.Timestamp = binary.BigEndian.Uint64(buf[:])
+
+	if _, err = io.ReadFull(r, buf[:]); err != nil {
+		err = errors.Wrap(err, "could not read transaction view ID")
+		return
 	}
 
-	t.Tag, err = reader.ReadByte()
-	if err != nil {
-		return nil, errors.Wrap(err, "could not read transaction tag")
+	t.ViewID = binary.BigEndian.Uint64(buf[:])
+
+	if _, err = io.ReadFull(r, buf[:1]); err != nil {
+		err = errors.Wrap(err, "could not read transaction tag")
+		return
 	}
 
-	t.Payload, err = reader.ReadBytes()
-	if err != nil {
-		return nil, errors.Wrap(err, "could not read transaction payload")
+	t.Tag = buf[0]
+
+	if _, err = io.ReadFull(r, buf[:4]); err != nil {
+		err = errors.Wrap(err, "could not read transaction payload length")
+		return
 	}
 
-	critical, err := reader.ReadByte()
-	if err != nil {
-		return nil, errors.Wrap(err, "could not read checking bit to see if tx is critical")
+	t.Payload = make([]byte, binary.BigEndian.Uint32(buf[:4]))
+
+	if _, err = io.ReadFull(r, t.Payload[:]); err != nil {
+		err = errors.Wrap(err, "could not read transaction payload")
+		return
 	}
 
-	// If there exists an account merkle root, read it.
+	if _, err = io.ReadFull(r, buf[:1]); err != nil {
+		err = errors.Wrap(err, "could not read checking bit to see if tx is critical")
+		return
+	}
+
+	critical := buf[0]
+
 	if critical == 1 {
-		n, err = reader.Read(t.AccountsMerkleRoot[:])
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to decode accounts merkle root")
+		if _, err = io.ReadFull(r, t.AccountsMerkleRoot[:]); err != nil {
+			err = errors.Wrap(err, "failed to decode accounts merkle root")
+			return
 		}
 
-		if n != avl.MerkleHashSize {
-			return nil, errors.New("could not read enough bytes for accounts merkle root")
+		if _, err = io.ReadFull(r, buf[:1]); err != nil {
+			err = errors.Wrap(err, "could not read number of difficulty timestamps")
+			return
 		}
 
-		n, err := reader.ReadByte()
-		if err != nil {
-			return nil, errors.Wrap(err, "could not read number of difficulty timestamps")
+		if int(buf[0]) > sys.CriticalTimestampAverageWindowSize {
+			err = errors.Errorf("got %d difficulty timestamps when only expected %d timestamps", int(buf[0]), sys.CriticalTimestampAverageWindowSize)
+			return
 		}
 
-		if int(n) > sys.CriticalTimestampAverageWindowSize {
-			return nil, errors.Errorf("got %d difficulty timestamps when only expected %d timestamps", int(n), sys.CriticalTimestampAverageWindowSize)
-		}
+		t.DifficultyTimestamps = make([]uint64, buf[0])
 
-		for i := 0; i < int(n); i++ {
-			timestamp, err := reader.ReadUint64()
-			if err != nil {
-				return nil, errors.Wrap(err, "failed to read difficulty timestamp")
+		for i := range t.DifficultyTimestamps {
+			if _, err = io.ReadFull(r, buf[:]); err != nil {
+				err = errors.Wrap(err, "could not read difficulty timestamp")
+				return
 			}
 
-			t.DifficultyTimestamps = append(t.DifficultyTimestamps, timestamp)
+			t.DifficultyTimestamps[i] = binary.BigEndian.Uint64(buf[:])
 		}
 	}
 
-	n, err = reader.Read(t.SenderSignature[:])
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to decode sender signature")
+	if _, err = io.ReadFull(r, t.SenderSignature[:]); err != nil {
+		err = errors.Wrap(err, "failed to decode sender signature")
+		return
 	}
 
-	if n != common.SizeSignature {
-		return nil, errors.New("could not read enough bytes for sender signature")
-	}
-
-	n, err = reader.Read(t.CreatorSignature[:])
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to decode creator signature")
-	}
-
-	if n != common.SizeSignature {
-		return nil, errors.New("could not read enough bytes for creator signature")
+	if _, err = io.ReadFull(r, t.CreatorSignature[:]); err != nil {
+		err = errors.Wrap(err, "failed to decode creator signature")
+		return
 	}
 
 	t.rehash()
@@ -186,46 +225,8 @@ func (t Transaction) Read(reader payload.Reader) (noise.Message, error) {
 	return t, nil
 }
 
-func (t Transaction) Write() []byte {
-	writer := payload.NewWriter(nil)
-
-	_, _ = writer.Write(t.Sender[:])
-	_, _ = writer.Write(t.Creator[:])
-
-	writer.WriteByte(byte(len(t.ParentIDs)))
-
-	for _, parentID := range t.ParentIDs {
-		_, _ = writer.Write(parentID[:])
-	}
-
-	writer.WriteUint64(t.Timestamp)
-	writer.WriteUint64(t.ViewID)
-	writer.WriteByte(t.Tag)
-	writer.WriteBytes(t.Payload)
-
-	critical := t.AccountsMerkleRoot != common.ZeroMerkleNodeID
-
-	if critical {
-		writer.WriteByte(1)
-
-		_, _ = writer.Write(t.AccountsMerkleRoot[:])
-
-		writer.WriteByte(byte(len(t.DifficultyTimestamps)))
-		for _, timestamp := range t.DifficultyTimestamps {
-			writer.WriteUint64(timestamp)
-		}
-	} else {
-		writer.WriteByte(0)
-	}
-
-	_, _ = writer.Write(t.SenderSignature[:])
-	_, _ = writer.Write(t.CreatorSignature[:])
-
-	return writer.Bytes()
-}
-
 func (t *Transaction) rehash() *Transaction {
-	t.ID = blake2b.Sum256(t.Write())
+	t.ID = blake2b.Sum256(t.Marshal())
 	return t
 }
 

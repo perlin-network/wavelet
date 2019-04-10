@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/common"
 	logger "github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
@@ -110,7 +111,7 @@ func commandRemote(c *cli.Context) error {
 		return errors.Wrap(err, "failed to decode private key")
 	}
 
-	var privateKey common.PrivateKey
+	var privateKey edwards25519.PrivateKey
 	copy(privateKey[:], privateKeyBuf)
 
 	client, err := connectToAPI(host, port, privateKey)

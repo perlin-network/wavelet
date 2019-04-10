@@ -1,16 +1,16 @@
 package main
 
 import (
-	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
 )
 
-func connectToAPI(host string, port uint16, privateKey common.PrivateKey) (*wctl.Client, error) {
+func connectToAPI(host string, port uint16, privateKey edwards25519.PrivateKey) (*wctl.Client, error) {
 	config := wctl.Config{
-		APIHost:       host,
-		APIPort:       port,
-		RawPrivateKey: privateKey,
+		APIHost:    host,
+		APIPort:    port,
+		PrivateKey: privateKey,
 	}
 
 	client, err := wctl.NewClient(config)

@@ -13,7 +13,6 @@ import (
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/node"
 	"github.com/pkg/errors"
 	"io"
 	"net/http"
@@ -106,9 +105,9 @@ func (g *Gateway) setup() {
 	g.router = r
 }
 
-func (g *Gateway) StartHTTP(n *noise.Node, port int) {
+func (g *Gateway) StartHTTP(n *noise.Node, l *wavelet.Ledger, port int) {
 	g.node = n
-	g.ledger = node.Ledger(n)
+	g.ledger = l
 
 	g.setup()
 
