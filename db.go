@@ -1,12 +1,18 @@
 package wavelet
 
 import (
+	"bytes"
 	"encoding/binary"
 	"github.com/golang/snappy"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/store"
+	"io"
+	"sort"
 )
+
+const CriticalTimestampsLimit = 10
 
 var (
 	keyAccounts       = [...]byte{0x1}
@@ -20,6 +26,8 @@ var (
 	keyLedgerDifficulty = [...]byte{0x7}
 
 	keyGraphRoot = [...]byte{0x8}
+
+	keyCriticalTimestamps = [...]byte{0x9}
 )
 
 func ReadAccountBalance(tree *avl.Tree, id common.AccountID) (uint64, bool) {
@@ -113,6 +121,79 @@ func WriteAccountContractPage(tree *avl.Tree, id common.TransactionID, idx uint6
 	encoded := snappy.Encode(nil, page)
 
 	writeUnderAccounts(tree, id, append(keyAccountContractPages[:], buf[:]...), encoded)
+}
+
+func ReadCriticalTimestamps(kv store.KV) ([]uint64, error) {
+	data, err := kv.Get(keyCriticalTimestamps[:])
+	if err != nil {
+		if err.Error() == "key not found" {
+			return []uint64{}, nil
+		}
+		return nil, err
+	}
+
+	timestamps := make([]uint64, CriticalTimestampsLimit)
+	if err = binary.Read(bytes.NewReader(data), binary.LittleEndian, timestamps); err != nil {
+		if err == io.ErrUnexpectedEOF || err == io.EOF {
+			return []uint64{}, nil
+		}
+
+		return nil, err
+	}
+
+	var actualTs []uint64
+	for _, ts := range timestamps {
+		if ts != 0 {
+			actualTs = append(actualTs, ts)
+		}
+	}
+
+	return actualTs , nil
+}
+
+func WriteCriticalTimestamp(kv store.KV, timestamp uint64) error {
+	addTimestamp := func(ts uint64, timestamps []uint64) []uint64 {
+		if len(timestamps) == 0 {
+			return append(timestamps, ts)
+		}
+
+		toInsert := sort.Search(
+			len(timestamps),
+			func(i int) bool { return timestamps[i] >= ts },
+		)
+
+		if toInsert == len(timestamps) {
+			return append(timestamps, ts)
+		}
+
+		return append(
+			timestamps[:toInsert],
+			append([]uint64{ts}, timestamps[toInsert:]...)...,
+		)
+	}
+
+	timestamps, err := ReadCriticalTimestamps(kv)
+	if err != nil {
+		return err
+	}
+
+	newTimestamps := addTimestamp(timestamp, timestamps)
+	newTimestampsSize := len(newTimestamps)
+
+	if newTimestampsSize  < CriticalTimestampsLimit {
+		for i := 0; i < CriticalTimestampsLimit - newTimestampsSize; i++ {
+			newTimestamps = append(newTimestamps, 0)
+		}
+	} else if newTimestampsSize > CriticalTimestampsLimit {
+		newTimestamps = newTimestamps[len(newTimestamps) - CriticalTimestampsLimit:]
+	}
+
+	buf := bytes.NewBuffer(nil)
+	if err := binary.Write(buf, binary.LittleEndian, newTimestamps); err != nil {
+		return err
+	}
+
+	return kv.Put(keyCriticalTimestamps[:], buf.Bytes())
 }
 
 func readUnderAccounts(tree *avl.Tree, id common.AccountID, key []byte) ([]byte, bool) {

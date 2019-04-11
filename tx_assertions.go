@@ -164,17 +164,32 @@ func AssertInView(view *graph, tx Transaction, critical bool) error {
 			return errors.New("critical transactions merkle root is expected to be not nil")
 		}
 
-		if size := computeCriticalTimestampWindowSize(tx.ViewID); len(tx.DifficultyTimestamps) != size {
-			return errors.Errorf("expected tx to have %d timestamp(s), but has %d timestamp(s)", size, len(tx.DifficultyTimestamps))
+		txCriticalTimestampsNum := len(tx.DifficultyTimestamps)
+		if size := computeCriticalTimestampWindowSize(tx.ViewID); txCriticalTimestampsNum != size {
+			return errors.Errorf("expected tx to have %d timestamp(s), but has %d timestamp(s)", size, txCriticalTimestampsNum)
 		}
 
-		// TODO(kenta): check if we have stored a log of the last 10 critical
-		//  transactions timestamps to assert that the timestamps are the same.
-
 		// Check that difficulty timestamps are in ascending order.
-		for i := 1; i < len(tx.DifficultyTimestamps); i++ {
+		for i := 1; i < txCriticalTimestampsNum; i++ {
 			if tx.DifficultyTimestamps[i] < tx.DifficultyTimestamps[i-1] {
 				return errors.New("tx critical timestamps are not in ascending order")
+			}
+		}
+
+		// Check that difficulty timestamps are same as stored ones
+		savedTimestamps, err := ReadCriticalTimestamps(view.kv)
+		if err != nil {
+			return err
+		}
+
+		tsNumToCompare := len(savedTimestamps)
+		if txCriticalTimestampsNum < tsNumToCompare {
+			tsNumToCompare = txCriticalTimestampsNum
+		}
+
+		for i := 1; i <= tsNumToCompare; i++ {
+			if savedTimestamps[len(savedTimestamps)-i] != tx.DifficultyTimestamps[txCriticalTimestampsNum-i] {
+				return errors.New("tx critical timestamps differ from the stored ones")
 			}
 		}
 	} else {

@@ -489,11 +489,15 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 			return
 		}
 
-		if critical && l.cr.Preferred() == nil && tx.ViewID == l.v.loadViewID(nil) {
-			l.cr.Prefer(tx)
-		}
+		if critical {
+			err = WriteCriticalTimestamp(l.kv, tx.Timestamp)
 
-		l.revisitBufferedTransactions(tx.ID)
+			if l.cr.Preferred() == nil && tx.ViewID == l.v.loadViewID(nil) {
+				l.cr.Prefer(tx)
+			}
+
+			l.revisitBufferedTransactions(tx.ID)
+		}
 	}()
 
 	if _, found := l.v.lookupTransaction(tx.ID); found {
@@ -573,7 +577,7 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 		}
 	}
 
-	if err = l.v.addTransaction(&tx); err != nil && errors.Cause(err) != ErrTxAlreadyExists {
+	if err = l.v.addTransaction(&tx, critical); err != nil && errors.Cause(err) != ErrTxAlreadyExists {
 		err = errors.Wrap(err, "got an error adding queried transaction to view-graph")
 	}
 
