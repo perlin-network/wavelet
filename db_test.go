@@ -2,6 +2,7 @@ package wavelet
 
 import (
 	"github.com/perlin-network/wavelet/store"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 	"sort"
 	"testing"
@@ -41,7 +42,7 @@ func TestCriticalTimestamps(t *testing.T) {
 
 	tss, err = ReadCriticalTimestamps(kv)
 	assert.NoError(t, err)
-	if !assert.Equal(t, CriticalTimestampsLimit, len(tss)) {
+	if !assert.Equal(t, sys.CriticalTimestampAverageWindowSize, len(tss)) {
 		return
 	}
 

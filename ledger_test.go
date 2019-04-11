@@ -617,7 +617,7 @@ func TestListenForMissingTXs(t *testing.T) {
 	assert.NoError(t, err)
 	tx.rehash()
 
-	assert.NoError(t, l.v.addTransaction(&tx))
+	assert.NoError(t, l.v.addTransaction(&tx, false))
 
 	evt := EventIncomingSyncTX{
 		IDs:      []common.TransactionID{tx.ID},

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"github.com/perlin-network/noise/signature/eddsa"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
@@ -152,12 +153,10 @@ func AssertValidAncestry(view *graph, tx Transaction) (missing []common.Transact
 	return nil, nil
 }
 
-func AssertInView(view *graph, tx Transaction, critical bool) error {
-	ourViewID := view.loadViewID(nil)
-
+func AssertInView(viewID uint64, kv store.KV, tx Transaction, critical bool) error {
 	if critical {
-		if tx.ViewID != ourViewID {
-			return errors.Errorf("critical transaction was made for view ID %d, but our view ID is %d", tx.ViewID, ourViewID)
+		if tx.ViewID != viewID {
+			return errors.Errorf("critical transaction was made for view ID %d, but our view ID is %d", tx.ViewID, viewID)
 		}
 
 		if tx.AccountsMerkleRoot == common.ZeroMerkleNodeID {
@@ -177,7 +176,7 @@ func AssertInView(view *graph, tx Transaction, critical bool) error {
 		}
 
 		// Check that difficulty timestamps are same as stored ones
-		savedTimestamps, err := ReadCriticalTimestamps(view.kv)
+		savedTimestamps, err := ReadCriticalTimestamps(kv)
 		if err != nil {
 			return err
 		}
@@ -201,8 +200,8 @@ func AssertInView(view *graph, tx Transaction, critical bool) error {
 			return errors.New("normal transactions are not expected to have difficulty timestamps")
 		}
 
-		if tx.ViewID < ourViewID {
-			return errors.Errorf("transaction was made for view ID %d, but our view ID is %d", tx.ViewID, ourViewID)
+		if tx.ViewID < viewID {
+			return errors.Errorf("transaction was made for view ID %d, but our view ID is %d", tx.ViewID, viewID)
 		}
 	}
 

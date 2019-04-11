@@ -8,11 +8,10 @@ import (
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
+	"github.com/perlin-network/wavelet/sys"
 	"io"
 	"sort"
 )
-
-const CriticalTimestampsLimit = 10
 
 var (
 	keyAccounts       = [...]byte{0x1}
@@ -132,7 +131,7 @@ func ReadCriticalTimestamps(kv store.KV) ([]uint64, error) {
 		return nil, err
 	}
 
-	timestamps := make([]uint64, CriticalTimestampsLimit)
+	timestamps := make([]uint64, sys.CriticalTimestampAverageWindowSize)
 	if err = binary.Read(bytes.NewReader(data), binary.LittleEndian, timestamps); err != nil {
 		if err == io.ErrUnexpectedEOF || err == io.EOF {
 			return []uint64{}, nil
@@ -180,12 +179,12 @@ func WriteCriticalTimestamp(kv store.KV, timestamp uint64) error {
 	newTimestamps := addTimestamp(timestamp, timestamps)
 	newTimestampsSize := len(newTimestamps)
 
-	if newTimestampsSize  < CriticalTimestampsLimit {
-		for i := 0; i < CriticalTimestampsLimit - newTimestampsSize; i++ {
+	if newTimestampsSize  < sys.CriticalTimestampAverageWindowSize {
+		for i := 0; i < sys.CriticalTimestampAverageWindowSize - newTimestampsSize; i++ {
 			newTimestamps = append(newTimestamps, 0)
 		}
-	} else if newTimestampsSize > CriticalTimestampsLimit {
-		newTimestamps = newTimestamps[len(newTimestamps) - CriticalTimestampsLimit:]
+	} else if newTimestampsSize > sys.CriticalTimestampAverageWindowSize {
+		newTimestamps = newTimestamps[len(newTimestamps) - sys.CriticalTimestampAverageWindowSize:]
 	}
 
 	buf := bytes.NewBuffer(nil)

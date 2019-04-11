@@ -489,22 +489,18 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 			return
 		}
 
-		if critical {
-			err = WriteCriticalTimestamp(l.kv, tx.Timestamp)
-
-			if l.cr.Preferred() == nil && tx.ViewID == l.v.loadViewID(nil) {
-				l.cr.Prefer(tx)
-			}
-
-			l.revisitBufferedTransactions(tx.ID)
+		if critical && l.cr.Preferred() == nil && tx.ViewID == l.v.loadViewID(nil) {
+			l.cr.Prefer(tx)
 		}
+
+		l.revisitBufferedTransactions(tx.ID)
 	}()
 
 	if _, found := l.v.lookupTransaction(tx.ID); found {
 		return
 	}
 
-	if err = AssertInView(l.v, tx, critical); err != nil {
+	if err = AssertInView(l.v.loadViewID(nil), l.kv, tx, critical); err != nil {
 		return
 	}
 
@@ -1350,6 +1346,11 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 
 					l.cr.Reset()
 					l.v.reset(newRoot)
+
+					if err := WriteCriticalTimestamp(l.kv, newRoot.Timestamp); err != nil {
+						exception = err
+						return
+					}
 
 					l.muMissing.Lock()
 					for id, buffered := range l.missing {
