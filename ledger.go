@@ -500,7 +500,7 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 		return
 	}
 
-	if err = AssertInView(l.v, tx, critical); err != nil {
+	if err = AssertInView(l.v.loadViewID(nil), l.kv, tx, critical); err != nil {
 		return
 	}
 
@@ -573,7 +573,7 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 		}
 	}
 
-	if err = l.v.addTransaction(&tx); err != nil && errors.Cause(err) != ErrTxAlreadyExists {
+	if err = l.v.addTransaction(&tx, critical); err != nil && errors.Cause(err) != ErrTxAlreadyExists {
 		err = errors.Wrap(err, "got an error adding queried transaction to view-graph")
 	}
 
@@ -1346,6 +1346,11 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 
 					l.cr.Reset()
 					l.v.reset(newRoot)
+
+					if err := WriteCriticalTimestamp(l.kv, newRoot.Timestamp); err != nil {
+						exception = err
+						return
+					}
 
 					l.muMissing.Lock()
 					for id, buffered := range l.missing {
