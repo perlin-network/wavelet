@@ -324,9 +324,7 @@ func TestQuery(t *testing.T) {
 
 	// Re-set the preferred.
 	preferred, err = NewTransaction(l.keys, sys.TagNop, nil)
-	if !assert.NoError(t, err) {
-
-	}
+	assert.NoError(t, err)
 
 	preferred.ViewID = l.ViewID()
 	preferred.rehash()
@@ -492,17 +490,15 @@ func TestListenForSyncDiffChunks(t *testing.T) {
 	_, err = rand.Read(chunkHash[:])
 	assert.NoError(t, err)
 
-	var evt EventIncomingSyncDiff
-
 	// Test ChunkHash not found
-	evt = EventIncomingSyncDiff{
+	evt := EventIncomingSyncDiff{
 		ChunkHash: chunkHash,
 		Response:  make(chan []byte, 1),
 	}
 
 	l.SyncDiffIn <- evt
 	assert.NoError(t, listenForSyncDiffChunks())
-	// check the response should be nil
+	// Check that the response should be nil.
 	assert.Nil(t, <-evt.Response)
 
 	// Test ChunkHash found
@@ -550,10 +546,9 @@ func TestListenForSyncInits(t *testing.T) {
 	}
 
 	var viewID uint64 = 1
-	var evt EventIncomingSyncInit
 
-	// Test empty
-	evt = EventIncomingSyncInit{
+	// Test empty.
+	evt := EventIncomingSyncInit{
 		ViewID:   viewID,
 		Response: make(chan SyncInitMetadata, 1),
 	}
@@ -562,9 +557,9 @@ func TestListenForSyncInits(t *testing.T) {
 	assert.NoError(t, listenForSyncInits())
 	assert.Equal(t, SyncInitMetadata{PeerID: nil, ViewID: 1, ChunkHashes: nil}, <-evt.Response)
 
-	// Test diff
+	// Test diff.
 
-	// Create the tree and commit it into ledger accounts
+	// Create the tree and commit it into ledger accounts.
 	tree := avl.New(store.NewInmem())
 	for i := uint64(0); i < 50; i++ {
 		tree.Insert([]byte("a"), []byte("b"))

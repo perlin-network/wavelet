@@ -18,6 +18,8 @@ import (
 )
 
 func main() {
+	_ = make([]byte, 10<<28)
+
 	app := cli.NewApp()
 
 	app.Name = "benchmark"

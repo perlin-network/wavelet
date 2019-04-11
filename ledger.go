@@ -600,7 +600,7 @@ func (l *Ledger) revisitBufferedTransactions(id common.TransactionID) {
 		// to receive is awaiting for the arrival of T.
 
 		for _, parentID := range unbufferedTX.ParentIDs {
-			buffered, exists = l.missing[parentID]
+			_, exists = l.missing[parentID]
 
 			if !exists {
 				continue
@@ -1152,7 +1152,7 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 
 			// If we have nothing else to broadcast and we are not broadcasting out
 			// nop transactions, then start broadcasting out nop transactions.
-			if len(l.broadcastQueue) == 0 && broadcastNops == false {
+			if len(l.broadcastQueue) == 0 && !broadcastNops {
 				broadcastNops = true
 			}
 
