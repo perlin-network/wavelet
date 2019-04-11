@@ -459,6 +459,7 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 			Strs("parents", parentHexIDs).
 			Uint64("difficulty", difficulty).
 			Hex("merkle_root", tx.AccountsMerkleRoot[:]).
+			Hex("current_root", root.ID[:]).
 			Msg("Created a critical transaction.")
 
 	}
@@ -562,8 +563,8 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 		}
 	}
 
-	if err = l.v.addTransaction(&tx); err != nil && errors.Cause(err) != ErrTxAlreadyExists {
-		err = errors.Wrap(err, "got an error adding queried transaction to view-graph")
+	if verr := l.v.addTransaction(&tx); verr != nil && errors.Cause(verr) != ErrTxAlreadyExists {
+		err = errors.Wrap(verr, "got an error adding queried transaction to view-graph")
 	}
 
 	return
@@ -1255,7 +1256,8 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 		case <-stop:
 			return ErrStopped
 		case <-time.After(1 * time.Second):
-			return errors.Wrap(ErrTimeout, "query queue is full")
+			fmt.Println("query queue is full")
+			return nil
 		case l.queryOut <- evt:
 		}
 
@@ -1265,7 +1267,8 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 		case <-stop:
 			return ErrStopped
 		case err := <-evt.Error:
-			return errors.Wrap(err, "query got event error")
+			fmt.Println("query got event error:", err)
+			return nil
 		case votes := <-evt.Result:
 			if len(votes) == 0 {
 				return nil
@@ -1368,7 +1371,8 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 				return ErrConsensusRoundFinished
 			}
 		case <-time.After(1 * time.Second):
-			return errors.Wrap(ErrTimeout, "did not get back a query response")
+			fmt.Println("did not get back a query response")
+			return nil
 		}
 
 		return nil
