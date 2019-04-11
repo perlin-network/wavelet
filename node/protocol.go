@@ -186,20 +186,18 @@ func (b *Protocol) broadcastGossip(ctx context.Context, node *noise.Node) {
 			votes := make([]wavelet.VoteGossip, len(responses))
 
 			for i, buf := range responses {
-				res, err := UnmarshalGossipResponse(bytes.NewReader(buf))
+				if buf != nil {
+					res, err := UnmarshalGossipResponse(bytes.NewReader(buf))
 
-				if err != nil {
-					// TODO (andrii) something needs to be done with this error, at least logging
-					fmt.Println("Error while unmarshaling gossip response", err)
-					continue
+					if err != nil {
+						fmt.Println("Error while unmarshaling gossip response", err)
+						continue
+					}
+
+					votes[i].Ok = res.vote
 				}
 
-				id := peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID)
-
-				votes[i] = wavelet.VoteGossip{
-					Voter: id.PublicKey(),
-					Ok:    res.vote,
-				}
+				votes[i].Voter = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).PublicKey()
 			}
 
 			evt.Result <- votes
@@ -228,17 +226,18 @@ func (b *Protocol) broadcastQueries(ctx context.Context, node *noise.Node) {
 			votes := make([]wavelet.VoteQuery, len(responses))
 
 			for i, buf := range responses {
-				res, err := UnmarshalQueryResponse(bytes.NewReader(buf))
+				if buf != nil {
+					res, err := UnmarshalQueryResponse(bytes.NewReader(buf))
 
-				if err != nil {
-					// TODO (andrii) something needs to be done with this error, at least logging
-					fmt.Println("Error while unmarshaling query response", err)
-					continue
+					if err != nil {
+						fmt.Println("Error while unmarshaling query response", err)
+						continue
+					}
+
+					votes[i].Preferred = res.preferred
 				}
 
-				id := peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID)
-
-				votes[i] = wavelet.VoteQuery{Voter: id.PublicKey(), Preferred: res.preferred}
+				votes[i].Voter = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).PublicKey()
 			}
 
 			evt.Result <- votes
@@ -264,19 +263,21 @@ func (b *Protocol) broadcastOutOfSyncChecks(ctx context.Context, node *noise.Nod
 				continue
 			}
 
-			var votes []wavelet.VoteOutOfSync
-			for i, buf := range responses {
-				res, err := UnmarshalSyncViewResponse(bytes.NewReader(buf))
+			votes := make([]wavelet.VoteOutOfSync, len(peers))
 
-				if err != nil {
-					// TODO (andrii) something needs to be done with this error, at least logging
-					fmt.Println("Error while unmarshaling sync view response", err)
-					continue
+			for i, buf := range responses {
+				if buf != nil {
+					res, err := UnmarshalSyncViewResponse(bytes.NewReader(buf))
+
+					if err != nil {
+						fmt.Println("Error while unmarshaling sync view response", err)
+						continue
+					}
+
+					votes[i].Root = res.root
 				}
 
-				id := peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID)
-
-				votes = append(votes, wavelet.VoteOutOfSync{Voter: id.PublicKey(), Root: res.root})
+				votes[i].Voter = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).PublicKey()
 			}
 
 			evt.Result <- votes
@@ -306,21 +307,19 @@ func (b *Protocol) broadcastSyncInitRequests(ctx context.Context, node *noise.No
 			votes := make([]wavelet.SyncInitMetadata, len(responses))
 
 			for i, buf := range responses {
-				res, err := UnmarshalSyncInitResponse(bytes.NewReader(buf))
+				if buf != nil {
+					res, err := UnmarshalSyncInitResponse(bytes.NewReader(buf))
 
-				if err != nil {
-					// TODO (andrii) something needs to be done with this error, at least logging
-					fmt.Println("Error while unmarshaling sync init response", err)
-					continue
+					if err != nil {
+						fmt.Println("Error while unmarshaling sync init response", err)
+						continue
+					}
+
+					votes[i].ViewID = res.latestViewID
+					votes[i].ChunkHashes = res.chunkHashes
 				}
 
-				id := peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID)
-
-				votes[i] = wavelet.SyncInitMetadata{
-					PeerID:      id,
-					ViewID:      res.latestViewID,
-					ChunkHashes: res.chunkHashes,
-				}
+				votes[i].PeerID = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID)
 			}
 
 			evt.Result <- votes
@@ -349,16 +348,17 @@ func (b *Protocol) broadcastSyncMissingTXs(ctx context.Context, node *noise.Node
 			set := make(map[common.TransactionID]wavelet.Transaction)
 
 			for _, buf := range responses {
-				res, err := UnmarshalSyncMissingTxResponse(bytes.NewReader(buf))
+				if buf != nil {
+					res, err := UnmarshalSyncMissingTxResponse(bytes.NewReader(buf))
 
-				if err != nil {
-					// TODO (andrii) something needs to be done with this error, at least logging
-					fmt.Println("Error while unmarshaling sync missing tx response", err)
-					continue
-				}
+					if err != nil {
+						fmt.Println("Error while unmarshaling sync missing tx response", err)
+						continue
+					}
 
-				for _, tx := range res.transactions {
-					set[tx.ID] = tx
+					for _, tx := range res.transactions {
+						set[tx.ID] = tx
+					}
 				}
 			}
 

@@ -1677,7 +1677,9 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 		votesByViewID := make(map[uint64][]SyncInitMetadata)
 
 		for _, vote := range votes {
-			votesByViewID[vote.ViewID] = append(votesByViewID[vote.ViewID], vote)
+			if vote.ViewID > 0 && len(vote.ChunkHashes) > 0 {
+				votesByViewID[vote.ViewID] = append(votesByViewID[vote.ViewID], vote)
+			}
 		}
 
 		var selected []SyncInitMetadata
