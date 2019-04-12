@@ -48,7 +48,10 @@ func TestStopNoLeaks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
 	l.Stop()
 }
 
@@ -60,8 +63,11 @@ func TestKill(t *testing.T) {
 
 	var wg sync.WaitGroup
 
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+
 	// Test if we can gracefully stop the ledger while it is gossiping.
-	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
 
 	wg.Add(1)
 	go signalWhenComplete(&wg, l, gossiping)
@@ -84,7 +90,10 @@ func TestGossipOutTransaction(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
 	defer l.Stop()
 
 	go gossiping(l)
@@ -135,7 +144,10 @@ func TestTransitionFromGossipingToQuerying(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
 	defer l.Stop()
 
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
@@ -200,7 +212,10 @@ func TestEnsureGossipReturnsNetworkErrors(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
 	defer l.Stop()
 
 	// Create a dummy broadcast event.
@@ -248,7 +263,10 @@ func TestQuery(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
 
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
 	if !assert.NoError(t, err) {
@@ -376,7 +394,9 @@ func TestListenForQueries(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
 
 	root, err := NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
@@ -454,7 +474,9 @@ func TestListenForSyncDiffChunks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
 
 	stop := make(chan struct{})
 	listenForSyncDiffChunks := func() error {
@@ -512,7 +534,10 @@ func TestListenForSyncInits(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
 
 	stop := make(chan struct{})
 	listenForSyncInits := func() error {
@@ -534,8 +559,11 @@ func TestListenForSyncInits(t *testing.T) {
 
 	// Test diff
 
+	kv2, cleanup2 := GetKV("level", "db2")
+	defer cleanup2()
+
 	// Create the tree and commit it into ledger accounts
-	tree := avl.New(store.NewInmem())
+	tree := avl.New(kv2)
 	for i := uint64(0); i < 50; i++ {
 		tree.Insert([]byte("a"), []byte("b"))
 		tree.SetViewID(i)
@@ -572,7 +600,9 @@ func TestListenForOutOfSyncChecks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
 
 	stop := make(chan struct{})
 	listenForOutOfSyncChecks := func() error {
@@ -606,7 +636,10 @@ func TestListenForMissingTXs(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
 
 	stop := make(chan struct{})
 	listenForMissingTXs := func() error {
@@ -646,7 +679,10 @@ func TestCheckIfOutOfSync(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
 	preferred.rehash()
@@ -780,7 +816,10 @@ func TestSyncMissingTX(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+
+	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
 
 	stop := make(chan struct{})
 	syncMissingTX := func() error {

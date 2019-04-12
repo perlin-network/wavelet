@@ -42,10 +42,12 @@ type block struct {
 
 	opcodeSyncMissingTxRequest  noise.Opcode
 	opcodeSyncMissingTxResponse noise.Opcode
+
+	kv store.KV
 }
 
-func New() *block {
-	return &block{}
+func New(kv store.KV) *block {
+	return &block{kv: kv}
 }
 
 func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
@@ -62,9 +64,7 @@ func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
 	b.opcodeSyncMissingTxRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncMissingTxRequest)(nil))
 	b.opcodeSyncMissingTxResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncMissingTxResponse)(nil))
 
-	kv := store.NewInmem()
-
-	ledger := wavelet.NewLedger(context.TODO(), node.Keys, kv)
+	ledger := wavelet.NewLedger(context.TODO(), node.Keys, b.kv)
 	node.Set(keyLedger, ledger)
 
 	go wavelet.Run(ledger)

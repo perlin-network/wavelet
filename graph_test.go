@@ -2,6 +2,7 @@ package wavelet
 
 import (
 	"github.com/perlin-network/wavelet/common"
+	"os"
 	"testing"
 	"time"
 
@@ -11,7 +12,8 @@ import (
 )
 
 func TestGraph(t *testing.T) {
-	g, genesis, err := createGraph(0, false)
+	g, genesis, cleanup, err := createGraph(0, false)
+	defer cleanup()
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -55,7 +57,8 @@ func TestGraph(t *testing.T) {
 }
 
 func TestGraphReset(t *testing.T) {
-	g, genesis, err := createGraph(100, true)
+	g, genesis, cleanup, err := createGraph(100, true)
+	defer cleanup()
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -93,7 +96,8 @@ func TestGraphReset(t *testing.T) {
 }
 
 func TestAddTransactionWithParents(t *testing.T) {
-	g, genesis, err := createGraph(0, false)
+	g, genesis, cleanup, err := createGraph(0, false)
+	defer cleanup()
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -117,7 +121,8 @@ func TestAddTransactionWithParents(t *testing.T) {
 }
 
 func TestLookupTransaction(t *testing.T) {
-	g, genesis, err := createGraph(100, false)
+	g, genesis, cleanup, err := createGraph(100, false)
+	defer cleanup()
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -131,7 +136,8 @@ func TestLookupTransaction(t *testing.T) {
 }
 
 func TestDefaultDifficulty(t *testing.T) {
-	g, genesis, err := createGraph(0, false)
+	g, genesis, cleanup, err := createGraph(0, false)
+	defer cleanup()
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -145,7 +151,8 @@ func TestDefaultDifficulty(t *testing.T) {
 }
 
 func TestLoadRoot(t *testing.T) {
-	g, _, err := createGraph(100, true)
+	g, _, cleanup, err := createGraph(100, true)
+	defer cleanup()
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -159,7 +166,7 @@ func TestLoadRoot(t *testing.T) {
 
 func benchmarkGraph(b *testing.B, n int) {
 	for i := 0; i < b.N; i++ {
-		g, genesis, err := createGraph(n, true)
+		g, genesis, cleanup, err := createGraph(n, true)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -170,6 +177,8 @@ func benchmarkGraph(b *testing.B, n int) {
 		}
 
 		g.reset(newRoot)
+
+		cleanup()
 	}
 }
 
@@ -178,19 +187,20 @@ func BenchmarkGraph10000(b *testing.B)   { benchmarkGraph(b, 10000) }
 func BenchmarkGraph100000(b *testing.B)  { benchmarkGraph(b, 100000) }
 func BenchmarkGraph1000000(b *testing.B) { benchmarkGraph(b, 1000000) }
 
-func createGraph(txNum int, withParents bool) (*graph, *Transaction, error) {
-	kv := store.NewInmem()
+func createGraph(txNum int, withParents bool) (*graph, *Transaction, func(), error) {
+	kv, cleanup := GetKV("level", "db")
+
 	accounts := newAccounts(kv)
 
 	// We use the default genesis
 	genesis, err := performInception(accounts.tree, nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, cleanup, err
 	}
 
 	g := newGraph(kv, genesis)
 
-	return g, genesis, addTxs(g, txNum, withParents)
+	return g, genesis, cleanup, addTxs(g, txNum, withParents)
 }
 
 func addTxs(g *graph, txNum int, withParents bool) error {
@@ -222,4 +232,29 @@ func createTx(viewID uint64) (*Transaction, error) {
 	tx.rehash()
 
 	return tx, nil
+}
+
+func GetKV(kv string, path string) (store.KV, func()) {
+	if kv == "inmem" {
+		inmemdb := store.NewInmem()
+		return inmemdb, func() {
+			_ = inmemdb.Close()
+		}
+	}
+	if kv == "level" {
+		// Remove existing db
+		_ = os.RemoveAll(path)
+
+		leveldb, err := store.NewLevelDB(path)
+		if err != nil {
+			panic("failed to create LevelDB: " + err.Error())
+		}
+
+		return leveldb, func() {
+			_ = leveldb.Close()
+			_ = os.RemoveAll(path)
+		}
+	}
+
+	panic("unknown kv " + kv)
 }

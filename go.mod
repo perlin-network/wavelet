@@ -24,6 +24,7 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/rs/zerolog v1.11.0
 	github.com/stretchr/testify v1.3.0
+	github.com/syndtr/goleveldb v1.0.0
 	github.com/tecbot/gorocksdb v0.0.0-20181010114359-8752a9433481
 	github.com/valyala/fasthttp v1.2.0
 	github.com/valyala/fastjson v1.4.1

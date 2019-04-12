@@ -16,6 +16,7 @@ import (
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/rs/zerolog"
 	"golang.org/x/crypto/ssh/terminal"
@@ -36,11 +37,12 @@ const (
 )
 
 type Config struct {
-	Host    string
-	Port    uint
-	Wallet  string
-	APIPort uint
-	Peers   []string
+	Host     string
+	Port     uint
+	Wallet   string
+	APIPort  uint
+	Peers    []string
+	Database string
 }
 
 func main() {
@@ -83,6 +85,11 @@ func main() {
 			Name:  "api.port",
 			Value: 0,
 			Usage: "Host a local HTTP API at port.",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:  "db",
+			Value: "db",
+			Usage: "Database directory",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "sys.query_timeout",
@@ -183,11 +190,12 @@ func main() {
 	app.Action = func(c *cli.Context) error {
 		c.String("config")
 		config := &Config{
-			Host:    c.String("host"),
-			Port:    c.Uint("port"),
-			Wallet:  c.String("wallet"),
-			APIPort: c.Uint("api.port"),
-			Peers:   c.Args(),
+			Host:     c.String("host"),
+			Port:     c.Uint("port"),
+			Wallet:   c.String("wallet"),
+			APIPort:  c.Uint("api.port"),
+			Peers:    c.Args(),
+			Database: c.String("db"),
 		}
 
 		// set the the sys variables
@@ -298,11 +306,16 @@ func runServer(config *Config, logger zerolog.Logger) *noise.Node {
 		return nil
 	})
 
+	kv, err := store.NewLevelDB(config.Database)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to open database.")
+	}
+
 	protocol.New().
 		Register(ecdh.New()).
 		Register(aead.New()).
 		Register(skademlia.New().WithC1(DefaultC1).WithC2(DefaultC2)).
-		Register(node.New()).
+		Register(node.New(kv)).
 		Enforce(n)
 
 	go n.Listen()
