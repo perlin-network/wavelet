@@ -490,7 +490,7 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 		return
 	}
 
-	if err = AssertInView(l.v, tx, critical); err != nil {
+	if err = AssertInView(l.v.loadViewID(nil), l.kv, tx, critical); err != nil {
 		return
 	}
 
@@ -1256,8 +1256,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 		case <-stop:
 			return ErrStopped
 		case <-time.After(1 * time.Second):
-			fmt.Println("query queue is full")
-			return nil
+			return errors.Wrap(ErrTimeout, "query queue is full")
 		case l.queryOut <- evt:
 		}
 
@@ -1267,8 +1266,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 		case <-stop:
 			return ErrStopped
 		case err := <-evt.Error:
-			fmt.Println("query got event error:", err)
-			return nil
+			return errors.Wrap(err, "query got event error")
 		case votes := <-evt.Result:
 			if len(votes) == 0 {
 				return nil
@@ -1337,6 +1335,11 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 					l.cr.Reset()
 					l.v.reset(newRoot)
 
+					if err := WriteCriticalTimestamp(l.kv, newRoot.Timestamp); err != nil {
+						exception = err
+						return
+					}
+
 					l.muMissing.Lock()
 					for id, buffered := range l.missing {
 						for _, tx := range buffered {
@@ -1371,8 +1374,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 				return ErrConsensusRoundFinished
 			}
 		case <-time.After(1 * time.Second):
-			fmt.Println("did not get back a query response")
-			return nil
+			return errors.Wrap(ErrTimeout, "did not get back a query response")
 		}
 
 		return nil

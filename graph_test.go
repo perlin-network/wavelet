@@ -25,10 +25,10 @@ func TestGraph(t *testing.T) {
 	assert.Equal(t, 1, len(eligibleParents))
 	assert.Equal(t, genesis.ID, eligibleParents[0])
 
-	assert.NoError(t, g.addTransaction(tx))
+	assert.NoError(t, g.addTransaction(tx, false))
 
 	// Test transaction already exist
-	err = g.addTransaction(tx)
+	err = g.addTransaction(tx, false)
 	assert.Error(t, err)
 	assert.Equal(t, ErrTxAlreadyExists, err)
 
@@ -104,7 +104,7 @@ func TestAddTransactionWithParents(t *testing.T) {
 	}
 
 	tx.ParentIDs = []common.TransactionID{genesis.ID}
-	assert.NoError(t, g.addTransaction(tx))
+	assert.NoError(t, g.addTransaction(tx, false))
 
 	// adding tx with non existing parents should result in error
 	tx, err = createTx(genesis.ViewID)
@@ -113,7 +113,7 @@ func TestAddTransactionWithParents(t *testing.T) {
 	}
 
 	tx.ParentIDs = []common.TransactionID{{}}
-	assert.Equal(t, ErrParentsNotAvailable, g.addTransaction(tx))
+	assert.Equal(t, ErrParentsNotAvailable, g.addTransaction(tx, false))
 }
 
 func TestLookupTransaction(t *testing.T) {
@@ -205,7 +205,7 @@ func addTxs(g *graph, txNum int, withParents bool) error {
 			tx.ParentIDs = g.findEligibleParents()
 		}
 
-		if err := g.addTransaction(tx); err != nil {
+		if err := g.addTransaction(tx, false); err != nil {
 			return err
 		}
 	}

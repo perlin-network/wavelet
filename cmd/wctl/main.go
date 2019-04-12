@@ -237,7 +237,7 @@ func main() {
 				}
 
 				for ev := range evChan {
-					fmt.Printf("%s\n", ev)
+					output(ev)
 				}
 				return nil
 			},
@@ -298,7 +298,12 @@ func main() {
 					return err
 				}
 
-				output(res)
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
+				}
 
 				return nil
 			},
@@ -320,7 +325,12 @@ func main() {
 					return err
 				}
 
-				output(res)
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
+				}
 
 				return nil
 			},
@@ -420,7 +430,12 @@ func main() {
 					return err
 				}
 
-				output(res)
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
+				}
 
 				return nil
 			},
@@ -442,7 +457,12 @@ func main() {
 					return err
 				}
 
-				output(res)
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
+				}
 
 				return nil
 			},
@@ -503,7 +523,12 @@ func main() {
 					return err
 				}
 
-				output(res)
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
+				}
 
 				return nil
 			},
@@ -561,13 +586,13 @@ func setup(c *cli.Context) (*wctl.Client, error) {
 	return client, nil
 }
 
-// Write the bytes into Stdout, do JSON indent if possible
-func output(b []byte) {
+// Write bytes to stdout; do JSON indent if possible.
+func output(buf []byte) {
 	var out bytes.Buffer
-	err := json.Indent(&out, b, "", "\t")
-	if err == nil {
-		_, _ = out.WriteTo(os.Stdout)
-	} else {
-		fmt.Println(string(b))
+
+	if err := json.Indent(&out, buf, "", "\t"); err != nil {
+		out.Write(buf)
 	}
+
+	fmt.Println(out.Bytes())
 }

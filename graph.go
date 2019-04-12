@@ -78,7 +78,7 @@ func (g *graph) updateIndices(tx *Transaction) {
 // It will throw an error however if the transaction already exists
 // in the view-graph, or if the transactions parents are not
 // previously recorded in the view-graph.
-func (g *graph) addTransaction(tx *Transaction) error {
+func (g *graph) addTransaction(tx *Transaction, critical bool) error {
 	g.Lock()
 	defer g.Unlock()
 
@@ -107,9 +107,7 @@ func (g *graph) addTransaction(tx *Transaction) error {
 	}
 
 	// Update the transactions depth if the transaction is not critical.
-	// FIXME(kenta): there should be no knowledge within the view-graph about whethe. or not
-	// 	a transaction is critical; this could potentially be a cause for a data race.
-	if !tx.IsCritical(g.loadDifficulty()) {
+	if !critical {
 		for _, parent := range parents {
 			if tx.depth < parent.depth {
 				tx.depth = parent.depth
