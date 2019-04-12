@@ -38,7 +38,7 @@ func broadcast(peers []*noise.Peer, reqOpcode byte, resOpcode byte, req []byte) 
 			mux := peer.Mux()
 			defer mux.Close()
 
-			if err := mux.Send(reqOpcode, req); err != nil {
+			if err := mux.SendWithTimeout(reqOpcode, req, 1*time.Second); err != nil {
 				return
 			}
 

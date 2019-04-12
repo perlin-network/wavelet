@@ -213,9 +213,7 @@ func (b *Protocol) broadcastQueries(ctx context.Context, node *noise.Node) {
 				continue
 			}
 
-			fmt.Println("BEFORE QUERYING")
 			responses := broadcast(peers, b.opcodeQueryRequest, b.opcodeQueryResponse, QueryRequest{tx: evt.TX}.Marshal())
-			fmt.Println("AFTER QUERYING")
 
 			votes := make([]wavelet.VoteQuery, len(responses))
 
