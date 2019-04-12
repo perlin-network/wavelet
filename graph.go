@@ -1,8 +1,8 @@
 package wavelet
 
 import (
+	"bytes"
 	"encoding/binary"
-	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
@@ -292,7 +292,7 @@ func (g *graph) loadHeight() uint64 {
 
 func (g *graph) saveRoot(root *Transaction) {
 	g.root.Store(root)
-	_ = g.kv.Put(keyGraphRoot[:], root.Write())
+	_ = g.kv.Put(keyGraphRoot[:], root.Marshal())
 }
 
 func (g *graph) loadRoot() *Transaction {
@@ -305,14 +305,12 @@ func (g *graph) loadRoot() *Transaction {
 		return nil
 	}
 
-	msg, err := Transaction{}.Read(payload.NewReader(buf))
+	tx, err := UnmarshalTransaction(bytes.NewReader(buf))
 	if err != nil {
 		panic("graph: root data is malformed")
 	}
 
-	tx := msg.(Transaction)
 	root := &tx
-
 	g.root.Store(root)
 
 	return root

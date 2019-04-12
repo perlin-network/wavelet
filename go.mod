@@ -4,6 +4,7 @@ replace github.com/go-interpreter/wagon => github.com/perlin-network/wagon v0.3.
 
 require (
 	github.com/BurntSushi/toml v0.3.1 // indirect
+	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/facebookgo/ensure v0.0.0-20160127193407-b4ab57deab51 // indirect
 	github.com/facebookgo/stack v0.0.0-20160209184415-751773369052 // indirect
 	github.com/facebookgo/subset v0.0.0-20150612182917-8dac2c3c4870 // indirect
@@ -19,7 +20,7 @@ require (
 	github.com/klauspost/compress v1.4.1 // indirect
 	github.com/klauspost/cpuid v1.2.0 // indirect
 	github.com/perlin-network/life v0.0.0-20190204091834-d05763d11050
-	github.com/perlin-network/noise v0.0.0-20190305074834-c3dca79c3e2a
+	github.com/perlin-network/noise v0.0.0-20190412163128-394d9f00ce20
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
 	github.com/pkg/errors v0.8.1
 	github.com/rs/zerolog v1.11.0
@@ -28,7 +29,9 @@ require (
 	github.com/valyala/fasthttp v1.2.0
 	github.com/valyala/fastjson v1.4.1
 	go.uber.org/atomic v1.3.2
-	golang.org/x/crypto v0.0.0-20190123085648-057139ce5d2b
+	golang.org/x/crypto v0.0.0-20190404164418-38d8ce5564a5
+	golang.org/x/net v0.0.0-20190404232315-eb5bcb51f2a3 // indirect
+	golang.org/x/sys v0.0.0-20190405154228-4b34438f7a67 // indirect
 	gopkg.in/urfave/cli.v1 v1.20.0
 	gopkg.in/yaml.v2 v2.2.2 // indirect
 )

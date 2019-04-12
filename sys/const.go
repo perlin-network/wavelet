@@ -13,6 +13,10 @@ const (
 )
 
 var (
+	// S/Kademlia overlay network parameters.
+	SKademliaC1 = 16
+	SKademliaC2 = 16
+
 	// Snowball consensus protocol parameters.
 	SnowballQueryK     = 2
 	SnowballQueryAlpha = 0.8
@@ -23,7 +27,7 @@ var (
 	SnowballSyncBeta  = 150
 
 	// Timeout for querying a transaction to K peers.
-	QueryTimeout = 10 * time.Second
+	QueryTimeout = 1 * time.Second
 
 	// Max graph depth difference to search for eligible transaction
 	// parents from for our node.
@@ -80,10 +84,10 @@ var (
 		"i64.add":             45,
 		"i64.sub":             45,
 		"i64.mul":             45,
-		"i64.div_s":           36000,
-		"i64.div_u":           36000,
-		"i64.rem_s":           36000,
-		"i64.rem_u":           36000,
+		"i64.div_s":           45,
+		"i64.div_u":           45,
+		"i64.rem_s":           45,
+		"i64.rem_u":           45,
 		"i64.and":             45,
 		"i64.or":              45,
 		"i64.xor":             45,

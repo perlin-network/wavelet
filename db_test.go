@@ -46,5 +46,5 @@ func TestCriticalTimestamps(t *testing.T) {
 		return
 	}
 
-	assert.True(t, sort.SliceIsSorted(tss, func(i, j int) bool {return tss[i] <= tss[j]}))
+	assert.True(t, sort.SliceIsSorted(tss, func(i, j int) bool { return tss[i] <= tss[j] }))
 }

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/go-chi/render"
 	"github.com/perlin-network/noise"
-	"github.com/perlin-network/noise/signature/eddsa"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
@@ -39,26 +39,31 @@ type SessionInitRequest struct {
 }
 
 func (s *SessionInitRequest) Bind(r *http.Request) error {
-	publicKey, err := hex.DecodeString(s.PublicKey)
+	publicKeyBuf, err := hex.DecodeString(s.PublicKey)
 	if err != nil {
 		return errors.Wrap(err, "public key provided is not hex-formatted")
 	}
 
-	if len(publicKey) != common.SizeAccountID {
+	if len(publicKeyBuf) != common.SizeAccountID {
 		return errors.Errorf("public key must be size %d", common.SizeAccountID)
 	}
 
-	signature, err := hex.DecodeString(s.Signature)
+	signatureBuf, err := hex.DecodeString(s.Signature)
 	if err != nil {
 		return errors.Wrap(err, "signature provided is not hex-formatted")
 	}
 
-	if len(signature) != common.SizeSignature {
+	if len(signatureBuf) != common.SizeSignature {
 		return errors.Errorf("signature must be size %d", common.SizeSignature)
 	}
 
-	err = eddsa.Verify(publicKey, []byte(fmt.Sprintf("%s%d", SessionInitMessage, s.TimeMillis)), signature)
-	if err != nil {
+	var publicKey edwards25519.PublicKey
+	copy(publicKey[:], publicKeyBuf)
+
+	var signature edwards25519.Signature
+	copy(signature[:], signatureBuf)
+
+	if !edwards25519.Verify(publicKey, []byte(fmt.Sprintf("%s%d", SessionInitMessage, s.TimeMillis)), signature) {
 		return errors.Wrap(err, "signature verification failed")
 	}
 
@@ -86,12 +91,12 @@ type SendTransactionRequest struct {
 }
 
 func (s *SendTransactionRequest) Bind(r *http.Request) error {
-	sender, err := hex.DecodeString(s.Sender)
+	senderBuf, err := hex.DecodeString(s.Sender)
 	if err != nil {
 		return errors.Wrap(err, "sender public key provided is not hex-formatted")
 	}
 
-	if len(sender) != common.SizeAccountID {
+	if len(senderBuf) != common.SizeAccountID {
 		return errors.Errorf("sender public key must be size %d", common.SizeAccountID)
 	}
 
@@ -104,22 +109,27 @@ func (s *SendTransactionRequest) Bind(r *http.Request) error {
 		return errors.Wrap(err, "payload provided is not hex-formatted")
 	}
 
-	signature, err := hex.DecodeString(s.Signature)
+	signatureBuf, err := hex.DecodeString(s.Signature)
 	if err != nil {
 		return errors.Wrap(err, "sender signature provided is not hex-formatted")
 	}
 
-	if len(signature) != common.SizeSignature {
+	if len(signatureBuf) != common.SizeSignature {
 		return errors.Errorf("sender signature must be size %d", common.SizeSignature)
 	}
 
-	err = eddsa.Verify(sender, append([]byte{s.Tag}, s.payload...), signature)
-	if err != nil {
+	var sender edwards25519.PublicKey
+	copy(sender[:], senderBuf)
+
+	var signature edwards25519.Signature
+	copy(signature[:], signatureBuf)
+
+	if !edwards25519.Verify(sender, append([]byte{s.Tag}, s.payload...), signature) {
 		return errors.Wrap(err, "sender signature verification failed")
 	}
 
-	copy(s.creator[:], sender)
-	copy(s.signature[:], signature)
+	copy(s.creator[:], senderBuf)
+	copy(s.signature[:], signatureBuf)
 
 	return nil
 }
@@ -160,8 +170,11 @@ type LedgerStatusResponse struct {
 	Difficulty uint64 `json:"difficulty"`
 
 	// Internal fields.
-	node   *noise.Node
-	ledger *wavelet.Ledger
+
+	node      *noise.Node
+	ledger    *wavelet.Ledger
+	network   *skademlia.Protocol
+	publicKey edwards25519.PublicKey
 }
 
 func (s *LedgerStatusResponse) Render(w http.ResponseWriter, r *http.Request) error {
@@ -169,9 +182,12 @@ func (s *LedgerStatusResponse) Render(w http.ResponseWriter, r *http.Request) er
 		return errors.New("insufficient parameters were provided")
 	}
 
-	s.PublicKey = hex.EncodeToString(s.node.Keys.PublicKey())
-	s.HostAddress = s.node.ExternalAddress()
-	s.PeerAddresses = skademlia.Table(s.node).GetPeers()
+	s.PublicKey = hex.EncodeToString(s.publicKey[:])
+	s.HostAddress = s.node.Addr().String()
+
+	for _, peer := range s.network.Peers(s.node) {
+		s.PeerAddresses = append(s.PeerAddresses, peer.Ctx().Get(skademlia.KeyID).(*skademlia.ID).Address())
+	}
 
 	s.RootID = hex.EncodeToString(s.ledger.Root().ID[:])
 	s.ViewID = s.ledger.ViewID()

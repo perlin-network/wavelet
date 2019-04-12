@@ -147,7 +147,7 @@ func ReadCriticalTimestamps(kv store.KV) ([]uint64, error) {
 		}
 	}
 
-	return actualTs , nil
+	return actualTs, nil
 }
 
 func WriteCriticalTimestamp(kv store.KV, timestamp uint64) error {
@@ -179,12 +179,12 @@ func WriteCriticalTimestamp(kv store.KV, timestamp uint64) error {
 	newTimestamps := addTimestamp(timestamp, timestamps)
 	newTimestampsSize := len(newTimestamps)
 
-	if newTimestampsSize  < sys.CriticalTimestampAverageWindowSize {
-		for i := 0; i < sys.CriticalTimestampAverageWindowSize - newTimestampsSize; i++ {
+	if newTimestampsSize < sys.CriticalTimestampAverageWindowSize {
+		for i := 0; i < sys.CriticalTimestampAverageWindowSize-newTimestampsSize; i++ {
 			newTimestamps = append(newTimestamps, 0)
 		}
 	} else if newTimestampsSize > sys.CriticalTimestampAverageWindowSize {
-		newTimestamps = newTimestamps[len(newTimestamps) - sys.CriticalTimestampAverageWindowSize:]
+		newTimestamps = newTimestamps[len(newTimestamps)-sys.CriticalTimestampAverageWindowSize:]
 	}
 
 	buf := bytes.NewBuffer(nil)

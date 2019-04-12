@@ -5,33 +5,30 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/gorilla/websocket"
-	"github.com/perlin-network/noise/identity/ed25519"
-	"github.com/perlin-network/noise/signature/eddsa"
-	"github.com/perlin-network/wavelet/common"
-	"github.com/pkg/errors"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/valyala/fasthttp"
 	"net/http"
 	"time"
 )
 
 type Config struct {
-	APIHost       string
-	APIPort       uint16
-	RawPrivateKey common.PrivateKey
-	UseHTTPS      bool
+	APIHost    string
+	APIPort    uint16
+	PrivateKey edwards25519.PrivateKey
+	UseHTTPS   bool
 }
 
 type Client struct {
 	Config
-	*ed25519.Keypair
+
+	edwards25519.PrivateKey
+	edwards25519.PublicKey
 
 	SessionToken string
 }
 
 func NewClient(config Config) (*Client, error) {
-	keys := ed25519.LoadKeys(config.RawPrivateKey[:])
-
-	return &Client{Config: config, Keypair: keys}, nil
+	return &Client{Config: config, PrivateKey: config.PrivateKey, PublicKey: config.PrivateKey.Public()}, nil
 }
 
 // Request will make a request to a given path, with a given body and return result in out.
@@ -102,18 +99,15 @@ func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 func (c *Client) Init() error {
 	var res SessionInitResponse
 
-	time := time.Now().UnixNano() * 1000
-	message := []byte(fmt.Sprintf("%s%d", SessionInitMessage, time))
+	millis := time.Now().UnixNano() * 1000
+	message := []byte(fmt.Sprintf("%s%d", SessionInitMessage, millis))
 
-	signature, err := eddsa.Sign(c.PrivateKey(), message)
-	if err != nil {
-		return errors.Wrap(err, "failed to sign session init message")
-	}
+	signature := edwards25519.Sign(c.PrivateKey, message)
 
 	req := SessionInitRequest{
-		PublicKey:  hex.EncodeToString(c.PublicKey()),
-		TimeMillis: uint64(time),
-		Signature:  hex.EncodeToString(signature),
+		PublicKey:  hex.EncodeToString(c.PublicKey[:]),
+		TimeMillis: uint64(millis),
+		Signature:  hex.EncodeToString(signature[:]),
 	}
 
 	if err := c.RequestJSON(RouteSessionInit, ReqPost, &req, &res); err != nil {
@@ -354,17 +348,16 @@ func (c *Client) GetTransaction(txID string) (Transaction, error) {
 func (c *Client) SendTransaction(tag byte, payload []byte) (SendTransactionResponse, error) {
 	var res SendTransactionResponse
 
-	signature, err := eddsa.Sign(c.PrivateKey(), append([]byte{tag}, payload...))
-	if err != nil {
-		return res, errors.Wrap(err, "failed to sign send transaction message")
-	}
+	signature := edwards25519.Sign(c.PrivateKey, append([]byte{tag}, payload...))
 
 	req := SendTransactionRequest{
-		Sender:    hex.EncodeToString(c.PublicKey()),
+		Sender:    hex.EncodeToString(c.PublicKey[:]),
 		Tag:       tag,
 		Payload:   hex.EncodeToString(payload),
-		Signature: hex.EncodeToString(signature),
+		Signature: hex.EncodeToString(signature[:]),
 	}
-	err = c.RequestJSON(RouteTxSend, ReqPost, &req, &res)
+
+	err := c.RequestJSON(RouteTxSend, ReqPost, &req, &res)
+
 	return res, err
 }

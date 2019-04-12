@@ -10,10 +10,10 @@ import (
 	"github.com/go-chi/cors"
 	"github.com/go-chi/render"
 	"github.com/perlin-network/noise"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/node"
 	"github.com/pkg/errors"
 	"io"
 	"net/http"
@@ -26,6 +26,9 @@ import (
 type Gateway struct {
 	node   *noise.Node
 	ledger *wavelet.Ledger
+
+	network *skademlia.Protocol
+	keys    *skademlia.Keypair
 
 	router chi.Router
 
@@ -106,9 +109,12 @@ func (g *Gateway) setup() {
 	g.router = r
 }
 
-func (g *Gateway) StartHTTP(n *noise.Node, port int) {
+func (g *Gateway) StartHTTP(port int, n *noise.Node, l *wavelet.Ledger, nn *skademlia.Protocol, k *skademlia.Keypair) {
 	g.node = n
-	g.ledger = node.Ledger(n)
+	g.ledger = l
+
+	g.network = nn
+	g.keys = k
 
 	g.setup()
 
@@ -166,7 +172,7 @@ func (g *Gateway) sendTransaction(w http.ResponseWriter, r *http.Request) {
 		g.render(w, r, ErrInternal(errors.New("its taking too long to broadcast your transaction")))
 		return
 	case err := <-evt.Error:
-		g.render(w, r, ErrInternal(errors.Wrap(err, "got an error broadcasting yourt ransaction")))
+		g.render(w, r, ErrInternal(errors.Wrap(err, "got an error broadcasting your transaction")))
 		return
 	case tx := <-evt.Result:
 		g.render(w, r, &SendTransactionResponse{ledger: g.ledger, tx: &tx})
@@ -174,7 +180,7 @@ func (g *Gateway) sendTransaction(w http.ResponseWriter, r *http.Request) {
 }
 
 func (g *Gateway) ledgerStatus(w http.ResponseWriter, r *http.Request) {
-	g.render(w, r, &LedgerStatusResponse{node: g.node, ledger: g.ledger})
+	g.render(w, r, &LedgerStatusResponse{node: g.node, ledger: g.ledger, network: g.network, publicKey: g.keys.PublicKey()})
 }
 
 func (g *Gateway) listTransactions(w http.ResponseWriter, r *http.Request) {
