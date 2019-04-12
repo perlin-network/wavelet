@@ -188,7 +188,7 @@ func AssertInView(viewID uint64, kv store.KV, tx Transaction, critical bool) err
 
 		for i := 1; i <= tsNumToCompare; i++ {
 			if savedTimestamps[len(savedTimestamps)-i] != tx.DifficultyTimestamps[txCriticalTimestampsNum-i] {
-				return errors.New("tx critical timestamps differ from the stored ones")
+				return errors.Wrapf(errors.New("tx critical timestamps differ from the stored ones"), "%+v != %+v", savedTimestamps, tx.DifficultyTimestamps)
 			}
 		}
 	} else {

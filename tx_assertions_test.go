@@ -1,7 +1,7 @@
 package wavelet
 
 import (
-	"github.com/perlin-network/noise/identity/ed25519"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
@@ -11,8 +11,11 @@ import (
 func TestAssertInView(t *testing.T) {
 	kv := store.NewInmem()
 
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
 	t.Run("critical, wrong view id", func(t *testing.T) {
-		tx, err := NewTransaction(ed25519.RandomKeys(), sys.TagTransfer, []byte("lorem ipsum"))
+		tx, err := NewTransaction(keys, sys.TagTransfer, []byte("lorem ipsum"))
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -25,7 +28,7 @@ func TestAssertInView(t *testing.T) {
 	})
 
 	t.Run("critical, empty merkle root", func(t *testing.T) {
-		tx, err := NewTransaction(ed25519.RandomKeys(), sys.TagTransfer, []byte("lorem ipsum"))
+		tx, err := NewTransaction(keys, sys.TagTransfer, []byte("lorem ipsum"))
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -38,7 +41,7 @@ func TestAssertInView(t *testing.T) {
 	})
 
 	t.Run("critical, not enough critical timestamps", func(t *testing.T) {
-		tx, err := NewTransaction(ed25519.RandomKeys(), sys.TagTransfer, []byte("lorem ipsum"))
+		tx, err := NewTransaction(keys, sys.TagTransfer, []byte("lorem ipsum"))
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -54,7 +57,7 @@ func TestAssertInView(t *testing.T) {
 	})
 
 	t.Run("critical, critical timestamps in wrong order", func(t *testing.T) {
-		tx, err := NewTransaction(ed25519.RandomKeys(), sys.TagTransfer, []byte("lorem ipsum"))
+		tx, err := NewTransaction(keys, sys.TagTransfer, []byte("lorem ipsum"))
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -71,7 +74,7 @@ func TestAssertInView(t *testing.T) {
 	})
 
 	t.Run("critical, critical timestamps differ from stored", func(t *testing.T) {
-		tx, err := NewTransaction(ed25519.RandomKeys(), sys.TagTransfer, []byte("lorem ipsum"))
+		tx, err := NewTransaction(keys, sys.TagTransfer, []byte("lorem ipsum"))
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -92,7 +95,7 @@ func TestAssertInView(t *testing.T) {
 	})
 
 	t.Run("critical, success", func(t *testing.T) {
-		tx, err := NewTransaction(ed25519.RandomKeys(), sys.TagTransfer, []byte("lorem ipsum"))
+		tx, err := NewTransaction(keys, sys.TagTransfer, []byte("lorem ipsum"))
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -109,7 +112,7 @@ func TestAssertInView(t *testing.T) {
 	})
 
 	t.Run("non critical, not empty merkle root", func(t *testing.T) {
-		tx, err := NewTransaction(ed25519.RandomKeys(), sys.TagTransfer, []byte("lorem ipsum"))
+		tx, err := NewTransaction(keys, sys.TagTransfer, []byte("lorem ipsum"))
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -124,7 +127,7 @@ func TestAssertInView(t *testing.T) {
 	})
 
 	t.Run("non critical, not empty critical timestamps", func(t *testing.T) {
-		tx, err := NewTransaction(ed25519.RandomKeys(), sys.TagTransfer, []byte("lorem ipsum"))
+		tx, err := NewTransaction(keys, sys.TagTransfer, []byte("lorem ipsum"))
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -139,7 +142,7 @@ func TestAssertInView(t *testing.T) {
 	})
 
 	t.Run("non critical, older view id", func(t *testing.T) {
-		tx, err := NewTransaction(ed25519.RandomKeys(), sys.TagTransfer, []byte("lorem ipsum"))
+		tx, err := NewTransaction(keys, sys.TagTransfer, []byte("lorem ipsum"))
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -150,9 +153,9 @@ func TestAssertInView(t *testing.T) {
 			"transaction was made for view ID 0, but our view ID is 1",
 		)
 	})
-	
+
 	t.Run("non critical, success", func(t *testing.T) {
-		tx, err := NewTransaction(ed25519.RandomKeys(), sys.TagTransfer, []byte("lorem ipsum"))
+		tx, err := NewTransaction(keys, sys.TagTransfer, []byte("lorem ipsum"))
 		if !assert.NoError(t, err) {
 			return
 		}

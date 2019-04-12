@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
@@ -42,14 +41,9 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 
 				var res wctl.SendTransactionResponse
 
-				buf, err := client.SendTransaction(sys.TagStake, payload[:])
+				res, err := client.SendTransaction(sys.TagStake, payload[:])
 
 				if err != nil {
-					chRes <- res
-					chErr <- err
-				}
-
-				if err := json.Unmarshal(buf, &res); err != nil {
 					chRes <- res
 					chErr <- err
 				}

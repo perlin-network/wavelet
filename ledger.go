@@ -563,7 +563,7 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 		}
 	}
 
-	if verr := l.v.addTransaction(&tx); verr != nil && errors.Cause(verr) != ErrTxAlreadyExists {
+	if verr := l.v.addTransaction(&tx, critical); verr != nil && errors.Cause(verr) != ErrTxAlreadyExists {
 		err = errors.Wrap(verr, "got an error adding queried transaction to view-graph")
 	}
 
