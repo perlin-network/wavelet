@@ -578,6 +578,7 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			}
 
 			payload := bytes.NewBuffer(nil)
+			payload.WriteByte(1)
 			binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
 			payload.Write(intBuf[:8])
 
@@ -627,7 +628,8 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			}
 
 			payload := bytes.NewBuffer(nil)
-			binary.LittleEndian.PutUint64(intBuf[:8], uint64(-int64(amount)))
+			payload.WriteByte(0)
+			binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
 			payload.Write(intBuf[:8])
 
 			go func() {

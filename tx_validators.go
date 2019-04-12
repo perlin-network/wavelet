@@ -45,26 +45,19 @@ func ValidateTransferTransaction(snapshot *avl.Tree, tx Transaction) error {
 func ValidateStakeTransaction(snapshot *avl.Tree, tx Transaction) error {
 	r := bytes.NewReader(tx.Payload)
 
-	var buf [8]byte
+	var buf [9]byte
 	if _, err := io.ReadFull(r, buf[:]); err != nil {
 		return errors.Wrap(err, "stake: failed to decode amount of stake to place/withdraw")
 	}
 
-	delta := int64(binary.LittleEndian.Uint64(buf[:]))
+	delta := binary.LittleEndian.Uint64(buf[1:])
 
-	balance, _ := ReadAccountBalance(snapshot, tx.Creator)
-	stake, _ := ReadAccountStake(snapshot, tx.Creator)
-
-	if delta >= 0 {
-		delta := uint64(delta)
-
-		if balance < delta {
+	if placeStake := buf[0] == 1; placeStake {
+		if balance, _ := ReadAccountBalance(snapshot, tx.Creator); balance < delta {
 			return errors.New("stake: balance < delta")
 		}
 	} else {
-		delta := uint64(-delta)
-
-		if stake < delta {
+		if stake, _ := ReadAccountStake(snapshot, tx.Creator); stake < delta {
 			return errors.New("stake: stake < delta")
 		}
 	}

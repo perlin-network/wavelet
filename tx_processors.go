@@ -104,19 +104,17 @@ func ProcessStakeTransaction(ctx *TransactionContext) error {
 
 	r := bytes.NewReader(tx.Payload)
 
-	var buf [8]byte
+	var buf [9]byte
 	if _, err := io.ReadFull(r, buf[:]); err != nil {
 		return errors.Wrap(err, "stake: failed to decode amount of stake to place/withdraw")
 	}
 
-	delta := int64(binary.LittleEndian.Uint64(buf[:]))
+	delta := binary.LittleEndian.Uint64(buf[1:])
 
 	balance, _ := ctx.ReadAccountBalance(tx.Creator)
 	stake, _ := ctx.ReadAccountStake(tx.Creator)
 
-	if delta >= 0 {
-		delta := uint64(delta)
-
+	if placeStake := buf[0] == 1; placeStake {
 		if balance < delta {
 			return errors.New("stake: balance < delta")
 		}
@@ -124,14 +122,12 @@ func ProcessStakeTransaction(ctx *TransactionContext) error {
 		ctx.WriteAccountBalance(tx.Creator, balance-delta)
 		ctx.WriteAccountStake(tx.Creator, stake+delta)
 	} else {
-		delta := uint64(-delta)
-
 		if stake < delta {
 			return errors.New("stake: stake < delta")
 		}
 
-		ctx.WriteAccountBalance(tx.Creator, stake-delta)
 		ctx.WriteAccountBalance(tx.Creator, balance+delta)
+		ctx.WriteAccountStake(tx.Creator, stake-delta)
 	}
 
 	return nil
