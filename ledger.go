@@ -1381,6 +1381,12 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 
 func listenForQueries(l *Ledger) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
+		preferred := l.cr.Preferred()
+
+		if preferred == nil {
+			return ErrConsensusRoundFinished
+		}
+
 		select {
 		case <-l.kill:
 			return ErrStopped
@@ -1394,10 +1400,8 @@ func listenForQueries(l *Ledger) func(stop <-chan struct{}) error {
 
 			if root := l.v.loadRoot(); evt.TX.ViewID == root.ViewID {
 				evt.Response <- root
-			} else if preferred := l.cr.Preferred(); preferred != nil {
-				evt.Response <- preferred
 			} else {
-				evt.Response <- nil
+				evt.Response <- preferred
 			}
 		case evt := <-l.gossipIn:
 			// Handle some incoming gossip.
@@ -1414,10 +1418,6 @@ func listenForQueries(l *Ledger) func(stop <-chan struct{}) error {
 			}
 
 			evt.Vote <- nil
-		}
-
-		if l.cr.Preferred() == nil {
-			return ErrConsensusRoundFinished
 		}
 
 		return nil

@@ -27,7 +27,7 @@ var (
 	SnowballSyncBeta  = 150
 
 	// Timeout for querying a transaction to K peers.
-	QueryTimeout = 10 * time.Second
+	QueryTimeout = 1 * time.Second
 
 	// Max graph depth difference to search for eligible transaction
 	// parents from for our node.

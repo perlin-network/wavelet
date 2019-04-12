@@ -384,7 +384,7 @@ func (b *Protocol) broadcastSyncDiffRequests(ctx context.Context, node *noise.No
 								_ = mux.Close()
 							}()
 
-							err := mux.Send(b.opcodeSyncChunkRequest, SyncChunkRequest{chunkHash: src.Hash}.Marshal())
+							err := mux.SendWithTimeout(b.opcodeSyncChunkRequest, SyncChunkRequest{chunkHash: src.Hash}.Marshal(), 1*time.Second)
 							if err != nil {
 								return nil, err
 							}
@@ -438,7 +438,7 @@ func (b *Protocol) broadcastSyncDiffRequests(ctx context.Context, node *noise.No
 func (b *Protocol) handleQueryRequest(wire noise.Wire) {
 	var res QueryResponse
 	defer func() {
-		if err := wire.Send(b.opcodeQueryResponse, res.Marshal()); err != nil {
+		if err := wire.SendWithTimeout(b.opcodeQueryResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
@@ -474,7 +474,7 @@ func (b *Protocol) handleQueryRequest(wire noise.Wire) {
 func (b *Protocol) handleGossipRequest(wire noise.Wire) {
 	var res GossipResponse
 	defer func() {
-		if err := wire.Send(b.opcodeGossipResponse, res.Marshal()); err != nil {
+		if err := wire.SendWithTimeout(b.opcodeGossipResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
@@ -510,7 +510,7 @@ func (b *Protocol) handleGossipRequest(wire noise.Wire) {
 func (b *Protocol) handleOutOfSyncCheck(wire noise.Wire) {
 	var res SyncViewResponse
 	defer func() {
-		if err := wire.Send(b.opcodeSyncViewResponse, res.Marshal()); err != nil {
+		if err := wire.SendWithTimeout(b.opcodeSyncViewResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
@@ -542,7 +542,7 @@ func (b *Protocol) handleOutOfSyncCheck(wire noise.Wire) {
 func (b *Protocol) handleSyncInits(wire noise.Wire) {
 	var res SyncInitResponse
 	defer func() {
-		if err := wire.Send(b.opcodeSyncInitResponse, res.Marshal()); err != nil {
+		if err := wire.SendWithTimeout(b.opcodeSyncInitResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
@@ -575,7 +575,7 @@ func (b *Protocol) handleSyncInits(wire noise.Wire) {
 func (b *Protocol) handleSyncChunks(wire noise.Wire) {
 	var res SyncChunkResponse
 	defer func() {
-		if err := wire.Send(b.opcodeSyncChunkResponse, res.Marshal()); err != nil {
+		if err := wire.SendWithTimeout(b.opcodeSyncChunkResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
@@ -607,7 +607,7 @@ func (b *Protocol) handleSyncChunks(wire noise.Wire) {
 func (b *Protocol) handleSyncMissingTXs(wire noise.Wire) {
 	var res SyncMissingTxResponse
 	defer func() {
-		if err := wire.Send(b.opcodeSyncMissingTxResponse, res.Marshal()); err != nil {
+		if err := wire.SendWithTimeout(b.opcodeSyncMissingTxResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
