@@ -67,6 +67,14 @@ func (t Transaction) IsCritical(difficulty uint64) bool {
 }
 
 func (t Transaction) Marshal() []byte {
+	if t.ID == common.ZeroTransactionID {
+		return nil
+	}
+
+	return t.marshal()
+}
+
+func (t Transaction) marshal() []byte {
 	var w bytes.Buffer
 
 	_, _ = w.Write(t.Sender[:])
@@ -226,7 +234,7 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 }
 
 func (t *Transaction) rehash() *Transaction {
-	t.ID = blake2b.Sum256(t.Marshal())
+	t.ID = blake2b.Sum256(t.marshal())
 	return t
 }
 

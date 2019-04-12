@@ -442,7 +442,7 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 		tx.AccountsMerkleRoot = snapshot.Checksum()
 	}
 
-	tx.SenderSignature = edwards25519.Sign(l.keys.PrivateKey(), tx.Marshal())
+	tx.SenderSignature = edwards25519.Sign(l.keys.PrivateKey(), tx.marshal())
 
 	tx.rehash()
 
@@ -1488,7 +1488,7 @@ func checkIfOutOfSync(l *Ledger) func(stop <-chan struct{}) error {
 				// The view ID we came to consensus to being the latest within the network
 				// is less than or equal to ours. Go back to square one.
 
-				if currentRoot.ID == proposedRoot.ID || currentRoot.ViewID >= l.v.loadViewID(proposedRoot) {
+				if currentRoot.ID == proposedRoot.ID || l.v.loadViewID(currentRoot) >= l.v.loadViewID(proposedRoot) {
 					time.Sleep(1 * time.Second)
 
 					l.sr.Reset()

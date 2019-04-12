@@ -2,6 +2,8 @@ module github.com/perlin-network/wavelet
 
 replace github.com/go-interpreter/wagon => github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39
 
+replace github.com/perlin-network/noise => ../noise
+
 require (
 	github.com/BurntSushi/toml v0.3.1 // indirect
 	github.com/facebookgo/ensure v0.0.0-20160127193407-b4ab57deab51 // indirect

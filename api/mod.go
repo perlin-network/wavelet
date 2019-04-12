@@ -172,7 +172,7 @@ func (g *Gateway) sendTransaction(w http.ResponseWriter, r *http.Request) {
 		g.render(w, r, ErrInternal(errors.New("its taking too long to broadcast your transaction")))
 		return
 	case err := <-evt.Error:
-		g.render(w, r, ErrInternal(errors.Wrap(err, "got an error broadcasting yourt ransaction")))
+		g.render(w, r, ErrInternal(errors.Wrap(err, "got an error broadcasting your transaction")))
 		return
 	case tx := <-evt.Result:
 		g.render(w, r, &SendTransactionResponse{ledger: g.ledger, tx: &tx})

@@ -177,11 +177,7 @@ func (b *Protocol) broadcastGossip(ctx context.Context, node *noise.Node) {
 				continue
 			}
 
-			responses, err := broadcast(peers, b.opcodeGossipRequest, b.opcodeGossipResponse, GossipRequest{tx: evt.TX}.Marshal())
-			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while gossiping")
-				continue
-			}
+			responses := broadcast(peers, b.opcodeGossipRequest, b.opcodeGossipResponse, GossipRequest{tx: evt.TX}.Marshal())
 
 			votes := make([]wavelet.VoteGossip, len(responses))
 
@@ -217,11 +213,9 @@ func (b *Protocol) broadcastQueries(ctx context.Context, node *noise.Node) {
 				continue
 			}
 
-			responses, err := broadcast(peers, b.opcodeQueryRequest, b.opcodeQueryResponse, QueryRequest{tx: evt.TX}.Marshal())
-			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while querying")
-				continue
-			}
+			fmt.Println("BEFORE QUERYING")
+			responses := broadcast(peers, b.opcodeQueryRequest, b.opcodeQueryResponse, QueryRequest{tx: evt.TX}.Marshal())
+			fmt.Println("AFTER QUERYING")
 
 			votes := make([]wavelet.VoteQuery, len(responses))
 
@@ -257,11 +251,7 @@ func (b *Protocol) broadcastOutOfSyncChecks(ctx context.Context, node *noise.Nod
 				continue
 			}
 
-			responses, err := broadcast(peers, b.opcodeSyncViewRequest, b.opcodeSyncViewResponse, SyncViewRequest{root: evt.Root}.Marshal())
-			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while broadcasting sync view request")
-				continue
-			}
+			responses := broadcast(peers, b.opcodeSyncViewRequest, b.opcodeSyncViewResponse, SyncViewRequest{root: evt.Root}.Marshal())
 
 			votes := make([]wavelet.VoteOutOfSync, len(peers))
 
@@ -298,11 +288,7 @@ func (b *Protocol) broadcastSyncInitRequests(ctx context.Context, node *noise.No
 				continue
 			}
 
-			responses, err := broadcast(peers, b.opcodeSyncInitRequest, b.opcodeSyncInitResponse, SyncInitRequest{viewID: evt.ViewID}.Marshal())
-			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while sending request to sync")
-				continue
-			}
+			responses := broadcast(peers, b.opcodeSyncInitRequest, b.opcodeSyncInitResponse, SyncInitRequest{viewID: evt.ViewID}.Marshal())
 
 			votes := make([]wavelet.SyncInitMetadata, len(responses))
 
@@ -339,11 +325,7 @@ func (b *Protocol) broadcastSyncMissingTXs(ctx context.Context, node *noise.Node
 				continue
 			}
 
-			responses, err := broadcast(peers, b.opcodeSyncMissingTxRequest, b.opcodeSyncMissingTxResponse, SyncMissingTxRequest{ids: evt.IDs}.Marshal())
-			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while sending request for missing transactions")
-				continue
-			}
+			responses := broadcast(peers, b.opcodeSyncMissingTxRequest, b.opcodeSyncMissingTxResponse, SyncMissingTxRequest{ids: evt.IDs}.Marshal())
 
 			set := make(map[common.TransactionID]wavelet.Transaction)
 

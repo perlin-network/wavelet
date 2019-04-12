@@ -23,7 +23,7 @@ func selectPeers(network *skademlia.Protocol, node *noise.Node, amount int) ([]*
 	return peers, nil
 }
 
-func broadcast(peers []*noise.Peer, reqOpcode byte, resOpcode byte, req []byte) ([][]byte, error) {
+func broadcast(peers []*noise.Peer, reqOpcode byte, resOpcode byte, req []byte) [][]byte {
 	responses := make([][]byte, len(peers))
 
 	var wg sync.WaitGroup
@@ -52,5 +52,5 @@ func broadcast(peers []*noise.Peer, reqOpcode byte, resOpcode byte, req []byte) 
 
 	wg.Wait()
 
-	return responses, nil
+	return responses
 }
