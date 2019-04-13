@@ -1335,7 +1335,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 					l.cr.Reset()
 					l.v.reset(newRoot)
 
-					if err := WriteCriticalTimestamp(l.kv, newRoot.Timestamp); err != nil {
+					if err := WriteCriticalTimestamp(l.kv, newRoot.Timestamp, newRoot.ViewID); err != nil {
 						exception = err
 						return
 					}

@@ -4,47 +4,60 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
-	"sort"
 	"testing"
 	"time"
 )
 
 func TestCriticalTimestamps(t *testing.T) {
-	kv, err := store.NewRocksDB("db")
-	assert.NoError(t, err)
-	defer func() {
-		assert.NoError(t, kv.Delete(keyCriticalTimestamps[:]))
-		assert.NoError(t, kv.Close())
-	}()
+	t.Run("empty database returns nil array of timestamps", func(t *testing.T) {
+		kv := store.NewInmem()
+		assert.Empty(t, ReadCriticalTimestamps(kv))
+	})
 
-	tss, err := ReadCriticalTimestamps(kv)
-	assert.NoError(t, err)
-	assert.Equal(t, 0, len(tss))
+	t.Run("can save one timestamp", func(t *testing.T) {
+		kv := store.NewInmem()
 
-	v := uint64(time.Now().UnixNano())
-	if !assert.NoError(t, WriteCriticalTimestamp(kv, v)) {
-		return
-	}
+		v, ts := uint64(1), uint64(time.Now().UnixNano())
 
-	tss, err = ReadCriticalTimestamps(kv)
-	assert.NoError(t, err)
-	if !assert.Equal(t, 1, len(tss)) {
-		return
-	}
+		assert.NoError(t, WriteCriticalTimestamp(kv, v, ts))
 
-	assert.Equal(t, v, tss[0])
+		timestamps := ReadCriticalTimestamps(kv)
+		assert.Len(t, timestamps, 1)
 
-	for i := 0; i < 15; i++ {
-		if !assert.NoError(t, WriteCriticalTimestamp(kv, uint64(time.Now().UnixNano()))) {
-			return
+		assert.Equal(t, ts, timestamps[v])
+	})
+
+	t.Run("can save multiple timestamps", func(t *testing.T) {
+		kv := store.NewInmem()
+
+		for v := uint64(1); v <= uint64(sys.CriticalTimestampAverageWindowSize); v++ {
+			assert.NoError(t, WriteCriticalTimestamp(kv, v, uint64(time.Now().UnixNano())))
 		}
-	}
 
-	tss, err = ReadCriticalTimestamps(kv)
-	assert.NoError(t, err)
-	if !assert.Equal(t, sys.CriticalTimestampAverageWindowSize, len(tss)) {
-		return
-	}
+		timestamps := ReadCriticalTimestamps(kv)
+		assert.Len(t, timestamps, sys.CriticalTimestampAverageWindowSize)
+	})
 
-	assert.True(t, sort.SliceIsSorted(tss, func(i, j int) bool { return tss[i] <= tss[j] }))
+	t.Run("can evict multiple timestamps", func(t *testing.T) {
+		kv := store.NewInmem()
+
+		for v := uint64(1); v <= uint64(sys.CriticalTimestampAverageWindowSize); v++ {
+			assert.NoError(t, WriteCriticalTimestamp(kv, v, uint64(time.Now().UnixNano())))
+		}
+
+		assert.NoError(t, WriteCriticalTimestamp(kv, uint64(sys.CriticalTimestampAverageWindowSize+2), uint64(time.Now().UnixNano())))
+
+		timestamps := ReadCriticalTimestamps(kv)
+		assert.Len(t, timestamps, sys.CriticalTimestampAverageWindowSize)
+
+		assert.NotZero(t, timestamps[uint64(sys.CriticalTimestampAverageWindowSize)+2])
+		assert.NotZero(t, timestamps[uint64(sys.CriticalTimestampAverageWindowSize)])
+		assert.NotZero(t, timestamps[uint64(sys.CriticalTimestampAverageWindowSize)-1])
+		assert.Zero(t, timestamps[1])
+
+		assert.NoError(t, WriteCriticalTimestamp(kv, uint64(sys.CriticalTimestampAverageWindowSize*4), uint64(time.Now().UnixNano())))
+
+		timestamps = ReadCriticalTimestamps(kv)
+		assert.Len(t, timestamps, 1)
+	})
 }
