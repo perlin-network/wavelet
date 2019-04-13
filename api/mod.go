@@ -90,7 +90,14 @@ func (g *Gateway) setup(enableTimeout bool) {
 	r.GET("/poll/tx", chain(g.securePoll(sinkTransactions), base))
 
 	// Debug endpoint.
-	r.GET("/debug", pprofhandler.PprofHandler)
+	r.GET("/debug/pprof", pprofhandler.PprofHandler)
+	r.GET("/debug/pprof/cmdline", pprofhandler.PprofHandler)
+	r.GET("/debug/pprof/profile", pprofhandler.PprofHandler)
+	r.GET("/debug/pprof/symbol", pprofhandler.PprofHandler)
+	r.GET("/debug/pprof/block", pprofhandler.PprofHandler)
+	r.GET("/debug/pprof/heap", pprofhandler.PprofHandler)
+	r.GET("/debug/pprof/goroutine", pprofhandler.PprofHandler)
+	r.GET("/debug/pprof/threadcreate", pprofhandler.PprofHandler)
 
 	// Session endpoint.
 	r.POST("/session/init", chain(g.initSession, base))
