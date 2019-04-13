@@ -10,7 +10,6 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"io"
-	"sort"
 )
 
 var (
@@ -122,27 +121,32 @@ func WriteAccountContractPage(tree *avl.Tree, id common.TransactionID, idx uint6
 	writeUnderAccounts(tree, id, append(keyAccountContractPages[:], buf[:]...), encoded)
 }
 
-func ReadCriticalTimestamps(kv store.KV) ([]uint64, error) {
+type CriticalTimestampRecord struct {
+	Timestamp uint64
+	ViewID uint64
+}
+
+func ReadCriticalTimestamps(kv store.KV) ([]CriticalTimestampRecord, error) {
 	data, err := kv.Get(keyCriticalTimestamps[:])
 	if err != nil {
 		if err.Error() == "key not found" {
-			return []uint64{}, nil
+			return []CriticalTimestampRecord{}, nil
 		}
 		return nil, err
 	}
 
-	timestamps := make([]uint64, sys.CriticalTimestampAverageWindowSize)
+	timestamps := make([]CriticalTimestampRecord, sys.CriticalTimestampAverageWindowSize)
 	if err = binary.Read(bytes.NewReader(data), binary.LittleEndian, timestamps); err != nil {
 		if err == io.ErrUnexpectedEOF || err == io.EOF {
-			return []uint64{}, nil
+			return []CriticalTimestampRecord{}, nil
 		}
 
 		return nil, err
 	}
 
-	var actualTs []uint64
+	var actualTs []CriticalTimestampRecord
 	for _, ts := range timestamps {
-		if ts != 0 {
+		if ts.Timestamp != 0 {
 			actualTs = append(actualTs, ts)
 		}
 	}
@@ -150,41 +154,36 @@ func ReadCriticalTimestamps(kv store.KV) ([]uint64, error) {
 	return actualTs, nil
 }
 
-func WriteCriticalTimestamp(kv store.KV, timestamp uint64) error {
-	addTimestamp := func(ts uint64, timestamps []uint64) []uint64 {
-		if len(timestamps) == 0 {
-			return append(timestamps, ts)
-		}
-
-		toInsert := sort.Search(
-			len(timestamps),
-			func(i int) bool { return timestamps[i] >= ts },
-		)
-
-		if toInsert == len(timestamps) {
-			return append(timestamps, ts)
-		}
-
-		return append(
-			timestamps[:toInsert],
-			append([]uint64{ts}, timestamps[toInsert:]...)...,
-		)
-	}
-
+func WriteCriticalTimestamp(kv store.KV, timestamp uint64, viewID uint64) error {
 	timestamps, err := ReadCriticalTimestamps(kv)
 	if err != nil {
 		return err
 	}
 
-	newTimestamps := addTimestamp(timestamp, timestamps)
+	var newTimestamps []CriticalTimestampRecord
+
+	// check if existing timestamps are within bounds, based on view id
+	for _, tts := range timestamps {
+		if int(viewID - tts.ViewID) < sys.CriticalTimestampAverageWindowSize {
+			newTimestamps = append(newTimestamps, tts)
+		}
+	}
+
+	newTimestamps = append(
+		newTimestamps,
+		CriticalTimestampRecord{
+			Timestamp: timestamp,
+			ViewID: viewID,
+		},
+	)
+
 	newTimestampsSize := len(newTimestamps)
 
+	// adjust size of timestamps with empty values up to fixed size
 	if newTimestampsSize < sys.CriticalTimestampAverageWindowSize {
 		for i := 0; i < sys.CriticalTimestampAverageWindowSize-newTimestampsSize; i++ {
-			newTimestamps = append(newTimestamps, 0)
+			newTimestamps = append(newTimestamps, CriticalTimestampRecord{})
 		}
-	} else if newTimestampsSize > sys.CriticalTimestampAverageWindowSize {
-		newTimestamps = newTimestamps[len(newTimestamps)-sys.CriticalTimestampAverageWindowSize:]
 	}
 
 	buf := bytes.NewBuffer(nil)

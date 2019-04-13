@@ -4,7 +4,6 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
-	"sort"
 	"testing"
 	"time"
 )
@@ -17,12 +16,17 @@ func TestCriticalTimestamps(t *testing.T) {
 		assert.NoError(t, kv.Close())
 	}()
 
+	// ensure no saved timestamps returns empty slice
 	tss, err := ReadCriticalTimestamps(kv)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(tss))
 
-	v := uint64(time.Now().UnixNano())
-	if !assert.NoError(t, WriteCriticalTimestamp(kv, v)) {
+	// ensure one timestamp is successfully saved
+	v := CriticalTimestampRecord{
+		Timestamp: uint64(time.Now().UnixNano()),
+		ViewID: 1,
+	}
+	if !assert.NoError(t, WriteCriticalTimestamp(kv, v.Timestamp, v.ViewID)) {
 		return
 	}
 
@@ -34,8 +38,9 @@ func TestCriticalTimestamps(t *testing.T) {
 
 	assert.Equal(t, v, tss[0])
 
-	for i := 0; i < 15; i++ {
-		if !assert.NoError(t, WriteCriticalTimestamp(kv, uint64(time.Now().UnixNano()))) {
+	// ensure only predefined number of timestamps saved
+	for i := 2; i < 7; i++ {
+		if !assert.NoError(t, WriteCriticalTimestamp(kv, uint64(time.Now().UnixNano()), uint64(i))) {
 			return
 		}
 	}
@@ -46,5 +51,20 @@ func TestCriticalTimestamps(t *testing.T) {
 		return
 	}
 
-	assert.True(t, sort.SliceIsSorted(tss, func(i, j int) bool { return tss[i] <= tss[j] }))
+	// ensure timestamps for older views got evicted
+	v = CriticalTimestampRecord{
+		Timestamp: uint64(time.Now().UnixNano()),
+		ViewID: 11,
+	}
+	if !assert.NoError(t, WriteCriticalTimestamp(kv, v.Timestamp, v.ViewID)) {
+		return
+	}
+
+	tss, err = ReadCriticalTimestamps(kv)
+	assert.NoError(t, err)
+	if !assert.Equal(t, 1, len(tss)) {
+		return
+	}
+
+	assert.Equal(t, v, tss[0])
 }

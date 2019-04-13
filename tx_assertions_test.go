@@ -79,18 +79,18 @@ func TestAssertInView(t *testing.T) {
 			return
 		}
 
-		if !assert.NoError(t, WriteCriticalTimestamp(kv, 4)) {
-			return
-		}
-
 		tx.AccountsMerkleRoot = [16]byte{0, 1, 2, 3}
 		tx.ViewID = 3
 		tx.DifficultyTimestamps = []uint64{1, 2, 3}
 
+		if !assert.NoError(t, WriteCriticalTimestamp(kv, 4, tx.ViewID)) {
+			return
+		}
+
 		assert.EqualError(
 			t,
 			AssertInView(tx.ViewID, kv, tx, true),
-			"tx critical timestamps differ from the stored ones",
+			"4 not in [1 2 3]: tx critical timestamps do not contain stored one",
 		)
 	})
 
@@ -100,13 +100,13 @@ func TestAssertInView(t *testing.T) {
 			return
 		}
 
-		if !assert.NoError(t, WriteCriticalTimestamp(kv, 4)) {
-			return
-		}
-
 		tx.AccountsMerkleRoot = [16]byte{0, 1, 2, 3}
 		tx.ViewID = 1
 		tx.DifficultyTimestamps = []uint64{4}
+
+		if !assert.NoError(t, WriteCriticalTimestamp(kv, 4, tx.ViewID)) {
+			return
+		}
 
 		assert.NoError(t, AssertInView(tx.ViewID, kv, tx, true))
 	})

@@ -168,14 +168,17 @@ func AssertInView(viewID uint64, kv store.KV, tx Transaction, critical bool) err
 			return errors.Errorf("expected tx to have %d timestamp(s), but has %d timestamp(s)", size, txCriticalTimestampsNum)
 		}
 
-		// Check that difficulty timestamps are in ascending order.
-		for i := 1; i < txCriticalTimestampsNum; i++ {
-			if tx.DifficultyTimestamps[i] < tx.DifficultyTimestamps[i-1] {
+		tsSet := make(map[uint64]struct{}, len(tx.DifficultyTimestamps))
+		// Check that difficulty timestamps are in ascending order and add them to "set"
+		for i := 0; i < txCriticalTimestampsNum; i++ {
+			tsSet[tx.DifficultyTimestamps[i]] = struct{}{}
+
+			if i > 0 && tx.DifficultyTimestamps[i] < tx.DifficultyTimestamps[i-1] {
 				return errors.New("tx critical timestamps are not in ascending order")
 			}
 		}
 
-		// Check that difficulty timestamps are same as stored ones
+		// Check that all saved difficulty timestamps are present within critical tx
 		savedTimestamps, err := ReadCriticalTimestamps(kv)
 		if err != nil {
 			return err
@@ -186,9 +189,9 @@ func AssertInView(viewID uint64, kv store.KV, tx Transaction, critical bool) err
 			tsNumToCompare = txCriticalTimestampsNum
 		}
 
-		for i := 1; i <= tsNumToCompare; i++ {
-			if savedTimestamps[len(savedTimestamps)-i] != tx.DifficultyTimestamps[txCriticalTimestampsNum-i] {
-				return errors.Wrapf(errors.New("tx critical timestamps differ from the stored ones"), "%+v != %+v", savedTimestamps, tx.DifficultyTimestamps)
+		for _, ts := range savedTimestamps {
+			if _, ok := tsSet[ts.Timestamp]; !ok {
+				return errors.Wrapf(errors.New("tx critical timestamps do not contain stored one"), "%v not in %+v", ts.Timestamp, tx.DifficultyTimestamps)
 			}
 		}
 	} else {
