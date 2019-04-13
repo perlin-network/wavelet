@@ -594,5 +594,5 @@ func output(buf []byte) {
 		out.Write(buf)
 	}
 
-	fmt.Println(out.Bytes())
+	fmt.Println(string(out.Bytes()))
 }
