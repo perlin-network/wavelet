@@ -79,18 +79,18 @@ func TestAssertInView(t *testing.T) {
 			return
 		}
 
-		if !assert.NoError(t, WriteCriticalTimestamp(kv, 4)) {
+		tx.ViewID = 6
+		tx.DifficultyTimestamps = []uint64{1111, 2222, 3333}
+		tx.AccountsMerkleRoot = [16]byte{0, 1, 2, 3}
+
+		if !assert.NoError(t, WriteCriticalTimestamp(kv, tx.ViewID-1, 9999)) {
 			return
 		}
-
-		tx.AccountsMerkleRoot = [16]byte{0, 1, 2, 3}
-		tx.ViewID = 3
-		tx.DifficultyTimestamps = []uint64{1, 2, 3}
 
 		assert.EqualError(
 			t,
 			AssertInView(tx.ViewID, kv, tx, true),
-			"tx critical timestamps differ from the stored ones",
+			"for view id 6, at idx 2, stored 9999 but got 3333: critical transactions timestamps do not match ones we have in store",
 		)
 	})
 
@@ -100,13 +100,13 @@ func TestAssertInView(t *testing.T) {
 			return
 		}
 
-		if !assert.NoError(t, WriteCriticalTimestamp(kv, 4)) {
-			return
-		}
-
 		tx.AccountsMerkleRoot = [16]byte{0, 1, 2, 3}
 		tx.ViewID = 1
 		tx.DifficultyTimestamps = []uint64{4}
+
+		if !assert.NoError(t, WriteCriticalTimestamp(kv, tx.ViewID, 4)) {
+			return
+		}
 
 		assert.NoError(t, AssertInView(tx.ViewID, kv, tx, true))
 	})
