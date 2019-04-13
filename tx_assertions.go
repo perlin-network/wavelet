@@ -153,6 +153,8 @@ func AssertValidAncestry(view *graph, tx Transaction) (missing []common.Transact
 	return nil, nil
 }
 
+var ErrIncorrectCriticalTimestamps = errors.New("critical transactions timestamps do not match ones we have in store")
+
 func AssertInView(viewID uint64, kv store.KV, tx Transaction, critical bool) error {
 	if critical {
 		if tx.ViewID != viewID {
@@ -163,38 +165,32 @@ func AssertInView(viewID uint64, kv store.KV, tx Transaction, critical bool) err
 			return errors.New("critical transactions merkle root is expected to be not nil")
 		}
 
-		txCriticalTimestampsNum := len(tx.DifficultyTimestamps)
-		if size := computeCriticalTimestampWindowSize(tx.ViewID); txCriticalTimestampsNum != size {
-			return errors.Errorf("expected tx to have %d timestamp(s), but has %d timestamp(s)", size, txCriticalTimestampsNum)
+		if size := computeCriticalTimestampWindowSize(tx.ViewID); len(tx.DifficultyTimestamps) != size {
+			return errors.Errorf("expected tx to have %d timestamp(s), but has %d timestamp(s)", size, len(tx.DifficultyTimestamps))
 		}
 
-		tsSet := make(map[uint64]struct{}, len(tx.DifficultyTimestamps))
-		// Check that difficulty timestamps are in ascending order and add them to "set"
-		for i := 0; i < txCriticalTimestampsNum; i++ {
-			tsSet[tx.DifficultyTimestamps[i]] = struct{}{}
+		savedTimestamps := ReadCriticalTimestamps(kv)
 
+		// Check that difficulty timestamps are in ascending order, and that the timestamps in the critical
+		// transaction match whatever timestamps we have in store.
+
+		for i := range tx.DifficultyTimestamps {
 			if i > 0 && tx.DifficultyTimestamps[i] < tx.DifficultyTimestamps[i-1] {
 				return errors.New("tx critical timestamps are not in ascending order")
 			}
-		}
 
-		// Check that all saved difficulty timestamps are present within critical tx
-		savedTimestamps, err := ReadCriticalTimestamps(kv, tx.ViewID - uint64(sys.CriticalTimestampAverageWindowSize))
-		if err != nil {
-			return err
-		}
+			viewID := uint64(0)
 
-		tsNumToCompare := len(savedTimestamps)
-		if txCriticalTimestampsNum < tsNumToCompare {
-			tsNumToCompare = txCriticalTimestampsNum
-		}
+			if sys.CriticalTimestampAverageWindowSize >= i {
+				viewID = uint64(sys.CriticalTimestampAverageWindowSize - i)
+			}
 
-		for _, ts := range savedTimestamps {
-			if _, ok := tsSet[ts.Timestamp]; !ok {
-				return errors.Wrapf(
-					errors.New("tx critical timestamps do not contain stored one"),
-					"%+v not in %+v for view id %v", ts, tx.DifficultyTimestamps, tx.ViewID,
-				)
+			if tx.ViewID >= viewID {
+				viewID = tx.ViewID - viewID
+			}
+
+			if savedTimestamp, stored := savedTimestamps[viewID]; stored && savedTimestamp != tx.DifficultyTimestamps[i] {
+				return errors.Wrapf(ErrIncorrectCriticalTimestamps, "for view id %v, at idx %d, stored %d but got %d", tx.ViewID, i, savedTimestamp, tx.DifficultyTimestamps[i])
 			}
 		}
 	} else {

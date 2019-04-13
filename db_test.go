@@ -9,62 +9,55 @@ import (
 )
 
 func TestCriticalTimestamps(t *testing.T) {
-	kv, err := store.NewRocksDB("db")
-	assert.NoError(t, err)
-	defer func() {
-		assert.NoError(t, kv.Delete(keyCriticalTimestamps[:]))
-		assert.NoError(t, kv.Close())
-	}()
+	t.Run("empty database returns nil array of timestamps", func(t *testing.T) {
+		kv := store.NewInmem()
+		assert.Empty(t, ReadCriticalTimestamps(kv))
+	})
 
-	// ensure no saved timestamps returns empty slice
-	tss, err := ReadCriticalTimestamps(kv, 0)
-	assert.NoError(t, err)
-	assert.Equal(t, 0, len(tss))
+	t.Run("can save one timestamp", func(t *testing.T) {
+		kv := store.NewInmem()
 
-	// ensure one timestamp is successfully saved
-	v := CriticalTimestampRecord{
-		Timestamp: uint64(time.Now().UnixNano()),
-		ViewID: 1,
-	}
-	if !assert.NoError(t, WriteCriticalTimestamp(kv, v.Timestamp, v.ViewID)) {
-		return
-	}
+		v, ts := uint64(1), uint64(time.Now().UnixNano())
 
-	tss, err = ReadCriticalTimestamps(kv, 0)
-	assert.NoError(t, err)
-	if !assert.Equal(t, 1, len(tss)) {
-		return
-	}
+		assert.NoError(t, WriteCriticalTimestamp(kv, v, ts))
 
-	assert.Equal(t, v, tss[0])
+		timestamps := ReadCriticalTimestamps(kv)
+		assert.Len(t, timestamps, 1)
 
-	// ensure only predefined number of timestamps saved
-	for i := 2; i < 7; i++ {
-		if !assert.NoError(t, WriteCriticalTimestamp(kv, uint64(time.Now().UnixNano()), uint64(i))) {
-			return
+		assert.Equal(t, ts, timestamps[v])
+	})
+
+	t.Run("can save multiple timestamps", func(t *testing.T) {
+		kv := store.NewInmem()
+
+		for v := uint64(1); v <= uint64(sys.CriticalTimestampAverageWindowSize); v++ {
+			assert.NoError(t, WriteCriticalTimestamp(kv, v, uint64(time.Now().UnixNano())))
 		}
-	}
 
-	tss, err = ReadCriticalTimestamps(kv, 0)
-	assert.NoError(t, err)
-	if !assert.Equal(t, sys.CriticalTimestampAverageWindowSize, len(tss)) {
-		return
-	}
+		timestamps := ReadCriticalTimestamps(kv)
+		assert.Len(t, timestamps, sys.CriticalTimestampAverageWindowSize)
+	})
 
-	// ensure timestamps for older views got evicted
-	v = CriticalTimestampRecord{
-		Timestamp: uint64(time.Now().UnixNano()),
-		ViewID: 11,
-	}
-	if !assert.NoError(t, WriteCriticalTimestamp(kv, v.Timestamp, v.ViewID)) {
-		return
-	}
+	t.Run("can evict multiple timestamps", func(t *testing.T) {
+		kv := store.NewInmem()
 
-	tss, err = ReadCriticalTimestamps(kv, 0)
-	assert.NoError(t, err)
-	if !assert.Equal(t, 1, len(tss)) {
-		return
-	}
+		for v := uint64(1); v <= uint64(sys.CriticalTimestampAverageWindowSize); v++ {
+			assert.NoError(t, WriteCriticalTimestamp(kv, v, uint64(time.Now().UnixNano())))
+		}
 
-	assert.Equal(t, v, tss[0])
+		assert.NoError(t, WriteCriticalTimestamp(kv, uint64(sys.CriticalTimestampAverageWindowSize+2), uint64(time.Now().UnixNano())))
+
+		timestamps := ReadCriticalTimestamps(kv)
+		assert.Len(t, timestamps, sys.CriticalTimestampAverageWindowSize)
+
+		assert.NotZero(t, timestamps[uint64(sys.CriticalTimestampAverageWindowSize)+2])
+		assert.NotZero(t, timestamps[uint64(sys.CriticalTimestampAverageWindowSize)])
+		assert.NotZero(t, timestamps[uint64(sys.CriticalTimestampAverageWindowSize)-1])
+		assert.Zero(t, timestamps[1])
+
+		assert.NoError(t, WriteCriticalTimestamp(kv, uint64(sys.CriticalTimestampAverageWindowSize*4), uint64(time.Now().UnixNano())))
+
+		timestamps = ReadCriticalTimestamps(kv)
+		assert.Len(t, timestamps, 1)
+	})
 }

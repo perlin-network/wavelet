@@ -9,7 +9,6 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
-	"io"
 )
 
 var (
@@ -121,70 +120,52 @@ func WriteAccountContractPage(tree *avl.Tree, id common.TransactionID, idx uint6
 	writeUnderAccounts(tree, id, append(keyAccountContractPages[:], buf[:]...), encoded)
 }
 
-type CriticalTimestampRecord struct {
-	Timestamp uint64
-	ViewID uint64
+// Each critical timestamp record is 16 bytes.
+type CriticalTimestamps map[uint64]uint64
+
+func ReadCriticalTimestamps(kv store.KV) CriticalTimestamps {
+	timestamps := make(CriticalTimestamps)
+
+	buf, err := kv.Get(keyCriticalTimestamps[:])
+	if err != nil {
+		return timestamps
+	}
+
+	// Each critical timestamp record is 16 bytes.
+
+	for i := 0; i < len(buf)/16; i++ {
+		viewID := binary.BigEndian.Uint64(buf[i*16 : i*16+8])
+		timestamp := binary.BigEndian.Uint64(buf[i*16+8 : i*16+16])
+
+		timestamps[viewID] = timestamp
+	}
+
+	return timestamps
 }
 
-func ReadCriticalTimestamps(kv store.KV, thresholdViewID uint64) ([]CriticalTimestampRecord, error) {
-	data, err := kv.Get(keyCriticalTimestamps[:])
-	if err != nil {
-		if err.Error() == "key not found" {
-			return []CriticalTimestampRecord{}, nil
-		}
-		return nil, err
-	}
+func WriteCriticalTimestamp(kv store.KV, viewID uint64, timestamp uint64) error {
+	timestamps := ReadCriticalTimestamps(kv)
 
-	timestamps := make([]CriticalTimestampRecord, sys.CriticalTimestampAverageWindowSize)
-	if err = binary.Read(bytes.NewReader(data), binary.LittleEndian, timestamps); err != nil {
-		if err == io.ErrUnexpectedEOF || err == io.EOF {
-			return []CriticalTimestampRecord{}, nil
+	var w bytes.Buffer
+	var buf [16]byte
+
+	for storedViewID, storedTimestamp := range timestamps {
+		if storedViewID+uint64(sys.CriticalTimestampAverageWindowSize) < viewID {
+			continue
 		}
 
-		return nil, err
+		binary.BigEndian.PutUint64(buf[0:8], storedViewID)
+		binary.BigEndian.PutUint64(buf[8:16], storedTimestamp)
+
+		w.Write(buf[:])
 	}
 
-	var actualTs []CriticalTimestampRecord
-	for _, ts := range timestamps {
-		if ts.Timestamp != 0 && ts.ViewID > thresholdViewID {
-			actualTs = append(actualTs, ts)
-		}
-	}
+	binary.BigEndian.PutUint64(buf[0:8], viewID)
+	binary.BigEndian.PutUint64(buf[8:16], timestamp)
 
-	return actualTs, nil
-}
+	w.Write(buf[:])
 
-func WriteCriticalTimestamp(kv store.KV, timestamp uint64, viewID uint64) error {
-	timestamps, err := ReadCriticalTimestamps(kv, viewID - uint64(sys.CriticalTimestampAverageWindowSize))
-	if err != nil {
-		return err
-	}
-
-	var newTimestamps []CriticalTimestampRecord
-
-	newTimestamps = append(
-		timestamps,
-		CriticalTimestampRecord{
-			Timestamp: timestamp,
-			ViewID: viewID,
-		},
-	)
-
-	newTimestampsSize := len(newTimestamps)
-
-	// adjust size of timestamps with empty values up to fixed size
-	if newTimestampsSize < sys.CriticalTimestampAverageWindowSize {
-		for i := 0; i < sys.CriticalTimestampAverageWindowSize-newTimestampsSize; i++ {
-			newTimestamps = append(newTimestamps, CriticalTimestampRecord{})
-		}
-	}
-
-	buf := bytes.NewBuffer(nil)
-	if err := binary.Write(buf, binary.LittleEndian, newTimestamps); err != nil {
-		return err
-	}
-
-	return kv.Put(keyCriticalTimestamps[:], buf.Bytes())
+	return kv.Put(keyCriticalTimestamps[:], w.Bytes())
 }
 
 func readUnderAccounts(tree *avl.Tree, id common.AccountID, key []byte) ([]byte, bool) {
