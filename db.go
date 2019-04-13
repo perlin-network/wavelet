@@ -126,7 +126,7 @@ type CriticalTimestampRecord struct {
 	ViewID uint64
 }
 
-func ReadCriticalTimestamps(kv store.KV) ([]CriticalTimestampRecord, error) {
+func ReadCriticalTimestamps(kv store.KV, thresholdViewID uint64) ([]CriticalTimestampRecord, error) {
 	data, err := kv.Get(keyCriticalTimestamps[:])
 	if err != nil {
 		if err.Error() == "key not found" {
@@ -146,7 +146,7 @@ func ReadCriticalTimestamps(kv store.KV) ([]CriticalTimestampRecord, error) {
 
 	var actualTs []CriticalTimestampRecord
 	for _, ts := range timestamps {
-		if ts.Timestamp != 0 {
+		if ts.Timestamp != 0 && ts.ViewID > thresholdViewID {
 			actualTs = append(actualTs, ts)
 		}
 	}
@@ -155,22 +155,15 @@ func ReadCriticalTimestamps(kv store.KV) ([]CriticalTimestampRecord, error) {
 }
 
 func WriteCriticalTimestamp(kv store.KV, timestamp uint64, viewID uint64) error {
-	timestamps, err := ReadCriticalTimestamps(kv)
+	timestamps, err := ReadCriticalTimestamps(kv, viewID - uint64(sys.CriticalTimestampAverageWindowSize))
 	if err != nil {
 		return err
 	}
 
 	var newTimestamps []CriticalTimestampRecord
 
-	// check if existing timestamps are within bounds, based on view id
-	for _, tts := range timestamps {
-		if int(viewID - tts.ViewID) < sys.CriticalTimestampAverageWindowSize {
-			newTimestamps = append(newTimestamps, tts)
-		}
-	}
-
 	newTimestamps = append(
-		newTimestamps,
+		timestamps,
 		CriticalTimestampRecord{
 			Timestamp: timestamp,
 			ViewID: viewID,

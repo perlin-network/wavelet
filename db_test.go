@@ -17,7 +17,7 @@ func TestCriticalTimestamps(t *testing.T) {
 	}()
 
 	// ensure no saved timestamps returns empty slice
-	tss, err := ReadCriticalTimestamps(kv)
+	tss, err := ReadCriticalTimestamps(kv, 0)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(tss))
 
@@ -30,7 +30,7 @@ func TestCriticalTimestamps(t *testing.T) {
 		return
 	}
 
-	tss, err = ReadCriticalTimestamps(kv)
+	tss, err = ReadCriticalTimestamps(kv, 0)
 	assert.NoError(t, err)
 	if !assert.Equal(t, 1, len(tss)) {
 		return
@@ -45,7 +45,7 @@ func TestCriticalTimestamps(t *testing.T) {
 		}
 	}
 
-	tss, err = ReadCriticalTimestamps(kv)
+	tss, err = ReadCriticalTimestamps(kv, 0)
 	assert.NoError(t, err)
 	if !assert.Equal(t, sys.CriticalTimestampAverageWindowSize, len(tss)) {
 		return
@@ -60,7 +60,7 @@ func TestCriticalTimestamps(t *testing.T) {
 		return
 	}
 
-	tss, err = ReadCriticalTimestamps(kv)
+	tss, err = ReadCriticalTimestamps(kv, 0)
 	assert.NoError(t, err)
 	if !assert.Equal(t, 1, len(tss)) {
 		return

@@ -179,7 +179,7 @@ func AssertInView(viewID uint64, kv store.KV, tx Transaction, critical bool) err
 		}
 
 		// Check that all saved difficulty timestamps are present within critical tx
-		savedTimestamps, err := ReadCriticalTimestamps(kv)
+		savedTimestamps, err := ReadCriticalTimestamps(kv, tx.ViewID - uint64(sys.CriticalTimestampAverageWindowSize))
 		if err != nil {
 			return err
 		}
@@ -191,7 +191,10 @@ func AssertInView(viewID uint64, kv store.KV, tx Transaction, critical bool) err
 
 		for _, ts := range savedTimestamps {
 			if _, ok := tsSet[ts.Timestamp]; !ok {
-				return errors.Wrapf(errors.New("tx critical timestamps do not contain stored one"), "%v not in %+v", ts.Timestamp, tx.DifficultyTimestamps)
+				return errors.Wrapf(
+					errors.New("tx critical timestamps do not contain stored one"),
+					"%+v not in %+v for view id %v", ts, tx.DifficultyTimestamps, tx.ViewID,
+				)
 			}
 		}
 	} else {

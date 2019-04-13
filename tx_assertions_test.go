@@ -90,7 +90,7 @@ func TestAssertInView(t *testing.T) {
 		assert.EqualError(
 			t,
 			AssertInView(tx.ViewID, kv, tx, true),
-			"4 not in [1 2 3]: tx critical timestamps do not contain stored one",
+			"{Timestamp:4 ViewID:3} not in [1 2 3] for view id 3: tx critical timestamps do not contain stored one",
 		)
 	})
 
