@@ -9,14 +9,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/buaazp/fasthttprouter"
-	"github.com/perlin-network/noise"
-	"github.com/perlin-network/noise/cipher/aead"
-	"github.com/perlin-network/noise/handshake/ecdh"
-	"github.com/perlin-network/noise/identity/ed25519"
-	"github.com/perlin-network/noise/protocol"
-	"github.com/perlin-network/noise/signature/eddsa"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/noise/transport"
+	"github.com/perlin-network/noise/xnoise"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/store"
@@ -30,14 +25,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
+	"strconv"
 	"testing"
 	"testing/quick"
 	"time"
 )
 
 func TestInitSession(t *testing.T) {
-	randomKeyPair := ed25519.RandomKeys()
-
+	publicKey, privateKey, err := edwards25519.GenerateKey(rand.Reader)
+	assert.NoError(t, err)
 	gateway := New()
 	gateway.setup(false)
 
@@ -56,7 +52,7 @@ func TestInitSession(t *testing.T) {
 		{
 			url:      "/session/init",
 			name:     "good request",
-			req:      getGoodCredentialRequest(t, randomKeyPair),
+			req:      getGoodCredentialRequest(t, privateKey, publicKey),
 			wantCode: http.StatusOK,
 		},
 	}
@@ -90,10 +86,11 @@ func TestListTransaction(t *testing.T) {
 	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
 
-	gateway.ledger = createLedger()
+	gateway.ledger = createLedger(t)
 
 	// Create a transaction
-	keys := skademlia.RandomKeys()
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
 	var buf [200]byte
 	_, err = rand.Read(buf[:])
 	assert.NoError(t, err)
@@ -213,10 +210,11 @@ func TestGetTransaction(t *testing.T) {
 	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
 
-	gateway.ledger = createLedger()
+	gateway.ledger = createLedger(t)
 
 	// Create a transaction
-	keys := skademlia.RandomKeys()
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
 	var buf [200]byte
 	_, err = rand.Read(buf[:])
 	assert.NoError(t, err)
@@ -469,7 +467,7 @@ func TestGetAccount(t *testing.T) {
 	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
 
-	gateway.ledger = createLedger()
+	gateway.ledger = createLedger(t)
 
 	idHex := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
 	idBytes, err := hex.DecodeString(idHex)
@@ -544,7 +542,7 @@ func TestGetContractCode(t *testing.T) {
 	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
 
-	gateway.ledger = createLedger()
+	gateway.ledger = createLedger(t)
 
 	idHex := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
 	idBytes, err := hex.DecodeString(idHex)
@@ -618,7 +616,7 @@ func TestGetContractPages(t *testing.T) {
 	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
 
-	gateway.ledger = createLedger()
+	gateway.ledger = createLedger(t)
 
 	// string: u1mf2g3b2477y5btco22txqxuc41cav6
 	var id = "75316d66326733623234373779356274636f3232747871787563343163617636"
@@ -679,24 +677,17 @@ func TestGetLedger(t *testing.T) {
 	sess, err := gateway.registry.newSession()
 	assert.NoError(t, err)
 
-	gateway.ledger = createLedger()
+	gateway.ledger = createLedger(t)
 
-	keys := skademlia.RandomKeys()
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+	gateway.keys = keys
 
-	// create a node
-	params := noise.DefaultParams()
-	params.Keys = keys
-	params.Port = 9000
-	params.Transport = transport.NewBuffered()
-	node, err := noise.NewNode(params)
-	assert.Nil(t, err)
-	p := protocol.New()
-	p.Register(ecdh.New())
-	p.Register(aead.New())
-	p.Register(skademlia.New())
-	p.Enforce(node)
+	n, err := xnoise.ListenTCP(9000)
+	assert.NoError(t, err)
+	gateway.node = n
 
-	gateway.node = node
+	gateway.network = skademlia.New(net.JoinHostPort("127.0.0.1", strconv.Itoa(n.Addr().(*net.TCPAddr).Port)), keys, xnoise.DialTCP)
 
 	request := httptest.NewRequest("GET", "http://localhost/ledger", nil)
 	request.Header.Add(HeaderSessionToken, sess.id)
@@ -710,6 +701,8 @@ func TestGetLedger(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.StatusCode)
 
+	publicKey := keys.PublicKey()
+
 	ledgerStatusResponse := struct {
 		PublicKey     string   `json:"public_key"`
 		HostAddress   string   `json:"address"`
@@ -718,10 +711,10 @@ func TestGetLedger(t *testing.T) {
 		Difficulty    uint64   `json:"difficulty"`
 		PeerAddresses []string `json:"peers"`
 	}{
-		PublicKey:     hex.EncodeToString(keys.PublicKey()),
-		HostAddress:   "127.0.0.1:9000",
+		PublicKey:     hex.EncodeToString(publicKey[:]),
+		HostAddress:   "[::]:9000",
 		PeerAddresses: nil,
-		RootID:        "fe8b107e4d2972677c4012d7e11ce7f8722c9dbba30b8c4a73bf56ac20e6a789",
+		RootID:        "38b3074dd255aaa81a071e2009a838e6abea05c149bdfaac7997bf300dd7e5a5",
 		ViewID:        1,
 		Difficulty:    uint64(sys.MinDifficulty),
 	}
@@ -813,17 +806,16 @@ func testAuthenticatedAPI(t *testing.T, gateway *Gateway, request *http.Request,
 	assert.NoError(t, compareJson(res, response))
 }
 
-func getGoodCredentialRequest(t *testing.T, keypair *ed25519.Keypair) SessionInitRequest {
+func getGoodCredentialRequest(t *testing.T, privateKey edwards25519.PrivateKey, publicKey edwards25519.PublicKey) SessionInitRequest {
 	millis := time.Now().Unix() * 1000
 	authStr := fmt.Sprintf("%s%d", SessionInitMessage, millis)
 
-	sig, err := eddsa.Sign(keypair.PrivateKey(), []byte(authStr))
-	assert.Nil(t, err)
+	sig := edwards25519.Sign(privateKey, []byte(authStr))
 
 	return SessionInitRequest{
-		PublicKey:  hex.EncodeToString(keypair.PublicKey()),
+		PublicKey:  hex.EncodeToString(publicKey[:]),
 		TimeMillis: uint64(millis),
-		Signature:  hex.EncodeToString(sig),
+		Signature:  hex.EncodeToString(sig[:]),
 	}
 }
 
@@ -848,8 +840,11 @@ func compareJson(expected interface{}, response []byte) error {
 	return errors.Errorf("expected response `%s`, found `%s`", string(b), string(response))
 }
 
-func createLedger() *wavelet.Ledger {
-	ledger := wavelet.NewLedger(context.TODO(), ed25519.RandomKeys(), store.NewInmem())
+func createLedger(t *testing.T) *wavelet.Ledger {
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	ledger := wavelet.NewLedger(context.TODO(), keys, store.NewInmem())
 	return ledger
 }
 
