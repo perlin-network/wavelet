@@ -6,7 +6,6 @@ import (
 	"github.com/golang/snappy"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
-	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 )
@@ -56,9 +55,6 @@ func WriteAccountStake(tree *avl.Tree, id common.AccountID, stake uint64) {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], stake)
 
-	logger := log.Account(id, "stake_updated")
-	logger.Log().Uint64("stake", stake).Msg("Updated stake.")
-
 	writeUnderAccounts(tree, id, keyAccountStake[:], buf[:])
 }
 
@@ -87,9 +83,6 @@ func ReadAccountContractNumPages(tree *avl.Tree, id common.TransactionID) (uint6
 func WriteAccountContractNumPages(tree *avl.Tree, id common.TransactionID, numPages uint64) {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], numPages)
-
-	logger := log.Account(id, "num_pages_updated")
-	logger.Log().Uint64("num_pages", numPages).Msg("Updated number of memory pages for a contract.")
 
 	writeUnderAccounts(tree, id, keyAccountContractNumPages[:], buf[:])
 }
