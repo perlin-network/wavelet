@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/node"
 	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/pprofhandler"
@@ -25,9 +25,11 @@ type Gateway struct {
 	node   *noise.Node
 	ledger *wavelet.Ledger
 
+	network *skademlia.Protocol
+	keys    *skademlia.Keypair
+	
 	router *fasthttprouter.Router
 	server *fasthttp.Server
-
 	registry *sessionRegistry
 	sinks    map[string]*sink
 
@@ -105,9 +107,12 @@ func (g *Gateway) setup(enableTimeout bool) {
 	g.router = r
 }
 
-func (g *Gateway) StartHTTP(n *noise.Node, port int) {
+func (g *Gateway) StartHTTP(port int, n *noise.Node, l *wavelet.Ledger, nn *skademlia.Protocol, k *skademlia.Keypair) {
 	g.node = n
-	g.ledger = node.Ledger(n)
+	g.ledger = l
+
+	g.network = nn
+	g.keys = k
 
 	g.setup(true)
 
@@ -184,7 +189,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		g.renderError(ctx, ErrInternal(errors.New("its taking too long to broadcast your transaction")))
 		return
 	case err := <-evt.Error:
-		g.renderError(ctx, ErrInternal(errors.Wrap(err, "got an error broadcasting yourt ransaction")))
+		g.renderError(ctx, ErrInternal(errors.Wrap(err, "got an error broadcasting your transaction")))
 		return
 	case tx := <-evt.Result:
 		g.render(ctx, &SendTransactionResponse{ledger: g.ledger, tx: &tx})
@@ -192,7 +197,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 }
 
 func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
-	g.render(ctx, &LedgerStatusResponse{node: g.node, ledger: g.ledger})
+	g.render(ctx, &LedgerStatusResponse{node: g.node, ledger: g.ledger, network: g.network, publicKey: g.keys.PublicKey()})
 }
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {

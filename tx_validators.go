@@ -1,11 +1,13 @@
 package wavelet
 
 import (
-	"github.com/perlin-network/noise/payload"
+	"bytes"
+	"encoding/binary"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"io"
 )
 
 type TransactionValidator func(snapshot *avl.Tree, tx Transaction) error
@@ -15,25 +17,21 @@ func ValidateNopTransaction(_ *avl.Tree, _ Transaction) error {
 }
 
 func ValidateTransferTransaction(snapshot *avl.Tree, tx Transaction) error {
-	reader := payload.NewReader(tx.Payload)
+	r := bytes.NewReader(tx.Payload)
 
 	var recipient common.AccountID
 
-	recipientBuf, err := reader.ReadBytes()
-	if err != nil {
+	if _, err := io.ReadFull(r, recipient[:]); err != nil {
 		return errors.Wrap(err, "transfer: failed to decode recipient")
 	}
 
-	if len(recipientBuf) != common.SizeAccountID {
-		return errors.Errorf("transfer: provided recipient is not %d bytes, but %d bytes instead", common.SizeAccountID, len(recipientBuf))
-	}
+	var buf [8]byte
 
-	copy(recipient[:], recipientBuf)
-
-	amount, err := reader.ReadUint64()
-	if err != nil {
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
 		return errors.Wrap(err, "transfer: failed to decode amount to transfer")
 	}
+
+	amount := binary.LittleEndian.Uint64(buf[:])
 
 	creatorBalance, _ := ReadAccountBalance(snapshot, tx.Creator)
 
@@ -45,27 +43,21 @@ func ValidateTransferTransaction(snapshot *avl.Tree, tx Transaction) error {
 }
 
 func ValidateStakeTransaction(snapshot *avl.Tree, tx Transaction) error {
-	raw, err := payload.NewReader(tx.Payload).ReadUint64()
+	r := bytes.NewReader(tx.Payload)
 
-	if err != nil {
-		return errors.Wrap(err, "stake: failed to decode stake delta amount")
+	var buf [9]byte
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		return errors.Wrap(err, "stake: failed to decode amount of stake to place/withdraw")
 	}
 
-	balance, _ := ReadAccountBalance(snapshot, tx.Creator)
-	stake, _ := ReadAccountStake(snapshot, tx.Creator)
+	delta := binary.LittleEndian.Uint64(buf[1:])
 
-	delta := int64(raw)
-
-	if delta >= 0 {
-		delta := uint64(delta)
-
-		if balance < delta {
+	if placeStake := buf[0] == 1; placeStake {
+		if balance, _ := ReadAccountBalance(snapshot, tx.Creator); balance < delta {
 			return errors.New("stake: balance < delta")
 		}
 	} else {
-		delta := uint64(-delta)
-
-		if stake < delta {
+		if stake, _ := ReadAccountStake(snapshot, tx.Creator); stake < delta {
 			return errors.New("stake: stake < delta")
 		}
 	}

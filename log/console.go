@@ -112,10 +112,10 @@ func (w ConsoleWriter) Write(p []byte) (n int, err error) {
 	if w.TimeFormat != "" && consoleTimeFormat != w.TimeFormat {
 		consoleTimeFormat = w.TimeFormat
 	}
-	if w.NoColor == false && consoleNoColor != false {
+	if !w.NoColor && consoleNoColor {
 		consoleNoColor = false
 	}
-	if w.NoColor == true && consoleNoColor != w.NoColor {
+	if w.NoColor && consoleNoColor != w.NoColor {
 		consoleNoColor = w.NoColor
 	}
 

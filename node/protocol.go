@@ -1,278 +1,340 @@
 package node
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"github.com/perlin-network/noise"
-	"github.com/perlin-network/noise/protocol"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 	"golang.org/x/crypto/blake2b"
 	"math/rand"
-	"strconv"
 	"sync"
 	"time"
 )
 
-var _ protocol.Block = (*block)(nil)
-
 const (
-	keyLedger      = "wavelet.ledger"
-	keyAuthChannel = "wavelet.auth.ch"
+	SignalAuthenticated = "wavelet.auth.ch"
 )
 
-type block struct {
-	opcodeGossipRequest  noise.Opcode
-	opcodeGossipResponse noise.Opcode
+type Protocol struct {
+	opcodeGossipRequest  byte
+	opcodeGossipResponse byte
 
-	opcodeQueryRequest  noise.Opcode
-	opcodeQueryResponse noise.Opcode
+	opcodeQueryRequest  byte
+	opcodeQueryResponse byte
 
-	opcodeSyncViewRequest  noise.Opcode
-	opcodeSyncViewResponse noise.Opcode
+	opcodeSyncViewRequest  byte
+	opcodeSyncViewResponse byte
 
-	opcodeSyncInitRequest   noise.Opcode
-	opcodeSyncInitResponse  noise.Opcode
-	opcodeSyncChunkRequest  noise.Opcode
-	opcodeSyncChunkResponse noise.Opcode
+	opcodeSyncInitRequest   byte
+	opcodeSyncInitResponse  byte
+	opcodeSyncChunkRequest  byte
+	opcodeSyncChunkResponse byte
 
-	opcodeSyncMissingTxRequest  noise.Opcode
-	opcodeSyncMissingTxResponse noise.Opcode
+	opcodeSyncMissingTxRequest  byte
+	opcodeSyncMissingTxResponse byte
+
+	ledger *wavelet.Ledger
+
+	network *skademlia.Protocol
+	keys    *skademlia.Keypair
 }
 
-func New() *block {
-	return &block{}
+func New(network *skademlia.Protocol, keys *skademlia.Keypair) *Protocol {
+	return &Protocol{ledger: wavelet.NewLedger(context.TODO(), keys, store.NewInmem()), network: network, keys: keys}
 }
 
-func (b *block) OnRegister(p *protocol.Protocol, node *noise.Node) {
-	b.opcodeGossipRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*GossipRequest)(nil))
-	b.opcodeGossipResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*GossipResponse)(nil))
-	b.opcodeQueryRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*QueryRequest)(nil))
-	b.opcodeQueryResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*QueryResponse)(nil))
-	b.opcodeSyncViewRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncViewRequest)(nil))
-	b.opcodeSyncViewResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncViewResponse)(nil))
-	b.opcodeSyncInitRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncInitRequest)(nil))
-	b.opcodeSyncInitResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncInitResponse)(nil))
-	b.opcodeSyncChunkRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncChunkRequest)(nil))
-	b.opcodeSyncChunkResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncChunkResponse)(nil))
-	b.opcodeSyncMissingTxRequest = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncMissingTxRequest)(nil))
-	b.opcodeSyncMissingTxResponse = noise.RegisterMessage(noise.NextAvailableOpcode(), (*SyncMissingTxResponse)(nil))
-
-	kv := store.NewInmem()
-
-	ledger := wavelet.NewLedger(context.TODO(), node.Keys, kv)
-	node.Set(keyLedger, ledger)
-
-	go wavelet.Run(ledger)
+func (b *Protocol) Ledger() *wavelet.Ledger {
+	return b.ledger
 }
 
-func (b *block) OnBegin(p *protocol.Protocol, peer *noise.Peer) error {
-	go b.sendLoop(Ledger(peer.Node()), peer)
-	go b.receiveLoop(Ledger(peer.Node()), peer)
+func (b *Protocol) RegisterOpcodes(node *noise.Node) {
+	b.opcodeGossipRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("gossip request", b.opcodeGossipRequest)
 
-	close(peer.LoadOrStore(keyAuthChannel, make(chan struct{})).(chan struct{}))
+	b.opcodeGossipResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("gossip response", b.opcodeGossipResponse)
 
-	return nil
+	b.opcodeQueryRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("query request", b.opcodeQueryRequest)
+
+	b.opcodeQueryResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("query response", b.opcodeQueryResponse)
+
+	b.opcodeSyncViewRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("sync view request", b.opcodeSyncViewRequest)
+
+	b.opcodeSyncViewResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("sync view response", b.opcodeSyncViewResponse)
+
+	b.opcodeSyncInitRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("sync init request", b.opcodeSyncInitRequest)
+
+	b.opcodeSyncInitResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("sync init response", b.opcodeSyncInitResponse)
+
+	b.opcodeSyncChunkRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("sync chunk request", b.opcodeSyncChunkRequest)
+
+	b.opcodeSyncChunkResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("sync chunk response", b.opcodeSyncChunkResponse)
+
+	b.opcodeSyncMissingTxRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("sync missing tx request", b.opcodeSyncMissingTxRequest)
+
+	b.opcodeSyncMissingTxResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("sync missing tx response", b.opcodeSyncMissingTxResponse)
 }
 
-func (b *block) sendLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
-	go b.broadcastGossip(ledger, peer.Node(), peer)
-	go b.broadcastQueries(ledger, peer.Node(), peer)
-	go b.broadcastOutOfSyncChecks(ledger, peer.Node(), peer)
-	go b.broadcastSyncInitRequests(ledger, peer.Node(), peer)
-	go b.broadcastSyncDiffRequests(ledger, peer.Node(), peer)
-	go b.broadcastSyncMissingTXs(ledger, peer.Node(), peer)
+func (b *Protocol) Init(node *noise.Node) {
+	go b.sendLoop(node)
+	go wavelet.Run(b.ledger)
 }
 
-func (b *block) receiveLoop(ledger *wavelet.Ledger, peer *noise.Peer) {
+func (b *Protocol) Protocol() noise.ProtocolBlock {
+	return func(ctx noise.Context) error {
+		id := ctx.Get(skademlia.KeyID).(*skademlia.ID)
+
+		if id == nil {
+			return errors.New("wavelet: user does not have a s/kademlia id registered")
+		}
+
+		publicKey := id.PublicKey()
+
+		signal := ctx.Peer().RegisterSignal(SignalAuthenticated)
+		defer signal()
+
+		ctx.Peer().InterceptErrors(func(err error) {
+			logger := log.Network("left")
+			logger.Info().
+				Str("address", id.Address()).
+				Hex("public_key", publicKey[:]).
+				Msg("Peer has disconnected.")
+		})
+
+		go b.receiveLoop(b.ledger, ctx)
+
+		logger := log.Network("joined")
+		logger.Info().
+			Str("address", id.Address()).
+			Hex("public_key", publicKey[:]).
+			Msg("Peer has joined.")
+
+		return nil
+	}
+}
+
+func (b *Protocol) sendLoop(node *noise.Node) {
+	ctx := context.TODO()
+
+	go b.broadcastGossip(ctx, node)
+	go b.broadcastQueries(ctx, node)
+	go b.broadcastOutOfSyncChecks(ctx, node)
+	go b.broadcastSyncInitRequests(ctx, node)
+	go b.broadcastSyncDiffRequests(ctx, node)
+	go b.broadcastSyncMissingTXs(ctx, node)
+}
+
+func (b *Protocol) receiveLoop(ledger *wavelet.Ledger, ctx noise.Context) {
+	peer := ctx.Peer()
+
 	for {
 		select {
-		case msg := <-peer.Receive(b.opcodeGossipRequest):
-			go handleGossipRequest(ledger, peer, msg.(GossipRequest))
-		case msg := <-peer.Receive(b.opcodeQueryRequest):
-			go handleQueryRequest(ledger, peer, msg.(QueryRequest))
-		case msg := <-peer.Receive(b.opcodeSyncViewRequest):
-			go handleOutOfSyncCheck(ledger, peer, msg.(SyncViewRequest))
-		case msg := <-peer.Receive(b.opcodeSyncInitRequest):
-			go handleSyncInits(ledger, peer, msg.(SyncInitRequest))
-		case msg := <-peer.Receive(b.opcodeSyncChunkRequest):
-			go handleSyncChunks(ledger, peer, msg.(SyncChunkRequest))
-		case msg := <-peer.Receive(b.opcodeSyncMissingTxRequest):
-			go handleSyncMissingTXs(ledger, peer, msg.(SyncMissingTxRequest))
+		case <-ctx.Done():
+			return
+		case wire := <-peer.Recv(b.opcodeGossipRequest):
+			go b.handleGossipRequest(wire)
+		case wire := <-peer.Recv(b.opcodeQueryRequest):
+			go b.handleQueryRequest(wire)
+		case wire := <-peer.Recv(b.opcodeSyncViewRequest):
+			go b.handleOutOfSyncCheck(wire)
+		case wire := <-peer.Recv(b.opcodeSyncInitRequest):
+			go b.handleSyncInits(wire)
+		case wire := <-peer.Recv(b.opcodeSyncChunkRequest):
+			go b.handleSyncChunks(wire)
+		case wire := <-peer.Recv(b.opcodeSyncMissingTxRequest):
+			go b.handleSyncMissingTXs(wire)
 		}
 	}
 }
 
-func (b *block) broadcastGossip(ledger *wavelet.Ledger, node *noise.Node, peer *noise.Peer) {
-	for evt := range ledger.GossipOut {
-		func() {
-			peers, err := selectPeers(node, sys.SnowballQueryK)
+func (b *Protocol) broadcastGossip(ctx context.Context, node *noise.Node) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt := <-b.ledger.GossipOut:
+			peers, err := selectPeers(b.network, node, sys.SnowballQueryK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "failed to select peers while gossiping")
-				return
+				continue
 			}
 
-			responses, err := broadcast(node, peers, GossipRequest{TX: &evt.TX}, b.opcodeGossipResponse)
-			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while gossiping")
-				return
-			}
+			responses := broadcast(peers, b.opcodeGossipRequest, b.opcodeGossipResponse, GossipRequest{tx: evt.TX}.Marshal())
 
-			var votes []wavelet.VoteGossip
+			votes := make([]wavelet.VoteGossip, len(responses))
 
-			for i, res := range responses {
-				if res != nil {
-					res := res.(GossipResponse)
+			for i, buf := range responses {
+				if buf != nil {
+					res, err := UnmarshalGossipResponse(bytes.NewReader(buf))
 
-					var voter common.AccountID
-					copy(voter[:], peers[i].PublicKey())
+					if err != nil {
+						fmt.Println("Error while unmarshaling gossip response", err)
+						continue
+					}
 
-					votes = append(votes, wavelet.VoteGossip{
-						Voter: voter,
-						Ok:    res.vote,
-					})
+					votes[i].Ok = res.vote
 				}
+
+				votes[i].Voter = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).PublicKey()
 			}
 
 			evt.Result <- votes
-		}()
+		}
 	}
 }
 
-func (b *block) broadcastQueries(ledger *wavelet.Ledger, node *noise.Node, peer *noise.Peer) {
-	for evt := range ledger.QueryOut {
-		func() {
-			peers, err := selectPeers(node, sys.SnowballQueryK)
+func (b *Protocol) broadcastQueries(ctx context.Context, node *noise.Node) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt := <-b.ledger.QueryOut:
+			peers, err := selectPeers(b.network, node, sys.SnowballQueryK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "failed to select peers while querying")
-				return
+				continue
 			}
 
-			responses, err := broadcast(node, peers, QueryRequest{tx: &evt.TX}, b.opcodeQueryResponse)
-			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while querying")
-				return
-			}
+			responses := broadcast(peers, b.opcodeQueryRequest, b.opcodeQueryResponse, QueryRequest{tx: evt.TX}.Marshal())
 
-			var votes []wavelet.VoteQuery
+			votes := make([]wavelet.VoteQuery, len(responses))
 
-			for i, res := range responses {
-				if res != nil {
-					res := res.(QueryResponse)
+			for i, buf := range responses {
+				if buf != nil {
+					res, err := UnmarshalQueryResponse(bytes.NewReader(buf))
 
-					var voter common.AccountID
-					copy(voter[:], peers[i].PublicKey())
-
-					vote := wavelet.VoteQuery{Voter: voter}
-
-					if res.preferred != nil {
-						vote.Preferred = *res.preferred
+					if err != nil {
+						fmt.Println("Error while unmarshaling query response", err)
+						continue
 					}
 
-					votes = append(votes, vote)
+					votes[i].Preferred = res.preferred
 				}
+
+				votes[i].Voter = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).PublicKey()
 			}
 
 			evt.Result <- votes
-		}()
+		}
 	}
 }
 
-func (b *block) broadcastOutOfSyncChecks(ledger *wavelet.Ledger, node *noise.Node, peer *noise.Peer) {
-	for evt := range ledger.OutOfSyncOut {
-		func() {
-			peers, err := selectPeers(node, sys.SnowballSyncK)
+func (b *Protocol) broadcastOutOfSyncChecks(ctx context.Context, node *noise.Node) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt := <-b.ledger.OutOfSyncOut:
+			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
 			if err != nil {
-				// Do not send an error if we do not have any peers to broadcast out-of-sync checks to.
-				return
+				evt.Error <- errors.Wrap(err, "got an error while selecting peers for sync check")
+				continue
 			}
 
-			responses, err := broadcast(node, peers, SyncViewRequest{root: &evt.Root}, b.opcodeSyncViewResponse)
-			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while checking if out of sync")
-				return
-			}
+			responses := broadcast(peers, b.opcodeSyncViewRequest, b.opcodeSyncViewResponse, SyncViewRequest{root: evt.Root}.Marshal())
 
-			var votes []wavelet.VoteOutOfSync
+			votes := make([]wavelet.VoteOutOfSync, len(peers))
 
-			for i, res := range responses {
-				if res != nil {
-					res := res.(SyncViewResponse)
+			for i, buf := range responses {
+				if buf != nil {
+					res, err := UnmarshalSyncViewResponse(bytes.NewReader(buf))
 
-					var voter common.AccountID
-					copy(voter[:], peers[i].PublicKey())
-
-					vote := wavelet.VoteOutOfSync{Voter: voter}
-
-					if res.root != nil {
-						vote.Root = *res.root
+					if err != nil {
+						fmt.Println("Error while unmarshaling sync view response", err)
+						continue
 					}
 
-					votes = append(votes, vote)
+					votes[i].Root = res.root
 				}
+
+				votes[i].Voter = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).PublicKey()
 			}
 
 			evt.Result <- votes
-		}()
+
+		}
 	}
 }
 
-func (b *block) broadcastSyncInitRequests(ledger *wavelet.Ledger, node *noise.Node, peer *noise.Peer) {
-	for evt := range ledger.SyncInitOut {
-		func() {
-			peers, err := selectPeers(node, sys.SnowballSyncK)
+func (b *Protocol) broadcastSyncInitRequests(ctx context.Context, node *noise.Node) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt := <-b.ledger.SyncInitOut:
+			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
 			if err != nil {
-				return
+				evt.Error <- errors.Wrap(err, "got an error while selecting peers for sync init")
+				continue
 			}
 
-			responses, err := broadcast(node, peers, SyncInitRequest{viewID: evt.ViewID}, b.opcodeSyncInitResponse)
-			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while sending request to sync")
-				return
-			}
+			responses := broadcast(peers, b.opcodeSyncInitRequest, b.opcodeSyncInitResponse, SyncInitRequest{viewID: evt.ViewID}.Marshal())
 
-			var votes []wavelet.SyncInitMetadata
+			votes := make([]wavelet.SyncInitMetadata, len(responses))
 
-			for i, res := range responses {
-				if res != nil {
-					res := res.(SyncInitResponse)
+			for i, buf := range responses {
+				if buf != nil {
+					res, err := UnmarshalSyncInitResponse(bytes.NewReader(buf))
 
-					votes = append(votes, wavelet.SyncInitMetadata{
-						User:        peers[i],
-						ViewID:      res.latestViewID,
-						ChunkHashes: res.chunkHashes,
-					})
+					if err != nil {
+						fmt.Println("Error while unmarshaling sync init response", err)
+						continue
+					}
+
+					votes[i].ViewID = res.latestViewID
+					votes[i].ChunkHashes = res.chunkHashes
 				}
+
+				votes[i].PeerID = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID)
 			}
 
 			evt.Result <- votes
-		}()
+		}
 	}
 }
 
-func (b *block) broadcastSyncMissingTXs(ledger *wavelet.Ledger, node *noise.Node, peer *noise.Peer) {
-	for evt := range ledger.SyncTxOut {
-		func() {
-			peers, err := selectPeers(node, sys.SnowballSyncK)
+func (b *Protocol) broadcastSyncMissingTXs(ctx context.Context, node *noise.Node) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt := <-b.ledger.SyncTxOut:
+			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
 			if err != nil {
-				return
+				evt.Error <- errors.Wrap(err, "got an error while selecting peers for sync init")
+				continue
 			}
 
-			responses, err := broadcast(node, peers, SyncMissingTxRequest{ids: evt.IDs}, b.opcodeSyncMissingTxResponse)
-			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while sending request for missing transactions")
-				return
-			}
+			responses := broadcast(peers, b.opcodeSyncMissingTxRequest, b.opcodeSyncMissingTxResponse, SyncMissingTxRequest{ids: evt.IDs}.Marshal())
 
 			set := make(map[common.TransactionID]wavelet.Transaction)
 
-			for _, res := range responses {
-				if res != nil {
-					res := res.(SyncMissingTxResponse)
+			for _, buf := range responses {
+				if buf != nil {
+					res, err := UnmarshalSyncMissingTxResponse(bytes.NewReader(buf))
+
+					if err != nil {
+						fmt.Println("Error while unmarshaling sync missing tx response", err)
+						continue
+					}
 
 					for _, tx := range res.transactions {
 						set[tx.ID] = tx
@@ -287,13 +349,16 @@ func (b *block) broadcastSyncMissingTXs(ledger *wavelet.Ledger, node *noise.Node
 			}
 
 			evt.Result <- txs
-		}()
+		}
 	}
 }
 
-func (b *block) broadcastSyncDiffRequests(ledger *wavelet.Ledger, node *noise.Node, peer *noise.Peer) {
-	for evt := range ledger.SyncDiffOut {
-		func() {
+func (b *Protocol) broadcastSyncDiffRequests(ctx context.Context, node *noise.Node) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt := <-b.ledger.SyncDiffOut:
 			collected := make([][]byte, len(evt.Sources))
 			var count atomic.Uint32
 
@@ -301,44 +366,56 @@ func (b *block) broadcastSyncDiffRequests(ledger *wavelet.Ledger, node *noise.No
 			wg.Add(len(evt.Sources))
 
 			for chunkID, src := range evt.Sources {
-				src := src
+				chunkID, src := chunkID, src
 
-				// FIXME(zhy0919): Noise does not currently support concurrent
-				//  requests/responses on a single peer.
-				func() {
+				go func() {
 					defer wg.Done()
 
 					for i := 0; i < 5; i++ {
-						peerID := src.Peers[rand.Intn(len(src.Peers))]
+						peer := b.network.PeerByID(node, src.PeerIDs[rand.Intn(len(src.PeerIDs))])
 
-						peer := protocol.Peer(node, peerID)
 						if peer == nil {
 							continue
 						}
 
-						err := peer.SendMessage(SyncChunkRequest{chunkHash: src.Hash})
+						diff, err := func() ([]byte, error) {
+							mux := peer.Mux()
+							defer func() {
+								_ = mux.Close()
+							}()
+
+							err := mux.SendWithTimeout(b.opcodeSyncChunkRequest, SyncChunkRequest{chunkHash: src.Hash}.Marshal(), 1*time.Second)
+							if err != nil {
+								return nil, err
+							}
+
+							var buf []byte
+
+							select {
+							case <-time.After(sys.QueryTimeout):
+								return nil, errors.New("timed out querying for chunk")
+							case wire := <-mux.Recv(b.opcodeSyncChunkResponse):
+								buf = wire.Bytes()
+							}
+
+							res, err := UnmarshalSyncChunkResponse(bytes.NewReader(buf))
+
+							if err != nil {
+								return nil, err
+							}
+
+							if res.diff == nil || blake2b.Sum256(res.diff) != src.Hash {
+								return nil, errors.New("sync chunk response was empty")
+							}
+
+							return res.diff, nil
+						}()
+
 						if err != nil {
 							continue
 						}
 
-						var res SyncChunkResponse
-
-						select {
-						case msg := <-peer.Receive(b.opcodeSyncChunkResponse):
-							res = msg.(SyncChunkResponse)
-						case <-time.After(sys.QueryTimeout):
-							continue
-						}
-
-						if res.diff == nil {
-							continue
-						}
-
-						if remoteHash := blake2b.Sum256(res.diff); remoteHash != src.Hash {
-							continue
-						}
-
-						collected[chunkID] = res.diff
+						collected[chunkID] = diff
 						count.Add(1)
 
 						break
@@ -350,28 +427,34 @@ func (b *block) broadcastSyncDiffRequests(ledger *wavelet.Ledger, node *noise.No
 
 			if int(count.Load()) != len(evt.Sources) {
 				evt.Error <- errors.New("failed to fetch some chunks from our peers")
-				return
+				continue
 			}
 
 			evt.Result <- collected
-		}()
+		}
 	}
 }
 
-func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryRequest) {
+func (b *Protocol) handleQueryRequest(wire noise.Wire) {
 	var res QueryResponse
 	defer func() {
-		if err := <-peer.SendMessageAsync(res); err != nil {
+		if err := wire.SendWithTimeout(b.opcodeQueryResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
 
-	evt := wavelet.EventIncomingQuery{TX: *req.tx, Response: make(chan *wavelet.Transaction, 1), Error: make(chan error, 1)}
+	req, err := UnmarshalQueryRequest(bytes.NewReader(wire.Bytes()))
+	if err != nil {
+		fmt.Println("Error while unmarshaling query request", err)
+		return
+	}
+
+	evt := wavelet.EventIncomingQuery{TX: req.tx, Response: make(chan *wavelet.Transaction, 1), Error: make(chan error, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending query request to ledger")
-	case ledger.QueryIn <- evt:
+	case b.ledger.QueryIn <- evt:
 	}
 
 	select {
@@ -379,27 +462,36 @@ func handleQueryRequest(ledger *wavelet.Ledger, peer *noise.Peer, req QueryReque
 		fmt.Println("timed out getting query result from ledger")
 	case err := <-evt.Error:
 		if err != nil {
-			fmt.Printf("got an error processing query request from %s: %s\n", peer.RemoteIP().String()+":"+strconv.FormatUint(uint64(peer.RemotePort()), 10), err)
+			fmt.Printf("got an error processing query request from %s: %s\n", wire.Peer().Addr(), err)
 		}
-	case res.preferred = <-evt.Response:
+	case preferred := <-evt.Response:
+		if preferred != nil {
+			res.preferred = *preferred
+		}
 	}
 }
 
-func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipRequest) {
+func (b *Protocol) handleGossipRequest(wire noise.Wire) {
 	var res GossipResponse
 	defer func() {
-		if err := <-peer.SendMessageAsync(res); err != nil {
+		if err := wire.SendWithTimeout(b.opcodeGossipResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
 
-	evt := wavelet.EventIncomingGossip{TX: *req.TX, Vote: make(chan error, 1)}
+	req, err := UnmarshalGossipRequest(bytes.NewReader(wire.Bytes()))
+	if err != nil {
+		fmt.Println("Error while unmarshaling gossip request", err)
+		return
+	}
+
+	evt := wavelet.EventIncomingGossip{TX: req.tx, Vote: make(chan error, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending gossip request to ledger")
 		return
-	case ledger.GossipIn <- evt:
+	case b.ledger.GossipIn <- evt:
 	}
 
 	select {
@@ -410,26 +502,32 @@ func handleGossipRequest(ledger *wavelet.Ledger, peer *noise.Peer, req GossipReq
 		res.vote = err == nil
 
 		if err != nil {
-			fmt.Printf("got an error processing gossip request from %s: %s\n", peer.RemoteIP().String()+":"+strconv.FormatUint(uint64(peer.RemotePort()), 10), err)
+			fmt.Printf("got an error processing gossip request from %s: %s\n", wire.Peer().Addr(), err)
 		}
 	}
 }
 
-func handleOutOfSyncCheck(ledger *wavelet.Ledger, peer *noise.Peer, req SyncViewRequest) {
+func (b *Protocol) handleOutOfSyncCheck(wire noise.Wire) {
 	var res SyncViewResponse
 	defer func() {
-		if err := <-peer.SendMessageAsync(res); err != nil {
+		if err := wire.SendWithTimeout(b.opcodeSyncViewResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
 
-	evt := wavelet.EventIncomingOutOfSyncCheck{Root: *req.root, Response: make(chan *wavelet.Transaction, 1)}
+	req, err := UnmarshalSyncViewRequest(bytes.NewReader(wire.Bytes()))
+	if err != nil {
+		fmt.Println("Error while unmarshaling sync view request", err)
+		return
+	}
+
+	evt := wavelet.EventIncomingOutOfSyncCheck{Root: req.root, Response: make(chan *wavelet.Transaction, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending out of sync check to ledger")
 		return
-	case ledger.OutOfSyncIn <- evt:
+	case b.ledger.OutOfSyncIn <- evt:
 	}
 
 	select {
@@ -437,17 +535,23 @@ func handleOutOfSyncCheck(ledger *wavelet.Ledger, peer *noise.Peer, req SyncView
 		fmt.Println("timed out getting sync check results from ledger")
 		return
 	case root := <-evt.Response:
-		res.root = root
+		res.root = *root
 	}
 }
 
-func handleSyncInits(ledger *wavelet.Ledger, peer *noise.Peer, req SyncInitRequest) {
+func (b *Protocol) handleSyncInits(wire noise.Wire) {
 	var res SyncInitResponse
 	defer func() {
-		if err := <-peer.SendMessageAsync(res); err != nil {
+		if err := wire.SendWithTimeout(b.opcodeSyncInitResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
+
+	req, err := UnmarshalSyncInitRequest(bytes.NewReader(wire.Bytes()))
+	if err != nil {
+		fmt.Println("Error while unmarshaling sync init request", err)
+		return
+	}
 
 	evt := wavelet.EventIncomingSyncInit{ViewID: req.viewID, Response: make(chan wavelet.SyncInitMetadata, 1)}
 
@@ -455,7 +559,7 @@ func handleSyncInits(ledger *wavelet.Ledger, peer *noise.Peer, req SyncInitReque
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending sync init request to ledger")
 		return
-	case ledger.SyncInitIn <- evt:
+	case b.ledger.SyncInitIn <- evt:
 	}
 
 	select {
@@ -468,13 +572,19 @@ func handleSyncInits(ledger *wavelet.Ledger, peer *noise.Peer, req SyncInitReque
 	}
 }
 
-func handleSyncChunks(ledger *wavelet.Ledger, peer *noise.Peer, req SyncChunkRequest) {
+func (b *Protocol) handleSyncChunks(wire noise.Wire) {
 	var res SyncChunkResponse
 	defer func() {
-		if err := <-peer.SendMessageAsync(res); err != nil {
+		if err := wire.SendWithTimeout(b.opcodeSyncChunkResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
+
+	req, err := UnmarshalSyncChunkRequest(bytes.NewReader(wire.Bytes()))
+	if err != nil {
+		fmt.Println("Error while unmarshaling sync chunk request", err)
+		return
+	}
 
 	evt := wavelet.EventIncomingSyncDiff{ChunkHash: req.chunkHash, Response: make(chan []byte, 1)}
 
@@ -482,7 +592,7 @@ func handleSyncChunks(ledger *wavelet.Ledger, peer *noise.Peer, req SyncChunkReq
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending sync diff request to ledger")
 		return
-	case ledger.SyncDiffIn <- evt:
+	case b.ledger.SyncDiffIn <- evt:
 	}
 
 	select {
@@ -494,13 +604,19 @@ func handleSyncChunks(ledger *wavelet.Ledger, peer *noise.Peer, req SyncChunkReq
 	}
 }
 
-func handleSyncMissingTXs(ledger *wavelet.Ledger, peer *noise.Peer, req SyncMissingTxRequest) {
+func (b *Protocol) handleSyncMissingTXs(wire noise.Wire) {
 	var res SyncMissingTxResponse
 	defer func() {
-		if err := <-peer.SendMessageAsync(res); err != nil {
+		if err := wire.SendWithTimeout(b.opcodeSyncMissingTxResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
+
+	req, err := UnmarshalSyncMissingTxRequest(bytes.NewReader(wire.Bytes()))
+	if err != nil {
+		fmt.Println("Error while unmarshaling sync missing tx request", err)
+		return
+	}
 
 	evt := wavelet.EventIncomingSyncTX{IDs: req.ids, Response: make(chan []wavelet.Transaction, 1)}
 
@@ -508,7 +624,7 @@ func handleSyncMissingTXs(ledger *wavelet.Ledger, peer *noise.Peer, req SyncMiss
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending missing tx sync request to ledger")
 		return
-	case ledger.SyncTxIn <- evt:
+	case b.ledger.SyncTxIn <- evt:
 	}
 
 	select {
@@ -518,16 +634,4 @@ func handleSyncMissingTXs(ledger *wavelet.Ledger, peer *noise.Peer, req SyncMiss
 	case txs := <-evt.Response:
 		res.transactions = txs
 	}
-}
-
-func (b *block) OnEnd(p *protocol.Protocol, peer *noise.Peer) error {
-	return nil
-}
-
-func WaitUntilAuthenticated(peer *noise.Peer) {
-	<-peer.LoadOrStore(keyAuthChannel, make(chan struct{})).(chan struct{})
-}
-
-func Ledger(node *noise.Node) *wavelet.Ledger {
-	return node.Get(keyLedger).(*wavelet.Ledger)
 }

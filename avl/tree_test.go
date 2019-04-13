@@ -208,7 +208,7 @@ func BenchmarkAVL(b *testing.B) {
 
 				var delKey string
 
-				for k, _ := range refMap {
+				for k := range refMap {
 					delKey = k
 					break
 				}

@@ -3,40 +3,36 @@ package wctl
 import (
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
-	"github.com/perlin-network/noise/identity/ed25519"
-	"github.com/perlin-network/noise/signature/eddsa"
-	"github.com/perlin-network/wavelet/common"
-	"github.com/pkg/errors"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/valyala/fasthttp"
 	"net/http"
 	"time"
 )
 
 type Config struct {
-	APIHost       string
-	APIPort       uint16
-	RawPrivateKey common.PrivateKey
-	UseHTTPS      bool
+	APIHost    string
+	APIPort    uint16
+	PrivateKey edwards25519.PrivateKey
+	UseHTTPS   bool
 }
 
 type Client struct {
 	Config
-	*ed25519.Keypair
+
+	edwards25519.PrivateKey
+	edwards25519.PublicKey
 
 	SessionToken string
 }
 
 func NewClient(config Config) (*Client, error) {
-	keys := ed25519.LoadKeys(config.RawPrivateKey[:])
-
-	return &Client{Config: config, Keypair: keys}, nil
+	return &Client{Config: config, PrivateKey: config.PrivateKey, PublicKey: config.PrivateKey.Public()}, nil
 }
 
 // Request will make a request to a given path, with a given body and return result in out.
-func (c *Client) RequestJSON(path string, method string, body, out interface{}) error {
+func (c *Client) RequestJSON(path string, method string, body MarshalableJSON, out UnmarshalableJSON) error {
 	resBody, err := c.Request(path, method, body)
 	if err != nil {
 		return err
@@ -46,10 +42,10 @@ func (c *Client) RequestJSON(path string, method string, body, out interface{}) 
 		return nil
 	}
 
-	return json.Unmarshal(resBody, out)
+	return out.UnmarshalJSON(resBody)
 }
 
-func (c *Client) Request(path string, method string, body interface{}) ([]byte, error) {
+func (c *Client) Request(path string, method string, body MarshalableJSON) ([]byte, error) {
 	protocol := "http"
 	if c.Config.UseHTTPS {
 		protocol = "https"
@@ -64,7 +60,7 @@ func (c *Client) Request(path string, method string, body interface{}) ([]byte, 
 	req.Header.Add(HeaderSessionToken, c.SessionToken)
 
 	if body != nil {
-		raw, err := json.Marshal(body)
+		raw, err := body.MarshalJSON()
 		if err != nil {
 			return nil, err
 		}
@@ -103,18 +99,15 @@ func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 func (c *Client) Init() error {
 	var res SessionInitResponse
 
-	time := time.Now().UnixNano() * 1000
-	message := []byte(fmt.Sprintf("%s%d", SessionInitMessage, time))
+	millis := time.Now().UnixNano() * 1000
+	message := []byte(fmt.Sprintf("%s%d", SessionInitMessage, millis))
 
-	signature, err := eddsa.Sign(c.PrivateKey(), message)
-	if err != nil {
-		return errors.Wrap(err, "failed to sign session init message")
-	}
+	signature := edwards25519.Sign(c.PrivateKey, message)
 
 	req := SessionInitRequest{
-		PublicKey:  hex.EncodeToString(c.PublicKey()),
-		TimeMillis: uint64(time),
-		Signature:  hex.EncodeToString(signature),
+		PublicKey:  hex.EncodeToString(c.PublicKey[:]),
+		TimeMillis: uint64(millis),
+		Signature:  hex.EncodeToString(signature[:]),
 	}
 
 	if err := c.RequestJSON(RouteSessionInit, ReqPost, &req, &res); err != nil {
@@ -277,7 +270,7 @@ func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *
 	return evChan, nil
 }
 
-func (c *Client) GetLedgerStatus(senderID *string, creatorID *string, offset *uint64, limit *uint64) ([]byte, error) {
+func (c *Client) GetLedgerStatus(senderID *string, creatorID *string, offset *uint64, limit *uint64) (LedgerStatusResponse, error) {
 	path := fmt.Sprintf("%s?", RouteLedger)
 	if senderID != nil {
 		path = fmt.Sprintf("%ssender=%s&", path, *senderID)
@@ -292,14 +285,16 @@ func (c *Client) GetLedgerStatus(senderID *string, creatorID *string, offset *ui
 		path = fmt.Sprintf("%slimit=%d&", path, *limit)
 	}
 
-	res, err := c.Request(path, ReqGet, nil)
+	var res LedgerStatusResponse
+	err := c.RequestJSON(path, ReqGet, nil, &res)
 	return res, err
 }
 
-func (c *Client) GetAccount(accountID string) ([]byte, error) {
+func (c *Client) GetAccount(accountID string) (Account, error) {
 	path := fmt.Sprintf("%s/%s", RouteAccount, accountID)
 
-	res, err := c.Request(path, ReqGet, nil)
+	var res Account
+	err := c.RequestJSON(path, ReqGet, nil, &res)
 	return res, err
 }
 
@@ -320,7 +315,7 @@ func (c *Client) GetContractPages(contractID string, index *uint64) (string, err
 	return base64.StdEncoding.EncodeToString(res), err
 }
 
-func (c *Client) ListTransactions(senderID *string, creatorID *string, offset *uint64, limit *uint64) ([]byte, error) {
+func (c *Client) ListTransactions(senderID *string, creatorID *string, offset *uint64, limit *uint64) ([]Transaction, error) {
 	path := fmt.Sprintf("%s?", RouteTxList)
 	if senderID != nil {
 		path = fmt.Sprintf("%ssender=%s&", path, *senderID)
@@ -335,30 +330,34 @@ func (c *Client) ListTransactions(senderID *string, creatorID *string, offset *u
 		path = fmt.Sprintf("%slimit=%d&", path, *limit)
 	}
 
-	res, err := c.Request(path, ReqGet, nil)
+	var res TransactionList
+
+	err := c.RequestJSON(path, ReqGet, nil, &res)
 	return res, err
+
 }
 
-func (c *Client) GetTransaction(txID string) ([]byte, error) {
+func (c *Client) GetTransaction(txID string) (Transaction, error) {
 	path := fmt.Sprintf("%s/%s", RouteTxList, txID)
 
-	res, err := c.Request(path, ReqGet, nil)
+	var res Transaction
+	err := c.RequestJSON(path, ReqGet, nil, &res)
 	return res, err
 }
 
-func (c *Client) SendTransaction(tag byte, payload []byte) ([]byte, error) {
-	signature, err := eddsa.Sign(c.PrivateKey(), append([]byte{tag}, payload...))
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to sign send transaction message")
-	}
+func (c *Client) SendTransaction(tag byte, payload []byte) (SendTransactionResponse, error) {
+	var res SendTransactionResponse
+
+	signature := edwards25519.Sign(c.PrivateKey, append([]byte{tag}, payload...))
 
 	req := SendTransactionRequest{
-		Sender:    hex.EncodeToString(c.PublicKey()),
+		Sender:    hex.EncodeToString(c.PublicKey[:]),
 		Tag:       tag,
 		Payload:   hex.EncodeToString(payload),
-		Signature: hex.EncodeToString(signature),
+		Signature: hex.EncodeToString(signature[:]),
 	}
 
-	res, err := c.Request(RouteTxSend, ReqPost, &req)
-	return res, nil
+	err := c.RequestJSON(RouteTxSend, ReqPost, &req, &res)
+
+	return res, err
 }

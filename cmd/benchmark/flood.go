@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/perlin-network/noise/payload"
+	"encoding/binary"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
@@ -36,7 +36,13 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 			go func() {
 				defer wg.Done()
 
-				res, err := client.SendTransaction(sys.TagStake, payload.NewWriter(nil).WriteUint64(uint64(i)).Bytes())
+				var payload [8]byte
+				binary.LittleEndian.PutUint64(payload[:8], uint64(i))
+
+				var res wctl.SendTransactionResponse
+
+				res, err := client.SendTransaction(sys.TagStake, payload[:])
+
 				if err != nil {
 					chRes <- res
 					chErr <- err

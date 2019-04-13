@@ -5,7 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/noise"
-	"github.com/perlin-network/noise/signature/eddsa"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
@@ -52,26 +52,31 @@ func (s *SessionInitRequest) bind(parser *fastjson.Parser, body []byte) error {
 	s.Signature = string(v.GetStringBytes("signature"))
 	s.TimeMillis = v.GetUint64("time_millis")
 
-	publicKey, err := hex.DecodeString(s.PublicKey)
+	publicKeyBuf, err := hex.DecodeString(s.PublicKey)
 	if err != nil {
 		return errors.Wrap(err, "public key provided is not hex-formatted")
 	}
 
-	if len(publicKey) != common.SizeAccountID {
+	if len(publicKeyBuf) != common.SizeAccountID {
 		return errors.Errorf("public key must be size %d", common.SizeAccountID)
 	}
 
-	signature, err := hex.DecodeString(s.Signature)
+	signatureBuf, err := hex.DecodeString(s.Signature)
 	if err != nil {
 		return errors.Wrap(err, "signature provided is not hex-formatted")
 	}
 
-	if len(signature) != common.SizeSignature {
+	if len(signatureBuf) != common.SizeSignature {
 		return errors.Errorf("signature must be size %d", common.SizeSignature)
 	}
 
-	err = eddsa.Verify(publicKey, []byte(fmt.Sprintf("%s%d", SessionInitMessage, s.TimeMillis)), signature)
-	if err != nil {
+	var publicKey edwards25519.PublicKey
+	copy(publicKey[:], publicKeyBuf)
+
+	var signature edwards25519.Signature
+	copy(signature[:], signatureBuf)
+
+	if !edwards25519.Verify(publicKey, []byte(fmt.Sprintf("%s%d", SessionInitMessage, s.TimeMillis)), signature) {
 		return errors.Wrap(err, "signature verification failed")
 	}
 
@@ -113,12 +118,12 @@ func (s *SendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	s.Payload = string(v.GetStringBytes("payload"))
 	s.Signature = string(v.GetStringBytes("signature"))
 
-	sender, err := hex.DecodeString(s.Sender)
+	senderBuf, err := hex.DecodeString(s.Sender)
 	if err != nil {
 		return errors.Wrap(err, "sender public key provided is not hex-formatted")
 	}
 
-	if len(sender) != common.SizeAccountID {
+	if len(senderBuf) != common.SizeAccountID {
 		return errors.Errorf("sender public key must be size %d", common.SizeAccountID)
 	}
 
@@ -131,22 +136,27 @@ func (s *SendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 		return errors.Wrap(err, "payload provided is not hex-formatted")
 	}
 
-	signature, err := hex.DecodeString(s.Signature)
+	signatureBuf, err := hex.DecodeString(s.Signature)
 	if err != nil {
 		return errors.Wrap(err, "sender signature provided is not hex-formatted")
 	}
 
-	if len(signature) != common.SizeSignature {
+	if len(signatureBuf) != common.SizeSignature {
 		return errors.Errorf("sender signature must be size %d", common.SizeSignature)
 	}
 
-	err = eddsa.Verify(sender, append([]byte{s.Tag}, s.payload...), signature)
-	if err != nil {
+	var sender edwards25519.PublicKey
+	copy(sender[:], senderBuf)
+
+	var signature edwards25519.Signature
+	copy(signature[:], signatureBuf)
+
+	if !edwards25519.Verify(sender, append([]byte{s.Tag}, s.payload...), signature) {
 		return errors.Wrap(err, "sender signature verification failed")
 	}
 
-	copy(s.creator[:], sender)
-	copy(s.signature[:], signature)
+	copy(s.creator[:], senderBuf)
+	copy(s.signature[:], signatureBuf)
 
 	return nil
 }
@@ -187,8 +197,11 @@ func (s *SendTransactionResponse) marshal(arena *fastjson.Arena) ([]byte, error)
 
 type LedgerStatusResponse struct {
 	// Internal fields.
-	node   *noise.Node
-	ledger *wavelet.Ledger
+
+	node      *noise.Node
+	ledger    *wavelet.Ledger
+	network   *skademlia.Protocol
+	publicKey edwards25519.PublicKey
 }
 
 func (s *LedgerStatusResponse) marshal(arena *fastjson.Arena) ([]byte, error) {
@@ -198,17 +211,17 @@ func (s *LedgerStatusResponse) marshal(arena *fastjson.Arena) ([]byte, error) {
 
 	o := arena.NewObject()
 
-	o.Set("public_key", arena.NewString(hex.EncodeToString(s.node.Keys.PublicKey())))
-	o.Set("address", arena.NewString(s.node.ExternalAddress()))
+	o.Set("public_key", arena.NewString(hex.EncodeToString(s.publicKey[:])))
+	o.Set("address", arena.NewString(s.node.Addr().String()))
 	o.Set("root_id", arena.NewString(hex.EncodeToString(s.ledger.Root().ID[:])))
 	o.Set("view_id", arena.NewNumberString(strconv.FormatUint(s.ledger.ViewID(), 10)))
 	o.Set("difficulty", arena.NewNumberString(strconv.FormatUint(s.ledger.Difficulty(), 10)))
 
-	peers := skademlia.Table(s.node).GetPeers()
-	if peers != nil {
+	peers := s.network.Peers(s.node)
+	if len(peers) > 0 {
 		peersArray := arena.NewArray()
 		for i := range peers {
-			peersArray.SetArrayItem(i, arena.NewString(peers[i]))
+			peersArray.SetArrayItem(i, arena.NewString(peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).Address()))
 		}
 		o.Set("peers", peersArray)
 	} else {

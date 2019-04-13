@@ -1,180 +1,137 @@
 package node
 
 import (
-	"github.com/perlin-network/noise"
-	"github.com/perlin-network/noise/payload"
+	"encoding/binary"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
-)
-
-var (
-	_ noise.Message = (*GossipRequest)(nil)
-	_ noise.Message = (*GossipResponse)(nil)
-	_ noise.Message = (*QueryRequest)(nil)
-	_ noise.Message = (*QueryResponse)(nil)
-	_ noise.Message = (*SyncViewRequest)(nil)
-	_ noise.Message = (*SyncViewResponse)(nil)
-	_ noise.Message = (*SyncInitRequest)(nil)
-	_ noise.Message = (*SyncInitResponse)(nil)
-	_ noise.Message = (*SyncChunkRequest)(nil)
-	_ noise.Message = (*SyncChunkResponse)(nil)
-	_ noise.Message = (*SyncMissingTxRequest)(nil)
-	_ noise.Message = (*SyncMissingTxResponse)(nil)
+	"io"
 )
 
 type QueryRequest struct {
-	tx *wavelet.Transaction
+	tx wavelet.Transaction
 }
 
-func (q QueryRequest) Read(reader payload.Reader) (noise.Message, error) {
-	msg, err := wavelet.Transaction{}.Read(reader)
+func (q QueryRequest) Marshal() []byte {
+	return q.tx.Marshal()
+}
+
+func UnmarshalQueryRequest(r io.Reader) (q QueryRequest, err error) {
+	q.tx, err = wavelet.UnmarshalTransaction(r)
+
 	if err != nil {
-		return nil, errors.Wrap(err, "wavelet: failed to read query request tx")
+		err = errors.Wrap(err, "failed to read query request")
+		return
 	}
 
-	tx := msg.(wavelet.Transaction)
-	q.tx = &tx
-
-	return q, nil
-}
-
-func (q QueryRequest) Write() []byte {
-	if q.tx != nil {
-		return q.tx.Write()
-	}
-
-	return nil
+	return
 }
 
 type QueryResponse struct {
-	preferred *wavelet.Transaction
+	preferred wavelet.Transaction
 }
 
-func (q QueryResponse) Read(reader payload.Reader) (noise.Message, error) {
-	if reader.Len() > 0 {
-		msg, err := wavelet.Transaction{}.Read(reader)
-		if err != nil {
-			return nil, errors.Wrap(err, "wavelet: failed to read query response preferred tx")
-		}
-
-		preferred := msg.(wavelet.Transaction)
-		q.preferred = &preferred
-	}
-
-	return q, nil
+func (q QueryResponse) Marshal() []byte {
+	return q.preferred.Marshal()
 }
 
-func (q QueryResponse) Write() []byte {
-	if q.preferred != nil {
-		return q.preferred.Write()
+func UnmarshalQueryResponse(r io.Reader) (q QueryResponse, err error) {
+	q.preferred, err = wavelet.UnmarshalTransaction(r)
+
+	if err != nil {
+		err = errors.Wrap(err, "failed to read query response")
+		return
 	}
 
-	return nil
+	return
 }
 
 type GossipRequest struct {
-	TX *wavelet.Transaction
+	tx wavelet.Transaction
 }
 
-func (q GossipRequest) Read(reader payload.Reader) (noise.Message, error) {
-	msg, err := wavelet.Transaction{}.Read(reader)
+func (q GossipRequest) Marshal() []byte {
+	return q.tx.Marshal()
+}
+
+func UnmarshalGossipRequest(r io.Reader) (q QueryRequest, err error) {
+	q.tx, err = wavelet.UnmarshalTransaction(r)
+
 	if err != nil {
-		return nil, errors.Wrap(err, "wavelet: failed to read gossip request tx")
+		err = errors.Wrap(err, "failed to read gossip request")
+		return
 	}
 
-	tx := msg.(wavelet.Transaction)
-	q.TX = &tx
-
-	return q, nil
-}
-
-func (q GossipRequest) Write() []byte {
-	if q.TX != nil {
-		return q.TX.Write()
-	}
-
-	return nil
+	return
 }
 
 type GossipResponse struct {
 	vote bool
 }
 
-func (q GossipResponse) Read(reader payload.Reader) (noise.Message, error) {
-	vote, err := reader.ReadByte()
-	if err != nil {
-		return nil, errors.Wrap(err, "wavelet: failed to read gossip response vote")
+func (q GossipResponse) Marshal() []byte {
+	var buf [1]byte
+
+	if q.vote {
+		buf[0] = 1
+	} else {
+		buf[0] = 0
 	}
 
-	if vote == 1 {
+	return buf[:]
+}
+
+func UnmarshalGossipResponse(r io.Reader) (q GossipResponse, err error) {
+	var buf [1]byte
+
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		return q, errors.Wrap(err, "failed to read vote in gossip response")
+	}
+
+	if buf[0] == 1 {
 		q.vote = true
 	}
 
-	return q, nil
-}
-
-func (q GossipResponse) Write() []byte {
-	writer := payload.NewWriter(nil)
-
-	if q.vote {
-		writer.WriteByte(1)
-	} else {
-		writer.WriteByte(0)
-	}
-
-	return writer.Bytes()
+	return
 }
 
 type SyncViewRequest struct {
-	root *wavelet.Transaction
+	root wavelet.Transaction
 }
 
-func (s SyncViewRequest) Read(reader payload.Reader) (noise.Message, error) {
-	msg, err := wavelet.Transaction{}.Read(reader)
+func (q SyncViewRequest) Marshal() []byte {
+	return q.root.Marshal()
+}
+
+func UnmarshalSyncViewRequest(r io.Reader) (q SyncViewRequest, err error) {
+	q.root, err = wavelet.UnmarshalTransaction(r)
+
 	if err != nil {
-		return nil, errors.Wrap(err, "failed to read root tx")
+		err = errors.Wrap(err, "failed to read sync root request")
+		return
 	}
 
-	root := msg.(wavelet.Transaction)
-	s.root = &root
-
-	return s, nil
-}
-
-func (s SyncViewRequest) Write() []byte {
-	if s.root != nil {
-		return s.root.Write()
-	}
-
-	return nil
+	return
 }
 
 type SyncViewResponse struct {
-	root *wavelet.Transaction
+	root wavelet.Transaction
 }
 
-func (s SyncViewResponse) Read(reader payload.Reader) (noise.Message, error) {
-	if reader.Len() > 0 {
-		msg, err := wavelet.Transaction{}.Read(reader)
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to read root tx")
-		}
-
-		root := msg.(wavelet.Transaction)
-		s.root = &root
-	}
-
-	return s, nil
+func (q SyncViewResponse) Marshal() []byte {
+	return q.root.Marshal()
 }
 
-func (s SyncViewResponse) Write() []byte {
-	if s.root != nil {
-		return s.root.Write()
+func UnmarshalSyncViewResponse(r io.Reader) (q SyncViewResponse, err error) {
+	q.root, err = wavelet.UnmarshalTransaction(r)
+
+	if err != nil {
+		err = errors.Wrap(err, "failed to read sync root response")
+		return
 	}
 
-	return nil
+	return
 }
 
 type SyncInitRequest struct {
@@ -191,191 +148,161 @@ type SyncChunkRequest struct {
 }
 
 type SyncChunkResponse struct {
-	found bool
-	diff  []byte
-}
-
-func (s SyncInitRequest) Read(reader payload.Reader) (noise.Message, error) {
-	var err error
-
-	s.viewID, err = reader.ReadUint64()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read view ID")
-	}
-
-	return s, nil
-}
-
-func (s SyncInitRequest) Write() []byte {
-	return payload.NewWriter(nil).WriteUint64(s.viewID).Bytes()
-}
-
-func (s SyncInitResponse) Read(reader payload.Reader) (noise.Message, error) {
-	var err error
-
-	s.latestViewID, err = reader.ReadUint64()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read latest view id")
-	}
-
-	numChunks, err := reader.ReadUint32()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read num chunks")
-	}
-
-	for i := uint32(0); i < numChunks; i++ {
-		var chunkHash [blake2b.Size256]byte
-
-		n, err := reader.Read(chunkHash[:])
-
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to read chunk hash")
-		}
-
-		if n != blake2b.Size256 {
-			return nil, errors.New("did not read enough bytes for chunk hash")
-		}
-
-		s.chunkHashes = append(s.chunkHashes, chunkHash)
-	}
-
-	return s, nil
-}
-
-func (s SyncInitResponse) Write() []byte {
-	writer := payload.NewWriter(nil)
-
-	writer.WriteUint64(s.latestViewID)
-	writer.WriteUint32(uint32(len(s.chunkHashes)))
-
-	for _, h := range s.chunkHashes {
-		_, _ = writer.Write(h[:])
-	}
-
-	return writer.Bytes()
-}
-
-func (s SyncChunkRequest) Read(reader payload.Reader) (noise.Message, error) {
-	n, err := reader.Read(s.chunkHash[:])
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read chunk hash")
-	}
-
-	if n != blake2b.Size256 {
-		return nil, errors.New("did not read enough bytes for chunk hash")
-	}
-
-	return s, nil
-}
-
-func (s SyncChunkRequest) Write() []byte {
-	return s.chunkHash[:]
-}
-
-func (s SyncChunkResponse) Read(reader payload.Reader) (noise.Message, error) {
-	var err error
-
-	found, err := reader.ReadByte()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read found flag")
-	}
-
-	if found != 0 {
-		s.found = true
-	} else {
-		s.found = false
-	}
-
-	s.diff, err = reader.ReadBytes()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read hash")
-	}
-
-	return s, nil
-}
-
-func (s SyncChunkResponse) Write() []byte {
-	var found byte
-
-	if s.found {
-		found = 1
-	}
-
-	return payload.NewWriter(nil).WriteByte(found).WriteBytes(s.diff).Bytes()
-}
-
-type SyncMissingTxResponse struct {
-	transactions []wavelet.Transaction
-}
-
-func (s SyncMissingTxResponse) Read(reader payload.Reader) (noise.Message, error) {
-	if reader.Len() > 0 {
-		numTransactions, err := reader.ReadByte()
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to read number of transactions in sync transaction response")
-		}
-
-		for i := byte(0); i < numTransactions; i++ {
-			msg, err := wavelet.Transaction{}.Read(reader)
-			if err != nil {
-				return nil, errors.Wrap(err, "failed to read root tx")
-			}
-
-			s.transactions = append(s.transactions, msg.(wavelet.Transaction))
-		}
-	}
-
-	return s, nil
-}
-
-func (s SyncMissingTxResponse) Write() []byte {
-	writer := payload.NewWriter(nil)
-
-	writer.WriteByte(byte(len(s.transactions)))
-
-	for _, tx := range s.transactions {
-		_, _ = writer.Write(tx.Write())
-	}
-
-	return writer.Bytes()
+	diff []byte
 }
 
 type SyncMissingTxRequest struct {
 	ids []common.TransactionID
 }
 
-func (s SyncMissingTxRequest) Read(reader payload.Reader) (noise.Message, error) {
-	numIDs, err := reader.ReadByte()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to read number of ids in sync transaction request")
-	}
-
-	for i := byte(0); i < numIDs; i++ {
-		var id common.TransactionID
-
-		n, err := reader.Read(id[:])
-
-		if err != nil {
-			return nil, errors.Wrap(err, "failed to read id")
-		}
-
-		if n != common.SizeTransactionID {
-			return nil, errors.New("invalid transaction id")
-		}
-
-		s.ids = append(s.ids, id)
-	}
-	return s, nil
+type SyncMissingTxResponse struct {
+	transactions []wavelet.Transaction
 }
 
-func (s SyncMissingTxRequest) Write() []byte {
-	writer := payload.NewWriter(nil)
+func (s SyncInitRequest) Marshal() []byte {
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], s.viewID)
 
-	writer.WriteByte(byte(len(s.ids)))
+	return buf[:]
+}
 
-	for _, id := range s.ids {
-		_, _ = writer.Write(id[:])
+func UnmarshalSyncInitRequest(r io.Reader) (q SyncInitRequest, err error) {
+	var buf [8]byte
+
+	if _, err = io.ReadFull(r, buf[:]); err != nil {
+		return
 	}
 
-	return writer.Bytes()
+	q.viewID = binary.BigEndian.Uint64(buf[:])
+
+	return
+}
+
+func (s SyncInitResponse) Marshal() []byte {
+	buf := make([]byte, 8+4+blake2b.Size256*len(s.chunkHashes))
+
+	binary.BigEndian.PutUint64(buf[0:8], s.latestViewID)
+	binary.BigEndian.PutUint32(buf[8:12], uint32(len(s.chunkHashes)))
+
+	for i, chunkHash := range s.chunkHashes {
+		copy(buf[12+i*blake2b.Size256:12+(i+1)*blake2b.Size256], chunkHash[:])
+	}
+
+	return buf
+}
+
+func UnmarshalSyncInitResponse(r io.Reader) (q SyncInitResponse, err error) {
+	buf := make([]byte, 8+4)
+
+	if _, err = io.ReadFull(r, buf); err != nil {
+		return
+	}
+
+	q.latestViewID = binary.BigEndian.Uint64(buf[0:8])
+	q.chunkHashes = make([][blake2b.Size256]byte, binary.BigEndian.Uint32(buf[8:12]))
+
+	for i := range q.chunkHashes {
+		if _, err = io.ReadFull(r, q.chunkHashes[i][:]); err != nil {
+			return
+		}
+	}
+
+	return
+}
+
+func (s SyncChunkRequest) Marshal() []byte {
+	return s.chunkHash[:]
+}
+
+func UnmarshalSyncChunkRequest(r io.Reader) (q SyncChunkRequest, err error) {
+	if _, err = io.ReadFull(r, q.chunkHash[:]); err != nil {
+		return
+	}
+
+	return
+}
+
+func (s SyncChunkResponse) Marshal() []byte {
+	buf := make([]byte, 4+len(s.diff))
+
+	binary.BigEndian.PutUint32(buf[0:4], uint32(len(s.diff)))
+	copy(buf[4:4+len(s.diff)], s.diff)
+
+	return buf
+}
+
+func UnmarshalSyncChunkResponse(r io.Reader) (q SyncChunkResponse, err error) {
+	buf := make([]byte, 4)
+
+	if _, err = io.ReadFull(r, buf); err != nil {
+		return
+	}
+
+	q.diff = make([]byte, binary.BigEndian.Uint32(buf))
+
+	if _, err = io.ReadFull(r, q.diff); err != nil {
+		return
+	}
+
+	return
+}
+
+func (s SyncMissingTxRequest) Marshal() []byte {
+	var buf []byte
+
+	buf = append(buf, byte(len(s.ids)))
+
+	for _, id := range s.ids {
+		buf = append(buf, id[:]...)
+	}
+
+	return buf
+}
+
+func UnmarshalSyncMissingTxRequest(r io.Reader) (q SyncMissingTxRequest, err error) {
+	var buf [1]byte
+
+	if _, err = io.ReadFull(r, buf[:]); err != nil {
+		return
+	}
+
+	q.ids = make([]common.TransactionID, buf[0])
+
+	for i := range q.ids {
+		if _, err = io.ReadFull(r, q.ids[i][:]); err != nil {
+			return
+		}
+	}
+
+	return
+}
+
+func (s SyncMissingTxResponse) Marshal() []byte {
+	var buf []byte
+
+	buf = append(buf, byte(len(s.transactions)))
+
+	for _, tx := range s.transactions {
+		buf = append(buf, tx.Marshal()...)
+	}
+
+	return buf
+}
+
+func UnmarshalSyncMissingTxResponse(r io.Reader) (q SyncMissingTxResponse, err error) {
+	var buf [1]byte
+
+	if _, err = io.ReadFull(r, buf[:]); err != nil {
+		return
+	}
+
+	q.transactions = make([]wavelet.Transaction, buf[0])
+
+	for i := range q.transactions {
+		if q.transactions[i], err = wavelet.UnmarshalTransaction(r); err != nil {
+			return
+		}
+	}
+
+	return
 }

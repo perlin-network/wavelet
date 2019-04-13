@@ -4,8 +4,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"sync"
-	"sync/atomic"
-	"time"
 )
 
 const (
@@ -24,10 +22,8 @@ type sessionRegistry struct {
 
 // session represents a single user session.
 type session struct {
-	registry  *sessionRegistry
-	renewTime atomic.Value
-
-	id string
+	registry *sessionRegistry
+	id       string
 }
 
 // newSessionRegistry creates a new sessions registry.
@@ -62,20 +58,5 @@ func (r *sessionRegistry) newSession() (*session, error) {
 		id:       id,
 	}
 
-	r.sessions[id].storeRenewTime(time.Now())
-
 	return r.sessions[id], nil
-}
-
-// renew updates a life time.
-func (s *session) renew() {
-	s.storeRenewTime(time.Now())
-}
-
-func (s *session) loadRenewTime() time.Time {
-	return s.renewTime.Load().(time.Time)
-}
-
-func (s *session) storeRenewTime(t time.Time) {
-	s.renewTime.Store(t)
 }

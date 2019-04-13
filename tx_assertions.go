@@ -2,8 +2,9 @@ package wavelet
 
 import (
 	"bytes"
-	"github.com/perlin-network/noise/signature/eddsa"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
@@ -59,15 +60,15 @@ func AssertValidTransaction(tx Transaction) error {
 		return errors.New("tx must have no payload if is a nop transaction")
 	}
 
-	if err := eddsa.Verify(tx.Creator[:], append([]byte{tx.Tag}, tx.Payload...), tx.CreatorSignature[:]); err != nil {
+	if !edwards25519.Verify(tx.Creator, append([]byte{tx.Tag}, tx.Payload...), tx.CreatorSignature) {
 		return errors.New("tx has invalid creator signature")
 	}
 
 	cpy := tx
 	cpy.SenderSignature = common.ZeroSignature
 
-	if err := eddsa.Verify(tx.Sender[:], cpy.Write(), tx.SenderSignature[:]); err != nil {
-		return errors.New("tx has either invalid sender signature")
+	if !edwards25519.Verify(tx.Sender, cpy.Marshal(), tx.SenderSignature) {
+		return errors.New("tx has invalid sender signature")
 	}
 
 	return nil
@@ -152,29 +153,42 @@ func AssertValidAncestry(view *graph, tx Transaction) (missing []common.Transact
 	return nil, nil
 }
 
-func AssertInView(view *graph, tx Transaction, critical bool) error {
-	ourViewID := view.loadViewID(nil)
-
+func AssertInView(viewID uint64, kv store.KV, tx Transaction, critical bool) error {
 	if critical {
-		if tx.ViewID != ourViewID {
-			return errors.Errorf("critical transaction was made for view ID %d, but our view ID is %d", tx.ViewID, ourViewID)
+		if tx.ViewID != viewID {
+			return errors.Errorf("critical transaction was made for view ID %d, but our view ID is %d", tx.ViewID, viewID)
 		}
 
 		if tx.AccountsMerkleRoot == common.ZeroMerkleNodeID {
 			return errors.New("critical transactions merkle root is expected to be not nil")
 		}
 
-		if size := computeCriticalTimestampWindowSize(tx.ViewID); len(tx.DifficultyTimestamps) != size {
-			return errors.Errorf("expected tx to have %d timestamp(s), but has %d timestamp(s)", size, len(tx.DifficultyTimestamps))
+		txCriticalTimestampsNum := len(tx.DifficultyTimestamps)
+		if size := computeCriticalTimestampWindowSize(tx.ViewID); txCriticalTimestampsNum != size {
+			return errors.Errorf("expected tx to have %d timestamp(s), but has %d timestamp(s)", size, txCriticalTimestampsNum)
 		}
 
-		// TODO(kenta): check if we have stored a log of the last 10 critical
-		//  transactions timestamps to assert that the timestamps are the same.
-
 		// Check that difficulty timestamps are in ascending order.
-		for i := 1; i < len(tx.DifficultyTimestamps); i++ {
+		for i := 1; i < txCriticalTimestampsNum; i++ {
 			if tx.DifficultyTimestamps[i] < tx.DifficultyTimestamps[i-1] {
 				return errors.New("tx critical timestamps are not in ascending order")
+			}
+		}
+
+		// Check that difficulty timestamps are same as stored ones
+		savedTimestamps, err := ReadCriticalTimestamps(kv)
+		if err != nil {
+			return err
+		}
+
+		tsNumToCompare := len(savedTimestamps)
+		if txCriticalTimestampsNum < tsNumToCompare {
+			tsNumToCompare = txCriticalTimestampsNum
+		}
+
+		for i := 1; i <= tsNumToCompare; i++ {
+			if savedTimestamps[len(savedTimestamps)-i] != tx.DifficultyTimestamps[txCriticalTimestampsNum-i] {
+				return errors.Wrapf(errors.New("tx critical timestamps differ from the stored ones"), "%+v != %+v", savedTimestamps, tx.DifficultyTimestamps)
 			}
 		}
 	} else {
@@ -186,8 +200,8 @@ func AssertInView(view *graph, tx Transaction, critical bool) error {
 			return errors.New("normal transactions are not expected to have difficulty timestamps")
 		}
 
-		if tx.ViewID < ourViewID {
-			return errors.Errorf("transaction was made for view ID %d, but our view ID is %d", tx.ViewID, ourViewID)
+		if tx.ViewID < viewID {
+			return errors.Errorf("transaction was made for view ID %d, but our view ID is %d", tx.ViewID, viewID)
 		}
 	}
 
