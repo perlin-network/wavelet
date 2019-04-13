@@ -40,7 +40,7 @@ func TestInitSession(t *testing.T) {
 	tests := []struct {
 		name     string
 		url      string
-		req      SessionInitRequest
+		req      sessionInitRequest
 		wantCode int
 	}{
 		{
@@ -98,9 +98,9 @@ func TestListTransaction(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Build an expected response
-	var expectedResponse TransactionList
+	var expectedResponse transactionList
 	for _, tx := range gateway.ledger.ListTransactions(0, 0, common.AccountID{}, common.AccountID{}) {
-		txRes := &Transaction{tx: tx}
+		txRes := &transaction{tx: tx}
 
 		//_, err := txRes.marshal()
 		//assert.NoError(t, err)
@@ -111,7 +111,7 @@ func TestListTransaction(t *testing.T) {
 		name         string
 		url          string
 		wantCode     int
-		wantResponse fastjsonMarshal
+		wantResponse marshalableJSON
 	}{
 		{
 			name:     "sender not hex",
@@ -195,7 +195,7 @@ func TestListTransaction(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantResponse != nil {
-				r, err := tc.wantResponse.marshal(new(fastjson.ArenaPool).Get())
+				r, err := tc.wantResponse.marshalJSON(new(fastjson.ArenaPool).Get())
 				assert.NoError(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
@@ -237,7 +237,7 @@ func TestGetTransaction(t *testing.T) {
 		sessionToken string
 		id           string
 		wantCode     int
-		wantResponse fastjsonMarshal
+		wantResponse marshalableJSON
 	}{
 		{
 			name:         "invalid id length",
@@ -254,7 +254,7 @@ func TestGetTransaction(t *testing.T) {
 			sessionToken: sess.id,
 			id:           hex.EncodeToString(txId[:]),
 			wantCode:     http.StatusOK,
-			wantResponse: &Transaction{tx: tx},
+			wantResponse: &transaction{tx: tx},
 		},
 	}
 
@@ -277,7 +277,7 @@ func TestGetTransaction(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantResponse != nil {
-				r, err := tc.wantResponse.marshal(new(fastjson.ArenaPool).Get())
+				r, err := tc.wantResponse.marshalJSON(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
@@ -293,7 +293,7 @@ func TestSendTransaction(t *testing.T) {
 		name         string
 		wantCode     int
 		sessionToken string
-		req          SendTransactionRequest
+		req          sendTransactionRequest
 	}{
 		{
 			name:     "missing token",
@@ -487,7 +487,7 @@ func TestGetAccount(t *testing.T) {
 		name         string
 		url          string
 		wantCode     int
-		wantResponse fastjsonMarshal
+		wantResponse marshalableJSON
 	}{
 		{
 			name:     "missing id",
@@ -508,7 +508,7 @@ func TestGetAccount(t *testing.T) {
 			name:         "valid id",
 			url:          "/accounts/" + idHex,
 			wantCode:     http.StatusOK,
-			wantResponse: &Account{ledger: gateway.ledger, id: id},
+			wantResponse: &account{ledger: gateway.ledger, id: id},
 		},
 	}
 
@@ -527,7 +527,7 @@ func TestGetAccount(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantResponse != nil {
-				r, err := tc.wantResponse.marshal(new(fastjson.ArenaPool).Get())
+				r, err := tc.wantResponse.marshalJSON(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
@@ -558,7 +558,7 @@ func TestGetContractCode(t *testing.T) {
 		name      string
 		url       string
 		wantCode  int
-		wantError fastjsonMarshal
+		wantError marshalableJSON
 	}{
 		{
 			name:     "missing id",
@@ -601,7 +601,7 @@ func TestGetContractCode(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantError != nil {
-				r, err := tc.wantError.marshal(new(fastjson.ArenaPool).Get())
+				r, err := tc.wantError.marshalJSON(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
@@ -625,7 +625,7 @@ func TestGetContractPages(t *testing.T) {
 		name      string
 		url       string
 		wantCode  int
-		wantError fastjsonMarshal
+		wantError marshalableJSON
 	}{
 		{
 			name:     "page not uint",
@@ -662,7 +662,7 @@ func TestGetContractPages(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantError != nil {
-				r, err := tc.wantError.marshal(new(fastjson.ArenaPool).Get())
+				r, err := tc.wantError.marshalJSON(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
@@ -806,21 +806,23 @@ func testAuthenticatedAPI(t *testing.T, gateway *Gateway, request *http.Request,
 	assert.NoError(t, compareJson(res, response))
 }
 
-func getGoodCredentialRequest(t *testing.T, privateKey edwards25519.PrivateKey, publicKey edwards25519.PublicKey) SessionInitRequest {
+func getGoodCredentialRequest(t *testing.T, privateKey edwards25519.PrivateKey, publicKey edwards25519.PublicKey) sessionInitRequest {
+	t.Helper()
+
 	millis := time.Now().Unix() * 1000
 	authStr := fmt.Sprintf("%s%d", SessionInitMessage, millis)
 
 	sig := edwards25519.Sign(privateKey, []byte(authStr))
 
-	return SessionInitRequest{
+	return sessionInitRequest{
 		PublicKey:  hex.EncodeToString(publicKey[:]),
 		TimeMillis: uint64(millis),
 		Signature:  hex.EncodeToString(sig[:]),
 	}
 }
 
-func getBadCredentialRequest() SessionInitRequest {
-	return SessionInitRequest{
+func getBadCredentialRequest() sessionInitRequest {
+	return sessionInitRequest{
 		PublicKey:  "bad key",
 		TimeMillis: uint64(time.Now().Unix() * 1000),
 		Signature:  hex.EncodeToString([]byte("bad sig")),
@@ -853,7 +855,7 @@ type testErrResponse struct {
 	ErrorText  string `json:"error,omitempty"` // application-level error message, for debugging
 }
 
-func (t testErrResponse) marshal(arena *fastjson.Arena) ([]byte, error) {
+func (t testErrResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	return json.Marshal(t)
 }
 

@@ -19,7 +19,7 @@ func chain(f fasthttp.RequestHandler, middlewares []middleware) fasthttp.Request
 	return last
 }
 
-func Recoverer(next fasthttp.RequestHandler) fasthttp.RequestHandler {
+func recoverer(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 	fn := func(ctx *fasthttp.RequestCtx) {
 		defer func() {
 			if rvr := recover(); rvr != nil {
@@ -36,7 +36,7 @@ func Recoverer(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return fasthttp.RequestHandler(fn)
 }
 
-func Timeout(timeout time.Duration, msg string) func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
+func timeout(timeout time.Duration, msg string) func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 		return fasthttp.TimeoutHandler(next, timeout, msg)
 	}

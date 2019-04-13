@@ -20,29 +20,29 @@ const (
 	SessionInitMessage = "perlin_session_init_"
 )
 
-type fastjsonMarshal interface {
-	marshal(arena *fastjson.Arena) ([]byte, error)
+type marshalableJSON interface {
+	marshalJSON(arena *fastjson.Arena) ([]byte, error)
 }
 
 var (
-	_ fastjsonMarshal = (*SessionInitResponse)(nil)
+	_ marshalableJSON = (*sessionInitResponse)(nil)
 
-	_ fastjsonMarshal = (*SendTransactionResponse)(nil)
+	_ marshalableJSON = (*sendTransactionResponse)(nil)
 
-	_ fastjsonMarshal = (*LedgerStatusResponse)(nil)
+	_ marshalableJSON = (*ledgerStatusResponse)(nil)
 
-	_ fastjsonMarshal = (*Transaction)(nil)
+	_ marshalableJSON = (*transaction)(nil)
 
-	_ fastjsonMarshal = (*Account)(nil)
+	_ marshalableJSON = (*account)(nil)
 )
 
-type SessionInitRequest struct {
+type sessionInitRequest struct {
 	PublicKey  string `json:"public_key"`
 	Signature  string `json:"signature"`
 	TimeMillis uint64 `json:"time_millis"`
 }
 
-func (s *SessionInitRequest) bind(parser *fastjson.Parser, body []byte) error {
+func (s *sessionInitRequest) bind(parser *fastjson.Parser, body []byte) error {
 	v, err := parser.ParseBytes(body)
 	if err != nil {
 		return err
@@ -83,11 +83,11 @@ func (s *SessionInitRequest) bind(parser *fastjson.Parser, body []byte) error {
 	return nil
 }
 
-type SessionInitResponse struct {
+type sessionInitResponse struct {
 	Token string `json:"token"`
 }
 
-func (s *SessionInitResponse) marshal(arena *fastjson.Arena) ([]byte, error) {
+func (s *sessionInitResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 
 	o.Set("token", arena.NewString(s.Token))
@@ -95,7 +95,7 @@ func (s *SessionInitResponse) marshal(arena *fastjson.Arena) ([]byte, error) {
 	return o.MarshalTo(nil), nil
 }
 
-type SendTransactionRequest struct {
+type sendTransactionRequest struct {
 	Sender    string `json:"sender"`
 	Tag       byte   `json:"tag"`
 	Payload   string `json:"payload"`
@@ -107,7 +107,7 @@ type SendTransactionRequest struct {
 	payload   []byte
 }
 
-func (s *SendTransactionRequest) bind(parser *fastjson.Parser, body []byte) error {
+func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) error {
 	v, err := parser.ParseBytes(body)
 	if err != nil {
 		return err
@@ -161,13 +161,13 @@ func (s *SendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	return nil
 }
 
-type SendTransactionResponse struct {
+type sendTransactionResponse struct {
 	// Internal fields.
 	ledger *wavelet.Ledger
 	tx     *wavelet.Transaction
 }
 
-func (s *SendTransactionResponse) marshal(arena *fastjson.Arena) ([]byte, error) {
+func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	if s.ledger == nil || s.tx == nil {
 		return nil, errors.New("insufficient parameters were provided")
 	}
@@ -195,7 +195,7 @@ func (s *SendTransactionResponse) marshal(arena *fastjson.Arena) ([]byte, error)
 	return o.MarshalTo(nil), nil
 }
 
-type LedgerStatusResponse struct {
+type ledgerStatusResponse struct {
 	// Internal fields.
 
 	node      *noise.Node
@@ -204,7 +204,7 @@ type LedgerStatusResponse struct {
 	publicKey edwards25519.PublicKey
 }
 
-func (s *LedgerStatusResponse) marshal(arena *fastjson.Arena) ([]byte, error) {
+func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	if s.node == nil || s.ledger == nil {
 		return nil, errors.New("insufficient parameters were provided")
 	}
@@ -231,12 +231,12 @@ func (s *LedgerStatusResponse) marshal(arena *fastjson.Arena) ([]byte, error) {
 	return o.MarshalTo(nil), nil
 }
 
-type Transaction struct {
+type transaction struct {
 	// Internal fields.
 	tx *wavelet.Transaction
 }
 
-func (s *Transaction) marshal(arena *fastjson.Arena) ([]byte, error) {
+func (s *transaction) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	o, err := s.getObject(arena)
 	if err != nil {
 		return nil, err
@@ -245,7 +245,7 @@ func (s *Transaction) marshal(arena *fastjson.Arena) ([]byte, error) {
 	return o.MarshalTo(nil), nil
 }
 
-func (s *Transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) {
+func (s *transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) {
 	if s.tx == nil {
 		return nil, errors.New("insufficient fields specified")
 	}
@@ -276,9 +276,9 @@ func (s *Transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 	return o, nil
 }
 
-type TransactionList []*Transaction
+type transactionList []*transaction
 
-func (s TransactionList) marshal(arena *fastjson.Arena) ([]byte, error) {
+func (s transactionList) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	list := arena.NewArray()
 
 	for i, v := range s {
@@ -293,13 +293,13 @@ func (s TransactionList) marshal(arena *fastjson.Arena) ([]byte, error) {
 	return list.MarshalTo(nil), nil
 }
 
-type Account struct {
+type account struct {
 	// Internal fields.
 	id     common.AccountID
 	ledger *wavelet.Ledger
 }
 
-func (s *Account) marshal(arena *fastjson.Arena) ([]byte, error) {
+func (s *account) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	if s.ledger == nil || s.id == common.ZeroAccountID {
 		return nil, errors.New("insufficient fields specified")
 	}
@@ -331,12 +331,12 @@ func (s *Account) marshal(arena *fastjson.Arena) ([]byte, error) {
 	return o.MarshalTo(nil), nil
 }
 
-type ErrResponse struct {
+type errResponse struct {
 	Err            error `json:"-"` // low-level runtime error
 	HTTPStatusCode int   `json:"-"` // http response status code
 }
 
-func (e *ErrResponse) marshal(arena *fastjson.Arena) ([]byte, error) {
+func (e *errResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 
 	o.Set("status", arena.NewString("Bad request."))
@@ -345,15 +345,15 @@ func (e *ErrResponse) marshal(arena *fastjson.Arena) ([]byte, error) {
 	return o.MarshalTo(nil), nil
 }
 
-func ErrBadRequest(err error) *ErrResponse {
-	return &ErrResponse{
+func ErrBadRequest(err error) *errResponse {
+	return &errResponse{
 		Err:            err,
 		HTTPStatusCode: http.StatusBadRequest,
 	}
 }
 
-func ErrInternal(err error) *ErrResponse {
-	return &ErrResponse{
+func ErrInternal(err error) *errResponse {
+	return &errResponse{
 		Err:            err,
 		HTTPStatusCode: http.StatusInternalServerError,
 	}

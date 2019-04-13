@@ -27,9 +27,9 @@ type Gateway struct {
 
 	network *skademlia.Protocol
 	keys    *skademlia.Keypair
-	
-	router *fasthttprouter.Router
-	server *fasthttp.Server
+
+	router   *fasthttprouter.Router
+	server   *fasthttp.Server
 	registry *sessionRegistry
 	sinks    map[string]*sink
 
@@ -63,23 +63,24 @@ func (g *Gateway) setup(enableTimeout bool) {
 
 	r := fasthttprouter.New()
 
-	// If the route does not exist for a method type (e.g. OPTIONS), Fasthttprouter will consider it to be does not exist.
+	// If the route does not exist for a method type (e.g. OPTIONS), fasthttprouter will consider it to not exist.
 	// So, we need to override notFound handler for OPTIONS method type to handle CORS.
 	r.HandleOPTIONS = false
 	r.NotFound = g.notFound()
 
 	var base = []middleware{
-		Recoverer,
+		recoverer,
 		cors(),
 	}
 
 	if enableTimeout {
-		base = append(base, Timeout(60*time.Second, "Request timeout!"))
+		base = append(base, timeout(60*time.Second, "Request timeout!"))
 	}
 
 	var authenticated = append(base, g.authenticated)
 	var contract = append(authenticated, g.contractScope)
 
+	// Websocket endpoints.
 	r.GET("/poll/network", g.securePoll(sinkNetwork))
 	r.GET("/poll/broadcaster", chain(g.securePoll(sinkBroadcaster), base))
 	r.GET("/poll/consensus", chain(g.securePoll(sinkConsensus), base))
@@ -88,18 +89,24 @@ func (g *Gateway) setup(enableTimeout bool) {
 	r.GET("/poll/contract", chain(g.securePoll(sinkContracts), base))
 	r.GET("/poll/tx", chain(g.securePoll(sinkTransactions), base))
 
+	// Debug endpoint.
 	r.GET("/debug", pprofhandler.PprofHandler)
 
+	// Session endpoint.
 	r.POST("/session/init", chain(g.initSession, base))
+
+	// Ledger endpoint.
 	r.GET("/ledger", chain(g.ledgerStatus, authenticated))
+
+	// Account endpoints.
 	r.GET("/accounts/:id", chain(g.getAccount, authenticated))
 
-	// Contract endpoints
+	// Contract endpoints.
 	r.GET("/contract/:id/page/:index", chain(g.getContractPages, contract))
 	r.GET("/contract/:id/page", chain(g.getContractPages, contract))
 	r.GET("/contract/:id", chain(g.getContractCode, contract))
 
-	// Transaction endpoints
+	// Transaction endpoints.
 	r.POST("/tx/send", chain(g.sendTransaction, authenticated))
 	r.GET("/tx/:id", chain(g.getTransaction, authenticated))
 	r.GET("/tx", chain(g.listTransactions, authenticated))
@@ -136,7 +143,7 @@ func (g *Gateway) Shutdown() {
 }
 
 func (g *Gateway) initSession(ctx *fasthttp.RequestCtx) {
-	req := new(SessionInitRequest)
+	req := new(sessionInitRequest)
 
 	parser := g.parserPool.Get()
 	err := req.bind(parser, ctx.PostBody())
@@ -153,11 +160,11 @@ func (g *Gateway) initSession(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	g.render(ctx, &SessionInitResponse{Token: session.id})
+	g.render(ctx, &sessionInitResponse{Token: session.id})
 }
 
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
-	req := new(SendTransactionRequest)
+	req := new(sendTransactionRequest)
 
 	parser := g.parserPool.Get()
 	err := req.bind(parser, ctx.PostBody())
@@ -192,12 +199,12 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		g.renderError(ctx, ErrInternal(errors.Wrap(err, "got an error broadcasting your transaction")))
 		return
 	case tx := <-evt.Result:
-		g.render(ctx, &SendTransactionResponse{ledger: g.ledger, tx: &tx})
+		g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
 	}
 }
 
 func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
-	g.render(ctx, &LedgerStatusResponse{node: g.node, ledger: g.ledger, network: g.network, publicKey: g.keys.PublicKey()})
+	g.render(ctx, &ledgerStatusResponse{node: g.node, ledger: g.ledger, network: g.network, publicKey: g.keys.PublicKey()})
 }
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
@@ -257,10 +264,10 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 		}
 	}
 
-	var transactions TransactionList
+	var transactions transactionList
 
 	for _, tx := range g.ledger.ListTransactions(offset, limit, sender, creator) {
-		transactions = append(transactions, &Transaction{tx: tx})
+		transactions = append(transactions, &transaction{tx: tx})
 	}
 
 	g.render(ctx, transactions)
@@ -294,7 +301,7 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	g.render(ctx, &Transaction{tx: tx})
+	g.render(ctx, &transaction{tx: tx})
 }
 
 func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
@@ -318,7 +325,7 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 	var id common.AccountID
 	copy(id[:], slice)
 
-	g.render(ctx, &Account{ledger: g.ledger, id: id})
+	g.render(ctx, &account{ledger: g.ledger, id: id})
 }
 
 func (g *Gateway) contractScope(next fasthttp.RequestHandler) fasthttp.RequestHandler {
@@ -549,9 +556,9 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 	return len(buf), nil
 }
 
-func (g *Gateway) render(ctx *fasthttp.RequestCtx, m fastjsonMarshal) {
+func (g *Gateway) render(ctx *fasthttp.RequestCtx, m marshalableJSON) {
 	arena := g.arenaPool.Get()
-	b, err := m.marshal(arena)
+	b, err := m.marshalJSON(arena)
 	g.arenaPool.Put(arena)
 
 	if err != nil {
@@ -564,9 +571,9 @@ func (g *Gateway) render(ctx *fasthttp.RequestCtx, m fastjsonMarshal) {
 	ctx.Response.SetBody(b)
 }
 
-func (g *Gateway) renderError(ctx *fasthttp.RequestCtx, e *ErrResponse) {
+func (g *Gateway) renderError(ctx *fasthttp.RequestCtx, e *errResponse) {
 	arena := g.arenaPool.Get()
-	b, err := e.marshal(arena)
+	b, err := e.marshalJSON(arena)
 	g.arenaPool.Put(arena)
 
 	if err != nil {

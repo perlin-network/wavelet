@@ -37,7 +37,7 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 				defer wg.Done()
 
 				var payload [9]byte
-        
+
 				payload[0] = 1
 				binary.LittleEndian.PutUint64(payload[1:9], uint64(i))
 

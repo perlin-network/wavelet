@@ -7,10 +7,10 @@ import (
 	"strings"
 )
 
-// Based on https://github.com/labstack/echo/tree/master/middleware
+// Based on https://github.com/labstack/echo/tree/master/middleware.
 
 type (
-	// CORSConfig defines the config for CORS middleware.
+	// corsConfig defines the config for CORS middleware.
 	corsConfig struct {
 		// AllowOrigin defines a list of origins that may access the resource.
 		// Optional. Default value []string{"*"}.
@@ -46,7 +46,7 @@ type (
 )
 
 var (
-	// DefaultCORSConfig is the default CORS middleware config.
+	// defaultCORSConfig is the default CORS middleware config.
 	defaultCORSConfig = corsConfig{
 		allowOrigins:     []string{"*"},
 		allowMethods:     []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodOptions},
@@ -63,7 +63,7 @@ func cors() func(fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return corsWithConfig(defaultCORSConfig)
 }
 
-// CORSWithConfig returns a CORS middleware with config.
+// corsWithConfig returns a CORS middleware with config.
 // See: `CORS()`.
 func corsWithConfig(config corsConfig) func(fasthttp.RequestHandler) fasthttp.RequestHandler {
 	if len(config.allowOrigins) == 0 {
