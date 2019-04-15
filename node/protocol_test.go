@@ -52,4 +52,5 @@ func TestProtocolLeak(t *testing.T) {
 	n.FollowProtocol(p)
 
 	w.Stop()
+	n.Shutdown()
 }

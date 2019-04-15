@@ -2,7 +2,6 @@ package wavelet
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"github.com/fortytw2/leaktest"
@@ -48,21 +47,15 @@ func formPayload(recipient string, amount uint64) ([]byte, error) {
 func TestStopNoLeaks(t *testing.T) {
 	defer leaktest.Check(t)()
 
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
-
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	l := NewLedger(ctx, keys, store.NewInmem())
+	l := NewLedger(keys, store.NewInmem())
 	l.Stop()
 }
 
 func TestKill(t *testing.T) {
 	defer leaktest.Check(t)()
-
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
 
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
@@ -70,7 +63,7 @@ func TestKill(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Test if we can gracefully stop the ledger while it is gossiping.
-	l := NewLedger(ctx, keys, store.NewInmem())
+	l := NewLedger(keys, store.NewInmem())
 
 	wg.Add(1)
 	go signalWhenComplete(&wg, l, gossiping)
@@ -78,7 +71,7 @@ func TestKill(t *testing.T) {
 	wg.Wait()
 
 	// Test if we can gracefully stop the ledger while it is querying.
-	l = NewLedger(ctx, keys, store.NewInmem())
+	l = NewLedger(keys, store.NewInmem())
 	l.cr.Prefer(Transaction{})
 
 	wg.Add(1)
@@ -93,10 +86,7 @@ func TestGossipOutTransaction(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
-
-	l := NewLedger(ctx, keys, store.NewInmem())
+	l := NewLedger(keys, store.NewInmem())
 	defer l.Stop()
 
 	go gossiping(l)
@@ -147,10 +137,7 @@ func TestTransitionFromGossipingToQuerying(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
-
-	l := NewLedger(ctx, keys, store.NewInmem())
+	l := NewLedger(keys, store.NewInmem())
 	defer l.Stop()
 
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
@@ -215,10 +202,7 @@ func TestEnsureGossipReturnsNetworkErrors(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
-
-	l := NewLedger(ctx, keys, store.NewInmem())
+	l := NewLedger(keys, store.NewInmem())
 	defer l.Stop()
 
 	// Create a dummy broadcast event.
@@ -266,10 +250,7 @@ func TestQuery(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
-
-	l := NewLedger(ctx, keys, store.NewInmem())
+	l := NewLedger(keys, store.NewInmem())
 
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
 	if !assert.NoError(t, err) {
@@ -360,7 +341,6 @@ func TestQuery(t *testing.T) {
 	evt = <-l.QueryOut
 	l.Stop()
 	wg.Wait()
-	l.kill = make(chan struct{})
 
 	// Test the second select: timeout.
 	wg.Add(1)
@@ -395,10 +375,7 @@ func TestListenForQueries(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
-
-	l := NewLedger(ctx, keys, store.NewInmem())
+	l := NewLedger(keys, store.NewInmem())
 
 	root, err := NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
@@ -476,10 +453,7 @@ func TestListenForSyncDiffChunks(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
-
-	l := NewLedger(ctx, keys, store.NewInmem())
+	l := NewLedger(keys, store.NewInmem())
 
 	stop := make(chan struct{})
 	listenForSyncDiffChunks := func() error {
@@ -535,10 +509,7 @@ func TestListenForSyncInits(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
-
-	l := NewLedger(ctx, keys, store.NewInmem())
+	l := NewLedger(keys, store.NewInmem())
 
 	stop := make(chan struct{})
 	listenForSyncInits := func() error {
@@ -597,10 +568,7 @@ func TestListenForOutOfSyncChecks(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
-
-	l := NewLedger(ctx, keys, store.NewInmem())
+	l := NewLedger(keys, store.NewInmem())
 
 	stop := make(chan struct{})
 	listenForOutOfSyncChecks := func() error {
@@ -634,10 +602,7 @@ func TestListenForMissingTXs(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
-
-	l := NewLedger(ctx, keys, store.NewInmem())
+	l := NewLedger(keys, store.NewInmem())
 
 	stop := make(chan struct{})
 	listenForMissingTXs := func() error {
@@ -677,10 +642,7 @@ func TestCheckIfOutOfSync(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
-
-	l := NewLedger(ctx, keys, store.NewInmem())
+	l := NewLedger(keys, store.NewInmem())
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
 	preferred.rehash()
@@ -791,7 +753,6 @@ func TestCheckIfOutOfSync(t *testing.T) {
 	evt = <-l.OutOfSyncOut
 	l.Stop()
 	wg.Wait()
-	l.kill = make(chan struct{})
 
 	// Test the first select.
 
@@ -814,10 +775,7 @@ func TestSyncMissingTX(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
-
-	l := NewLedger(ctx, keys, store.NewInmem())
+	l := NewLedger(keys, store.NewInmem())
 
 	stop := make(chan struct{})
 	syncMissingTX := func() error {
@@ -892,7 +850,6 @@ func TestSyncMissingTX(t *testing.T) {
 	evt = <-l.SyncTxOut
 	l.Stop()
 	wg.Wait()
-	l.kill = make(chan struct{})
 
 	// Test the first select.
 

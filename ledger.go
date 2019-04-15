@@ -201,10 +201,11 @@ type Ledger struct {
 	cacheAccounts   *lru
 	cacheDiffChunks *lru
 
-	kill chan struct{}
+	ctx context.Context
+	cancel func()
 }
 
-func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledger {
+func NewLedger(keys *skademlia.Keypair, kv store.KV) *Ledger {
 	broadcastQueue := make(chan EventBroadcast, 1024)
 
 	gossipIn := make(chan EventIncomingGossip, 128)
@@ -224,6 +225,8 @@ func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledge
 
 	syncTxIn := make(chan EventIncomingSyncTX, 16)
 	syncTxOut := make(chan EventSyncTX, 16)
+
+	ctx, cancel := context.WithCancel(context.Background())
 
 	accounts := newAccounts(kv)
 	go accounts.runGCWorker(ctx)
@@ -313,7 +316,8 @@ func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledge
 		cacheAccounts:   newLRU(16),
 		cacheDiffChunks: newLRU(1024), // 1024 * 4MB
 
-		kill: make(chan struct{}),
+		ctx: ctx,
+		cancel: cancel,
 	}
 }
 
@@ -911,7 +915,7 @@ func Run(l *Ledger) {
 }
 
 func (l *Ledger) Stop() {
-	close(l.kill)
+	l.cancel()
 }
 
 type transition func(*Ledger) transition
@@ -1050,7 +1054,7 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 		var Error chan<- error
 
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
@@ -1102,7 +1106,7 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 		}
 
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			if Error != nil {
 				Error <- ErrStopped
 			}
@@ -1124,7 +1128,7 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 		}
 
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			if Error != nil {
 				Error <- ErrStopped
 			}
@@ -1211,7 +1215,7 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
@@ -1285,7 +1289,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 		}
 
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
@@ -1295,7 +1299,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 		}
 
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
@@ -1425,7 +1429,7 @@ func listenForQueries(l *Ledger) func(stop <-chan struct{}) error {
 		}
 
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
@@ -1474,7 +1478,7 @@ func checkIfOutOfSync(l *Ledger) func(stop <-chan struct{}) error {
 		}
 
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
@@ -1482,7 +1486,7 @@ func checkIfOutOfSync(l *Ledger) func(stop <-chan struct{}) error {
 		}
 
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
@@ -1543,7 +1547,7 @@ func checkIfOutOfSync(l *Ledger) func(stop <-chan struct{}) error {
 func listenForOutOfSyncChecks(l *Ledger) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
@@ -1558,7 +1562,7 @@ func listenForOutOfSyncChecks(l *Ledger) func(stop <-chan struct{}) error {
 func listenForSyncInits(l *Ledger) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
@@ -1592,7 +1596,7 @@ func listenForSyncInits(l *Ledger) func(stop <-chan struct{}) error {
 func listenForSyncDiffChunks(l *Ledger) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
@@ -1629,7 +1633,7 @@ func syncMissingTX(l *Ledger, ids []common.TransactionID) func(stop <-chan struc
 		}
 
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
@@ -1639,7 +1643,7 @@ func syncMissingTX(l *Ledger, ids []common.TransactionID) func(stop <-chan struc
 		var txs []Transaction
 
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
@@ -1667,7 +1671,7 @@ func syncMissingTX(l *Ledger, ids []common.TransactionID) func(stop <-chan struc
 func listenForMissingTXs(l *Ledger) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
@@ -1696,7 +1700,7 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 		}
 
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
@@ -1706,7 +1710,7 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 		var votes []SyncInitMetadata
 
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
@@ -1780,7 +1784,7 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 		}
 
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
@@ -1792,7 +1796,7 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 		var chunks [][]byte
 
 		select {
-		case <-l.kill:
+		case <-l.ctx.Done():
 			return ErrStopped
 		case <-stop:
 			return ErrStopped

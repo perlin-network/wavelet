@@ -124,10 +124,12 @@ type Protocol struct {
 }
 
 func New(network *skademlia.Protocol, keys *skademlia.Keypair) *Protocol {
-	return &Protocol{ledger: wavelet.NewLedger(context.TODO(), keys, store.NewInmem()), network: network, keys: keys}
+	return &Protocol{ledger: wavelet.NewLedger(keys, store.NewInmem()), network: network, keys: keys}
 }
 
 func (b *Protocol) Stop() {
+	b.ledger.Stop()
+
 	b.cancel()
 	b.wg.Wait()
 
