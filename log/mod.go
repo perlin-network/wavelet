@@ -1,6 +1,7 @@
 package log
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/rs/zerolog"
@@ -96,7 +97,7 @@ func TX(id common.TransactionID, sender, creator common.AccountID, parentIDs []c
 		Hex("creator_id", creator[:]).
 		Strs("parents", parents).
 		Uint8("tag", tag).
-		Hex("payload", payload).
+		Str("payload", base64.StdEncoding.EncodeToString(payload)).
 		Str(KeyEvent, event).Logger()
 }
 
