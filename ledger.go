@@ -157,6 +157,8 @@ type Ledger struct {
 	missing   map[common.TransactionID]map[common.TransactionID]Transaction
 	muMissing sync.RWMutex
 
+	missingTxSyncTokenSource chan struct{}
+
 	BroadcastQueue chan<- EventBroadcast
 	broadcastQueue <-chan EventBroadcast
 
@@ -238,6 +240,9 @@ func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledge
 
 	view := newGraph(kv, genesis)
 
+	missingTxSyncTokenSource := make(chan struct{}, 1)
+	missingTxSyncTokenSource <- struct{}{}
+
 	return &Ledger{
 		keys: keys,
 		kv:   kv,
@@ -263,6 +268,8 @@ func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledge
 		},
 
 		missing: make(map[common.TransactionID]map[common.TransactionID]Transaction),
+
+		missingTxSyncTokenSource: missingTxSyncTokenSource,
 
 		BroadcastQueue: broadcastQueue,
 		broadcastQueue: broadcastQueue,
@@ -383,6 +390,30 @@ func (l *Ledger) ListTransactions(offset, limit uint64, sender, creator common.A
 	return
 }
 
+func (l *Ledger) doLinearizedMissingTxSync(missing []common.TransactionID) {
+	if len(missing) == 0 {
+		return
+	}
+	return
+	select {
+	case <-l.missingTxSyncTokenSource:
+		startTime := time.Now()
+		stop := make(chan struct{})
+		go func() {
+			time.Sleep(5 * time.Second)
+			close(stop)
+		}()
+		go listenForMissingTXs(l)(stop)
+		go func() {
+			syncMissingTX(l, missing)(stop)
+			l.missingTxSyncTokenSource <- struct{}{}
+			endTime := time.Now()
+			fmt.Println("Sync duration =", endTime.Sub(startTime))
+		}()
+	default:
+	}
+}
+
 /** END EXPORTED METHODS **/
 
 func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) {
@@ -433,6 +464,7 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 				l.missing[id][tx.ID] = tx
 			}
 			l.muMissing.Unlock()
+			l.doLinearizedMissingTxSync(missing)
 		}
 
 		if err != nil {
@@ -534,6 +566,7 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 				l.missing[id][tx.ID] = tx
 			}
 			l.muMissing.Unlock()
+			l.doLinearizedMissingTxSync(missing)
 		}
 
 		if err != nil {
@@ -556,6 +589,7 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 				l.missing[id][tx.ID] = tx
 			}
 			l.muMissing.Unlock()
+			l.doLinearizedMissingTxSync(missing)
 		}
 
 		if err != nil {
@@ -1320,6 +1354,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 							l.missing[id][newRoot.ID] = *newRoot
 						}
 						l.muMissing.Unlock()
+						l.doLinearizedMissingTxSync(missing)
 					}
 
 					if err != nil {
@@ -1583,13 +1618,14 @@ func listenForSyncDiffChunks(l *Ledger) func(stop <-chan struct{}) error {
 	}
 }
 
-func syncMissingTX(l *Ledger) func(stop <-chan struct{}) error {
+func syncMissingTX(l *Ledger, ids []common.TransactionID) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
 		time.Sleep(100 * time.Millisecond)
 
 		evt := EventSyncTX{
 			Result: make(chan []Transaction, 1),
 			Error:  make(chan error, 1),
+			IDs:    ids,
 		}
 
 		select {
