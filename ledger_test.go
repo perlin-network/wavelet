@@ -16,6 +16,7 @@ import (
 	"math/rand"
 	"sync"
 	"testing"
+	"time"
 )
 
 func signalWhenComplete(wg *sync.WaitGroup, l *Ledger, fn transition) {
@@ -333,6 +334,14 @@ func TestQuery(t *testing.T) {
 	wg.Wait()
 	stop = make(chan struct{})
 
+	// Test the second select: timeout.
+	wg.Add(1)
+	go func() {
+		assert.Equal(t, ErrTimeout, errors.Cause(call(&wg, query)))
+	}()
+	evt = <-l.QueryOut
+	wg.Wait()
+
 	// Test the second select: kill.
 	wg.Add(1)
 	go func() {
@@ -342,17 +351,10 @@ func TestQuery(t *testing.T) {
 	l.Stop()
 	wg.Wait()
 
-	// Test the second select: timeout.
-	wg.Add(1)
-	go func() {
-		assert.Equal(t, ErrTimeout, errors.Cause(call(&wg, query)))
-	}()
-	evt = <-l.QueryOut
-	wg.Wait()
-
 	// Test the first select.
 
 	// Disable the queryOut case.
+	l.reset()
 	l.queryOut = nil
 
 	// Test the first select: timeout.
@@ -391,9 +393,34 @@ func TestListenForQueries(t *testing.T) {
 		return listenForQueries(l)(stop)
 	}
 
-	// Test root response.
+	// Test no response because no preferred
 
 	evt := EventIncomingQuery{
+		TX:       Transaction{},
+		Response: make(chan *Transaction, 1),
+		Error:    make(chan error, 1),
+	}
+	l.QueryIn <- evt
+	assert.Error(t, ErrConsensusRoundFinished, listenForQueries())
+
+	select {
+	case err := <-evt.Error:
+		assert.FailNow(t, "Unexpected error", err)
+	case tx := <-evt.Response:
+		assert.FailNow(t, "Unexpected result", tx)
+	default:
+	}
+
+	<-l.queryIn
+
+	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
+	assert.NoError(t, err)
+	preferred.rehash()
+	l.cr.Prefer(preferred)
+
+	// Test root response.
+
+	evt = EventIncomingQuery{
 		TX: Transaction{
 			ViewID: root.ViewID,
 		},
@@ -401,28 +428,20 @@ func TestListenForQueries(t *testing.T) {
 		Error:    make(chan error, 1),
 	}
 	l.QueryIn <- evt
-	assert.Error(t, ErrConsensusRoundFinished, listenForQueries())
-	tx := <-evt.Response
+	assert.NoError(t, listenForQueries())
+
+	var tx *Transaction
+	select {
+	case tx = <-evt.Response:
+	case <-time.After(1 * time.Second):
+		assert.FailNow(t, "Waiting for event response failed")
+	case err := <-evt.Error:
+		assert.FailNow(t, "Unexpected error", err)
+	}
+
 	assert.Equal(t, l.v.loadRoot().ID, tx.ID)
 
-	// Test nil response.
-
-	evt = EventIncomingQuery{
-		TX:       Transaction{},
-		Response: make(chan *Transaction, 1),
-		Error:    make(chan error, 1),
-	}
-	l.QueryIn <- evt
-	assert.Error(t, ErrConsensusRoundFinished, listenForQueries())
-	tx = <-evt.Response
-	assert.Nil(t, tx)
-
 	// Test preferred response.
-
-	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
-	assert.NoError(t, err)
-	preferred.rehash()
-	l.cr.Prefer(preferred)
 
 	evt = EventIncomingQuery{
 		Response: make(chan *Transaction, 1),
@@ -599,6 +618,7 @@ func TestCheckIfOutOfSync(t *testing.T) {
 	l := NewLedger(keys, store.NewInmem())
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
+	preferred.ViewID = 1
 	preferred.rehash()
 
 	l.sr.Prefer(preferred)
@@ -631,9 +651,8 @@ func TestCheckIfOutOfSync(t *testing.T) {
 	evt.Result <- []VoteOutOfSync{{}}
 	wg.Wait()
 
+	// Test out of sync because of view id of preferred
 	l.sr.decided = true
-
-	// Test out of sync.
 
 	root, err := NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
@@ -657,6 +676,8 @@ func TestCheckIfOutOfSync(t *testing.T) {
 
 	// Test not out of sync.
 
+	root.ViewID = 2
+	root.rehash()
 	l.v.saveRoot(&root)
 
 	wg.Add(1)

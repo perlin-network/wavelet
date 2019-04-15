@@ -922,6 +922,10 @@ func (l *Ledger) Stop() {
 	l.cancel()
 }
 
+func (l *Ledger) reset() {
+	l.ctx, l.cancel = context.WithCancel(context.Background())
+}
+
 type transition func(*Ledger) transition
 
 func gossiping(l *Ledger) transition {
@@ -962,10 +966,13 @@ func querying(l *Ledger) transition {
 	g.Add(continuously(listenForQueries(l)))
 
 	defer func() {
-		num := len(l.QueryOut)
-
-		for i := 0; i < num; i++ {
-			<-l.QueryOut
+		// fan out all messages from the queue
+		for {
+			select {
+				case <-l.QueryOut:
+				case <-time.After(1 * time.Millisecond):
+					return
+			}
 		}
 	}()
 
