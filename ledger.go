@@ -907,6 +907,10 @@ func (l *Ledger) assertCollapsible(tx Transaction) (missing []common.Transaction
 }
 
 func Run(l *Ledger) {
+	go listenForOutOfSyncChecks(l)
+	go listenForSyncInits(l)
+	go listenForSyncDiffChunks(l)
+
 	initial := gossiping(l)
 
 	for state := initial; state != nil; {
@@ -926,11 +930,7 @@ func gossiping(l *Ledger) transition {
 
 	g.Add(continuously(gossip(l)))
 	g.Add(continuously(checkIfOutOfSync(l)))
-
 	g.Add(continuously(listenForGossip(l)))
-	g.Add(continuously(listenForOutOfSyncChecks(l)))
-	g.Add(continuously(listenForSyncInits(l)))
-	g.Add(continuously(listenForSyncDiffChunks(l)))
 
 	if err := g.Run(); err != nil {
 		switch errors.Cause(err) {
@@ -959,11 +959,7 @@ func querying(l *Ledger) transition {
 
 	g.Add(continuously(query(l, state)))
 	g.Add(continuously(checkIfOutOfSync(l)))
-
 	g.Add(continuously(listenForQueries(l)))
-	g.Add(continuously(listenForOutOfSyncChecks(l)))
-	g.Add(continuously(listenForSyncInits(l)))
-	g.Add(continuously(listenForSyncDiffChunks(l)))
 
 	defer func() {
 		num := len(l.QueryOut)
@@ -1544,28 +1540,22 @@ func checkIfOutOfSync(l *Ledger) func(stop <-chan struct{}) error {
 	}
 }
 
-func listenForOutOfSyncChecks(l *Ledger) func(stop <-chan struct{}) error {
-	return func(stop <-chan struct{}) error {
+func listenForOutOfSyncChecks(l *Ledger) {
+	for {
 		select {
 		case <-l.ctx.Done():
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
+			return
 		case evt := <-l.outOfSyncIn:
 			evt.Response <- l.v.loadRoot()
 		}
-
-		return nil
 	}
 }
 
-func listenForSyncInits(l *Ledger) func(stop <-chan struct{}) error {
-	return func(stop <-chan struct{}) error {
+func listenForSyncInits(l *Ledger) {
+	for {
 		select {
 		case <-l.ctx.Done():
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
+			return
 		case evt := <-l.syncInitIn:
 			data := SyncInitMetadata{
 				ViewID: l.v.loadViewID(nil),
@@ -1588,18 +1578,14 @@ func listenForSyncInits(l *Ledger) func(stop <-chan struct{}) error {
 
 			evt.Response <- data
 		}
-
-		return nil
 	}
 }
 
-func listenForSyncDiffChunks(l *Ledger) func(stop <-chan struct{}) error {
-	return func(stop <-chan struct{}) error {
+func listenForSyncDiffChunks(l *Ledger) {
+	for {
 		select {
 		case <-l.ctx.Done():
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
+			return
 		case evt := <-l.syncDiffIn:
 			if chunk, found := l.cacheDiffChunks.load(evt.ChunkHash); found {
 				chunk := chunk.([]byte)
@@ -1617,8 +1603,6 @@ func listenForSyncDiffChunks(l *Ledger) func(stop <-chan struct{}) error {
 				evt.Response <- nil
 			}
 		}
-
-		return nil
 	}
 }
 

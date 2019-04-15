@@ -454,11 +454,9 @@ func TestListenForSyncDiffChunks(t *testing.T) {
 	assert.NoError(t, err)
 
 	l := NewLedger(keys, store.NewInmem())
+	defer l.Stop()
 
-	stop := make(chan struct{})
-	listenForSyncDiffChunks := func() error {
-		return listenForSyncDiffChunks(l)(stop)
-	}
+	go listenForSyncDiffChunks(l)
 
 	var chunkHash [blake2b.Size256]byte
 	_, err = rand.Read(chunkHash[:])
@@ -471,7 +469,6 @@ func TestListenForSyncDiffChunks(t *testing.T) {
 	}
 
 	l.SyncDiffIn <- evt
-	assert.NoError(t, listenForSyncDiffChunks())
 	// Check that the response should be nil.
 	assert.Nil(t, <-evt.Response)
 
@@ -486,21 +483,8 @@ func TestListenForSyncDiffChunks(t *testing.T) {
 		Response:  make(chan []byte, 1),
 	}
 	l.SyncDiffIn <- evt
-	assert.NoError(t, listenForSyncDiffChunks())
 	// check the response
 	assert.Equal(t, value, <-evt.Response)
-
-	// Test stop
-
-	close(stop)
-	assert.Equal(t, ErrStopped, listenForSyncDiffChunks())
-
-	stop = make(chan struct{})
-
-	// Test kill.
-
-	l.Stop()
-	assert.Equal(t, ErrStopped, listenForSyncDiffChunks())
 }
 
 func TestListenForSyncInits(t *testing.T) {
@@ -510,11 +494,9 @@ func TestListenForSyncInits(t *testing.T) {
 	assert.NoError(t, err)
 
 	l := NewLedger(keys, store.NewInmem())
+	defer l.Stop()
 
-	stop := make(chan struct{})
-	listenForSyncInits := func() error {
-		return listenForSyncInits(l)(stop)
-	}
+	go listenForSyncInits(l)
 
 	var viewID uint64 = 1
 
@@ -525,7 +507,6 @@ func TestListenForSyncInits(t *testing.T) {
 	}
 
 	l.SyncInitIn <- evt
-	assert.NoError(t, listenForSyncInits())
 	assert.Equal(t, SyncInitMetadata{PeerID: nil, ViewID: 1, ChunkHashes: nil}, <-evt.Response)
 
 	// Test diff.
@@ -547,19 +528,7 @@ func TestListenForSyncInits(t *testing.T) {
 	}
 
 	l.SyncInitIn <- evt
-	assert.NoError(t, listenForSyncInits())
 	assert.Equal(t, SyncInitMetadata{PeerID: nil, ViewID: 1, ChunkHashes: expectedChunkHashes}, <-evt.Response)
-
-	// Test stop
-	close(stop)
-	assert.Equal(t, ErrStopped, listenForSyncInits())
-
-	stop = make(chan struct{})
-
-	// Test kill.
-
-	l.Stop()
-	assert.Equal(t, ErrStopped, listenForSyncInits())
 }
 
 func TestListenForOutOfSyncChecks(t *testing.T) {
@@ -569,31 +538,16 @@ func TestListenForOutOfSyncChecks(t *testing.T) {
 	assert.NoError(t, err)
 
 	l := NewLedger(keys, store.NewInmem())
+	defer l.Stop()
 
-	stop := make(chan struct{})
-	listenForOutOfSyncChecks := func() error {
-		return listenForOutOfSyncChecks(l)(stop)
-	}
+	go listenForOutOfSyncChecks(l)
 
 	evt := EventIncomingOutOfSyncCheck{
 		Response: make(chan *Transaction, 1),
 	}
 
 	l.OutOfSyncIn <- evt
-	assert.NoError(t, listenForOutOfSyncChecks())
 	assert.Equal(t, l.v.loadRoot(), <-evt.Response)
-
-	// Test stop
-
-	close(stop)
-	assert.Equal(t, ErrStopped, listenForOutOfSyncChecks())
-
-	stop = make(chan struct{})
-
-	// Test kill.
-
-	l.Stop()
-	assert.Equal(t, ErrStopped, listenForOutOfSyncChecks())
 }
 
 func TestListenForMissingTXs(t *testing.T) {
