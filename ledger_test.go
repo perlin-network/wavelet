@@ -1,14 +1,14 @@
 package wavelet
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/hex"
 	"github.com/fortytw2/leaktest"
-	"github.com/perlin-network/noise/identity/ed25519"
-	"github.com/perlin-network/noise/payload"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
-	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -34,12 +34,14 @@ func formPayload(recipient string, amount uint64) ([]byte, error) {
 		return nil, err
 	}
 
-	params := payload.NewWriter(nil)
+	var intBuf [8]byte
+	payload := bytes.NewBuffer(nil)
 
-	params.WriteBytes(b)
-	params.WriteUint64(uint64(amount))
+	payload.Write(b)
+	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
+	payload.Write(intBuf[:8])
 
-	return params.Bytes(), nil
+	return payload.Bytes(), nil
 }
 
 func TestStopNoLeaks(t *testing.T) {
@@ -48,10 +50,13 @@ func TestStopNoLeaks(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
 	kv, cleanup := GetKV("level", "db")
 	defer cleanup()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
+	l := NewLedger(ctx, keys, kv)
 	l.Stop()
 }
 
@@ -61,21 +66,27 @@ func TestKill(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
 	var wg sync.WaitGroup
 
 	kv, cleanup := GetKV("level", "db")
 	defer cleanup()
 
 	// Test if we can gracefully stop the ledger while it is gossiping.
-	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
+	l := NewLedger(ctx, keys, kv)
 
 	wg.Add(1)
 	go signalWhenComplete(&wg, l, gossiping)
 	l.Stop()
 	wg.Wait()
 
+	kv2, cleanup2 := GetKV("level", "db2")
+	defer cleanup2()
+
 	// Test if we can gracefully stop the ledger while it is querying.
-	l = NewLedger(ctx, ed25519.RandomKeys(), store.NewInmem())
+	l = NewLedger(ctx, keys, kv2)
 	l.cr.Prefer(Transaction{})
 
 	wg.Add(1)
@@ -87,13 +98,16 @@ func TestKill(t *testing.T) {
 func TestGossipOutTransaction(t *testing.T) {
 	defer leaktest.Check(t)()
 
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
 	kv, cleanup := GetKV("level", "db")
 	defer cleanup()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
+	l := NewLedger(ctx, keys, kv)
 	defer l.Stop()
 
 	go gossiping(l)
@@ -141,13 +155,16 @@ func TestGossipOutTransaction(t *testing.T) {
 func TestTransitionFromGossipingToQuerying(t *testing.T) {
 	defer leaktest.Check(t)()
 
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
 	kv, cleanup := GetKV("level", "db")
 	defer cleanup()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
+	l := NewLedger(ctx, keys, kv)
 	defer l.Stop()
 
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
@@ -209,13 +226,16 @@ func TestTransitionFromGossipingToQuerying(t *testing.T) {
 func TestEnsureGossipReturnsNetworkErrors(t *testing.T) {
 	defer leaktest.Check(t)()
 
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
 	kv, cleanup := GetKV("level", "db")
 	defer cleanup()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
+	l := NewLedger(ctx, keys, kv)
 	defer l.Stop()
 
 	// Create a dummy broadcast event.
@@ -260,13 +280,16 @@ func TestEnsureGossipReturnsNetworkErrors(t *testing.T) {
 func TestQuery(t *testing.T) {
 	defer leaktest.Check(t)()
 
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
 	kv, cleanup := GetKV("level", "db")
 	defer cleanup()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
+	l := NewLedger(ctx, keys, kv)
 
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
 	if !assert.NoError(t, err) {
@@ -321,9 +344,7 @@ func TestQuery(t *testing.T) {
 
 	// Re-set the preferred.
 	preferred, err = NewTransaction(l.keys, sys.TagNop, nil)
-	if !assert.NoError(t, err) {
-
-	}
+	assert.NoError(t, err)
 
 	preferred.ViewID = l.ViewID()
 	preferred.rehash()
@@ -391,12 +412,16 @@ func TestQuery(t *testing.T) {
 func TestListenForQueries(t *testing.T) {
 	defer leaktest.Check(t)()
 
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
 	kv, cleanup := GetKV("level", "db")
 	defer cleanup()
-	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
+
+	l := NewLedger(ctx, keys, kv)
 
 	root, err := NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
@@ -471,12 +496,16 @@ func TestListenForQueries(t *testing.T) {
 func TestListenForSyncDiffChunks(t *testing.T) {
 	defer leaktest.Check(t)()
 
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
 	kv, cleanup := GetKV("level", "db")
 	defer cleanup()
-	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
+
+	l := NewLedger(ctx, keys, kv)
 
 	stop := make(chan struct{})
 	listenForSyncDiffChunks := func() error {
@@ -484,20 +513,18 @@ func TestListenForSyncDiffChunks(t *testing.T) {
 	}
 
 	var chunkHash [blake2b.Size256]byte
-	_, err := rand.Read(chunkHash[:])
+	_, err = rand.Read(chunkHash[:])
 	assert.NoError(t, err)
 
-	var evt EventIncomingSyncDiff
-
 	// Test ChunkHash not found
-	evt = EventIncomingSyncDiff{
+	evt := EventIncomingSyncDiff{
 		ChunkHash: chunkHash,
 		Response:  make(chan []byte, 1),
 	}
 
 	l.SyncDiffIn <- evt
 	assert.NoError(t, listenForSyncDiffChunks())
-	// check the response should be nil
+	// Check that the response should be nil.
 	assert.Nil(t, <-evt.Response)
 
 	// Test ChunkHash found
@@ -531,13 +558,16 @@ func TestListenForSyncDiffChunks(t *testing.T) {
 func TestListenForSyncInits(t *testing.T) {
 	defer leaktest.Check(t)()
 
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
 	kv, cleanup := GetKV("level", "db")
 	defer cleanup()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
+	l := NewLedger(ctx, keys, kv)
 
 	stop := make(chan struct{})
 	listenForSyncInits := func() error {
@@ -545,24 +575,23 @@ func TestListenForSyncInits(t *testing.T) {
 	}
 
 	var viewID uint64 = 1
-	var evt EventIncomingSyncInit
 
-	// Test empty
-	evt = EventIncomingSyncInit{
+	// Test empty.
+	evt := EventIncomingSyncInit{
 		ViewID:   viewID,
 		Response: make(chan SyncInitMetadata, 1),
 	}
 
 	l.SyncInitIn <- evt
 	assert.NoError(t, listenForSyncInits())
-	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 1, ChunkHashes: nil}, <-evt.Response)
+	assert.Equal(t, SyncInitMetadata{PeerID: nil, ViewID: 1, ChunkHashes: nil}, <-evt.Response)
 
-	// Test diff
+	// Test diff.
 
 	kv2, cleanup2 := GetKV("level", "db2")
 	defer cleanup2()
 
-	// Create the tree and commit it into ledger accounts
+	// Create the tree and commit it into ledger accounts.
 	tree := avl.New(kv2)
 	for i := uint64(0); i < 50; i++ {
 		tree.Insert([]byte("a"), []byte("b"))
@@ -580,7 +609,7 @@ func TestListenForSyncInits(t *testing.T) {
 
 	l.SyncInitIn <- evt
 	assert.NoError(t, listenForSyncInits())
-	assert.Equal(t, SyncInitMetadata{User: nil, ViewID: 1, ChunkHashes: expectedChunkHashes}, <-evt.Response)
+	assert.Equal(t, SyncInitMetadata{PeerID: nil, ViewID: 1, ChunkHashes: expectedChunkHashes}, <-evt.Response)
 
 	// Test stop
 	close(stop)
@@ -597,12 +626,16 @@ func TestListenForSyncInits(t *testing.T) {
 func TestListenForOutOfSyncChecks(t *testing.T) {
 	defer leaktest.Check(t)()
 
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
 	kv, cleanup := GetKV("level", "db")
 	defer cleanup()
-	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
+
+	l := NewLedger(ctx, keys, kv)
 
 	stop := make(chan struct{})
 	listenForOutOfSyncChecks := func() error {
@@ -633,13 +666,16 @@ func TestListenForOutOfSyncChecks(t *testing.T) {
 func TestListenForMissingTXs(t *testing.T) {
 	defer leaktest.Check(t)()
 
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
 	kv, cleanup := GetKV("level", "db")
 	defer cleanup()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
+	l := NewLedger(ctx, keys, kv)
 
 	stop := make(chan struct{})
 	listenForMissingTXs := func() error {
@@ -650,7 +686,7 @@ func TestListenForMissingTXs(t *testing.T) {
 	assert.NoError(t, err)
 	tx.rehash()
 
-	assert.NoError(t, l.v.addTransaction(&tx))
+	assert.NoError(t, l.v.addTransaction(&tx, false))
 
 	evt := EventIncomingSyncTX{
 		IDs:      []common.TransactionID{tx.ID},
@@ -676,13 +712,16 @@ func TestListenForMissingTXs(t *testing.T) {
 func TestCheckIfOutOfSync(t *testing.T) {
 	defer leaktest.Check(t)()
 
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
 	kv, cleanup := GetKV("level", "db")
 	defer cleanup()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
+	l := NewLedger(ctx, keys, kv)
 	preferred, err := NewTransaction(l.keys, sys.TagNop, nil)
 	assert.NoError(t, err)
 	preferred.rehash()
@@ -813,17 +852,20 @@ func TestCheckIfOutOfSync(t *testing.T) {
 func TestSyncMissingTX(t *testing.T) {
 	defer leaktest.Check(t)()
 
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 
 	kv, cleanup := GetKV("level", "db")
 	defer cleanup()
 
-	l := NewLedger(ctx, ed25519.RandomKeys(), kv)
+	l := NewLedger(ctx, keys, kv)
 
 	stop := make(chan struct{})
 	syncMissingTX := func() error {
-		return syncMissingTX(l)(stop)
+		return syncMissingTX(l, nil)(stop)
 	}
 
 	var wg sync.WaitGroup

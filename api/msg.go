@@ -1,79 +1,101 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"github.com/go-chi/render"
 	"github.com/perlin-network/noise"
-	"github.com/perlin-network/noise/signature/eddsa"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"github.com/valyala/fastjson"
 	"net/http"
+	"strconv"
 )
 
 const (
 	SessionInitMessage = "perlin_session_init_"
 )
 
+type marshalableJSON interface {
+	marshalJSON(arena *fastjson.Arena) ([]byte, error)
+}
+
 var (
-	_ render.Binder   = (*SessionInitRequest)(nil)
-	_ render.Renderer = (*SessionInitResponse)(nil)
+	_ marshalableJSON = (*sessionInitResponse)(nil)
 
-	_ render.Binder   = (*SendTransactionRequest)(nil)
-	_ render.Renderer = (*SendTransactionResponse)(nil)
+	_ marshalableJSON = (*sendTransactionResponse)(nil)
 
-	_ render.Renderer = (*LedgerStatusResponse)(nil)
+	_ marshalableJSON = (*ledgerStatusResponse)(nil)
 
-	_ render.Renderer = (*Transaction)(nil)
+	_ marshalableJSON = (*transaction)(nil)
 
-	_ render.Renderer = (*Account)(nil)
+	_ marshalableJSON = (*account)(nil)
 )
 
-type SessionInitRequest struct {
+type sessionInitRequest struct {
 	PublicKey  string `json:"public_key"`
 	Signature  string `json:"signature"`
 	TimeMillis uint64 `json:"time_millis"`
 }
 
-func (s *SessionInitRequest) Bind(r *http.Request) error {
-	publicKey, err := hex.DecodeString(s.PublicKey)
+func (s *sessionInitRequest) bind(parser *fastjson.Parser, body []byte) error {
+	v, err := parser.ParseBytes(body)
+	if err != nil {
+		return err
+	}
+
+	s.PublicKey = string(v.GetStringBytes("public_key"))
+	s.Signature = string(v.GetStringBytes("signature"))
+	s.TimeMillis = v.GetUint64("time_millis")
+
+	publicKeyBuf, err := hex.DecodeString(s.PublicKey)
 	if err != nil {
 		return errors.Wrap(err, "public key provided is not hex-formatted")
 	}
 
-	if len(publicKey) != common.SizeAccountID {
+	if len(publicKeyBuf) != common.SizeAccountID {
 		return errors.Errorf("public key must be size %d", common.SizeAccountID)
 	}
 
-	signature, err := hex.DecodeString(s.Signature)
+	signatureBuf, err := hex.DecodeString(s.Signature)
 	if err != nil {
 		return errors.Wrap(err, "signature provided is not hex-formatted")
 	}
 
-	if len(signature) != common.SizeSignature {
+	if len(signatureBuf) != common.SizeSignature {
 		return errors.Errorf("signature must be size %d", common.SizeSignature)
 	}
 
-	err = eddsa.Verify(publicKey, []byte(fmt.Sprintf("%s%d", SessionInitMessage, s.TimeMillis)), signature)
-	if err != nil {
+	var publicKey edwards25519.PublicKey
+	copy(publicKey[:], publicKeyBuf)
+
+	var signature edwards25519.Signature
+	copy(signature[:], signatureBuf)
+
+	if !edwards25519.Verify(publicKey, []byte(fmt.Sprintf("%s%d", SessionInitMessage, s.TimeMillis)), signature) {
 		return errors.Wrap(err, "signature verification failed")
 	}
 
 	return nil
 }
 
-type SessionInitResponse struct {
+type sessionInitResponse struct {
 	Token string `json:"token"`
 }
 
-func (s *SessionInitResponse) Render(w http.ResponseWriter, r *http.Request) error {
-	return nil
+func (s *sessionInitResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
+	o := arena.NewObject()
+
+	o.Set("token", arena.NewString(s.Token))
+
+	return o.MarshalTo(nil), nil
 }
 
-type SendTransactionRequest struct {
+type sendTransactionRequest struct {
 	Sender    string `json:"sender"`
 	Tag       byte   `json:"tag"`
 	Payload   string `json:"payload"`
@@ -85,13 +107,23 @@ type SendTransactionRequest struct {
 	payload   []byte
 }
 
-func (s *SendTransactionRequest) Bind(r *http.Request) error {
-	sender, err := hex.DecodeString(s.Sender)
+func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) error {
+	v, err := parser.ParseBytes(body)
+	if err != nil {
+		return err
+	}
+
+	s.Sender = string(v.GetStringBytes("sender"))
+	s.Tag = byte(v.GetUint("tag"))
+	s.Payload = string(v.GetStringBytes("payload"))
+	s.Signature = string(v.GetStringBytes("signature"))
+
+	senderBuf, err := hex.DecodeString(s.Sender)
 	if err != nil {
 		return errors.Wrap(err, "sender public key provided is not hex-formatted")
 	}
 
-	if len(sender) != common.SizeAccountID {
+	if len(senderBuf) != common.SizeAccountID {
 		return errors.Errorf("sender public key must be size %d", common.SizeAccountID)
 	}
 
@@ -104,186 +136,225 @@ func (s *SendTransactionRequest) Bind(r *http.Request) error {
 		return errors.Wrap(err, "payload provided is not hex-formatted")
 	}
 
-	signature, err := hex.DecodeString(s.Signature)
+	signatureBuf, err := hex.DecodeString(s.Signature)
 	if err != nil {
 		return errors.Wrap(err, "sender signature provided is not hex-formatted")
 	}
 
-	if len(signature) != common.SizeSignature {
+	if len(signatureBuf) != common.SizeSignature {
 		return errors.Errorf("sender signature must be size %d", common.SizeSignature)
 	}
 
-	err = eddsa.Verify(sender, append([]byte{s.Tag}, s.payload...), signature)
-	if err != nil {
+	var sender edwards25519.PublicKey
+	copy(sender[:], senderBuf)
+
+	var signature edwards25519.Signature
+	copy(signature[:], signatureBuf)
+
+	if !edwards25519.Verify(sender, append([]byte{s.Tag}, s.payload...), signature) {
 		return errors.Wrap(err, "sender signature verification failed")
 	}
 
-	copy(s.creator[:], sender)
-	copy(s.signature[:], signature)
+	copy(s.creator[:], senderBuf)
+	copy(s.signature[:], signatureBuf)
 
 	return nil
 }
 
-type SendTransactionResponse struct {
-	ID       string   `json:"tx_id"`
-	Parents  []string `json:"parent_ids"`
-	Critical bool     `json:"is_critical"`
-
+type sendTransactionResponse struct {
 	// Internal fields.
 	ledger *wavelet.Ledger
 	tx     *wavelet.Transaction
 }
 
-func (s *SendTransactionResponse) Render(w http.ResponseWriter, r *http.Request) error {
+func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	if s.ledger == nil || s.tx == nil {
-		return errors.New("insufficient parameters were provided")
+		return nil, errors.New("insufficient parameters were provided")
 	}
 
-	s.ID = hex.EncodeToString(s.tx.ID[:])
+	o := arena.NewObject()
 
-	for _, parentID := range s.tx.ParentIDs {
-		s.Parents = append(s.Parents, hex.EncodeToString(parentID[:]))
+	o.Set("tx_id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
+
+	if s.tx.ParentIDs != nil {
+		parents := arena.NewArray()
+		for i, parentID := range s.tx.ParentIDs {
+			parents.SetArrayItem(i, arena.NewString(hex.EncodeToString(parentID[:])))
+		}
+		o.Set("parent_ids", parents)
+	} else {
+		o.Set("parent_ids", nil)
 	}
 
-	s.Critical = s.tx.IsCritical(s.ledger.Difficulty())
+	if s.tx.IsCritical(s.ledger.Difficulty()) {
+		o.Set("is_critical", arena.NewTrue())
+	} else {
+		o.Set("is_critical", arena.NewFalse())
+	}
 
-	return nil
+	return o.MarshalTo(nil), nil
 }
 
-type LedgerStatusResponse struct {
-	PublicKey     string   `json:"public_key"`
-	HostAddress   string   `json:"address"`
-	PeerAddresses []string `json:"peers"`
-
-	RootID     string `json:"root_id"`
-	ViewID     uint64 `json:"view_id"`
-	Difficulty uint64 `json:"difficulty"`
-
+type ledgerStatusResponse struct {
 	// Internal fields.
-	node   *noise.Node
-	ledger *wavelet.Ledger
+
+	node      *noise.Node
+	ledger    *wavelet.Ledger
+	network   *skademlia.Protocol
+	publicKey edwards25519.PublicKey
 }
 
-func (s *LedgerStatusResponse) Render(w http.ResponseWriter, r *http.Request) error {
+func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	if s.node == nil || s.ledger == nil {
-		return errors.New("insufficient parameters were provided")
+		return nil, errors.New("insufficient parameters were provided")
 	}
 
-	s.PublicKey = hex.EncodeToString(s.node.Keys.PublicKey())
-	s.HostAddress = s.node.ExternalAddress()
-	s.PeerAddresses = skademlia.Table(s.node).GetPeers()
+	o := arena.NewObject()
 
-	s.RootID = hex.EncodeToString(s.ledger.Root().ID[:])
-	s.ViewID = s.ledger.ViewID()
-	s.Difficulty = s.ledger.Difficulty()
+	o.Set("public_key", arena.NewString(hex.EncodeToString(s.publicKey[:])))
+	o.Set("address", arena.NewString(s.node.Addr().String()))
+	o.Set("root_id", arena.NewString(hex.EncodeToString(s.ledger.Root().ID[:])))
+	o.Set("view_id", arena.NewNumberString(strconv.FormatUint(s.ledger.ViewID(), 10)))
+	o.Set("difficulty", arena.NewNumberString(strconv.FormatUint(s.ledger.Difficulty(), 10)))
 
-	return nil
+	peers := s.network.Peers(s.node)
+	if len(peers) > 0 {
+		peersArray := arena.NewArray()
+		for i := range peers {
+			peersArray.SetArrayItem(i, arena.NewString(peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).Address()))
+		}
+		o.Set("peers", peersArray)
+	} else {
+		o.Set("peers", nil)
+	}
+
+	return o.MarshalTo(nil), nil
 }
 
-type Transaction struct {
-	ID string `json:"id"`
-
-	Sender  string `json:"sender"`
-	Creator string `json:"creator"`
-
-	Parents []string `json:"parents"`
-
-	Timestamp uint64 `json:"timestamp"`
-
-	Tag     byte   `json:"tag"`
-	Payload []byte `json:"payload"`
-
-	AccountsMerkleRoot string `json:"accounts_root"`
-
-	SenderSignature  string `json:"sender_signature"`
-	CreatorSignature string `json:"creator_signature"`
-
-	Depth uint64 `json:"depth"`
-
+type transaction struct {
 	// Internal fields.
 	tx *wavelet.Transaction
 }
 
-func (s *Transaction) Render(w http.ResponseWriter, r *http.Request) error {
-	if s.tx == nil {
-		return errors.New("insufficient fields specified")
+func (s *transaction) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
+	o, err := s.getObject(arena)
+	if err != nil {
+		return nil, err
 	}
 
-	s.ID = hex.EncodeToString(s.tx.ID[:])
-	s.Sender = hex.EncodeToString(s.tx.Sender[:])
-	s.Creator = hex.EncodeToString(s.tx.Creator[:])
-	s.Timestamp = s.tx.Timestamp
-	s.Tag = s.tx.Tag
-	s.Payload = s.tx.Payload
-	s.AccountsMerkleRoot = hex.EncodeToString(s.tx.AccountsMerkleRoot[:])
-	s.SenderSignature = hex.EncodeToString(s.tx.SenderSignature[:])
-	s.CreatorSignature = hex.EncodeToString(s.tx.CreatorSignature[:])
-	s.Depth = s.tx.Depth()
-
-	for _, parentID := range s.tx.ParentIDs {
-		s.Parents = append(s.Parents, hex.EncodeToString(parentID[:]))
-	}
-
-	return nil
+	return o.MarshalTo(nil), nil
 }
 
-type Account struct {
-	PublicKey string `json:"public_key"`
-	Balance   uint64 `json:"balance"`
-	Stake     uint64 `json:"stake"`
+func (s *transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) {
+	if s.tx == nil {
+		return nil, errors.New("insufficient fields specified")
+	}
 
-	IsContract bool   `json:"is_contract"`
-	NumPages   uint64 `json:"num_mem_pages,omitempty"`
+	o := arena.NewObject()
 
+	o.Set("id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
+	o.Set("sender", arena.NewString(hex.EncodeToString(s.tx.Sender[:])))
+	o.Set("creator", arena.NewString(hex.EncodeToString(s.tx.Creator[:])))
+	o.Set("timestamp", arena.NewNumberString(strconv.FormatUint(s.tx.Timestamp, 10)))
+	o.Set("tag", arena.NewNumberInt(int(s.tx.Tag)))
+	o.Set("payload", arena.NewString(base64.StdEncoding.EncodeToString(s.tx.Payload)))
+	o.Set("accounts_root", arena.NewString(hex.EncodeToString(s.tx.AccountsMerkleRoot[:])))
+	o.Set("sender_signature", arena.NewString(hex.EncodeToString(s.tx.SenderSignature[:])))
+	o.Set("creator_signature", arena.NewString(hex.EncodeToString(s.tx.CreatorSignature[:])))
+	o.Set("depth", arena.NewNumberString(strconv.FormatUint(s.tx.Depth(), 10)))
+
+	if s.tx.ParentIDs != nil {
+		parents := arena.NewArray()
+		for i := range s.tx.ParentIDs {
+			parents.SetArrayItem(i, arena.NewString(hex.EncodeToString(s.tx.ParentIDs[i][:])))
+		}
+		o.Set("parents", parents)
+	} else {
+		o.Set("parents", nil)
+	}
+
+	return o, nil
+}
+
+type transactionList []*transaction
+
+func (s transactionList) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
+	list := arena.NewArray()
+
+	for i, v := range s {
+		o, err := v.getObject(arena)
+		if err != nil {
+			return nil, err
+		}
+
+		list.SetArrayItem(i, o)
+	}
+
+	return list.MarshalTo(nil), nil
+}
+
+type account struct {
 	// Internal fields.
 	id     common.AccountID
 	ledger *wavelet.Ledger
 }
 
-func (s *Account) Render(w http.ResponseWriter, r *http.Request) error {
+func (s *account) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	if s.ledger == nil || s.id == common.ZeroAccountID {
-		return errors.New("insufficient fields specified")
+		return nil, errors.New("insufficient fields specified")
 	}
 
 	snapshot := s.ledger.Snapshot()
 
-	s.PublicKey = hex.EncodeToString(s.id[:])
-	s.Balance, _ = wavelet.ReadAccountBalance(snapshot, s.id)
-	s.Stake, _ = wavelet.ReadAccountStake(snapshot, s.id)
-	_, s.IsContract = wavelet.ReadAccountContractCode(snapshot, s.id)
-	s.NumPages, _ = wavelet.ReadAccountContractNumPages(snapshot, s.id)
+	o := arena.NewObject()
 
-	return nil
+	o.Set("public_key", arena.NewString(hex.EncodeToString(s.id[:])))
+
+	balance, _ := wavelet.ReadAccountBalance(snapshot, s.id)
+	o.Set("balance", arena.NewNumberString(strconv.FormatUint(balance, 10)))
+
+	stake, _ := wavelet.ReadAccountStake(snapshot, s.id)
+	o.Set("stake", arena.NewNumberString(strconv.FormatUint(stake, 10)))
+
+	_, isContract := wavelet.ReadAccountContractCode(snapshot, s.id)
+	if isContract {
+		o.Set("is_contract", arena.NewTrue())
+	} else {
+		o.Set("is_contract", arena.NewFalse())
+	}
+
+	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, s.id)
+	if numPages != 0 {
+		o.Set("num_mem_pages", arena.NewNumberString(strconv.FormatUint(numPages, 10)))
+	}
+
+	return o.MarshalTo(nil), nil
 }
 
-type ErrResponse struct {
+type errResponse struct {
 	Err            error `json:"-"` // low-level runtime error
 	HTTPStatusCode int   `json:"-"` // http response status code
-
-	StatusText string `json:"status"`          // user-level status message
-	AppCode    int64  `json:"code,omitempty"`  // application-specific error code
-	ErrorText  string `json:"error,omitempty"` // application-level error message, for debugging
 }
 
-func (e *ErrResponse) Render(w http.ResponseWriter, r *http.Request) error {
-	render.Status(r, e.HTTPStatusCode)
-	return nil
+func (e *errResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
+	o := arena.NewObject()
+
+	o.Set("status", arena.NewString("Bad request."))
+	o.Set("error", arena.NewString(e.Err.Error()))
+
+	return o.MarshalTo(nil), nil
 }
 
-func ErrBadRequest(err error) render.Renderer {
-	return &ErrResponse{
+func ErrBadRequest(err error) *errResponse {
+	return &errResponse{
 		Err:            err,
 		HTTPStatusCode: http.StatusBadRequest,
-		StatusText:     "Bad request.",
-		ErrorText:      err.Error(),
 	}
 }
 
-func ErrInternal(err error) render.Renderer {
-	return &ErrResponse{
+func ErrInternal(err error) *errResponse {
+	return &errResponse{
 		Err:            err,
 		HTTPStatusCode: http.StatusInternalServerError,
-		StatusText:     "Internal error.",
-		ErrorText:      err.Error(),
 	}
 }

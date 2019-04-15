@@ -1,8 +1,10 @@
 package api
 
 import (
-	"github.com/gorilla/websocket"
-	"net/http"
+	"github.com/fasthttp/websocket"
+	"github.com/valyala/fasthttp"
+	"github.com/valyala/fastjson"
+	"strconv"
 	"time"
 )
 
@@ -13,10 +15,10 @@ const (
 	maxMessageSize = 512
 )
 
-var upgrader = websocket.Upgrader{
+var upgrader = websocket.FastHTTPUpgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
+	CheckOrigin: func(ctx *fasthttp.RequestCtx) bool {
 		return true
 	},
 }
@@ -83,33 +85,29 @@ func (c *client) writeWorker() {
 	}
 }
 
-func (s *sink) serve(w http.ResponseWriter, r *http.Request) error {
+func (s *sink) serve(ctx *fasthttp.RequestCtx) error {
 	filters := make(map[string]string)
-	values := r.URL.Query()
-
-	for queryKey, key := range s.filters {
-		if queryValue := values.Get(queryKey); queryValue != "" {
-			filters[key] = queryValue
+	ctx.QueryArgs().VisitAll(func(key, value []byte) {
+		if string(value) != "" {
+			filters[string(key)] = string(value)
 		}
-	}
+	})
 
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		return err
-	}
+	return upgrader.Upgrade(ctx, func(conn *websocket.Conn) {
+		client := &client{filters: filters, sink: s, conn: conn, send: make(chan []byte, 256)}
+		s.join <- client
 
-	client := &client{filters: filters, sink: s, conn: conn, send: make(chan []byte, 256)}
-	s.join <- client
+		go client.readWorker()
 
-	go client.readWorker()
-	go client.writeWorker()
-
-	return nil
+		// Block here because we need to keep the FastHTTPHandler active because of the way it works
+		// Refer to https://github.com/fasthttp/websocket/issues/6
+		client.writeWorker()
+	})
 }
 
 type broadcastItem struct {
-	fields map[string]interface{}
-	buf    []byte
+	buf   []byte
+	value *fastjson.Value
 }
 
 type sink struct {
@@ -134,7 +132,8 @@ func (s *sink) run() {
 		L:
 			for client := range s.clients {
 				for key, condition := range client.filters {
-					if value, exists := msg.fields[key]; exists && value != condition {
+					o := msg.value.Get(key)
+					if o != nil && valueEqual(o, condition) {
 						continue L
 					}
 				}
@@ -147,5 +146,27 @@ func (s *sink) run() {
 				}
 			}
 		}
+	}
+}
+
+func valueEqual(v *fastjson.Value, filter string) bool {
+	switch v.Type() {
+	case fastjson.TypeArray:
+		fallthrough
+	case fastjson.TypeNumber:
+		fallthrough
+	case fastjson.TypeObject:
+		return string(v.MarshalTo(nil)) == filter
+	case fastjson.TypeString:
+		b, _ := v.StringBytes()
+		return string(b) == filter
+	case fastjson.TypeTrue, fastjson.TypeFalse:
+		b, err := v.Bool()
+		if err != nil {
+			return false
+		}
+		return strconv.FormatBool(b) == filter
+	default:
+		return false
 	}
 }

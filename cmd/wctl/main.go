@@ -571,7 +571,7 @@ func setup(c *cli.Context) (*wctl.Client, error) {
 		APIPort:  uint16(port),
 		UseHTTPS: false,
 	}
-	copy(config.RawPrivateKey[:], rawPrivateKey)
+	copy(config.PrivateKey[:], rawPrivateKey)
 
 	client, err := wctl.NewClient(config)
 	if err != nil {
@@ -594,5 +594,5 @@ func output(buf []byte) {
 		out.Write(buf)
 	}
 
-	fmt.Println(out.Bytes())
+	fmt.Println(string(out.Bytes()))
 }

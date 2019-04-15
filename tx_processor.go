@@ -169,6 +169,9 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 	}
 
 	for id, stake := range c.stakes {
+		logger := log.Account(id, "stake_updated")
+		logger.Log().Uint64("stake", stake).Msg("Updated stake.")
+
 		WriteAccountStake(c.tree, id, stake)
 	}
 
@@ -177,6 +180,9 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 	}
 
 	for id, numPages := range c.contractNumPages {
+		logger := log.Account(id, "num_pages_updated")
+		logger.Log().Uint64("num_pages", numPages).Msg("Updated number of memory pages for a contract.")
+
 		WriteAccountContractNumPages(c.tree, id, numPages)
 	}
 

@@ -74,21 +74,3 @@ func (l *lru) remove(key [MerkleHashSize]byte) {
 		l.access.Remove(elem)
 	}
 }
-
-func (l *lru) mostRecentlyUsed(n int) [][MerkleHashSize]byte {
-	l.Lock()
-	defer l.Unlock()
-
-	out := make([][MerkleHashSize]byte, 0)
-
-	current := l.access.Front()
-	for current != nil {
-		out = append(out, current.Value.(*objectInfo).key)
-		if len(out) == n {
-			break
-		}
-		current = current.Next()
-	}
-
-	return out
-}

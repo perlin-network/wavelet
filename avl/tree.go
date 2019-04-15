@@ -196,7 +196,7 @@ func (t *Tree) getNextOldRootIndex() uint64 {
 func (t *Tree) setNextOldRootIndex(x uint64) {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], x)
-	t.kv.Put(NextOldRootIndexKey, buf[:])
+	_ = t.kv.Put(NextOldRootIndexKey, buf[:])
 }
 
 func (t *Tree) getOldRoot(idx uint64) ([MerkleHashSize]byte, bool) {
@@ -217,14 +217,14 @@ func (t *Tree) setOldRoot(idx uint64, value []byte) {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], idx)
 
-	t.kv.Put(append(OldRootsPrefix, buf[:]...), value)
+	_ = t.kv.Put(append(OldRootsPrefix, buf[:]...), value)
 }
 
 func (t *Tree) deleteOldRoot(idx uint64) {
 	var buf [8]byte
 	binary.LittleEndian.PutUint64(buf[:], idx)
 
-	t.kv.Delete(append(OldRootsPrefix, buf[:]...))
+	_ = t.kv.Delete(append(OldRootsPrefix, buf[:]...))
 }
 
 func (t *Tree) Checksum() [MerkleHashSize]byte {
@@ -267,8 +267,8 @@ func (t *Tree) mustLoadNode(id [MerkleHashSize]byte) *node {
 func (t *Tree) deleteNodeAndMetadata(id [MerkleHashSize]byte) {
 	t.pending.Delete(id)
 	t.cache.remove(id)
-	t.kv.Delete(append(NodeKeyPrefix, id[:]...))
-	t.kv.Delete(append(GCAliveMarkPrefix, id[:]...))
+	_ = t.kv.Delete(append(NodeKeyPrefix, id[:]...))
+	_ = t.kv.Delete(append(GCAliveMarkPrefix, id[:]...))
 }
 
 func (t *Tree) SetViewID(viewID uint64) {
@@ -304,7 +304,7 @@ func (t *Tree) ApplyDiff(diff []byte) error {
 
 	var root *node
 	unresolved := make(map[[MerkleHashSize]byte]struct{})
-	preloaded := make(map[[MerkleHashSize]byte]*node, 0)
+	preloaded := make(map[[MerkleHashSize]byte]*node)
 
 	for reader.Len() > 0 {
 		n, err := deserializeFromDifference(reader, t.viewID)
