@@ -227,7 +227,7 @@ func main() {
 		sys.MinimumStake = c.Uint64("sys.min_stake")
 
 		// start the server
-		k, _, w := server(config, logger)
+		k, n, w := server(config, logger)
 
 		exit := make(chan os.Signal, 1)
 		ctx, cancel := context.WithCancel(context.Background())
@@ -237,6 +237,8 @@ func main() {
 
 		<-exit
 		w.Stop()
+		n.Shutdown()
+
 		cancel()
 
 		return nil

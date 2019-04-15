@@ -30,7 +30,7 @@ type receiverPayload struct {
 
 type receiver struct {
 	bus chan receiverPayload
-	stopped bool
+	stopped atomic.Bool
 
 	wg sync.WaitGroup
 	cancel func()
@@ -85,7 +85,11 @@ func NewReceiver(
 }
 
 func (r *receiver) Stop() {
-	defer func() {r.stopped = true}()
+	if r.stopped.Load() {
+		return
+	}
+
+	defer func() {r.stopped.Store(true)}()
 
 	r.cancel()
 	r.wg.Wait()
@@ -129,19 +133,12 @@ func New(network *skademlia.Protocol, keys *skademlia.Keypair) *Protocol {
 
 func (b *Protocol) Stop() {
 	b.ledger.Stop()
-
 	b.cancel()
 	b.wg.Wait()
 
-	var wg sync.WaitGroup
 	for _, r := range b.receivers {
-		if !r.stopped {
-			wg.Add(1)
-			go r.Stop()
-		}
+		r.Stop()
 	}
-
-	wg.Wait()
 }
 
 func (b *Protocol) Ledger() *wavelet.Ledger {
