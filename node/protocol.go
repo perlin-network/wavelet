@@ -23,6 +23,76 @@ const (
 	SignalAuthenticated = "wavelet.auth.ch"
 )
 
+type receiverPayload struct {
+	opcode byte
+	wire noise.Wire
+}
+
+type receiver struct {
+	bus chan receiverPayload
+	stopped bool
+
+	wg sync.WaitGroup
+	cancel func()
+}
+
+func NewReceiver(
+	protocol *Protocol,
+	workersNum int,
+	bufferSize uint32,
+) *receiver {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	r := receiver{
+		bus: make(chan receiverPayload, bufferSize),
+		wg: sync.WaitGroup{},
+		cancel: cancel,
+	}
+
+	r.wg.Add(workersNum)
+
+	for i := 0; i < workersNum; i++ {
+		go func(ctx context.Context) {
+			defer r.wg.Done()
+
+			var msg receiverPayload
+			for {
+				select {
+					case <-ctx.Done():
+						return
+					case msg =<- r.bus:
+				}
+
+				switch msg.opcode {
+				case protocol.opcodeGossipRequest:
+					protocol.handleGossipRequest(msg.wire)
+				case protocol.opcodeQueryRequest:
+					protocol.handleQueryRequest(msg.wire)
+				case protocol.opcodeSyncViewRequest:
+					protocol.handleOutOfSyncCheck(msg.wire)
+				case protocol.opcodeSyncInitRequest:
+					protocol.handleSyncInits(msg.wire)
+				case protocol.opcodeSyncChunkRequest:
+					protocol.handleSyncChunks(msg.wire)
+				case protocol.opcodeSyncMissingTxRequest:
+					protocol.handleSyncMissingTXs(msg.wire)
+				}
+			}
+		}(ctx)
+	}
+
+	return &r
+}
+
+func (r *receiver) Stop() {
+	defer func() {r.stopped = true}()
+
+	r.cancel()
+	r.wg.Wait()
+
+	close(r.bus)
+}
+
 type Protocol struct {
 	opcodeGossipRequest  byte
 	opcodeGossipResponse byte
@@ -45,10 +115,31 @@ type Protocol struct {
 
 	network *skademlia.Protocol
 	keys    *skademlia.Keypair
+
+	receivers []*receiver
+
+	ctx context.Context
+	cancel func()
+	wg sync.WaitGroup
 }
 
 func New(network *skademlia.Protocol, keys *skademlia.Keypair) *Protocol {
 	return &Protocol{ledger: wavelet.NewLedger(context.TODO(), keys, store.NewInmem()), network: network, keys: keys}
+}
+
+func (b *Protocol) Stop() {
+	b.cancel()
+	b.wg.Wait()
+
+	var wg sync.WaitGroup
+	for _, r := range b.receivers {
+		if !r.stopped {
+			wg.Add(1)
+			go r.Stop()
+		}
+	}
+
+	wg.Wait()
 }
 
 func (b *Protocol) Ledger() *wavelet.Ledger {
@@ -94,6 +185,8 @@ func (b *Protocol) RegisterOpcodes(node *noise.Node) {
 }
 
 func (b *Protocol) Init(node *noise.Node) {
+	b.ctx, b.cancel = context.WithCancel(context.Background())
+
 	go b.sendLoop(node)
 	go wavelet.Run(b.ledger)
 }
@@ -111,7 +204,12 @@ func (b *Protocol) Protocol() noise.ProtocolBlock {
 		signal := ctx.Peer().RegisterSignal(SignalAuthenticated)
 		defer signal()
 
+		r := NewReceiver(b, 4, 1000)
+		b.receivers = append(b.receivers, r)
+
 		ctx.Peer().InterceptErrors(func(err error) {
+			r.Stop()
+
 			logger := log.Network("left")
 			logger.Info().
 				Str("address", id.Address()).
@@ -119,7 +217,7 @@ func (b *Protocol) Protocol() noise.ProtocolBlock {
 				Msg("Peer has disconnected.")
 		})
 
-		go b.receiveLoop(b.ledger, ctx)
+		go b.receiveLoop(ctx.Peer(), r.bus)
 
 		logger := log.Network("joined")
 		logger.Info().
@@ -132,43 +230,54 @@ func (b *Protocol) Protocol() noise.ProtocolBlock {
 }
 
 func (b *Protocol) sendLoop(node *noise.Node) {
-	ctx := context.TODO()
-
-	go b.broadcastGossip(ctx, node)
-	go b.broadcastQueries(ctx, node)
-	go b.broadcastOutOfSyncChecks(ctx, node)
-	go b.broadcastSyncInitRequests(ctx, node)
-	go b.broadcastSyncDiffRequests(ctx, node)
-	go b.broadcastSyncMissingTXs(ctx, node)
+	go b.broadcastGossip(node)
+	go b.broadcastQueries(node)
+	go b.broadcastOutOfSyncChecks(node)
+	go b.broadcastSyncInitRequests(node)
+	go b.broadcastSyncDiffRequests(node)
+	go b.broadcastSyncMissingTXs(node)
 }
 
-func (b *Protocol) receiveLoop(ledger *wavelet.Ledger, ctx noise.Context) {
-	peer := ctx.Peer()
+func (b *Protocol) receiveLoop(peer *noise.Peer, bus chan<- receiverPayload) {
+	b.wg.Add(1)
+	defer b.wg.Done()
 
+	var p receiverPayload
 	for {
 		select {
-		case <-ctx.Done():
+		case <-b.ctx.Done():
 			return
 		case wire := <-peer.Recv(b.opcodeGossipRequest):
-			go b.handleGossipRequest(wire)
+			p.wire = wire
+			p.opcode = b.opcodeGossipRequest
 		case wire := <-peer.Recv(b.opcodeQueryRequest):
-			go b.handleQueryRequest(wire)
+			p.wire = wire
+			p.opcode = b.opcodeQueryRequest
 		case wire := <-peer.Recv(b.opcodeSyncViewRequest):
-			go b.handleOutOfSyncCheck(wire)
+			p.wire = wire
+			p.opcode = b.opcodeSyncViewRequest
 		case wire := <-peer.Recv(b.opcodeSyncInitRequest):
-			go b.handleSyncInits(wire)
+			p.wire = wire
+			p.opcode = b.opcodeSyncInitRequest
 		case wire := <-peer.Recv(b.opcodeSyncChunkRequest):
-			go b.handleSyncChunks(wire)
+			p.wire = wire
+			p.opcode = b.opcodeSyncChunkRequest
 		case wire := <-peer.Recv(b.opcodeSyncMissingTxRequest):
-			go b.handleSyncMissingTXs(wire)
+			p.wire = wire
+			p.opcode = b.opcodeSyncMissingTxRequest
 		}
+
+		bus <- p
 	}
 }
 
-func (b *Protocol) broadcastGossip(ctx context.Context, node *noise.Node) {
+func (b *Protocol) broadcastGossip(node *noise.Node) {
+	b.wg.Add(1)
+	defer b.wg.Done()
+
 	for {
 		select {
-		case <-ctx.Done():
+		case <-b.ctx.Done():
 			return
 		case evt := <-b.ledger.GossipOut:
 			peers, err := selectPeers(b.network, node, sys.SnowballQueryK)
@@ -201,10 +310,13 @@ func (b *Protocol) broadcastGossip(ctx context.Context, node *noise.Node) {
 	}
 }
 
-func (b *Protocol) broadcastQueries(ctx context.Context, node *noise.Node) {
+func (b *Protocol) broadcastQueries(node *noise.Node) {
+	b.wg.Add(1)
+	defer b.wg.Done()
+
 	for {
 		select {
-		case <-ctx.Done():
+		case <-b.ctx.Done():
 			return
 		case evt := <-b.ledger.QueryOut:
 			peers, err := selectPeers(b.network, node, sys.SnowballQueryK)
@@ -237,10 +349,13 @@ func (b *Protocol) broadcastQueries(ctx context.Context, node *noise.Node) {
 	}
 }
 
-func (b *Protocol) broadcastOutOfSyncChecks(ctx context.Context, node *noise.Node) {
+func (b *Protocol) broadcastOutOfSyncChecks(node *noise.Node) {
+	b.wg.Add(1)
+	defer b.wg.Done()
+
 	for {
 		select {
-		case <-ctx.Done():
+		case <-b.ctx.Done():
 			return
 		case evt := <-b.ledger.OutOfSyncOut:
 			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
@@ -274,10 +389,13 @@ func (b *Protocol) broadcastOutOfSyncChecks(ctx context.Context, node *noise.Nod
 	}
 }
 
-func (b *Protocol) broadcastSyncInitRequests(ctx context.Context, node *noise.Node) {
+func (b *Protocol) broadcastSyncInitRequests(node *noise.Node) {
+	b.wg.Add(1)
+	defer b.wg.Done()
+
 	for {
 		select {
-		case <-ctx.Done():
+		case <-b.ctx.Done():
 			return
 		case evt := <-b.ledger.SyncInitOut:
 			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
@@ -311,10 +429,13 @@ func (b *Protocol) broadcastSyncInitRequests(ctx context.Context, node *noise.No
 	}
 }
 
-func (b *Protocol) broadcastSyncMissingTXs(ctx context.Context, node *noise.Node) {
+func (b *Protocol) broadcastSyncMissingTXs(node *noise.Node) {
+	b.wg.Add(1)
+	defer b.wg.Done()
+
 	for {
 		select {
-		case <-ctx.Done():
+		case <-b.ctx.Done():
 			return
 		case evt := <-b.ledger.SyncTxOut:
 			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
@@ -353,10 +474,13 @@ func (b *Protocol) broadcastSyncMissingTXs(ctx context.Context, node *noise.Node
 	}
 }
 
-func (b *Protocol) broadcastSyncDiffRequests(ctx context.Context, node *noise.Node) {
+func (b *Protocol) broadcastSyncDiffRequests(node *noise.Node) {
+	b.wg.Add(1)
+	defer b.wg.Done()
+
 	for {
 		select {
-		case <-ctx.Done():
+		case <-b.ctx.Done():
 			return
 		case evt := <-b.ledger.SyncDiffOut:
 			collected := make([][]byte, len(evt.Sources))
