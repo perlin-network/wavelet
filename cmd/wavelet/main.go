@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
@@ -24,6 +25,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"os/signal"
 	"runtime"
 	"sort"
 	"strconv"
@@ -227,8 +229,15 @@ func main() {
 		// start the server
 		k, _, w := server(config, logger)
 
+		exit := make(chan os.Signal, 1)
+		ctx, cancel := context.WithCancel(context.Background())
+		signal.Notify(exit, os.Interrupt)
 		// run the shell version of the node
-		shell(k, w, logger)
+		go shell(ctx, k, w, logger)
+
+		<-exit
+		w.Stop()
+		cancel()
 
 		return nil
 	}
@@ -334,7 +343,7 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 	return k, n, w
 }
 
-func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
+func shell(ctx context.Context, k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 	publicKey := k.PublicKey()
 	ledger := w.Ledger()
 
@@ -343,6 +352,12 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 	var intBuf [8]byte
 
 	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
 		buf, _, err := reader.ReadLine()
 
 		if err != nil {
