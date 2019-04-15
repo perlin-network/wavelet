@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -66,8 +67,7 @@ func main() {
 				}
 
 				for ev := range evChan {
-					jsonOut, _ := json.Marshal(ev)
-					fmt.Printf("%s\n", jsonOut)
+					output(ev)
 				}
 				return nil
 			},
@@ -89,8 +89,7 @@ func main() {
 				}
 
 				for ev := range evChan {
-					jsonOut, _ := json.Marshal(ev)
-					fmt.Printf("%s\n", jsonOut)
+					output(ev)
 				}
 				return nil
 			},
@@ -112,8 +111,7 @@ func main() {
 				}
 
 				for ev := range evChan {
-					jsonOut, _ := json.Marshal(ev)
-					fmt.Printf("%s\n", jsonOut)
+					output(ev)
 				}
 				return nil
 			},
@@ -142,15 +140,14 @@ func main() {
 					accountID = &tmp
 				}
 
-				client.UseHTTPS = true
+				client.UseHTTPS = false
 				evChan, err := client.PollAccounts(nil, accountID)
 				if err != nil {
 					return err
 				}
 
 				for ev := range evChan {
-					jsonOut, _ := json.Marshal(ev)
-					fmt.Printf("%s\n", jsonOut)
+					output(ev)
 				}
 				return nil
 			},
@@ -186,8 +183,7 @@ func main() {
 				}
 
 				for ev := range evChan {
-					jsonOut, _ := json.Marshal(ev)
-					fmt.Printf("%s\n", jsonOut)
+					output(ev)
 				}
 				return nil
 			},
@@ -241,8 +237,7 @@ func main() {
 				}
 
 				for ev := range evChan {
-					jsonOut, _ := json.Marshal(ev)
-					fmt.Printf("%s\n", jsonOut)
+					output(ev)
 				}
 				return nil
 			},
@@ -298,15 +293,18 @@ func main() {
 					limit = &tmp
 				}
 
-				txns, err := client.GetLedgerStatus(senderID, creatorID, offset, limit)
+				res, err := client.GetLedgerStatus(senderID, creatorID, offset, limit)
 				if err != nil {
 					return err
 				}
 
-				for _, tx := range txns {
-					jsonOut, _ := json.Marshal(tx)
-					fmt.Printf("%s\n", jsonOut)
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
 				}
+
 				return nil
 			},
 		},
@@ -322,13 +320,18 @@ func main() {
 				}
 				acctID := c.Args().Get(0)
 
-				acct, err := client.GetAccount(acctID)
+				res, err := client.GetAccount(acctID)
 				if err != nil {
 					return err
 				}
 
-				jsonOut, _ := json.Marshal(acct)
-				fmt.Printf("%s\n", jsonOut)
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
+				}
+
 				return nil
 			},
 		},
@@ -344,12 +347,13 @@ func main() {
 				}
 				contractID := c.Args().Get(0)
 
-				_, err = client.GetContractCode(contractID)
+				res, err := client.GetContractCode(contractID)
 				if err != nil {
 					return err
 				}
 
-				// TODO: process the output
+				fmt.Println(res)
+
 				return nil
 			},
 		},
@@ -379,12 +383,13 @@ func main() {
 					pageIdx = &tmp
 				}
 
-				_, err = client.GetContractPages(contractID, pageIdx)
+				res, err := client.GetContractPages(contractID, pageIdx)
 				if err != nil {
 					return err
 				}
 
-				// TODO: process the output
+				fmt.Println(res)
+
 				return nil
 			},
 		},
@@ -392,7 +397,14 @@ func main() {
 			Name:      "send_transaction",
 			Usage:     "send a transaction",
 			ArgsUsage: "<tag> <json payload>",
-			Flags:     commonFlags,
+			Flags: append(commonFlags,
+				[]cli.Flag{
+					cli.StringFlag{
+						Name:  "payload",
+						Usage: "the path to the payload file",
+					},
+				}...,
+			),
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
 				if err != nil {
@@ -404,14 +416,27 @@ func main() {
 					return err
 				}
 
-				payload := c.Args().Get(1)
+				payload := []byte(c.Args().Get(1))
 
-				tx, err := client.SendTransaction(byte(tag), []byte(payload))
+				if c.String("payload") != "" {
+					payload, err = ioutil.ReadFile(c.String("payload"))
+					if err != nil {
+						return err
+					}
+				}
+
+				res, err := client.SendTransaction(byte(tag), []byte(payload))
 				if err != nil {
 					return err
 				}
-				jsonOut, _ := json.Marshal(tx)
-				fmt.Printf("%s\n", jsonOut)
+
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
+				}
+
 				return nil
 			},
 		},
@@ -427,13 +452,18 @@ func main() {
 				}
 				txID := c.Args().Get(0)
 
-				tx, err := client.GetTransaction(txID)
+				res, err := client.GetTransaction(txID)
 				if err != nil {
 					return err
 				}
 
-				jsonOut, _ := json.Marshal(tx)
-				fmt.Printf("%s\n", jsonOut)
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
+				}
+
 				return nil
 			},
 		},
@@ -488,15 +518,18 @@ func main() {
 					limit = &tmp
 				}
 
-				txns, err := client.ListTransactions(senderID, creatorID, offset, limit)
+				res, err := client.ListTransactions(senderID, creatorID, offset, limit)
 				if err != nil {
 					return err
 				}
 
-				for _, tx := range txns {
-					jsonOut, _ := json.Marshal(tx)
-					fmt.Printf("%s\n", jsonOut)
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
 				}
+
 				return nil
 			},
 		},
@@ -524,9 +557,13 @@ func setup(c *cli.Context) (*wctl.Client, error) {
 	}
 
 	privateKeyBytes, err := ioutil.ReadFile(privateKeyFile)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to read private key %s", privateKeyFile)
+	}
+
 	rawPrivateKey, err := hex.DecodeString(string(privateKeyBytes))
 	if err != nil {
-		return nil, err
+		return nil, errors.Wrapf(err, "failed to hex decode private key %s", privateKeyFile)
 	}
 
 	config := wctl.Config{
@@ -534,7 +571,7 @@ func setup(c *cli.Context) (*wctl.Client, error) {
 		APIPort:  uint16(port),
 		UseHTTPS: false,
 	}
-	copy(config.RawPrivateKey[:], rawPrivateKey)
+	copy(config.PrivateKey[:], rawPrivateKey)
 
 	client, err := wctl.NewClient(config)
 	if err != nil {
@@ -547,4 +584,15 @@ func setup(c *cli.Context) (*wctl.Client, error) {
 	}
 
 	return client, nil
+}
+
+// Write bytes to stdout; do JSON indent if possible.
+func output(buf []byte) {
+	var out bytes.Buffer
+
+	if err := json.Indent(&out, buf, "", "\t"); err != nil {
+		out.Write(buf)
+	}
+
+	fmt.Println(string(out.Bytes()))
 }

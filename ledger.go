@@ -2,13 +2,13 @@ package wavelet
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"github.com/heptio/workgroup"
-	"github.com/perlin-network/noise/identity"
-	"github.com/perlin-network/noise/protocol"
-	"github.com/perlin-network/noise/signature/eddsa"
+	"github.com/perlin-network/noise/edwards25519"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
@@ -92,7 +92,7 @@ type EventIncomingOutOfSyncCheck struct {
 }
 
 type SyncInitMetadata struct {
-	User        protocol.ID
+	PeerID      *skademlia.ID
 	ViewID      uint64
 	ChunkHashes [][blake2b.Size256]byte
 }
@@ -111,8 +111,8 @@ type EventIncomingSyncInit struct {
 }
 
 type ChunkSource struct {
-	Hash  [blake2b.Size256]byte
-	Peers []protocol.ID
+	Hash    [blake2b.Size256]byte
+	PeerIDs []*skademlia.ID
 }
 
 type EventSyncDiff struct {
@@ -142,7 +142,7 @@ type EventIncomingSyncDiff struct {
 }
 
 type Ledger struct {
-	keys identity.Keypair
+	keys *skademlia.Keypair
 	kv   store.KV
 
 	v *graph
@@ -156,6 +156,8 @@ type Ledger struct {
 
 	missing   map[common.TransactionID]map[common.TransactionID]Transaction
 	muMissing sync.RWMutex
+
+	missingTxSyncTokenSource chan struct{}
 
 	BroadcastQueue chan<- EventBroadcast
 	broadcastQueue <-chan EventBroadcast
@@ -202,7 +204,7 @@ type Ledger struct {
 	kill chan struct{}
 }
 
-func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
+func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledger {
 	broadcastQueue := make(chan EventBroadcast, 1024)
 
 	gossipIn := make(chan EventIncomingGossip, 128)
@@ -224,7 +226,7 @@ func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
 	syncTxOut := make(chan EventSyncTX, 16)
 
 	accounts := newAccounts(kv)
-	go accounts.runGCWorker()
+	go accounts.runGCWorker(ctx)
 
 	genesis, err := performInception(accounts.tree, nil)
 	if err != nil {
@@ -237,6 +239,9 @@ func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
 	}
 
 	view := newGraph(kv, genesis)
+
+	missingTxSyncTokenSource := make(chan struct{}, 1)
+	missingTxSyncTokenSource <- struct{}{}
 
 	return &Ledger{
 		keys: keys,
@@ -263,6 +268,8 @@ func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
 		},
 
 		missing: make(map[common.TransactionID]map[common.TransactionID]Transaction),
+
+		missingTxSyncTokenSource: missingTxSyncTokenSource,
 
 		BroadcastQueue: broadcastQueue,
 		broadcastQueue: broadcastQueue,
@@ -312,16 +319,11 @@ func NewLedger(keys identity.Keypair, kv store.KV) *Ledger {
 
 /** BEGIN EXPORTED METHODS **/
 
-func NewTransaction(sender identity.Keypair, tag byte, payload []byte) (Transaction, error) {
+func NewTransaction(creator *skademlia.Keypair, tag byte, payload []byte) (Transaction, error) {
 	tx := Transaction{Tag: tag, Payload: payload}
 
-	signature, err := eddsa.Sign(sender.PrivateKey(), append([]byte{tx.Tag}, tx.Payload...))
-	if err != nil {
-		return tx, err
-	}
-
-	copy(tx.Creator[:], sender.PublicKey())
-	copy(tx.CreatorSignature[:], signature)
+	tx.Creator = creator.PublicKey()
+	tx.CreatorSignature = edwards25519.Sign(creator.PrivateKey(), append([]byte{tx.Tag}, tx.Payload...))
 
 	return tx, nil
 }
@@ -388,10 +390,34 @@ func (l *Ledger) ListTransactions(offset, limit uint64, sender, creator common.A
 	return
 }
 
+func (l *Ledger) doLinearizedMissingTxSync(missing []common.TransactionID) {
+	if len(missing) == 0 {
+		return
+	}
+	return
+	select {
+	case <-l.missingTxSyncTokenSource:
+		startTime := time.Now()
+		stop := make(chan struct{})
+		go func() {
+			time.Sleep(5 * time.Second)
+			close(stop)
+		}()
+		go listenForMissingTXs(l)(stop)
+		go func() {
+			syncMissingTX(l, missing)(stop)
+			l.missingTxSyncTokenSource <- struct{}{}
+			endTime := time.Now()
+			fmt.Println("Sync duration =", endTime.Sub(startTime))
+		}()
+	default:
+	}
+}
+
 /** END EXPORTED METHODS **/
 
 func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) {
-	copy(tx.Sender[:], l.keys.PublicKey())
+	tx.Sender = l.keys.PublicKey()
 
 	if tx.ParentIDs = l.v.findEligibleParents(); len(tx.ParentIDs) == 0 {
 		return tx, errors.New("no eligible parents available, please try again")
@@ -438,6 +464,7 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 				l.missing[id][tx.ID] = tx
 			}
 			l.muMissing.Unlock()
+			l.doLinearizedMissingTxSync(missing)
 		}
 
 		if err != nil {
@@ -447,12 +474,7 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 		tx.AccountsMerkleRoot = snapshot.Checksum()
 	}
 
-	senderSignature, err := eddsa.Sign(l.keys.PrivateKey(), tx.Write())
-	if err != nil {
-		return tx, errors.Wrap(err, "failed to make sender signature")
-	}
-
-	copy(tx.SenderSignature[:], senderSignature)
+	tx.SenderSignature = edwards25519.Sign(l.keys.PrivateKey(), tx.marshal())
 
 	tx.rehash()
 
@@ -469,6 +491,7 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 			Strs("parents", parentHexIDs).
 			Uint64("difficulty", difficulty).
 			Hex("merkle_root", tx.AccountsMerkleRoot[:]).
+			Hex("current_root", root.ID[:]).
 			Msg("Created a critical transaction.")
 
 	}
@@ -499,7 +522,7 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 		return
 	}
 
-	if err = AssertInView(l.v, tx, critical); err != nil {
+	if err = AssertInView(l.v.loadViewID(nil), l.kv, tx, critical); err != nil {
 		return
 	}
 
@@ -543,6 +566,7 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 				l.missing[id][tx.ID] = tx
 			}
 			l.muMissing.Unlock()
+			l.doLinearizedMissingTxSync(missing)
 		}
 
 		if err != nil {
@@ -565,6 +589,7 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 				l.missing[id][tx.ID] = tx
 			}
 			l.muMissing.Unlock()
+			l.doLinearizedMissingTxSync(missing)
 		}
 
 		if err != nil {
@@ -572,8 +597,8 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 		}
 	}
 
-	if err = l.v.addTransaction(&tx); err != nil && errors.Cause(err) != ErrTxAlreadyExists {
-		err = errors.Wrap(err, "got an error adding queried transaction to view-graph")
+	if verr := l.v.addTransaction(&tx, critical); verr != nil && errors.Cause(verr) != ErrTxAlreadyExists {
+		err = errors.Wrap(verr, "got an error adding queried transaction to view-graph")
 	}
 
 	return
@@ -610,7 +635,7 @@ func (l *Ledger) revisitBufferedTransactions(id common.TransactionID) {
 		// to receive is awaiting for the arrival of T.
 
 		for _, parentID := range unbufferedTX.ParentIDs {
-			buffered, exists = l.missing[parentID]
+			_, exists = l.missing[parentID]
 
 			if !exists {
 				continue
@@ -885,6 +910,10 @@ func Run(l *Ledger) {
 	}
 }
 
+func (l *Ledger) Stop() {
+	close(l.kill)
+}
+
 type transition func(*Ledger) transition
 
 func gossiping(l *Ledger) transition {
@@ -1042,10 +1071,8 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 			}
 
 			// Check if we have enough money available to create and broadcast a nop transaction.
-			var self common.AccountID
-			copy(self[:], l.keys.PublicKey())
 
-			if balance, _ := ReadAccountBalance(snapshot, self); balance < sys.TransactionFeeAmount {
+			if balance, _ := ReadAccountBalance(snapshot, l.keys.PublicKey()); balance < sys.TransactionFeeAmount {
 				time.Sleep(100 * time.Millisecond)
 				return nil
 			}
@@ -1160,7 +1187,7 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 
 			// If we have nothing else to broadcast and we are not broadcasting out
 			// nop transactions, then start broadcasting out nop transactions.
-			if len(l.broadcastQueue) == 0 && broadcastNops == false {
+			if len(l.broadcastQueue) == 0 && !broadcastNops {
 				broadcastNops = true
 			}
 
@@ -1327,6 +1354,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 							l.missing[id][newRoot.ID] = *newRoot
 						}
 						l.muMissing.Unlock()
+						l.doLinearizedMissingTxSync(missing)
 					}
 
 					if err != nil {
@@ -1341,6 +1369,11 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 
 					l.cr.Reset()
 					l.v.reset(newRoot)
+
+					if err := WriteCriticalTimestamp(l.kv, newRoot.Timestamp, newRoot.ViewID); err != nil {
+						exception = err
+						return
+					}
 
 					l.muMissing.Lock()
 					for id, buffered := range l.missing {
@@ -1359,8 +1392,8 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 					logger := log.Consensus("round_end")
 					logger.Info().
 						Int("num_tx", l.v.numTransactions(oldRoot.ViewID)).
-						Uint64("old_view_id", oldRoot.ViewID).
-						Uint64("new_view_id", newRoot.ViewID).
+						Uint64("old_view_id", l.v.loadViewID(oldRoot)).
+						Uint64("new_view_id", l.v.loadViewID(newRoot)).
 						Hex("new_root", newRoot.ID[:]).
 						Hex("old_root", oldRoot.ID[:]).
 						Hex("new_accounts_checksum", newRoot.AccountsMerkleRoot[:]).
@@ -1385,6 +1418,12 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 
 func listenForQueries(l *Ledger) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
+		preferred := l.cr.Preferred()
+
+		if preferred == nil {
+			return ErrConsensusRoundFinished
+		}
+
 		select {
 		case <-l.kill:
 			return ErrStopped
@@ -1398,10 +1437,8 @@ func listenForQueries(l *Ledger) func(stop <-chan struct{}) error {
 
 			if root := l.v.loadRoot(); evt.TX.ViewID == root.ViewID {
 				evt.Response <- root
-			} else if preferred := l.cr.Preferred(); preferred != nil {
-				evt.Response <- preferred
 			} else {
-				evt.Response <- nil
+				evt.Response <- preferred
 			}
 		case evt := <-l.gossipIn:
 			// Handle some incoming gossip.
@@ -1418,10 +1455,6 @@ func listenForQueries(l *Ledger) func(stop <-chan struct{}) error {
 			}
 
 			evt.Vote <- nil
-		}
-
-		if l.cr.Preferred() == nil {
-			return ErrConsensusRoundFinished
 		}
 
 		return nil
@@ -1492,7 +1525,7 @@ func checkIfOutOfSync(l *Ledger) func(stop <-chan struct{}) error {
 				// The view ID we came to consensus to being the latest within the network
 				// is less than or equal to ours. Go back to square one.
 
-				if currentRoot.ID == proposedRoot.ID || currentRoot.ViewID >= l.v.loadViewID(proposedRoot) {
+				if currentRoot.ID == proposedRoot.ID || l.v.loadViewID(currentRoot) >= l.v.loadViewID(proposedRoot) {
 					time.Sleep(1 * time.Second)
 
 					l.sr.Reset()
@@ -1585,13 +1618,14 @@ func listenForSyncDiffChunks(l *Ledger) func(stop <-chan struct{}) error {
 	}
 }
 
-func syncMissingTX(l *Ledger) func(stop <-chan struct{}) error {
+func syncMissingTX(l *Ledger, ids []common.TransactionID) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
 		time.Sleep(100 * time.Millisecond)
 
 		evt := EventSyncTX{
 			Result: make(chan []Transaction, 1),
 			Error:  make(chan error, 1),
+			IDs:    ids,
 		}
 
 		select {
@@ -1685,7 +1719,9 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 		votesByViewID := make(map[uint64][]SyncInitMetadata)
 
 		for _, vote := range votes {
-			votesByViewID[vote.ViewID] = append(votesByViewID[vote.ViewID], vote)
+			if vote.ViewID > 0 && len(vote.ChunkHashes) > 0 {
+				votesByViewID[vote.ViewID] = append(votesByViewID[vote.ViewID], vote)
+			}
 		}
 
 		var selected []SyncInitMetadata
@@ -1705,7 +1741,7 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 		var sources []ChunkSource
 
 		for i := 0; ; i++ {
-			hashCount := make(map[[blake2b.Size256]byte][]protocol.ID)
+			hashCount := make(map[[blake2b.Size256]byte][]*skademlia.ID)
 			hashInRange := false
 
 			for _, vote := range selected {
@@ -1713,7 +1749,7 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 					continue
 				}
 
-				hashCount[vote.ChunkHashes[i]] = append(hashCount[vote.ChunkHashes[i]], vote.User)
+				hashCount[vote.ChunkHashes[i]] = append(hashCount[vote.ChunkHashes[i]], vote.PeerID)
 				hashInRange = true
 			}
 
@@ -1725,7 +1761,7 @@ func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
 
 			for hash, peers := range hashCount {
 				if len(peers) >= len(selected)*2/3 && len(peers) > 0 {
-					sources = append(sources, ChunkSource{Hash: hash, Peers: peers})
+					sources = append(sources, ChunkSource{Hash: hash, PeerIDs: peers})
 
 					consistent = true
 					break

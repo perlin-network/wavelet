@@ -1,8 +1,8 @@
 package wavelet
 
 import (
+	"context"
 	"github.com/perlin-network/wavelet/avl"
-	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/pkg/errors"
 	"sync"
@@ -25,24 +25,22 @@ func newAccounts(kv store.KV) *accounts {
 }
 
 // Only one instance of GC worker can run at any time.
-func (a *accounts) runGCWorker() {
+func (a *accounts) runGCWorker(ctx context.Context) {
+	timer := time.NewTicker(5 * time.Second)
+	defer timer.Stop()
+
 	for {
-		p := atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&a.gcProfile)), nil)
-		if p == nil {
-			time.Sleep(5 * time.Second)
-			continue
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			p := atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&a.gcProfile)), nil)
+			if p != nil {
+				profile := (*avl.GCProfile)(p)
+				_, _ = profile.PerformFullGC()
+			}
 		}
-
-		profile := (*avl.GCProfile)(p)
-		_, _ = profile.PerformFullGC()
 	}
-}
-
-func (a *accounts) checksum() common.MerkleNodeID {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-
-	return a.tree.Checksum()
 }
 
 func (a *accounts) snapshot() *avl.Tree {

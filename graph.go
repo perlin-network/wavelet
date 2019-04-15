@@ -1,8 +1,8 @@
 package wavelet
 
 import (
+	"bytes"
 	"encoding/binary"
-	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
@@ -78,7 +78,7 @@ func (g *graph) updateIndices(tx *Transaction) {
 // It will throw an error however if the transaction already exists
 // in the view-graph, or if the transactions parents are not
 // previously recorded in the view-graph.
-func (g *graph) addTransaction(tx *Transaction) error {
+func (g *graph) addTransaction(tx *Transaction, critical bool) error {
 	g.Lock()
 	defer g.Unlock()
 
@@ -107,9 +107,7 @@ func (g *graph) addTransaction(tx *Transaction) error {
 	}
 
 	// Update the transactions depth if the transaction is not critical.
-	// FIXME(kenta): there should be no knowledge within the view-graph about whethe. or not
-	// 	a transaction is critical; this could potentially be a cause for a data race.
-	if !tx.IsCritical(g.loadDifficulty()) {
+	if !critical {
 		for _, parent := range parents {
 			if tx.depth < parent.depth {
 				tx.depth = parent.depth
@@ -294,7 +292,7 @@ func (g *graph) loadHeight() uint64 {
 
 func (g *graph) saveRoot(root *Transaction) {
 	g.root.Store(root)
-	_ = g.kv.Put(keyGraphRoot[:], root.Write())
+	_ = g.kv.Put(keyGraphRoot[:], root.Marshal())
 }
 
 func (g *graph) loadRoot() *Transaction {
@@ -307,14 +305,12 @@ func (g *graph) loadRoot() *Transaction {
 		return nil
 	}
 
-	msg, err := Transaction{}.Read(payload.NewReader(buf))
+	tx, err := UnmarshalTransaction(bytes.NewReader(buf))
 	if err != nil {
 		panic("graph: root data is malformed")
 	}
 
-	tx := msg.(Transaction)
 	root := &tx
-
 	g.root.Store(root)
 
 	return root

@@ -3,6 +3,7 @@ package wavelet
 import (
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 )
@@ -161,10 +162,16 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 	// the transactions context over to our accounts snapshot.
 
 	for id, balance := range c.balances {
+		logger := log.Account(id, "balance_updated")
+		logger.Log().Uint64("balance", balance).Msg("Updated balance.")
+
 		WriteAccountBalance(c.tree, id, balance)
 	}
 
 	for id, stake := range c.stakes {
+		logger := log.Account(id, "stake_updated")
+		logger.Log().Uint64("stake", stake).Msg("Updated stake.")
+
 		WriteAccountStake(c.tree, id, stake)
 	}
 
@@ -173,6 +180,9 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 	}
 
 	for id, numPages := range c.contractNumPages {
+		logger := log.Account(id, "num_pages_updated")
+		logger.Log().Uint64("num_pages", numPages).Msg("Updated number of memory pages for a contract.")
+
 		WriteAccountContractNumPages(c.tree, id, numPages)
 	}
 

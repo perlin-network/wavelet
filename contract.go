@@ -1,10 +1,10 @@
 package wavelet
 
 import (
+	"encoding/binary"
 	"github.com/perlin-network/life/compiler"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
-	"github.com/perlin-network/noise/payload"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
@@ -156,17 +156,18 @@ func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, params ...
 		vm.Memory = mem
 	}
 
-	c.header = append(payload.NewWriter(nil).
-		WriteBytes(tx.ID[:]).
-		WriteBytes(tx.Creator[:]).
-		WriteUint64(amount).
-		Bytes(), params...)
+	c.header = make([]byte, common.SizeTransactionID+common.SizeAccountID+8)
+
+	copy(c.header[0:common.SizeTransactionID], tx.ID[:])
+	copy(c.header[common.SizeTransactionID:common.SizeTransactionID+common.SizeAccountID], tx.Creator[:])
+
+	binary.LittleEndian.PutUint64(c.header[common.SizeTransactionID+common.SizeAccountID:8+common.SizeTransactionID+common.SizeAccountID], amount)
 
 	entry = "_contract_" + entry
 
 	entryID, exists := vm.GetFunctionExport(entry)
 	if !exists {
-		return nil, 0, errors.Wrapf(ErrContractFunctionNotFound, "`%s` does not exist", entry)
+		return nil, vm.Gas, errors.Wrapf(ErrContractFunctionNotFound, "`%s` does not exist", entry)
 	}
 
 	// Execute virtual machine.
@@ -182,7 +183,7 @@ func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, params ...
 	}
 
 	if vm.ExitError != nil {
-		return nil, 0, utils.UnifyError(vm.ExitError)
+		return nil, vm.Gas, utils.UnifyError(vm.ExitError)
 	}
 
 	// Save memory snapshot.
