@@ -15,6 +15,7 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/crypto/blake2b"
 	"math/rand"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -30,7 +31,8 @@ type receiverPayload struct {
 
 type receiver struct {
 	bus chan receiverPayload
-	stopped atomic.Bool
+	stopped bool
+	stopLock sync.Mutex
 
 	wg sync.WaitGroup
 	cancel func()
@@ -85,16 +87,19 @@ func NewReceiver(
 }
 
 func (r *receiver) Stop() {
-	if r.stopped.Load() {
+	r.stopLock.Lock()
+	defer r.stopLock.Unlock()
+
+	if r.stopped {
 		return
 	}
-
-	defer func() {r.stopped.Store(true)}()
 
 	r.cancel()
 	r.wg.Wait()
 
 	close(r.bus)
+
+	r.stopped = true
 }
 
 type Protocol struct {
@@ -120,6 +125,7 @@ type Protocol struct {
 	network *skademlia.Protocol
 	keys    *skademlia.Keypair
 
+	receiverLock sync.Mutex
 	receivers []*receiver
 
 	ctx context.Context
@@ -203,8 +209,13 @@ func (b *Protocol) Protocol() noise.ProtocolBlock {
 		signal := ctx.Peer().RegisterSignal(SignalAuthenticated)
 		defer signal()
 
-		r := NewReceiver(b, 4, 1000)
+		r := NewReceiver(b, runtime.NumCPU(), 1000)
+
+		b.receiverLock.Lock()
 		b.receivers = append(b.receivers, r)
+		b.receiverLock.Unlock()
+
+		go b.receiveLoop(ctx.Peer(), r.bus)
 
 		ctx.Peer().InterceptErrors(func(err error) {
 			r.Stop()
@@ -215,8 +226,6 @@ func (b *Protocol) Protocol() noise.ProtocolBlock {
 				Hex("public_key", publicKey[:]).
 				Msg("Peer has disconnected.")
 		})
-
-		go b.receiveLoop(ctx.Peer(), r.bus)
 
 		logger := log.Network("joined")
 		logger.Info().
