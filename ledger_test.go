@@ -821,7 +821,7 @@ func TestSyncMissingTX(t *testing.T) {
 
 	stop := make(chan struct{})
 	syncMissingTX := func() error {
-		return syncMissingTX(l, nil)(stop)
+		return syncMissingTX(l)(stop)
 	}
 
 	var wg sync.WaitGroup

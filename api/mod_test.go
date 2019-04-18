@@ -683,7 +683,7 @@ func TestGetLedger(t *testing.T) {
 	assert.NoError(t, err)
 	gateway.keys = keys
 
-	n, err := xnoise.ListenTCP(9000)
+	n, err := xnoise.ListenTCP(0)
 	assert.NoError(t, err)
 	gateway.node = n
 
