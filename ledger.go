@@ -1722,7 +1722,7 @@ func syncMissingTX(l *Ledger) func(stop <-chan struct{}) error {
 			return ErrStopped
 		case <-stop:
 			return ErrStopped
-		case <-time.After(500 * time.Millisecond):
+		case <-time.After(100 * time.Millisecond):
 		}
 
 		evt := EventSyncTX{
