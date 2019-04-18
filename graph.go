@@ -7,6 +7,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
+	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 	"sync"
@@ -209,62 +210,62 @@ func (g *graph) reset(root *Transaction) {
 	g.Unlock()
 }
 
-func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
-	g.RLock()
-
-	for id := range g.eligibleParents {
-		eligible = append(eligible, id)
-	}
-
-	g.RUnlock()
-
-	return
-}
-
-// Let it stay here for a while since it was slow but working version
-//
 //func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 //	g.RLock()
-//	defer g.RUnlock()
 //
-//	root := g.loadRoot()
-//
-//	if root == nil {
-//		return
+//	for id := range g.eligibleParents {
+//		eligible = append(eligible, id)
 //	}
 //
-//	visited := make(map[common.TransactionID]struct{})
-//	visited[root.ID] = struct{}{}
-//
-//	q := queuePool.Get().(*queue.Queue)
-//	defer func() {
-//		q.Init()
-//		queuePool.Put(q)
-//	}()
-//
-//	q.PushBack(root)
-//
-//	height := g.height.Load()
-//	viewID := g.loadViewID(root)
-//
-//	for q.Len() > 0 {
-//		popped := q.PopFront().(*Transaction)
-//
-//		if children := g.children[popped.ID]; len(children) > 0 {
-//			for _, child := range children {
-//				if _, seen := visited[child.ID]; !seen {
-//					q.PushBack(child)
-//					visited[child.ID] = struct{}{}
-//				}
-//			}
-//		} else if popped.depth+sys.MaxEligibleParentsDepthDiff >= height && (popped.ID == root.ID || popped.ViewID == viewID) {
-//			// All eligible parents are within the graph depth [frontier_depth - max_depth_diff, frontier_depth].
-//			eligible = append(eligible, popped.ID)
-//		}
-//	}
+//	g.RUnlock()
 //
 //	return
 //}
+
+// Let it stay here for a while since it was slow but working version
+//
+func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
+	g.RLock()
+	defer g.RUnlock()
+
+	root := g.loadRoot()
+
+	if root == nil {
+		return
+	}
+
+	visited := make(map[common.TransactionID]struct{})
+	visited[root.ID] = struct{}{}
+
+	q := queuePool.Get().(*queue.Queue)
+	defer func() {
+		q.Init()
+		queuePool.Put(q)
+	}()
+
+	q.PushBack(root)
+
+	height := g.height.Load()
+	viewID := g.loadViewID(root)
+
+	for q.Len() > 0 {
+		popped := q.PopFront().(*Transaction)
+
+		if children := g.children[popped.ID]; len(children) > 0 {
+			for _, child := range children {
+				if _, seen := visited[child.ID]; !seen {
+					q.PushBack(child)
+					visited[child.ID] = struct{}{}
+				}
+			}
+		} else if popped.depth+sys.MaxEligibleParentsDepthDiff >= height && (popped.ID == root.ID || popped.ViewID == viewID) {
+			// All eligible parents are within the graph depth [frontier_depth - max_depth_diff, frontier_depth].
+			eligible = append(eligible, popped.ID)
+		}
+	}
+
+	return
+}
 
 func (g *graph) numTransactions(viewID uint64) int {
 	g.RLock()

@@ -1345,16 +1345,8 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 					}
 
 					l.muMissing.Lock()
-					for id, buffered := range l.missing {
-						for _, tx := range buffered {
-							if tx.ViewID < l.v.loadViewID(newRoot) {
-								delete(buffered, tx.ID)
-							}
-						}
-
-						if len(buffered) == 0 {
-							delete(l.missing, id)
-						}
+					for id := range l.missing {
+						delete(l.missing, id)
 					}
 					l.muMissing.Unlock()
 
@@ -1589,7 +1581,7 @@ func listenForSyncDiffChunks(l *Ledger) func(stop <-chan struct{}) error {
 
 func syncMissingTX(l *Ledger) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(1 * time.Millisecond)
 
 		evt := EventSyncTX{
 			Result: make(chan []Transaction, 1),
@@ -1638,7 +1630,7 @@ func syncMissingTX(l *Ledger) func(stop <-chan struct{}) error {
 			}
 		}
 
-		return syncErrors
+		return nil
 	}
 }
 

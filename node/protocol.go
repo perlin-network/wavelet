@@ -319,7 +319,7 @@ func (b *Protocol) broadcastSyncMissingTXs(ctx context.Context, node *noise.Node
 		case evt := <-b.ledger.SyncTxOut:
 			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
 			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while selecting peers for sync init")
+				evt.Error <- errors.Wrap(err, "got an error while selecting peers for syncing missing transactions")
 				continue
 			}
 
