@@ -155,7 +155,11 @@ func AssertValidAncestry(view *graph, tx Transaction) (missing []common.Transact
 
 var ErrIncorrectCriticalTimestamps = errors.New("critical transactions timestamps do not match ones we have in store")
 
-func AssertInView(viewID uint64, kv store.KV, tx Transaction, critical bool) error {
+func AssertInView(preferred *Transaction, viewID uint64, kv store.KV, tx Transaction, critical bool) error {
+	if preferred != nil && tx.ViewID == viewID {
+		return errors.New("not accepting anymore transactions for the current consensus round, as node prefers some critical transaction")
+	}
+
 	if critical {
 		if tx.ViewID != viewID {
 			return errors.Errorf("critical transaction was made for view ID %d, but our view ID is %d", tx.ViewID, viewID)

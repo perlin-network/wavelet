@@ -473,13 +473,15 @@ var (
 
 func (l *Ledger) addTransaction(tx Transaction) (err error) {
 	critical := tx.IsCritical(l.v.loadDifficulty())
+	viewID := l.v.loadViewID(nil)
+	preferred := l.cr.Preferred()
 
 	defer func() {
 		if err != nil {
 			return
 		}
 
-		if critical && l.cr.Preferred() == nil && tx.ViewID == l.v.loadViewID(nil) {
+		if critical && preferred == nil && tx.ViewID == viewID {
 			l.cr.Prefer(tx)
 		}
 
@@ -490,7 +492,7 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 		return
 	}
 
-	if err = AssertInView(l.v.loadViewID(nil), l.kv, tx, critical); err != nil {
+	if err = AssertInView(preferred, viewID, l.kv, tx, critical); err != nil {
 		return
 	}
 
