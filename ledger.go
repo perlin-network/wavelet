@@ -1347,8 +1347,16 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 					}
 
 					l.muMissing.Lock()
-					for id := range l.missing {
-						delete(l.missing, id)
+					for id, buffered := range l.missing {
+						for _, tx := range buffered {
+							if tx.ViewID < l.v.loadViewID(newRoot) {
+								delete(buffered, tx.ID)
+							}
+						}
+
+						if len(buffered) == 0 {
+							delete(l.missing, id)
+						}
 					}
 					l.muMissing.Unlock()
 
