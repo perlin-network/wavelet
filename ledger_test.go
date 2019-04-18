@@ -651,8 +651,8 @@ func TestListenForMissingTXs(t *testing.T) {
 	assert.NoError(t, l.v.addTransaction(&tx, false))
 
 	evt := EventIncomingSyncTX{
-		IDs:      []common.TransactionID{tx.ID},
-		Response: make(chan []Transaction, 1),
+		Checksums: []uint64{tx.Checksum},
+		Response:  make(chan []Transaction, 1),
 	}
 
 	l.SyncTxIn <- evt

@@ -60,8 +60,6 @@ func TestGraphReset(t *testing.T) {
 		return
 	}
 
-	assert.NotEmpty(t, g.eligibleParents)
-
 	resetTx, err := createTx(genesis.ViewID + pruningDepth + 1)
 	if !assert.NoError(t, err) {
 		return

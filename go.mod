@@ -6,6 +6,7 @@ require (
 	github.com/BurntSushi/toml v0.3.1 // indirect
 	github.com/buaazp/fasthttprouter v0.1.2-0.20190109152524-979d6e516ec3
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dgryski/go-xxh3 v0.0.0-20190317160639-1675ae87ac49
 	github.com/facebookgo/ensure v0.0.0-20160127193407-b4ab57deab51 // indirect
 	github.com/facebookgo/stack v0.0.0-20160209184415-751773369052 // indirect
 	github.com/facebookgo/subset v0.0.0-20150612182917-8dac2c3c4870 // indirect

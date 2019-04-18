@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/dgryski/go-xxh3"
 	"github.com/heptio/workgroup"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
@@ -123,14 +124,14 @@ type EventSyncDiff struct {
 }
 
 type EventSyncTX struct {
-	IDs []common.TransactionID
+	Checksums []uint64
 
 	Result chan []Transaction
 	Error  chan error
 }
 
 type EventIncomingSyncTX struct {
-	IDs []common.TransactionID
+	Checksums []uint64
 
 	Response chan []Transaction
 }
@@ -139,6 +140,17 @@ type EventIncomingSyncDiff struct {
 	ChunkHash [blake2b.Size256]byte
 
 	Response chan []byte
+}
+
+type EventLatestView struct {
+	ViewID uint64
+	Result chan []uint64
+	Error  chan error
+}
+
+type EventIncomingLatestView struct {
+	ViewID   uint64
+	Response chan []uint64
 }
 
 type Ledger struct {
@@ -154,7 +166,7 @@ type Ledger struct {
 	processors map[byte]TransactionProcessor
 	validators map[byte]TransactionValidator
 
-	missing   map[common.TransactionID]map[common.TransactionID]Transaction
+	missing   map[uint64]map[uint64]Transaction
 	muMissing sync.RWMutex
 
 	BroadcastQueue chan<- EventBroadcast
@@ -196,6 +208,12 @@ type Ledger struct {
 	SyncTxOut <-chan EventSyncTX
 	syncTxOut chan<- EventSyncTX
 
+	LatestViewIn chan<- EventIncomingLatestView
+	latestViewIn <-chan EventIncomingLatestView
+
+	LatestViewOut <-chan EventLatestView
+	latestViewOut chan<- EventLatestView
+
 	cacheAccounts   *lru
 	cacheDiffChunks *lru
 
@@ -222,6 +240,9 @@ func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledge
 
 	syncTxIn := make(chan EventIncomingSyncTX, 16)
 	syncTxOut := make(chan EventSyncTX, 16)
+
+	latestViewIn := make(chan EventIncomingLatestView, 16)
+	latestViewOut := make(chan EventLatestView, 16)
 
 	accounts := newAccounts(kv)
 	go accounts.runGCWorker(ctx)
@@ -262,7 +283,7 @@ func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledge
 			sys.TagStake:    ValidateStakeTransaction,
 		},
 
-		missing: make(map[common.TransactionID]map[common.TransactionID]Transaction),
+		missing: make(map[uint64]map[uint64]Transaction),
 
 		BroadcastQueue: broadcastQueue,
 		broadcastQueue: broadcastQueue,
@@ -302,6 +323,12 @@ func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledge
 
 		SyncTxOut: syncTxOut,
 		syncTxOut: syncTxOut,
+
+		LatestViewIn: latestViewIn,
+		latestViewIn: latestViewIn,
+
+		LatestViewOut: latestViewOut,
+		latestViewOut: latestViewOut,
 
 		cacheAccounts:   newLRU(16),
 		cacheDiffChunks: newLRU(1024), // 1024 * 4MB
@@ -427,10 +454,10 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 				_, ok := l.missing[id]
 
 				if !ok {
-					l.missing[id] = make(map[common.TransactionID]Transaction)
+					l.missing[id] = make(map[uint64]Transaction)
 				}
 
-				l.missing[id][tx.ID] = tx
+				l.missing[id][tx.Checksum] = tx
 			}
 			l.muMissing.Unlock()
 		}
@@ -519,21 +546,21 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 
 	// END ASSERT PRE-ACCEPTANCE
 
-	var missing []common.TransactionID
+	var missing []uint64
 
 	{
 		missing, err = AssertValidAncestry(l.v, tx)
 
 		if len(missing) > 0 {
 			l.muMissing.Lock()
-			for _, id := range missing {
-				_, ok := l.missing[id]
+			for _, checksum := range missing {
+				_, ok := l.missing[checksum]
 
 				if !ok {
-					l.missing[id] = make(map[common.TransactionID]Transaction)
+					l.missing[checksum] = make(map[uint64]Transaction)
 				}
 
-				l.missing[id][tx.ID] = tx
+				l.missing[checksum][tx.Checksum] = tx
 			}
 			l.muMissing.Unlock()
 		}
@@ -552,10 +579,10 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 				_, ok := l.missing[id]
 
 				if !ok {
-					l.missing[id] = make(map[common.TransactionID]Transaction)
+					l.missing[id] = make(map[uint64]Transaction)
 				}
 
-				l.missing[id][tx.ID] = tx
+				l.missing[id][tx.Checksum] = tx
 			}
 			l.muMissing.Unlock()
 		}
@@ -573,8 +600,10 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 }
 
 func (l *Ledger) revisitBufferedTransactions(id common.TransactionID) {
+	checksum := xxh3.XXH3_64bits(id[:])
+
 	l.muMissing.RLock()
-	buffered, exists := l.missing[id]
+	buffered, exists := l.missing[checksum]
 	l.muMissing.RUnlock()
 
 	if !exists {
@@ -601,23 +630,26 @@ func (l *Ledger) revisitBufferedTransactions(id common.TransactionID) {
 	for unbufferedID, unbufferedTX := range unbuffered {
 		// If a transaction T is unbuffered, make sure no other transactions we have yet
 		// to receive is awaiting for the arrival of T.
+		unbufferedChecksum := xxh3.XXH3_64bits(unbufferedID[:])
 
 		for _, parentID := range unbufferedTX.ParentIDs {
-			_, exists = l.missing[parentID]
+			parentChecksum := xxh3.XXH3_64bits(parentID[:])
+
+			_, exists = l.missing[parentChecksum]
 
 			if !exists {
 				continue
 			}
 
-			delete(l.missing[parentID], unbufferedID)
+			delete(l.missing[parentChecksum], unbufferedChecksum)
 
-			if len(l.missing[parentID]) == 0 {
-				delete(l.missing, parentID)
+			if len(l.missing[parentChecksum]) == 0 {
+				delete(l.missing, parentChecksum)
 			}
 		}
 	}
 
-	delete(l.missing, id)
+	delete(l.missing, checksum)
 	l.muMissing.Unlock()
 }
 
@@ -625,7 +657,7 @@ func (l *Ledger) revisitBufferedTransactions(id common.TransactionID) {
 // applies all valid ones to a snapshot of all accounts stored in the ledger.
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
-func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tree, missing []common.TransactionID, err error) {
+func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tree, missing []uint64, err error) {
 	if state, hit := l.cacheAccounts.load(tx.getCriticalSeed()); hit {
 		return state.(*avl.Tree), nil, nil
 	}
@@ -654,7 +686,7 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tre
 		parent, exists := l.v.lookupTransaction(parentID)
 
 		if !exists {
-			missing = append(missing, parentID)
+			missing = append(missing, xxh3.XXH3_64bits(parentID[:]))
 			continue
 		}
 
@@ -677,7 +709,7 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tre
 				parent, exists := l.v.lookupTransaction(parentID)
 
 				if !exists {
-					missing = append(missing, parentID)
+					missing = append(missing, xxh3.XXH3_64bits(parentID[:]))
 					continue
 				}
 
@@ -856,7 +888,7 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) e
 	return nil
 }
 
-func (l *Ledger) assertCollapsible(tx Transaction) (missing []common.TransactionID, err error) {
+func (l *Ledger) assertCollapsible(tx Transaction) (missing []uint64, err error) {
 	snapshot, missing, err := l.collapseTransactions(tx, false)
 
 	if err != nil {
@@ -890,12 +922,16 @@ func gossiping(l *Ledger) transition {
 
 	g.Add(continuously(gossip(l)))
 	g.Add(continuously(checkIfOutOfSync(l)))
+
+	g.Add(continuously(findMissingTX(l)))
 	g.Add(continuously(syncMissingTX(l)))
 
 	g.Add(continuously(listenForGossip(l)))
 	g.Add(continuously(listenForOutOfSyncChecks(l)))
 	g.Add(continuously(listenForSyncInits(l)))
 	g.Add(continuously(listenForSyncDiffChunks(l)))
+
+	g.Add(continuously(listenForFindMissingTXs(l)))
 	g.Add(continuously(listenForMissingTXs(l)))
 
 	if err := g.Run(); err != nil {
@@ -925,12 +961,16 @@ func querying(l *Ledger) transition {
 
 	g.Add(continuously(query(l, state)))
 	g.Add(continuously(checkIfOutOfSync(l)))
+
+	g.Add(continuously(findMissingTX(l)))
 	g.Add(continuously(syncMissingTX(l)))
 
 	g.Add(continuously(listenForQueries(l)))
 	g.Add(continuously(listenForOutOfSyncChecks(l)))
 	g.Add(continuously(listenForSyncInits(l)))
 	g.Add(continuously(listenForSyncDiffChunks(l)))
+
+	g.Add(continuously(listenForFindMissingTXs(l)))
 	g.Add(continuously(listenForMissingTXs(l)))
 
 	defer func() {
@@ -1038,14 +1078,26 @@ func gossip(l *Ledger) func(stop <-chan struct{}) error {
 			Error = item.Error
 		case <-time.After(1 * time.Millisecond):
 			if !broadcastNops {
-				time.Sleep(100 * time.Millisecond)
+				select {
+				case <-l.kill:
+					return ErrStopped
+				case <-stop:
+					return ErrStopped
+				case <-time.After(100 * time.Millisecond):
+				}
 				return nil
 			}
 
 			// Check if we have enough money available to create and broadcast a nop transaction.
 
 			if balance, _ := ReadAccountBalance(snapshot, l.keys.PublicKey()); balance < sys.TransactionFeeAmount {
-				time.Sleep(100 * time.Millisecond)
+				select {
+				case <-l.kill:
+					return ErrStopped
+				case <-stop:
+					return ErrStopped
+				case <-time.After(100 * time.Millisecond):
+				}
 				return nil
 			}
 
@@ -1320,10 +1372,10 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 							_, ok := l.missing[id]
 
 							if !ok {
-								l.missing[id] = make(map[common.TransactionID]Transaction)
+								l.missing[id] = make(map[uint64]Transaction)
 							}
 
-							l.missing[id][newRoot.ID] = *newRoot
+							l.missing[id][newRoot.Checksum] = *newRoot
 						}
 						l.muMissing.Unlock()
 					}
@@ -1350,7 +1402,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 					for id, buffered := range l.missing {
 						for _, tx := range buffered {
 							if tx.ViewID < l.v.loadViewID(newRoot) {
-								delete(buffered, tx.ID)
+								delete(buffered, tx.Checksum)
 							}
 						}
 
@@ -1434,7 +1486,13 @@ func listenForQueries(l *Ledger) func(stop <-chan struct{}) error {
 
 func checkIfOutOfSync(l *Ledger) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
-		time.Sleep(1 * time.Millisecond)
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case <-time.After(100 * time.Millisecond):
+		}
 
 		snapshot := l.a.snapshot()
 
@@ -1497,7 +1555,13 @@ func checkIfOutOfSync(l *Ledger) func(stop <-chan struct{}) error {
 				// is less than or equal to ours. Go back to square one.
 
 				if currentRoot.ID == proposedRoot.ID || l.v.loadViewID(currentRoot) >= l.v.loadViewID(proposedRoot) {
-					time.Sleep(1 * time.Second)
+					select {
+					case <-l.kill:
+						return ErrStopped
+					case <-stop:
+						return ErrStopped
+					case <-time.After(1 * time.Second):
+					}
 
 					l.sr.Reset()
 					return nil
@@ -1589,9 +1653,77 @@ func listenForSyncDiffChunks(l *Ledger) func(stop <-chan struct{}) error {
 	}
 }
 
+func findMissingTX(l *Ledger) func(stop <-chan struct{}) error {
+	return func(stop <-chan struct{}) error {
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case <-time.After(100 * time.Millisecond):
+		}
+
+		evt := EventLatestView{ViewID: l.v.loadViewID(nil), Result: make(chan []uint64, 1), Error: make(chan error, 1)}
+
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case l.latestViewOut <- evt:
+		}
+
+		var checksums []uint64
+
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case err := <-evt.Error:
+			fmt.Println(errors.Wrap(err, "finding missing tx got error"))
+			return nil
+		case checksums = <-evt.Result:
+		}
+
+		l.muMissing.Lock()
+		for _, checksum := range checksums {
+			if _, exists := l.missing[checksum]; !exists {
+				if _, exists := l.v.lookupTransactionByChecksum(checksum); !exists {
+					l.missing[checksum] = make(map[uint64]Transaction)
+				}
+			}
+		}
+		l.muMissing.Unlock()
+
+		return nil
+	}
+}
+
+func listenForFindMissingTXs(l *Ledger) func(stop <-chan struct{}) error {
+	return func(stop <-chan struct{}) error {
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case evt := <-l.latestViewIn:
+			evt.Response <- l.v.loadChecksums(evt.ViewID)
+		}
+
+		return nil
+	}
+}
+
 func syncMissingTX(l *Ledger) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
-		time.Sleep(1 * time.Millisecond)
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case <-time.After(500 * time.Millisecond):
+		}
 
 		evt := EventSyncTX{
 			Result: make(chan []Transaction, 1),
@@ -1600,11 +1732,11 @@ func syncMissingTX(l *Ledger) func(stop <-chan struct{}) error {
 
 		l.muMissing.RLock()
 		for id := range l.missing {
-			evt.IDs = append(evt.IDs, id)
+			evt.Checksums = append(evt.Checksums, id)
 		}
 		l.muMissing.RUnlock()
 
-		if len(evt.IDs) == 0 {
+		if len(evt.Checksums) == 0 {
 			return nil
 		}
 
@@ -1625,8 +1757,7 @@ func syncMissingTX(l *Ledger) func(stop <-chan struct{}) error {
 			return ErrStopped
 		case err := <-evt.Error:
 			return errors.Wrap(err, "sync missing event got error")
-		case t := <-evt.Result:
-			txs = t
+		case txs = <-evt.Result:
 		}
 
 		var syncErrors error
@@ -1654,8 +1785,8 @@ func listenForMissingTXs(l *Ledger) func(stop <-chan struct{}) error {
 		case evt := <-l.syncTxIn:
 			var txs []Transaction
 
-			for _, id := range evt.IDs {
-				if tx, available := l.v.lookupTransaction(id); available {
+			for _, checksum := range evt.Checksums {
+				if tx, available := l.v.lookupTransactionByChecksum(checksum); available {
 					txs = append(txs, *tx)
 				}
 			}

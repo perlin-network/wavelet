@@ -3,6 +3,7 @@ package wavelet
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/dgryski/go-xxh3"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -14,6 +15,8 @@ import (
 type Transaction struct {
 	// WIRE FORMAT
 	ID common.TransactionID
+
+	Checksum uint64
 
 	Sender, Creator common.AccountID
 
@@ -235,6 +238,8 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 
 func (t *Transaction) rehash() *Transaction {
 	t.ID = blake2b.Sum256(t.marshal())
+	t.Checksum = xxh3.XXH3_64bits(t.ID[:])
+
 	return t
 }
 

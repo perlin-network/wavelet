@@ -2,6 +2,7 @@ package wavelet
 
 import (
 	"bytes"
+	"github.com/dgryski/go-xxh3"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/store"
@@ -79,7 +80,7 @@ func AssertValidTransaction(tx Transaction) error {
 // 1) we have the transactions ancestral data in our view-graph.
 // 2) the transaction has parents that are at a valid graph depth.
 // 3) the transaction has a sane timestamp with respect to its ancestry.
-func AssertValidAncestry(view *graph, tx Transaction) (missing []common.TransactionID, err error) {
+func AssertValidAncestry(view *graph, tx Transaction) (missing []uint64, err error) {
 	visited := make(map[common.TransactionID]struct{})
 	q := queuePool.Get().(*queue.Queue)
 	defer func() {
@@ -95,7 +96,7 @@ func AssertValidAncestry(view *graph, tx Transaction) (missing []common.Transact
 		parent, stored := view.lookupTransaction(parentID)
 
 		if !stored {
-			missing = append(missing, parentID)
+			missing = append(missing, xxh3.XXH3_64bits(parentID[:]))
 			continue
 		}
 
@@ -125,7 +126,7 @@ func AssertValidAncestry(view *graph, tx Transaction) (missing []common.Transact
 				parent, stored := view.lookupTransaction(parentID)
 
 				if !stored {
-					missing = append(missing, parentID)
+					missing = append(missing, xxh3.XXH3_64bits(parentID[:]))
 					continue
 				}
 

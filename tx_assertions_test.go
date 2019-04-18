@@ -22,7 +22,7 @@ func TestAssertInView(t *testing.T) {
 
 		assert.EqualError(
 			t,
-			AssertInView(1, kv, tx, true),
+			AssertInView(nil, 1, kv, tx, true),
 			"critical transaction was made for view ID 0, but our view ID is 1",
 		)
 	})
@@ -35,7 +35,7 @@ func TestAssertInView(t *testing.T) {
 
 		assert.EqualError(
 			t,
-			AssertInView(tx.ViewID, kv, tx, true),
+			AssertInView(nil, tx.ViewID, kv, tx, true),
 			"critical transactions merkle root is expected to be not nil",
 		)
 	})
@@ -51,7 +51,7 @@ func TestAssertInView(t *testing.T) {
 
 		assert.EqualError(
 			t,
-			AssertInView(tx.ViewID, kv, tx, true),
+			AssertInView(nil, tx.ViewID, kv, tx, true),
 			"expected tx to have 2 timestamp(s), but has 0 timestamp(s)",
 		)
 	})
@@ -68,7 +68,7 @@ func TestAssertInView(t *testing.T) {
 
 		assert.EqualError(
 			t,
-			AssertInView(tx.ViewID, kv, tx, true),
+			AssertInView(nil, tx.ViewID, kv, tx, true),
 			"tx critical timestamps are not in ascending order",
 		)
 	})
@@ -89,7 +89,7 @@ func TestAssertInView(t *testing.T) {
 
 		assert.EqualError(
 			t,
-			AssertInView(tx.ViewID, kv, tx, true),
+			AssertInView(nil, tx.ViewID, kv, tx, true),
 			"for view id 6, at idx 2, stored 9999 but got 3333: critical transactions timestamps do not match ones we have in store",
 		)
 	})
@@ -108,7 +108,7 @@ func TestAssertInView(t *testing.T) {
 			return
 		}
 
-		assert.NoError(t, AssertInView(tx.ViewID, kv, tx, true))
+		assert.NoError(t, AssertInView(nil, tx.ViewID, kv, tx, true))
 	})
 
 	t.Run("non critical, not empty merkle root", func(t *testing.T) {
@@ -121,7 +121,7 @@ func TestAssertInView(t *testing.T) {
 
 		assert.EqualError(
 			t,
-			AssertInView(tx.ViewID, kv, tx, false),
+			AssertInView(nil, tx.ViewID, kv, tx, false),
 			"transactions merkle root is expected to be nil",
 		)
 	})
@@ -136,7 +136,7 @@ func TestAssertInView(t *testing.T) {
 
 		assert.EqualError(
 			t,
-			AssertInView(tx.ViewID, kv, tx, false),
+			AssertInView(nil, tx.ViewID, kv, tx, false),
 			"normal transactions are not expected to have difficulty timestamps",
 		)
 	})
@@ -149,7 +149,7 @@ func TestAssertInView(t *testing.T) {
 
 		assert.EqualError(
 			t,
-			AssertInView(1, kv, tx, false),
+			AssertInView(nil, 1, kv, tx, false),
 			"transaction was made for view ID 0, but our view ID is 1",
 		)
 	})
@@ -160,6 +160,6 @@ func TestAssertInView(t *testing.T) {
 			return
 		}
 
-		assert.NoError(t, AssertInView(tx.ViewID, kv, tx, false))
+		assert.NoError(t, AssertInView(nil, tx.ViewID, kv, tx, false))
 	})
 }

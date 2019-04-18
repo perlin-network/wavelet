@@ -41,6 +41,9 @@ type Protocol struct {
 	opcodeSyncMissingTxRequest  byte
 	opcodeSyncMissingTxResponse byte
 
+	opcodeLatestViewRequest  byte
+	opcodeLatestViewResponse byte
+
 	ledger *wavelet.Ledger
 
 	network *skademlia.Protocol
@@ -91,6 +94,12 @@ func (b *Protocol) RegisterOpcodes(node *noise.Node) {
 
 	b.opcodeSyncMissingTxResponse = node.NextAvailableOpcode()
 	node.RegisterOpcode("sync missing tx response", b.opcodeSyncMissingTxResponse)
+
+	b.opcodeLatestViewRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("latest view request", b.opcodeLatestViewRequest)
+
+	b.opcodeLatestViewResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("latest view response", b.opcodeLatestViewResponse)
 }
 
 func (b *Protocol) Init(node *noise.Node) {
@@ -140,6 +149,7 @@ func (b *Protocol) sendLoop(node *noise.Node) {
 	go b.broadcastSyncInitRequests(ctx, node)
 	go b.broadcastSyncDiffRequests(ctx, node)
 	go b.broadcastSyncMissingTXs(ctx, node)
+	go b.broadcastLatestViewRequests(ctx, node)
 }
 
 func (b *Protocol) receiveLoop(ledger *wavelet.Ledger, ctx noise.Context) {
@@ -161,6 +171,8 @@ func (b *Protocol) receiveLoop(ledger *wavelet.Ledger, ctx noise.Context) {
 			go b.handleSyncChunks(wire)
 		case wire := <-peer.Recv(b.opcodeSyncMissingTxRequest):
 			go b.handleSyncMissingTXs(wire)
+		case wire := <-peer.Recv(b.opcodeLatestViewRequest):
+			go b.handleLatestViewRequest(wire)
 		}
 	}
 }
@@ -323,7 +335,7 @@ func (b *Protocol) broadcastSyncMissingTXs(ctx context.Context, node *noise.Node
 				continue
 			}
 
-			responses := broadcast(peers, b.opcodeSyncMissingTxRequest, b.opcodeSyncMissingTxResponse, SyncMissingTxRequest{ids: evt.IDs}.Marshal())
+			responses := broadcast(peers, b.opcodeSyncMissingTxRequest, b.opcodeSyncMissingTxResponse, SyncMissingTxRequest{checksums: evt.Checksums}.Marshal())
 
 			set := make(map[common.TransactionID]wavelet.Transaction)
 
@@ -349,6 +361,48 @@ func (b *Protocol) broadcastSyncMissingTXs(ctx context.Context, node *noise.Node
 			}
 
 			evt.Result <- txs
+		}
+	}
+}
+
+func (b *Protocol) broadcastLatestViewRequests(ctx context.Context, node *noise.Node) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case evt := <-b.ledger.LatestViewOut:
+			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
+			if err != nil {
+				evt.Error <- errors.Wrap(err, "got an error while selecting peers for finding missing transactions")
+				continue
+			}
+
+			responses := broadcast(peers, b.opcodeLatestViewRequest, b.opcodeLatestViewResponse, LatestViewRequest(evt.ViewID).Marshal())
+
+			set := make(map[uint64]struct{})
+
+			for _, buf := range responses {
+				if buf != nil {
+					checksums, err := UnmarshalLatestViewResponse(bytes.NewReader(buf))
+
+					if err != nil {
+						fmt.Println("Error while unmarshaling latest view response", err)
+						continue
+					}
+
+					for _, checksum := range checksums {
+						set[checksum] = struct{}{}
+					}
+				}
+			}
+
+			var checksums []uint64
+
+			for checksum := range set {
+				checksums = append(checksums, checksum)
+			}
+
+			evt.Result <- checksums
 		}
 	}
 }
@@ -604,6 +658,38 @@ func (b *Protocol) handleSyncChunks(wire noise.Wire) {
 	}
 }
 
+func (b *Protocol) handleLatestViewRequest(wire noise.Wire) {
+	var res LatestViewResponse
+	defer func() {
+		if err := wire.SendWithTimeout(b.opcodeLatestViewResponse, res.Marshal(), 1*time.Second); err != nil {
+			fmt.Println(err)
+		}
+	}()
+
+	req, err := UnmarshalLatestViewRequest(bytes.NewReader(wire.Bytes()))
+	if err != nil {
+		fmt.Println("Error while unmarshaling latest view request", err)
+		return
+	}
+
+	evt := wavelet.EventIncomingLatestView{ViewID: uint64(req), Response: make(chan []uint64, 1)}
+
+	select {
+	case <-time.After(1 * time.Second):
+		fmt.Println("timed out sending latest view request to ledger")
+		return
+	case b.ledger.LatestViewIn <- evt:
+	}
+
+	select {
+	case <-time.After(1 * time.Second):
+		fmt.Println("timed out getting latest view response from ledger")
+		return
+	case checksums := <-evt.Response:
+		res = checksums
+	}
+}
+
 func (b *Protocol) handleSyncMissingTXs(wire noise.Wire) {
 	var res SyncMissingTxResponse
 	defer func() {
@@ -618,7 +704,7 @@ func (b *Protocol) handleSyncMissingTXs(wire noise.Wire) {
 		return
 	}
 
-	evt := wavelet.EventIncomingSyncTX{IDs: req.ids, Response: make(chan []wavelet.Transaction, 1)}
+	evt := wavelet.EventIncomingSyncTX{Checksums: req.checksums, Response: make(chan []wavelet.Transaction, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):

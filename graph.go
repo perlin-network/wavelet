@@ -21,11 +21,10 @@ var (
 type graph struct {
 	sync.RWMutex
 
-	transactions    map[common.TransactionID]*Transaction
-	children        map[common.TransactionID][]*Transaction
-	eligibleParents map[common.TransactionID]*Transaction
-
-	indexViewID map[uint64][]*Transaction
+	checksums    map[uint64]*Transaction
+	transactions map[common.TransactionID]*Transaction
+	children     map[common.TransactionID][]*Transaction
+	viewIDs      map[uint64]map[common.TransactionID]*Transaction
 
 	root   atomic.Value
 	height atomic.Uint64
@@ -35,11 +34,12 @@ type graph struct {
 
 func newGraph(kv store.KV, genesis *Transaction) *graph {
 	g := &graph{
-		kv:              kv,
-		transactions:    make(map[common.TransactionID]*Transaction),
-		children:        make(map[common.TransactionID][]*Transaction),
-		eligibleParents: make(map[common.TransactionID]*Transaction),
-		indexViewID:     make(map[uint64][]*Transaction),
+		kv: kv,
+
+		checksums:    make(map[uint64]*Transaction),
+		transactions: make(map[common.TransactionID]*Transaction),
+		children:     make(map[common.TransactionID][]*Transaction),
+		viewIDs:      make(map[uint64]map[common.TransactionID]*Transaction),
 	}
 
 	// Initialize difficulty if not exist.
@@ -58,15 +58,25 @@ func newGraph(kv store.KV, genesis *Transaction) *graph {
 		}
 	}
 
-	g.eligibleParents[genesis.ID] = genesis
-	g.transactions[genesis.ID] = genesis
-	g.updateIndices(genesis)
+	g.push(genesis)
 
 	return g
 }
 
-func (g *graph) updateIndices(tx *Transaction) {
-	g.indexViewID[tx.ViewID] = append(g.indexViewID[tx.ViewID], tx)
+// push adds a transaction forcefully into the view-graph with no checks. It is
+// responsible for updating in-memory indices for a transaction as well.
+func (g *graph) push(tx *Transaction) {
+	// Add transaction to the view-graph.
+	g.transactions[tx.ID] = tx
+
+	// Update view ID index.
+	if _, exists := g.viewIDs[tx.ViewID]; !exists {
+		g.viewIDs[tx.ViewID] = make(map[common.TransactionID]*Transaction)
+	}
+	g.viewIDs[tx.ViewID][tx.ID] = tx
+
+	// Update checksum index.
+	g.checksums[tx.Checksum] = tx
 }
 
 // addTransaction adds a transaction to the view-graph. Note that it
@@ -102,9 +112,6 @@ func (g *graph) addTransaction(tx *Transaction, critical bool) error {
 	// Update the parents children.
 	for _, parent := range parents {
 		g.children[parent.ID] = append(g.children[parent.ID], tx)
-
-		// It is not possible for a parent with children to be eligible.
-		delete(g.eligibleParents, parent.ID)
 	}
 
 	// Update the transactions depth if the transaction is not critical.
@@ -125,26 +132,11 @@ func (g *graph) addTransaction(tx *Transaction, critical bool) error {
 
 		if height < tx.depth {
 			height = tx.depth
-
-			// Since the height has been updated, check each eligible parents' height and if they are within the same view ID.
-			for _, tx := range g.eligibleParents {
-				if tx.depth+sys.MaxEligibleParentsDepthDiff < height || tx.ViewID != viewID {
-					delete(g.eligibleParents, tx.ID)
-				}
-			}
-
 			g.height.Store(height)
-		}
-
-		// If the transaction is a leaf node, and was made within the current view ID, assign it as an eligible parent.
-		if tx.depth+sys.MaxEligibleParentsDepthDiff >= height {
-			g.eligibleParents[tx.ID] = tx
 		}
 	}
 
-	// Add the transaction to our view-graph.
-	g.transactions[tx.ID] = tx
-	g.updateIndices(tx)
+	g.push(tx)
 
 	logger := log.TX(tx.ID, tx.Sender, tx.Creator, tx.ParentIDs, tx.Tag, tx.Payload, "new")
 	logger.Log().Uint64("depth", tx.depth).Msg("Added transaction to view-graph.")
@@ -160,14 +152,17 @@ func (g *graph) reset(root *Transaction) {
 	newViewID := g.loadViewID(root)
 
 	g.Lock()
+	defer g.Unlock()
 
 	// Prune away all transactions and indices with a view ID < (current view ID - pruningDepth).
-	for viewID, transactions := range g.indexViewID {
+	for viewID, transactions := range g.viewIDs {
 		if viewID+pruningDepth < newViewID {
 			for _, tx := range transactions {
+				delete(g.checksums, tx.Checksum)
 				delete(g.transactions, tx.ID)
 				delete(g.children, tx.ID)
 			}
+			delete(g.viewIDs, viewID)
 
 			logger := log.Consensus("prune")
 			logger.Debug().
@@ -175,16 +170,10 @@ func (g *graph) reset(root *Transaction) {
 				Uint64("current_view_id", newViewID).
 				Uint64("pruned_view_id", viewID).
 				Msg("Pruned transactions.")
-
-			delete(g.indexViewID, viewID)
 		}
 	}
 
 	g.height.Store(0)
-
-	for id := range g.eligibleParents {
-		delete(g.eligibleParents, id)
-	}
 
 	original, adjusted := g.loadDifficulty(), computeNextDifficulty(root)
 
@@ -199,31 +188,9 @@ func (g *graph) reset(root *Transaction) {
 	root.depth = 0
 
 	g.saveRoot(root)
-
-	g.transactions[root.ID] = root
-	g.eligibleParents[root.ID] = root
-
-	if _, existed := g.transactions[root.ID]; !existed {
-		g.updateIndices(root)
-	}
-
-	g.Unlock()
+	g.push(root)
 }
 
-//func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
-//	g.RLock()
-//
-//	for id := range g.eligibleParents {
-//		eligible = append(eligible, id)
-//	}
-//
-//	g.RUnlock()
-//
-//	return
-//}
-
-// Let it stay here for a while since it was slow but working version
-//
 func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 	g.RLock()
 	defer g.RUnlock()
@@ -269,7 +236,7 @@ func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
 
 func (g *graph) numTransactions(viewID uint64) int {
 	g.RLock()
-	num := len(g.indexViewID[viewID])
+	num := len(g.viewIDs[viewID])
 	g.RUnlock()
 
 	return num
@@ -282,6 +249,31 @@ func (g *graph) lookupTransaction(id common.TransactionID) (*Transaction, bool) 
 
 	g.RLock()
 	tx, exists := g.transactions[id]
+	g.RUnlock()
+
+	return tx, exists
+}
+
+func (g *graph) loadChecksums(viewID uint64) (checksums []uint64) {
+	g.RLock()
+	defer g.RUnlock()
+
+	transactions, exists := g.viewIDs[viewID]
+
+	if !exists {
+		return
+	}
+
+	for _, tx := range transactions {
+		checksums = append(checksums, tx.Checksum)
+	}
+
+	return checksums
+}
+
+func (g *graph) lookupTransactionByChecksum(checksum uint64) (*Transaction, bool) {
+	g.RLock()
+	tx, exists := g.checksums[checksum]
 	g.RUnlock()
 
 	return tx, exists

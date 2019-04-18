@@ -22,7 +22,7 @@ var (
 	SnowballQueryAlpha = 0.8
 	SnowballQueryBeta  = 150
 
-	SnowballSyncK     = 2
+	SnowballSyncK     = 1
 	SnowballSyncAlpha = 0.8
 	SnowballSyncBeta  = 150
 
