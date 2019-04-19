@@ -1598,37 +1598,18 @@ func listenForFindMissingTXs(l *Ledger) func(stop <-chan struct{}) error {
 
 func syncMissingTX(l *Ledger) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
-		n := len(l.m.queue)
-
-		if n == 0 {
-			select {
-			case <-l.kill:
-				return ErrStopped
-			case <-stop:
-				return ErrStopped
-			case <-time.After(100 * time.Millisecond):
-			}
-
-			return nil
-		}
-
 		evt := EventSyncTX{
 			Result: make(chan []Transaction, 1),
 			Error:  make(chan error, 1),
 		}
 
-	L:
-		for i := 0; i < n && len(evt.Checksums) < 255; i++ { // TODO(kenta): max amount of tx to request at once needs to be set
-			select {
-			case <-l.kill:
-				return ErrStopped
-			case <-stop:
-				return ErrStopped
-			case checksums := <-l.m.queue:
-				evt.Checksums = append(evt.Checksums, checksums...)
-			default:
-				break L
-			}
+		select {
+		case <-l.kill:
+			return ErrStopped
+		case <-stop:
+			return ErrStopped
+		case checksums := <-l.m.queue:
+			evt.Checksums = checksums
 		}
 
 		select {
