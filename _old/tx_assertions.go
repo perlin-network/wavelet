@@ -1,8 +1,7 @@
-package wavelet
+package _old
 
 import (
 	"bytes"
-	"github.com/dgryski/go-xxh3"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/store"

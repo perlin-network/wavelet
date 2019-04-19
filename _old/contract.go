@@ -1,4 +1,4 @@
-package wavelet
+package _old
 
 import (
 	"encoding/binary"

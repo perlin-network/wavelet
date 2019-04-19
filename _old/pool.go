@@ -1,8 +1,7 @@
-package wavelet
+package _old
 
 import (
 	"fmt"
-	"github.com/dgryski/go-xxh3"
 	"github.com/phf/go-queue/queue"
 	"go.uber.org/atomic"
 	"sync"

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/_old"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
@@ -44,17 +44,17 @@ type Protocol struct {
 	opcodeLatestViewRequest  byte
 	opcodeLatestViewResponse byte
 
-	ledger *wavelet.Ledger
+	ledger *_old.Ledger
 
 	network *skademlia.Protocol
 	keys    *skademlia.Keypair
 }
 
 func New(network *skademlia.Protocol, keys *skademlia.Keypair) *Protocol {
-	return &Protocol{ledger: wavelet.NewLedger(context.TODO(), keys, store.NewInmem()), network: network, keys: keys}
+	return &Protocol{ledger: _old.NewLedger(context.TODO(), keys, store.NewInmem()), network: network, keys: keys}
 }
 
-func (b *Protocol) Ledger() *wavelet.Ledger {
+func (b *Protocol) Ledger() *_old.Ledger {
 	return b.ledger
 }
 
@@ -104,7 +104,7 @@ func (b *Protocol) RegisterOpcodes(node *noise.Node) {
 
 func (b *Protocol) Init(node *noise.Node) {
 	go b.sendLoop(node)
-	go wavelet.Run(b.ledger)
+	go _old.Run(b.ledger)
 }
 
 func (b *Protocol) Protocol() noise.ProtocolBlock {
@@ -152,7 +152,7 @@ func (b *Protocol) sendLoop(node *noise.Node) {
 	go b.broadcastLatestViewRequests(ctx, node)
 }
 
-func (b *Protocol) receiveLoop(ledger *wavelet.Ledger, ctx noise.Context) {
+func (b *Protocol) receiveLoop(ledger *_old.Ledger, ctx noise.Context) {
 	peer := ctx.Peer()
 
 	for {
@@ -191,7 +191,7 @@ func (b *Protocol) broadcastGossip(ctx context.Context, node *noise.Node) {
 
 			responses := broadcast(peers, b.opcodeGossipRequest, b.opcodeGossipResponse, GossipRequest{tx: evt.TX}.Marshal())
 
-			votes := make([]wavelet.VoteGossip, len(responses))
+			votes := make([]_old.VoteGossip, len(responses))
 
 			for i, buf := range responses {
 				if buf != nil {
@@ -227,7 +227,7 @@ func (b *Protocol) broadcastQueries(ctx context.Context, node *noise.Node) {
 
 			responses := broadcast(peers, b.opcodeQueryRequest, b.opcodeQueryResponse, QueryRequest{tx: evt.TX}.Marshal())
 
-			votes := make([]wavelet.VoteQuery, len(responses))
+			votes := make([]_old.VoteQuery, len(responses))
 
 			for i, buf := range responses {
 				if buf != nil {
@@ -263,7 +263,7 @@ func (b *Protocol) broadcastOutOfSyncChecks(ctx context.Context, node *noise.Nod
 
 			responses := broadcast(peers, b.opcodeSyncViewRequest, b.opcodeSyncViewResponse, SyncViewRequest{root: evt.Root}.Marshal())
 
-			votes := make([]wavelet.VoteOutOfSync, len(peers))
+			votes := make([]_old.VoteOutOfSync, len(peers))
 
 			for i, buf := range responses {
 				if buf != nil {
@@ -300,7 +300,7 @@ func (b *Protocol) broadcastSyncInitRequests(ctx context.Context, node *noise.No
 
 			responses := broadcast(peers, b.opcodeSyncInitRequest, b.opcodeSyncInitResponse, SyncInitRequest{viewID: evt.ViewID}.Marshal())
 
-			votes := make([]wavelet.SyncInitMetadata, len(responses))
+			votes := make([]_old.SyncInitMetadata, len(responses))
 
 			for i, buf := range responses {
 				if buf != nil {
@@ -337,7 +337,7 @@ func (b *Protocol) broadcastSyncMissingTXs(ctx context.Context, node *noise.Node
 
 			responses := broadcast(peers, b.opcodeSyncMissingTxRequest, b.opcodeSyncMissingTxResponse, SyncMissingTxRequest{checksums: evt.Checksums}.Marshal())
 
-			set := make(map[common.TransactionID]wavelet.Transaction)
+			set := make(map[common.TransactionID]_old.Transaction)
 
 			for _, buf := range responses {
 				if buf != nil {
@@ -354,7 +354,7 @@ func (b *Protocol) broadcastSyncMissingTXs(ctx context.Context, node *noise.Node
 				}
 			}
 
-			var txs []wavelet.Transaction
+			var txs []_old.Transaction
 
 			for _, tx := range set {
 				txs = append(txs, tx)
@@ -503,7 +503,7 @@ func (b *Protocol) handleQueryRequest(wire noise.Wire) {
 		return
 	}
 
-	evt := wavelet.EventIncomingQuery{TX: req.tx, Response: make(chan *wavelet.Transaction, 1), Error: make(chan error, 1)}
+	evt := _old.EventIncomingQuery{TX: req.tx, Response: make(chan *_old.Transaction, 1), Error: make(chan error, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):
@@ -539,7 +539,7 @@ func (b *Protocol) handleGossipRequest(wire noise.Wire) {
 		return
 	}
 
-	evt := wavelet.EventIncomingGossip{TX: req.tx, Vote: make(chan error, 1)}
+	evt := _old.EventIncomingGossip{TX: req.tx, Vote: make(chan error, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):
@@ -575,7 +575,7 @@ func (b *Protocol) handleOutOfSyncCheck(wire noise.Wire) {
 		return
 	}
 
-	evt := wavelet.EventIncomingOutOfSyncCheck{Root: req.root, Response: make(chan *wavelet.Transaction, 1)}
+	evt := _old.EventIncomingOutOfSyncCheck{Root: req.root, Response: make(chan *_old.Transaction, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):
@@ -607,7 +607,7 @@ func (b *Protocol) handleSyncInits(wire noise.Wire) {
 		return
 	}
 
-	evt := wavelet.EventIncomingSyncInit{ViewID: req.viewID, Response: make(chan wavelet.SyncInitMetadata, 1)}
+	evt := _old.EventIncomingSyncInit{ViewID: req.viewID, Response: make(chan _old.SyncInitMetadata, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):
@@ -640,7 +640,7 @@ func (b *Protocol) handleSyncChunks(wire noise.Wire) {
 		return
 	}
 
-	evt := wavelet.EventIncomingSyncDiff{ChunkHash: req.chunkHash, Response: make(chan []byte, 1)}
+	evt := _old.EventIncomingSyncDiff{ChunkHash: req.chunkHash, Response: make(chan []byte, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):
@@ -672,7 +672,7 @@ func (b *Protocol) handleLatestViewRequest(wire noise.Wire) {
 		return
 	}
 
-	evt := wavelet.EventIncomingLatestView{ViewID: uint64(req), Response: make(chan []uint64, 1)}
+	evt := _old.EventIncomingLatestView{ViewID: uint64(req), Response: make(chan []uint64, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):
@@ -704,7 +704,7 @@ func (b *Protocol) handleSyncMissingTXs(wire noise.Wire) {
 		return
 	}
 
-	evt := wavelet.EventIncomingSyncTX{Checksums: req.checksums, Response: make(chan []wavelet.Transaction, 1)}
+	evt := _old.EventIncomingSyncTX{Checksums: req.checksums, Response: make(chan []_old.Transaction, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):

@@ -2,14 +2,14 @@ package node
 
 import (
 	"encoding/binary"
-	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/_old"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"io"
 )
 
 type QueryRequest struct {
-	tx wavelet.Transaction
+	tx _old.Transaction
 }
 
 func (q QueryRequest) Marshal() []byte {
@@ -17,7 +17,7 @@ func (q QueryRequest) Marshal() []byte {
 }
 
 func UnmarshalQueryRequest(r io.Reader) (q QueryRequest, err error) {
-	q.tx, err = wavelet.UnmarshalTransaction(r)
+	q.tx, err = _old.UnmarshalTransaction(r)
 
 	if err != nil {
 		err = errors.Wrap(err, "failed to read query request")
@@ -28,7 +28,7 @@ func UnmarshalQueryRequest(r io.Reader) (q QueryRequest, err error) {
 }
 
 type QueryResponse struct {
-	preferred wavelet.Transaction
+	preferred _old.Transaction
 }
 
 func (q QueryResponse) Marshal() []byte {
@@ -36,7 +36,7 @@ func (q QueryResponse) Marshal() []byte {
 }
 
 func UnmarshalQueryResponse(r io.Reader) (q QueryResponse, err error) {
-	q.preferred, err = wavelet.UnmarshalTransaction(r)
+	q.preferred, err = _old.UnmarshalTransaction(r)
 
 	if err != nil {
 		err = errors.Wrap(err, "failed to read query response")
@@ -47,7 +47,7 @@ func UnmarshalQueryResponse(r io.Reader) (q QueryResponse, err error) {
 }
 
 type GossipRequest struct {
-	tx wavelet.Transaction
+	tx _old.Transaction
 }
 
 func (q GossipRequest) Marshal() []byte {
@@ -55,7 +55,7 @@ func (q GossipRequest) Marshal() []byte {
 }
 
 func UnmarshalGossipRequest(r io.Reader) (q QueryRequest, err error) {
-	q.tx, err = wavelet.UnmarshalTransaction(r)
+	q.tx, err = _old.UnmarshalTransaction(r)
 
 	if err != nil {
 		err = errors.Wrap(err, "failed to read gossip request")
@@ -96,7 +96,7 @@ func UnmarshalGossipResponse(r io.Reader) (q GossipResponse, err error) {
 }
 
 type SyncViewRequest struct {
-	root wavelet.Transaction
+	root _old.Transaction
 }
 
 func (q SyncViewRequest) Marshal() []byte {
@@ -104,7 +104,7 @@ func (q SyncViewRequest) Marshal() []byte {
 }
 
 func UnmarshalSyncViewRequest(r io.Reader) (q SyncViewRequest, err error) {
-	q.root, err = wavelet.UnmarshalTransaction(r)
+	q.root, err = _old.UnmarshalTransaction(r)
 
 	if err != nil {
 		err = errors.Wrap(err, "failed to read sync root request")
@@ -115,7 +115,7 @@ func UnmarshalSyncViewRequest(r io.Reader) (q SyncViewRequest, err error) {
 }
 
 type SyncViewResponse struct {
-	root wavelet.Transaction
+	root _old.Transaction
 }
 
 func (q SyncViewResponse) Marshal() []byte {
@@ -123,7 +123,7 @@ func (q SyncViewResponse) Marshal() []byte {
 }
 
 func UnmarshalSyncViewResponse(r io.Reader) (q SyncViewResponse, err error) {
-	q.root, err = wavelet.UnmarshalTransaction(r)
+	q.root, err = _old.UnmarshalTransaction(r)
 
 	if err != nil {
 		err = errors.Wrap(err, "failed to read sync root response")
@@ -155,7 +155,7 @@ type SyncMissingTxRequest struct {
 }
 
 type SyncMissingTxResponse struct {
-	transactions []wavelet.Transaction
+	transactions []_old.Transaction
 }
 
 func (s SyncInitRequest) Marshal() []byte {
@@ -296,10 +296,10 @@ func UnmarshalSyncMissingTxResponse(r io.Reader) (q SyncMissingTxResponse, err e
 		return
 	}
 
-	q.transactions = make([]wavelet.Transaction, buf[0])
+	q.transactions = make([]_old.Transaction, buf[0])
 
 	for i := range q.transactions {
-		if q.transactions[i], err = wavelet.UnmarshalTransaction(r); err != nil {
+		if q.transactions[i], err = _old.UnmarshalTransaction(r); err != nil {
 			return
 		}
 	}

@@ -12,14 +12,13 @@ import (
 	"github.com/perlin-network/noise/handshake"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/noise/xnoise"
-	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/_old"
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/rs/zerolog"
-	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
 	"io/ioutil"
 	"net"
@@ -407,8 +406,8 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			snapshot := ledger.Snapshot()
 
 			if len(cmd) < 2 {
-				balance, _ := wavelet.ReadAccountBalance(snapshot, publicKey)
-				stake, _ := wavelet.ReadAccountStake(snapshot, publicKey)
+				balance, _ := _old.ReadAccountBalance(snapshot, publicKey)
+				stake, _ := _old.ReadAccountStake(snapshot, publicKey)
 
 				logger.Info().
 					Str("id", hex.EncodeToString(publicKey[:])).
@@ -429,11 +428,11 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			var accountID common.AccountID
 			copy(accountID[:], buf)
 
-			balance, _ := wavelet.ReadAccountBalance(snapshot, accountID)
-			stake, _ := wavelet.ReadAccountStake(snapshot, accountID)
+			balance, _ := _old.ReadAccountBalance(snapshot, accountID)
+			stake, _ := _old.ReadAccountStake(snapshot, accountID)
 
-			_, isContract := wavelet.ReadAccountContractCode(snapshot, accountID)
-			numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, accountID)
+			_, isContract := _old.ReadAccountContractCode(snapshot, accountID)
+			numPages, _ := _old.ReadAccountContractNumPages(snapshot, accountID)
 
 			logger.Info().
 				Uint64("balance", balance).
@@ -532,18 +531,18 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			}
 
 			go func() {
-				tx, err := wavelet.NewTransaction(k, sys.TagTransfer, payload.Bytes())
+				tx, err := _old.NewTransaction(k, sys.TagTransfer, payload.Bytes())
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to create a transfer transaction.")
 					return
 				}
 
-				evt := wavelet.EventBroadcast{
+				evt := _old.EventBroadcast{
 					Tag:       tx.Tag,
 					Payload:   tx.Payload,
 					Creator:   tx.Creator,
 					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction, 1),
+					Result:    make(chan _old.Transaction, 1),
 					Error:     make(chan error, 1),
 				}
 
@@ -583,18 +582,18 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			payload.Write(intBuf[:8])
 
 			go func() {
-				tx, err := wavelet.NewTransaction(k, sys.TagStake, payload.Bytes())
+				tx, err := _old.NewTransaction(k, sys.TagStake, payload.Bytes())
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to create a stake placement transaction.")
 					return
 				}
 
-				evt := wavelet.EventBroadcast{
+				evt := _old.EventBroadcast{
 					Tag:       tx.Tag,
 					Payload:   tx.Payload,
 					Creator:   tx.Creator,
 					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction, 1),
+					Result:    make(chan _old.Transaction, 1),
 					Error:     make(chan error, 1),
 				}
 
@@ -633,18 +632,18 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			payload.Write(intBuf[:8])
 
 			go func() {
-				tx, err := wavelet.NewTransaction(k, sys.TagStake, payload.Bytes())
+				tx, err := _old.NewTransaction(k, sys.TagStake, payload.Bytes())
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to create a stake withdrawal transaction.")
 					return
 				}
 
-				evt := wavelet.EventBroadcast{
+				evt := _old.EventBroadcast{
 					Tag:       tx.Tag,
 					Payload:   tx.Payload,
 					Creator:   tx.Creator,
 					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction, 1),
+					Result:    make(chan _old.Transaction, 1),
 					Error:     make(chan error, 1),
 				}
 
@@ -681,18 +680,18 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			}
 
 			go func() {
-				tx, err := wavelet.NewTransaction(k, sys.TagContract, code)
+				tx, err := _old.NewTransaction(k, sys.TagContract, code)
 				if err != nil {
 					logger.Error().Err(err).Msg("Failed to create a smart contract creation transaction.")
 					return
 				}
 
-				evt := wavelet.EventBroadcast{
+				evt := _old.EventBroadcast{
 					Tag:       tx.Tag,
 					Payload:   tx.Payload,
 					Creator:   tx.Creator,
 					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction, 1),
+					Result:    make(chan _old.Transaction, 1),
 					Error:     make(chan error, 1),
 				}
 
