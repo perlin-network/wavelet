@@ -30,14 +30,11 @@ func newMempool() *mempool {
 }
 
 func (m *mempool) push(tx Transaction, missing []uint64) {
-	awaiting := make([]uint64, 0, len(missing))
-
 	for _, checksum := range missing {
 		m.Lock()
 		{
 			if _, exists := m.awaiting[checksum]; !exists {
 				m.awaiting[checksum] = make(map[uint64]Transaction)
-				awaiting = append(awaiting, checksum)
 			}
 
 			m.awaiting[checksum][tx.Checksum] = tx
@@ -45,27 +42,24 @@ func (m *mempool) push(tx Transaction, missing []uint64) {
 		m.Unlock()
 	}
 
-	if len(awaiting) > 0 {
-		m.queue <- awaiting
+	if len(missing) > 0 {
+		m.queue <- missing
 	}
 }
 
 func (m *mempool) mark(missing []uint64) {
-	awaiting := make([]uint64, 0, len(missing))
-
 	for _, checksum := range missing {
 		m.Lock()
 		{
 			if _, exists := m.awaiting[checksum]; !exists {
 				m.awaiting[checksum] = make(map[uint64]Transaction)
-				awaiting = append(awaiting, checksum)
 			}
 		}
 		m.Unlock()
 	}
 
-	if len(awaiting) > 0 {
-		m.queue <- awaiting
+	if len(missing) > 0 {
+		m.queue <- missing
 	}
 }
 
