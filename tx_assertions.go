@@ -206,10 +206,6 @@ func AssertInView(preferred *Transaction, viewID uint64, kv store.KV, tx Transac
 		if tx.ViewID < viewID {
 			return errors.Errorf("transaction was made for view ID %d, but our view ID is %d", tx.ViewID, viewID)
 		}
-
-		if preferred != nil && tx.ViewID == viewID {
-			return errors.New("not accepting anymore transactions for the current consensus round, as node prefers some critical transaction")
-		}
 	}
 
 	return nil
