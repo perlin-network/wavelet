@@ -159,15 +159,13 @@ type Ledger struct {
 
 	v *graph
 	a *accounts
+	m *mempool
 
 	cr *Snowball
 	sr *Snowball
 
 	processors map[byte]TransactionProcessor
 	validators map[byte]TransactionValidator
-
-	missing   map[uint64]map[uint64]Transaction
-	muMissing sync.RWMutex
 
 	BroadcastQueue chan<- EventBroadcast
 	broadcastQueue <-chan EventBroadcast
@@ -247,6 +245,8 @@ func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledge
 	accounts := newAccounts(kv)
 	go accounts.runGCWorker(ctx)
 
+	mempool := newMempool()
+
 	genesis, err := performInception(accounts.tree, nil)
 	if err != nil {
 		panic(err)
@@ -265,6 +265,7 @@ func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledge
 
 		v: view,
 		a: accounts,
+		m: mempool,
 
 		cr: NewSnowball().WithK(sys.SnowballQueryK).WithAlpha(sys.SnowballQueryAlpha).WithBeta(sys.SnowballQueryBeta),
 		sr: NewSnowball().WithK(sys.SnowballSyncK).WithAlpha(sys.SnowballSyncAlpha).WithBeta(sys.SnowballSyncBeta),
@@ -282,8 +283,6 @@ func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledge
 			sys.TagContract: ValidateContractTransaction,
 			sys.TagStake:    ValidateStakeTransaction,
 		},
-
-		missing: make(map[uint64]map[uint64]Transaction),
 
 		BroadcastQueue: broadcastQueue,
 		broadcastQueue: broadcastQueue,
@@ -447,20 +446,7 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 		}
 
 		snapshot, missing, err := l.collapseTransactions(tx, false)
-
-		if len(missing) > 0 {
-			l.muMissing.Lock()
-			for _, id := range missing {
-				_, ok := l.missing[id]
-
-				if !ok {
-					l.missing[id] = make(map[uint64]Transaction)
-				}
-
-				l.missing[id][tx.Checksum] = tx
-			}
-			l.muMissing.Unlock()
-		}
+		l.m.push(tx, missing)
 
 		if err != nil {
 			return tx, errors.Wrap(err, "unable to collapse ancestry to create critical transaction")
@@ -512,7 +498,7 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 			l.cr.Prefer(tx)
 		}
 
-		l.revisitBufferedTransactions(tx.ID)
+		l.m.revisit(l, tx.Checksum)
 	}()
 
 	if _, found := l.v.lookupTransaction(tx.ID); found {
@@ -550,20 +536,7 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 
 	{
 		missing, err = AssertValidAncestry(l.v, tx)
-
-		if len(missing) > 0 {
-			l.muMissing.Lock()
-			for _, checksum := range missing {
-				_, ok := l.missing[checksum]
-
-				if !ok {
-					l.missing[checksum] = make(map[uint64]Transaction)
-				}
-
-				l.missing[checksum][tx.Checksum] = tx
-			}
-			l.muMissing.Unlock()
-		}
+		l.m.push(tx, missing)
 
 		if err != nil {
 			return
@@ -572,20 +545,7 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 
 	if critical {
 		missing, err = l.assertCollapsible(tx)
-
-		if len(missing) > 0 {
-			l.muMissing.Lock()
-			for _, id := range missing {
-				_, ok := l.missing[id]
-
-				if !ok {
-					l.missing[id] = make(map[uint64]Transaction)
-				}
-
-				l.missing[id][tx.Checksum] = tx
-			}
-			l.muMissing.Unlock()
-		}
+		l.m.push(tx, missing)
 
 		if err != nil {
 			return
@@ -597,60 +557,6 @@ func (l *Ledger) addTransaction(tx Transaction) (err error) {
 	}
 
 	return
-}
-
-func (l *Ledger) revisitBufferedTransactions(id common.TransactionID) {
-	checksum := xxh3.XXH3_64bits(id[:])
-
-	l.muMissing.RLock()
-	buffered, exists := l.missing[checksum]
-	l.muMissing.RUnlock()
-
-	if !exists {
-		return
-	}
-
-	unbuffered := make(map[common.TransactionID]Transaction)
-
-	for _, tx := range buffered {
-		err := l.addTransaction(tx)
-
-		if err != nil {
-			continue
-		}
-
-		unbuffered[tx.ID] = tx
-	}
-
-	l.muMissing.Lock()
-	if len(unbuffered) > 0 {
-		fmt.Println("unbuffered", len(unbuffered), "transactions, and in total the buffer is of size", len(l.missing))
-	}
-
-	for unbufferedID, unbufferedTX := range unbuffered {
-		// If a transaction T is unbuffered, make sure no other transactions we have yet
-		// to receive is awaiting for the arrival of T.
-		unbufferedChecksum := xxh3.XXH3_64bits(unbufferedID[:])
-
-		for _, parentID := range unbufferedTX.ParentIDs {
-			parentChecksum := xxh3.XXH3_64bits(parentID[:])
-
-			_, exists = l.missing[parentChecksum]
-
-			if !exists {
-				continue
-			}
-
-			delete(l.missing[parentChecksum], unbufferedChecksum)
-
-			if len(l.missing[parentChecksum]) == 0 {
-				delete(l.missing, parentChecksum)
-			}
-		}
-	}
-
-	delete(l.missing, checksum)
-	l.muMissing.Unlock()
 }
 
 // collapseTransactions takes all transactions recorded in the graph view so far, and
@@ -1365,20 +1271,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 					newRoot := l.cr.Preferred()
 
 					state, missing, err := l.collapseTransactions(*newRoot, true)
-
-					if len(missing) > 0 {
-						l.muMissing.Lock()
-						for _, id := range missing {
-							_, ok := l.missing[id]
-
-							if !ok {
-								l.missing[id] = make(map[uint64]Transaction)
-							}
-
-							l.missing[id][newRoot.Checksum] = *newRoot
-						}
-						l.muMissing.Unlock()
-					}
+					l.m.push(*newRoot, missing)
 
 					if err != nil {
 						exception = errors.Wrap(err, "decided a new root, but got an error collapsing down its ancestry")
@@ -1398,19 +1291,7 @@ func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
 						return
 					}
 
-					l.muMissing.Lock()
-					for id, buffered := range l.missing {
-						for _, tx := range buffered {
-							if tx.ViewID < l.v.loadViewID(newRoot) {
-								delete(buffered, tx.Checksum)
-							}
-						}
-
-						if len(buffered) == 0 {
-							delete(l.missing, id)
-						}
-					}
-					l.muMissing.Unlock()
+					l.m.clearOutdated(l.v.loadViewID(newRoot))
 
 					logger := log.Consensus("round_end")
 					logger.Info().
@@ -1686,15 +1567,15 @@ func findMissingTX(l *Ledger) func(stop <-chan struct{}) error {
 		case checksums = <-evt.Result:
 		}
 
-		l.muMissing.Lock()
+		slice := checksums[:0]
+
 		for _, checksum := range checksums {
-			if _, exists := l.missing[checksum]; !exists {
-				if _, exists := l.v.lookupTransactionByChecksum(checksum); !exists {
-					l.missing[checksum] = make(map[uint64]Transaction)
-				}
+			if _, exists := l.v.lookupTransactionByChecksum(checksum); !exists {
+				slice = append(slice, checksum)
 			}
 		}
-		l.muMissing.Unlock()
+
+		l.m.mark(slice)
 
 		return nil
 	}
@@ -1717,12 +1598,18 @@ func listenForFindMissingTXs(l *Ledger) func(stop <-chan struct{}) error {
 
 func syncMissingTX(l *Ledger) func(stop <-chan struct{}) error {
 	return func(stop <-chan struct{}) error {
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case <-time.After(100 * time.Millisecond):
+		n := len(l.m.queue)
+
+		if n == 0 {
+			select {
+			case <-l.kill:
+				return ErrStopped
+			case <-stop:
+				return ErrStopped
+			case <-time.After(100 * time.Millisecond):
+			}
+
+			return nil
 		}
 
 		evt := EventSyncTX{
@@ -1730,14 +1617,18 @@ func syncMissingTX(l *Ledger) func(stop <-chan struct{}) error {
 			Error:  make(chan error, 1),
 		}
 
-		l.muMissing.RLock()
-		for id := range l.missing {
-			evt.Checksums = append(evt.Checksums, id)
-		}
-		l.muMissing.RUnlock()
-
-		if len(evt.Checksums) == 0 {
-			return nil
+	L:
+		for i := 0; i < n && len(evt.Checksums) < 255; i++ { // TODO(kenta): max amount of tx to request at once needs to be set
+			select {
+			case <-l.kill:
+				return ErrStopped
+			case <-stop:
+				return ErrStopped
+			case checksums := <-l.m.queue:
+				evt.Checksums = append(evt.Checksums, checksums...)
+			default:
+				break L
+			}
 		}
 
 		select {
