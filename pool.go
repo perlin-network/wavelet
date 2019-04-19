@@ -88,10 +88,6 @@ func (m *mempool) revisit(l *Ledger, checksum uint64) {
 
 	m.Lock()
 	{
-		if len(unbuffered) > 0 {
-			fmt.Println("unbuffered", len(unbuffered), "transactions, and in total the buffer is of size", len(m.awaiting))
-		}
-
 		for unbufferedChecksum, unbufferedTX := range unbuffered {
 			// If a transaction T is unbuffered, make sure no other transactions we have yet
 			// to receive is awaiting for the arrival of T.
@@ -114,6 +110,10 @@ func (m *mempool) revisit(l *Ledger, checksum uint64) {
 		}
 
 		delete(m.awaiting, checksum)
+
+		if len(unbuffered) > 0 {
+			fmt.Println("unbuffered", len(unbuffered), "transactions, and in total the buffer is of size", len(m.awaiting))
+		}
 	}
 	m.Unlock()
 }
