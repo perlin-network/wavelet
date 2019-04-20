@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/blake2b"
 	"math/rand"
+	"sort"
 	"testing"
 	"testing/quick"
 )
@@ -82,6 +83,10 @@ func randomTX(t testing.TB, parents ...common.TransactionID) Transaction {
 	// Set transaction parents.
 	tx.ParentIDs = parents
 
+	sort.Slice(tx.ParentIDs, func(i, j int) bool {
+		return bytes.Compare(tx.ParentIDs[i][:], tx.ParentIDs[j][:]) < 0
+	})
+
 	// Set transaction seed.
 	var buf bytes.Buffer
 	_, _ = buf.Write(tx.Sender[:])
@@ -154,8 +159,24 @@ func randomGraph(t testing.TB, genesis Transaction, n int) []Transaction {
 		tx := randomTX(t)
 
 		numParents := 1 + rand.Intn(7)
+
+		if numParents > i+1 {
+			numParents = i + 1
+		}
+
+		set := make(map[common.TransactionID]struct{})
+
 		for x := 0; x < numParents; x++ {
-			parent := transactions[rand.Intn(len(transactions))]
+			var parent Transaction
+
+			for {
+				parent = transactions[rand.Intn(len(transactions))]
+
+				if _, used := set[parent.id]; !used {
+					set[parent.id] = struct{}{}
+					break
+				}
+			}
 
 			if tx.Depth < parent.Depth {
 				tx.Depth = parent.Depth
@@ -167,6 +188,19 @@ func randomGraph(t testing.TB, genesis Transaction, n int) []Transaction {
 		}
 
 		tx.Depth++
+
+		sort.Slice(tx.ParentIDs, func(i, j int) bool {
+			return bytes.Compare(tx.ParentIDs[i][:], tx.ParentIDs[j][:]) < 0
+		})
+
+		// Set transaction seed.
+		var buf bytes.Buffer
+		_, _ = buf.Write(tx.Sender[:])
+		for _, parentID := range tx.ParentIDs {
+			_, _ = buf.Write(parentID[:])
+		}
+		seed := blake2b.Sum256(buf.Bytes())
+		tx.seed = byte(prefixLen(seed[:]))
 
 		transactions = append(transactions, tx)
 	}

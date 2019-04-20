@@ -1,7 +1,9 @@
 package wavelet
 
 import (
+	"bytes"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 )
 
@@ -34,9 +36,50 @@ func NewGraph() *Graph {
 }
 
 func (g *Graph) assertTransactionIsValid(tx *Transaction) error {
+	if tx.id == common.ZeroTransactionID {
+		return errors.New("tx must have an id")
+	}
+
+	if tx.Sender == common.ZeroAccountID {
+		return errors.New("tx must have sender associated to it")
+	}
+
 	if len(tx.ParentIDs) == 0 {
 		return errors.New("transaction has no parents")
 	}
+
+	// Check that parents are lexicographically sorted, are not itself, and are unique.
+	set := make(map[common.TransactionID]struct{})
+
+	for i := len(tx.ParentIDs) - 1; i > 0; i-- {
+		if tx.id == tx.ParentIDs[i] {
+			return errors.New("tx must not include itself in its parents")
+		}
+
+		if bytes.Compare(tx.ParentIDs[i-1][:], tx.ParentIDs[i][:]) > 0 {
+			return errors.New("tx must have sorted parent ids")
+		}
+
+		if _, duplicate := set[tx.ParentIDs[i]]; duplicate {
+			return errors.New("tx must not have duplicate parent ids")
+		}
+
+		set[tx.ParentIDs[i]] = struct{}{}
+	}
+
+	if tx.Tag > sys.TagStake {
+		return errors.New("tx has an unknown tag")
+	}
+
+	if tx.Tag != sys.TagNop && len(tx.Payload) == 0 {
+		return errors.New("tx must have payload if not a nop transaction")
+	}
+
+	if tx.Tag == sys.TagNop && len(tx.Payload) != 0 {
+		return errors.New("tx must have no payload if is a nop transaction")
+	}
+
+	// TODO(kenta): validate signature
 
 	return nil
 }

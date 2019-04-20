@@ -97,7 +97,7 @@ func (l *Ledger) step() {
 	}
 
 	// TODO(kenta): query our peers, weigh their stakes, and find the response with the maximum
-	// 	votes from our peers.common.ZeroMerkleNodeID, *eligible[0])
+	// 	votes from our peers.
 
 	var elected *Round
 
