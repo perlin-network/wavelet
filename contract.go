@@ -158,7 +158,7 @@ func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, params ...
 
 	c.header = make([]byte, common.SizeTransactionID+common.SizeAccountID+8)
 
-	copy(c.header[0:common.SizeTransactionID], tx.id[:])
+	copy(c.header[0:common.SizeTransactionID], tx.ID[:])
 	copy(c.header[common.SizeTransactionID:common.SizeTransactionID+common.SizeAccountID], tx.Sender[:])
 
 	binary.LittleEndian.PutUint64(c.header[common.SizeTransactionID+common.SizeAccountID:8+common.SizeTransactionID+common.SizeAccountID], amount)

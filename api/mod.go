@@ -6,7 +6,7 @@ import (
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/wavelet/_old"
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
@@ -23,7 +23,7 @@ import (
 
 type Gateway struct {
 	node   *noise.Node
-	ledger *_old.Ledger
+	ledger *wavelet.Ledger
 
 	network *skademlia.Protocol
 	keys    *skademlia.Keypair
@@ -121,7 +121,7 @@ func (g *Gateway) setup(enableTimeout bool) {
 	g.router = r
 }
 
-func (g *Gateway) StartHTTP(port int, n *noise.Node, l *_old.Ledger, nn *skademlia.Protocol, k *skademlia.Keypair) {
+func (g *Gateway) StartHTTP(port int, n *noise.Node, l *wavelet.Ledger, nn *skademlia.Protocol, k *skademlia.Keypair) {
 	g.node = n
 	g.ledger = l
 
@@ -182,12 +182,12 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	evt := _old.EventBroadcast{
+	evt := wavelet.EventBroadcast{
 		Tag:       req.Tag,
 		Payload:   req.payload,
 		Creator:   req.creator,
 		Signature: req.signature,
-		Result:    make(chan _old.Transaction, 1),
+		Result:    make(chan wavelet.Transaction, 1),
 		Error:     make(chan error, 1),
 	}
 
@@ -216,7 +216,7 @@ func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 	var sender common.AccountID
-	var creator common.AccountID
+	//var creator common.AccountID
 	var offset, limit uint64
 	var err error
 
@@ -237,21 +237,21 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 		copy(sender[:], slice)
 	}
 
-	if raw := string(queryArgs.Peek("creator")); len(raw) > 0 {
-		slice, err := hex.DecodeString(raw)
-
-		if err != nil {
-			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "creator ID must be presented as valid hex")))
-			return
-		}
-
-		if len(slice) != common.SizeAccountID {
-			g.renderError(ctx, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", common.SizeAccountID)))
-			return
-		}
-
-		copy(creator[:], slice)
-	}
+	//if raw := string(queryArgs.Peek("creator")); len(raw) > 0 {
+	//	slice, err := hex.DecodeString(raw)
+	//
+	//	if err != nil {
+	//		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "creator ID must be presented as valid hex")))
+	//		return
+	//	}
+	//
+	//	if len(slice) != common.SizeAccountID {
+	//		g.renderError(ctx, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", common.SizeAccountID)))
+	//		return
+	//	}
+	//
+	//	copy(creator[:], slice)
+	//}
 
 	if raw := string(queryArgs.Peek("offset")); len(raw) > 0 {
 		offset, err = strconv.ParseUint(raw, 10, 64)
@@ -273,7 +273,7 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 
 	var transactions transactionList
 
-	for _, tx := range g.ledger.ListTransactions(offset, limit, sender, creator) {
+	for _, tx := range g.ledger.ListTransactions(offset, limit, sender) {
 		transactions = append(transactions, &transaction{tx: tx})
 	}
 
@@ -370,7 +370,7 @@ func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	code, available := _old.ReadAccountContractCode(g.ledger.Snapshot(), id)
+	code, available := wavelet.ReadAccountContractCode(g.ledger.Snapshot(), id)
 
 	if len(code) == 0 || !available {
 		g.renderError(ctx, ErrBadRequest(errors.Errorf("could not find contract with ID %x", id)))
@@ -411,7 +411,7 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 
 	snapshot := g.ledger.Snapshot()
 
-	numPages, available := _old.ReadAccountContractNumPages(snapshot, id)
+	numPages, available := wavelet.ReadAccountContractNumPages(snapshot, id)
 
 	if !available {
 		g.renderError(ctx, ErrBadRequest(errors.Errorf("could not find any pages for contract with ID %x", id)))
@@ -423,7 +423,7 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	page, available := _old.ReadAccountContractPage(snapshot, id, idx)
+	page, available := wavelet.ReadAccountContractPage(snapshot, id, idx)
 
 	if len(page) == 0 || !available {
 		g.renderError(ctx, ErrBadRequest(errors.Errorf("page %d is either empty, or does not exist", idx)))

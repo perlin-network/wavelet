@@ -1,8 +1,12 @@
 package wavelet
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
+	"github.com/perlin-network/noise/edwards25519"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
@@ -19,6 +23,8 @@ type Ledger struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
+	keys *skademlia.Keypair
+
 	accounts *accounts
 	graph    *Graph
 
@@ -28,19 +34,93 @@ type Ledger struct {
 
 	rounds map[uint64]Round
 	round  uint64
+
+	BroadcastQueue chan<- EventBroadcast
+	broadcastQueue <-chan EventBroadcast
+
+	GossipIn chan<- EventIncomingGossip
+	gossipIn <-chan EventIncomingGossip
+
+	GossipOut <-chan EventGossip
+	gossipOut chan<- EventGossip
+
+	QueryIn chan<- EventIncomingQuery
+	queryIn <-chan EventIncomingQuery
+
+	QueryOut <-chan EventQuery
+	queryOut chan<- EventQuery
+
+	OutOfSyncIn chan<- EventIncomingOutOfSyncCheck
+	outOfSyncIn <-chan EventIncomingOutOfSyncCheck
+
+	OutOfSyncOut <-chan EventOutOfSyncCheck
+	outOfSyncOut chan<- EventOutOfSyncCheck
+
+	SyncInitIn chan<- EventIncomingSyncInit
+	syncInitIn <-chan EventIncomingSyncInit
+
+	SyncInitOut <-chan EventSyncInit
+	syncInitOut chan<- EventSyncInit
+
+	SyncDiffIn chan<- EventIncomingSyncDiff
+	syncDiffIn <-chan EventIncomingSyncDiff
+
+	SyncDiffOut <-chan EventSyncDiff
+	syncDiffOut chan<- EventSyncDiff
+
+	SyncTxIn chan<- EventIncomingSyncTX
+	syncTxIn <-chan EventIncomingSyncTX
+
+	SyncTxOut <-chan EventSyncTX
+	syncTxOut chan<- EventSyncTX
+
+	LatestViewIn chan<- EventIncomingLatestView
+	latestViewIn <-chan EventIncomingLatestView
+
+	LatestViewOut <-chan EventLatestView
+	latestViewOut chan<- EventLatestView
 }
 
-func NewLedger() *Ledger {
+func NewLedger(keys *skademlia.Keypair) *Ledger {
 	ctx, cancel := context.WithCancel(context.Background())
+
+	broadcastQueue := make(chan EventBroadcast, 1024)
+
+	gossipIn := make(chan EventIncomingGossip, 128)
+	gossipOut := make(chan EventGossip, 128)
+
+	queryIn := make(chan EventIncomingQuery, 128)
+	queryOut := make(chan EventQuery, 128)
+
+	outOfSyncIn := make(chan EventIncomingOutOfSyncCheck, 16)
+	outOfSyncOut := make(chan EventOutOfSyncCheck, 16)
+
+	syncInitIn := make(chan EventIncomingSyncInit, 16)
+	syncInitOut := make(chan EventSyncInit, 16)
+
+	syncDiffIn := make(chan EventIncomingSyncDiff, 128)
+	syncDiffOut := make(chan EventSyncDiff, 128)
+
+	syncTxIn := make(chan EventIncomingSyncTX, 16)
+	syncTxOut := make(chan EventSyncTX, 16)
+
+	latestViewIn := make(chan EventIncomingLatestView, 16)
+	latestViewOut := make(chan EventLatestView, 16)
 
 	accounts := newAccounts(store.NewInmem())
 	graph := NewGraph()
 
 	round := performInception(accounts.tree, nil)
 
+	if err := accounts.commit(nil); err != nil {
+		panic(err)
+	}
+
 	return &Ledger{
 		ctx:    ctx,
 		cancel: cancel,
+
+		keys: keys,
 
 		accounts: accounts,
 		graph:    graph,
@@ -54,38 +134,192 @@ func NewLedger() *Ledger {
 			sys.TagStake:    ProcessStakeTransaction,
 		},
 
-		rounds: map[uint64]Round{round.idx: round},
+		rounds: map[uint64]Round{round.Index: round},
 		round:  1,
+
+		BroadcastQueue: broadcastQueue,
+		broadcastQueue: broadcastQueue,
+
+		GossipIn: gossipIn,
+		gossipIn: gossipIn,
+
+		GossipOut: gossipOut,
+		gossipOut: gossipOut,
+
+		QueryIn: queryIn,
+		queryIn: queryIn,
+
+		QueryOut: queryOut,
+		queryOut: queryOut,
+
+		OutOfSyncIn: outOfSyncIn,
+		outOfSyncIn: outOfSyncIn,
+
+		OutOfSyncOut: outOfSyncOut,
+		outOfSyncOut: outOfSyncOut,
+
+		SyncInitIn: syncInitIn,
+		syncInitIn: syncInitIn,
+
+		SyncInitOut: syncInitOut,
+		syncInitOut: syncInitOut,
+
+		SyncDiffIn: syncDiffIn,
+		syncDiffIn: syncDiffIn,
+
+		SyncDiffOut: syncDiffOut,
+		syncDiffOut: syncDiffOut,
+
+		SyncTxIn: syncTxIn,
+		syncTxIn: syncTxIn,
+
+		SyncTxOut: syncTxOut,
+		syncTxOut: syncTxOut,
+
+		LatestViewIn: latestViewIn,
+		latestViewIn: latestViewIn,
+
+		LatestViewOut: latestViewOut,
+		latestViewOut: latestViewOut,
 	}
 }
 
+func (l *Ledger) NewTransaction(sender *skademlia.Keypair, tag byte, payload []byte) (Transaction, error) {
+	tx := Transaction{Tag: tag, Payload: payload}
+
+	tx.Sender = sender.PublicKey()
+
+	// TODO(kenta): find eligible parents and assign it to the transaction.
+
+	sort.Slice(tx.ParentIDs, func(i, j int) bool {
+		return bytes.Compare(tx.ParentIDs[i][:], tx.ParentIDs[j][:]) < 0
+	})
+
+	for _, parentID := range tx.ParentIDs {
+		parent, exists := l.graph.transactions[parentID]
+
+		if !exists {
+			return tx, errors.New("could not find transaction picked as an eligible parent")
+		}
+
+		if tx.Depth < parent.Depth {
+			tx.Depth = parent.Depth
+		}
+
+		tx.Confidence += parent.Confidence + 1
+	}
+
+	tx.Tag = tag
+	tx.Payload = payload
+
+	tx.Signature = edwards25519.Sign(sender.PrivateKey(), tx.Marshal())
+
+	tx.rehash()
+
+	return tx, nil
+}
+
+func (l *Ledger) addTransaction(tx Transaction) error {
+	if err := l.graph.addTransaction(tx); err != nil {
+		return err
+	}
+
+	ptr := l.graph.transactions[tx.ID]
+
+	difficulty := l.rounds[l.round-1].Root.ExpectedDifficulty(byte(sys.MinDifficulty))
+
+	if tx.IsCritical(difficulty) && l.snowball.Preferred() == nil {
+		state, err := l.collapseRound(l.round, ptr, true)
+
+		if err != nil {
+			return errors.Wrap(err, "got an error collapsing down tx to get merkle root")
+		}
+
+		round := NewRound(l.round, state.Checksum(), tx)
+		l.snowball.Prefer(&round)
+	}
+
+	return nil
+}
+
 func (l *Ledger) Run() {
+	go l.recvLoop(l.ctx)
 	go l.accounts.gcLoop(l.ctx)
-	go l.receivingLoop(l.ctx)
+
 	go l.gossipingLoop(l.ctx)
 	go l.queryingLoop(l.ctx)
 }
 
-func (l *Ledger) receivingLoop(ctx context.Context) {
+func (l *Ledger) Stop() {
+	l.cancel()
+}
+
+func (l *Ledger) Snapshot() *avl.Tree {
+	return l.accounts.snapshot()
+}
+
+func (l *Ledger) RoundID() uint64 {
+	return l.round
+}
+
+func (l *Ledger) LastRound() Round {
+	return l.rounds[l.round-1]
+}
+
+func (l *Ledger) Preferred() *Round {
+	return l.snowball.Preferred()
+}
+
+func (l *Ledger) FindTransaction(id common.TransactionID) (*Transaction, bool) {
+	tx, exists := l.graph.transactions[id]
+	return tx, exists
+}
+
+func (l *Ledger) ListTransactions(offset, limit uint64, sender common.AccountID) (transactions []*Transaction) {
+	for _, tx := range l.graph.transactions {
+		if (sender == common.ZeroAccountID) || (sender != common.ZeroAccountID && tx.Sender == sender) {
+			transactions = append(transactions, tx)
+		}
+	}
+
+	sort.Slice(transactions, func(i, j int) bool {
+		return transactions[i].Depth < transactions[j].Depth
+	})
+
+	if offset != 0 || limit != 0 {
+		if offset >= limit || offset >= uint64(len(transactions)) {
+			return nil
+		}
+
+		if offset+limit > uint64(len(transactions)) {
+			limit = uint64(len(transactions)) - offset
+		}
+
+		transactions = transactions[offset : offset+limit]
+	}
+
+	return
+}
+
+func (l *Ledger) recvLoop(ctx context.Context) {
+	step := l.recv()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
+		}
+
+		if err := step(ctx); err != nil {
+			fmt.Println("recv error:", err)
 		}
 	}
 }
 
 func (l *Ledger) gossipingLoop(ctx context.Context) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		}
-	}
-}
+	step := l.gossip()
 
-func (l *Ledger) queryingLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -93,7 +327,29 @@ func (l *Ledger) queryingLoop(ctx context.Context) {
 		default:
 		}
 
-		if err := l.step(ctx); err != nil {
+		if err := step(ctx); err != nil {
+			fmt.Println("gossip error:", err)
+		}
+	}
+}
+
+func (l *Ledger) queryingLoop(ctx context.Context) {
+	step := l.query()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		if err := step(ctx); err != nil {
+			switch errors.Cause(err) {
+			case ErrNonePreferred:
+			default:
+				fmt.Println("query error:", err)
+			}
+
 			select {
 			case <-ctx.Done():
 				return
@@ -103,9 +359,200 @@ func (l *Ledger) queryingLoop(ctx context.Context) {
 	}
 }
 
-const MinDifficulty = 8
+var ErrStopped = errors.New("worker stopped")
 
-// step atomically maintains the ledgers graph, and divides the graph from the bottom up into rounds.
+func (l *Ledger) recv() func(ctx context.Context) error {
+	return func(ctx context.Context) error {
+		select {
+		case <-ctx.Done():
+			return nil
+		case evt := <-l.gossipIn:
+			err := l.addTransaction(evt.TX)
+
+			if err != nil {
+				evt.Vote <- err
+				return nil
+			}
+
+			evt.Vote <- nil
+		case evt := <-l.queryIn:
+			r := evt.Round
+
+			if r.Index < l.round { // Respond with the round we decided beforehand.
+				round, available := l.rounds[r.Index]
+
+				if !available {
+					evt.Error <- errors.Errorf("got requested with round %d, but do not have it available", r.Index)
+					return nil
+				}
+
+				evt.Response <- &round
+				return nil
+			}
+
+			if err := l.addTransaction(r.Root); err != nil { // Add the root in the round to our graph.
+				evt.Error <- err
+				return nil
+			}
+
+			evt.Response <- l.snowball.Preferred() // Send back our preferred round info, if we have any.
+		}
+		return nil
+	}
+}
+
+func (l *Ledger) gossip() func(ctx context.Context) error {
+	broadcastNops := false
+
+	return func(ctx context.Context) error {
+		snapshot := l.accounts.snapshot()
+
+		var tx Transaction
+		var err error
+
+		var Result chan<- Transaction
+		var Error chan<- error
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case item := <-l.broadcastQueue:
+			tx, err = l.NewTransaction(l.keys, item.Tag, item.Payload)
+
+			if err != nil {
+				return err
+			}
+
+			Result = item.Result
+			Error = item.Error
+		case <-time.After(1 * time.Millisecond):
+			if !broadcastNops {
+				select {
+				case <-ctx.Done():
+				case <-time.After(100 * time.Millisecond):
+				}
+
+				return nil
+			}
+
+			// Check if we have enough money available to create and broadcast a nop transaction.
+
+			if balance, _ := ReadAccountBalance(snapshot, l.keys.PublicKey()); balance < sys.TransactionFeeAmount {
+				select {
+				case <-ctx.Done():
+				case <-time.After(100 * time.Millisecond):
+				}
+
+				return nil
+			}
+
+			tx, err = l.NewTransaction(l.keys, sys.TagNop, nil)
+
+			if err != nil {
+				return err
+			}
+		}
+
+		evt := EventGossip{
+			TX:     tx,
+			Result: make(chan []VoteGossip, 1),
+			Error:  make(chan error, 1),
+		}
+
+		select {
+		case <-ctx.Done():
+			if Error != nil {
+				Error <- ErrStopped
+			}
+
+			return nil
+		case <-time.After(1 * time.Second):
+			if Error != nil {
+				Error <- errors.New("gossip queue is full")
+			}
+
+			return nil
+		case l.gossipOut <- evt:
+		}
+
+		select {
+		case <-ctx.Done():
+			if Error != nil {
+				Error <- ErrStopped
+			}
+
+			return nil
+		case err := <-evt.Error:
+			if err != nil {
+				if Error != nil {
+					Error <- errors.Wrap(err, "got an error gossiping transaction out")
+				}
+				return nil
+			}
+		case votes := <-evt.Result:
+			if len(votes) == 0 {
+				return nil
+			}
+
+			accounts := make(map[common.AccountID]struct{})
+
+			for _, vote := range votes {
+				accounts[vote.Voter] = struct{}{}
+			}
+
+			weights := computeStakeDistribution(snapshot, accounts)
+
+			positives := 0.0
+
+			for _, vote := range votes {
+				if vote.Ok {
+					positives += weights[vote.Voter]
+				}
+			}
+
+			if positives < sys.SnowballQueryAlpha {
+				if Error != nil {
+					Error <- errors.Errorf("only %.2f%% of queried peers find transaction %x valid", positives, evt.TX.ID)
+				}
+
+				return nil
+			}
+
+			// Double-check that after gossiping, we have not progressed a single view ID and
+			// that the transaction is still valid for us to add to our view-graph.
+
+			if err := l.addTransaction(tx); err != nil {
+				if Error != nil {
+					Error <- err
+				}
+
+				return nil
+			}
+
+			/** At this point, the transaction was successfully added to our view-graph. **/
+
+			// If we have nothing else to broadcast and we are not broadcasting out
+			// nop transactions, then start broadcasting out nop transactions.
+			if len(l.broadcastQueue) == 0 && !broadcastNops {
+				broadcastNops = true
+			}
+
+			if Result != nil {
+				Result <- tx
+			}
+		case <-time.After(1 * time.Second):
+			if Error != nil {
+				Error <- errors.New("did not get back a gossip response")
+			}
+		}
+
+		return nil
+	}
+}
+
+var ErrNonePreferred = errors.New("no critical transactions available in round yet")
+
+// query atomically maintains the ledgers graph, and divides the graph from the bottom up into rounds.
 //
 // It maintains the ledgers Snowball instance while dividing up rounds, to see what the network believes
 // is the preferred critical transaction selected to finalize the current ledgers round, and also be the
@@ -113,87 +560,141 @@ const MinDifficulty = 8
 //
 // It should be called repetitively as fast as possible in an infinite for loop, in a separate goroutine
 // away from any other goroutines associated to the ledger.
-func (l *Ledger) step(ctx context.Context) error {
-	root := l.rounds[l.round-1].root
+func (l *Ledger) query() func(ctx context.Context) error {
+	return func(ctx context.Context) error {
+		root := l.rounds[l.round-1].Root
 
-	if l.snowball.Preferred() == nil { // If we do not prefer any critical transaction yet, find a critical transaction to initially prefer first.
-		difficulty := root.ExpectedDifficulty(MinDifficulty)
+		if l.snowball.Preferred() == nil { // If we do not prefer any critical transaction yet, find a critical transaction to initially prefer first.
+			difficulty := root.ExpectedDifficulty(byte(sys.MinDifficulty))
 
-		var eligible []*Transaction // Find all critical transactions for the current round.
+			var eligible []*Transaction // Find all critical transactions for the current round.
 
-		for i := difficulty; i < math.MaxUint8; i++ {
-			candidates, exists := l.graph.seedIndex[difficulty]
+			for i := difficulty; i < math.MaxUint8; i++ {
+				candidates, exists := l.graph.seedIndex[difficulty]
 
-			if !exists {
-				continue
+				if !exists {
+					continue
+				}
+
+				for candidateID := range candidates {
+					candidate := l.graph.transactions[candidateID]
+
+					if candidate.Depth > root.Depth && candidate.IsCritical(difficulty) {
+						eligible = append(eligible, candidate)
+					}
+				}
 			}
 
-			for candidateID := range candidates {
-				candidate := l.graph.transactions[candidateID]
+			if len(eligible) == 0 { // If there are no critical transactions for the round yet, discontinue.
+				return ErrNonePreferred
+			}
 
-				if candidate.Depth > root.Depth {
-					eligible = append(eligible, candidate)
+			// Sort critical transactions by their depth, and pick the critical transaction
+			// with the smallest depth as the nodes initial preferred transaction.
+			//
+			// The final selected critical transaction might change after a couple of
+			// rounds with Snowball.
+
+			sort.Slice(eligible, func(i, j int) bool {
+				return eligible[i].Depth < eligible[j].Depth
+			})
+
+			proposed := eligible[0]
+
+			state, err := l.collapseRound(l.round, proposed, true)
+
+			if err != nil {
+				return errors.Wrap(err, "got an error collapsing down tx to get merkle root")
+			}
+
+			initial := NewRound(l.round, state.Checksum(), *proposed)
+			l.snowball.Prefer(&initial)
+		}
+
+		snapshot := l.accounts.snapshot()
+
+		evt := EventQuery{
+			Round:  l.snowball.Preferred(),
+			Result: make(chan []VoteQuery, 1),
+			Error:  make(chan error, 1),
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-time.After(1 * time.Second):
+			return errors.New("query queue is full")
+		case l.queryOut <- evt:
+		}
+
+		var votes []VoteQuery
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-evt.Error:
+			return errors.Wrap(err, "query got event error")
+		case votes = <-evt.Result:
+		}
+
+		if len(votes) == 0 {
+			return nil
+		}
+
+		rounds := make(map[common.RoundID]Round)
+		accounts := make(map[common.AccountID]struct{}, len(votes))
+
+		for _, vote := range votes {
+			if vote.Preferred.Index == l.round && vote.Preferred.ID != common.ZeroTransactionID {
+				rounds[vote.Preferred.ID] = vote.Preferred
+			}
+
+			accounts[vote.Voter] = struct{}{}
+		}
+
+		var elected *Round
+		counts := make(map[common.RoundID]float64)
+
+		weights := computeStakeDistribution(snapshot, accounts)
+
+		for _, vote := range votes {
+			if vote.Preferred.Index == l.round && vote.Preferred.ID != common.ZeroTransactionID {
+				counts[vote.Preferred.ID] += weights[vote.Voter]
+
+				if counts[vote.Preferred.ID] >= sys.SnowballQueryAlpha {
+					elected = &vote.Preferred
+					break
 				}
 			}
 		}
 
-		if len(eligible) == 0 { // If there are no critical transactions for the round yet, discontinue.
-			return errors.New("no critical transactions available in round yet")
+		l.snowball.Tick(elected)
+
+		if l.snowball.Decided() {
+			preferred := l.snowball.Preferred()
+			root := l.graph.transactions[preferred.Root.ID]
+
+			state, err := l.collapseRound(preferred.Index, root, true)
+
+			if err != nil {
+				return errors.Wrap(err, "got an error finalizing a round")
+			}
+
+			if state.Checksum() != preferred.Merkle {
+				return errors.Errorf("expected finalized rounds merkle root to be %x, but got %x", preferred.Merkle, state.Checksum())
+			}
+
+			l.snowball.Reset()
+
+			l.rounds[l.round] = *preferred
+			l.round++
+
+			// TODO(kenta): prune knowledge of rounds over time, say after 30 rounds and
+			// 	also wipe away traces of their transactions.
 		}
 
-		// Sort critical transactions by their depth, and pick the critical transaction
-		// with the smallest depth as the nodes initial preferred transaction.
-		//
-		// The final selected critical transaction might change after a couple of
-		// rounds with Snowball.
-
-		sort.Slice(eligible, func(i, j int) bool {
-			return eligible[i].Depth < eligible[j].Depth
-		})
-
-		proposed := eligible[0]
-
-		state, err := l.collapseRound(l.round, proposed, true)
-
-		if err != nil {
-			return errors.Wrap(err, "got an error collapsing down tx to get merkle root")
-		}
-
-		initial := NewRound(l.round, state.Checksum(), *proposed)
-		l.snowball.Prefer(&initial)
+		return nil
 	}
-
-	// TODO(kenta): query our peers, weigh their stakes, and find the response with the maximum
-	// 	votes from our peers.
-
-	var elected *Round
-
-	l.snowball.Tick(elected)
-
-	if l.snowball.Decided() {
-		preferred := l.snowball.Preferred()
-		root := l.graph.transactions[preferred.root.id]
-
-		state, err := l.collapseRound(preferred.idx, root, true)
-
-		if err != nil {
-			return errors.Wrap(err, "got an error finalizing a round")
-		}
-
-		if state.Checksum() != preferred.merkle {
-			return errors.Errorf("expected finalized rounds merkle root to be %x, but got %x", preferred.merkle, state.Checksum())
-		}
-
-		l.snowball.Reset()
-
-		l.rounds[l.round] = *preferred
-		l.round++
-
-		// TODO(kenta): prune knowledge of rounds over time, say after 30 rounds and
-		// 	also wipe away traces of their transactions.
-	}
-
-	return nil
 }
 
 // collapseRound takes all transactions recorded in the graph view so far, and applies
@@ -204,17 +705,17 @@ func (l *Ledger) collapseRound(round uint64, tx *Transaction, logging bool) (*av
 	snapshot := l.accounts.snapshot()
 	snapshot.SetViewID(round + 1)
 
-	root := l.rounds[l.round-1].root
+	root := l.rounds[l.round-1].Root
 
 	visited := map[common.TransactionID]struct{}{
-		root.id: {},
+		root.ID: {},
 	}
 
 	aq := AcquireQueue()
 	defer ReleaseQueue(aq)
 
 	for _, parentID := range tx.ParentIDs {
-		if parentID == root.id {
+		if parentID == root.ID {
 			continue
 		}
 
@@ -223,7 +724,7 @@ func (l *Ledger) collapseRound(round uint64, tx *Transaction, logging bool) (*av
 		if parent, exists := l.graph.transactions[parentID]; exists {
 			aq.PushBack(parent)
 		} else {
-			return snapshot, errors.Errorf("missing parent to correctly collapse down ledger state from critical transaction %x", tx.id)
+			return snapshot, errors.Errorf("missing parent to correctly collapse down ledger state from critical transaction %x", tx.ID)
 		}
 	}
 
@@ -240,7 +741,7 @@ func (l *Ledger) collapseRound(round uint64, tx *Transaction, logging bool) (*av
 				if parent, exists := l.graph.transactions[parentID]; exists {
 					aq.PushBack(parent)
 				} else {
-					return snapshot, errors.Errorf("missing ancestor to correctly collapse down ledger state from critical transaction %x", tx.id)
+					return snapshot, errors.Errorf("missing ancestor to correctly collapse down ledger state from critical transaction %x", tx.ID)
 				}
 			}
 		}
@@ -264,12 +765,12 @@ func (l *Ledger) collapseRound(round uint64, tx *Transaction, logging bool) (*av
 
 		if err := l.applyTransactionToSnapshot(snapshot, popped); err != nil {
 			if logging {
-				logger := log.TX(popped.id, popped.Sender, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
+				logger := log.TX(popped.ID, popped.Sender, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
 				logger.Log().Err(err).Msg("Failed to apply transaction to the ledger.")
 			}
 		} else {
 			if logging {
-				logger := log.TX(popped.id, popped.Sender, popped.ParentIDs, popped.Tag, popped.Payload, "applied")
+				logger := log.TX(popped.ID, popped.Sender, popped.ParentIDs, popped.Tag, popped.Payload, "applied")
 				logger.Log().Msg("Successfully applied transaction to the ledger.")
 			}
 		}
@@ -339,7 +840,7 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) e
 				totalStake += stake
 
 				// Record entropy source.
-				if _, err := hasher.Write(popped.id[:]); err != nil {
+				if _, err := hasher.Write(popped.ID[:]); err != nil {
 					return errors.Wrap(err, "stake: failed to hash transaction id for entropy source")
 				}
 			}
@@ -400,8 +901,8 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) e
 		logger.Info().
 			Hex("sender", tx.Sender[:]).
 			Hex("recipient", rewardee.Sender[:]).
-			Hex("sender_tx_id", tx.id[:]).
-			Hex("rewardee_tx_id", rewardee.id[:]).
+			Hex("sender_tx_id", tx.ID[:]).
+			Hex("rewardee_tx_id", rewardee.ID[:]).
 			Hex("entropy", entropy).
 			Float64("acc", acc).
 			Float64("threshold", threshold).Msg("Rewarded validator.")

@@ -12,13 +12,14 @@ import (
 	"github.com/perlin-network/noise/handshake"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/noise/xnoise"
-	"github.com/perlin-network/wavelet/_old"
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/rs/zerolog"
+	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
 	"io/ioutil"
 	"net"
@@ -355,15 +356,17 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			preferredID := "N/A"
 
 			if preferred := ledger.Preferred(); preferred != nil {
-				preferredID = hex.EncodeToString(preferred.ID[:])
+				preferredID = hex.EncodeToString(preferred.Root.ID[:])
 			}
 
+			round := ledger.LastRound()
+
 			logger.Info().
-				Uint64("difficulty", ledger.Difficulty()).
-				Uint64("view_id", ledger.ViewID()).
-				Hex("root_id", ledger.Root().ID[:]).
-				Uint64("height", ledger.Height()).
-				Int("num_tx", ledger.NumTransactions()).
+				Uint8("difficulty", round.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
+				Uint64("round", round.Index).
+				Hex("root_id", round.Root.ID[:]).
+				Uint64("height", round.Root.Depth).
+				Uint64("num_tx", round.Root.Confidence).
 				Str("preferred_id", preferredID).
 				Msg("Here is the current state of the ledger.")
 		case "tx":
@@ -394,20 +397,17 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 
 			logger.Info().
 				Strs("parents", parents).
-				Hex("accounts_merkle_root", tx.AccountsMerkleRoot[:]).
-				Uints64("difficulty_timestamps", tx.DifficultyTimestamps).
-				Uint64("view_id", tx.ViewID).
 				Hex("sender", tx.Sender[:]).
-				Hex("creator", tx.Creator[:]).
 				Uint8("tag", tx.Tag).
-				Uint64("timestamp", tx.Timestamp).
+				Uint64("depth", tx.Depth).
+				Uint64("num_ancestors", tx.Confidence).
 				Msgf("Transaction: %s", cmd[1])
 		case "w":
 			snapshot := ledger.Snapshot()
 
 			if len(cmd) < 2 {
-				balance, _ := _old.ReadAccountBalance(snapshot, publicKey)
-				stake, _ := _old.ReadAccountStake(snapshot, publicKey)
+				balance, _ := wavelet.ReadAccountBalance(snapshot, publicKey)
+				stake, _ := wavelet.ReadAccountStake(snapshot, publicKey)
 
 				logger.Info().
 					Str("id", hex.EncodeToString(publicKey[:])).
@@ -428,11 +428,11 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			var accountID common.AccountID
 			copy(accountID[:], buf)
 
-			balance, _ := _old.ReadAccountBalance(snapshot, accountID)
-			stake, _ := _old.ReadAccountStake(snapshot, accountID)
+			balance, _ := wavelet.ReadAccountBalance(snapshot, accountID)
+			stake, _ := wavelet.ReadAccountStake(snapshot, accountID)
 
-			_, isContract := _old.ReadAccountContractCode(snapshot, accountID)
-			numPages, _ := _old.ReadAccountContractNumPages(snapshot, accountID)
+			_, isContract := wavelet.ReadAccountContractCode(snapshot, accountID)
+			numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, accountID)
 
 			logger.Info().
 				Uint64("balance", balance).
@@ -531,19 +531,11 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			}
 
 			go func() {
-				tx, err := _old.NewTransaction(k, sys.TagTransfer, payload.Bytes())
-				if err != nil {
-					logger.Error().Err(err).Msg("Failed to create a transfer transaction.")
-					return
-				}
-
-				evt := _old.EventBroadcast{
-					Tag:       tx.Tag,
-					Payload:   tx.Payload,
-					Creator:   tx.Creator,
-					Signature: tx.CreatorSignature,
-					Result:    make(chan _old.Transaction, 1),
-					Error:     make(chan error, 1),
+				evt := wavelet.EventBroadcast{
+					Tag:     sys.TagTransfer,
+					Payload: payload.Bytes(),
+					Result:  make(chan wavelet.Transaction, 1),
+					Error:   make(chan error, 1),
 				}
 
 				select {
@@ -560,7 +552,7 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 				case err := <-evt.Error:
 					logger.Error().Err(err).Msg("An error occurred while broadcasting a transfer transaction.")
 					return
-				case tx = <-evt.Result:
+				case tx := <-evt.Result:
 					logger.Info().Msgf("Success! Your payment transaction ID: %x", tx.ID)
 				}
 			}()
@@ -582,19 +574,11 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			payload.Write(intBuf[:8])
 
 			go func() {
-				tx, err := _old.NewTransaction(k, sys.TagStake, payload.Bytes())
-				if err != nil {
-					logger.Error().Err(err).Msg("Failed to create a stake placement transaction.")
-					return
-				}
-
-				evt := _old.EventBroadcast{
-					Tag:       tx.Tag,
-					Payload:   tx.Payload,
-					Creator:   tx.Creator,
-					Signature: tx.CreatorSignature,
-					Result:    make(chan _old.Transaction, 1),
-					Error:     make(chan error, 1),
+				evt := wavelet.EventBroadcast{
+					Tag:     sys.TagStake,
+					Payload: payload.Bytes(),
+					Result:  make(chan wavelet.Transaction, 1),
+					Error:   make(chan error, 1),
 				}
 
 				select {
@@ -611,7 +595,7 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 				case err := <-evt.Error:
 					logger.Error().Err(err).Msg("An error occurred while broadcasting a stake placement transaction.")
 					return
-				case tx = <-evt.Result:
+				case tx := <-evt.Result:
 					logger.Info().Msgf("Success! Your stake placement transaction ID: %x", tx.ID)
 				}
 			}()
@@ -632,19 +616,11 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			payload.Write(intBuf[:8])
 
 			go func() {
-				tx, err := _old.NewTransaction(k, sys.TagStake, payload.Bytes())
-				if err != nil {
-					logger.Error().Err(err).Msg("Failed to create a stake withdrawal transaction.")
-					return
-				}
-
-				evt := _old.EventBroadcast{
-					Tag:       tx.Tag,
-					Payload:   tx.Payload,
-					Creator:   tx.Creator,
-					Signature: tx.CreatorSignature,
-					Result:    make(chan _old.Transaction, 1),
-					Error:     make(chan error, 1),
+				evt := wavelet.EventBroadcast{
+					Tag:     sys.TagStake,
+					Payload: payload.Bytes(),
+					Result:  make(chan wavelet.Transaction, 1),
+					Error:   make(chan error, 1),
 				}
 
 				select {
@@ -661,7 +637,7 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 				case err := <-evt.Error:
 					logger.Error().Err(err).Msg("An error occurred while broadcasting a stake withdrawal transaction.")
 					return
-				case tx = <-evt.Result:
+				case tx := <-evt.Result:
 					logger.Info().Msgf("Success! Your stake withdrawal transaction ID: %x", tx.ID)
 				}
 			}()
@@ -680,19 +656,11 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			}
 
 			go func() {
-				tx, err := _old.NewTransaction(k, sys.TagContract, code)
-				if err != nil {
-					logger.Error().Err(err).Msg("Failed to create a smart contract creation transaction.")
-					return
-				}
-
-				evt := _old.EventBroadcast{
-					Tag:       tx.Tag,
-					Payload:   tx.Payload,
-					Creator:   tx.Creator,
-					Signature: tx.CreatorSignature,
-					Result:    make(chan _old.Transaction, 1),
-					Error:     make(chan error, 1),
+				evt := wavelet.EventBroadcast{
+					Tag:     sys.TagContract,
+					Payload: code,
+					Result:  make(chan wavelet.Transaction, 1),
+					Error:   make(chan error, 1),
 				}
 
 				select {
@@ -709,7 +677,7 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 				case err := <-evt.Error:
 					logger.Error().Err(err).Msg("An error occurred while broadcasting a smart contract creation transaction.")
 					return
-				case tx = <-evt.Result:
+				case tx := <-evt.Result:
 					logger.Info().Msgf("Success! Your smart contracts ID is: %x", tx.ID)
 				}
 			}()

@@ -68,18 +68,18 @@ func (s *Snowball) Tick(round *Round) {
 		return
 	}
 
-	if _, exists := s.candidates[round.id]; !exists {
-		s.candidates[round.id] = round
+	if _, exists := s.candidates[round.ID]; !exists {
+		s.candidates[round.ID] = round
 	}
 
-	s.counts[round.id]++ // Handle decision case.
+	s.counts[round.ID]++ // Handle decision case.
 
-	if s.counts[round.id] > s.counts[s.preferredID] {
-		s.preferredID = round.id
+	if s.counts[round.ID] > s.counts[s.preferredID] {
+		s.preferredID = round.ID
 	}
 
-	if s.lastID != round.id { // Handle termination case.
-		s.lastID = round.id
+	if s.lastID != round.ID { // Handle termination case.
+		s.lastID = round.ID
 		s.count = 0
 	} else {
 		s.count++
@@ -91,11 +91,11 @@ func (s *Snowball) Tick(round *Round) {
 }
 
 func (s *Snowball) Prefer(round *Round) {
-	if _, exists := s.candidates[round.id]; !exists {
-		s.candidates[round.id] = round
+	if _, exists := s.candidates[round.ID]; !exists {
+		s.candidates[round.ID] = round
 	}
 
-	s.preferredID = round.id
+	s.preferredID = round.ID
 }
 
 func (s *Snowball) Preferred() *Round {

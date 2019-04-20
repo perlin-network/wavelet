@@ -140,19 +140,19 @@ func ProcessContractTransaction(ctx *TransactionContext) error {
 		return errors.New("contract: no code specified for contract to be spawned")
 	}
 
-	if _, exists := ctx.ReadAccountContractCode(tx.id); exists {
+	if _, exists := ctx.ReadAccountContractCode(tx.ID); exists {
 		return errors.New("contract: there already exists a contract spawned with the specified code")
 	}
 
-	executor := NewContractExecutor(tx.id, ctx).WithGasTable(sys.GasTable)
+	executor := NewContractExecutor(tx.ID, ctx).WithGasTable(sys.GasTable)
 
 	vm, err := executor.Init(tx.Payload, 50000000)
 	if err != nil {
 		return errors.New("contract: code for contract is not valid WebAssembly code")
 	}
 
-	ctx.WriteAccountContractCode(tx.id, tx.Payload)
-	executor.SaveMemorySnapshot(tx.id, vm.Memory)
+	ctx.WriteAccountContractCode(tx.ID, tx.Payload)
+	executor.SaveMemorySnapshot(tx.ID, vm.Memory)
 
 	return nil
 }

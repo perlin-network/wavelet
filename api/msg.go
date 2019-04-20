@@ -7,7 +7,7 @@ import (
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/wavelet/_old"
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -163,8 +163,8 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 
 type sendTransactionResponse struct {
 	// Internal fields.
-	ledger *_old.Ledger
-	tx     *_old.Transaction
+	ledger *wavelet.Ledger
+	tx     *wavelet.Transaction
 }
 
 func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
@@ -186,7 +186,9 @@ func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, er
 		o.Set("parent_ids", nil)
 	}
 
-	if s.tx.IsCritical(s.ledger.Difficulty()) {
+	round := s.ledger.LastRound()
+
+	if s.tx.IsCritical(round.Root.ExpectedDifficulty(byte(sys.MinDifficulty))) {
 		o.Set("is_critical", arena.NewTrue())
 	} else {
 		o.Set("is_critical", arena.NewFalse())
@@ -199,7 +201,7 @@ type ledgerStatusResponse struct {
 	// Internal fields.
 
 	node      *noise.Node
-	ledger    *_old.Ledger
+	ledger    *wavelet.Ledger
 	network   *skademlia.Protocol
 	publicKey edwards25519.PublicKey
 }
@@ -209,13 +211,15 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 		return nil, errors.New("insufficient parameters were provided")
 	}
 
+	round := s.ledger.LastRound()
+
 	o := arena.NewObject()
 
 	o.Set("public_key", arena.NewString(hex.EncodeToString(s.publicKey[:])))
 	o.Set("address", arena.NewString(s.node.Addr().String()))
-	o.Set("root_id", arena.NewString(hex.EncodeToString(s.ledger.Root().ID[:])))
-	o.Set("view_id", arena.NewNumberString(strconv.FormatUint(s.ledger.ViewID(), 10)))
-	o.Set("difficulty", arena.NewNumberString(strconv.FormatUint(s.ledger.Difficulty(), 10)))
+	o.Set("root_id", arena.NewString(hex.EncodeToString(round.Root.ID[:])))
+	o.Set("view_id", arena.NewNumberString(strconv.FormatUint(s.ledger.RoundID(), 10)))
+	o.Set("difficulty", arena.NewNumberString(strconv.FormatUint(uint64(round.Root.ExpectedDifficulty(byte(sys.MinDifficulty))), 10)))
 
 	peers := s.network.Peers(s.node)
 	if len(peers) > 0 {
@@ -233,7 +237,7 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 
 type transaction struct {
 	// Internal fields.
-	tx *_old.Transaction
+	tx *wavelet.Transaction
 }
 
 func (s *transaction) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
@@ -254,14 +258,10 @@ func (s *transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 
 	o.Set("id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
 	o.Set("sender", arena.NewString(hex.EncodeToString(s.tx.Sender[:])))
-	o.Set("creator", arena.NewString(hex.EncodeToString(s.tx.Creator[:])))
-	o.Set("timestamp", arena.NewNumberString(strconv.FormatUint(s.tx.Timestamp, 10)))
 	o.Set("tag", arena.NewNumberInt(int(s.tx.Tag)))
 	o.Set("payload", arena.NewString(base64.StdEncoding.EncodeToString(s.tx.Payload)))
-	o.Set("accounts_root", arena.NewString(hex.EncodeToString(s.tx.AccountsMerkleRoot[:])))
-	o.Set("sender_signature", arena.NewString(hex.EncodeToString(s.tx.SenderSignature[:])))
-	o.Set("creator_signature", arena.NewString(hex.EncodeToString(s.tx.CreatorSignature[:])))
-	o.Set("depth", arena.NewNumberString(strconv.FormatUint(s.tx.Depth(), 10)))
+	o.Set("signature", arena.NewString(hex.EncodeToString(s.tx.Sender[:])))
+	o.Set("depth", arena.NewNumberString(strconv.FormatUint(s.tx.Depth, 10)))
 
 	if s.tx.ParentIDs != nil {
 		parents := arena.NewArray()
@@ -296,7 +296,7 @@ func (s transactionList) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 type account struct {
 	// Internal fields.
 	id     common.AccountID
-	ledger *_old.Ledger
+	ledger *wavelet.Ledger
 }
 
 func (s *account) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
@@ -310,20 +310,20 @@ func (s *account) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 
 	o.Set("public_key", arena.NewString(hex.EncodeToString(s.id[:])))
 
-	balance, _ := _old.ReadAccountBalance(snapshot, s.id)
+	balance, _ := wavelet.ReadAccountBalance(snapshot, s.id)
 	o.Set("balance", arena.NewNumberString(strconv.FormatUint(balance, 10)))
 
-	stake, _ := _old.ReadAccountStake(snapshot, s.id)
+	stake, _ := wavelet.ReadAccountStake(snapshot, s.id)
 	o.Set("stake", arena.NewNumberString(strconv.FormatUint(stake, 10)))
 
-	_, isContract := _old.ReadAccountContractCode(snapshot, s.id)
+	_, isContract := wavelet.ReadAccountContractCode(snapshot, s.id)
 	if isContract {
 		o.Set("is_contract", arena.NewTrue())
 	} else {
 		o.Set("is_contract", arena.NewFalse())
 	}
 
-	numPages, _ := _old.ReadAccountContractNumPages(snapshot, s.id)
+	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, s.id)
 	if numPages != 0 {
 		o.Set("num_mem_pages", arena.NewNumberString(strconv.FormatUint(numPages, 10)))
 	}

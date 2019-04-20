@@ -24,14 +24,14 @@ type Transaction struct {
 
 	Signature common.Signature
 
-	id       common.TransactionID // BLAKE2b(*).
-	checksum uint64               // XXH3(ID).
-	seed     byte                 // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
+	ID       common.TransactionID // BLAKE2b(*).
+	Checksum uint64               // XXH3(ID).
+	Seed     byte                 // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
 }
 
 func (t *Transaction) rehash() *Transaction {
-	t.id = blake2b.Sum256(t.Marshal())
-	t.checksum = xxh3.XXH3_64bits(t.id[:])
+	t.ID = blake2b.Sum256(t.Marshal())
+	t.Checksum = xxh3.XXH3_64bits(t.ID[:])
 
 	buf := make([]byte, 0, common.SizeAccountID+len(t.ParentIDs)*common.SizeTransactionID)
 	buf = append(buf, t.Sender[:]...)
@@ -40,7 +40,7 @@ func (t *Transaction) rehash() *Transaction {
 	}
 
 	seed := blake2b.Sum256(buf)
-	t.seed = byte(prefixLen(seed[:]))
+	t.Seed = byte(prefixLen(seed[:]))
 
 	return t
 }
@@ -177,6 +177,6 @@ func prefixLen(buf []byte) int {
 	return len(buf)*8 - 1
 }
 
-func (tx Transaction) IsCritical(difficulty uint64) bool {
-	return uint64(tx.seed) >= difficulty
+func (tx Transaction) IsCritical(difficulty byte) bool {
+	return tx.Seed >= difficulty
 }

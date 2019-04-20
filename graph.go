@@ -34,7 +34,7 @@ func NewGraph() *Graph {
 }
 
 func (g *Graph) assertTransactionIsValid(tx *Transaction) error {
-	if tx.id == common.ZeroTransactionID {
+	if tx.ID == common.ZeroTransactionID {
 		return errors.New("tx must have an id")
 	}
 
@@ -50,7 +50,7 @@ func (g *Graph) assertTransactionIsValid(tx *Transaction) error {
 	set := make(map[common.TransactionID]struct{})
 
 	for i := len(tx.ParentIDs) - 1; i > 0; i-- {
-		if tx.id == tx.ParentIDs[i] {
+		if tx.ID == tx.ParentIDs[i] {
 			return errors.New("tx must not include itself in its parents")
 		}
 
@@ -131,14 +131,14 @@ func (g *Graph) processParents(tx *Transaction) []common.TransactionID {
 			missingParentIDs = append(missingParentIDs, parentID)
 		}
 
-		g.children[parentID] = append(g.children[parentID], tx.id)
+		g.children[parentID] = append(g.children[parentID], tx.ID)
 	}
 
 	return missingParentIDs
 }
 
 func (g *Graph) addTransaction(tx Transaction) error {
-	if _, exists := g.transactions[tx.id]; exists {
+	if _, exists := g.transactions[tx.ID]; exists {
 		return nil
 	}
 
@@ -149,13 +149,13 @@ func (g *Graph) addTransaction(tx Transaction) error {
 	}
 
 	// Add transaction to the view-graph.
-	g.transactions[tx.id] = ptr
-	delete(g.missing, ptr.id)
+	g.transactions[tx.ID] = ptr
+	delete(g.missing, ptr.ID)
 
 	missing := g.processParents(ptr)
 
 	if len(missing) > 0 {
-		g.incomplete[ptr.id] = struct{}{}
+		g.incomplete[ptr.ID] = struct{}{}
 		return errors.New("parents for transaction are not in graph")
 	}
 
@@ -188,19 +188,19 @@ func (g *Graph) deleteIncompleteTransaction(id common.TransactionID) {
 }
 
 func (g *Graph) createTransactionIndices(tx *Transaction) {
-	if _, exists := g.seedIndex[tx.seed]; !exists {
-		g.seedIndex[tx.seed] = make(map[common.TransactionID]struct{})
+	if _, exists := g.seedIndex[tx.Seed]; !exists {
+		g.seedIndex[tx.Seed] = make(map[common.TransactionID]struct{})
 	}
 
-	g.seedIndex[tx.seed][tx.id] = struct{}{}
+	g.seedIndex[tx.Seed][tx.ID] = struct{}{}
 }
 
 func (g *Graph) cleanupTransactionIndices(txs ...*Transaction) {
 	for _, tx := range txs {
-		delete(g.seedIndex[tx.seed], tx.id)
+		delete(g.seedIndex[tx.Seed], tx.ID)
 
-		if len(g.seedIndex[tx.seed]) == 0 {
-			delete(g.seedIndex, tx.seed)
+		if len(g.seedIndex[tx.Seed]) == 0 {
+			delete(g.seedIndex, tx.Seed)
 		}
 	}
 }
@@ -209,7 +209,7 @@ func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
 	err := g.assertTransactionIsComplete(tx)
 
 	if err != nil {
-		g.deleteIncompleteTransaction(tx.id)
+		g.deleteIncompleteTransaction(tx.ID)
 		return err
 	}
 
@@ -222,7 +222,7 @@ func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
 	//			if complete = reduce(lambda acc, tx: acc and (parent in graph), child.parents, True):
 	//				mark child as complete
 
-	for _, childID := range g.children[tx.id] {
+	for _, childID := range g.children[tx.ID] {
 		_, incomplete := g.incomplete[childID]
 
 		if !incomplete {

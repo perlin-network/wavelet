@@ -13,17 +13,17 @@ import (
 // single root transaction. Rounds are denoted by their ID, which is represented by
 // BLAKE2b(merkle || root transactions content).
 type Round struct {
-	id     common.RoundID
-	idx    uint64
-	merkle common.MerkleNodeID
-	root   Transaction
+	ID     common.RoundID
+	Index  uint64
+	Merkle common.MerkleNodeID
+	Root   Transaction
 }
 
 func (r Round) Marshal() []byte {
 	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], r.idx)
+	binary.BigEndian.PutUint64(buf[:], r.Index)
 
-	return append(buf[:], append(r.merkle[:], r.root.Marshal()...)...)
+	return append(buf[:], append(r.Merkle[:], r.Root.Marshal()...)...)
 }
 
 func UnmarshalRound(r io.Reader) (round Round, err error) {
@@ -34,14 +34,14 @@ func UnmarshalRound(r io.Reader) (round Round, err error) {
 		return
 	}
 
-	round.idx = binary.BigEndian.Uint64(buf[:8])
+	round.Index = binary.BigEndian.Uint64(buf[:8])
 
-	if _, err = io.ReadFull(r, round.merkle[:]); err != nil {
+	if _, err = io.ReadFull(r, round.Merkle[:]); err != nil {
 		err = errors.Wrap(err, "failed to decode round merkle root")
 		return
 	}
 
-	if round.root, err = UnmarshalTransaction(r); err != nil {
+	if round.Root, err = UnmarshalTransaction(r); err != nil {
 		err = errors.Wrap(err, "failed to decode round root transaction")
 		return
 	}
@@ -51,12 +51,12 @@ func UnmarshalRound(r io.Reader) (round Round, err error) {
 
 func NewRound(index uint64, merkle common.MerkleNodeID, root Transaction) Round {
 	r := Round{
-		idx:    index,
-		merkle: merkle,
-		root:   root,
+		Index:  index,
+		Merkle: merkle,
+		Root:   root,
 	}
 
-	r.id = blake2b.Sum256(r.Marshal())
+	r.ID = blake2b.Sum256(r.Marshal())
 
 	return r
 }
