@@ -189,15 +189,24 @@ func (g *Graph) deleteIncompleteTransaction(id common.TransactionID) {
 	}
 }
 
-// Indices are local to each round. For example, the seed index
-// indexes transactions only in the current round the ledger
-// is in.
+// Indices are local to each round. For example, the seed index indexes
+// transactions only in the current round the ledger is in.
 func (g *Graph) createTransactionIndices(tx *Transaction) {
 	if _, exists := g.seedIndex[tx.seed]; !exists {
 		g.seedIndex[tx.seed] = make(map[common.TransactionID]struct{})
 	}
 
 	g.seedIndex[tx.seed][tx.id] = struct{}{}
+}
+
+func (g *Graph) cleanupTransactionIndices(txs ...*Transaction) {
+	for _, tx := range txs {
+		delete(g.seedIndex[tx.seed], tx.id)
+
+		if len(g.seedIndex[tx.seed]) == 0 {
+			delete(g.seedIndex, tx.seed)
+		}
+	}
 }
 
 func (g *Graph) markTransactionAsComplete(tx *Transaction) error {

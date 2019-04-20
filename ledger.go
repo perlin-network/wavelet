@@ -162,7 +162,7 @@ func (l *Ledger) step() {
 		preferred := l.snowball.Preferred()
 		root := l.graph.transactions[preferred.root.id]
 
-		_, state, err := l.collapseRound(preferred.idx, root, true)
+		txs, state, err := l.collapseRound(preferred.idx, root, true)
 
 		if err != nil {
 			fmt.Println(errors.Wrap(err, "got an error finalizing a round"))
@@ -174,10 +174,9 @@ func (l *Ledger) step() {
 			return
 		}
 
-		// TODO(kenta): clear out graph indices for transactions that are in the ancestry
-		// 	of the preferred transaction.
-
 		l.snowball.Reset()
+
+		l.graph.cleanupTransactionIndices(txs...)
 		l.graph.reset(root)
 
 		l.rounds[l.round] = *preferred
