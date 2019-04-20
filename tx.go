@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"github.com/perlin-network/wavelet/common"
 	"golang.org/x/crypto/blake2b"
+	"math"
 	"math/bits"
 )
 
@@ -41,11 +42,31 @@ func (t Transaction) Marshal() []byte {
 }
 
 func (t Transaction) ExpectedDifficulty(min uint64) uint64 {
+	if t.Depth == 0 && t.Confidence == 0 {
+		return min
+	}
+
 	log2 := func(x uint64) uint64 {
 		return uint64(64 - bits.LeadingZeros64(x))
 	}
 
-	return min * log2(t.Confidence) / log2(t.Depth)
+	mul := func(a, b uint64) uint64 {
+		c := a * b
+
+		if c/b != a {
+			c = math.MaxUint64
+		}
+
+		return c
+	}
+
+	difficulty := mul(min, log2(t.Confidence)) / log2(t.Depth)
+
+	if difficulty < min {
+		difficulty = min
+	}
+
+	return difficulty
 }
 
 func prefixLen(buf []byte) int {
