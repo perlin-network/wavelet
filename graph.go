@@ -175,7 +175,7 @@ func (g *Graph) deleteTransaction(id common.TransactionID) {
 	delete(g.missing, id)
 }
 
-// deleteIncompleteTransaction explicilty deletes all traces of a transaction
+// deleteIncompleteTransaction explicitly deletes all traces of a transaction
 // alongside its progeny from the graph. Note that incomplete transactions
 // are not stored in any indices of the graph, so the function should ONLY
 // be used to delete incomplete transactions that have not yet been indexed.
@@ -189,8 +189,6 @@ func (g *Graph) deleteIncompleteTransaction(id common.TransactionID) {
 	}
 }
 
-// Indices are local to each round. For example, the seed index indexes
-// transactions only in the current round the ledger is in.
 func (g *Graph) createTransactionIndices(tx *Transaction) {
 	if _, exists := g.seedIndex[tx.seed]; !exists {
 		g.seedIndex[tx.seed] = make(map[common.TransactionID]struct{})
