@@ -121,16 +121,34 @@ func (g *Graph) addTransaction(tx Transaction) error {
 	return g.markTransactionAsComplete(ptr)
 }
 
+// deleteTransaction deletes all traces of a transaction from the graph. Note
+// however that it does not remove the transaction from any of the graphs
+// indices.
 func (g *Graph) deleteTransaction(id common.TransactionID) {
 	delete(g.transactions, id)
+	delete(g.children, id)
+
 	delete(g.incomplete, id)
 	delete(g.missing, id)
+}
 
-	for _, childID := range g.children[id] {
+// deleteIncompleteTransaction explicilty deletes all traces of a transaction
+// alongside its progeny from the graph. Note that incomplete transactions
+// are not stored in any indices of the graph, so the function should ONLY
+// be used to delete incomplete transactions that have not yet been indexed.
+func (g *Graph) deleteIncompleteTransaction(id common.TransactionID) {
+	children := g.children[id]
+
+	g.deleteTransaction(id)
+
+	for _, childID := range children {
 		g.deleteTransaction(childID)
 	}
 }
 
+// Indices are local to each round. For example, the seed index
+// indexes transactions only in the current round the ledger
+// is in.
 func (g *Graph) createTransactionIndices(tx *Transaction) {
 	if _, exists := g.seedIndex[tx.seed]; !exists {
 		g.seedIndex[tx.seed] = make(map[common.TransactionID]struct{})
@@ -143,7 +161,7 @@ func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
 	err := g.assertTransactionIsComplete(tx)
 
 	if err != nil {
-		g.deleteTransaction(tx.id)
+		g.deleteIncompleteTransaction(tx.id)
 		return err
 	}
 
@@ -192,8 +210,6 @@ func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
 	return nil
 }
 
-// txs: 1, 2, 3, 4, 5
-
-// txs: 3, 4, 2, 1, 5
-
-// incomplete = {}
+func (g *Graph) reset(root *Transaction) {
+	g.rootID = root.id
+}
