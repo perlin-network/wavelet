@@ -15,29 +15,6 @@ import (
 	"time"
 )
 
-// Nodes negotiate over which round to accept through Snowball. A round comprises of
-// a Merkle root of the ledgers state proposed by the root transaction, alongside a
-// single root transaction. Rounds are denoted by their ID, which is represented by
-// BLAKE2b(merkle || root transactions content).
-type Round struct {
-	id     common.RoundID
-	idx    uint64
-	merkle common.MerkleNodeID
-	root   Transaction
-}
-
-func NewRound(index uint64, merkle common.MerkleNodeID, root Transaction) Round {
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], index)
-
-	return Round{
-		id:     blake2b.Sum256(append(buf[:], append(merkle[:], root.Marshal()...)...)),
-		idx:    index,
-		merkle: merkle,
-		root:   root,
-	}
-}
-
 type Ledger struct {
 	ctx    context.Context
 	cancel context.CancelFunc
