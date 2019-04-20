@@ -13,7 +13,11 @@ import (
 )
 
 type Transaction struct {
-	Sender    common.AccountID       // Transaction sender.
+	Sender  common.AccountID // Transaction sender.
+	Creator common.AccountID // Transaction creator.
+
+	Nonce uint64
+
 	ParentIDs []common.TransactionID // Transactions parents.
 
 	Depth      uint64 // Graph depth.
@@ -22,7 +26,8 @@ type Transaction struct {
 	Tag     byte
 	Payload []byte
 
-	Signature common.Signature
+	SenderSignature  common.Signature
+	CreatorSignature common.Signature
 
 	ID       common.TransactionID // BLAKE2b(*).
 	Checksum uint64               // XXH3(ID).
@@ -49,19 +54,23 @@ func (t Transaction) Marshal() []byte {
 	w := bytes.NewBuffer(nil)
 
 	w.Write(t.Sender[:])
+	w.Write(t.Creator[:])
+
+	var buf [8]byte
+
+	binary.BigEndian.PutUint64(buf[:8], t.Nonce)
+	w.Write(buf[:8])
 
 	w.WriteByte(byte(len(t.ParentIDs)))
 	for _, parentID := range t.ParentIDs {
 		w.Write(parentID[:])
 	}
 
-	var buf [8]byte
-
 	binary.BigEndian.PutUint64(buf[:8], t.Depth)
-	w.Write(buf[:])
+	w.Write(buf[:8])
 
 	binary.BigEndian.PutUint64(buf[:8], t.Confidence)
-	w.Write(buf[:])
+	w.Write(buf[:8])
 
 	w.WriteByte(t.Tag)
 
@@ -69,7 +78,8 @@ func (t Transaction) Marshal() []byte {
 	w.Write(buf[:4])
 	w.Write(t.Payload)
 
-	w.Write(t.Signature[:])
+	w.Write(t.SenderSignature[:])
+	w.Write(t.CreatorSignature[:])
 
 	return w.Bytes()
 }
@@ -80,7 +90,19 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 		return
 	}
 
+	if _, err = io.ReadFull(r, t.Creator[:]); err != nil {
+		err = errors.Wrap(err, "failed to decode transaction creator")
+		return
+	}
+
 	var buf [8]byte
+
+	if _, err = io.ReadFull(r, buf[:8]); err != nil {
+		err = errors.Wrap(err, "failed to read nonce")
+		return
+	}
+
+	t.Nonce = binary.BigEndian.Uint64(buf[:8])
 
 	if _, err = io.ReadFull(r, buf[:1]); err != nil {
 		err = errors.Wrap(err, "failed to read num parents")
@@ -129,8 +151,13 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 		return
 	}
 
-	if _, err = io.ReadFull(r, t.Signature[:]); err != nil {
+	if _, err = io.ReadFull(r, t.SenderSignature[:]); err != nil {
 		err = errors.Wrap(err, "failed to decode signature")
+		return
+	}
+
+	if _, err = io.ReadFull(r, t.CreatorSignature[:]); err != nil {
+		err = errors.Wrap(err, "failed to decode creator signature")
 		return
 	}
 

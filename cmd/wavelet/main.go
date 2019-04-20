@@ -398,6 +398,8 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			logger.Info().
 				Strs("parents", parents).
 				Hex("sender", tx.Sender[:]).
+				Hex("creator", tx.Creator[:]).
+				Uint64("nonce", tx.Nonce).
 				Uint8("tag", tx.Tag).
 				Uint64("depth", tx.Depth).
 				Uint64("num_ancestors", tx.Confidence).
@@ -408,11 +410,13 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			if len(cmd) < 2 {
 				balance, _ := wavelet.ReadAccountBalance(snapshot, publicKey)
 				stake, _ := wavelet.ReadAccountStake(snapshot, publicKey)
+				nonce, _ := wavelet.ReadAccountNonce(snapshot, publicKey)
 
 				logger.Info().
 					Str("id", hex.EncodeToString(publicKey[:])).
 					Uint64("balance", balance).
 					Uint64("stake", stake).
+					Uint64("nonce", nonce).
 					Msg("Here is your wallet information.")
 
 				continue
@@ -430,6 +434,7 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 
 			balance, _ := wavelet.ReadAccountBalance(snapshot, accountID)
 			stake, _ := wavelet.ReadAccountStake(snapshot, accountID)
+			nonce, _ := wavelet.ReadAccountNonce(snapshot, accountID)
 
 			_, isContract := wavelet.ReadAccountContractCode(snapshot, accountID)
 			numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, accountID)
@@ -437,6 +442,7 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			logger.Info().
 				Uint64("balance", balance).
 				Uint64("stake", stake).
+				Uint64("nonce", nonce).
 				Bool("is_contract", isContract).
 				Uint64("num_pages", numPages).
 				Msgf("Account: %s", cmd[1])
@@ -531,11 +537,15 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			}
 
 			go func() {
+				tx := wavelet.NewTransaction(k, sys.TagTransfer, payload.Bytes())
+
 				evt := wavelet.EventBroadcast{
-					Tag:     sys.TagTransfer,
-					Payload: payload.Bytes(),
-					Result:  make(chan wavelet.Transaction, 1),
-					Error:   make(chan error, 1),
+					Tag:       tx.Tag,
+					Payload:   tx.Payload,
+					Creator:   tx.Creator,
+					Signature: tx.CreatorSignature,
+					Result:    make(chan wavelet.Transaction, 1),
+					Error:     make(chan error, 1),
 				}
 
 				select {
@@ -574,11 +584,15 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			payload.Write(intBuf[:8])
 
 			go func() {
+				tx := wavelet.NewTransaction(k, sys.TagStake, payload.Bytes())
+
 				evt := wavelet.EventBroadcast{
-					Tag:     sys.TagStake,
-					Payload: payload.Bytes(),
-					Result:  make(chan wavelet.Transaction, 1),
-					Error:   make(chan error, 1),
+					Tag:       tx.Tag,
+					Payload:   tx.Payload,
+					Creator:   tx.Creator,
+					Signature: tx.CreatorSignature,
+					Result:    make(chan wavelet.Transaction, 1),
+					Error:     make(chan error, 1),
 				}
 
 				select {
@@ -616,11 +630,15 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			payload.Write(intBuf[:8])
 
 			go func() {
+				tx := wavelet.NewTransaction(k, sys.TagStake, payload.Bytes())
+
 				evt := wavelet.EventBroadcast{
-					Tag:     sys.TagStake,
-					Payload: payload.Bytes(),
-					Result:  make(chan wavelet.Transaction, 1),
-					Error:   make(chan error, 1),
+					Tag:       tx.Tag,
+					Payload:   tx.Payload,
+					Creator:   tx.Creator,
+					Signature: tx.CreatorSignature,
+					Result:    make(chan wavelet.Transaction, 1),
+					Error:     make(chan error, 1),
 				}
 
 				select {
@@ -656,11 +674,15 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			}
 
 			go func() {
+				tx := wavelet.NewTransaction(k, sys.TagContract, code)
+
 				evt := wavelet.EventBroadcast{
-					Tag:     sys.TagContract,
-					Payload: code,
-					Result:  make(chan wavelet.Transaction, 1),
-					Error:   make(chan error, 1),
+					Tag:       tx.Tag,
+					Payload:   tx.Payload,
+					Creator:   tx.Creator,
+					Signature: tx.CreatorSignature,
+					Result:    make(chan wavelet.Transaction, 1),
+					Error:     make(chan error, 1),
 				}
 
 				select {

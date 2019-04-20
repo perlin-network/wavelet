@@ -184,10 +184,20 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 	}
 }
 
-func (l *Ledger) NewTransaction(sender *skademlia.Keypair, tag byte, payload []byte) (Transaction, error) {
+func NewTransaction(creator *skademlia.Keypair, tag byte, payload []byte) Transaction {
 	tx := Transaction{Tag: tag, Payload: payload}
 
-	tx.Sender = sender.PublicKey()
+	var buf [8]byte
+	// TODO(kenta): nonce
+
+	tx.Creator = creator.PublicKey()
+	tx.CreatorSignature = edwards25519.Sign(creator.PrivateKey(), append(buf[:], append([]byte{tx.Tag}, tx.Payload...)...))
+
+	return tx
+}
+
+func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) {
+	tx.Sender = l.keys.PublicKey()
 
 	// TODO(kenta): find eligible parents and assign it to the transaction.
 
@@ -209,10 +219,7 @@ func (l *Ledger) NewTransaction(sender *skademlia.Keypair, tag byte, payload []b
 		tx.Confidence += parent.Confidence + 1
 	}
 
-	tx.Tag = tag
-	tx.Payload = payload
-
-	tx.Signature = edwards25519.Sign(sender.PrivateKey(), tx.Marshal())
+	tx.SenderSignature = edwards25519.Sign(l.keys.PrivateKey(), tx.Marshal())
 
 	tx.rehash()
 
@@ -275,9 +282,9 @@ func (l *Ledger) FindTransaction(id common.TransactionID) (*Transaction, bool) {
 	return tx, exists
 }
 
-func (l *Ledger) ListTransactions(offset, limit uint64, sender common.AccountID) (transactions []*Transaction) {
+func (l *Ledger) ListTransactions(offset, limit uint64, sender, creator common.AccountID) (transactions []*Transaction) {
 	for _, tx := range l.graph.transactions {
-		if (sender == common.ZeroAccountID) || (sender != common.ZeroAccountID && tx.Sender == sender) {
+		if (sender == common.ZeroAccountID && creator == common.ZeroAccountID) || (sender != common.ZeroAccountID && tx.Sender == sender) || (creator != common.ZeroAccountID && tx.Creator == creator) {
 			transactions = append(transactions, tx)
 		}
 	}
@@ -417,10 +424,11 @@ func (l *Ledger) gossip() func(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case item := <-l.broadcastQueue:
-			tx, err = l.NewTransaction(l.keys, item.Tag, item.Payload)
-
-			if err != nil {
-				return err
+			tx = Transaction{
+				Tag:              item.Tag,
+				Payload:          item.Payload,
+				Creator:          item.Creator,
+				CreatorSignature: item.Signature,
 			}
 
 			Result = item.Result
@@ -446,11 +454,16 @@ func (l *Ledger) gossip() func(ctx context.Context) error {
 				return nil
 			}
 
-			tx, err = l.NewTransaction(l.keys, sys.TagNop, nil)
+			tx = NewTransaction(l.keys, sys.TagNop, nil)
+		}
 
-			if err != nil {
-				return err
+		tx, err = l.attachSenderToTransaction(tx)
+
+		if err != nil {
+			if Error != nil {
+				Error <- errors.Wrap(err, "failed to sign off transaction")
 			}
+			return nil
 		}
 
 		evt := EventGossip{
@@ -765,15 +778,19 @@ func (l *Ledger) collapseRound(round uint64, tx *Transaction, logging bool) (*av
 
 		if err := l.applyTransactionToSnapshot(snapshot, popped); err != nil {
 			if logging {
-				logger := log.TX(popped.ID, popped.Sender, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
+				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
 				logger.Log().Err(err).Msg("Failed to apply transaction to the ledger.")
 			}
 		} else {
 			if logging {
-				logger := log.TX(popped.ID, popped.Sender, popped.ParentIDs, popped.Tag, popped.Payload, "applied")
+				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.ParentIDs, popped.Tag, popped.Payload, "applied")
 				logger.Log().Msg("Successfully applied transaction to the ledger.")
 			}
 		}
+
+		// Update nonce.
+		nonce, _ := ReadAccountNonce(snapshot, popped.Creator)
+		WriteAccountNonce(snapshot, popped.Creator, nonce+1)
 	}
 
 	//l.cacheAccounts.put(tx.getCriticalSeed(), snapshot)

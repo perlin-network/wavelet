@@ -159,7 +159,7 @@ func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, params ...
 	c.header = make([]byte, common.SizeTransactionID+common.SizeAccountID+8)
 
 	copy(c.header[0:common.SizeTransactionID], tx.ID[:])
-	copy(c.header[common.SizeTransactionID:common.SizeTransactionID+common.SizeAccountID], tx.Sender[:])
+	copy(c.header[common.SizeTransactionID:common.SizeTransactionID+common.SizeAccountID], tx.Creator[:])
 
 	binary.LittleEndian.PutUint64(c.header[common.SizeTransactionID+common.SizeAccountID:8+common.SizeTransactionID+common.SizeAccountID], amount)
 
@@ -226,6 +226,7 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 
 				c.ctx.transactions.PushBack(&Transaction{
 					Sender:  c.contractID,
+					Creator: c.contractID,
 					Tag:     tag,
 					Payload: inputs,
 				})

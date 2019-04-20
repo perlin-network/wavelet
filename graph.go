@@ -42,6 +42,10 @@ func (g *Graph) assertTransactionIsValid(tx *Transaction) error {
 		return errors.New("tx must have sender associated to it")
 	}
 
+	if tx.Creator == common.ZeroAccountID {
+		return errors.New("tx must have a creator associated to it")
+	}
+
 	if len(tx.ParentIDs) == 0 {
 		return errors.New("transaction has no parents")
 	}

@@ -9,15 +9,32 @@ import (
 
 var (
 	keyAccounts       = [...]byte{0x1}
-	keyAccountBalance = [...]byte{0x2}
-	keyAccountStake   = [...]byte{0x3}
+	keyAccountNonce   = [...]byte{0x2}
+	keyAccountBalance = [...]byte{0x3}
+	keyAccountStake   = [...]byte{0x4}
 
-	keyAccountContractCode     = [...]byte{0x4}
-	keyAccountContractNumPages = [...]byte{0x5}
-	keyAccountContractPages    = [...]byte{0x6}
+	keyAccountContractCode     = [...]byte{0x5}
+	keyAccountContractNumPages = [...]byte{0x6}
+	keyAccountContractPages    = [...]byte{0x7}
 
-	keyGraphRoot = [...]byte{0x7}
+	keyGraphRoot = [...]byte{0x8}
 )
+
+func ReadAccountNonce(tree *avl.Tree, id common.AccountID) (uint64, bool) {
+	buf, exists := readUnderAccounts(tree, id, keyAccountNonce[:])
+	if !exists || len(buf) == 0 {
+		return 0, false
+	}
+
+	return binary.LittleEndian.Uint64(buf), true
+}
+
+func WriteAccountNonce(tree *avl.Tree, id common.AccountID, nonce uint64) {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], nonce)
+
+	writeUnderAccounts(tree, id, keyAccountNonce[:], buf[:])
+}
 
 func ReadAccountBalance(tree *avl.Tree, id common.AccountID) (uint64, bool) {
 	buf, exists := readUnderAccounts(tree, id, keyAccountBalance[:])

@@ -33,13 +33,13 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 
 	amount := binary.LittleEndian.Uint64(buf[:])
 
-	creatorBalance, _ := ctx.ReadAccountBalance(tx.Sender)
+	creatorBalance, _ := ctx.ReadAccountBalance(tx.Creator)
 
 	if creatorBalance < amount {
 		return errors.Errorf("transfer: not enough balance, wanting %d PERLs", amount)
 	}
 
-	ctx.WriteAccountBalance(tx.Sender, creatorBalance-amount)
+	ctx.WriteAccountBalance(tx.Creator, creatorBalance-amount)
 
 	recipientBalance, _ := ctx.ReadAccountBalance(recipient)
 	ctx.WriteAccountBalance(recipient, recipientBalance+amount)
@@ -87,12 +87,12 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 		return errors.Errorf("transfer: transaction creator tried to send %d PERLs, but only has %d PERLs", amount, creatorBalance)
 	}
 
-	ctx.WriteAccountBalance(tx.Sender, creatorBalance-amount-gas)
+	ctx.WriteAccountBalance(tx.Creator, creatorBalance-amount-gas)
 
 	logger := log.Contract(recipient, "gas")
 	logger.Info().
 		Uint64("gas", gas).
-		Hex("sender_id", tx.Sender[:]).
+		Hex("creator_id", tx.Creator[:]).
 		Hex("contract_id", recipient[:]).
 		Msg("Deducted PERLs for invoking smart contract function.")
 
@@ -111,23 +111,23 @@ func ProcessStakeTransaction(ctx *TransactionContext) error {
 
 	delta := binary.LittleEndian.Uint64(buf[1:])
 
-	balance, _ := ctx.ReadAccountBalance(tx.Sender)
-	stake, _ := ctx.ReadAccountStake(tx.Sender)
+	balance, _ := ctx.ReadAccountBalance(tx.Creator)
+	stake, _ := ctx.ReadAccountStake(tx.Creator)
 
 	if placeStake := buf[0] == 1; placeStake {
 		if balance < delta {
 			return errors.New("stake: balance < delta")
 		}
 
-		ctx.WriteAccountBalance(tx.Sender, balance-delta)
-		ctx.WriteAccountStake(tx.Sender, stake+delta)
+		ctx.WriteAccountBalance(tx.Creator, balance-delta)
+		ctx.WriteAccountStake(tx.Creator, stake+delta)
 	} else {
 		if stake < delta {
 			return errors.New("stake: stake < delta")
 		}
 
-		ctx.WriteAccountBalance(tx.Sender, balance+delta)
-		ctx.WriteAccountStake(tx.Sender, stake-delta)
+		ctx.WriteAccountBalance(tx.Creator, balance+delta)
+		ctx.WriteAccountStake(tx.Creator, stake-delta)
 	}
 
 	return nil

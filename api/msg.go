@@ -258,9 +258,12 @@ func (s *transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 
 	o.Set("id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
 	o.Set("sender", arena.NewString(hex.EncodeToString(s.tx.Sender[:])))
+	o.Set("creator", arena.NewString(hex.EncodeToString(s.tx.Creator[:])))
+	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(s.tx.Nonce, 10)))
 	o.Set("tag", arena.NewNumberInt(int(s.tx.Tag)))
 	o.Set("payload", arena.NewString(base64.StdEncoding.EncodeToString(s.tx.Payload)))
-	o.Set("signature", arena.NewString(hex.EncodeToString(s.tx.Sender[:])))
+	o.Set("sender_signature", arena.NewString(hex.EncodeToString(s.tx.SenderSignature[:])))
+	o.Set("creator_signature", arena.NewString(hex.EncodeToString(s.tx.CreatorSignature[:])))
 	o.Set("depth", arena.NewNumberString(strconv.FormatUint(s.tx.Depth, 10)))
 
 	if s.tx.ParentIDs != nil {

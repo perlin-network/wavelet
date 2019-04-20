@@ -80,6 +80,10 @@ func randomTX(t testing.TB, parents ...common.TransactionID) Transaction {
 	_, err = rand.Read(tx.Sender[:])
 	assert.NoError(t, err)
 
+	// Set transaction creator.
+	_, err = rand.Read(tx.Creator[:])
+	assert.NoError(t, err)
+
 	// Set transaction parents.
 	tx.ParentIDs = parents
 
