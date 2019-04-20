@@ -3,7 +3,6 @@ package wavelet
 import (
 	"context"
 	"encoding/binary"
-	"fmt"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
@@ -13,6 +12,7 @@ import (
 	"golang.org/x/crypto/blake2b"
 	"math"
 	"sort"
+	"time"
 )
 
 // Nodes negotiate over which round to accept through Snowball. A round comprises of
@@ -116,7 +116,13 @@ func (l *Ledger) queryingLoop(ctx context.Context) {
 		default:
 		}
 
-		l.step()
+		if err := l.step(ctx); err != nil {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
 	}
 }
 
@@ -130,7 +136,7 @@ const MinDifficulty = 8
 //
 // It should be called repetitively as fast as possible in an infinite for loop, in a separate goroutine
 // away from any other goroutines associated to the ledger.
-func (l *Ledger) step() {
+func (l *Ledger) step(ctx context.Context) error {
 	root := l.graph.transactions[l.graph.rootID]
 
 	if l.snowball.Preferred() == nil { // If we do not prefer any critical transaction yet, find a critical transaction to initially prefer first.
@@ -155,7 +161,7 @@ func (l *Ledger) step() {
 		}
 
 		if len(eligible) == 0 { // If there are no critical transactions for the round yet, discontinue.
-			return
+			return errors.New("no critical transactions available in round yet")
 		}
 
 		// Sort critical transactions by their depth, and pick the critical transaction
@@ -173,8 +179,7 @@ func (l *Ledger) step() {
 		_, state, err := l.collapseRound(l.round, proposed, true)
 
 		if err != nil {
-			fmt.Println(errors.Wrap(err, "got an error collapsing down tx to get merkle root"))
-			return
+			return errors.Wrap(err, "got an error collapsing down tx to get merkle root")
 		}
 
 		initial := NewRound(l.round, state.Checksum(), *proposed)
@@ -195,13 +200,11 @@ func (l *Ledger) step() {
 		txs, state, err := l.collapseRound(preferred.idx, root, true)
 
 		if err != nil {
-			fmt.Println(errors.Wrap(err, "got an error finalizing a round"))
-			return
+			return errors.Wrap(err, "got an error finalizing a round")
 		}
 
 		if state.Checksum() != preferred.merkle {
-			fmt.Println(errors.Errorf("expected finalized rounds merkle root to be %x, but got %x", preferred.merkle, state.Checksum()))
-			return
+			return errors.Errorf("expected finalized rounds merkle root to be %x, but got %x", preferred.merkle, state.Checksum())
 		}
 
 		l.snowball.Reset()
@@ -215,6 +218,8 @@ func (l *Ledger) step() {
 		// TODO(kenta): prune knowledge of rounds over time, say after 30 rounds and
 		// 	also wipe away traces of their transactions.
 	}
+
+	return nil
 }
 
 // collapseRound takes all transactions recorded in the graph view so far, and applies
