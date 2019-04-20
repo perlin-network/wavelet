@@ -4,20 +4,20 @@ import (
 	"bytes"
 	"encoding/binary"
 	"github.com/perlin-network/wavelet/common"
-	"golang.org/x/crypto/blake2b"
 	"math"
 	"math/bits"
 )
 
 type Transaction struct {
-	ID       common.TransactionID // blake2b(*)
-	Checksum uint64               // xxh3(ID)
-
 	Sender    common.AccountID       // Transaction sender.
 	ParentIDs []common.TransactionID // Transactions parents.
 
 	Depth      uint64 // Graph depth.
 	Confidence uint64 // Number of ancestors.
+
+	id       common.TransactionID // BLAKE2b(*).
+	checksum uint64               // XXH3(ID).
+	seed     byte                 // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
 }
 
 func (t Transaction) Marshal() []byte {
@@ -41,7 +41,7 @@ func (t Transaction) Marshal() []byte {
 	return w.Bytes()
 }
 
-func (t Transaction) ExpectedDifficulty(min uint64) uint64 {
+func (t Transaction) ExpectedDifficulty(min byte) byte {
 	if t.Depth == 0 && t.Confidence == 0 {
 		return min
 	}
@@ -60,7 +60,7 @@ func (t Transaction) ExpectedDifficulty(min uint64) uint64 {
 		return c
 	}
 
-	difficulty := mul(min, log2(t.Confidence)) / log2(t.Depth)
+	difficulty := byte(mul(uint64(min), log2(t.Confidence)) / log2(t.Depth))
 
 	if difficulty < min {
 		difficulty = min
@@ -80,14 +80,5 @@ func prefixLen(buf []byte) int {
 }
 
 func (tx Transaction) IsCritical(difficulty uint64) bool {
-	var buf bytes.Buffer
-	_, _ = buf.Write(tx.Sender[:])
-
-	for _, parentID := range tx.ParentIDs {
-		_, _ = buf.Write(parentID[:])
-	}
-
-	seed := blake2b.Sum256(buf.Bytes())
-
-	return uint64(prefixLen(seed[:])) >= difficulty
+	return uint64(tx.seed) >= difficulty
 }

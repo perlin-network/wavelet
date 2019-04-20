@@ -1,8 +1,10 @@
 package wavelet
 
 import (
+	"bytes"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/crypto/blake2b"
 	"math/rand"
 	"testing"
 	"testing/quick"
@@ -11,23 +13,19 @@ import (
 func TestCorrectGraphState(t *testing.T) {
 	g := NewGraph()
 
-	tx1 := randomTX(t)
-	tx1.ParentIDs = []common.TransactionID{common.ZeroTransactionID}
+	tx1 := randomTX(t, common.ZeroTransactionID)
 	tx1.Depth = 1
 	tx1.Confidence = 1
 
-	tx2 := randomTX(t)
-	tx2.ParentIDs = []common.TransactionID{tx1.ID}
+	tx2 := randomTX(t, tx1.id)
 	tx2.Depth = 2
 	tx2.Confidence = 2
 
-	tx3 := randomTX(t)
-	tx3.ParentIDs = []common.TransactionID{tx1.ID, tx2.ID}
+	tx3 := randomTX(t, tx1.id, tx2.id)
 	tx3.Depth = 3
 	tx3.Confidence = 5
 
-	tx4 := randomTX(t)
-	tx4.ParentIDs = []common.TransactionID{tx3.ID}
+	tx4 := randomTX(t, tx3.id)
 	tx4.Depth = 4
 	tx4.Confidence = 6
 
@@ -44,11 +42,11 @@ func TestCorrectGraphState(t *testing.T) {
 	badTX1 := randomTX(t)
 	badTX2 := randomTX(t)
 
-	badTX1.ParentIDs = []common.TransactionID{tx4.ID}
+	badTX1.ParentIDs = []common.TransactionID{tx4.id}
 	badTX1.Depth = 5
 	badTX1.Confidence = 7
 
-	badTX2.ParentIDs = []common.TransactionID{badTX1.ID}
+	badTX2.ParentIDs = []common.TransactionID{badTX1.id}
 	badTX2.Depth = 6
 	badTX2.Confidence = 8
 
@@ -68,15 +66,32 @@ func TestCorrectGraphState(t *testing.T) {
 	assert.Len(t, g.missing, 0)
 }
 
-func randomTX(t testing.TB) Transaction {
+func randomTX(t testing.TB, parents ...common.TransactionID) Transaction {
 	t.Helper()
 
-	var id common.TransactionID
+	var tx Transaction
 
-	_, err := rand.Read(id[:])
+	// Set transaction ID.
+	_, err := rand.Read(tx.id[:])
 	assert.NoError(t, err)
 
-	return Transaction{ID: id}
+	// Set transaction sender.
+	_, err = rand.Read(tx.Sender[:])
+	assert.NoError(t, err)
+
+	// Set transaction parents.
+	tx.ParentIDs = parents
+
+	// Set transaction seed.
+	var buf bytes.Buffer
+	_, _ = buf.Write(tx.Sender[:])
+	for _, parentID := range tx.ParentIDs {
+		_, _ = buf.Write(parentID[:])
+	}
+	seed := blake2b.Sum256(buf.Bytes())
+	tx.seed = byte(prefixLen(seed[:]))
+
+	return tx
 }
 
 func TestAddInRandomOrder(t *testing.T) {
@@ -148,7 +163,7 @@ func randomGraph(t testing.TB, genesis Transaction, n int) []Transaction {
 
 			tx.Confidence += parent.Confidence + 1
 
-			tx.ParentIDs = append(tx.ParentIDs, parent.ID)
+			tx.ParentIDs = append(tx.ParentIDs, parent.id)
 		}
 
 		tx.Depth++

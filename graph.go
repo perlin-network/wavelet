@@ -5,30 +5,27 @@ import (
 	"github.com/pkg/errors"
 )
 
-type Round struct {
-	root         *Transaction
-	transactions map[common.TransactionID]struct{}
-}
-
 type Graph struct {
-	rounds map[uint64]Round
-
 	transactions map[common.TransactionID]*Transaction           // All transactions.
 	children     map[common.TransactionID][]common.TransactionID // Children of transactions.
 
 	incomplete map[common.TransactionID]struct{} // Transactions that don't have all parents available.
 	missing    map[common.TransactionID]struct{} // Transactions that we are missing.
+
+	seedIndex map[byte]map[common.TransactionID]struct{} // Indexes transactions by their seed.
+
+	rootID common.TransactionID
 }
 
 func NewGraph() *Graph {
 	g := &Graph{
-		rounds: make(map[uint64]Round),
-
 		transactions: make(map[common.TransactionID]*Transaction),
 		children:     make(map[common.TransactionID][]common.TransactionID),
 
 		incomplete: make(map[common.TransactionID]struct{}),
 		missing:    make(map[common.TransactionID]struct{}),
+
+		seedIndex: make(map[byte]map[common.TransactionID]struct{}),
 	}
 
 	g.transactions[common.ZeroTransactionID] = &Transaction{}
@@ -93,14 +90,14 @@ func (g *Graph) processParents(tx *Transaction) []common.TransactionID {
 			missingParentIDs = append(missingParentIDs, parentID)
 		}
 
-		g.children[parentID] = append(g.children[parentID], tx.ID)
+		g.children[parentID] = append(g.children[parentID], tx.id)
 	}
 
 	return missingParentIDs
 }
 
 func (g *Graph) addTransaction(tx Transaction) error {
-	if _, exists := g.transactions[tx.ID]; exists {
+	if _, exists := g.transactions[tx.id]; exists {
 		return nil
 	}
 
@@ -111,13 +108,13 @@ func (g *Graph) addTransaction(tx Transaction) error {
 	}
 
 	// Add transaction to the view-graph.
-	g.transactions[tx.ID] = ptr
-	delete(g.missing, ptr.ID)
+	g.transactions[tx.id] = ptr
+	delete(g.missing, ptr.id)
 
 	missing := g.processParents(ptr)
 
 	if len(missing) > 0 {
-		g.incomplete[ptr.ID] = struct{}{}
+		g.incomplete[ptr.id] = struct{}{}
 		return errors.New("parents for transaction are not in graph")
 	}
 
@@ -134,22 +131,32 @@ func (g *Graph) deleteTransaction(id common.TransactionID) {
 	}
 }
 
+func (g *Graph) createTransactionIndices(tx *Transaction) {
+	if _, exists := g.seedIndex[tx.seed]; !exists {
+		g.seedIndex[tx.seed] = make(map[common.TransactionID]struct{})
+	}
+
+	g.seedIndex[tx.seed][tx.id] = struct{}{}
+}
+
 func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
 	err := g.assertTransactionIsComplete(tx)
 
 	if err != nil {
-		g.deleteTransaction(tx.ID)
+		g.deleteTransaction(tx.id)
 		return err
 	}
 
-	// All complete transactions run instructions here
+	// All complete transactions run instructions here exactly once.
+
+	g.createTransactionIndices(tx)
 
 	// for child in children(tx):
 	//		if child in incomplete:
 	//			if complete = reduce(lambda acc, tx: acc and (parent in graph), child.parents, True):
 	//				mark child as complete
 
-	for _, childID := range g.children[tx.ID] {
+	for _, childID := range g.children[tx.id] {
 		_, incomplete := g.incomplete[childID]
 
 		if !incomplete {
