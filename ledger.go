@@ -16,6 +16,7 @@ import (
 	"golang.org/x/crypto/blake2b"
 	"math"
 	"sort"
+	"sync"
 	"time"
 )
 
@@ -34,6 +35,8 @@ type Ledger struct {
 
 	rounds map[uint64]Round
 	round  uint64
+
+	mu sync.RWMutex
 
 	BroadcastQueue chan<- EventBroadcast
 	broadcastQueue <-chan EventBroadcast
@@ -197,6 +200,9 @@ func NewTransaction(creator *skademlia.Keypair, tag byte, payload []byte) Transa
 }
 
 func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
 	tx.Sender = l.keys.PublicKey()
 
 	// TODO(kenta): find eligible parents and assign it to the transaction.
@@ -262,27 +268,45 @@ func (l *Ledger) Stop() {
 }
 
 func (l *Ledger) Snapshot() *avl.Tree {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
 	return l.accounts.snapshot()
 }
 
 func (l *Ledger) RoundID() uint64 {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
 	return l.round
 }
 
 func (l *Ledger) LastRound() Round {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
 	return l.rounds[l.round-1]
 }
 
 func (l *Ledger) Preferred() *Round {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
 	return l.snowball.Preferred()
 }
 
 func (l *Ledger) FindTransaction(id common.TransactionID) (*Transaction, bool) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
 	tx, exists := l.graph.transactions[id]
 	return tx, exists
 }
 
 func (l *Ledger) ListTransactions(offset, limit uint64, sender, creator common.AccountID) (transactions []*Transaction) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
 	for _, tx := range l.graph.transactions {
 		if (sender == common.ZeroAccountID && creator == common.ZeroAccountID) || (sender != common.ZeroAccountID && tx.Sender == sender) || (creator != common.ZeroAccountID && tx.Creator == creator) {
 			transactions = append(transactions, tx)
@@ -374,37 +398,50 @@ func (l *Ledger) recv() func(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case evt := <-l.gossipIn:
-			err := l.addTransaction(evt.TX)
+			return func() error {
+				l.mu.Lock()
+				defer l.mu.Unlock()
 
-			if err != nil {
-				evt.Vote <- err
-				return nil
-			}
+				err := l.addTransaction(evt.TX)
 
-			evt.Vote <- nil
-		case evt := <-l.queryIn:
-			r := evt.Round
-
-			if r.Index < l.round { // Respond with the round we decided beforehand.
-				round, available := l.rounds[r.Index]
-
-				if !available {
-					evt.Error <- errors.Errorf("got requested with round %d, but do not have it available", r.Index)
+				if err != nil {
+					evt.Vote <- err
 					return nil
 				}
 
-				evt.Response <- &round
-				return nil
-			}
+				evt.Vote <- nil
 
-			if err := l.addTransaction(r.Root); err != nil { // Add the root in the round to our graph.
-				evt.Error <- err
 				return nil
-			}
+			}()
+		case evt := <-l.queryIn:
+			return func() error {
+				l.mu.Lock()
+				defer l.mu.Unlock()
 
-			evt.Response <- l.snowball.Preferred() // Send back our preferred round info, if we have any.
+				r := evt.Round
+
+				if r.Index < l.round { // Respond with the round we decided beforehand.
+					round, available := l.rounds[r.Index]
+
+					if !available {
+						evt.Error <- errors.Errorf("got requested with round %d, but do not have it available", r.Index)
+						return nil
+					}
+
+					evt.Response <- &round
+					return nil
+				}
+
+				if err := l.addTransaction(r.Root); err != nil { // Add the root in the round to our graph.
+					evt.Error <- err
+					return nil
+				}
+
+				evt.Response <- l.snowball.Preferred() // Send back our preferred round info, if we have any.
+
+				return nil
+			}()
 		}
-		return nil
 	}
 }
 
@@ -488,6 +525,8 @@ func (l *Ledger) gossip() func(ctx context.Context) error {
 		case l.gossipOut <- evt:
 		}
 
+		var votes []VoteGossip
+
 		select {
 		case <-ctx.Done():
 			if Error != nil {
@@ -502,61 +541,65 @@ func (l *Ledger) gossip() func(ctx context.Context) error {
 				}
 				return nil
 			}
-		case votes := <-evt.Result:
-			if len(votes) == 0 {
-				return nil
-			}
-
-			accounts := make(map[common.AccountID]struct{})
-
-			for _, vote := range votes {
-				accounts[vote.Voter] = struct{}{}
-			}
-
-			weights := computeStakeDistribution(snapshot, accounts)
-
-			positives := 0.0
-
-			for _, vote := range votes {
-				if vote.Ok {
-					positives += weights[vote.Voter]
-				}
-			}
-
-			if positives < sys.SnowballQueryAlpha {
-				if Error != nil {
-					Error <- errors.Errorf("only %.2f%% of queried peers find transaction %x valid", positives, evt.TX.ID)
-				}
-
-				return nil
-			}
-
-			// Double-check that after gossiping, we have not progressed a single view ID and
-			// that the transaction is still valid for us to add to our view-graph.
-
-			if err := l.addTransaction(tx); err != nil {
-				if Error != nil {
-					Error <- err
-				}
-
-				return nil
-			}
-
-			/** At this point, the transaction was successfully added to our view-graph. **/
-
-			// If we have nothing else to broadcast and we are not broadcasting out
-			// nop transactions, then start broadcasting out nop transactions.
-			if len(l.broadcastQueue) == 0 && !broadcastNops {
-				broadcastNops = true
-			}
-
-			if Result != nil {
-				Result <- tx
-			}
 		case <-time.After(1 * time.Second):
 			if Error != nil {
 				Error <- errors.New("did not get back a gossip response")
 			}
+		case votes = <-evt.Result:
+		}
+
+		if len(votes) == 0 {
+			return nil
+		}
+
+		l.mu.Lock()
+		defer l.mu.Unlock()
+
+		accounts := make(map[common.AccountID]struct{})
+
+		for _, vote := range votes {
+			accounts[vote.Voter] = struct{}{}
+		}
+
+		weights := computeStakeDistribution(snapshot, accounts)
+
+		positives := 0.0
+
+		for _, vote := range votes {
+			if vote.Ok {
+				positives += weights[vote.Voter]
+			}
+		}
+
+		if positives < sys.SnowballQueryAlpha {
+			if Error != nil {
+				Error <- errors.Errorf("only %.2f%% of queried peers find transaction %x valid", positives, evt.TX.ID)
+			}
+
+			return nil
+		}
+
+		// Double-check that after gossiping, we have not progressed a single view ID and
+		// that the transaction is still valid for us to add to our view-graph.
+
+		if err := l.addTransaction(tx); err != nil {
+			if Error != nil {
+				Error <- err
+			}
+
+			return nil
+		}
+
+		/** At this point, the transaction was successfully added to our view-graph. **/
+
+		// If we have nothing else to broadcast and we are not broadcasting out
+		// nop transactions, then start broadcasting out nop transactions.
+		if len(l.broadcastQueue) == 0 && !broadcastNops {
+			broadcastNops = true
+		}
+
+		if Result != nil {
+			Result <- tx
 		}
 
 		return nil
@@ -577,51 +620,60 @@ func (l *Ledger) query() func(ctx context.Context) error {
 	return func(ctx context.Context) error {
 		root := l.rounds[l.round-1].Root
 
-		if l.snowball.Preferred() == nil { // If we do not prefer any critical transaction yet, find a critical transaction to initially prefer first.
-			difficulty := root.ExpectedDifficulty(byte(sys.MinDifficulty))
+		if err := func() error {
+			l.mu.Lock()
+			defer l.mu.Unlock()
 
-			var eligible []*Transaction // Find all critical transactions for the current round.
+			if l.snowball.Preferred() == nil { // If we do not prefer any critical transaction yet, find a critical transaction to initially prefer first.
+				difficulty := root.ExpectedDifficulty(byte(sys.MinDifficulty))
 
-			for i := difficulty; i < math.MaxUint8; i++ {
-				candidates, exists := l.graph.seedIndex[difficulty]
+				var eligible []*Transaction // Find all critical transactions for the current round.
 
-				if !exists {
-					continue
-				}
+				for i := difficulty; i < math.MaxUint8; i++ {
+					candidates, exists := l.graph.seedIndex[difficulty]
 
-				for candidateID := range candidates {
-					candidate := l.graph.transactions[candidateID]
+					if !exists {
+						continue
+					}
 
-					if candidate.Depth > root.Depth && candidate.IsCritical(difficulty) {
-						eligible = append(eligible, candidate)
+					for candidateID := range candidates {
+						candidate := l.graph.transactions[candidateID]
+
+						if candidate.Depth > root.Depth && candidate.IsCritical(difficulty) {
+							eligible = append(eligible, candidate)
+						}
 					}
 				}
+
+				if len(eligible) == 0 { // If there are no critical transactions for the round yet, discontinue.
+					return ErrNonePreferred
+				}
+
+				// Sort critical transactions by their depth, and pick the critical transaction
+				// with the smallest depth as the nodes initial preferred transaction.
+				//
+				// The final selected critical transaction might change after a couple of
+				// rounds with Snowball.
+
+				sort.Slice(eligible, func(i, j int) bool {
+					return eligible[i].Depth < eligible[j].Depth
+				})
+
+				proposed := eligible[0]
+
+				state, err := l.collapseRound(l.round, proposed, true)
+
+				if err != nil {
+					return errors.Wrap(err, "got an error collapsing down tx to get merkle root")
+				}
+
+				initial := NewRound(l.round, state.Checksum(), *proposed)
+				l.snowball.Prefer(&initial)
 			}
 
-			if len(eligible) == 0 { // If there are no critical transactions for the round yet, discontinue.
-				return ErrNonePreferred
-			}
-
-			// Sort critical transactions by their depth, and pick the critical transaction
-			// with the smallest depth as the nodes initial preferred transaction.
-			//
-			// The final selected critical transaction might change after a couple of
-			// rounds with Snowball.
-
-			sort.Slice(eligible, func(i, j int) bool {
-				return eligible[i].Depth < eligible[j].Depth
-			})
-
-			proposed := eligible[0]
-
-			state, err := l.collapseRound(l.round, proposed, true)
-
-			if err != nil {
-				return errors.Wrap(err, "got an error collapsing down tx to get merkle root")
-			}
-
-			initial := NewRound(l.round, state.Checksum(), *proposed)
-			l.snowball.Prefer(&initial)
+			return nil
+		}(); err != nil {
+			return err
 		}
 
 		snapshot := l.accounts.snapshot()
@@ -653,6 +705,9 @@ func (l *Ledger) query() func(ctx context.Context) error {
 		if len(votes) == 0 {
 			return nil
 		}
+
+		l.mu.Lock()
+		defer l.mu.Unlock()
 
 		rounds := make(map[common.RoundID]Round)
 		accounts := make(map[common.AccountID]struct{}, len(votes))
