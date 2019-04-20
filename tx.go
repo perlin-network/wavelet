@@ -15,6 +15,11 @@ type Transaction struct {
 	Depth      uint64 // Graph depth.
 	Confidence uint64 // Number of ancestors.
 
+	Tag     byte
+	Payload []byte
+
+	Signature common.Signature
+
 	id       common.TransactionID // BLAKE2b(*).
 	checksum uint64               // XXH3(ID).
 	seed     byte                 // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
