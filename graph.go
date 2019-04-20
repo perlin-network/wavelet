@@ -47,7 +47,7 @@ func (g *Graph) assertTransactionIsValid(tx *Transaction) error {
 func (g *Graph) assertTransactionIsComplete(tx *Transaction) error {
 	// Check that the transaction's depth is correct according to its parents.
 	var maxDepth uint64
-	var expectedRound uint64
+	var expectedConfidence uint64
 
 	for _, parentID := range tx.ParentIDs {
 		parent, exists := g.transactions[parentID]
@@ -61,20 +61,17 @@ func (g *Graph) assertTransactionIsComplete(tx *Transaction) error {
 			maxDepth = parent.Depth
 		}
 
-		// Check that parents all have the same round recorded.
-		if expectedRound == 0 {
-			expectedRound = parent.Round
-		}
-
-		if parent.Round != expectedRound {
-			return errors.New("parents are not within the same round")
-		}
+		expectedConfidence += parent.Confidence + 1
 	}
 
 	maxDepth++
 
 	if tx.Depth != maxDepth {
 		return errors.Errorf("transactions depth is invalid, expected depth to be %d but got %d", maxDepth, tx.Depth)
+	}
+
+	if tx.Confidence != expectedConfidence {
+		return errors.Errorf("transactions confidence is invalid, expected confidence to be %d but got %d", expectedConfidence, tx.Confidence)
 	}
 
 	return nil
@@ -124,9 +121,7 @@ func (g *Graph) addTransaction(tx Transaction) error {
 		return errors.New("parents for transaction are not in graph")
 	}
 
-	g.markTransactionAsComplete(ptr)
-
-	return nil
+	return g.markTransactionAsComplete(ptr)
 }
 
 func (g *Graph) deleteTransaction(id common.TransactionID) {
@@ -139,12 +134,12 @@ func (g *Graph) deleteTransaction(id common.TransactionID) {
 	}
 }
 
-func (g *Graph) markTransactionAsComplete(tx *Transaction) {
+func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
 	err := g.assertTransactionIsComplete(tx)
 
 	if err != nil {
 		g.deleteTransaction(tx.ID)
-		return
+		return err
 	}
 
 	// All complete transactions run instructions here
@@ -186,6 +181,8 @@ func (g *Graph) markTransactionAsComplete(tx *Transaction) {
 			g.markTransactionAsComplete(child)
 		}
 	}
+
+	return nil
 }
 
 // txs: 1, 2, 3, 4, 5
