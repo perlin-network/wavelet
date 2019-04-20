@@ -39,6 +39,9 @@ func NewRound(index uint64, merkle common.MerkleNodeID, root Transaction) Round 
 }
 
 type Ledger struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	accounts *accounts
 	graph    *Graph
 
@@ -51,12 +54,17 @@ type Ledger struct {
 }
 
 func NewLedger() *Ledger {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	accounts := newAccounts(store.NewInmem())
 	graph := NewGraph()
 
 	round := performInception(accounts.tree, nil)
 
 	return &Ledger{
+		ctx:    ctx,
+		cancel: cancel,
+
 		accounts: accounts,
 		graph:    graph,
 
@@ -75,22 +83,41 @@ func NewLedger() *Ledger {
 }
 
 func (l *Ledger) Run() {
-	ctx := context.Background()
+	go l.accounts.gcLoop(l.ctx)
+	go l.receivingLoop(l.ctx)
+	go l.gossipingLoop(l.ctx)
+	go l.queryingLoop(l.ctx)
+}
 
-	l.accounts.initGC(ctx)
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				l.step()
-			}
+func (l *Ledger) receivingLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
 		}
-	}()
+	}
+}
 
-	// TODO(kenta): receive workers
+func (l *Ledger) gossipingLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (l *Ledger) queryingLoop(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		l.step()
+	}
 }
 
 const MinDifficulty = 8
@@ -200,8 +227,9 @@ func (l *Ledger) collapseRound(round uint64, tx *Transaction, logging bool) ([]*
 
 	root := l.graph.transactions[l.graph.rootID]
 
-	visited := make(map[common.TransactionID]struct{})
-	visited[root.id] = struct{}{}
+	visited := map[common.TransactionID]struct{}{
+		root.id: {},
+	}
 
 	aq := AcquireQueue()
 	defer ReleaseQueue(aq)
@@ -292,6 +320,7 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) e
 	var totalStake uint64
 
 	visited := make(map[common.AccountID]struct{})
+
 	q := AcquireQueue()
 	defer ReleaseQueue(q)
 
