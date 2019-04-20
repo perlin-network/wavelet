@@ -104,10 +104,10 @@ const MinDifficulty = 8
 // It should be called repetitively as fast as possible in an infinite for loop, in a separate goroutine
 // away from any other goroutines associated to the ledger.
 func (l *Ledger) step() {
-	// If we do not prefer any critical transaction yet, find a critical transaction to initially prefer first.
+	root := l.graph.transactions[l.graph.rootID]
 
-	if l.snowball.Preferred() == nil {
-		difficulty := l.graph.transactions[l.graph.rootID].ExpectedDifficulty(MinDifficulty)
+	if l.snowball.Preferred() == nil { // If we do not prefer any critical transaction yet, find a critical transaction to initially prefer first.
+		difficulty := root.ExpectedDifficulty(MinDifficulty)
 
 		var eligible []*Transaction // Find all critical transactions for the current round.
 
@@ -119,7 +119,11 @@ func (l *Ledger) step() {
 			}
 
 			for candidateID := range candidates {
-				eligible = append(eligible, l.graph.transactions[candidateID])
+				candidate := l.graph.transactions[candidateID]
+
+				if candidate.Depth > root.Depth {
+					eligible = append(eligible, candidate)
+				}
 			}
 		}
 
