@@ -3,7 +3,11 @@ package wavelet
 import (
 	"bytes"
 	"encoding/binary"
+	"github.com/dgryski/go-xxh3"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/pkg/errors"
+	"golang.org/x/crypto/blake2b"
+	"io"
 	"math"
 	"math/bits"
 )
@@ -25,6 +29,22 @@ type Transaction struct {
 	seed     byte                 // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
 }
 
+func (t *Transaction) rehash() *Transaction {
+	t.id = blake2b.Sum256(t.Marshal())
+	t.checksum = xxh3.XXH3_64bits(t.id[:])
+
+	buf := make([]byte, 0, common.SizeAccountID+len(t.ParentIDs)*common.SizeTransactionID)
+	buf = append(buf, t.Sender[:]...)
+	for _, parentID := range t.ParentIDs {
+		buf = append(buf, parentID[:]...)
+	}
+
+	seed := blake2b.Sum256(buf)
+	t.seed = byte(prefixLen(seed[:]))
+
+	return t
+}
+
 func (t Transaction) Marshal() []byte {
 	w := bytes.NewBuffer(nil)
 
@@ -43,7 +63,80 @@ func (t Transaction) Marshal() []byte {
 	binary.BigEndian.PutUint64(buf[:8], t.Confidence)
 	w.Write(buf[:])
 
+	w.WriteByte(t.Tag)
+
+	binary.BigEndian.PutUint32(buf[:4], uint32(len(t.Payload)))
+	w.Write(buf[:4])
+	w.Write(t.Payload)
+
+	w.Write(t.Signature[:])
+
 	return w.Bytes()
+}
+
+func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
+	if _, err = io.ReadFull(r, t.Sender[:]); err != nil {
+		err = errors.Wrap(err, "failed to decode transaction sender")
+		return
+	}
+
+	var buf [8]byte
+
+	if _, err = io.ReadFull(r, buf[:1]); err != nil {
+		err = errors.Wrap(err, "failed to read num parents")
+		return
+	}
+
+	t.ParentIDs = make([]common.TransactionID, buf[0])
+
+	for i := range t.ParentIDs {
+		if _, err = io.ReadFull(r, t.ParentIDs[i][:]); err != nil {
+			err = errors.Wrapf(err, "failed to decode parent %d", i)
+			return
+		}
+	}
+
+	if _, err = io.ReadFull(r, buf[:8]); err != nil {
+		err = errors.Wrap(err, "could not read transaction depth")
+		return
+	}
+
+	t.Depth = binary.BigEndian.Uint64(buf[:8])
+
+	if _, err = io.ReadFull(r, buf[:8]); err != nil {
+		err = errors.Wrap(err, "could not read transaction confidence")
+		return
+	}
+
+	t.Confidence = binary.BigEndian.Uint64(buf[:8])
+
+	if _, err = io.ReadFull(r, buf[:1]); err != nil {
+		err = errors.Wrap(err, "could not read transaction tag")
+		return
+	}
+
+	t.Tag = buf[0]
+
+	if _, err = io.ReadFull(r, buf[:4]); err != nil {
+		err = errors.Wrap(err, "could not read transaction payload length")
+		return
+	}
+
+	t.Payload = make([]byte, binary.BigEndian.Uint32(buf[:4]))
+
+	if _, err = io.ReadFull(r, t.Payload[:]); err != nil {
+		err = errors.Wrap(err, "could not read transaction payload")
+		return
+	}
+
+	if _, err = io.ReadFull(r, t.Signature[:]); err != nil {
+		err = errors.Wrap(err, "failed to decode signature")
+		return
+	}
+
+	t.rehash()
+
+	return t, nil
 }
 
 func (t Transaction) ExpectedDifficulty(min byte) byte {
