@@ -114,7 +114,7 @@ const MinDifficulty = 8
 // It should be called repetitively as fast as possible in an infinite for loop, in a separate goroutine
 // away from any other goroutines associated to the ledger.
 func (l *Ledger) step(ctx context.Context) error {
-	root := l.graph.transactions[l.graph.rootID]
+	root := l.rounds[l.round-1].root
 
 	if l.snowball.Preferred() == nil { // If we do not prefer any critical transaction yet, find a critical transaction to initially prefer first.
 		difficulty := root.ExpectedDifficulty(MinDifficulty)
@@ -153,7 +153,7 @@ func (l *Ledger) step(ctx context.Context) error {
 
 		proposed := eligible[0]
 
-		_, state, err := l.collapseRound(l.round, proposed, true)
+		state, err := l.collapseRound(l.round, proposed, true)
 
 		if err != nil {
 			return errors.Wrap(err, "got an error collapsing down tx to get merkle root")
@@ -174,7 +174,7 @@ func (l *Ledger) step(ctx context.Context) error {
 		preferred := l.snowball.Preferred()
 		root := l.graph.transactions[preferred.root.id]
 
-		txs, state, err := l.collapseRound(preferred.idx, root, true)
+		state, err := l.collapseRound(preferred.idx, root, true)
 
 		if err != nil {
 			return errors.Wrap(err, "got an error finalizing a round")
@@ -185,9 +185,6 @@ func (l *Ledger) step(ctx context.Context) error {
 		}
 
 		l.snowball.Reset()
-
-		l.graph.cleanupTransactionIndices(txs...)
-		l.graph.reset(root)
 
 		l.rounds[l.round] = *preferred
 		l.round++
@@ -203,11 +200,11 @@ func (l *Ledger) step(ctx context.Context) error {
 // all valid and available ones to a snapshot of all accounts stored in the ledger.
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
-func (l *Ledger) collapseRound(round uint64, tx *Transaction, logging bool) ([]*Transaction, *avl.Tree, error) {
+func (l *Ledger) collapseRound(round uint64, tx *Transaction, logging bool) (*avl.Tree, error) {
 	snapshot := l.accounts.snapshot()
 	snapshot.SetViewID(round + 1)
 
-	root := l.graph.transactions[l.graph.rootID]
+	root := l.rounds[l.round-1].root
 
 	visited := map[common.TransactionID]struct{}{
 		root.id: {},
@@ -226,7 +223,7 @@ func (l *Ledger) collapseRound(round uint64, tx *Transaction, logging bool) ([]*
 		if parent, exists := l.graph.transactions[parentID]; exists {
 			aq.PushBack(parent)
 		} else {
-			return nil, snapshot, errors.Errorf("missing parent to correctly collapse down ledger state from critical transaction %x", tx.id)
+			return snapshot, errors.Errorf("missing parent to correctly collapse down ledger state from critical transaction %x", tx.id)
 		}
 	}
 
@@ -243,15 +240,13 @@ func (l *Ledger) collapseRound(round uint64, tx *Transaction, logging bool) ([]*
 				if parent, exists := l.graph.transactions[parentID]; exists {
 					aq.PushBack(parent)
 				} else {
-					return nil, snapshot, errors.Errorf("missing ancestor to correctly collapse down ledger state from critical transaction %x", tx.id)
+					return snapshot, errors.Errorf("missing ancestor to correctly collapse down ledger state from critical transaction %x", tx.id)
 				}
 			}
 		}
 
 		bq.PushBack(popped)
 	}
-
-	var transactions []*Transaction
 
 	// Apply transactions in reverse order from the root of the view-graph all the way up to the newly
 	// created critical transaction.
@@ -278,12 +273,10 @@ func (l *Ledger) collapseRound(round uint64, tx *Transaction, logging bool) ([]*
 				logger.Log().Msg("Successfully applied transaction to the ledger.")
 			}
 		}
-
-		transactions = append(transactions, popped)
 	}
 
 	//l.cacheAccounts.put(tx.getCriticalSeed(), snapshot)
-	return transactions, snapshot, nil
+	return snapshot, nil
 }
 
 func (l *Ledger) applyTransactionToSnapshot(ss *avl.Tree, tx *Transaction) error {

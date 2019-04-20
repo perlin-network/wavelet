@@ -15,8 +15,6 @@ type Graph struct {
 	missing    map[common.TransactionID]struct{} // Transactions that we are missing.
 
 	seedIndex map[byte]map[common.TransactionID]struct{} // Indexes transactions by their seed.
-
-	rootID common.TransactionID
 }
 
 func NewGraph() *Graph {
@@ -258,8 +256,4 @@ func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
 	}
 
 	return nil
-}
-
-func (g *Graph) reset(root *Transaction) {
-	g.rootID = root.id
 }
