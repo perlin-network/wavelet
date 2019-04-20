@@ -9,7 +9,6 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
-	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"math"
@@ -289,11 +288,8 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) e
 	var totalStake uint64
 
 	visited := make(map[common.AccountID]struct{})
-	q := queuePool.Get().(*queue.Queue)
-	defer func() {
-		q.Init()
-		queuePool.Put(q)
-	}()
+	q := AcquireQueue()
+	defer ReleaseQueue(q)
 
 	for _, parentID := range tx.ParentIDs {
 		if parent, exists := l.graph.transactions[parentID]; exists {
