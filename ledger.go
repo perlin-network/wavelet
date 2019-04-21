@@ -304,14 +304,34 @@ func (l *Ledger) NumTransactions() uint64 {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
-	return uint64(len(l.graph.transactions))
+	return l.getNumTransactions(l.round - 1)
 }
 
 func (l *Ledger) Height() uint64 {
 	l.mu.RLock()
 	defer l.mu.RUnlock()
 
-	return l.graph.height
+	return l.getHeight(l.round - 1)
+}
+
+func (l *Ledger) getNumTransactions(round uint64) uint64 {
+	var n uint64
+
+	for i := l.rounds[round].Root.Depth + 1; i < l.graph.height; i++ {
+		n += uint64(len(l.graph.depthIndex[i]))
+	}
+
+	return n
+}
+
+func (l *Ledger) getHeight(round uint64) uint64 {
+	height := l.graph.height - l.rounds[round].Root.Depth
+
+	if height > 0 {
+		height--
+	}
+
+	return height
 }
 
 func (l *Ledger) FindTransaction(id common.TransactionID) (*Transaction, bool) {
@@ -782,19 +802,19 @@ func (l *Ledger) query() func(ctx context.Context) error {
 
 			l.snowball.Reset()
 
-			l.rounds[l.round] = *newRound
-			l.round++
-
 			logger := log.Consensus("round_end")
 			logger.Info().
-				//Int("num_tx", l.v.numTransactions(oldRoot.ViewID)).
-				Uint64("old_view_id", oldRound.Index).
-				Uint64("new_view_id", newRound.Index).
+				Uint64("num_tx", l.getNumTransactions(l.round-1)).
+				Uint64("old_round", oldRound.Index).
+				Uint64("new_round", newRound.Index).
 				Hex("new_root", newRoot.ID[:]).
 				Hex("old_root", oldRoot.ID[:]).
-				Hex("new_round_merkle_root", newRound.Merkle[:]).
-				Hex("old_round_merkle_root", oldRound.Merkle[:]).
-				Msg("Finalized consensus round, and incremented view ID.")
+				Hex("new_merkle_root", newRound.Merkle[:]).
+				Hex("old_merkle_root", oldRound.Merkle[:]).
+				Msg("Finalized consensus round, and initialized a new round.")
+
+			l.rounds[l.round] = *newRound
+			l.round++
 
 			// TODO(kenta): prune knowledge of rounds over time, say after 30 rounds and
 			// 	also wipe away traces of their transactions.

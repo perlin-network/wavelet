@@ -15,7 +15,8 @@ type Graph struct {
 	incomplete map[common.TransactionID]struct{} // Transactions that don't have all parents available.
 	missing    map[common.TransactionID]struct{} // Transactions that we are missing.
 
-	seedIndex map[byte]map[common.TransactionID]struct{} // Indexes transactions by their seed.
+	seedIndex  map[byte]map[common.TransactionID]struct{}   // Indexes transactions by their seed.
+	depthIndex map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their depth.
 
 	height uint64 // Height of the graph.
 }
@@ -29,8 +30,9 @@ func NewGraph(genesis *Round) *Graph {
 		incomplete: make(map[common.TransactionID]struct{}),
 		missing:    make(map[common.TransactionID]struct{}),
 
-		seedIndex: make(map[byte]map[common.TransactionID]struct{}),
-		height:    1,
+		seedIndex:  make(map[byte]map[common.TransactionID]struct{}),
+		depthIndex: make(map[uint64]map[common.TransactionID]struct{}),
+		height:     1,
 	}
 
 	g.transactions[genesis.Root.ID] = &genesis.Root
@@ -207,6 +209,12 @@ func (g *Graph) createTransactionIndices(tx *Transaction) {
 
 	g.seedIndex[tx.Seed][tx.ID] = struct{}{}
 
+	if _, exists := g.depthIndex[tx.Depth]; !exists {
+		g.depthIndex[tx.Depth] = make(map[common.TransactionID]struct{})
+	}
+
+	g.depthIndex[tx.Depth][tx.ID] = struct{}{}
+
 	if g.height < tx.Depth {
 		g.height = tx.Depth + 1
 	}
@@ -217,16 +225,6 @@ func (g *Graph) createTransactionIndices(tx *Transaction) {
 		}
 	}
 }
-
-//func (g *Graph) cleanupTransactionIndices(txs ...*Transaction) {
-//	for _, tx := range txs {
-//		delete(g.seedIndex[tx.Seed], tx.ID)
-//
-//		if len(g.seedIndex[tx.Seed]) == 0 {
-//			delete(g.seedIndex, tx.Seed)
-//		}
-//	}
-//}
 
 func (g *Graph) findEligibleParents() []common.TransactionID {
 	var eligibleIDs []common.TransactionID
