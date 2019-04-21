@@ -3,6 +3,7 @@ package wavelet
 import (
 	"bytes"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 )
@@ -17,8 +18,10 @@ type Graph struct {
 
 	seedIndex  map[byte]map[common.TransactionID]struct{}   // Indexes transactions by their seed.
 	depthIndex map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their depth.
+	roundIndex map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their round.
 
-	height uint64 // Height of the graph.
+	rootID common.TransactionID // Root of the graph.
+	height uint64               // Height of the graph.
 }
 
 func NewGraph(genesis *Round) *Graph {
@@ -32,16 +35,20 @@ func NewGraph(genesis *Round) *Graph {
 
 		seedIndex:  make(map[byte]map[common.TransactionID]struct{}),
 		depthIndex: make(map[uint64]map[common.TransactionID]struct{}),
-		height:     1,
+		roundIndex: make(map[uint64]map[common.TransactionID]struct{}),
+
+		height: 1,
 	}
 
 	if genesis != nil {
+		g.rootID = genesis.Root.ID
 		g.transactions[genesis.Root.ID] = &genesis.Root
-		g.eligible[genesis.Root.ID] = struct{}{}
 	} else {
+		g.rootID = common.ZeroTransactionID
 		g.transactions[common.ZeroTransactionID] = new(Transaction)
-		g.eligible[common.ZeroTransactionID] = struct{}{}
 	}
+
+	g.eligible[g.rootID] = struct{}{}
 
 	return g
 }
@@ -189,6 +196,11 @@ func (g *Graph) addTransaction(tx Transaction) error {
 // however that it does not remove the transaction from any of the graphs
 // indices.
 func (g *Graph) deleteTransaction(id common.TransactionID) {
+	if tx, exists := g.transactions[id]; exists {
+		delete(g.seedIndex[tx.Seed], id)
+		delete(g.depthIndex[tx.Depth], id)
+	}
+
 	delete(g.transactions, id)
 	delete(g.children, id)
 
@@ -308,4 +320,39 @@ func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
 	}
 
 	return nil
+}
+
+const pruningDepth = 30
+
+func (g *Graph) Reset(newRound *Round) {
+	oldRoot := g.transactions[g.rootID]
+
+	g.roundIndex[newRound.Index] = make(map[common.TransactionID]struct{})
+
+	for i := oldRoot.Depth + 1; i <= newRound.Root.Depth; i++ {
+		for id := range g.depthIndex[i] {
+			g.roundIndex[newRound.Index][id] = struct{}{}
+		}
+	}
+
+	// Prune away all transactions and indices with a view ID < (current view ID - pruningDepth).
+
+	for roundID, transactions := range g.roundIndex {
+		if roundID+pruningDepth < newRound.Index {
+			for id := range transactions {
+				g.deleteTransaction(id)
+			}
+
+			delete(g.roundIndex, roundID)
+
+			logger := log.Consensus("prune")
+			logger.Debug().
+				Int("num_tx", len(g.roundIndex[newRound.Index])).
+				Uint64("current_round_id", newRound.Index).
+				Uint64("pruned_round_id", roundID).
+				Msg("Pruned transactions.")
+		}
+	}
+
+	g.rootID = newRound.Root.ID
 }

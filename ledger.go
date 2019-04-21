@@ -804,6 +804,7 @@ func (l *Ledger) query() func(ctx context.Context) error {
 			}
 
 			l.snowball.Reset()
+			l.graph.Reset(newRound)
 
 			logger := log.Consensus("round_end")
 			logger.Info().
@@ -818,9 +819,6 @@ func (l *Ledger) query() func(ctx context.Context) error {
 
 			l.rounds[l.round] = *newRound
 			l.round++
-
-			// TODO(kenta): prune knowledge of rounds over time, say after 30 rounds and
-			// 	also wipe away traces of their transactions.
 		}
 
 		return nil
