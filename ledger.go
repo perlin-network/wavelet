@@ -45,6 +45,9 @@ type Ledger struct {
 
 	mu sync.RWMutex
 
+	syncing bool
+	cond    sync.Cond
+
 	BroadcastQueue chan<- EventBroadcast
 	broadcastQueue <-chan EventBroadcast
 
@@ -147,6 +150,8 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 
 		rounds: map[uint64]Round{round.Index: round},
 		round:  1,
+
+		cond: sync.Cond{L: new(sync.Mutex)},
 
 		BroadcastQueue: broadcastQueue,
 		broadcastQueue: broadcastQueue,
@@ -448,7 +453,7 @@ func (l *Ledger) queryingLoop(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(100 * time.Millisecond):
+			case <-time.After(10 * time.Millisecond):
 			}
 		}
 	}
@@ -475,6 +480,12 @@ func (l *Ledger) stateSyncingLoop(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case <-time.After(1 * time.Second):
+			}
+		} else {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(10 * time.Millisecond):
 			}
 		}
 	}

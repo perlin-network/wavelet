@@ -345,6 +345,13 @@ func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
 }
 
 func (g *Graph) Reset(newRound *Round) {
+	if _, exists := g.transactions[newRound.Root.ID]; !exists {
+		ptr := &newRound.Root
+
+		g.transactions[newRound.Root.ID] = ptr
+		g.createTransactionIndices(ptr)
+	}
+
 	oldRoot := g.transactions[g.rootID]
 
 	g.roundIndex[newRound.Index] = make(map[common.TransactionID]struct{})

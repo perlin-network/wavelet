@@ -21,6 +21,12 @@ import (
 // away from any other goroutines associated to the ledger.
 func query(ledger *Ledger) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
+		ledger.cond.L.Lock()
+		for ledger.syncing {
+			ledger.cond.Wait()
+		}
+		ledger.cond.L.Unlock()
+
 		oldRound := ledger.rounds[ledger.round-1]
 		oldRoot := oldRound.Root
 
@@ -120,8 +126,8 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 				Uint64("new_round", newRound.Index).
 				Uint8("old_difficulty", oldRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
 				Uint8("new_difficulty", newRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
-				Hex("new_root", newRoot.ID[:]).
-				Hex("old_root", oldRoot.ID[:]).
+				Hex("new_root", newRound.Root.ID[:]).
+				Hex("old_root", oldRound.Root.ID[:]).
 				Hex("new_merkle_root", newRound.Merkle[:]).
 				Hex("old_merkle_root", oldRound.Merkle[:]).
 				Msg("Finalized consensus round, and initialized a new round.")

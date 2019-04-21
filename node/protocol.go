@@ -145,8 +145,8 @@ func (b *Protocol) sendLoop(node *noise.Node) {
 	go b.broadcastGossip(ctx, node)
 	go b.broadcastQueries(ctx, node)
 	go b.broadcastOutOfSyncChecks(ctx, node)
-	//go b.broadcastSyncInitRequests(ctx, node)
-	//go b.broadcastSyncDiffRequests(ctx, node)
+	go b.broadcastSyncInitRequests(ctx, node)
+	go b.broadcastSyncDiffRequests(ctx, node)
 	//go b.broadcastSyncMissingTXs(ctx, node)
 	//go b.broadcastLatestViewRequests(ctx, node)
 }
@@ -164,10 +164,10 @@ func (b *Protocol) receiveLoop(ledger *wavelet.Ledger, ctx noise.Context) {
 			go b.handleQueryRequest(wire)
 		case wire := <-peer.Recv(b.opcodeOutOfSyncRequest):
 			go b.handleOutOfSyncCheck(wire)
-			//case wire := <-peer.Recv(b.opcodeSyncInitRequest):
-			//	go b.handleSyncInits(wire)
-			//case wire := <-peer.Recv(b.opcodeSyncChunkRequest):
-			//	go b.handleSyncChunks(wire)
+		case wire := <-peer.Recv(b.opcodeSyncInitRequest):
+			go b.handleSyncInits(wire)
+		case wire := <-peer.Recv(b.opcodeSyncChunkRequest):
+			go b.handleSyncChunks(wire)
 			//case wire := <-peer.Recv(b.opcodeSyncMissingTxRequest):
 			//	go b.handleSyncMissingTXs(wire)
 			//case wire := <-peer.Recv(b.opcodeLatestViewRequest):
