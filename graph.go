@@ -199,6 +199,14 @@ func (g *Graph) deleteTransaction(id common.TransactionID) {
 	if tx, exists := g.transactions[id]; exists {
 		delete(g.seedIndex[tx.Seed], id)
 		delete(g.depthIndex[tx.Depth], id)
+
+		if len(g.seedIndex[tx.Seed]) == 0 {
+			delete(g.seedIndex, tx.Seed)
+		}
+
+		if len(g.depthIndex[tx.Depth]) == 0 {
+			delete(g.depthIndex, tx.Depth)
+		}
 	}
 
 	delete(g.transactions, id)

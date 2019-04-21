@@ -819,6 +819,12 @@ func (l *Ledger) query() func(ctx context.Context) error {
 
 			l.rounds[l.round] = *newRound
 			l.round++
+
+			for roundID := range l.rounds {
+				if roundID+pruningDepth < l.round {
+					delete(l.rounds, roundID)
+				}
+			}
 		}
 
 		return nil
