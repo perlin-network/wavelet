@@ -111,13 +111,13 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 	latestViewOut := make(chan EventLatestView, 16)
 
 	accounts := newAccounts(store.NewInmem())
-	graph := NewGraph()
-
 	round := performInception(accounts.tree, nil)
 
 	if err := accounts.commit(nil); err != nil {
 		panic(err)
 	}
+
+	graph := NewGraph(&round)
 
 	return &Ledger{
 		ctx:    ctx,
@@ -204,8 +204,11 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 	defer l.mu.RUnlock()
 
 	tx.Sender = l.keys.PublicKey()
+	tx.ParentIDs = l.graph.findEligibleParents()
 
-	// TODO(kenta): find eligible parents and assign it to the transaction.
+	if len(tx.ParentIDs) == 0 {
+		return tx, errors.New("no eligible parents available")
+	}
 
 	sort.Slice(tx.ParentIDs, func(i, j int) bool {
 		return bytes.Compare(tx.ParentIDs[i][:], tx.ParentIDs[j][:]) < 0
@@ -224,6 +227,8 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 
 		tx.Confidence += parent.Confidence + 1
 	}
+
+	tx.Depth++
 
 	tx.SenderSignature = edwards25519.Sign(l.keys.PrivateKey(), tx.Marshal())
 
@@ -293,6 +298,20 @@ func (l *Ledger) Preferred() *Round {
 	defer l.mu.RUnlock()
 
 	return l.snowball.Preferred()
+}
+
+func (l *Ledger) NumTransactions() uint64 {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	return uint64(len(l.graph.transactions))
+}
+
+func (l *Ledger) Height() uint64 {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	return l.graph.height
 }
 
 func (l *Ledger) FindTransaction(id common.TransactionID) (*Transaction, bool) {
@@ -594,8 +613,12 @@ func (l *Ledger) gossip() func(ctx context.Context) error {
 
 		// If we have nothing else to broadcast and we are not broadcasting out
 		// nop transactions, then start broadcasting out nop transactions.
-		if len(l.broadcastQueue) == 0 && !broadcastNops {
+		if len(l.broadcastQueue) == 0 && !broadcastNops && l.snowball.Preferred() == nil {
 			broadcastNops = true
+		}
+
+		if l.snowball.Preferred() != nil {
+			broadcastNops = false
 		}
 
 		if Result != nil {
@@ -618,14 +641,15 @@ var ErrNonePreferred = errors.New("no critical transactions available in round y
 // away from any other goroutines associated to the ledger.
 func (l *Ledger) query() func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		root := l.rounds[l.round-1].Root
+		oldRound := l.rounds[l.round-1]
+		oldRoot := oldRound.Root
 
 		if err := func() error {
 			l.mu.Lock()
 			defer l.mu.Unlock()
 
 			if l.snowball.Preferred() == nil { // If we do not prefer any critical transaction yet, find a critical transaction to initially prefer first.
-				difficulty := root.ExpectedDifficulty(byte(sys.MinDifficulty))
+				difficulty := oldRoot.ExpectedDifficulty(byte(sys.MinDifficulty))
 
 				var eligible []*Transaction // Find all critical transactions for the current round.
 
@@ -639,7 +663,7 @@ func (l *Ledger) query() func(ctx context.Context) error {
 					for candidateID := range candidates {
 						candidate := l.graph.transactions[candidateID]
 
-						if candidate.Depth > root.Depth && candidate.IsCritical(difficulty) {
+						if candidate.Depth > oldRoot.Depth && candidate.IsCritical(difficulty) {
 							eligible = append(eligible, candidate)
 						}
 					}
@@ -713,7 +737,7 @@ func (l *Ledger) query() func(ctx context.Context) error {
 		accounts := make(map[common.AccountID]struct{}, len(votes))
 
 		for _, vote := range votes {
-			if vote.Preferred.Index == l.round && vote.Preferred.ID != common.ZeroTransactionID {
+			if vote.Preferred.Index == l.round && vote.Preferred.ID != common.ZeroRoundID && vote.Preferred.Root.ID != common.ZeroTransactionID {
 				rounds[vote.Preferred.ID] = vote.Preferred
 			}
 
@@ -726,7 +750,7 @@ func (l *Ledger) query() func(ctx context.Context) error {
 		weights := computeStakeDistribution(snapshot, accounts)
 
 		for _, vote := range votes {
-			if vote.Preferred.Index == l.round && vote.Preferred.ID != common.ZeroTransactionID {
+			if vote.Preferred.Index == l.round && vote.Preferred.Root.ID != common.ZeroTransactionID {
 				counts[vote.Preferred.ID] += weights[vote.Voter]
 
 				if counts[vote.Preferred.ID] >= sys.SnowballQueryAlpha {
@@ -739,23 +763,38 @@ func (l *Ledger) query() func(ctx context.Context) error {
 		l.snowball.Tick(elected)
 
 		if l.snowball.Decided() {
-			preferred := l.snowball.Preferred()
-			root := l.graph.transactions[preferred.Root.ID]
+			newRound := l.snowball.Preferred()
+			newRoot := l.graph.transactions[newRound.Root.ID]
 
-			state, err := l.collapseRound(preferred.Index, root, true)
+			state, err := l.collapseRound(newRound.Index, newRoot, true)
 
 			if err != nil {
 				return errors.Wrap(err, "got an error finalizing a round")
 			}
 
-			if state.Checksum() != preferred.Merkle {
-				return errors.Errorf("expected finalized rounds merkle root to be %x, but got %x", preferred.Merkle, state.Checksum())
+			if state.Checksum() != newRound.Merkle {
+				return errors.Errorf("expected finalized rounds merkle root to be %x, but got %x", newRound.Merkle, state.Checksum())
+			}
+
+			if err = l.accounts.commit(state); err != nil {
+				return errors.Wrap(err, "failed to commit collapsed state to our database")
 			}
 
 			l.snowball.Reset()
 
-			l.rounds[l.round] = *preferred
+			l.rounds[l.round] = *newRound
 			l.round++
+
+			logger := log.Consensus("round_end")
+			logger.Info().
+				//Int("num_tx", l.v.numTransactions(oldRoot.ViewID)).
+				Uint64("old_view_id", oldRound.Index).
+				Uint64("new_view_id", newRound.Index).
+				Hex("new_root", newRoot.ID[:]).
+				Hex("old_root", oldRoot.ID[:]).
+				Hex("new_round_merkle_root", newRound.Merkle[:]).
+				Hex("old_round_merkle_root", oldRound.Merkle[:]).
+				Msg("Finalized consensus round, and incremented view ID.")
 
 			// TODO(kenta): prune knowledge of rounds over time, say after 30 rounds and
 			// 	also wipe away traces of their transactions.

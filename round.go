@@ -46,6 +46,8 @@ func UnmarshalRound(r io.Reader) (round Round, err error) {
 		return
 	}
 
+	round.ID = blake2b.Sum256(round.Marshal())
+
 	return
 }
 

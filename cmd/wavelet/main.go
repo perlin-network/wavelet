@@ -365,8 +365,8 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 				Uint8("difficulty", round.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
 				Uint64("round", round.Index).
 				Hex("root_id", round.Root.ID[:]).
-				Uint64("height", round.Root.Depth).
-				Uint64("num_tx", round.Root.Confidence).
+				Uint64("height", ledger.Height()).
+				Uint64("num_tx", ledger.NumTransactions()).
 				Str("preferred_id", preferredID).
 				Msg("Here is the current state of the ledger.")
 		case "tx":

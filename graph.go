@@ -11,24 +11,30 @@ type Graph struct {
 	transactions map[common.TransactionID]*Transaction           // All transactions.
 	children     map[common.TransactionID][]common.TransactionID // Children of transactions.
 
+	eligible   map[common.TransactionID]struct{} // Transactions that are eligible to be parent transactions.
 	incomplete map[common.TransactionID]struct{} // Transactions that don't have all parents available.
 	missing    map[common.TransactionID]struct{} // Transactions that we are missing.
 
 	seedIndex map[byte]map[common.TransactionID]struct{} // Indexes transactions by their seed.
+
+	height uint64 // Height of the graph.
 }
 
-func NewGraph() *Graph {
+func NewGraph(genesis *Round) *Graph {
 	g := &Graph{
 		transactions: make(map[common.TransactionID]*Transaction),
 		children:     make(map[common.TransactionID][]common.TransactionID),
 
+		eligible:   make(map[common.TransactionID]struct{}),
 		incomplete: make(map[common.TransactionID]struct{}),
 		missing:    make(map[common.TransactionID]struct{}),
 
 		seedIndex: make(map[byte]map[common.TransactionID]struct{}),
+		height:    1,
 	}
 
-	g.transactions[common.ZeroTransactionID] = &Transaction{}
+	g.transactions[genesis.Root.ID] = &genesis.Root
+	g.eligible[genesis.Root.ID] = struct{}{}
 
 	return g
 }
@@ -136,6 +142,8 @@ func (g *Graph) processParents(tx *Transaction) []common.TransactionID {
 		}
 
 		g.children[parentID] = append(g.children[parentID], tx.ID)
+
+		delete(g.eligible, parentID)
 	}
 
 	return missingParentIDs
@@ -173,6 +181,7 @@ func (g *Graph) deleteTransaction(id common.TransactionID) {
 	delete(g.transactions, id)
 	delete(g.children, id)
 
+	delete(g.eligible, id)
 	delete(g.incomplete, id)
 	delete(g.missing, id)
 }
@@ -197,16 +206,48 @@ func (g *Graph) createTransactionIndices(tx *Transaction) {
 	}
 
 	g.seedIndex[tx.Seed][tx.ID] = struct{}{}
-}
 
-func (g *Graph) cleanupTransactionIndices(txs ...*Transaction) {
-	for _, tx := range txs {
-		delete(g.seedIndex[tx.Seed], tx.ID)
+	if g.height < tx.Depth {
+		g.height = tx.Depth + 1
+	}
 
-		if len(g.seedIndex[tx.Seed]) == 0 {
-			delete(g.seedIndex, tx.Seed)
+	if _, exists := g.children[tx.ID]; !exists {
+		if tx.Depth+sys.MaxEligibleParentsDepthDiff >= g.height {
+			g.eligible[tx.ID] = struct{}{}
 		}
 	}
+}
+
+//func (g *Graph) cleanupTransactionIndices(txs ...*Transaction) {
+//	for _, tx := range txs {
+//		delete(g.seedIndex[tx.Seed], tx.ID)
+//
+//		if len(g.seedIndex[tx.Seed]) == 0 {
+//			delete(g.seedIndex, tx.Seed)
+//		}
+//	}
+//}
+
+func (g *Graph) findEligibleParents() []common.TransactionID {
+	var eligibleIDs []common.TransactionID
+
+	for id := range g.eligible {
+		tx, exists := g.transactions[id]
+
+		if !exists {
+			delete(g.eligible, id)
+			continue
+		}
+
+		if tx.Depth+sys.MaxEligibleParentsDepthDiff < g.height {
+			delete(g.eligible, id)
+			continue
+		}
+
+		eligibleIDs = append(eligibleIDs, id)
+	}
+
+	return eligibleIDs
 }
 
 func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
