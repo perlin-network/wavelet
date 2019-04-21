@@ -30,6 +30,7 @@ type Ledger struct {
 	graph    *Graph
 
 	snowball *Snowball
+	resolver *Snowball
 
 	processors map[byte]TransactionProcessor
 
@@ -129,6 +130,7 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 		graph:    graph,
 
 		snowball: NewSnowball().WithK(sys.SnowballQueryK).WithAlpha(sys.SnowballQueryAlpha).WithBeta(sys.SnowballQueryBeta),
+		resolver: NewSnowball().WithK(sys.SnowballSyncK).WithAlpha(sys.SnowballSyncAlpha).WithBeta(sys.SnowballSyncBeta),
 
 		processors: map[byte]TransactionProcessor{
 			sys.TagNop:      ProcessNopTransaction,
@@ -250,7 +252,7 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 	difficulty := l.rounds[l.round-1].Root.ExpectedDifficulty(byte(sys.MinDifficulty))
 
 	if tx.IsCritical(difficulty) && l.snowball.Preferred() == nil {
-		state, err := l.collapseRound(l.round, ptr, true)
+		state, err := l.collapseTransactions(l.round, ptr, true)
 
 		if err != nil {
 			return errors.Wrap(err, "got an error collapsing down tx to get merkle root")
@@ -269,6 +271,8 @@ func (l *Ledger) Run() {
 
 	go l.gossipingLoop(l.ctx)
 	go l.queryingLoop(l.ctx)
+
+	go l.stateSyncingLoop(l.ctx)
 }
 
 func (l *Ledger) Stop() {
@@ -444,6 +448,32 @@ func (l *Ledger) queryingLoop(ctx context.Context) {
 	}
 }
 
+func (l *Ledger) stateSyncingLoop(ctx context.Context) {
+	step := l.stateSync()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		if err := step(ctx); err != nil {
+			switch errors.Cause(err) {
+			case ErrNonePreferred:
+			default:
+				fmt.Println("state sync error:", err)
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(1 * time.Second):
+			}
+		}
+	}
+}
+
 var ErrStopped = errors.New("worker stopped")
 
 func (l *Ledger) recv() func(ctx context.Context) error {
@@ -492,6 +522,19 @@ func (l *Ledger) recv() func(ctx context.Context) error {
 				}
 
 				evt.Response <- l.snowball.Preferred() // Send back our preferred round info, if we have any.
+
+				return nil
+			}()
+		case evt := <-l.outOfSyncIn:
+			return func() error {
+				l.mu.RLock()
+				defer l.mu.RUnlock()
+
+				if round, exists := l.rounds[l.round-1]; exists {
+					evt.Response <- &round
+				} else {
+					evt.Response <- nil
+				}
 
 				return nil
 			}()
@@ -720,7 +763,7 @@ func (l *Ledger) query() func(ctx context.Context) error {
 
 				proposed := eligible[0]
 
-				state, err := l.collapseRound(l.round, proposed, true)
+				state, err := l.collapseTransactions(l.round, proposed, true)
 
 				if err != nil {
 					return errors.Wrap(err, "got an error collapsing down tx to get merkle root")
@@ -801,7 +844,7 @@ func (l *Ledger) query() func(ctx context.Context) error {
 			newRound := l.snowball.Preferred()
 			newRoot := l.graph.transactions[newRound.Root.ID]
 
-			state, err := l.collapseRound(newRound.Index, newRoot, true)
+			state, err := l.collapseTransactions(newRound.Index, newRoot, true)
 
 			if err != nil {
 				return errors.Wrap(err, "got an error finalizing a round")
@@ -845,11 +888,92 @@ func (l *Ledger) query() func(ctx context.Context) error {
 	}
 }
 
-// collapseRound takes all transactions recorded in the graph view so far, and applies
+func (l *Ledger) stateSync() func(ctx context.Context) error {
+	return func(ctx context.Context) error {
+		snapshot := l.accounts.snapshot()
+
+		evt := EventOutOfSyncCheck{
+			Result: make(chan []VoteOutOfSync, 1),
+			Error:  make(chan error, 1),
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case l.outOfSyncOut <- evt:
+		}
+
+		var votes []VoteOutOfSync
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-evt.Error:
+			return errors.Wrap(ErrNonePreferred, err.Error())
+		case votes = <-evt.Result:
+		}
+
+		if len(votes) == 0 {
+			return nil
+		}
+
+		rounds := make(map[common.RoundID]Round)
+		accounts := make(map[common.AccountID]struct{}, len(votes))
+
+		for _, vote := range votes {
+			if vote.Round.ID != common.ZeroRoundID && vote.Round.Root.ID != common.ZeroTransactionID {
+				rounds[vote.Round.ID] = vote.Round
+			}
+
+			accounts[vote.Voter] = struct{}{}
+		}
+
+		var elected *Round
+		counts := make(map[common.RoundID]float64)
+
+		l.mu.Lock()
+		defer l.mu.Unlock()
+
+		weights := computeStakeDistribution(snapshot, accounts)
+
+		for _, vote := range votes {
+			if vote.Round.Root.ID != common.ZeroTransactionID {
+				counts[vote.Round.ID] += weights[vote.Voter]
+
+				if counts[vote.Round.ID] >= sys.SnowballSyncAlpha {
+					elected = &vote.Round
+					break
+				}
+			}
+		}
+
+		l.resolver.Tick(elected)
+
+		if l.resolver.Decided() {
+			proposedRound := l.resolver.Preferred()
+
+			// The round number we came to consensus to being the latest within the network
+			// is less than or equal to ours. Go back to square one.
+
+			if l.round-1 >= proposedRound.Index {
+				l.resolver.Reset()
+				return ErrNonePreferred
+			}
+
+			fmt.Printf("We are out of sync; our current round is %d, and our peers proposed round is %d.\n", l.round-1, proposedRound.Index)
+
+			return ErrNonePreferred
+		}
+
+		return nil
+	}
+}
+
+// collapseTransactions takes all transactions recorded in a single round so far, and applies
 // all valid and available ones to a snapshot of all accounts stored in the ledger.
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
-func (l *Ledger) collapseRound(round uint64, tx *Transaction, logging bool) (*avl.Tree, error) {
+func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging bool) (*avl.Tree, error) {
 	snapshot := l.accounts.snapshot()
 	snapshot.SetViewID(round + 1)
 

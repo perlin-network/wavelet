@@ -71,10 +71,10 @@ func (b *Protocol) RegisterOpcodes(node *noise.Node) {
 	node.RegisterOpcode("query response", b.opcodeQueryResponse)
 
 	b.opcodeOutOfSyncRequest = node.NextAvailableOpcode()
-	node.RegisterOpcode("sync view request", b.opcodeOutOfSyncRequest)
+	node.RegisterOpcode("out of sync request", b.opcodeOutOfSyncRequest)
 
 	b.opcodeOutOfSyncResponse = node.NextAvailableOpcode()
-	node.RegisterOpcode("sync view response", b.opcodeOutOfSyncResponse)
+	node.RegisterOpcode("out of sync response", b.opcodeOutOfSyncResponse)
 
 	b.opcodeSyncInitRequest = node.NextAvailableOpcode()
 	node.RegisterOpcode("sync init request", b.opcodeSyncInitRequest)
@@ -144,7 +144,7 @@ func (b *Protocol) sendLoop(node *noise.Node) {
 
 	go b.broadcastGossip(ctx, node)
 	go b.broadcastQueries(ctx, node)
-	//go b.broadcastOutOfSyncChecks(ctx, node)
+	go b.broadcastOutOfSyncChecks(ctx, node)
 	//go b.broadcastSyncInitRequests(ctx, node)
 	//go b.broadcastSyncDiffRequests(ctx, node)
 	//go b.broadcastSyncMissingTXs(ctx, node)
@@ -162,8 +162,8 @@ func (b *Protocol) receiveLoop(ledger *wavelet.Ledger, ctx noise.Context) {
 			go b.handleGossipRequest(wire)
 		case wire := <-peer.Recv(b.opcodeQueryRequest):
 			go b.handleQueryRequest(wire)
-			//case wire := <-peer.Recv(b.opcodeOutOfSyncRequest):
-			//	go b.handleOutOfSyncCheck(wire)
+		case wire := <-peer.Recv(b.opcodeOutOfSyncRequest):
+			go b.handleOutOfSyncCheck(wire)
 			//case wire := <-peer.Recv(b.opcodeSyncInitRequest):
 			//	go b.handleSyncInits(wire)
 			//case wire := <-peer.Recv(b.opcodeSyncChunkRequest):
