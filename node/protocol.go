@@ -600,7 +600,7 @@ func (b *Protocol) handleSyncInits(wire noise.Wire) {
 		return
 	}
 
-	evt := wavelet.EventIncomingSyncInit{ViewID: req.viewID, Response: make(chan wavelet.SyncInitMetadata, 1)}
+	evt := wavelet.EventIncomingSyncInit{RoundID: req.viewID, Response: make(chan wavelet.SyncInitMetadata, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):

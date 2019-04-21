@@ -2,10 +2,14 @@ package wavelet
 
 import (
 	"context"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/blake2b"
 )
 
 func recv(ledger *Ledger) func(ctx context.Context) error {
+	diffs := newLRU(1024) // In total will take up 1024 * 4MB.
+
 	return func(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
@@ -17,14 +21,8 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 
 				err := ledger.addTransaction(evt.TX)
 
-				if err != nil {
-					evt.Vote <- err
-					return nil
-				}
-
-				evt.Vote <- nil
-
-				return nil
+				evt.Vote <- err
+				return err
 			}()
 		case evt := <-ledger.queryIn:
 			return func() error {
@@ -61,6 +59,49 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 
 				if round, exists := ledger.rounds[ledger.round-1]; exists {
 					evt.Response <- &round
+				} else {
+					evt.Response <- nil
+				}
+
+				return nil
+			}()
+		case evt := <-ledger.syncInitIn:
+			return func() error {
+				data := SyncInitMetadata{RoundID: ledger.round}
+
+				diff := ledger.accounts.snapshot().DumpDiff(evt.RoundID)
+
+				for i := 0; i < len(diff); i += SyncChunkSize {
+					end := i + SyncChunkSize
+
+					if end > len(diff) {
+						end = len(diff)
+					}
+
+					hash := blake2b.Sum256(diff[i:end])
+
+					diffs.put(hash, diff[i:end])
+					data.ChunkHashes = append(data.ChunkHashes, hash)
+				}
+
+				evt.Response <- data
+
+				return nil
+			}()
+		case evt := <-ledger.syncDiffIn:
+			return func() error {
+				if chunk, found := diffs.load(evt.ChunkHash); found {
+					chunk := chunk.([]byte)
+
+					providedHash := blake2b.Sum256(chunk)
+
+					logger := log.Sync("provide_chunk")
+					logger.Info().
+						Hex("requested_hash", evt.ChunkHash[:]).
+						Hex("provided_hash", providedHash[:]).
+						Msg("Responded to sync chunk request.")
+
+					evt.Response <- chunk
 				} else {
 					evt.Response <- nil
 				}

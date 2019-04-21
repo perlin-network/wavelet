@@ -85,7 +85,7 @@ type EventSyncInit struct {
 }
 
 type EventIncomingSyncInit struct {
-	ViewID uint64
+	RoundID uint64
 
 	Response chan SyncInitMetadata
 }
