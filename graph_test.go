@@ -12,7 +12,7 @@ import (
 )
 
 func TestCorrectGraphState(t *testing.T) {
-	g := NewGraph()
+	g := NewGraph(nil)
 
 	tx1 := randomTX(t, common.ZeroTransactionID)
 	tx1.Depth = 1
@@ -24,11 +24,11 @@ func TestCorrectGraphState(t *testing.T) {
 
 	tx3 := randomTX(t, tx1.ID, tx2.ID)
 	tx3.Depth = 3
-	tx3.Confidence = 5
+	tx3.Confidence = 4
 
 	tx4 := randomTX(t, tx3.ID)
 	tx4.Depth = 4
-	tx4.Confidence = 6
+	tx4.Confidence = 5
 
 	assert.NoError(t, g.addTransaction(tx1))
 	assert.NoError(t, g.addTransaction(tx2))
@@ -45,11 +45,11 @@ func TestCorrectGraphState(t *testing.T) {
 
 	badTX1.ParentIDs = []common.TransactionID{tx4.ID}
 	badTX1.Depth = 5
-	badTX1.Confidence = 7
+	badTX1.Confidence = 6
 
 	badTX2.ParentIDs = []common.TransactionID{badTX1.ID}
 	badTX2.Depth = 6
-	badTX2.Confidence = 8
+	badTX2.Confidence = 7
 
 	// Add incomplete transaction with one missing parent.
 	assert.Error(t, g.addTransaction(badTX2))
@@ -107,7 +107,7 @@ func TestAddInRandomOrder(t *testing.T) {
 	f := func(n int) bool {
 		n = (n + 1) % 1024
 
-		g := NewGraph()
+		g := NewGraph(nil)
 
 		transactions := randomGraph(t, *g.transactions[common.ZeroTransactionID], n)
 		for _, tx := range transactions {
@@ -126,7 +126,7 @@ func TestAddInRandomOrder(t *testing.T) {
 			return false
 		}
 
-		g = NewGraph()
+		g = NewGraph(nil)
 
 		for i, j := range rand.Perm(len(transactions)) {
 			transactions[i], transactions[j] = transactions[j], transactions[i]
@@ -186,12 +186,15 @@ func randomGraph(t testing.TB, genesis Transaction, n int) []Transaction {
 				tx.Depth = parent.Depth
 			}
 
-			tx.Confidence += parent.Confidence + 1
+			if tx.Confidence < parent.Confidence {
+				tx.Confidence = parent.Confidence
+			}
 
 			tx.ParentIDs = append(tx.ParentIDs, parent.ID)
 		}
 
 		tx.Depth++
+		tx.Confidence += uint64(len(tx.ParentIDs))
 
 		sort.Slice(tx.ParentIDs, func(i, j int) bool {
 			return bytes.Compare(tx.ParentIDs[i][:], tx.ParentIDs[j][:]) < 0

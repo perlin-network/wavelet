@@ -225,10 +225,13 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 			tx.Depth = parent.Depth
 		}
 
-		tx.Confidence += parent.Confidence + 1
+		if tx.Confidence < parent.Confidence {
+			tx.Confidence = parent.Confidence
+		}
 	}
 
 	tx.Depth++
+	tx.Confidence += uint64(len(tx.ParentIDs))
 
 	tx.SenderSignature = edwards25519.Sign(l.keys.PrivateKey(), tx.Marshal())
 

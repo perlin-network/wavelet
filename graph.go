@@ -35,8 +35,13 @@ func NewGraph(genesis *Round) *Graph {
 		height:     1,
 	}
 
-	g.transactions[genesis.Root.ID] = &genesis.Root
-	g.eligible[genesis.Root.ID] = struct{}{}
+	if genesis != nil {
+		g.transactions[genesis.Root.ID] = &genesis.Root
+		g.eligible[genesis.Root.ID] = struct{}{}
+	} else {
+		g.transactions[common.ZeroTransactionID] = new(Transaction)
+		g.eligible[common.ZeroTransactionID] = struct{}{}
+	}
 
 	return g
 }
@@ -97,7 +102,7 @@ func (g *Graph) assertTransactionIsValid(tx *Transaction) error {
 func (g *Graph) assertTransactionIsComplete(tx *Transaction) error {
 	// Check that the transaction's depth is correct according to its parents.
 	var maxDepth uint64
-	var expectedConfidence uint64
+	var maxConfidence uint64
 
 	for _, parentID := range tx.ParentIDs {
 		parent, exists := g.transactions[parentID]
@@ -111,17 +116,21 @@ func (g *Graph) assertTransactionIsComplete(tx *Transaction) error {
 			maxDepth = parent.Depth
 		}
 
-		expectedConfidence += parent.Confidence + 1
+		// Update max confidence witnessed from parents.
+		if maxConfidence < parent.Confidence {
+			maxConfidence = parent.Confidence
+		}
 	}
 
 	maxDepth++
+	maxConfidence += uint64(len(tx.ParentIDs))
 
 	if tx.Depth != maxDepth {
 		return errors.Errorf("transactions depth is invalid, expected depth to be %d but got %d", maxDepth, tx.Depth)
 	}
 
-	if tx.Confidence != expectedConfidence {
-		return errors.Errorf("transactions confidence is invalid, expected confidence to be %d but got %d", expectedConfidence, tx.Confidence)
+	if tx.Confidence != maxConfidence {
+		return errors.Errorf("transactions confidence is invalid, expected confidence to be %d but got %d", maxConfidence, tx.Confidence)
 	}
 
 	return nil
