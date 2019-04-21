@@ -29,8 +29,8 @@ type Protocol struct {
 	opcodeQueryRequest  byte
 	opcodeQueryResponse byte
 
-	opcodeSyncViewRequest  byte
-	opcodeSyncViewResponse byte
+	opcodeOutOfSyncRequest  byte
+	opcodeOutOfSyncResponse byte
 
 	opcodeSyncInitRequest   byte
 	opcodeSyncInitResponse  byte
@@ -70,11 +70,11 @@ func (b *Protocol) RegisterOpcodes(node *noise.Node) {
 	b.opcodeQueryResponse = node.NextAvailableOpcode()
 	node.RegisterOpcode("query response", b.opcodeQueryResponse)
 
-	b.opcodeSyncViewRequest = node.NextAvailableOpcode()
-	node.RegisterOpcode("sync view request", b.opcodeSyncViewRequest)
+	b.opcodeOutOfSyncRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("sync view request", b.opcodeOutOfSyncRequest)
 
-	b.opcodeSyncViewResponse = node.NextAvailableOpcode()
-	node.RegisterOpcode("sync view response", b.opcodeSyncViewResponse)
+	b.opcodeOutOfSyncResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("sync view response", b.opcodeOutOfSyncResponse)
 
 	b.opcodeSyncInitRequest = node.NextAvailableOpcode()
 	node.RegisterOpcode("sync init request", b.opcodeSyncInitRequest)
@@ -162,7 +162,7 @@ func (b *Protocol) receiveLoop(ledger *wavelet.Ledger, ctx noise.Context) {
 			go b.handleGossipRequest(wire)
 		case wire := <-peer.Recv(b.opcodeQueryRequest):
 			go b.handleQueryRequest(wire)
-			//case wire := <-peer.Recv(b.opcodeSyncViewRequest):
+			//case wire := <-peer.Recv(b.opcodeOutOfSyncRequest):
 			//	go b.handleOutOfSyncCheck(wire)
 			//case wire := <-peer.Recv(b.opcodeSyncInitRequest):
 			//	go b.handleSyncInits(wire)
@@ -256,24 +256,24 @@ func (b *Protocol) broadcastOutOfSyncChecks(ctx context.Context, node *noise.Nod
 		case evt := <-b.ledger.OutOfSyncOut:
 			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
 			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while selecting peers for sync check")
+				evt.Error <- errors.Wrap(err, "got an error while selecting peers for out of sync check")
 				continue
 			}
 
-			responses := broadcast(peers, b.opcodeSyncViewRequest, b.opcodeSyncViewResponse, SyncViewRequest{root: evt.Root}.Marshal())
+			responses := broadcast(peers, b.opcodeOutOfSyncRequest, b.opcodeOutOfSyncResponse, nil)
 
 			votes := make([]wavelet.VoteOutOfSync, len(peers))
 
 			for i, buf := range responses {
 				if buf != nil {
-					res, err := UnmarshalSyncViewResponse(bytes.NewReader(buf))
+					res, err := UnmarshalOutOfSyncResponse(bytes.NewReader(buf))
 
 					if err != nil {
-						fmt.Println("Error while unmarshaling sync view response", err)
+						fmt.Println("Error while unmarshaling out of sync response", err)
 						continue
 					}
 
-					votes[i].Root = res.root
+					votes[i].Round = res.round
 				}
 
 				votes[i].Voter = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).PublicKey()
@@ -297,7 +297,7 @@ func (b *Protocol) broadcastSyncInitRequests(ctx context.Context, node *noise.No
 				continue
 			}
 
-			responses := broadcast(peers, b.opcodeSyncInitRequest, b.opcodeSyncInitResponse, SyncInitRequest{viewID: evt.ViewID}.Marshal())
+			responses := broadcast(peers, b.opcodeSyncInitRequest, b.opcodeSyncInitResponse, SyncInitRequest{viewID: evt.RoundID}.Marshal())
 
 			votes := make([]wavelet.SyncInitMetadata, len(responses))
 
@@ -310,7 +310,7 @@ func (b *Protocol) broadcastSyncInitRequests(ctx context.Context, node *noise.No
 						continue
 					}
 
-					votes[i].ViewID = res.latestViewID
+					votes[i].RoundID = res.latestViewID
 					votes[i].ChunkHashes = res.chunkHashes
 				}
 
@@ -376,7 +376,7 @@ func (b *Protocol) broadcastLatestViewRequests(ctx context.Context, node *noise.
 				continue
 			}
 
-			responses := broadcast(peers, b.opcodeLatestViewRequest, b.opcodeLatestViewResponse, LatestViewRequest(evt.ViewID).Marshal())
+			responses := broadcast(peers, b.opcodeLatestViewRequest, b.opcodeLatestViewResponse, LatestViewRequest(evt.RoundID).Marshal())
 
 			set := make(map[uint64]struct{})
 
@@ -561,20 +561,14 @@ func (b *Protocol) handleGossipRequest(wire noise.Wire) {
 }
 
 func (b *Protocol) handleOutOfSyncCheck(wire noise.Wire) {
-	var res SyncViewResponse
+	var res OutOfSyncResponse
 	defer func() {
-		if err := wire.SendWithTimeout(b.opcodeSyncViewResponse, res.Marshal(), 1*time.Second); err != nil {
+		if err := wire.SendWithTimeout(b.opcodeOutOfSyncResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
 
-	req, err := UnmarshalSyncViewRequest(bytes.NewReader(wire.Bytes()))
-	if err != nil {
-		fmt.Println("Error while unmarshaling sync view request", err)
-		return
-	}
-
-	evt := wavelet.EventIncomingOutOfSyncCheck{Root: req.root, Response: make(chan *wavelet.Transaction, 1)}
+	evt := wavelet.EventIncomingOutOfSyncCheck{Response: make(chan *wavelet.Round, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):
@@ -585,10 +579,10 @@ func (b *Protocol) handleOutOfSyncCheck(wire noise.Wire) {
 
 	select {
 	case <-time.After(1 * time.Second):
-		fmt.Println("timed out getting sync check results from ledger")
+		fmt.Println("timed out getting out of sync check results from ledger")
 		return
 	case root := <-evt.Response:
-		res.root = *root
+		res.round = *root
 	}
 }
 
@@ -621,7 +615,7 @@ func (b *Protocol) handleSyncInits(wire noise.Wire) {
 		return
 	case data := <-evt.Response:
 		res.chunkHashes = data.ChunkHashes
-		res.latestViewID = data.ViewID
+		res.latestViewID = data.RoundID
 	}
 }
 
@@ -671,7 +665,7 @@ func (b *Protocol) handleLatestViewRequest(wire noise.Wire) {
 		return
 	}
 
-	evt := wavelet.EventIncomingLatestView{ViewID: uint64(req), Response: make(chan []uint64, 1)}
+	evt := wavelet.EventIncomingLatestView{RoundID: uint64(req), Response: make(chan []uint64, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):

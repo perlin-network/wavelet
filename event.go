@@ -59,30 +59,26 @@ type EventQuery struct {
 
 type VoteOutOfSync struct {
 	Voter common.AccountID
-	Root  Transaction
+	Round Round
 }
 
 type EventOutOfSyncCheck struct {
-	Root Transaction
-
 	Result chan []VoteOutOfSync
 	Error  chan error
 }
 
 type EventIncomingOutOfSyncCheck struct {
-	Root Transaction
-
-	Response chan *Transaction
+	Response chan *Round
 }
 
 type SyncInitMetadata struct {
 	PeerID      *skademlia.ID
-	ViewID      uint64
+	RoundID     uint64
 	ChunkHashes [][blake2b.Size256]byte
 }
 
 type EventSyncInit struct {
-	ViewID uint64
+	RoundID uint64
 
 	Result chan []SyncInitMetadata
 	Error  chan error
@@ -126,12 +122,12 @@ type EventIncomingSyncDiff struct {
 }
 
 type EventLatestView struct {
-	ViewID uint64
-	Result chan []uint64
-	Error  chan error
+	RoundID uint64
+	Result  chan []uint64
+	Error   chan error
 }
 
 type EventIncomingLatestView struct {
-	ViewID   uint64
+	RoundID  uint64
 	Response chan []uint64
 }

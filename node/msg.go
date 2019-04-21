@@ -95,38 +95,19 @@ func UnmarshalGossipResponse(r io.Reader) (q GossipResponse, err error) {
 	return
 }
 
-type SyncViewRequest struct {
-	root wavelet.Transaction
+type OutOfSyncResponse struct {
+	round wavelet.Round
 }
 
-func (q SyncViewRequest) Marshal() []byte {
-	return q.root.Marshal()
+func (q OutOfSyncResponse) Marshal() []byte {
+	return q.round.Marshal()
 }
 
-func UnmarshalSyncViewRequest(r io.Reader) (q SyncViewRequest, err error) {
-	q.root, err = wavelet.UnmarshalTransaction(r)
+func UnmarshalOutOfSyncResponse(r io.Reader) (q OutOfSyncResponse, err error) {
+	q.round, err = wavelet.UnmarshalRound(r)
 
 	if err != nil {
-		err = errors.Wrap(err, "failed to read sync root request")
-		return
-	}
-
-	return
-}
-
-type SyncViewResponse struct {
-	root wavelet.Transaction
-}
-
-func (q SyncViewResponse) Marshal() []byte {
-	return q.root.Marshal()
-}
-
-func UnmarshalSyncViewResponse(r io.Reader) (q SyncViewResponse, err error) {
-	q.root, err = wavelet.UnmarshalTransaction(r)
-
-	if err != nil {
-		err = errors.Wrap(err, "failed to read sync root response")
+		err = errors.Wrap(err, "failed to read round in sync view response")
 		return
 	}
 

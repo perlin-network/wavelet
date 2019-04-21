@@ -320,7 +320,13 @@ func (l *Ledger) Height() uint64 {
 func (l *Ledger) getNumTransactions(round uint64) uint64 {
 	var n uint64
 
-	for i := l.rounds[round].Root.Depth + 1; i < l.graph.height; i++ {
+	height := l.graph.height
+
+	if round+1 < l.round {
+		height = l.rounds[round+1].Root.Depth + 1
+	}
+
+	for i := l.rounds[round].Root.Depth + 1; i < height; i++ {
 		n += uint64(len(l.graph.depthIndex[i]))
 	}
 
@@ -328,7 +334,13 @@ func (l *Ledger) getNumTransactions(round uint64) uint64 {
 }
 
 func (l *Ledger) getHeight(round uint64) uint64 {
-	height := l.graph.height - l.rounds[round].Root.Depth
+	height := l.graph.height
+
+	if round+1 < l.round {
+		height = l.rounds[round+1].Root.Depth + 1
+	}
+
+	height -= l.rounds[round].Root.Depth
 
 	if height > 0 {
 		height--
@@ -811,6 +823,8 @@ func (l *Ledger) query() func(ctx context.Context) error {
 				Uint64("num_tx", l.getNumTransactions(l.round-1)).
 				Uint64("old_round", oldRound.Index).
 				Uint64("new_round", newRound.Index).
+				Uint8("old_difficulty", oldRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
+				Uint8("new_difficulty", newRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
 				Hex("new_root", newRoot.ID[:]).
 				Hex("old_root", oldRoot.ID[:]).
 				Hex("new_merkle_root", newRound.Merkle[:]).
