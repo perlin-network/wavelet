@@ -2,7 +2,9 @@ package wavelet
 
 import (
 	"bytes"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/blake2b"
 	"math/rand"
@@ -104,47 +106,59 @@ func randomTX(t testing.TB, parents ...common.TransactionID) Transaction {
 }
 
 func TestAddInRandomOrder(t *testing.T) {
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
 	f := func(n int) bool {
 		n = (n + 1) % 1024
 
-		g := NewGraph(nil)
+		ledger := NewLedger(keys)
 
-		transactions := randomGraph(t, *g.transactions[common.ZeroTransactionID], n)
-		for _, tx := range transactions {
-			assert.NoError(t, g.addTransaction(tx))
+		for i := 0; i < n; i++ {
+			tx := NewTransaction(keys, sys.TagNop, nil)
+			tx, err = ledger.attachSenderToTransaction(tx)
+			assert.NoError(t, err)
+
+			assert.NoError(t, ledger.graph.addTransaction(tx))
 		}
 
-		if !assert.Len(t, g.transactions, len(transactions)) {
+		var transactions []Transaction
+
+		for _, tx := range ledger.graph.transactions {
+			transactions = append(transactions, *tx)
+		}
+
+		if !assert.Len(t, ledger.graph.transactions, len(transactions)) {
 			return false
 		}
 
-		if !assert.Len(t, g.incomplete, 0) {
+		if !assert.Len(t, ledger.graph.incomplete, 0) {
 			return false
 		}
 
-		if !assert.Len(t, g.missing, 0) {
+		if !assert.Len(t, ledger.graph.missing, 0) {
 			return false
 		}
-
-		g = NewGraph(nil)
 
 		for i, j := range rand.Perm(len(transactions)) {
 			transactions[i], transactions[j] = transactions[j], transactions[i]
 		}
 
+		ledger = NewLedger(keys)
+
 		for _, tx := range transactions {
-			_ = g.addTransaction(tx)
+			_ = ledger.graph.addTransaction(tx)
 		}
 
-		if !assert.Len(t, g.transactions, len(transactions)) {
+		if !assert.Len(t, ledger.graph.transactions, len(transactions)) {
 			return false
 		}
 
-		if !assert.Len(t, g.incomplete, 0) {
+		if !assert.Len(t, ledger.graph.incomplete, 0) {
 			return false
 		}
 
-		if !assert.Len(t, g.missing, 0) {
+		if !assert.Len(t, ledger.graph.missing, 0) {
 			return false
 		}
 
@@ -152,65 +166,4 @@ func TestAddInRandomOrder(t *testing.T) {
 	}
 
 	assert.NoError(t, quick.Check(f, &quick.Config{MaxCount: 100}))
-}
-
-func randomGraph(t testing.TB, genesis Transaction, n int) []Transaction {
-	t.Helper()
-
-	transactions := []Transaction{genesis}
-
-	for i := 0; i < n; i++ {
-		tx := randomTX(t)
-
-		numParents := 1 + rand.Intn(7)
-
-		if numParents > i+1 {
-			numParents = i + 1
-		}
-
-		set := make(map[common.TransactionID]struct{})
-
-		for x := 0; x < numParents; x++ {
-			var parent Transaction
-
-			for {
-				parent = transactions[rand.Intn(len(transactions))]
-
-				if _, used := set[parent.ID]; !used {
-					set[parent.ID] = struct{}{}
-					break
-				}
-			}
-
-			if tx.Depth < parent.Depth {
-				tx.Depth = parent.Depth
-			}
-
-			if tx.Confidence < parent.Confidence {
-				tx.Confidence = parent.Confidence
-			}
-
-			tx.ParentIDs = append(tx.ParentIDs, parent.ID)
-		}
-
-		tx.Depth++
-		tx.Confidence += uint64(len(tx.ParentIDs))
-
-		sort.Slice(tx.ParentIDs, func(i, j int) bool {
-			return bytes.Compare(tx.ParentIDs[i][:], tx.ParentIDs[j][:]) < 0
-		})
-
-		// Set transaction seed.
-		var buf bytes.Buffer
-		_, _ = buf.Write(tx.Sender[:])
-		for _, parentID := range tx.ParentIDs {
-			_, _ = buf.Write(parentID[:])
-		}
-		seed := blake2b.Sum256(buf.Bytes())
-		tx.Seed = byte(prefixLen(seed[:]))
-
-		transactions = append(transactions, tx)
-	}
-
-	return transactions
 }

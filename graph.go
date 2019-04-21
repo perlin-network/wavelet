@@ -118,6 +118,11 @@ func (g *Graph) assertTransactionIsComplete(tx *Transaction) error {
 			return errors.New("parent not stored in graph")
 		}
 
+		// Check if the depth of each parents is acceptable.
+		if parent.Depth+sys.MaxEligibleParentsDepthDiff < tx.Depth {
+			return errors.New("tx parents exceeds max eligible parents depth diff")
+		}
+
 		// Update max depth witnessed from parents.
 		if maxDepth < parent.Depth {
 			maxDepth = parent.Depth
