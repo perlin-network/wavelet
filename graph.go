@@ -3,7 +3,6 @@ package wavelet
 import (
 	"bytes"
 	"github.com/perlin-network/wavelet/common"
-	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 )
@@ -48,7 +47,10 @@ func NewGraph(genesis *Round) *Graph {
 		g.transactions[common.ZeroTransactionID] = new(Transaction)
 	}
 
-	g.eligible[g.rootID] = struct{}{}
+	root := g.transactions[g.rootID]
+
+	g.height = root.Depth + 1
+	g.createTransactionIndices(root)
 
 	return g
 }
@@ -261,12 +263,19 @@ func (g *Graph) createTransactionIndices(tx *Transaction) {
 }
 
 func (g *Graph) findEligibleParents() []common.TransactionID {
+	root := g.transactions[g.rootID]
+
 	var eligibleIDs []common.TransactionID
 
 	for id := range g.eligible {
 		tx, exists := g.transactions[id]
 
 		if !exists {
+			delete(g.eligible, id)
+			continue
+		}
+
+		if tx.ID != root.ID && tx.Depth <= root.Depth {
 			delete(g.eligible, id)
 			continue
 		}
@@ -345,25 +354,6 @@ func (g *Graph) Reset(newRound *Round) {
 	for i := oldRoot.Depth + 1; i <= newRound.Root.Depth; i++ {
 		for id := range g.depthIndex[i] {
 			g.roundIndex[newRound.Index][id] = struct{}{}
-		}
-	}
-
-	// Prune away all transactions and indices with a view ID < (current view ID - pruningDepth).
-
-	for roundID, transactions := range g.roundIndex {
-		if roundID+pruningDepth < newRound.Index {
-			for id := range transactions {
-				g.deleteTransaction(id)
-			}
-
-			delete(g.roundIndex, roundID)
-
-			logger := log.Consensus("prune")
-			logger.Debug().
-				Int("num_tx", len(g.roundIndex[newRound.Index])).
-				Uint64("current_round_id", newRound.Index).
-				Uint64("pruned_round_id", roundID).
-				Msg("Pruned transactions.")
 		}
 	}
 

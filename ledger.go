@@ -861,6 +861,8 @@ func (l *Ledger) query() func(ctx context.Context) error {
 			l.snowball.Reset()
 			l.graph.Reset(newRound)
 
+			l.prune(newRound)
+
 			logger := log.Consensus("round_end")
 			logger.Info().
 				Uint64("num_tx", l.getNumTransactions(l.round-1)).
@@ -876,12 +878,6 @@ func (l *Ledger) query() func(ctx context.Context) error {
 
 			l.rounds[l.round] = *newRound
 			l.round++
-
-			for roundID := range l.rounds {
-				if roundID+pruningDepth < l.round {
-					delete(l.rounds, roundID)
-				}
-			}
 		}
 
 		return nil
@@ -966,6 +962,32 @@ func (l *Ledger) stateSync() func(ctx context.Context) error {
 		}
 
 		return nil
+	}
+}
+
+// prune prunes away all transactions and indices with a view ID < (current view ID - pruningDepth).
+func (l *Ledger) prune(round *Round) {
+	for roundID, transactions := range l.graph.roundIndex {
+		if roundID+pruningDepth <= round.Index {
+			for id := range transactions {
+				l.graph.deleteTransaction(id)
+			}
+
+			delete(l.graph.roundIndex, roundID)
+
+			logger := log.Consensus("prune")
+			logger.Debug().
+				Int("num_tx", len(l.graph.roundIndex[round.Index])).
+				Uint64("current_round_id", round.Index).
+				Uint64("pruned_round_id", roundID).
+				Msg("Pruned away round and its corresponding transactions.")
+		}
+	}
+
+	for roundID := range l.rounds {
+		if roundID+pruningDepth <= round.Index {
+			delete(l.rounds, roundID)
+		}
 	}
 }
 
