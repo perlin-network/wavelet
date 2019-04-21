@@ -344,8 +344,6 @@ func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
 	return nil
 }
 
-const pruningDepth = 30
-
 func (g *Graph) Reset(newRound *Round) {
 	oldRoot := g.transactions[g.rootID]
 
