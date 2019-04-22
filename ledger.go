@@ -81,8 +81,8 @@ type Ledger struct {
 	SyncDiffOut <-chan EventSyncDiff
 	syncDiffOut chan<- EventSyncDiff
 
-	SyncTxIn chan<- EventIncomingSyncTX
-	syncTxIn <-chan EventIncomingSyncTX
+	SyncTxIn chan<- EventIncomingDownloadTX
+	syncTxIn <-chan EventIncomingDownloadTX
 
 	SyncTxOut     <-chan EventDownloadTX
 	downloadTxOut chan<- EventDownloadTX
@@ -114,7 +114,7 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 	syncDiffIn := make(chan EventIncomingSyncDiff, 128)
 	syncDiffOut := make(chan EventSyncDiff, 128)
 
-	syncTxIn := make(chan EventIncomingSyncTX, 16)
+	syncTxIn := make(chan EventIncomingDownloadTX, 16)
 	syncTxOut := make(chan EventDownloadTX, 16)
 
 	latestViewIn := make(chan EventIncomingLatestView, 16)

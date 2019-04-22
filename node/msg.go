@@ -3,6 +3,7 @@ package node
 import (
 	"encoding/binary"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"io"
@@ -131,11 +132,11 @@ type SyncChunkResponse struct {
 	diff []byte
 }
 
-type SyncMissingTxRequest struct {
-	checksums []uint64
+type DownloadTxRequest struct {
+	ids []common.TransactionID
 }
 
-type SyncMissingTxResponse struct {
+type DownloadTxResponse struct {
 	transactions []wavelet.Transaction
 }
 
@@ -227,38 +228,36 @@ func UnmarshalSyncChunkResponse(r io.Reader) (q SyncChunkResponse, err error) {
 	return
 }
 
-func (s SyncMissingTxRequest) Marshal() []byte {
-	buf := make([]byte, 1+len(s.checksums)*8)
-	buf[0] = byte(len(s.checksums))
+func (s DownloadTxRequest) Marshal() []byte {
+	buf := make([]byte, 1+len(s.ids)*common.SizeTransactionID)
+	buf[0] = byte(len(s.ids))
 
-	for i := range s.checksums {
-		binary.BigEndian.PutUint64(buf[1+(i*8):1+(i*8+8)], s.checksums[i])
+	for i := range s.ids {
+		copy(buf[1+(i*common.SizeTransactionID):1+(i*common.SizeTransactionID+common.SizeTransactionID)], s.ids[i][:])
 	}
 
 	return buf
 }
 
-func UnmarshalSyncMissingTxRequest(r io.Reader) (q SyncMissingTxRequest, err error) {
-	var buf [8]byte
+func UnmarshalDownloadTxRequest(r io.Reader) (q DownloadTxRequest, err error) {
+	var buf [1]byte
 
 	if _, err = io.ReadFull(r, buf[:1]); err != nil {
 		return
 	}
 
-	q.checksums = make([]uint64, buf[0])
+	q.ids = make([]common.TransactionID, buf[0])
 
-	for i := range q.checksums {
-		if _, err = io.ReadFull(r, buf[:8]); err != nil {
+	for i := range q.ids {
+		if _, err = io.ReadFull(r, q.ids[i][:]); err != nil {
 			return
 		}
-
-		q.checksums[i] = binary.BigEndian.Uint64(buf[:8])
 	}
 
 	return
 }
 
-func (s SyncMissingTxResponse) Marshal() []byte {
+func (s DownloadTxResponse) Marshal() []byte {
 	var buf []byte
 
 	buf = append(buf, byte(len(s.transactions)))
@@ -270,7 +269,7 @@ func (s SyncMissingTxResponse) Marshal() []byte {
 	return buf
 }
 
-func UnmarshalSyncMissingTxResponse(r io.Reader) (q SyncMissingTxResponse, err error) {
+func UnmarshalDownloadTxResponse(r io.Reader) (q DownloadTxResponse, err error) {
 	var buf [1]byte
 
 	if _, err = io.ReadFull(r, buf[:]); err != nil {
@@ -283,61 +282,6 @@ func UnmarshalSyncMissingTxResponse(r io.Reader) (q SyncMissingTxResponse, err e
 		if q.transactions[i], err = wavelet.UnmarshalTransaction(r); err != nil {
 			return
 		}
-	}
-
-	return
-}
-
-type LatestViewRequest uint64
-
-func (s LatestViewRequest) Marshal() []byte {
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:8], uint64(s))
-
-	return buf[:]
-}
-
-func UnmarshalLatestViewRequest(r io.Reader) (q LatestViewRequest, err error) {
-	var buf [8]byte
-
-	if _, err = io.ReadFull(r, buf[:4]); err != nil {
-		return
-	}
-
-	q = LatestViewRequest(binary.BigEndian.Uint64(buf[:8]))
-
-	return
-}
-
-type LatestViewResponse []uint64
-
-func (s LatestViewResponse) Marshal() []byte {
-	buf := make([]byte, 4+8*len(s))
-
-	binary.BigEndian.PutUint32(buf[:4], uint32(len(s)))
-
-	for i := range s {
-		binary.BigEndian.PutUint64(buf[4+(i*8):4+(i*8+8)], s[i])
-	}
-
-	return buf
-}
-
-func UnmarshalLatestViewResponse(r io.Reader) (q LatestViewResponse, err error) {
-	var buf [8]byte
-
-	if _, err = io.ReadFull(r, buf[:4]); err != nil {
-		return
-	}
-
-	q = make(LatestViewResponse, binary.BigEndian.Uint32(buf[:4]))
-
-	for i := range q {
-		if _, err = io.ReadFull(r, buf[:8]); err != nil {
-			return
-		}
-
-		q[i] = binary.BigEndian.Uint64(buf[:8])
 	}
 
 	return

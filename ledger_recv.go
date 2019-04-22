@@ -115,8 +115,8 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 
 				var txs []Transaction
 
-				for _, checksum := range evt.Checksums {
-					if tx, available := ledger.graph.checksums[checksum]; available {
+				for _, id := range evt.IDs {
+					if tx, available := ledger.graph.lookupTransactionByID(id); available {
 						txs = append(txs, *tx)
 					}
 				}

@@ -2,7 +2,6 @@ package wavelet
 
 import (
 	"bytes"
-	"github.com/dgryski/go-xxh3"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -11,7 +10,6 @@ import (
 
 type Graph struct {
 	transactions map[common.TransactionID]*Transaction           // All transactions.
-	checksums    map[uint64]*Transaction                         // Checksums of transactions.
 	children     map[common.TransactionID][]common.TransactionID // Children of transactions.
 
 	eligible   map[common.TransactionID]struct{} // Transactions that are eligible to be parent transactions.
@@ -31,7 +29,6 @@ type Graph struct {
 func NewGraph(genesis *Round) *Graph {
 	g := &Graph{
 		transactions: make(map[common.TransactionID]*Transaction),
-		checksums:    make(map[uint64]*Transaction),
 		children:     make(map[common.TransactionID][]common.TransactionID),
 
 		eligible:   make(map[common.TransactionID]struct{}),
@@ -50,13 +47,11 @@ func NewGraph(genesis *Round) *Graph {
 	if genesis != nil {
 		g.rootID = genesis.Root.ID
 		g.transactions[genesis.Root.ID] = &genesis.Root
-		g.checksums[genesis.Root.Checksum] = &genesis.Root
 	} else {
 		ptr := new(Transaction)
 
 		g.rootID = ptr.ID
 		g.transactions[ptr.ID] = ptr
-		g.checksums[ptr.Checksum] = ptr
 	}
 
 	root := g.transactions[g.rootID]
@@ -208,7 +203,6 @@ func (g *Graph) addTransaction(tx Transaction) error {
 
 	// Add transaction to the view-graph.
 	g.transactions[tx.ID] = ptr
-	g.checksums[tx.Checksum] = ptr
 	delete(g.missing, ptr.ID)
 
 	missing := g.processParents(ptr)
@@ -239,7 +233,6 @@ func (g *Graph) deleteTransaction(id common.TransactionID) {
 	}
 
 	delete(g.transactions, id)
-	delete(g.checksums, xxh3.XXH3_64bits(id[:]))
 	delete(g.children, id)
 
 	delete(g.eligible, id)
@@ -372,7 +365,6 @@ func (g *Graph) Reset(newRound *Round) {
 		ptr := &newRound.Root
 
 		g.transactions[newRound.Root.ID] = ptr
-		g.checksums[newRound.Root.Checksum] = ptr
 		g.createTransactionIndices(ptr)
 	}
 

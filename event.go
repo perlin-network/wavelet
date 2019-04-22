@@ -103,14 +103,14 @@ type EventSyncDiff struct {
 }
 
 type EventDownloadTX struct {
-	Checksums []uint64
+	IDs []common.TransactionID
 
 	Result chan []Transaction
 	Error  chan error
 }
 
-type EventIncomingSyncTX struct {
-	Checksums []uint64
+type EventIncomingDownloadTX struct {
+	IDs []common.TransactionID
 
 	Response chan []Transaction
 }

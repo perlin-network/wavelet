@@ -3,26 +3,26 @@ package wavelet
 import (
 	"context"
 	"fmt"
-	"github.com/dgryski/go-xxh3"
+	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
 )
 
 func txSync(ledger *Ledger) func(ctx context.Context) error {
-	queries := make(map[uint64]uint8)
+	queries := make(map[common.TransactionID]uint8)
 
 	return func(ctx context.Context) error {
-		set := make(map[uint64]struct{})
+		set := make(map[common.TransactionID]struct{})
 
 		ledger.graph.missingCond.L.Lock()
 		for {
+			ledger.mu.RLock()
 			for id := range ledger.graph.missing {
-				checksum := xxh3.XXH3_64bits(id[:])
-
-				if _, queried := queries[checksum]; !queried {
-					set[checksum] = struct{}{}
-					queries[checksum] = 0
+				if _, queried := queries[id]; !queried {
+					set[id] = struct{}{}
+					queries[id] = 0
 				}
 			}
+			ledger.mu.RUnlock()
 
 			if len(set) > 0 {
 				break
@@ -32,18 +32,18 @@ func txSync(ledger *Ledger) func(ctx context.Context) error {
 		}
 		ledger.graph.missingCond.L.Unlock()
 
-		var missing []uint64
+		var missing []common.TransactionID
 
-		for checksum := range set {
-			missing = append(missing, checksum)
+		for id := range set {
+			missing = append(missing, id)
 		}
 
-		for checksum, count := range queries {
+		for id, count := range queries {
 			if count < 3 { // Query a missing transaction at most 3 times.
-				missing = append(missing, checksum)
+				missing = append(missing, id)
 				count++
 			} else {
-				delete(queries, checksum)
+				delete(queries, id)
 			}
 		}
 
@@ -53,11 +53,11 @@ func txSync(ledger *Ledger) func(ctx context.Context) error {
 	}
 }
 
-func downloadMissingTransactions(ctx context.Context, ledger *Ledger, missing []uint64, queries map[uint64]uint8) error {
+func downloadMissingTransactions(ctx context.Context, ledger *Ledger, missing []common.TransactionID, queries map[common.TransactionID]uint8) error {
 	evt := EventDownloadTX{
-		Checksums: missing,
-		Result:    make(chan []Transaction, 1),
-		Error:     make(chan error, 1),
+		IDs:    missing,
+		Result: make(chan []Transaction, 1),
+		Error:  make(chan error, 1),
 	}
 
 	select {
@@ -88,7 +88,7 @@ func downloadMissingTransactions(ctx context.Context, ledger *Ledger, missing []
 				terr = errors.Wrap(err, terr.Error())
 			}
 		} else {
-			delete(queries, tx.Checksum)
+			delete(queries, tx.ID)
 		}
 	}
 

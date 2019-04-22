@@ -3,7 +3,6 @@ package wavelet
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/dgryski/go-xxh3"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
@@ -29,14 +28,12 @@ type Transaction struct {
 	SenderSignature  common.Signature
 	CreatorSignature common.Signature
 
-	ID       common.TransactionID // BLAKE2b(*).
-	Checksum uint64               // XXH3(ID).
-	Seed     byte                 // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
+	ID   common.TransactionID // BLAKE2b(*).
+	Seed byte                 // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
 }
 
 func (t *Transaction) rehash() *Transaction {
 	t.ID = blake2b.Sum256(t.Marshal())
-	t.Checksum = xxh3.XXH3_64bits(t.ID[:])
 
 	buf := make([]byte, 0, common.SizeAccountID+len(t.ParentIDs)*common.SizeTransactionID)
 	buf = append(buf, t.Sender[:]...)

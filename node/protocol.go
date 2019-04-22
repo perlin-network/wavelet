@@ -37,11 +37,8 @@ type Protocol struct {
 	opcodeSyncChunkRequest  byte
 	opcodeSyncChunkResponse byte
 
-	opcodeSyncMissingTxRequest  byte
-	opcodeSyncMissingTxResponse byte
-
-	opcodeLatestViewRequest  byte
-	opcodeLatestViewResponse byte
+	opcodeDownloadTxRequest  byte
+	opcodeDownloadTxResponse byte
 
 	ledger *wavelet.Ledger
 
@@ -88,17 +85,11 @@ func (b *Protocol) RegisterOpcodes(node *noise.Node) {
 	b.opcodeSyncChunkResponse = node.NextAvailableOpcode()
 	node.RegisterOpcode("sync chunk response", b.opcodeSyncChunkResponse)
 
-	b.opcodeSyncMissingTxRequest = node.NextAvailableOpcode()
-	node.RegisterOpcode("sync missing tx request", b.opcodeSyncMissingTxRequest)
+	b.opcodeDownloadTxRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("download tx request", b.opcodeDownloadTxRequest)
 
-	b.opcodeSyncMissingTxResponse = node.NextAvailableOpcode()
-	node.RegisterOpcode("sync missing tx response", b.opcodeSyncMissingTxResponse)
-
-	b.opcodeLatestViewRequest = node.NextAvailableOpcode()
-	node.RegisterOpcode("latest view request", b.opcodeLatestViewRequest)
-
-	b.opcodeLatestViewResponse = node.NextAvailableOpcode()
-	node.RegisterOpcode("latest view response", b.opcodeLatestViewResponse)
+	b.opcodeDownloadTxResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("download tx response", b.opcodeDownloadTxResponse)
 }
 
 func (b *Protocol) Init(node *noise.Node) {
@@ -148,7 +139,6 @@ func (b *Protocol) sendLoop(node *noise.Node) {
 	go b.broadcastSyncInitRequests(ctx, node)
 	go b.broadcastSyncDiffRequests(ctx, node)
 	go b.broadcastDownloadTxRequests(ctx, node)
-	go b.broadcastLatestViewRequests(ctx, node)
 }
 
 func (b *Protocol) receiveLoop(ledger *wavelet.Ledger, ctx noise.Context) {
@@ -168,10 +158,8 @@ func (b *Protocol) receiveLoop(ledger *wavelet.Ledger, ctx noise.Context) {
 			go b.handleSyncInits(wire)
 		case wire := <-peer.Recv(b.opcodeSyncChunkRequest):
 			go b.handleSyncChunks(wire)
-			//case wire := <-peer.Recv(b.opcodeSyncMissingTxRequest):
-			//	go b.handleSyncMissingTXs(wire)
-			//case wire := <-peer.Recv(b.opcodeLatestViewRequest):
-			//	go b.handleLatestViewRequest(wire)
+		case wire := <-peer.Recv(b.opcodeDownloadTxRequest):
+			go b.handleDownloadTxRequests(wire)
 		}
 	}
 }
@@ -334,13 +322,13 @@ func (b *Protocol) broadcastDownloadTxRequests(ctx context.Context, node *noise.
 				continue
 			}
 
-			responses := broadcast(peers, b.opcodeSyncMissingTxRequest, b.opcodeSyncMissingTxResponse, SyncMissingTxRequest{checksums: evt.Checksums}.Marshal())
+			responses := broadcast(peers, b.opcodeDownloadTxRequest, b.opcodeDownloadTxResponse, DownloadTxRequest{ids: evt.IDs}.Marshal())
 
 			set := make(map[common.TransactionID]wavelet.Transaction)
 
 			for _, buf := range responses {
 				if buf != nil {
-					res, err := UnmarshalSyncMissingTxResponse(bytes.NewReader(buf))
+					res, err := UnmarshalDownloadTxResponse(bytes.NewReader(buf))
 
 					if err != nil {
 						fmt.Println("Error while unmarshaling sync missing tx response", err)
@@ -360,48 +348,6 @@ func (b *Protocol) broadcastDownloadTxRequests(ctx context.Context, node *noise.
 			}
 
 			evt.Result <- txs
-		}
-	}
-}
-
-func (b *Protocol) broadcastLatestViewRequests(ctx context.Context, node *noise.Node) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case evt := <-b.ledger.LatestViewOut:
-			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
-			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while selecting peers for finding missing transactions")
-				continue
-			}
-
-			responses := broadcast(peers, b.opcodeLatestViewRequest, b.opcodeLatestViewResponse, LatestViewRequest(evt.RoundID).Marshal())
-
-			set := make(map[uint64]struct{})
-
-			for _, buf := range responses {
-				if buf != nil {
-					checksums, err := UnmarshalLatestViewResponse(bytes.NewReader(buf))
-
-					if err != nil {
-						fmt.Println("Error while unmarshaling latest view response", err)
-						continue
-					}
-
-					for _, checksum := range checksums {
-						set[checksum] = struct{}{}
-					}
-				}
-			}
-
-			var checksums []uint64
-
-			for checksum := range set {
-				checksums = append(checksums, checksum)
-			}
-
-			evt.Result <- checksums
 		}
 	}
 }
@@ -651,53 +597,21 @@ func (b *Protocol) handleSyncChunks(wire noise.Wire) {
 	}
 }
 
-func (b *Protocol) handleLatestViewRequest(wire noise.Wire) {
-	var res LatestViewResponse
+func (b *Protocol) handleDownloadTxRequests(wire noise.Wire) {
+	var res DownloadTxResponse
 	defer func() {
-		if err := wire.SendWithTimeout(b.opcodeLatestViewResponse, res.Marshal(), 1*time.Second); err != nil {
+		if err := wire.SendWithTimeout(b.opcodeDownloadTxResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
 
-	req, err := UnmarshalLatestViewRequest(bytes.NewReader(wire.Bytes()))
-	if err != nil {
-		fmt.Println("Error while unmarshaling latest view request", err)
-		return
-	}
-
-	evt := wavelet.EventIncomingLatestView{RoundID: uint64(req), Response: make(chan []uint64, 1)}
-
-	select {
-	case <-time.After(1 * time.Second):
-		fmt.Println("timed out sending latest view request to ledger")
-		return
-	case b.ledger.LatestViewIn <- evt:
-	}
-
-	select {
-	case <-time.After(1 * time.Second):
-		fmt.Println("timed out getting latest view response from ledger")
-		return
-	case checksums := <-evt.Response:
-		res = checksums
-	}
-}
-
-func (b *Protocol) handleSyncMissingTXs(wire noise.Wire) {
-	var res SyncMissingTxResponse
-	defer func() {
-		if err := wire.SendWithTimeout(b.opcodeSyncMissingTxResponse, res.Marshal(), 1*time.Second); err != nil {
-			fmt.Println(err)
-		}
-	}()
-
-	req, err := UnmarshalSyncMissingTxRequest(bytes.NewReader(wire.Bytes()))
+	req, err := UnmarshalDownloadTxRequest(bytes.NewReader(wire.Bytes()))
 	if err != nil {
 		fmt.Println("Error while unmarshaling sync missing tx request", err)
 		return
 	}
 
-	evt := wavelet.EventIncomingSyncTX{Checksums: req.checksums, Response: make(chan []wavelet.Transaction, 1)}
+	evt := wavelet.EventIncomingDownloadTX{IDs: req.ids, Response: make(chan []wavelet.Transaction, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):
