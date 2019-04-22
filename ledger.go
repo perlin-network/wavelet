@@ -561,7 +561,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 		if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
 			aq.PushBack(parent)
 		} else {
-			return snapshot, errors.Errorf("missing parent to correctly collapse down ledger state from critical transaction %x", tx.ID)
+			return snapshot, errors.Errorf("missing parent %x to correctly collapse down ledger state from critical transaction %x", parentID, tx.ID)
 		}
 	}
 

@@ -15,14 +15,12 @@ func txSync(ledger *Ledger) func(ctx context.Context) error {
 
 		ledger.graph.missingCond.L.Lock()
 		for {
-			ledger.mu.RLock()
 			for id := range ledger.graph.missing {
 				if _, queried := queries[id]; !queried {
 					set[id] = struct{}{}
 					queries[id] = 0
 				}
 			}
-			ledger.mu.RUnlock()
 
 			if len(set) > 0 {
 				break

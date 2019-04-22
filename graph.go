@@ -182,8 +182,10 @@ func (g *Graph) lookupTransactionByID(id common.TransactionID) (*Transaction, bo
 
 	if !exists {
 		g.missingCond.L.Lock()
-		g.missing[id] = struct{}{}
-		g.missingCond.Broadcast()
+		if _, missing := g.missing[id]; !missing {
+			g.missing[id] = struct{}{}
+			g.missingCond.Broadcast()
+		}
 		g.missingCond.L.Unlock()
 	}
 
@@ -203,7 +205,10 @@ func (g *Graph) addTransaction(tx Transaction) error {
 
 	// Add transaction to the view-graph.
 	g.transactions[tx.ID] = ptr
+
+	g.missingCond.L.Lock()
 	delete(g.missing, ptr.ID)
+	g.missingCond.L.Unlock()
 
 	missing := g.processParents(ptr)
 
@@ -237,7 +242,10 @@ func (g *Graph) deleteTransaction(id common.TransactionID) {
 
 	delete(g.eligible, id)
 	delete(g.incomplete, id)
+
+	g.missingCond.L.Lock()
 	delete(g.missing, id)
+	g.missingCond.L.Unlock()
 }
 
 // deleteIncompleteTransaction explicitly deletes all traces of a transaction
