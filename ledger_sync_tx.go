@@ -13,22 +13,18 @@ func txSync(ledger *Ledger) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
 		set := make(map[common.TransactionID]struct{})
 
-		ledger.graph.missingCond.L.Lock()
-		for {
-			for id := range ledger.graph.missing {
-				if _, queried := queries[id]; !queried {
-					set[id] = struct{}{}
-					queries[id] = 0
-				}
+		ledger.mu.RLock()
+		for id := range ledger.graph.missing {
+			if _, queried := queries[id]; !queried {
+				set[id] = struct{}{}
+				queries[id] = 0
 			}
-
-			if len(set) > 0 {
-				break
-			}
-
-			ledger.graph.missingCond.Wait()
 		}
-		ledger.graph.missingCond.L.Unlock()
+		ledger.mu.RUnlock()
+
+		if len(set) == 0 {
+			return ErrNonePreferred
+		}
 
 		var missing []common.TransactionID
 

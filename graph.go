@@ -5,7 +5,6 @@ import (
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
-	"sync"
 )
 
 type Graph struct {
@@ -15,8 +14,7 @@ type Graph struct {
 	eligible   map[common.TransactionID]struct{} // Transactions that are eligible to be parent transactions.
 	incomplete map[common.TransactionID]struct{} // Transactions that don't have all parents available.
 
-	missing     map[common.TransactionID]struct{} // Transactions that we are missing.
-	missingCond sync.Cond                         // Conditional to if any new transactions are labeled to be missing.
+	missing map[common.TransactionID]struct{} // Transactions that we are missing.
 
 	seedIndex  map[byte]map[common.TransactionID]struct{}   // Indexes transactions by their seed.
 	depthIndex map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their depth.
@@ -34,8 +32,7 @@ func NewGraph(genesis *Round) *Graph {
 		eligible:   make(map[common.TransactionID]struct{}),
 		incomplete: make(map[common.TransactionID]struct{}),
 
-		missing:     make(map[common.TransactionID]struct{}),
-		missingCond: sync.Cond{L: new(sync.Mutex)},
+		missing: make(map[common.TransactionID]struct{}),
 
 		seedIndex:  make(map[byte]map[common.TransactionID]struct{}),
 		depthIndex: make(map[uint64]map[common.TransactionID]struct{}),
@@ -181,12 +178,9 @@ func (g *Graph) lookupTransactionByID(id common.TransactionID) (*Transaction, bo
 	tx, exists := g.transactions[id]
 
 	if !exists {
-		g.missingCond.L.Lock()
 		if _, missing := g.missing[id]; !missing {
 			g.missing[id] = struct{}{}
-			g.missingCond.Broadcast()
 		}
-		g.missingCond.L.Unlock()
 	}
 
 	return tx, exists
@@ -206,9 +200,7 @@ func (g *Graph) addTransaction(tx Transaction) error {
 	// Add transaction to the view-graph.
 	g.transactions[tx.ID] = ptr
 
-	g.missingCond.L.Lock()
 	delete(g.missing, ptr.ID)
-	g.missingCond.L.Unlock()
 
 	missing := g.processParents(ptr)
 
@@ -243,9 +235,7 @@ func (g *Graph) deleteTransaction(id common.TransactionID) {
 	delete(g.eligible, id)
 	delete(g.incomplete, id)
 
-	g.missingCond.L.Lock()
 	delete(g.missing, id)
-	g.missingCond.L.Unlock()
 }
 
 // deleteIncompleteTransaction explicitly deletes all traces of a transaction

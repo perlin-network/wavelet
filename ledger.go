@@ -495,6 +495,7 @@ func (l *Ledger) stateSyncingLoop(ctx context.Context) {
 func (l *Ledger) txSyncingLoop(ctx context.Context) {
 	step := txSync(l)
 
+L:
 	for {
 		select {
 		case <-ctx.Done():
@@ -503,6 +504,17 @@ func (l *Ledger) txSyncingLoop(ctx context.Context) {
 		}
 
 		if err := step(ctx); err != nil {
+			switch errors.Cause(err) {
+			case ErrNonePreferred:
+				select {
+				case <-ctx.Done():
+				case <-time.After(10 * time.Millisecond):
+				}
+
+				continue L
+			default:
+			}
+
 			fmt.Println("tx sync error:", err)
 		}
 	}
