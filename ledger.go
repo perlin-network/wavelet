@@ -266,7 +266,7 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 		state, err := l.collapseTransactions(l.round, ptr, true)
 
 		if err != nil {
-			return errors.Wrap(err, "got an error collapsing down tx to get merkle root")
+			return errors.Wrap(err, "failed to collapse down critical transaction which we have received")
 		}
 
 		round := NewRound(l.round, state.Checksum(), tx)

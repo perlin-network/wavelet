@@ -187,7 +187,7 @@ func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction) error 
 		state, err := ledger.collapseTransactions(ledger.round, proposed, true)
 
 		if err != nil {
-			return errors.Wrap(err, "got an error collapsing down tx to get merkle root")
+			return errors.Wrap(err, "could not collapse first critical transaction we couldf ind")
 		}
 
 		initial := NewRound(ledger.round, state.Checksum(), *proposed)

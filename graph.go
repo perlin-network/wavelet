@@ -126,7 +126,7 @@ func (g *Graph) assertTransactionIsComplete(tx *Transaction) error {
 	var maxConfidence uint64
 
 	for _, parentID := range tx.ParentIDs {
-		parent, exists := g.transactions[parentID]
+		parent, exists := g.lookupTransactionByID(parentID)
 
 		if !exists {
 			return errors.New("parent not stored in graph")
