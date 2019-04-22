@@ -102,7 +102,7 @@ type EventSyncDiff struct {
 	Error  chan error
 }
 
-type EventSyncTX struct {
+type EventDownloadTX struct {
 	Checksums []uint64
 
 	Result chan []Transaction

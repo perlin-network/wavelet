@@ -12,11 +12,11 @@ func gossip(ledger *Ledger) func(ctx context.Context) error {
 	broadcastNops := false
 
 	return func(ctx context.Context) error {
-		ledger.cond.L.Lock()
+		ledger.syncingCond.L.Lock()
 		for ledger.syncing {
-			ledger.cond.Wait()
+			ledger.syncingCond.Wait()
 		}
-		ledger.cond.L.Unlock()
+		ledger.syncingCond.L.Unlock()
 
 		snapshot := ledger.accounts.snapshot()
 

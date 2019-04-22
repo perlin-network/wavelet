@@ -117,16 +117,16 @@ func downloadStateInChunks(newRound *Round) transition {
 			Uint64("proposed_round", newRound.Index).
 			Msg("Noticed that we are out of sync; downloading latest state tree from our peer(s).")
 
-		ledger.cond.L.Lock()
+		ledger.syncingCond.L.Lock()
 		ledger.syncing = true
-		ledger.cond.Broadcast()
-		ledger.cond.L.Unlock()
+		ledger.syncingCond.Broadcast()
+		ledger.syncingCond.L.Unlock()
 
 		defer func() {
-			ledger.cond.L.Lock()
+			ledger.syncingCond.L.Lock()
 			ledger.syncing = false
-			ledger.cond.Broadcast()
-			ledger.cond.L.Unlock()
+			ledger.syncingCond.Broadcast()
+			ledger.syncingCond.L.Unlock()
 		}()
 
 		evt := EventSyncInit{

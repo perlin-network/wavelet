@@ -21,11 +21,11 @@ import (
 // away from any other goroutines associated to the ledger.
 func query(ledger *Ledger) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		ledger.cond.L.Lock()
+		ledger.syncingCond.L.Lock()
 		for ledger.syncing {
-			ledger.cond.Wait()
+			ledger.syncingCond.Wait()
 		}
-		ledger.cond.L.Unlock()
+		ledger.syncingCond.L.Unlock()
 
 		oldRound := ledger.rounds[ledger.round-1]
 		oldRoot := oldRound.Root

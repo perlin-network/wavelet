@@ -108,6 +108,22 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 
 				return nil
 			}()
+		case evt := <-ledger.syncTxIn:
+			return func() error {
+				ledger.mu.RLock()
+				defer ledger.mu.RUnlock()
+
+				var txs []Transaction
+
+				for _, checksum := range evt.Checksums {
+					if tx, available := ledger.graph.checksums[checksum]; available {
+						txs = append(txs, *tx)
+					}
+				}
+
+				evt.Response <- txs
+				return nil
+			}()
 		}
 	}
 }

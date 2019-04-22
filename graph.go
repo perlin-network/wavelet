@@ -2,18 +2,23 @@ package wavelet
 
 import (
 	"bytes"
+	"github.com/dgryski/go-xxh3"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"sync"
 )
 
 type Graph struct {
 	transactions map[common.TransactionID]*Transaction           // All transactions.
+	checksums    map[uint64]*Transaction                         // Checksums of transactions.
 	children     map[common.TransactionID][]common.TransactionID // Children of transactions.
 
 	eligible   map[common.TransactionID]struct{} // Transactions that are eligible to be parent transactions.
 	incomplete map[common.TransactionID]struct{} // Transactions that don't have all parents available.
-	missing    map[common.TransactionID]struct{} // Transactions that we are missing.
+
+	missing     map[common.TransactionID]struct{} // Transactions that we are missing.
+	missingCond sync.Cond                         // Conditional to if any new transactions are labeled to be missing.
 
 	seedIndex  map[byte]map[common.TransactionID]struct{}   // Indexes transactions by their seed.
 	depthIndex map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their depth.
@@ -26,11 +31,14 @@ type Graph struct {
 func NewGraph(genesis *Round) *Graph {
 	g := &Graph{
 		transactions: make(map[common.TransactionID]*Transaction),
+		checksums:    make(map[uint64]*Transaction),
 		children:     make(map[common.TransactionID][]common.TransactionID),
 
 		eligible:   make(map[common.TransactionID]struct{}),
 		incomplete: make(map[common.TransactionID]struct{}),
-		missing:    make(map[common.TransactionID]struct{}),
+
+		missing:     make(map[common.TransactionID]struct{}),
+		missingCond: sync.Cond{L: new(sync.Mutex)},
 
 		seedIndex:  make(map[byte]map[common.TransactionID]struct{}),
 		depthIndex: make(map[uint64]map[common.TransactionID]struct{}),
@@ -42,9 +50,13 @@ func NewGraph(genesis *Round) *Graph {
 	if genesis != nil {
 		g.rootID = genesis.Root.ID
 		g.transactions[genesis.Root.ID] = &genesis.Root
+		g.checksums[genesis.Root.Checksum] = &genesis.Root
 	} else {
-		g.rootID = common.ZeroTransactionID
-		g.transactions[common.ZeroTransactionID] = new(Transaction)
+		ptr := new(Transaction)
+
+		g.rootID = ptr.ID
+		g.transactions[ptr.ID] = ptr
+		g.checksums[ptr.Checksum] = ptr
 	}
 
 	root := g.transactions[g.rootID]
@@ -154,11 +166,7 @@ func (g *Graph) processParents(tx *Transaction) []common.TransactionID {
 	var missingParentIDs []common.TransactionID
 
 	for _, parentID := range tx.ParentIDs {
-		_, exists := g.transactions[parentID]
-
-		if !exists {
-			g.missing[parentID] = struct{}{}
-		}
+		_, exists := g.lookupTransactionByID(parentID)
 
 		_, incomplete := g.incomplete[parentID]
 
@@ -174,6 +182,19 @@ func (g *Graph) processParents(tx *Transaction) []common.TransactionID {
 	return missingParentIDs
 }
 
+func (g *Graph) lookupTransactionByID(id common.TransactionID) (*Transaction, bool) {
+	tx, exists := g.transactions[id]
+
+	if !exists {
+		g.missingCond.L.Lock()
+		g.missing[id] = struct{}{}
+		g.missingCond.Broadcast()
+		g.missingCond.L.Unlock()
+	}
+
+	return tx, exists
+}
+
 func (g *Graph) addTransaction(tx Transaction) error {
 	if _, exists := g.transactions[tx.ID]; exists {
 		return nil
@@ -187,6 +208,7 @@ func (g *Graph) addTransaction(tx Transaction) error {
 
 	// Add transaction to the view-graph.
 	g.transactions[tx.ID] = ptr
+	g.checksums[tx.Checksum] = ptr
 	delete(g.missing, ptr.ID)
 
 	missing := g.processParents(ptr)
@@ -217,6 +239,7 @@ func (g *Graph) deleteTransaction(id common.TransactionID) {
 	}
 
 	delete(g.transactions, id)
+	delete(g.checksums, xxh3.XXH3_64bits(id[:]))
 	delete(g.children, id)
 
 	delete(g.eligible, id)
@@ -267,25 +290,25 @@ func (g *Graph) findEligibleParents() []common.TransactionID {
 
 	var eligibleIDs []common.TransactionID
 
-	for id := range g.eligible {
-		tx, exists := g.transactions[id]
+	for eligibleID := range g.eligible {
+		eligibleParent, exists := g.transactions[eligibleID]
 
 		if !exists {
-			delete(g.eligible, id)
+			delete(g.eligible, eligibleID)
 			continue
 		}
 
-		if tx.ID != root.ID && tx.Depth <= root.Depth {
-			delete(g.eligible, id)
+		if eligibleParent.ID != root.ID && eligibleParent.Depth <= root.Depth {
+			delete(g.eligible, eligibleID)
 			continue
 		}
 
-		if tx.Depth+sys.MaxEligibleParentsDepthDiff < g.height {
-			delete(g.eligible, id)
+		if eligibleParent.Depth+sys.MaxEligibleParentsDepthDiff < g.height {
+			delete(g.eligible, eligibleID)
 			continue
 		}
 
-		eligibleIDs = append(eligibleIDs, id)
+		eligibleIDs = append(eligibleIDs, eligibleID)
 	}
 
 	return eligibleIDs
@@ -349,6 +372,7 @@ func (g *Graph) Reset(newRound *Round) {
 		ptr := &newRound.Root
 
 		g.transactions[newRound.Root.ID] = ptr
+		g.checksums[newRound.Root.Checksum] = ptr
 		g.createTransactionIndices(ptr)
 	}
 

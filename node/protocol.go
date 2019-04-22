@@ -147,8 +147,8 @@ func (b *Protocol) sendLoop(node *noise.Node) {
 	go b.broadcastOutOfSyncChecks(ctx, node)
 	go b.broadcastSyncInitRequests(ctx, node)
 	go b.broadcastSyncDiffRequests(ctx, node)
-	//go b.broadcastSyncMissingTXs(ctx, node)
-	//go b.broadcastLatestViewRequests(ctx, node)
+	go b.broadcastDownloadTxRequests(ctx, node)
+	go b.broadcastLatestViewRequests(ctx, node)
 }
 
 func (b *Protocol) receiveLoop(ledger *wavelet.Ledger, ctx noise.Context) {
@@ -322,7 +322,7 @@ func (b *Protocol) broadcastSyncInitRequests(ctx context.Context, node *noise.No
 	}
 }
 
-func (b *Protocol) broadcastSyncMissingTXs(ctx context.Context, node *noise.Node) {
+func (b *Protocol) broadcastDownloadTxRequests(ctx context.Context, node *noise.Node) {
 	for {
 		select {
 		case <-ctx.Done():

@@ -45,8 +45,8 @@ type Ledger struct {
 
 	mu sync.RWMutex
 
-	syncing bool
-	cond    sync.Cond
+	syncing     bool
+	syncingCond sync.Cond
 
 	BroadcastQueue chan<- EventBroadcast
 	broadcastQueue <-chan EventBroadcast
@@ -84,8 +84,8 @@ type Ledger struct {
 	SyncTxIn chan<- EventIncomingSyncTX
 	syncTxIn <-chan EventIncomingSyncTX
 
-	SyncTxOut <-chan EventSyncTX
-	syncTxOut chan<- EventSyncTX
+	SyncTxOut     <-chan EventDownloadTX
+	downloadTxOut chan<- EventDownloadTX
 
 	LatestViewIn chan<- EventIncomingLatestView
 	latestViewIn <-chan EventIncomingLatestView
@@ -115,7 +115,7 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 	syncDiffOut := make(chan EventSyncDiff, 128)
 
 	syncTxIn := make(chan EventIncomingSyncTX, 16)
-	syncTxOut := make(chan EventSyncTX, 16)
+	syncTxOut := make(chan EventDownloadTX, 16)
 
 	latestViewIn := make(chan EventIncomingLatestView, 16)
 	latestViewOut := make(chan EventLatestView, 16)
@@ -151,7 +151,7 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 		rounds: map[uint64]Round{round.Index: round},
 		round:  1,
 
-		cond: sync.Cond{L: new(sync.Mutex)},
+		syncingCond: sync.Cond{L: new(sync.Mutex)},
 
 		BroadcastQueue: broadcastQueue,
 		broadcastQueue: broadcastQueue,
@@ -189,8 +189,8 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 		SyncTxIn: syncTxIn,
 		syncTxIn: syncTxIn,
 
-		SyncTxOut: syncTxOut,
-		syncTxOut: syncTxOut,
+		SyncTxOut:     syncTxOut,
+		downloadTxOut: syncTxOut,
 
 		LatestViewIn: latestViewIn,
 		latestViewIn: latestViewIn,
@@ -228,7 +228,7 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 	})
 
 	for _, parentID := range tx.ParentIDs {
-		parent, exists := l.graph.transactions[parentID]
+		parent, exists := l.graph.lookupTransactionByID(parentID)
 
 		if !exists {
 			return tx, errors.New("could not find transaction picked as an eligible parent")
@@ -284,6 +284,7 @@ func (l *Ledger) Run() {
 	go l.queryingLoop(l.ctx)
 
 	go l.stateSyncingLoop(l.ctx)
+	go l.txSyncingLoop(l.ctx)
 }
 
 func (l *Ledger) Stop() {
@@ -491,6 +492,22 @@ func (l *Ledger) stateSyncingLoop(ctx context.Context) {
 	}
 }
 
+func (l *Ledger) txSyncingLoop(ctx context.Context) {
+	step := txSync(l)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		if err := step(ctx); err != nil {
+			fmt.Println("tx sync error:", err)
+		}
+	}
+}
+
 // prune prunes away all transactions and indices with a view ID < (current view ID - PruningDepth).
 func (l *Ledger) prune(round *Round) {
 	for roundID, transactions := range l.graph.roundIndex {
@@ -541,7 +558,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 
 		visited[parentID] = struct{}{}
 
-		if parent, exists := l.graph.transactions[parentID]; exists {
+		if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
 			aq.PushBack(parent)
 		} else {
 			return snapshot, errors.Errorf("missing parent to correctly collapse down ledger state from critical transaction %x", tx.ID)
@@ -558,10 +575,10 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 			if _, seen := visited[parentID]; !seen {
 				visited[parentID] = struct{}{}
 
-				if parent, exists := l.graph.transactions[parentID]; exists {
+				if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
 					aq.PushBack(parent)
 				} else {
-					return snapshot, errors.Errorf("missing ancestor to correctly collapse down ledger state from critical transaction %x", tx.ID)
+					return snapshot, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, tx.ID)
 				}
 			}
 		}
@@ -625,7 +642,7 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) e
 	defer ReleaseQueue(q)
 
 	for _, parentID := range tx.ParentIDs {
-		if parent, exists := l.graph.transactions[parentID]; exists {
+		if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
 			q.PushBack(parent)
 		}
 
@@ -672,7 +689,7 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) e
 
 		for _, parentID := range popped.ParentIDs {
 			if _, seen := visited[parentID]; !seen {
-				if parent, exists := l.graph.transactions[parentID]; exists {
+				if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
 					q.PushBack(parent)
 				}
 
