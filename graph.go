@@ -126,7 +126,7 @@ func (g *Graph) assertTransactionIsComplete(tx *Transaction) error {
 
 		// Check if the depth of each parents is acceptable.
 		if parent.Depth+sys.MaxEligibleParentsDepthDiff < tx.Depth {
-			return errors.New("tx parents exceeds max eligible parents depth diff")
+			return errors.Errorf("tx parents exceeds max eligible parents depth diff: parents depth is %d, but tx depth is %d", parent.Depth, tx.Depth)
 		}
 
 		// Update max depth witnessed from parents.
@@ -294,7 +294,7 @@ func (g *Graph) findEligibleParents() []common.TransactionID {
 			continue
 		}
 
-		if eligibleParent.Depth+sys.MaxEligibleParentsDepthDiff < g.height {
+		if eligibleParent.Depth+sys.MaxEligibleParentsDepthDiff <= g.height {
 			delete(g.eligible, eligibleID)
 			continue
 		}
