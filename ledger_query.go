@@ -147,52 +147,54 @@ func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction) error 
 	ledger.mu.Lock()
 	defer ledger.mu.Unlock()
 
-	if ledger.snowball.Preferred() == nil {
-		difficulty := oldRoot.ExpectedDifficulty(byte(sys.MinDifficulty))
-
-		var eligible []*Transaction // Find all critical transactions for the current round.
-
-		for i := difficulty; i < math.MaxUint8; i++ {
-			candidates, exists := ledger.graph.seedIndex[difficulty]
-
-			if !exists {
-				continue
-			}
-
-			for candidateID := range candidates {
-				candidate := ledger.graph.transactions[candidateID]
-
-				if candidate.Depth > oldRoot.Depth && candidate.IsCritical(difficulty) {
-					eligible = append(eligible, candidate)
-				}
-			}
-		}
-
-		if len(eligible) == 0 { // If there are no critical transactions for the round yet, discontinue.
-			return ErrNonePreferred
-		}
-
-		// Sort critical transactions by their depth, and pick the critical transaction
-		// with the smallest depth as the nodes initial preferred transaction.
-		//
-		// The final selected critical transaction might change after a couple of
-		// rounds with Snowball.
-
-		sort.Slice(eligible, func(i, j int) bool {
-			return eligible[i].Depth < eligible[j].Depth
-		})
-
-		proposed := eligible[0]
-
-		state, err := ledger.collapseTransactions(ledger.round, proposed, true)
-
-		if err != nil {
-			return errors.Wrap(err, "could not collapse first critical transaction we couldf ind")
-		}
-
-		initial := NewRound(ledger.round, state.Checksum(), *proposed)
-		ledger.snowball.Prefer(&initial)
+	if ledger.snowball.Preferred() != nil {
+		return nil
 	}
+
+	difficulty := oldRoot.ExpectedDifficulty(byte(sys.MinDifficulty))
+
+	var eligible []*Transaction // Find all critical transactions for the current round.
+
+	for i := difficulty; i < math.MaxUint8; i++ {
+		candidates, exists := ledger.graph.seedIndex[difficulty]
+
+		if !exists {
+			continue
+		}
+
+		for candidateID := range candidates {
+			candidate := ledger.graph.transactions[candidateID]
+
+			if candidate.Depth > oldRoot.Depth && candidate.IsCritical(difficulty) {
+				eligible = append(eligible, candidate)
+			}
+		}
+	}
+
+	if len(eligible) == 0 { // If there are no critical transactions for the round yet, discontinue.
+		return ErrNonePreferred
+	}
+
+	// Sort critical transactions by their depth, and pick the critical transaction
+	// with the smallest depth as the nodes initial preferred transaction.
+	//
+	// The final selected critical transaction might change after a couple of
+	// rounds with Snowball.
+
+	sort.Slice(eligible, func(i, j int) bool {
+		return eligible[i].Depth < eligible[j].Depth
+	})
+
+	proposed := eligible[0]
+
+	state, err := ledger.collapseTransactions(ledger.round, proposed, true)
+
+	if err != nil {
+		return errors.Wrap(err, "could not collapse first critical transaction we could find")
+	}
+
+	initial := NewRound(ledger.round, state.Checksum(), *proposed)
+	ledger.snowball.Prefer(&initial)
 
 	return nil
 }
