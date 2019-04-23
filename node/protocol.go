@@ -9,7 +9,6 @@ import (
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
@@ -30,16 +29,16 @@ type Protocol struct {
 	opcodeQueryRequest  byte
 	opcodeQueryResponse byte
 
-	opcodeSyncViewRequest  byte
-	opcodeSyncViewResponse byte
+	opcodeOutOfSyncRequest  byte
+	opcodeOutOfSyncResponse byte
 
 	opcodeSyncInitRequest   byte
 	opcodeSyncInitResponse  byte
 	opcodeSyncChunkRequest  byte
 	opcodeSyncChunkResponse byte
 
-	opcodeSyncMissingTxRequest  byte
-	opcodeSyncMissingTxResponse byte
+	opcodeDownloadTxRequest  byte
+	opcodeDownloadTxResponse byte
 
 	ledger *wavelet.Ledger
 
@@ -48,7 +47,7 @@ type Protocol struct {
 }
 
 func New(network *skademlia.Protocol, keys *skademlia.Keypair) *Protocol {
-	return &Protocol{ledger: wavelet.NewLedger(context.TODO(), keys, store.NewInmem()), network: network, keys: keys}
+	return &Protocol{ledger: wavelet.NewLedger(keys), network: network, keys: keys}
 }
 
 func (b *Protocol) Ledger() *wavelet.Ledger {
@@ -68,11 +67,11 @@ func (b *Protocol) RegisterOpcodes(node *noise.Node) {
 	b.opcodeQueryResponse = node.NextAvailableOpcode()
 	node.RegisterOpcode("query response", b.opcodeQueryResponse)
 
-	b.opcodeSyncViewRequest = node.NextAvailableOpcode()
-	node.RegisterOpcode("sync view request", b.opcodeSyncViewRequest)
+	b.opcodeOutOfSyncRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("out of sync request", b.opcodeOutOfSyncRequest)
 
-	b.opcodeSyncViewResponse = node.NextAvailableOpcode()
-	node.RegisterOpcode("sync view response", b.opcodeSyncViewResponse)
+	b.opcodeOutOfSyncResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("out of sync response", b.opcodeOutOfSyncResponse)
 
 	b.opcodeSyncInitRequest = node.NextAvailableOpcode()
 	node.RegisterOpcode("sync init request", b.opcodeSyncInitRequest)
@@ -86,16 +85,16 @@ func (b *Protocol) RegisterOpcodes(node *noise.Node) {
 	b.opcodeSyncChunkResponse = node.NextAvailableOpcode()
 	node.RegisterOpcode("sync chunk response", b.opcodeSyncChunkResponse)
 
-	b.opcodeSyncMissingTxRequest = node.NextAvailableOpcode()
-	node.RegisterOpcode("sync missing tx request", b.opcodeSyncMissingTxRequest)
+	b.opcodeDownloadTxRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("download tx request", b.opcodeDownloadTxRequest)
 
-	b.opcodeSyncMissingTxResponse = node.NextAvailableOpcode()
-	node.RegisterOpcode("sync missing tx response", b.opcodeSyncMissingTxResponse)
+	b.opcodeDownloadTxResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("download tx response", b.opcodeDownloadTxResponse)
 }
 
 func (b *Protocol) Init(node *noise.Node) {
 	go b.sendLoop(node)
-	go wavelet.Run(b.ledger)
+	go b.ledger.Run()
 }
 
 func (b *Protocol) Protocol() noise.ProtocolBlock {
@@ -139,7 +138,7 @@ func (b *Protocol) sendLoop(node *noise.Node) {
 	go b.broadcastOutOfSyncChecks(ctx, node)
 	go b.broadcastSyncInitRequests(ctx, node)
 	go b.broadcastSyncDiffRequests(ctx, node)
-	go b.broadcastSyncMissingTXs(ctx, node)
+	go b.broadcastDownloadTxRequests(ctx, node)
 }
 
 func (b *Protocol) receiveLoop(ledger *wavelet.Ledger, ctx noise.Context) {
@@ -153,14 +152,14 @@ func (b *Protocol) receiveLoop(ledger *wavelet.Ledger, ctx noise.Context) {
 			go b.handleGossipRequest(wire)
 		case wire := <-peer.Recv(b.opcodeQueryRequest):
 			go b.handleQueryRequest(wire)
-		case wire := <-peer.Recv(b.opcodeSyncViewRequest):
+		case wire := <-peer.Recv(b.opcodeOutOfSyncRequest):
 			go b.handleOutOfSyncCheck(wire)
 		case wire := <-peer.Recv(b.opcodeSyncInitRequest):
 			go b.handleSyncInits(wire)
 		case wire := <-peer.Recv(b.opcodeSyncChunkRequest):
 			go b.handleSyncChunks(wire)
-		case wire := <-peer.Recv(b.opcodeSyncMissingTxRequest):
-			go b.handleSyncMissingTXs(wire)
+		case wire := <-peer.Recv(b.opcodeDownloadTxRequest):
+			go b.handleDownloadTxRequests(wire)
 		}
 	}
 }
@@ -213,7 +212,7 @@ func (b *Protocol) broadcastQueries(ctx context.Context, node *noise.Node) {
 				continue
 			}
 
-			responses := broadcast(peers, b.opcodeQueryRequest, b.opcodeQueryResponse, QueryRequest{tx: evt.TX}.Marshal())
+			responses := broadcast(peers, b.opcodeQueryRequest, b.opcodeQueryResponse, QueryRequest{round: *evt.Round}.Marshal())
 
 			votes := make([]wavelet.VoteQuery, len(responses))
 
@@ -245,24 +244,24 @@ func (b *Protocol) broadcastOutOfSyncChecks(ctx context.Context, node *noise.Nod
 		case evt := <-b.ledger.OutOfSyncOut:
 			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
 			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while selecting peers for sync check")
+				evt.Error <- errors.Wrap(err, "got an error while selecting peers for out of sync check")
 				continue
 			}
 
-			responses := broadcast(peers, b.opcodeSyncViewRequest, b.opcodeSyncViewResponse, SyncViewRequest{root: evt.Root}.Marshal())
+			responses := broadcast(peers, b.opcodeOutOfSyncRequest, b.opcodeOutOfSyncResponse, nil)
 
 			votes := make([]wavelet.VoteOutOfSync, len(peers))
 
 			for i, buf := range responses {
 				if buf != nil {
-					res, err := UnmarshalSyncViewResponse(bytes.NewReader(buf))
+					res, err := UnmarshalOutOfSyncResponse(bytes.NewReader(buf))
 
 					if err != nil {
-						fmt.Println("Error while unmarshaling sync view response", err)
+						fmt.Println("Error while unmarshaling out of sync response", err)
 						continue
 					}
 
-					votes[i].Root = res.root
+					votes[i].Round = res.round
 				}
 
 				votes[i].Voter = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).PublicKey()
@@ -286,7 +285,7 @@ func (b *Protocol) broadcastSyncInitRequests(ctx context.Context, node *noise.No
 				continue
 			}
 
-			responses := broadcast(peers, b.opcodeSyncInitRequest, b.opcodeSyncInitResponse, SyncInitRequest{viewID: evt.ViewID}.Marshal())
+			responses := broadcast(peers, b.opcodeSyncInitRequest, b.opcodeSyncInitResponse, SyncInitRequest{viewID: evt.RoundID}.Marshal())
 
 			votes := make([]wavelet.SyncInitMetadata, len(responses))
 
@@ -299,7 +298,7 @@ func (b *Protocol) broadcastSyncInitRequests(ctx context.Context, node *noise.No
 						continue
 					}
 
-					votes[i].ViewID = res.latestViewID
+					votes[i].RoundID = res.latestViewID
 					votes[i].ChunkHashes = res.chunkHashes
 				}
 
@@ -311,7 +310,7 @@ func (b *Protocol) broadcastSyncInitRequests(ctx context.Context, node *noise.No
 	}
 }
 
-func (b *Protocol) broadcastSyncMissingTXs(ctx context.Context, node *noise.Node) {
+func (b *Protocol) broadcastDownloadTxRequests(ctx context.Context, node *noise.Node) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -319,17 +318,17 @@ func (b *Protocol) broadcastSyncMissingTXs(ctx context.Context, node *noise.Node
 		case evt := <-b.ledger.SyncTxOut:
 			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
 			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while selecting peers for sync init")
+				evt.Error <- errors.Wrap(err, "got an error while selecting peers for syncing missing transactions")
 				continue
 			}
 
-			responses := broadcast(peers, b.opcodeSyncMissingTxRequest, b.opcodeSyncMissingTxResponse, SyncMissingTxRequest{ids: evt.IDs}.Marshal())
+			responses := broadcast(peers, b.opcodeDownloadTxRequest, b.opcodeDownloadTxResponse, DownloadTxRequest{ids: evt.IDs}.Marshal())
 
 			set := make(map[common.TransactionID]wavelet.Transaction)
 
 			for _, buf := range responses {
 				if buf != nil {
-					res, err := UnmarshalSyncMissingTxResponse(bytes.NewReader(buf))
+					res, err := UnmarshalDownloadTxResponse(bytes.NewReader(buf))
 
 					if err != nil {
 						fmt.Println("Error while unmarshaling sync missing tx response", err)
@@ -449,7 +448,7 @@ func (b *Protocol) handleQueryRequest(wire noise.Wire) {
 		return
 	}
 
-	evt := wavelet.EventIncomingQuery{TX: req.tx, Response: make(chan *wavelet.Transaction, 1), Error: make(chan error, 1)}
+	evt := wavelet.EventIncomingQuery{Round: req.round, Response: make(chan *wavelet.Round, 1), Error: make(chan error, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):
@@ -508,20 +507,14 @@ func (b *Protocol) handleGossipRequest(wire noise.Wire) {
 }
 
 func (b *Protocol) handleOutOfSyncCheck(wire noise.Wire) {
-	var res SyncViewResponse
+	var res OutOfSyncResponse
 	defer func() {
-		if err := wire.SendWithTimeout(b.opcodeSyncViewResponse, res.Marshal(), 1*time.Second); err != nil {
+		if err := wire.SendWithTimeout(b.opcodeOutOfSyncResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
 
-	req, err := UnmarshalSyncViewRequest(bytes.NewReader(wire.Bytes()))
-	if err != nil {
-		fmt.Println("Error while unmarshaling sync view request", err)
-		return
-	}
-
-	evt := wavelet.EventIncomingOutOfSyncCheck{Root: req.root, Response: make(chan *wavelet.Transaction, 1)}
+	evt := wavelet.EventIncomingOutOfSyncCheck{Response: make(chan *wavelet.Round, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):
@@ -532,10 +525,10 @@ func (b *Protocol) handleOutOfSyncCheck(wire noise.Wire) {
 
 	select {
 	case <-time.After(1 * time.Second):
-		fmt.Println("timed out getting sync check results from ledger")
+		fmt.Println("timed out getting out of sync check results from ledger")
 		return
 	case root := <-evt.Response:
-		res.root = *root
+		res.round = *root
 	}
 }
 
@@ -553,7 +546,7 @@ func (b *Protocol) handleSyncInits(wire noise.Wire) {
 		return
 	}
 
-	evt := wavelet.EventIncomingSyncInit{ViewID: req.viewID, Response: make(chan wavelet.SyncInitMetadata, 1)}
+	evt := wavelet.EventIncomingSyncInit{RoundID: req.viewID, Response: make(chan wavelet.SyncInitMetadata, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):
@@ -568,7 +561,7 @@ func (b *Protocol) handleSyncInits(wire noise.Wire) {
 		return
 	case data := <-evt.Response:
 		res.chunkHashes = data.ChunkHashes
-		res.latestViewID = data.ViewID
+		res.latestViewID = data.RoundID
 	}
 }
 
@@ -604,21 +597,21 @@ func (b *Protocol) handleSyncChunks(wire noise.Wire) {
 	}
 }
 
-func (b *Protocol) handleSyncMissingTXs(wire noise.Wire) {
-	var res SyncMissingTxResponse
+func (b *Protocol) handleDownloadTxRequests(wire noise.Wire) {
+	var res DownloadTxResponse
 	defer func() {
-		if err := wire.SendWithTimeout(b.opcodeSyncMissingTxResponse, res.Marshal(), 1*time.Second); err != nil {
+		if err := wire.SendWithTimeout(b.opcodeDownloadTxResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
 
-	req, err := UnmarshalSyncMissingTxRequest(bytes.NewReader(wire.Bytes()))
+	req, err := UnmarshalDownloadTxRequest(bytes.NewReader(wire.Bytes()))
 	if err != nil {
 		fmt.Println("Error while unmarshaling sync missing tx request", err)
 		return
 	}
 
-	evt := wavelet.EventIncomingSyncTX{IDs: req.ids, Response: make(chan []wavelet.Transaction, 1)}
+	evt := wavelet.EventIncomingDownloadTX{IDs: req.ids, Response: make(chan []wavelet.Transaction, 1)}
 
 	select {
 	case <-time.After(1 * time.Second):

@@ -1,225 +1,169 @@
 package wavelet
 
 import (
+	"bytes"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/common"
-	"testing"
-	"time"
-
-	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/crypto/blake2b"
+	"math/rand"
+	"sort"
+	"testing"
+	"testing/quick"
 )
 
-func TestGraph(t *testing.T) {
-	g, genesis, err := createGraph(0, false)
-	if !assert.NoError(t, err) {
-		return
-	}
+func TestCorrectGraphState(t *testing.T) {
+	g := NewGraph(nil)
 
-	tx, err := createTx(genesis.ViewID)
-	if !assert.NoError(t, err) {
-		return
-	}
+	tx1 := randomTX(t, common.ZeroTransactionID)
+	tx1.Depth = 1
+	tx1.Confidence = 1
 
-	eligibleParents := g.findEligibleParents()
-	assert.Equal(t, 1, len(eligibleParents))
-	assert.Equal(t, genesis.ID, eligibleParents[0])
+	tx2 := randomTX(t, tx1.ID)
+	tx2.Depth = 2
+	tx2.Confidence = 2
 
-	assert.NoError(t, g.addTransaction(tx, false))
+	tx3 := randomTX(t, tx1.ID, tx2.ID)
+	tx3.Depth = 3
+	tx3.Confidence = 4
 
-	// Test transaction already exist
-	err = g.addTransaction(tx, false)
-	assert.Error(t, err)
-	assert.Equal(t, ErrTxAlreadyExists, err)
+	tx4 := randomTX(t, tx3.ID)
+	tx4.Depth = 4
+	tx4.Confidence = 5
 
-	assert.Equal(t, uint64(0), g.height.Load())
-	assert.Equal(t, genesis.ID, g.loadRoot().ID)
+	assert.NoError(t, g.addTransaction(tx1))
+	assert.NoError(t, g.addTransaction(tx2))
+	assert.NoError(t, g.addTransaction(tx3))
+	assert.NoError(t, g.addTransaction(tx4))
 
-	_, found := g.lookupTransaction(tx.ID)
-	assert.True(t, found)
+	assert.Len(t, g.transactions, 5)
+	assert.Len(t, g.children, 4)
+	assert.Len(t, g.incomplete, 0)
+	assert.Len(t, g.missing, 0)
 
-	// Checked for undefined behavior adding a transaction with no parents
-	// to the view-graph.
+	badTX1 := randomTX(t)
+	badTX2 := randomTX(t)
 
-	eligibleParents = g.findEligibleParents()
-	assert.Equal(t, 1, len(eligibleParents))
-	assert.Equal(t, genesis.ID, eligibleParents[0])
+	badTX1.ParentIDs = []common.TransactionID{tx4.ID}
+	badTX1.Depth = 5
+	badTX1.Confidence = 6
 
-	rootTx, err := createTx(0)
-	if !assert.NoError(t, err) {
-		return
-	}
+	badTX2.ParentIDs = []common.TransactionID{badTX1.ID}
+	badTX2.Depth = 6
+	badTX2.Confidence = 7
 
-	g.saveRoot(rootTx)
-	assert.Equal(t, rootTx.ID, g.loadRoot().ID)
+	// Add incomplete transaction with one missing parent.
+	assert.Error(t, g.addTransaction(badTX2))
+	assert.Len(t, g.transactions, 6)
+	assert.Len(t, g.children, 5)
+	assert.Len(t, g.incomplete, 1)
+	assert.Len(t, g.missing, 1)
+
+	// Add transaction to make last transaction inserted complete, such that there
+	// is now zero missing parents.
+	assert.NoError(t, g.addTransaction(badTX1))
+	assert.Len(t, g.transactions, 7)
+	assert.Len(t, g.children, 6)
+	assert.Len(t, g.incomplete, 0)
+	assert.Len(t, g.missing, 0)
 }
 
-func TestGraphReset(t *testing.T) {
-	g, genesis, err := createGraph(100, true)
-	if !assert.NoError(t, err) {
-		return
+func randomTX(t testing.TB, parents ...common.TransactionID) Transaction {
+	t.Helper()
+
+	var tx Transaction
+
+	// Set transaction ID.
+	_, err := rand.Read(tx.ID[:])
+	assert.NoError(t, err)
+
+	// Set transaction sender.
+	_, err = rand.Read(tx.Sender[:])
+	assert.NoError(t, err)
+
+	// Set transaction creator.
+	_, err = rand.Read(tx.Creator[:])
+	assert.NoError(t, err)
+
+	// Set transaction parents.
+	tx.ParentIDs = parents
+
+	sort.Slice(tx.ParentIDs, func(i, j int) bool {
+		return bytes.Compare(tx.ParentIDs[i][:], tx.ParentIDs[j][:]) < 0
+	})
+
+	// Set transaction seed.
+	var buf bytes.Buffer
+	_, _ = buf.Write(tx.Sender[:])
+	for _, parentID := range tx.ParentIDs {
+		_, _ = buf.Write(parentID[:])
 	}
+	seed := blake2b.Sum256(buf.Bytes())
+	tx.Seed = byte(prefixLen(seed[:]))
 
-	assert.NotEmpty(t, g.eligibleParents)
-
-	resetTx, err := createTx(genesis.ViewID + pruningDepth + 1)
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	// Reset
-	g.reset(resetTx)
-	assert.Equal(t, resetTx.ID, g.loadRoot().ID)
-
-	_, found := g.lookupTransaction(genesis.ID)
-	assert.False(t, found)
-
-	_, found = g.lookupTransaction(resetTx.ID)
-	assert.True(t, found)
-
-	assert.Equal(t, 1, len(g.transactions))
-
-	eligibleParents := g.findEligibleParents()
-	if !assert.Equal(t, 1, len(eligibleParents)) {
-		return
-	}
-	assert.Equal(t, resetTx.ID, eligibleParents[0])
-
-	assert.Equal(t, uint64(0), g.height.Load())
-
-	assert.Equal(t, 0, g.numTransactions(g.loadViewID(genesis)))
-
-	assert.NoError(t, addTxs(g, 100, true))
+	return tx
 }
 
-func TestAddTransactionWithParents(t *testing.T) {
-	g, genesis, err := createGraph(0, false)
-	if !assert.NoError(t, err) {
-		return
-	}
+func TestAddInRandomOrder(t *testing.T) {
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
 
-	tx, err := createTx(genesis.ViewID)
-	if !assert.NoError(t, err) {
-		return
-	}
+	f := func(n int) bool {
+		n = (n + 1) % 1024
 
-	tx.ParentIDs = []common.TransactionID{genesis.ID}
-	assert.NoError(t, g.addTransaction(tx, false))
+		ledger := NewLedger(keys)
 
-	// adding tx with non existing parents should result in error
-	tx, err = createTx(genesis.ViewID)
-	if !assert.NoError(t, err) {
-		return
-	}
+		for i := 0; i < n; i++ {
+			tx := NewTransaction(keys, sys.TagNop, nil)
+			tx, err = ledger.attachSenderToTransaction(tx)
+			assert.NoError(t, err)
 
-	tx.ParentIDs = []common.TransactionID{{}}
-	assert.Equal(t, ErrParentsNotAvailable, g.addTransaction(tx, false))
-}
-
-func TestLookupTransaction(t *testing.T) {
-	g, genesis, err := createGraph(100, false)
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	_, exists := g.lookupTransaction(genesis.ID)
-	assert.True(t, exists)
-
-	tx, exists := g.lookupTransaction(common.ZeroTransactionID)
-	assert.Nil(t, tx)
-	assert.False(t, exists)
-}
-
-func TestDefaultDifficulty(t *testing.T) {
-	g, genesis, err := createGraph(0, false)
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	g.saveDifficulty(0)
-	assert.Equal(t, uint64(0), g.loadDifficulty())
-
-	// new graph using same store should return default difficulty
-	g = newGraph(g.kv, genesis)
-	assert.Equal(t, uint64(sys.MinDifficulty), g.loadDifficulty())
-}
-
-func TestLoadRoot(t *testing.T) {
-	g, _, err := createGraph(100, true)
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	assert.NotNil(t, g.loadRoot())
-
-	// ensure that root will be loaded from storage
-	g = newGraph(g.kv, nil)
-	assert.NotNil(t, g.loadRoot())
-}
-
-func benchmarkGraph(b *testing.B, n int) {
-	for i := 0; i < b.N; i++ {
-		g, genesis, err := createGraph(n, true)
-		if err != nil {
-			b.Fatal(err)
+			assert.NoError(t, ledger.graph.addTransaction(tx))
 		}
 
-		newRoot, err := createTx(genesis.ViewID + 1)
-		if err != nil {
-			b.Fatal(err)
+		var transactions []Transaction
+
+		for _, tx := range ledger.graph.transactions {
+			transactions = append(transactions, *tx)
 		}
 
-		g.reset(newRoot)
-	}
-}
-
-func BenchmarkGraph1000(b *testing.B)    { benchmarkGraph(b, 1000) }
-func BenchmarkGraph10000(b *testing.B)   { benchmarkGraph(b, 10000) }
-func BenchmarkGraph100000(b *testing.B)  { benchmarkGraph(b, 100000) }
-func BenchmarkGraph1000000(b *testing.B) { benchmarkGraph(b, 1000000) }
-
-func createGraph(txNum int, withParents bool) (*graph, *Transaction, error) {
-	kv := store.NewInmem()
-	accounts := newAccounts(kv)
-
-	// We use the default genesis
-	genesis, err := performInception(accounts.tree, nil)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	g := newGraph(kv, genesis)
-
-	return g, genesis, addTxs(g, txNum, withParents)
-}
-
-func addTxs(g *graph, txNum int, withParents bool) error {
-	viewID := g.loadViewID(g.loadRoot())
-	for i := 0; i < txNum; i++ {
-		tx, err := createTx(viewID)
-		if err != nil {
-			return err
+		if !assert.Len(t, ledger.graph.transactions, len(transactions)) {
+			return false
 		}
 
-		if withParents {
-			tx.ParentIDs = g.findEligibleParents()
+		if !assert.Len(t, ledger.graph.incomplete, 0) {
+			return false
 		}
 
-		if err := g.addTransaction(tx, false); err != nil {
-			return err
+		if !assert.Len(t, ledger.graph.missing, 0) {
+			return false
 		}
+
+		for i, j := range rand.Perm(len(transactions)) {
+			transactions[i], transactions[j] = transactions[j], transactions[i]
+		}
+
+		ledger = NewLedger(keys)
+
+		for _, tx := range transactions {
+			_ = ledger.graph.addTransaction(tx)
+		}
+
+		if !assert.Len(t, ledger.graph.transactions, len(transactions)) {
+			return false
+		}
+
+		if !assert.Len(t, ledger.graph.incomplete, 0) {
+			return false
+		}
+
+		if !assert.Len(t, ledger.graph.missing, 0) {
+			return false
+		}
+
+		return true
 	}
 
-	return nil
-}
-
-func createTx(viewID uint64) (*Transaction, error) {
-	tx := &Transaction{
-		Tag:       sys.TagTransfer,
-		ViewID:    viewID,
-		Timestamp: uint64(time.Now().UnixNano()),
-	}
-	tx.rehash()
-
-	return tx, nil
+	assert.NoError(t, quick.Check(f, &quick.Config{MaxCount: 100}))
 }

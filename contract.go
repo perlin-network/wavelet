@@ -225,8 +225,8 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				inputs := vm.Memory[payloadPtr : payloadPtr+payloadLen]
 
 				c.ctx.transactions.PushBack(&Transaction{
-					Creator: c.contractID,
 					Sender:  c.contractID,
+					Creator: c.contractID,
 					Tag:     tag,
 					Payload: inputs,
 				})

@@ -348,7 +348,9 @@ func (c *Client) GetTransaction(txID string) (Transaction, error) {
 func (c *Client) SendTransaction(tag byte, payload []byte) (SendTransactionResponse, error) {
 	var res SendTransactionResponse
 
-	signature := edwards25519.Sign(c.PrivateKey, append([]byte{tag}, payload...))
+	var nonce [8]byte // TODO(kenta): nonce
+
+	signature := edwards25519.Sign(c.PrivateKey, append(nonce[:], append([]byte{tag}, payload...)...))
 
 	req := SendTransactionRequest{
 		Sender:    hex.EncodeToString(c.PublicKey[:]),

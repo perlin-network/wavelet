@@ -22,7 +22,7 @@ var (
 	SnowballQueryAlpha = 0.8
 	SnowballQueryBeta  = 150
 
-	SnowballSyncK     = 1
+	SnowballSyncK     = 2
 	SnowballSyncAlpha = 0.8
 	SnowballSyncBeta  = 150
 
@@ -34,7 +34,7 @@ var (
 	MaxEligibleParentsDepthDiff uint64 = 5
 
 	// Minimum difficulty to define a critical transaction.
-	MinDifficulty = 11
+	MinDifficulty = 10
 
 	// Maximum difficulty to define a critical transaction.
 	MaxDifficulty = 15

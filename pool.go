@@ -5,10 +5,19 @@ import (
 	"sync"
 )
 
-var (
-	queuePool = sync.Pool{
-		New: func() interface{} {
-			return queue.New()
-		},
+var queuePool sync.Pool
+
+func AcquireQueue() *queue.Queue {
+	q := queuePool.Get()
+
+	if q == nil {
+		q = queue.New()
 	}
-)
+
+	return q.(*queue.Queue)
+}
+
+func ReleaseQueue(q *queue.Queue) {
+	q.Init()
+	queuePool.Put(q)
+}

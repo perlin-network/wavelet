@@ -25,7 +25,7 @@ func newAccounts(kv store.KV) *accounts {
 }
 
 // Only one instance of GC worker can run at any time.
-func (a *accounts) runGCWorker(ctx context.Context) {
+func (a *accounts) gcLoop(ctx context.Context) {
 	timer := time.NewTicker(5 * time.Second)
 	defer timer.Stop()
 
