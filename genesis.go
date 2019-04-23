@@ -8,7 +8,6 @@ import (
 	"github.com/valyala/fastjson"
 	"io/ioutil"
 	"os"
-	"time"
 )
 
 const defaultGenesis = `
@@ -21,14 +20,14 @@ const defaultGenesis = `
 
 // performInception loads data expected to exist at the birth of any node in this ledgers network.
 // The data is fed in as .json.
-func performInception(tree *avl.Tree, path *string) (*Transaction, error) {
+func performInception(tree *avl.Tree, path *string) Round {
 	var buf []byte
 
 	if path != nil {
 		file, err := os.Open(*path)
 
 		if err != nil {
-			return nil, err
+			panic(err)
 		}
 
 		defer func() {
@@ -39,7 +38,7 @@ func performInception(tree *avl.Tree, path *string) (*Transaction, error) {
 
 		buf, err = ioutil.ReadAll(file)
 		if err != nil {
-			return nil, err
+			panic(err)
 		}
 	} else {
 		buf = []byte(defaultGenesis)
@@ -50,13 +49,13 @@ func performInception(tree *avl.Tree, path *string) (*Transaction, error) {
 	parsed, err := p.ParseBytes(buf)
 
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 
 	accounts, err := parsed.Object()
 
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 
 	var balance uint64
@@ -115,19 +114,11 @@ func performInception(tree *avl.Tree, path *string) (*Transaction, error) {
 	})
 
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 
-	merkleRoot := tree.Checksum()
-
-	// Spawn a genesis transaction.
-	inception := time.Date(2018, time.Month(4), 26, 0, 0, 0, 0, time.UTC)
-
-	tx := &Transaction{
-		Timestamp:          uint64(time.Duration(inception.UnixNano()) / time.Millisecond),
-		AccountsMerkleRoot: merkleRoot,
-	}
+	tx := Transaction{}
 	tx.rehash()
 
-	return tx, nil
+	return NewRound(0, tree.Checksum(), tx)
 }

@@ -84,7 +84,7 @@ func Broadcaster() zerolog.Logger {
 	return broadcaster
 }
 
-func TX(id common.TransactionID, sender, creator common.AccountID, parentIDs []common.AccountID, tag byte, payload []byte, event string) zerolog.Logger {
+func TX(id common.TransactionID, sender, creator common.AccountID, nonce uint64, parentIDs []common.AccountID, tag byte, payload []byte, event string) zerolog.Logger {
 	var parents []string
 
 	for _, parentID := range parentIDs {
@@ -95,6 +95,7 @@ func TX(id common.TransactionID, sender, creator common.AccountID, parentIDs []c
 		Hex("tx_id", id[:]).
 		Hex("sender_id", sender[:]).
 		Hex("creator_id", creator[:]).
+		Uint64("nonce", nonce).
 		Strs("parents", parents).
 		Uint8("tag", tag).
 		Str("payload", base64.StdEncoding.EncodeToString(payload)).

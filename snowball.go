@@ -2,7 +2,6 @@ package wavelet
 
 import (
 	"github.com/perlin-network/wavelet/common"
-	"sync"
 )
 
 const (
@@ -12,19 +11,16 @@ const (
 )
 
 type Snowball struct {
-	sync.RWMutex
-
 	k, beta int
 	alpha   float64
 
-	preferredID, lastID common.TransactionID
+	candidates          map[common.RoundID]*Round
+	preferredID, lastID common.RoundID
 
-	counts map[common.TransactionID]int
+	counts map[common.RoundID]int
 	count  int
 
 	decided bool
-
-	transactions map[common.TransactionID]Transaction
 }
 
 func NewSnowball() *Snowball {
@@ -33,120 +29,83 @@ func NewSnowball() *Snowball {
 		beta:  SnowballDefaultBeta,
 		alpha: SnowballDefaultAlpha,
 
-		counts:       make(map[common.TransactionID]int),
-		transactions: make(map[common.TransactionID]Transaction),
+		counts:     make(map[common.RoundID]int),
+		candidates: make(map[common.RoundID]*Round),
 	}
 }
 
 func (s *Snowball) WithK(k int) *Snowball {
-	s.Lock()
 	s.k = k
-	s.Unlock()
-
 	return s
 }
 
 func (s *Snowball) WithAlpha(alpha float64) *Snowball {
-	s.Lock()
 	s.alpha = alpha
-	s.Unlock()
-
 	return s
 }
 
 func (s *Snowball) WithBeta(beta int) *Snowball {
-	s.Lock()
 	s.beta = beta
-	s.Unlock()
-
 	return s
 }
 
 func (s *Snowball) Reset() {
-	s.Lock()
+	s.preferredID = common.ZeroRoundID
+	s.lastID = common.ZeroRoundID
 
-	s.preferredID = common.ZeroTransactionID
-	s.lastID = common.ZeroTransactionID
-
-	s.counts = make(map[common.TransactionID]int)
+	s.counts = make(map[common.RoundID]int)
 	s.count = 0
 
 	s.decided = false
-
-	s.transactions = make(map[common.TransactionID]Transaction)
-
-	s.Unlock()
 }
 
-func (s *Snowball) Tick(counts map[common.TransactionID]float64, transactions map[common.TransactionID]Transaction) {
-	s.Lock()
-	defer s.Unlock()
-
-	if s.decided {
+func (s *Snowball) Tick(round *Round) {
+	if s.decided { // Force Reset() to be manually called.
 		return
 	}
 
-	for id, tx := range transactions {
-		if _, exists := s.transactions[id]; !exists {
-			s.transactions[id] = tx
-		}
+	if round == nil { // Do not let Snowball tick with nil responses.
+		return
 	}
 
-	for preferredID, count := range counts {
-		if count >= s.alpha {
-			s.counts[preferredID]++
+	if _, exists := s.candidates[round.ID]; !exists {
+		s.candidates[round.ID] = round
+	}
 
-			if s.counts[preferredID] > s.counts[s.preferredID] {
-				s.preferredID = preferredID
-			}
+	s.counts[round.ID]++ // Handle decision case.
 
-			if s.lastID == common.ZeroTransactionID || s.lastID != preferredID {
-				s.lastID = preferredID
-				s.count = 0
-			} else {
-				s.count++
+	if s.counts[round.ID] > s.counts[s.preferredID] {
+		s.preferredID = round.ID
+	}
 
-				if s.count > s.beta {
-					s.decided = true
-				}
-			}
+	if s.lastID != round.ID { // Handle termination case.
+		s.lastID = round.ID
+		s.count = 0
+	} else {
+		s.count++
 
-			break
+		if s.count > s.beta {
+			s.decided = true
 		}
 	}
 }
 
-func (s *Snowball) Prefer(tx Transaction) {
-	s.Lock()
-
-	if _, exists := s.transactions[tx.ID]; !exists {
-		s.transactions[tx.ID] = tx
+func (s *Snowball) Prefer(round *Round) {
+	if _, exists := s.candidates[round.ID]; !exists {
+		s.candidates[round.ID] = round
 	}
 
-	s.preferredID = tx.ID
-
-	s.Unlock()
+	s.preferredID = round.ID
 }
 
-func (s *Snowball) Preferred() *Transaction {
-	s.RLock()
-	defer s.RUnlock()
-
-	if s.preferredID == common.ZeroTransactionID {
+func (s *Snowball) Preferred() *Round {
+	if s.preferredID == common.ZeroRoundID {
 		return nil
 	}
 
-	if preferred, exists := s.transactions[s.preferredID]; exists {
-		return &preferred
-	}
-
-	return nil
+	return s.candidates[s.preferredID]
 }
 
 func (s *Snowball) Decided() bool {
-	s.RLock()
-	decided := s.decided
-	s.RUnlock()
-
-	return decided
+	return s.decided
 }
