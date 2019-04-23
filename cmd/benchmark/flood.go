@@ -16,7 +16,7 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 	tps := atomic.NewUint64(0)
 
 	go func() {
-		for range time.Tick(30 * time.Second) {
+		for range time.Tick(1 * time.Second) {
 			log.Info().Uint64("tps", tps.Swap(0)).Msg("Benchmarking...")
 		}
 	}()
