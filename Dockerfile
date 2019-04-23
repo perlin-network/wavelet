@@ -27,5 +27,5 @@ RUN apk add --no-cache snappy-dev zlib-dev bzip2-dev lz4-dev zstd-dev
 RUN mkdir /exec
 COPY --from=build /usr/local/lib/librocksdb* /usr/local/lib/
 COPY --from=build /usr/local/lib/libgflags* /usr/local/lib/
-COPY --from=build /src/cmd/wavelet/wavelet /exec/wavelet
-ENTRYPOINT ["/exec/wavelet"]
+COPY --from=build /src/cmd/wavelet/ .
+ENTRYPOINT ["./wavelet"]

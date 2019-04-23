@@ -39,14 +39,14 @@ type Config struct {
 	Peers   []string
 }
 
-func protocol(n *noise.Node, keys *skademlia.Keypair) (*node.Protocol, *skademlia.Protocol, noise.Protocol) {
+func protocol(n *noise.Node, config *Config, keys *skademlia.Keypair) (*node.Protocol, *skademlia.Protocol, noise.Protocol) {
 	ecdh := handshake.NewECDH()
 	ecdh.RegisterOpcodes(n)
 
 	aead := cipher.NewAEAD()
 	aead.RegisterOpcodes(n)
 
-	overlay := skademlia.New(net.JoinHostPort("127.0.0.1", strconv.Itoa(n.Addr().(*net.TCPAddr).Port)), keys, xnoise.DialTCP)
+	overlay := skademlia.New(net.JoinHostPort(config.Host, strconv.Itoa(n.Addr().(*net.TCPAddr).Port)), keys, xnoise.DialTCP)
 	overlay.RegisterOpcodes(n)
 	overlay.WithC1(sys.SKademliaC1)
 	overlay.WithC2(sys.SKademliaC2)
@@ -298,10 +298,10 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 			Msg("Loaded wallet.")
 	}
 
-	w, network, protocol := protocol(n, k)
+	w, network, protocol := protocol(n, config, k)
 	n.FollowProtocol(protocol)
 
-	logger.Info().Uint("port", uint(n.Addr().(*net.TCPAddr).Port)).Msg("Listening for peers.")
+	logger.Info().Str("host", config.Host).Uint("port", uint(n.Addr().(*net.TCPAddr).Port)).Msg("Listening for peers.")
 
 	if len(config.Peers) > 0 {
 		for _, address := range config.Peers {
