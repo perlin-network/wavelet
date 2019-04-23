@@ -29,4 +29,3 @@ COPY --from=build /usr/local/lib/librocksdb* /usr/local/lib/
 COPY --from=build /usr/local/lib/libgflags* /usr/local/lib/
 COPY --from=build /src/cmd/wavelet/wavelet /exec/wavelet
 ENTRYPOINT ["/exec/wavelet"]
-CMD ["--help"]
