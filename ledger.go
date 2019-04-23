@@ -32,7 +32,8 @@ type Ledger struct {
 
 	keys *skademlia.Keypair
 
-	accounts *accounts
+	metrics  *Metrics
+	accounts *Accounts
 	graph    *Graph
 
 	snowball *Snowball
@@ -121,13 +122,15 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 	latestViewOut := make(chan EventLatestView, 16)
 
 	accounts := newAccounts(store.NewInmem())
-	round := performInception(accounts.tree, nil)
 
+	round := performInception(accounts.tree, nil)
 	if err := accounts.commit(nil); err != nil {
 		panic(err)
 	}
 
 	graph := NewGraph(&round)
+
+	metrics := NewMetrics()
 
 	return &Ledger{
 		ctx:    ctx,
@@ -135,6 +138,7 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 
 		keys: keys,
 
+		metrics:  metrics,
 		accounts: accounts,
 		graph:    graph,
 
@@ -256,6 +260,8 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 	if err := l.graph.addTransaction(tx); err != nil {
 		return err
 	}
+
+	l.metrics.receivedTX.Mark(1)
 
 	ptr := l.graph.transactions[tx.ID]
 
@@ -613,6 +619,8 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 				logger := log.Node()
 				logger.Warn().Err(err).Msg("Failed to reward a validator while collapsing down transactions.")
 			}
+
+			continue
 		}
 
 		if err := l.applyTransactionToSnapshot(snapshot, popped); err != nil {
@@ -620,6 +628,8 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
 				logger.Log().Err(err).Msg("Failed to apply transaction to the ledger.")
 			}
+
+			continue
 		} else {
 			if logging {
 				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.ParentIDs, popped.Tag, popped.Payload, "applied")
@@ -630,6 +640,10 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 		// Update nonce.
 		nonce, _ := ReadAccountNonce(snapshot, popped.Creator)
 		WriteAccountNonce(snapshot, popped.Creator, nonce+1)
+
+		if logging {
+			l.metrics.acceptedTX.Mark(1)
+		}
 	}
 
 	//l.cacheAccounts.put(tx.getCriticalSeed(), snapshot)

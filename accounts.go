@@ -11,7 +11,7 @@ import (
 	"unsafe"
 )
 
-type accounts struct {
+type Accounts struct {
 	kv   store.KV
 	tree *avl.Tree
 
@@ -20,12 +20,12 @@ type accounts struct {
 	gcProfile *avl.GCProfile
 }
 
-func newAccounts(kv store.KV) *accounts {
-	return &accounts{kv: kv, tree: avl.New(kv)}
+func newAccounts(kv store.KV) *Accounts {
+	return &Accounts{kv: kv, tree: avl.New(kv)}
 }
 
 // Only one instance of GC worker can run at any time.
-func (a *accounts) gcLoop(ctx context.Context) {
+func (a *Accounts) gcLoop(ctx context.Context) {
 	timer := time.NewTicker(5 * time.Second)
 	defer timer.Stop()
 
@@ -43,14 +43,14 @@ func (a *accounts) gcLoop(ctx context.Context) {
 	}
 }
 
-func (a *accounts) snapshot() *avl.Tree {
+func (a *Accounts) snapshot() *avl.Tree {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 
 	return a.tree.Snapshot()
 }
 
-func (a *accounts) commit(new *avl.Tree) error {
+func (a *Accounts) commit(new *avl.Tree) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
