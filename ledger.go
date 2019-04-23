@@ -740,24 +740,24 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) e
 		rewardee = candidates[len(candidates)-1]
 	}
 
-	senderBalance, _ := ReadAccountBalance(ss, tx.Sender)
+	creatorBalance, _ := ReadAccountBalance(ss, tx.Creator)
 	recipientBalance, _ := ReadAccountBalance(ss, rewardee.Sender)
 
 	fee := sys.TransactionFeeAmount
 
-	if senderBalance < fee {
-		return errors.Errorf("stake: sender %x does not have enough PERLs to pay transaction fees (requested %d PERLs) to %x", tx.Sender, fee, rewardee.Sender)
+	if creatorBalance < fee {
+		return errors.Errorf("stake: creator %x does not have enough PERLs to pay transaction fees (requested %d PERLs) to %x", tx.Creator, fee, rewardee.Sender)
 	}
 
-	WriteAccountBalance(ss, tx.Sender, senderBalance-fee)
+	WriteAccountBalance(ss, tx.Creator, creatorBalance-fee)
 	WriteAccountBalance(ss, rewardee.Sender, recipientBalance+fee)
 
 	if logging {
 		logger := log.Stake("reward_validator")
 		logger.Info().
-			Hex("sender", tx.Sender[:]).
+			Hex("creator", tx.Creator[:]).
 			Hex("recipient", rewardee.Sender[:]).
-			Hex("sender_tx_id", tx.ID[:]).
+			Hex("creator_tx_id", tx.ID[:]).
 			Hex("rewardee_tx_id", rewardee.ID[:]).
 			Hex("entropy", entropy).
 			Float64("acc", acc).
