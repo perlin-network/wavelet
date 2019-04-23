@@ -145,17 +145,17 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 		return errors.Errorf("sender signature must be size %d", common.SizeSignature)
 	}
 
-	var sender edwards25519.PublicKey
-	copy(sender[:], senderBuf)
+	copy(s.creator[:], senderBuf)
 
 	var signature edwards25519.Signature
 	copy(signature[:], signatureBuf)
 
-	if !edwards25519.Verify(sender, append([]byte{s.Tag}, s.payload...), signature) {
+	var nonce [8]byte // TODO(kenta): nonce
+
+	if !edwards25519.Verify(s.creator, append(nonce[:], append([]byte{s.Tag}, s.payload...)...), signature) {
 		return errors.Wrap(err, "sender signature verification failed")
 	}
 
-	copy(s.creator[:], senderBuf)
 	copy(s.signature[:], signatureBuf)
 
 	return nil

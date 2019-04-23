@@ -203,11 +203,10 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 func NewTransaction(creator *skademlia.Keypair, tag byte, payload []byte) Transaction {
 	tx := Transaction{Tag: tag, Payload: payload}
 
-	var buf [8]byte
-	// TODO(kenta): nonce
+	var nonce [8]byte // TODO(kenta): nonce
 
 	tx.Creator = creator.PublicKey()
-	tx.CreatorSignature = edwards25519.Sign(creator.PrivateKey(), append(buf[:], append([]byte{tx.Tag}, tx.Payload...)...))
+	tx.CreatorSignature = edwards25519.Sign(creator.PrivateKey(), append(nonce[:], append([]byte{tx.Tag}, tx.Payload...)...))
 
 	return tx
 }
