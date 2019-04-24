@@ -57,6 +57,8 @@ func NewBroadcaster(workersNum int, bufferSize uint32) *broadcaster {
 
 	for i := 0; i < workersNum; i++ {
 		go func(ctx context.Context) {
+			defer b.wg.Done()
+
 			for {
 				select {
 				case <-ctx.Done():
