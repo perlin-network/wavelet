@@ -128,7 +128,7 @@ func (g *Gateway) StartHTTP(port int, n *noise.Node, l *wavelet.Ledger, nn *skad
 	g.network = nn
 	g.keys = k
 
-	g.setup(true)
+	g.setup(false)
 
 	logger := log.Node()
 	logger.Info().Int("port", port).Msg("Started HTTP API server.")
