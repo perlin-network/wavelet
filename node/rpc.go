@@ -45,11 +45,10 @@ type broadcaster struct {
 	cancel func()
 }
 
-func NewBroadcaster(workersNum int, bufferSize uint32) *broadcaster {
+func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 	ctx, cancel := context.WithCancel(context.Background())
 	b := broadcaster{
-		bus: make(chan broadcastPayload, bufferSize),
-		wg: sync.WaitGroup{},
+		bus: make(chan broadcastPayload, capacity),
 		cancel: cancel,
 	}
 
