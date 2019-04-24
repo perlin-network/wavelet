@@ -1,6 +1,7 @@
 package node
 
 import (
+	"context"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/sys"
@@ -23,34 +24,104 @@ func selectPeers(network *skademlia.Protocol, node *noise.Node, amount int) ([]*
 	return peers, nil
 }
 
-func broadcast(peers []*noise.Peer, reqOpcode byte, resOpcode byte, req []byte) [][]byte {
-	responses := make([][]byte, len(peers))
+type broadcastResponse struct {
+	body []byte
+	order int
+}
 
-	var wg sync.WaitGroup
-	wg.Add(len(peers))
+type broadcastPayload struct {
+	order int
+	requestOpcode byte
+	responseOpcode byte
+	res chan broadcastResponse
+	body []byte
+	peer *noise.Peer
+}
 
-	for i, peer := range peers {
-		i, peer := i, peer
+type broadcaster struct {
+	bus chan broadcastPayload
 
-		go func() {
-			defer wg.Done()
+	wg sync.WaitGroup
+	cancel func()
+}
 
-			mux := peer.Mux()
-			defer mux.Close()
-
-			if err := mux.SendWithTimeout(reqOpcode, req, 1*time.Second); err != nil {
-				return
-			}
-
-			select {
-			case wire := <-mux.Recv(resOpcode):
-				responses[i] = wire.Bytes()
-			case <-time.After(sys.QueryTimeout):
-			}
-		}()
+func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
+	ctx, cancel := context.WithCancel(context.Background())
+	b := broadcaster{
+		bus: make(chan broadcastPayload, capacity),
+		cancel: cancel,
 	}
 
-	wg.Wait()
+	b.wg.Add(workersNum)
+
+	for i := 0; i < workersNum; i++ {
+		go func(ctx context.Context) {
+			defer b.wg.Done()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case payload := <-b.bus:
+					func () {
+						res := broadcastResponse{
+							order: payload.order,
+						}
+
+						defer func() {
+							payload.res <- res
+						}()
+
+						mux := payload.peer.Mux()
+						defer mux.Close()
+
+						if err := mux.SendWithTimeout(payload.requestOpcode, payload.body, 1*time.Second); err != nil {
+							return
+						}
+
+						select {
+						case w := <-mux.Recv(payload.responseOpcode):
+							 res.body = w.Bytes()
+						case <-time.After(sys.QueryTimeout):
+						}
+					}()
+				}
+			}
+		}(ctx)
+	}
+
+	return &b
+}
+
+func (b *broadcaster) Broadcast(
+	peers []*noise.Peer, reqOpcode byte, resOpcode byte, req []byte,
+) [][]byte {
+	resc := make(chan broadcastResponse, len(peers))
+	for i, peer := range peers {
+		b.bus <- broadcastPayload{
+			order: i,
+			requestOpcode: reqOpcode,
+			responseOpcode: resOpcode,
+			body: req,
+			peer: peer,
+			res: resc,
+		}
+	}
+
+	responses := make([][]byte, len(peers))
+	for i := 0; i < len(peers); i++ {
+		t := <-resc
+		responses[t.order] = t.body
+	}
+
+	close(resc)
 
 	return responses
+}
+
+func (b *broadcaster) Stop() {
+	b.cancel()
+	b.wg.Wait()
+
+	close(b.bus)
 }
