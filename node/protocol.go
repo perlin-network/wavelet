@@ -14,7 +14,6 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/crypto/blake2b"
 	"math/rand"
-	"runtime"
 	"sync"
 	"time"
 )
@@ -127,6 +126,8 @@ type Protocol struct {
 	receiverLock sync.Mutex
 	receivers []*receiver
 
+	broadcast *broadcaster
+
 	ctx context.Context
 	cancel func()
 	wg sync.WaitGroup
@@ -136,66 +137,70 @@ func New(network *skademlia.Protocol, keys *skademlia.Keypair) *Protocol {
 	return &Protocol{ledger: wavelet.NewLedger(keys), network: network, keys: keys}
 }
 
-func (b *Protocol) Stop() {
-	b.ledger.Stop()
-	b.cancel()
-	b.wg.Wait()
+func (p *Protocol) Stop() {
+	p.ledger.Stop()
+	p.cancel()
+	p.wg.Wait()
 
-	for _, r := range b.receivers {
+	for _, r := range p.receivers {
 		r.Stop()
 	}
+
+	p.broadcast.Stop()
 }
 
-func (b *Protocol) Ledger() *wavelet.Ledger {
-	return b.ledger
+func (p *Protocol) Ledger() *wavelet.Ledger {
+	return p.ledger
 }
 
-func (b *Protocol) RegisterOpcodes(node *noise.Node) {
-	b.opcodeGossipRequest = node.NextAvailableOpcode()
-	node.RegisterOpcode("gossip request", b.opcodeGossipRequest)
+func (p *Protocol) RegisterOpcodes(node *noise.Node) {
+	p.opcodeGossipRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("gossip request", p.opcodeGossipRequest)
 
-	b.opcodeGossipResponse = node.NextAvailableOpcode()
-	node.RegisterOpcode("gossip response", b.opcodeGossipResponse)
+	p.opcodeGossipResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("gossip response", p.opcodeGossipResponse)
 
-	b.opcodeQueryRequest = node.NextAvailableOpcode()
-	node.RegisterOpcode("query request", b.opcodeQueryRequest)
+	p.opcodeQueryRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("query request", p.opcodeQueryRequest)
 
-	b.opcodeQueryResponse = node.NextAvailableOpcode()
-	node.RegisterOpcode("query response", b.opcodeQueryResponse)
+	p.opcodeQueryResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("query response", p.opcodeQueryResponse)
 
-	b.opcodeOutOfSyncRequest = node.NextAvailableOpcode()
-	node.RegisterOpcode("out of sync request", b.opcodeOutOfSyncRequest)
+	p.opcodeOutOfSyncRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("out of sync request", p.opcodeOutOfSyncRequest)
 
-	b.opcodeOutOfSyncResponse = node.NextAvailableOpcode()
-	node.RegisterOpcode("out of sync response", b.opcodeOutOfSyncResponse)
+	p.opcodeOutOfSyncResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("out of sync response", p.opcodeOutOfSyncResponse)
 
-	b.opcodeSyncInitRequest = node.NextAvailableOpcode()
-	node.RegisterOpcode("sync init request", b.opcodeSyncInitRequest)
+	p.opcodeSyncInitRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("sync init request", p.opcodeSyncInitRequest)
 
-	b.opcodeSyncInitResponse = node.NextAvailableOpcode()
-	node.RegisterOpcode("sync init response", b.opcodeSyncInitResponse)
+	p.opcodeSyncInitResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("sync init response", p.opcodeSyncInitResponse)
 
-	b.opcodeSyncChunkRequest = node.NextAvailableOpcode()
-	node.RegisterOpcode("sync chunk request", b.opcodeSyncChunkRequest)
+	p.opcodeSyncChunkRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("sync chunk request", p.opcodeSyncChunkRequest)
 
-	b.opcodeSyncChunkResponse = node.NextAvailableOpcode()
-	node.RegisterOpcode("sync chunk response", b.opcodeSyncChunkResponse)
+	p.opcodeSyncChunkResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("sync chunk response", p.opcodeSyncChunkResponse)
 
-	b.opcodeDownloadTxRequest = node.NextAvailableOpcode()
-	node.RegisterOpcode("download tx request", b.opcodeDownloadTxRequest)
+	p.opcodeDownloadTxRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("download tx request", p.opcodeDownloadTxRequest)
 
-	b.opcodeDownloadTxResponse = node.NextAvailableOpcode()
-	node.RegisterOpcode("download tx response", b.opcodeDownloadTxResponse)
+	p.opcodeDownloadTxResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("download tx response", p.opcodeDownloadTxResponse)
 }
 
-func (b *Protocol) Init(node *noise.Node) {
-	b.ctx, b.cancel = context.WithCancel(context.Background())
+func (p *Protocol) Init(node *noise.Node) {
+	p.ctx, p.cancel = context.WithCancel(context.Background())
 
-	go b.sendLoop(node)
-	go b.ledger.Run()
+	p.broadcast = NewBroadcaster(12, 1000)
+
+	go p.sendLoop(node)
+	go p.ledger.Run()
 }
 
-func (b *Protocol) Protocol() noise.ProtocolBlock {
+func (p *Protocol) Protocol() noise.ProtocolBlock {
 	return func(ctx noise.Context) error {
 		id := ctx.Get(skademlia.KeyID).(*skademlia.ID)
 
@@ -208,13 +213,13 @@ func (b *Protocol) Protocol() noise.ProtocolBlock {
 		signal := ctx.Peer().RegisterSignal(SignalAuthenticated)
 		defer signal()
 
-		r := NewReceiver(b, runtime.NumCPU(), 1000)
+		r := NewReceiver(p, 4, 1000)
 
-		b.receiverLock.Lock()
-		b.receivers = append(b.receivers, r)
-		b.receiverLock.Unlock()
+		p.receiverLock.Lock()
+		p.receivers = append(p.receivers, r)
+		p.receiverLock.Unlock()
 
-		go b.receiveLoop(ctx.Peer(), r.bus)
+		go p.receiveLoop(ctx.Peer(), r.bus)
 
 		ctx.Peer().InterceptErrors(func(err error) {
 			r.Stop()
@@ -236,58 +241,59 @@ func (b *Protocol) Protocol() noise.ProtocolBlock {
 	}
 }
 
-func (b *Protocol) sendLoop(node *noise.Node) {
-	go b.broadcastGossip(node)
-	go b.broadcastQueries(node)
-	go b.broadcastOutOfSyncChecks(node)
-	go b.broadcastSyncInitRequests(node)
-	go b.broadcastSyncDiffRequests(node)
-	go b.broadcastDownloadTxRequests(node)
+func (p *Protocol) sendLoop(node *noise.Node) {
+	go p.broadcastGossip(node)
+	go p.broadcastQueries(node)
+	go p.broadcastOutOfSyncChecks(node)
+	go p.broadcastSyncInitRequests(node)
+	go p.broadcastSyncDiffRequests(node)
+	go p.broadcastDownloadTxRequests(node)
 }
 
-func (b *Protocol) receiveLoop(peer *noise.Peer, bus chan<- receiverPayload) {
-	b.wg.Add(1)
-	defer b.wg.Done()
+func (p *Protocol) receiveLoop(peer *noise.Peer, bus chan<- receiverPayload) {
+	p.wg.Add(1)
+	defer p.wg.Done()
 
-	var p receiverPayload
+	var rp receiverPayload
 	for {
 		select {
-		case <-b.ctx.Done():
+		case <-p.ctx.Done():
 			return
-		case p.wire = <-peer.Recv(b.opcodeGossipRequest):
-			p.opcode = b.opcodeGossipRequest
-		case p.wire = <-peer.Recv(b.opcodeQueryRequest):
-			p.opcode = b.opcodeQueryRequest
-		case p.wire = <-peer.Recv(b.opcodeOutOfSyncRequest):
-			p.opcode = b.opcodeOutOfSyncRequest
-		case p.wire = <-peer.Recv(b.opcodeSyncInitRequest):
-			p.opcode = b.opcodeSyncInitRequest
-		case p.wire = <-peer.Recv(b.opcodeSyncChunkRequest):
-			p.opcode = b.opcodeSyncChunkRequest
-		case p.wire = <-peer.Recv(b.opcodeDownloadTxRequest):
-			p.opcode = b.opcodeDownloadTxRequest
+		case rp.wire = <-peer.Recv(p.opcodeGossipRequest):
+			rp.opcode = p.opcodeGossipRequest
+		case rp.wire = <-peer.Recv(p.opcodeQueryRequest):
+			rp.opcode = p.opcodeQueryRequest
+		case rp.wire = <-peer.Recv(p.opcodeOutOfSyncRequest):
+			rp.opcode = p.opcodeOutOfSyncRequest
+		case rp.wire = <-peer.Recv(p.opcodeSyncInitRequest):
+			rp.opcode = p.opcodeSyncInitRequest
+		case rp.wire = <-peer.Recv(p.opcodeSyncChunkRequest):
+			rp.opcode = p.opcodeSyncChunkRequest
+		case rp.wire = <-peer.Recv(p.opcodeDownloadTxRequest):
+			rp.opcode = p.opcodeDownloadTxRequest
 		}
 
-		bus <- p
+		bus <- rp
 	}
 }
 
-func (b *Protocol) broadcastGossip(node *noise.Node) {
-	b.wg.Add(1)
-	defer b.wg.Done()
+func (p *Protocol) broadcastGossip(node *noise.Node) {
+	p.wg.Add(1)
+	defer p.wg.Done()
 
 	for {
 		select {
-		case <-b.ctx.Done():
+		case <-p.ctx.Done():
 			return
-		case evt := <-b.ledger.GossipOut:
-			peers, err := selectPeers(b.network, node, sys.SnowballQueryK)
+		case evt := <-p.ledger.GossipOut:
+			peers, err := selectPeers(p.network, node, sys.SnowballQueryK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "failed to select peers while gossiping")
 				continue
 			}
 
-			responses := broadcast(peers, b.opcodeGossipRequest, b.opcodeGossipResponse, GossipRequest{tx: evt.TX}.Marshal())
+			//responses := broadcast(peers, p.opcodeGossipRequest, p.opcodeGossipResponse, GossipRequest{tx: evt.TX}.Marshal())
+			responses := p.broadcast.Broadcast(peers, p.opcodeGossipRequest, p.opcodeGossipResponse, GossipRequest{tx: evt.TX}.Marshal())
 
 			votes := make([]wavelet.VoteGossip, len(responses))
 
@@ -311,22 +317,23 @@ func (b *Protocol) broadcastGossip(node *noise.Node) {
 	}
 }
 
-func (b *Protocol) broadcastQueries(node *noise.Node) {
-	b.wg.Add(1)
-	defer b.wg.Done()
+func (p *Protocol) broadcastQueries(node *noise.Node) {
+	p.wg.Add(1)
+	defer p.wg.Done()
 
 	for {
 		select {
-		case <-b.ctx.Done():
+		case <-p.ctx.Done():
 			return
-		case evt := <-b.ledger.QueryOut:
-			peers, err := selectPeers(b.network, node, sys.SnowballQueryK)
+		case evt := <-p.ledger.QueryOut:
+			peers, err := selectPeers(p.network, node, sys.SnowballQueryK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "failed to select peers while querying")
 				continue
 			}
 
-			responses := broadcast(peers, b.opcodeQueryRequest, b.opcodeQueryResponse, QueryRequest{round: *evt.Round}.Marshal())
+			//responses := broadcast(peers, p.opcodeQueryRequest, p.opcodeQueryResponse, QueryRequest{round: *evt.Round}.Marshal())
+			responses := p.broadcast.Broadcast(peers, p.opcodeQueryRequest, p.opcodeQueryResponse, QueryRequest{round: *evt.Round}.Marshal())
 
 			votes := make([]wavelet.VoteQuery, len(responses))
 
@@ -350,22 +357,23 @@ func (b *Protocol) broadcastQueries(node *noise.Node) {
 	}
 }
 
-func (b *Protocol) broadcastOutOfSyncChecks(node *noise.Node) {
-	b.wg.Add(1)
-	defer b.wg.Done()
+func (p *Protocol) broadcastOutOfSyncChecks(node *noise.Node) {
+	p.wg.Add(1)
+	defer p.wg.Done()
 
 	for {
 		select {
-		case <-b.ctx.Done():
+		case <-p.ctx.Done():
 			return
-		case evt := <-b.ledger.OutOfSyncOut:
-			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
+		case evt := <-p.ledger.OutOfSyncOut:
+			peers, err := selectPeers(p.network, node, sys.SnowballSyncK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "got an error while selecting peers for out of sync check")
 				continue
 			}
 
-			responses := broadcast(peers, b.opcodeOutOfSyncRequest, b.opcodeOutOfSyncResponse, nil)
+			//responses := broadcast(peers, p.opcodeOutOfSyncRequest, p.opcodeOutOfSyncResponse, nil)
+			responses := p.broadcast.Broadcast(peers, p.opcodeOutOfSyncRequest, p.opcodeOutOfSyncResponse, nil)
 
 			votes := make([]wavelet.VoteOutOfSync, len(peers))
 
@@ -390,22 +398,23 @@ func (b *Protocol) broadcastOutOfSyncChecks(node *noise.Node) {
 	}
 }
 
-func (b *Protocol) broadcastSyncInitRequests(node *noise.Node) {
-	b.wg.Add(1)
-	defer b.wg.Done()
+func (p *Protocol) broadcastSyncInitRequests(node *noise.Node) {
+	p.wg.Add(1)
+	defer p.wg.Done()
 
 	for {
 		select {
-		case <-b.ctx.Done():
+		case <-p.ctx.Done():
 			return
-		case evt := <-b.ledger.SyncInitOut:
-			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
+		case evt := <-p.ledger.SyncInitOut:
+			peers, err := selectPeers(p.network, node, sys.SnowballSyncK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "got an error while selecting peers for sync init")
 				continue
 			}
 
-			responses := broadcast(peers, b.opcodeSyncInitRequest, b.opcodeSyncInitResponse, SyncInitRequest{viewID: evt.RoundID}.Marshal())
+			//responses := broadcast(peers, p.opcodeSyncInitRequest, p.opcodeSyncInitResponse, SyncInitRequest{viewID: evt.RoundID}.Marshal())
+			responses := p.broadcast.Broadcast(peers, p.opcodeSyncInitRequest, p.opcodeSyncInitResponse, SyncInitRequest{viewID: evt.RoundID}.Marshal())
 
 			votes := make([]wavelet.SyncInitMetadata, len(responses))
 
@@ -430,22 +439,23 @@ func (b *Protocol) broadcastSyncInitRequests(node *noise.Node) {
 	}
 }
 
-func (b *Protocol) broadcastDownloadTxRequests(node *noise.Node) {
-	b.wg.Add(1)
-	defer b.wg.Done()
+func (p *Protocol) broadcastDownloadTxRequests(node *noise.Node) {
+	p.wg.Add(1)
+	defer p.wg.Done()
 
 	for {
 		select {
-		case <-b.ctx.Done():
+		case <-p.ctx.Done():
 			return
-		case evt := <-b.ledger.SyncTxOut:
-			peers, err := selectPeers(b.network, node, sys.SnowballSyncK)
+		case evt := <-p.ledger.SyncTxOut:
+			peers, err := selectPeers(p.network, node, sys.SnowballSyncK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "got an error while selecting peers for syncing missing transactions")
 				continue
 			}
 
-			responses := broadcast(peers, b.opcodeDownloadTxRequest, b.opcodeDownloadTxResponse, DownloadTxRequest{ids: evt.IDs}.Marshal())
+			//responses := broadcast(peers, p.opcodeDownloadTxRequest, p.opcodeDownloadTxResponse, DownloadTxRequest{ids: evt.IDs}.Marshal())
+			responses := p.broadcast.Broadcast(peers, p.opcodeDownloadTxRequest, p.opcodeDownloadTxResponse, DownloadTxRequest{ids: evt.IDs}.Marshal())
 
 			set := make(map[common.TransactionID]wavelet.Transaction)
 
@@ -475,15 +485,15 @@ func (b *Protocol) broadcastDownloadTxRequests(node *noise.Node) {
 	}
 }
 
-func (b *Protocol) broadcastSyncDiffRequests(node *noise.Node) {
-	b.wg.Add(1)
-	defer b.wg.Done()
+func (p *Protocol) broadcastSyncDiffRequests(node *noise.Node) {
+	p.wg.Add(1)
+	defer p.wg.Done()
 
 	for {
 		select {
-		case <-b.ctx.Done():
+		case <-p.ctx.Done():
 			return
-		case evt := <-b.ledger.SyncDiffOut:
+		case evt := <-p.ledger.SyncDiffOut:
 			collected := make([][]byte, len(evt.Sources))
 			var count atomic.Uint32
 
@@ -497,7 +507,7 @@ func (b *Protocol) broadcastSyncDiffRequests(node *noise.Node) {
 					defer wg.Done()
 
 					for i := 0; i < 5; i++ {
-						peer := b.network.PeerByID(node, src.PeerIDs[rand.Intn(len(src.PeerIDs))])
+						peer := p.network.PeerByID(node, src.PeerIDs[rand.Intn(len(src.PeerIDs))])
 
 						if peer == nil {
 							continue
@@ -509,7 +519,7 @@ func (b *Protocol) broadcastSyncDiffRequests(node *noise.Node) {
 								_ = mux.Close()
 							}()
 
-							err := mux.SendWithTimeout(b.opcodeSyncChunkRequest, SyncChunkRequest{chunkHash: src.Hash}.Marshal(), 1*time.Second)
+							err := mux.SendWithTimeout(p.opcodeSyncChunkRequest, SyncChunkRequest{chunkHash: src.Hash}.Marshal(), 1*time.Second)
 							if err != nil {
 								return nil, err
 							}
@@ -519,7 +529,7 @@ func (b *Protocol) broadcastSyncDiffRequests(node *noise.Node) {
 							select {
 							case <-time.After(sys.QueryTimeout):
 								return nil, errors.New("timed out querying for chunk")
-							case wire := <-mux.Recv(b.opcodeSyncChunkResponse):
+							case wire := <-mux.Recv(p.opcodeSyncChunkResponse):
 								buf = wire.Bytes()
 							}
 
@@ -560,10 +570,10 @@ func (b *Protocol) broadcastSyncDiffRequests(node *noise.Node) {
 	}
 }
 
-func (b *Protocol) handleQueryRequest(wire noise.Wire) {
+func (p *Protocol) handleQueryRequest(wire noise.Wire) {
 	var res QueryResponse
 	defer func() {
-		if err := wire.SendWithTimeout(b.opcodeQueryResponse, res.Marshal(), 1*time.Second); err != nil {
+		if err := wire.SendWithTimeout(p.opcodeQueryResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
@@ -579,7 +589,7 @@ func (b *Protocol) handleQueryRequest(wire noise.Wire) {
 	select {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending query request to ledger")
-	case b.ledger.QueryIn <- evt:
+	case p.ledger.QueryIn <- evt:
 	}
 
 	select {
@@ -596,10 +606,10 @@ func (b *Protocol) handleQueryRequest(wire noise.Wire) {
 	}
 }
 
-func (b *Protocol) handleGossipRequest(wire noise.Wire) {
+func (p *Protocol) handleGossipRequest(wire noise.Wire) {
 	var res GossipResponse
 	defer func() {
-		if err := wire.SendWithTimeout(b.opcodeGossipResponse, res.Marshal(), 1*time.Second); err != nil {
+		if err := wire.SendWithTimeout(p.opcodeGossipResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
@@ -616,7 +626,7 @@ func (b *Protocol) handleGossipRequest(wire noise.Wire) {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending gossip request to ledger")
 		return
-	case b.ledger.GossipIn <- evt:
+	case p.ledger.GossipIn <- evt:
 	}
 
 	select {
@@ -632,10 +642,10 @@ func (b *Protocol) handleGossipRequest(wire noise.Wire) {
 	}
 }
 
-func (b *Protocol) handleOutOfSyncCheck(wire noise.Wire) {
+func (p *Protocol) handleOutOfSyncCheck(wire noise.Wire) {
 	var res OutOfSyncResponse
 	defer func() {
-		if err := wire.SendWithTimeout(b.opcodeOutOfSyncResponse, res.Marshal(), 1*time.Second); err != nil {
+		if err := wire.SendWithTimeout(p.opcodeOutOfSyncResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
@@ -646,7 +656,7 @@ func (b *Protocol) handleOutOfSyncCheck(wire noise.Wire) {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending out of sync check to ledger")
 		return
-	case b.ledger.OutOfSyncIn <- evt:
+	case p.ledger.OutOfSyncIn <- evt:
 	}
 
 	select {
@@ -658,10 +668,10 @@ func (b *Protocol) handleOutOfSyncCheck(wire noise.Wire) {
 	}
 }
 
-func (b *Protocol) handleSyncInits(wire noise.Wire) {
+func (p *Protocol) handleSyncInits(wire noise.Wire) {
 	var res SyncInitResponse
 	defer func() {
-		if err := wire.SendWithTimeout(b.opcodeSyncInitResponse, res.Marshal(), 1*time.Second); err != nil {
+		if err := wire.SendWithTimeout(p.opcodeSyncInitResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
@@ -678,7 +688,7 @@ func (b *Protocol) handleSyncInits(wire noise.Wire) {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending sync init request to ledger")
 		return
-	case b.ledger.SyncInitIn <- evt:
+	case p.ledger.SyncInitIn <- evt:
 	}
 
 	select {
@@ -691,10 +701,10 @@ func (b *Protocol) handleSyncInits(wire noise.Wire) {
 	}
 }
 
-func (b *Protocol) handleSyncChunks(wire noise.Wire) {
+func (p *Protocol) handleSyncChunks(wire noise.Wire) {
 	var res SyncChunkResponse
 	defer func() {
-		if err := wire.SendWithTimeout(b.opcodeSyncChunkResponse, res.Marshal(), 1*time.Second); err != nil {
+		if err := wire.SendWithTimeout(p.opcodeSyncChunkResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
@@ -711,7 +721,7 @@ func (b *Protocol) handleSyncChunks(wire noise.Wire) {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending sync diff request to ledger")
 		return
-	case b.ledger.SyncDiffIn <- evt:
+	case p.ledger.SyncDiffIn <- evt:
 	}
 
 	select {
@@ -723,10 +733,10 @@ func (b *Protocol) handleSyncChunks(wire noise.Wire) {
 	}
 }
 
-func (b *Protocol) handleDownloadTxRequests(wire noise.Wire) {
+func (p *Protocol) handleDownloadTxRequests(wire noise.Wire) {
 	var res DownloadTxResponse
 	defer func() {
-		if err := wire.SendWithTimeout(b.opcodeDownloadTxResponse, res.Marshal(), 1*time.Second); err != nil {
+		if err := wire.SendWithTimeout(p.opcodeDownloadTxResponse, res.Marshal(), 1*time.Second); err != nil {
 			fmt.Println(err)
 		}
 	}()
@@ -743,7 +753,7 @@ func (b *Protocol) handleDownloadTxRequests(wire noise.Wire) {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending missing tx sync request to ledger")
 		return
-	case b.ledger.SyncTxIn <- evt:
+	case p.ledger.SyncTxIn <- evt:
 	}
 
 	select {
