@@ -2,340 +2,391 @@ package wavelet
 
 import (
 	"bytes"
-	"encoding/binary"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/common"
-	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
-	"go.uber.org/atomic"
-	"sync"
 )
 
-var (
-	ErrParentsNotAvailable = errors.New("parents for transaction are not in our view-graph")
-	ErrTxAlreadyExists     = errors.New("transaction already exists")
-)
+type Graph struct {
+	transactions map[common.TransactionID]*Transaction           // All transactions.
+	children     map[common.TransactionID][]common.TransactionID // Children of transactions.
 
-type graph struct {
-	sync.RWMutex
+	eligible   map[common.TransactionID]struct{} // Transactions that are eligible to be parent transactions.
+	incomplete map[common.TransactionID]struct{} // Transactions that don't have all parents available.
 
-	transactions    map[common.TransactionID]*Transaction
-	children        map[common.TransactionID][]*Transaction
-	eligibleParents map[common.TransactionID]*Transaction
+	missing map[common.TransactionID]struct{} // Transactions that we are missing.
 
-	indexViewID map[uint64][]*Transaction
+	seedIndex  map[byte]map[common.TransactionID]struct{}   // Indexes transactions by their seed.
+	depthIndex map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their depth.
+	roundIndex map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their round.
 
-	root   atomic.Value
-	height atomic.Uint64
-
-	kv store.KV
+	rootID common.TransactionID // Root of the graph.
+	height uint64               // Height of the graph.
 }
 
-func newGraph(kv store.KV, genesis *Transaction) *graph {
-	g := &graph{
-		kv:              kv,
-		transactions:    make(map[common.TransactionID]*Transaction),
-		children:        make(map[common.TransactionID][]*Transaction),
-		eligibleParents: make(map[common.TransactionID]*Transaction),
-		indexViewID:     make(map[uint64][]*Transaction),
+func NewGraph(genesis *Round) *Graph {
+	g := &Graph{
+		transactions: make(map[common.TransactionID]*Transaction),
+		children:     make(map[common.TransactionID][]common.TransactionID),
+
+		eligible:   make(map[common.TransactionID]struct{}),
+		incomplete: make(map[common.TransactionID]struct{}),
+
+		missing: make(map[common.TransactionID]struct{}),
+
+		seedIndex:  make(map[byte]map[common.TransactionID]struct{}),
+		depthIndex: make(map[uint64]map[common.TransactionID]struct{}),
+		roundIndex: make(map[uint64]map[common.TransactionID]struct{}),
+
+		height: 1,
 	}
 
-	// Initialize difficulty if not exist.
-	if difficulty := g.loadDifficulty(); difficulty == 0 {
-		g.saveDifficulty(uint64(sys.MinDifficulty))
-	}
-
-	// Initialize genesis if not spawned.
 	if genesis != nil {
-		g.saveRoot(genesis)
+		g.rootID = genesis.Root.ID
+		g.transactions[genesis.Root.ID] = &genesis.Root
 	} else {
-		genesis = g.loadRoot()
+		ptr := new(Transaction)
 
-		if genesis == nil {
-			panic("genesis transaction must be specified")
-		}
+		g.rootID = ptr.ID
+		g.transactions[ptr.ID] = ptr
 	}
 
-	g.eligibleParents[genesis.ID] = genesis
-	g.transactions[genesis.ID] = genesis
-	g.updateIndices(genesis)
+	root := g.transactions[g.rootID]
+
+	g.height = root.Depth + 1
+	g.createTransactionIndices(root)
 
 	return g
 }
 
-func (g *graph) updateIndices(tx *Transaction) {
-	g.indexViewID[tx.ViewID] = append(g.indexViewID[tx.ViewID], tx)
-}
-
-// addTransaction adds a transaction to the view-graph. Note that it
-// should not be invoked with malformed transaction data.
-//
-// For example, it must be guaranteed that:
-// 1) the transaction has at least 1 parent recorded.
-// 2) the transaction has no children recorded.
-//
-// It will throw an error however if the transaction already exists
-// in the view-graph, or if the transactions parents are not
-// previously recorded in the view-graph.
-func (g *graph) addTransaction(tx *Transaction, critical bool) error {
-	g.Lock()
-	defer g.Unlock()
-
-	// Return an error if the transaction is already inside the graph.
-	if _, stored := g.transactions[tx.ID]; stored {
-		return ErrTxAlreadyExists
+func (g *Graph) assertTransactionIsValid(tx *Transaction) error {
+	if tx.ID == common.ZeroTransactionID {
+		return errors.New("tx must have an id")
 	}
 
-	var parents []*Transaction
-
-	// Look in the graph for the transactions parents.
-	for _, parentID := range tx.ParentIDs {
-		if parent, stored := g.transactions[parentID]; stored {
-			parents = append(parents, parent)
-		} else {
-			return ErrParentsNotAvailable
-		}
+	if tx.Sender == common.ZeroAccountID {
+		return errors.New("tx must have sender associated to it")
 	}
 
-	// Update the parents children.
-	for _, parent := range parents {
-		g.children[parent.ID] = append(g.children[parent.ID], tx)
-
-		// It is not possible for a parent with children to be eligible.
-		delete(g.eligibleParents, parent.ID)
+	if tx.Creator == common.ZeroAccountID {
+		return errors.New("tx must have a creator associated to it")
 	}
 
-	// Update the transactions depth if the transaction is not critical.
-	if !critical {
-		for _, parent := range parents {
-			if tx.depth < parent.depth {
-				tx.depth = parent.depth
-			}
+	if len(tx.ParentIDs) == 0 {
+		return errors.New("transaction has no parents")
+	}
+
+	// Check that parents are lexicographically sorted, are not itself, and are unique.
+	set := make(map[common.TransactionID]struct{})
+
+	for i := len(tx.ParentIDs) - 1; i > 0; i-- {
+		if tx.ID == tx.ParentIDs[i] {
+			return errors.New("tx must not include itself in its parents")
 		}
 
-		tx.depth++
-	}
-
-	// Update the graphs frontier depth/height, and set of eligible transactions if the transaction
-	// is eligible to be placed in our current view ID.
-	if viewID := g.loadViewID(nil); tx.ViewID == viewID {
-		height := g.height.Load()
-
-		if height < tx.depth {
-			height = tx.depth
-
-			// Since the height has been updated, check each eligible parents' height and if they are within the same view ID.
-			for _, tx := range g.eligibleParents {
-				if tx.depth+sys.MaxEligibleParentsDepthDiff < height || tx.ViewID != viewID {
-					delete(g.eligibleParents, tx.ID)
-				}
-			}
-
-			g.height.Store(height)
+		if bytes.Compare(tx.ParentIDs[i-1][:], tx.ParentIDs[i][:]) > 0 {
+			return errors.New("tx must have sorted parent ids")
 		}
 
-		// If the transaction is a leaf node, and was made within the current view ID, assign it as an eligible parent.
-		if tx.depth+sys.MaxEligibleParentsDepthDiff >= height {
-			g.eligibleParents[tx.ID] = tx
+		if _, duplicate := set[tx.ParentIDs[i]]; duplicate {
+			return errors.New("tx must not have duplicate parent ids")
 		}
+
+		set[tx.ParentIDs[i]] = struct{}{}
 	}
 
-	// Add the transaction to our view-graph.
-	g.transactions[tx.ID] = tx
-	g.updateIndices(tx)
+	if tx.Tag > sys.TagStake {
+		return errors.New("tx has an unknown tag")
+	}
 
-	logger := log.TX(tx.ID, tx.Sender, tx.Creator, tx.ParentIDs, tx.Tag, tx.Payload, "new")
-	logger.Log().Uint64("depth", tx.depth).Msg("Added transaction to view-graph.")
+	if tx.Tag != sys.TagNop && len(tx.Payload) == 0 {
+		return errors.New("tx must have payload if not a nop transaction")
+	}
+
+	if tx.Tag == sys.TagNop && len(tx.Payload) != 0 {
+		return errors.New("tx must have no payload if is a nop transaction")
+	}
+
+	var nonce [8]byte // TODO(kenta): nonce
+
+	if !edwards25519.Verify(tx.Creator, append(nonce[:], append([]byte{tx.Tag}, tx.Payload...)...), tx.CreatorSignature) {
+		return errors.New("tx has invalid creator signature")
+	}
+
+	cpy := *tx
+	cpy.SenderSignature = common.ZeroSignature
+
+	if !edwards25519.Verify(tx.Sender, cpy.Marshal(), tx.SenderSignature) {
+		return errors.New("tx has invalid sender signature")
+	}
 
 	return nil
 }
 
-const pruningDepth = 30
+func (g *Graph) assertTransactionIsComplete(tx *Transaction) error {
+	// Check that the transaction's depth is correct according to its parents.
+	var maxDepth uint64
+	var maxConfidence uint64
 
-// reset prunes away old transactions, resets the entire graph, and sets the
-// graph root to a specified transaction.
-func (g *graph) reset(root *Transaction) {
-	newViewID := g.loadViewID(root)
+	for _, parentID := range tx.ParentIDs {
+		parent, exists := g.lookupTransactionByID(parentID)
 
-	g.Lock()
+		if !exists {
+			return errors.New("parent not stored in graph")
+		}
 
-	// Prune away all transactions and indices with a view ID < (current view ID - pruningDepth).
-	for viewID, transactions := range g.indexViewID {
-		if viewID+pruningDepth < newViewID {
-			for _, tx := range transactions {
-				delete(g.transactions, tx.ID)
-				delete(g.children, tx.ID)
-			}
+		// Check if the depth of each parents is acceptable.
+		if parent.Depth+sys.MaxEligibleParentsDepthDiff < tx.Depth {
+			return errors.Errorf("tx parents exceeds max eligible parents depth diff: parents depth is %d, but tx depth is %d", parent.Depth, tx.Depth)
+		}
 
-			logger := log.Consensus("prune")
-			logger.Debug().
-				Int("num_tx", len(transactions)).
-				Uint64("current_view_id", newViewID).
-				Uint64("pruned_view_id", viewID).
-				Msg("Pruned transactions.")
+		// Update max depth witnessed from parents.
+		if maxDepth < parent.Depth {
+			maxDepth = parent.Depth
+		}
 
-			delete(g.indexViewID, viewID)
+		// Update max confidence witnessed from parents.
+		if maxConfidence < parent.Confidence {
+			maxConfidence = parent.Confidence
 		}
 	}
 
-	g.height.Store(0)
+	maxDepth++
+	maxConfidence += uint64(len(tx.ParentIDs))
 
-	for id := range g.eligibleParents {
-		delete(g.eligibleParents, id)
+	if tx.Depth != maxDepth {
+		return errors.Errorf("transactions depth is invalid, expected depth to be %d but got %d", maxDepth, tx.Depth)
 	}
 
-	original, adjusted := g.loadDifficulty(), computeNextDifficulty(root)
-
-	logger := log.Consensus("update_difficulty")
-	logger.Info().
-		Uint64("old_difficulty", original).
-		Uint64("new_difficulty", adjusted).
-		Msg("Ledger difficulty has been adjusted.")
-
-	g.saveDifficulty(adjusted)
-
-	root.depth = 0
-
-	g.saveRoot(root)
-
-	g.transactions[root.ID] = root
-	g.eligibleParents[root.ID] = root
-
-	if _, existed := g.transactions[root.ID]; !existed {
-		g.updateIndices(root)
+	if tx.Confidence != maxConfidence {
+		return errors.Errorf("transactions confidence is invalid, expected confidence to be %d but got %d", maxConfidence, tx.Confidence)
 	}
 
-	g.Unlock()
+	return nil
 }
 
-func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
-	g.RLock()
+func (g *Graph) processParents(tx *Transaction) []common.TransactionID {
+	var missingParentIDs []common.TransactionID
 
-	for id := range g.eligibleParents {
-		eligible = append(eligible, id)
+	for _, parentID := range tx.ParentIDs {
+		_, exists := g.lookupTransactionByID(parentID)
+
+		_, incomplete := g.incomplete[parentID]
+
+		if !exists || incomplete {
+			missingParentIDs = append(missingParentIDs, parentID)
+		}
+
+		g.children[parentID] = append(g.children[parentID], tx.ID)
+
+		delete(g.eligible, parentID)
 	}
 
-	g.RUnlock()
-
-	return
+	return missingParentIDs
 }
 
-// Let it stay here for a while since it was slow but working version
-//
-//func (g *graph) findEligibleParents() (eligible []common.TransactionID) {
-//	g.RLock()
-//	defer g.RUnlock()
-//
-//	root := g.loadRoot()
-//
-//	if root == nil {
-//		return
-//	}
-//
-//	visited := make(map[common.TransactionID]struct{})
-//	visited[root.ID] = struct{}{}
-//
-//	q := queuePool.Get().(*queue.Queue)
-//	defer func() {
-//		q.Init()
-//		queuePool.Put(q)
-//	}()
-//
-//	q.PushBack(root)
-//
-//	height := g.height.Load()
-//	viewID := g.loadViewID(root)
-//
-//	for q.Len() > 0 {
-//		popped := q.PopFront().(*Transaction)
-//
-//		if children := g.children[popped.ID]; len(children) > 0 {
-//			for _, child := range children {
-//				if _, seen := visited[child.ID]; !seen {
-//					q.PushBack(child)
-//					visited[child.ID] = struct{}{}
-//				}
-//			}
-//		} else if popped.depth+sys.MaxEligibleParentsDepthDiff >= height && (popped.ID == root.ID || popped.ViewID == viewID) {
-//			// All eligible parents are within the graph depth [frontier_depth - max_depth_diff, frontier_depth].
-//			eligible = append(eligible, popped.ID)
-//		}
-//	}
-//
-//	return
-//}
-
-func (g *graph) numTransactions(viewID uint64) int {
-	g.RLock()
-	num := len(g.indexViewID[viewID])
-	g.RUnlock()
-
-	return num
-}
-
-func (g *graph) lookupTransaction(id common.TransactionID) (*Transaction, bool) {
-	if id == common.ZeroTransactionID {
-		return nil, false
-	}
-
-	g.RLock()
+func (g *Graph) lookupTransactionByID(id common.TransactionID) (*Transaction, bool) {
 	tx, exists := g.transactions[id]
-	g.RUnlock()
+
+	if !exists {
+		if _, missing := g.missing[id]; !missing {
+			g.missing[id] = struct{}{}
+		}
+	}
 
 	return tx, exists
 }
 
-func (g *graph) loadHeight() uint64 {
-	return g.height.Load()
-}
-
-func (g *graph) saveRoot(root *Transaction) {
-	g.root.Store(root)
-	_ = g.kv.Put(keyGraphRoot[:], root.Marshal())
-}
-
-func (g *graph) loadRoot() *Transaction {
-	if root := g.root.Load(); root != nil {
-		return root.(*Transaction)
-	}
-
-	buf, err := g.kv.Get(keyGraphRoot[:])
-	if len(buf) == 0 || err != nil {
+func (g *Graph) addTransaction(tx Transaction) error {
+	if _, exists := g.transactions[tx.ID]; exists {
 		return nil
 	}
 
-	tx, err := UnmarshalTransaction(bytes.NewReader(buf))
+	ptr := &tx
+
+	if err := g.assertTransactionIsValid(ptr); err != nil {
+		return err
+	}
+
+	// Add transaction to the view-graph.
+	g.transactions[tx.ID] = ptr
+
+	delete(g.missing, ptr.ID)
+
+	missing := g.processParents(ptr)
+
+	if len(missing) > 0 {
+		g.incomplete[ptr.ID] = struct{}{}
+		return errors.New("parents for transaction are not in graph")
+	}
+
+	return g.markTransactionAsComplete(ptr)
+}
+
+// deleteTransaction deletes all traces of a transaction from the graph. Note
+// however that it does not remove the transaction from any of the graphs
+// indices.
+func (g *Graph) deleteTransaction(id common.TransactionID) {
+	if tx, exists := g.transactions[id]; exists {
+		delete(g.seedIndex[tx.Seed], id)
+		delete(g.depthIndex[tx.Depth], id)
+
+		if len(g.seedIndex[tx.Seed]) == 0 {
+			delete(g.seedIndex, tx.Seed)
+		}
+
+		if len(g.depthIndex[tx.Depth]) == 0 {
+			delete(g.depthIndex, tx.Depth)
+		}
+	}
+
+	delete(g.transactions, id)
+	delete(g.children, id)
+
+	delete(g.eligible, id)
+	delete(g.incomplete, id)
+
+	delete(g.missing, id)
+}
+
+// deleteIncompleteTransaction explicitly deletes all traces of a transaction
+// alongside its progeny from the graph. Note that incomplete transactions
+// are not stored in any indices of the graph, so the function should ONLY
+// be used to delete incomplete transactions that have not yet been indexed.
+func (g *Graph) deleteIncompleteTransaction(id common.TransactionID) {
+	children := g.children[id]
+
+	g.deleteTransaction(id)
+
+	for _, childID := range children {
+		g.deleteTransaction(childID)
+	}
+}
+
+func (g *Graph) createTransactionIndices(tx *Transaction) {
+	if _, exists := g.seedIndex[tx.Seed]; !exists {
+		g.seedIndex[tx.Seed] = make(map[common.TransactionID]struct{})
+	}
+
+	g.seedIndex[tx.Seed][tx.ID] = struct{}{}
+
+	if _, exists := g.depthIndex[tx.Depth]; !exists {
+		g.depthIndex[tx.Depth] = make(map[common.TransactionID]struct{})
+	}
+
+	g.depthIndex[tx.Depth][tx.ID] = struct{}{}
+
+	if g.height < tx.Depth {
+		g.height = tx.Depth + 1
+	}
+
+	if _, exists := g.children[tx.ID]; !exists {
+		if tx.Depth+sys.MaxEligibleParentsDepthDiff >= g.height {
+			g.eligible[tx.ID] = struct{}{}
+		}
+	}
+}
+
+func (g *Graph) findEligibleParents() []common.TransactionID {
+	root := g.transactions[g.rootID]
+
+	var eligibleIDs []common.TransactionID
+
+	for eligibleID := range g.eligible {
+		eligibleParent, exists := g.transactions[eligibleID]
+
+		if !exists {
+			delete(g.eligible, eligibleID)
+			continue
+		}
+
+		if eligibleParent.ID != root.ID && eligibleParent.Depth <= root.Depth {
+			delete(g.eligible, eligibleID)
+			continue
+		}
+
+		if eligibleParent.Depth+sys.MaxEligibleParentsDepthDiff <= g.height {
+			delete(g.eligible, eligibleID)
+			continue
+		}
+
+		eligibleIDs = append(eligibleIDs, eligibleID)
+	}
+
+	return eligibleIDs
+}
+
+func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
+	err := g.assertTransactionIsComplete(tx)
+
 	if err != nil {
-		panic("graph: root data is malformed")
+		g.deleteIncompleteTransaction(tx.ID)
+		return err
 	}
 
-	root := &tx
-	g.root.Store(root)
+	// All complete transactions run instructions here exactly once.
 
-	return root
-}
+	g.createTransactionIndices(tx)
 
-func (g *graph) loadViewID(root *Transaction) uint64 {
-	if root == nil {
-		root = g.loadRoot()
+	// for child in children(tx):
+	//		if child in incomplete:
+	//			if complete = reduce(lambda acc, tx: acc and (parent in graph), child.parents, True):
+	//				mark child as complete
+
+	for _, childID := range g.children[tx.ID] {
+		_, incomplete := g.incomplete[childID]
+
+		if !incomplete {
+			continue
+		}
+
+		child, exists := g.transactions[childID]
+
+		if !exists {
+			continue
+		}
+
+		complete := true // Complete if parents are complete, and parent transaction contents exist in graph.
+
+		for _, parentID := range child.ParentIDs {
+			if _, incomplete := g.incomplete[parentID]; incomplete {
+				complete = false
+				break
+			}
+
+			if _, exists := g.transactions[parentID]; !exists {
+				complete = false
+				break
+			}
+		}
+
+		if complete {
+			delete(g.incomplete, childID)
+			g.markTransactionAsComplete(child)
+		}
 	}
 
-	return root.ViewID + 1
+	return nil
 }
 
-func (g *graph) loadDifficulty() uint64 {
-	buf, err := g.kv.Get(keyLedgerDifficulty[:])
-	if len(buf) != 8 || err != nil {
-		return uint64(sys.MinDifficulty)
+func (g *Graph) Reset(newRound *Round) {
+	if _, exists := g.transactions[newRound.Root.ID]; !exists {
+		ptr := &newRound.Root
+
+		g.transactions[newRound.Root.ID] = ptr
+		g.createTransactionIndices(ptr)
 	}
 
-	return binary.LittleEndian.Uint64(buf)
-}
+	oldRoot := g.transactions[g.rootID]
 
-func (g *graph) saveDifficulty(difficulty uint64) {
-	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], difficulty)
+	g.roundIndex[newRound.Index] = make(map[common.TransactionID]struct{})
 
-	_ = g.kv.Put(keyLedgerDifficulty[:], buf[:])
+	for i := oldRoot.Depth + 1; i <= newRound.Root.Depth; i++ {
+		for id := range g.depthIndex[i] {
+			g.roundIndex[newRound.Index][id] = struct{}{}
+		}
+	}
+
+	g.rootID = newRound.Root.ID
 }

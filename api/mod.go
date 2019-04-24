@@ -537,9 +537,9 @@ func (g *Gateway) registerWebsocketSink(rawURL string) *sink {
 }
 
 func (g *Gateway) Write(buf []byte) (n int, err error) {
-	p := g.parserPool.Get()
+	var p fastjson.Parser
+
 	v, err := p.ParseBytes(buf)
-	g.parserPool.Put(p)
 
 	if err != nil {
 		return n, errors.Errorf("cannot parse: %q", err)

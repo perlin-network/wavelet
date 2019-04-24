@@ -10,15 +10,15 @@ import (
 )
 
 type QueryRequest struct {
-	tx wavelet.Transaction
+	round wavelet.Round
 }
 
 func (q QueryRequest) Marshal() []byte {
-	return q.tx.Marshal()
+	return q.round.Marshal()
 }
 
 func UnmarshalQueryRequest(r io.Reader) (q QueryRequest, err error) {
-	q.tx, err = wavelet.UnmarshalTransaction(r)
+	q.round, err = wavelet.UnmarshalRound(r)
 
 	if err != nil {
 		err = errors.Wrap(err, "failed to read query request")
@@ -29,7 +29,7 @@ func UnmarshalQueryRequest(r io.Reader) (q QueryRequest, err error) {
 }
 
 type QueryResponse struct {
-	preferred wavelet.Transaction
+	preferred wavelet.Round
 }
 
 func (q QueryResponse) Marshal() []byte {
@@ -37,7 +37,7 @@ func (q QueryResponse) Marshal() []byte {
 }
 
 func UnmarshalQueryResponse(r io.Reader) (q QueryResponse, err error) {
-	q.preferred, err = wavelet.UnmarshalTransaction(r)
+	q.preferred, err = wavelet.UnmarshalRound(r)
 
 	if err != nil {
 		err = errors.Wrap(err, "failed to read query response")
@@ -55,7 +55,7 @@ func (q GossipRequest) Marshal() []byte {
 	return q.tx.Marshal()
 }
 
-func UnmarshalGossipRequest(r io.Reader) (q QueryRequest, err error) {
+func UnmarshalGossipRequest(r io.Reader) (q GossipRequest, err error) {
 	q.tx, err = wavelet.UnmarshalTransaction(r)
 
 	if err != nil {
@@ -96,38 +96,19 @@ func UnmarshalGossipResponse(r io.Reader) (q GossipResponse, err error) {
 	return
 }
 
-type SyncViewRequest struct {
-	root wavelet.Transaction
+type OutOfSyncResponse struct {
+	round wavelet.Round
 }
 
-func (q SyncViewRequest) Marshal() []byte {
-	return q.root.Marshal()
+func (q OutOfSyncResponse) Marshal() []byte {
+	return q.round.Marshal()
 }
 
-func UnmarshalSyncViewRequest(r io.Reader) (q SyncViewRequest, err error) {
-	q.root, err = wavelet.UnmarshalTransaction(r)
+func UnmarshalOutOfSyncResponse(r io.Reader) (q OutOfSyncResponse, err error) {
+	q.round, err = wavelet.UnmarshalRound(r)
 
 	if err != nil {
-		err = errors.Wrap(err, "failed to read sync root request")
-		return
-	}
-
-	return
-}
-
-type SyncViewResponse struct {
-	root wavelet.Transaction
-}
-
-func (q SyncViewResponse) Marshal() []byte {
-	return q.root.Marshal()
-}
-
-func UnmarshalSyncViewResponse(r io.Reader) (q SyncViewResponse, err error) {
-	q.root, err = wavelet.UnmarshalTransaction(r)
-
-	if err != nil {
-		err = errors.Wrap(err, "failed to read sync root response")
+		err = errors.Wrap(err, "failed to read round in sync view response")
 		return
 	}
 
@@ -151,11 +132,11 @@ type SyncChunkResponse struct {
 	diff []byte
 }
 
-type SyncMissingTxRequest struct {
+type DownloadTxRequest struct {
 	ids []common.TransactionID
 }
 
-type SyncMissingTxResponse struct {
+type DownloadTxResponse struct {
 	transactions []wavelet.Transaction
 }
 
@@ -247,22 +228,21 @@ func UnmarshalSyncChunkResponse(r io.Reader) (q SyncChunkResponse, err error) {
 	return
 }
 
-func (s SyncMissingTxRequest) Marshal() []byte {
-	var buf []byte
+func (s DownloadTxRequest) Marshal() []byte {
+	buf := make([]byte, 1+len(s.ids)*common.SizeTransactionID)
+	buf[0] = byte(len(s.ids))
 
-	buf = append(buf, byte(len(s.ids)))
-
-	for _, id := range s.ids {
-		buf = append(buf, id[:]...)
+	for i := range s.ids {
+		copy(buf[1+(i*common.SizeTransactionID):1+(i*common.SizeTransactionID+common.SizeTransactionID)], s.ids[i][:])
 	}
 
 	return buf
 }
 
-func UnmarshalSyncMissingTxRequest(r io.Reader) (q SyncMissingTxRequest, err error) {
+func UnmarshalDownloadTxRequest(r io.Reader) (q DownloadTxRequest, err error) {
 	var buf [1]byte
 
-	if _, err = io.ReadFull(r, buf[:]); err != nil {
+	if _, err = io.ReadFull(r, buf[:1]); err != nil {
 		return
 	}
 
@@ -277,7 +257,7 @@ func UnmarshalSyncMissingTxRequest(r io.Reader) (q SyncMissingTxRequest, err err
 	return
 }
 
-func (s SyncMissingTxResponse) Marshal() []byte {
+func (s DownloadTxResponse) Marshal() []byte {
 	var buf []byte
 
 	buf = append(buf, byte(len(s.transactions)))
@@ -289,7 +269,7 @@ func (s SyncMissingTxResponse) Marshal() []byte {
 	return buf
 }
 
-func UnmarshalSyncMissingTxResponse(r io.Reader) (q SyncMissingTxResponse, err error) {
+func UnmarshalDownloadTxResponse(r io.Reader) (q DownloadTxResponse, err error) {
 	var buf [1]byte
 
 	if _, err = io.ReadFull(r, buf[:]); err != nil {

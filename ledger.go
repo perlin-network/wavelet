@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
-	"github.com/heptio/workgroup"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
@@ -14,7 +12,6 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
-	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"sort"
@@ -22,142 +19,35 @@ import (
 	"time"
 )
 
-const (
-	SyncChunkSize = 1048576
+var (
+	ErrStopped       = errors.New("worker stopped")
+	ErrNonePreferred = errors.New("no critical transactions available in round yet")
 )
 
-type EventBroadcast struct {
-	Tag       byte
-	Payload   []byte
-	Creator   common.AccountID
-	Signature common.Signature
-
-	Result chan Transaction
-	Error  chan error
-}
-
-type EventIncomingGossip struct {
-	TX Transaction
-
-	Vote chan error
-}
-
-type VoteGossip struct {
-	Voter common.AccountID
-	Ok    bool
-}
-
-type EventGossip struct {
-	TX Transaction
-
-	Result chan []VoteGossip
-	Error  chan error
-}
-
-type EventIncomingQuery struct {
-	TX Transaction
-
-	Response chan *Transaction
-	Error    chan error
-}
-
-type VoteQuery struct {
-	Voter     common.AccountID
-	Preferred Transaction
-}
-
-type EventQuery struct {
-	TX Transaction
-
-	Result chan []VoteQuery
-	Error  chan error
-}
-
-type VoteOutOfSync struct {
-	Voter common.AccountID
-	Root  Transaction
-}
-
-type EventOutOfSyncCheck struct {
-	Root Transaction
-
-	Result chan []VoteOutOfSync
-	Error  chan error
-}
-
-type EventIncomingOutOfSyncCheck struct {
-	Root Transaction
-
-	Response chan *Transaction
-}
-
-type SyncInitMetadata struct {
-	PeerID      *skademlia.ID
-	ViewID      uint64
-	ChunkHashes [][blake2b.Size256]byte
-}
-
-type EventSyncInit struct {
-	ViewID uint64
-
-	Result chan []SyncInitMetadata
-	Error  chan error
-}
-
-type EventIncomingSyncInit struct {
-	ViewID uint64
-
-	Response chan SyncInitMetadata
-}
-
-type ChunkSource struct {
-	Hash    [blake2b.Size256]byte
-	PeerIDs []*skademlia.ID
-}
-
-type EventSyncDiff struct {
-	Sources []ChunkSource
-
-	Result chan [][]byte
-	Error  chan error
-}
-
-type EventSyncTX struct {
-	IDs []common.TransactionID
-
-	Result chan []Transaction
-	Error  chan error
-}
-
-type EventIncomingSyncTX struct {
-	IDs []common.TransactionID
-
-	Response chan []Transaction
-}
-
-type EventIncomingSyncDiff struct {
-	ChunkHash [blake2b.Size256]byte
-
-	Response chan []byte
-}
+const PruningDepth = 30
 
 type Ledger struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	keys *skademlia.Keypair
-	kv   store.KV
 
-	v *graph
-	a *accounts
+	metrics  *Metrics
+	accounts *Accounts
+	graph    *Graph
 
-	cr *Snowball
-	sr *Snowball
+	snowball *Snowball
+	resolver *Snowball
 
 	processors map[byte]TransactionProcessor
-	validators map[byte]TransactionValidator
 
-	missing   map[common.TransactionID]map[common.TransactionID]Transaction
-	muMissing sync.RWMutex
+	rounds map[uint64]Round
+	round  uint64
 
-	missingTxSyncTokenSource chan struct{}
+	mu sync.RWMutex
+
+	syncing     bool
+	syncingCond sync.Cond
 
 	BroadcastQueue chan<- EventBroadcast
 	broadcastQueue <-chan EventBroadcast
@@ -192,19 +82,22 @@ type Ledger struct {
 	SyncDiffOut <-chan EventSyncDiff
 	syncDiffOut chan<- EventSyncDiff
 
-	SyncTxIn chan<- EventIncomingSyncTX
-	syncTxIn <-chan EventIncomingSyncTX
+	SyncTxIn chan<- EventIncomingDownloadTX
+	syncTxIn <-chan EventIncomingDownloadTX
 
-	SyncTxOut <-chan EventSyncTX
-	syncTxOut chan<- EventSyncTX
+	SyncTxOut     <-chan EventDownloadTX
+	downloadTxOut chan<- EventDownloadTX
 
-	cacheAccounts   *lru
-	cacheDiffChunks *lru
+	LatestViewIn chan<- EventIncomingLatestView
+	latestViewIn <-chan EventIncomingLatestView
 
-	kill chan struct{}
+	LatestViewOut <-chan EventLatestView
+	latestViewOut chan<- EventLatestView
 }
 
-func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledger {
+func NewLedger(keys *skademlia.Keypair, kv store.KV) *Ledger {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	broadcastQueue := make(chan EventBroadcast, 1024)
 
 	gossipIn := make(chan EventIncomingGossip, 128)
@@ -222,36 +115,35 @@ func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledge
 	syncDiffIn := make(chan EventIncomingSyncDiff, 128)
 	syncDiffOut := make(chan EventSyncDiff, 128)
 
-	syncTxIn := make(chan EventIncomingSyncTX, 16)
-	syncTxOut := make(chan EventSyncTX, 16)
+	syncTxIn := make(chan EventIncomingDownloadTX, 16)
+	syncTxOut := make(chan EventDownloadTX, 16)
+
+	latestViewIn := make(chan EventIncomingLatestView, 16)
+	latestViewOut := make(chan EventLatestView, 16)
 
 	accounts := newAccounts(kv)
-	go accounts.runGCWorker(ctx)
 
-	genesis, err := performInception(accounts.tree, nil)
-	if err != nil {
+	round := performInception(accounts.tree, nil)
+	if err := accounts.commit(nil); err != nil {
 		panic(err)
 	}
 
-	err = accounts.commit(nil)
-	if err != nil {
-		panic(err)
-	}
+	graph := NewGraph(&round)
 
-	view := newGraph(kv, genesis)
-
-	missingTxSyncTokenSource := make(chan struct{}, 1)
-	missingTxSyncTokenSource <- struct{}{}
+	metrics := NewMetrics()
 
 	return &Ledger{
+		ctx:    ctx,
+		cancel: cancel,
+
 		keys: keys,
-		kv:   kv,
 
-		v: view,
-		a: accounts,
+		metrics:  metrics,
+		accounts: accounts,
+		graph:    graph,
 
-		cr: NewSnowball().WithK(sys.SnowballQueryK).WithAlpha(sys.SnowballQueryAlpha).WithBeta(sys.SnowballQueryBeta),
-		sr: NewSnowball().WithK(sys.SnowballSyncK).WithAlpha(sys.SnowballSyncAlpha).WithBeta(sys.SnowballSyncBeta),
+		snowball: NewSnowball().WithK(sys.SnowballQueryK).WithAlpha(sys.SnowballQueryAlpha).WithBeta(sys.SnowballQueryBeta),
+		resolver: NewSnowball().WithK(sys.SnowballSyncK).WithAlpha(sys.SnowballSyncAlpha).WithBeta(sys.SnowballSyncBeta),
 
 		processors: map[byte]TransactionProcessor{
 			sys.TagNop:      ProcessNopTransaction,
@@ -260,16 +152,10 @@ func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledge
 			sys.TagStake:    ProcessStakeTransaction,
 		},
 
-		validators: map[byte]TransactionValidator{
-			sys.TagNop:      ValidateNopTransaction,
-			sys.TagTransfer: ValidateTransferTransaction,
-			sys.TagContract: ValidateContractTransaction,
-			sys.TagStake:    ValidateStakeTransaction,
-		},
+		rounds: map[uint64]Round{round.Index: round},
+		round:  1,
 
-		missing: make(map[common.TransactionID]map[common.TransactionID]Transaction),
-
-		missingTxSyncTokenSource: missingTxSyncTokenSource,
+		syncingCond: sync.Cond{L: new(sync.Mutex)},
 
 		BroadcastQueue: broadcastQueue,
 		broadcastQueue: broadcastQueue,
@@ -307,72 +193,203 @@ func NewLedger(ctx context.Context, keys *skademlia.Keypair, kv store.KV) *Ledge
 		SyncTxIn: syncTxIn,
 		syncTxIn: syncTxIn,
 
-		SyncTxOut: syncTxOut,
-		syncTxOut: syncTxOut,
+		SyncTxOut:     syncTxOut,
+		downloadTxOut: syncTxOut,
 
-		cacheAccounts:   newLRU(16),
-		cacheDiffChunks: newLRU(1024), // 1024 * 4MB
+		LatestViewIn: latestViewIn,
+		latestViewIn: latestViewIn,
 
-		kill: make(chan struct{}),
+		LatestViewOut: latestViewOut,
+		latestViewOut: latestViewOut,
 	}
 }
 
-/** BEGIN EXPORTED METHODS **/
-
-func NewTransaction(creator *skademlia.Keypair, tag byte, payload []byte) (Transaction, error) {
+func NewTransaction(creator *skademlia.Keypair, tag byte, payload []byte) Transaction {
 	tx := Transaction{Tag: tag, Payload: payload}
 
+	var nonce [8]byte // TODO(kenta): nonce
+
 	tx.Creator = creator.PublicKey()
-	tx.CreatorSignature = edwards25519.Sign(creator.PrivateKey(), append([]byte{tx.Tag}, tx.Payload...))
+	tx.CreatorSignature = edwards25519.Sign(creator.PrivateKey(), append(nonce[:], append([]byte{tx.Tag}, tx.Payload...)...))
+
+	return tx
+}
+
+func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	tx.Sender = l.keys.PublicKey()
+	tx.ParentIDs = l.graph.findEligibleParents()
+
+	if len(tx.ParentIDs) == 0 {
+		return tx, errors.New("no eligible parents available")
+	}
+
+	sort.Slice(tx.ParentIDs, func(i, j int) bool {
+		return bytes.Compare(tx.ParentIDs[i][:], tx.ParentIDs[j][:]) < 0
+	})
+
+	for _, parentID := range tx.ParentIDs {
+		parent, exists := l.graph.lookupTransactionByID(parentID)
+
+		if !exists {
+			return tx, errors.New("could not find transaction picked as an eligible parent")
+		}
+
+		if tx.Depth < parent.Depth {
+			tx.Depth = parent.Depth
+		}
+
+		if tx.Confidence < parent.Confidence {
+			tx.Confidence = parent.Confidence
+		}
+	}
+
+	tx.Depth++
+	tx.Confidence += uint64(len(tx.ParentIDs))
+
+	tx.SenderSignature = edwards25519.Sign(l.keys.PrivateKey(), tx.Marshal())
+
+	tx.rehash()
 
 	return tx, nil
 }
 
-func (l *Ledger) ViewID() uint64 {
-	return l.v.loadViewID(nil)
+func (l *Ledger) addTransaction(tx Transaction) error {
+	if err := l.graph.addTransaction(tx); err != nil {
+		return err
+	}
+
+	l.metrics.receivedTX.Mark(1)
+
+	ptr := l.graph.transactions[tx.ID]
+
+	difficulty := l.rounds[l.round-1].Root.ExpectedDifficulty(byte(sys.MinDifficulty))
+
+	if tx.IsCritical(difficulty) && l.snowball.Preferred() == nil {
+		state, err := l.collapseTransactions(l.round, ptr, true)
+
+		if err != nil {
+			return errors.Wrap(err, "failed to collapse down critical transaction which we have received")
+		}
+
+		round := NewRound(l.round, state.Checksum(), tx)
+		l.snowball.Prefer(&round)
+	}
+
+	return nil
 }
 
-func (l *Ledger) Difficulty() uint64 {
-	return l.v.loadDifficulty()
+func (l *Ledger) Run() {
+	go l.recvLoop(l.ctx)
+	go l.accounts.gcLoop(l.ctx)
+
+	go l.gossipingLoop(l.ctx)
+	go l.queryingLoop(l.ctx)
+
+	go l.stateSyncingLoop(l.ctx)
+	go l.txSyncingLoop(l.ctx)
 }
 
-func (l *Ledger) Root() *Transaction {
-	return l.v.loadRoot()
-}
-
-func (l *Ledger) Height() uint64 {
-	return l.v.loadHeight()
+func (l *Ledger) Stop() {
+	l.cancel()
 }
 
 func (l *Ledger) Snapshot() *avl.Tree {
-	return l.a.snapshot()
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	return l.accounts.snapshot()
+}
+
+func (l *Ledger) RoundID() uint64 {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	return l.round
+}
+
+func (l *Ledger) LastRound() Round {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	return l.rounds[l.round-1]
+}
+
+func (l *Ledger) Preferred() *Round {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	return l.snowball.Preferred()
+}
+
+func (l *Ledger) NumTransactions() uint64 {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	return l.getNumTransactions(l.round - 1)
+}
+
+func (l *Ledger) Height() uint64 {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	return l.getHeight(l.round - 1)
+}
+
+func (l *Ledger) getNumTransactions(round uint64) uint64 {
+	var n uint64
+
+	height := l.graph.height
+
+	if round+1 < l.round {
+		height = l.rounds[round+1].Root.Depth + 1
+	}
+
+	for i := l.rounds[round].Root.Depth + 1; i < height; i++ {
+		n += uint64(len(l.graph.depthIndex[i]))
+	}
+
+	return n
+}
+
+func (l *Ledger) getHeight(round uint64) uint64 {
+	height := l.graph.height
+
+	if round+1 < l.round {
+		height = l.rounds[round+1].Root.Depth + 1
+	}
+
+	height -= l.rounds[round].Root.Depth
+
+	if height > 0 {
+		height--
+	}
+
+	return height
 }
 
 func (l *Ledger) FindTransaction(id common.TransactionID) (*Transaction, bool) {
-	return l.v.lookupTransaction(id)
-}
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 
-func (l *Ledger) NumTransactions() int {
-	return l.v.numTransactions(l.v.loadViewID(nil))
-}
-
-func (l *Ledger) Preferred() *Transaction {
-	return l.cr.Preferred()
+	tx, exists := l.graph.transactions[id]
+	return tx, exists
 }
 
 func (l *Ledger) ListTransactions(offset, limit uint64, sender, creator common.AccountID) (transactions []*Transaction) {
-	l.v.Lock()
+	l.mu.RLock()
+	defer l.mu.RUnlock()
 
-	for _, tx := range l.v.transactions {
+	for _, tx := range l.graph.transactions {
 		if (sender == common.ZeroAccountID && creator == common.ZeroAccountID) || (sender != common.ZeroAccountID && tx.Sender == sender) || (creator != common.ZeroAccountID && tx.Creator == creator) {
 			transactions = append(transactions, tx)
 		}
 	}
 
-	l.v.Unlock()
-
 	sort.Slice(transactions, func(i, j int) bool {
-		return transactions[i].depth < transactions[j].depth
+		return transactions[i].Depth < transactions[j].Depth
 	})
 
 	if offset != 0 || limit != 0 {
@@ -390,291 +407,166 @@ func (l *Ledger) ListTransactions(offset, limit uint64, sender, creator common.A
 	return
 }
 
-func (l *Ledger) doLinearizedMissingTxSync(missing []common.TransactionID) {
-	if len(missing) == 0 {
-		return
-	}
-	return
-	select {
-	case <-l.missingTxSyncTokenSource:
-		startTime := time.Now()
-		stop := make(chan struct{})
-		go func() {
-			time.Sleep(5 * time.Second)
-			close(stop)
-		}()
-		go listenForMissingTXs(l)(stop)
-		go func() {
-			syncMissingTX(l, missing)(stop)
-			l.missingTxSyncTokenSource <- struct{}{}
-			endTime := time.Now()
-			fmt.Println("Sync duration =", endTime.Sub(startTime))
-		}()
-	default:
+func (l *Ledger) recvLoop(ctx context.Context) {
+	step := recv(l)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		if err := step(ctx); err != nil {
+			fmt.Println("recv error:", err)
+		}
 	}
 }
 
-/** END EXPORTED METHODS **/
+func (l *Ledger) gossipingLoop(ctx context.Context) {
+	step := gossip(l)
 
-func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) {
-	tx.Sender = l.keys.PublicKey()
-
-	if tx.ParentIDs = l.v.findEligibleParents(); len(tx.ParentIDs) == 0 {
-		return tx, errors.New("no eligible parents available, please try again")
-	}
-
-	sort.Slice(tx.ParentIDs, func(i, j int) bool {
-		return bytes.Compare(tx.ParentIDs[i][:], tx.ParentIDs[j][:]) < 0
-	})
-
-	tx.Timestamp = uint64(time.Duration(time.Now().UnixNano()) / time.Millisecond)
-
-	for _, parentID := range tx.ParentIDs {
-		if parent, exists := l.v.lookupTransaction(parentID); exists && tx.Timestamp <= parent.Timestamp {
-			tx.Timestamp = parent.Timestamp + 1
-		}
-	}
-
-	root := l.v.loadRoot()
-	rootVal := *root
-
-	tx.ViewID = l.v.loadViewID(root)
-
-	difficulty := l.v.loadDifficulty()
-	critical := tx.IsCritical(difficulty)
-
-	if critical {
-		tx.DifficultyTimestamps = append(rootVal.DifficultyTimestamps, rootVal.Timestamp)
-
-		if size := computeCriticalTimestampWindowSize(tx.ViewID); len(tx.DifficultyTimestamps) > size {
-			tx.DifficultyTimestamps = tx.DifficultyTimestamps[len(tx.DifficultyTimestamps)-size:]
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
 		}
 
-		snapshot, missing, err := l.collapseTransactions(tx, false)
+		if err := step(ctx); err != nil {
+			fmt.Println("gossip error:", err)
+		}
+	}
+}
 
-		if len(missing) > 0 {
-			l.muMissing.Lock()
-			for _, id := range missing {
-				_, ok := l.missing[id]
+func (l *Ledger) queryingLoop(ctx context.Context) {
+	step := query(l)
 
-				if !ok {
-					l.missing[id] = make(map[common.TransactionID]Transaction)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		if err := step(ctx); err != nil {
+			switch errors.Cause(err) {
+			case ErrNonePreferred:
+			default:
+				fmt.Println("query error:", err)
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+	}
+}
+
+func (l *Ledger) stateSyncingLoop(ctx context.Context) {
+	step := stateSync(l)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		if err := step(ctx); err != nil {
+			switch errors.Cause(err) {
+			case ErrNonePreferred:
+			default:
+				fmt.Println("state sync error:", err)
+			}
+
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(1 * time.Second):
+			}
+		} else {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(10 * time.Millisecond):
+			}
+		}
+	}
+}
+
+func (l *Ledger) txSyncingLoop(ctx context.Context) {
+	step := txSync(l)
+
+L:
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		if err := step(ctx); err != nil {
+			switch errors.Cause(err) {
+			case ErrNonePreferred:
+				select {
+				case <-ctx.Done():
+				case <-time.After(10 * time.Millisecond):
 				}
 
-				l.missing[id][tx.ID] = tx
+				continue L
+			default:
 			}
-			l.muMissing.Unlock()
-			l.doLinearizedMissingTxSync(missing)
-		}
 
-		if err != nil {
-			return tx, errors.Wrap(err, "unable to collapse ancestry to create critical transaction")
+			fmt.Println("tx sync error:", err)
 		}
-
-		tx.AccountsMerkleRoot = snapshot.Checksum()
 	}
-
-	tx.SenderSignature = edwards25519.Sign(l.keys.PrivateKey(), tx.marshal())
-
-	tx.rehash()
-
-	if critical {
-		var parentHexIDs []string
-
-		for _, parentID := range tx.ParentIDs {
-			parentHexIDs = append(parentHexIDs, hex.EncodeToString(parentID[:]))
-		}
-
-		logger := log.Consensus("created_critical_tx")
-		logger.Info().
-			Hex("tx_id", tx.ID[:]).
-			Strs("parents", parentHexIDs).
-			Uint64("difficulty", difficulty).
-			Hex("merkle_root", tx.AccountsMerkleRoot[:]).
-			Hex("current_root", root.ID[:]).
-			Msg("Created a critical transaction.")
-
-	}
-
-	return tx, nil
 }
 
-var (
-	ErrMissingParents = errors.New("missing parent transactions")
-)
-
-func (l *Ledger) addTransaction(tx Transaction) (err error) {
-	critical := tx.IsCritical(l.v.loadDifficulty())
-
-	defer func() {
-		if err != nil {
-			return
-		}
-
-		if critical && l.cr.Preferred() == nil && tx.ViewID == l.v.loadViewID(nil) {
-			l.cr.Prefer(tx)
-		}
-
-		l.revisitBufferedTransactions(tx.ID)
-	}()
-
-	if _, found := l.v.lookupTransaction(tx.ID); found {
-		return
-	}
-
-	if err = AssertInView(l.v.loadViewID(nil), l.kv, tx, critical); err != nil {
-		return
-	}
-
-	if err = AssertValidTransaction(tx); err != nil {
-		return
-	}
-
-	// START ASSERT PRE-ACCEPTANCE
-
-	snapshot := l.a.snapshot()
-	balance, _ := ReadAccountBalance(snapshot, tx.Creator)
-
-	if balance < sys.TransactionFeeAmount {
-		err = errors.New("tx creator does not have enough PERLs to pay for fees")
-		return
-	}
-
-	WriteAccountBalance(snapshot, tx.Creator, balance-sys.TransactionFeeAmount)
-
-	if err = l.validators[tx.Tag](snapshot, tx); err != nil {
-		err = errors.Wrapf(err, "tx fails to fulfill tag-scoped validation for view id %d", l.v.loadViewID(nil))
-		return
-	}
-
-	// END ASSERT PRE-ACCEPTANCE
-
-	var missing []common.TransactionID
-
-	{
-		missing, err = AssertValidAncestry(l.v, tx)
-
-		if len(missing) > 0 {
-			l.muMissing.Lock()
-			for _, id := range missing {
-				_, ok := l.missing[id]
-
-				if !ok {
-					l.missing[id] = make(map[common.TransactionID]Transaction)
-				}
-
-				l.missing[id][tx.ID] = tx
+// prune prunes away all transactions and indices with a view ID < (current view ID - PruningDepth).
+func (l *Ledger) prune(round *Round) {
+	for roundID, transactions := range l.graph.roundIndex {
+		if roundID+PruningDepth <= round.Index {
+			for id := range transactions {
+				l.graph.deleteTransaction(id)
 			}
-			l.muMissing.Unlock()
-			l.doLinearizedMissingTxSync(missing)
-		}
 
-		if err != nil {
-			return
-		}
-	}
+			delete(l.graph.roundIndex, roundID)
 
-	if critical {
-		missing, err = l.assertCollapsible(tx)
-
-		if len(missing) > 0 {
-			l.muMissing.Lock()
-			for _, id := range missing {
-				_, ok := l.missing[id]
-
-				if !ok {
-					l.missing[id] = make(map[common.TransactionID]Transaction)
-				}
-
-				l.missing[id][tx.ID] = tx
-			}
-			l.muMissing.Unlock()
-			l.doLinearizedMissingTxSync(missing)
-		}
-
-		if err != nil {
-			return
+			logger := log.Consensus("prune")
+			logger.Debug().
+				Int("num_tx", len(l.graph.roundIndex[round.Index])).
+				Uint64("current_round_id", round.Index).
+				Uint64("pruned_round_id", roundID).
+				Msg("Pruned away round and its corresponding transactions.")
 		}
 	}
 
-	if verr := l.v.addTransaction(&tx, critical); verr != nil && errors.Cause(verr) != ErrTxAlreadyExists {
-		err = errors.Wrap(verr, "got an error adding queried transaction to view-graph")
+	for roundID := range l.rounds {
+		if roundID+PruningDepth <= round.Index {
+			delete(l.rounds, roundID)
+		}
 	}
-
-	return
 }
 
-func (l *Ledger) revisitBufferedTransactions(id common.TransactionID) {
-	l.muMissing.RLock()
-	buffered, exists := l.missing[id]
-	l.muMissing.RUnlock()
-
-	if !exists {
-		return
-	}
-
-	unbuffered := make(map[common.TransactionID]Transaction)
-
-	for _, tx := range buffered {
-		err := l.addTransaction(tx)
-
-		if err != nil {
-			continue
-		}
-
-		unbuffered[tx.ID] = tx
-	}
-
-	l.muMissing.Lock()
-	if len(unbuffered) > 0 {
-		fmt.Println("unbuffered", len(unbuffered), "transactions, and in total the buffer is of size", len(l.missing))
-	}
-
-	for unbufferedID, unbufferedTX := range unbuffered {
-		// If a transaction T is unbuffered, make sure no other transactions we have yet
-		// to receive is awaiting for the arrival of T.
-
-		for _, parentID := range unbufferedTX.ParentIDs {
-			_, exists = l.missing[parentID]
-
-			if !exists {
-				continue
-			}
-
-			delete(l.missing[parentID], unbufferedID)
-
-			if len(l.missing[parentID]) == 0 {
-				delete(l.missing, parentID)
-			}
-		}
-	}
-
-	delete(l.missing, id)
-	l.muMissing.Unlock()
-}
-
-// collapseTransactions takes all transactions recorded in the graph view so far, and
-// applies all valid ones to a snapshot of all accounts stored in the ledger.
+// collapseTransactions takes all transactions recorded in a single round so far, and applies
+// all valid and available ones to a snapshot of all accounts stored in the ledger.
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
-func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tree, missing []common.TransactionID, err error) {
-	if state, hit := l.cacheAccounts.load(tx.getCriticalSeed()); hit {
-		return state.(*avl.Tree), nil, nil
+func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging bool) (*avl.Tree, error) {
+	snapshot := l.accounts.snapshot()
+	snapshot.SetViewID(round + 1)
+
+	root := l.rounds[l.round-1].Root
+
+	visited := map[common.TransactionID]struct{}{
+		root.ID: {},
 	}
 
-	root := l.v.loadRoot()
-
-	ss = l.a.snapshot()
-	ss.SetViewID(l.v.loadViewID(root) + 1)
-
-	visited := make(map[common.TransactionID]struct{})
-	visited[root.ID] = struct{}{}
-
-	q := queuePool.Get().(*queue.Queue)
-	defer func() {
-		q.Init()
-		queuePool.Put(q)
-	}()
+	aq := AcquireQueue()
+	defer ReleaseQueue(aq)
 
 	for _, parentID := range tx.ParentIDs {
 		if parentID == root.ID {
@@ -683,76 +575,79 @@ func (l *Ledger) collapseTransactions(tx Transaction, logging bool) (ss *avl.Tre
 
 		visited[parentID] = struct{}{}
 
-		parent, exists := l.v.lookupTransaction(parentID)
-
-		if !exists {
-			missing = append(missing, parentID)
-			continue
+		if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
+			if parent.Depth > root.Depth {
+				aq.PushBack(parent)
+			}
+		} else {
+			return snapshot, errors.Errorf("missing parent %x to correctly collapse down ledger state from critical transaction %x", parentID, tx.ID)
 		}
-
-		q.PushBack(parent)
 	}
 
-	applyQueue := queuePool.Get().(*queue.Queue)
-	defer func() {
-		applyQueue.Init()
-		queuePool.Put(applyQueue)
-	}()
+	bq := AcquireQueue()
+	defer ReleaseQueue(bq)
 
-	for q.Len() > 0 {
-		popped := q.PopFront().(*Transaction)
+	for aq.Len() > 0 {
+		popped := aq.PopFront().(*Transaction)
 
 		for _, parentID := range popped.ParentIDs {
 			if _, seen := visited[parentID]; !seen {
 				visited[parentID] = struct{}{}
 
-				parent, exists := l.v.lookupTransaction(parentID)
-
-				if !exists {
-					missing = append(missing, parentID)
-					continue
+				if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
+					if parent.Depth > root.Depth {
+						aq.PushBack(parent)
+					}
+				} else {
+					return snapshot, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, tx.ID)
 				}
-
-				q.PushBack(parent)
 			}
 		}
 
-		applyQueue.PushBack(popped)
+		bq.PushBack(popped)
 	}
 
-	if len(missing) > 0 {
-		return ss, missing, errors.Wrapf(ErrMissingParents, "missing %d necessary ancestor(s) to correctly collapse down ledger state from critical transaction %x", len(missing), tx.ID)
-	}
-
-	// Apply transactions in reverse order from the root of the view-graph all
-	// the way up to the newly created critical transaction.
-	for applyQueue.Len() > 0 {
-		popped := applyQueue.PopBack().(*Transaction)
+	// Apply transactions in reverse order from the root of the view-graph all the way up to the newly
+	// created critical transaction.
+	for bq.Len() > 0 {
+		popped := bq.PopBack().(*Transaction)
 
 		// If any errors occur while applying our transaction to our accounts
 		// snapshot, silently log it and continue applying other transactions.
-		if err := l.rewardValidators(ss, popped, logging); err != nil {
+		if err := l.rewardValidators(snapshot, popped, logging); err != nil {
 			if logging {
 				logger := log.Node()
 				logger.Warn().Err(err).Msg("Failed to reward a validator while collapsing down transactions.")
 			}
+
+			continue
 		}
 
-		if err := l.applyTransactionToSnapshot(ss, popped); err != nil {
+		if err := l.applyTransactionToSnapshot(snapshot, popped); err != nil {
 			if logging {
-				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
+				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
 				logger.Log().Err(err).Msg("Failed to apply transaction to the ledger.")
 			}
+
+			continue
 		} else {
 			if logging {
-				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.ParentIDs, popped.Tag, popped.Payload, "applied")
+				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.ParentIDs, popped.Tag, popped.Payload, "applied")
 				logger.Log().Msg("Successfully applied transaction to the ledger.")
 			}
 		}
+
+		// Update nonce.
+		nonce, _ := ReadAccountNonce(snapshot, popped.Creator)
+		WriteAccountNonce(snapshot, popped.Creator, nonce+1)
+
+		if logging {
+			l.metrics.acceptedTX.Mark(1)
+		}
 	}
 
-	l.cacheAccounts.put(tx.getCriticalSeed(), ss)
-	return
+	//l.cacheAccounts.put(tx.getCriticalSeed(), snapshot)
+	return snapshot, nil
 }
 
 func (l *Ledger) applyTransactionToSnapshot(ss *avl.Tree, tx *Transaction) error {
@@ -770,15 +665,13 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) e
 	var stakes []uint64
 	var totalStake uint64
 
-	visited := make(map[common.AccountID]struct{})
-	q := queuePool.Get().(*queue.Queue)
-	defer func() {
-		q.Init()
-		queuePool.Put(q)
-	}()
+	visited := make(map[common.TransactionID]struct{})
+
+	q := AcquireQueue()
+	defer ReleaseQueue(q)
 
 	for _, parentID := range tx.ParentIDs {
-		if parent, exists := l.v.lookupTransaction(parentID); exists {
+		if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
 			q.PushBack(parent)
 		}
 
@@ -789,13 +682,13 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) e
 	hasher, _ := blake2b.New256(nil)
 
 	var depthCounter uint64
-	var lastDepth = tx.depth
+	var lastDepth = tx.Depth
 
 	for q.Len() > 0 {
 		popped := q.PopFront().(*Transaction)
 
-		if popped.depth != lastDepth {
-			lastDepth = popped.depth
+		if popped.Depth != lastDepth {
+			lastDepth = popped.Depth
 			depthCounter++
 		}
 
@@ -825,7 +718,7 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) e
 
 		for _, parentID := range popped.ParentIDs {
 			if _, seen := visited[parentID]; !seen {
-				if parent, exists := l.v.lookupTransaction(parentID); exists {
+				if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
 					q.PushBack(parent)
 				}
 
@@ -878,7 +771,7 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) e
 		logger.Info().
 			Hex("creator", tx.Creator[:]).
 			Hex("recipient", rewardee.Sender[:]).
-			Hex("sender_tx_id", tx.ID[:]).
+			Hex("creator_tx_id", tx.ID[:]).
 			Hex("rewardee_tx_id", rewardee.ID[:]).
 			Hex("entropy", entropy).
 			Float64("acc", acc).
@@ -886,955 +779,4 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) e
 	}
 
 	return nil
-}
-
-func (l *Ledger) assertCollapsible(tx Transaction) (missing []common.TransactionID, err error) {
-	snapshot, missing, err := l.collapseTransactions(tx, false)
-
-	if err != nil {
-		return missing, err
-	}
-
-	if snapshot.Checksum() != tx.AccountsMerkleRoot {
-		return nil, errors.Errorf("collapsing down transaction %x's ancestry gives an accounts checksum of %x, but the transaction has %x recorded as an accounts checksum instead", tx.ID, snapshot.Checksum(), tx.AccountsMerkleRoot)
-	}
-
-	return nil, nil
-}
-
-func Run(l *Ledger) {
-	initial := gossiping(l)
-
-	for state := initial; state != nil; {
-		state = state(l)
-	}
-}
-
-func (l *Ledger) Stop() {
-	close(l.kill)
-}
-
-type transition func(*Ledger) transition
-
-func gossiping(l *Ledger) transition {
-	fmt.Println("NOW GOSSIPING")
-	var g workgroup.Group
-
-	g.Add(continuously(gossip(l)))
-	g.Add(continuously(checkIfOutOfSync(l)))
-
-	g.Add(continuously(listenForGossip(l)))
-	g.Add(continuously(listenForOutOfSyncChecks(l)))
-	g.Add(continuously(listenForSyncInits(l)))
-	g.Add(continuously(listenForSyncDiffChunks(l)))
-
-	if err := g.Run(); err != nil {
-		switch errors.Cause(err) {
-		case ErrPreferredSelected:
-			return querying
-		case ErrOutOfSync:
-			return syncing
-		default:
-			fmt.Println(err)
-		}
-	}
-
-	return nil
-}
-
-type stateQuerying struct {
-	resetOnce sync.Once
-}
-
-func querying(l *Ledger) transition {
-	fmt.Println("NOW QUERYING")
-
-	state := new(stateQuerying)
-
-	var g workgroup.Group
-
-	g.Add(continuously(query(l, state)))
-	g.Add(continuously(checkIfOutOfSync(l)))
-
-	g.Add(continuously(listenForQueries(l)))
-	g.Add(continuously(listenForOutOfSyncChecks(l)))
-	g.Add(continuously(listenForSyncInits(l)))
-	g.Add(continuously(listenForSyncDiffChunks(l)))
-
-	defer func() {
-		num := len(l.QueryOut)
-
-		for i := 0; i < num; i++ {
-			<-l.QueryOut
-		}
-	}()
-
-	if err := g.Run(); err != nil {
-		switch errors.Cause(err) {
-		case ErrConsensusRoundFinished:
-			return gossiping
-		case ErrOutOfSync:
-			return syncing
-		default:
-			fmt.Println(err)
-		}
-	}
-
-	return nil
-}
-
-func syncing(l *Ledger) transition {
-	fmt.Println("NOW SYNCING")
-	var g workgroup.Group
-
-	root := l.sr.Preferred()
-	l.sr.Reset()
-
-	g.Add(syncUp(l, *root))
-
-	if err := g.Run(); err != nil {
-		switch errors.Cause(err) {
-		case ErrSyncFailed:
-			fmt.Println("failed to sync:", err)
-		default:
-			fmt.Println(err)
-		}
-	}
-
-	return gossiping
-}
-
-func continuously(fn func(stop <-chan struct{}) error) func(stop <-chan struct{}) error {
-	return func(stop <-chan struct{}) error {
-		for {
-			select {
-			case <-stop:
-				return nil
-			default:
-			}
-
-			if err := fn(stop); err != nil {
-				switch errors.Cause(err) {
-				case ErrTimeout:
-				case ErrStopped:
-					return nil
-				default:
-					return err
-				}
-			}
-		}
-	}
-}
-
-var (
-	ErrStopped = errors.New("worker stopped")
-	ErrTimeout = errors.New("worker timed out")
-
-	ErrPreferredSelected      = errors.New("attempting to finalize consensus round")
-	ErrConsensusRoundFinished = errors.New("consensus round finalized")
-
-	ErrOutOfSync  = errors.New("need to sync up with peers")
-	ErrSyncFailed = errors.New("sync failed")
-)
-
-func gossip(l *Ledger) func(stop <-chan struct{}) error {
-	var broadcastNops bool
-
-	return func(stop <-chan struct{}) error {
-		snapshot := l.a.snapshot()
-
-		var tx Transaction
-		var err error
-
-		var Result chan<- Transaction
-		var Error chan<- error
-
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case item := <-l.broadcastQueue:
-			tx = Transaction{
-				Tag:              item.Tag,
-				Payload:          item.Payload,
-				Creator:          item.Creator,
-				CreatorSignature: item.Signature,
-			}
-
-			Result = item.Result
-			Error = item.Error
-		case <-time.After(1 * time.Millisecond):
-			if !broadcastNops {
-				time.Sleep(100 * time.Millisecond)
-				return nil
-			}
-
-			// Check if we have enough money available to create and broadcast a nop transaction.
-
-			if balance, _ := ReadAccountBalance(snapshot, l.keys.PublicKey()); balance < sys.TransactionFeeAmount {
-				time.Sleep(100 * time.Millisecond)
-				return nil
-			}
-
-			// Create a nop transaction.
-			tx, err = NewTransaction(l.keys, sys.TagNop, nil)
-
-			if err != nil {
-				fmt.Println(err)
-				return nil
-			}
-		}
-
-		tx, err = l.attachSenderToTransaction(tx)
-
-		if err != nil {
-			if Error != nil {
-				Error <- errors.Wrap(err, "failed to sign off transaction")
-			}
-			return nil
-		}
-
-		evt := EventGossip{
-			TX:     tx,
-			Result: make(chan []VoteGossip, 1),
-			Error:  make(chan error, 1),
-		}
-
-		select {
-		case <-l.kill:
-			if Error != nil {
-				Error <- ErrStopped
-			}
-
-			return ErrStopped
-		case <-stop:
-			if Error != nil {
-				Error <- ErrStopped
-			}
-
-			return ErrStopped
-		case <-time.After(1 * time.Second):
-			if Error != nil {
-				Error <- errors.Wrap(ErrTimeout, "gossip queue is full")
-			}
-
-			return nil
-		case l.gossipOut <- evt:
-		}
-
-		select {
-		case <-l.kill:
-			if Error != nil {
-				Error <- ErrStopped
-			}
-
-			return ErrStopped
-		case <-stop:
-			if Error != nil {
-				Error <- ErrStopped
-			}
-
-			return ErrStopped
-		case err := <-evt.Error:
-			if err != nil {
-				if Error != nil {
-					Error <- errors.Wrap(err, "got an error gossiping transaction out")
-				}
-				return nil
-			}
-		case votes := <-evt.Result:
-			if len(votes) == 0 {
-				return nil
-			}
-
-			accounts := make(map[common.AccountID]struct{})
-
-			for _, vote := range votes {
-				accounts[vote.Voter] = struct{}{}
-			}
-
-			weights := computeStakeDistribution(snapshot, accounts)
-
-			positives := 0.0
-
-			for _, vote := range votes {
-				if vote.Ok {
-					positives += weights[vote.Voter]
-				}
-			}
-
-			if positives < sys.SnowballQueryAlpha {
-				if Error != nil {
-					Error <- errors.Errorf("only %.2f%% of queried peers find transaction %x valid", positives, evt.TX.ID)
-				}
-
-				return nil
-			}
-
-			// Double-check that after gossiping, we have not progressed a single view ID and
-			// that the transaction is still valid for us to add to our view-graph.
-
-			if err := l.addTransaction(tx); err != nil {
-				if Error != nil {
-					Error <- err
-				}
-
-				return nil
-			}
-
-			/** At this point, the transaction was successfully added to our view-graph. **/
-
-			// If we have nothing else to broadcast and we are not broadcasting out
-			// nop transactions, then start broadcasting out nop transactions.
-			if len(l.broadcastQueue) == 0 && !broadcastNops {
-				broadcastNops = true
-			}
-
-			if Result != nil {
-				Result <- tx
-			}
-		case <-time.After(1 * time.Second):
-			if Error != nil {
-				Error <- errors.Wrap(ErrTimeout, "did not get back a gossip response")
-			}
-		}
-
-		if l.cr.Preferred() != nil {
-			return ErrPreferredSelected
-		}
-
-		return nil
-	}
-}
-
-func listenForGossip(l *Ledger) func(stop <-chan struct{}) error {
-	return func(stop <-chan struct{}) error {
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case evt := <-l.queryIn:
-			// If we got a query while we were gossiping, check if the queried transaction
-			// is valid. If it is, then we prefer it and move on to querying.
-
-			// Respond to the query with either:
-			//
-			// a) the queriers transaction indicating that we will now query with their transaction.
-			// b) should they be in a prior view ID, the prior consensus rounds root.
-			// c) no response indicating that we do not prefer any transaction.
-
-			if root := l.v.loadRoot(); evt.TX.ViewID == root.ViewID {
-				evt.Response <- root
-				return nil
-			}
-
-			if err := l.addTransaction(evt.TX); err != nil {
-				evt.Error <- err
-				return nil
-			}
-
-			// If the transaction we were queried with is critical, then prefer the incoming
-			// queried transaction and move on to querying.
-
-			evt.Response <- l.cr.Preferred()
-		case evt := <-l.gossipIn:
-			// Handle some incoming gossip.
-
-			// Sending `nil` to `evt.Vote` is equivalent to voting that the
-			// incoming gossiped transaction has been accepted by our node.
-
-			// If we already have the transaction in our view-graph, we tell the gossiper
-			// that the transaction has already been well-received by us.
-
-			if err := l.addTransaction(evt.TX); err != nil {
-				evt.Vote <- err
-				return nil
-			}
-
-			evt.Vote <- nil
-		}
-
-		if l.cr.Preferred() != nil {
-			return ErrPreferredSelected
-		}
-
-		return nil
-	}
-}
-
-func query(l *Ledger, state *stateQuerying) func(stop <-chan struct{}) error {
-	return func(stop <-chan struct{}) error {
-		snapshot := l.a.snapshot()
-		preferred := l.cr.Preferred()
-
-		if preferred == nil {
-			return ErrConsensusRoundFinished
-		}
-
-		if preferred.ViewID != l.v.loadViewID(nil) {
-			l.cr.Reset()
-			return ErrConsensusRoundFinished
-		}
-
-		evt := EventQuery{
-			TX:     *preferred,
-			Result: make(chan []VoteQuery, 1),
-			Error:  make(chan error, 1),
-		}
-
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case <-time.After(1 * time.Second):
-			return errors.Wrap(ErrTimeout, "query queue is full")
-		case l.queryOut <- evt:
-		}
-
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case err := <-evt.Error:
-			return errors.Wrap(err, "query got event error")
-		case votes := <-evt.Result:
-			if len(votes) == 0 {
-				return nil
-			}
-
-			oldRoot := l.v.loadRoot()
-			ourViewID := l.v.loadViewID(oldRoot)
-
-			counts := make(map[common.TransactionID]float64)
-			accounts := make(map[common.AccountID]struct{}, len(votes))
-			transactions := make(map[common.TransactionID]Transaction)
-
-			for _, vote := range votes {
-				if vote.Preferred.ViewID == ourViewID && vote.Preferred.ID != common.ZeroTransactionID {
-					transactions[vote.Preferred.ID] = vote.Preferred
-				}
-
-				accounts[vote.Voter] = struct{}{}
-			}
-
-			weights := computeStakeDistribution(snapshot, accounts)
-
-			for _, vote := range votes {
-				if vote.Preferred.ViewID == ourViewID && vote.Preferred.ID != common.ZeroTransactionID {
-					counts[vote.Preferred.ID] += weights[vote.Voter]
-				}
-			}
-
-			l.cr.Tick(counts, transactions)
-
-			// Once Snowball has finalized, collapse down our transactions, reset everything, and
-			// commit the newly officiated ledger state to our database.
-
-			if l.cr.Decided() {
-				var exception error
-
-				state.resetOnce.Do(func() {
-					newRoot := l.cr.Preferred()
-
-					state, missing, err := l.collapseTransactions(*newRoot, true)
-
-					if len(missing) > 0 {
-						l.muMissing.Lock()
-						for _, id := range missing {
-							_, ok := l.missing[id]
-
-							if !ok {
-								l.missing[id] = make(map[common.TransactionID]Transaction)
-							}
-
-							l.missing[id][newRoot.ID] = *newRoot
-						}
-						l.muMissing.Unlock()
-						l.doLinearizedMissingTxSync(missing)
-					}
-
-					if err != nil {
-						exception = errors.Wrap(err, "decided a new root, but got an error collapsing down its ancestry")
-						return
-					}
-
-					if err = l.a.commit(state); err != nil {
-						exception = errors.Wrap(err, "failed to commit collapsed state to our database")
-						return
-					}
-
-					l.cr.Reset()
-					l.v.reset(newRoot)
-
-					if err := WriteCriticalTimestamp(l.kv, newRoot.Timestamp, newRoot.ViewID); err != nil {
-						exception = err
-						return
-					}
-
-					l.muMissing.Lock()
-					for id, buffered := range l.missing {
-						for _, tx := range buffered {
-							if tx.ViewID < l.v.loadViewID(newRoot) {
-								delete(buffered, tx.ID)
-							}
-						}
-
-						if len(buffered) == 0 {
-							delete(l.missing, id)
-						}
-					}
-					l.muMissing.Unlock()
-
-					logger := log.Consensus("round_end")
-					logger.Info().
-						Int("num_tx", l.v.numTransactions(oldRoot.ViewID)).
-						Uint64("old_view_id", l.v.loadViewID(oldRoot)).
-						Uint64("new_view_id", l.v.loadViewID(newRoot)).
-						Hex("new_root", newRoot.ID[:]).
-						Hex("old_root", oldRoot.ID[:]).
-						Hex("new_accounts_checksum", newRoot.AccountsMerkleRoot[:]).
-						Hex("old_accounts_checksum", oldRoot.AccountsMerkleRoot[:]).
-						Msg("Finalized consensus round, and incremented view ID.")
-				})
-
-				if exception != nil {
-					fmt.Printf("%+v\n", exception)
-					return nil
-				}
-
-				return ErrConsensusRoundFinished
-			}
-		case <-time.After(1 * time.Second):
-			return errors.Wrap(ErrTimeout, "did not get back a query response")
-		}
-
-		return nil
-	}
-}
-
-func listenForQueries(l *Ledger) func(stop <-chan struct{}) error {
-	return func(stop <-chan struct{}) error {
-		preferred := l.cr.Preferred()
-
-		if preferred == nil {
-			return ErrConsensusRoundFinished
-		}
-
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case evt := <-l.queryIn:
-			// Respond to the query with either:
-			//
-			// a) our own preferred transaction.
-			// b) should they be in a prior view ID, the prior consensus rounds root.
-
-			if root := l.v.loadRoot(); evt.TX.ViewID == root.ViewID {
-				evt.Response <- root
-			} else {
-				evt.Response <- preferred
-			}
-		case evt := <-l.gossipIn:
-			// Handle some incoming gossip.
-
-			// Sending `nil` to `evt.Vote` is equivalent to voting that the
-			// incoming gossiped transaction has been accepted by our node.
-
-			// If we already have the transaction in our view-graph, we tell the gossiper
-			// that the transaction has already been well-received by us.
-
-			if err := l.addTransaction(evt.TX); err != nil {
-				evt.Vote <- err
-				return nil
-			}
-
-			evt.Vote <- nil
-		}
-
-		return nil
-	}
-}
-
-func checkIfOutOfSync(l *Ledger) func(stop <-chan struct{}) error {
-	return func(stop <-chan struct{}) error {
-		time.Sleep(1 * time.Millisecond)
-
-		snapshot := l.a.snapshot()
-
-		evt := EventOutOfSyncCheck{
-			Root:   *l.v.loadRoot(),
-			Result: make(chan []VoteOutOfSync, 1),
-			Error:  make(chan error, 1),
-		}
-
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case l.outOfSyncOut <- evt:
-		}
-
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case err := <-evt.Error:
-			if err != nil {
-				fmt.Println(err)
-			}
-			return nil
-		case votes := <-evt.Result:
-			if len(votes) == 0 {
-				return nil
-			}
-
-			counts := make(map[common.TransactionID]float64)
-			accounts := make(map[common.AccountID]struct{})
-			transactions := make(map[common.TransactionID]Transaction)
-
-			for _, vote := range votes {
-				if vote.Root.ID != common.ZeroTransactionID {
-					transactions[vote.Root.ID] = vote.Root
-				}
-
-				accounts[vote.Voter] = struct{}{}
-			}
-
-			weights := computeStakeDistribution(snapshot, accounts)
-
-			for _, vote := range votes {
-				if vote.Root.ID != common.ZeroTransactionID {
-					counts[vote.Root.ID] += weights[vote.Voter]
-				}
-			}
-
-			l.sr.Tick(counts, transactions)
-
-			if l.sr.Decided() {
-				proposedRoot := l.sr.Preferred()
-				currentRoot := l.v.loadRoot()
-
-				// The view ID we came to consensus to being the latest within the network
-				// is less than or equal to ours. Go back to square one.
-
-				if currentRoot.ID == proposedRoot.ID || l.v.loadViewID(currentRoot) >= l.v.loadViewID(proposedRoot) {
-					time.Sleep(1 * time.Second)
-
-					l.sr.Reset()
-					return nil
-				}
-
-				return ErrOutOfSync
-			}
-		}
-
-		return nil
-	}
-}
-
-func listenForOutOfSyncChecks(l *Ledger) func(stop <-chan struct{}) error {
-	return func(stop <-chan struct{}) error {
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case evt := <-l.outOfSyncIn:
-			evt.Response <- l.v.loadRoot()
-		}
-
-		return nil
-	}
-}
-
-func listenForSyncInits(l *Ledger) func(stop <-chan struct{}) error {
-	return func(stop <-chan struct{}) error {
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case evt := <-l.syncInitIn:
-			data := SyncInitMetadata{
-				ViewID: l.v.loadViewID(nil),
-			}
-
-			diff := l.a.snapshot().DumpDiff(evt.ViewID)
-
-			for i := 0; i < len(diff); i += SyncChunkSize {
-				end := i + SyncChunkSize
-
-				if end > len(diff) {
-					end = len(diff)
-				}
-
-				hash := blake2b.Sum256(diff[i:end])
-
-				l.cacheDiffChunks.put(hash, diff[i:end])
-				data.ChunkHashes = append(data.ChunkHashes, hash)
-			}
-
-			evt.Response <- data
-		}
-
-		return nil
-	}
-}
-
-func listenForSyncDiffChunks(l *Ledger) func(stop <-chan struct{}) error {
-	return func(stop <-chan struct{}) error {
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case evt := <-l.syncDiffIn:
-			if chunk, found := l.cacheDiffChunks.load(evt.ChunkHash); found {
-				chunk := chunk.([]byte)
-
-				providedHash := blake2b.Sum256(chunk)
-
-				logger := log.Sync("provide_chunk")
-				logger.Info().
-					Hex("requested_hash", evt.ChunkHash[:]).
-					Hex("provided_hash", providedHash[:]).
-					Msg("Responded to sync chunk request.")
-
-				evt.Response <- chunk
-			} else {
-				evt.Response <- nil
-			}
-		}
-
-		return nil
-	}
-}
-
-func syncMissingTX(l *Ledger, ids []common.TransactionID) func(stop <-chan struct{}) error {
-	return func(stop <-chan struct{}) error {
-		time.Sleep(100 * time.Millisecond)
-
-		evt := EventSyncTX{
-			Result: make(chan []Transaction, 1),
-			Error:  make(chan error, 1),
-			IDs:    ids,
-		}
-
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case l.syncTxOut <- evt:
-		}
-
-		var txs []Transaction
-
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case err := <-evt.Error:
-			return errors.Wrap(err, "sync missing event got error")
-		case t := <-evt.Result:
-			txs = t
-		}
-
-		var syncErrors error
-		for _, tx := range txs {
-			if err := l.addTransaction(tx); err != nil {
-				if syncErrors == nil {
-					syncErrors = err
-				} else {
-					syncErrors = errors.Wrap(err, syncErrors.Error())
-				}
-			}
-		}
-
-		return syncErrors
-	}
-}
-
-func listenForMissingTXs(l *Ledger) func(stop <-chan struct{}) error {
-	return func(stop <-chan struct{}) error {
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case evt := <-l.syncTxIn:
-			var txs []Transaction
-
-			for _, id := range evt.IDs {
-				if tx, available := l.v.lookupTransaction(id); available {
-					txs = append(txs, *tx)
-				}
-			}
-
-			evt.Response <- txs
-		}
-
-		return nil
-	}
-}
-
-func syncUp(l *Ledger, root Transaction) func(stop <-chan struct{}) error {
-	return func(stop <-chan struct{}) error {
-		evt := EventSyncInit{
-			ViewID: l.v.loadViewID(nil),
-			Result: make(chan []SyncInitMetadata, 1),
-			Error:  make(chan error, 1),
-		}
-
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case l.syncInitOut <- evt:
-		}
-
-		var votes []SyncInitMetadata
-
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case err := <-evt.Error:
-			return errors.Wrap(err, ErrSyncFailed.Error())
-		case v := <-evt.Result:
-			votes = v
-		}
-
-		votesByViewID := make(map[uint64][]SyncInitMetadata)
-
-		for _, vote := range votes {
-			if vote.ViewID > 0 && len(vote.ChunkHashes) > 0 {
-				votesByViewID[vote.ViewID] = append(votesByViewID[vote.ViewID], vote)
-			}
-		}
-
-		var selected []SyncInitMetadata
-
-		for _, v := range votesByViewID {
-			if len(v) >= len(votes)*2/3 {
-				selected = votes
-				break
-			}
-		}
-
-		// There is no consensus on view IDs to sync towards; cancel the sync.
-		if selected == nil {
-			return errors.Wrap(ErrSyncFailed, "no consensus on which view ID to sync towards")
-		}
-
-		var sources []ChunkSource
-
-		for i := 0; ; i++ {
-			hashCount := make(map[[blake2b.Size256]byte][]*skademlia.ID)
-			hashInRange := false
-
-			for _, vote := range selected {
-				if i >= len(vote.ChunkHashes) {
-					continue
-				}
-
-				hashCount[vote.ChunkHashes[i]] = append(hashCount[vote.ChunkHashes[i]], vote.PeerID)
-				hashInRange = true
-			}
-
-			if !hashInRange {
-				break
-			}
-
-			consistent := false
-
-			for hash, peers := range hashCount {
-				if len(peers) >= len(selected)*2/3 && len(peers) > 0 {
-					sources = append(sources, ChunkSource{Hash: hash, PeerIDs: peers})
-
-					consistent = true
-					break
-				}
-			}
-
-			if !consistent {
-				return errors.Wrap(ErrSyncFailed, "chunk IDs are not consistent")
-			}
-		}
-
-		evtc := EventSyncDiff{
-			Sources: sources,
-			Result:  make(chan [][]byte, 1),
-			Error:   make(chan error, 1),
-		}
-
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case <-time.After(1 * time.Second):
-			return errors.Wrap(ErrSyncFailed, "timed out while waiting for sync chunk queue to empty up")
-		case l.syncDiffOut <- evtc:
-		}
-
-		var chunks [][]byte
-
-		select {
-		case <-l.kill:
-			return ErrStopped
-		case <-stop:
-			return ErrStopped
-		case err := <-evtc.Error:
-			return errors.Wrap(ErrSyncFailed, err.Error())
-		case c := <-evtc.Result:
-			chunks = c
-		}
-
-		var diff []byte
-
-		for _, chunk := range chunks {
-			diff = append(diff, chunk...)
-		}
-
-		// Attempt to apply the diff to a snapshot of our ledger state.
-		snapshot := l.a.snapshot()
-
-		if err := snapshot.ApplyDiff(diff); err != nil {
-			return errors.Wrapf(ErrSyncFailed, "failed to apply diff to state - got error: %+v", err.Error())
-		}
-
-		// The diff did not get us the intended merkle root we wanted. Stop syncing.
-		if snapshot.Checksum() != root.AccountsMerkleRoot {
-			return errors.Wrapf(ErrSyncFailed, "applying the diff yielded a merkle root of %x, but the root recorded a merkle root of %x", snapshot.Checksum(), root.AccountsMerkleRoot)
-		}
-
-		// Apply the diff to our official ledger state.
-		if err := l.a.commit(snapshot); err != nil {
-			return errors.Wrapf(ErrSyncFailed, "failed to commit collapsed state to our database - got error %+v", err.Error())
-		}
-
-		l.cr.Reset()
-		l.v.reset(&root)
-
-		// Sync successful.
-		logger := log.Sync("apply")
-		logger.Info().
-			Int("num_chunks", len(chunks)).
-			Uint64("new_view_id", l.v.loadViewID(nil)).
-			Msg("Successfully built a new state tree out of chunk(s) we have received from peers.")
-
-		return nil
-	}
 }

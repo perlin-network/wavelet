@@ -3,7 +3,6 @@ package api
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -14,7 +13,6 @@ import (
 	"github.com/perlin-network/noise/xnoise"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
-	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -94,7 +92,7 @@ func TestListTransaction(t *testing.T) {
 	var buf [200]byte
 	_, err = rand.Read(buf[:])
 	assert.NoError(t, err)
-	_, err = wavelet.NewTransaction(keys, sys.TagTransfer, buf[:])
+	_ = wavelet.NewTransaction(keys, sys.TagTransfer, buf[:])
 	assert.NoError(t, err)
 
 	// Build an expected response
@@ -218,7 +216,7 @@ func TestGetTransaction(t *testing.T) {
 	var buf [200]byte
 	_, err = rand.Read(buf[:])
 	assert.NoError(t, err)
-	_, err = wavelet.NewTransaction(keys, sys.TagTransfer, buf[:])
+	_ = wavelet.NewTransaction(keys, sys.TagTransfer, buf[:])
 	assert.NoError(t, err)
 
 	var txId common.TransactionID
@@ -683,7 +681,7 @@ func TestGetLedger(t *testing.T) {
 	assert.NoError(t, err)
 	gateway.keys = keys
 
-	n, err := xnoise.ListenTCP(9000)
+	n, err := xnoise.ListenTCP(0)
 	assert.NoError(t, err)
 	gateway.node = n
 
@@ -712,9 +710,9 @@ func TestGetLedger(t *testing.T) {
 		PeerAddresses []string `json:"peers"`
 	}{
 		PublicKey:     hex.EncodeToString(publicKey[:]),
-		HostAddress:   "[::]:9000",
+		HostAddress:   "[::]:" + strconv.Itoa(n.Addr().(*net.TCPAddr).Port),
 		PeerAddresses: nil,
-		RootID:        "38b3074dd255aaa81a071e2009a838e6abea05c149bdfaac7997bf300dd7e5a5",
+		RootID:        "1e173f2403ea3f29349cacb7c99ea1c3ef9b30c6476f580f07c5a9791533fde8",
 		ViewID:        1,
 		Difficulty:    uint64(sys.MinDifficulty),
 	}
@@ -846,7 +844,7 @@ func createLedger(t *testing.T) *wavelet.Ledger {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ledger := wavelet.NewLedger(context.TODO(), keys, store.NewInmem())
+	ledger := wavelet.NewLedger(keys)
 	return ledger
 }
 

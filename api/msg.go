@@ -145,17 +145,17 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 		return errors.Errorf("sender signature must be size %d", common.SizeSignature)
 	}
 
-	var sender edwards25519.PublicKey
-	copy(sender[:], senderBuf)
+	copy(s.creator[:], senderBuf)
 
 	var signature edwards25519.Signature
 	copy(signature[:], signatureBuf)
 
-	if !edwards25519.Verify(sender, append([]byte{s.Tag}, s.payload...), signature) {
+	var nonce [8]byte // TODO(kenta): nonce
+
+	if !edwards25519.Verify(s.creator, append(nonce[:], append([]byte{s.Tag}, s.payload...)...), signature) {
 		return errors.Wrap(err, "sender signature verification failed")
 	}
 
-	copy(s.creator[:], senderBuf)
 	copy(s.signature[:], signatureBuf)
 
 	return nil
@@ -186,7 +186,9 @@ func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, er
 		o.Set("parent_ids", nil)
 	}
 
-	if s.tx.IsCritical(s.ledger.Difficulty()) {
+	round := s.ledger.LastRound()
+
+	if s.tx.IsCritical(round.Root.ExpectedDifficulty(byte(sys.MinDifficulty))) {
 		o.Set("is_critical", arena.NewTrue())
 	} else {
 		o.Set("is_critical", arena.NewFalse())
@@ -209,13 +211,15 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 		return nil, errors.New("insufficient parameters were provided")
 	}
 
+	round := s.ledger.LastRound()
+
 	o := arena.NewObject()
 
 	o.Set("public_key", arena.NewString(hex.EncodeToString(s.publicKey[:])))
 	o.Set("address", arena.NewString(s.node.Addr().String()))
-	o.Set("root_id", arena.NewString(hex.EncodeToString(s.ledger.Root().ID[:])))
-	o.Set("view_id", arena.NewNumberString(strconv.FormatUint(s.ledger.ViewID(), 10)))
-	o.Set("difficulty", arena.NewNumberString(strconv.FormatUint(s.ledger.Difficulty(), 10)))
+	o.Set("root_id", arena.NewString(hex.EncodeToString(round.Root.ID[:])))
+	o.Set("view_id", arena.NewNumberString(strconv.FormatUint(s.ledger.RoundID(), 10)))
+	o.Set("difficulty", arena.NewNumberString(strconv.FormatUint(uint64(round.Root.ExpectedDifficulty(byte(sys.MinDifficulty))), 10)))
 
 	peers := s.network.Peers(s.node)
 	if len(peers) > 0 {
@@ -255,13 +259,12 @@ func (s *transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 	o.Set("id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
 	o.Set("sender", arena.NewString(hex.EncodeToString(s.tx.Sender[:])))
 	o.Set("creator", arena.NewString(hex.EncodeToString(s.tx.Creator[:])))
-	o.Set("timestamp", arena.NewNumberString(strconv.FormatUint(s.tx.Timestamp, 10)))
+	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(s.tx.Nonce, 10)))
 	o.Set("tag", arena.NewNumberInt(int(s.tx.Tag)))
 	o.Set("payload", arena.NewString(base64.StdEncoding.EncodeToString(s.tx.Payload)))
-	o.Set("accounts_root", arena.NewString(hex.EncodeToString(s.tx.AccountsMerkleRoot[:])))
 	o.Set("sender_signature", arena.NewString(hex.EncodeToString(s.tx.SenderSignature[:])))
 	o.Set("creator_signature", arena.NewString(hex.EncodeToString(s.tx.CreatorSignature[:])))
-	o.Set("depth", arena.NewNumberString(strconv.FormatUint(s.tx.Depth(), 10)))
+	o.Set("depth", arena.NewNumberString(strconv.FormatUint(s.tx.Depth, 10)))
 
 	if s.tx.ParentIDs != nil {
 		parents := arena.NewArray()
