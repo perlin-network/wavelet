@@ -115,7 +115,7 @@ type Protocol struct {
 	receiverLock sync.Mutex
 	receivers []*receiver
 
-	broadcast *broadcaster
+	broadcaster *broadcaster
 
 	ctx context.Context
 	cancel func()
@@ -135,7 +135,7 @@ func (p *Protocol) Stop() {
 		r.Stop()
 	}
 
-	p.broadcast.Stop()
+	p.broadcaster.Stop()
 }
 
 func (p *Protocol) Ledger() *wavelet.Ledger {
@@ -183,7 +183,7 @@ func (p *Protocol) RegisterOpcodes(node *noise.Node) {
 func (p *Protocol) Init(node *noise.Node) {
 	p.ctx, p.cancel = context.WithCancel(context.Background())
 
-	p.broadcast = NewBroadcaster(12, 1000)
+	p.broadcaster = NewBroadcaster(12, 1000)
 
 	go p.sendLoop(node)
 	go p.ledger.Run()
@@ -281,7 +281,7 @@ func (p *Protocol) broadcastGossip(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcast.Broadcast(peers, p.opcodeGossipRequest, p.opcodeGossipResponse, GossipRequest{tx: evt.TX}.Marshal())
+			responses := p.broadcaster.Broadcast(peers, p.opcodeGossipRequest, p.opcodeGossipResponse, GossipRequest{tx: evt.TX}.Marshal())
 
 			votes := make([]wavelet.VoteGossip, len(responses))
 
@@ -320,7 +320,7 @@ func (p *Protocol) broadcastQueries(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcast.Broadcast(peers, p.opcodeQueryRequest, p.opcodeQueryResponse, QueryRequest{round: *evt.Round}.Marshal())
+			responses := p.broadcaster.Broadcast(peers, p.opcodeQueryRequest, p.opcodeQueryResponse, QueryRequest{round: *evt.Round}.Marshal())
 
 			votes := make([]wavelet.VoteQuery, len(responses))
 
@@ -359,7 +359,7 @@ func (p *Protocol) broadcastOutOfSyncChecks(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcast.Broadcast(peers, p.opcodeOutOfSyncRequest, p.opcodeOutOfSyncResponse, nil)
+			responses := p.broadcaster.Broadcast(peers, p.opcodeOutOfSyncRequest, p.opcodeOutOfSyncResponse, nil)
 
 			votes := make([]wavelet.VoteOutOfSync, len(peers))
 
@@ -399,7 +399,7 @@ func (p *Protocol) broadcastSyncInitRequests(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcast.Broadcast(peers, p.opcodeSyncInitRequest, p.opcodeSyncInitResponse, SyncInitRequest{viewID: evt.RoundID}.Marshal())
+			responses := p.broadcaster.Broadcast(peers, p.opcodeSyncInitRequest, p.opcodeSyncInitResponse, SyncInitRequest{viewID: evt.RoundID}.Marshal())
 
 			votes := make([]wavelet.SyncInitMetadata, len(responses))
 
@@ -439,7 +439,7 @@ func (p *Protocol) broadcastDownloadTxRequests(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcast.Broadcast(peers, p.opcodeDownloadTxRequest, p.opcodeDownloadTxResponse, DownloadTxRequest{ids: evt.IDs}.Marshal())
+			responses := p.broadcaster.Broadcast(peers, p.opcodeDownloadTxRequest, p.opcodeDownloadTxResponse, DownloadTxRequest{ids: evt.IDs}.Marshal())
 
 			set := make(map[common.TransactionID]wavelet.Transaction)
 
