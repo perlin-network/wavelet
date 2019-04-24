@@ -20,6 +20,9 @@ import (
 )
 
 var (
+	RoundLatestKey = []byte(".ledger.round.latest")
+	RoundCountKey  = []byte(".ledger.round.count")
+
 	ErrStopped       = errors.New("worker stopped")
 	ErrNonePreferred = errors.New("no critical transactions available in round yet")
 )
@@ -43,6 +46,8 @@ type Ledger struct {
 
 	rounds map[uint64]Round
 	round  uint64
+
+	kv store.KV
 
 	mu sync.RWMutex
 
@@ -123,9 +128,19 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV) *Ledger {
 
 	accounts := newAccounts(kv)
 
-	round := performInception(accounts.tree, nil)
-	if err := accounts.commit(nil); err != nil {
-		panic(err)
+	var round Round
+	var roundCount uint64
+
+	savedRound, savedCount, err := loadRound(kv)
+	if err != nil {
+		round = performInception(accounts.tree, nil)
+		if err := accounts.commit(nil); err != nil {
+			panic(err)
+		}
+		roundCount = 1
+	} else {
+		round = *savedRound
+		roundCount = savedCount
 	}
 
 	graph := NewGraph(&round)
@@ -153,7 +168,9 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV) *Ledger {
 		},
 
 		rounds: map[uint64]Round{round.Index: round},
-		round:  1,
+		round:  roundCount,
+
+		kv: kv,
 
 		syncingCond: sync.Cond{L: new(sync.Mutex)},
 
@@ -779,4 +796,40 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) e
 	}
 
 	return nil
+}
+
+func storeRound(kv store.KV, count uint64, round Round) error {
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], count)
+
+	var err error
+	if err = kv.Put(RoundCountKey, buf[:]); err != nil {
+		return err
+	}
+
+	return kv.Put(RoundLatestKey, round.Marshal())
+}
+
+func loadRound(kv store.KV) (*Round, uint64, error) {
+	var b []byte
+	var err error
+
+	var count uint64
+	b, err = kv.Get(RoundCountKey)
+	if err != nil {
+		return nil, 0, err
+	}
+	count = binary.BigEndian.Uint64(b[:8])
+
+	var round Round
+	b, err = kv.Get(RoundLatestKey)
+	if err != nil {
+		return nil, 0, err
+	}
+	round, err = UnmarshalRound(bytes.NewReader(b))
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return &round, count, nil
 }
