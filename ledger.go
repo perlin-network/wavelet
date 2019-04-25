@@ -417,7 +417,7 @@ func (l *Ledger) recvLoop(ctx context.Context) {
 		default:
 		}
 
-		if err := step(ctx); err != nil {
+		if err := step(ctx); err != nil && errors.Cause(err) != ErrMissingParents {
 			fmt.Println("recv error:", err)
 		}
 	}
@@ -625,14 +625,14 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 
 		if err := l.applyTransactionToSnapshot(snapshot, popped); err != nil {
 			if logging {
-				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
+				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.Confidence, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
 				logger.Log().Err(err).Msg("Failed to apply transaction to the ledger.")
 			}
 
 			continue
 		} else {
 			if logging {
-				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.ParentIDs, popped.Tag, popped.Payload, "applied")
+				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.Confidence, popped.ParentIDs, popped.Tag, popped.Payload, "applied")
 				logger.Log().Msg("Successfully applied transaction to the ledger.")
 			}
 		}

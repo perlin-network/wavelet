@@ -24,14 +24,14 @@ const (
 
 type receiverPayload struct {
 	opcode byte
-	wire noise.Wire
+	wire   noise.Wire
 }
 
 type receiver struct {
-	bus chan receiverPayload
+	bus     chan receiverPayload
 	stopped atomic.Bool
 
-	wg sync.WaitGroup
+	wg     sync.WaitGroup
 	cancel func()
 }
 
@@ -39,7 +39,7 @@ func NewReceiver(protocol *Protocol, workersNum int, capacity uint32) *receiver 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	r := receiver{
-		bus: make(chan receiverPayload, capacity),
+		bus:    make(chan receiverPayload, capacity),
 		cancel: cancel,
 	}
 
@@ -52,9 +52,9 @@ func NewReceiver(protocol *Protocol, workersNum int, capacity uint32) *receiver 
 			var msg receiverPayload
 			for {
 				select {
-					case <-ctx.Done():
-						return
-					case msg =<- r.bus:
+				case <-ctx.Done():
+					return
+				case msg = <-r.bus:
 				}
 
 				switch msg.opcode {
@@ -113,13 +113,13 @@ type Protocol struct {
 	keys    *skademlia.Keypair
 
 	receiverLock sync.Mutex
-	receivers []*receiver
+	receivers    []*receiver
 
 	broadcaster *broadcaster
 
-	ctx context.Context
+	ctx    context.Context
 	cancel func()
-	wg sync.WaitGroup
+	wg     sync.WaitGroup
 }
 
 func New(network *skademlia.Protocol, keys *skademlia.Keypair) *Protocol {
@@ -580,7 +580,7 @@ func (p *Protocol) handleQueryRequest(wire noise.Wire) {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out getting query result from ledger")
 	case err := <-evt.Error:
-		if err != nil {
+		if err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
 			fmt.Printf("got an error processing query request from %s: %s\n", wire.Peer().Addr(), err)
 		}
 	case preferred := <-evt.Response:
@@ -620,7 +620,7 @@ func (p *Protocol) handleGossipRequest(wire noise.Wire) {
 	case err := <-evt.Vote:
 		res.vote = err == nil
 
-		if err != nil {
+		if err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
 			fmt.Printf("got an error processing gossip request from %s: %s\n", wire.Peer().Addr(), err)
 		}
 	}
