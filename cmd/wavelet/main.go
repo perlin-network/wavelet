@@ -536,8 +536,8 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 				buf := params.Bytes()
 
 				binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(buf)))
-				params.Write(intBuf[:4])
-				params.Write(buf)
+				payload.Write(intBuf[:4])
+				payload.Write(buf)
 			}
 
 			go func() {
