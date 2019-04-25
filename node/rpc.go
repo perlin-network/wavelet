@@ -25,30 +25,30 @@ func selectPeers(network *skademlia.Protocol, node *noise.Node, amount int) ([]*
 }
 
 type broadcastResponse struct {
-	body []byte
+	body  []byte
 	order int
 }
 
 type broadcastPayload struct {
-	order int
-	requestOpcode byte
+	order          int
+	requestOpcode  byte
 	responseOpcode byte
-	res chan broadcastResponse
-	body []byte
-	peer *noise.Peer
+	res            chan broadcastResponse
+	body           []byte
+	peer           *noise.Peer
 }
 
 type broadcaster struct {
 	bus chan broadcastPayload
 
-	wg sync.WaitGroup
+	wg     sync.WaitGroup
 	cancel func()
 }
 
 func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 	ctx, cancel := context.WithCancel(context.Background())
 	b := broadcaster{
-		bus: make(chan broadcastPayload, capacity),
+		bus:    make(chan broadcastPayload, capacity),
 		cancel: cancel,
 	}
 
@@ -63,7 +63,7 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 				case <-ctx.Done():
 					return
 				case payload := <-b.bus:
-					func () {
+					func() {
 						res := broadcastResponse{
 							order: payload.order,
 						}
@@ -81,7 +81,7 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 
 						select {
 						case w := <-mux.Recv(payload.responseOpcode):
-							 res.body = w.Bytes()
+							res.body = w.Bytes()
 						case <-time.After(sys.QueryTimeout):
 						}
 					}()
@@ -99,12 +99,12 @@ func (b *broadcaster) Broadcast(
 	resc := make(chan broadcastResponse, len(peers))
 	for i, peer := range peers {
 		b.bus <- broadcastPayload{
-			order: i,
-			requestOpcode: reqOpcode,
+			order:          i,
+			requestOpcode:  reqOpcode,
 			responseOpcode: resOpcode,
-			body: req,
-			peer: peer,
-			res: resc,
+			body:           req,
+			peer:           peer,
+			res:            resc,
 		}
 	}
 
