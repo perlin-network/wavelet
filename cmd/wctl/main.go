@@ -533,6 +533,28 @@ func main() {
 				return nil
 			},
 		},
+		{
+			Name:  "poll_metrics",
+			Usage: "continuously receive metrics",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+
+				client.UseHTTPS = false
+				evChan, err := client.PollLoggerSink(nil, wctl.RouteWSMetrics)
+				if err != nil {
+					return err
+				}
+
+				for ev := range evChan {
+					output(ev)
+				}
+				return nil
+			},
+		},
 	}
 
 	sort.Sort(cli.FlagsByName(app.Flags))
