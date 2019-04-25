@@ -580,7 +580,7 @@ func (p *Protocol) handleQueryRequest(wire noise.Wire) {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out getting query result from ledger")
 	case err := <-evt.Error:
-		if err != nil {
+		if err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
 			fmt.Printf("got an error processing query request from %s: %s\n", wire.Peer().Addr(), err)
 		}
 	case preferred := <-evt.Response:
@@ -620,7 +620,7 @@ func (p *Protocol) handleGossipRequest(wire noise.Wire) {
 	case err := <-evt.Vote:
 		res.vote = err == nil
 
-		if err != nil {
+		if err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
 			fmt.Printf("got an error processing gossip request from %s: %s\n", wire.Peer().Addr(), err)
 		}
 	}

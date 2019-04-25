@@ -417,7 +417,7 @@ func (l *Ledger) recvLoop(ctx context.Context) {
 		default:
 		}
 
-		if err := step(ctx); err != nil {
+		if err := step(ctx); err != nil && errors.Cause(err) != ErrMissingParents {
 			fmt.Println("recv error:", err)
 		}
 	}

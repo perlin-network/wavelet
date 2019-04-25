@@ -198,6 +198,10 @@ func (g *Graph) lookupTransactionByID(id common.TransactionID) (*Transaction, bo
 	return tx, exists
 }
 
+var (
+	ErrMissingParents = errors.New("parents for transaction are not in graph")
+)
+
 func (g *Graph) addTransaction(tx Transaction) error {
 	if _, exists := g.transactions[tx.ID]; exists {
 		return nil
@@ -218,7 +222,7 @@ func (g *Graph) addTransaction(tx Transaction) error {
 
 	if len(missing) > 0 {
 		g.incomplete[ptr.ID] = struct{}{}
-		return errors.New("parents for transaction are not in graph")
+		return ErrMissingParents
 	}
 
 	return g.markTransactionAsComplete(ptr)
