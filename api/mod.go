@@ -56,6 +56,7 @@ func (g *Gateway) setup(enableTimeout bool) {
 	sinkAccounts := g.registerWebsocketSink("ws://accounts/?id=account_id")
 	sinkContracts := g.registerWebsocketSink("ws://contract/?id=contract_id")
 	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id")
+	sinkMetrics := g.registerWebsocketSink("ws://metrics/")
 
 	log.Register(g)
 
@@ -88,6 +89,7 @@ func (g *Gateway) setup(enableTimeout bool) {
 	r.GET("/poll/accounts", chain(g.securePoll(sinkAccounts), base))
 	r.GET("/poll/contract", chain(g.securePoll(sinkContracts), base))
 	r.GET("/poll/tx", chain(g.securePoll(sinkTransactions), base))
+	r.GET("/poll/metrics", chain(g.securePoll(sinkMetrics), base))
 
 	// Debug endpoint.
 	r.GET("/debug/pprof", pprofhandler.PprofHandler)
