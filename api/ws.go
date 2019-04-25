@@ -87,11 +87,12 @@ func (c *client) writeWorker() {
 
 func (s *sink) serve(ctx *fasthttp.RequestCtx) error {
 	filters := make(map[string]string)
-	ctx.QueryArgs().VisitAll(func(key, value []byte) {
-		if string(value) != "" {
-			filters[string(key)] = string(value)
+	values := ctx.QueryArgs()
+	for queryKey, key := range s.filters {
+		if queryValue := values.Peek(queryKey); len(queryValue) > 0 {
+			filters[key] = string(queryValue)
 		}
-	})
+	}
 
 	return upgrader.Upgrade(ctx, func(conn *websocket.Conn) {
 		client := &client{filters: filters, sink: s, conn: conn, send: make(chan []byte, 256)}
@@ -133,7 +134,8 @@ func (s *sink) run() {
 			for client := range s.clients {
 				for key, condition := range client.filters {
 					o := msg.value.Get(key)
-					if o != nil && valueEqual(o, condition) {
+
+					if o != nil && !valueEqual(o, condition) {
 						continue L
 					}
 				}
