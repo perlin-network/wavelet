@@ -515,6 +515,7 @@ L:
 			case ErrNonePreferred:
 				select {
 				case <-ctx.Done():
+					return
 				case <-time.After(10 * time.Millisecond):
 				}
 
@@ -618,8 +619,8 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 		// snapshot, silently log it and continue applying other transactions.
 		if err := l.rewardValidators(snapshot, popped, logging); err != nil {
 			if logging {
-				logger := log.Node()
-				logger.Warn().Err(err).Msg("Failed to reward a validator while collapsing down transactions.")
+				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.Confidence, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
+				logger.Log().Err(err).Msg("Failed to deduct transaction fees and reward validators before applying the transaction to the ledger.")
 			}
 
 			continue
