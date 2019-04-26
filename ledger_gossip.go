@@ -2,7 +2,6 @@ package wavelet
 
 import (
 	"context"
-	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"time"
@@ -121,32 +120,25 @@ func gossip(ledger *Ledger) func(ctx context.Context) error {
 			return nil
 		}
 
-		ledger.mu.Lock()
-		defer ledger.mu.Unlock()
-
-		accounts := make(map[common.AccountID]struct{})
-
-		for _, vote := range votes {
-			accounts[vote.Voter] = struct{}{}
-		}
-
-		weights := computeStakeDistribution(snapshot, accounts)
-
-		positives := 0.0
+		successful := false
 
 		for _, vote := range votes {
 			if vote.Ok {
-				positives += weights[vote.Voter]
+				successful = true
+				break
 			}
 		}
 
-		if positives < sys.SnowballQueryAlpha {
+		if !successful {
 			if Error != nil {
-				Error <- errors.Errorf("only %.2f%% of queried peers find transaction %x valid", positives, evt.TX.ID)
+				Error <- errors.Errorf("none of our peers find %x valid", evt.TX.ID)
 			}
 
 			return nil
 		}
+
+		ledger.mu.Lock()
+		defer ledger.mu.Unlock()
 
 		// Double-check that after gossiping, we have not progressed a single view ID and
 		// that the transaction is still valid for us to add to our view-graph.
