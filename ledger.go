@@ -93,6 +93,12 @@ type Ledger struct {
 
 	LatestViewOut <-chan EventLatestView
 	latestViewOut chan<- EventLatestView
+
+	ForwardTXIn chan<- EventForwardTX
+	forwardTXIn <-chan EventForwardTX
+
+	ForwardTXOut <-chan EventForwardTX
+	forwardTXOut chan<- EventForwardTX
 }
 
 func NewLedger(keys *skademlia.Keypair) *Ledger {

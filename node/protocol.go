@@ -70,6 +70,8 @@ func NewReceiver(protocol *Protocol, workersNum int, capacity uint32) *receiver 
 					protocol.handleSyncChunks(msg.wire)
 				case protocol.opcodeDownloadTxRequest:
 					protocol.handleDownloadTxRequests(msg.wire)
+				case protocol.opcodeForwardTxRequest:
+					protocol.handleForwardTxRequest(msg.wire)
 				}
 			}
 		}(ctx)
@@ -106,6 +108,9 @@ type Protocol struct {
 
 	opcodeDownloadTxRequest  byte
 	opcodeDownloadTxResponse byte
+
+	opcodeForwardTxRequest byte
+	opcodeForwardTxResponse byte
 
 	ledger *wavelet.Ledger
 
@@ -178,6 +183,12 @@ func (p *Protocol) RegisterOpcodes(node *noise.Node) {
 
 	p.opcodeDownloadTxResponse = node.NextAvailableOpcode()
 	node.RegisterOpcode("download tx response", p.opcodeDownloadTxResponse)
+
+	p.opcodeForwardTxRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("forward tx request", p.opcodeForwardTxRequest)
+
+	p.opcodeForwardTxResponse = node.NextAvailableOpcode()
+	node.RegisterOpcode("forward tx response", p.opcodeForwardTxResponse)
 }
 
 func (p *Protocol) Init(node *noise.Node) {
@@ -237,6 +248,7 @@ func (p *Protocol) sendLoop(node *noise.Node) {
 	go p.broadcastSyncInitRequests(node)
 	go p.broadcastSyncDiffRequests(node)
 	go p.broadcastDownloadTxRequests(node)
+	go p.broadcastForwardTxRequests(node)
 }
 
 func (p *Protocol) receiveLoop(peer *noise.Peer, bus chan<- receiverPayload) {
@@ -554,6 +566,31 @@ func (p *Protocol) broadcastSyncDiffRequests(node *noise.Node) {
 	}
 }
 
+func (p *Protocol) broadcastForwardTxRequests(node *noise.Node) {
+	p.wg.Add(1)
+	defer p.wg.Done()
+
+	for {
+		select {
+		case <-p.ctx.Done():
+			return
+		case evt := <-p.ledger.ForwardTXOut:
+			peers, err := selectPeers(p.network, node, sys.SnowballSyncK)
+			if err != nil {
+				evt.Error <- errors.Wrap(err, "got an error while selecting peers for forwarding transactions")
+				continue
+			}
+
+			p.broadcaster.Broadcast(
+				peers,
+				p.opcodeForwardTxRequest,
+				p.opcodeForwardTxResponse,
+				ForwardTXRequest{tx:evt.TX}.Marshal(),
+			)
+		}
+	}
+}
+
 func (p *Protocol) handleQueryRequest(wire noise.Wire) {
 	var res QueryResponse
 	defer func() {
@@ -746,5 +783,28 @@ func (p *Protocol) handleDownloadTxRequests(wire noise.Wire) {
 		return
 	case txs := <-evt.Response:
 		res.transactions = txs
+	}
+}
+
+func (p *Protocol) handleForwardTxRequest(wire noise.Wire) {
+	defer func() {
+		if err := wire.SendWithTimeout(p.opcodeForwardTxResponse, []byte{}, 1*time.Second); err != nil {
+			fmt.Println(err)
+		}
+	}()
+
+	req, err := UnmarshalForwardTXRequest(bytes.NewReader(wire.Bytes()))
+	if err != nil {
+		fmt.Println("Error while unmarshaling forward tx request", err)
+		return
+	}
+
+	evt := wavelet.EventForwardTX{TX: req.tx}
+
+	select {
+	case <-time.After(1 * time.Second):
+		fmt.Println("timed out sending forward tx request to ledger")
+		return
+	case p.ledger.ForwardTXIn <- evt:
 	}
 }

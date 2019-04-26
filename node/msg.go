@@ -47,6 +47,25 @@ func UnmarshalQueryResponse(r io.Reader) (q QueryResponse, err error) {
 	return
 }
 
+type ForwardTXRequest struct {
+	tx wavelet.Transaction
+}
+
+func (q ForwardTXRequest) Marshal() []byte {
+	return q.tx.Marshal()
+}
+
+func UnmarshalForwardTXRequest(r io.Reader) (q ForwardTXRequest, err error) {
+	q.tx, err = wavelet.UnmarshalTransaction(r)
+
+	if err != nil {
+		err = errors.Wrap(err, "failed to read forward tx request")
+		return
+	}
+
+	return
+}
+
 type GossipRequest struct {
 	tx wavelet.Transaction
 }
