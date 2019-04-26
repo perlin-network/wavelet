@@ -21,6 +21,7 @@ const (
 	RouteWSAccounts     = "/poll/accounts"
 	RouteWSContracts    = "/poll/contract"
 	RouteWSTransactions = "/poll/tx"
+	RouteWSMetrics      = "/poll/metrics"
 
 	HeaderSessionToken = "X-Session-Token"
 

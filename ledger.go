@@ -290,6 +290,8 @@ func (l *Ledger) Run() {
 
 	go l.stateSyncingLoop(l.ctx)
 	go l.txSyncingLoop(l.ctx)
+
+	go l.metrics.runLogger(l.ctx)
 }
 
 func (l *Ledger) Stop() {
