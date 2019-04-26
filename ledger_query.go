@@ -100,7 +100,7 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 			newRound := ledger.snowball.Preferred()
 			newRoot := ledger.graph.transactions[newRound.Root.ID]
 
-			state, err := ledger.collapseTransactions(newRound.Index, newRoot, true)
+			state, err := ledger.collapseTransactions(newRound.Index, newRoot, false)
 
 			if err != nil {
 				return errors.Wrap(err, "got an error finalizing a round")
@@ -187,7 +187,7 @@ func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction) error 
 
 	proposed := eligible[0]
 
-	state, err := ledger.collapseTransactions(ledger.round, proposed, true)
+	state, err := ledger.collapseTransactions(ledger.round, proposed, false)
 
 	if err != nil {
 		return errors.Wrap(err, "could not collapse first critical transaction we could find")
