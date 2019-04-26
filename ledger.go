@@ -127,6 +127,9 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 	latestViewIn := make(chan EventIncomingLatestView, 16)
 	latestViewOut := make(chan EventLatestView, 16)
 
+	forwardTxIn := make(chan EventForwardTX, 1024)
+	forwardTxOut := make(chan EventForwardTX, 1024)
+
 	accounts := newAccounts(store.NewInmem())
 
 	round := performInception(accounts.tree, nil)
@@ -207,6 +210,12 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 
 		LatestViewOut: latestViewOut,
 		latestViewOut: latestViewOut,
+
+		ForwardTXIn: forwardTxIn,
+		forwardTXIn: forwardTxIn,
+
+		ForwardTXOut: forwardTxOut,
+		forwardTXOut: forwardTxOut,
 	}
 }
 
@@ -264,6 +273,10 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 
 func (l *Ledger) addTransaction(tx Transaction) error {
 	if err := l.graph.addTransaction(tx); err != nil {
+		if err == ErrAlreadyExists {
+			return nil
+		}
+
 		return err
 	}
 
@@ -646,6 +659,12 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 		// Update nonce.
 		nonce, _ := ReadAccountNonce(snapshot, popped.Creator)
 		WriteAccountNonce(snapshot, popped.Creator, nonce+1)
+
+		select {
+		case <-time.After(1 * time.Second):
+			fmt.Println("timed out forwarding accepted transaction")
+		case l.forwardTXOut <- EventForwardTX{TX: *popped}:
+		}
 
 		if logging {
 			l.metrics.acceptedTX.Mark(1)

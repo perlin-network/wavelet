@@ -125,8 +125,8 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 				return nil
 			}()
 		case evt := <-ledger.forwardTXIn:
-			ledger.mu.RLock()
-			defer ledger.mu.RUnlock()
+			ledger.mu.Lock()
+			defer ledger.mu.Unlock()
 
 			return ledger.addTransaction(evt.TX)
 		}

@@ -12,7 +12,6 @@ const (
 
 type EventForwardTX struct {
 	TX Transaction
-	Error chan error
 }
 
 type EventBroadcast struct {

@@ -110,7 +110,6 @@ type Protocol struct {
 	opcodeDownloadTxResponse byte
 
 	opcodeForwardTxRequest byte
-	opcodeForwardTxResponse byte
 
 	ledger *wavelet.Ledger
 
@@ -186,9 +185,6 @@ func (p *Protocol) RegisterOpcodes(node *noise.Node) {
 
 	p.opcodeForwardTxRequest = node.NextAvailableOpcode()
 	node.RegisterOpcode("forward tx request", p.opcodeForwardTxRequest)
-
-	p.opcodeForwardTxResponse = node.NextAvailableOpcode()
-	node.RegisterOpcode("forward tx response", p.opcodeForwardTxResponse)
 }
 
 func (p *Protocol) Init(node *noise.Node) {
@@ -272,6 +268,8 @@ func (p *Protocol) receiveLoop(peer *noise.Peer, bus chan<- receiverPayload) {
 			rp.opcode = p.opcodeSyncChunkRequest
 		case rp.wire = <-peer.Recv(p.opcodeDownloadTxRequest):
 			rp.opcode = p.opcodeDownloadTxRequest
+		case rp.wire = <-peer.Recv(p.opcodeForwardTxRequest):
+			rp.opcode = p.opcodeForwardTxRequest
 		}
 
 		bus <- rp
@@ -293,7 +291,14 @@ func (p *Protocol) broadcastGossip(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcaster.Broadcast(peers, p.opcodeGossipRequest, p.opcodeGossipResponse, GossipRequest{tx: evt.TX}.Marshal())
+			responses := p.broadcaster.Broadcast(
+				p.ctx,
+				peers,
+				p.opcodeGossipRequest,
+				p.opcodeGossipResponse,
+				GossipRequest{tx: evt.TX}.Marshal(),
+				true,
+			)
 
 			votes := make([]wavelet.VoteGossip, len(responses))
 
@@ -332,7 +337,14 @@ func (p *Protocol) broadcastQueries(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcaster.Broadcast(peers, p.opcodeQueryRequest, p.opcodeQueryResponse, QueryRequest{round: *evt.Round}.Marshal())
+			responses := p.broadcaster.Broadcast(
+				p.ctx,
+				peers,
+				p.opcodeQueryRequest,
+				p.opcodeQueryResponse,
+				QueryRequest{round: *evt.Round}.Marshal(),
+				true,
+			)
 
 			votes := make([]wavelet.VoteQuery, len(responses))
 
@@ -371,7 +383,14 @@ func (p *Protocol) broadcastOutOfSyncChecks(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcaster.Broadcast(peers, p.opcodeOutOfSyncRequest, p.opcodeOutOfSyncResponse, nil)
+			responses := p.broadcaster.Broadcast(
+				p.ctx,
+				peers,
+				p.opcodeOutOfSyncRequest,
+				p.opcodeOutOfSyncResponse,
+				nil,
+				true,
+			)
 
 			votes := make([]wavelet.VoteOutOfSync, len(peers))
 
@@ -411,7 +430,14 @@ func (p *Protocol) broadcastSyncInitRequests(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcaster.Broadcast(peers, p.opcodeSyncInitRequest, p.opcodeSyncInitResponse, SyncInitRequest{viewID: evt.RoundID}.Marshal())
+			responses := p.broadcaster.Broadcast(
+				p.ctx,
+				peers,
+				p.opcodeSyncInitRequest,
+				p.opcodeSyncInitResponse,
+				SyncInitRequest{viewID: evt.RoundID}.Marshal(),
+				true,
+			)
 
 			votes := make([]wavelet.SyncInitMetadata, len(responses))
 
@@ -451,7 +477,14 @@ func (p *Protocol) broadcastDownloadTxRequests(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcaster.Broadcast(peers, p.opcodeDownloadTxRequest, p.opcodeDownloadTxResponse, DownloadTxRequest{ids: evt.IDs}.Marshal())
+			responses := p.broadcaster.Broadcast(
+				p.ctx,
+				peers,
+				p.opcodeDownloadTxRequest,
+				p.opcodeDownloadTxResponse,
+				DownloadTxRequest{ids: evt.IDs}.Marshal(),
+				true,
+			)
 
 			set := make(map[common.TransactionID]wavelet.Transaction)
 
@@ -577,15 +610,16 @@ func (p *Protocol) broadcastForwardTxRequests(node *noise.Node) {
 		case evt := <-p.ledger.ForwardTXOut:
 			peers, err := selectPeers(p.network, node, sys.SnowballSyncK)
 			if err != nil {
-				evt.Error <- errors.Wrap(err, "got an error while selecting peers for forwarding transactions")
 				continue
 			}
 
 			p.broadcaster.Broadcast(
+				p.ctx,
 				peers,
 				p.opcodeForwardTxRequest,
-				p.opcodeForwardTxResponse,
+				byte(0),
 				ForwardTXRequest{tx:evt.TX}.Marshal(),
+				false,
 			)
 		}
 	}
@@ -787,12 +821,6 @@ func (p *Protocol) handleDownloadTxRequests(wire noise.Wire) {
 }
 
 func (p *Protocol) handleForwardTxRequest(wire noise.Wire) {
-	defer func() {
-		if err := wire.SendWithTimeout(p.opcodeForwardTxResponse, []byte{}, 1*time.Second); err != nil {
-			fmt.Println(err)
-		}
-	}()
-
 	req, err := UnmarshalForwardTXRequest(bytes.NewReader(wire.Bytes()))
 	if err != nil {
 		fmt.Println("Error while unmarshaling forward tx request", err)

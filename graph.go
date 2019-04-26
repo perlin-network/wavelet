@@ -200,11 +200,12 @@ func (g *Graph) lookupTransactionByID(id common.TransactionID) (*Transaction, bo
 
 var (
 	ErrMissingParents = errors.New("parents for transaction are not in graph")
+	ErrAlreadyExists = errors.New("transaction already exists")
 )
 
 func (g *Graph) addTransaction(tx Transaction) error {
 	if _, exists := g.transactions[tx.ID]; exists {
-		return nil
+		return ErrAlreadyExists
 	}
 
 	ptr := &tx
