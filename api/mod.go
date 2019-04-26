@@ -273,10 +273,22 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 		}
 	}
 
+	rootDepth := g.ledger.LastRound().Root.Depth
+
 	var transactions transactionList
 
 	for _, tx := range g.ledger.ListTransactions(offset, limit, sender, creator) {
-		transactions = append(transactions, &transaction{tx: tx})
+		status := "received"
+
+		if tx.Depth <= rootDepth {
+			if g.ledger.TransactionApplied(tx.ID) {
+				status = "applied"
+			} else {
+				status = "failed"
+			}
+		}
+
+		transactions = append(transactions, &transaction{tx: tx, status: status})
 	}
 
 	g.render(ctx, transactions)
@@ -310,7 +322,21 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	g.render(ctx, &transaction{tx: tx})
+	rootDepth := g.ledger.LastRound().Root.Depth
+
+	res := &transaction{tx: tx}
+
+	if tx.Depth <= rootDepth {
+		if g.ledger.TransactionApplied(tx.ID) {
+			res.status = "applied"
+		} else {
+			res.status = "failed"
+		}
+	} else {
+		res.status = "received"
+	}
+
+	g.render(ctx, res)
 }
 
 func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {

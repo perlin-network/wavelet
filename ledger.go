@@ -380,6 +380,19 @@ func (l *Ledger) FindTransaction(id common.TransactionID) (*Transaction, bool) {
 	return tx, exists
 }
 
+func (l *Ledger) TransactionApplied(id common.TransactionID) bool {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	for _, round := range l.graph.roundIndex {
+		if _, exists := round[id]; exists {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (l *Ledger) ListTransactions(offset, limit uint64, sender, creator common.AccountID) (transactions []*Transaction) {
 	l.mu.RLock()
 	defer l.mu.RUnlock()

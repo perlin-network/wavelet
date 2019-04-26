@@ -237,7 +237,8 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 
 type transaction struct {
 	// Internal fields.
-	tx *wavelet.Transaction
+	tx     *wavelet.Transaction
+	status string
 }
 
 func (s *transaction) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
@@ -259,6 +260,7 @@ func (s *transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 	o.Set("id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
 	o.Set("sender", arena.NewString(hex.EncodeToString(s.tx.Sender[:])))
 	o.Set("creator", arena.NewString(hex.EncodeToString(s.tx.Creator[:])))
+	o.Set("status", arena.NewString(s.status))
 	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(s.tx.Nonce, 10)))
 	o.Set("depth", arena.NewNumberString(strconv.FormatUint(s.tx.Depth, 10)))
 	o.Set("confidence", arena.NewNumberString(strconv.FormatUint(s.tx.Confidence, 10)))
