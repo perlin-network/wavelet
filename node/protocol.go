@@ -70,6 +70,8 @@ func NewReceiver(protocol *Protocol, workersNum int, capacity uint32) *receiver 
 					protocol.handleSyncChunks(msg.wire)
 				case protocol.opcodeDownloadTxRequest:
 					protocol.handleDownloadTxRequests(msg.wire)
+				case protocol.opcodeForwardTxRequest:
+					protocol.handleForwardTxRequest(msg.wire)
 				}
 			}
 		}(ctx)
@@ -106,6 +108,8 @@ type Protocol struct {
 
 	opcodeDownloadTxRequest  byte
 	opcodeDownloadTxResponse byte
+
+	opcodeForwardTxRequest byte
 
 	ledger *wavelet.Ledger
 
@@ -178,6 +182,9 @@ func (p *Protocol) RegisterOpcodes(node *noise.Node) {
 
 	p.opcodeDownloadTxResponse = node.NextAvailableOpcode()
 	node.RegisterOpcode("download tx response", p.opcodeDownloadTxResponse)
+
+	p.opcodeForwardTxRequest = node.NextAvailableOpcode()
+	node.RegisterOpcode("forward tx request", p.opcodeForwardTxRequest)
 }
 
 func (p *Protocol) Init(node *noise.Node) {
@@ -237,6 +244,7 @@ func (p *Protocol) sendLoop(node *noise.Node) {
 	go p.broadcastSyncInitRequests(node)
 	go p.broadcastSyncDiffRequests(node)
 	go p.broadcastDownloadTxRequests(node)
+	go p.broadcastForwardTxRequests(node)
 }
 
 func (p *Protocol) receiveLoop(peer *noise.Peer, bus chan<- receiverPayload) {
@@ -260,6 +268,8 @@ func (p *Protocol) receiveLoop(peer *noise.Peer, bus chan<- receiverPayload) {
 			rp.opcode = p.opcodeSyncChunkRequest
 		case rp.wire = <-peer.Recv(p.opcodeDownloadTxRequest):
 			rp.opcode = p.opcodeDownloadTxRequest
+		case rp.wire = <-peer.Recv(p.opcodeForwardTxRequest):
+			rp.opcode = p.opcodeForwardTxRequest
 		}
 
 		bus <- rp
@@ -281,7 +291,14 @@ func (p *Protocol) broadcastGossip(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcaster.Broadcast(peers, p.opcodeGossipRequest, p.opcodeGossipResponse, GossipRequest{tx: evt.TX}.Marshal())
+			responses := p.broadcaster.Broadcast(
+				p.ctx,
+				peers,
+				p.opcodeGossipRequest,
+				p.opcodeGossipResponse,
+				GossipRequest{tx: evt.TX}.Marshal(),
+				true,
+			)
 
 			votes := make([]wavelet.VoteGossip, len(responses))
 
@@ -320,7 +337,14 @@ func (p *Protocol) broadcastQueries(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcaster.Broadcast(peers, p.opcodeQueryRequest, p.opcodeQueryResponse, QueryRequest{round: *evt.Round}.Marshal())
+			responses := p.broadcaster.Broadcast(
+				p.ctx,
+				peers,
+				p.opcodeQueryRequest,
+				p.opcodeQueryResponse,
+				QueryRequest{round: *evt.Round}.Marshal(),
+				true,
+			)
 
 			votes := make([]wavelet.VoteQuery, len(responses))
 
@@ -359,7 +383,14 @@ func (p *Protocol) broadcastOutOfSyncChecks(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcaster.Broadcast(peers, p.opcodeOutOfSyncRequest, p.opcodeOutOfSyncResponse, nil)
+			responses := p.broadcaster.Broadcast(
+				p.ctx,
+				peers,
+				p.opcodeOutOfSyncRequest,
+				p.opcodeOutOfSyncResponse,
+				nil,
+				true,
+			)
 
 			votes := make([]wavelet.VoteOutOfSync, len(peers))
 
@@ -399,7 +430,14 @@ func (p *Protocol) broadcastSyncInitRequests(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcaster.Broadcast(peers, p.opcodeSyncInitRequest, p.opcodeSyncInitResponse, SyncInitRequest{viewID: evt.RoundID}.Marshal())
+			responses := p.broadcaster.Broadcast(
+				p.ctx,
+				peers,
+				p.opcodeSyncInitRequest,
+				p.opcodeSyncInitResponse,
+				SyncInitRequest{viewID: evt.RoundID}.Marshal(),
+				true,
+			)
 
 			votes := make([]wavelet.SyncInitMetadata, len(responses))
 
@@ -439,7 +477,14 @@ func (p *Protocol) broadcastDownloadTxRequests(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcaster.Broadcast(peers, p.opcodeDownloadTxRequest, p.opcodeDownloadTxResponse, DownloadTxRequest{ids: evt.IDs}.Marshal())
+			responses := p.broadcaster.Broadcast(
+				p.ctx,
+				peers,
+				p.opcodeDownloadTxRequest,
+				p.opcodeDownloadTxResponse,
+				DownloadTxRequest{ids: evt.IDs}.Marshal(),
+				true,
+			)
 
 			set := make(map[common.TransactionID]wavelet.Transaction)
 
@@ -550,6 +595,32 @@ func (p *Protocol) broadcastSyncDiffRequests(node *noise.Node) {
 			}
 
 			evt.Result <- collected
+		}
+	}
+}
+
+func (p *Protocol) broadcastForwardTxRequests(node *noise.Node) {
+	p.wg.Add(1)
+	defer p.wg.Done()
+
+	for {
+		select {
+		case <-p.ctx.Done():
+			return
+		case evt := <-p.ledger.ForwardTXOut:
+			peers, err := selectPeers(p.network, node, sys.SnowballSyncK)
+			if err != nil {
+				continue
+			}
+
+			p.broadcaster.Broadcast(
+				p.ctx,
+				peers,
+				p.opcodeForwardTxRequest,
+				byte(0),
+				evt.TX.Marshal(),
+				false,
+			)
 		}
 	}
 }
@@ -746,5 +817,22 @@ func (p *Protocol) handleDownloadTxRequests(wire noise.Wire) {
 		return
 	case txs := <-evt.Response:
 		res.transactions = txs
+	}
+}
+
+func (p *Protocol) handleForwardTxRequest(wire noise.Wire) {
+	tx, err := wavelet.UnmarshalTransaction(bytes.NewReader(wire.Bytes()))
+	if err != nil {
+		fmt.Println("Error while unmarshaling forward tx request", err)
+		return
+	}
+
+	evt := wavelet.EventForwardTX{TX: tx}
+
+	select {
+	case <-time.After(1 * time.Second):
+		fmt.Println("timed out sending forward tx request to ledger")
+		return
+	case p.ledger.ForwardTXIn <- evt:
 	}
 }

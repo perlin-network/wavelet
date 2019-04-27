@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/sys"
@@ -30,12 +31,13 @@ type broadcastResponse struct {
 }
 
 type broadcastPayload struct {
-	order          int
-	requestOpcode  byte
-	responseOpcode byte
-	res            chan broadcastResponse
-	body           []byte
-	peer           *noise.Peer
+	order           int
+	requestOpcode   byte
+	responseOpcode  byte
+	res             chan broadcastResponse
+	waitForResponse bool
+	body            []byte
+	peer            *noise.Peer
 }
 
 type broadcaster struct {
@@ -72,6 +74,11 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 							payload.res <- res
 						}()
 
+						if !payload.waitForResponse {
+							payload.peer.SendWithTimeout(payload.requestOpcode, payload.body, 1*time.Second)
+							return
+						}
+
 						mux := payload.peer.Mux()
 						defer mux.Close()
 
@@ -83,6 +90,7 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 						case w := <-mux.Recv(payload.responseOpcode):
 							res.body = w.Bytes()
 						case <-time.After(sys.QueryTimeout):
+							fmt.Println("timed out reading from mux")
 						}
 					}()
 				}
@@ -94,27 +102,32 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 }
 
 func (b *broadcaster) Broadcast(
-	peers []*noise.Peer, reqOpcode byte, resOpcode byte, req []byte,
+	ctx context.Context, peers []*noise.Peer, reqOpcode byte, resOpcode byte, req []byte, waitForResponse bool,
 ) [][]byte {
 	resc := make(chan broadcastResponse, len(peers))
+	defer close(resc)
+
 	for i, peer := range peers {
 		b.bus <- broadcastPayload{
-			order:          i,
-			requestOpcode:  reqOpcode,
-			responseOpcode: resOpcode,
-			body:           req,
-			peer:           peer,
-			res:            resc,
+			order:           i,
+			requestOpcode:   reqOpcode,
+			responseOpcode:  resOpcode,
+			body:            req,
+			peer:            peer,
+			res:             resc,
+			waitForResponse: waitForResponse,
 		}
 	}
 
 	responses := make([][]byte, len(peers))
 	for i := 0; i < len(peers); i++ {
-		t := <-resc
-		responses[t.order] = t.body
+		select {
+		case <-ctx.Done():
+			return nil
+		case t := <-resc:
+			responses[t.order] = t.body
+		}
 	}
-
-	close(resc)
 
 	return responses
 }

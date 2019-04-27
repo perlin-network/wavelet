@@ -10,6 +10,10 @@ const (
 	SyncChunkSize = 1048576
 )
 
+type EventForwardTX struct {
+	TX Transaction
+}
+
 type EventBroadcast struct {
 	Tag       byte
 	Payload   []byte

@@ -93,6 +93,12 @@ type Ledger struct {
 
 	LatestViewOut <-chan EventLatestView
 	latestViewOut chan<- EventLatestView
+
+	ForwardTXIn chan<- EventForwardTX
+	forwardTXIn <-chan EventForwardTX
+
+	ForwardTXOut <-chan EventForwardTX
+	forwardTXOut chan<- EventForwardTX
 }
 
 func NewLedger(keys *skademlia.Keypair) *Ledger {
@@ -120,6 +126,9 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 
 	latestViewIn := make(chan EventIncomingLatestView, 16)
 	latestViewOut := make(chan EventLatestView, 16)
+
+	forwardTxIn := make(chan EventForwardTX, 1024)
+	forwardTxOut := make(chan EventForwardTX, 1024)
 
 	accounts := newAccounts(store.NewInmem())
 
@@ -201,6 +210,12 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 
 		LatestViewOut: latestViewOut,
 		latestViewOut: latestViewOut,
+
+		ForwardTXIn: forwardTxIn,
+		forwardTXIn: forwardTxIn,
+
+		ForwardTXOut: forwardTxOut,
+		forwardTXOut: forwardTxOut,
 	}
 }
 
@@ -257,7 +272,13 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 }
 
 func (l *Ledger) addTransaction(tx Transaction) error {
-	if err := l.graph.addTransaction(tx); err != nil {
+	if err := l.graph.addTransaction(tx); err == nil {
+		select {
+		case <-time.After(1 * time.Second):
+			fmt.Println("timed out forwarding accepted transaction")
+		case l.forwardTXOut <- EventForwardTX{TX: tx}:
+		}
+	} else if err != ErrAlreadyExists {
 		return err
 	}
 
