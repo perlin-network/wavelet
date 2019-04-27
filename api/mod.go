@@ -184,31 +184,15 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	evt := wavelet.EventBroadcast{
-		Tag:       req.Tag,
-		Payload:   req.payload,
-		Creator:   req.creator,
-		Signature: req.signature,
-		Result:    make(chan wavelet.Transaction, 1),
-		Error:     make(chan error, 1),
-	}
-
-	select {
-	case <-time.After(1 * time.Second):
-		g.renderError(ctx, ErrInternal(errors.New("broadcasting queue is full")))
-		return
-	case g.ledger.BroadcastQueue <- evt:
-	}
-
-	select {
-	case <-time.After(1 * time.Second):
-		g.renderError(ctx, ErrInternal(errors.New("its taking too long to broadcast your transaction")))
-		return
-	case err := <-evt.Error:
-		g.renderError(ctx, ErrInternal(errors.Wrap(err, "got an error broadcasting your transaction")))
-		return
-	case tx := <-evt.Result:
+	tx, err := g.ledger.SendBroadcastEvent(req.Tag, req.payload, req.creator, req.signature)
+	if err == nil {
 		g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
+	} else if errors.Cause(err) == wavelet.ErrStopped {
+		return
+	} else if errors.Cause(err) == wavelet.ErrTimeout {
+		g.renderError(ctx, ErrInternal(errors.New("its taking too long to broadcast your transaction")))
+	} else {
+		g.renderError(ctx, ErrInternal(errors.Wrap(err, "got an error broadcasting your transaction")))
 	}
 }
 

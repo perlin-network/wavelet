@@ -18,6 +18,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/sys"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
@@ -543,31 +544,13 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			go func() {
 				tx := wavelet.NewTransaction(k, sys.TagTransfer, payload.Bytes())
 
-				evt := wavelet.EventBroadcast{
-					Tag:       tx.Tag,
-					Payload:   tx.Payload,
-					Creator:   tx.Creator,
-					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction, 1),
-					Error:     make(chan error, 1),
-				}
-
-				select {
-				case <-time.After(1 * time.Second):
-					logger.Info().Msg("It looks like the broadcasting queue is full. Please try again.")
-					return
-				case ledger.BroadcastQueue <- evt:
-				}
-
-				select {
-				case <-time.After(1 * time.Second):
-					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
-					return
-				case err := <-evt.Error:
-					logger.Error().Err(err).Msg("An error occurred while broadcasting a transfer transaction.")
-					return
-				case tx := <-evt.Result:
+				tx, err = ledger.SendBroadcastEvent(tx.Tag, tx.Payload, tx.Creator, tx.CreatorSignature)
+				if err == nil {
 					logger.Info().Msgf("Success! Your payment transaction ID: %x", tx.ID)
+				} else if errors.Cause(err) == wavelet.ErrTimeout {
+					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
+				} else {
+					logger.Error().Err(err).Msg("An error occurred while broadcasting a transfer transaction.")
 				}
 			}()
 
@@ -590,31 +573,13 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			go func() {
 				tx := wavelet.NewTransaction(k, sys.TagStake, payload.Bytes())
 
-				evt := wavelet.EventBroadcast{
-					Tag:       tx.Tag,
-					Payload:   tx.Payload,
-					Creator:   tx.Creator,
-					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction, 1),
-					Error:     make(chan error, 1),
-				}
-
-				select {
-				case <-time.After(1 * time.Second):
-					logger.Info().Msg("It looks like the broadcasting queue is full. Please try again.")
-					return
-				case ledger.BroadcastQueue <- evt:
-				}
-
-				select {
-				case <-time.After(1 * time.Second):
-					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
-					return
-				case err := <-evt.Error:
-					logger.Error().Err(err).Msg("An error occurred while broadcasting a stake placement transaction.")
-					return
-				case tx := <-evt.Result:
+				tx, err = ledger.SendBroadcastEvent(tx.Tag, tx.Payload, tx.Creator, tx.CreatorSignature)
+				if err == nil {
 					logger.Info().Msgf("Success! Your stake placement transaction ID: %x", tx.ID)
+				} else if errors.Cause(err) == wavelet.ErrTimeout {
+					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
+				} else {
+					logger.Error().Err(err).Msg("An error occurred while broadcasting a stake placement transaction.")
 				}
 			}()
 		case "ws":
@@ -636,31 +601,13 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			go func() {
 				tx := wavelet.NewTransaction(k, sys.TagStake, payload.Bytes())
 
-				evt := wavelet.EventBroadcast{
-					Tag:       tx.Tag,
-					Payload:   tx.Payload,
-					Creator:   tx.Creator,
-					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction, 1),
-					Error:     make(chan error, 1),
-				}
-
-				select {
-				case <-time.After(1 * time.Second):
-					logger.Info().Msg("It looks like the broadcasting queue is full. Please try again.")
-					return
-				case ledger.BroadcastQueue <- evt:
-				}
-
-				select {
-				case <-time.After(1 * time.Second):
-					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
-					return
-				case err := <-evt.Error:
-					logger.Error().Err(err).Msg("An error occurred while broadcasting a stake withdrawal transaction.")
-					return
-				case tx := <-evt.Result:
+				tx, err = ledger.SendBroadcastEvent(tx.Tag, tx.Payload, tx.Creator, tx.CreatorSignature)
+				if err == nil {
 					logger.Info().Msgf("Success! Your stake withdrawal transaction ID: %x", tx.ID)
+				} else if errors.Cause(err) == wavelet.ErrTimeout {
+					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
+				} else {
+					logger.Error().Err(err).Msg("An error occurred while broadcasting a stake withdrawal transaction.")
 				}
 			}()
 		case "c":
@@ -680,31 +627,13 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 			go func() {
 				tx := wavelet.NewTransaction(k, sys.TagContract, code)
 
-				evt := wavelet.EventBroadcast{
-					Tag:       tx.Tag,
-					Payload:   tx.Payload,
-					Creator:   tx.Creator,
-					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction, 1),
-					Error:     make(chan error, 1),
-				}
-
-				select {
-				case <-time.After(1 * time.Second):
-					logger.Info().Msg("It looks like the broadcasting queue is full. Please try again.")
-					return
-				case ledger.BroadcastQueue <- evt:
-				}
-
-				select {
-				case <-time.After(1 * time.Second):
-					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
-					return
-				case err := <-evt.Error:
-					logger.Error().Err(err).Msg("An error occurred while broadcasting a smart contract creation transaction.")
-					return
-				case tx := <-evt.Result:
+				tx, err = ledger.SendBroadcastEvent(tx.Tag, tx.Payload, tx.Creator, tx.CreatorSignature)
+				if err == nil {
 					logger.Info().Msgf("Success! Your smart contracts ID is: %x", tx.ID)
+				} else if errors.Cause(err) == wavelet.ErrTimeout {
+					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
+				} else {
+					logger.Error().Err(err).Msg("An error occurred while broadcasting a smart contract creation transaction.")
 				}
 			}()
 		}

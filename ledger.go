@@ -19,11 +19,6 @@ import (
 	"time"
 )
 
-var (
-	ErrStopped       = errors.New("worker stopped")
-	ErrNonePreferred = errors.New("no critical transactions available in round yet")
-)
-
 const PruningDepth = 30
 
 type Ledger struct {
@@ -49,8 +44,7 @@ type Ledger struct {
 	syncing     bool
 	syncingCond sync.Cond
 
-	BroadcastQueue chan<- EventBroadcast
-	broadcastQueue <-chan EventBroadcast
+	broadcastQueue chan Event
 
 	GossipIn chan<- EventIncomingGossip
 	gossipIn <-chan EventIncomingGossip
@@ -97,8 +91,6 @@ type Ledger struct {
 
 func NewLedger(keys *skademlia.Keypair) *Ledger {
 	ctx, cancel := context.WithCancel(context.Background())
-
-	broadcastQueue := make(chan EventBroadcast, 1024)
 
 	gossipIn := make(chan EventIncomingGossip, 128)
 	gossipOut := make(chan EventGossip, 128)
@@ -157,8 +149,7 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 
 		syncingCond: sync.Cond{L: new(sync.Mutex)},
 
-		BroadcastQueue: broadcastQueue,
-		broadcastQueue: broadcastQueue,
+		broadcastQueue: make(chan Event, 1024),
 
 		GossipIn: gossipIn,
 		gossipIn: gossipIn,
@@ -799,4 +790,58 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, root Transaction, tx *Transactio
 	}
 
 	return nil
+}
+
+func getEvent(ctx context.Context, queue <-chan Event, timeout time.Duration) (interface{}, error) {
+	var res Event
+	if timeout > 0 {
+		select {
+		case <-ctx.Done():
+			return res, ErrStopped
+		case <-time.After(timeout):
+			return res, ErrTimeout
+		case res = <-queue:
+			return res, nil
+		}
+	} else {
+		select {
+		case <-ctx.Done():
+			return res, ErrStopped
+		case res = <-queue:
+			return res, nil
+		}
+	}
+}
+
+func sendEvent(ctx context.Context, queue chan<- Event, evt Event, timeout time.Duration) (interface{}, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ErrStopped
+	case <-time.After(timeout):
+		return nil, ErrTimeout
+	case queue <- evt:
+	}
+
+	return evt.Result(ctx, timeout)
+}
+
+func (l *Ledger) GetBroadcastEvent() (EventBroadcast, error) {
+	event, err := getEvent(l.ctx, l.broadcastQueue, 0)
+	if err != nil {
+		return EventBroadcast{}, errors.Wrap(err, "error while getting broadcast event")
+	}
+
+	return event.(EventBroadcast), nil
+}
+
+func (l *Ledger) SendBroadcastEvent(
+	tag byte, payload []byte, creator common.AccountID, signature common.Signature,
+) (Transaction, error) {
+	evt := NewEventBroadcast(tag, payload, creator, signature)
+	result, err := sendEvent(l.ctx, l.broadcastQueue, evt, 1 * time.Second)
+	if err != nil {
+		return Transaction{}, errors.Wrap(err, "error while broadcasting event")
+	}
+
+	return  result.(Transaction), nil
 }

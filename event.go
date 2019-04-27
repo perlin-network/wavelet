@@ -1,23 +1,54 @@
 package wavelet
 
 import (
+	"context"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/common"
 	"golang.org/x/crypto/blake2b"
+	"time"
 )
 
 const (
 	SyncChunkSize = 1048576
 )
 
-type EventBroadcast struct {
-	Tag       byte
-	Payload   []byte
-	Creator   common.AccountID
-	Signature common.Signature
+type Event interface {
+	Result(ctx context.Context, timeout time.Duration) (interface{}, error)
+}
 
-	Result chan Transaction
-	Error  chan error
+type EventBroadcast struct {
+	tag       byte
+	payload   []byte
+	creator   common.AccountID
+	signature common.Signature
+
+	result chan Transaction
+	error  chan error
+}
+
+func NewEventBroadcast(tag byte, payload []byte, creator common.AccountID, signature common.Signature) EventBroadcast {
+	return EventBroadcast{
+		tag:       tag,
+		payload:   payload,
+		creator:   creator,
+		signature: signature,
+		result:    make(chan Transaction, 1),
+		error:     make(chan error, 1),
+	}
+}
+
+func (eb EventBroadcast) Result(ctx context.Context, timeout time.Duration) (interface{}, error) {
+	var res Transaction
+	select {
+	case <-ctx.Done():
+		return res, ErrStopped
+	case <-time.After(timeout):
+		return res, ErrTimeout
+	case res = <- eb.result:
+		return res, nil
+	case err := <- eb.error:
+		return res, err
+	}
 }
 
 type EventIncomingGossip struct {

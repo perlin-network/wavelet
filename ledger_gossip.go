@@ -25,45 +25,45 @@ func gossip(ledger *Ledger) func(ctx context.Context) error {
 		var Result chan<- Transaction
 		var Error chan<- error
 
-		select {
-		case <-ctx.Done():
-			return nil
-		case item := <-ledger.broadcastQueue:
-			tx = Transaction{
-				Tag:              item.Tag,
-				Payload:          item.Payload,
-				Creator:          item.Creator,
-				CreatorSignature: item.Signature,
-			}
+		item, err := ledger.GetBroadcastEvent()
+		if err != nil {
+			if err == ErrTimeout {
+				if !broadcastNops {
+					select {
+					case <-ctx.Done():
+					case <-time.After(100 * time.Millisecond):
+					}
 
-			Result = item.Result
-			Error = item.Error
-		case <-time.After(1 * time.Millisecond):
-			if !broadcastNops {
-				select {
-				case <-ctx.Done():
-				case <-time.After(100 * time.Millisecond):
+					return nil
 				}
 
-				return nil
-			}
+				// Check if we have enough money available to create and broadcast a nop transaction.
+				if balance, _ := ReadAccountBalance(snapshot, ledger.keys.PublicKey()); balance < sys.TransactionFeeAmount {
+					select {
+					case <-ctx.Done():
+					case <-time.After(100 * time.Millisecond):
+					}
 
-			// Check if we have enough money available to create and broadcast a nop transaction.
-
-			if balance, _ := ReadAccountBalance(snapshot, ledger.keys.PublicKey()); balance < sys.TransactionFeeAmount {
-				select {
-				case <-ctx.Done():
-				case <-time.After(100 * time.Millisecond):
+					return nil
 				}
 
-				return nil
+				tx = NewTransaction(ledger.keys, sys.TagNop, nil)
 			}
 
-			tx = NewTransaction(ledger.keys, sys.TagNop, nil)
+			return err
 		}
 
-		tx, err = ledger.attachSenderToTransaction(tx)
+		tx = Transaction{
+			Tag:              item.tag,
+			Payload:          item.payload,
+			Creator:          item.creator,
+			CreatorSignature: item.signature,
+		}
 
+		Result = item.result
+		Error = item.error
+
+		tx, err = ledger.attachSenderToTransaction(tx)
 		if err != nil {
 			if Error != nil {
 				Error <- errors.Wrap(err, "failed to sign off transaction")
