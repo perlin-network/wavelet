@@ -826,7 +826,7 @@ func sendEvent(ctx context.Context, queue chan<- Event, evt Event, timeout time.
 }
 
 func (l *Ledger) GetBroadcastEvent() (EventBroadcast, error) {
-	event, err := getEvent(l.ctx, l.broadcastQueue, 0)
+	event, err := getEvent(l.ctx, l.broadcastQueue, 1 * time.Millisecond)
 	if err != nil {
 		return EventBroadcast{}, errors.Wrap(err, "error while getting broadcast event")
 	}

@@ -26,42 +26,39 @@ func gossip(ledger *Ledger) func(ctx context.Context) error {
 		var Error chan<- error
 
 		item, err := ledger.GetBroadcastEvent()
-		if err != nil {
-			if err == ErrTimeout {
-				if !broadcastNops {
-					select {
-					case <-ctx.Done():
-					case <-time.After(100 * time.Millisecond):
-					}
-
-					return nil
+		if err == nil {
+			tx = Transaction{
+				Tag:              item.tag,
+				Payload:          item.payload,
+				Creator:          item.creator,
+				CreatorSignature: item.signature,
+			}
+			Result = item.result
+			Error = item.error
+		} else if errors.Cause(err) == ErrTimeout {
+			if !broadcastNops {
+				select {
+				case <-ctx.Done():
+				case <-time.After(100 * time.Millisecond):
 				}
 
-				// Check if we have enough money available to create and broadcast a nop transaction.
-				if balance, _ := ReadAccountBalance(snapshot, ledger.keys.PublicKey()); balance < sys.TransactionFeeAmount {
-					select {
-					case <-ctx.Done():
-					case <-time.After(100 * time.Millisecond):
-					}
-
-					return nil
-				}
-
-				tx = NewTransaction(ledger.keys, sys.TagNop, nil)
+				return nil
 			}
 
+			// Check if we have enough money available to create and broadcast a nop transaction.
+			if balance, _ := ReadAccountBalance(snapshot, ledger.keys.PublicKey()); balance < sys.TransactionFeeAmount {
+				select {
+				case <-ctx.Done():
+				case <-time.After(100 * time.Millisecond):
+				}
+
+				return nil
+			}
+
+			tx = NewTransaction(ledger.keys, sys.TagNop, nil)
+		} else {
 			return err
 		}
-
-		tx = Transaction{
-			Tag:              item.tag,
-			Payload:          item.payload,
-			Creator:          item.creator,
-			CreatorSignature: item.signature,
-		}
-
-		Result = item.result
-		Error = item.error
 
 		tx, err = ledger.attachSenderToTransaction(tx)
 		if err != nil {
