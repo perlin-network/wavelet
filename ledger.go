@@ -272,7 +272,13 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 }
 
 func (l *Ledger) addTransaction(tx Transaction) error {
-	if err := l.graph.addTransaction(tx); err != nil {
+	if err := l.graph.addTransaction(tx); err == nil {
+		select {
+		case <-time.After(1 * time.Second):
+			fmt.Println("timed out forwarding accepted transaction")
+		case l.forwardTXOut <- EventForwardTX{TX: tx}:
+		}
+	} else if err != ErrAlreadyExists {
 		return err
 	}
 
@@ -671,12 +677,6 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 		// Update nonce.
 		nonce, _ := ReadAccountNonce(snapshot, popped.Creator)
 		WriteAccountNonce(snapshot, popped.Creator, nonce+1)
-
-		select {
-		case <-time.After(1 * time.Second):
-			fmt.Println("timed out forwarding accepted transaction")
-		case l.forwardTXOut <- EventForwardTX{TX: *popped}:
-		}
 
 		if logging {
 			l.metrics.acceptedTX.Mark(1)
