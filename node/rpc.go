@@ -74,14 +74,15 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 							payload.res <- res
 						}()
 
+						if !payload.waitForResponse {
+							payload.peer.SendWithTimeout(payload.requestOpcode, payload.body, 1*time.Second)
+							return
+						}
+
 						mux := payload.peer.Mux()
 						defer mux.Close()
 
 						if err := mux.SendWithTimeout(payload.requestOpcode, payload.body, 1*time.Second); err != nil {
-							return
-						}
-
-						if !payload.waitForResponse {
 							return
 						}
 

@@ -618,7 +618,7 @@ func (p *Protocol) broadcastForwardTxRequests(node *noise.Node) {
 				peers,
 				p.opcodeForwardTxRequest,
 				byte(0),
-				GossipRequest{tx:evt.TX}.Marshal(),
+				evt.TX.Marshal(),
 				false,
 			)
 		}
@@ -821,13 +821,13 @@ func (p *Protocol) handleDownloadTxRequests(wire noise.Wire) {
 }
 
 func (p *Protocol) handleForwardTxRequest(wire noise.Wire) {
-	req, err := UnmarshalGossipRequest(bytes.NewReader(wire.Bytes()))
+	tx, err := wavelet.UnmarshalTransaction(bytes.NewReader(wire.Bytes()))
 	if err != nil {
 		fmt.Println("Error while unmarshaling forward tx request", err)
 		return
 	}
 
-	evt := wavelet.EventForwardTX{TX: req.tx}
+	evt := wavelet.EventForwardTX{TX: tx}
 
 	select {
 	case <-time.After(1 * time.Second):
