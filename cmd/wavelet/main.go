@@ -84,24 +84,28 @@ func main() {
 
 	app.Flags = []cli.Flag{
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "host",
-			Value: "127.0.0.1",
-			Usage: "Listen for peers on host address.",
+			Name:   "host",
+			Value:  "127.0.0.1",
+			Usage:  "Listen for peers on host address.",
+			EnvVar: "WAVELET_NODE_HOST",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "port",
-			Value: 3000,
-			Usage: "Listen for peers on port.",
+			Name:   "port",
+			Value:  3000,
+			Usage:  "Listen for peers on port.",
+			EnvVar: "WAVELET_NODE_PORT",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "wallet",
-			Value: "config/wallet.txt",
-			Usage: "path to file containing hex-encoded private key. If empty, a random wallet will be generated.",
+			Name:   "wallet",
+			Value:  "config/wallet.txt",
+			Usage:  "path to file containing hex-encoded private key. If empty, a random wallet will be generated.",
+			EnvVar: "WAVELET_WALLET_PATH",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "api.port",
-			Value: 0,
-			Usage: "Host a local HTTP API at port.",
+			Name:   "api.port",
+			Value:  0,
+			Usage:  "Host a local HTTP API at port.",
+			EnvVar: "WAVELET_API_PORT",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:  "db",
@@ -545,8 +549,8 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 				buf := params.Bytes()
 
 				binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(buf)))
-				params.Write(intBuf[:4])
-				params.Write(buf)
+				payload.Write(intBuf[:4])
+				payload.Write(buf)
 			}
 
 			go func() {

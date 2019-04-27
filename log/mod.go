@@ -21,6 +21,7 @@ var (
 	syncer      zerolog.Logger
 	stake       zerolog.Logger
 	tx          zerolog.Logger
+	metrics     zerolog.Logger
 )
 
 const (
@@ -36,6 +37,7 @@ const (
 	ModuleSync        = "sync"
 	ModuleStake       = "stake"
 	ModuleTx          = "tx"
+	ModuleMetrics     = "metrics"
 )
 
 func Register(w ...io.Writer) {
@@ -58,6 +60,7 @@ func setupChildLoggers() {
 	syncer = logger.With().Str(KeyModule, ModuleSync).Logger()
 	stake = logger.With().Str(KeyModule, ModuleStake).Logger()
 	tx = logger.With().Str(KeyModule, ModuleTx).Logger()
+	metrics = logger.With().Str(KeyModule, ModuleMetrics).Logger()
 }
 
 func Node() zerolog.Logger {
@@ -84,7 +87,7 @@ func Broadcaster() zerolog.Logger {
 	return broadcaster
 }
 
-func TX(id common.TransactionID, sender, creator common.AccountID, nonce uint64, parentIDs []common.AccountID, tag byte, payload []byte, event string) zerolog.Logger {
+func TX(id common.TransactionID, sender, creator common.AccountID, nonce, depth, confidence uint64, parentIDs []common.AccountID, tag byte, payload []byte, event string) zerolog.Logger {
 	var parents []string
 
 	for _, parentID := range parentIDs {
@@ -96,6 +99,8 @@ func TX(id common.TransactionID, sender, creator common.AccountID, nonce uint64,
 		Hex("sender_id", sender[:]).
 		Hex("creator_id", creator[:]).
 		Uint64("nonce", nonce).
+		Uint64("depth", depth).
+		Uint64("confidence", confidence).
 		Strs("parents", parents).
 		Uint8("tag", tag).
 		Str("payload", base64.StdEncoding.EncodeToString(payload)).
@@ -112,4 +117,8 @@ func Stake(event string) zerolog.Logger {
 
 func Sync(event string) zerolog.Logger {
 	return syncer.With().Str(KeyEvent, event).Logger()
+}
+
+func Metrics() zerolog.Logger {
+	return metrics
 }

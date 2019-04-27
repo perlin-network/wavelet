@@ -2,7 +2,6 @@ package wavelet
 
 import (
 	"context"
-	"fmt"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
 )
@@ -20,8 +19,6 @@ func txSync(ledger *Ledger) func(ctx context.Context) error {
 		if len(missing) == 0 {
 			return ErrNonePreferred
 		}
-
-		fmt.Println("QUERYING", len(missing), "TRANSACTIONS")
 
 		return downloadMissingTransactions(ctx, ledger, missing)
 	}
