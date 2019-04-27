@@ -273,10 +273,6 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 
 func (l *Ledger) addTransaction(tx Transaction) error {
 	if err := l.graph.addTransaction(tx); err != nil {
-		if err == ErrAlreadyExists {
-			return nil
-		}
-
 		return err
 	}
 
