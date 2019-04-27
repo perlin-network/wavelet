@@ -630,7 +630,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 
 		// If any errors occur while applying our transaction to our accounts
 		// snapshot, silently log it and continue applying other transactions.
-		if err := l.rewardValidators(snapshot, popped, logging); err != nil {
+		if err := l.rewardValidators(snapshot, root, popped, logging); err != nil {
 			if logging {
 				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.Confidence, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
 				logger.Log().Err(err).Msg("Failed to deduct transaction fees and reward validators before applying the transaction to the ledger.")
@@ -676,7 +676,7 @@ func (l *Ledger) applyTransactionToSnapshot(ss *avl.Tree, tx *Transaction) error
 	return nil
 }
 
-func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) error {
+func (l *Ledger) rewardValidators(ss *avl.Tree, root Transaction, tx *Transaction, logging bool) error {
 	var candidates []*Transaction
 	var stakes []uint64
 	var totalStake uint64
@@ -688,7 +688,9 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) e
 
 	for _, parentID := range tx.ParentIDs {
 		if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
-			q.PushBack(parent)
+			if parent.Depth > root.Depth {
+				q.PushBack(parent)
+			}
 		}
 
 		visited[parentID] = struct{}{}
@@ -735,7 +737,9 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, tx *Transaction, logging bool) e
 		for _, parentID := range popped.ParentIDs {
 			if _, seen := visited[parentID]; !seen {
 				if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
-					q.PushBack(parent)
+					if parent.Depth > root.Depth {
+						q.PushBack(parent)
+					}
 				}
 
 				visited[parentID] = struct{}{}
