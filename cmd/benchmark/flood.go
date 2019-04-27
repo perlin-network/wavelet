@@ -5,22 +5,11 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
-	"go.uber.org/atomic"
 	"runtime"
 	"sync"
-	"time"
 )
 
 func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionResponse, error) {
-	tps := atomic.NewUint64(0)
-
-	go func() {
-		for range time.Tick(1 * time.Second) {
-			log.Info().Uint64("tps", tps.Swap(0)).Msg("Benchmarking...")
-		}
-	}()
-
 	return func(client *wctl.Client) ([]wctl.SendTransactionResponse, error) {
 		numWorkers := runtime.NumCPU()
 
@@ -69,8 +58,6 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 
 			responses = append(responses, <-chRes)
 		}
-
-		tps.Add(uint64(numWorkers))
 
 		return responses, nil
 	}

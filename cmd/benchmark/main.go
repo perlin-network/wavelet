@@ -6,9 +6,11 @@ import (
 	"github.com/perlin-network/noise/edwards25519"
 	logger "github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
+	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/valyala/fastjson"
 	"gopkg.in/urfave/cli.v1"
 	"os"
 	"sort"
@@ -121,6 +123,30 @@ func commandRemote(c *cli.Context) error {
 	}
 
 	fmt.Println("You're now connected!")
+
+	go func() {
+		events, err := client.PollLoggerSink(nil, wctl.RouteWSMetrics)
+		if err != nil {
+			panic(err)
+		}
+
+		var p fastjson.Parser
+
+		for evt := range events {
+			v, err := p.ParseBytes(evt)
+
+			if err != nil {
+				continue
+			}
+
+			metrics := v.Get("metrics")
+
+			log.Info().
+				Float64("accepted_tps", metrics.GetFloat64("tx.accepted", "mean.rate")).
+				Float64("received_tps", metrics.GetFloat64("tx.received", "mean.rate")).
+				Msg("Benchmarking...")
+		}
+	}()
 
 	flood := floodTransactions()
 
