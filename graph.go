@@ -376,12 +376,8 @@ func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
 }
 
 func (g *Graph) Reset(newRound *Round) {
-	if _, exists := g.transactions[newRound.Root.ID]; !exists {
-		ptr := &newRound.Root
-
-		g.transactions[newRound.Root.ID] = ptr
-		g.createTransactionIndices(ptr)
-	}
+	g.transactions[newRound.Root.ID] = &newRound.Root
+	g.createTransactionIndices(&newRound.Root)
 
 	oldRoot := g.transactions[g.rootID]
 
