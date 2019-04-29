@@ -8,13 +8,7 @@ import (
 
 func txSync(ledger *Ledger) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		var missing []common.TransactionID
-
-		ledger.graph.missingLock.Lock()
-		for id := range ledger.graph.missing {
-			missing = append(missing, id)
-		}
-		ledger.graph.missingLock.Unlock()
+		missing := ledger.graph.MissingTransactions()
 
 		if len(missing) == 0 {
 			return ErrNonePreferred

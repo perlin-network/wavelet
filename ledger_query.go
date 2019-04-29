@@ -102,7 +102,12 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 
 		if ledger.snowball.Decided() {
 			newRound := ledger.snowball.Preferred()
-			newRoot := ledger.graph.transactions[newRound.Root.ID]
+
+			newRoot, exists := ledger.graph.LookupTransactionByID(newRound.Root.ID)
+
+			if !exists {
+				return errors.Errorf("new rounds root transaction %x is not inside our graph", newRound.Root.ID)
+			}
 
 			state, err := ledger.collapseTransactions(newRound.Index, newRoot, false)
 
@@ -160,14 +165,18 @@ func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction) error 
 	var eligible []*Transaction // Find all critical transactions for the current round.
 
 	for i := difficulty; i < math.MaxUint8; i++ {
-		candidates, exists := ledger.graph.seedIndex[difficulty]
+		candidates, exists := ledger.graph.TransactionsWithDifficulty(i)
 
 		if !exists {
 			continue
 		}
 
-		for candidateID := range candidates {
-			candidate := ledger.graph.transactions[candidateID]
+		for _, candidateID := range candidates {
+			candidate, exists := ledger.graph.LookupTransactionByID(candidateID)
+
+			if !exists {
+				continue
+			}
 
 			if candidate.Depth > oldRoot.Depth && candidate.IsCritical(difficulty) {
 				eligible = append(eligible, candidate)

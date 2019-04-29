@@ -2,22 +2,24 @@ package wavelet
 
 import (
 	"bytes"
-	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"sort"
 	"sync"
 )
 
 type Graph struct {
+	sync.RWMutex
+
 	transactions map[common.TransactionID]*Transaction           // All transactions.
 	children     map[common.TransactionID][]common.TransactionID // Children of transactions.
 
 	eligible   map[common.TransactionID]struct{} // Transactions that are eligible to be parent transactions.
 	incomplete map[common.TransactionID]struct{} // Transactions that don't have all parents available.
 
-	missing     map[common.TransactionID]struct{} // Transactions that we are missing.
-	missingLock sync.Mutex
+	missing map[common.TransactionID]struct{} // Transactions that we are missing.
 
 	seedIndex  map[byte]map[common.TransactionID]struct{}   // Indexes transactions by their seed.
 	depthIndex map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their depth.
@@ -110,18 +112,18 @@ func (g *Graph) assertTransactionIsValid(tx *Transaction) error {
 		return errors.New("tx must have no payload if is a nop transaction")
 	}
 
-	var nonce [8]byte // TODO(kenta): nonce
-
-	if !edwards25519.Verify(tx.Creator, append(nonce[:], append([]byte{tx.Tag}, tx.Payload...)...), tx.CreatorSignature) {
-		return errors.New("tx has invalid creator signature")
-	}
-
-	cpy := *tx
-	cpy.SenderSignature = common.ZeroSignature
-
-	if !edwards25519.Verify(tx.Sender, cpy.Marshal(), tx.SenderSignature) {
-		return errors.New("tx has invalid sender signature")
-	}
+	//var nonce [8]byte // TODO(kenta): nonce
+	//
+	//if !edwards25519.Verify(tx.Creator, append(nonce[:], append([]byte{tx.Tag}, tx.Payload...)...), tx.CreatorSignature) {
+	//	return errors.New("tx has invalid creator signature")
+	//}
+	//
+	//cpy := *tx
+	//cpy.SenderSignature = common.ZeroSignature
+	//
+	//if !edwards25519.Verify(tx.Sender, cpy.Marshal(), tx.SenderSignature) {
+	//	return errors.New("tx has invalid sender signature")
+	//}
 
 	return nil
 }
@@ -188,15 +190,20 @@ func (g *Graph) processParents(tx *Transaction) []common.TransactionID {
 	return missingParentIDs
 }
 
+func (g *Graph) LookupTransactionByID(id common.TransactionID) (*Transaction, bool) {
+	g.Lock()
+	defer g.Unlock()
+
+	return g.lookupTransactionByID(id)
+}
+
 func (g *Graph) lookupTransactionByID(id common.TransactionID) (*Transaction, bool) {
 	tx, exists := g.transactions[id]
 
 	if !exists {
-		g.missingLock.Lock()
 		if _, missing := g.missing[id]; !missing {
 			g.missing[id] = struct{}{}
 		}
-		g.missingLock.Unlock()
 	}
 
 	return tx, exists
@@ -207,7 +214,10 @@ var (
 	ErrAlreadyExists  = errors.New("transaction already exists in the graph")
 )
 
-func (g *Graph) addTransaction(tx Transaction) error {
+func (g *Graph) AddTransaction(tx Transaction) error {
+	g.Lock()
+	defer g.Unlock()
+
 	if _, exists := g.transactions[tx.ID]; exists {
 		return ErrAlreadyExists
 	}
@@ -221,9 +231,7 @@ func (g *Graph) addTransaction(tx Transaction) error {
 	// Add transaction to the view-graph.
 	g.transactions[tx.ID] = ptr
 
-	g.missingLock.Lock()
 	delete(g.missing, ptr.ID)
-	g.missingLock.Unlock()
 
 	missing := g.processParents(ptr)
 
@@ -233,6 +241,13 @@ func (g *Graph) addTransaction(tx Transaction) error {
 	}
 
 	return g.markTransactionAsComplete(ptr)
+}
+
+func (g *Graph) DeleteTransaction(id common.TransactionID) {
+	g.Lock()
+	defer g.Unlock()
+
+	g.deleteTransaction(id)
 }
 
 // deleteTransaction deletes all traces of a transaction from the graph. Note
@@ -258,9 +273,7 @@ func (g *Graph) deleteTransaction(id common.TransactionID) {
 	delete(g.eligible, id)
 	delete(g.incomplete, id)
 
-	g.missingLock.Lock()
 	delete(g.missing, id)
-	g.missingLock.Unlock()
 }
 
 // deleteIncompleteTransaction explicitly deletes all traces of a transaction
@@ -301,7 +314,10 @@ func (g *Graph) createTransactionIndices(tx *Transaction) {
 	}
 }
 
-func (g *Graph) findEligibleParents() []common.TransactionID {
+func (g *Graph) FindEligibleParents() []common.TransactionID {
+	g.Lock()
+	defer g.Unlock()
+
 	root := g.transactions[g.rootID]
 
 	var eligibleIDs []common.TransactionID
@@ -384,6 +400,9 @@ func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
 }
 
 func (g *Graph) Reset(newRound *Round) {
+	g.Lock()
+	defer g.Unlock()
+
 	ptr := &newRound.Root
 
 	g.transactions[newRound.Root.ID] = ptr
@@ -400,4 +419,128 @@ func (g *Graph) Reset(newRound *Round) {
 	}
 
 	g.rootID = newRound.Root.ID
+}
+
+func (g *Graph) Prune(round *Round) {
+	g.Lock()
+	defer g.Unlock()
+
+	for roundID, transactions := range g.roundIndex {
+		if roundID+PruningDepth <= round.Index {
+			for id := range transactions {
+				g.deleteTransaction(id)
+			}
+
+			delete(g.roundIndex, roundID)
+
+			logger := log.Consensus("prune")
+			logger.Debug().
+				Int("num_tx", len(g.roundIndex[round.Index])).
+				Uint64("current_round_id", round.Index).
+				Uint64("pruned_round_id", roundID).
+				Msg("Pruned away round and its corresponding transactions.")
+		}
+	}
+}
+
+func (g *Graph) TransactionApplied(id common.TransactionID) bool {
+	g.RLock()
+	defer g.RUnlock()
+
+	for _, round := range g.roundIndex {
+		if _, exists := round[id]; exists {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (g *Graph) ListTransactions(offset, limit uint64, sender, creator common.AccountID) (transactions []*Transaction) {
+	g.RLock()
+	defer g.RUnlock()
+
+	for _, tx := range g.transactions {
+		if (sender == common.ZeroAccountID && creator == common.ZeroAccountID) || (sender != common.ZeroAccountID && tx.Sender == sender) || (creator != common.ZeroAccountID && tx.Creator == creator) {
+			transactions = append(transactions, tx)
+		}
+	}
+
+	sort.Slice(transactions, func(i, j int) bool {
+		return transactions[i].Depth < transactions[j].Depth
+	})
+
+	if offset != 0 || limit != 0 {
+		if offset >= limit || offset >= uint64(len(transactions)) {
+			return nil
+		}
+
+		if offset+limit > uint64(len(transactions)) {
+			limit = uint64(len(transactions)) - offset
+		}
+
+		transactions = transactions[offset : offset+limit]
+	}
+
+	return
+}
+
+func (g *Graph) MissingTransactions() []common.TransactionID {
+	g.RLock()
+	defer g.RUnlock()
+
+	var missing []common.TransactionID
+
+	for id := range g.missing {
+		missing = append(missing, id)
+	}
+
+	return missing
+}
+
+func (g *Graph) TransactionsWithDifficulty(difficulty byte) ([]common.TransactionID, bool) {
+	g.RLock()
+	defer g.RUnlock()
+
+	candidates, exists := g.seedIndex[difficulty]
+
+	if !exists {
+		return nil, false
+	}
+
+	var candidateIDs []common.TransactionID
+
+	for candidateID := range candidates {
+		candidateIDs = append(candidateIDs, candidateID)
+	}
+
+	return candidateIDs, true
+}
+
+func (g *Graph) NumTransactionsInDepth(depth uint64) uint64 {
+	g.RLock()
+	defer g.RUnlock()
+
+	return uint64(len(g.depthIndex[depth]))
+}
+
+func (g *Graph) NumTransactionsInStore() uint64 {
+	g.RLock()
+	defer g.RUnlock()
+
+	return uint64(len(g.transactions))
+}
+
+func (g *Graph) NumMissingTransactions() uint64 {
+	g.RLock()
+	defer g.RUnlock()
+
+	return uint64(len(g.missing))
+}
+
+func (g *Graph) Height() uint64 {
+	g.RLock()
+	defer g.RUnlock()
+
+	return g.height
 }
