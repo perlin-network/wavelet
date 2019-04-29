@@ -146,6 +146,10 @@ func (p *Protocol) Ledger() *wavelet.Ledger {
 	return p.ledger
 }
 
+func (p *Protocol) Network() *skademlia.Protocol {
+	return p.network
+}
+
 func (p *Protocol) RegisterOpcodes(node *noise.Node) {
 	p.opcodeGossipRequest = node.NextAvailableOpcode()
 	node.RegisterOpcode("gossip request", p.opcodeGossipRequest)

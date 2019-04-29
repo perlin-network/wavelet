@@ -231,10 +231,10 @@ func main() {
 		sys.MinimumStake = c.Uint64("sys.min_stake")
 
 		// start the server
-		k, _, w := server(config, logger)
+		k, n, w := server(config, logger)
 
 		// run the shell version of the node
-		shell(k, w, logger)
+		shell(n, k, w, logger)
 
 		return nil
 	}
@@ -340,7 +340,7 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 	return k, n, w
 }
 
-func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
+func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 	publicKey := k.PublicKey()
 	ledger := w.Ledger()
 
@@ -371,6 +371,14 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 
 			round := ledger.LastRound()
 
+			var ids []string
+
+			for _, peer := range w.Network().Peers(n) {
+				if id := peer.Ctx().Get(skademlia.KeyID); id != nil {
+					ids = append(ids, id.(*skademlia.ID).String())
+				}
+			}
+
 			logger.Info().
 				Uint8("difficulty", round.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
 				Uint64("round", round.Index).
@@ -378,6 +386,7 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 				Uint64("height", ledger.Height()).
 				Uint64("num_tx", ledger.NumTransactions()).
 				Str("preferred_id", preferredID).
+				Strs("peers", ids).
 				Msg("Here is the current state of the ledger.")
 		case "tx":
 			if len(cmd) < 2 {
