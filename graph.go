@@ -6,6 +6,7 @@ import (
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"sync"
 )
 
 type Graph struct {
@@ -15,7 +16,8 @@ type Graph struct {
 	eligible   map[common.TransactionID]struct{} // Transactions that are eligible to be parent transactions.
 	incomplete map[common.TransactionID]struct{} // Transactions that don't have all parents available.
 
-	missing map[common.TransactionID]struct{} // Transactions that we are missing.
+	missing     map[common.TransactionID]struct{} // Transactions that we are missing.
+	missingLock sync.Mutex
 
 	seedIndex  map[byte]map[common.TransactionID]struct{}   // Indexes transactions by their seed.
 	depthIndex map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their depth.
@@ -190,9 +192,11 @@ func (g *Graph) lookupTransactionByID(id common.TransactionID) (*Transaction, bo
 	tx, exists := g.transactions[id]
 
 	if !exists {
+		g.missingLock.Lock()
 		if _, missing := g.missing[id]; !missing {
 			g.missing[id] = struct{}{}
 		}
+		g.missingLock.Unlock()
 	}
 
 	return tx, exists
@@ -217,7 +221,9 @@ func (g *Graph) addTransaction(tx Transaction) error {
 	// Add transaction to the view-graph.
 	g.transactions[tx.ID] = ptr
 
+	g.missingLock.Lock()
 	delete(g.missing, ptr.ID)
+	g.missingLock.Unlock()
 
 	missing := g.processParents(ptr)
 
@@ -252,7 +258,9 @@ func (g *Graph) deleteTransaction(id common.TransactionID) {
 	delete(g.eligible, id)
 	delete(g.incomplete, id)
 
+	g.missingLock.Lock()
 	delete(g.missing, id)
+	g.missingLock.Unlock()
 }
 
 // deleteIncompleteTransaction explicitly deletes all traces of a transaction

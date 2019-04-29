@@ -10,11 +10,11 @@ func txSync(ledger *Ledger) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
 		var missing []common.TransactionID
 
-		ledger.mu.RLock()
+		ledger.graph.missingLock.Lock()
 		for id := range ledger.graph.missing {
 			missing = append(missing, id)
 		}
-		ledger.mu.RUnlock()
+		ledger.graph.missingLock.Unlock()
 
 		if len(missing) == 0 {
 			return ErrNonePreferred
