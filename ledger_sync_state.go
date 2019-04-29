@@ -56,7 +56,7 @@ func checkIfOutOfSync(ctx context.Context, ledger *Ledger) (transition, error) {
 	}
 
 	if len(votes) == 0 {
-		return nil, nil
+		return nil, ErrNonePreferred
 	}
 
 	rounds := make(map[common.RoundID]Round)

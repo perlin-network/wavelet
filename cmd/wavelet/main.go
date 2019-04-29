@@ -139,9 +139,10 @@ func main() {
 			Usage: "minimum stake to garner validator rewards and have importance in consensus",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.snowball.query.k",
-			Value: sys.SnowballQueryK,
-			Usage: "Snowball consensus protocol parameter k for querying.",
+			Name:   "sys.snowball.query.k",
+			Value:  sys.SnowballQueryK,
+			EnvVar: "SNOWBALL_QUERY_K",
+			Usage:  "Snowball consensus protocol parameter k for querying.",
 		}),
 		altsrc.NewFloat64Flag(cli.Float64Flag{
 			Name:  "sys.snowball.query.alpha",
