@@ -118,11 +118,6 @@ func main() {
 			Value: sys.MaxEligibleParentsDepthDiff,
 			Usage: "Max graph depth difference to search for eligible transaction parents from for our node.",
 		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.median_timestamp_num_ancestors",
-			Value: sys.MedianTimestampNumAncestors,
-			Usage: "Number of ancestors to derive a median timestamp from.",
-		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.transaction_fee_amount",
 			Value: sys.TransactionFeeAmount,
@@ -193,7 +188,6 @@ func main() {
 		sys.QueryTimeout = time.Duration(c.Int("sys.query_timeout")) * time.Second
 		sys.MaxEligibleParentsDepthDiff = c.Uint64("sys.max_eligible_parents_depth_diff")
 		sys.MinDifficulty = c.Int("sys.difficulty.min")
-		sys.MedianTimestampNumAncestors = c.Int("sys.median_timestamp_num_ancestors")
 		sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
 		sys.MinimumStake = c.Uint64("sys.min_stake")
 

@@ -32,9 +32,6 @@ var (
 	// Minimum difficulty to define a critical transaction.
 	MinDifficulty = 8
 
-	// Number of ancestors to derive a median timestamp from.
-	MedianTimestampNumAncestors = 5
-
 	// Fee amount paid by a node per transaction.
 	TransactionFeeAmount uint64 = 2
 

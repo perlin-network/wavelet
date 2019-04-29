@@ -541,7 +541,7 @@ func (l *Ledger) stateSyncingLoop(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(100 * time.Millisecond):
+			case <-time.After(10 * time.Millisecond):
 			}
 		}
 	}
@@ -564,7 +564,7 @@ L:
 				select {
 				case <-ctx.Done():
 					return
-				case <-time.After(100 * time.Millisecond):
+				case <-time.After(10 * time.Millisecond):
 				}
 
 				continue L
