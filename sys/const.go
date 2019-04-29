@@ -30,19 +30,15 @@ var (
 	MaxEligibleParentsDepthDiff uint64 = 5
 
 	// Minimum difficulty to define a critical transaction.
-	MinDifficulty = 10
-
-	// Maximum difficulty to define a critical transaction.
-	MaxDifficulty = 15
+	MinDifficulty = 8
 
 	// Number of ancestors to derive a median timestamp from.
 	MedianTimestampNumAncestors = 5
 
+	// Fee amount paid by a node per transaction.
 	TransactionFeeAmount uint64 = 2
 
-	ExpectedConsensusTimeMilliseconds  uint64 = 3000
-	CriticalTimestampAverageWindowSize        = 3
-
+	// Minimum amount of stake to start being able to reap validator rewards.
 	MinimumStake uint64 = 100
 
 	GasTable = map[string]uint64{

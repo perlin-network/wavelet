@@ -1,7 +1,6 @@
 package wavelet
 
 import (
-	"fmt"
 	"github.com/perlin-network/wavelet/common"
 )
 
@@ -80,7 +79,6 @@ func (s *Snowball) Tick(round *Round) {
 	}
 
 	if s.lastID != round.ID { // Handle termination case.
-		fmt.Printf("last count is %d, and the last id is %x with the new id being %x\n", s.count, s.lastID, round.ID)
 		s.lastID = round.ID
 		s.count = 0
 	} else {

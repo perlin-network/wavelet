@@ -128,15 +128,6 @@ func main() {
 			Value: sys.TransactionFeeAmount,
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
-			Name:  "sys.expected_consensus_time",
-			Value: sys.ExpectedConsensusTimeMilliseconds,
-			Usage: "a hardcoded consensus time in milliseconds used to compute difficulty",
-		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.critical_timestamp_average_window_size",
-			Value: sys.CriticalTimestampAverageWindowSize,
-		}),
-		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.min_stake",
 			Value: sys.MinimumStake,
 			Usage: "minimum stake to garner validator rewards and have importance in consensus",
@@ -161,11 +152,6 @@ func main() {
 			Name:  "sys.difficulty.min",
 			Value: sys.MinDifficulty,
 			Usage: "Maximum difficulty to define a critical transaction",
-		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.difficulty.max",
-			Value: sys.MaxDifficulty,
-			Usage: "Minimum difficulty to define a critical transaction",
 		}),
 		cli.StringFlag{
 			Name:  "config, c",
@@ -207,11 +193,8 @@ func main() {
 		sys.QueryTimeout = time.Duration(c.Int("sys.query_timeout")) * time.Second
 		sys.MaxEligibleParentsDepthDiff = c.Uint64("sys.max_eligible_parents_depth_diff")
 		sys.MinDifficulty = c.Int("sys.difficulty.min")
-		sys.MaxDifficulty = c.Int("sys.difficulty.max")
 		sys.MedianTimestampNumAncestors = c.Int("sys.median_timestamp_num_ancestors")
 		sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
-		sys.ExpectedConsensusTimeMilliseconds = c.Uint64("sys.expected_consensus_time")
-		sys.CriticalTimestampAverageWindowSize = c.Int("sys.critical_timestamp_average_window_size")
 		sys.MinimumStake = c.Uint64("sys.min_stake")
 
 		// start the server
