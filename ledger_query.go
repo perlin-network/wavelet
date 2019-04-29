@@ -64,14 +64,15 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 			return nil
 		}
 
-		ledger.mu.Lock()
-		defer ledger.mu.Unlock()
+		ledger.mu.RLock()
+		nextRound := ledger.round
+		ledger.mu.RUnlock()
 
 		rounds := make(map[common.RoundID]Round)
 		accounts := make(map[common.AccountID]struct{}, len(votes))
 
 		for _, vote := range votes {
-			if vote.Preferred.Index == ledger.round && vote.Preferred.ID != common.ZeroRoundID && vote.Preferred.Root.ID != common.ZeroTransactionID {
+			if vote.Preferred.Index == nextRound && vote.Preferred.ID != common.ZeroRoundID && vote.Preferred.Root.ID != common.ZeroTransactionID {
 				rounds[vote.Preferred.ID] = vote.Preferred
 			}
 
@@ -84,7 +85,7 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 		weights := computeStakeDistribution(snapshot, accounts)
 
 		for _, vote := range votes {
-			if vote.Preferred.Index == ledger.round && vote.Preferred.ID != common.ZeroRoundID && vote.Preferred.Root.ID != common.ZeroRoundID {
+			if vote.Preferred.Index == nextRound && vote.Preferred.ID != common.ZeroRoundID && vote.Preferred.Root.ID != common.ZeroRoundID {
 				counts[vote.Preferred.ID] += weights[vote.Voter]
 
 				if counts[vote.Preferred.ID] >= sys.SnowballAlpha {
@@ -126,6 +127,9 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 			ledger.snowball.Reset()
 			ledger.graph.Reset(newRound)
 
+			ledger.mu.Lock()
+			defer ledger.mu.Unlock()
+
 			ledger.prune(newRound)
 
 			logger := log.Consensus("round_end")
@@ -153,9 +157,6 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 // does not prefer any transaction just yet. It returns an error if no suitable critical transaction
 // may be found in the current round.
 func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction) error {
-	ledger.mu.Lock()
-	defer ledger.mu.Unlock()
-
 	if ledger.snowball.Preferred() != nil {
 		return nil
 	}
@@ -200,13 +201,17 @@ func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction) error 
 
 	proposed := eligible[0]
 
-	state, err := ledger.collapseTransactions(ledger.round, proposed, false)
+	ledger.mu.RLock()
+	nextRound := ledger.round
+	ledger.mu.RUnlock()
+
+	state, err := ledger.collapseTransactions(nextRound, proposed, false)
 
 	if err != nil {
 		return errors.Wrap(err, "could not collapse first critical transaction we could find")
 	}
 
-	initial := NewRound(ledger.round, state.Checksum(), *proposed)
+	initial := NewRound(nextRound, state.Checksum(), *proposed)
 	ledger.snowball.Prefer(&initial)
 
 	return nil
