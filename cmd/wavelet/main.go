@@ -334,7 +334,13 @@ func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog
 
 			var ids []string
 
-			for _, peer := range w.Network().Peers(n) {
+			peers, err := node.SelectPeers(w.Network().Peers(n), sys.SnowballK)
+			if err != nil {
+				logger.Error().Msg("Error while selecting peers - " + err.Error())
+				continue
+			}
+
+			for _, peer := range peers {
 				if id := peer.Ctx().Get(skademlia.KeyID); id != nil {
 					ids = append(ids, id.(*skademlia.ID).String())
 				}
