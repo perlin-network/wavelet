@@ -87,7 +87,7 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 			if vote.Preferred.Index == ledger.round && vote.Preferred.ID != common.ZeroRoundID && vote.Preferred.Root.ID != common.ZeroRoundID {
 				counts[vote.Preferred.ID] += weights[vote.Voter]
 
-				if counts[vote.Preferred.ID] >= sys.SnowballQueryAlpha {
+				if counts[vote.Preferred.ID] >= sys.SnowballAlpha {
 					elected = &vote.Preferred
 					break
 				}

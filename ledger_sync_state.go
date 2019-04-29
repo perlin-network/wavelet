@@ -82,7 +82,7 @@ func checkIfOutOfSync(ctx context.Context, ledger *Ledger) (transition, error) {
 		if vote.Round.ID != common.ZeroRoundID && vote.Round.Root.ID != common.ZeroTransactionID {
 			counts[vote.Round.ID] += weights[vote.Voter]
 
-			if counts[vote.Round.ID] >= sys.SnowballSyncAlpha {
+			if counts[vote.Round.ID] >= sys.SnowballAlpha {
 				elected = &vote.Round
 				break
 			}

@@ -151,8 +151,8 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 		accounts: accounts,
 		graph:    graph,
 
-		snowball: NewSnowball().WithK(sys.SnowballQueryK).WithAlpha(sys.SnowballQueryAlpha).WithBeta(sys.SnowballQueryBeta),
-		resolver: NewSnowball().WithK(sys.SnowballSyncK).WithAlpha(sys.SnowballSyncAlpha).WithBeta(sys.SnowballSyncBeta),
+		snowball: NewSnowball().WithK(sys.SnowballK).WithAlpha(sys.SnowballAlpha).WithBeta(sys.SnowballBeta),
+		resolver: NewSnowball().WithK(sys.SnowballK).WithAlpha(sys.SnowballAlpha).WithBeta(sys.SnowballBeta),
 
 		processors: map[byte]TransactionProcessor{
 			sys.TagNop:      ProcessNopTransaction,

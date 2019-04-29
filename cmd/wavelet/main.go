@@ -140,34 +140,19 @@ func main() {
 			Usage: "minimum stake to garner validator rewards and have importance in consensus",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
-			Name:   "sys.snowball.query.k",
-			Value:  sys.SnowballQueryK,
-			EnvVar: "SNOWBALL_QUERY_K",
-			Usage:  "Snowball consensus protocol parameter k for querying.",
+			Name:   "sys.snowball.k",
+			Value:  sys.SnowballK,
+			Usage:  "Snowball consensus protocol parameter k",
+			EnvVar: "WAVELET_SNOWBALL_K",
 		}),
 		altsrc.NewFloat64Flag(cli.Float64Flag{
-			Name:  "sys.snowball.query.alpha",
-			Value: sys.SnowballQueryAlpha,
+			Name:  "sys.snowball.alpha",
+			Value: sys.SnowballAlpha,
 			Usage: "Snowball consensus protocol parameter alpha",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.snowball.query.beta",
-			Value: sys.SnowballQueryBeta,
-			Usage: "Snowball consensus protocol parameter beta",
-		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.snowball.sync.k",
-			Value: sys.SnowballSyncK,
-			Usage: "Snowball consensus protocol parameter k",
-		}),
-		altsrc.NewFloat64Flag(cli.Float64Flag{
-			Name:  "sys.snowball.sync.alpha",
-			Value: sys.SnowballSyncAlpha,
-			Usage: "Snowball consensus protocol parameter alpha",
-		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.snowball.sync.beta",
-			Value: sys.SnowballSyncBeta,
+			Name:  "sys.snowball.beta",
+			Value: sys.SnowballBeta,
 			Usage: "Snowball consensus protocol parameter beta",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
@@ -214,12 +199,9 @@ func main() {
 		}
 
 		// set the the sys variables
-		sys.SnowballQueryK = c.Int("sys.snowball.query.k")
-		sys.SnowballQueryAlpha = c.Float64("sys.snowball.query.alpha")
-		sys.SnowballQueryBeta = c.Int("sys.snowball.query.beta")
-		sys.SnowballSyncK = c.Int("sys.snowball.sync.k")
-		sys.SnowballSyncAlpha = c.Float64("sys.snowball.sync.alpha")
-		sys.SnowballSyncBeta = c.Int("sys.snowball.sync.beta")
+		sys.SnowballK = c.Int("sys.snowball.k")
+		sys.SnowballAlpha = c.Float64("sys.snowball.alpha")
+		sys.SnowballBeta = c.Int("sys.snowball.beta")
 		sys.QueryTimeout = time.Duration(c.Int("sys.query_timeout")) * time.Second
 		sys.MaxEligibleParentsDepthDiff = c.Uint64("sys.max_eligible_parents_depth_diff")
 		sys.MinDifficulty = c.Int("sys.difficulty.min")

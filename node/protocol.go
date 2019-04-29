@@ -289,7 +289,7 @@ func (p *Protocol) broadcastGossip(node *noise.Node) {
 		case <-p.ctx.Done():
 			return
 		case evt := <-p.ledger.GossipOut:
-			peers, err := selectPeers(p.network, node, sys.SnowballQueryK)
+			peers, err := selectPeers(p.network, node, sys.SnowballK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "failed to select peers while gossiping")
 				continue
@@ -335,7 +335,7 @@ func (p *Protocol) broadcastQueries(node *noise.Node) {
 		case <-p.ctx.Done():
 			return
 		case evt := <-p.ledger.QueryOut:
-			peers, err := selectPeers(p.network, node, sys.SnowballQueryK)
+			peers, err := selectPeers(p.network, node, sys.SnowballK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "failed to select peers while querying")
 				continue
@@ -381,7 +381,7 @@ func (p *Protocol) broadcastOutOfSyncChecks(node *noise.Node) {
 		case <-p.ctx.Done():
 			return
 		case evt := <-p.ledger.OutOfSyncOut:
-			peers, err := selectPeers(p.network, node, sys.SnowballSyncK)
+			peers, err := selectPeers(p.network, node, sys.SnowballK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "got an error while selecting peers for out of sync check")
 				continue
@@ -428,7 +428,7 @@ func (p *Protocol) broadcastSyncInitRequests(node *noise.Node) {
 		case <-p.ctx.Done():
 			return
 		case evt := <-p.ledger.SyncInitOut:
-			peers, err := selectPeers(p.network, node, sys.SnowballSyncK)
+			peers, err := selectPeers(p.network, node, sys.SnowballK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "got an error while selecting peers for sync init")
 				continue
@@ -475,7 +475,7 @@ func (p *Protocol) broadcastDownloadTxRequests(node *noise.Node) {
 		case <-p.ctx.Done():
 			return
 		case evt := <-p.ledger.SyncTxOut:
-			peers, err := selectPeers(p.network, node, sys.SnowballSyncK)
+			peers, err := selectPeers(p.network, node, sys.SnowballK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "got an error while selecting peers for syncing missing transactions")
 				continue
@@ -612,7 +612,7 @@ func (p *Protocol) broadcastForwardTxRequests(node *noise.Node) {
 		case <-p.ctx.Done():
 			return
 		case evt := <-p.ledger.ForwardTXOut:
-			peers, err := selectPeers(p.network, node, sys.SnowballSyncK)
+			peers, err := selectPeers(p.network, node, sys.SnowballK)
 			if err != nil {
 				continue
 			}

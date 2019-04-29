@@ -18,13 +18,9 @@ var (
 	SKademliaC2 = 16
 
 	// Snowball consensus protocol parameters.
-	SnowballQueryK     = 2
-	SnowballQueryAlpha = 0.8
-	SnowballQueryBeta  = 150
-
-	SnowballSyncK     = 2
-	SnowballSyncAlpha = 0.8
-	SnowballSyncBeta  = 150
+	SnowballK     = 2
+	SnowballAlpha = 0.8
+	SnowballBeta  = 150
 
 	// Timeout for querying a transaction to K peers.
 	QueryTimeout = 1 * time.Second
