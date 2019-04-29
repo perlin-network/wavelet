@@ -200,7 +200,7 @@ func (g *Graph) lookupTransactionByID(id common.TransactionID) (*Transaction, bo
 
 var (
 	ErrMissingParents = errors.New("parents for transaction are not in graph")
-	ErrAlreadyExists = errors.New("transaction already exists in the graph")
+	ErrAlreadyExists  = errors.New("transaction already exists in the graph")
 )
 
 func (g *Graph) addTransaction(tx Transaction) error {
@@ -376,12 +376,10 @@ func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
 }
 
 func (g *Graph) Reset(newRound *Round) {
-	if _, exists := g.transactions[newRound.Root.ID]; !exists {
-		ptr := &newRound.Root
+	ptr := &newRound.Root
 
-		g.transactions[newRound.Root.ID] = ptr
-		g.createTransactionIndices(ptr)
-	}
+	g.transactions[newRound.Root.ID] = ptr
+	g.createTransactionIndices(ptr)
 
 	oldRoot := g.transactions[g.rootID]
 
