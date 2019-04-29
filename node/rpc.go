@@ -4,21 +4,23 @@ import (
 	"context"
 	"fmt"
 	"github.com/perlin-network/noise"
-	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"math/rand"
 	"sync"
 	"time"
 )
 
-func selectPeers(network *skademlia.Protocol, node *noise.Node, amount int) ([]*noise.Peer, error) {
-	peers := network.Peers(node)
-
+func SelectPeers(peers []*noise.Peer, amount int) ([]*noise.Peer, error) {
 	if len(peers) < amount {
 		return peers, errors.Errorf("only connected to %d peer(s), but require a minimum of %d peer(s)", len(peers), amount)
 	}
 
 	if len(peers) > amount {
+		rand.Shuffle(len(peers), func(i, j int) {
+			peers[i], peers[j] = peers[j], peers[i]
+		})
+
 		peers = peers[:amount]
 	}
 
