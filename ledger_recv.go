@@ -108,7 +108,7 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 
 				return nil
 			}()
-		case evt := <-ledger.syncTxIn:
+		case evt := <-ledger.downloadTxIn:
 			return func() error {
 				ledger.mu.RLock()
 				defer ledger.mu.RUnlock()
@@ -124,7 +124,7 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 				evt.Response <- txs
 				return nil
 			}()
-		case evt := <-ledger.forwardTXIn:
+		case evt := <-ledger.forwardTxIn:
 			ledger.mu.Lock()
 			defer ledger.mu.Unlock()
 

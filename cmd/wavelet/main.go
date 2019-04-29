@@ -62,6 +62,8 @@ func protocol(n *noise.Node, config *Config, keys *skademlia.Keypair) (*node.Pro
 }
 
 func main() {
+	_ = make([]byte, 10<<28)
+
 	runtime.SetBlockProfileRate(1)
 	runtime.SetMutexProfileFraction(1)
 
@@ -367,6 +369,8 @@ func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog
 				Hex("root_id", round.Root.ID[:]).
 				Uint64("height", ledger.Height()).
 				Uint64("num_tx", ledger.NumTransactions()).
+				Uint64("num_tx_in_store", ledger.NumTransactionInStore()).
+				Uint64("num_missing_tx", ledger.NumMissingTransactions()).
 				Str("preferred_id", preferredID).
 				Strs("peers", ids).
 				Msg("Here is the current state of the ledger.")

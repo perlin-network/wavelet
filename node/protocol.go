@@ -474,7 +474,7 @@ func (p *Protocol) broadcastDownloadTxRequests(node *noise.Node) {
 		select {
 		case <-p.ctx.Done():
 			return
-		case evt := <-p.ledger.SyncTxOut:
+		case evt := <-p.ledger.DownloadTxOut:
 			peers, err := selectPeers(p.network, node, sys.SnowballK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "got an error while selecting peers for syncing missing transactions")
@@ -611,7 +611,7 @@ func (p *Protocol) broadcastForwardTxRequests(node *noise.Node) {
 		select {
 		case <-p.ctx.Done():
 			return
-		case evt := <-p.ledger.ForwardTXOut:
+		case evt := <-p.ledger.ForwardTxOut:
 			peers, err := selectPeers(p.network, node, sys.SnowballK)
 			if err != nil {
 				continue
@@ -812,7 +812,7 @@ func (p *Protocol) handleDownloadTxRequests(wire noise.Wire) {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending missing tx sync request to ledger")
 		return
-	case p.ledger.SyncTxIn <- evt:
+	case p.ledger.DownloadTxIn <- evt:
 	}
 
 	select {
@@ -837,6 +837,6 @@ func (p *Protocol) handleForwardTxRequest(wire noise.Wire) {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending forward tx request to ledger")
 		return
-	case p.ledger.ForwardTXIn <- evt:
+	case p.ledger.ForwardTxIn <- evt:
 	}
 }

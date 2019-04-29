@@ -82,10 +82,10 @@ type Ledger struct {
 	SyncDiffOut <-chan EventSyncDiff
 	syncDiffOut chan<- EventSyncDiff
 
-	SyncTxIn chan<- EventIncomingDownloadTX
-	syncTxIn <-chan EventIncomingDownloadTX
+	DownloadTxIn chan<- EventIncomingDownloadTX
+	downloadTxIn <-chan EventIncomingDownloadTX
 
-	SyncTxOut     <-chan EventDownloadTX
+	DownloadTxOut <-chan EventDownloadTX
 	downloadTxOut chan<- EventDownloadTX
 
 	LatestViewIn chan<- EventIncomingLatestView
@@ -94,11 +94,11 @@ type Ledger struct {
 	LatestViewOut <-chan EventLatestView
 	latestViewOut chan<- EventLatestView
 
-	ForwardTXIn chan<- EventForwardTX
-	forwardTXIn <-chan EventForwardTX
+	ForwardTxIn chan<- EventForwardTX
+	forwardTxIn <-chan EventForwardTX
 
-	ForwardTXOut <-chan EventForwardTX
-	forwardTXOut chan<- EventForwardTX
+	ForwardTxOut <-chan EventForwardTX
+	forwardTxOut chan<- EventForwardTX
 }
 
 func NewLedger(keys *skademlia.Keypair) *Ledger {
@@ -121,8 +121,8 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 	syncDiffIn := make(chan EventIncomingSyncDiff, 128)
 	syncDiffOut := make(chan EventSyncDiff, 128)
 
-	syncTxIn := make(chan EventIncomingDownloadTX, 16)
-	syncTxOut := make(chan EventDownloadTX, 16)
+	downloadTxIn := make(chan EventIncomingDownloadTX, 16)
+	downloadTxOut := make(chan EventDownloadTX, 16)
 
 	latestViewIn := make(chan EventIncomingLatestView, 16)
 	latestViewOut := make(chan EventLatestView, 16)
@@ -199,11 +199,11 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 		SyncDiffOut: syncDiffOut,
 		syncDiffOut: syncDiffOut,
 
-		SyncTxIn: syncTxIn,
-		syncTxIn: syncTxIn,
+		DownloadTxIn: downloadTxIn,
+		downloadTxIn: downloadTxIn,
 
-		SyncTxOut:     syncTxOut,
-		downloadTxOut: syncTxOut,
+		DownloadTxOut: downloadTxOut,
+		downloadTxOut: downloadTxOut,
 
 		LatestViewIn: latestViewIn,
 		latestViewIn: latestViewIn,
@@ -211,11 +211,11 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 		LatestViewOut: latestViewOut,
 		latestViewOut: latestViewOut,
 
-		ForwardTXIn: forwardTxIn,
-		forwardTXIn: forwardTxIn,
+		ForwardTxIn: forwardTxIn,
+		forwardTxIn: forwardTxIn,
 
-		ForwardTXOut: forwardTxOut,
-		forwardTXOut: forwardTxOut,
+		ForwardTxOut: forwardTxOut,
+		forwardTxOut: forwardTxOut,
 	}
 }
 
@@ -276,7 +276,7 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 		select {
 		case <-time.After(1 * time.Second):
 			fmt.Println("timed out forwarding accepted transaction")
-		case l.forwardTXOut <- EventForwardTX{TX: tx}:
+		case l.forwardTxOut <- EventForwardTX{TX: tx}:
 		}
 
 		l.metrics.receivedTX.Mark(1)
@@ -352,6 +352,20 @@ func (l *Ledger) NumTransactions() uint64 {
 	defer l.mu.RUnlock()
 
 	return l.getNumTransactions(l.round - 1)
+}
+
+func (l *Ledger) NumTransactionInStore() uint64 {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
+	return uint64(len(l.graph.transactions))
+}
+
+func (l *Ledger) NumMissingTransactions() uint64 {
+	l.graph.missingLock.Lock()
+	defer l.graph.missingLock.Unlock()
+
+	return uint64(len(l.graph.missing))
 }
 
 func (l *Ledger) Height() uint64 {
