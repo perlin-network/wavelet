@@ -202,11 +202,13 @@ func (p *Protocol) Init(node *noise.Node) {
 
 func (p *Protocol) Protocol() noise.ProtocolBlock {
 	return func(ctx noise.Context) error {
-		id := ctx.Get(skademlia.KeyID).(*skademlia.ID)
+		rid := ctx.Get(skademlia.KeyID)
 
-		if id == nil {
+		if rid == nil {
 			return errors.New("wavelet: user does not have a s/kademlia id registered")
 		}
+
+		id := rid.(*skademlia.ID)
 
 		publicKey := id.PublicKey()
 
@@ -307,6 +309,12 @@ func (p *Protocol) broadcastGossip(node *noise.Node) {
 			votes := make([]wavelet.VoteGossip, len(responses))
 
 			for i, buf := range responses {
+				id := peers[i].Ctx().Get(skademlia.KeyID)
+
+				if id == nil {
+					continue
+				}
+
 				if buf != nil {
 					res, err := UnmarshalGossipResponse(bytes.NewReader(buf))
 
@@ -318,7 +326,7 @@ func (p *Protocol) broadcastGossip(node *noise.Node) {
 					votes[i].Ok = res.vote
 				}
 
-				votes[i].Voter = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).PublicKey()
+				votes[i].Voter = id.(*skademlia.ID).PublicKey()
 			}
 
 			evt.Result <- votes
@@ -353,6 +361,12 @@ func (p *Protocol) broadcastQueries(node *noise.Node) {
 			votes := make([]wavelet.VoteQuery, len(responses))
 
 			for i, buf := range responses {
+				id := peers[i].Ctx().Get(skademlia.KeyID)
+
+				if id == nil {
+					continue
+				}
+
 				if buf != nil {
 					res, err := UnmarshalQueryResponse(bytes.NewReader(buf))
 
@@ -364,7 +378,7 @@ func (p *Protocol) broadcastQueries(node *noise.Node) {
 					votes[i].Preferred = res.preferred
 				}
 
-				votes[i].Voter = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).PublicKey()
+				votes[i].Voter = id.(*skademlia.ID).PublicKey()
 			}
 
 			evt.Result <- votes
@@ -399,6 +413,12 @@ func (p *Protocol) broadcastOutOfSyncChecks(node *noise.Node) {
 			votes := make([]wavelet.VoteOutOfSync, len(peers))
 
 			for i, buf := range responses {
+				id := peers[i].Ctx().Get(skademlia.KeyID)
+
+				if id == nil {
+					continue
+				}
+
 				if buf != nil {
 					res, err := UnmarshalOutOfSyncResponse(bytes.NewReader(buf))
 
@@ -410,7 +430,7 @@ func (p *Protocol) broadcastOutOfSyncChecks(node *noise.Node) {
 					votes[i].Round = res.round
 				}
 
-				votes[i].Voter = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).PublicKey()
+				votes[i].Voter = id.(*skademlia.ID).PublicKey()
 			}
 
 			evt.Result <- votes
@@ -446,6 +466,12 @@ func (p *Protocol) broadcastSyncInitRequests(node *noise.Node) {
 			votes := make([]wavelet.SyncInitMetadata, len(responses))
 
 			for i, buf := range responses {
+				id := peers[i].Ctx().Get(skademlia.KeyID)
+
+				if id == nil {
+					continue
+				}
+
 				if buf != nil {
 					res, err := UnmarshalSyncInitResponse(bytes.NewReader(buf))
 
@@ -458,7 +484,7 @@ func (p *Protocol) broadcastSyncInitRequests(node *noise.Node) {
 					votes[i].ChunkHashes = res.chunkHashes
 				}
 
-				votes[i].PeerID = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID)
+				votes[i].PeerID = id.(*skademlia.ID)
 			}
 
 			evt.Result <- votes
