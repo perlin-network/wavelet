@@ -16,42 +16,51 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 			return nil
 		case evt := <-ledger.gossipIn:
 			return func() error {
-				ledger.mu.Lock()
-				defer ledger.mu.Unlock()
-
 				err := ledger.addTransaction(evt.TX)
 
 				evt.Vote <- err
 				return err
 			}()
 		case evt := <-ledger.queryIn:
-			return func() error {
+			r := evt.Round
+
+			f := func() (*Round, error) {
 				ledger.mu.Lock()
 				defer ledger.mu.Unlock()
-
-				r := evt.Round
 
 				if r.Index < ledger.round { // Respond with the round we decided beforehand.
 					round, available := ledger.rounds[r.Index]
 
 					if !available {
-						evt.Error <- errors.Errorf("got requested with round %d, but do not have it available", r.Index)
-						return nil
+						return nil, errors.Errorf("got requested with round %d, but do not have it available", r.Index)
 					}
 
-					evt.Response <- &round
-					return nil
+					return &round, nil
 				}
 
-				if err := ledger.addTransaction(r.Root); err != nil { // Add the root in the round to our graph.
-					evt.Error <- err
-					return nil
-				}
+				return nil, nil
+			}
 
-				evt.Response <- ledger.snowball.Preferred() // Send back our preferred round info, if we have any.
+			round, err := f()
 
+			if err != nil {
+				evt.Error <- err
 				return nil
-			}()
+			}
+
+			if round != nil {
+				evt.Response <- round
+				return nil
+			}
+
+			if err := ledger.addTransaction(r.Root); err != nil { // Add the root in the round to our graph.
+				evt.Error <- err
+				return nil
+			}
+
+			evt.Response <- ledger.snowball.Preferred() // Send back our preferred round info, if we have any.
+
+			return nil
 		case evt := <-ledger.outOfSyncIn:
 			return func() error {
 				ledger.mu.RLock()
@@ -67,7 +76,9 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 			}()
 		case evt := <-ledger.syncInitIn:
 			return func() error {
+				ledger.mu.RLock()
 				data := SyncInitMetadata{RoundID: ledger.round}
+				ledger.mu.RUnlock()
 
 				diff := ledger.accounts.snapshot().DumpDiff(evt.RoundID)
 
@@ -110,9 +121,6 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 			}()
 		case evt := <-ledger.downloadTxIn:
 			return func() error {
-				ledger.mu.RLock()
-				defer ledger.mu.RUnlock()
-
 				var txs []Transaction
 
 				for _, id := range evt.IDs {
@@ -125,9 +133,6 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 				return nil
 			}()
 		case evt := <-ledger.forwardTxIn:
-			ledger.mu.Lock()
-			defer ledger.mu.Unlock()
-
 			return ledger.addTransaction(evt.TX)
 		}
 	}

@@ -137,9 +137,6 @@ func gossip(ledger *Ledger) func(ctx context.Context) error {
 			return nil
 		}
 
-		ledger.mu.Lock()
-		defer ledger.mu.Unlock()
-
 		// Double-check that after gossiping, we have not progressed a single view ID and
 		// that the transaction is still valid for us to add to our view-graph.
 

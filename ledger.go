@@ -231,9 +231,6 @@ func NewTransaction(creator *skademlia.Keypair, tag byte, payload []byte) Transa
 }
 
 func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
 	tx.Sender = l.keys.PublicKey()
 	tx.ParentIDs = l.graph.FindEligibleParents()
 
@@ -284,16 +281,21 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 		return err
 	}
 
-	difficulty := l.rounds[l.round-1].Root.ExpectedDifficulty(byte(sys.MinDifficulty))
+	l.mu.RLock()
+	currentRoundID := l.round - 1
+	currentRound := l.rounds[currentRoundID]
+	l.mu.RUnlock()
+
+	difficulty := currentRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))
 
 	if tx.IsCritical(difficulty) && l.snowball.Preferred() == nil {
-		state, err := l.collapseTransactions(l.round, &tx, true)
+		state, err := l.collapseTransactions(currentRoundID+1, &tx, true)
 
 		if err != nil {
 			return errors.Wrap(err, "failed to collapse down critical transaction which we have received")
 		}
 
-		round := NewRound(l.round, state.Checksum(), tx)
+		round := NewRound(currentRoundID+1, state.Checksum(), tx)
 		l.snowball.Prefer(&round)
 	}
 
@@ -318,9 +320,6 @@ func (l *Ledger) Stop() {
 }
 
 func (l *Ledger) Snapshot() *avl.Tree {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
 	return l.accounts.snapshot()
 }
 
@@ -339,9 +338,6 @@ func (l *Ledger) LastRound() Round {
 }
 
 func (l *Ledger) Preferred() *Round {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
 	return l.snowball.Preferred()
 }
 

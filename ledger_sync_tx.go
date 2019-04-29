@@ -41,9 +41,6 @@ func downloadMissingTransactions(ctx context.Context, ledger *Ledger, missing []
 	case txs = <-evt.Result:
 	}
 
-	ledger.mu.Lock()
-	defer ledger.mu.Unlock()
-
 	var terr error
 	for _, tx := range txs {
 		if err := ledger.addTransaction(tx); err != nil {

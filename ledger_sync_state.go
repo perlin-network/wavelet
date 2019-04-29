@@ -73,9 +73,6 @@ func checkIfOutOfSync(ctx context.Context, ledger *Ledger) (transition, error) {
 	var elected *Round
 	counts := make(map[common.RoundID]float64)
 
-	ledger.mu.Lock()
-	defer ledger.mu.Unlock()
-
 	weights := computeStakeDistribution(snapshot, accounts)
 
 	for _, vote := range votes {
@@ -103,7 +100,11 @@ func checkIfOutOfSync(ctx context.Context, ledger *Ledger) (transition, error) {
 		// The round number we came to consensus to being the latest within the network
 		// is less than or equal to ours. Go back to square one.
 
-		if ledger.round-1 >= proposedRound.Index {
+		ledger.mu.RLock()
+		currentRound := ledger.round - 1
+		ledger.mu.RUnlock()
+
+		if currentRound >= proposedRound.Index {
 			return nil, ErrNonePreferred
 		}
 
