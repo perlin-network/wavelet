@@ -21,6 +21,7 @@ import (
 	"github.com/rs/zerolog"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
+	"io"
 	"io/ioutil"
 	"net"
 	"os"
@@ -351,6 +352,10 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 		buf, _, err := reader.ReadLine()
 
 		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
 			continue
 		}
 
