@@ -84,7 +84,7 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 		weights := computeStakeDistribution(snapshot, accounts)
 
 		for _, vote := range votes {
-			if vote.Preferred.Index == ledger.round && vote.Preferred.Root.ID != common.ZeroTransactionID {
+			if vote.Preferred.Index == ledger.round && vote.Preferred.ID != common.ZeroRoundID && vote.Preferred.Root.ID != common.ZeroRoundID {
 				counts[vote.Preferred.ID] += weights[vote.Voter]
 
 				if counts[vote.Preferred.ID] >= sys.SnowballQueryAlpha {
@@ -92,6 +92,10 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 					break
 				}
 			}
+		}
+
+		if elected == nil {
+			return nil
 		}
 
 		ledger.snowball.Tick(elected)

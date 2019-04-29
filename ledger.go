@@ -295,11 +295,11 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 			fmt.Println("timed out forwarding accepted transaction")
 		case l.forwardTXOut <- EventForwardTX{TX: tx}:
 		}
+
+		l.metrics.receivedTX.Mark(1)
 	} else if err != ErrAlreadyExists {
 		return err
 	}
-
-	l.metrics.receivedTX.Mark(1)
 
 	ptr := l.graph.transactions[tx.ID]
 
@@ -512,7 +512,7 @@ func (l *Ledger) queryingLoop(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(10 * time.Millisecond):
+			case <-time.After(100 * time.Millisecond):
 			}
 		}
 	}
@@ -544,7 +544,7 @@ func (l *Ledger) stateSyncingLoop(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(10 * time.Millisecond):
+			case <-time.After(100 * time.Millisecond):
 			}
 		}
 	}
@@ -567,7 +567,7 @@ L:
 				select {
 				case <-ctx.Done():
 					return
-				case <-time.After(10 * time.Millisecond):
+				case <-time.After(100 * time.Millisecond):
 				}
 
 				continue L

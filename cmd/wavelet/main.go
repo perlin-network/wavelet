@@ -22,6 +22,7 @@ import (
 	"github.com/rs/zerolog"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
+	"io"
 	"io/ioutil"
 	"net"
 	"os"
@@ -146,9 +147,10 @@ func main() {
 			Usage: "minimum stake to garner validator rewards and have importance in consensus",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.snowball.query.k",
-			Value: sys.SnowballQueryK,
-			Usage: "Snowball consensus protocol parameter k for querying.",
+			Name:   "sys.snowball.query.k",
+			Value:  sys.SnowballQueryK,
+			EnvVar: "SNOWBALL_QUERY_K",
+			Usage:  "Snowball consensus protocol parameter k for querying.",
 		}),
 		altsrc.NewFloat64Flag(cli.Float64Flag{
 			Name:  "sys.snowball.query.alpha",
@@ -237,10 +239,10 @@ func main() {
 		sys.MinimumStake = c.Uint64("sys.min_stake")
 
 		// start the server
-		k, _, w := server(config, logger)
+		k, n, w := server(config, logger)
 
 		// run the shell version of the node
-		shell(k, w, logger)
+		shell(n, k, w, logger)
 
 		return nil
 	}
@@ -351,7 +353,7 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 	return k, n, w
 }
 
-func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
+func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 	publicKey := k.PublicKey()
 	ledger := w.Ledger()
 
@@ -363,6 +365,10 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 		buf, _, err := reader.ReadLine()
 
 		if err != nil {
+			if err == io.EOF {
+				break
+			}
+
 			continue
 		}
 
@@ -378,6 +384,14 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 
 			round := ledger.LastRound()
 
+			var ids []string
+
+			for _, peer := range w.Network().Peers(n) {
+				if id := peer.Ctx().Get(skademlia.KeyID); id != nil {
+					ids = append(ids, id.(*skademlia.ID).String())
+				}
+			}
+
 			logger.Info().
 				Uint8("difficulty", round.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
 				Uint64("round", round.Index).
@@ -385,6 +399,7 @@ func shell(k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
 				Uint64("height", ledger.Height()).
 				Uint64("num_tx", ledger.NumTransactions()).
 				Str("preferred_id", preferredID).
+				Strs("peers", ids).
 				Msg("Here is the current state of the ledger.")
 		case "tx":
 			if len(cmd) < 2 {

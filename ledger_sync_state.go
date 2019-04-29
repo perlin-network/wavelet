@@ -56,7 +56,7 @@ func checkIfOutOfSync(ctx context.Context, ledger *Ledger) (transition, error) {
 	}
 
 	if len(votes) == 0 {
-		return nil, nil
+		return nil, ErrNonePreferred
 	}
 
 	rounds := make(map[common.RoundID]Round)
@@ -79,7 +79,7 @@ func checkIfOutOfSync(ctx context.Context, ledger *Ledger) (transition, error) {
 	weights := computeStakeDistribution(snapshot, accounts)
 
 	for _, vote := range votes {
-		if vote.Round.Root.ID != common.ZeroTransactionID {
+		if vote.Round.ID != common.ZeroRoundID && vote.Round.Root.ID != common.ZeroTransactionID {
 			counts[vote.Round.ID] += weights[vote.Voter]
 
 			if counts[vote.Round.ID] >= sys.SnowballSyncAlpha {
@@ -87,6 +87,10 @@ func checkIfOutOfSync(ctx context.Context, ledger *Ledger) (transition, error) {
 				break
 			}
 		}
+	}
+
+	if elected == nil {
+		return nil, ErrNonePreferred
 	}
 
 	ledger.resolver.Tick(elected)

@@ -1,4 +1,4 @@
-.PHONY: wavelet all build-all test bench clean
+.PHONY: wavelet all build-all docker test bench clean
 .PHONY: linux
 .PHONY: windows
 .PHONY: darwin
@@ -11,6 +11,11 @@ all: build-all test bench
 
 build-all: linux windows darwin linux-arm64
 	@echo "Done building all targets."
+
+docker:
+	docker build -t wavelet .
+	docker tag wavelet:latest localhost:5000/wavelet
+	docker push localhost:5000/wavelet
 
 linux:
 	scripts/build.sh -a linux-amd64

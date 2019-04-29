@@ -13,7 +13,12 @@ RUN (cd /tmp; curl -L https://github.com/facebook/rocksdb/archive/v5.18.3.tar.gz
  && (cd /tmp/rocksdb-5.18.3; cp -r include/* /usr/include/) \
  && rm -R /tmp/rocksdb-5.18.3
 
+
 RUN mkdir /src
+COPY go.mod /src/go.mod
+COPY go.sum /src/go.sum
+RUN (cd /src; go mod download)
+
 ADD . /src
 RUN (cd /src/cmd/wavelet; go build)
 
