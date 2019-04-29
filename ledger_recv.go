@@ -31,7 +31,7 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 
 				r := evt.Round
 
-				if r.Index < ledger.round-1 { // Respond with the round we decided beforehand.
+				if r.Index < ledger.round { // Respond with the round we decided beforehand.
 					round, available := ledger.rounds[r.Index]
 
 					if !available {
