@@ -2,12 +2,70 @@ package wavelet
 
 import (
 	"bytes"
+	"context"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"runtime"
 	"sync"
 )
+
+type verificationRequest struct {
+	creator   common.AccountID
+	payload   []byte
+	signature common.Signature
+	response  chan bool
+}
+
+type verifier struct {
+	wg     sync.WaitGroup
+	cancel func()
+	bus    chan verificationRequest
+}
+
+func NewVerifier(workersNum int, capacity uint32) *verifier {
+	ctx, cancel := context.WithCancel(context.Background())
+	v := verifier{
+		cancel: cancel,
+		bus:    make(chan verificationRequest, capacity),
+	}
+
+	v.wg.Add(workersNum)
+	for i := 0; i < workersNum; i++ {
+		go func(ctx context.Context) {
+			defer v.wg.Done()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case request := <-v.bus:
+					request.response <- edwards25519.Verify(request.creator, request.payload, request.signature)
+				}
+			}
+		}(ctx)
+	}
+
+	return &v
+}
+
+func (v *verifier) Stop() {
+	v.cancel()
+	v.wg.Wait()
+	close(v.bus)
+}
+
+func (v *verifier) verify(creator common.AccountID, payload []byte, signature common.Signature) bool {
+	request := verificationRequest{
+		creator:   creator,
+		payload:   payload,
+		signature: signature,
+		response:  make(chan bool, 1),
+	}
+	v.bus <- request
+	return <-request.response
+}
 
 type Graph struct {
 	transactions map[common.TransactionID]*Transaction           // All transactions.
@@ -25,6 +83,8 @@ type Graph struct {
 
 	rootID common.TransactionID // Root of the graph.
 	height uint64               // Height of the graph.
+
+	verifier *verifier
 }
 
 func NewGraph(genesis *Round) *Graph {
@@ -58,6 +118,7 @@ func NewGraph(genesis *Round) *Graph {
 
 	g.height = root.Depth + 1
 	g.createTransactionIndices(root)
+	g.verifier = NewVerifier(runtime.NumCPU(), 1024)
 
 	return g
 }
@@ -112,14 +173,14 @@ func (g *Graph) assertTransactionIsValid(tx *Transaction) error {
 
 	var nonce [8]byte // TODO(kenta): nonce
 
-	if !edwards25519.Verify(tx.Creator, append(nonce[:], append([]byte{tx.Tag}, tx.Payload...)...), tx.CreatorSignature) {
+	if !g.verifier.verify(tx.Creator, append(nonce[:], append([]byte{tx.Tag}, tx.Payload...)...), tx.CreatorSignature) {
 		return errors.New("tx has invalid creator signature")
 	}
 
 	cpy := *tx
 	cpy.SenderSignature = common.ZeroSignature
 
-	if !edwards25519.Verify(tx.Sender, cpy.Marshal(), tx.SenderSignature) {
+	if !g.verifier.verify(tx.Sender, cpy.Marshal(), tx.SenderSignature) {
 		return errors.New("tx has invalid sender signature")
 	}
 
