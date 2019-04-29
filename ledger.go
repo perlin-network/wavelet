@@ -278,11 +278,11 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 			fmt.Println("timed out forwarding accepted transaction")
 		case l.forwardTXOut <- EventForwardTX{TX: tx}:
 		}
+
+		l.metrics.receivedTX.Mark(1)
 	} else if err != ErrAlreadyExists {
 		return err
 	}
-
-	l.metrics.receivedTX.Mark(1)
 
 	ptr := l.graph.transactions[tx.ID]
 
