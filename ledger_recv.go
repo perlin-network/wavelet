@@ -115,7 +115,7 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 			var txs []Transaction
 
 			for _, id := range evt.IDs {
-				if tx, available := ledger.graph.LookupTransactionByID(id); available {
+				if tx := ledger.graph.GetTransaction(id); tx != nil {
 					txs = append(txs, *tx)
 				}
 			}

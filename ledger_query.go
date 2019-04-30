@@ -6,7 +6,6 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
-	"math"
 	"sort"
 	"time"
 )
@@ -30,10 +29,9 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 		ledger.mu.RLock()
 		nextRound := ledger.round
 		lastRound := ledger.rounds[ledger.round-1]
-		lastRoot := lastRound.Root
 		ledger.mu.RUnlock()
 
-		if err := findCriticalTransactionToPrefer(ledger, lastRoot, nextRound); err != nil {
+		if err := findCriticalTransactionToPrefer(ledger, lastRound.Root); err != nil {
 			return err
 		}
 
@@ -98,13 +96,16 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 			return nil
 		}
 
+		ledger.mu.Lock()
+		defer ledger.mu.Unlock()
+
 		ledger.snowball.Tick(elected)
 
 		if ledger.snowball.Decided() {
 			newRound := ledger.snowball.Preferred()
 			newRoot := &newRound.Root
 
-			state, err := ledger.collapseTransactions(newRound.Index, newRoot, false)
+			state, err := ledger.collapseTransactions(newRound.Index, newRoot, true)
 
 			if err != nil {
 				return errors.Wrap(err, "got an error finalizing a round")
@@ -120,9 +121,6 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 
 			ledger.snowball.Reset()
 			ledger.graph.Reset(newRound)
-
-			ledger.mu.Lock()
-			defer ledger.mu.Unlock()
 
 			ledger.prune(newRound)
 
@@ -150,34 +148,18 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 // findCriticalTransactionPrefer finds a critical transaction to initially prefer first, if Snowball
 // does not prefer any transaction just yet. It returns an error if no suitable critical transaction
 // may be found in the current round.
-func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction, nextRound uint64) error {
+func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction) error {
+	ledger.mu.Lock()
+	defer ledger.mu.Unlock()
+
 	if ledger.snowball.Preferred() != nil {
 		return nil
 	}
 
 	difficulty := oldRoot.ExpectedDifficulty(byte(sys.MinDifficulty))
 
-	var eligible []*Transaction // Find all critical transactions for the current round.
-
-	for i := difficulty; i < math.MaxUint8; i++ {
-		candidates, exists := ledger.graph.TransactionsWithDifficulty(i)
-
-		if !exists {
-			continue
-		}
-
-		for _, candidateID := range candidates {
-			candidate, exists := ledger.graph.LookupTransactionByID(candidateID)
-
-			if !exists {
-				continue
-			}
-
-			if candidate.Depth > oldRoot.Depth && candidate.IsCritical(difficulty) {
-				eligible = append(eligible, candidate)
-			}
-		}
-	}
+	// Find all eligible critical transactions for the current round.
+	eligible := ledger.graph.FindEligibleCriticals(oldRoot.Depth, difficulty)
 
 	if len(eligible) == 0 { // If there are no critical transactions for the round yet, discontinue.
 		return ErrNonePreferred
@@ -195,13 +177,13 @@ func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction, nextRo
 
 	proposed := eligible[0]
 
-	state, err := ledger.collapseTransactions(nextRound, proposed, false)
+	state, err := ledger.collapseTransactions(ledger.round, proposed, false)
 
 	if err != nil {
 		return errors.Wrap(err, "could not collapse first critical transaction we could find")
 	}
 
-	initial := NewRound(nextRound, state.Checksum(), *proposed)
+	initial := NewRound(ledger.round, state.Checksum(), *proposed)
 	ledger.snowball.Prefer(&initial)
 
 	return nil

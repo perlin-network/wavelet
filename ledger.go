@@ -14,6 +14,7 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -39,6 +40,8 @@ type Ledger struct {
 
 	snowball *Snowball
 	resolver *Snowball
+
+	verifier *verifier
 
 	processors map[byte]TransactionProcessor
 
@@ -155,6 +158,8 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 		snowball: NewSnowball().WithK(sys.SnowballK).WithAlpha(sys.SnowballAlpha).WithBeta(sys.SnowballBeta),
 		resolver: NewSnowball().WithK(sys.SnowballK).WithAlpha(sys.SnowballAlpha).WithBeta(sys.SnowballBeta),
 
+		verifier: NewVerifier(runtime.NumCPU(), 1024),
+
 		processors: map[byte]TransactionProcessor{
 			sys.TagNop:      ProcessNopTransaction,
 			sys.TagTransfer: ProcessTransferTransaction,
@@ -270,34 +275,19 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 }
 
 func (l *Ledger) addTransaction(tx Transaction) error {
+	if err := l.verifier.verify(&tx); err != nil {
+		return err
+	}
+
 	if err := l.graph.AddTransaction(tx); err == nil {
 		select {
-		case <-time.After(1 * time.Second):
-			fmt.Println("timed out forwarding accepted transaction")
 		case l.forwardTxOut <- EventForwardTX{TX: tx}:
+		default:
 		}
 
 		l.metrics.receivedTX.Mark(1)
 	} else if err != ErrAlreadyExists {
 		return err
-	}
-
-	l.mu.RLock()
-	currentRoundID := l.round - 1
-	currentRound := l.rounds[currentRoundID]
-	l.mu.RUnlock()
-
-	difficulty := currentRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))
-
-	if tx.IsCritical(difficulty) && l.snowball.Preferred() == nil {
-		state, err := l.collapseTransactions(currentRoundID+1, &tx, true)
-
-		if err != nil {
-			return errors.Wrap(err, "failed to collapse down critical transaction which we have received")
-		}
-
-		round := NewRound(currentRoundID+1, state.Checksum(), tx)
-		l.snowball.Prefer(&round)
 	}
 
 	return nil
@@ -322,7 +312,8 @@ func (l *Ledger) Stop() {
 	l.wg.Wait()
 
 	l.metrics.Stop()
-	l.graph.Stop()
+
+	l.verifier.Stop()
 }
 
 func (l *Ledger) Snapshot() *avl.Tree {
@@ -399,7 +390,13 @@ func (l *Ledger) getHeight(round uint64) uint64 {
 }
 
 func (l *Ledger) FindTransaction(id common.TransactionID) (*Transaction, bool) {
-	return l.graph.LookupTransactionByID(id)
+	tx := l.graph.GetTransaction(id)
+
+	if tx == nil {
+		return nil, false
+	}
+
+	return tx, true
 }
 
 func (l *Ledger) TransactionApplied(id common.TransactionID) bool {
@@ -563,7 +560,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 	snapshot := l.accounts.snapshot()
 	snapshot.SetViewID(round + 1)
 
-	root := l.LastRound().Root
+	root := l.rounds[l.round-1].Root
 
 	visited := map[common.TransactionID]struct{}{
 		root.ID: {},
