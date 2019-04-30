@@ -289,7 +289,7 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 	difficulty := currentRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))
 
 	if tx.IsCritical(difficulty) && l.snowball.Preferred() == nil {
-		state, err := l.collapseTransactions(currentRoundID+1, &tx, true)
+		state, err := l.collapseTransactions(currentRoundID+1, &tx, false)
 
 		if err != nil {
 			return errors.Wrap(err, "failed to collapse down critical transaction which we have received")
@@ -393,7 +393,13 @@ func (l *Ledger) getHeight(round uint64) uint64 {
 }
 
 func (l *Ledger) FindTransaction(id common.TransactionID) (*Transaction, bool) {
-	return l.graph.LookupTransactionByID(id)
+	tx := l.graph.GetTransaction(id)
+
+	if tx == nil {
+		return nil, false
+	}
+
+	return tx, true
 }
 
 func (l *Ledger) TransactionApplied(id common.TransactionID) bool {

@@ -6,7 +6,6 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
-	"math"
 	"sort"
 	"time"
 )
@@ -104,7 +103,7 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 			newRound := ledger.snowball.Preferred()
 			newRoot := &newRound.Root
 
-			state, err := ledger.collapseTransactions(newRound.Index, newRoot, false)
+			state, err := ledger.collapseTransactions(newRound.Index, newRoot, true)
 
 			if err != nil {
 				return errors.Wrap(err, "got an error finalizing a round")
@@ -157,27 +156,8 @@ func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction, nextRo
 
 	difficulty := oldRoot.ExpectedDifficulty(byte(sys.MinDifficulty))
 
-	var eligible []*Transaction // Find all critical transactions for the current round.
-
-	for i := difficulty; i < math.MaxUint8; i++ {
-		candidates, exists := ledger.graph.TransactionsWithDifficulty(i)
-
-		if !exists {
-			continue
-		}
-
-		for _, candidateID := range candidates {
-			candidate, exists := ledger.graph.LookupTransactionByID(candidateID)
-
-			if !exists {
-				continue
-			}
-
-			if candidate.Depth > oldRoot.Depth && candidate.IsCritical(difficulty) {
-				eligible = append(eligible, candidate)
-			}
-		}
-	}
+	// Find all eligible critical transactions for the current round.
+	eligible := ledger.graph.FindEligibleCriticals(oldRoot.Depth, difficulty)
 
 	if len(eligible) == 0 { // If there are no critical transactions for the round yet, discontinue.
 		return ErrNonePreferred

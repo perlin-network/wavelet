@@ -6,6 +6,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"math"
 	"sort"
 	"sync"
 )
@@ -190,6 +191,13 @@ func (g *Graph) processParents(tx *Transaction) []common.TransactionID {
 	return missingParentIDs
 }
 
+func (g *Graph) GetTransaction(id common.TransactionID) *Transaction {
+	g.RLock()
+	defer g.RUnlock()
+
+	return g.transactions[id]
+}
+
 func (g *Graph) LookupTransactionByID(id common.TransactionID) (*Transaction, bool) {
 	g.Lock()
 	defer g.Unlock()
@@ -346,6 +354,31 @@ func (g *Graph) FindEligibleParents() []common.TransactionID {
 	return eligibleIDs
 }
 
+func (g *Graph) FindEligibleCriticals(rootDepth uint64, difficulty byte) []*Transaction {
+	g.RLock()
+	defer g.RUnlock()
+
+	var eligible []*Transaction
+
+	for i := difficulty; i < math.MaxUint8; i++ {
+		candidates, exists := g.seedIndex[i]
+
+		if !exists {
+			continue
+		}
+
+		for candidateID := range candidates {
+			candidate := g.transactions[candidateID]
+
+			if candidate.Depth > rootDepth && candidate.IsCritical(difficulty) {
+				eligible = append(eligible, candidate)
+			}
+		}
+	}
+
+	return eligible
+}
+
 func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
 	err := g.assertTransactionIsComplete(tx)
 
@@ -496,25 +529,6 @@ func (g *Graph) MissingTransactions() []common.TransactionID {
 	}
 
 	return missing
-}
-
-func (g *Graph) TransactionsWithDifficulty(difficulty byte) ([]common.TransactionID, bool) {
-	g.RLock()
-	defer g.RUnlock()
-
-	candidates, exists := g.seedIndex[difficulty]
-
-	if !exists {
-		return nil, false
-	}
-
-	var candidateIDs []common.TransactionID
-
-	for candidateID := range candidates {
-		candidateIDs = append(candidateIDs, candidateID)
-	}
-
-	return candidateIDs, true
 }
 
 func (g *Graph) NumTransactionsInDepth(depth uint64) uint64 {
