@@ -9,6 +9,7 @@ import (
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
@@ -126,8 +127,8 @@ type Protocol struct {
 	wg     sync.WaitGroup
 }
 
-func New(network *skademlia.Protocol, keys *skademlia.Keypair) *Protocol {
-	return &Protocol{ledger: wavelet.NewLedger(keys), network: network, keys: keys}
+func New(network *skademlia.Protocol, keys *skademlia.Keypair, kv store.KV) *Protocol {
+	return &Protocol{ledger: wavelet.NewLedger(keys, kv), network: network, keys: keys}
 }
 
 func (p *Protocol) Stop() {

@@ -44,6 +44,8 @@ type Ledger struct {
 	rounds map[uint64]Round
 	round  uint64
 
+	kv store.KV
+
 	mu sync.RWMutex
 
 	syncing     bool
@@ -101,7 +103,7 @@ type Ledger struct {
 	forwardTxOut chan<- EventForwardTX
 }
 
-func NewLedger(keys *skademlia.Keypair) *Ledger {
+func NewLedger(keys *skademlia.Keypair, kv store.KV) *Ledger {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	broadcastQueue := make(chan EventBroadcast, 1024)
@@ -130,11 +132,21 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 	forwardTxIn := make(chan EventForwardTX, 1024)
 	forwardTxOut := make(chan EventForwardTX, 1024)
 
-	accounts := newAccounts(store.NewInmem())
+	accounts := newAccounts(kv)
 
-	round := performInception(accounts.tree, nil)
-	if err := accounts.commit(nil); err != nil {
-		panic(err)
+	var round Round
+	var roundCount uint64
+
+	savedRound, savedCount, err := loadRound(kv)
+	if err != nil {
+		round = performInception(accounts.tree, nil)
+		if err := accounts.commit(nil); err != nil {
+			panic(err)
+		}
+		roundCount = 1
+	} else {
+		round = *savedRound
+		roundCount = savedCount
 	}
 
 	graph := NewGraph(&round)
@@ -162,7 +174,9 @@ func NewLedger(keys *skademlia.Keypair) *Ledger {
 		},
 
 		rounds: map[uint64]Round{round.Index: round},
-		round:  1,
+		round:  roundCount,
+
+		kv: kv,
 
 		syncingCond: sync.Cond{L: new(sync.Mutex)},
 
@@ -666,7 +680,7 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, root Transaction, tx *Transactio
 
 		// If we exceed the max eligible depth we search for candidate
 		// validators to reward from, stop traversing.
-		if depthCounter >= sys.MaxEligibleParentsDepthDiff {
+		if depthCounter >= sys.MaxDepthDiff {
 			break
 		}
 
@@ -753,4 +767,42 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, root Transaction, tx *Transactio
 	}
 
 	return nil
+}
+
+func storeRound(kv store.KV, count uint64, round Round) error {
+	// TODO(kenta): old rounds need to be pruned from the store as well
+
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], count)
+
+	var err error
+	if err = kv.Put(keyRoundCount[:], buf[:]); err != nil {
+		return err
+	}
+
+	return kv.Put(keyRoundLatest[:], round.Marshal())
+}
+
+func loadRound(kv store.KV) (*Round, uint64, error) {
+	var b []byte
+	var err error
+
+	var count uint64
+	b, err = kv.Get(keyRoundCount[:])
+	if err != nil {
+		return nil, 0, err
+	}
+	count = binary.BigEndian.Uint64(b[:8])
+
+	var round Round
+	b, err = kv.Get(keyRoundLatest[:])
+	if err != nil {
+		return nil, 0, err
+	}
+	round, err = UnmarshalRound(bytes.NewReader(b))
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return &round, count, nil
 }

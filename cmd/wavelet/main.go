@@ -17,6 +17,7 @@ import (
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/node"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/rs/zerolog"
 	"gopkg.in/urfave/cli.v1"
@@ -33,14 +34,15 @@ import (
 )
 
 type Config struct {
-	Host    string
-	Port    uint
-	Wallet  string
-	APIPort uint
-	Peers   []string
+	Host     string
+	Port     uint
+	Wallet   string
+	APIPort  uint
+	Peers    []string
+	Database string
 }
 
-func protocol(n *noise.Node, config *Config, keys *skademlia.Keypair) (*node.Protocol, *skademlia.Protocol, noise.Protocol) {
+func protocol(n *noise.Node, config *Config, keys *skademlia.Keypair, kv store.KV) (*node.Protocol, *skademlia.Protocol, noise.Protocol) {
 	ecdh := handshake.NewECDH()
 	ecdh.RegisterOpcodes(n)
 
@@ -52,7 +54,7 @@ func protocol(n *noise.Node, config *Config, keys *skademlia.Keypair) (*node.Pro
 	overlay.WithC1(sys.SKademliaC1)
 	overlay.WithC2(sys.SKademliaC2)
 
-	w := node.New(overlay, keys)
+	w := node.New(overlay, keys, kv)
 	w.RegisterOpcodes(n)
 	w.Init(n)
 
@@ -99,7 +101,7 @@ func main() {
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "wallet",
 			Value:  "config/wallet.txt",
-			Usage:  "path to file containing hex-encoded private key. If empty, a random wallet will be generated.",
+			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated.",
 			EnvVar: "WAVELET_WALLET_PATH",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
@@ -108,14 +110,20 @@ func main() {
 			Usage:  "Host a local HTTP API at port.",
 			EnvVar: "WAVELET_API_PORT",
 		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "db",
+			Value:  "",
+			Usage:  "Directory path to the database. If empty, a temporary in-memory database will be used instead.",
+			EnvVar: "WAVELET_DB_PATH",
+		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "sys.query_timeout",
 			Value: int(sys.QueryTimeout.Seconds()),
 			Usage: "Timeout in seconds for querying a transaction to K peers.",
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
-			Name:  "sys.max_eligible_parents_depth_diff",
-			Value: sys.MaxEligibleParentsDepthDiff,
+			Name:  "sys.max_depth_diff",
+			Value: sys.MaxDepthDiff,
 			Usage: "Max graph depth difference to search for eligible transaction parents from for our node.",
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
@@ -134,19 +142,21 @@ func main() {
 			EnvVar: "WAVELET_SNOWBALL_K",
 		}),
 		altsrc.NewFloat64Flag(cli.Float64Flag{
-			Name:  "sys.snowball.alpha",
-			Value: sys.SnowballAlpha,
-			Usage: "Snowball consensus protocol parameter alpha",
+			Name:   "sys.snowball.alpha",
+			Value:  sys.SnowballAlpha,
+			Usage:  "Snowball consensus protocol parameter alpha",
+			EnvVar: "WAVELET_SNOWBALL_ALPHA",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.snowball.beta",
-			Value: sys.SnowballBeta,
-			Usage: "Snowball consensus protocol parameter beta",
+			Name:   "sys.snowball.beta",
+			Value:  sys.SnowballBeta,
+			Usage:  "Snowball consensus protocol parameter beta",
+			EnvVar: "WAVELET_SNOWBALL_BETA",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "sys.difficulty.min",
 			Value: sys.MinDifficulty,
-			Usage: "Maximum difficulty to define a critical transaction",
+			Usage: "Minimum difficulty to define a critical transaction",
 		}),
 		cli.StringFlag{
 			Name:  "config, c",
@@ -174,11 +184,12 @@ func main() {
 	app.Action = func(c *cli.Context) error {
 		c.String("config")
 		config := &Config{
-			Host:    c.String("host"),
-			Port:    c.Uint("port"),
-			Wallet:  c.String("wallet"),
-			APIPort: c.Uint("api.port"),
-			Peers:   c.Args(),
+			Host:     c.String("host"),
+			Port:     c.Uint("port"),
+			Wallet:   c.String("wallet"),
+			APIPort:  c.Uint("api.port"),
+			Peers:    c.Args(),
+			Database: c.String("db"),
 		}
 
 		// set the the sys variables
@@ -186,7 +197,7 @@ func main() {
 		sys.SnowballAlpha = c.Float64("sys.snowball.alpha")
 		sys.SnowballBeta = c.Int("sys.snowball.beta")
 		sys.QueryTimeout = time.Duration(c.Int("sys.query_timeout")) * time.Second
-		sys.MaxEligibleParentsDepthDiff = c.Uint64("sys.max_eligible_parents_depth_diff")
+		sys.MaxDepthDiff = c.Uint64("sys.max_depth_diff")
 		sys.MinDifficulty = c.Int("sys.difficulty.min")
 		sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
 		sys.MinimumStake = c.Uint64("sys.min_stake")
@@ -265,7 +276,18 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 			Msg("Loaded wallet.")
 	}
 
-	w, network, protocol := protocol(n, config, k)
+	var kv store.KV
+
+	if len(config.Database) > 0 {
+		kv, err = store.NewLevelDB(config.Database)
+		if err != nil {
+			logger.Fatal().Err(err).Msgf("Failed to create/open database located at %q.", config.Database)
+		}
+	} else {
+		kv = store.NewInmem()
+	}
+
+	w, network, protocol := protocol(n, config, k, kv)
 	n.FollowProtocol(protocol)
 
 	logger.Info().Str("host", config.Host).Uint("port", uint(n.Addr().(*net.TCPAddr).Port)).Msg("Listening for peers.")

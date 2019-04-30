@@ -17,7 +17,8 @@ var (
 	keyAccountContractNumPages = [...]byte{0x6}
 	keyAccountContractPages    = [...]byte{0x7}
 
-	keyGraphRoot = [...]byte{0x8}
+	keyRoundLatest = [...]byte{0x8}
+	keyRoundCount  = [...]byte{0x9}
 )
 
 func ReadAccountNonce(tree *avl.Tree, id common.AccountID) (uint64, bool) {

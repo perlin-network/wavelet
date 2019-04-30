@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/blake2b"
 	"math/rand"
+	"os"
 	"sort"
 	"testing"
 	"testing/quick"
@@ -112,7 +114,7 @@ func TestAddInRandomOrder(t *testing.T) {
 	f := func(n int) bool {
 		n = (n + 1) % 1024
 
-		ledger := NewLedger(keys)
+		ledger := NewLedger(keys, store.NewInmem())
 
 		for i := 0; i < n; i++ {
 			tx := NewTransaction(keys, sys.TagNop, nil)
@@ -144,7 +146,7 @@ func TestAddInRandomOrder(t *testing.T) {
 			transactions[i], transactions[j] = transactions[j], transactions[i]
 		}
 
-		ledger = NewLedger(keys)
+		ledger = NewLedger(keys, store.NewInmem())
 
 		for _, tx := range transactions {
 			_ = ledger.graph.AddTransaction(tx)
@@ -166,4 +168,29 @@ func TestAddInRandomOrder(t *testing.T) {
 	}
 
 	assert.NoError(t, quick.Check(f, &quick.Config{MaxCount: 100}))
+}
+
+func GetKV(kv string, path string) (store.KV, func()) {
+	if kv == "inmem" {
+		inmemdb := store.NewInmem()
+		return inmemdb, func() {
+			_ = inmemdb.Close()
+		}
+	}
+	if kv == "level" {
+		// Remove existing db
+		_ = os.RemoveAll(path)
+
+		leveldb, err := store.NewLevelDB(path)
+		if err != nil {
+			panic("failed to create LevelDB: " + err.Error())
+		}
+
+		return leveldb, func() {
+			_ = leveldb.Close()
+			_ = os.RemoveAll(path)
+		}
+	}
+
+	panic("unknown kv " + kv)
 }

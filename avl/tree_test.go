@@ -5,12 +5,15 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
+	"os"
 	"testing"
 	"testing/quick"
 )
 
 func TestSerialize(t *testing.T) {
-	kv := store.NewInmem()
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+
 	tree := New(kv)
 
 	fn := func(key, value []byte) bool {
@@ -28,7 +31,8 @@ func TestSerialize(t *testing.T) {
 }
 
 func TestTree_Commit(t *testing.T) {
-	kv := store.NewInmem()
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
 
 	{
 		tree := New(kv)
@@ -45,7 +49,8 @@ func TestTree_Commit(t *testing.T) {
 }
 
 func TestTree_Snapshot(t *testing.T) {
-	kv := store.NewInmem()
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
 
 	tree := New(kv)
 	tree.Insert([]byte("k1"), []byte("1"))
@@ -67,8 +72,14 @@ func TestTree_Snapshot(t *testing.T) {
 }
 
 func TestTree_Diff_Randomized(t *testing.T) {
-	tree1 := New(store.NewInmem())
-	tree2 := New(store.NewInmem())
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+
+	kv2, cleanup2 := GetKV("level", "db2")
+	defer cleanup2()
+
+	tree1 := New(kv)
+	tree2 := New(kv2)
 
 	i := 1
 
@@ -111,8 +122,11 @@ func TestTree_Diff_Randomized(t *testing.T) {
 }
 
 func TestTree_ApplyEmptyDiff(t *testing.T) {
-	kv := store.NewInmem()
-	kv2 := store.NewInmem()
+	kv, cleanup1 := GetKV("level", "db")
+	defer cleanup1()
+
+	kv2, cleanup2 := GetKV("level", "db2")
+	defer cleanup2()
 
 	tree1 := New(kv)
 
@@ -139,8 +153,11 @@ func TestTree_ApplyEmptyDiff(t *testing.T) {
 }
 
 func TestTree_Difference(t *testing.T) {
-	kv := store.NewInmem()
-	kv2 := store.NewInmem()
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+
+	kv2, cleanup2 := GetKV("level", "db2")
+	defer cleanup2()
 
 	tree := New(kv)
 	tree.SetViewID(1)
@@ -187,7 +204,8 @@ func BenchmarkAVL(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N/InnerLoopCount; i++ {
-		kv := store.NewInmem()
+		//kv := store.NewInmem()
+		kv, cleanup := GetKV("level", "db")
 		tree := New(kv)
 
 		refMap := make(map[string][]byte)
@@ -243,5 +261,32 @@ func BenchmarkAVL(b *testing.B) {
 		}
 
 		assert.NoError(b, tree.Commit())
+
+		cleanup()
 	}
+}
+
+func GetKV(kv string, path string) (store.KV, func()) {
+	if kv == "inmem" {
+		inmemdb := store.NewInmem()
+		return inmemdb, func() {
+			_ = inmemdb.Close()
+		}
+	}
+	if kv == "level" {
+		// Remove existing db
+		_ = os.RemoveAll(path)
+
+		leveldb, err := store.NewLevelDB(path)
+		if err != nil {
+			panic("failed to create LevelDB: " + err.Error())
+		}
+
+		return leveldb, func() {
+			_ = leveldb.Close()
+			_ = os.RemoveAll(path)
+		}
+	}
+
+	panic("unknown kv " + kv)
 }

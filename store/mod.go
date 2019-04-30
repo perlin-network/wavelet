@@ -1,6 +1,8 @@
 package store
 
-import "io"
+import (
+	"io"
+)
 
 type KV interface {
 	io.Closer
