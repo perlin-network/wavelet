@@ -203,11 +203,13 @@ func (p *Protocol) Init(node *noise.Node) {
 
 func (p *Protocol) Protocol() noise.ProtocolBlock {
 	return func(ctx noise.Context) error {
-		id := ctx.Get(skademlia.KeyID).(*skademlia.ID)
+		rid := ctx.Get(skademlia.KeyID)
 
-		if id == nil {
+		if rid == nil {
 			return errors.New("wavelet: user does not have a s/kademlia id registered")
 		}
+
+		id := rid.(*skademlia.ID)
 
 		publicKey := id.PublicKey()
 
@@ -290,7 +292,7 @@ func (p *Protocol) broadcastGossip(node *noise.Node) {
 		case <-p.ctx.Done():
 			return
 		case evt := <-p.ledger.GossipOut:
-			peers, err := selectPeers(p.network, node, sys.SnowballQueryK)
+			peers, err := SelectPeers(p.network.Peers(node), sys.SnowballK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "failed to select peers while gossiping")
 				continue
@@ -308,6 +310,12 @@ func (p *Protocol) broadcastGossip(node *noise.Node) {
 			votes := make([]wavelet.VoteGossip, len(responses))
 
 			for i, buf := range responses {
+				id := peers[i].Ctx().Get(skademlia.KeyID)
+
+				if id == nil {
+					continue
+				}
+
 				if buf != nil {
 					res, err := UnmarshalGossipResponse(bytes.NewReader(buf))
 
@@ -319,7 +327,7 @@ func (p *Protocol) broadcastGossip(node *noise.Node) {
 					votes[i].Ok = res.vote
 				}
 
-				votes[i].Voter = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).PublicKey()
+				votes[i].Voter = id.(*skademlia.ID).PublicKey()
 			}
 
 			evt.Result <- votes
@@ -336,7 +344,7 @@ func (p *Protocol) broadcastQueries(node *noise.Node) {
 		case <-p.ctx.Done():
 			return
 		case evt := <-p.ledger.QueryOut:
-			peers, err := selectPeers(p.network, node, sys.SnowballQueryK)
+			peers, err := SelectPeers(p.network.Peers(node), sys.SnowballK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "failed to select peers while querying")
 				continue
@@ -354,6 +362,12 @@ func (p *Protocol) broadcastQueries(node *noise.Node) {
 			votes := make([]wavelet.VoteQuery, len(responses))
 
 			for i, buf := range responses {
+				id := peers[i].Ctx().Get(skademlia.KeyID)
+
+				if id == nil {
+					continue
+				}
+
 				if buf != nil {
 					res, err := UnmarshalQueryResponse(bytes.NewReader(buf))
 
@@ -365,7 +379,7 @@ func (p *Protocol) broadcastQueries(node *noise.Node) {
 					votes[i].Preferred = res.preferred
 				}
 
-				votes[i].Voter = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).PublicKey()
+				votes[i].Voter = id.(*skademlia.ID).PublicKey()
 			}
 
 			evt.Result <- votes
@@ -382,7 +396,7 @@ func (p *Protocol) broadcastOutOfSyncChecks(node *noise.Node) {
 		case <-p.ctx.Done():
 			return
 		case evt := <-p.ledger.OutOfSyncOut:
-			peers, err := selectPeers(p.network, node, sys.SnowballSyncK)
+			peers, err := SelectPeers(p.network.Peers(node), sys.SnowballK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "got an error while selecting peers for out of sync check")
 				continue
@@ -400,6 +414,12 @@ func (p *Protocol) broadcastOutOfSyncChecks(node *noise.Node) {
 			votes := make([]wavelet.VoteOutOfSync, len(peers))
 
 			for i, buf := range responses {
+				id := peers[i].Ctx().Get(skademlia.KeyID)
+
+				if id == nil {
+					continue
+				}
+
 				if buf != nil {
 					res, err := UnmarshalOutOfSyncResponse(bytes.NewReader(buf))
 
@@ -411,7 +431,7 @@ func (p *Protocol) broadcastOutOfSyncChecks(node *noise.Node) {
 					votes[i].Round = res.round
 				}
 
-				votes[i].Voter = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).PublicKey()
+				votes[i].Voter = id.(*skademlia.ID).PublicKey()
 			}
 
 			evt.Result <- votes
@@ -429,7 +449,7 @@ func (p *Protocol) broadcastSyncInitRequests(node *noise.Node) {
 		case <-p.ctx.Done():
 			return
 		case evt := <-p.ledger.SyncInitOut:
-			peers, err := selectPeers(p.network, node, sys.SnowballSyncK)
+			peers, err := SelectPeers(p.network.Peers(node), sys.SnowballK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "got an error while selecting peers for sync init")
 				continue
@@ -447,6 +467,12 @@ func (p *Protocol) broadcastSyncInitRequests(node *noise.Node) {
 			votes := make([]wavelet.SyncInitMetadata, len(responses))
 
 			for i, buf := range responses {
+				id := peers[i].Ctx().Get(skademlia.KeyID)
+
+				if id == nil {
+					continue
+				}
+
 				if buf != nil {
 					res, err := UnmarshalSyncInitResponse(bytes.NewReader(buf))
 
@@ -459,7 +485,7 @@ func (p *Protocol) broadcastSyncInitRequests(node *noise.Node) {
 					votes[i].ChunkHashes = res.chunkHashes
 				}
 
-				votes[i].PeerID = peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID)
+				votes[i].PeerID = id.(*skademlia.ID)
 			}
 
 			evt.Result <- votes
@@ -475,8 +501,8 @@ func (p *Protocol) broadcastDownloadTxRequests(node *noise.Node) {
 		select {
 		case <-p.ctx.Done():
 			return
-		case evt := <-p.ledger.SyncTxOut:
-			peers, err := selectPeers(p.network, node, sys.SnowballSyncK)
+		case evt := <-p.ledger.DownloadTxOut:
+			peers, err := SelectPeers(p.network.Peers(node), sys.SnowballK)
 			if err != nil {
 				evt.Error <- errors.Wrap(err, "got an error while selecting peers for syncing missing transactions")
 				continue
@@ -612,8 +638,8 @@ func (p *Protocol) broadcastForwardTxRequests(node *noise.Node) {
 		select {
 		case <-p.ctx.Done():
 			return
-		case evt := <-p.ledger.ForwardTXOut:
-			peers, err := selectPeers(p.network, node, sys.SnowballSyncK)
+		case evt := <-p.ledger.ForwardTxOut:
+			peers, err := SelectPeers(p.network.Peers(node), sys.SnowballK)
 			if err != nil {
 				continue
 			}
@@ -813,7 +839,7 @@ func (p *Protocol) handleDownloadTxRequests(wire noise.Wire) {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending missing tx sync request to ledger")
 		return
-	case p.ledger.SyncTxIn <- evt:
+	case p.ledger.DownloadTxIn <- evt:
 	}
 
 	select {
@@ -838,6 +864,6 @@ func (p *Protocol) handleForwardTxRequest(wire noise.Wire) {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending forward tx request to ledger")
 		return
-	case p.ledger.ForwardTXIn <- evt:
+	case p.ledger.ForwardTxIn <- evt:
 	}
 }

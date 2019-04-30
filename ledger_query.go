@@ -6,7 +6,6 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
-	"math"
 	"sort"
 	"time"
 )
@@ -27,10 +26,12 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 		}
 		ledger.syncingCond.L.Unlock()
 
-		oldRound := ledger.rounds[ledger.round-1]
-		oldRoot := oldRound.Root
+		ledger.mu.RLock()
+		nextRound := ledger.round
+		lastRound := ledger.rounds[ledger.round-1]
+		ledger.mu.RUnlock()
 
-		if err := findCriticalTransactionToPrefer(ledger, oldRoot); err != nil {
+		if err := findCriticalTransactionToPrefer(ledger, lastRound.Root); err != nil {
 			return err
 		}
 
@@ -64,14 +65,11 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 			return nil
 		}
 
-		ledger.mu.Lock()
-		defer ledger.mu.Unlock()
-
 		rounds := make(map[common.RoundID]Round)
 		accounts := make(map[common.AccountID]struct{}, len(votes))
 
 		for _, vote := range votes {
-			if vote.Preferred.Index == ledger.round && vote.Preferred.ID != common.ZeroRoundID && vote.Preferred.Root.ID != common.ZeroTransactionID {
+			if vote.Preferred.Index == nextRound && vote.Preferred.ID != common.ZeroRoundID && vote.Preferred.Root.ID != common.ZeroTransactionID {
 				rounds[vote.Preferred.ID] = vote.Preferred
 			}
 
@@ -84,10 +82,10 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 		weights := computeStakeDistribution(snapshot, accounts)
 
 		for _, vote := range votes {
-			if vote.Preferred.Index == ledger.round && vote.Preferred.ID != common.ZeroRoundID && vote.Preferred.Root.ID != common.ZeroRoundID {
+			if vote.Preferred.Index == nextRound && vote.Preferred.ID != common.ZeroRoundID && vote.Preferred.Root.ID != common.ZeroRoundID {
 				counts[vote.Preferred.ID] += weights[vote.Voter]
 
-				if counts[vote.Preferred.ID] >= sys.SnowballQueryAlpha {
+				if counts[vote.Preferred.ID] >= sys.SnowballAlpha {
 					elected = &vote.Preferred
 					break
 				}
@@ -98,13 +96,16 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 			return nil
 		}
 
+		ledger.mu.Lock()
+		defer ledger.mu.Unlock()
+
 		ledger.snowball.Tick(elected)
 
 		if ledger.snowball.Decided() {
 			newRound := ledger.snowball.Preferred()
-			newRoot := ledger.graph.transactions[newRound.Root.ID]
+			newRoot := &newRound.Root
 
-			state, err := ledger.collapseTransactions(newRound.Index, newRoot, false)
+			state, err := ledger.collapseTransactions(newRound.Index, newRoot, true)
 
 			if err != nil {
 				return errors.Wrap(err, "got an error finalizing a round")
@@ -126,14 +127,14 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 			logger := log.Consensus("round_end")
 			logger.Info().
 				Uint64("num_tx", ledger.getNumTransactions(ledger.round-1)).
-				Uint64("old_round", oldRound.Index).
+				Uint64("old_round", lastRound.Index).
 				Uint64("new_round", newRound.Index).
-				Uint8("old_difficulty", oldRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
+				Uint8("old_difficulty", lastRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
 				Uint8("new_difficulty", newRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
 				Hex("new_root", newRound.Root.ID[:]).
-				Hex("old_root", oldRound.Root.ID[:]).
+				Hex("old_root", lastRound.Root.ID[:]).
 				Hex("new_merkle_root", newRound.Merkle[:]).
-				Hex("old_merkle_root", oldRound.Merkle[:]).
+				Hex("old_merkle_root", lastRound.Merkle[:]).
 				Msg("Finalized consensus round, and initialized a new round.")
 
 			ledger.rounds[ledger.round] = *newRound
@@ -161,23 +162,8 @@ func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction) error 
 
 	difficulty := oldRoot.ExpectedDifficulty(byte(sys.MinDifficulty))
 
-	var eligible []*Transaction // Find all critical transactions for the current round.
-
-	for i := difficulty; i < math.MaxUint8; i++ {
-		candidates, exists := ledger.graph.seedIndex[difficulty]
-
-		if !exists {
-			continue
-		}
-
-		for candidateID := range candidates {
-			candidate := ledger.graph.transactions[candidateID]
-
-			if candidate.Depth > oldRoot.Depth && candidate.IsCritical(difficulty) {
-				eligible = append(eligible, candidate)
-			}
-		}
-	}
+	// Find all eligible critical transactions for the current round.
+	eligible := ledger.graph.FindEligibleCriticals(oldRoot.Depth, difficulty)
 
 	if len(eligible) == 0 { // If there are no critical transactions for the round yet, discontinue.
 		return ErrNonePreferred

@@ -34,10 +34,10 @@ func TestCorrectGraphState(t *testing.T) {
 	tx4.Depth = 4
 	tx4.Confidence = 5
 
-	assert.NoError(t, g.addTransaction(tx1))
-	assert.NoError(t, g.addTransaction(tx2))
-	assert.NoError(t, g.addTransaction(tx3))
-	assert.NoError(t, g.addTransaction(tx4))
+	assert.NoError(t, g.AddTransaction(tx1))
+	assert.NoError(t, g.AddTransaction(tx2))
+	assert.NoError(t, g.AddTransaction(tx3))
+	assert.NoError(t, g.AddTransaction(tx4))
 
 	assert.Len(t, g.transactions, 5)
 	assert.Len(t, g.children, 4)
@@ -56,7 +56,7 @@ func TestCorrectGraphState(t *testing.T) {
 	badTX2.Confidence = 7
 
 	// Add incomplete transaction with one missing parent.
-	assert.Error(t, g.addTransaction(badTX2))
+	assert.Error(t, g.AddTransaction(badTX2))
 	assert.Len(t, g.transactions, 6)
 	assert.Len(t, g.children, 5)
 	assert.Len(t, g.incomplete, 1)
@@ -64,7 +64,7 @@ func TestCorrectGraphState(t *testing.T) {
 
 	// Add transaction to make last transaction inserted complete, such that there
 	// is now zero missing parents.
-	assert.NoError(t, g.addTransaction(badTX1))
+	assert.NoError(t, g.AddTransaction(badTX1))
 	assert.Len(t, g.transactions, 7)
 	assert.Len(t, g.children, 6)
 	assert.Len(t, g.incomplete, 0)
@@ -121,7 +121,7 @@ func TestAddInRandomOrder(t *testing.T) {
 			tx, err = ledger.attachSenderToTransaction(tx)
 			assert.NoError(t, err)
 
-			assert.NoError(t, ledger.graph.addTransaction(tx))
+			assert.NoError(t, ledger.graph.AddTransaction(tx))
 		}
 
 		var transactions []Transaction
@@ -149,7 +149,7 @@ func TestAddInRandomOrder(t *testing.T) {
 		ledger = NewLedger(keys, store.NewInmem())
 
 		for _, tx := range transactions {
-			_ = ledger.graph.addTransaction(tx)
+			_ = ledger.graph.AddTransaction(tx)
 		}
 
 		if !assert.Len(t, ledger.graph.transactions, len(transactions)) {

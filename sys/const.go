@@ -18,13 +18,9 @@ var (
 	SKademliaC2 = 16
 
 	// Snowball consensus protocol parameters.
-	SnowballQueryK     = 2
-	SnowballQueryAlpha = 0.8
-	SnowballQueryBeta  = 150
-
-	SnowballSyncK     = 2
-	SnowballSyncAlpha = 0.8
-	SnowballSyncBeta  = 150
+	SnowballK     = 2
+	SnowballAlpha = 0.8
+	SnowballBeta  = 150
 
 	// Timeout for querying a transaction to K peers.
 	QueryTimeout = 1 * time.Second
@@ -36,17 +32,10 @@ var (
 	// Minimum difficulty to define a critical transaction.
 	MinDifficulty = 10
 
-	// Maximum difficulty to define a critical transaction.
-	MaxDifficulty = 15
-
-	// Number of ancestors to derive a median timestamp from.
-	MedianTimestampNumAncestors = 5
-
+	// Fee amount paid by a node per transaction.
 	TransactionFeeAmount uint64 = 2
 
-	ExpectedConsensusTimeMilliseconds  uint64 = 3000
-	CriticalTimestampAverageWindowSize        = 3
-
+	// Minimum amount of stake to start being able to reap validator rewards.
 	MinimumStake uint64 = 100
 
 	GasTable = map[string]uint64{

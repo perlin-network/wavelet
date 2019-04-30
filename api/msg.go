@@ -225,7 +225,13 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 	if len(peers) > 0 {
 		peersArray := arena.NewArray()
 		for i := range peers {
-			peersArray.SetArrayItem(i, arena.NewString(peers[i].Ctx().Get(skademlia.KeyID).(*skademlia.ID).Address()))
+			id := peers[i].Ctx().Get(skademlia.KeyID)
+
+			if id == nil {
+				continue
+			}
+
+			peersArray.SetArrayItem(i, arena.NewString(id.(*skademlia.ID).Address()))
 		}
 		o.Set("peers", peersArray)
 	} else {
@@ -346,7 +352,10 @@ func (e *errResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 
 	o.Set("status", arena.NewString("Bad request."))
-	o.Set("error", arena.NewString(e.Err.Error()))
+
+	if e.Err != nil {
+		o.Set("error", arena.NewString(e.Err.Error()))
+	}
 
 	return o.MarshalTo(nil), nil
 }
