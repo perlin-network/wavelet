@@ -271,9 +271,8 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 func (l *Ledger) addTransaction(tx Transaction) error {
 	if err := l.graph.AddTransaction(tx); err == nil {
 		select {
-		case <-time.After(1 * time.Second):
-			fmt.Println("timed out forwarding accepted transaction")
 		case l.forwardTxOut <- EventForwardTX{TX: tx}:
+		default:
 		}
 
 		l.metrics.receivedTX.Mark(1)
