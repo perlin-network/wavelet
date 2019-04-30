@@ -27,10 +27,13 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 		}
 		ledger.syncingCond.L.Unlock()
 
-		oldRound := ledger.rounds[ledger.round-1]
-		oldRoot := oldRound.Root
+		ledger.mu.RLock()
+		nextRound := ledger.round
+		lastRound := ledger.rounds[ledger.round-1]
+		lastRoot := lastRound.Root
+		ledger.mu.RUnlock()
 
-		if err := findCriticalTransactionToPrefer(ledger, oldRoot); err != nil {
+		if err := findCriticalTransactionToPrefer(ledger, lastRoot, nextRound); err != nil {
 			return err
 		}
 
@@ -63,10 +66,6 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 		if len(votes) == 0 {
 			return nil
 		}
-
-		ledger.mu.RLock()
-		nextRound := ledger.round
-		ledger.mu.RUnlock()
 
 		rounds := make(map[common.RoundID]Round)
 		accounts := make(map[common.AccountID]struct{}, len(votes))
@@ -103,12 +102,7 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 
 		if ledger.snowball.Decided() {
 			newRound := ledger.snowball.Preferred()
-
-			newRoot, exists := ledger.graph.LookupTransactionByID(newRound.Root.ID)
-
-			if !exists {
-				return errors.Errorf("new rounds root transaction %x is not inside our graph", newRound.Root.ID)
-			}
+			newRoot := &newRound.Root
 
 			state, err := ledger.collapseTransactions(newRound.Index, newRoot, false)
 
@@ -135,14 +129,14 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 			logger := log.Consensus("round_end")
 			logger.Info().
 				Uint64("num_tx", ledger.getNumTransactions(ledger.round-1)).
-				Uint64("old_round", oldRound.Index).
+				Uint64("old_round", lastRound.Index).
 				Uint64("new_round", newRound.Index).
-				Uint8("old_difficulty", oldRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
+				Uint8("old_difficulty", lastRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
 				Uint8("new_difficulty", newRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
 				Hex("new_root", newRound.Root.ID[:]).
-				Hex("old_root", oldRound.Root.ID[:]).
+				Hex("old_root", lastRound.Root.ID[:]).
 				Hex("new_merkle_root", newRound.Merkle[:]).
-				Hex("old_merkle_root", oldRound.Merkle[:]).
+				Hex("old_merkle_root", lastRound.Merkle[:]).
 				Msg("Finalized consensus round, and initialized a new round.")
 
 			ledger.rounds[ledger.round] = *newRound
@@ -156,7 +150,7 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 // findCriticalTransactionPrefer finds a critical transaction to initially prefer first, if Snowball
 // does not prefer any transaction just yet. It returns an error if no suitable critical transaction
 // may be found in the current round.
-func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction) error {
+func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction, nextRound uint64) error {
 	if ledger.snowball.Preferred() != nil {
 		return nil
 	}
@@ -200,10 +194,6 @@ func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction) error 
 	})
 
 	proposed := eligible[0]
-
-	ledger.mu.RLock()
-	nextRound := ledger.round
-	ledger.mu.RUnlock()
 
 	state, err := ledger.collapseTransactions(nextRound, proposed, false)
 
