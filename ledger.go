@@ -543,7 +543,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 	snapshot := l.accounts.snapshot()
 	snapshot.SetViewID(round + 1)
 
-	root := l.rounds[l.round-1].Root
+	root := l.LastRound().Root
 
 	visited := map[common.TransactionID]struct{}{
 		root.ID: {},

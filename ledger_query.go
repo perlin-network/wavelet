@@ -31,7 +31,7 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 		lastRound := ledger.rounds[ledger.round-1]
 		ledger.mu.RUnlock()
 
-		if err := findCriticalTransactionToPrefer(ledger, lastRound.Root); err != nil {
+		if err := findCriticalTransactionToPrefer(ledger, lastRound.Root, nextRound); err != nil {
 			return err
 		}
 
@@ -96,9 +96,6 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 			return nil
 		}
 
-		ledger.mu.Lock()
-		defer ledger.mu.Unlock()
-
 		ledger.snowball.Tick(elected)
 
 		if ledger.snowball.Decided() {
@@ -121,6 +118,9 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 
 			ledger.snowball.Reset()
 			ledger.graph.Reset(newRound)
+
+			ledger.mu.Lock()
+			defer ledger.mu.Unlock()
 
 			ledger.prune(newRound)
 
@@ -152,10 +152,7 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 // findCriticalTransactionPrefer finds a critical transaction to initially prefer first, if Snowball
 // does not prefer any transaction just yet. It returns an error if no suitable critical transaction
 // may be found in the current round.
-func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction) error {
-	ledger.mu.Lock()
-	defer ledger.mu.Unlock()
-
+func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction, nextRound uint64) error {
 	if ledger.snowball.Preferred() != nil {
 		return nil
 	}
@@ -181,13 +178,13 @@ func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction) error 
 
 	proposed := eligible[0]
 
-	state, err := ledger.collapseTransactions(ledger.round, proposed, false)
+	state, err := ledger.collapseTransactions(nextRound, proposed, false)
 
 	if err != nil {
 		return errors.Wrap(err, "could not collapse first critical transaction we could find")
 	}
 
-	initial := NewRound(ledger.round, state.Checksum(), *proposed)
+	initial := NewRound(nextRound, state.Checksum(), *proposed)
 	ledger.snowball.Prefer(&initial)
 
 	return nil
