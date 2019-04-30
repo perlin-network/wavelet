@@ -2,6 +2,7 @@ package wavelet
 
 import (
 	"github.com/perlin-network/wavelet/common"
+	"sync"
 )
 
 const (
@@ -11,6 +12,8 @@ const (
 )
 
 type Snowball struct {
+	sync.RWMutex
+
 	k, beta int
 	alpha   float64
 
@@ -35,21 +38,33 @@ func NewSnowball() *Snowball {
 }
 
 func (s *Snowball) WithK(k int) *Snowball {
+	s.Lock()
+	defer s.Unlock()
+
 	s.k = k
 	return s
 }
 
 func (s *Snowball) WithAlpha(alpha float64) *Snowball {
+	s.Lock()
+	defer s.Unlock()
+
 	s.alpha = alpha
 	return s
 }
 
 func (s *Snowball) WithBeta(beta int) *Snowball {
+	s.Lock()
+	defer s.Unlock()
+
 	s.beta = beta
 	return s
 }
 
 func (s *Snowball) Reset() {
+	s.Lock()
+	defer s.Unlock()
+
 	s.preferredID = common.ZeroRoundID
 	s.lastID = common.ZeroRoundID
 
@@ -60,11 +75,14 @@ func (s *Snowball) Reset() {
 }
 
 func (s *Snowball) Tick(round *Round) {
-	if s.decided { // Force Reset() to be manually called.
+	if round == nil { // Do not let Snowball tick with nil responses.
 		return
 	}
 
-	if round == nil { // Do not let Snowball tick with nil responses.
+	s.Lock()
+	defer s.Unlock()
+
+	if s.decided { // Force Reset() to be manually called.
 		return
 	}
 
@@ -91,6 +109,9 @@ func (s *Snowball) Tick(round *Round) {
 }
 
 func (s *Snowball) Prefer(round *Round) {
+	s.Lock()
+	defer s.Unlock()
+
 	if _, exists := s.candidates[round.ID]; !exists {
 		s.candidates[round.ID] = round
 	}
@@ -99,6 +120,9 @@ func (s *Snowball) Prefer(round *Round) {
 }
 
 func (s *Snowball) Preferred() *Round {
+	s.RLock()
+	defer s.RUnlock()
+
 	if s.preferredID == common.ZeroRoundID {
 		return nil
 	}
@@ -107,5 +131,8 @@ func (s *Snowball) Preferred() *Round {
 }
 
 func (s *Snowball) Decided() bool {
+	s.RLock()
+	defer s.RUnlock()
+
 	return s.decided
 }

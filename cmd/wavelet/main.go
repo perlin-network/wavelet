@@ -64,6 +64,8 @@ func protocol(n *noise.Node, config *Config, keys *skademlia.Keypair, kv store.K
 }
 
 func main() {
+	_ = make([]byte, 10<<28)
+
 	runtime.SetBlockProfileRate(1)
 	runtime.SetMutexProfileFraction(1)
 
@@ -123,23 +125,9 @@ func main() {
 			Value: sys.MaxEligibleParentsDepthDiff,
 			Usage: "Max graph depth difference to search for eligible transaction parents from for our node.",
 		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.median_timestamp_num_ancestors",
-			Value: sys.MedianTimestampNumAncestors,
-			Usage: "Number of ancestors to derive a median timestamp from.",
-		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.transaction_fee_amount",
 			Value: sys.TransactionFeeAmount,
-		}),
-		altsrc.NewUint64Flag(cli.Uint64Flag{
-			Name:  "sys.expected_consensus_time",
-			Value: sys.ExpectedConsensusTimeMilliseconds,
-			Usage: "a hardcoded consensus time in milliseconds used to compute difficulty",
-		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.critical_timestamp_average_window_size",
-			Value: sys.CriticalTimestampAverageWindowSize,
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.min_stake",
@@ -147,45 +135,25 @@ func main() {
 			Usage: "minimum stake to garner validator rewards and have importance in consensus",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
-			Name:   "sys.snowball.query.k",
-			Value:  sys.SnowballQueryK,
-			EnvVar: "SNOWBALL_QUERY_K",
-			Usage:  "Snowball consensus protocol parameter k for querying.",
+			Name:   "sys.snowball.k",
+			Value:  sys.SnowballK,
+			Usage:  "Snowball consensus protocol parameter k",
+			EnvVar: "WAVELET_SNOWBALL_K",
 		}),
 		altsrc.NewFloat64Flag(cli.Float64Flag{
-			Name:  "sys.snowball.query.alpha",
-			Value: sys.SnowballQueryAlpha,
+			Name:  "sys.snowball.alpha",
+			Value: sys.SnowballAlpha,
 			Usage: "Snowball consensus protocol parameter alpha",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.snowball.query.beta",
-			Value: sys.SnowballQueryBeta,
-			Usage: "Snowball consensus protocol parameter beta",
-		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.snowball.sync.k",
-			Value: sys.SnowballSyncK,
-			Usage: "Snowball consensus protocol parameter k",
-		}),
-		altsrc.NewFloat64Flag(cli.Float64Flag{
-			Name:  "sys.snowball.sync.alpha",
-			Value: sys.SnowballSyncAlpha,
-			Usage: "Snowball consensus protocol parameter alpha",
-		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.snowball.sync.beta",
-			Value: sys.SnowballSyncBeta,
+			Name:  "sys.snowball.beta",
+			Value: sys.SnowballBeta,
 			Usage: "Snowball consensus protocol parameter beta",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "sys.difficulty.min",
 			Value: sys.MinDifficulty,
 			Usage: "Maximum difficulty to define a critical transaction",
-		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.difficulty.max",
-			Value: sys.MaxDifficulty,
-			Usage: "Minimum difficulty to define a critical transaction",
 		}),
 		cli.StringFlag{
 			Name:  "config, c",
@@ -222,20 +190,13 @@ func main() {
 		}
 
 		// set the the sys variables
-		sys.SnowballQueryK = c.Int("sys.snowball.query.k")
-		sys.SnowballQueryAlpha = c.Float64("sys.snowball.query.alpha")
-		sys.SnowballQueryBeta = c.Int("sys.snowball.query.beta")
-		sys.SnowballSyncK = c.Int("sys.snowball.sync.k")
-		sys.SnowballSyncAlpha = c.Float64("sys.snowball.sync.alpha")
-		sys.SnowballSyncBeta = c.Int("sys.snowball.sync.beta")
+		sys.SnowballK = c.Int("sys.snowball.k")
+		sys.SnowballAlpha = c.Float64("sys.snowball.alpha")
+		sys.SnowballBeta = c.Int("sys.snowball.beta")
 		sys.QueryTimeout = time.Duration(c.Int("sys.query_timeout")) * time.Second
 		sys.MaxEligibleParentsDepthDiff = c.Uint64("sys.max_eligible_parents_depth_diff")
 		sys.MinDifficulty = c.Int("sys.difficulty.min")
-		sys.MaxDifficulty = c.Int("sys.difficulty.max")
-		sys.MedianTimestampNumAncestors = c.Int("sys.median_timestamp_num_ancestors")
 		sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
-		sys.ExpectedConsensusTimeMilliseconds = c.Uint64("sys.expected_consensus_time")
-		sys.CriticalTimestampAverageWindowSize = c.Int("sys.critical_timestamp_average_window_size")
 		sys.MinimumStake = c.Uint64("sys.min_stake")
 
 		// start the server
@@ -386,7 +347,13 @@ func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog
 
 			var ids []string
 
-			for _, peer := range w.Network().Peers(n) {
+			peers, err := node.SelectPeers(w.Network().Peers(n), sys.SnowballK)
+			if err != nil {
+				logger.Error().Msg("Error while selecting peers - " + err.Error())
+				continue
+			}
+
+			for _, peer := range peers {
 				if id := peer.Ctx().Get(skademlia.KeyID); id != nil {
 					ids = append(ids, id.(*skademlia.ID).String())
 				}
@@ -398,6 +365,8 @@ func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog
 				Hex("root_id", round.Root.ID[:]).
 				Uint64("height", ledger.Height()).
 				Uint64("num_tx", ledger.NumTransactions()).
+				Uint64("num_tx_in_store", ledger.NumTransactionInStore()).
+				Uint64("num_missing_tx", ledger.NumMissingTransactions()).
 				Str("preferred_id", preferredID).
 				Strs("peers", ids).
 				Msg("Here is the current state of the ledger.")

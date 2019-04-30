@@ -87,10 +87,10 @@ type Ledger struct {
 	SyncDiffOut <-chan EventSyncDiff
 	syncDiffOut chan<- EventSyncDiff
 
-	SyncTxIn chan<- EventIncomingDownloadTX
-	syncTxIn <-chan EventIncomingDownloadTX
+	DownloadTxIn chan<- EventIncomingDownloadTX
+	downloadTxIn <-chan EventIncomingDownloadTX
 
-	SyncTxOut     <-chan EventDownloadTX
+	DownloadTxOut <-chan EventDownloadTX
 	downloadTxOut chan<- EventDownloadTX
 
 	LatestViewIn chan<- EventIncomingLatestView
@@ -99,11 +99,11 @@ type Ledger struct {
 	LatestViewOut <-chan EventLatestView
 	latestViewOut chan<- EventLatestView
 
-	ForwardTXIn chan<- EventForwardTX
-	forwardTXIn <-chan EventForwardTX
+	ForwardTxIn chan<- EventForwardTX
+	forwardTxIn <-chan EventForwardTX
 
-	ForwardTXOut <-chan EventForwardTX
-	forwardTXOut chan<- EventForwardTX
+	ForwardTxOut <-chan EventForwardTX
+	forwardTxOut chan<- EventForwardTX
 }
 
 func NewLedger(keys *skademlia.Keypair, kv store.KV) *Ledger {
@@ -126,8 +126,8 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV) *Ledger {
 	syncDiffIn := make(chan EventIncomingSyncDiff, 128)
 	syncDiffOut := make(chan EventSyncDiff, 128)
 
-	syncTxIn := make(chan EventIncomingDownloadTX, 16)
-	syncTxOut := make(chan EventDownloadTX, 16)
+	downloadTxIn := make(chan EventIncomingDownloadTX, 16)
+	downloadTxOut := make(chan EventDownloadTX, 16)
 
 	latestViewIn := make(chan EventIncomingLatestView, 16)
 	latestViewOut := make(chan EventLatestView, 16)
@@ -166,8 +166,8 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV) *Ledger {
 		accounts: accounts,
 		graph:    graph,
 
-		snowball: NewSnowball().WithK(sys.SnowballQueryK).WithAlpha(sys.SnowballQueryAlpha).WithBeta(sys.SnowballQueryBeta),
-		resolver: NewSnowball().WithK(sys.SnowballSyncK).WithAlpha(sys.SnowballSyncAlpha).WithBeta(sys.SnowballSyncBeta),
+		snowball: NewSnowball().WithK(sys.SnowballK).WithAlpha(sys.SnowballAlpha).WithBeta(sys.SnowballBeta),
+		resolver: NewSnowball().WithK(sys.SnowballK).WithAlpha(sys.SnowballAlpha).WithBeta(sys.SnowballBeta),
 
 		processors: map[byte]TransactionProcessor{
 			sys.TagNop:      ProcessNopTransaction,
@@ -216,11 +216,11 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV) *Ledger {
 		SyncDiffOut: syncDiffOut,
 		syncDiffOut: syncDiffOut,
 
-		SyncTxIn: syncTxIn,
-		syncTxIn: syncTxIn,
+		DownloadTxIn: downloadTxIn,
+		downloadTxIn: downloadTxIn,
 
-		SyncTxOut:     syncTxOut,
-		downloadTxOut: syncTxOut,
+		DownloadTxOut: downloadTxOut,
+		downloadTxOut: downloadTxOut,
 
 		LatestViewIn: latestViewIn,
 		latestViewIn: latestViewIn,
@@ -228,11 +228,11 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV) *Ledger {
 		LatestViewOut: latestViewOut,
 		latestViewOut: latestViewOut,
 
-		ForwardTXIn: forwardTxIn,
-		forwardTXIn: forwardTxIn,
+		ForwardTxIn: forwardTxIn,
+		forwardTxIn: forwardTxIn,
 
-		ForwardTXOut: forwardTxOut,
-		forwardTXOut: forwardTxOut,
+		ForwardTxOut: forwardTxOut,
+		forwardTxOut: forwardTxOut,
 	}
 }
 
@@ -248,11 +248,8 @@ func NewTransaction(creator *skademlia.Keypair, tag byte, payload []byte) Transa
 }
 
 func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
 	tx.Sender = l.keys.PublicKey()
-	tx.ParentIDs = l.graph.findEligibleParents()
+	tx.ParentIDs = l.graph.FindEligibleParents()
 
 	if len(tx.ParentIDs) == 0 {
 		return tx, errors.New("no eligible parents available")
@@ -263,7 +260,7 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 	})
 
 	for _, parentID := range tx.ParentIDs {
-		parent, exists := l.graph.lookupTransactionByID(parentID)
+		parent, exists := l.graph.LookupTransactionByID(parentID)
 
 		if !exists {
 			return tx, errors.New("could not find transaction picked as an eligible parent")
@@ -289,31 +286,15 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 }
 
 func (l *Ledger) addTransaction(tx Transaction) error {
-	if err := l.graph.addTransaction(tx); err == nil {
+	if err := l.graph.AddTransaction(tx); err == nil {
 		select {
-		case <-time.After(1 * time.Second):
-			fmt.Println("timed out forwarding accepted transaction")
-		case l.forwardTXOut <- EventForwardTX{TX: tx}:
+		case l.forwardTxOut <- EventForwardTX{TX: tx}:
+		default:
 		}
 
 		l.metrics.receivedTX.Mark(1)
 	} else if err != ErrAlreadyExists {
 		return err
-	}
-
-	ptr := l.graph.transactions[tx.ID]
-
-	difficulty := l.rounds[l.round-1].Root.ExpectedDifficulty(byte(sys.MinDifficulty))
-
-	if tx.IsCritical(difficulty) && l.snowball.Preferred() == nil {
-		state, err := l.collapseTransactions(l.round, ptr, true)
-
-		if err != nil {
-			return errors.Wrap(err, "failed to collapse down critical transaction which we have received")
-		}
-
-		round := NewRound(l.round, state.Checksum(), tx)
-		l.snowball.Prefer(&round)
 	}
 
 	return nil
@@ -337,9 +318,6 @@ func (l *Ledger) Stop() {
 }
 
 func (l *Ledger) Snapshot() *avl.Tree {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
 	return l.accounts.snapshot()
 }
 
@@ -358,17 +336,19 @@ func (l *Ledger) LastRound() Round {
 }
 
 func (l *Ledger) Preferred() *Round {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
 	return l.snowball.Preferred()
 }
 
 func (l *Ledger) NumTransactions() uint64 {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
 	return l.getNumTransactions(l.round - 1)
+}
+
+func (l *Ledger) NumTransactionInStore() uint64 {
+	return l.graph.NumTransactionsInStore()
+}
+
+func (l *Ledger) NumMissingTransactions() uint64 {
+	return l.graph.NumMissingTransactions()
 }
 
 func (l *Ledger) Height() uint64 {
@@ -381,21 +361,21 @@ func (l *Ledger) Height() uint64 {
 func (l *Ledger) getNumTransactions(round uint64) uint64 {
 	var n uint64
 
-	height := l.graph.height
+	height := l.graph.Height()
 
 	if round+1 < l.round {
 		height = l.rounds[round+1].Root.Depth + 1
 	}
 
-	for i := l.rounds[round].Root.Depth + 1; i < height; i++ {
-		n += uint64(len(l.graph.depthIndex[i]))
+	for depth := l.rounds[round].Root.Depth + 1; depth < height; depth++ {
+		n += l.graph.NumTransactionsInDepth(depth)
 	}
 
 	return n
 }
 
 func (l *Ledger) getHeight(round uint64) uint64 {
-	height := l.graph.height
+	height := l.graph.Height()
 
 	if round+1 < l.round {
 		height = l.rounds[round+1].Root.Depth + 1
@@ -411,53 +391,21 @@ func (l *Ledger) getHeight(round uint64) uint64 {
 }
 
 func (l *Ledger) FindTransaction(id common.TransactionID) (*Transaction, bool) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
+	tx := l.graph.GetTransaction(id)
 
-	tx, exists := l.graph.transactions[id]
-	return tx, exists
+	if tx == nil {
+		return nil, false
+	}
+
+	return tx, true
 }
 
 func (l *Ledger) TransactionApplied(id common.TransactionID) bool {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
-	for _, round := range l.graph.roundIndex {
-		if _, exists := round[id]; exists {
-			return true
-		}
-	}
-
-	return false
+	return l.graph.TransactionApplied(id)
 }
 
 func (l *Ledger) ListTransactions(offset, limit uint64, sender, creator common.AccountID) (transactions []*Transaction) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
-	for _, tx := range l.graph.transactions {
-		if (sender == common.ZeroAccountID && creator == common.ZeroAccountID) || (sender != common.ZeroAccountID && tx.Sender == sender) || (creator != common.ZeroAccountID && tx.Creator == creator) {
-			transactions = append(transactions, tx)
-		}
-	}
-
-	sort.Slice(transactions, func(i, j int) bool {
-		return transactions[i].Depth < transactions[j].Depth
-	})
-
-	if offset != 0 || limit != 0 {
-		if offset >= limit || offset >= uint64(len(transactions)) {
-			return nil
-		}
-
-		if offset+limit > uint64(len(transactions)) {
-			limit = uint64(len(transactions)) - offset
-		}
-
-		transactions = transactions[offset : offset+limit]
-	}
-
-	return
+	return l.graph.ListTransactions(offset, limit, sender, creator)
 }
 
 func (l *Ledger) recvLoop(ctx context.Context) {
@@ -544,7 +492,7 @@ func (l *Ledger) stateSyncingLoop(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(100 * time.Millisecond):
+			case <-time.After(10 * time.Millisecond):
 			}
 		}
 	}
@@ -567,7 +515,7 @@ L:
 				select {
 				case <-ctx.Done():
 					return
-				case <-time.After(100 * time.Millisecond):
+				case <-time.After(10 * time.Millisecond):
 				}
 
 				continue L
@@ -581,22 +529,7 @@ L:
 
 // prune prunes away all transactions and indices with a view ID < (current view ID - PruningDepth).
 func (l *Ledger) prune(round *Round) {
-	for roundID, transactions := range l.graph.roundIndex {
-		if roundID+PruningDepth <= round.Index {
-			for id := range transactions {
-				l.graph.deleteTransaction(id)
-			}
-
-			delete(l.graph.roundIndex, roundID)
-
-			logger := log.Consensus("prune")
-			logger.Debug().
-				Int("num_tx", len(l.graph.roundIndex[round.Index])).
-				Uint64("current_round_id", round.Index).
-				Uint64("pruned_round_id", roundID).
-				Msg("Pruned away round and its corresponding transactions.")
-		}
-	}
+	l.graph.Prune(round)
 
 	for roundID := range l.rounds {
 		if roundID+PruningDepth <= round.Index {
@@ -629,7 +562,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 
 		visited[parentID] = struct{}{}
 
-		if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
+		if parent, exists := l.graph.LookupTransactionByID(parentID); exists {
 			if parent.Depth > root.Depth {
 				aq.PushBack(parent)
 			}
@@ -648,7 +581,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 			if _, seen := visited[parentID]; !seen {
 				visited[parentID] = struct{}{}
 
-				if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
+				if parent, exists := l.graph.LookupTransactionByID(parentID); exists {
 					if parent.Depth > root.Depth {
 						aq.PushBack(parent)
 					}
@@ -725,7 +658,7 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, root Transaction, tx *Transactio
 	defer ReleaseQueue(q)
 
 	for _, parentID := range tx.ParentIDs {
-		if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
+		if parent, exists := l.graph.LookupTransactionByID(parentID); exists {
 			if parent.Depth > root.Depth {
 				q.PushBack(parent)
 			}
@@ -774,7 +707,7 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, root Transaction, tx *Transactio
 
 		for _, parentID := range popped.ParentIDs {
 			if _, seen := visited[parentID]; !seen {
-				if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
+				if parent, exists := l.graph.LookupTransactionByID(parentID); exists {
 					if parent.Depth > root.Depth {
 						q.PushBack(parent)
 					}
