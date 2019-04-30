@@ -8,13 +8,7 @@ import (
 
 func txSync(ledger *Ledger) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
-		var missing []common.TransactionID
-
-		ledger.graph.missingLock.Lock()
-		for id := range ledger.graph.missing {
-			missing = append(missing, id)
-		}
-		ledger.graph.missingLock.Unlock()
+		missing := ledger.graph.MissingTransactions()
 
 		if len(missing) == 0 {
 			return ErrNonePreferred
@@ -46,9 +40,6 @@ func downloadMissingTransactions(ctx context.Context, ledger *Ledger, missing []
 		return errors.Wrap(err, "failed to download missing transactions")
 	case txs = <-evt.Result:
 	}
-
-	ledger.mu.Lock()
-	defer ledger.mu.Unlock()
 
 	var terr error
 	for _, tx := range txs {

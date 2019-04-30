@@ -231,11 +231,8 @@ func NewTransaction(creator *skademlia.Keypair, tag byte, payload []byte) Transa
 }
 
 func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
 	tx.Sender = l.keys.PublicKey()
-	tx.ParentIDs = l.graph.findEligibleParents()
+	tx.ParentIDs = l.graph.FindEligibleParents()
 
 	if len(tx.ParentIDs) == 0 {
 		return tx, errors.New("no eligible parents available")
@@ -246,7 +243,7 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 	})
 
 	for _, parentID := range tx.ParentIDs {
-		parent, exists := l.graph.lookupTransactionByID(parentID)
+		parent, exists := l.graph.LookupTransactionByID(parentID)
 
 		if !exists {
 			return tx, errors.New("could not find transaction picked as an eligible parent")
@@ -272,7 +269,7 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 }
 
 func (l *Ledger) addTransaction(tx Transaction) error {
-	if err := l.graph.addTransaction(tx); err == nil {
+	if err := l.graph.AddTransaction(tx); err == nil {
 		select {
 		case <-time.After(1 * time.Second):
 			fmt.Println("timed out forwarding accepted transaction")
@@ -284,18 +281,21 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 		return err
 	}
 
-	ptr := l.graph.transactions[tx.ID]
+	l.mu.RLock()
+	currentRoundID := l.round - 1
+	currentRound := l.rounds[currentRoundID]
+	l.mu.RUnlock()
 
-	difficulty := l.rounds[l.round-1].Root.ExpectedDifficulty(byte(sys.MinDifficulty))
+	difficulty := currentRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))
 
 	if tx.IsCritical(difficulty) && l.snowball.Preferred() == nil {
-		state, err := l.collapseTransactions(l.round, ptr, true)
+		state, err := l.collapseTransactions(currentRoundID+1, &tx, true)
 
 		if err != nil {
 			return errors.Wrap(err, "failed to collapse down critical transaction which we have received")
 		}
 
-		round := NewRound(l.round, state.Checksum(), tx)
+		round := NewRound(currentRoundID+1, state.Checksum(), tx)
 		l.snowball.Prefer(&round)
 	}
 
@@ -320,9 +320,6 @@ func (l *Ledger) Stop() {
 }
 
 func (l *Ledger) Snapshot() *avl.Tree {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
 	return l.accounts.snapshot()
 }
 
@@ -341,31 +338,19 @@ func (l *Ledger) LastRound() Round {
 }
 
 func (l *Ledger) Preferred() *Round {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
 	return l.snowball.Preferred()
 }
 
 func (l *Ledger) NumTransactions() uint64 {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
 	return l.getNumTransactions(l.round - 1)
 }
 
 func (l *Ledger) NumTransactionInStore() uint64 {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
-	return uint64(len(l.graph.transactions))
+	return l.graph.NumTransactionsInStore()
 }
 
 func (l *Ledger) NumMissingTransactions() uint64 {
-	l.graph.missingLock.Lock()
-	defer l.graph.missingLock.Unlock()
-
-	return uint64(len(l.graph.missing))
+	return l.graph.NumMissingTransactions()
 }
 
 func (l *Ledger) Height() uint64 {
@@ -378,21 +363,21 @@ func (l *Ledger) Height() uint64 {
 func (l *Ledger) getNumTransactions(round uint64) uint64 {
 	var n uint64
 
-	height := l.graph.height
+	height := l.graph.Height()
 
 	if round+1 < l.round {
 		height = l.rounds[round+1].Root.Depth + 1
 	}
 
-	for i := l.rounds[round].Root.Depth + 1; i < height; i++ {
-		n += uint64(len(l.graph.depthIndex[i]))
+	for depth := l.rounds[round].Root.Depth + 1; depth < height; depth++ {
+		n += l.graph.NumTransactionsInDepth(depth)
 	}
 
 	return n
 }
 
 func (l *Ledger) getHeight(round uint64) uint64 {
-	height := l.graph.height
+	height := l.graph.Height()
 
 	if round+1 < l.round {
 		height = l.rounds[round+1].Root.Depth + 1
@@ -408,53 +393,15 @@ func (l *Ledger) getHeight(round uint64) uint64 {
 }
 
 func (l *Ledger) FindTransaction(id common.TransactionID) (*Transaction, bool) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
-	tx, exists := l.graph.transactions[id]
-	return tx, exists
+	return l.graph.LookupTransactionByID(id)
 }
 
 func (l *Ledger) TransactionApplied(id common.TransactionID) bool {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
-	for _, round := range l.graph.roundIndex {
-		if _, exists := round[id]; exists {
-			return true
-		}
-	}
-
-	return false
+	return l.graph.TransactionApplied(id)
 }
 
 func (l *Ledger) ListTransactions(offset, limit uint64, sender, creator common.AccountID) (transactions []*Transaction) {
-	l.mu.RLock()
-	defer l.mu.RUnlock()
-
-	for _, tx := range l.graph.transactions {
-		if (sender == common.ZeroAccountID && creator == common.ZeroAccountID) || (sender != common.ZeroAccountID && tx.Sender == sender) || (creator != common.ZeroAccountID && tx.Creator == creator) {
-			transactions = append(transactions, tx)
-		}
-	}
-
-	sort.Slice(transactions, func(i, j int) bool {
-		return transactions[i].Depth < transactions[j].Depth
-	})
-
-	if offset != 0 || limit != 0 {
-		if offset >= limit || offset >= uint64(len(transactions)) {
-			return nil
-		}
-
-		if offset+limit > uint64(len(transactions)) {
-			limit = uint64(len(transactions)) - offset
-		}
-
-		transactions = transactions[offset : offset+limit]
-	}
-
-	return
+	return l.graph.ListTransactions(offset, limit, sender, creator)
 }
 
 func (l *Ledger) recvLoop(ctx context.Context) {
@@ -578,22 +525,7 @@ L:
 
 // prune prunes away all transactions and indices with a view ID < (current view ID - PruningDepth).
 func (l *Ledger) prune(round *Round) {
-	for roundID, transactions := range l.graph.roundIndex {
-		if roundID+PruningDepth <= round.Index {
-			for id := range transactions {
-				l.graph.deleteTransaction(id)
-			}
-
-			delete(l.graph.roundIndex, roundID)
-
-			logger := log.Consensus("prune")
-			logger.Debug().
-				Int("num_tx", len(l.graph.roundIndex[round.Index])).
-				Uint64("current_round_id", round.Index).
-				Uint64("pruned_round_id", roundID).
-				Msg("Pruned away round and its corresponding transactions.")
-		}
-	}
+	l.graph.Prune(round)
 
 	for roundID := range l.rounds {
 		if roundID+PruningDepth <= round.Index {
@@ -610,7 +542,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 	snapshot := l.accounts.snapshot()
 	snapshot.SetViewID(round + 1)
 
-	root := l.rounds[l.round-1].Root
+	root := l.LastRound().Root
 
 	visited := map[common.TransactionID]struct{}{
 		root.ID: {},
@@ -626,7 +558,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 
 		visited[parentID] = struct{}{}
 
-		if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
+		if parent, exists := l.graph.LookupTransactionByID(parentID); exists {
 			if parent.Depth > root.Depth {
 				aq.PushBack(parent)
 			}
@@ -645,7 +577,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 			if _, seen := visited[parentID]; !seen {
 				visited[parentID] = struct{}{}
 
-				if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
+				if parent, exists := l.graph.LookupTransactionByID(parentID); exists {
 					if parent.Depth > root.Depth {
 						aq.PushBack(parent)
 					}
@@ -722,7 +654,7 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, root Transaction, tx *Transactio
 	defer ReleaseQueue(q)
 
 	for _, parentID := range tx.ParentIDs {
-		if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
+		if parent, exists := l.graph.LookupTransactionByID(parentID); exists {
 			if parent.Depth > root.Depth {
 				q.PushBack(parent)
 			}
@@ -771,7 +703,7 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, root Transaction, tx *Transactio
 
 		for _, parentID := range popped.ParentIDs {
 			if _, seen := visited[parentID]; !seen {
-				if parent, exists := l.graph.lookupTransactionByID(parentID); exists {
+				if parent, exists := l.graph.LookupTransactionByID(parentID); exists {
 					if parent.Depth > root.Depth {
 						q.PushBack(parent)
 					}

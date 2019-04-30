@@ -30,7 +30,7 @@ var (
 	MaxEligibleParentsDepthDiff uint64 = 5
 
 	// Minimum difficulty to define a critical transaction.
-	MinDifficulty = 8
+	MinDifficulty = 10
 
 	// Fee amount paid by a node per transaction.
 	TransactionFeeAmount uint64 = 2
