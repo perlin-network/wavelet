@@ -33,6 +33,11 @@ func NewMetrics() *Metrics {
 	}
 }
 
+func (m *Metrics) Stop() {
+	m.acceptedTX.Stop()
+	m.receivedTX.Stop()
+}
+
 func (m *Metrics) runLogger(ctx context.Context) {
 	logger := log.Metrics()
 

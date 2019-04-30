@@ -186,6 +186,10 @@ func NewGraph(genesis *Round) *Graph {
 	return g
 }
 
+func (g *Graph) Stop() {
+	g.verifier.Stop()
+}
+
 func (g *Graph) assertTransactionIsComplete(tx *Transaction) error {
 	// Check that the transaction's depth is correct according to its parents.
 	var maxDepth uint64

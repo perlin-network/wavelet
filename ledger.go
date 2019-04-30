@@ -29,6 +29,7 @@ const PruningDepth = 30
 type Ledger struct {
 	ctx    context.Context
 	cancel context.CancelFunc
+	wg     sync.WaitGroup
 
 	keys *skademlia.Keypair
 
@@ -304,6 +305,7 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 
 func (l *Ledger) Run() {
 	go l.recvLoop(l.ctx)
+
 	go l.accounts.gcLoop(l.ctx)
 
 	go l.gossipingLoop(l.ctx)
@@ -317,6 +319,10 @@ func (l *Ledger) Run() {
 
 func (l *Ledger) Stop() {
 	l.cancel()
+	l.wg.Wait()
+
+	l.metrics.Stop()
+	l.graph.Stop()
 }
 
 func (l *Ledger) Snapshot() *avl.Tree {
@@ -405,6 +411,9 @@ func (l *Ledger) ListTransactions(offset, limit uint64, sender, creator common.A
 }
 
 func (l *Ledger) recvLoop(ctx context.Context) {
+	l.wg.Add(1)
+	defer l.wg.Done()
+
 	step := recv(l)
 
 	for {
@@ -421,6 +430,9 @@ func (l *Ledger) recvLoop(ctx context.Context) {
 }
 
 func (l *Ledger) gossipingLoop(ctx context.Context) {
+	l.wg.Add(1)
+	defer l.wg.Done()
+
 	step := gossip(l)
 
 	for {
@@ -437,6 +449,9 @@ func (l *Ledger) gossipingLoop(ctx context.Context) {
 }
 
 func (l *Ledger) queryingLoop(ctx context.Context) {
+	l.wg.Add(1)
+	defer l.wg.Done()
+
 	step := query(l)
 
 	for {
@@ -463,6 +478,9 @@ func (l *Ledger) queryingLoop(ctx context.Context) {
 }
 
 func (l *Ledger) stateSyncingLoop(ctx context.Context) {
+	l.wg.Add(1)
+	defer l.wg.Done()
+
 	step := stateSync(l)
 
 	for {
@@ -495,6 +513,9 @@ func (l *Ledger) stateSyncingLoop(ctx context.Context) {
 }
 
 func (l *Ledger) txSyncingLoop(ctx context.Context) {
+	l.wg.Add(1)
+	defer l.wg.Done()
+
 	step := txSync(l)
 
 L:

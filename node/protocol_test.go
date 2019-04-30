@@ -12,6 +12,7 @@ import (
 	"net"
 	"strconv"
 	"testing"
+	"time"
 )
 
 func protocol(n *noise.Node, keys *skademlia.Keypair) (*Protocol, *skademlia.Protocol, noise.Protocol) {
@@ -50,6 +51,8 @@ func TestProtocolLeak(t *testing.T) {
 
 	w, _, p := protocol(n, k)
 	n.FollowProtocol(p)
+
+	time.Sleep(100 * time.Millisecond)
 
 	w.Stop()
 	n.Shutdown()
