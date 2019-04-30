@@ -683,7 +683,7 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, root Transaction, tx *Transactio
 
 		// If we exceed the max eligible depth we search for candidate
 		// validators to reward from, stop traversing.
-		if depthCounter >= sys.MaxEligibleParentsDepthDiff {
+		if depthCounter >= sys.MaxDepthDiff {
 			break
 		}
 
@@ -773,6 +773,8 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, root Transaction, tx *Transactio
 }
 
 func storeRound(kv store.KV, count uint64, round Round) error {
+	// TODO(kenta): old rounds need to be pruned from the store as well
+
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], count)
 

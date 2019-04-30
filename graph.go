@@ -142,7 +142,7 @@ func (g *Graph) assertTransactionIsComplete(tx *Transaction) error {
 		}
 
 		// Check if the depth of each parents is acceptable.
-		if parent.Depth+sys.MaxEligibleParentsDepthDiff < tx.Depth {
+		if parent.Depth+sys.MaxDepthDiff < tx.Depth {
 			return errors.Errorf("tx parents exceeds max eligible parents depth diff: parents depth is %d, but tx depth is %d", parent.Depth, tx.Depth)
 		}
 
@@ -316,7 +316,7 @@ func (g *Graph) createTransactionIndices(tx *Transaction) {
 	}
 
 	if _, exists := g.children[tx.ID]; !exists {
-		if tx.Depth+sys.MaxEligibleParentsDepthDiff >= g.height {
+		if tx.Depth+sys.MaxDepthDiff >= g.height {
 			g.eligible[tx.ID] = struct{}{}
 		}
 	}
@@ -343,7 +343,7 @@ func (g *Graph) FindEligibleParents() []common.TransactionID {
 			continue
 		}
 
-		if eligibleParent.Depth+sys.MaxEligibleParentsDepthDiff <= g.height {
+		if eligibleParent.Depth+sys.MaxDepthDiff <= g.height {
 			delete(g.eligible, eligibleID)
 			continue
 		}

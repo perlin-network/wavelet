@@ -27,7 +27,7 @@ var (
 
 	// Max graph depth difference to search for eligible transaction
 	// parents from for our node.
-	MaxEligibleParentsDepthDiff uint64 = 5
+	MaxDepthDiff uint64 = 5
 
 	// Minimum difficulty to define a critical transaction.
 	MinDifficulty = 10
