@@ -280,24 +280,6 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 		return err
 	}
 
-	l.mu.RLock()
-	currentRoundID := l.round - 1
-	currentRound := l.rounds[currentRoundID]
-	l.mu.RUnlock()
-
-	difficulty := currentRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))
-
-	if tx.IsCritical(difficulty) && l.snowball.Preferred() == nil {
-		state, err := l.collapseTransactions(currentRoundID+1, &tx, false)
-
-		if err != nil {
-			return errors.Wrap(err, "failed to collapse down critical transaction which we have received")
-		}
-
-		round := NewRound(currentRoundID+1, state.Checksum(), tx)
-		l.snowball.Prefer(&round)
-	}
-
 	return nil
 }
 
@@ -547,7 +529,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 	snapshot := l.accounts.snapshot()
 	snapshot.SetViewID(round + 1)
 
-	root := l.LastRound().Root
+	root := l.rounds[l.round-1].Root
 
 	visited := map[common.TransactionID]struct{}{
 		root.ID: {},
