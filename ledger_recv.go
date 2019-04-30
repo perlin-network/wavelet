@@ -15,18 +15,16 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case evt := <-ledger.gossipIn:
-			return func() error {
-				err := ledger.addTransaction(evt.TX)
+			err := ledger.addTransaction(evt.TX)
 
-				evt.Vote <- err
-				return err
-			}()
+			evt.Vote <- err
+			return err
 		case evt := <-ledger.queryIn:
 			r := evt.Round
 
 			f := func() (*Round, error) {
-				ledger.mu.Lock()
-				defer ledger.mu.Unlock()
+				ledger.mu.RLock()
+				defer ledger.mu.RUnlock()
 
 				if r.Index < ledger.round { // Respond with the round we decided beforehand.
 					round, available := ledger.rounds[r.Index]
@@ -62,76 +60,68 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 
 			return nil
 		case evt := <-ledger.outOfSyncIn:
-			return func() error {
-				ledger.mu.RLock()
-				defer ledger.mu.RUnlock()
+			ledger.mu.RLock()
+			defer ledger.mu.RUnlock()
 
-				if round, exists := ledger.rounds[ledger.round-1]; exists {
-					evt.Response <- &round
-				} else {
-					evt.Response <- nil
-				}
+			if round, exists := ledger.rounds[ledger.round-1]; exists {
+				evt.Response <- &round
+			} else {
+				evt.Response <- nil
+			}
 
-				return nil
-			}()
+			return nil
 		case evt := <-ledger.syncInitIn:
-			return func() error {
-				ledger.mu.RLock()
-				data := SyncInitMetadata{RoundID: ledger.round}
-				ledger.mu.RUnlock()
+			ledger.mu.RLock()
+			data := SyncInitMetadata{RoundID: ledger.round}
+			ledger.mu.RUnlock()
 
-				diff := ledger.accounts.snapshot().DumpDiff(evt.RoundID)
+			diff := ledger.accounts.snapshot().DumpDiff(evt.RoundID)
 
-				for i := 0; i < len(diff); i += SyncChunkSize {
-					end := i + SyncChunkSize
+			for i := 0; i < len(diff); i += SyncChunkSize {
+				end := i + SyncChunkSize
 
-					if end > len(diff) {
-						end = len(diff)
-					}
-
-					hash := blake2b.Sum256(diff[i:end])
-
-					diffs.put(hash, diff[i:end])
-					data.ChunkHashes = append(data.ChunkHashes, hash)
+				if end > len(diff) {
+					end = len(diff)
 				}
 
-				evt.Response <- data
+				hash := blake2b.Sum256(diff[i:end])
 
-				return nil
-			}()
+				diffs.put(hash, diff[i:end])
+				data.ChunkHashes = append(data.ChunkHashes, hash)
+			}
+
+			evt.Response <- data
+
+			return nil
 		case evt := <-ledger.syncDiffIn:
-			return func() error {
-				if chunk, found := diffs.load(evt.ChunkHash); found {
-					chunk := chunk.([]byte)
+			if chunk, found := diffs.load(evt.ChunkHash); found {
+				chunk := chunk.([]byte)
 
-					providedHash := blake2b.Sum256(chunk)
+				providedHash := blake2b.Sum256(chunk)
 
-					logger := log.Sync("provide_chunk")
-					logger.Info().
-						Hex("requested_hash", evt.ChunkHash[:]).
-						Hex("provided_hash", providedHash[:]).
-						Msg("Responded to sync chunk request.")
+				logger := log.Sync("provide_chunk")
+				logger.Info().
+					Hex("requested_hash", evt.ChunkHash[:]).
+					Hex("provided_hash", providedHash[:]).
+					Msg("Responded to sync chunk request.")
 
-					evt.Response <- chunk
-				} else {
-					evt.Response <- nil
-				}
+				evt.Response <- chunk
+			} else {
+				evt.Response <- nil
+			}
 
-				return nil
-			}()
+			return nil
 		case evt := <-ledger.downloadTxIn:
-			return func() error {
-				var txs []Transaction
+			var txs []Transaction
 
-				for _, id := range evt.IDs {
-					if tx, available := ledger.graph.LookupTransactionByID(id); available {
-						txs = append(txs, *tx)
-					}
+			for _, id := range evt.IDs {
+				if tx, available := ledger.graph.LookupTransactionByID(id); available {
+					txs = append(txs, *tx)
 				}
+			}
 
-				evt.Response <- txs
-				return nil
-			}()
+			evt.Response <- txs
+			return nil
 		case evt := <-ledger.forwardTxIn:
 			return ledger.addTransaction(evt.TX)
 		}
