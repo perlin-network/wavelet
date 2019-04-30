@@ -20,9 +20,6 @@ import (
 )
 
 var (
-	RoundLatestKey = []byte(".ledger.round.latest")
-	RoundCountKey  = []byte(".ledger.round.count")
-
 	ErrStopped       = errors.New("worker stopped")
 	ErrNonePreferred = errors.New("no critical transactions available in round yet")
 )
@@ -779,11 +776,11 @@ func storeRound(kv store.KV, count uint64, round Round) error {
 	binary.BigEndian.PutUint64(buf[:], count)
 
 	var err error
-	if err = kv.Put(RoundCountKey, buf[:]); err != nil {
+	if err = kv.Put(keyRoundCount[:], buf[:]); err != nil {
 		return err
 	}
 
-	return kv.Put(RoundLatestKey, round.Marshal())
+	return kv.Put(keyRoundLatest[:], round.Marshal())
 }
 
 func loadRound(kv store.KV) (*Round, uint64, error) {
@@ -791,14 +788,14 @@ func loadRound(kv store.KV) (*Round, uint64, error) {
 	var err error
 
 	var count uint64
-	b, err = kv.Get(RoundCountKey)
+	b, err = kv.Get(keyRoundCount[:])
 	if err != nil {
 		return nil, 0, err
 	}
 	count = binary.BigEndian.Uint64(b[:8])
 
 	var round Round
-	b, err = kv.Get(RoundLatestKey)
+	b, err = kv.Get(keyRoundLatest[:])
 	if err != nil {
 		return nil, 0, err
 	}
