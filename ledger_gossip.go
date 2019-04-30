@@ -25,6 +25,16 @@ func gossip(ledger *Ledger) func(ctx context.Context) error {
 		var Result chan<- Transaction
 		var Error chan<- error
 
+		defer func() {
+			if Result != nil {
+				close(Result)
+			}
+
+			if Error != nil {
+				close(Error)
+			}
+		}()
+
 		select {
 		case <-ctx.Done():
 			return nil
