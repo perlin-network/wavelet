@@ -1,4 +1,5 @@
-FROM golang:1.12.1 as build
+FROM golang:1.12.1-alpine as build
+RUN apk add --no-cache git
 
 RUN mkdir /src
 COPY go.mod /src/go.mod
@@ -10,6 +11,5 @@ RUN (cd /src/cmd/wavelet; go build)
 
 FROM alpine:3.9
 
-RUN mkdir /exec
 COPY --from=build /src/cmd/wavelet/ .
 ENTRYPOINT ["./wavelet"]

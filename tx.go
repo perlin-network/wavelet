@@ -48,7 +48,7 @@ func (t *Transaction) rehash() *Transaction {
 }
 
 func (t Transaction) Marshal() []byte {
-	w := bytes.NewBuffer(make([]byte, 0, 222 + (32 * len(t.ParentIDs)) + len(t.Payload)))
+	w := bytes.NewBuffer(make([]byte, 0, 222+(32*len(t.ParentIDs))+len(t.Payload)))
 
 	w.Write(t.Sender[:])
 	w.Write(t.Creator[:])
