@@ -12,9 +12,7 @@ port = 9000
 query_timeout = 10
 # Max graph depth difference to search for eligible transaction
 # parents from for our node.
-max_eligible_parents_depth_diff = 5
-# Number of ancestors to derive a median timestamp from.
-median_timestamp_num_ancestors = 5
+max_depth_diff = 5
 # In milliseconds.
 expected_consensus_time = 1000
 critical_timestamp_average_window_size = 3
