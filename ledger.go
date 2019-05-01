@@ -14,6 +14,7 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -29,6 +30,7 @@ const PruningDepth = 30
 type Ledger struct {
 	ctx    context.Context
 	cancel context.CancelFunc
+	wg     sync.WaitGroup
 
 	keys *skademlia.Keypair
 
@@ -38,6 +40,8 @@ type Ledger struct {
 
 	snowball *Snowball
 	resolver *Snowball
+
+	verifier *verifier
 
 	processors map[byte]TransactionProcessor
 
@@ -166,6 +170,8 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV) *Ledger {
 		snowball: NewSnowball().WithK(sys.SnowballK).WithAlpha(sys.SnowballAlpha).WithBeta(sys.SnowballBeta),
 		resolver: NewSnowball().WithK(sys.SnowballK).WithAlpha(sys.SnowballAlpha).WithBeta(sys.SnowballBeta),
 
+		verifier: NewVerifier(runtime.NumCPU(), 1024),
+
 		processors: map[byte]TransactionProcessor{
 			sys.TagNop:      ProcessNopTransaction,
 			sys.TagTransfer: ProcessTransferTransaction,
@@ -283,6 +289,10 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 }
 
 func (l *Ledger) addTransaction(tx Transaction) error {
+	if err := l.verifier.verify(&tx); err != nil {
+		return err
+	}
+
 	if err := l.graph.AddTransaction(tx); err == nil {
 		select {
 		case l.forwardTxOut <- EventForwardTX{TX: tx}:
@@ -299,6 +309,7 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 
 func (l *Ledger) Run() {
 	go l.recvLoop(l.ctx)
+
 	go l.accounts.gcLoop(l.ctx)
 
 	go l.gossipingLoop(l.ctx)
@@ -312,6 +323,11 @@ func (l *Ledger) Run() {
 
 func (l *Ledger) Stop() {
 	l.cancel()
+	l.wg.Wait()
+
+	l.metrics.Stop()
+
+	l.verifier.Stop()
 }
 
 func (l *Ledger) Snapshot() *avl.Tree {
@@ -406,6 +422,9 @@ func (l *Ledger) ListTransactions(offset, limit uint64, sender, creator common.A
 }
 
 func (l *Ledger) recvLoop(ctx context.Context) {
+	l.wg.Add(1)
+	defer l.wg.Done()
+
 	step := recv(l)
 
 	for {
@@ -422,6 +441,9 @@ func (l *Ledger) recvLoop(ctx context.Context) {
 }
 
 func (l *Ledger) gossipingLoop(ctx context.Context) {
+	l.wg.Add(1)
+	defer l.wg.Done()
+
 	step := gossip(l)
 
 	for {
@@ -438,6 +460,9 @@ func (l *Ledger) gossipingLoop(ctx context.Context) {
 }
 
 func (l *Ledger) queryingLoop(ctx context.Context) {
+	l.wg.Add(1)
+	defer l.wg.Done()
+
 	step := query(l)
 
 	for {
@@ -464,6 +489,9 @@ func (l *Ledger) queryingLoop(ctx context.Context) {
 }
 
 func (l *Ledger) stateSyncingLoop(ctx context.Context) {
+	l.wg.Add(1)
+	defer l.wg.Done()
+
 	step := stateSync(l)
 
 	for {
@@ -496,6 +524,9 @@ func (l *Ledger) stateSyncingLoop(ctx context.Context) {
 }
 
 func (l *Ledger) txSyncingLoop(ctx context.Context) {
+	l.wg.Add(1)
+	defer l.wg.Done()
+
 	step := txSync(l)
 
 L:
