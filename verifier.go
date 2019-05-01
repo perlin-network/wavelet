@@ -11,8 +11,8 @@ import (
 )
 
 type verificationRequest struct {
-	tx *Transaction
-	response  chan error
+	tx       *Transaction
+	response chan error
 }
 
 type verifier struct {
@@ -119,8 +119,8 @@ func (v *verifier) Stop() {
 
 func (v *verifier) verify(tx *Transaction) error {
 	request := verificationRequest{
-		tx: tx,
-		response:  make(chan error, 1),
+		tx:       tx,
+		response: make(chan error, 1),
 	}
 	v.bus <- request
 	return <-request.response

@@ -101,8 +101,8 @@ func main() {
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "wallet",
 			Value:  "config/wallet.txt",
-			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated.",
-			EnvVar: "WAVELET_WALLET_PATH",
+			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded private key to a wallet may also be specified.",
+			EnvVar: "WAVELET_WALLET",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "api.port",
@@ -230,9 +230,36 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 
 	var k *skademlia.Keypair
 
+	// If a private key is specified instead of a path to a wallet, then simply use the provided private key instead.
+
 	privateKeyBuf, err := ioutil.ReadFile(config.Wallet)
 
-	if err != nil {
+	if err != nil && os.IsNotExist(err) && len(config.Wallet) == hex.EncodedLen(edwards25519.SizePrivateKey) {
+		var privateKey edwards25519.PrivateKey
+
+		n, err := hex.Decode(privateKey[:], []byte(config.Wallet))
+		if err != nil {
+			logger.Fatal().Err(err).Msgf("Failed to decode the private key specified: %s", config.Wallet)
+		}
+
+		if n != edwards25519.SizePrivateKey {
+			logger.Fatal().Msgf("Private key %s is not of the right length.", config.Wallet)
+			return nil, nil, nil
+		}
+
+		k, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+		if err != nil {
+			logger.Fatal().Err(err).Msgf("The private key specified is invalid: %s", config.Wallet)
+			return nil, nil, nil
+		}
+
+		privateKey, publicKey := k.PrivateKey(), k.PublicKey()
+
+		logger.Info().
+			Hex("privateKey", privateKey[:]).
+			Hex("publicKey", publicKey[:]).
+			Msg("Loaded wallet.")
+	} else if err != nil && os.IsNotExist(err) {
 		logger.Warn().Msgf("Could not find an existing wallet at %q. Generating a new wallet...", config.Wallet)
 
 		k, err = skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
@@ -248,6 +275,8 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 			Hex("privateKey", privateKey[:]).
 			Hex("publicKey", publicKey[:]).
 			Msg("Generated a wallet.")
+	} else if err != nil {
+		logger.Warn().Err(err).Msgf("Encountered an unexpected error loading your wallet from %q.", config.Wallet)
 	} else {
 		var privateKey edwards25519.PrivateKey
 
