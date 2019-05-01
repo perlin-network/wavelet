@@ -7,6 +7,7 @@ import (
 	"github.com/perlin-network/noise/handshake"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/noise/xnoise"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 	"net"
@@ -27,7 +28,7 @@ func protocol(n *noise.Node, keys *skademlia.Keypair) (*Protocol, *skademlia.Pro
 	overlay.WithC1(sys.SKademliaC1)
 	overlay.WithC2(sys.SKademliaC2)
 
-	w := New(overlay, keys)
+	w := New(overlay, keys, store.NewInmem(), nil)
 	w.RegisterOpcodes(n)
 	w.Init(n)
 

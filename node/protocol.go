@@ -127,8 +127,8 @@ type Protocol struct {
 	wg     sync.WaitGroup
 }
 
-func New(network *skademlia.Protocol, keys *skademlia.Keypair, kv store.KV) *Protocol {
-	return &Protocol{ledger: wavelet.NewLedger(keys, kv), network: network, keys: keys}
+func New(network *skademlia.Protocol, keys *skademlia.Keypair, kv store.KV, genesis *string) *Protocol {
+	return &Protocol{ledger: wavelet.NewLedger(keys, kv, genesis), network: network, keys: keys}
 }
 
 func (p *Protocol) Stop() {

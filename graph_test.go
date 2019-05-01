@@ -114,7 +114,7 @@ func TestAddInRandomOrder(t *testing.T) {
 	f := func(n int) bool {
 		n = (n + 1) % 1024
 
-		ledger := NewLedger(keys, store.NewInmem())
+		ledger := NewLedger(keys, store.NewInmem(), nil)
 
 		for i := 0; i < n; i++ {
 			tx := NewTransaction(keys, sys.TagNop, nil)
@@ -146,7 +146,7 @@ func TestAddInRandomOrder(t *testing.T) {
 			transactions[i], transactions[j] = transactions[j], transactions[i]
 		}
 
-		ledger = NewLedger(keys, store.NewInmem())
+		ledger = NewLedger(keys, store.NewInmem(), nil)
 
 		for _, tx := range transactions {
 			_ = ledger.graph.AddTransaction(tx)

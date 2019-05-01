@@ -46,7 +46,7 @@ func main() {
 		privateKeyBuf := make([]byte, hex.EncodedLen(edwards25519.SizePrivateKey))
 
 		if n := hex.Encode(privateKeyBuf[:], privateKey[:]); n != hex.EncodedLen(edwards25519.SizePrivateKey) {
-			log.Fatal().Msg("An unknown error occurred marshaling a newly gnerated keypairs private key into hex.")
+			log.Fatal().Msg("An unknown error occurred marshaling a newly generated keypairs private key into hex.")
 		}
 
 		if err := ioutil.WriteFile(walletFilePath, privateKeyBuf, 0755); err != nil {

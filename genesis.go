@@ -6,8 +6,6 @@ import (
 	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
 	"github.com/valyala/fastjson"
-	"io/ioutil"
-	"os"
 )
 
 const defaultGenesis = `
@@ -23,26 +21,11 @@ const defaultGenesis = `
 
 // performInception loads data expected to exist at the birth of any node in this ledgers network.
 // The data is fed in as .json.
-func performInception(tree *avl.Tree, path *string) Round {
+func performInception(tree *avl.Tree, genesis *string) Round {
 	var buf []byte
 
-	if path != nil {
-		file, err := os.Open(*path)
-
-		if err != nil {
-			panic(err)
-		}
-
-		defer func() {
-			if err := file.Close(); err != nil {
-				panic(err)
-			}
-		}()
-
-		buf, err = ioutil.ReadAll(file)
-		if err != nil {
-			panic(err)
-		}
+	if genesis != nil {
+		buf = []byte(*genesis)
 	} else {
 		buf = []byte(defaultGenesis)
 	}

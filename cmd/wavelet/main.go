@@ -37,6 +37,7 @@ type Config struct {
 	Host     string
 	Port     uint
 	Wallet   string
+	Genesis  *string
 	APIPort  uint
 	Peers    []string
 	Database string
@@ -54,7 +55,7 @@ func protocol(n *noise.Node, config *Config, keys *skademlia.Keypair, kv store.K
 	overlay.WithC1(sys.SKademliaC1)
 	overlay.WithC2(sys.SKademliaC2)
 
-	w := node.New(overlay, keys, kv)
+	w := node.New(overlay, keys, kv, config.Genesis)
 	w.RegisterOpcodes(n)
 	w.Init(n)
 
@@ -98,12 +99,6 @@ func main() {
 			Usage:  "Listen for peers on port.",
 			EnvVar: "WAVELET_NODE_PORT",
 		}),
-		altsrc.NewStringFlag(cli.StringFlag{
-			Name:   "wallet",
-			Value:  "config/wallet.txt",
-			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded private key to a wallet may also be specified.",
-			EnvVar: "WAVELET_WALLET",
-		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "api.port",
 			Value:  0,
@@ -111,8 +106,18 @@ func main() {
 			EnvVar: "WAVELET_API_PORT",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "wallet",
+			Value:  "config/wallet.txt",
+			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded private key to a wallet may also be specified.",
+			EnvVar: "WAVELET_WALLET",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "genesis",
+			Usage:  "Genesis JSON file contents representing initial fields of some set of accounts at round 0.",
+			EnvVar: "WAVELET_GENESIS",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "db",
-			Value:  "",
 			Usage:  "Directory path to the database. If empty, a temporary in-memory database will be used instead.",
 			EnvVar: "WAVELET_DB_PATH",
 		}),
@@ -190,6 +195,10 @@ func main() {
 			APIPort:  c.Uint("api.port"),
 			Peers:    c.Args(),
 			Database: c.String("db"),
+		}
+
+		if genesis := c.String("genesis"); len(genesis) > 0 {
+			config.Genesis = &genesis
 		}
 
 		// set the the sys variables

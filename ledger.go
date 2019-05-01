@@ -107,7 +107,7 @@ type Ledger struct {
 	forwardTxOut chan<- EventForwardTX
 }
 
-func NewLedger(keys *skademlia.Keypair, kv store.KV) *Ledger {
+func NewLedger(keys *skademlia.Keypair, kv store.KV, genesis *string) *Ledger {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	broadcastQueue := make(chan EventBroadcast, 1024)
@@ -143,7 +143,7 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV) *Ledger {
 
 	savedRound, savedCount, err := loadRound(kv)
 	if err != nil {
-		round = performInception(accounts.tree, nil)
+		round = performInception(accounts.tree, genesis)
 		if err := accounts.commit(nil); err != nil {
 			panic(err)
 		}
