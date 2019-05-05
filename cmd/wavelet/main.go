@@ -65,8 +65,6 @@ func protocol(n *noise.Node, config *Config, keys *skademlia.Keypair, kv store.K
 }
 
 func main() {
-	_ = make([]byte, 10<<28)
-
 	runtime.SetBlockProfileRate(1)
 	runtime.SetMutexProfileFraction(1)
 

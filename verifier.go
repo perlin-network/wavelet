@@ -103,6 +103,7 @@ func NewVerifier(workersNum int, capacity uint32) *verifier {
 					return
 				case request := <-v.bus:
 					request.response <- validateTx(request.tx)
+					close(request.response)
 				}
 			}
 		}(ctx)
