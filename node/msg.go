@@ -47,55 +47,6 @@ func UnmarshalQueryResponse(r io.Reader) (q QueryResponse, err error) {
 	return
 }
 
-type GossipRequest struct {
-	tx wavelet.Transaction
-}
-
-func (q GossipRequest) Marshal() []byte {
-	return q.tx.Marshal()
-}
-
-func UnmarshalGossipRequest(r io.Reader) (q GossipRequest, err error) {
-	q.tx, err = wavelet.UnmarshalTransaction(r)
-
-	if err != nil {
-		err = errors.Wrap(err, "failed to read gossip request")
-		return
-	}
-
-	return
-}
-
-type GossipResponse struct {
-	vote bool
-}
-
-func (q GossipResponse) Marshal() []byte {
-	var buf [1]byte
-
-	if q.vote {
-		buf[0] = 1
-	} else {
-		buf[0] = 0
-	}
-
-	return buf[:]
-}
-
-func UnmarshalGossipResponse(r io.Reader) (q GossipResponse, err error) {
-	var buf [1]byte
-
-	if _, err := io.ReadFull(r, buf[:]); err != nil {
-		return q, errors.Wrap(err, "failed to read vote in gossip response")
-	}
-
-	if buf[0] == 1 {
-		q.vote = true
-	}
-
-	return
-}
-
 type OutOfSyncResponse struct {
 	round wavelet.Round
 }

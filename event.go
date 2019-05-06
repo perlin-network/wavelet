@@ -10,7 +10,7 @@ const (
 	SyncChunkSize = 1048576
 )
 
-type EventForwardTX struct {
+type EventGossip struct {
 	TX Transaction
 }
 
@@ -21,24 +21,6 @@ type EventBroadcast struct {
 	Signature common.Signature
 
 	Result chan Transaction
-	Error  chan error
-}
-
-type EventIncomingGossip struct {
-	TX Transaction
-
-	Vote chan error
-}
-
-type VoteGossip struct {
-	Voter common.AccountID
-	Ok    bool
-}
-
-type EventGossip struct {
-	TX Transaction
-
-	Result chan []VoteGossip
 	Error  chan error
 }
 

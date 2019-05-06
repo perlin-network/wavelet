@@ -2,13 +2,10 @@ package node
 
 import (
 	"context"
-	"fmt"
 	"github.com/perlin-network/noise"
-	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"math/rand"
 	"sync"
-	"time"
 )
 
 func SelectPeers(peers []*noise.Peer, amount int) ([]*noise.Peer, error) {
@@ -35,7 +32,6 @@ type broadcastResponse struct {
 type broadcastPayload struct {
 	order           int
 	requestOpcode   byte
-	responseOpcode  byte
 	res             chan broadcastResponse
 	waitForResponse bool
 	body            []byte
@@ -62,6 +58,8 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 		go func(ctx context.Context) {
 			defer b.wg.Done()
 
+			var err error
+
 			for {
 				select {
 				case <-ctx.Done():
@@ -77,22 +75,14 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 						}()
 
 						if !payload.waitForResponse {
-							payload.peer.SendWithTimeout(payload.requestOpcode, payload.body, 1*time.Second)
+							_ = payload.peer.Send(payload.requestOpcode, payload.body)
 							return
 						}
 
-						mux := payload.peer.Mux()
-						defer mux.Close()
+						res.body, err = payload.peer.Request(payload.requestOpcode, payload.body)
 
-						if err := mux.SendWithTimeout(payload.requestOpcode, payload.body, 1*time.Second); err != nil {
+						if err != nil {
 							return
-						}
-
-						select {
-						case w := <-mux.Recv(payload.responseOpcode):
-							res.body = w.Bytes()
-						case <-time.After(sys.QueryTimeout):
-							fmt.Println("timed out reading from mux")
 						}
 					}()
 				}
@@ -103,9 +93,7 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 	return &b
 }
 
-func (b *broadcaster) Broadcast(
-	ctx context.Context, peers []*noise.Peer, reqOpcode byte, resOpcode byte, req []byte, waitForResponse bool,
-) [][]byte {
+func (b *broadcaster) Broadcast(ctx context.Context, peers []*noise.Peer, reqOpcode byte, req []byte, waitForResponse bool) [][]byte {
 	resc := make(chan broadcastResponse, len(peers))
 	defer close(resc)
 
@@ -113,7 +101,6 @@ func (b *broadcaster) Broadcast(
 		b.bus <- broadcastPayload{
 			order:           i,
 			requestOpcode:   reqOpcode,
-			responseOpcode:  resOpcode,
 			body:            req,
 			peer:            peer,
 			res:             resc,

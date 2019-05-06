@@ -82,9 +82,7 @@ func gossip(ledger *Ledger) func(ctx context.Context) error {
 		}
 
 		evt := EventGossip{
-			TX:     tx,
-			Result: make(chan []VoteGossip, 1),
-			Error:  make(chan error, 1),
+			TX: tx,
 		}
 
 		select {
@@ -100,62 +98,7 @@ func gossip(ledger *Ledger) func(ctx context.Context) error {
 			}
 
 			return nil
-		case ledger.gossipOut <- evt:
-		}
-
-		var votes []VoteGossip
-
-		select {
-		case <-ctx.Done():
-			if Error != nil {
-				Error <- ErrStopped
-			}
-
-			return nil
-		case err := <-evt.Error:
-			if err != nil {
-				if Error != nil {
-					Error <- errors.Wrap(err, "got an error gossiping transaction out")
-				}
-				return nil
-			}
-		case <-time.After(1 * time.Second):
-			if Error != nil {
-				Error <- errors.New("did not get back a gossip response")
-			}
-		case votes = <-evt.Result:
-		}
-
-		if len(votes) == 0 {
-			return nil
-		}
-
-		successful := false
-
-		for _, vote := range votes {
-			if vote.Ok {
-				successful = true
-				break
-			}
-		}
-
-		if !successful {
-			if Error != nil {
-				Error <- errors.Errorf("none of our peers find %x valid", evt.TX.ID)
-			}
-
-			return nil
-		}
-
-		// Double-check that after gossiping, we have not progressed a single view ID and
-		// that the transaction is still valid for us to add to our view-graph.
-
-		if err := ledger.addTransaction(tx); err != nil {
-			if Error != nil {
-				Error <- err
-			}
-
-			return nil
+		case ledger.gossipTxOut <- evt:
 		}
 
 		/** At this point, the transaction was successfully added to our view-graph. **/
@@ -166,7 +109,7 @@ func gossip(ledger *Ledger) func(ctx context.Context) error {
 			broadcastNops = true
 		}
 
-		if ledger.snowball.Preferred() != nil {
+		if ledger.snowball.Preferred() != nil && broadcastNops {
 			broadcastNops = false
 		}
 

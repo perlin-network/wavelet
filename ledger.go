@@ -58,12 +58,6 @@ type Ledger struct {
 	BroadcastQueue chan<- EventBroadcast
 	broadcastQueue <-chan EventBroadcast
 
-	GossipIn chan<- EventIncomingGossip
-	gossipIn <-chan EventIncomingGossip
-
-	GossipOut <-chan EventGossip
-	gossipOut chan<- EventGossip
-
 	QueryIn chan<- EventIncomingQuery
 	queryIn <-chan EventIncomingQuery
 
@@ -100,20 +94,17 @@ type Ledger struct {
 	LatestViewOut <-chan EventLatestView
 	latestViewOut chan<- EventLatestView
 
-	ForwardTxIn chan<- EventForwardTX
-	forwardTxIn <-chan EventForwardTX
+	GossipTxIn chan<- EventGossip
+	gossipTxIn <-chan EventGossip
 
-	ForwardTxOut <-chan EventForwardTX
-	forwardTxOut chan<- EventForwardTX
+	GossipTxOut <-chan EventGossip
+	gossipTxOut chan<- EventGossip
 }
 
 func NewLedger(keys *skademlia.Keypair, kv store.KV, genesis *string) *Ledger {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	broadcastQueue := make(chan EventBroadcast, 1024)
-
-	gossipIn := make(chan EventIncomingGossip, 128)
-	gossipOut := make(chan EventGossip, 128)
 
 	queryIn := make(chan EventIncomingQuery, 128)
 	queryOut := make(chan EventQuery, 128)
@@ -133,8 +124,8 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV, genesis *string) *Ledger {
 	latestViewIn := make(chan EventIncomingLatestView, 16)
 	latestViewOut := make(chan EventLatestView, 16)
 
-	forwardTxIn := make(chan EventForwardTX, 1024)
-	forwardTxOut := make(chan EventForwardTX, 1024)
+	gossipTxIn := make(chan EventGossip, 1024)
+	gossipTxOut := make(chan EventGossip, 1024)
 
 	accounts := newAccounts(kv)
 
@@ -189,12 +180,6 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV, genesis *string) *Ledger {
 		BroadcastQueue: broadcastQueue,
 		broadcastQueue: broadcastQueue,
 
-		GossipIn: gossipIn,
-		gossipIn: gossipIn,
-
-		GossipOut: gossipOut,
-		gossipOut: gossipOut,
-
 		QueryIn: queryIn,
 		queryIn: queryIn,
 
@@ -231,11 +216,11 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV, genesis *string) *Ledger {
 		LatestViewOut: latestViewOut,
 		latestViewOut: latestViewOut,
 
-		ForwardTxIn: forwardTxIn,
-		forwardTxIn: forwardTxIn,
+		GossipTxIn: gossipTxIn,
+		gossipTxIn: gossipTxIn,
 
-		ForwardTxOut: forwardTxOut,
-		forwardTxOut: forwardTxOut,
+		GossipTxOut: gossipTxOut,
+		gossipTxOut: gossipTxOut,
 	}
 }
 
@@ -295,7 +280,7 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 
 	if err := l.graph.AddTransaction(tx); err == nil {
 		select {
-		case l.forwardTxOut <- EventForwardTX{TX: tx}:
+		case l.gossipTxOut <- EventGossip{TX: tx}:
 		default:
 		}
 

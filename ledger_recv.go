@@ -14,11 +14,8 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
-		case evt := <-ledger.gossipIn:
-			err := ledger.addTransaction(evt.TX)
-
-			evt.Vote <- err
-			return err
+		case evt := <-ledger.gossipTxIn:
+			return ledger.addTransaction(evt.TX)
 		case evt := <-ledger.queryIn:
 			r := evt.Round
 
@@ -56,7 +53,8 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 				return nil
 			}
 
-			evt.Response <- ledger.snowball.Preferred() // Send back our preferred round info, if we have any.
+			preferred := ledger.snowball.Preferred()
+			evt.Response <- preferred // Send back our preferred round info, if we have any.
 
 			return nil
 		case evt := <-ledger.outOfSyncIn:
@@ -122,8 +120,6 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 
 			evt.Response <- txs
 			return nil
-		case evt := <-ledger.forwardTxIn:
-			return ledger.addTransaction(evt.TX)
 		}
 	}
 }
