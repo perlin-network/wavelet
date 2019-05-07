@@ -134,7 +134,7 @@ func (p *Protocol) receiveLoop(peer *noise.Peer) {
 		case <-p.ctx.Done():
 			return
 		case buf := <-peer.Recv(p.opcodeGossip):
-			p.handleGossip(buf)
+			go p.handleGossip(buf) // TODO(kenta): bound number of workers handling gossip
 		}
 	}
 }

@@ -16,7 +16,7 @@ require (
 	github.com/klauspost/cpuid v1.2.0 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/perlin-network/life v0.0.0-20190204091834-d05763d11050
-	github.com/perlin-network/noise v0.0.0-20190506192639-d994d882db82
+	github.com/perlin-network/noise v0.0.0-20190507091217-388c833e17be
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
 	github.com/pkg/errors v0.8.1
 	github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a
@@ -27,7 +27,6 @@ require (
 	github.com/valyala/fastjson v1.4.1
 	go.uber.org/atomic v1.3.2
 	golang.org/x/crypto v0.0.0-20190404164418-38d8ce5564a5
-	golang.org/x/sys v0.0.0-20190405154228-4b34438f7a67 // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 	gopkg.in/urfave/cli.v1 v1.20.0
 	gopkg.in/yaml.v2 v2.2.2 // indirect

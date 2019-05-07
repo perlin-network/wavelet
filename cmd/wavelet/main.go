@@ -754,4 +754,6 @@ func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog
 			}()
 		}
 	}
+
+	select {}
 }
