@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/rcrowley/go-metrics"
-	"github.com/rcrowley/go-metrics/exp"
 	"time"
 )
 
@@ -21,10 +20,6 @@ func NewMetrics() *Metrics {
 
 	receivedTX := metrics.NewRegisteredMeter("tx.received", registry)
 	acceptedTX := metrics.NewRegisteredMeter("tx.accepted", registry)
-
-	//go metrics.Log(registry, 5*time.Second, log.New(os.Stderr, "metrics: ", log.Lmicroseconds))
-
-	exp.Exp(registry)
 
 	return &Metrics{
 		registry:   registry,

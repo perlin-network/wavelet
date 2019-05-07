@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
 	"sync"
@@ -68,18 +69,18 @@ func validateTx(tx *Transaction) error {
 		return errors.New("tx must have no payload if is a nop transaction")
 	}
 
-	//var nonce [8]byte // TODO(kenta): nonce
-	//
-	//if !edwards25519.Verify(tx.Creator, append(nonce[:], append([]byte{tx.Tag}, tx.Payload...)...), tx.CreatorSignature) {
-	//	return errors.New("tx has invalid creator signature")
-	//}
-	//
-	//cpy := *tx
-	//cpy.SenderSignature = common.ZeroSignature
-	//
-	//if !edwards25519.Verify(tx.Sender, cpy.Marshal(), tx.SenderSignature) {
-	//	return errors.New("tx has invalid sender signature")
-	//}
+	var nonce [8]byte // TODO(kenta): nonce
+
+	if !edwards25519.Verify(tx.Creator, append(nonce[:], append([]byte{tx.Tag}, tx.Payload...)...), tx.CreatorSignature) {
+		return errors.New("tx has invalid creator signature")
+	}
+
+	cpy := *tx
+	cpy.SenderSignature = common.ZeroSignature
+
+	if !edwards25519.Verify(tx.Sender, cpy.Marshal(), tx.SenderSignature) {
+		return errors.New("tx has invalid sender signature")
+	}
 
 	return nil
 }

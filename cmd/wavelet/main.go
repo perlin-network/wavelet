@@ -26,7 +26,6 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -65,9 +64,6 @@ func protocol(n *noise.Node, config *Config, keys *skademlia.Keypair, kv store.K
 }
 
 func main() {
-	runtime.SetBlockProfileRate(1)
-	runtime.SetMutexProfileFraction(1)
-
 	//if terminal.IsTerminal(int(os.Stdout.Fd())) {
 	log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
 	//} else {
@@ -158,8 +154,13 @@ func main() {
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "sys.difficulty.min",
-			Value: sys.MinDifficulty,
+			Value: int(sys.MinDifficulty),
 			Usage: "Minimum difficulty to define a critical transaction",
+		}),
+		altsrc.NewUint64Flag(cli.Uint64Flag{
+			Name:  "sys.difficulty.scale",
+			Value: sys.DifficultyScaleFactor,
+			Usage: "Factor to scale a transactions confidence down by to compute the difficulty needed to define a critical transaction",
 		}),
 		cli.StringFlag{
 			Name:  "config, c",
@@ -205,7 +206,8 @@ func main() {
 		sys.SnowballBeta = c.Int("sys.snowball.beta")
 		sys.QueryTimeout = time.Duration(c.Int("sys.query_timeout")) * time.Second
 		sys.MaxDepthDiff = c.Uint64("sys.max_depth_diff")
-		sys.MinDifficulty = c.Int("sys.difficulty.min")
+		sys.MinDifficulty = byte(c.Int("sys.difficulty.min"))
+		sys.DifficultyScaleFactor = c.Uint64("sys.difficulty.scale")
 		sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
 		sys.MinimumStake = c.Uint64("sys.min_stake")
 
@@ -405,7 +407,7 @@ func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog
 			}
 
 			logger.Info().
-				Uint8("difficulty", round.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
+				Uint8("difficulty", round.Root.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
 				Uint64("round", round.Index).
 				Hex("root_id", round.Root.ID[:]).
 				Uint64("height", ledger.Height()).
@@ -447,6 +449,7 @@ func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog
 				Hex("creator", tx.Creator[:]).
 				Uint64("nonce", tx.Nonce).
 				Uint8("tag", tx.Tag).
+				Uint64("confidence", tx.Confidence).
 				Uint64("depth", tx.Depth).
 				Uint64("num_ancestors", tx.Confidence).
 				Msgf("Transaction: %s", cmd[1])

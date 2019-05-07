@@ -163,7 +163,7 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 	return t, nil
 }
 
-func (t Transaction) ExpectedDifficulty(min byte) byte {
+func (t Transaction) ExpectedDifficulty(min byte, scale uint64) byte {
 	if t.Depth == 0 && t.Confidence == 0 {
 		return min
 	}
@@ -182,7 +182,7 @@ func (t Transaction) ExpectedDifficulty(min byte) byte {
 		return c
 	}
 
-	difficulty := byte(mul(uint64(min), log2(t.Confidence)) / log2(t.Depth))
+	difficulty := byte(mul(uint64(min), log2(t.Confidence/scale)) / log2(t.Depth))
 
 	if difficulty < min {
 		difficulty = min

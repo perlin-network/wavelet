@@ -188,7 +188,7 @@ func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, er
 
 	round := s.ledger.LastRound()
 
-	if s.tx.IsCritical(round.Root.ExpectedDifficulty(byte(sys.MinDifficulty))) {
+	if s.tx.IsCritical(round.Root.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)) {
 		o.Set("is_critical", arena.NewTrue())
 	} else {
 		o.Set("is_critical", arena.NewFalse())
@@ -219,7 +219,7 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 	o.Set("address", arena.NewString(s.node.Addr().String()))
 	o.Set("root_id", arena.NewString(hex.EncodeToString(round.Root.ID[:])))
 	o.Set("view_id", arena.NewNumberString(strconv.FormatUint(s.ledger.RoundID(), 10)))
-	o.Set("difficulty", arena.NewNumberString(strconv.FormatUint(uint64(round.Root.ExpectedDifficulty(byte(sys.MinDifficulty))), 10)))
+	o.Set("difficulty", arena.NewNumberString(strconv.FormatUint(uint64(round.Root.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)), 10)))
 
 	peers := s.network.Peers(s.node)
 	if len(peers) > 0 {

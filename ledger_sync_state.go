@@ -274,8 +274,8 @@ func downloadStateInChunks(newRound *Round) transition {
 			Int("num_chunks", len(chunks)).
 			Uint64("old_round", oldRound.Index).
 			Uint64("new_round", newRound.Index).
-			Uint8("old_difficulty", oldRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
-			Uint8("new_difficulty", newRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
+			Uint8("old_difficulty", oldRound.Root.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
+			Uint8("new_difficulty", newRound.Root.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
 			Hex("new_root", newRound.Root.ID[:]).
 			Hex("old_root", oldRound.Root.ID[:]).
 			Hex("new_merkle_root", newRound.Merkle[:]).

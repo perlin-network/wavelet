@@ -96,6 +96,8 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 			return nil
 		}
 
+		//fmt.Printf("elected %x\n", elected.Root.ID)
+
 		ledger.snowball.Tick(elected)
 
 		if ledger.snowball.Decided() {
@@ -129,8 +131,8 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 				Uint64("num_tx", ledger.getNumTransactions(ledger.round-1)).
 				Uint64("old_round", lastRound.Index).
 				Uint64("new_round", newRound.Index).
-				Uint8("old_difficulty", lastRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
-				Uint8("new_difficulty", newRound.Root.ExpectedDifficulty(byte(sys.MinDifficulty))).
+				Uint8("old_difficulty", lastRound.Root.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
+				Uint8("new_difficulty", newRound.Root.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
 				Hex("new_root", newRound.Root.ID[:]).
 				Hex("old_root", lastRound.Root.ID[:]).
 				Hex("new_merkle_root", newRound.Merkle[:]).
@@ -157,7 +159,7 @@ func findCriticalTransactionToPrefer(ledger *Ledger, oldRoot Transaction, nextRo
 		return nil
 	}
 
-	difficulty := oldRoot.ExpectedDifficulty(byte(sys.MinDifficulty))
+	difficulty := oldRoot.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)
 
 	// Find all eligible critical transactions for the current round.
 	eligible := ledger.graph.FindEligibleCriticals(oldRoot.Depth, difficulty)

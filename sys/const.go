@@ -30,7 +30,10 @@ var (
 	MaxDepthDiff uint64 = 5
 
 	// Minimum difficulty to define a critical transaction.
-	MinDifficulty = 10
+	MinDifficulty byte = 9
+
+	// Factor to scale a transactions confidence down by to compute the difficulty needed to define a critical transaction.
+	DifficultyScaleFactor uint64 = 2
 
 	// Fee amount paid by a node per transaction.
 	TransactionFeeAmount uint64 = 2
