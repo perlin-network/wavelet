@@ -134,7 +134,7 @@ func (p *Protocol) receiveLoop(peer *noise.Peer) {
 		case <-p.ctx.Done():
 			return
 		case buf := <-peer.Recv(p.opcodeGossip):
-			go p.handleGossip(buf) // TODO(kenta): bound number of workers handling gossip
+			p.handleGossip(buf) // TODO(kenta): bound number of workers handling gossip
 		}
 	}
 }
@@ -584,6 +584,7 @@ func (p *Protocol) handleGossip(buf []byte) {
 	tx, err := wavelet.UnmarshalTransaction(bytes.NewReader(buf))
 	if err != nil {
 		fmt.Println("error while unmarshaling gossip request", err)
+		panic(fmt.Sprintf("%#v", buf))
 		return
 	}
 
