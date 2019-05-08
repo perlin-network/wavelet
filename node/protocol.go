@@ -584,7 +584,6 @@ func (p *Protocol) handleGossip(buf []byte) {
 	tx, err := wavelet.UnmarshalTransaction(bytes.NewReader(buf))
 	if err != nil {
 		fmt.Println("error while unmarshaling gossip request", err)
-		panic(fmt.Sprintf("%#v", buf))
 		return
 	}
 

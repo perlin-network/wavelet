@@ -101,13 +101,13 @@ func gossip(ledger *Ledger) func(ctx context.Context) error {
 		case ledger.gossipTxOut <- evt:
 		}
 
-		//if err := ledger.addTransaction(tx); err != nil {
-		//	if Error != nil {
-		//		Error <- err
-		//	}
-		//
-		//	return nil
-		//}
+		if err := ledger.addTransaction(tx); err != nil {
+			if Error != nil {
+				Error <- err
+			}
+
+			return nil
+		}
 
 		/** At this point, the transaction was successfully added to our view-graph. **/
 

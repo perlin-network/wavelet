@@ -58,8 +58,6 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 		go func(ctx context.Context) {
 			defer b.wg.Done()
 
-			var err error
-
 			for {
 				select {
 				case <-ctx.Done():
@@ -79,11 +77,7 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 							return
 						}
 
-						res.body, err = payload.peer.Request(payload.requestOpcode, payload.body)
-
-						if err != nil {
-							return
-						}
+						res.body, _ = payload.peer.Request(payload.requestOpcode, payload.body)
 					}()
 				}
 			}
