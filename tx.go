@@ -8,6 +8,7 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"io"
+	"math"
 	"math/bits"
 )
 
@@ -173,11 +174,7 @@ func (t Transaction) ExpectedDifficulty(min byte, scale uint64) byte {
 		return min
 	}
 
-	log2 := func(x uint64) uint64 {
-		return uint64(64 - bits.LeadingZeros64(x))
-	}
-
-	difficulty := byte(uint64(min) * log2(t.Confidence/scale) / log2(t.Depth))
+	difficulty := byte(float64(min) + (math.Log2(float64(t.Confidence) * float64(scale) / float64(t.Depth))))
 
 	if difficulty < min {
 		difficulty = min

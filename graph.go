@@ -120,7 +120,7 @@ func (g *Graph) processParents(tx *Transaction) []common.TransactionID {
 
 		g.children[parentID] = append(g.children[parentID], tx.ID)
 
-		delete(g.eligible, parentID)
+		//delete(g.eligible, parentID)
 	}
 
 	return missingParentIDs
