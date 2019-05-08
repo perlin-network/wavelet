@@ -15,6 +15,7 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/crypto/blake2b"
 	"math/rand"
+	"runtime"
 	"sync"
 	"time"
 )
@@ -75,7 +76,7 @@ func (p *Protocol) RegisterOpcodes(node *noise.Node) {
 func (p *Protocol) Init(node *noise.Node) {
 	p.ctx, p.cancel = context.WithCancel(context.Background())
 
-	p.broadcaster = NewBroadcaster(16, 1000)
+	p.broadcaster = NewBroadcaster(runtime.NumCPU()*2, 1024)
 
 	go p.sendLoop(node)
 	go p.ledger.Run()
@@ -96,7 +97,9 @@ func (p *Protocol) Protocol() noise.ProtocolBlock {
 		signal := ctx.Peer().RegisterSignal(SignalAuthenticated)
 		defer signal()
 
-		go p.receiveLoop(ctx.Peer())
+		for i := 0; i < runtime.NumCPU(); i++ {
+			go p.receiveLoop(ctx.Peer())
+		}
 
 		ctx.Peer().InterceptErrors(func(err error) {
 			logger := log.Network("left")
@@ -129,13 +132,10 @@ func (p *Protocol) receiveLoop(peer *noise.Peer) {
 	p.wg.Add(1)
 	defer p.wg.Done()
 
-	for {
-		select {
-		case <-p.ctx.Done():
-			return
-		case buf := <-peer.Recv(p.opcodeGossip):
-			p.handleGossip(buf) // TODO(kenta): bound number of workers handling gossip
-		}
+	gossipQueue := peer.Recv(p.opcodeGossip)
+
+	for buf := range gossipQueue {
+		p.handleGossip(buf) // TODO(kenta): bound number of workers handling gossip
 	}
 }
 
@@ -154,6 +154,8 @@ func (p *Protocol) broadcastQuery(node *noise.Node) {
 				continue
 			}
 
+			//before := time.Now()
+
 			responses := p.broadcaster.Broadcast(
 				p.ctx,
 				peers,
@@ -161,6 +163,8 @@ func (p *Protocol) broadcastQuery(node *noise.Node) {
 				QueryRequest{round: *evt.Round}.Marshal(),
 				true,
 			)
+
+			//fmt.Printf("query took %s seconds\n", time.Now().Sub(before).String())
 
 			votes := make([]wavelet.VoteQuery, len(responses))
 

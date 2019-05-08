@@ -279,9 +279,11 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 	}
 
 	if err := l.graph.AddTransaction(tx); err == nil {
-		select {
-		case l.gossipTxOut <- EventGossip{TX: tx}:
-		default:
+		if tx.Sender != l.keys.PublicKey() {
+			select {
+			case l.gossipTxOut <- EventGossip{TX: tx}:
+			default:
+			}
 		}
 
 		l.metrics.receivedTX.Mark(1)
