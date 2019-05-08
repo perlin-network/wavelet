@@ -259,7 +259,7 @@ func (g *Graph) FindEligibleParents() []common.TransactionID {
 
 	root := g.transactions[g.rootID]
 
-	var eligibleIDs []common.TransactionID
+	var eligibleParents []*Transaction
 
 	for eligibleID := range g.eligible {
 		eligibleParent, exists := g.transactions[eligibleID]
@@ -279,7 +279,21 @@ func (g *Graph) FindEligibleParents() []common.TransactionID {
 			continue
 		}
 
-		eligibleIDs = append(eligibleIDs, eligibleID)
+		eligibleParents = append(eligibleParents, eligibleParent)
+	}
+
+	sort.Slice(eligibleParents, func(i, j int) bool {
+		return eligibleParents[i].Depth > eligibleParents[j].Depth
+	})
+
+	eligibleIDs := make([]common.TransactionID, 0, sys.MaxParentsPerTransaction)
+
+	for _, eligibleParent := range eligibleParents {
+		eligibleIDs = append(eligibleIDs, eligibleParent.ID)
+
+		if len(eligibleIDs) == sys.MaxParentsPerTransaction {
+			break
+		}
 	}
 
 	return eligibleIDs

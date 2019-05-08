@@ -632,11 +632,11 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 			}
 
 			continue
-		} else {
-			if logging {
-				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.Confidence, popped.ParentIDs, popped.Tag, popped.Payload, "applied")
-				logger.Log().Msg("Successfully applied transaction to the ledger.")
-			}
+		}
+
+		if logging {
+			logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.Confidence, popped.ParentIDs, popped.Tag, popped.Payload, "applied")
+			logger.Log().Msg("Successfully applied transaction to the ledger.")
 		}
 
 		// Update nonce.

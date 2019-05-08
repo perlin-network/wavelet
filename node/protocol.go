@@ -65,7 +65,7 @@ func (p *Protocol) Network() *skademlia.Protocol {
 }
 
 func (p *Protocol) RegisterOpcodes(node *noise.Node) {
-	p.opcodeGossip = node.Handle(node.NextAvailableOpcode(), nil)
+	p.opcodeGossip = node.Handle(node.NextAvailableOpcode(), p.handleGossip)
 	p.opcodeQuery = node.Handle(node.NextAvailableOpcode(), p.handleQuery)
 	p.opcodeOutOfSync = node.Handle(node.NextAvailableOpcode(), p.handleOutOfSyncRequest)
 	p.opcodeSyncInit = node.Handle(node.NextAvailableOpcode(), p.handleSyncInit)
@@ -97,10 +97,6 @@ func (p *Protocol) Protocol() noise.ProtocolBlock {
 		signal := ctx.Peer().RegisterSignal(SignalAuthenticated)
 		defer signal()
 
-		for i := 0; i < runtime.NumCPU(); i++ {
-			go p.receiveLoop(ctx.Peer())
-		}
-
 		ctx.Peer().InterceptErrors(func(err error) {
 			logger := log.Network("left")
 			logger.Info().
@@ -126,17 +122,6 @@ func (p *Protocol) sendLoop(node *noise.Node) {
 	go p.broadcastSyncInit(node)
 	go p.broadcastDownloadChunk(node)
 	go p.broadcastDownloadTx(node)
-}
-
-func (p *Protocol) receiveLoop(peer *noise.Peer) {
-	p.wg.Add(1)
-	defer p.wg.Done()
-
-	gossipQueue := peer.Recv(p.opcodeGossip)
-
-	for buf := range gossipQueue {
-		p.handleGossip(buf) // TODO(kenta): bound number of workers handling gossip
-	}
 }
 
 func (p *Protocol) broadcastQuery(node *noise.Node) {
@@ -584,11 +569,11 @@ func (p *Protocol) handleDownloadTx(ctx noise.Context, buf []byte) ([]byte, erro
 	return res.Marshal(), nil
 }
 
-func (p *Protocol) handleGossip(buf []byte) {
+func (p *Protocol) handleGossip(ctx noise.Context, buf []byte) ([]byte, error) {
 	tx, err := wavelet.UnmarshalTransaction(bytes.NewReader(buf))
 	if err != nil {
 		fmt.Println("error while unmarshaling gossip request", err)
-		return
+		return nil, errors.Wrap(err, "error while unmarshaling gossip request")
 	}
 
 	evt := wavelet.EventGossip{TX: tx}
@@ -596,7 +581,9 @@ func (p *Protocol) handleGossip(buf []byte) {
 	select {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending gossip request to ledger")
-		return
+		return nil, errors.New("timed out sending gossip request to ledger")
 	case p.ledger.GossipTxIn <- evt:
 	}
+
+	return nil, nil
 }

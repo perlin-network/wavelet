@@ -29,8 +29,11 @@ var (
 	// parents from for our node.
 	MaxDepthDiff uint64 = 5
 
+	// Max number of parents referencable by a transaction.
+	MaxParentsPerTransaction = 16
+
 	// Minimum difficulty to define a critical transaction.
-	MinDifficulty byte = 10
+	MinDifficulty byte = 12
 
 	// Factor to scale a transactions confidence down by to compute the difficulty needed to define a critical transaction.
 	DifficultyScaleFactor uint64 = 1

@@ -3,10 +3,10 @@ package wavelet
 import (
 	"bytes"
 	"context"
-	"errors"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
+	"github.com/pkg/errors"
 	"sync"
 )
 
@@ -36,6 +36,10 @@ func validateTx(tx *Transaction) error {
 
 	if len(tx.ParentIDs) == 0 {
 		return errors.New("transaction has no parents")
+	}
+
+	if len(tx.ParentIDs) > sys.MaxParentsPerTransaction {
+		return errors.Errorf("tx has %d parents, but tx may only have %d parents at most", len(tx.ParentIDs), sys.MaxParentsPerTransaction)
 	}
 
 	// Check that parents are lexicographically sorted, are not itself, and are unique.

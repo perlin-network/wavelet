@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"encoding/binary"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"io"
-	"math"
 	"math/bits"
 )
 
@@ -106,6 +106,11 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 		return
 	}
 
+	if int(buf[0]) > sys.MaxParentsPerTransaction {
+		err = errors.Errorf("tx while decoding has %d parents, but may only have at most %d parents", buf[0], sys.MaxParentsPerTransaction)
+		return
+	}
+
 	t.ParentIDs = make([]common.TransactionID, buf[0])
 
 	for i := range t.ParentIDs {
@@ -172,17 +177,7 @@ func (t Transaction) ExpectedDifficulty(min byte, scale uint64) byte {
 		return uint64(64 - bits.LeadingZeros64(x))
 	}
 
-	mul := func(a, b uint64) uint64 {
-		c := a * b
-
-		if c/b != a {
-			c = math.MaxUint64
-		}
-
-		return c
-	}
-
-	difficulty := byte(mul(uint64(min), log2(t.Confidence/scale)) / log2(t.Depth))
+	difficulty := byte(uint64(min) * log2(t.Confidence/scale) / log2(t.Depth))
 
 	if difficulty < min {
 		difficulty = min
