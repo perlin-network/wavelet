@@ -73,7 +73,7 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 						}()
 
 						if !payload.waitForResponse {
-							_ = payload.peer.Send(payload.requestOpcode, payload.body)
+							_ = payload.peer.SendAwait(payload.requestOpcode, payload.body)
 							return
 						}
 

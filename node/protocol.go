@@ -124,6 +124,31 @@ func (p *Protocol) sendLoop(node *noise.Node) {
 	go p.broadcastDownloadTx(node)
 }
 
+func (p *Protocol) broadcastGossip(node *noise.Node) {
+	p.wg.Add(1)
+	defer p.wg.Done()
+
+	for {
+		select {
+		case <-p.ctx.Done():
+			return
+		case evt := <-p.ledger.GossipTxOut:
+			peers, err := SelectPeers(p.network.Peers(node), sys.SnowballK)
+			if err != nil {
+				continue
+			}
+
+			p.broadcaster.Broadcast(
+				p.ctx,
+				peers,
+				p.opcodeGossip,
+				evt.TX.Marshal(),
+				false,
+			)
+		}
+	}
+}
+
 func (p *Protocol) broadcastQuery(node *noise.Node) {
 	p.wg.Add(1)
 	defer p.wg.Done()
@@ -400,31 +425,6 @@ func (p *Protocol) broadcastDownloadChunk(node *noise.Node) {
 			}
 
 			evt.Result <- collected
-		}
-	}
-}
-
-func (p *Protocol) broadcastGossip(node *noise.Node) {
-	p.wg.Add(1)
-	defer p.wg.Done()
-
-	for {
-		select {
-		case <-p.ctx.Done():
-			return
-		case evt := <-p.ledger.GossipTxOut:
-			peers, err := SelectPeers(p.network.Peers(node), sys.SnowballK)
-			if err != nil {
-				continue
-			}
-
-			p.broadcaster.Broadcast(
-				p.ctx,
-				peers,
-				p.opcodeGossip,
-				evt.TX.Marshal(),
-				false,
-			)
 		}
 	}
 }
