@@ -34,13 +34,8 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 
 				res, err := client.SendTransaction(sys.TagStake, payload[:])
 
-				if err != nil {
-					chRes <- res
-					chErr <- err
-				}
-
 				chRes <- res
-				chErr <- nil
+				chErr <- err
 			}()
 		}
 
@@ -50,15 +45,17 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 		var err error
 
 		for i := 0; i < numWorkers; i++ {
-			if e := <-chErr; err == nil {
-				err = e
-			} else {
-				err = errors.Wrap(err, e.Error())
+			if e := <-chErr; e != nil {
+				if err == nil {
+					err = e
+				} else {
+					err = errors.Wrap(err, e.Error())
+				}
 			}
 
 			responses = append(responses, <-chRes)
 		}
 
-		return responses, nil
+		return responses, err
 	}
 }

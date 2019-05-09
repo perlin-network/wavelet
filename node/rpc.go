@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/pkg/errors"
 	"math/rand"
@@ -73,11 +74,17 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 						}()
 
 						if !payload.waitForResponse {
-							_ = payload.peer.SendAwait(payload.requestOpcode, payload.body)
+							if err := payload.peer.SendAwait(payload.requestOpcode, payload.body); err != nil {
+								fmt.Println("error during sending payload to peers", err)
+							}
 							return
 						}
 
-						res.body, _ = payload.peer.Request(payload.requestOpcode, payload.body)
+						var err error
+						res.body, err = payload.peer.Request(payload.requestOpcode, payload.body)
+						if err != nil {
+							fmt.Println("error during requesting from peers")
+						}
 					}()
 				}
 			}
