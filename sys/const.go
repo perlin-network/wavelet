@@ -30,7 +30,7 @@ var (
 	MaxDepthDiff uint64 = 5
 
 	// Max number of parents referencable by a transaction.
-	MaxParentsPerTransaction = 32
+	MaxParentsPerTransaction = 255
 
 	// Minimum difficulty to define a critical transaction.
 	MinDifficulty byte = 6
