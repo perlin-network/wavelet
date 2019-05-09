@@ -275,7 +275,7 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 		}
 	}
 
-	rootDepth := g.ledger.LastRound().Root.Depth
+	rootDepth := g.ledger.LastRound().End.Depth
 
 	var transactions transactionList
 
@@ -324,7 +324,7 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	rootDepth := g.ledger.LastRound().Root.Depth
+	rootDepth := g.ledger.LastRound().End.Depth
 
 	res := &transaction{tx: tx}
 

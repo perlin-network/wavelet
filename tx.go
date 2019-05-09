@@ -8,7 +8,6 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"io"
-	"math"
 	"math/bits"
 )
 
@@ -167,20 +166,6 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 	t.rehash()
 
 	return t, nil
-}
-
-func (t Transaction) ExpectedDifficulty(min byte, scale uint64) byte {
-	if t.Depth == 0 && t.Confidence == 0 {
-		return min
-	}
-
-	difficulty := byte(float64(min) + (math.Log2(float64(t.Confidence) * float64(scale) / float64(t.Depth))))
-
-	if difficulty < min {
-		difficulty = min
-	}
-
-	return difficulty
 }
 
 func prefixLen(buf []byte) int {

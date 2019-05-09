@@ -364,10 +364,10 @@ func (l *Ledger) getNumTransactions(round uint64) uint64 {
 	height := l.graph.Height()
 
 	if round+1 < l.round {
-		height = l.rounds[round+1].Root.Depth + 1
+		height = l.rounds[round+1].End.Depth + 1
 	}
 
-	for depth := l.rounds[round].Root.Depth + 1; depth < height; depth++ {
+	for depth := l.rounds[round].End.Depth + 1; depth < height; depth++ {
 		n += l.graph.NumTransactionsInDepth(depth)
 	}
 
@@ -378,10 +378,10 @@ func (l *Ledger) getHeight(round uint64) uint64 {
 	height := l.graph.Height()
 
 	if round+1 < l.round {
-		height = l.rounds[round+1].Root.Depth + 1
+		height = l.rounds[round+1].End.Depth + 1
 	}
 
-	height -= l.rounds[round].Root.Depth
+	height -= l.rounds[round].End.Depth
 
 	if height > 0 {
 		height--
@@ -561,7 +561,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 	snapshot := l.accounts.snapshot()
 	snapshot.SetViewID(round + 1)
 
-	root := l.LastRound().Root
+	root := l.LastRound().End
 
 	visited := map[common.TransactionID]struct{}{
 		root.ID: {},

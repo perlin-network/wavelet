@@ -47,8 +47,8 @@ func NewGraph(genesis *Round) *Graph {
 	}
 
 	if genesis != nil {
-		g.rootID = genesis.Root.ID
-		g.transactions[genesis.Root.ID] = &genesis.Root
+		g.rootID = genesis.End.ID
+		g.transactions[genesis.End.ID] = &genesis.End
 	} else {
 		ptr := new(Transaction)
 
@@ -246,11 +246,11 @@ func (g *Graph) createTransactionIndices(tx *Transaction) {
 		g.height = tx.Depth + 1
 	}
 
-	if _, exists := g.children[tx.ID]; !exists {
-		if tx.Depth+sys.MaxDepthDiff >= g.height {
-			g.eligible[tx.ID] = struct{}{}
-		}
+	//if _, exists := g.children[tx.ID]; !exists {
+	if tx.Depth+sys.MaxDepthDiff >= g.height {
+		g.eligible[tx.ID] = struct{}{}
 	}
+	//}
 }
 
 func (g *Graph) FindEligibleParents() []common.TransactionID {
@@ -381,22 +381,22 @@ func (g *Graph) Reset(newRound *Round) {
 	g.Lock()
 	defer g.Unlock()
 
-	ptr := &newRound.Root
+	ptr := &newRound.End
 
-	g.transactions[newRound.Root.ID] = ptr
+	g.transactions[newRound.End.ID] = ptr
 	g.createTransactionIndices(ptr)
 
 	oldRoot := g.transactions[g.rootID]
 
 	g.roundIndex[newRound.Index] = make(map[common.TransactionID]struct{})
 
-	for i := oldRoot.Depth + 1; i <= newRound.Root.Depth; i++ {
+	for i := oldRoot.Depth + 1; i <= newRound.End.Depth; i++ {
 		for id := range g.depthIndex[i] {
 			g.roundIndex[newRound.Index][id] = struct{}{}
 		}
 	}
 
-	g.rootID = newRound.Root.ID
+	g.rootID = newRound.End.ID
 }
 
 func (g *Graph) Prune(round *Round) {
