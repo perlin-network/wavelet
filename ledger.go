@@ -295,7 +295,9 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 }
 
 func (l *Ledger) Run() {
-	go l.recvLoop(l.ctx)
+	for i := 0; i < runtime.NumCPU(); i++ {
+		go l.recvLoop(l.ctx)
+	}
 
 	go l.accounts.gcLoop(l.ctx)
 

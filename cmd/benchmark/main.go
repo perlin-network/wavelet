@@ -39,8 +39,6 @@ func main() {
 	app.Before = func(context *cli.Context) error {
 		log.Logger = zerolog.New(os.Stderr).With().Timestamp().Logger().Output(logger.NewConsoleWriter())
 
-		build()
-
 		return nil
 	}
 
@@ -156,6 +154,8 @@ func commandRemote(c *cli.Context) error {
 }
 
 func commandLocal(c *cli.Context) error {
+	build()
+
 	count := c.Uint("count")
 
 	if count == 0 {

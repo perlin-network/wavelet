@@ -36,6 +36,7 @@ func (r Round) ExpectedDifficulty(min byte, scale uint64) byte {
 
 	difficulty := byte(float64(min) + math.Log2(float64(r.End.Confidence-r.Start.Confidence)*float64(scale))/math.Log2(float64(r.End.Depth-r.Start.Depth)))
 
+	//difficulty := byte(float64(min) + math.Exp(math.Log2(float64(r.End.Confidence - r.Start.Confidence)) / math.Log2(float64(r.End.Depth - r.Start.Depth))))
 	if difficulty < min {
 		difficulty = min
 	}
