@@ -34,6 +34,13 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 
 				res, err := client.SendTransaction(sys.TagStake, payload[:])
 
+				if err != nil {
+					chRes <- res
+					chErr <- err
+
+					return
+				}
+
 				chRes <- res
 				chErr <- err
 			}()

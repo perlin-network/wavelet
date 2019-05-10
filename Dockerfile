@@ -8,8 +8,9 @@ RUN (cd /src; go mod download)
 
 ADD . /src
 RUN (cd /src/cmd/wavelet; go build)
+RUN (cd /src/cmd/benchmark; go build)
 
 FROM alpine:3.9
 
 COPY --from=build /src/cmd/wavelet/ .
-ENTRYPOINT ["./wavelet"]
+COPY --from=build /src/cmd/benchmark/benchmark .

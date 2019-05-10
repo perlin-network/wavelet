@@ -63,7 +63,7 @@ func checkIfOutOfSync(ctx context.Context, ledger *Ledger) (transition, error) {
 	accounts := make(map[common.AccountID]struct{}, len(votes))
 
 	for _, vote := range votes {
-		if vote.Round.ID != common.ZeroRoundID && vote.Round.Root.ID != common.ZeroTransactionID {
+		if vote.Round.ID != common.ZeroRoundID && vote.Round.End.ID != common.ZeroTransactionID {
 			rounds[vote.Round.ID] = vote.Round
 		}
 
@@ -76,7 +76,7 @@ func checkIfOutOfSync(ctx context.Context, ledger *Ledger) (transition, error) {
 	weights := computeStakeDistribution(snapshot, accounts)
 
 	for _, vote := range votes {
-		if vote.Round.ID != common.ZeroRoundID && vote.Round.Root.ID != common.ZeroTransactionID {
+		if vote.Round.ID != common.ZeroRoundID && vote.Round.End.ID != common.ZeroTransactionID {
 			counts[vote.Round.ID] += weights[vote.Voter]
 
 			if counts[vote.Round.ID] >= sys.SnowballAlpha {
@@ -274,10 +274,10 @@ func downloadStateInChunks(newRound *Round) transition {
 			Int("num_chunks", len(chunks)).
 			Uint64("old_round", oldRound.Index).
 			Uint64("new_round", newRound.Index).
-			Uint8("old_difficulty", oldRound.Root.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-			Uint8("new_difficulty", newRound.Root.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-			Hex("new_root", newRound.Root.ID[:]).
-			Hex("old_root", oldRound.Root.ID[:]).
+			Uint8("old_difficulty", oldRound.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
+			Uint8("new_difficulty", newRound.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
+			Hex("new_root", newRound.End.ID[:]).
+			Hex("old_root", oldRound.End.ID[:]).
 			Hex("new_merkle_root", newRound.Merkle[:]).
 			Hex("old_merkle_root", oldRound.Merkle[:]).
 			Msg("Successfully built a new state tree out of chunk(s) we have received from peers.")

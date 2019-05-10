@@ -26,6 +26,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -64,6 +65,9 @@ func protocol(n *noise.Node, config *Config, keys *skademlia.Keypair, kv store.K
 }
 
 func main() {
+	runtime.SetMutexProfileFraction(1)
+	runtime.SetBlockProfileRate(1)
+
 	//if terminal.IsTerminal(int(os.Stdout.Fd())) {
 	log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
 	//} else {
@@ -387,7 +391,7 @@ func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog
 			preferredID := "N/A"
 
 			if preferred := ledger.Preferred(); preferred != nil {
-				preferredID = hex.EncodeToString(preferred.Root.ID[:])
+				preferredID = hex.EncodeToString(preferred.End.ID[:])
 			}
 
 			round := ledger.LastRound()
@@ -407,9 +411,9 @@ func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog
 			}
 
 			logger.Info().
-				Uint8("difficulty", round.Root.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
+				Uint8("difficulty", round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
 				Uint64("round", round.Index).
-				Hex("root_id", round.Root.ID[:]).
+				Hex("root_id", round.End.ID[:]).
 				Uint64("height", ledger.Height()).
 				Uint64("num_tx", ledger.NumTransactions()).
 				Uint64("num_tx_in_store", ledger.NumTransactionInStore()).
