@@ -20,9 +20,9 @@ type Graph struct {
 
 	missing map[common.TransactionID]struct{} // Transactions that we are missing.
 
-	seedIndex  map[byte]map[common.TransactionID]struct{}   // Indexes transactions by their seed.
-	depthIndex map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their depth.
-	roundIndex map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their round.
+	maxDepthPerDifficulty map[byte]*Transaction                        // Indexes transactions by their seed.
+	depthIndex            map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their depth.
+	roundIndex            map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their round.
 
 	rootID common.TransactionID // Root of the graph.
 	height uint64               // Height of the graph.
@@ -38,9 +38,9 @@ func NewGraph(genesis *Round) *Graph {
 
 		missing: make(map[common.TransactionID]struct{}),
 
-		seedIndex:  make(map[byte]map[common.TransactionID]struct{}),
-		depthIndex: make(map[uint64]map[common.TransactionID]struct{}),
-		roundIndex: make(map[uint64]map[common.TransactionID]struct{}),
+		maxDepthPerDifficulty: make(map[byte]*Transaction),
+		depthIndex:            make(map[uint64]map[common.TransactionID]struct{}),
+		roundIndex:            make(map[uint64]map[common.TransactionID]struct{}),
 
 		height: 1,
 	}
@@ -193,12 +193,10 @@ func (g *Graph) DeleteTransaction(id common.TransactionID) {
 // indices.
 func (g *Graph) deleteTransaction(id common.TransactionID) {
 	if tx, exists := g.transactions[id]; exists {
-		delete(g.seedIndex[tx.Seed], id)
-		delete(g.depthIndex[tx.Depth], id)
-
-		if len(g.seedIndex[tx.Seed]) == 0 {
-			delete(g.seedIndex, tx.Seed)
+		if tx, ok := g.maxDepthPerDifficulty[tx.Seed]; ok && tx.ID == id {
+			delete(g.maxDepthPerDifficulty, tx.Seed)
 		}
+		delete(g.depthIndex[tx.Depth], id)
 
 		if len(g.depthIndex[tx.Depth]) == 0 {
 			delete(g.depthIndex, tx.Depth)
@@ -229,11 +227,9 @@ func (g *Graph) deleteIncompleteTransaction(id common.TransactionID) {
 }
 
 func (g *Graph) createTransactionIndices(tx *Transaction) {
-	if _, exists := g.seedIndex[tx.Seed]; !exists {
-		g.seedIndex[tx.Seed] = make(map[common.TransactionID]struct{})
+	if storedTx, exists := g.maxDepthPerDifficulty[tx.Seed]; !exists || tx.Depth > storedTx.Depth {
+		g.maxDepthPerDifficulty[tx.Seed] = tx
 	}
-
-	g.seedIndex[tx.Seed][tx.ID] = struct{}{}
 
 	if _, exists := g.depthIndex[tx.Depth]; !exists {
 		g.depthIndex[tx.Depth] = make(map[common.TransactionID]struct{})
@@ -305,18 +301,14 @@ func (g *Graph) FindEligibleCriticals(rootDepth uint64, difficulty byte) []*Tran
 	var eligible []*Transaction
 
 	for i := difficulty; i < math.MaxUint8; i++ {
-		candidates, exists := g.seedIndex[i]
+		candidate, exists := g.maxDepthPerDifficulty[i]
 
 		if !exists {
 			continue
 		}
 
-		for candidateID := range candidates {
-			candidate := g.transactions[candidateID]
-
-			if candidate.Depth > rootDepth && candidate.IsCritical(difficulty) {
-				eligible = append(eligible, candidate)
-			}
+		if candidate.Depth > rootDepth && candidate.IsCritical(difficulty) {
+			eligible = append(eligible, candidate)
 		}
 	}
 
