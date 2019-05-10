@@ -86,7 +86,6 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 						if res.body, err = payload.peer.Request(payload.requestOpcode, payload.body); err != nil {
 							fmt.Println("got an error sending request:", err)
 						}
-
 					}()
 				}
 			}
