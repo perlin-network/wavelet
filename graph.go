@@ -2,7 +2,6 @@ package wavelet
 
 import (
 	"github.com/perlin-network/wavelet/common"
-	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"math"
@@ -397,28 +396,6 @@ func (g *Graph) Reset(newRound *Round) {
 	}
 
 	g.rootID = newRound.End.ID
-}
-
-func (g *Graph) Prune(round *Round) {
-	g.Lock()
-	defer g.Unlock()
-
-	for roundID, transactions := range g.roundIndex {
-		if roundID+PruningDepth <= round.Index {
-			for id := range transactions {
-				g.deleteTransaction(id)
-			}
-
-			delete(g.roundIndex, roundID)
-
-			logger := log.Consensus("prune")
-			logger.Debug().
-				Int("num_tx", len(g.roundIndex[round.Index])).
-				Uint64("current_round_id", round.Index).
-				Uint64("pruned_round_id", roundID).
-				Msg("Pruned away round and its corresponding transactions.")
-		}
-	}
 }
 
 func (g *Graph) TransactionApplied(id common.TransactionID) bool {
