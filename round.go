@@ -6,6 +6,7 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"io"
+	"math"
 )
 
 // Nodes negotiate over which round to accept through Snowball. A round comprises of
@@ -16,14 +17,31 @@ type Round struct {
 	ID     common.RoundID
 	Index  uint64
 	Merkle common.MerkleNodeID
-	Root   Transaction
+
+	Start Transaction
+	End   Transaction
 }
 
 func (r Round) Marshal() []byte {
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], r.Index)
 
-	return append(buf[:], append(r.Merkle[:], r.Root.Marshal()...)...)
+	return append(buf[:], append(r.Merkle[:], append(r.Start.Marshal(), r.End.Marshal()...)...)...)
+}
+
+func (r Round) ExpectedDifficulty(min byte, scale uint64) byte {
+	if r.End.Depth == 0 && r.End.Confidence == 0 {
+		return min
+	}
+
+	difficulty := byte(float64(min) + math.Log2(float64(r.End.Confidence-r.Start.Confidence)*float64(scale))/math.Log2(float64(r.End.Depth-r.Start.Depth)))
+
+	//difficulty := byte(float64(min) + math.Exp(math.Log2(float64(r.End.Confidence - r.Start.Confidence)) / math.Log2(float64(r.End.Depth - r.Start.Depth))))
+	if difficulty < min {
+		difficulty = min
+	}
+
+	return difficulty
 }
 
 func UnmarshalRound(r io.Reader) (round Round, err error) {
@@ -41,8 +59,13 @@ func UnmarshalRound(r io.Reader) (round Round, err error) {
 		return
 	}
 
-	if round.Root, err = UnmarshalTransaction(r); err != nil {
-		err = errors.Wrap(err, "failed to decode round root transaction")
+	if round.Start, err = UnmarshalTransaction(r); err != nil {
+		err = errors.Wrap(err, "failed to decode round start transaction")
+		return
+	}
+
+	if round.End, err = UnmarshalTransaction(r); err != nil {
+		err = errors.Wrap(err, "failed to decode round end transaction")
 		return
 	}
 
@@ -51,11 +74,12 @@ func UnmarshalRound(r io.Reader) (round Round, err error) {
 	return
 }
 
-func NewRound(index uint64, merkle common.MerkleNodeID, root Transaction) Round {
+func NewRound(index uint64, merkle common.MerkleNodeID, start, end Transaction) Round {
 	r := Round{
 		Index:  index,
 		Merkle: merkle,
-		Root:   root,
+		Start:  start,
+		End:    end,
 	}
 
 	r.ID = blake2b.Sum256(r.Marshal())

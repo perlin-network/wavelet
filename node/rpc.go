@@ -59,6 +59,8 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 		go func(ctx context.Context) {
 			defer b.wg.Done()
 
+			var err error
+
 			for {
 				select {
 				case <-ctx.Done():
@@ -74,16 +76,15 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 						}()
 
 						if !payload.waitForResponse {
-							if err := payload.peer.SendAwait(payload.requestOpcode, payload.body); err != nil {
-								fmt.Println("error during sending payload to peers", err)
+							if err = payload.peer.SendAwait(payload.requestOpcode, payload.body); err != nil {
+								fmt.Println("got an error sending broadcast:", err)
 							}
+
 							return
 						}
 
-						var err error
-						res.body, err = payload.peer.Request(payload.requestOpcode, payload.body)
-						if err != nil {
-							fmt.Println("error during requesting from peers")
+						if res.body, err = payload.peer.Request(payload.requestOpcode, payload.body); err != nil {
+							fmt.Println("got an error sending request:", err)
 						}
 					}()
 				}

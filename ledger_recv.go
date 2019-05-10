@@ -48,7 +48,7 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 				return nil
 			}
 
-			if err := ledger.addTransaction(r.Root); err != nil { // Add the root in the round to our graph.
+			if err := ledger.addTransaction(r.End); err != nil { // Add the root in the round to our graph.
 				evt.Error <- err
 				return nil
 			}

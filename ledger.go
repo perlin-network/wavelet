@@ -295,7 +295,7 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 }
 
 func (l *Ledger) Run() {
-	for i := 0; i < 4; i++ {
+	for i := 0; i < runtime.NumCPU(); i++ {
 		go l.recvLoop(l.ctx)
 	}
 
@@ -366,10 +366,10 @@ func (l *Ledger) getNumTransactions(round uint64) uint64 {
 	height := l.graph.Height()
 
 	if round+1 < l.round {
-		height = l.rounds[round+1].Root.Depth + 1
+		height = l.rounds[round+1].End.Depth + 1
 	}
 
-	for depth := l.rounds[round].Root.Depth + 1; depth < height; depth++ {
+	for depth := l.rounds[round].End.Depth + 1; depth < height; depth++ {
 		n += l.graph.NumTransactionsInDepth(depth)
 	}
 
@@ -380,10 +380,10 @@ func (l *Ledger) getHeight(round uint64) uint64 {
 	height := l.graph.Height()
 
 	if round+1 < l.round {
-		height = l.rounds[round+1].Root.Depth + 1
+		height = l.rounds[round+1].End.Depth + 1
 	}
 
-	height -= l.rounds[round].Root.Depth
+	height -= l.rounds[round].End.Depth
 
 	if height > 0 {
 		height--
@@ -559,11 +559,15 @@ func (l *Ledger) prune(round *Round) {
 // all valid and available ones to a snapshot of all accounts stored in the ledger.
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
-func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging bool) (*avl.Tree, error) {
+func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging bool) (int, int, int, *avl.Tree, error) {
+	rejectedCount := 0
+	appliedCount := 0
+	ignoredCount := 0
+
 	snapshot := l.accounts.snapshot()
 	snapshot.SetViewID(round + 1)
 
-	root := l.LastRound().Root
+	root := l.LastRound().End
 
 	visited := map[common.TransactionID]struct{}{
 		root.ID: {},
@@ -572,21 +576,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 	aq := AcquireQueue()
 	defer ReleaseQueue(aq)
 
-	for _, parentID := range tx.ParentIDs {
-		if parentID == root.ID {
-			continue
-		}
-
-		visited[parentID] = struct{}{}
-
-		if parent, exists := l.graph.LookupTransactionByID(parentID); exists {
-			if parent.Depth > root.Depth {
-				aq.PushBack(parent)
-			}
-		} else {
-			return snapshot, errors.Errorf("missing parent %x to correctly collapse down ledger state from critical transaction %x", parentID, tx.ID)
-		}
-	}
+	aq.PushBack(tx)
 
 	bq := AcquireQueue()
 	defer ReleaseQueue(bq)
@@ -603,7 +593,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 						aq.PushBack(parent)
 					}
 				} else {
-					return snapshot, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, tx.ID)
+					return appliedCount, rejectedCount, ignoredCount, snapshot, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, tx.ID)
 				}
 			}
 		}
@@ -624,6 +614,8 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 				logger.Log().Err(err).Msg("Failed to deduct transaction fees and reward validators before applying the transaction to the ledger.")
 			}
 
+			rejectedCount++
+
 			continue
 		}
 
@@ -632,6 +624,8 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.Confidence, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
 				logger.Log().Err(err).Msg("Failed to apply transaction to the ledger.")
 			}
+
+			rejectedCount++
 
 			continue
 		}
@@ -648,10 +642,18 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 		if logging {
 			l.metrics.acceptedTX.Mark(1)
 		}
+
+		appliedCount++
 	}
 
+	for depth := root.Depth + 1; depth <= tx.Depth; depth++ {
+		ignoredCount += int(l.graph.NumTransactionsInDepth(depth))
+	}
+
+	ignoredCount -= appliedCount + rejectedCount
+
 	//l.cacheAccounts.put(tx.getCriticalSeed(), snapshot)
-	return snapshot, nil
+	return appliedCount, rejectedCount, ignoredCount, snapshot, nil
 }
 
 func (l *Ledger) applyTransactionToSnapshot(ss *avl.Tree, tx *Transaction) error {
