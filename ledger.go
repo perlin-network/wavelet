@@ -576,21 +576,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 	aq := AcquireQueue()
 	defer ReleaseQueue(aq)
 
-	for _, parentID := range tx.ParentIDs {
-		if parentID == root.ID {
-			continue
-		}
-
-		visited[parentID] = struct{}{}
-
-		if parent, exists := l.graph.LookupTransactionByID(parentID); exists {
-			if parent.Depth > root.Depth {
-				aq.PushBack(parent)
-			}
-		} else {
-			return appliedCount, rejectedCount, ignoredCount, snapshot, errors.Errorf("missing parent %x to correctly collapse down ledger state from critical transaction %x", parentID, tx.ID)
-		}
-	}
+	aq.PushBack(tx)
 
 	bq := AcquireQueue()
 	defer ReleaseQueue(bq)
