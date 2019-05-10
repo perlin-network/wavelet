@@ -32,6 +32,8 @@ type Ledger struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
+	lru *lru
+
 	keys *skademlia.Keypair
 
 	metrics  *Metrics
@@ -151,6 +153,8 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV, genesis *string) *Ledger {
 	return &Ledger{
 		ctx:    ctx,
 		cancel: cancel,
+
+		lru:  newLRU(1024), // In total will take up 1024 * 4MB.
 
 		keys: keys,
 

@@ -8,8 +8,6 @@ import (
 )
 
 func recv(ledger *Ledger) func(ctx context.Context) error {
-	diffs := newLRU(1024) // In total will take up 1024 * 4MB.
-
 	return func(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
@@ -84,7 +82,7 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 
 				hash := blake2b.Sum256(diff[i:end])
 
-				diffs.put(hash, diff[i:end])
+				ledger.lru.put(hash, diff[i:end])
 				data.ChunkHashes = append(data.ChunkHashes, hash)
 			}
 
@@ -92,7 +90,7 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 
 			return nil
 		case evt := <-ledger.syncDiffIn:
-			if chunk, found := diffs.load(evt.ChunkHash); found {
+			if chunk, found := ledger.lru.load(evt.ChunkHash); found {
 				chunk := chunk.([]byte)
 
 				providedHash := blake2b.Sum256(chunk)
