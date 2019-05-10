@@ -37,6 +37,8 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 				if err != nil {
 					chRes <- res
 					chErr <- err
+
+					return
 				}
 
 				chRes <- res
