@@ -104,7 +104,7 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 			newRound := ledger.snowball.Preferred()
 			newRoot := &newRound.End
 
-			state, err := ledger.collapseTransactions(newRound.Index, newRoot, true)
+			acceptedCount, rejectedCount, ignoredCount, state, err := ledger.collapseTransactions(newRound.Index, newRoot, true)
 
 			if err != nil {
 				return errors.Wrap(err, "got an error finalizing a round")
@@ -128,7 +128,9 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 
 			logger := log.Consensus("round_end")
 			logger.Info().
-				Uint64("num_tx", ledger.getNumTransactions(ledger.round-1)).
+				Int("num_accepted_tx", acceptedCount).
+				Int("num_rejected_tx", rejectedCount).
+				Int("num_ignored_tx", ignoredCount).
 				Uint64("old_round", lastRound.Index).
 				Uint64("new_round", newRound.Index).
 				Uint8("old_difficulty", lastRound.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
@@ -180,7 +182,7 @@ func findCriticalTransactionToPrefer(ledger *Ledger, oldRound Round, nextRound u
 
 	proposed := eligible[0]
 
-	state, err := ledger.collapseTransactions(nextRound, proposed, false)
+	_, _, _, state, err := ledger.collapseTransactions(nextRound, proposed, false)
 
 	if err != nil {
 		return errors.Wrap(err, "could not collapse first critical transaction we could find")

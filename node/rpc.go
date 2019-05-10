@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/pkg/errors"
 	"math/rand"
@@ -58,6 +59,8 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 		go func(ctx context.Context) {
 			defer b.wg.Done()
 
+			var err error
+
 			for {
 				select {
 				case <-ctx.Done():
@@ -73,11 +76,17 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 						}()
 
 						if !payload.waitForResponse {
-							_ = payload.peer.SendAwait(payload.requestOpcode, payload.body)
+							if err = payload.peer.SendAwait(payload.requestOpcode, payload.body); err != nil {
+								fmt.Println("got an error sending broadcast:", err)
+							}
+
 							return
 						}
 
-						res.body, _ = payload.peer.Request(payload.requestOpcode, payload.body)
+						if res.body, err = payload.peer.Request(payload.requestOpcode, payload.body); err != nil {
+							fmt.Println("got an error sending request:", err)
+						}
+
 					}()
 				}
 			}

@@ -26,6 +26,7 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -64,6 +65,9 @@ func protocol(n *noise.Node, config *Config, keys *skademlia.Keypair, kv store.K
 }
 
 func main() {
+	runtime.SetMutexProfileFraction(1)
+	runtime.SetBlockProfileRate(1)
+
 	//if terminal.IsTerminal(int(os.Stdout.Fd())) {
 	log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
 	//} else {
