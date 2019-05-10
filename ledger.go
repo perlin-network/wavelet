@@ -550,11 +550,26 @@ L:
 
 // prune prunes away all transactions and indices with a view ID < (current view ID - PruningDepth).
 func (l *Ledger) prune(round *Round) {
-	l.graph.Prune(round)
+	l.graph.Lock()
+	defer l.graph.Unlock()
 
-	for roundID := range l.rounds {
+	for roundID, thatRound := range l.rounds {
 		if roundID+PruningDepth <= round.Index {
+			delete(l.graph.roundIndex, roundID)
+			prunedTxCount := uint64(0)
+			for depth := thatRound.Start.Depth + 1; depth <= thatRound.End.Depth; depth++ {
+				for tid, _ := range l.graph.depthIndex[depth] {
+					l.graph.deleteTransaction(tid)
+					prunedTxCount += 1
+				}
+			}
 			delete(l.rounds, roundID)
+			logger := log.Consensus("prune")
+			logger.Debug().
+				Uint64("num_tx", prunedTxCount).
+				Uint64("current_round_id", round.Index).
+				Uint64("pruned_round_id", roundID).
+				Msg("Pruned away round and transactions.")
 		}
 	}
 }
