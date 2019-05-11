@@ -112,8 +112,8 @@ func (t *Tree) doRange(callback func(k []byte, v []byte), n *node) {
 		return
 	}
 
-	t.doRange(callback, t.mustLoadNode(n.left))
-	t.doRange(callback, t.mustLoadNode(n.right))
+	t.doRange(callback, t.mustLoadLeft(n))
+	t.doRange(callback, t.mustLoadRight(n))
 }
 
 func (t *Tree) PrintContents() {
@@ -131,8 +131,8 @@ func (t *Tree) doPrintContents(n *node, depth int) {
 
 	fmt.Printf("%s: %s\n", hex.EncodeToString(n.id[:]), n.getString())
 	if n.kind == NodeNonLeaf {
-		t.doPrintContents(t.mustLoadNode(n.left), depth+1)
-		t.doPrintContents(t.mustLoadNode(n.right), depth+1)
+		t.doPrintContents(t.mustLoadLeft(n), depth+1)
+		t.doPrintContents(t.mustLoadRight(n), depth+1)
 	}
 }
 
@@ -262,6 +262,24 @@ func (t *Tree) mustLoadNode(id [MerkleHashSize]byte) *node {
 		panic(err)
 	}
 	return n
+}
+
+func (t *Tree) mustLoadLeft(n *node) *node {
+	if n.leftObj != nil {
+		return n.leftObj
+	}
+	ret := t.mustLoadNode(n.left)
+	n.leftObj = ret
+	return ret
+}
+
+func (t *Tree) mustLoadRight(n *node) *node {
+	if n.rightObj != nil {
+		return n.rightObj
+	}
+	ret := t.mustLoadNode(n.right)
+	n.rightObj = ret
+	return ret
 }
 
 func (t *Tree) deleteNodeAndMetadata(id [MerkleHashSize]byte) {
