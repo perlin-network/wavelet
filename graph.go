@@ -322,15 +322,15 @@ func (g *Graph) FindEligibleParents() []common.TransactionID {
 }
 
 func (g *Graph) FindEligibleCritical(rootDepth uint64, difficulty byte) *Transaction {
-	//last := time.Now()
-	//defer func() {
-	//	fmt.Println(time.Now().Sub(last).String())
-	//}()
-
 	g.Lock()
 	defer g.Unlock()
 
 	candidateIndex := -1
+
+	//last := time.Now()
+	//defer func() {
+	//	fmt.Println(len(g.seedIndex), candidateIndex, time.Now().Sub(last).String())
+	//}()
 
 	for i, candidate := range g.seedIndex {
 		if candidate.Depth <= rootDepth {
