@@ -25,6 +25,9 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 		}
 		ledger.syncingCond.L.Unlock()
 
+		ledger.gossipQueryWG.Add(1)
+		defer ledger.gossipQueryWG.Done()
+
 		ledger.mu.RLock()
 		nextRound := ledger.round
 		lastRound := ledger.rounds[ledger.round-1]

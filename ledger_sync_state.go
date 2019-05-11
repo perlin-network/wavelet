@@ -127,6 +127,8 @@ func downloadStateInChunks(newRound *Round) transition {
 		ledger.syncingCond.Broadcast()
 		ledger.syncingCond.L.Unlock()
 
+		ledger.gossipQueryWG.Wait()
+
 		defer func() {
 			ledger.syncingCond.L.Lock()
 			ledger.syncing = false

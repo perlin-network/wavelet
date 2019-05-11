@@ -32,6 +32,8 @@ type Ledger struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
+	gossipQueryWG sync.WaitGroup
+
 	lru *lru
 
 	keys *skademlia.Keypair
@@ -278,8 +280,10 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 }
 
 func (l *Ledger) addTransaction(tx Transaction) error {
-	if err := l.verifier.verify(&tx); err != nil {
-		return err
+	if l.graph.GetTransaction(tx.ID) == nil {
+		if err := l.verifier.verify(&tx); err != nil {
+			return err
+		}
 	}
 
 	if err := l.graph.AddTransaction(tx); err == nil {
@@ -558,7 +562,7 @@ func (l *Ledger) prune(round *Round) {
 			delete(l.graph.roundIndex, roundID)
 			prunedTxCount := uint64(0)
 			for depth := thatRound.Start.Depth + 1; depth <= thatRound.End.Depth; depth++ {
-				for tid, _ := range l.graph.depthIndex[depth] {
+				for tid := range l.graph.depthIndex[depth] {
 					l.graph.deleteTransaction(tid)
 					prunedTxCount += 1
 				}
@@ -586,7 +590,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 	if logging {
 		now := time.Now()
 		defer func() {
-			fmt.Println(time.Now().Sub(now).String())
+			fmt.Println(">>>>>>>>>>>>>>>>", time.Now().Sub(now).String())
 		}()
 	}
 
