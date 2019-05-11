@@ -33,7 +33,7 @@ var (
 	MaxParentsPerTransaction = 32
 
 	// Minimum difficulty to define a critical transaction.
-	MinDifficulty byte = 6
+	MinDifficulty byte = 8
 
 	// Factor to scale a transactions confidence down by to compute the difficulty needed to define a critical transaction.
 	DifficultyScaleFactor uint64 = 1

@@ -154,7 +154,7 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV, genesis *string) *Ledger {
 		ctx:    ctx,
 		cancel: cancel,
 
-		lru:  newLRU(1024), // In total will take up 1024 * 4MB.
+		lru: newLRU(1024), // In total will take up 1024 * 4MB.
 
 		keys: keys,
 
@@ -299,7 +299,7 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 }
 
 func (l *Ledger) Run() {
-	for i := 0; i < runtime.NumCPU(); i++ {
+	for i := 0; i < 4; i++ {
 		go l.recvLoop(l.ctx)
 	}
 
@@ -582,6 +582,13 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 	rejectedCount := 0
 	appliedCount := 0
 	ignoredCount := 0
+
+	if logging {
+		now := time.Now()
+		defer func() {
+			fmt.Println(time.Now().Sub(now).String())
+		}()
+	}
 
 	snapshot := l.accounts.snapshot()
 	snapshot.SetViewID(round + 1)

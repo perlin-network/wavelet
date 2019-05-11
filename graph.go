@@ -4,7 +4,6 @@ import (
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
-	"math"
 	"sort"
 	"sync"
 )
@@ -20,7 +19,7 @@ type Graph struct {
 
 	missing map[common.TransactionID]struct{} // Transactions that we are missing.
 
-	seedIndex  map[byte]map[common.TransactionID]struct{}   // Indexes transactions by their seed.
+	seedIndex  []*Transaction                               // Indexes transactions by their seed.
 	depthIndex map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their depth.
 	roundIndex map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their round.
 
@@ -38,7 +37,6 @@ func NewGraph(genesis *Round) *Graph {
 
 		missing: make(map[common.TransactionID]struct{}),
 
-		seedIndex:  make(map[byte]map[common.TransactionID]struct{}),
 		depthIndex: make(map[uint64]map[common.TransactionID]struct{}),
 		roundIndex: make(map[uint64]map[common.TransactionID]struct{}),
 
@@ -140,6 +138,10 @@ func (g *Graph) LookupTransactionByID(id common.TransactionID) (*Transaction, bo
 }
 
 func (g *Graph) lookupTransactionByID(id common.TransactionID) (*Transaction, bool) {
+	if _, missing := g.missing[id]; missing {
+		return nil, false
+	}
+
 	tx, exists := g.transactions[id]
 
 	if !exists {
@@ -193,12 +195,23 @@ func (g *Graph) DeleteTransaction(id common.TransactionID) {
 // indices.
 func (g *Graph) deleteTransaction(id common.TransactionID) {
 	if tx, exists := g.transactions[id]; exists {
-		delete(g.seedIndex[tx.Seed], id)
-		delete(g.depthIndex[tx.Depth], id)
+		i := sort.Search(len(g.seedIndex), func(i int) bool {
+			if g.seedIndex[i].Depth < tx.Depth {
+				return true
+			}
 
-		if len(g.seedIndex[tx.Seed]) == 0 {
-			delete(g.seedIndex, tx.Seed)
+			if g.seedIndex[i].Depth > tx.Depth {
+				return false
+			}
+
+			return g.seedIndex[i].Seed < tx.Seed
+		})
+
+		if i < len(g.seedIndex) && g.seedIndex[i].ID == id {
+			g.seedIndex = append(g.seedIndex[:i], g.seedIndex[i+1:]...)
 		}
+
+		delete(g.depthIndex[tx.Depth], id)
 
 		if len(g.depthIndex[tx.Depth]) == 0 {
 			delete(g.depthIndex, tx.Depth)
@@ -229,11 +242,21 @@ func (g *Graph) deleteIncompleteTransaction(id common.TransactionID) {
 }
 
 func (g *Graph) createTransactionIndices(tx *Transaction) {
-	if _, exists := g.seedIndex[tx.Seed]; !exists {
-		g.seedIndex[tx.Seed] = make(map[common.TransactionID]struct{})
-	}
+	i := sort.Search(len(g.seedIndex), func(i int) bool {
+		if g.seedIndex[i].Depth < tx.Depth {
+			return true
+		}
 
-	g.seedIndex[tx.Seed][tx.ID] = struct{}{}
+		if g.seedIndex[i].Depth > tx.Depth {
+			return false
+		}
+
+		return g.seedIndex[i].Seed < tx.Seed
+	})
+
+	g.seedIndex = append(g.seedIndex, &Transaction{})
+	copy(g.seedIndex[i+1:], g.seedIndex[i:])
+	g.seedIndex[i] = tx
 
 	if _, exists := g.depthIndex[tx.Depth]; !exists {
 		g.depthIndex[tx.Depth] = make(map[common.TransactionID]struct{})
@@ -298,29 +321,37 @@ func (g *Graph) FindEligibleParents() []common.TransactionID {
 	return eligibleIDs
 }
 
-func (g *Graph) FindEligibleCriticals(rootDepth uint64, difficulty byte) []*Transaction {
-	g.RLock()
-	defer g.RUnlock()
+func (g *Graph) FindEligibleCritical(rootDepth uint64, difficulty byte) *Transaction {
+	g.Lock()
+	defer g.Unlock()
 
-	var eligible []*Transaction
+	if len(g.seedIndex) == 0 {
+		return nil
+	}
 
-	for i := difficulty; i < math.MaxUint8; i++ {
-		candidates, exists := g.seedIndex[i]
+	candidateIndex := -1
 
-		if !exists {
+	for i, candidate := range g.seedIndex {
+		if candidate.Depth <= rootDepth {
 			continue
 		}
 
-		for candidateID := range candidates {
-			candidate := g.transactions[candidateID]
-
-			if candidate.Depth > rootDepth && candidate.IsCritical(difficulty) {
-				eligible = append(eligible, candidate)
-			}
+		if !candidate.IsCritical(difficulty) {
+			continue
 		}
+
+		candidateIndex = i
+		break
 	}
 
-	return eligible
+	if candidateIndex == -1 {
+		return nil
+	}
+
+	candidate := g.seedIndex[candidateIndex]
+	g.seedIndex = g.seedIndex[candidateIndex:]
+
+	return candidate
 }
 
 func (g *Graph) markTransactionAsComplete(tx *Transaction) error {
