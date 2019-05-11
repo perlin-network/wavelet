@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"github.com/google/btree"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -19,12 +20,25 @@ type Graph struct {
 
 	missing map[common.TransactionID]struct{} // Transactions that we are missing.
 
-	seedIndex  []*Transaction                               // Indexes transactions by their seed.
+	seedIndex *btree.BTree // Indexes transactions by their seed.
+
 	depthIndex map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their depth.
 	roundIndex map[uint64]map[common.TransactionID]struct{} // Indexes transactions by their round.
 
 	rootID common.TransactionID // Root of the graph.
 	height uint64               // Height of the graph.
+}
+
+type SeedIndexItem struct {
+	tx *Transaction
+}
+
+func (item SeedIndexItem) Less(_that btree.Item) bool {
+	that := _that.(SeedIndexItem)
+	if item.tx.Depth == that.tx.Depth {
+		return item.tx.Seed < that.tx.Seed
+	}
+	return item.tx.Depth < that.tx.Depth
 }
 
 func NewGraph(genesis *Round) *Graph {
@@ -36,6 +50,8 @@ func NewGraph(genesis *Round) *Graph {
 		incomplete: make(map[common.TransactionID]struct{}),
 
 		missing: make(map[common.TransactionID]struct{}),
+
+		seedIndex: btree.New(2),
 
 		depthIndex: make(map[uint64]map[common.TransactionID]struct{}),
 		roundIndex: make(map[uint64]map[common.TransactionID]struct{}),
@@ -195,16 +211,7 @@ func (g *Graph) DeleteTransaction(id common.TransactionID) {
 // indices.
 func (g *Graph) deleteTransaction(id common.TransactionID) {
 	if tx, exists := g.transactions[id]; exists {
-		i := sort.Search(len(g.seedIndex), func(i int) bool {
-			if g.seedIndex[i].Depth == tx.Depth {
-				return g.seedIndex[i].Seed < tx.Seed
-			}
-			return g.seedIndex[i].Depth < tx.Depth
-		})
-
-		if i < len(g.seedIndex) && g.seedIndex[i].ID == id {
-			g.seedIndex = append(g.seedIndex[:i], g.seedIndex[i+1:]...)
-		}
+		g.seedIndex.Delete(SeedIndexItem{tx: tx})
 
 		delete(g.depthIndex[tx.Depth], id)
 
@@ -237,16 +244,7 @@ func (g *Graph) deleteIncompleteTransaction(id common.TransactionID) {
 }
 
 func (g *Graph) createTransactionIndices(tx *Transaction) {
-	i := sort.Search(len(g.seedIndex), func(i int) bool {
-		if g.seedIndex[i].Depth == tx.Depth {
-			return g.seedIndex[i].Seed < tx.Seed
-		}
-		return g.seedIndex[i].Depth < tx.Depth
-	})
-
-	g.seedIndex = append(g.seedIndex, &Transaction{})
-	copy(g.seedIndex[i+1:], g.seedIndex[i:])
-	g.seedIndex[i] = tx
+	g.seedIndex.ReplaceOrInsert(SeedIndexItem{tx: tx})
 
 	if _, exists := g.depthIndex[tx.Depth]; !exists {
 		g.depthIndex[tx.Depth] = make(map[common.TransactionID]struct{})
@@ -315,35 +313,38 @@ func (g *Graph) FindEligibleCritical(rootDepth uint64, difficulty byte) *Transac
 	g.Lock()
 	defer g.Unlock()
 
-	candidateIndex := -1
-
+	var selected *Transaction
+	removalList := make([]SeedIndexItem, 0)
 	//last := time.Now()
 	//defer func() {
 	//	fmt.Println(len(g.seedIndex), candidateIndex, time.Now().Sub(last).String())
 	//}()
 
-	for i, candidate := range g.seedIndex {
-		if candidate.Depth <= rootDepth {
-			continue
+	g.seedIndex.Ascend(func(_candidate btree.Item) bool {
+		candidate := _candidate.(SeedIndexItem)
+		tx := candidate.tx
+		removalList = append(removalList, candidate)
+
+		if tx.Depth <= rootDepth {
+			return true
 		}
-
-		if !candidate.IsCritical(difficulty) {
-			continue
+		if !tx.IsCritical(difficulty) {
+			return true
 		}
+		selected = tx
+		return false
+	})
 
-		candidateIndex = i
-		break
-	}
-
-	if candidateIndex == -1 {
-		g.seedIndex = nil
+	if selected == nil {
+		g.seedIndex = btree.New(2)
 		return nil
 	}
 
-	candidate := g.seedIndex[candidateIndex]
-	g.seedIndex = g.seedIndex[candidateIndex:]
+	for _, item := range removalList {
+		g.seedIndex.Delete(item)
+	}
 
-	return candidate
+	return selected
 }
 
 func (g *Graph) markTransactionAsComplete(tx *Transaction) error {

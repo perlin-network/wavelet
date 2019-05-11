@@ -8,6 +8,7 @@ require (
 	github.com/fasthttp/websocket v1.4.0
 	github.com/fortytw2/leaktest v1.3.0
 	github.com/golang/snappy v0.0.1
+	github.com/google/btree v1.0.0
 	github.com/google/uuid v1.1.0
 	github.com/gorilla/websocket v1.4.0
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
