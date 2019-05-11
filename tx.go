@@ -19,8 +19,7 @@ type Transaction struct {
 
 	ParentIDs []common.TransactionID // Transactions parents.
 
-	Depth      uint64 // Graph depth.
-	Confidence uint64 // Number of ancestors.
+	Depth uint64 // Graph depth.
 
 	Tag     byte
 	Payload []byte
@@ -64,9 +63,6 @@ func (t Transaction) Marshal() []byte {
 	}
 
 	binary.BigEndian.PutUint64(buf[:8], t.Depth)
-	w.Write(buf[:8])
-
-	binary.BigEndian.PutUint64(buf[:8], t.Confidence)
 	w.Write(buf[:8])
 
 	w.WriteByte(t.Tag)
@@ -126,13 +122,6 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 	}
 
 	t.Depth = binary.BigEndian.Uint64(buf[:8])
-
-	if _, err = io.ReadFull(r, buf[:8]); err != nil {
-		err = errors.Wrap(err, "could not read transaction confidence")
-		return
-	}
-
-	t.Confidence = binary.BigEndian.Uint64(buf[:8])
 
 	if _, err = io.ReadFull(r, buf[:1]); err != nil {
 		err = errors.Wrap(err, "could not read transaction tag")

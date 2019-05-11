@@ -161,7 +161,7 @@ func main() {
 			Value: int(sys.MinDifficulty),
 			Usage: "Minimum difficulty to define a critical transaction",
 		}),
-		altsrc.NewUint64Flag(cli.Uint64Flag{
+		altsrc.NewFloat64Flag(cli.Float64Flag{
 			Name:  "sys.difficulty.scale",
 			Value: sys.DifficultyScaleFactor,
 			Usage: "Factor to scale a transactions confidence down by to compute the difficulty needed to define a critical transaction",
@@ -211,7 +211,7 @@ func main() {
 		sys.QueryTimeout = time.Duration(c.Int("sys.query_timeout")) * time.Second
 		sys.MaxDepthDiff = c.Uint64("sys.max_depth_diff")
 		sys.MinDifficulty = byte(c.Int("sys.difficulty.min"))
-		sys.DifficultyScaleFactor = c.Uint64("sys.difficulty.scale")
+		sys.DifficultyScaleFactor = c.Float64("sys.difficulty.scale")
 		sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
 		sys.MinimumStake = c.Uint64("sys.min_stake")
 
@@ -453,9 +453,7 @@ func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog
 				Hex("creator", tx.Creator[:]).
 				Uint64("nonce", tx.Nonce).
 				Uint8("tag", tx.Tag).
-				Uint64("confidence", tx.Confidence).
 				Uint64("depth", tx.Depth).
-				Uint64("num_ancestors", tx.Confidence).
 				Msgf("Transaction: %s", cmd[1])
 		case "w":
 			snapshot := ledger.Snapshot()

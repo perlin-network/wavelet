@@ -64,7 +64,6 @@ func NewGraph(genesis *Round) *Graph {
 func (g *Graph) assertTransactionIsComplete(tx *Transaction) error {
 	// Check that the transaction's depth is correct according to its parents.
 	var maxDepth uint64
-	var maxConfidence uint64
 
 	for _, parentID := range tx.ParentIDs {
 		parent, exists := g.lookupTransactionByID(parentID)
@@ -82,22 +81,12 @@ func (g *Graph) assertTransactionIsComplete(tx *Transaction) error {
 		if maxDepth < parent.Depth {
 			maxDepth = parent.Depth
 		}
-
-		// Update max confidence witnessed from parents.
-		if maxConfidence < parent.Confidence {
-			maxConfidence = parent.Confidence
-		}
 	}
 
 	maxDepth++
-	maxConfidence += uint64(len(tx.ParentIDs))
 
 	if tx.Depth != maxDepth {
 		return errors.Errorf("transactions depth is invalid, expected depth to be %d but got %d", maxDepth, tx.Depth)
-	}
-
-	if tx.Confidence != maxConfidence {
-		return errors.Errorf("transactions confidence is invalid, expected confidence to be %d but got %d", maxConfidence, tx.Confidence)
 	}
 
 	return nil
