@@ -138,7 +138,7 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 				Hex("old_root", lastRound.End.ID[:]).
 				Hex("new_merkle_root", newRound.Merkle[:]).
 				Hex("old_merkle_root", lastRound.Merkle[:]).
-				Uint64("round_confidence", newRound.End.Confidence-newRound.Start.Confidence).
+				Uint64("round_num_ancestors", newRound.NumAncestors).
 				Uint64("round_depth", newRound.End.Depth-newRound.Start.Depth).
 				Msg("Finalized consensus round, and initialized a new round.")
 
@@ -174,13 +174,13 @@ func findCriticalTransactionToPrefer(ledger *Ledger, oldRound Round, nextRound u
 	// REMARK: The final selected critical transaction might change after a couple of
 	// rounds with Snowball.
 
-	_, _, _, state, err := ledger.collapseTransactions(nextRound, proposed, false)
+	appliedCount, _, _, state, err := ledger.collapseTransactions(nextRound, proposed, false)
 
 	if err != nil {
 		return errors.Wrap(err, "could not collapse first critical transaction we could find")
 	}
 
-	initial := NewRound(nextRound, state.Checksum(), difficulty, oldRound.End, *proposed)
+	initial := NewRound(nextRound, state.Checksum(), uint64(appliedCount), difficulty, oldRound.End, *proposed)
 	ledger.snowball.Prefer(&initial)
 
 	return nil
