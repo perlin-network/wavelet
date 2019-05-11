@@ -25,6 +25,9 @@ var (
 	// Timeout for querying a transaction to K peers.
 	QueryTimeout = 1 * time.Second
 
+	// how many round behind we should be to start syncing
+	SyncRoundDifference uint64 = 2
+
 	// Max graph depth difference to search for eligible transaction
 	// parents from for our node.
 	MaxDepthDiff uint64 = 5

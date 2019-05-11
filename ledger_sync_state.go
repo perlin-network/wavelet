@@ -104,7 +104,7 @@ func checkIfOutOfSync(ctx context.Context, ledger *Ledger) (transition, error) {
 		currentRound := ledger.round - 1
 		ledger.mu.RUnlock()
 
-		if currentRound >= proposedRound.Index {
+		if currentRound + sys.SyncRoundDifference >= proposedRound.Index {
 			return nil, ErrNonePreferred
 		}
 
