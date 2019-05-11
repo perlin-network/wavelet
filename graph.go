@@ -196,15 +196,10 @@ func (g *Graph) DeleteTransaction(id common.TransactionID) {
 func (g *Graph) deleteTransaction(id common.TransactionID) {
 	if tx, exists := g.transactions[id]; exists {
 		i := sort.Search(len(g.seedIndex), func(i int) bool {
-			if g.seedIndex[i].Depth < tx.Depth {
-				return true
+			if g.seedIndex[i].Depth == tx.Depth {
+				return g.seedIndex[i].Seed < tx.Seed
 			}
-
-			if g.seedIndex[i].Depth > tx.Depth {
-				return false
-			}
-
-			return g.seedIndex[i].Seed < tx.Seed
+			return g.seedIndex[i].Depth < tx.Depth
 		})
 
 		if i < len(g.seedIndex) && g.seedIndex[i].ID == id {
@@ -243,15 +238,10 @@ func (g *Graph) deleteIncompleteTransaction(id common.TransactionID) {
 
 func (g *Graph) createTransactionIndices(tx *Transaction) {
 	i := sort.Search(len(g.seedIndex), func(i int) bool {
-		if g.seedIndex[i].Depth < tx.Depth {
-			return true
+		if g.seedIndex[i].Depth == tx.Depth {
+			return g.seedIndex[i].Seed < tx.Seed
 		}
-
-		if g.seedIndex[i].Depth > tx.Depth {
-			return false
-		}
-
-		return g.seedIndex[i].Seed < tx.Seed
+		return g.seedIndex[i].Depth < tx.Depth
 	})
 
 	g.seedIndex = append(g.seedIndex, &Transaction{})
