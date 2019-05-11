@@ -18,7 +18,7 @@ var OldRootsPrefix = []byte("@3:")
 var RootKey = []byte(".root")
 var NextOldRootIndexKey = []byte(".next_old_root")
 
-const DefaultCacheSize = 128
+const DefaultCacheSize = 2048
 const MaxWriteBatchSize = 1024
 
 type Tree struct {
