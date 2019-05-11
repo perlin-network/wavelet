@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/valyala/fastjson"
 )
@@ -106,5 +107,5 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 	tx := Transaction{}
 	tx.rehash()
 
-	return NewRound(0, tree.Checksum(), Transaction{}, tx)
+	return NewRound(0, tree.Checksum(), sys.MinDifficulty, Transaction{}, tx)
 }

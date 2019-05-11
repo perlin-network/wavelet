@@ -6,7 +6,6 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
-	"sort"
 	"time"
 )
 
@@ -139,6 +138,8 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 				Hex("old_root", lastRound.End.ID[:]).
 				Hex("new_merkle_root", newRound.Merkle[:]).
 				Hex("old_merkle_root", lastRound.Merkle[:]).
+				Uint64("round_confidence", newRound.End.Confidence-newRound.Start.Confidence).
+				Uint64("round_depth", newRound.End.Depth-newRound.Start.Depth).
 				Msg("Finalized consensus round, and initialized a new round.")
 
 			ledger.rounds[ledger.round] = *newRound
@@ -163,24 +164,15 @@ func findCriticalTransactionToPrefer(ledger *Ledger, oldRound Round, nextRound u
 
 	difficulty := oldRound.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)
 
-	// Find all eligible critical transactions for the current round.
-	eligible := ledger.graph.FindEligibleCriticals(oldRound.End.Depth, difficulty)
+	// Find eligible critical transaction for the current round.
+	proposed := ledger.graph.FindEligibleCritical(oldRound.End.Depth, difficulty)
 
-	if len(eligible) == 0 { // If there are no critical transactions for the round yet, discontinue.
+	if proposed == nil { // If there are no critical transactions for the round yet, discontinue.
 		return ErrNonePreferred
 	}
 
-	// Sort critical transactions by their depth, and pick the critical transaction
-	// with the smallest depth as the nodes initial preferred transaction.
-	//
-	// The final selected critical transaction might change after a couple of
+	// REMARK: The final selected critical transaction might change after a couple of
 	// rounds with Snowball.
-
-	sort.Slice(eligible, func(i, j int) bool {
-		return eligible[i].Depth < eligible[j].Depth
-	})
-
-	proposed := eligible[0]
 
 	_, _, _, state, err := ledger.collapseTransactions(nextRound, proposed, false)
 
@@ -188,7 +180,7 @@ func findCriticalTransactionToPrefer(ledger *Ledger, oldRound Round, nextRound u
 		return errors.Wrap(err, "could not collapse first critical transaction we could find")
 	}
 
-	initial := NewRound(nextRound, state.Checksum(), oldRound.End, *proposed)
+	initial := NewRound(nextRound, state.Checksum(), difficulty, oldRound.End, *proposed)
 	ledger.snowball.Prefer(&initial)
 
 	return nil

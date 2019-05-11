@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"bytes"
 	"encoding/binary"
 	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
@@ -18,15 +19,25 @@ type Round struct {
 	Index  uint64
 	Merkle common.MerkleNodeID
 
+	LastDifficulty byte
+
 	Start Transaction
 	End   Transaction
 }
 
 func (r Round) Marshal() []byte {
+	var w bytes.Buffer
+
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], r.Index)
+	w.Write(buf[:8])
 
-	return append(buf[:], append(r.Merkle[:], append(r.Start.Marshal(), r.End.Marshal()...)...)...)
+	w.Write(r.Merkle[:])
+	w.WriteByte(r.LastDifficulty)
+	w.Write(r.Start.Marshal())
+	w.Write(r.End.Marshal())
+
+	return w.Bytes()
 }
 
 func (r Round) ExpectedDifficulty(min byte, scale uint64) byte {
@@ -34,14 +45,9 @@ func (r Round) ExpectedDifficulty(min byte, scale uint64) byte {
 		return min
 	}
 
-	difficulty := byte(float64(min) + math.Log2(float64(r.End.Confidence-r.Start.Confidence)*float64(scale))/math.Log2(float64(r.End.Depth-r.Start.Depth)))
+	difficulty := byte(float64(min) + math.Log2(1.0+float64(r.End.Confidence-r.Start.Confidence)*float64(scale))/math.Log2(1.0+float64(r.End.Depth-r.Start.Depth)))
 
-	//difficulty := byte(float64(min) + math.Exp(math.Log2(float64(r.End.Confidence - r.Start.Confidence)) / math.Log2(float64(r.End.Depth - r.Start.Depth))))
-	if difficulty < min {
-		difficulty = min
-	}
-
-	return difficulty
+	return (r.LastDifficulty + difficulty) / 2
 }
 
 func UnmarshalRound(r io.Reader) (round Round, err error) {
@@ -59,6 +65,13 @@ func UnmarshalRound(r io.Reader) (round Round, err error) {
 		return
 	}
 
+	if _, err = io.ReadFull(r, buf[:1]); err != nil {
+		err = errors.Wrap(err, "failed to decode last difficulty")
+		return
+	}
+
+	round.LastDifficulty = buf[0]
+
 	if round.Start, err = UnmarshalTransaction(r); err != nil {
 		err = errors.Wrap(err, "failed to decode round start transaction")
 		return
@@ -74,12 +87,13 @@ func UnmarshalRound(r io.Reader) (round Round, err error) {
 	return
 }
 
-func NewRound(index uint64, merkle common.MerkleNodeID, start, end Transaction) Round {
+func NewRound(index uint64, merkle common.MerkleNodeID, lastDifficulty byte, start, end Transaction) Round {
 	r := Round{
-		Index:  index,
-		Merkle: merkle,
-		Start:  start,
-		End:    end,
+		Index:          index,
+		Merkle:         merkle,
+		LastDifficulty: lastDifficulty,
+		Start:          start,
+		End:            end,
 	}
 
 	r.ID = blake2b.Sum256(r.Marshal())
