@@ -263,14 +263,9 @@ func (l *Ledger) attachSenderToTransaction(tx Transaction) (Transaction, error) 
 		if tx.Depth < parent.Depth {
 			tx.Depth = parent.Depth
 		}
-
-		if tx.Confidence < parent.Confidence {
-			tx.Confidence = parent.Confidence
-		}
 	}
 
 	tx.Depth++
-	tx.Confidence += uint64(len(tx.ParentIDs))
 
 	tx.SenderSignature = edwards25519.Sign(l.keys.PrivateKey(), tx.Marshal())
 
@@ -640,7 +635,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 		// snapshot, silently log it and continue applying other transactions.
 		if err := l.rewardValidators(snapshot, root, popped, logging); err != nil {
 			if logging {
-				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.Confidence, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
+				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
 				logger.Log().Err(err).Msg("Failed to deduct transaction fees and reward validators before applying the transaction to the ledger.")
 			}
 
@@ -651,7 +646,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 
 		if err := l.applyTransactionToSnapshot(snapshot, popped); err != nil {
 			if logging {
-				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.Confidence, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
+				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
 				logger.Log().Err(err).Msg("Failed to apply transaction to the ledger.")
 			}
 
@@ -661,7 +656,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 		}
 
 		if logging {
-			logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.Confidence, popped.ParentIDs, popped.Tag, popped.Payload, "applied")
+			logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.ParentIDs, popped.Tag, popped.Payload, "applied")
 			logger.Log().Msg("Successfully applied transaction to the ledger.")
 		}
 

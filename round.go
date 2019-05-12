@@ -19,6 +19,7 @@ type Round struct {
 	Index  uint64
 	Merkle common.MerkleNodeID
 
+	NumAncestors   uint64
 	LastDifficulty byte
 
 	Start Transaction
@@ -29,10 +30,15 @@ func (r Round) Marshal() []byte {
 	var w bytes.Buffer
 
 	var buf [8]byte
+
 	binary.BigEndian.PutUint64(buf[:], r.Index)
 	w.Write(buf[:8])
 
 	w.Write(r.Merkle[:])
+
+	binary.BigEndian.PutUint64(buf[:], r.NumAncestors)
+	w.Write(buf[:8])
+
 	w.WriteByte(r.LastDifficulty)
 	w.Write(r.Start.Marshal())
 	w.Write(r.End.Marshal())
@@ -40,12 +46,19 @@ func (r Round) Marshal() []byte {
 	return w.Bytes()
 }
 
-func (r Round) ExpectedDifficulty(min byte, scale uint64) byte {
-	if r.End.Depth == 0 && r.End.Confidence == 0 {
+func (r Round) ExpectedDifficulty(min byte, scale float64) byte {
+	if r.End.Depth == 0 || r.NumAncestors == 0 {
 		return min
 	}
 
-	difficulty := byte(float64(min) + math.Log2(1.0+float64(r.End.Confidence-r.Start.Confidence)*float64(scale))/math.Log2(1.0+float64(r.End.Depth-r.Start.Depth)))
+	maxs := r.NumAncestors
+	mins := r.End.Depth - r.Start.Depth
+
+	if mins > maxs {
+		maxs, mins = mins, maxs
+	}
+
+	difficulty := byte(float64(min) + scale*math.Log2(float64(maxs)/float64(mins)))
 
 	return (r.LastDifficulty + difficulty) / 2
 }
@@ -64,6 +77,13 @@ func UnmarshalRound(r io.Reader) (round Round, err error) {
 		err = errors.Wrap(err, "failed to decode round merkle root")
 		return
 	}
+
+	if _, err = io.ReadFull(r, buf[:]); err != nil {
+		err = errors.Wrap(err, "failed to decode round num ancestors")
+		return
+	}
+
+	round.NumAncestors = binary.BigEndian.Uint64(buf[:8])
 
 	if _, err = io.ReadFull(r, buf[:1]); err != nil {
 		err = errors.Wrap(err, "failed to decode last difficulty")
@@ -87,10 +107,11 @@ func UnmarshalRound(r io.Reader) (round Round, err error) {
 	return
 }
 
-func NewRound(index uint64, merkle common.MerkleNodeID, lastDifficulty byte, start, end Transaction) Round {
+func NewRound(index uint64, merkle common.MerkleNodeID, numAncestors uint64, lastDifficulty byte, start, end Transaction) Round {
 	r := Round{
 		Index:          index,
 		Merkle:         merkle,
+		NumAncestors:   numAncestors,
 		LastDifficulty: lastDifficulty,
 		Start:          start,
 		End:            end,

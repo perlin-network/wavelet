@@ -20,7 +20,8 @@ const (
 )
 
 type node struct {
-	id, left, right [MerkleHashSize]byte
+	id, left, right   [MerkleHashSize]byte
+	leftObj, rightObj *node
 
 	viewID uint64
 
@@ -56,11 +57,11 @@ func newLeafNode(t *Tree, key, value []byte) *node {
 
 func (n *node) balanceFactor(t *Tree, left *node, right *node) int {
 	if left == nil {
-		left = t.mustLoadNode(n.left)
+		left = t.mustLoadLeft(n)
 	}
 
 	if right == nil {
-		right = t.mustLoadNode(n.right)
+		right = t.mustLoadRight(n)
 	}
 
 	return int(left.depth) - int(right.depth)
@@ -68,11 +69,11 @@ func (n *node) balanceFactor(t *Tree, left *node, right *node) int {
 
 func (n *node) sync(t *Tree, left *node, right *node) {
 	if left == nil {
-		left = t.mustLoadNode(n.left)
+		left = t.mustLoadLeft(n)
 	}
 
 	if right == nil {
-		right = t.mustLoadNode(n.right)
+		right = t.mustLoadRight(n)
 	}
 
 	if left.depth > right.depth {
@@ -95,11 +96,13 @@ func (n *node) leftRotate(t *Tree) *node {
 
 	n = n.update(t, func(node *node) {
 		node.right = right.left
+		node.rightObj = right.leftObj
 		node.sync(t, nil, nil)
 	})
 
 	right = right.update(t, func(node *node) {
 		node.left = n.id
+		node.leftObj = n
 		node.sync(t, nil, nil)
 	})
 
@@ -107,15 +110,17 @@ func (n *node) leftRotate(t *Tree) *node {
 }
 
 func (n *node) rightRotate(t *Tree) *node {
-	left := t.mustLoadNode(n.left)
+	left := t.mustLoadLeft(n)
 
 	n = n.update(t, func(node *node) {
 		node.left = left.right
+		node.leftObj = left.rightObj
 		node.sync(t, nil, nil)
 	})
 
 	left = left.update(t, func(node *node) {
 		node.right = n.id
+		node.rightObj = n
 		node.sync(t, nil, nil)
 	})
 
@@ -123,15 +128,17 @@ func (n *node) rightRotate(t *Tree) *node {
 }
 
 func (n *node) rebalance(t *Tree) *node {
-	left := t.mustLoadNode(n.left)
-	right := t.mustLoadNode(n.right)
+	left := t.mustLoadLeft(n)
+	right := t.mustLoadRight(n)
 
 	balance := n.balanceFactor(t, left, right)
 
 	if balance > 1 {
 		if left.balanceFactor(t, nil, nil) < 0 {
 			n = n.update(t, func(node *node) {
-				node.left = left.leftRotate(t).id
+				newLeft := left.leftRotate(t)
+				node.left = newLeft.id
+				node.leftObj = newLeft
 			})
 		}
 
@@ -139,7 +146,9 @@ func (n *node) rebalance(t *Tree) *node {
 	} else if balance < -1 {
 		if right.balanceFactor(t, nil, nil) > 0 {
 			n = n.update(t, func(node *node) {
-				node.right = right.rightRotate(t).id
+				newRight := right.rightRotate(t)
+				node.right = newRight.id
+				node.rightObj = newRight
 			})
 		}
 
@@ -151,14 +160,15 @@ func (n *node) rebalance(t *Tree) *node {
 
 func (n *node) insert(t *Tree, key, value []byte) *node {
 	if n.kind == NodeNonLeaf {
-		left := t.mustLoadNode(n.left)
-		right := t.mustLoadNode(n.right)
+		left := t.mustLoadLeft(n)
+		right := t.mustLoadRight(n)
 
 		if bytes.Compare(key, left.key) <= 0 {
 			return n.update(t, func(node *node) {
 				left = left.insert(t, key, value)
 
 				node.left = left.id
+				node.leftObj = left
 				node.sync(t, left, right)
 			}).rebalance(t)
 		} else {
@@ -166,6 +176,7 @@ func (n *node) insert(t *Tree, key, value []byte) *node {
 				right = right.insert(t, key, value)
 
 				node.right = right.id
+				node.rightObj = right
 				node.sync(t, left, right)
 			}).rebalance(t)
 		}
@@ -179,11 +190,17 @@ func (n *node) insert(t *Tree, key, value []byte) *node {
 				node.kind = NodeNonLeaf
 
 				if bytes.Compare(key, n.key) < 0 {
-					node.left = newLeafNode(t, key, value).id
+					newLeft := newLeafNode(t, key, value)
+					node.left = newLeft.id
+					node.leftObj = newLeft
 					node.right = n.id
+					node.rightObj = n
 				} else {
 					node.left = n.id
-					node.right = newLeafNode(t, key, value).id
+					node.leftObj = n
+					newRight := newLeafNode(t, key, value)
+					node.right = newRight.id
+					node.rightObj = newRight
 				}
 
 				node.sync(t, nil, nil)
@@ -203,12 +220,12 @@ func (n *node) lookup(t *Tree, key []byte) ([]byte, bool) {
 			return nil, false
 		}
 	} else if n.kind == NodeNonLeaf {
-		child := t.mustLoadNode(n.left)
+		child := t.mustLoadLeft(n)
 
 		if bytes.Compare(key, child.key) <= 0 {
 			return child.lookup(t, key)
 		} else {
-			return t.mustLoadNode(n.right).lookup(t, key)
+			return t.mustLoadRight(n).lookup(t, key)
 		}
 	}
 
@@ -225,8 +242,8 @@ func (n *node) delete(t *Tree, key []byte) (*node, bool) {
 	} else if n.kind == NodeNonLeaf {
 		var deleted bool
 
-		left := t.mustLoadNode(n.left)
-		right := t.mustLoadNode(n.right)
+		left := t.mustLoadLeft(n)
+		right := t.mustLoadRight(n)
 
 		if bytes.Compare(key, left.key) <= 0 {
 			left, deleted = left.delete(t, key)
@@ -272,9 +289,11 @@ func (n *node) rehashNoWrite() [MerkleHashSize]byte {
 
 func (n *node) clone() *node {
 	clone := &node{
-		id:    n.id,
-		left:  n.left,
-		right: n.right,
+		id:       n.id,
+		left:     n.left,
+		right:    n.right,
+		leftObj:  n.leftObj,
+		rightObj: n.rightObj,
 
 		key:   make([]byte, len(n.key)),
 		value: make([]byte, len(n.value)),
