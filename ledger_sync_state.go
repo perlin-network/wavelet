@@ -104,7 +104,7 @@ func checkIfOutOfSync(ctx context.Context, ledger *Ledger) (transition, error) {
 		currentRound := ledger.round - 1
 		ledger.mu.RUnlock()
 
-		if currentRound >= proposedRound.Index {
+		if currentRound + sys.SyncRoundDifference >= proposedRound.Index {
 			return nil, ErrNonePreferred
 		}
 
@@ -126,6 +126,8 @@ func downloadStateInChunks(newRound *Round) transition {
 		ledger.syncing = true
 		ledger.syncingCond.Broadcast()
 		ledger.syncingCond.L.Unlock()
+
+		ledger.gossipQueryWG.Wait()
 
 		defer func() {
 			ledger.syncingCond.L.Lock()
