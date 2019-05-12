@@ -630,30 +630,15 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 		// If any errors occur while applying our transaction to our accounts
 		// snapshot, silently log it and continue applying other transactions.
 		if err := l.rewardValidators(snapshot, root, popped, logging); err != nil {
-			if logging {
-				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
-				logger.Log().Err(err).Msg("Failed to deduct transaction fees and reward validators before applying the transaction to the ledger.")
-			}
-
 			rejectedCount++
 
 			continue
 		}
 
 		if err := l.applyTransactionToSnapshot(snapshot, popped); err != nil {
-			if logging {
-				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
-				logger.Log().Err(err).Msg("Failed to apply transaction to the ledger.")
-			}
-
 			rejectedCount++
 
 			continue
-		}
-
-		if logging {
-			logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.ParentIDs, popped.Tag, popped.Payload, "applied")
-			logger.Log().Msg("Successfully applied transaction to the ledger.")
 		}
 
 		// Update nonce.
@@ -796,18 +781,6 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, root Transaction, tx *Transactio
 
 	WriteAccountBalance(ss, tx.Creator, creatorBalance-fee)
 	WriteAccountBalance(ss, rewardee.Sender, recipientBalance+fee)
-
-	if logging {
-		logger := log.Stake("reward_validator")
-		logger.Info().
-			Hex("creator", tx.Creator[:]).
-			Hex("recipient", rewardee.Sender[:]).
-			Hex("creator_tx_id", tx.ID[:]).
-			Hex("rewardee_tx_id", rewardee.ID[:]).
-			Hex("entropy", entropy).
-			Float64("acc", acc).
-			Float64("threshold", threshold).Msg("Rewarded validator.")
-	}
 
 	return nil
 }

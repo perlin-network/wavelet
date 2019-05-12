@@ -304,10 +304,6 @@ func (g *Graph) FindEligibleCritical(rootDepth uint64, difficulty byte) *Transac
 
 	var selected *Transaction
 	removalList := make([]SeedIndexItem, 0)
-	//last := time.Now()
-	//defer func() {
-	//	fmt.Println(len(g.seedIndex), candidateIndex, time.Now().Sub(last).String())
-	//}()
 
 	g.seedIndex.Ascend(func(_candidate btree.Item) bool {
 		candidate := _candidate.(SeedIndexItem)
