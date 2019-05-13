@@ -117,6 +117,7 @@ func (p *Protocol) Protocol() noise.ProtocolBlock {
 
 func (p *Protocol) sendLoop(node *noise.Node) {
 	go p.broadcastGossip(node)
+	go p.broadcastForwardTx(node)
 	go p.broadcastQuery(node)
 	go p.broadcastOutOfSync(node)
 	go p.broadcastSyncInit(node)
@@ -133,6 +134,26 @@ func (p *Protocol) broadcastGossip(node *noise.Node) {
 		case <-p.ctx.Done():
 			return
 		case evt := <-p.ledger.GossipTxOut:
+			p.broadcaster.Broadcast(
+				p.ctx,
+				p.network.Peers(node),
+				p.opcodeGossip,
+				evt.TX.Marshal(),
+				false,
+			)
+		}
+	}
+}
+
+func (p *Protocol) broadcastForwardTx(node *noise.Node) {
+	p.wg.Add(1)
+	defer p.wg.Done()
+
+	for {
+		select {
+		case <-p.ctx.Done():
+			return
+		case evt := <-p.ledger.ForwardTxOut:
 			p.broadcaster.Broadcast(
 				p.ctx,
 				p.network.Peers(node),

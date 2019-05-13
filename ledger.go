@@ -104,6 +104,9 @@ type Ledger struct {
 
 	GossipTxOut <-chan EventGossip
 	gossipTxOut chan<- EventGossip
+
+	ForwardTxOut <-chan EventGossip
+	forwardTxOut chan<- EventGossip
 }
 
 func NewLedger(keys *skademlia.Keypair, kv store.KV, genesis *string) *Ledger {
@@ -131,6 +134,8 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV, genesis *string) *Ledger {
 
 	gossipTxIn := make(chan EventGossip, 1024)
 	gossipTxOut := make(chan EventGossip, 1024)
+
+	forwardTxOut := make(chan EventGossip, 1024)
 
 	accounts := newAccounts(kv)
 
@@ -229,6 +234,9 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV, genesis *string) *Ledger {
 
 		GossipTxOut: gossipTxOut,
 		gossipTxOut: gossipTxOut,
+
+		ForwardTxOut: forwardTxOut,
+		forwardTxOut: forwardTxOut,
 	}
 }
 
@@ -286,12 +294,8 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 	if err := l.graph.AddTransaction(tx); err == nil {
 		if tx.Sender != l.keys.PublicKey() {
 			select {
-			case l.gossipTxOut <- EventGossip{TX: tx}:
+			case l.forwardTxOut <- EventGossip{TX: tx}:
 			default:
-				select {
-				case l.gossipTxOut <- EventGossip{TX: tx}:
-				case <-time.After(1 * time.Second):
-				}
 			}
 		}
 
