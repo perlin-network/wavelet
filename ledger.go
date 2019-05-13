@@ -288,6 +288,10 @@ func (l *Ledger) addTransaction(tx Transaction) error {
 			select {
 			case l.gossipTxOut <- EventGossip{TX: tx}:
 			default:
+				select {
+				case l.gossipTxOut <- EventGossip{TX: tx}:
+				case <-time.After(1 * time.Second):
+				}
 			}
 		}
 
