@@ -133,14 +133,9 @@ func (p *Protocol) broadcastGossip(node *noise.Node) {
 		case <-p.ctx.Done():
 			return
 		case evt := <-p.ledger.GossipTxOut:
-			peers, err := SelectPeers(p.network.Peers(node), sys.SnowballK)
-			if err != nil {
-				continue
-			}
-
 			p.broadcaster.Broadcast(
 				p.ctx,
-				peers,
+				p.network.Peers(node),
 				p.opcodeGossip,
 				evt.TX.Marshal(),
 				false,

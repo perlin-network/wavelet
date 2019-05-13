@@ -14,6 +14,7 @@ import (
 	"github.com/valyala/fastjson"
 	"gopkg.in/urfave/cli.v1"
 	"io/ioutil"
+	"net/http"
 	"os"
 	"sort"
 	"strconv"
@@ -22,6 +23,8 @@ import (
 )
 
 func main() {
+	http.DefaultTransport.(*http.Transport).MaxIdleConnsPerHost = 100
+
 	app := cli.NewApp()
 
 	app.Name = "benchmark"

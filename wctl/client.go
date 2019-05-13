@@ -21,6 +21,8 @@ type Config struct {
 type Client struct {
 	Config
 
+	stdClient *http.Client
+
 	edwards25519.PrivateKey
 	edwards25519.PublicKey
 
@@ -28,7 +30,11 @@ type Client struct {
 }
 
 func NewClient(config Config) (*Client, error) {
-	return &Client{Config: config, PrivateKey: config.PrivateKey, PublicKey: config.PrivateKey.Public()}, nil
+	stdClient := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	return &Client{Config: config, PrivateKey: config.PrivateKey, PublicKey: config.PrivateKey.Public(), stdClient: stdClient}, nil
 }
 
 // Request will make a request to a given path, with a given body and return result in out.
@@ -78,7 +84,7 @@ func (c *Client) Request(path string, method string, body MarshalableJSON) ([]by
 	}
 
 	if res.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code for query sent to %q: %d. response body: %q", addr, res.StatusCode(), res.Body())
+		return nil, fmt.Errorf("unexpected status code for query sent to %q: %d. request body: %q, response body: %q", addr, res.StatusCode(), req.Body(), res.Body())
 	}
 
 	return res.Body(), nil

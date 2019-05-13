@@ -168,9 +168,10 @@ func (g *Gateway) initSession(ctx *fasthttp.RequestCtx) {
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	req := new(sendTransactionRequest)
 
-	parser := g.parserPool.Get()
+	//parser := g.parserPool.Get()
+	parser := new(fastjson.Parser)
 	err := req.bind(parser, ctx.PostBody())
-	g.parserPool.Put(parser)
+	//g.parserPool.Put(parser)
 
 	if err != nil {
 		g.renderError(ctx, ErrBadRequest(err))
@@ -197,9 +198,19 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	case <-time.After(1 * time.Second):
 		g.renderError(ctx, ErrInternal(errors.New("its taking too long to broadcast your transaction")))
 		return
-	case err := <-evt.Error:
+	case err, ok := <-evt.Error:
+		if !ok {
+			select {
+			case tx := <-evt.Result:
+				g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
+			case <-time.After(3 * time.Second):
+				g.render(ctx, ErrInternal(errors.New("timed out gossiping tx")))
+			}
+
+			return
+		}
+
 		g.renderError(ctx, ErrInternal(errors.Wrap(err, "got an error broadcasting your transaction")))
-		return
 	case tx := <-evt.Result:
 		g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
 	}

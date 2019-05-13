@@ -25,8 +25,8 @@ docker_aws:
 
 docker_hub:
 	docker build -t wavelet .
-	docker tag wavelet:latest perlin/wavelet:node
-	docker push perlin/wavelet:node
+	docker tag wavelet:latest repo.treescale.com/perlin/wavelet
+	docker push repo.treescale.com/perlin/wavelet
 
 linux:
 	scripts/build.sh -a linux-amd64
