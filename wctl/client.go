@@ -1,14 +1,12 @@
 package wctl
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/perlin-network/noise/edwards25519"
-	"io/ioutil"
+	"github.com/valyala/fasthttp"
 	"net/http"
 	"time"
 )
@@ -53,84 +51,43 @@ func (c *Client) RequestJSON(path string, method string, body MarshalableJSON, o
 	return out.UnmarshalJSON(resBody)
 }
 
-//func (c *Client) Request(path string, method string, body MarshalableJSON) ([]byte, error) {
-//	protocol := "http"
-//	if c.Config.UseHTTPS {
-//		protocol = "https"
-//	}
-//
-//	req := fasthttp.AcquireRequest()
-//	defer fasthttp.ReleaseRequest(req)
-//
-//	addr := fmt.Sprintf("%s://%s:%d%s", protocol, c.Config.APIHost, c.Config.APIPort, path)
-//
-//	req.URI().Update(addr)
-//	req.Header.SetMethod(method)
-//	req.Header.SetContentType("application/json")
-//	req.Header.Add(HeaderSessionToken, c.SessionToken)
-//
-//	if body != nil {
-//		raw, err := body.MarshalJSON()
-//		if err != nil {
-//			return nil, err
-//		}
-//
-//		req.SetBody(raw)
-//	}
-//
-//	res := fasthttp.AcquireResponse()
-//	defer fasthttp.ReleaseResponse(res)
-//
-//	if err := fasthttp.DoTimeout(req, res, 5*time.Second); err != nil {
-//		return nil, err
-//	}
-//
-//	if res.StatusCode() != http.StatusOK {
-//		return nil, fmt.Errorf("unexpected status code for query sent to %q: %d. request body: %q, response body: %q", addr, res.StatusCode(), req.Body(), res.Body())
-//	}
-//
-//	return res.Body(), nil
-//}
-
 func (c *Client) Request(path string, method string, body MarshalableJSON) ([]byte, error) {
 	protocol := "http"
 	if c.Config.UseHTTPS {
 		protocol = "https"
 	}
 
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+
 	addr := fmt.Sprintf("%s://%s:%d%s", protocol, c.Config.APIHost, c.Config.APIPort, path)
 
-	buf := new(bytes.Buffer)
+	req.URI().Update(addr)
+	req.Header.SetMethod(method)
+	req.Header.SetContentType("application/json")
+	req.Header.Add(HeaderSessionToken, c.SessionToken)
+
 	if body != nil {
-		err := json.NewEncoder(buf).Encode(body)
+		raw, err := body.MarshalJSON()
 		if err != nil {
 			return nil, err
 		}
+
+		req.SetBody(raw)
 	}
 
-	req, err := http.NewRequest(method, addr, buf)
-	if err != nil {
+	res := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(res)
+
+	if err := fasthttp.DoTimeout(req, res, 5*time.Second); err != nil {
 		return nil, err
 	}
 
-	req.Header.Add(HeaderSessionToken, c.SessionToken)
-	req.Header.Add("Content-Type", "application/json")
-
-	res, err := c.stdClient.Do(req)
-	if err != nil {
-		return nil, err
+	if res.StatusCode() != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code for query sent to %q: %d. request body: %q, response body: %q", addr, res.StatusCode(), req.Body(), res.Body())
 	}
 
-	resBody, err := ioutil.ReadAll(res.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	if res.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code for query sent to %q: %d. request body: %q, response body: %q", addr, res.StatusCode, buf.String(), resBody)
-	}
-
-	return resBody, nil
+	return res.Body(), nil
 }
 
 // EstablishWS will create a websocket connection.
