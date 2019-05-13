@@ -1,12 +1,14 @@
 package wctl
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/perlin-network/noise/edwards25519"
-	"github.com/valyala/fasthttp"
+	"io/ioutil"
 	"net/http"
 	"time"
 )
@@ -21,6 +23,8 @@ type Config struct {
 type Client struct {
 	Config
 
+	stdClient *http.Client
+
 	edwards25519.PrivateKey
 	edwards25519.PublicKey
 
@@ -28,7 +32,11 @@ type Client struct {
 }
 
 func NewClient(config Config) (*Client, error) {
-	return &Client{Config: config, PrivateKey: config.PrivateKey, PublicKey: config.PrivateKey.Public()}, nil
+	stdClient := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	return &Client{Config: config, PrivateKey: config.PrivateKey, PublicKey: config.PrivateKey.Public(), stdClient: stdClient}, nil
 }
 
 // Request will make a request to a given path, with a given body and return result in out.
@@ -45,43 +53,84 @@ func (c *Client) RequestJSON(path string, method string, body MarshalableJSON, o
 	return out.UnmarshalJSON(resBody)
 }
 
+//func (c *Client) Request(path string, method string, body MarshalableJSON) ([]byte, error) {
+//	protocol := "http"
+//	if c.Config.UseHTTPS {
+//		protocol = "https"
+//	}
+//
+//	req := fasthttp.AcquireRequest()
+//	defer fasthttp.ReleaseRequest(req)
+//
+//	addr := fmt.Sprintf("%s://%s:%d%s", protocol, c.Config.APIHost, c.Config.APIPort, path)
+//
+//	req.URI().Update(addr)
+//	req.Header.SetMethod(method)
+//	req.Header.SetContentType("application/json")
+//	req.Header.Add(HeaderSessionToken, c.SessionToken)
+//
+//	if body != nil {
+//		raw, err := body.MarshalJSON()
+//		if err != nil {
+//			return nil, err
+//		}
+//
+//		req.SetBody(raw)
+//	}
+//
+//	res := fasthttp.AcquireResponse()
+//	defer fasthttp.ReleaseResponse(res)
+//
+//	if err := fasthttp.DoTimeout(req, res, 5*time.Second); err != nil {
+//		return nil, err
+//	}
+//
+//	if res.StatusCode() != http.StatusOK {
+//		return nil, fmt.Errorf("unexpected status code for query sent to %q: %d. request body: %q, response body: %q", addr, res.StatusCode(), req.Body(), res.Body())
+//	}
+//
+//	return res.Body(), nil
+//}
+
 func (c *Client) Request(path string, method string, body MarshalableJSON) ([]byte, error) {
 	protocol := "http"
 	if c.Config.UseHTTPS {
 		protocol = "https"
 	}
 
-	req := fasthttp.AcquireRequest()
-	defer fasthttp.ReleaseRequest(req)
-
 	addr := fmt.Sprintf("%s://%s:%d%s", protocol, c.Config.APIHost, c.Config.APIPort, path)
 
-	req.URI().Update(addr)
-	req.Header.SetMethod(method)
-	req.Header.SetContentType("application/json")
-	req.Header.Add(HeaderSessionToken, c.SessionToken)
-
+	buf := new(bytes.Buffer)
 	if body != nil {
-		raw, err := body.MarshalJSON()
+		err := json.NewEncoder(buf).Encode(body)
 		if err != nil {
 			return nil, err
 		}
-
-		req.SetBody(raw)
 	}
 
-	res := fasthttp.AcquireResponse()
-	defer fasthttp.ReleaseResponse(res)
-
-	if err := fasthttp.DoTimeout(req, res, 5*time.Second); err != nil {
+	req, err := http.NewRequest(method, addr, buf)
+	if err != nil {
 		return nil, err
 	}
 
-	if res.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code for query sent to %q: %d. response body: %q", addr, res.StatusCode(), res.Body())
+	req.Header.Add(HeaderSessionToken, c.SessionToken)
+	req.Header.Add("Content-Type", "application/json")
+
+	res, err := c.stdClient.Do(req)
+	if err != nil {
+		return nil, err
 	}
 
-	return res.Body(), nil
+	resBody, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code for query sent to %q: %d. request body: %q, response body: %q", addr, res.StatusCode, buf.String(), resBody)
+	}
+
+	return resBody, nil
 }
 
 // EstablishWS will create a websocket connection.
