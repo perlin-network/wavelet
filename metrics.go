@@ -38,7 +38,7 @@ func (m *Metrics) runLogger(ctx context.Context) {
 
 	for {
 		select {
-		case <-time.After(5 * time.Second):
+		case <-time.After(1 * time.Second):
 			if b, err := json.Marshal(m.registry); err == nil {
 				logger.Log().RawJSON("metrics", b).Msg("Ledger metrics.")
 			}

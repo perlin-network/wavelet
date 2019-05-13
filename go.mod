@@ -17,7 +17,7 @@ require (
 	github.com/klauspost/cpuid v1.2.0 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/perlin-network/life v0.0.0-20190204091834-d05763d11050
-	github.com/perlin-network/noise v0.0.0-20190510032929-e07565955f46
+	github.com/perlin-network/noise v0.0.0-20190513060025-e65a5d8b2e39
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
 	github.com/pkg/errors v0.8.1
 	github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a

@@ -1,4 +1,4 @@
-.PHONY: wavelet all build-all docker test bench clean
+.PHONY: wavelet all build-all docker docker_aws test bench clean
 .PHONY: linux
 .PHONY: windows
 .PHONY: darwin
@@ -16,6 +16,17 @@ docker:
 	docker build -t wavelet .
 	docker tag wavelet:latest localhost:5000/wavelet
 	docker push localhost:5000/wavelet
+
+docker_aws:
+	$(shell aws ecr get-login --no-include-email)
+	docker build -t wavelet .
+	docker tag wavelet:latest 010313437810.dkr.ecr.us-east-2.amazonaws.com/perlin/wavelet
+	docker push 010313437810.dkr.ecr.us-east-2.amazonaws.com/perlin/wavelet
+
+docker_hub:
+	docker build -t wavelet .
+	docker tag wavelet:latest perlin/wavelet:node
+	docker push perlin/wavelet:node
 
 linux:
 	scripts/build.sh -a linux-amd64

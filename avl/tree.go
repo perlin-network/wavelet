@@ -29,13 +29,13 @@ type Tree struct {
 	root *node
 
 	cache   *lru
-	pending sync.Map
+	pending *sync.Map
 
 	viewID uint64
 }
 
 func New(kv store.KV) *Tree {
-	t := &Tree{kv: kv, cache: newLRU(DefaultCacheSize), maxWriteBatchSize: MaxWriteBatchSize}
+	t := &Tree{kv: kv, cache: newLRU(DefaultCacheSize), pending: new(sync.Map), maxWriteBatchSize: MaxWriteBatchSize}
 
 	// Load root node if it already exists.
 	if buf, err := t.kv.Get(RootKey); err == nil && len(buf) == MerkleHashSize {
@@ -91,7 +91,7 @@ func (t *Tree) Delete(k []byte) bool {
 }
 
 func (t *Tree) Snapshot() *Tree {
-	return &Tree{kv: t.kv, cache: t.cache, maxWriteBatchSize: t.maxWriteBatchSize, root: t.root}
+	return &Tree{kv: t.kv, cache: t.cache, pending: new(sync.Map), maxWriteBatchSize: t.maxWriteBatchSize, root: t.root}
 }
 
 func (t *Tree) Revert(snapshot *Tree) {

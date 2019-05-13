@@ -1,4 +1,4 @@
-FROM golang:1.12.1-alpine as build
+FROM golang:1.12.5-alpine as build
 RUN apk add --no-cache git
 
 RUN mkdir /src

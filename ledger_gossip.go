@@ -38,6 +38,10 @@ func gossip(ledger *Ledger) func(ctx context.Context) error {
 			}
 		}()
 
+		if ledger.snowball.Preferred() != nil {
+			broadcastNops = false
+		}
+
 		select {
 		case <-ctx.Done():
 			return nil
@@ -114,18 +118,15 @@ func gossip(ledger *Ledger) func(ctx context.Context) error {
 
 		/** At this point, the transaction was successfully added to our view-graph. **/
 
-		// If we have nothing else to broadcast and we are not broadcasting out
-		// nop transactions, then start broadcasting out nop transactions.
-		if len(ledger.broadcastQueue) == 0 && !broadcastNops && ledger.snowball.Preferred() == nil {
-			broadcastNops = true
-		}
-
-		if ledger.snowball.Preferred() != nil && broadcastNops {
-			broadcastNops = false
-		}
-
 		if Result != nil {
 			Result <- tx
+		}
+
+		// If we have nothing else to broadcast and we are not broadcasting out
+		// nop transactions, then start broadcasting out nop transactions.
+
+		if ledger.snowball.Preferred() == nil {
+			broadcastNops = true
 		}
 
 		return nil

@@ -106,17 +106,17 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 			newRound := ledger.snowball.Preferred()
 			newRoot := &newRound.End
 
-			acceptedCount, rejectedCount, ignoredCount, state, err := ledger.collapseTransactions(newRound.Index, newRoot, true)
+			results, err := ledger.collapseTransactions(newRound.Index, newRoot, true)
 
 			if err != nil {
 				return errors.Wrap(err, "got an error finalizing a round")
 			}
 
-			if state.Checksum() != newRound.Merkle {
-				return errors.Errorf("expected finalized rounds merkle root to be %x, but got %x", newRound.Merkle, state.Checksum())
+			if results.snapshot.Checksum() != newRound.Merkle {
+				return errors.Errorf("expected finalized rounds merkle root to be %x, but got %x", newRound.Merkle, results.snapshot.Checksum())
 			}
 
-			if err = ledger.accounts.commit(state); err != nil {
+			if err = ledger.accounts.commit(results.snapshot); err != nil {
 				return errors.Wrap(err, "failed to commit collapsed state to our database")
 			}
 
@@ -130,9 +130,9 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 
 			logger := log.Consensus("round_end")
 			logger.Info().
-				Int("num_accepted_tx", acceptedCount).
-				Int("num_rejected_tx", rejectedCount).
-				Int("num_ignored_tx", ignoredCount).
+				Int("num_applied_tx", results.appliedCount).
+				Int("num_rejected_tx", results.rejectedCount).
+				Int("num_ignored_tx", results.ignoredCount).
 				Uint64("old_round", lastRound.Index).
 				Uint64("new_round", newRound.Index).
 				Uint8("old_difficulty", lastRound.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
@@ -177,13 +177,13 @@ func findCriticalTransactionToPrefer(ledger *Ledger, oldRound Round, nextRound u
 	// REMARK: The final selected critical transaction might change after a couple of
 	// rounds with Snowball.
 
-	appliedCount, _, _, state, err := ledger.collapseTransactions(nextRound, proposed, false)
+	results, err := ledger.collapseTransactions(nextRound, proposed, false)
 
 	if err != nil {
 		return errors.Wrap(err, "could not collapse first critical transaction we could find")
 	}
 
-	initial := NewRound(nextRound, state.Checksum(), uint64(appliedCount), difficulty, oldRound.End, *proposed)
+	initial := NewRound(nextRound, results.snapshot.Checksum(), uint64(results.appliedCount), difficulty, oldRound.End, *proposed)
 	ledger.snowball.Prefer(&initial)
 
 	return nil

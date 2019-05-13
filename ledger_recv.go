@@ -82,7 +82,7 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 
 				hash := blake2b.Sum256(diff[i:end])
 
-				ledger.lru.put(hash, diff[i:end])
+				ledger.cacheChunk.put(hash, diff[i:end])
 				data.ChunkHashes = append(data.ChunkHashes, hash)
 			}
 
@@ -90,7 +90,7 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 
 			return nil
 		case evt := <-ledger.syncDiffIn:
-			if chunk, found := ledger.lru.load(evt.ChunkHash); found {
+			if chunk, found := ledger.cacheChunk.load(evt.ChunkHash); found {
 				chunk := chunk.([]byte)
 
 				providedHash := blake2b.Sum256(chunk)

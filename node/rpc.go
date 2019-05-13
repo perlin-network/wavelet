@@ -76,7 +76,7 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 						}()
 
 						if !payload.waitForResponse {
-							if err = payload.peer.SendAwait(payload.requestOpcode, payload.body); err != nil {
+							if err = payload.peer.Send(payload.requestOpcode, payload.body); err != nil {
 								fmt.Println("got an error sending broadcast:", err)
 							}
 

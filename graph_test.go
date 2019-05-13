@@ -102,7 +102,7 @@ func randomTX(t testing.TB, parents ...common.TransactionID) Transaction {
 		_, _ = buf.Write(parentID[:])
 	}
 	seed := blake2b.Sum256(buf.Bytes())
-	tx.Seed = byte(prefixLen(seed[:]))
+	tx.SeedLen = byte(prefixLen(seed[:]))
 
 	return tx
 }

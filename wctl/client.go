@@ -54,7 +54,9 @@ func (c *Client) Request(path string, method string, body MarshalableJSON) ([]by
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
 
-	req.URI().Update(fmt.Sprintf("%s://%s:%d%s", protocol, c.Config.APIHost, c.Config.APIPort, path))
+	addr := fmt.Sprintf("%s://%s:%d%s", protocol, c.Config.APIHost, c.Config.APIPort, path)
+
+	req.URI().Update(addr)
 	req.Header.SetMethod(method)
 	req.Header.SetContentType("application/json")
 	req.Header.Add(HeaderSessionToken, c.SessionToken)
@@ -71,8 +73,12 @@ func (c *Client) Request(path string, method string, body MarshalableJSON) ([]by
 	res := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseResponse(res)
 
-	if err := fasthttp.Do(req, res); err != nil {
+	if err := fasthttp.DoTimeout(req, res, 5*time.Second); err != nil {
 		return nil, err
+	}
+
+	if res.StatusCode() != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code for query sent to %q: %d. response body: %q", addr, res.StatusCode(), res.Body())
 	}
 
 	return res.Body(), nil

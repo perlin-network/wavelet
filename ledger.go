@@ -34,7 +34,8 @@ type Ledger struct {
 
 	gossipQueryWG sync.WaitGroup
 
-	lru *lru
+	cacheChunk *lru
+	cacheTree  *lru
 
 	keys *skademlia.Keypair
 
@@ -156,7 +157,8 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV, genesis *string) *Ledger {
 		ctx:    ctx,
 		cancel: cancel,
 
-		lru: newLRU(1024), // In total will take up 1024 * 4MB.
+		cacheChunk: newLRU(1024), // In total will take up 1024 * 4MB.
+		cacheTree:  newLRU(16),
 
 		keys: keys,
 
@@ -555,14 +557,27 @@ func (l *Ledger) prune(round *Round) {
 	for roundID, thatRound := range l.rounds {
 		if roundID+PruningDepth <= round.Index {
 			delete(l.graph.roundIndex, roundID)
+
 			prunedTxCount := uint64(0)
-			for depth := thatRound.Start.Depth + 1; depth <= thatRound.End.Depth; depth++ {
-				for tid := range l.graph.depthIndex[depth] {
-					l.graph.deleteTransaction(tid)
-					prunedTxCount += 1
+
+			for depth, transactions := range l.graph.depthIndex {
+				if depth <= thatRound.End.Depth {
+					for id := range transactions {
+						l.graph.deleteTransaction(id)
+						prunedTxCount++
+					}
 				}
 			}
+
+			//for depth := thatRound.Start.Depth + 1; depth <= thatRound.End.Depth; depth++ {
+			//	for tid, _ := range l.graph.depthIndex[depth] {
+			//		l.graph.deleteTransaction(tid)
+			//		prunedTxCount += 1
+			//	}
+			//}
+
 			delete(l.rounds, roundID)
+
 			logger := log.Consensus("prune")
 			logger.Debug().
 				Uint64("num_tx", prunedTxCount).
@@ -573,14 +588,23 @@ func (l *Ledger) prune(round *Round) {
 	}
 }
 
+type collapseResults struct {
+	rejectedCount int
+	appliedCount  int
+	ignoredCount  int
+	snapshot      *avl.Tree
+}
+
 // collapseTransactions takes all transactions recorded in a single round so far, and applies
 // all valid and available ones to a snapshot of all accounts stored in the ledger.
 //
 // It returns an updated accounts snapshot after applying all finalized transactions.
-func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging bool) (int, int, int, *avl.Tree, error) {
-	rejectedCount := 0
-	appliedCount := 0
-	ignoredCount := 0
+func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging bool) (collapseResults, error) {
+	//if results, exists := l.cacheTree.load(tx.Seed); exists {
+	//	return results.(collapseResults), nil
+	//}
+
+	var results collapseResults
 
 	if logging {
 		now := time.Now()
@@ -589,8 +613,8 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 		}()
 	}
 
-	snapshot := l.accounts.snapshot()
-	snapshot.SetViewID(round + 1)
+	results.snapshot = l.accounts.snapshot()
+	results.snapshot.SetViewID(round + 1)
 
 	root := l.LastRound().End
 
@@ -618,7 +642,7 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 						aq.PushBack(parent)
 					}
 				} else {
-					return appliedCount, rejectedCount, ignoredCount, snapshot, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, tx.ID)
+					return results, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, tx.ID)
 				}
 			}
 		}
@@ -633,24 +657,24 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 
 		// If any errors occur while applying our transaction to our accounts
 		// snapshot, silently log it and continue applying other transactions.
-		if err := l.rewardValidators(snapshot, root, popped, logging); err != nil {
+		if err := l.rewardValidators(results.snapshot, root, popped, logging); err != nil {
 			if logging {
 				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
 				logger.Log().Err(err).Msg("Failed to deduct transaction fees and reward validators before applying the transaction to the ledger.")
 			}
 
-			rejectedCount++
+			results.rejectedCount++
 
 			continue
 		}
 
-		if err := l.applyTransactionToSnapshot(snapshot, popped); err != nil {
+		if err := l.applyTransactionToSnapshot(results.snapshot, popped); err != nil {
 			if logging {
 				logger := log.TX(popped.ID, popped.Sender, popped.Creator, popped.Nonce, popped.Depth, popped.ParentIDs, popped.Tag, popped.Payload, "failed")
 				logger.Log().Err(err).Msg("Failed to apply transaction to the ledger.")
 			}
 
-			rejectedCount++
+			results.rejectedCount++
 
 			continue
 		}
@@ -661,24 +685,24 @@ func (l *Ledger) collapseTransactions(round uint64, tx *Transaction, logging boo
 		}
 
 		// Update nonce.
-		nonce, _ := ReadAccountNonce(snapshot, popped.Creator)
-		WriteAccountNonce(snapshot, popped.Creator, nonce+1)
+		nonce, _ := ReadAccountNonce(results.snapshot, popped.Creator)
+		WriteAccountNonce(results.snapshot, popped.Creator, nonce+1)
 
 		if logging {
 			l.metrics.acceptedTX.Mark(1)
 		}
 
-		appliedCount++
+		results.appliedCount++
 	}
 
 	for depth := root.Depth + 1; depth <= tx.Depth; depth++ {
-		ignoredCount += int(l.graph.NumTransactionsInDepth(depth))
+		results.ignoredCount += int(l.graph.NumTransactionsInDepth(depth))
 	}
 
-	ignoredCount -= appliedCount + rejectedCount
+	results.ignoredCount -= results.appliedCount + results.rejectedCount
 
-	//l.cacheAccounts.put(tx.getCriticalSeed(), snapshot)
-	return appliedCount, rejectedCount, ignoredCount, snapshot, nil
+	//l.cacheTree.put(tx.Seed, results)
+	return results, nil
 }
 
 func (l *Ledger) applyTransactionToSnapshot(ss *avl.Tree, tx *Transaction) error {
