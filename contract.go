@@ -133,7 +133,7 @@ func (c *ContractExecutor) Init(code []byte, gasLimit uint64) (*exec.VirtualMach
 	return vm, nil
 }
 
-func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, params ...byte) ([]byte, uint64, error) {
+func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, payload ...byte) ([]byte, uint64, error) {
 	tx := c.ctx.Transaction()
 
 	code, available := c.ctx.ReadAccountContractCode(c.contractID)
@@ -156,12 +156,14 @@ func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, params ...
 		vm.Memory = mem
 	}
 
-	c.header = make([]byte, common.SizeTransactionID+common.SizeAccountID+8)
+	c.header = make([]byte, common.SizeTransactionID+common.SizeAccountID+8+len(payload))
 
 	copy(c.header[0:common.SizeTransactionID], tx.ID[:])
 	copy(c.header[common.SizeTransactionID:common.SizeTransactionID+common.SizeAccountID], tx.Creator[:])
 
 	binary.LittleEndian.PutUint64(c.header[common.SizeTransactionID+common.SizeAccountID:8+common.SizeTransactionID+common.SizeAccountID], amount)
+
+	copy(c.header[8+common.SizeTransactionID+common.SizeAccountID:8+common.SizeTransactionID+common.SizeAccountID+len(payload)], payload)
 
 	entry = "_contract_" + entry
 

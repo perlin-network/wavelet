@@ -571,8 +571,6 @@ func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog
 							continue
 						}
 
-						binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(buf)))
-						params.Write(intBuf[:4])
 						params.Write(buf)
 					default:
 						logger.Error().Msgf("Invalid argument specified: %s", arg)
