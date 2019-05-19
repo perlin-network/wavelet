@@ -99,8 +99,8 @@ type Ledger struct {
 	LatestViewOut <-chan EventLatestView
 	latestViewOut chan<- EventLatestView
 
-	GossipTxIn chan<- EventGossip
-	gossipTxIn <-chan EventGossip
+	GossipTxIn chan<- EventIncomingGossip
+	gossipTxIn <-chan EventIncomingGossip
 
 	GossipTxOut <-chan EventGossip
 	gossipTxOut chan<- EventGossip
@@ -132,7 +132,7 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV, genesis *string) *Ledger {
 	latestViewIn := make(chan EventIncomingLatestView, 16)
 	latestViewOut := make(chan EventLatestView, 16)
 
-	gossipTxIn := make(chan EventGossip, 1024)
+	gossipTxIn := make(chan EventIncomingGossip, 1024)
 	gossipTxOut := make(chan EventGossip, 1024)
 
 	forwardTxOut := make(chan EventGossip, 1024)

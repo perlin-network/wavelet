@@ -14,6 +14,7 @@ import (
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 	"golang.org/x/crypto/blake2b"
+	"math"
 	"math/rand"
 	"runtime"
 	"sync"
@@ -134,11 +135,14 @@ func (p *Protocol) broadcastGossip(node *noise.Node) {
 		case <-p.ctx.Done():
 			return
 		case evt := <-p.ledger.GossipTxOut:
+			var transactions Transactions
+			transactions = append(transactions, evt.TX)
+
 			p.broadcaster.Broadcast(
 				p.ctx,
 				p.network.Peers(node),
 				p.opcodeGossip,
-				evt.TX.Marshal(),
+				transactions.Marshal(),
 				false,
 			)
 		}
@@ -154,11 +158,25 @@ func (p *Protocol) broadcastForwardTx(node *noise.Node) {
 		case <-p.ctx.Done():
 			return
 		case evt := <-p.ledger.ForwardTxOut:
+			transactions := Transactions{evt.TX}
+			n := len(p.ledger.ForwardTxOut)
+
+		L:
+			for i := 0; i < n && i < math.MaxUint8; i++ {
+				select {
+				case evt = <-p.ledger.ForwardTxOut:
+				default:
+					break L
+				}
+
+				transactions = append(transactions, evt.TX)
+			}
+
 			p.broadcaster.Broadcast(
 				p.ctx,
 				p.network.Peers(node),
 				p.opcodeGossip,
-				evt.TX.Marshal(),
+				transactions.Marshal(),
 				false,
 			)
 		}
@@ -586,13 +604,13 @@ func (p *Protocol) handleDownloadTx(ctx noise.Context, buf []byte) ([]byte, erro
 }
 
 func (p *Protocol) handleGossip(ctx noise.Context, buf []byte) ([]byte, error) {
-	tx, err := wavelet.UnmarshalTransaction(bytes.NewReader(buf))
+	transactions, err := UnmarshalTransactions(bytes.NewReader(buf))
 	if err != nil {
 		fmt.Println("error while unmarshaling gossip request", err)
 		return nil, errors.Wrap(err, "error while unmarshaling gossip request")
 	}
 
-	evt := wavelet.EventGossip{TX: tx}
+	evt := wavelet.EventIncomingGossip{TXs: transactions}
 
 	select {
 	case <-time.After(1 * time.Second):

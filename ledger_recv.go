@@ -13,7 +13,11 @@ func recv(ledger *Ledger) func(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case evt := <-ledger.gossipTxIn:
-			return ledger.addTransaction(evt.TX)
+			for _, tx := range evt.TXs {
+				_ = ledger.addTransaction(tx)
+			}
+
+			return nil
 		case evt := <-ledger.queryIn:
 			r := evt.Round
 

@@ -14,6 +14,10 @@ type EventGossip struct {
 	TX Transaction
 }
 
+type EventIncomingGossip struct {
+	TXs []Transaction
+}
+
 type EventBroadcast struct {
 	Tag       byte
 	Payload   []byte

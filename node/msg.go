@@ -1,6 +1,7 @@
 package node
 
 import (
+	"bytes"
 	"encoding/binary"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
@@ -8,6 +9,39 @@ import (
 	"golang.org/x/crypto/blake2b"
 	"io"
 )
+
+type Transactions []wavelet.Transaction
+
+func (q Transactions) Marshal() []byte {
+	w := bytes.NewBuffer(nil)
+	w.WriteByte(byte(len(q)))
+
+	for _, tx := range q {
+		w.Write(tx.Marshal())
+	}
+
+	return w.Bytes()
+}
+
+func UnmarshalTransactions(r io.Reader) (q Transactions, err error) {
+	var buf [1]byte
+
+	if _, err = io.ReadFull(r, buf[:1]); err != nil {
+		err = errors.Wrap(err, "failed to read length of transactions")
+		return
+	}
+
+	q = make([]wavelet.Transaction, buf[0])
+
+	for i := range q {
+		if q[i], err = wavelet.UnmarshalTransaction(r); err != nil {
+			err = errors.Wrap(err, "failed to read transaction")
+			return
+		}
+	}
+
+	return
+}
 
 type QueryRequest struct {
 	round wavelet.Round
