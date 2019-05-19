@@ -245,11 +245,11 @@ func (g *Graph) createTransactionIndices(tx *Transaction) {
 		g.height = tx.Depth + 1
 	}
 
-	if _, exists := g.children[tx.ID]; !exists {
-		if tx.Depth+sys.MaxDepthDiff >= g.height {
-			g.eligible[tx.ID] = struct{}{}
-		}
+	//if _, exists := g.children[tx.ID]; !exists {
+	if tx.Depth+sys.MaxDepthDiff >= g.height {
+		g.eligible[tx.ID] = struct{}{}
 	}
+	//}
 }
 
 func (g *Graph) FindEligibleParents() []common.TransactionID {

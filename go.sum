@@ -60,6 +60,10 @@ github.com/perlin-network/noise v0.0.0-20190518014329-b154fe94a997 h1:lhcclF1vkK
 github.com/perlin-network/noise v0.0.0-20190518014329-b154fe94a997/go.mod h1:MnRIChypO4ZBUpPfO8vimAbBCZPF+tSWj2wyr6yNe/g=
 github.com/perlin-network/noise v0.0.0-20190518114340-990a7e48fd0c h1:fGsp7/+EqFYJixCjV5aouWMHVqwVvS8sWb2W4Vwe/TY=
 github.com/perlin-network/noise v0.0.0-20190518114340-990a7e48fd0c/go.mod h1:MnRIChypO4ZBUpPfO8vimAbBCZPF+tSWj2wyr6yNe/g=
+github.com/perlin-network/noise v0.0.0-20190519071648-e9f7766f1281 h1:eocQxF1EHVkFAWnXhaVIxX47n5Kho3yIEtGxZAYoBfE=
+github.com/perlin-network/noise v0.0.0-20190519071648-e9f7766f1281/go.mod h1:MnRIChypO4ZBUpPfO8vimAbBCZPF+tSWj2wyr6yNe/g=
+github.com/perlin-network/noise v0.0.0-20190519151806-d1035a9d7711 h1:Mq1ObiBcbML49Acd1D6mSPuDYnyYJihdyV74Xrk71Ic=
+github.com/perlin-network/noise v0.0.0-20190519151806-d1035a9d7711/go.mod h1:MnRIChypO4ZBUpPfO8vimAbBCZPF+tSWj2wyr6yNe/g=
 github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39 h1:CYHXy6CWxxL7ugjvCbTELOm2j5iRLEWGPl3AQYvretw=
 github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39/go.mod h1:zHOMvbitcZek8oshsMO5VpyBjWjV9X8cn8WTZwdebpM=
 github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d h1:U+PMnTlV2tu7RuMK5etusZG3Cf+rpow5hqQByeCzJ2g=
