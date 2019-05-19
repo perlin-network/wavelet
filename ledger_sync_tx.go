@@ -14,6 +14,9 @@ func txSync(ledger *Ledger) func(ctx context.Context) error {
 		}
 		ledger.syncingCond.L.Unlock()
 
+		ledger.gossipQueryWG.Add(1)
+		defer ledger.gossipQueryWG.Done()
+
 		missing := ledger.graph.MissingTransactions()
 
 		if len(missing) == 0 {
