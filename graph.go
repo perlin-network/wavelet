@@ -36,9 +36,9 @@ type SeedIndexItem struct {
 func (item SeedIndexItem) Less(_that btree.Item) bool {
 	that := _that.(SeedIndexItem)
 	if item.tx.Depth == that.tx.Depth {
-		return item.tx.SeedLen < that.tx.SeedLen
+		return item.tx.SeedLen > that.tx.SeedLen
 	}
-	return item.tx.Depth < that.tx.Depth
+	return item.tx.Depth > that.tx.Depth
 }
 
 func NewGraph(genesis *Round) *Graph {

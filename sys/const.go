@@ -39,7 +39,7 @@ var (
 	MinDifficulty byte = 8
 
 	// Factor to scale a transactions confidence down by to compute the difficulty needed to define a critical transaction.
-	DifficultyScaleFactor = 1.15
+	DifficultyScaleFactor = 8.0
 
 	// Fee amount paid by a node per transaction.
 	TransactionFeeAmount uint64 = 2
