@@ -513,7 +513,7 @@ func (l *Ledger) stateSyncingLoop(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(1 * time.Second):
+			case <-time.After(5 * time.Second):
 			}
 		} else {
 			select {

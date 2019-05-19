@@ -32,6 +32,10 @@ func stateSync(ledger *Ledger) func(ctx context.Context) error {
 }
 
 func checkIfOutOfSync(ctx context.Context, ledger *Ledger) (transition, error) {
+	ledger.mu.RLock()
+	currentRound := ledger.round - 1
+	ledger.mu.RUnlock()
+
 	snapshot := ledger.accounts.snapshot()
 
 	evt := EventOutOfSyncCheck{
@@ -62,12 +66,22 @@ func checkIfOutOfSync(ctx context.Context, ledger *Ledger) (transition, error) {
 	rounds := make(map[common.RoundID]Round)
 	accounts := make(map[common.AccountID]struct{}, len(votes))
 
+	var maxRoundIndex uint64
+
 	for _, vote := range votes {
 		if vote.Round.ID != common.ZeroRoundID && vote.Round.End.ID != common.ZeroTransactionID {
+			if maxRoundIndex < vote.Round.Index {
+				maxRoundIndex = vote.Round.Index
+			}
+
 			rounds[vote.Round.ID] = vote.Round
 		}
 
 		accounts[vote.Voter] = struct{}{}
+	}
+
+	if currentRound+sys.SyncRoundDifference >= maxRoundIndex {
+		return nil, ErrNonePreferred
 	}
 
 	var elected *Round
@@ -99,10 +113,6 @@ func checkIfOutOfSync(ctx context.Context, ledger *Ledger) (transition, error) {
 
 		// The round number we came to consensus to being the latest within the network
 		// is less than or equal to ours. Go back to square one.
-
-		ledger.mu.RLock()
-		currentRound := ledger.round - 1
-		ledger.mu.RUnlock()
 
 		if currentRound+sys.SyncRoundDifference >= proposedRound.Index {
 			return nil, ErrNonePreferred
