@@ -135,16 +135,17 @@ func (p *Protocol) broadcastGossip(node *noise.Node) {
 		case <-p.ctx.Done():
 			return
 		case evt := <-p.ledger.GossipTxOut:
-			var transactions Transactions
-			transactions = append(transactions, evt.TX)
+			transactions := Transactions{
+				txs: []wavelet.Transaction{evt.TX},
+			}
 
-			p.broadcaster.Broadcast(
-				p.ctx,
-				p.network.Peers(node),
-				p.opcodeGossip,
-				transactions.Marshal(),
-				false,
-			)
+			data, err := transactions.Marshal()
+			if err != nil {
+				fmt.Println("error while marshaling transactions", err)
+				continue
+			}
+
+			p.broadcaster.Broadcast(p.ctx, p.network.Peers(node), p.opcodeGossip, data, false)
 		}
 	}
 }
@@ -158,7 +159,9 @@ func (p *Protocol) broadcastForwardTx(node *noise.Node) {
 		case <-p.ctx.Done():
 			return
 		case evt := <-p.ledger.ForwardTxOut:
-			transactions := Transactions{evt.TX}
+			transactions := Transactions{
+				txs: []wavelet.Transaction{evt.TX},
+			}
 			n := len(p.ledger.ForwardTxOut)
 
 		L:
@@ -169,16 +172,16 @@ func (p *Protocol) broadcastForwardTx(node *noise.Node) {
 					break L
 				}
 
-				transactions = append(transactions, evt.TX)
+				transactions.txs = append(transactions.txs, evt.TX)
 			}
 
-			p.broadcaster.Broadcast(
-				p.ctx,
-				p.network.Peers(node),
-				p.opcodeGossip,
-				transactions.Marshal(),
-				false,
-			)
+			data, err := transactions.Marshal()
+			if err != nil {
+				fmt.Println("error while marshaling transactions", err)
+				continue
+			}
+
+			p.broadcaster.Broadcast(p.ctx, p.network.Peers(node), p.opcodeGossip, data, false)
 		}
 	}
 }
@@ -200,13 +203,13 @@ func (p *Protocol) broadcastQuery(node *noise.Node) {
 
 			//before := time.Now()
 
-			responses := p.broadcaster.Broadcast(
-				p.ctx,
-				peers,
-				p.opcodeQuery,
-				QueryRequest{round: *evt.Round}.Marshal(),
-				true,
-			)
+			data, err := QueryRequest{round: *evt.Round}.Marshal()
+			if err != nil {
+				fmt.Println("error while marshaling query request", err)
+				continue
+			}
+
+			responses := p.broadcaster.Broadcast(p.ctx, peers, p.opcodeQuery, data, true)
 
 			//fmt.Printf("query took %s seconds\n", time.Now().Sub(before).String())
 
@@ -305,13 +308,13 @@ func (p *Protocol) broadcastSyncInit(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcaster.Broadcast(
-				p.ctx,
-				peers,
-				p.opcodeSyncInit,
-				SyncInitRequest{viewID: evt.RoundID}.Marshal(),
-				true,
-			)
+			data, err := SyncInitRequest{viewID: evt.RoundID}.Marshal()
+			if err != nil {
+				fmt.Println("error while marshaling sync init request", err)
+				continue
+			}
+
+			responses := p.broadcaster.Broadcast(p.ctx, peers, p.opcodeSyncInit, data, true)
 
 			votes := make([]wavelet.SyncInitMetadata, len(responses))
 
@@ -357,26 +360,26 @@ func (p *Protocol) broadcastDownloadTx(node *noise.Node) {
 				continue
 			}
 
-			responses := p.broadcaster.Broadcast(
-				p.ctx,
-				peers,
-				p.opcodeDownloadTx,
-				DownloadTxRequest{ids: evt.IDs}.Marshal(),
-				true,
-			)
+			data, err := DownloadTxRequest{ids: evt.IDs}.Marshal()
+			if err != nil {
+				fmt.Println("error while marshaling sync init request", err)
+				continue
+			}
+
+			responses := p.broadcaster.Broadcast(p.ctx, peers, p.opcodeDownloadTx, data, true)
 
 			set := make(map[common.TransactionID]wavelet.Transaction)
 
 			for _, buf := range responses {
 				if buf != nil {
-					res, err := UnmarshalDownloadTxResponse(bytes.NewReader(buf))
+					res, err := UnmarshalTransactions(bytes.NewReader(buf))
 
 					if err != nil {
 						fmt.Println("Error while unmarshaling sync missing tx response", err)
 						continue
 					}
 
-					for _, tx := range res.transactions {
+					for _, tx := range res.txs {
 						set[tx.ID] = tx
 					}
 				}
@@ -422,7 +425,12 @@ func (p *Protocol) broadcastDownloadChunk(node *noise.Node) {
 						}
 
 						diff, err := func() ([]byte, error) {
-							buf, err := peer.Request(p.opcodeDownloadChunk, SyncChunkRequest{chunkHash: src.Hash}.Marshal())
+							data, err := SyncChunkRequest{chunkHash: src.Hash}.Marshal()
+							if err != nil {
+								return nil, err
+							}
+
+							buf, err := peer.Request(p.opcodeDownloadChunk, data)
 							if err != nil {
 								return nil, err
 							}
@@ -468,7 +476,7 @@ func (p *Protocol) handleQuery(ctx noise.Context, buf []byte) ([]byte, error) {
 
 	req, err := UnmarshalQueryRequest(bytes.NewReader(buf))
 	if err != nil {
-		return res.Marshal(), errors.Wrap(err, "error while unmarshaling query request")
+		return nil, errors.Wrap(err, "error while unmarshaling query request")
 	}
 
 	evt := wavelet.EventIncomingQuery{Round: req.round, Response: make(chan *wavelet.Round, 1), Error: make(chan error, 1)}
@@ -492,7 +500,7 @@ func (p *Protocol) handleQuery(ctx noise.Context, buf []byte) ([]byte, error) {
 		}
 	}
 
-	return res.Marshal(), nil
+	return res.Marshal()
 }
 
 func (p *Protocol) handleOutOfSyncRequest(ctx noise.Context, buf []byte) ([]byte, error) {
@@ -503,19 +511,19 @@ func (p *Protocol) handleOutOfSyncRequest(ctx noise.Context, buf []byte) ([]byte
 	select {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending out of sync check to ledger")
-		return res.Marshal(), nil
+		return res.Marshal()
 	case p.ledger.OutOfSyncIn <- evt:
 	}
 
 	select {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out getting out of sync check results from ledger")
-		return res.Marshal(), nil
+		return res.Marshal()
 	case root := <-evt.Response:
 		res.round = *root
 	}
 
-	return res.Marshal(), nil
+	return res.Marshal()
 }
 
 func (p *Protocol) handleSyncInit(ctx noise.Context, buf []byte) ([]byte, error) {
@@ -523,7 +531,7 @@ func (p *Protocol) handleSyncInit(ctx noise.Context, buf []byte) ([]byte, error)
 
 	req, err := UnmarshalSyncInitRequest(bytes.NewReader(buf))
 	if err != nil {
-		return res.Marshal(), errors.Wrap(err, "error while unmarshaling sync init request")
+		return nil, errors.Wrap(err, "error while unmarshaling sync init request")
 	}
 
 	evt := wavelet.EventIncomingSyncInit{RoundID: req.viewID, Response: make(chan wavelet.SyncInitMetadata, 1)}
@@ -531,20 +539,20 @@ func (p *Protocol) handleSyncInit(ctx noise.Context, buf []byte) ([]byte, error)
 	select {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending sync init request to ledger")
-		return res.Marshal(), nil
+		return res.Marshal()
 	case p.ledger.SyncInitIn <- evt:
 	}
 
 	select {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out getting sync init results from ledger")
-		return res.Marshal(), nil
+		return res.Marshal()
 	case data := <-evt.Response:
 		res.chunkHashes = data.ChunkHashes
 		res.latestViewID = data.RoundID
 	}
 
-	return res.Marshal(), nil
+	return res.Marshal()
 }
 
 func (p *Protocol) handleDownloadChunk(ctx noise.Context, buf []byte) ([]byte, error) {
@@ -552,7 +560,7 @@ func (p *Protocol) handleDownloadChunk(ctx noise.Context, buf []byte) ([]byte, e
 
 	req, err := UnmarshalSyncChunkRequest(bytes.NewReader(buf))
 	if err != nil {
-		return res.Marshal(), errors.Wrap(err, "error while unmarshaling sync chunk request")
+		return nil, errors.Wrap(err, "error while unmarshaling sync chunk request")
 	}
 
 	evt := wavelet.EventIncomingSyncDiff{ChunkHash: req.chunkHash, Response: make(chan []byte, 1)}
@@ -560,27 +568,27 @@ func (p *Protocol) handleDownloadChunk(ctx noise.Context, buf []byte) ([]byte, e
 	select {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending sync diff request to ledger")
-		return res.Marshal(), nil
+		return res.Marshal()
 	case p.ledger.SyncDiffIn <- evt:
 	}
 
 	select {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out getting sync diff results from ledger")
-		return res.Marshal(), nil
+		return res.Marshal()
 	case chunk := <-evt.Response:
 		res.diff = chunk
 	}
 
-	return res.Marshal(), nil
+	return res.Marshal()
 }
 
 func (p *Protocol) handleDownloadTx(ctx noise.Context, buf []byte) ([]byte, error) {
-	var res DownloadTxResponse
+	var res Transactions
 
 	req, err := UnmarshalDownloadTxRequest(bytes.NewReader(buf))
 	if err != nil {
-		return res.Marshal(), errors.Wrap(err, "error while unmarshaling download tx request")
+		return nil, errors.Wrap(err, "error while unmarshaling download tx request")
 	}
 
 	evt := wavelet.EventIncomingDownloadTX{IDs: req.ids, Response: make(chan []wavelet.Transaction, 1)}
@@ -588,19 +596,19 @@ func (p *Protocol) handleDownloadTx(ctx noise.Context, buf []byte) ([]byte, erro
 	select {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out sending missing tx sync request to ledger")
-		return res.Marshal(), nil
+		return res.Marshal()
 	case p.ledger.DownloadTxIn <- evt:
 	}
 
 	select {
 	case <-time.After(1 * time.Second):
 		fmt.Println("timed out getting missing tx sync results from ledger")
-		return res.Marshal(), nil
+		return res.Marshal()
 	case txs := <-evt.Response:
-		res.transactions = txs
+		res.txs = txs
 	}
 
-	return res.Marshal(), nil
+	return res.Marshal()
 }
 
 func (p *Protocol) handleGossip(ctx noise.Context, buf []byte) ([]byte, error) {
@@ -610,7 +618,7 @@ func (p *Protocol) handleGossip(ctx noise.Context, buf []byte) ([]byte, error) {
 		return nil, errors.Wrap(err, "error while unmarshaling gossip request")
 	}
 
-	evt := wavelet.EventIncomingGossip{TXs: transactions}
+	evt := wavelet.EventIncomingGossip{TXs: transactions.txs}
 
 	select {
 	case <-time.After(1 * time.Second):

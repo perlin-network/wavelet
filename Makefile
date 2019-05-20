@@ -44,7 +44,7 @@ test:
 	go test -coverprofile=coverage.txt -covermode=atomic -timeout 300s -v -bench -race ./...
 
 protoc:
-
+	docker run --rm -v `pwd`/proto:/proto -v `pwd`/pb:/pb znly/protoc --gogofaster_out=plugins=grpc:. -I=. proto/wavelet.proto
 
 wavelet:
 	go run $(WAVELET_DIR)/main.go --config $(WAVELET_DIR)/config/config.toml
