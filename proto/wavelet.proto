@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package wavelet;
+option go_package = "pb/waveletpb";
+
+message QueryRequest {
+    bytes round = 1;
+}
