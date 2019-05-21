@@ -12,28 +12,29 @@ type Debouncer struct {
 	buff []*wavelet.Transaction
 	sync.Mutex
 	threshold int
-	action actionHandler
-	stopped bool
-	period time.Duration
+	action    actionHandler
+	stopped   bool
+	period    time.Duration
 }
 
 func NewDebouncer(threshold int, action actionHandler, period time.Duration) *Debouncer {
 	return &Debouncer{
-		buff: make([]*wavelet.Transaction, 0, threshold),
+		buff:      make([]*wavelet.Transaction, 0, threshold),
 		threshold: threshold,
-		action: action,
-		period: period,
+		action:    action,
+		period:    period,
 	}
 }
 
 func (d *Debouncer) Start() {
-	timer := time.NewTicker(d.period)
+	timer := time.NewTimer(d.period)
 	for {
 		select {
 		case <-timer.C:
 			d.Lock()
 			d.action(d.buff)
 			d.buff = d.buff[:0]
+			timer.Reset(d.period)
 			d.Unlock()
 		default:
 		}
@@ -42,6 +43,7 @@ func (d *Debouncer) Start() {
 		if len(d.buff) == d.threshold {
 			d.action(d.buff)
 			d.buff = d.buff[:0]
+			timer.Reset(d.period)
 		}
 		d.Unlock()
 	}

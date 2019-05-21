@@ -10,7 +10,7 @@ import (
 func TestDebouncerOverfill(t *testing.T) {
 	a := func(txs []*wavelet.Transaction) {}
 
-	d := NewDebouncer(10, a, 1 * time.Second)
+	d := NewDebouncer(10, a, 1*time.Second)
 	go d.Start()
 	defer d.Stop()
 
@@ -23,7 +23,7 @@ func TestDebouncerOverfill(t *testing.T) {
 func TestDebouncer(t *testing.T) {
 	a := func(txs []*wavelet.Transaction) {}
 
-	d := NewDebouncer(100, a, 1 * time.Millisecond)
+	d := NewDebouncer(100, a, 1*time.Millisecond)
 	go d.Start()
 	defer d.Stop()
 
@@ -33,7 +33,7 @@ func TestDebouncer(t *testing.T) {
 }
 
 func BenchmarkDebouncer(b *testing.B) {
-	d := NewDebouncer(40, func([]*wavelet.Transaction){}, 50 * time.Millisecond)
+	d := NewDebouncer(40, func([]*wavelet.Transaction) {}, 50*time.Millisecond)
 	go d.Start()
 	defer d.Stop()
 
