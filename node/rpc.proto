@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package node;
+
+message QueryRequest {
+    bytes round = 1;
+}
+
+message QueryResponse {
+    bytes round = 1;
+}
+
+message OutOfSyncRequest {}
+
+message OutOfSyncResponse {
+    bytes round = 1;
+}
+
+message SyncRequest {
+    uint64 round_id = 1;
+}
+
+message SyncResponse {
+    uint64 latest_round_id = 1;
+    repeated bytes chunk_hashes = 2;
+}
+
+message DownloadChunkRequest {
+    bytes id = 1;
+}
+
+message DownloadChunkResponse {
+    bytes chunk = 1;
+}
+
+message DownloadTxRequest {
+    repeated bytes ids = 1;
+}
+
+message DownloadTxResponse {
+    repeated bytes transactions = 1;
+}
+
+message TransactionBatch {
+    repeated bytes transactions = 1;
+}
+
+message Empty {}
+
+service Wavelet {
+    rpc Gossip(stream TransactionBatch) returns (Empty) {}
+    rpc Query(QueryRequest) returns (QueryResponse) {}
+
+    rpc InitializeSync(SyncRequest) returns (SyncResponse) {}
+    rpc CheckOutOfSync(OutOfSyncRequest) returns (OutOfSyncResponse) {}
+
+    rpc DownloadTx(DownloadTxRequest) returns (DownloadTxResponse) {}
+    rpc DownloadChunk(DownloadChunkRequest) returns (DownloadChunkResponse) {}
+}

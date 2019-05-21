@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
@@ -200,14 +199,13 @@ func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, er
 type ledgerStatusResponse struct {
 	// Internal fields.
 
-	node      *noise.Node
+	client    *skademlia.Client
 	ledger    *wavelet.Ledger
-	network   *skademlia.Protocol
 	publicKey edwards25519.PublicKey
 }
 
 func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
-	if s.node == nil || s.ledger == nil {
+	if s.client == nil || s.ledger == nil {
 		return nil, errors.New("insufficient parameters were provided")
 	}
 
@@ -216,22 +214,17 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 	o := arena.NewObject()
 
 	o.Set("public_key", arena.NewString(hex.EncodeToString(s.publicKey[:])))
-	o.Set("address", arena.NewString(s.node.Addr().String()))
+	o.Set("address", arena.NewString(s.client.ID().Address()))
 	o.Set("root_id", arena.NewString(hex.EncodeToString(round.End.ID[:])))
 	o.Set("view_id", arena.NewNumberString(strconv.FormatUint(s.ledger.RoundID(), 10)))
 	o.Set("difficulty", arena.NewNumberString(strconv.FormatUint(uint64(round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)), 10)))
 
-	peers := s.network.Peers(s.node)
+	peers := s.client.ClosestPeerIDs()
+
 	if len(peers) > 0 {
 		peersArray := arena.NewArray()
 		for i := range peers {
-			id := peers[i].Ctx().Get(skademlia.KeyID)
-
-			if id == nil {
-				continue
-			}
-
-			peersArray.SetArrayItem(i, arena.NewString(id.(*skademlia.ID).Address()))
+			peersArray.SetArrayItem(i, arena.NewString(peers[i].Address()))
 		}
 		o.Set("peers", peersArray)
 	} else {

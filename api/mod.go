@@ -4,7 +4,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/buaazp/fasthttprouter"
-	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/common"
@@ -22,11 +21,10 @@ import (
 )
 
 type Gateway struct {
-	node   *noise.Node
 	ledger *wavelet.Ledger
 
-	network *skademlia.Protocol
-	keys    *skademlia.Keypair
+	keys   *skademlia.Keypair
+	client *skademlia.Client
 
 	router   *fasthttprouter.Router
 	server   *fasthttp.Server
@@ -116,12 +114,11 @@ func (g *Gateway) setup(enableTimeout bool) {
 	g.router = r
 }
 
-func (g *Gateway) StartHTTP(port int, n *noise.Node, l *wavelet.Ledger, nn *skademlia.Protocol, k *skademlia.Keypair) {
-	g.node = n
-	g.ledger = l
+func (g *Gateway) StartHTTP(port int, client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Keypair) {
+	g.ledger = ledger
 
-	g.network = nn
-	g.keys = k
+	g.client = client
+	g.keys = keys
 
 	g.setup(false)
 
@@ -217,7 +214,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 }
 
 func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
-	g.render(ctx, &ledgerStatusResponse{node: g.node, ledger: g.ledger, network: g.network, publicKey: g.keys.PublicKey()})
+	g.render(ctx, &ledgerStatusResponse{client: g.client, ledger: g.ledger, publicKey: g.keys.PublicKey()})
 }
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {

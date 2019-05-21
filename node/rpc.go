@@ -3,13 +3,13 @@ package node
 import (
 	"context"
 	"fmt"
-	"github.com/perlin-network/noise"
 	"github.com/pkg/errors"
+	"google.golang.org/grpc"
 	"math/rand"
 	"sync"
 )
 
-func SelectPeers(peers []*noise.Peer, amount int) ([]*noise.Peer, error) {
+func SelectPeers(peers []*grpc.ClientConn, amount int) ([]*grpc.ClientConn, error) {
 	if len(peers) < amount {
 		return peers, errors.Errorf("only connected to %d peer(s), but require a minimum of %d peer(s)", len(peers), amount)
 	}
@@ -25,18 +25,11 @@ func SelectPeers(peers []*noise.Peer, amount int) ([]*noise.Peer, error) {
 	return peers, nil
 }
 
-type broadcastResponse struct {
-	body  []byte
-	order int
-}
-
 type broadcastPayload struct {
-	order           int
-	requestOpcode   byte
-	res             chan broadcastResponse
-	waitForResponse bool
-	body            []byte
-	peer            *noise.Peer
+	order int
+	res   chan struct{}
+	peer  *grpc.ClientConn
+	fn    func(int, WaveletClient) error
 }
 
 type broadcaster struct {
@@ -59,34 +52,16 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 		go func(ctx context.Context) {
 			defer b.wg.Done()
 
-			var err error
-
 			for {
 				select {
 				case <-ctx.Done():
 					return
 				case payload := <-b.bus:
-					func() {
-						res := broadcastResponse{
-							order: payload.order,
-						}
+					if err := payload.fn(payload.order, NewWaveletClient(payload.peer)); err != nil {
+						fmt.Println("error broadcasting:", err)
+					}
 
-						defer func() {
-							payload.res <- res
-						}()
-
-						if !payload.waitForResponse {
-							if err = payload.peer.SendAwait(payload.requestOpcode, payload.body); err != nil {
-								fmt.Println("got an error sending broadcast:", err)
-							}
-
-							return
-						}
-
-						if res.body, err = payload.peer.Request(payload.requestOpcode, payload.body); err != nil {
-							fmt.Println("got an error sending request:", err)
-						}
-					}()
+					payload.res <- struct{}{}
 				}
 			}
 		}(ctx)
@@ -95,32 +70,28 @@ func NewBroadcaster(workersNum int, capacity uint32) *broadcaster {
 	return &b
 }
 
-func (b *broadcaster) Broadcast(ctx context.Context, peers []*noise.Peer, reqOpcode byte, req []byte, waitForResponse bool) [][]byte {
-	resc := make(chan broadcastResponse, len(peers))
-	defer close(resc)
+func (b *broadcaster) Broadcast(ctx context.Context, peers []*grpc.ClientConn, fn func(int, WaveletClient) error) {
+	resChan := make(chan struct{}, len(peers))
+	defer close(resChan)
 
 	for i, peer := range peers {
 		b.bus <- broadcastPayload{
-			order:           i,
-			requestOpcode:   reqOpcode,
-			body:            req,
-			peer:            peer,
-			res:             resc,
-			waitForResponse: waitForResponse,
+			order: i,
+			peer:  peer,
+			res:   resChan,
+			fn:    fn,
 		}
 	}
 
-	responses := make([][]byte, len(peers))
 	for i := 0; i < len(peers); i++ {
 		select {
 		case <-ctx.Done():
-			return nil
-		case t := <-resc:
-			responses[t.order] = t.body
+			return
+		case <-resChan:
 		}
 	}
 
-	return responses
+	return
 }
 
 func (b *broadcaster) Stop() {

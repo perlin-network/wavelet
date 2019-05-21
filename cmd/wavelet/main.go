@@ -11,7 +11,6 @@ import (
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/handshake"
 	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/noise/xnoise"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/common"
@@ -20,6 +19,7 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/rs/zerolog"
+	"golang.org/x/crypto/ssh/terminal"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
 	"io"
@@ -43,36 +43,15 @@ type Config struct {
 	Database string
 }
 
-func protocol(n *noise.Node, config *Config, keys *skademlia.Keypair, kv store.KV) (*node.Protocol, *skademlia.Protocol, noise.Protocol) {
-	ecdh := handshake.NewECDH()
-	ecdh.RegisterOpcodes(n)
-
-	aead := cipher.NewAEAD()
-	aead.RegisterOpcodes(n)
-
-	overlay := skademlia.New(net.JoinHostPort(config.Host, strconv.Itoa(n.Addr().(*net.TCPAddr).Port)), keys, xnoise.DialTCP)
-	overlay.RegisterOpcodes(n)
-	overlay.WithC1(sys.SKademliaC1)
-	overlay.WithC2(sys.SKademliaC2)
-
-	w := node.New(overlay, keys, kv, config.Genesis)
-	w.RegisterOpcodes(n)
-	w.Init(n)
-
-	protocol := noise.NewProtocol(xnoise.LogErrors, ecdh.Protocol(), aead.Protocol(), overlay.Protocol(), w.Protocol())
-
-	return w, overlay, protocol
-}
-
 func main() {
 	runtime.SetMutexProfileFraction(1)
 	runtime.SetBlockProfileRate(1)
 
-	//if terminal.IsTerminal(int(os.Stdout.Fd())) {
-	log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
-	//} else {
-	//	log.Register(os.Stderr)
-	//}
+	if terminal.IsTerminal(int(os.Stdout.Fd())) {
+		log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
+	} else {
+		log.Register(os.Stderr)
+	}
 
 	logger := log.Node()
 
@@ -233,15 +212,14 @@ func main() {
 	}
 }
 
-func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.Node, *node.Protocol) {
-	n, err := xnoise.ListenTCP(uint(config.Port))
-
+func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *skademlia.Client, *node.Protocol) {
+	listener, err := net.Listen("tcp", ":"+strconv.FormatUint(uint64(config.Port), 10))
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to start listening for peers.")
 		return nil, nil, nil
 	}
 
-	var k *skademlia.Keypair
+	var keys *skademlia.Keypair
 
 	// If a private key is specified instead of a path to a wallet, then simply use the provided private key instead.
 
@@ -260,13 +238,13 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 			return nil, nil, nil
 		}
 
-		k, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+		keys, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
 		if err != nil {
 			logger.Fatal().Err(err).Msgf("The private key specified is invalid: %s", config.Wallet)
 			return nil, nil, nil
 		}
 
-		privateKey, publicKey := k.PrivateKey(), k.PublicKey()
+		privateKey, publicKey := keys.PrivateKey(), keys.PublicKey()
 
 		logger.Info().
 			Hex("privateKey", privateKey[:]).
@@ -275,14 +253,14 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 	} else if err != nil && os.IsNotExist(err) {
 		logger.Warn().Msgf("Could not find an existing wallet at %q. Generating a new wallet...", config.Wallet)
 
-		k, err = skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
+		keys, err = skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
 
 		if err != nil {
 			logger.Fatal().Err(err).Msg("failed to generate a new wallet.")
 			return nil, nil, nil
 		}
 
-		privateKey, publicKey := k.PrivateKey(), k.PublicKey()
+		privateKey, publicKey := keys.PrivateKey(), keys.PublicKey()
 
 		logger.Info().
 			Hex("privateKey", privateKey[:]).
@@ -304,13 +282,13 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 			return nil, nil, nil
 		}
 
-		k, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+		keys, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
 		if err != nil {
 			logger.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", config.Wallet)
 			return nil, nil, nil
 		}
 
-		privateKey, publicKey := k.PrivateKey(), k.PublicKey()
+		privateKey, publicKey := keys.PrivateKey(), keys.PublicKey()
 
 		logger.Info().
 			Hex("privateKey", privateKey[:]).
@@ -329,26 +307,37 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 		kv = store.NewInmem()
 	}
 
-	w, network, protocol := protocol(n, config, k, kv)
-	n.FollowProtocol(protocol)
+	ledger := wavelet.NewLedger(keys, kv, config.Genesis)
 
-	logger.Info().Str("host", config.Host).Uint("port", uint(n.Addr().(*net.TCPAddr).Port)).Msg("Listening for peers.")
+	addr := net.JoinHostPort(config.Host, strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
+
+	client := skademlia.NewClient(addr, keys, skademlia.WithC1(sys.SKademliaC1), skademlia.WithC2(sys.SKademliaC2))
+	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
+
+	protocol := node.NewProtocol(ledger, client)
+
+	go func() {
+		server := client.Listen()
+		node.RegisterWaveletServer(server, protocol)
+
+		if err := server.Serve(listener); err != nil {
+			panic(err)
+		}
+	}()
+
+	logger.Info().Str("host", config.Host).Uint("port", uint(listener.Addr().(*net.TCPAddr).Port)).Msg("Listening for peers.")
 
 	if len(config.Peers) > 0 {
-		for _, address := range config.Peers {
-			peer, err := xnoise.DialTCP(n, address)
-
-			if err != nil {
+		for _, addr := range config.Peers {
+			if _, err := client.Dial(addr); err != nil {
 				logger.Error().Err(err).Msg("Failed to dial specified peer.")
 				continue
 			}
-
-			peer.WaitFor(node.SignalAuthenticated)
 		}
 
 	}
 
-	if peers := network.Bootstrap(n); len(peers) > 0 {
+	if peers := client.Bootstrap(); len(peers) > 0 {
 		var ids []string
 
 		for _, id := range peers {
@@ -359,15 +348,15 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 	}
 
 	if port := config.APIPort; port > 0 {
-		go api.New().StartHTTP(int(config.APIPort), n, w.Ledger(), network, k)
+		go api.New().StartHTTP(int(config.APIPort), client, ledger, keys)
 	}
 
-	return k, n, w
+	return keys, client, protocol
 }
 
-func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
-	publicKey := k.PublicKey()
-	ledger := w.Ledger()
+func shell(client *skademlia.Client, keys *skademlia.Keypair, protocol *node.Protocol, logger zerolog.Logger) {
+	publicKey := keys.PublicKey()
+	ledger := protocol.Ledger()
 
 	reader := bufio.NewReader(os.Stdin)
 
@@ -398,16 +387,8 @@ func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog
 
 			var ids []string
 
-			peers, err := node.SelectPeers(w.Network().Peers(n), sys.SnowballK)
-			if err != nil {
-				logger.Error().Msg("Error while selecting peers - " + err.Error())
-				continue
-			}
-
-			for _, peer := range peers {
-				if id := peer.Ctx().Get(skademlia.KeyID); id != nil {
-					ids = append(ids, id.(*skademlia.ID).String())
-				}
+			for _, id := range client.ClosestPeerIDs() {
+				ids = append(ids, id.String())
 			}
 
 			logger.Info().
@@ -586,7 +567,7 @@ func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog
 			}
 
 			go func() {
-				tx := wavelet.NewTransaction(k, sys.TagTransfer, payload.Bytes())
+				tx := wavelet.NewTransaction(keys, sys.TagTransfer, payload.Bytes())
 
 				evt := wavelet.EventBroadcast{
 					Tag:       tx.Tag,
@@ -633,7 +614,7 @@ func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog
 			payload.Write(intBuf[:8])
 
 			go func() {
-				tx := wavelet.NewTransaction(k, sys.TagStake, payload.Bytes())
+				tx := wavelet.NewTransaction(keys, sys.TagStake, payload.Bytes())
 
 				evt := wavelet.EventBroadcast{
 					Tag:       tx.Tag,
@@ -679,7 +660,7 @@ func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog
 			payload.Write(intBuf[:8])
 
 			go func() {
-				tx := wavelet.NewTransaction(k, sys.TagStake, payload.Bytes())
+				tx := wavelet.NewTransaction(keys, sys.TagStake, payload.Bytes())
 
 				evt := wavelet.EventBroadcast{
 					Tag:       tx.Tag,
@@ -723,7 +704,7 @@ func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog
 			}
 
 			go func() {
-				tx := wavelet.NewTransaction(k, sys.TagContract, code)
+				tx := wavelet.NewTransaction(keys, sys.TagContract, code)
 
 				evt := wavelet.EventBroadcast{
 					Tag:       tx.Tag,
