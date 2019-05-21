@@ -12,30 +12,70 @@ func TestDebouncerOverfill(t *testing.T) {
 
 	d := NewDebouncer(10, a, 1*time.Second)
 	go d.Start()
-	defer d.Stop()
+	defer d.Stop(false)
 
 	for i := 0; i < 10; i++ {
 		d.Put(&wavelet.Transaction{})
 	}
-	assert.False(t, d.Put(&wavelet.Transaction{}))
+
+	done := make(chan struct{})
+	go func() {
+		d.Put(&wavelet.Transaction{})
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Millisecond):
+		assert.Fail(t, "timeouted put")
+	}
 }
 
-func TestDebouncer(t *testing.T) {
-	a := func(txs []*wavelet.Transaction) {}
+func TestDebouncerBufferFull(t *testing.T) {
+	called := 0
+	a := func(txs []*wavelet.Transaction) {
+		called++
+	}
 
-	d := NewDebouncer(100, a, 1*time.Millisecond)
+	d := NewDebouncer(100, a, 1*time.Second)
 	go d.Start()
-	defer d.Stop()
 
 	for i := 0; i < 1000; i++ {
-		assert.True(t, d.Put(&wavelet.Transaction{}), i)
+		d.Put(&wavelet.Transaction{})
 	}
+
+	d.Stop(true)
+
+	// since timer period is much bigger than needed, we expect debouncer to call handler
+	// based on buffer threshold (10 = 1000/100)
+	assert.Equal(t, 10, called)
+}
+
+func TestDebouncerTimer(t *testing.T) {
+	called := 0
+	a := func(txs []*wavelet.Transaction) {
+		called++
+	}
+
+	d := NewDebouncer(10, a, 1*time.Millisecond)
+	go d.Start()
+
+	for i := 0; i < 100; i++ {
+		d.Put(&wavelet.Transaction{})
+		time.Sleep(2 * time.Millisecond)
+	}
+
+	d.Stop(true)
+
+	// since timer period is much smaller comparing to speed on which data incoming
+	// we expect number of handler calls to be based on timer (100 calls per 1tx)
+	assert.Equal(t, 100, called)
 }
 
 func BenchmarkDebouncer(b *testing.B) {
 	d := NewDebouncer(40, func([]*wavelet.Transaction) {}, 50*time.Millisecond)
 	go d.Start()
-	defer d.Stop()
+	defer d.Stop(false)
 
 	for i := 0; i < b.N; i++ {
 		d.Put(&wavelet.Transaction{})

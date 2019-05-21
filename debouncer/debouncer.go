@@ -32,8 +32,11 @@ func (d *Debouncer) Start() {
 		select {
 		case <-timer.C:
 			d.Lock()
-			d.action(d.buff)
-			d.buff = d.buff[:0]
+			if len(d.buff) > 0 {
+				d.action(d.buff)
+				d.buff = d.buff[:0]
+			}
+
 			timer.Reset(d.period)
 			d.Unlock()
 		default:
@@ -49,21 +52,31 @@ func (d *Debouncer) Start() {
 	}
 }
 
-func (d *Debouncer) Stop() {
+func (d *Debouncer) Stop(wait bool) {
 	d.Lock()
 	d.stopped = true
 	d.Unlock()
+
+	if wait {
+		d.Lock()
+		for len(d.buff) > 0 {
+			d.Unlock()
+			time.Sleep(1 * time.Millisecond)
+		}
+	}
 }
 
-func (d *Debouncer) Put(tx *wavelet.Transaction) bool {
-	d.Lock()
-	defer d.Unlock()
+func (d *Debouncer) Put(tx *wavelet.Transaction) {
+	for {
+		d.Lock()
 
-	if len(d.buff) >= d.threshold {
-		return false
+		if len(d.buff) == d.threshold {
+			d.Unlock()
+			time.Sleep(1 * time.Nanosecond)
+		} else {
+			d.buff = append(d.buff, tx)
+			d.Unlock()
+			return
+		}
 	}
-
-	d.buff = append(d.buff, tx)
-
-	return true
 }
