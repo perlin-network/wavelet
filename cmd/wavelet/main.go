@@ -19,7 +19,6 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/rs/zerolog"
-	"golang.org/x/crypto/ssh/terminal"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
 	"io"
@@ -47,11 +46,11 @@ func main() {
 	runtime.SetMutexProfileFraction(1)
 	runtime.SetBlockProfileRate(1)
 
-	if terminal.IsTerminal(int(os.Stdout.Fd())) {
-		log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
-	} else {
-		log.Register(os.Stderr)
-	}
+	//if terminal.IsTerminal(int(os.Stdout.Fd())) {
+	log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
+	//} else {
+	//	log.Register(os.Stderr)
+	//}
 
 	logger := log.Node()
 
