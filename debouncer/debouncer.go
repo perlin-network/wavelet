@@ -41,7 +41,6 @@ func (d *Debouncer) Start(ctx context.Context) {
 				d.buff = d.buff[:0]
 			}
 
-			d.timer.Reset(d.period)
 			d.Unlock()
 		}
 	}
@@ -52,8 +51,9 @@ func (d *Debouncer) Put(tx *wavelet.Transaction) {
 	if len(d.buff) == d.threshold {
 		d.action(d.buff)
 		d.buff = d.buff[:0]
-		d.timer.Reset(d.period)
 	}
+
+	d.timer.Reset(d.period)
 
 	d.buff = append(d.buff, tx)
 	d.Unlock()
