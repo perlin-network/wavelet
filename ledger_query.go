@@ -148,9 +148,9 @@ func query(ledger *Ledger) func(ctx context.Context) error {
 			ledger.rounds[ledger.round] = *newRound
 			ledger.round++
 
-			if err = storeRound(ledger.kv, ledger.round, *newRound); err != nil {
-				return errors.Wrap(err, "failed to store round")
-			}
+			//if err = StoreRound(ledger.kv, ledger.round, *newRound); err != nil {
+			//	return errors.Wrap(err, "failed to store round")
+			//}
 		}
 
 		return nil

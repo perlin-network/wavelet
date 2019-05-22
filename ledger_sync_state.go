@@ -297,9 +297,9 @@ func downloadStateInChunks(newRound *Round) transition {
 		ledger.rounds[newRound.Index] = *newRound
 		ledger.round = newRound.Index + 1
 
-		if err := storeRound(ledger.kv, ledger.round, *newRound); err != nil {
-			return nil, errors.Wrap(err, "failed to store round")
-		}
+		//if err := StoreRound(ledger.kv, ledger.round, *newRound); err != nil {
+		//	return nil, errors.Wrap(err, "failed to store round")
+		//}
 
 		return nil, nil
 	}

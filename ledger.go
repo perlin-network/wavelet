@@ -139,22 +139,22 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV, genesis *string) *Ledger {
 
 	accounts := newAccounts(kv)
 
-	var round Round
+	var r Round
 	var roundCount uint64
 
-	savedRound, savedCount, err := loadRound(kv)
+	rm, err := NewRoundManager(30, kv)
 	if err != nil {
-		round = performInception(accounts.tree, genesis)
+		r = performInception(accounts.tree, genesis)
 		if err := accounts.commit(nil); err != nil {
 			panic(err)
 		}
 		roundCount = 1
 	} else {
-		round = *savedRound
-		roundCount = savedCount
+		r = *rm.Latest()
+		roundCount = rm.Count()
 	}
 
-	graph := NewGraph(&round)
+	graph := NewGraph(&r)
 
 	metrics := NewMetrics()
 
@@ -183,7 +183,7 @@ func NewLedger(keys *skademlia.Keypair, kv store.KV, genesis *string) *Ledger {
 			sys.TagStake:    ProcessStakeTransaction,
 		},
 
-		rounds: map[uint64]Round{round.Index: round},
+		rounds: map[uint64]Round{r.Index: r},
 		round:  roundCount,
 
 		kv: kv,
@@ -846,42 +846,4 @@ func (l *Ledger) rewardValidators(ss *avl.Tree, root Transaction, tx *Transactio
 	}
 
 	return nil
-}
-
-func storeRound(kv store.KV, count uint64, round Round) error {
-	// TODO(kenta): old rounds need to be pruned from the store as well
-
-	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], count)
-
-	var err error
-	if err = kv.Put(keyRoundCount[:], buf[:]); err != nil {
-		return err
-	}
-
-	return kv.Put(keyRoundLatest[:], round.Marshal())
-}
-
-func loadRound(kv store.KV) (*Round, uint64, error) {
-	var b []byte
-	var err error
-
-	var count uint64
-	b, err = kv.Get(keyRoundCount[:])
-	if err != nil {
-		return nil, 0, err
-	}
-	count = binary.BigEndian.Uint64(b[:8])
-
-	var round Round
-	b, err = kv.Get(keyRoundLatest[:])
-	if err != nil {
-		return nil, 0, err
-	}
-	round, err = UnmarshalRound(bytes.NewReader(b))
-	if err != nil {
-		return nil, 0, err
-	}
-
-	return &round, count, nil
 }

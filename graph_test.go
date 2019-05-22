@@ -20,19 +20,15 @@ func TestCorrectGraphState(t *testing.T) {
 
 	tx1 := randomTX(t, common.ZeroTransactionID)
 	tx1.Depth = 1
-	tx1.Confidence = 1
 
 	tx2 := randomTX(t, tx1.ID)
 	tx2.Depth = 2
-	tx2.Confidence = 2
 
 	tx3 := randomTX(t, tx1.ID, tx2.ID)
 	tx3.Depth = 3
-	tx3.Confidence = 4
 
 	tx4 := randomTX(t, tx3.ID)
 	tx4.Depth = 4
-	tx4.Confidence = 5
 
 	assert.NoError(t, g.AddTransaction(tx1))
 	assert.NoError(t, g.AddTransaction(tx2))
@@ -49,11 +45,9 @@ func TestCorrectGraphState(t *testing.T) {
 
 	badTX1.ParentIDs = []common.TransactionID{tx4.ID}
 	badTX1.Depth = 5
-	badTX1.Confidence = 6
 
 	badTX2.ParentIDs = []common.TransactionID{badTX1.ID}
 	badTX2.Depth = 6
-	badTX2.Confidence = 7
 
 	// Add incomplete transaction with one missing parent.
 	assert.Error(t, g.AddTransaction(badTX2))
