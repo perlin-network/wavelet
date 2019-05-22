@@ -50,7 +50,7 @@ func TestDebouncerBufferFull(t *testing.T) {
 		d.Put(&wavelet.Transaction{})
 	}
 
-	time.Sleep(1 * time.Millisecond)
+	time.Sleep(1500 * time.Millisecond)
 	// since timer period is much bigger than needed, we expect debouncer to call handler
 	// based on buffer threshold (10 = 1000/100)
 	assert.Equal(t, 10, called)
