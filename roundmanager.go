@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"fmt"
 	"github.com/perlin-network/wavelet/store"
 	"sync"
 )
@@ -75,4 +76,21 @@ func (rm *RoundManager) Save(round *Round) (*Round, error) {
 
 	err := StoreRound(rm.storage, *round, rm.latest, rm.oldest, uint8(len(rm.buff)))
 	return oldRound, err
+}
+
+func (rm *RoundManager) GetRound(ix uint64) (*Round, error) {
+	var round *Round
+	rm.RLock()
+	for _, r := range rm.buff {
+		if ix == r.Index {
+			round = r
+		}
+	}
+	rm.RUnlock()
+
+	if round == nil {
+		return nil, fmt.Errorf("no round found for index - %d", ix)
+	}
+
+	return round, nil
 }
