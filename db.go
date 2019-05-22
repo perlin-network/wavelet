@@ -153,15 +153,16 @@ func StoreRound(
 		return errors.Wrap(err, "error storing stored rounds count")
 	}
 
-	var ixBuf [4]byte
-	binary.BigEndian.PutUint32(ixBuf[:], currentIx)
-	if err := kv.Put(keyRoundLatestIx[:], ixBuf[:]); err != nil {
-		return errors.Wrap(err, "error storing latest round index")
+	var oldestIxBuf [4]byte
+	binary.BigEndian.PutUint32(oldestIxBuf[:], oldestIx)
+	if err := kv.Put(keyRoundOldestIx[:], oldestIxBuf[:]); err != nil {
+		return errors.Wrap(err, "error storing oldest round index")
 	}
 
-	binary.BigEndian.PutUint32(ixBuf[:], oldestIx)
-	if err := kv.Put(keyRoundOldestIx[:], ixBuf[:]); err != nil {
-		return errors.Wrap(err, "error storing oldest round index")
+	var currentIxBuf [4]byte
+	binary.BigEndian.PutUint32(currentIxBuf[:], currentIx)
+	if err := kv.Put(keyRoundLatestIx[:], currentIxBuf[:]); err != nil {
+		return errors.Wrap(err, "error storing latest round index")
 	}
 
 	if err := kv.Put([]byte(keyRound+strconv.Itoa(int(currentIx))), round.Marshal()); err != nil {
@@ -179,7 +180,6 @@ func LoadRounds(kv store.KV) ([]*Round, uint32, uint32, error) {
 	if err != nil {
 		return nil, 0, 0, errors.Wrap(err, "error loading latest round index")
 	}
-	fmt.Println(b)
 	latestIx := binary.BigEndian.Uint32(b[:4])
 
 	b, err = kv.Get(keyRoundOldestIx[:])

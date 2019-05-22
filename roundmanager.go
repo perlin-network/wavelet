@@ -1,7 +1,6 @@
 package wavelet
 
 import (
-	"fmt"
 	"github.com/perlin-network/wavelet/store"
 	"sync"
 )
@@ -26,7 +25,7 @@ func NewRoundManager(limit uint8, storage store.KV) (*RoundManager, error) {
 	if err != nil {
 		return rm, err
 	}
-	fmt.Println(len(rounds), latest, oldest)
+
 	rm.buff = rounds
 	rm.latest = latest
 	rm.oldest = oldest
