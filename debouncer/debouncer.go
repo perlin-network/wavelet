@@ -1,6 +1,7 @@
 package debouncer
 
 import (
+	"context"
 	"github.com/perlin-network/wavelet"
 	"sync"
 	"time"
@@ -13,7 +14,6 @@ type Debouncer struct {
 	sync.Mutex
 	threshold int
 	action    actionHandler
-	stopped   bool
 	period    time.Duration
 }
 
@@ -26,10 +26,12 @@ func NewDebouncer(threshold int, action actionHandler, period time.Duration) *De
 	}
 }
 
-func (d *Debouncer) Start() {
+func (d *Debouncer) Start(ctx context.Context) {
 	timer := time.NewTimer(d.period)
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-timer.C:
 			d.Lock()
 			if len(d.buff) > 0 {
@@ -40,28 +42,13 @@ func (d *Debouncer) Start() {
 			timer.Reset(d.period)
 			d.Unlock()
 		default:
-		}
-
-		d.Lock()
-		if len(d.buff) == d.threshold {
-			d.action(d.buff)
-			d.buff = d.buff[:0]
-			timer.Reset(d.period)
-		}
-		d.Unlock()
-	}
-}
-
-func (d *Debouncer) Stop(wait bool) {
-	d.Lock()
-	d.stopped = true
-	d.Unlock()
-
-	if wait {
-		d.Lock()
-		for len(d.buff) > 0 {
+			d.Lock()
+			if len(d.buff) == d.threshold {
+				d.action(d.buff)
+				d.buff = d.buff[:0]
+				timer.Reset(d.period)
+			}
 			d.Unlock()
-			time.Sleep(1 * time.Millisecond)
 		}
 	}
 }

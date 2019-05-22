@@ -1,6 +1,7 @@
 package debouncer
 
 import (
+	"context"
 	"github.com/perlin-network/wavelet"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -11,8 +12,10 @@ func TestDebouncerOverfill(t *testing.T) {
 	a := func(txs []*wavelet.Transaction) {}
 
 	d := NewDebouncer(10, a, 1*time.Second)
-	go d.Start()
-	defer d.Stop(false)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go d.Start(ctx)
 
 	for i := 0; i < 10; i++ {
 		d.Put(&wavelet.Transaction{})
@@ -38,14 +41,16 @@ func TestDebouncerBufferFull(t *testing.T) {
 	}
 
 	d := NewDebouncer(100, a, 1*time.Second)
-	go d.Start()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go d.Start(ctx)
 
 	for i := 0; i < 1000; i++ {
 		d.Put(&wavelet.Transaction{})
 	}
 
-	d.Stop(true)
-
+	time.Sleep(1 * time.Millisecond)
 	// since timer period is much bigger than needed, we expect debouncer to call handler
 	// based on buffer threshold (10 = 1000/100)
 	assert.Equal(t, 10, called)
@@ -58,14 +63,15 @@ func TestDebouncerTimer(t *testing.T) {
 	}
 
 	d := NewDebouncer(10, a, 1*time.Millisecond)
-	go d.Start()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go d.Start(ctx)
 
 	for i := 0; i < 100; i++ {
 		d.Put(&wavelet.Transaction{})
 		time.Sleep(2 * time.Millisecond)
 	}
-
-	d.Stop(true)
 
 	// since timer period is much smaller comparing to speed on which data incoming
 	// we expect number of handler calls to be based on timer (100 calls per 1tx)
@@ -74,8 +80,10 @@ func TestDebouncerTimer(t *testing.T) {
 
 func BenchmarkDebouncer(b *testing.B) {
 	d := NewDebouncer(40, func([]*wavelet.Transaction) {}, 50*time.Millisecond)
-	go d.Start()
-	defer d.Stop(false)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go d.Start(ctx)
 
 	for i := 0; i < b.N; i++ {
 		d.Put(&wavelet.Transaction{})
