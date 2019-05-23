@@ -20,7 +20,7 @@ type objectInfo struct {
 	obj interface{}
 }
 
-func newLRU(size int) *LRU {
+func NewLRU(size int) *LRU {
 	return &LRU{
 		size:     size,
 		elements: make(map[[blake2b.Size256]byte]*list.Element, size),

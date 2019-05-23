@@ -54,11 +54,11 @@ func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse
 }
 
 func (p *Protocol) InitializeSync(context.Context, *SyncRequest) (*SyncResponse, error) {
-	return nil, nil
+	return &SyncResponse{}, nil
 }
 
 func (p *Protocol) CheckOutOfSync(context.Context, *OutOfSyncRequest) (*OutOfSyncResponse, error) {
-	return nil, nil
+	return &OutOfSyncResponse{}, nil
 }
 
 func (p *Protocol) DownloadTx(ctx context.Context, req *DownloadTxRequest) (*DownloadTxResponse, error) {
@@ -77,5 +77,5 @@ func (p *Protocol) DownloadTx(ctx context.Context, req *DownloadTxRequest) (*Dow
 }
 
 func (p *Protocol) DownloadChunk(context.Context, *DownloadChunkRequest) (*DownloadChunkResponse, error) {
-	return nil, nil
+	return &DownloadChunkResponse{}, nil
 }

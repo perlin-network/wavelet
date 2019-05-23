@@ -6,6 +6,7 @@ import (
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"sort"
 	"sync"
 )
 
@@ -16,7 +17,7 @@ func WithRoot(root Transaction) GraphOption {
 		ptr := &root
 
 		graph.depthIndex[root.Depth] = append(graph.depthIndex[root.Depth], ptr)
-		graph.eligibleIndex.ReplaceOrInsert((*sortByDepth)(ptr))
+		graph.eligibleIndex.ReplaceOrInsert((*sortByDepthTX)(ptr))
 
 		graph.transactions[root.ID] = ptr
 
@@ -37,20 +38,20 @@ func VerifySignatures() GraphOption {
 	}
 }
 
-type sortByDepth Transaction
+type sortByDepthTX Transaction
 
-func (a *sortByDepth) Less(b btree.Item) bool {
-	return a.Depth < b.(*sortByDepth).Depth
+func (a *sortByDepthTX) Less(b btree.Item) bool {
+	return a.Depth < b.(*sortByDepthTX).Depth
 }
 
-type sortBySeed Transaction
+type sortBySeedTX Transaction
 
-func (a *sortBySeed) Less(b btree.Item) bool {
-	if a.Depth == b.(*sortBySeed).Depth {
-		return a.SeedLen > b.(*sortBySeed).SeedLen
+func (a *sortBySeedTX) Less(b btree.Item) bool {
+	if a.Depth == b.(*sortBySeedTX).Depth {
+		return a.SeedLen > b.(*sortBySeedTX).SeedLen
 	}
 
-	return a.Depth < b.(*sortBySeed).Depth
+	return a.Depth < b.(*sortBySeedTX).Depth
 }
 
 var (
@@ -169,8 +170,8 @@ func (g *Graph) MarkTransactionAsMissing(id TransactionID, depth uint64) {
 // DEPTH_DIFF. It additionally clears away any missing transactions that are at
 // a depth below the root depth by more than DEPTH_DIFF.
 func (g *Graph) UpdateRoot(rootDepth uint64) {
-	var pendingDepth []*sortByDepth
-	var pendingSeed []*sortBySeed
+	var pendingDepth []*sortByDepthTX
+	var pendingSeed []*sortBySeedTX
 
 	g.Lock()
 
@@ -186,21 +187,21 @@ func (g *Graph) UpdateRoot(rootDepth uint64) {
 	}
 
 	g.eligibleIndex.Ascend(func(i btree.Item) bool {
-		if rootDepth <= i.(*sortByDepth).Depth {
+		if rootDepth <= i.(*sortByDepthTX).Depth {
 			return true
 		}
 
-		pendingDepth = append(pendingDepth, i.(*sortByDepth))
+		pendingDepth = append(pendingDepth, i.(*sortByDepthTX))
 
 		return true
 	})
 
 	g.seedIndex.Ascend(func(i btree.Item) bool {
-		if rootDepth < i.(*sortBySeed).Depth {
+		if rootDepth < i.(*sortBySeedTX).Depth {
 			return true
 		}
 
-		pendingSeed = append(pendingSeed, i.(*sortBySeed))
+		pendingSeed = append(pendingSeed, i.(*sortBySeedTX))
 
 		return true
 	})
@@ -237,8 +238,8 @@ func (g *Graph) PruneBelowDepth(targetDepth uint64) int {
 			delete(g.missing, tx.ID)
 			delete(g.incomplete, tx.ID)
 
-			g.eligibleIndex.Delete((*sortByDepth)(tx))
-			g.seedIndex.Delete((*sortBySeed)(tx))
+			g.eligibleIndex.Delete((*sortByDepthTX)(tx))
+			g.seedIndex.Delete((*sortBySeedTX)(tx))
 		}
 
 		delete(g.depthIndex, depth)
@@ -264,12 +265,12 @@ func (g *Graph) PruneBelowDepth(targetDepth uint64) int {
 // leaf nodes of the graph.
 func (g *Graph) FindEligibleParents() []*Transaction {
 	var eligibleParents []*Transaction
-	var pending []*sortByDepth
+	var pending []*sortByDepthTX
 
 	g.Lock()
 
 	g.eligibleIndex.Descend(func(i btree.Item) bool {
-		eligibleParent := i.(*sortByDepth)
+		eligibleParent := i.(*sortByDepthTX)
 
 		if g.height-1 >= sys.MaxDepthDiff+eligibleParent.Depth {
 			pending = append(pending, eligibleParent)
@@ -311,13 +312,13 @@ func (g *Graph) FindEligibleParents() []*Transaction {
 // round, and returns any one whose number of zero bits prefixed of
 // its seed is >= difficulty.
 func (g *Graph) FindEligibleCritical(difficulty byte) *Transaction {
-	var pending []*sortBySeed
+	var pending []*sortBySeedTX
 	var critical *Transaction
 
 	g.Lock()
 
 	g.seedIndex.Descend(func(i btree.Item) bool {
-		tx := i.(*sortBySeed)
+		tx := i.(*sortBySeedTX)
 
 		if tx.Depth <= g.rootDepth {
 			pending = append(pending, tx)
@@ -368,6 +369,11 @@ func (g *Graph) Missing() []TransactionID {
 	for id := range g.missing {
 		missing = append(missing, id)
 	}
+
+	sort.Slice(missing, func(i, j int) bool {
+		return g.missing[missing[i]] < g.missing[missing[j]]
+	})
+
 	g.RUnlock()
 
 	return missing
@@ -411,8 +417,8 @@ func (g *Graph) updateGraph(tx *Transaction) error {
 		g.height = tx.Depth + 1
 	}
 
-	g.eligibleIndex.ReplaceOrInsert((*sortByDepth)(tx))         // Index transaction to be eligible.
-	g.seedIndex.ReplaceOrInsert((*sortBySeed)(tx))              // Index transaction based on num prefixed zero bits of seed.
+	g.eligibleIndex.ReplaceOrInsert((*sortByDepthTX)(tx))       // Index transaction to be eligible.
+	g.seedIndex.ReplaceOrInsert((*sortBySeedTX)(tx))            // Index transaction based on num prefixed zero bits of seed.
 	g.depthIndex[tx.Depth] = append(g.depthIndex[tx.Depth], tx) // Index transaction by depth.
 
 	if g.metrics != nil {
@@ -446,7 +452,9 @@ func (g *Graph) updateGraph(tx *Transaction) error {
 		if complete {
 			delete(g.incomplete, childID)
 
-			g.updateGraph(child)
+			if err := g.updateGraph(child); err != nil {
+				continue
+			}
 		}
 	}
 
@@ -458,8 +466,8 @@ func (g *Graph) deleteProgeny(id TransactionID) {
 
 	tx, exists := g.transactions[id]
 	if exists {
-		g.eligibleIndex.Delete((*sortByDepth)(tx))
-		g.seedIndex.Delete((*sortBySeed)(tx))
+		g.eligibleIndex.Delete((*sortByDepthTX)(tx))
+		g.seedIndex.Delete((*sortBySeedTX)(tx))
 
 		if len(g.depthIndex[tx.Depth]) > 0 {
 			slice := g.depthIndex[tx.Depth][:0]

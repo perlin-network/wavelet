@@ -130,8 +130,25 @@ func TestNewSnowball(t *testing.T) {
 	assert.Equal(t, snowball.counts[b.ID], 12)
 
 	assert.True(t, snowball.Decided())
-	assert.Equal(t, *snowball.Preferred(), b)
-	assert.Equal(t, snowball.count, 11)
+	assert.Equal(t, b, *snowball.Preferred())
+	assert.Equal(t, 11, snowball.count)
 	assert.Len(t, snowball.counts, 2)
 	assert.Len(t, snowball.candidates, 2)
+
+	// Try tick with nil if Snowball has not decided yet.
+
+	snowball.Reset()
+
+	snowball.Tick(&a)
+	snowball.Tick(&a)
+
+	assert.Equal(t, a.ID, snowball.lastID)
+	assert.Equal(t, 1, snowball.Progress())
+	assert.Len(t, snowball.counts, 1)
+
+	snowball.Tick(nil)
+
+	assert.Equal(t, ZeroRoundID, snowball.lastID)
+	assert.Equal(t, 0, snowball.Progress())
+	assert.Len(t, snowball.counts, 1)
 }

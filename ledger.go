@@ -30,10 +30,16 @@ type Ledger struct {
 
 	gossiper  *Gossiper
 	finalizer *Snowball
+	syncer    *Snowball
 
 	processors map[byte]TransactionProcessor
 
-	cachecollapse *LRU
+	consensus sync.WaitGroup
+	sync      chan struct{}
+	syncTimer *time.Timer
+
+	cacheCollapse *LRU
+	cacheChunks   *LRU
 }
 
 func NewLedger(client *skademlia.Client) *Ledger {
@@ -71,6 +77,7 @@ func NewLedger(client *skademlia.Client) *Ledger {
 
 	gossiper := NewGossiper(context.TODO(), client, metrics)
 	finalizer := NewSnowball(WithBeta(sys.SnowballBeta))
+	syncer := NewSnowball(WithBeta(sys.SnowballBeta))
 
 	ledger := &Ledger{
 		client:  client,
@@ -82,6 +89,7 @@ func NewLedger(client *skademlia.Client) *Ledger {
 
 		gossiper:  gossiper,
 		finalizer: finalizer,
+		syncer:    syncer,
 
 		processors: map[byte]TransactionProcessor{
 			sys.TagNop:      ProcessNopTransaction,
@@ -91,15 +99,24 @@ func NewLedger(client *skademlia.Client) *Ledger {
 			sys.TagBatch:    ProcessBatchTransaction,
 		},
 
-		cachecollapse: newLRU(16),
+		syncTimer: time.NewTimer(0),
+
+		cacheCollapse: NewLRU(16),
+		cacheChunks:   NewLRU(1024), // In total, it will take up 1024 * 4MB.
 	}
 
-	go ledger.PullMissingTransactions()
-	go ledger.FinalizeRounds()
+	go ledger.SyncToLatestRound()
+	ledger.PerformConsensus()
 
 	return ledger
 }
 
+// AddTransaction adds a transaction to the ledger. If the transaction has
+// never been added in the ledgers graph before, it is pushed to the gossip
+// mechanism to then be gossiped to this nodes peers. If the transaction is
+// invalid or fails any validation checks, an error is returned. No error
+// is returned if the transaction has already existed int he ledgers graph
+// beforehand.
 func (l *Ledger) AddTransaction(tx Transaction) error {
 	err := l.graph.AddTransaction(tx)
 
@@ -114,20 +131,47 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 	return nil
 }
 
+// Protocol returns an implementation of WaveletServer to handle incoming
+// RPC and streams for the ledger. The protocol is agnostic to whatever
+// choice of network stack is used with Wavelet, though by default it is
+// intended to be used with gRPC and Noise.
 func (l *Ledger) Protocol() *Protocol {
 	return &Protocol{ledger: l}
 }
 
+// Graph returns the directed-acyclic-graph of transactions accompanying
+// the ledger.
 func (l *Ledger) Graph() *Graph {
 	return l.graph
 }
 
+// PerformConsensus spawns workers related to performing consensus, such as pulling
+// missing transactions and incrementally finalizing intervals of transactions in
+// the ledgers graph.
+func (l *Ledger) PerformConsensus() {
+	l.sync = make(chan struct{})
+
+	go l.PullMissingTransactions()
+	go l.FinalizeRounds()
+}
+
+// PullMissingTransactions is an infinite loop continually sending RPC requests
+// to pull any transactions identified to be missing by the ledger. It periodically
+// samples a random peer from the network, and requests the peer for the contents
+// of all missing transactions by their respective IDs. When the ledger is in amidst
+// synchronizing/teleporting ahead to a new round, the infinite loop will be cleaned
+// up. It is intended to call PullMissingTransactions() in a new goroutine.
 func (l *Ledger) PullMissingTransactions() {
+	l.consensus.Add(1)
+	defer l.consensus.Done()
+
 	for {
 		missing := l.graph.Missing()
 
 		if len(missing) == 0 {
 			select {
+			case <-l.sync:
+				return
 			case <-time.After(1 * time.Second):
 			}
 
@@ -138,6 +182,8 @@ func (l *Ledger) PullMissingTransactions() {
 
 		if len(peers) == 0 {
 			select {
+			case <-l.sync:
+				return
 			case <-time.After(1 * time.Second):
 			}
 
@@ -186,6 +232,8 @@ func (l *Ledger) PullMissingTransactions() {
 		l.metrics.downloadedTX.Mark(count)
 
 		select {
+		case <-l.sync:
+			return
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
@@ -198,15 +246,26 @@ func (l *Ledger) PullMissingTransactions() {
 // applied to the current ledger state, and the graph is updated to cleanup artifacts from
 // the old round.
 func (l *Ledger) FinalizeRounds() {
+	l.consensus.Add(1)
+	defer l.consensus.Done()
+
 	type vote struct {
 		voter     *skademlia.ID
-		preferred Round
+		preferred *Round
 	}
 
 FINALIZE_ROUNDS:
 	for {
+		select {
+		case <-l.sync:
+			return
+		default:
+		}
+
 		if _, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK); err != nil {
 			select {
+			case <-l.sync:
+				return
 			case <-time.After(1 * time.Second):
 			}
 
@@ -221,6 +280,8 @@ FINALIZE_ROUNDS:
 
 			if eligible == nil {
 				select {
+				case <-l.sync:
+					return
 				case <-time.After(100 * time.Millisecond):
 				}
 
@@ -262,10 +323,14 @@ FINALIZE_ROUNDS:
 					var majority *Round
 
 					for _, vote := range votes {
+						if vote.preferred == nil {
+							continue
+						}
+
 						counts[vote.preferred.ID] += weights[vote.voter.PublicKey()]
 
 						if counts[vote.preferred.ID] >= sys.SnowballAlpha {
-							majority = &vote.preferred
+							majority = vote.preferred
 							break
 						}
 					}
@@ -300,16 +365,28 @@ FINALIZE_ROUNDS:
 							return
 						}
 
+						cancel()
+
 						l.metrics.queried.Mark(1)
 
-						cancel()
+						info := noise.InfoFromPeer(p)
+						if info == nil {
+							return
+						}
+
+						voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
+						if !ok {
+							return
+						}
 
 						round, err := UnmarshalRound(bytes.NewReader(res.Round))
 						if err != nil {
+							voteChan <- vote{voter: voter, preferred: nil}
 							return
 						}
 
 						if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
+							voteChan <- vote{voter: voter, preferred: nil}
 							return
 						}
 
@@ -322,16 +399,6 @@ FINALIZE_ROUNDS:
 						}
 
 						if !round.End.IsCritical(currentDifficulty) {
-							return
-						}
-
-						info := noise.InfoFromPeer(p)
-						if info == nil {
-							return
-						}
-
-						voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
-						if !ok {
 							return
 						}
 
@@ -348,7 +415,7 @@ FINALIZE_ROUNDS:
 							return
 						}
 
-						voteChan <- vote{voter: voter, preferred: round}
+						voteChan <- vote{voter: voter, preferred: &round}
 					}
 
 					l.metrics.queryLatency.Time(f)
@@ -359,6 +426,18 @@ FINALIZE_ROUNDS:
 		}
 
 		for !l.finalizer.Decided() {
+			select {
+			case <-l.sync:
+				close(workerChan)
+				workerWG.Wait()
+				close(voteChan)
+				workerWG.Add(1)
+				workerWG.Wait()
+
+				return
+			default:
+			}
+
 			// Randomly sample a peer to query. If no peers are available, stop querying.
 
 			peers, err := SelectPeers(l.client.ClosestPeers(), 1)
@@ -445,6 +524,129 @@ FINALIZE_ROUNDS:
 	}
 }
 
+func (l *Ledger) SyncToLatestRound() {
+	type vote struct {
+		voter     *skademlia.ID
+		preferred *Round
+	}
+
+	for {
+		for {
+			conns, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
+			if err != nil {
+				select {
+				case <-time.After(1 * time.Second):
+				}
+
+				continue
+			}
+
+			votes := make([]vote, sys.SnowballK)
+			voters := make(map[AccountID]struct{}, sys.SnowballK)
+
+			var wg sync.WaitGroup
+			wg.Add(len(conns))
+
+			for i, conn := range conns {
+				i, client := i, NewWaveletClient(conn)
+
+				go func() {
+					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+
+					p := &peer.Peer{}
+
+					res, err := client.CheckOutOfSync(ctx, &OutOfSyncRequest{}, grpc.Peer(p))
+					if err != nil {
+						cancel()
+						wg.Done()
+						return
+					}
+					cancel()
+
+					round, err := UnmarshalRound(bytes.NewReader(res.Round))
+					if err != nil {
+						wg.Done()
+						return
+					}
+
+					if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
+						wg.Done()
+						return
+					}
+
+					info := noise.InfoFromPeer(p)
+					if info == nil {
+						wg.Done()
+						return
+					}
+
+					voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
+					if !ok {
+						wg.Done()
+						return
+					}
+
+					votes[i].voter = voter
+					votes[i].preferred = &round
+
+					voters[voter.PublicKey()] = struct{}{}
+
+					wg.Done()
+				}()
+			}
+
+			wg.Wait()
+
+			snapshot := l.accounts.Snapshot()
+
+			weights := computeStakeDistribution(snapshot, voters)
+			counts := make(map[RoundID]float64, len(votes))
+
+			var majority *Round
+
+			for _, vote := range votes {
+				if vote.preferred == nil {
+					continue
+				}
+
+				counts[vote.preferred.ID] += weights[vote.voter.PublicKey()]
+
+				if counts[vote.preferred.ID] >= sys.SnowballAlpha {
+					majority = vote.preferred
+					break
+				}
+			}
+
+			l.syncer.Tick(majority)
+
+			if l.syncer.Decided() {
+				break
+			}
+
+			l.syncTimer.Reset((5000 / (1 + time.Duration(l.syncer.Progress()))) * time.Second)
+
+			select {
+			case <-l.syncTimer.C:
+			}
+		}
+
+		close(l.sync)
+
+		if !l.syncTimer.Stop() {
+			<-l.syncTimer.C
+		}
+
+		l.consensus.Wait()
+		l.finalizer.Reset()
+
+		// Sync here
+
+		l.PerformConsensus()
+	}
+}
+
+// ApplyTransactionToSnapshot applies a transactions intended changes to a snapshot
+// of the ledgers current state.
 func (l *Ledger) ApplyTransactionToSnapshot(snapshot *avl.Tree, tx *Transaction) error {
 	ctx := NewTransactionContext(snapshot, tx)
 
@@ -480,7 +682,7 @@ type CollapseResults struct {
 // that are within the depth interval (start, end] where start is the interval starting point depth,
 // and end is the interval ending point depth.
 func (l *Ledger) CollapseTransactions(round uint64, start Transaction, end Transaction, logging bool) (CollapseResults, error) {
-	if results, exists := l.cachecollapse.load(end.Seed); exists {
+	if results, exists := l.cacheCollapse.load(end.Seed); exists {
 		return results.(CollapseResults), nil
 	}
 
@@ -570,7 +772,7 @@ func (l *Ledger) CollapseTransactions(round uint64, start Transaction, end Trans
 
 	results.ignoredCount -= results.appliedCount + results.rejectedCount
 
-	l.cachecollapse.put(end.Seed, results)
+	l.cacheCollapse.put(end.Seed, results)
 	return results, nil
 }
 
