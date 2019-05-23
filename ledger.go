@@ -101,6 +101,7 @@ func NewLedger(client *skademlia.Client) *Ledger {
 			sys.TagBatch:    ProcessBatchTransaction,
 		},
 
+		sync:      make(chan struct{}),
 		syncTimer: time.NewTimer(0),
 		syncVotes: make(chan vote, sys.SnowballK),
 
@@ -152,8 +153,6 @@ func (l *Ledger) Graph() *Graph {
 // missing transactions and incrementally finalizing intervals of transactions in
 // the ledgers graph.
 func (l *Ledger) PerformConsensus() {
-	l.sync = make(chan struct{})
-
 	go l.PullMissingTransactions()
 	go l.FinalizeRounds()
 }
@@ -491,7 +490,9 @@ FINALIZE_ROUNDS:
 }
 
 func (l *Ledger) SyncToLatestRound() {
-	go CollectVotes(l.accounts, l.syncer, l.syncVotes, nil)
+	voteWG := new(sync.WaitGroup)
+
+	go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
 
 	for {
 		for {
@@ -573,18 +574,32 @@ func (l *Ledger) SyncToLatestRound() {
 			}
 		}
 
+		// Wait for all consensus-related workers to close.
+
 		close(l.sync)
-
-		if !l.syncTimer.Stop() {
-			<-l.syncTimer.C
-		}
-
 		l.consensus.Wait()
+
+		// Wait for the vote processor worker to close.
+
+		voteWG.Add(1)
+		close(l.syncVotes)
+		voteWG.Wait()
+
+		// Reset all Snowball samplers.
+
 		l.finalizer.Reset()
 		l.syncer.Reset()
 
-		// Sync here
+		// TODO(kenta): Sync here.
 
+		// Spawn a new vote processor worker.
+
+		l.syncVotes = make(chan vote, sys.SnowballK)
+		go CollectVotes(l.accounts, l.syncer, l.syncVotes, nil)
+
+		// Respawn all consensus-related workers.
+
+		l.sync = make(chan struct{})
 		l.PerformConsensus()
 	}
 }
