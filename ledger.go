@@ -595,7 +595,7 @@ func (l *Ledger) SyncToLatestRound() {
 		// Spawn a new vote processor worker.
 
 		l.syncVotes = make(chan vote, sys.SnowballK)
-		go CollectVotes(l.accounts, l.syncer, l.syncVotes, nil)
+		go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
 
 		// Respawn all consensus-related workers.
 
@@ -804,6 +804,7 @@ func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Tran
 	}
 
 	// If there are no eligible rewardee candidates, do not reward anyone.
+
 	if len(candidates) == 0 || len(stakes) == 0 || totalStake == 0 {
 		return nil
 	}
