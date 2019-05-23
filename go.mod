@@ -20,7 +20,10 @@ require (
 	github.com/syndtr/goleveldb v1.0.0
 	github.com/valyala/fasthttp v1.3.0
 	github.com/valyala/fastjson v1.4.1
-	golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2
+	golang.org/x/crypto v0.0.0-20190513172903-22d7a77e9e5f
+	golang.org/x/net v0.0.0-20190522155817-f3200d17e092 // indirect
+	golang.org/x/sys v0.0.0-20190522044717-8097e1b27ff5 // indirect
+	golang.org/x/text v0.3.2 // indirect
 	google.golang.org/grpc v1.20.1
 	gopkg.in/urfave/cli.v1 v1.20.0
 )
