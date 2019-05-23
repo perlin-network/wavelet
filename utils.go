@@ -42,6 +42,13 @@ func ExportGraphDOT(round *Round, graph *Graph) {
 	for queue.Len() > 0 {
 		popped := queue.PopFront().(*Transaction)
 
+		dot.WriteByte('\n')
+		dot.WriteByte('\t')
+		dot.WriteString(strconv.Quote(hex.EncodeToString(popped.ID[:])))
+		dot.WriteString(" -> ")
+		dot.WriteByte('{')
+		dot.WriteByte(' ')
+
 		for _, parentID := range popped.ParentIDs {
 			if _, seen := visited[parentID]; seen {
 				continue
@@ -61,12 +68,11 @@ func ExportGraphDOT(round *Round, graph *Graph) {
 
 			queue.PushBack(parent)
 
-			dot.WriteByte('\n')
-			dot.WriteByte('\t')
-			dot.WriteString(strconv.Quote(hex.EncodeToString(popped.ID[:])))
-			dot.WriteString(" -> ")
 			dot.WriteString(strconv.Quote(hex.EncodeToString(parentID[:])))
+			dot.WriteByte(' ')
 		}
+
+		dot.WriteByte('}')
 	}
 
 	dot.WriteByte('\n')
