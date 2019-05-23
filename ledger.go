@@ -35,8 +35,10 @@ type Ledger struct {
 	processors map[byte]TransactionProcessor
 
 	consensus sync.WaitGroup
+
 	sync      chan struct{}
 	syncTimer *time.Timer
+	syncVotes chan vote
 
 	cacheCollapse *LRU
 	cacheChunks   *LRU
@@ -100,6 +102,7 @@ func NewLedger(client *skademlia.Client) *Ledger {
 		},
 
 		syncTimer: time.NewTimer(0),
+		syncVotes: make(chan vote, sys.SnowballK),
 
 		cacheCollapse: NewLRU(16),
 		cacheChunks:   NewLRU(1024), // In total, it will take up 1024 * 4MB.
@@ -249,11 +252,6 @@ func (l *Ledger) FinalizeRounds() {
 	l.consensus.Add(1)
 	defer l.consensus.Done()
 
-	type vote struct {
-		voter     *skademlia.ID
-		preferred *Round
-	}
-
 FINALIZE_ROUNDS:
 	for {
 		select {
@@ -300,52 +298,13 @@ FINALIZE_ROUNDS:
 			continue FINALIZE_ROUNDS
 		}
 
-		voteChan := make(chan vote)
 		workerChan := make(chan *grpc.ClientConn, 16)
 
 		var workerWG sync.WaitGroup
 		workerWG.Add(cap(workerChan))
 
-		go func() {
-			snapshot := l.accounts.Snapshot()
-
-			votes := make([]vote, 0, sys.SnowballK)
-			voters := make(map[AccountID]struct{}, sys.SnowballK)
-
-			for vote := range voteChan {
-				voters[vote.voter.PublicKey()] = struct{}{}
-				votes = append(votes, vote)
-
-				if len(votes) == cap(votes) {
-					weights := computeStakeDistribution(snapshot, voters)
-					counts := make(map[RoundID]float64, len(votes))
-
-					var majority *Round
-
-					for _, vote := range votes {
-						if vote.preferred == nil {
-							continue
-						}
-
-						counts[vote.preferred.ID] += weights[vote.voter.PublicKey()]
-
-						if counts[vote.preferred.ID] >= sys.SnowballAlpha {
-							majority = vote.preferred
-							break
-						}
-					}
-
-					if majority != nil {
-						l.finalizer.Tick(majority)
-					}
-
-					voters = make(map[AccountID]struct{}, sys.SnowballK)
-					votes = votes[:0]
-				}
-			}
-
-			workerWG.Done()
-		}()
+		voteChan := make(chan vote, sys.SnowballK)
+		go CollectVotes(l.accounts, l.finalizer, voteChan, &workerWG)
 
 		req := &QueryRequest{RoundIndex: current.Index + 1}
 
@@ -391,6 +350,13 @@ FINALIZE_ROUNDS:
 						}
 
 						if round.Index != current.Index+1 {
+							if round.Index > sys.SyncIfRoundsDifferBy+current.Index {
+								select {
+								case l.syncVotes <- vote{voter: voter, preferred: &round}:
+								default:
+								}
+							}
+
 							return
 						}
 
@@ -430,9 +396,9 @@ FINALIZE_ROUNDS:
 			case <-l.sync:
 				close(workerChan)
 				workerWG.Wait()
-				close(voteChan)
 				workerWG.Add(1)
-				workerWG.Wait()
+				close(voteChan)
+				workerWG.Wait() // Wait for vote processor worker to close.
 
 				return
 			default:
@@ -444,9 +410,9 @@ FINALIZE_ROUNDS:
 			if err != nil {
 				close(workerChan)
 				workerWG.Wait()
-				close(voteChan)
 				workerWG.Add(1)
-				workerWG.Wait()
+				close(voteChan)
+				workerWG.Wait() // Wait for vote processor worker to close.
 
 				continue FINALIZE_ROUNDS
 			}
@@ -457,8 +423,8 @@ FINALIZE_ROUNDS:
 
 		close(workerChan)
 		workerWG.Wait() // Wait for query workers to close.
-		close(voteChan)
 		workerWG.Add(1)
+		close(voteChan)
 		workerWG.Wait() // Wait for vote processor worker to close.
 
 		finalized := l.finalizer.Preferred()
@@ -525,10 +491,7 @@ FINALIZE_ROUNDS:
 }
 
 func (l *Ledger) SyncToLatestRound() {
-	type vote struct {
-		voter     *skademlia.ID
-		preferred *Round
-	}
+	go CollectVotes(l.accounts, l.syncer, l.syncVotes, nil)
 
 	for {
 		for {
@@ -541,14 +504,13 @@ func (l *Ledger) SyncToLatestRound() {
 				continue
 			}
 
-			votes := make([]vote, sys.SnowballK)
-			voters := make(map[AccountID]struct{}, sys.SnowballK)
+			current := l.rounds.Latest()
 
 			var wg sync.WaitGroup
 			wg.Add(len(conns))
 
-			for i, conn := range conns {
-				i, client := i, NewWaveletClient(conn)
+			for _, conn := range conns {
+				client := NewWaveletClient(conn)
 
 				go func() {
 					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -561,18 +523,8 @@ func (l *Ledger) SyncToLatestRound() {
 						wg.Done()
 						return
 					}
+
 					cancel()
-
-					round, err := UnmarshalRound(bytes.NewReader(res.Round))
-					if err != nil {
-						wg.Done()
-						return
-					}
-
-					if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
-						wg.Done()
-						return
-					}
 
 					info := noise.InfoFromPeer(p)
 					if info == nil {
@@ -586,38 +538,29 @@ func (l *Ledger) SyncToLatestRound() {
 						return
 					}
 
-					votes[i].voter = voter
-					votes[i].preferred = &round
+					round, err := UnmarshalRound(bytes.NewReader(res.Round))
+					if err != nil {
+						wg.Done()
+						return
+					}
 
-					voters[voter.PublicKey()] = struct{}{}
+					if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
+						wg.Done()
+						return
+					}
+
+					if round.Index < sys.SyncIfRoundsDifferBy+current.Index {
+						wg.Done()
+						return
+					}
+
+					l.syncVotes <- vote{voter: voter, preferred: &round}
 
 					wg.Done()
 				}()
 			}
 
 			wg.Wait()
-
-			snapshot := l.accounts.Snapshot()
-
-			weights := computeStakeDistribution(snapshot, voters)
-			counts := make(map[RoundID]float64, len(votes))
-
-			var majority *Round
-
-			for _, vote := range votes {
-				if vote.preferred == nil {
-					continue
-				}
-
-				counts[vote.preferred.ID] += weights[vote.voter.PublicKey()]
-
-				if counts[vote.preferred.ID] >= sys.SnowballAlpha {
-					majority = vote.preferred
-					break
-				}
-			}
-
-			l.syncer.Tick(majority)
 
 			if l.syncer.Decided() {
 				break
@@ -638,6 +581,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 		l.consensus.Wait()
 		l.finalizer.Reset()
+		l.syncer.Reset()
 
 		// Sync here
 
