@@ -253,6 +253,7 @@ func (n *node) delete(t *Tree, key []byte) (*node, bool) {
 			} else if deleted {
 				return n.update(t, func(node *node) {
 					node.left = left.id
+					node.leftObj = left
 					node.sync(t, left, right)
 				}).rebalance(t), deleted
 			} else {
@@ -266,6 +267,7 @@ func (n *node) delete(t *Tree, key []byte) (*node, bool) {
 			} else if deleted {
 				return n.update(t, func(node *node) {
 					node.right = right.id
+					node.rightObj = right
 					node.sync(t, left, right)
 				}).rebalance(t), deleted
 			} else {

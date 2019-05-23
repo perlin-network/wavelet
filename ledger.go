@@ -32,6 +32,8 @@ type Ledger struct {
 	finalizer *Snowball
 
 	processors map[byte]TransactionProcessor
+
+	cachecollapse *LRU
 }
 
 func NewLedger(client *skademlia.Client) *Ledger {
@@ -88,6 +90,8 @@ func NewLedger(client *skademlia.Client) *Ledger {
 			sys.TagStake:    ProcessStakeTransaction,
 			sys.TagBatch:    ProcessBatchTransaction,
 		},
+
+		cachecollapse: newLRU(16),
 	}
 
 	go ledger.PullMissingTransactions()
@@ -419,6 +423,8 @@ FINALIZE_ROUNDS:
 			fmt.Printf("Failed to commit collaped state to our database: %v\n", err)
 		}
 
+		l.metrics.acceptedTX.Mark(int64(results.appliedCount))
+
 		logger := log.Consensus("round_end")
 		logger.Info().
 			Int("num_applied_tx", results.appliedCount).
@@ -472,6 +478,10 @@ type CollapseResults struct {
 // that are within the depth interval (start, end] where start is the interval starting point depth,
 // and end is the interval ending point depth.
 func (l *Ledger) CollapseTransactions(round uint64, start Transaction, end Transaction, logging bool) (CollapseResults, error) {
+	if results, exists := l.cachecollapse.load(end.Seed); exists {
+		return results.(CollapseResults), nil
+	}
+
 	var results CollapseResults
 
 	results.snapshot = l.accounts.Snapshot()
@@ -547,10 +557,6 @@ func (l *Ledger) CollapseTransactions(round uint64, start Transaction, end Trans
 		nonce, _ := ReadAccountNonce(results.snapshot, popped.Creator)
 		WriteAccountNonce(results.snapshot, popped.Creator, nonce+1)
 
-		if logging {
-			l.metrics.acceptedTX.Mark(int64(popped.LogicalUnits()))
-		}
-
 		results.appliedCount++
 	}
 
@@ -559,6 +565,7 @@ func (l *Ledger) CollapseTransactions(round uint64, start Transaction, end Trans
 	results.ignoredCount += len(l.graph.GetTransactionsByDepth(&startDepth, &endDepth))
 	results.ignoredCount -= results.appliedCount + results.rejectedCount
 
+	l.cachecollapse.put(end.Seed, results)
 	return results, nil
 }
 
