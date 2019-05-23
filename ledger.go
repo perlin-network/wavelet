@@ -86,6 +86,7 @@ func NewLedger(client *skademlia.Client) *Ledger {
 			sys.TagTransfer: ProcessTransferTransaction,
 			sys.TagContract: ProcessContractTransaction,
 			sys.TagStake:    ProcessStakeTransaction,
+			sys.TagBatch:    ProcessBatchTransaction,
 		},
 	}
 

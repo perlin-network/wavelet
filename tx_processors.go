@@ -156,3 +156,54 @@ func ProcessContractTransaction(ctx *TransactionContext) error {
 
 	return nil
 }
+
+func ProcessBatchTransaction(ctx *TransactionContext) error {
+	tx := ctx.Transaction()
+
+	if len(tx.Payload) == 0 {
+		return errors.New("batch: payload must not be empty for batch transaction")
+	}
+
+	reader := bytes.NewReader(tx.Payload)
+
+	var buf [4]byte
+
+	if _, err := io.ReadFull(reader, buf[:1]); err != nil {
+		return errors.Wrap(err, "batch: length not specified in batch transaction")
+	}
+
+	size := int(buf[0])
+
+	for i := 0; i < size; i++ {
+		if _, err := io.ReadFull(reader, buf[:1]); err != nil {
+			return errors.Wrap(err, "batch: could not read tag")
+		}
+
+		tag := buf[0]
+
+		if _, err := io.ReadFull(reader, buf[:4]); err != nil {
+			return errors.Wrap(err, "batch: could not read payload size")
+		}
+
+		size := binary.BigEndian.Uint32(buf[:4])
+
+		payload := make([]byte, size)
+
+		if _, err := io.ReadFull(reader, payload[:]); err != nil {
+			return errors.Wrap(err, "batch: could not read payload")
+		}
+
+		var tx Transaction
+
+		tx.ID = tx.ID
+		tx.Sender = tx.Sender
+		tx.Creator = tx.Creator
+		tx.Nonce = tx.Nonce
+		tx.Tag = tag
+		tx.Payload = payload
+
+		ctx.SendTransaction(&tx)
+	}
+
+	return nil
+}

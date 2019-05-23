@@ -47,7 +47,7 @@ type sortBySeed Transaction
 
 func (a *sortBySeed) Less(b btree.Item) bool {
 	if a.Depth == b.(*sortBySeed).Depth {
-		return a.SeedLen < b.(*sortBySeed).SeedLen
+		return a.SeedLen > b.(*sortBySeed).SeedLen
 	}
 
 	return a.Depth < b.(*sortBySeed).Depth
