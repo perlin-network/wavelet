@@ -23,7 +23,7 @@ type objectInfo struct {
 func newLRU(size int) *LRU {
 	return &LRU{
 		size:     size,
-		elements: make(map[[blake2b.Size256]byte]*list.Element),
+		elements: make(map[[blake2b.Size256]byte]*list.Element, size),
 		access:   list.New(),
 	}
 }

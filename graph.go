@@ -295,7 +295,7 @@ func (g *Graph) FindEligibleParents() []*Transaction {
 
 		eligibleParents = append(eligibleParents, (*Transaction)(eligibleParent))
 
-		return len(eligibleParents) == sys.MaxParentsPerTransaction
+		return len(eligibleParents) != sys.MaxParentsPerTransaction
 	})
 
 	for _, i := range pending {

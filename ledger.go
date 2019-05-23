@@ -535,7 +535,7 @@ func (l *Ledger) CollapseTransactions(round uint64, start Transaction, end Trans
 				logEventTX("failed", popped, err)
 			}
 
-			results.rejectedCount++
+			results.rejectedCount += popped.LogicalUnits()
 			continue
 		}
 
@@ -544,7 +544,7 @@ func (l *Ledger) CollapseTransactions(round uint64, start Transaction, end Trans
 				logEventTX("failed", popped, err)
 			}
 
-			results.rejectedCount++
+			results.rejectedCount += popped.LogicalUnits()
 			continue
 		}
 
@@ -557,12 +557,15 @@ func (l *Ledger) CollapseTransactions(round uint64, start Transaction, end Trans
 		nonce, _ := ReadAccountNonce(results.snapshot, popped.Creator)
 		WriteAccountNonce(results.snapshot, popped.Creator, nonce+1)
 
-		results.appliedCount++
+		results.appliedCount += popped.LogicalUnits()
 	}
 
 	startDepth, endDepth := start.Depth+1, end.Depth
 
-	results.ignoredCount += len(l.graph.GetTransactionsByDepth(&startDepth, &endDepth))
+	for _, tx := range l.graph.GetTransactionsByDepth(&startDepth, &endDepth) {
+		results.ignoredCount += tx.LogicalUnits()
+	}
+
 	results.ignoredCount -= results.appliedCount + results.rejectedCount
 
 	l.cachecollapse.put(end.Seed, results)
