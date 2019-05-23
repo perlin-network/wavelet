@@ -440,6 +440,8 @@ FINALIZE_ROUNDS:
 			Hex("old_merkle_root", current.Merkle[:]).
 			Uint64("round_depth", finalized.End.Depth-finalized.Start.Depth).
 			Msg("Finalized consensus round, and initialized a new round.")
+
+		//go ExportGraphDOT(finalized, l.graph)
 	}
 }
 
