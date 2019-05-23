@@ -1,196 +1,374 @@
 package wavelet
 
 import (
-	"bytes"
 	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/wavelet/common"
-	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
-	"golang.org/x/crypto/blake2b"
 	"math/rand"
-	"os"
-	"sort"
 	"testing"
-	"testing/quick"
 )
 
-func TestCorrectGraphState(t *testing.T) {
-	g := NewGraph(nil)
+func TestNewGraph(t *testing.T) {
+	t.Parallel()
 
-	tx1 := randomTX(t, common.ZeroTransactionID)
-	tx1.Depth = 1
-	tx1.Confidence = 1
-
-	tx2 := randomTX(t, tx1.ID)
-	tx2.Depth = 2
-	tx2.Confidence = 2
-
-	tx3 := randomTX(t, tx1.ID, tx2.ID)
-	tx3.Depth = 3
-	tx3.Confidence = 4
-
-	tx4 := randomTX(t, tx3.ID)
-	tx4.Depth = 4
-	tx4.Confidence = 5
-
-	assert.NoError(t, g.AddTransaction(tx1))
-	assert.NoError(t, g.AddTransaction(tx2))
-	assert.NoError(t, g.AddTransaction(tx3))
-	assert.NoError(t, g.AddTransaction(tx4))
-
-	assert.Len(t, g.transactions, 5)
-	assert.Len(t, g.children, 4)
-	assert.Len(t, g.incomplete, 0)
-	assert.Len(t, g.missing, 0)
-
-	badTX1 := randomTX(t)
-	badTX2 := randomTX(t)
-
-	badTX1.ParentIDs = []common.TransactionID{tx4.ID}
-	badTX1.Depth = 5
-	badTX1.Confidence = 6
-
-	badTX2.ParentIDs = []common.TransactionID{badTX1.ID}
-	badTX2.Depth = 6
-	badTX2.Confidence = 7
-
-	// Add incomplete transaction with one missing parent.
-	assert.Error(t, g.AddTransaction(badTX2))
-	assert.Len(t, g.transactions, 6)
-	assert.Len(t, g.children, 5)
-	assert.Len(t, g.incomplete, 1)
-	assert.Len(t, g.missing, 1)
-
-	// Add transaction to make last transaction inserted complete, such that there
-	// is now zero missing parents.
-	assert.NoError(t, g.AddTransaction(badTX1))
-	assert.Len(t, g.transactions, 7)
-	assert.Len(t, g.children, 6)
-	assert.Len(t, g.incomplete, 0)
-	assert.Len(t, g.missing, 0)
-}
-
-func randomTX(t testing.TB, parents ...common.TransactionID) Transaction {
-	t.Helper()
-
-	var tx Transaction
-
-	// Set transaction ID.
-	_, err := rand.Read(tx.ID[:])
-	assert.NoError(t, err)
-
-	// Set transaction sender.
-	_, err = rand.Read(tx.Sender[:])
-	assert.NoError(t, err)
-
-	// Set transaction creator.
-	_, err = rand.Read(tx.Creator[:])
-	assert.NoError(t, err)
-
-	// Set transaction parents.
-	tx.ParentIDs = parents
-
-	sort.Slice(tx.ParentIDs, func(i, j int) bool {
-		return bytes.Compare(tx.ParentIDs[i][:], tx.ParentIDs[j][:]) < 0
-	})
-
-	// Set transaction seed.
-	var buf bytes.Buffer
-	_, _ = buf.Write(tx.Sender[:])
-	for _, parentID := range tx.ParentIDs {
-		_, _ = buf.Write(parentID[:])
-	}
-	seed := blake2b.Sum256(buf.Bytes())
-	tx.SeedLen = byte(prefixLen(seed[:]))
-
-	return tx
-}
-
-func TestAddInRandomOrder(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	f := func(n int) bool {
-		n = (n + 1) % 1024
+	tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
 
-		ledger := NewLedger(keys, store.NewInmem(), nil)
+	graph := NewGraph(WithRoot(tx))
+	eligible := graph.FindEligibleParents()
 
-		for i := 0; i < n; i++ {
-			tx := NewTransaction(keys, sys.TagNop, nil)
-			tx, err = ledger.attachSenderToTransaction(tx)
-			assert.NoError(t, err)
+	assert.Len(t, eligible, 1)
+	assert.Equal(t, tx, *eligible[0])
 
-			assert.NoError(t, ledger.graph.AddTransaction(tx))
-		}
+	tx2 := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), eligible...)
 
-		var transactions []Transaction
+	assert.NoError(t, graph.AddTransaction(tx2))
+	assert.NotNil(t, graph.FindTransaction(tx2.ID))
 
-		for _, tx := range ledger.graph.transactions {
-			transactions = append(transactions, *tx)
-		}
+	assert.Equal(t, graph.AddTransaction(tx2), ErrAlreadyExists)
 
-		if !assert.Len(t, ledger.graph.transactions, len(transactions)) {
-			return false
-		}
+	eligible = graph.FindEligibleParents()
 
-		if !assert.Len(t, ledger.graph.incomplete, 0) {
-			return false
-		}
+	assert.Len(t, eligible, 1)
+	assert.NotEqual(t, tx, *eligible[0])
 
-		if !assert.Len(t, ledger.graph.missing, 0) {
-			return false
-		}
-
-		for i, j := range rand.Perm(len(transactions)) {
-			transactions[i], transactions[j] = transactions[j], transactions[i]
-		}
-
-		ledger = NewLedger(keys, store.NewInmem(), nil)
-
-		for _, tx := range transactions {
-			_ = ledger.graph.AddTransaction(tx)
-		}
-
-		if !assert.Len(t, ledger.graph.transactions, len(transactions)) {
-			return false
-		}
-
-		if !assert.Len(t, ledger.graph.incomplete, 0) {
-			return false
-		}
-
-		if !assert.Len(t, ledger.graph.missing, 0) {
-			return false
-		}
-
-		return true
-	}
-
-	assert.NoError(t, quick.Check(f, &quick.Config{MaxCount: 100}))
+	assert.Equal(t, graph.Height(), uint64(2))
 }
 
-func GetKV(kv string, path string) (store.KV, func()) {
-	if kv == "inmem" {
-		inmemdb := store.NewInmem()
-		return inmemdb, func() {
-			_ = inmemdb.Close()
+func TestGraphFuzz(t *testing.T) {
+	t.Parallel()
+
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	graph := NewGraph(WithRoot(root))
+
+	count := 1
+
+	for i := 0; i < 500; i++ {
+		var depth []Transaction
+
+		for i := 0; i < rand.Intn(sys.MaxParentsPerTransaction)+1; i++ {
+			var payload [50]byte
+
+			_, err = rand.Read(payload[:])
+			assert.NoError(t, err)
+
+			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...))
+		}
+
+		for _, tx := range depth {
+			assert.NoError(t, graph.AddTransaction(tx))
+		}
+
+		count += len(depth)
+	}
+
+	assert.Len(t, graph.GetTransactionsByDepth(nil, nil), count)
+	assert.Len(t, graph.GetTransactionsByDepth(&graph.depthIndex[1][0].Depth, nil), count-1)
+
+	assert.Equal(t, graph.Len(), count)
+	assert.Len(t, graph.transactions, count)
+	assert.Len(t, graph.incomplete, 0)
+	assert.Len(t, graph.Missing(), 0)
+
+	var transactions []Transaction
+
+	for _, tx := range graph.transactions {
+		if tx.ID == root.ID {
+			continue
+		}
+
+		transactions = append(transactions, *tx)
+	}
+
+	assert.Len(t, transactions, count-1)
+
+	graph = NewGraph(WithRoot(root))
+
+	rand.Shuffle(len(transactions), func(i, j int) {
+		transactions[i], transactions[j] = transactions[j], transactions[i]
+	})
+
+	for _, tx := range transactions {
+		graph.AddTransaction(tx)
+	}
+
+	assert.Len(t, graph.transactions, count)
+	assert.Len(t, graph.incomplete, 0)
+	assert.Len(t, graph.Missing(), 0)
+
+	// Assert that the graph is empty if we delete all of the graphs
+	// roots progeny.
+
+	graph.deleteProgeny(root.ID)
+
+	assert.Len(t, graph.transactions, 0)
+	assert.Len(t, graph.incomplete, 0)
+	assert.Len(t, graph.Missing(), 0)
+}
+
+func TestGraphPruneBelowDepth(t *testing.T) {
+	t.Parallel()
+
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	graph := NewGraph(WithRoot(root))
+
+	count := 1
+
+	pruneDepth := uint64(0)
+
+	for i := 0; i < 500; i++ {
+		if i == 500/2 {
+			pruneDepth = graph.height
+		}
+
+		var depth []Transaction
+
+		for i := 0; i < rand.Intn(sys.MaxParentsPerTransaction)+1; i++ {
+			var payload [50]byte
+
+			_, err = rand.Read(payload[:])
+			assert.NoError(t, err)
+
+			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...))
+		}
+
+		for _, tx := range depth {
+			assert.NoError(t, graph.AddTransaction(tx))
+		}
+
+		count += len(depth)
+	}
+
+	pruneCount := graph.PruneBelowDepth(pruneDepth)
+
+	assert.Len(t, graph.transactions, count-pruneCount)
+	assert.Len(t, graph.incomplete, 0)
+	assert.Len(t, graph.missing, 0)
+
+	for _, tx := range graph.transactions {
+		assert.False(t, tx.Depth <= pruneDepth)
+	}
+
+	// Assert that pruning removes missing transactions below a certain depth.
+
+	for depth := 1; depth <= 500; depth++ {
+		var id TransactionID
+
+		_, err = rand.Read(id[:])
+		assert.NoError(t, err)
+
+		graph.MarkTransactionAsMissing(id, uint64(depth))
+	}
+
+	assert.Len(t, graph.missing, 500)
+	graph.PruneBelowDepth(250)
+	assert.Len(t, graph.missing, 250)
+	graph.PruneBelowDepth(500)
+	assert.Len(t, graph.missing, 0)
+}
+
+func TestGraphUpdateRoot(t *testing.T) {
+	t.Parallel()
+
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	graph := NewGraph(WithRoot(root))
+
+	for i := 0; i < 50; i++ {
+		var depth []Transaction
+
+		for i := 0; i < rand.Intn(sys.MaxParentsPerTransaction)+1; i++ {
+			var payload [50]byte
+
+			_, err = rand.Read(payload[:])
+			assert.NoError(t, err)
+
+			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...))
+		}
+
+		for _, tx := range depth {
+			assert.NoError(t, graph.AddTransaction(tx))
 		}
 	}
-	if kv == "level" {
-		// Remove existing db
-		_ = os.RemoveAll(path)
 
-		leveldb, err := store.NewLevelDB(path)
-		if err != nil {
-			panic("failed to create LevelDB: " + err.Error())
+	// Assert that updating the root removes missing transactions and
+	// their children below a certain depth.
+
+	depthLimit := graph.height - 1 - sys.MaxDepthDiff
+
+	for depth := depthLimit - 30; depth < depthLimit+30; depth++ {
+		var id TransactionID
+
+		_, err = rand.Read(id[:])
+		assert.NoError(t, err)
+
+		graph.MarkTransactionAsMissing(id, uint64(depth))
+	}
+
+	numChildren := len(graph.children)
+
+	// Update the root to a transaction at the top of the graph.
+	graph.UpdateRoot((*graph.depthIndex[graph.height-1][0]).Depth)
+
+	assert.Len(t, graph.missing, 30)
+	assert.Len(t, graph.children, numChildren)
+
+	// Create a transaction that is at an ineligible depth exceeding DEPTH_DIFF.
+	tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.depthIndex[(graph.height-1)-(sys.MaxDepthDiff+2)][0])
+
+	// An error should occur.
+	assert.Error(t, graph.AddTransaction(tx))
+
+	// Create a transaction at an eligible depth.
+	tx = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
+
+	// No error should occur.
+	assert.NoError(t, graph.AddTransaction(tx))
+}
+
+func TestGraphValidateTransactionParents(t *testing.T) {
+	t.Parallel()
+
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	graph := NewGraph(WithRoot(root))
+
+	for i := 0; i < 50; i++ {
+		var depth []Transaction
+
+		for i := 0; i < rand.Intn(sys.MaxParentsPerTransaction)+1; i++ {
+			var payload [50]byte
+
+			_, err = rand.Read(payload[:])
+			assert.NoError(t, err)
+
+			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...))
 		}
 
-		return leveldb, func() {
-			_ = leveldb.Close()
-			_ = os.RemoveAll(path)
+		for _, tx := range depth {
+			assert.NoError(t, graph.AddTransaction(tx))
 		}
 	}
 
-	panic("unknown kv " + kv)
+	tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.depthIndex[(graph.height-1)-(sys.MaxDepthDiff+2)][0])
+
+	tx.Depth += sys.MaxDepthDiff
+	assert.True(t, errors.Cause(graph.validateTransactionParents(&tx)) == ErrDepthLimitExceeded)
+
+	tx.Depth--
+	assert.True(t, errors.Cause(graph.validateTransactionParents(&tx)) != ErrDepthLimitExceeded)
+}
+
+func TestGraphFindEligibleCritical(t *testing.T) {
+	t.Parallel()
+
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	graph := NewGraph(WithRoot(root))
+
+	// Go through a range of difficulties, and check if we can always
+	// find the eligible critical transaction.
+
+	for difficulty := byte(2); difficulty < 8; difficulty++ {
+		eligible := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
+
+		for {
+			if eligible.IsCritical(difficulty) {
+				break
+			}
+
+			sender, err := skademlia.NewKeys(1, 1)
+			assert.NoError(t, err)
+
+			eligible = AttachSenderToTransaction(sender, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
+		}
+
+		assert.NoError(t, graph.AddTransaction(eligible))
+		assert.Equal(t, *graph.FindEligibleCritical(difficulty), eligible)
+
+		root = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+		graph = NewGraph(WithRoot(root))
+	}
+}
+
+func TestGraphFindEligibleCriticalInBigGraph(t *testing.T) {
+	t.Parallel()
+
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	graph := NewGraph(WithRoot(root))
+
+	difficulty := byte(8)
+
+	var eligible Transaction
+
+	for i := 0; i < 500; i++ {
+		if i == 500/3 { // Prune away any eligible critical transactions a third through the graph.
+			graph.UpdateRoot(graph.height - 1)
+		}
+
+		if i == 500/2 { // Create an eligible critical transaction in the middle of the graph.
+			eligible = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
+
+			for {
+				if eligible.IsCritical(difficulty) {
+					break
+				}
+
+				sender, err := skademlia.NewKeys(1, 1)
+				assert.NoError(t, err)
+
+				eligible = AttachSenderToTransaction(sender, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
+			}
+
+			assert.NoError(t, graph.AddTransaction(eligible))
+		}
+
+		var depth []Transaction
+
+		for i := 0; i < rand.Intn(sys.MaxParentsPerTransaction)+1; i++ {
+			var payload [50]byte
+
+			_, err = rand.Read(payload[:])
+			assert.NoError(t, err)
+
+			tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...)
+
+			for { // Be sure we never create a transaction with the difficulty we set.
+				if !tx.IsCritical(difficulty) {
+					break
+				}
+
+				sender, err := skademlia.NewKeys(1, 1)
+				assert.NoError(t, err)
+
+				tx = AttachSenderToTransaction(sender, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...)
+			}
+
+			depth = append(depth, tx)
+		}
+
+		for _, tx := range depth {
+			assert.NoError(t, graph.AddTransaction(tx))
+		}
+	}
+
+	assert.Equal(t, *graph.FindEligibleCritical(difficulty), eligible)
 }

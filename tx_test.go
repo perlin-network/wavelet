@@ -1,20 +1,36 @@
 package wavelet
 
 import (
+	"bytes"
+	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
-	"math"
 	"testing"
 )
 
-func TestTransaction_ExpectedDifficulty(t *testing.T) {
-	const MinDifficulty = byte(8)
+func BenchmarkNewTX(b *testing.B) {
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(b, err)
 
-	assert.Equal(t, byte(9), Transaction{Depth: 54638, Confidence: 196398}.ExpectedDifficulty(MinDifficulty, 1))
+	b.ResetTimer()
+	b.ReportAllocs()
 
-	// Genesis transaction.
-	assert.Equal(t, MinDifficulty, Transaction{Depth: 0, Confidence: 0}.ExpectedDifficulty(MinDifficulty, 1))
+	for i := 0; i < b.N; i++ {
+		AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	}
+}
 
-	// Test upper bounds.
-	assert.Equal(t, byte(34), Transaction{Depth: 19638, Confidence: math.MaxUint64}.ExpectedDifficulty(MinDifficulty, 1))
-	assert.Equal(t, MinDifficulty, Transaction{Depth: math.MaxUint64, Confidence: 19638}.ExpectedDifficulty(MinDifficulty, 1))
+func BenchmarkMarshalUnmarshalTX(b *testing.B) {
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(b, err)
+
+	tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		_, err := UnmarshalTransaction(bytes.NewReader(tx.Marshal()))
+		assert.NoError(b, err)
+	}
 }

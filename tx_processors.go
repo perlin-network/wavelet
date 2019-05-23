@@ -3,7 +3,6 @@ package wavelet
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -19,7 +18,7 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 
 	r := bytes.NewReader(tx.Payload)
 
-	var recipient common.AccountID
+	var recipient AccountID
 
 	if _, err := io.ReadFull(r, recipient[:]); err != nil {
 		return errors.Wrap(err, "transfer: failed to decode recipient")
@@ -89,8 +88,9 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 
 	ctx.WriteAccountBalance(tx.Creator, creatorBalance-amount-gas)
 
-	logger := log.Contract(recipient, "gas")
+	logger := log.Contracts("gas")
 	logger.Info().
+		Hex("contract_id", recipient[:]).
 		Uint64("gas", gas).
 		Hex("creator_id", tx.Creator[:]).
 		Hex("contract_id", recipient[:]).

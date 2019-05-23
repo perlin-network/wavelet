@@ -3,27 +3,40 @@ package wavelet
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/perlin-network/wavelet/common"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"io"
 	"math"
 )
 
-// Nodes negotiate over which round to accept through Snowball. A round comprises of
-// a Merkle root of the ledgers state proposed by the root transaction, alongside a
-// single root transaction. Rounds are denoted by their ID, which is represented by
-// BLAKE2b(merkle || root transactions content).
+// Round represents a network-wide finalized non-overlapping graph depth interval that
+// is denoted by both a critical starting point transaction, and a critical ending point
+// transaction. They contain the expected Merkle root of the ledgers state. They are
+// denoted by either their index or ID, which is the checksum of applying BLAKE2b over
+// its contents.
 type Round struct {
-	ID     common.RoundID
+	ID     RoundID
 	Index  uint64
-	Merkle common.MerkleNodeID
+	Merkle MerkleNodeID
 
-	NumAncestors   uint64
-	LastDifficulty byte
+	Applied uint64
 
 	Start Transaction
 	End   Transaction
+}
+
+func NewRound(index uint64, merkle MerkleNodeID, applied uint64, start, end Transaction) Round {
+	r := Round{
+		Index:   index,
+		Merkle:  merkle,
+		Applied: applied,
+		Start:   start,
+		End:     end,
+	}
+
+	r.ID = blake2b.Sum256(r.Marshal())
+
+	return r
 }
 
 func (r Round) Marshal() []byte {
@@ -36,10 +49,9 @@ func (r Round) Marshal() []byte {
 
 	w.Write(r.Merkle[:])
 
-	binary.BigEndian.PutUint64(buf[:], r.NumAncestors)
+	binary.BigEndian.PutUint64(buf[:], r.Applied)
 	w.Write(buf[:8])
 
-	w.WriteByte(r.LastDifficulty)
 	w.Write(r.Start.Marshal())
 	w.Write(r.End.Marshal())
 
@@ -47,20 +59,18 @@ func (r Round) Marshal() []byte {
 }
 
 func (r Round) ExpectedDifficulty(min byte, scale float64) byte {
-	if r.End.Depth == 0 || r.NumAncestors == 0 {
+	if r.End.Depth == 0 || r.Applied == 0 {
 		return min
 	}
 
-	maxs := r.NumAncestors
+	maxs := r.Applied
 	mins := r.End.Depth - r.Start.Depth
 
 	if mins > maxs {
 		maxs, mins = mins, maxs
 	}
 
-	difficulty := byte(float64(min) + scale*math.Log2(float64(maxs)/float64(mins)))
-
-	return (r.LastDifficulty + difficulty) / 2
+	return byte(float64(min) + scale*math.Log2(float64(maxs)/float64(mins)))
 }
 
 func UnmarshalRound(r io.Reader) (round Round, err error) {
@@ -83,14 +93,7 @@ func UnmarshalRound(r io.Reader) (round Round, err error) {
 		return
 	}
 
-	round.NumAncestors = binary.BigEndian.Uint64(buf[:8])
-
-	if _, err = io.ReadFull(r, buf[:1]); err != nil {
-		err = errors.Wrap(err, "failed to decode last difficulty")
-		return
-	}
-
-	round.LastDifficulty = buf[0]
+	round.Applied = binary.BigEndian.Uint64(buf[:8])
 
 	if round.Start, err = UnmarshalTransaction(r); err != nil {
 		err = errors.Wrap(err, "failed to decode round start transaction")
@@ -105,19 +108,4 @@ func UnmarshalRound(r io.Reader) (round Round, err error) {
 	round.ID = blake2b.Sum256(round.Marshal())
 
 	return
-}
-
-func NewRound(index uint64, merkle common.MerkleNodeID, numAncestors uint64, lastDifficulty byte, start, end Transaction) Round {
-	r := Round{
-		Index:          index,
-		Merkle:         merkle,
-		NumAncestors:   numAncestors,
-		LastDifficulty: lastDifficulty,
-		Start:          start,
-		End:            end,
-	}
-
-	r.ID = blake2b.Sum256(r.Marshal())
-
-	return r
 }

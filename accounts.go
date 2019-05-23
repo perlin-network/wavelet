@@ -12,20 +12,21 @@ import (
 )
 
 type Accounts struct {
+	sync.RWMutex
+
 	kv   store.KV
 	tree *avl.Tree
 
-	mu sync.RWMutex
-
-	gcProfile *avl.GCProfile
+	profile *avl.GCProfile
 }
 
-func newAccounts(kv store.KV) *Accounts {
+func NewAccounts(kv store.KV) *Accounts {
 	return &Accounts{kv: kv, tree: avl.New(kv)}
 }
 
-// Only one instance of GC worker can run at any time.
-func (a *Accounts) gcLoop(ctx context.Context) {
+// GC periodically garbage collects every 5 seconds. Only one
+// instance of GC worker can run at any time.
+func (a *Accounts) GC(ctx context.Context) {
 	timer := time.NewTicker(5 * time.Second)
 	defer timer.Stop()
 
@@ -34,7 +35,7 @@ func (a *Accounts) gcLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-timer.C:
-			p := atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&a.gcProfile)), nil)
+			p := atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&a.profile)), nil)
 			if p != nil {
 				profile := (*avl.GCProfile)(p)
 				_, _ = profile.PerformFullGC()
@@ -43,16 +44,17 @@ func (a *Accounts) gcLoop(ctx context.Context) {
 	}
 }
 
-func (a *Accounts) snapshot() *avl.Tree {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
+func (a *Accounts) Snapshot() *avl.Tree {
+	a.RLock()
+	snapshot := a.tree.Snapshot()
+	a.RUnlock()
 
-	return a.tree.Snapshot()
+	return snapshot
 }
 
-func (a *Accounts) commit(new *avl.Tree) error {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+func (a *Accounts) Commit(new *avl.Tree) error {
+	a.Lock()
+	defer a.Unlock()
 
 	if new != nil {
 		a.tree = new
@@ -65,7 +67,7 @@ func (a *Accounts) commit(new *avl.Tree) error {
 
 	profile := a.tree.GetGCProfile(0)
 	if profile != nil {
-		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&a.gcProfile)), unsafe.Pointer(profile))
+		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&a.profile)), unsafe.Pointer(profile))
 	}
 	return nil
 }

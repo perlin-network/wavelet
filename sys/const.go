@@ -10,17 +10,18 @@ const (
 	TagTransfer
 	TagContract
 	TagStake
+	TagBatch
 )
 
 var (
 	// S/Kademlia overlay network parameters.
-	SKademliaC1 = 16
-	SKademliaC2 = 16
+	SKademliaC1 = 1
+	SKademliaC2 = 1
 
 	// Snowball consensus protocol parameters.
-	SnowballK     = 2
+	SnowballK     = 1
 	SnowballAlpha = 0.8
-	SnowballBeta  = 150
+	SnowballBeta  = 15 * SnowballK // (o_o)
 
 	// Timeout for querying a transaction to K peers.
 	QueryTimeout = 1 * time.Second
@@ -30,7 +31,7 @@ var (
 
 	// Max graph depth difference to search for eligible transaction
 	// parents from for our node.
-	MaxDepthDiff uint64 = 5
+	MaxDepthDiff uint64 = 10
 
 	// Max number of parents referencable by a transaction.
 	MaxParentsPerTransaction = 32
@@ -46,6 +47,8 @@ var (
 
 	// Minimum amount of stake to start being able to reap validator rewards.
 	MinimumStake uint64 = 100
+
+	PruningLimit = uint8(30)
 
 	GasTable = map[string]uint64{
 		"nop":                 1,
