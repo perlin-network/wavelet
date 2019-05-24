@@ -830,17 +830,14 @@ func (l *Ledger) SyncToLatestRound() {
 
 						chunk := res.GetChunk()
 						if chunk == nil {
-							lock.Unlock()
 							continue
 						}
 
 						if len(chunk) > sys.SyncChunkSize {
-							lock.Unlock()
 							continue
 						}
 
 						if blake2b.Sum256(chunk[:]) != src.checksum {
-							lock.Unlock()
 							continue
 						}
 
