@@ -100,6 +100,18 @@ func NewLedger(client *skademlia.Client) *Ledger {
 	return ledger
 }
 
+func (l *Ledger) LastRound() *Round {
+	return l.rounds.Latest()
+}
+
+func (l *Ledger) Height() uint64 {
+	return l.graph.Height()
+}
+
+func (l *Ledger) Snapshot() *avl.Tree {
+	return l.accounts.Snapshot()
+}
+
 func (l *Ledger) AddTransaction(tx Transaction) error {
 	err := l.graph.AddTransaction(tx)
 
