@@ -35,7 +35,7 @@ func main() {
 		}()
 	}
 
-	log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleConsensus, log.ModuleMetrics)))
+	log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleSync, log.ModuleConsensus, log.ModuleMetrics)))
 
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {

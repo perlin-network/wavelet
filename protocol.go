@@ -65,7 +65,7 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 	res := &SyncResponse{}
 
 	diff := p.ledger.accounts.Snapshot().DumpDiff(req.GetRoundId())
-	header := &SyncInfo{LatestRoundId: p.ledger.rounds.Count()}
+	header := &SyncInfo{LatestRound: p.ledger.rounds.Latest().Marshal()}
 
 	for i := 0; i < len(diff); i += sys.SyncChunkSize {
 		end := i + sys.SyncChunkSize

@@ -219,7 +219,7 @@ func TestGraphUpdateRoot(t *testing.T) {
 	numChildren := len(graph.children)
 
 	// Update the root to a transaction at the top of the graph.
-	graph.UpdateRoot((*graph.depthIndex[graph.height-1][0]).Depth)
+	graph.UpdateRootDepth((*graph.depthIndex[graph.height-1][0]).Depth)
 
 	assert.Len(t, graph.missing, 30)
 	assert.Len(t, graph.children, numChildren)
@@ -321,7 +321,7 @@ func TestGraphFindEligibleCriticalInBigGraph(t *testing.T) {
 
 	for i := 0; i < 500; i++ {
 		if i == 500/3 { // Prune away any eligible critical transactions a third through the graph.
-			graph.UpdateRoot(graph.height - 1)
+			graph.UpdateRootDepth(graph.height - 1)
 		}
 
 		if i == 500/2 { // Create an eligible critical transaction in the middle of the graph.
