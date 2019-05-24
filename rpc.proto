@@ -10,27 +10,30 @@ message QueryResponse {
     bytes round = 1;
 }
 
-message OutOfSyncRequest {}
+message OutOfSyncRequest {
+}
 
 message OutOfSyncResponse {
     bytes round = 1;
 }
 
+message SyncInfo {
+    uint64 latest_round_id = 1;
+    repeated bytes checksums = 2;
+}
+
 message SyncRequest {
-    uint64 round_id = 1;
+    oneof Data {
+        uint64 round_id = 1;
+        bytes checksum = 2;
+    }
 }
 
 message SyncResponse {
-    uint64 latest_round_id = 1;
-    repeated bytes chunk_hashes = 2;
-}
-
-message DownloadChunkRequest {
-    bytes id = 1;
-}
-
-message DownloadChunkResponse {
-    bytes chunk = 1;
+    oneof Data {
+        SyncInfo header = 1;
+        bytes chunk = 2;
+    }
 }
 
 message DownloadTxRequest {
@@ -45,15 +48,20 @@ message Transactions {
     repeated bytes transactions = 1;
 }
 
-message Empty {}
+message Empty {
+}
 
 service Wavelet {
-    rpc Gossip(stream Transactions) returns (Empty) {}
-    rpc Query(QueryRequest) returns (QueryResponse) {}
+    rpc Gossip (stream Transactions) returns (Empty) {
+    }
+    rpc Query (QueryRequest) returns (QueryResponse) {
+    }
 
-    rpc InitializeSync(SyncRequest) returns (SyncResponse) {}
-    rpc CheckOutOfSync(OutOfSyncRequest) returns (OutOfSyncResponse) {}
+    rpc CheckOutOfSync (OutOfSyncRequest) returns (OutOfSyncResponse) {
+    }
+    rpc Sync (stream SyncRequest) returns (stream SyncResponse) {
+    }
 
-    rpc DownloadTx(DownloadTxRequest) returns (DownloadTxResponse) {}
-    rpc DownloadChunk(DownloadChunkRequest) returns (DownloadChunkResponse) {}
+    rpc DownloadTx (DownloadTxRequest) returns (DownloadTxResponse) {
+    }
 }
