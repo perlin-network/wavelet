@@ -108,7 +108,6 @@ func main() {
 		fmt.Println("Bootstrapped to peers:", client.Bootstrap())
 	}
 
-
 	cli, err := NewCLI(ledger, keys)
 	if err != nil {
 		panic(err)

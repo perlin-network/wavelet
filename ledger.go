@@ -115,12 +115,8 @@ func NewLedger(client *skademlia.Client) *Ledger {
 	return ledger
 }
 
-func (l *Ledger) LastRound() *Round {
-	return l.rounds.Latest()
-}
-
-func (l *Ledger) Height() uint64 {
-	return l.graph.Height()
+func (l *Ledger) Rounds() *Rounds {
+	return l.rounds
 }
 
 func (l *Ledger) Snapshot() *avl.Tree {

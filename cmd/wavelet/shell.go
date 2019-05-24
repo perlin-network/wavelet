@@ -13,45 +13,39 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"io"
+	"io/ioutil"
 	"strconv"
 	"strings"
 )
 
 type CLI struct {
-	rl *readline.Instance
+	rl     *readline.Instance
 	ledger *wavelet.Ledger
 	logger zerolog.Logger
-	keys *skademlia.Keypair
-	tree string
+	keys   *skademlia.Keypair
+	tree   string
 }
 
 func NewCLI(
 	ledger *wavelet.Ledger, keys *skademlia.Keypair,
 ) (*CLI, error) {
 	completer := readline.NewPrefixCompleter(
-		readline.PcItem("status"),
-		readline.PcItem("pay"),
-		readline.PcItem("call"),
-		readline.PcItem(
-			"info",
-			readline.PcItem("wallet"),
-			readline.PcItem("transaction"),
-		),
+		readline.PcItem("s"), readline.PcItem("status"),
+		readline.PcItem("p"), readline.PcItem("pay"),
+		readline.PcItem("c"), readline.PcItem("call"),
+		readline.PcItem("f"), readline.PcItem("find"),
 		readline.PcItem("spawn"),
-		readline.PcItem(
-		"stake",
-			readline.PcItem("place"),
-			readline.PcItem("withdraw"),
-		),
+		readline.PcItem("ps"), readline.PcItem("place-stake"),
+		readline.PcItem("ws"), readline.PcItem("withdraw-stake"),
 		readline.PcItem("help"),
 	)
 
 	rl, err := readline.NewEx(
 		&readline.Config{
-			Prompt: "\033[31m»»»\033[0m ",
-			AutoComplete: completer,
-			InterruptPrompt: "^C",
-			EOFPrompt:       "exit",
+			Prompt:            "\033[31m»»»\033[0m ",
+			AutoComplete:      completer,
+			InterruptPrompt:   "^C",
+			EOFPrompt:         "exit",
 			HistorySearchFold: true,
 		},
 	)
@@ -62,16 +56,21 @@ func NewCLI(
 	log.Set(log.NewConsoleWriter(rl.Stderr(), log.FilterFor(log.ModuleNode, log.ModuleConsensus, log.ModuleMetrics)))
 
 	return &CLI{
-		rl: rl,
+		rl:     rl,
 		ledger: ledger,
 		logger: log.Node(),
-		tree: completer.Tree("    "),
-		keys: keys,
+		tree:   completer.Tree("    "),
+		keys:   keys,
 	}, nil
 }
 
 func toCMD(in string, n int) []string {
-	return strings.Split(strings.TrimSpace(in[n:]), " ")
+	in = strings.TrimSpace(in[n:])
+	if in == "" {
+		return []string{}
+	}
+
+	return strings.Split(in, " ")
 }
 
 func (cli *CLI) Start() {
@@ -92,29 +91,34 @@ func (cli *CLI) Start() {
 			return
 		}
 
-		line = strings.TrimSpace(line)
 		switch {
-		case line == "status":
+		case line == "s" || line == "status":
 			cli.status()
-		case strings.HasPrefix(line, "pay"):
-			cli.pay(toCMD(line, 3), nil)
-		case strings.HasPrefix(line, "call"):
-			cli.call(toCMD(line, 4))
-		case line == "info":
-			fmt.Println("info [wallet [address] | transaction <transaction-id>]")
-		case strings.HasPrefix(line, "info "):
-			switch {
-			case strings.HasPrefix(line[5:], "wallet"):
-				cli.wallet(toCMD(line, 11))
-			case strings.HasPrefix(line[17:], "transaction "):
-			default:
-				fmt.Println("one of 'wallet' or 'transaction' expected")
-			}
+		case strings.HasPrefix(line, "p "):
+			cli.pay(toCMD(line, 2), nil)
+		case strings.HasPrefix(line, "pay "):
+			cli.pay(toCMD(line, 4), nil)
+		case strings.HasPrefix(line, "call "):
+			cli.call(toCMD(line, 5))
+		case strings.HasPrefix(line, "f "):
+			cli.find(toCMD(line, 2))
+		case strings.HasPrefix(line, "find "):
+			cli.find(toCMD(line, 5))
+		case strings.HasPrefix(line, "spawn "):
+			cli.spawn(toCMD(line, 5))
+		case strings.HasPrefix(line, "ps "):
+			cli.placeStake(toCMD(line, 3))
+		case strings.HasPrefix(line, "place-stake "):
+			cli.placeStake(toCMD(line, 12))
+		case strings.HasPrefix(line, "ws "):
+			cli.withdrawStake(toCMD(line, 3))
+		case strings.HasPrefix(line, "withdraw-stake "):
+			cli.withdrawStake(toCMD(line, 15))
 		case line == "":
 		case line == "help":
 			cli.usage()
 		default:
-			fmt.Printf("unrecognised command :%s\n", line)
+			fmt.Printf("unrecognised command :'%s'\n", line)
 		}
 	}
 }
@@ -125,13 +129,27 @@ func (cli *CLI) usage() {
 }
 
 func (cli *CLI) status() {
-	round := cli.ledger.LastRound()
+	snapshot := cli.ledger.Snapshot()
+	publicKey := cli.keys.PublicKey()
+
+	balance, _ := wavelet.ReadAccountBalance(snapshot, publicKey)
+	stake, _ := wavelet.ReadAccountStake(snapshot, publicKey)
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, publicKey)
+
+	cli.logger.Info().
+		Str("id", hex.EncodeToString(publicKey[:])).
+		Uint64("balance", balance).
+		Uint64("stake", stake).
+		Uint64("nonce", nonce).
+		Msg("Here is your wallet information.")
+
+	round := cli.ledger.Rounds().Latest()
 
 	cli.logger.Info().
 		Uint8("difficulty", round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
 		Uint64("round", round.Index).
 		Hex("root_id", round.End.ID[:]).
-		Uint64("height", cli.ledger.Height()).
+		Uint64("height", cli.ledger.Graph().Height()).
 		//Uint64("num_tx", ledger.NumTransactions()).
 		//Uint64("num_tx_in_store", ledger.NumTransactionInStore()).
 		//Uint64("num_missing_tx", ledger.NumMissingTransactions()).
@@ -166,15 +184,7 @@ func (cli *CLI) pay(cmd []string, additional []byte) {
 		payload.Write(additional)
 	}
 
-	tx := wavelet.AttachSenderToTransaction(
-		cli.keys,
-		wavelet.NewTransaction(cli.keys, sys.TagTransfer, payload.Bytes()),
-		cli.ledger.Graph().FindEligibleParents()...,
-	)
-
-	if err := cli.ledger.AddTransaction(tx); err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
-		cli.logger.Error().Msgf("error adding tx to graph [%v]: %+v\n", err, tx)
-	}
+	cli.sendTx(payload.Bytes(), sys.TagTransfer)
 }
 
 func (cli *CLI) call(cmd []string) {
@@ -247,54 +257,142 @@ func (cli *CLI) call(cmd []string) {
 	cli.pay(cmd[:2], payload.Bytes())
 }
 
-func (cli *CLI) wallet(cmd []string) {
+func (cli *CLI) find(cmd []string) {
 	if len(cmd) != 1 {
-		fmt.Println("wallet [address]")
+		fmt.Println("find <tx-id | wallet-address>")
 		return
 	}
 
 	snapshot := cli.ledger.Snapshot()
-	publicKey := cli.keys.PublicKey()
 
 	address := cmd[0]
 
-	if address == "" {
-		balance, _ := wavelet.ReadAccountBalance(snapshot, publicKey)
-		stake, _ := wavelet.ReadAccountStake(snapshot, publicKey)
-		nonce, _ := wavelet.ReadAccountNonce(snapshot, publicKey)
+	buf, err := hex.DecodeString(address)
+	if err != nil {
+		cli.logger.Error().Err(err).Msg("Cannot decode address")
+		return
+	}
+
+	if len(buf) == wavelet.SizeAccountID {
+		var accountID wavelet.AccountID
+		copy(accountID[:], buf)
+
+		balance, _ := wavelet.ReadAccountBalance(snapshot, accountID)
+		stake, _ := wavelet.ReadAccountStake(snapshot, accountID)
+		nonce, _ := wavelet.ReadAccountNonce(snapshot, accountID)
+
+		_, isContract := wavelet.ReadAccountContractCode(snapshot, accountID)
+		numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, accountID)
 
 		cli.logger.Info().
-			Str("id", hex.EncodeToString(publicKey[:])).
 			Uint64("balance", balance).
 			Uint64("stake", stake).
 			Uint64("nonce", nonce).
-			Msg("Here is your wallet information.")
+			Bool("is_contract", isContract).
+			Uint64("num_pages", numPages).
+			Msgf("Account: %s", cmd[1])
 
 		return
 	}
 
-	buf, err := hex.DecodeString(address)
+	if len(buf) == wavelet.SizeTransactionID {
+		var id wavelet.TransactionID
+		copy(id[:], buf)
 
-	if err != nil || len(buf) != wavelet.SizeAccountID {
-		cli.logger.Error().Msg("The account ID you specified is invalid.")
+		tx := cli.ledger.Graph().FindTransaction(id)
+		if tx == nil {
+			cli.logger.Error().Msg("Could not find transaction in the ledger.")
+			return
+		}
+
+		var parents []string
+		for _, parentID := range tx.ParentIDs {
+			parents = append(parents, hex.EncodeToString(parentID[:]))
+		}
+
+		cli.logger.Info().
+			Strs("parents", parents).
+			Hex("sender", tx.Sender[:]).
+			Hex("creator", tx.Creator[:]).
+			Uint64("nonce", tx.Nonce).
+			Uint8("tag", tx.Tag).
+			Uint64("depth", tx.Depth).
+			Msgf("Transaction: %s", cmd[1])
+
 		return
 	}
 
-	var accountID wavelet.AccountID
-	copy(accountID[:], buf)
+	cli.logger.Error().Int("length", len(buf)).Msg("Unexpected address length")
+}
 
-	balance, _ := wavelet.ReadAccountBalance(snapshot, accountID)
-	stake, _ := wavelet.ReadAccountStake(snapshot, accountID)
-	nonce, _ := wavelet.ReadAccountNonce(snapshot, accountID)
+func (cli *CLI) spawn(cmd []string) {
+	if len(cmd) != 1 {
+		fmt.Println("spawn <path-to-smart-contract>")
+		return
+	}
 
-	_, isContract := wavelet.ReadAccountContractCode(snapshot, accountID)
-	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, accountID)
+	code, err := ioutil.ReadFile(cmd[0])
+	if err != nil {
+		cli.logger.Error().
+			Err(err).
+			Str("path", cmd[1]).
+			Msg("Failed to find/load the smart contract code from the given path.")
+		return
+	}
 
-	cli.logger.Info().
-		Uint64("balance", balance).
-		Uint64("stake", stake).
-		Uint64("nonce", nonce).
-		Bool("is_contract", isContract).
-		Uint64("num_pages", numPages).
-		Msgf("Account: %s", cmd[1])
+	cli.sendTx(code, sys.TagContract)
+}
+
+func (cli *CLI) placeStake(cmd []string) {
+	if len(cmd) != 1 {
+		fmt.Println("place-stake <amount>")
+		return
+	}
+
+	amount, err := strconv.Atoi(cmd[0])
+	if err != nil {
+		cli.logger.Error().Err(err).Msg("Failed to convert staking amount to a uint64.")
+		return
+	}
+
+	var intBuf [8]byte
+	payload := bytes.NewBuffer(nil)
+	payload.WriteByte(1)
+	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
+	payload.Write(intBuf[:8])
+
+	cli.sendTx(payload.Bytes(), sys.TagStake)
+}
+
+func (cli *CLI) withdrawStake(cmd []string) {
+	if len(cmd) != 1 {
+		fmt.Println("withdraw-stake <amount>")
+		return
+	}
+
+	amount, err := strconv.ParseUint(cmd[0], 10, 64)
+	if err != nil {
+		cli.logger.Error().Err(err).Msg("Failed to convert withdraw amount to an uint64.")
+		return
+	}
+
+	var intBuf [8]byte
+	payload := bytes.NewBuffer(nil)
+	payload.WriteByte(0)
+	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
+	payload.Write(intBuf[:8])
+
+	cli.sendTx(payload.Bytes(), sys.TagStake)
+}
+
+func (cli *CLI) sendTx(body []byte, tag byte) {
+	tx := wavelet.AttachSenderToTransaction(
+		cli.keys,
+		wavelet.NewTransaction(cli.keys, sys.TagContract, body),
+		cli.ledger.Graph().FindEligibleParents()...,
+	)
+
+	if err := cli.ledger.AddTransaction(tx); err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
+		cli.logger.Error().Msgf("error adding tx to graph [%v]: %+v\n", err, tx)
+	}
 }
