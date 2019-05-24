@@ -232,6 +232,7 @@ func (l *Ledger) PullMissingTransactions() {
 		}
 
 		l.metrics.downloadedTX.Mark(count)
+		l.metrics.receivedTX.Mark(count)
 
 		select {
 		case <-l.sync:
