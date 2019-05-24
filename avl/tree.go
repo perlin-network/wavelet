@@ -9,7 +9,6 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
-	"sync"
 )
 
 var NodeKeyPrefix = []byte("@1:")
@@ -29,13 +28,13 @@ type Tree struct {
 	root *node
 
 	cache   *lru
-	pending *sync.Map
+	pending *nodeMap
 
 	viewID uint64
 }
 
 func New(kv store.KV) *Tree {
-	t := &Tree{kv: kv, cache: newLRU(DefaultCacheSize), pending: new(sync.Map), maxWriteBatchSize: MaxWriteBatchSize}
+	t := &Tree{kv: kv, cache: newLRU(DefaultCacheSize), pending: new(nodeMap), maxWriteBatchSize: MaxWriteBatchSize}
 
 	// Load root node if it already exists.
 	if buf, err := t.kv.Get(RootKey); err == nil && len(buf) == MerkleHashSize {
@@ -91,7 +90,7 @@ func (t *Tree) Delete(k []byte) bool {
 }
 
 func (t *Tree) Snapshot() *Tree {
-	return &Tree{kv: t.kv, cache: t.cache, pending: new(sync.Map), maxWriteBatchSize: t.maxWriteBatchSize, root: t.root}
+	return &Tree{kv: t.kv, cache: t.cache, pending: new(nodeMap), maxWriteBatchSize: t.maxWriteBatchSize, root: t.root}
 }
 
 func (t *Tree) Revert(snapshot *Tree) {
@@ -237,7 +236,7 @@ func (t *Tree) Checksum() [MerkleHashSize]byte {
 
 func (t *Tree) loadNode(id [MerkleHashSize]byte) (*node, error) {
 	if n, ok := t.pending.Load(id); ok {
-		return n.(*node), nil
+		return n, nil
 	}
 
 	if n, ok := t.cache.load(id); ok {

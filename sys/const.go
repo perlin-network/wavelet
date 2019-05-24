@@ -26,8 +26,11 @@ var (
 	// Timeout for querying a transaction to K peers.
 	QueryTimeout = 1 * time.Second
 
-	// how many round behind we should be to start syncing
-	SyncRoundDifference uint64 = 2
+	// Number of rounds we should be behind before we start syncing.
+	SyncIfRoundsDifferBy uint64 = 2
+
+	// Size of individual chunks sent for a syncing peer.
+	SyncChunkSize = 16384
 
 	// Max graph depth difference to search for eligible transaction
 	// parents from for our node.
@@ -40,7 +43,7 @@ var (
 	MinDifficulty byte = 8
 
 	// Factor to scale a transactions confidence down by to compute the difficulty needed to define a critical transaction.
-	DifficultyScaleFactor = 1.0
+	DifficultyScaleFactor = 0.5
 
 	// Fee amount paid by a node per transaction.
 	TransactionFeeAmount uint64 = 2

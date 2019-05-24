@@ -127,11 +127,11 @@ func main() {
 		}
 
 		for i := uint64(0); i < count; i++ {
-			//tags := make([]byte, 40)
-			//payloads := make([][]byte, 40)
-			//tx := wavelet.AttachSenderToTransaction(keys, wavelet.NewBatchTransaction(keys, tags, payloads), ledger.Graph().FindEligibleParents()...)
+			tags := make([]byte, 40)
+			payloads := make([][]byte, 40)
+			tx := wavelet.AttachSenderToTransaction(keys, wavelet.NewBatchTransaction(keys, tags, payloads), ledger.Graph().FindEligibleParents()...)
 
-			tx := wavelet.AttachSenderToTransaction(keys, wavelet.NewTransaction(keys, sys.TagNop, nil), ledger.Graph().FindEligibleParents()...)
+			//tx := wavelet.AttachSenderToTransaction(keys, wavelet.NewTransaction(keys, sys.TagNop, nil), ledger.Graph().FindEligibleParents()...)
 
 			if err := ledger.AddTransaction(tx); err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
 				fmt.Printf("error adding tx to graph [%v]: %+v\n", err, tx)

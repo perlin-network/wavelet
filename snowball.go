@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"fmt"
 	"sync"
 )
 
@@ -58,14 +59,17 @@ func (s *Snowball) Reset() {
 }
 
 func (s *Snowball) Tick(round *Round) {
-	if round == nil || round.ID == ZeroRoundID { // Do not let Snowball tick with nil responses.
-		return
-	}
-
 	s.Lock()
 	defer s.Unlock()
 
 	if s.decided { // Do not allow any further ticks until Reset() gets called.
+		return
+	}
+
+	if round == nil || round.ID == ZeroRoundID { // Have nil responses reset Snowball.
+		s.lastID = ZeroRoundID
+		s.count = 0
+
 		return
 	}
 
@@ -80,6 +84,10 @@ func (s *Snowball) Tick(round *Round) {
 	}
 
 	if s.lastID != round.ID { // Handle termination case.
+		if s.lastID != ZeroRoundID {
+			fmt.Printf("Snowball liveness fault: Last ID is %x with count %d, and new ID is %x.\n", s.lastID, s.count, round.ID)
+		}
+
 		s.lastID = round.ID
 		s.count = 0
 	} else {
@@ -118,4 +126,12 @@ func (s *Snowball) Decided() bool {
 	s.RUnlock()
 
 	return decided
+}
+
+func (s *Snowball) Progress() int {
+	s.RLock()
+	progress := s.count
+	s.RUnlock()
+
+	return progress
 }

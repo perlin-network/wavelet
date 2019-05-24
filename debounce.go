@@ -46,7 +46,7 @@ func NewTransactionDebouncer(ctx context.Context, opts ...TransactionDebouncerOp
 		timer:  time.NewTimer(50 * time.Millisecond),
 		period: 50 * time.Millisecond,
 
-		bufferLen: 6000,
+		bufferLen: 16384,
 	}
 	d.timer.Stop()
 
