@@ -86,6 +86,8 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 		return err
 	}
 
+	res.Data = &SyncResponse_Chunk{}
+
 	for {
 		req, err := stream.Recv()
 
@@ -104,7 +106,9 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 				Hex("requested_hash", req.GetChecksum()).
 				Msg("Responded to sync chunk request.")
 
-			res.Data = &SyncResponse_Chunk{Chunk: chunk}
+			res.Data.(*SyncResponse_Chunk).Chunk = chunk
+		} else {
+			res.Data.(*SyncResponse_Chunk).Chunk = nil
 		}
 
 		if err = stream.Send(res); err != nil {
