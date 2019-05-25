@@ -579,9 +579,9 @@ func (l *Ledger) SyncToLatestRound() {
 
 		current := l.rounds.Latest()
 		proposed := l.syncer.Preferred()
-		l.syncer.Reset()
 
 		if proposed.Index < sys.SyncIfRoundsDifferBy+current.Index {
+			l.syncer.Reset()
 			continue
 		}
 
@@ -594,6 +594,7 @@ func (l *Ledger) SyncToLatestRound() {
 			voteWG.Wait() // Wait for the vote processor worker to shutdown.
 
 			l.finalizer.Reset() // Reset consensus Snowball sampler.
+			l.syncer.Reset()    // Reset syncing Snowball sampler.
 		}
 
 		restart := func() { // Respawn all previously stopped workers.
