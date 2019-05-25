@@ -716,7 +716,7 @@ func TestGetLedger(t *testing.T) {
 		PublicKey     string   `json:"public_key"`
 		HostAddress   string   `json:"address"`
 		RootID        string   `json:"root_id"`
-		ViewID        uint64   `json:"view_id"`
+		RoundID       uint64   `json:"round_id"`
 		Difficulty    uint64   `json:"difficulty"`
 		PeerAddresses []string `json:"peers"`
 	}{
@@ -724,7 +724,7 @@ func TestGetLedger(t *testing.T) {
 		HostAddress:   "127.0.0.1:" + strconv.Itoa(listener.Addr().(*net.TCPAddr).Port),
 		PeerAddresses: nil,
 		RootID:        "403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc",
-		ViewID:        0,
+		RoundID:       0,
 		Difficulty:    uint64(sys.MinDifficulty),
 	}
 

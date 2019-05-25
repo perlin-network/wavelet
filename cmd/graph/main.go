@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"github.com/perlin-network/noise"
@@ -105,8 +104,7 @@ func main() {
 	}()
 
 	if *apiPortFlag > 0 {
-		gateway := api.New()
-		go gateway.StartHTTP(*apiPortFlag, client, ledger, keys)
+		go api.New().StartHTTP(*apiPortFlag, client, ledger, keys)
 	}
 
 	if len(flag.Args()) > 1 {
