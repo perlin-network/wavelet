@@ -193,11 +193,15 @@ func commandRemote(c *cli.Context) error {
 				continue
 			}
 
-			metrics := v.Get("metrics")
-
 			log.Info().
-				Float64("accepted_tps", metrics.GetFloat64("tx.accepted", "mean.rate")).
-				Float64("received_tps", metrics.GetFloat64("tx.received", "mean.rate")).
+				Float64("accepted_tps", v.GetFloat64("tps.accepted")).
+				Float64("received_tps", v.GetFloat64("tps.received")).
+				Float64("gossiped_tps", v.GetFloat64("tps.gossiped")).
+				Float64("downloaded_tps", v.GetFloat64("tps.downloaded")).
+				Float64("queried_rps", v.GetFloat64("rps.queried")).
+				Int64("query_latency_max_ms", v.GetInt64("query.latency.max.ms")).
+				Int64("query_latency_min_ms", v.GetInt64("query.latency.min.ms")).
+				Float64("query_latency_mean_ms", v.GetFloat64("query.latency.mean.ms")).
 				Msg("Benchmarking...")
 		}
 	}()
