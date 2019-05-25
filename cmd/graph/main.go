@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"github.com/perlin-network/noise"
@@ -10,6 +11,7 @@ import (
 	"github.com/perlin-network/noise/nat"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/internal/snappy"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
@@ -27,6 +29,7 @@ import _ "net/http/pprof"
 
 func main() {
 	pprofFlag := flag.Bool("pprof", false, "host pprof server on port 9000")
+	apiPortFlag := flag.Int("api.port", 0, "api port")
 	flag.Parse()
 
 	if *pprofFlag {
@@ -100,6 +103,11 @@ func main() {
 			panic(err)
 		}
 	}()
+
+	if *apiPortFlag > 0 {
+		gateway := api.New()
+		go gateway.StartHTTP(*apiPortFlag, client, ledger, keys)
+	}
 
 	if len(flag.Args()) > 1 {
 		for _, addr := range flag.Args()[1:] {
