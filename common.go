@@ -27,4 +27,6 @@ var (
 	ZeroMerkleNodeID  MerkleNodeID
 	ZeroAccountID     AccountID
 	ZeroSignature     Signature
+
+	ZeroRoundPtr = &Round{}
 )
