@@ -157,6 +157,14 @@ func (l *Ledger) PerformConsensus() {
 	go l.FinalizeRounds()
 }
 
+func (l *Ledger) Snapshot() *avl.Tree {
+	return l.accounts.Snapshot()
+}
+
+func (l *Ledger) Rounds() *Rounds {
+	return l.rounds
+}
+
 // PullMissingTransactions is an infinite loop continually sending RPC requests
 // to pull any transactions identified to be missing by the ledger. It periodically
 // samples a random peer from the network, and requests the peer for the contents

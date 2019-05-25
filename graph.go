@@ -392,6 +392,35 @@ func (g *Graph) Missing() []TransactionID {
 	return missing
 }
 
+func (g *Graph) ListTransactions(offset, limit uint64, sender, creator AccountID) (transactions []*Transaction) {
+	g.RLock()
+	defer g.RUnlock()
+
+	for _, tx := range g.transactions {
+		if (sender == ZeroAccountID && creator == ZeroAccountID) || (sender != ZeroAccountID && tx.Sender == sender) || (creator != ZeroAccountID && tx.Creator == creator) {
+			transactions = append(transactions, tx)
+		}
+	}
+
+	sort.Slice(transactions, func(i, j int) bool {
+		return transactions[i].Depth < transactions[j].Depth
+	})
+
+	if offset != 0 || limit != 0 {
+		if offset >= limit || offset >= uint64(len(transactions)) {
+			return nil
+		}
+
+		if offset+limit > uint64(len(transactions)) {
+			limit = uint64(len(transactions)) - offset
+		}
+
+		transactions = transactions[offset : offset+limit]
+	}
+
+	return
+}
+
 // FindTransaction returns transaction with id from graph, and nil otherwise.
 func (g *Graph) FindTransaction(id TransactionID) *Transaction {
 	g.RLock()
@@ -613,4 +642,8 @@ func (g *Graph) validateTransactionParents(tx *Transaction) error {
 	}
 
 	return nil
+}
+
+func (g *Graph) RootDepth() uint64 {
+	return g.rootDepth
 }
