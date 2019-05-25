@@ -97,6 +97,7 @@ func TestListTransaction(t *testing.T) {
 	var expectedResponse transactionList
 	for _, tx := range gateway.ledger.Graph().ListTransactions(0, 0, wavelet.AccountID{}, wavelet.AccountID{}) {
 		txRes := &transaction{tx: tx}
+		txRes.status = "applied"
 
 		//_, err := txRes.marshal()
 		//assert.NoError(t, err)
@@ -228,6 +229,9 @@ func TestGetTransaction(t *testing.T) {
 		t.Fatal("not found")
 	}
 
+	txRes := &transaction{tx: tx}
+	txRes.status = "applied"
+
 	tests := []struct {
 		name         string
 		sessionToken string
@@ -250,7 +254,7 @@ func TestGetTransaction(t *testing.T) {
 			sessionToken: sess.id,
 			id:           hex.EncodeToString(txId[:]),
 			wantCode:     http.StatusOK,
-			wantResponse: &transaction{tx: tx},
+			wantResponse: txRes,
 		},
 	}
 
@@ -717,10 +721,10 @@ func TestGetLedger(t *testing.T) {
 		PeerAddresses []string `json:"peers"`
 	}{
 		PublicKey:     hex.EncodeToString(publicKey[:]),
-		HostAddress:   "[::]:" + strconv.Itoa(listener.Addr().(*net.TCPAddr).Port),
+		HostAddress:   "127.0.0.1:" + strconv.Itoa(listener.Addr().(*net.TCPAddr).Port),
 		PeerAddresses: nil,
-		RootID:        "1e173f2403ea3f29349cacb7c99ea1c3ef9b30c6476f580f07c5a9791533fde8",
-		ViewID:        1,
+		RootID:        "403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc",
+		ViewID:        0,
 		Difficulty:    uint64(sys.MinDifficulty),
 	}
 
