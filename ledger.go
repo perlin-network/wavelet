@@ -583,6 +583,16 @@ func (l *Ledger) SyncToLatestRound() {
 			}
 		}
 
+		// Reset syncing Snowball sampler. Check if it is a false alarm such that we don't have to sync.
+
+		current := l.rounds.Latest()
+		proposed := l.syncer.Preferred()
+
+		if proposed.Index < sys.SyncIfRoundsDifferBy+current.Index {
+			l.syncer.Reset()
+			continue
+		}
+
 		shutdown := func() {
 			close(l.sync)
 			l.consensus.Wait() // Wait for all consensus-related workers to shutdown.
@@ -590,6 +600,9 @@ func (l *Ledger) SyncToLatestRound() {
 			voteWG.Add(1)
 			close(l.syncVotes)
 			voteWG.Wait() // Wait for the vote processor worker to shutdown.
+
+			l.finalizer.Reset() // Reset consensus Snowball sampler.
+			l.syncer.Reset()    // Reset syncing Snowball sampler.
 		}
 
 		restart := func() { // Respawn all previously stopped workers.
@@ -600,22 +613,7 @@ func (l *Ledger) SyncToLatestRound() {
 			l.PerformConsensus()
 		}
 
-		shutdown()
-
-		// Reset all Snowball samplers.
-
-		current := l.rounds.Latest()
-		proposed := l.syncer.Preferred()
-
-		l.finalizer.Reset()
-		l.syncer.Reset()
-
-		// Check if it is a false alarm such that we don't have to sync.
-
-		if proposed.Index < sys.SyncIfRoundsDifferBy+current.Index {
-			restart()
-			continue
-		}
+		shutdown() // Shutdown all consensus-related workers.
 
 		logger := log.Sync("syncing")
 		logger.Info().
