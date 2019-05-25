@@ -61,7 +61,7 @@ func NewTransactionDebouncer(ctx context.Context, opts ...TransactionDebouncerOp
 				return
 			case <-d.timer.C:
 				d.Lock()
-				if d.bufferPtr >= d.bufferLen {
+				if d.bufferPtr > 0 {
 					d.action(d.buffer)
 					d.buffer = d.buffer[:0]
 					d.bufferPtr = 0

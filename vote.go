@@ -6,12 +6,10 @@ import (
 	"sync"
 )
 
-type (
-	vote struct {
-		voter     *skademlia.ID
-		preferred *Round
-	}
-)
+type vote struct {
+	voter     *skademlia.ID
+	preferred *Round
+}
 
 func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, wg *sync.WaitGroup) {
 	votes := make([]vote, 0, sys.SnowballK)
@@ -35,7 +33,7 @@ func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, 
 
 			for _, vote := range votes {
 				if vote.preferred == nil {
-					continue
+					vote.preferred = ZeroRoundPtr
 				}
 
 				counts[vote.preferred.ID] += weights[vote.voter.PublicKey()]
