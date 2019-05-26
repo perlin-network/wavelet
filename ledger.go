@@ -48,7 +48,9 @@ func NewLedger(client *skademlia.Client) *Ledger {
 	kv := store.NewInmem()
 
 	metrics := NewMetrics(context.TODO())
+
 	accounts := NewAccounts(kv)
+	go accounts.GC(context.Background())
 
 	rounds, err := NewRounds(kv, sys.PruningLimit)
 
@@ -110,7 +112,7 @@ func NewLedger(client *skademlia.Client) *Ledger {
 	}
 
 	go ledger.SyncToLatestRound()
-	ledger.PerformConsensus()
+	go ledger.PerformConsensus()
 
 	return ledger
 }
@@ -610,7 +612,7 @@ func (l *Ledger) SyncToLatestRound() {
 			go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
 
 			l.sync = make(chan struct{})
-			l.PerformConsensus()
+			go l.PerformConsensus()
 		}
 
 		shutdown() // Shutdown all consensus-related workers.
@@ -1057,6 +1059,8 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 			if logging {
 				logEventTX("failed", popped, err)
 			}
+
+			fmt.Println(err)
 
 			results.rejectedCount += popped.LogicalUnits()
 			continue
