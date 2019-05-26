@@ -360,6 +360,18 @@ FINALIZE_ROUNDS:
 							return
 						}
 
+						if err := l.AddTransaction(round.Start); err != nil {
+							return
+						}
+
+						if err := l.AddTransaction(round.End); err != nil {
+							return
+						}
+
+						if round.End.Depth <= round.Start.Depth {
+							return
+						}
+
 						if round.Index != current.Index+1 {
 							if round.Index > sys.SyncIfRoundsDifferBy+current.Index {
 								select {
@@ -1017,6 +1029,8 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 	for queue.Len() > 0 {
 		popped := queue.PopFront().(*Transaction)
 
+		order.PushBack(popped)
+
 		if popped.Depth-1 <= root.Depth {
 			continue
 		}
@@ -1037,8 +1051,6 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 
 			queue.PushBack(parent)
 		}
-
-		order.PushBack(popped)
 	}
 
 	// Apply transactions in reverse order from the end of the round
