@@ -994,7 +994,7 @@ type CollapseResults struct {
 // that are within the depth interval (start, end] where start is the interval starting point depth,
 // and end is the interval ending point depth.
 func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transaction, logging bool) (CollapseResults, error) {
-	if results, exists := l.cacheCollapse.load(end.Seed); exists {
+	if results, exists := l.cacheCollapse.load(end.ID); exists {
 		return results.(CollapseResults), nil
 	}
 
@@ -1086,7 +1086,7 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 
 	results.ignoredCount -= results.appliedCount + results.rejectedCount
 
-	l.cacheCollapse.put(end.Seed, results)
+	l.cacheCollapse.put(end.ID, results)
 	return results, nil
 }
 
