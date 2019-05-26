@@ -11,6 +11,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
+	queue2 "github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"google.golang.org/grpc"
@@ -1005,13 +1006,13 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 
 	visited := map[TransactionID]struct{}{root.ID: {}}
 
-	queue := AcquireQueue()
-	defer ReleaseQueue(queue)
+	queue := queue2.New()
+	//defer ReleaseQueue(queue)
 
 	queue.PushBack(&end)
 
-	order := AcquireQueue()
-	defer ReleaseQueue(order)
+	order := queue2.New()
+	//defer ReleaseQueue(order)
 
 	for queue.Len() > 0 {
 		popped := queue.PopFront().(*Transaction)
