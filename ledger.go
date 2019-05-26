@@ -360,14 +360,6 @@ FINALIZE_ROUNDS:
 							return
 						}
 
-						if err := l.AddTransaction(round.Start); err != nil {
-							return
-						}
-
-						if err := l.AddTransaction(round.End); err != nil {
-							return
-						}
-
 						if round.End.Depth <= round.Start.Depth {
 							return
 						}
@@ -384,6 +376,14 @@ FINALIZE_ROUNDS:
 						}
 
 						if round.Start.ID != current.End.ID {
+							return
+						}
+
+						if err := l.AddTransaction(round.Start); err != nil {
+							return
+						}
+
+						if err := l.AddTransaction(round.End); err != nil {
 							return
 						}
 
@@ -570,6 +570,11 @@ func (l *Ledger) SyncToLatestRound() {
 					}
 
 					if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
+						wg.Done()
+						return
+					}
+
+					if round.End.Depth <= round.Start.Depth {
 						wg.Done()
 						return
 					}
@@ -1029,11 +1034,11 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 	for queue.Len() > 0 {
 		popped := queue.PopFront().(*Transaction)
 
-		order.PushBack(popped)
-
-		if popped.Depth-1 <= root.Depth {
+		if popped.Depth <= root.Depth {
 			continue
 		}
+
+		order.PushBack(popped)
 
 		for _, parentID := range popped.ParentIDs {
 			if _, seen := visited[parentID]; seen {
