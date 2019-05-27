@@ -330,7 +330,7 @@ func (g *Graph) FindEligibleCritical(difficulty byte) *Transaction {
 
 	g.Lock()
 
-	g.seedIndex.Descend(func(i btree.Item) bool {
+	g.seedIndex.Ascend(func(i btree.Item) bool {
 		tx := i.(*sortBySeedTX)
 
 		if tx.Depth <= g.rootDepth {
