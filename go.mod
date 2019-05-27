@@ -15,7 +15,7 @@ require (
 	github.com/gorilla/websocket v1.4.0
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
 	github.com/perlin-network/life v0.0.0-20190521143330-57f3819c2df0
-	github.com/perlin-network/noise v0.0.0-20190521210107-a466908636c5
+	github.com/perlin-network/noise v0.0.0-20190527211417-79abfb78fdba
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
 	github.com/pkg/errors v0.8.1
 	github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a

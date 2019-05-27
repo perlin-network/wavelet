@@ -49,3 +49,6 @@ darwin:
 
 linux-arm64:
 	scripts/build.sh -a linux-arm64
+
+license:
+	addlicense -l mit -c Perlin $(PWD)
