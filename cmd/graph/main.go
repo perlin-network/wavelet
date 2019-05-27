@@ -13,6 +13,7 @@ import (
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/internal/snappy"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -91,7 +92,7 @@ func main() {
 
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
-	ledger := wavelet.NewLedger(client)
+	ledger := wavelet.NewLedger(store.NewInmem(), client)
 
 	go func() {
 		server := client.Listen()
