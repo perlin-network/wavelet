@@ -39,7 +39,7 @@ func main() {
 		}()
 	}
 
-	log.Register(log.NewConsoleWriter(nil, log.FilterFor(log.ModuleNode, log.ModuleSync, log.ModuleConsensus, log.ModuleMetrics)))
+	log.Set("graph", log.NewConsoleWriter(nil, log.FilterFor(log.ModuleNode, log.ModuleSync, log.ModuleConsensus, log.ModuleMetrics)))
 
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {

@@ -52,7 +52,7 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 		return nil, err
 	}
 
-	log.Set(log.NewConsoleWriter(rl.Stderr(), log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
+	log.Set("wavelet", log.NewConsoleWriter(rl.Stderr(), log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
 
 	return &CLI{
 		rl:     rl,

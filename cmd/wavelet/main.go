@@ -42,7 +42,7 @@ type Config struct {
 }
 
 func main() {
-	log.Register(log.NewConsoleWriter(nil, log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
+	log.Set("wavelet", log.NewConsoleWriter(nil, log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
 	logger := log.Node()
 
 	app := cli.NewApp()

@@ -6,7 +6,9 @@ import (
 )
 
 var (
-	output = new(multiWriter)
+	output = &multiWriter{
+		writers: make(map[string]io.Writer),
+	}
 	logger = zerolog.New(output).With().Timestamp().Logger()
 
 	node      zerolog.Logger
@@ -35,15 +37,8 @@ const (
 	ModuleMetrics   = "metrics"
 )
 
-func Register(w ...io.Writer) {
-	for _, writer := range w {
-		output.Register(writer)
-	}
-}
-
-func Set(w ...io.Writer) {
-	output.writers = output.writers[:0]
-	Register(w...)
+func Set(key string, w io.Writer) {
+	output.Set(key, w)
 }
 
 func init() {
