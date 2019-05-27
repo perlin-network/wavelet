@@ -11,6 +11,7 @@ import (
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -855,7 +856,7 @@ func createLedger(t *testing.T) *wavelet.Ledger {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ledger := wavelet.NewLedger(skademlia.NewClient(":0", keys))
+	ledger := wavelet.NewLedger(store.NewInmem(), skademlia.NewClient(":0", keys))
 	return ledger
 }
 

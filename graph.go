@@ -448,6 +448,42 @@ func (g *Graph) Len() int {
 	return num
 }
 
+// MissingLen returns the number of known missing transactions of the graph.
+func (g *Graph) MissingLen() int {
+	g.RLock()
+	num := len(g.missing)
+	g.RUnlock()
+
+	return num
+}
+
+// GetTransactionsByDepth returns the number of transactions in graph whose depth is
+// between [start, end].
+func (g *Graph) DepthLen(start *uint64, end *uint64) int {
+	count := 0
+
+	g.RLock()
+	for depth, index := range g.depthIndex {
+		if (start != nil && depth < *start) || (end != nil && depth > *end) {
+			continue
+		}
+
+		count += len(index)
+	}
+	g.RUnlock()
+
+	return count
+}
+
+// RootDepth returns the current depth of the root transaction of the graph.
+func (g *Graph) RootDepth() uint64 {
+	g.RLock()
+	rootDepth := g.rootDepth
+	g.RUnlock()
+
+	return rootDepth
+}
+
 func (g *Graph) updateGraph(tx *Transaction) error {
 	if err := g.validateTransactionParents(tx); err != nil {
 		g.deleteProgeny(tx.ID)
@@ -642,8 +678,4 @@ func (g *Graph) validateTransactionParents(tx *Transaction) error {
 	}
 
 	return nil
-}
-
-func (g *Graph) RootDepth() uint64 {
-	return g.rootDepth
 }

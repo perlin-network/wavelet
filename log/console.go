@@ -86,9 +86,13 @@ func FilterFor(modules ...string) func(w *ConsoleWriter) {
 }
 
 // NewConsoleWriter creates and initializes a new ConsoleWriter.
-func NewConsoleWriter(options ...func(w *ConsoleWriter)) ConsoleWriter {
+func NewConsoleWriter(writer io.Writer, options ...func(w *ConsoleWriter)) ConsoleWriter {
+	if writer == nil {
+		writer = os.Stdout
+	}
+
 	w := ConsoleWriter{
-		Out:             os.Stdout,
+		Out:             writer,
 		TimeFormat:      consoleDefaultTimeFormat,
 		PartsOrder:      consoleDefaultPartsOrder(),
 		FilteredModules: make(map[string]struct{}),

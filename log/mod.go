@@ -41,6 +41,11 @@ func Register(w ...io.Writer) {
 	}
 }
 
+func Set(w ...io.Writer) {
+	output.writers = output.writers[:0]
+	Register(w...)
+}
+
 func init() {
 	setupChildLoggers()
 }

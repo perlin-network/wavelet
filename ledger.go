@@ -45,9 +45,7 @@ type Ledger struct {
 	cacheChunks   *LRU
 }
 
-func NewLedger(client *skademlia.Client) *Ledger {
-	kv := store.NewInmem()
-
+func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 	metrics := NewMetrics(context.TODO())
 
 	accounts := NewAccounts(kv)

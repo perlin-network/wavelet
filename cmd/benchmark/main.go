@@ -42,7 +42,7 @@ func main() {
 	}
 
 	app.Before = func(context *cli.Context) error {
-		log.Logger = zerolog.New(os.Stderr).With().Timestamp().Logger().Output(logger.NewConsoleWriter())
+		log.Logger = zerolog.New(os.Stderr).With().Timestamp().Logger().Output(logger.NewConsoleWriter(nil))
 
 		return nil
 	}

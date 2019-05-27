@@ -13,6 +13,7 @@ import (
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/internal/snappy"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -29,6 +30,7 @@ import _ "net/http/pprof"
 func main() {
 	pprofFlag := flag.Bool("pprof", false, "host pprof server on port 9000")
 	apiPortFlag := flag.Int("api.port", 0, "api port")
+
 	flag.Parse()
 
 	if *pprofFlag {
@@ -37,7 +39,7 @@ func main() {
 		}()
 	}
 
-	log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleSync, log.ModuleConsensus, log.ModuleMetrics)))
+	log.Register(log.NewConsoleWriter(nil, log.FilterFor(log.ModuleNode, log.ModuleSync, log.ModuleConsensus, log.ModuleMetrics)))
 
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -91,7 +93,7 @@ func main() {
 
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
-	ledger := wavelet.NewLedger(client)
+	ledger := wavelet.NewLedger(store.NewInmem(), client)
 
 	go func() {
 		server := client.Listen()
