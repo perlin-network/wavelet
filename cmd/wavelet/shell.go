@@ -132,6 +132,14 @@ func (cli *CLI) usage() {
 }
 
 func (cli *CLI) status() {
+	preferredID := "N/A"
+
+	if preferred := cli.ledger.Finalizer().Preferred(); preferred != nil {
+		preferredID = hex.EncodeToString(preferred.ID[:])
+	}
+
+	count := cli.ledger.Finalizer().Progress()
+
 	snapshot := cli.ledger.Snapshot()
 	publicKey := cli.keys.PublicKey()
 
@@ -161,6 +169,8 @@ func (cli *CLI) status() {
 		Strs("peers", peerIDs).
 		Int("num_tx", cli.ledger.Graph().DepthLen(&rootDepth, nil)).
 		Int("num_missing_tx", cli.ledger.Graph().MissingLen()).
+		Str("preferred_id", preferredID).
+		Int("preferred_votes", count).
 		Msg("Here is the current status of your node.")
 }
 

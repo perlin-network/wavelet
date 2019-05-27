@@ -150,6 +150,17 @@ func (l *Ledger) Graph() *Graph {
 	return l.graph
 }
 
+// Finalizer returns the Snowball finalizer which finalizes the contents of individual
+// consensus rounds.
+func (l *Ledger) Finalizer() *Snowball {
+	return l.finalizer
+}
+
+// Rounds returns the round manager for the ledger.
+func (l *Ledger) Rounds() *Rounds {
+	return l.rounds
+}
+
 // PerformConsensus spawns workers related to performing consensus, such as pulling
 // missing transactions and incrementally finalizing intervals of transactions in
 // the ledgers graph.
@@ -160,10 +171,6 @@ func (l *Ledger) PerformConsensus() {
 
 func (l *Ledger) Snapshot() *avl.Tree {
 	return l.accounts.Snapshot()
-}
-
-func (l *Ledger) Rounds() *Rounds {
-	return l.rounds
 }
 
 // PullMissingTransactions is an infinite loop continually sending RPC requests
