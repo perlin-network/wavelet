@@ -7,14 +7,14 @@ import (
 
 type multiWriter struct {
 	sync.RWMutex
-	writers []io.Writer
+	writers map[string]io.Writer
 }
 
-func (t *multiWriter) Register(writer io.Writer) {
+func (t *multiWriter) Set(key string, writer io.Writer) {
 	t.Lock()
 	defer t.Unlock()
 
-	t.writers = append(t.writers, writer)
+	t.writers[key] = writer
 }
 
 func (t *multiWriter) Write(p []byte) (n int, err error) {

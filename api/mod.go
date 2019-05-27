@@ -56,7 +56,7 @@ func (g *Gateway) setup(enableTimeout bool) {
 	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id")
 	sinkMetrics := g.registerWebsocketSink("ws://metrics/")
 
-	log.Register(g)
+	log.Set("ws", g)
 
 	// Setup HTTP router.
 
