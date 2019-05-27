@@ -125,7 +125,7 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 		return errors.Errorf("sender public key must be size %d", wavelet.SizeAccountID)
 	}
 
-	if s.Tag > sys.TagStake {
+	if s.Tag > sys.TagBatch {
 		return errors.New("unknown transaction tag specified")
 	}
 
