@@ -26,8 +26,49 @@ COLLAPSE_VOTES:
 			voters[vote.voter.PublicKey()] = struct{}{}
 		}
 
-		weights := computeStakeDistribution(snapshot, voters)
 		counts := make(map[RoundID]float64, len(votes))
+		stakes := make(map[RoundID]float64, len(votes))
+
+		for _, vote := range votes {
+			if vote.preferred == nil {
+				vote.preferred = ZeroRoundPtr
+			}
+
+			counts[vote.preferred.ID] += 1.0
+
+			stake, _ := ReadAccountStake(snapshot, vote.voter.PublicKey())
+
+			if stake < sys.MinimumStake {
+				stake = sys.MinimumStake
+			}
+
+			stakes[vote.preferred.ID] += float64(stake)
+		}
+
+		maxCount := float64(0)
+		maxStake := float64(0)
+
+		for _, vote := range votes {
+			if vote.preferred == nil {
+				vote.preferred = ZeroRoundPtr
+			}
+
+			if maxCount < counts[vote.preferred.ID] {
+				maxCount = counts[vote.preferred.ID]
+			}
+
+			if maxStake < stakes[vote.preferred.ID] {
+				maxStake = stakes[vote.voter.PublicKey()]
+			}
+		}
+
+		for _, vote := range votes {
+			if vote.preferred == nil {
+				vote.preferred = ZeroRoundPtr
+			}
+
+			counts[vote.preferred.ID] = (counts[vote.preferred.ID] / maxCount) * (stakes[vote.preferred.ID] / maxStake)
+		}
 
 		var majority *Round
 
@@ -36,15 +77,11 @@ COLLAPSE_VOTES:
 				vote.preferred = ZeroRoundPtr
 			}
 
-			counts[vote.preferred.ID] += weights[vote.voter.PublicKey()]
-
 			if counts[vote.preferred.ID] >= sys.SnowballAlpha {
 				majority = vote.preferred
 				break
 			}
 		}
-
-		//fmt.Printf("%#v\n", weights)
 
 		snowball.Tick(majority)
 
