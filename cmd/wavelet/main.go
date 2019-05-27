@@ -226,7 +226,7 @@ func start(cfg *Config) {
 	}
 
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
-	fmt.Println(cfg.Remote)
+
 	if cfg.Remote {
 		if len(cfg.Peers) > 1 {
 			resolver := nat.NewPMP()
@@ -257,18 +257,12 @@ func start(cfg *Config) {
 		addr = net.JoinHostPort(string(ip), strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
 	}
 
-	fmt.Println("Listening for peers on:", addr)
+	logger.Info().Str("addr", addr).Msg("Listening for peers.")
 
 	keys, err := keys(cfg.Wallet)
 	if err != nil {
 		panic(err)
 	}
-
-	prk, pubk := keys.PrivateKey(), keys.PublicKey()
-	logger.Info().
-		Hex("privateKey", prk[:]).
-		Hex("publicKey", pubk[:]).
-		Msg("Private and public keys")
 
 	client := skademlia.NewClient(
 		addr, keys,
@@ -328,7 +322,7 @@ func start(cfg *Config) {
 }
 
 func keys(wallet string) (*skademlia.Keypair, error) {
-	var k *skademlia.Keypair
+	var keys *skademlia.Keypair
 
 	logger := log.Node()
 
@@ -346,14 +340,19 @@ func keys(wallet string) (*skademlia.Keypair, error) {
 			return nil, fmt.Errorf("private key located in %q is not of the right length", wallet)
 		}
 
-		k, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+		keys, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
 		if err != nil {
 			return nil, fmt.Errorf("the private key specified in %q is invalid", wallet)
 		}
 
-		logger.Info().Msg("Wallet loaded.")
+		publicKey := keys.PublicKey()
 
-		return k, nil
+		logger.Info().
+			Hex("privateKey", privateKey[:]).
+			Hex("publicKey", publicKey[:]).
+			Msg("Wallet loaded.")
+
+		return keys, nil
 	}
 
 	if os.IsNotExist(err) {
@@ -370,25 +369,36 @@ func keys(wallet string) (*skademlia.Keypair, error) {
 				return nil, fmt.Errorf("private key %s is not of the right length", wallet)
 			}
 
-			k, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+			keys, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
 			if err != nil {
 				return nil, fmt.Errorf("the private key specified is invalid: %s", wallet)
 			}
 
-			logger.Info().Msg("Private key provided instead of wallet.")
+			publicKey := keys.PublicKey()
 
-			return k, nil
+			logger.Info().
+				Hex("privateKey", privateKey[:]).
+				Hex("publicKey", publicKey[:]).
+				Msg("A private key was provided instead of a wallet file.")
+
+			return keys, nil
 		}
 
-		k, err = skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
+		keys, err = skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
 		if err != nil {
 			return nil, errors.New("failed to generate a new wallet")
 		}
 
-		logger.Info().Msg("Existing wallet not found, generated new one.")
+		privateKey := keys.PrivateKey()
+		publicKey := keys.PublicKey()
 
-		return k, nil
+		logger.Info().
+			Hex("privateKey", privateKey[:]).
+			Hex("publicKey", publicKey[:]).
+			Msg("Existing wallet not found: generated a new one.")
+
+		return keys, nil
 	}
 
-	return k, err
+	return keys, err
 }
