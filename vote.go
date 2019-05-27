@@ -11,44 +11,45 @@ type vote struct {
 	preferred *Round
 }
 
-func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, wg *sync.WaitGroup) {
-	votes := make([]vote, 0, sys.SnowballK)
-	voters := make(map[AccountID]struct{}, sys.SnowballK)
+func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan []vote, wg *sync.WaitGroup) {
+COLLAPSE_VOTES:
+	for votes := range voteChan {
+		snapshot := accounts.Snapshot()
 
-	for vote := range voteChan {
-		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
-			continue // To make sure the sampling process is fair, only allow one vote per peer.
-		}
+		voters := make(map[AccountID]struct{})
 
-		voters[vote.voter.PublicKey()] = struct{}{}
-		votes = append(votes, vote)
-
-		if len(votes) == cap(votes) {
-			snapshot := accounts.Snapshot()
-
-			weights := computeStakeDistribution(snapshot, voters)
-			counts := make(map[RoundID]float64, len(votes))
-
-			var majority *Round
-
-			for _, vote := range votes {
-				if vote.preferred == nil {
-					vote.preferred = ZeroRoundPtr
-				}
-
-				counts[vote.preferred.ID] += weights[vote.voter.PublicKey()]
-
-				if counts[vote.preferred.ID] >= sys.SnowballAlpha {
-					majority = vote.preferred
-					break
-				}
+		for _, vote := range votes {
+			if vote.voter == nil {
+				continue COLLAPSE_VOTES
 			}
 
-			snowball.Tick(majority)
-
-			voters = make(map[AccountID]struct{}, sys.SnowballK)
-			votes = votes[:0]
+			voters[vote.voter.PublicKey()] = struct{}{}
 		}
+
+		weights := computeStakeDistribution(snapshot, voters)
+		counts := make(map[RoundID]float64, len(votes))
+
+		var majority *Round
+
+		for _, vote := range votes {
+			if vote.preferred == nil {
+				vote.preferred = ZeroRoundPtr
+			}
+
+			counts[vote.preferred.ID] += weights[vote.voter.PublicKey()]
+
+			if counts[vote.preferred.ID] >= sys.SnowballAlpha {
+				majority = vote.preferred
+				break
+			}
+		}
+
+		//fmt.Printf("%#v\n", weights)
+
+		snowball.Tick(majority)
+
+		voters = make(map[AccountID]struct{}, sys.SnowballK)
+		votes = votes[:0]
 	}
 
 	if wg != nil {

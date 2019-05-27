@@ -39,7 +39,7 @@ type Ledger struct {
 
 	sync      chan struct{}
 	syncTimer *time.Timer
-	syncVotes chan vote
+	syncVotes chan []vote
 
 	cacheCollapse *LRU
 	cacheChunks   *LRU
@@ -104,7 +104,7 @@ func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 
 		sync:      make(chan struct{}),
 		syncTimer: time.NewTimer(0),
-		syncVotes: make(chan vote, sys.SnowballK),
+		syncVotes: make(chan []vote, 1),
 
 		cacheCollapse: NewLRU(16),
 		cacheChunks:   NewLRU(1024), // In total, it will take up 1024 * 4MB.
@@ -314,102 +314,120 @@ FINALIZE_ROUNDS:
 			continue FINALIZE_ROUNDS
 		}
 
-		workerChan := make(chan *grpc.ClientConn, 16)
+		workerChan := make(chan struct{}, 1)
 
 		var workerWG sync.WaitGroup
 		workerWG.Add(cap(workerChan))
 
-		voteChan := make(chan vote, sys.SnowballK)
+		voteChan := make(chan []vote, sys.SnowballK)
 		go CollectVotes(l.accounts, l.finalizer, voteChan, &workerWG)
 
 		req := &QueryRequest{RoundIndex: current.Index + 1}
 
 		for i := 0; i < cap(workerChan); i++ {
 			go func() {
-				for conn := range workerChan {
+				for range workerChan {
 					f := func() {
-						client := NewWaveletClient(conn)
-
-						ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-
-						p := &peer.Peer{}
-
-						res, err := client.Query(ctx, req, grpc.Peer(p))
+						conns, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
 						if err != nil {
-							cancel()
 							return
 						}
 
-						cancel()
+						var wg sync.WaitGroup
+						wg.Add(len(conns))
 
-						l.metrics.queried.Mark(1)
+						votes := make([]vote, len(conns))
 
-						info := noise.InfoFromPeer(p)
-						if info == nil {
-							return
-						}
+						for i, conn := range conns {
+							i, conn := i, conn
 
-						voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
-						if !ok {
-							return
-						}
+							go func() {
+								defer wg.Done()
 
-						round, err := UnmarshalRound(bytes.NewReader(res.Round))
-						if err != nil {
-							voteChan <- vote{voter: voter, preferred: nil}
-							return
-						}
+								client := NewWaveletClient(conn)
 
-						if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
-							voteChan <- vote{voter: voter, preferred: nil}
-							return
-						}
+								ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 
-						if round.End.Depth <= round.Start.Depth {
-							return
-						}
+								p := &peer.Peer{}
 
-						if round.Index != current.Index+1 {
-							if round.Index > sys.SyncIfRoundsDifferBy+current.Index {
-								select {
-								case l.syncVotes <- vote{voter: voter, preferred: &round}:
-								default:
+								res, err := client.Query(ctx, req, grpc.Peer(p))
+								if err != nil {
+									cancel()
+									return
 								}
-							}
 
-							return
+								cancel()
+
+								l.metrics.queried.Mark(1)
+
+								info := noise.InfoFromPeer(p)
+								if info == nil {
+									return
+								}
+
+								voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
+								if !ok {
+									return
+								}
+
+								votes[i].voter = voter
+
+								round, err := UnmarshalRound(bytes.NewReader(res.Round))
+								if err != nil {
+									return
+								}
+
+								if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
+									return
+								}
+
+								if round.End.Depth <= round.Start.Depth {
+									return
+								}
+
+								if round.Index != current.Index+1 {
+									return
+								}
+
+								if round.Start.ID != current.End.ID {
+									return
+								}
+
+								if err := l.AddTransaction(round.Start); err != nil {
+									return
+								}
+
+								if err := l.AddTransaction(round.End); err != nil {
+									return
+								}
+
+								if !round.End.IsCritical(currentDifficulty) {
+									return
+								}
+
+								results, err := l.CollapseTransactions(round.Index, round.Start, round.End, false)
+								if err != nil {
+									fmt.Println(err)
+									return
+								}
+
+								if uint64(results.appliedCount) != round.Applied {
+									fmt.Printf("applied %d but expected %d\n", results.appliedCount, round.Applied)
+									return
+								}
+
+								if results.snapshot.Checksum() != round.Merkle {
+									fmt.Printf("got merkle %x but expected %x\n", results.snapshot.Checksum(), round.Merkle)
+									return
+								}
+
+								votes[i].preferred = &round
+							}()
 						}
 
-						if round.Start.ID != current.End.ID {
-							return
-						}
+						wg.Wait()
 
-						if err := l.AddTransaction(round.Start); err != nil {
-							return
-						}
-
-						if err := l.AddTransaction(round.End); err != nil {
-							return
-						}
-
-						if !round.End.IsCritical(currentDifficulty) {
-							return
-						}
-
-						results, err := l.CollapseTransactions(round.Index, round.Start, round.End, false)
-						if err != nil {
-							return
-						}
-
-						if uint64(results.appliedCount) != round.Applied {
-							return
-						}
-
-						if results.snapshot.Checksum() != round.Merkle {
-							return
-						}
-
-						voteChan <- vote{voter: voter, preferred: &round}
+						voteChan <- votes
 					}
 
 					l.metrics.queryLatency.Time(f)
@@ -432,22 +450,19 @@ FINALIZE_ROUNDS:
 			default:
 			}
 
-			// Randomly sample a peer to query. If no peers are available, stop querying.
+			// If no peers are available, stop querying.
 
-			peers, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
-			if err != nil {
+			if len(l.client.ClosestPeers()) < sys.SnowballK {
 				close(workerChan)
 				workerWG.Wait()
 				workerWG.Add(1)
 				close(voteChan)
-				workerWG.Wait() // Wait for vote processor worker to close.
+				workerWG.Wait()
 
 				continue FINALIZE_ROUNDS
 			}
 
-			for _, peer := range peers {
-				workerChan <- peer
-			}
+			workerChan <- struct{}{}
 		}
 
 		close(workerChan)
@@ -540,8 +555,10 @@ func (l *Ledger) SyncToLatestRound() {
 			var wg sync.WaitGroup
 			wg.Add(len(conns))
 
-			for _, conn := range conns {
-				client := NewWaveletClient(conn)
+			votes := make([]vote, len(conns))
+
+			for i, conn := range conns {
+				i, client := i, NewWaveletClient(conn)
 
 				go func() {
 					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -569,6 +586,8 @@ func (l *Ledger) SyncToLatestRound() {
 						return
 					}
 
+					votes[i].voter = voter
+
 					round, err := UnmarshalRound(bytes.NewReader(res.Round))
 					if err != nil {
 						wg.Done()
@@ -590,13 +609,15 @@ func (l *Ledger) SyncToLatestRound() {
 						return
 					}
 
-					l.syncVotes <- vote{voter: voter, preferred: &round}
+					votes[i].preferred = &round
 
 					wg.Done()
 				}()
 			}
 
 			wg.Wait()
+
+			l.syncVotes <- votes
 
 			if l.syncer.Decided() {
 				break
@@ -632,7 +653,7 @@ func (l *Ledger) SyncToLatestRound() {
 		}
 
 		restart := func() { // Respawn all previously stopped workers.
-			l.syncVotes = make(chan vote, sys.SnowballK)
+			l.syncVotes = make(chan []vote, sys.SnowballK)
 			go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
 
 			l.sync = make(chan struct{})
