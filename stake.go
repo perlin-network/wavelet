@@ -2,12 +2,11 @@ package wavelet
 
 import (
 	"github.com/perlin-network/wavelet/avl"
-	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
 )
 
-func computeStakeDistribution(tree *avl.Tree, accounts map[common.AccountID]struct{}) map[common.AccountID]float64 {
-	stakes := make(map[common.AccountID]uint64, len(accounts))
+func computeStakeDistribution(tree *avl.Tree, accounts map[AccountID]struct{}) map[AccountID]float64 {
+	stakes := make(map[AccountID]uint64, len(accounts))
 	var totalStake uint64
 
 	for accountID := range accounts {
@@ -21,7 +20,7 @@ func computeStakeDistribution(tree *avl.Tree, accounts map[common.AccountID]stru
 		totalStake += stake
 	}
 
-	weights := make(map[common.AccountID]float64, len(stakes))
+	weights := make(map[AccountID]float64, len(stakes))
 
 	if totalStake == 0 {
 		return weights

@@ -6,7 +6,7 @@ import (
 	"sync"
 )
 
-type lru struct {
+type LRU struct {
 	sync.Mutex
 
 	size int
@@ -20,15 +20,15 @@ type objectInfo struct {
 	obj interface{}
 }
 
-func newLRU(size int) *lru {
-	return &lru{
+func NewLRU(size int) *LRU {
+	return &LRU{
 		size:     size,
-		elements: make(map[[blake2b.Size256]byte]*list.Element),
+		elements: make(map[[blake2b.Size256]byte]*list.Element, size),
 		access:   list.New(),
 	}
 }
 
-func (l *lru) load(key [blake2b.Size256]byte) (interface{}, bool) {
+func (l *LRU) load(key [blake2b.Size256]byte) (interface{}, bool) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -41,7 +41,7 @@ func (l *lru) load(key [blake2b.Size256]byte) (interface{}, bool) {
 	return elem.Value.(*objectInfo).obj, ok
 }
 
-func (l *lru) put(key [blake2b.Size256]byte, val interface{}) {
+func (l *LRU) put(key [blake2b.Size256]byte, val interface{}) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -65,7 +65,7 @@ func (l *lru) put(key [blake2b.Size256]byte, val interface{}) {
 	}
 }
 
-func (l *lru) remove(key [blake2b.Size256]byte) {
+func (l *LRU) remove(key [blake2b.Size256]byte) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -76,7 +76,7 @@ func (l *lru) remove(key [blake2b.Size256]byte) {
 	}
 }
 
-func (l *lru) mostRecentlyUsed(n int) [][blake2b.Size256]byte {
+func (l *LRU) mostRecentlyUsed(n int) [][blake2b.Size256]byte {
 	l.Lock()
 	defer l.Unlock()
 

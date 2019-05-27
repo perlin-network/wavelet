@@ -1,39 +1,37 @@
 package main
 
 import (
-	"bufio"
-	"bytes"
-	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/handshake"
+	"github.com/perlin-network/noise/nat"
 	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/noise/xnoise"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
-	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/internal/snappy"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/node"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
-	"github.com/rs/zerolog"
+	"google.golang.org/grpc"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
-	"io"
 	"io/ioutil"
 	"net"
+	"net/http"
 	"os"
-	"runtime"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 )
 
+import _ "net/http/pprof"
+
 type Config struct {
+	NAT      bool
 	Host     string
 	Port     uint
 	Wallet   string
@@ -43,37 +41,8 @@ type Config struct {
 	Database string
 }
 
-func protocol(n *noise.Node, config *Config, keys *skademlia.Keypair, kv store.KV) (*node.Protocol, *skademlia.Protocol, noise.Protocol) {
-	ecdh := handshake.NewECDH()
-	ecdh.RegisterOpcodes(n)
-
-	aead := cipher.NewAEAD()
-	aead.RegisterOpcodes(n)
-
-	overlay := skademlia.New(net.JoinHostPort(config.Host, strconv.Itoa(n.Addr().(*net.TCPAddr).Port)), keys, xnoise.DialTCP)
-	overlay.RegisterOpcodes(n)
-	overlay.WithC1(sys.SKademliaC1)
-	overlay.WithC2(sys.SKademliaC2)
-
-	w := node.New(overlay, keys, kv, config.Genesis)
-	w.RegisterOpcodes(n)
-	w.Init(n)
-
-	protocol := noise.NewProtocol(xnoise.LogErrors, ecdh.Protocol(), aead.Protocol(), overlay.Protocol(), w.Protocol())
-
-	return w, overlay, protocol
-}
-
 func main() {
-	runtime.SetMutexProfileFraction(1)
-	runtime.SetBlockProfileRate(1)
-
-	//if terminal.IsTerminal(int(os.Stdout.Fd())) {
-	log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
-	//} else {
-	//	log.Register(os.Stderr)
-	//}
-
+	log.Register(log.NewConsoleWriter(nil, log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
 	logger := log.Node()
 
 	app := cli.NewApp()
@@ -85,6 +54,11 @@ func main() {
 	app.Usage = "a bleeding fast ledger with a powerful compute layer"
 
 	app.Flags = []cli.Flag{
+		altsrc.NewBoolFlag(cli.BoolFlag{
+			Name:   "nat",
+			Usage:  "Enable port forwarding: only required for personal PCs.",
+			EnvVar: "WAVELET_NAT",
+		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "host",
 			Value:  "127.0.0.1",
@@ -215,11 +189,7 @@ func main() {
 		sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
 		sys.MinimumStake = c.Uint64("sys.min_stake")
 
-		// start the server
-		k, n, w := server(config, logger)
-
-		// run the shell version of the node
-		shell(n, k, w, logger)
+		start(config)
 
 		return nil
 	}
@@ -233,122 +203,90 @@ func main() {
 	}
 }
 
-func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.Node, *node.Protocol) {
-	n, err := xnoise.ListenTCP(uint(config.Port))
+func start(cfg *Config) {
+	logger := log.Node()
 
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to start listening for peers.")
-		return nil, nil, nil
+		panic(err)
 	}
 
-	var k *skademlia.Keypair
+	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
 
-	// If a private key is specified instead of a path to a wallet, then simply use the provided private key instead.
+	if cfg.NAT {
+		if len(cfg.Peers) > 1 {
+			resolver := nat.NewPMP()
 
-	privateKeyBuf, err := ioutil.ReadFile(config.Wallet)
-
-	if err != nil && os.IsNotExist(err) && len(config.Wallet) == hex.EncodedLen(edwards25519.SizePrivateKey) {
-		var privateKey edwards25519.PrivateKey
-
-		n, err := hex.Decode(privateKey[:], []byte(config.Wallet))
-		if err != nil {
-			logger.Fatal().Err(err).Msgf("Failed to decode the private key specified: %s", config.Wallet)
-		}
-
-		if n != edwards25519.SizePrivateKey {
-			logger.Fatal().Msgf("Private key %s is not of the right length.", config.Wallet)
-			return nil, nil, nil
-		}
-
-		k, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
-		if err != nil {
-			logger.Fatal().Err(err).Msgf("The private key specified is invalid: %s", config.Wallet)
-			return nil, nil, nil
-		}
-
-		privateKey, publicKey := k.PrivateKey(), k.PublicKey()
-
-		logger.Info().
-			Hex("privateKey", privateKey[:]).
-			Hex("publicKey", publicKey[:]).
-			Msg("Loaded wallet.")
-	} else if err != nil && os.IsNotExist(err) {
-		logger.Warn().Msgf("Could not find an existing wallet at %q. Generating a new wallet...", config.Wallet)
-
-		k, err = skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
-
-		if err != nil {
-			logger.Fatal().Err(err).Msg("failed to generate a new wallet.")
-			return nil, nil, nil
-		}
-
-		privateKey, publicKey := k.PrivateKey(), k.PublicKey()
-
-		logger.Info().
-			Hex("privateKey", privateKey[:]).
-			Hex("publicKey", publicKey[:]).
-			Msg("Generated a wallet.")
-	} else if err != nil {
-		logger.Warn().Err(err).Msgf("Encountered an unexpected error loading your wallet from %q.", config.Wallet)
-	} else {
-		var privateKey edwards25519.PrivateKey
-
-		n, err := hex.Decode(privateKey[:], privateKeyBuf)
-		if err != nil {
-			logger.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", config.Wallet)
-			return nil, nil, nil
-		}
-
-		if n != edwards25519.SizePrivateKey {
-			logger.Fatal().Msgf("Private key located in %q is not of the right length.", config.Wallet)
-			return nil, nil, nil
-		}
-
-		k, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
-		if err != nil {
-			logger.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", config.Wallet)
-			return nil, nil, nil
-		}
-
-		privateKey, publicKey := k.PrivateKey(), k.PublicKey()
-
-		logger.Info().
-			Hex("privateKey", privateKey[:]).
-			Hex("publicKey", publicKey[:]).
-			Msg("Loaded wallet.")
-	}
-
-	var kv store.KV
-
-	if len(config.Database) > 0 {
-		kv, err = store.NewLevelDB(config.Database)
-		if err != nil {
-			logger.Fatal().Err(err).Msgf("Failed to create/open database located at %q.", config.Database)
-		}
-	} else {
-		kv = store.NewInmem()
-	}
-
-	w, network, protocol := protocol(n, config, k, kv)
-	n.FollowProtocol(protocol)
-
-	logger.Info().Str("host", config.Host).Uint("port", uint(n.Addr().(*net.TCPAddr).Port)).Msg("Listening for peers.")
-
-	if len(config.Peers) > 0 {
-		for _, address := range config.Peers {
-			peer, err := xnoise.DialTCP(n, address)
-
-			if err != nil {
-				logger.Error().Err(err).Msg("Failed to dial specified peer.")
-				continue
+			if err := resolver.AddMapping("tcp",
+				uint16(listener.Addr().(*net.TCPAddr).Port),
+				uint16(listener.Addr().(*net.TCPAddr).Port),
+				30*time.Minute,
+			); err != nil {
+				panic(err)
 			}
-
-			peer.WaitFor(node.SignalAuthenticated)
 		}
 
+		resp, err := http.Get("http://myexternalip.com/raw")
+		if err != nil {
+			panic(err)
+		}
+
+		ip, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			panic(err)
+		}
+
+		if err := resp.Body.Close(); err != nil {
+			panic(err)
+		}
+
+		addr = net.JoinHostPort(string(ip), strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
 	}
 
-	if peers := network.Bootstrap(n); len(peers) > 0 {
+	logger.Info().Str("addr", addr).Msg("Listening for peers.")
+
+	keys, err := keys(cfg.Wallet)
+	if err != nil {
+		panic(err)
+	}
+
+	client := skademlia.NewClient(
+		addr, keys,
+		skademlia.WithC1(sys.SKademliaC1),
+		skademlia.WithC2(sys.SKademliaC2),
+		skademlia.WithDialOptions(grpc.WithDefaultCallOptions(grpc.UseCompressor(snappy.Name))),
+	)
+
+	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
+
+	var kv store.KV = store.NewInmem()
+
+	if len(cfg.Database) > 0 {
+		kv, err = store.NewLevelDB(cfg.Database)
+		if err != nil {
+			logger.Fatal().Err(err).Msgf("Failed to create/open database located at %q.", cfg.Database)
+		}
+	}
+
+	ledger := wavelet.NewLedger(kv, client)
+
+	go func() {
+		server := client.Listen()
+
+		wavelet.RegisterWaveletServer(server, ledger.Protocol())
+
+		if err := server.Serve(listener); err != nil {
+			panic(err)
+		}
+	}()
+
+	for _, addr := range cfg.Peers {
+		if _, err := client.Dial(addr); err != nil {
+			fmt.Printf("Error dialing %s: %v\n", addr, err)
+		}
+	}
+
+	if peers := client.Bootstrap(); len(peers) > 0 {
 		var ids []string
 
 		for _, id := range peers {
@@ -358,402 +296,96 @@ func server(config *Config, logger zerolog.Logger) (*skademlia.Keypair, *noise.N
 		logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
 	}
 
-	if port := config.APIPort; port > 0 {
-		go api.New().StartHTTP(int(config.APIPort), n, w.Ledger(), network, k)
+	if cfg.APIPort > 0 {
+		go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
 	}
 
-	return k, n, w
+	shell, err := NewCLI(client, ledger, keys)
+	if err != nil {
+		panic(err)
+	}
+
+	shell.Start()
 }
 
-func shell(n *noise.Node, k *skademlia.Keypair, w *node.Protocol, logger zerolog.Logger) {
-	publicKey := k.PublicKey()
-	ledger := w.Ledger()
+func keys(wallet string) (*skademlia.Keypair, error) {
+	var keys *skademlia.Keypair
 
-	reader := bufio.NewReader(os.Stdin)
+	logger := log.Node()
 
-	var intBuf [8]byte
+	privateKeyBuf, err := ioutil.ReadFile(wallet)
 
-	for {
-		buf, _, err := reader.ReadLine()
+	if err == nil {
+		var privateKey edwards25519.PrivateKey
 
+		n, err := hex.Decode(privateKey[:], privateKeyBuf)
 		if err != nil {
-			if err == io.EOF {
-				break
-			}
-
-			continue
+			return nil, fmt.Errorf("failed to decode your private key from %q", wallet)
 		}
 
-		cmd := strings.Split(string(buf), " ")
-
-		switch cmd[0] {
-		case "l":
-			preferredID := "N/A"
-
-			if preferred := ledger.Preferred(); preferred != nil {
-				preferredID = hex.EncodeToString(preferred.End.ID[:])
-			}
-
-			round := ledger.LastRound()
-
-			var ids []string
-
-			peers, err := node.SelectPeers(w.Network().Peers(n), sys.SnowballK)
-			if err != nil {
-				logger.Error().Msg("Error while selecting peers - " + err.Error())
-				continue
-			}
-
-			for _, peer := range peers {
-				if id := peer.Ctx().Get(skademlia.KeyID); id != nil {
-					ids = append(ids, id.(*skademlia.ID).String())
-				}
-			}
-
-			logger.Info().
-				Uint8("difficulty", round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-				Uint64("round", round.Index).
-				Hex("root_id", round.End.ID[:]).
-				Uint64("height", ledger.Height()).
-				Uint64("num_tx", ledger.NumTransactions()).
-				Uint64("num_tx_in_store", ledger.NumTransactionInStore()).
-				Uint64("num_missing_tx", ledger.NumMissingTransactions()).
-				Str("preferred_id", preferredID).
-				Strs("peers", ids).
-				Msg("Here is the current state of the ledger.")
-		case "tx":
-			if len(cmd) < 2 {
-				logger.Error().Msg("Please specify a transaction ID.")
-			}
-
-			buf, err := hex.DecodeString(cmd[1])
-
-			if err != nil || len(buf) != common.SizeTransactionID {
-				logger.Error().Msg("The transaction ID you specified is invalid.")
-				continue
-			}
-
-			var id common.TransactionID
-			copy(id[:], buf)
-
-			tx, exists := ledger.FindTransaction(id)
-			if !exists {
-				logger.Error().Msg("Could not find transaction in the ledger.")
-				continue
-			}
-
-			var parents []string
-			for _, parentID := range tx.ParentIDs {
-				parents = append(parents, hex.EncodeToString(parentID[:]))
-			}
-
-			logger.Info().
-				Strs("parents", parents).
-				Hex("sender", tx.Sender[:]).
-				Hex("creator", tx.Creator[:]).
-				Uint64("nonce", tx.Nonce).
-				Uint8("tag", tx.Tag).
-				Uint64("depth", tx.Depth).
-				Msgf("Transaction: %s", cmd[1])
-		case "w":
-			snapshot := ledger.Snapshot()
-
-			if len(cmd) < 2 {
-				balance, _ := wavelet.ReadAccountBalance(snapshot, publicKey)
-				stake, _ := wavelet.ReadAccountStake(snapshot, publicKey)
-				nonce, _ := wavelet.ReadAccountNonce(snapshot, publicKey)
-
-				logger.Info().
-					Str("id", hex.EncodeToString(publicKey[:])).
-					Uint64("balance", balance).
-					Uint64("stake", stake).
-					Uint64("nonce", nonce).
-					Msg("Here is your wallet information.")
-
-				continue
-			}
-
-			buf, err := hex.DecodeString(cmd[1])
-
-			if err != nil || len(buf) != common.SizeAccountID {
-				logger.Error().Msg("The account ID you specified is invalid.")
-				continue
-			}
-
-			var accountID common.AccountID
-			copy(accountID[:], buf)
-
-			balance, _ := wavelet.ReadAccountBalance(snapshot, accountID)
-			stake, _ := wavelet.ReadAccountStake(snapshot, accountID)
-			nonce, _ := wavelet.ReadAccountNonce(snapshot, accountID)
-
-			_, isContract := wavelet.ReadAccountContractCode(snapshot, accountID)
-			numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, accountID)
-
-			logger.Info().
-				Uint64("balance", balance).
-				Uint64("stake", stake).
-				Uint64("nonce", nonce).
-				Bool("is_contract", isContract).
-				Uint64("num_pages", numPages).
-				Msgf("Account: %s", cmd[1])
-		case "p":
-			recipientAddress := "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"
-			amount := 1
-
-			if len(cmd) >= 2 {
-				recipientAddress = cmd[1]
-			}
-
-			if len(cmd) >= 3 {
-				amount, err = strconv.Atoi(cmd[2])
-				if err != nil {
-					logger.Error().Err(err).Msg("Failed to convert payment amount to an uint64.")
-					continue
-				}
-			}
-
-			recipient, err := hex.DecodeString(recipientAddress)
-			if err != nil {
-				logger.Error().Err(err).Msg("The recipient you specified is invalid.")
-				continue
-			}
-
-			payload := bytes.NewBuffer(nil)
-			payload.Write(recipient[:])
-			binary.LittleEndian.PutUint64(intBuf[:], uint64(amount))
-			payload.Write(intBuf[:])
-
-			if len(cmd) >= 5 {
-				binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(cmd[3])))
-				payload.Write(intBuf[:4])
-				payload.WriteString(cmd[3])
-
-				params := bytes.NewBuffer(nil)
-
-				for i := 4; i < len(cmd); i++ {
-					arg := cmd[i]
-
-					switch arg[0] {
-					case 'S':
-						binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(arg[1:])))
-						params.Write(intBuf[:4])
-						params.WriteString(arg[1:])
-					case 'B':
-						binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(arg[1:])))
-						params.Write(intBuf[:4])
-						params.Write([]byte(arg[1:]))
-					case '1', '2', '4', '8':
-						var val uint64
-						_, err = fmt.Sscanf(arg[1:], "%d", &val)
-						if err != nil {
-							logger.Error().Err(err).Msgf("Got an error parsing integer: %+v", arg[1:])
-						}
-
-						switch arg[0] {
-						case '1':
-							params.WriteByte(byte(val))
-						case '2':
-							binary.LittleEndian.PutUint16(intBuf[:2], uint16(val))
-							params.Write(intBuf[:2])
-						case '4':
-							binary.LittleEndian.PutUint32(intBuf[:4], uint32(val))
-							params.Write(intBuf[:4])
-						case '8':
-							binary.LittleEndian.PutUint64(intBuf[:8], uint64(val))
-							params.Write(intBuf[:8])
-						}
-					case 'H':
-						buf, err := hex.DecodeString(arg[1:])
-
-						if err != nil {
-							logger.Error().Err(err).Msgf("Cannot decode hex: %s", arg[1:])
-							continue
-						}
-
-						params.Write(buf)
-					default:
-						logger.Error().Msgf("Invalid argument specified: %s", arg)
-						continue
-					}
-				}
-
-				buf := params.Bytes()
-
-				binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(buf)))
-				payload.Write(intBuf[:4])
-				payload.Write(buf)
-			}
-
-			go func() {
-				tx := wavelet.NewTransaction(k, sys.TagTransfer, payload.Bytes())
-
-				evt := wavelet.EventBroadcast{
-					Tag:       tx.Tag,
-					Payload:   tx.Payload,
-					Creator:   tx.Creator,
-					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction, 1),
-					Error:     make(chan error, 1),
-				}
-
-				select {
-				case <-time.After(1 * time.Second):
-					logger.Info().Msg("It looks like the broadcasting queue is full. Please try again.")
-					return
-				case ledger.BroadcastQueue <- evt:
-				}
-
-				select {
-				case <-time.After(1 * time.Second):
-					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
-					return
-				case err := <-evt.Error:
-					logger.Error().Err(err).Msg("An error occurred while broadcasting a transfer transaction.")
-					return
-				case tx := <-evt.Result:
-					logger.Info().Msgf("Success! Your payment transaction ID: %x", tx.ID)
-				}
-			}()
-
-		case "ps":
-			if len(cmd) < 2 {
-				continue
-			}
-
-			amount, err := strconv.Atoi(cmd[1])
-			if err != nil {
-				logger.Error().Err(err).Msg("Failed to convert staking amount to a uint64.")
-				return
-			}
-
-			payload := bytes.NewBuffer(nil)
-			payload.WriteByte(1)
-			binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
-			payload.Write(intBuf[:8])
-
-			go func() {
-				tx := wavelet.NewTransaction(k, sys.TagStake, payload.Bytes())
-
-				evt := wavelet.EventBroadcast{
-					Tag:       tx.Tag,
-					Payload:   tx.Payload,
-					Creator:   tx.Creator,
-					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction, 1),
-					Error:     make(chan error, 1),
-				}
-
-				select {
-				case <-time.After(1 * time.Second):
-					logger.Info().Msg("It looks like the broadcasting queue is full. Please try again.")
-					return
-				case ledger.BroadcastQueue <- evt:
-				}
-
-				select {
-				case <-time.After(1 * time.Second):
-					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
-					return
-				case err := <-evt.Error:
-					logger.Error().Err(err).Msg("An error occurred while broadcasting a stake placement transaction.")
-					return
-				case tx := <-evt.Result:
-					logger.Info().Msgf("Success! Your stake placement transaction ID: %x", tx.ID)
-				}
-			}()
-		case "ws":
-			if len(cmd) < 2 {
-				continue
-			}
-
-			amount, err := strconv.ParseUint(cmd[1], 10, 64)
-			if err != nil {
-				logger.Error().Err(err).Msg("Failed to convert withdraw amount to an uint64.")
-				return
-			}
-
-			payload := bytes.NewBuffer(nil)
-			payload.WriteByte(0)
-			binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
-			payload.Write(intBuf[:8])
-
-			go func() {
-				tx := wavelet.NewTransaction(k, sys.TagStake, payload.Bytes())
-
-				evt := wavelet.EventBroadcast{
-					Tag:       tx.Tag,
-					Payload:   tx.Payload,
-					Creator:   tx.Creator,
-					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction, 1),
-					Error:     make(chan error, 1),
-				}
-
-				select {
-				case <-time.After(1 * time.Second):
-					logger.Info().Msg("It looks like the broadcasting queue is full. Please try again.")
-					return
-				case ledger.BroadcastQueue <- evt:
-				}
-
-				select {
-				case <-time.After(1 * time.Second):
-					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
-					return
-				case err := <-evt.Error:
-					logger.Error().Err(err).Msg("An error occurred while broadcasting a stake withdrawal transaction.")
-					return
-				case tx := <-evt.Result:
-					logger.Info().Msgf("Success! Your stake withdrawal transaction ID: %x", tx.ID)
-				}
-			}()
-		case "c":
-			if len(cmd) < 2 {
-				continue
-			}
-
-			code, err := ioutil.ReadFile(cmd[1])
-			if err != nil {
-				logger.Error().
-					Err(err).
-					Str("path", cmd[1]).
-					Msg("Failed to find/load the smart contract code from the given path.")
-				continue
-			}
-
-			go func() {
-				tx := wavelet.NewTransaction(k, sys.TagContract, code)
-
-				evt := wavelet.EventBroadcast{
-					Tag:       tx.Tag,
-					Payload:   tx.Payload,
-					Creator:   tx.Creator,
-					Signature: tx.CreatorSignature,
-					Result:    make(chan wavelet.Transaction, 1),
-					Error:     make(chan error, 1),
-				}
-
-				select {
-				case <-time.After(1 * time.Second):
-					logger.Info().Msg("It looks like the broadcasting queue is full. Please try again.")
-					return
-				case ledger.BroadcastQueue <- evt:
-				}
-
-				select {
-				case <-time.After(1 * time.Second):
-					logger.Info().Msg("It looks like it's taking too long to broadcast your transaction. Please try again.")
-					return
-				case err := <-evt.Error:
-					logger.Error().Err(err).Msg("An error occurred while broadcasting a smart contract creation transaction.")
-					return
-				case tx := <-evt.Result:
-					logger.Info().Msgf("Success! Your smart contracts ID is: %x", tx.ID)
-				}
-			}()
+		if n != edwards25519.SizePrivateKey {
+			return nil, fmt.Errorf("private key located in %q is not of the right length", wallet)
 		}
+
+		keys, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+		if err != nil {
+			return nil, fmt.Errorf("the private key specified in %q is invalid", wallet)
+		}
+
+		publicKey := keys.PublicKey()
+
+		logger.Info().
+			Hex("privateKey", privateKey[:]).
+			Hex("publicKey", publicKey[:]).
+			Msg("Wallet loaded.")
+
+		return keys, nil
 	}
 
-	select {}
+	if os.IsNotExist(err) {
+		// If a private key is specified instead of a path to a wallet, then simply use the provided private key instead.
+		if len(wallet) == hex.EncodedLen(edwards25519.SizePrivateKey) {
+			var privateKey edwards25519.PrivateKey
+
+			n, err := hex.Decode(privateKey[:], []byte(wallet))
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode the private key specified: %s", wallet)
+			}
+
+			if n != edwards25519.SizePrivateKey {
+				return nil, fmt.Errorf("private key %s is not of the right length", wallet)
+			}
+
+			keys, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+			if err != nil {
+				return nil, fmt.Errorf("the private key specified is invalid: %s", wallet)
+			}
+
+			publicKey := keys.PublicKey()
+
+			logger.Info().
+				Hex("privateKey", privateKey[:]).
+				Hex("publicKey", publicKey[:]).
+				Msg("A private key was provided instead of a wallet file.")
+
+			return keys, nil
+		}
+
+		keys, err = skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
+		if err != nil {
+			return nil, errors.New("failed to generate a new wallet")
+		}
+
+		privateKey := keys.PrivateKey()
+		publicKey := keys.PublicKey()
+
+		logger.Info().
+			Hex("privateKey", privateKey[:]).
+			Hex("publicKey", publicKey[:]).
+			Msg("Existing wallet not found: generated a new one.")
+
+		return keys, nil
+	}
+
+	return keys, err
 }

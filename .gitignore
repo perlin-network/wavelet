@@ -28,4 +28,7 @@ go.sum
 
 build
 cmd/wavelet/testdb*
+cmd/wavelet/wavelet
+cmd/graph/main
+cmd/benchmark/main
 cmd/benchmark/wavelet

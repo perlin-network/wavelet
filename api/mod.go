@@ -4,10 +4,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/buaazp/fasthttprouter"
-	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
@@ -22,7 +20,7 @@ import (
 )
 
 type Gateway struct {
-	node   *noise.Node
+	client *skademlia.Client
 	ledger *wavelet.Ledger
 
 	network *skademlia.Protocol
@@ -116,11 +114,10 @@ func (g *Gateway) setup(enableTimeout bool) {
 	g.router = r
 }
 
-func (g *Gateway) StartHTTP(port int, n *noise.Node, l *wavelet.Ledger, nn *skademlia.Protocol, k *skademlia.Keypair) {
-	g.node = n
+func (g *Gateway) StartHTTP(port int, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair) {
+	g.client = c
 	g.ledger = l
 
-	g.network = nn
 	g.keys = k
 
 	g.setup(false)
@@ -168,61 +165,75 @@ func (g *Gateway) initSession(ctx *fasthttp.RequestCtx) {
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	req := new(sendTransactionRequest)
 
-	//parser := g.parserPool.Get()
-	parser := new(fastjson.Parser)
+	parser := g.parserPool.Get()
 	err := req.bind(parser, ctx.PostBody())
-	//g.parserPool.Put(parser)
+	g.parserPool.Put(parser)
 
 	if err != nil {
 		g.renderError(ctx, ErrBadRequest(err))
 		return
 	}
 
-	evt := wavelet.EventBroadcast{
-		Tag:       req.Tag,
-		Payload:   req.payload,
-		Creator:   req.creator,
-		Signature: req.signature,
-		Result:    make(chan wavelet.Transaction, 1),
-		Error:     make(chan error, 1),
-	}
+	tx := wavelet.AttachSenderToTransaction(
+		g.keys,
+		wavelet.Transaction{Tag: req.Tag, Payload: req.payload, Creator: req.creator, CreatorSignature: req.signature},
+		g.ledger.Graph().FindEligibleParents()...,
+	)
 
-	select {
-	case <-time.After(1 * time.Second):
-		g.renderError(ctx, ErrInternal(errors.New("broadcasting queue is full")))
+	err = g.ledger.AddTransaction(tx)
+
+	if err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
+		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error adding your transaction to graph")))
 		return
-	case g.ledger.BroadcastQueue <- evt:
 	}
 
-	select {
-	case <-time.After(1 * time.Second):
-		g.renderError(ctx, ErrInternal(errors.New("its taking too long to broadcast your transaction")))
-		return
-	case err, ok := <-evt.Error:
-		if !ok {
-			select {
-			case tx := <-evt.Result:
-				g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
-			case <-time.After(3 * time.Second):
-				g.render(ctx, ErrInternal(errors.New("timed out gossiping tx")))
-			}
+	g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
 
-			return
-		}
-
-		g.renderError(ctx, ErrInternal(errors.Wrap(err, "got an error broadcasting your transaction")))
-	case tx := <-evt.Result:
-		g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
-	}
+	//evt := wavelet.EventBroadcast{
+	//	Tag:       req.Tag,
+	//	Payload:   req.payload,
+	//	Creator:   req.creator,
+	//	Signature: req.signature,
+	//	Result:    make(chan wavelet.Transaction, 1),
+	//	Error:     make(chan error, 1),
+	//}
+	//
+	//select {
+	//case <-time.After(1 * time.Second):
+	//	g.renderError(ctx, ErrInternal(errors.New("broadcasting queue is full")))
+	//	return
+	//case g.ledger.BroadcastQueue <- evt:
+	//}
+	//
+	//select {
+	//case <-time.After(1 * time.Second):
+	//	g.renderError(ctx, ErrInternal(errors.New("its taking too long to broadcast your transaction")))
+	//	return
+	//case err, ok := <-evt.Error:
+	//	if !ok {
+	//		select {
+	//		case tx := <-evt.Result:
+	//			g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
+	//		case <-time.After(3 * time.Second):
+	//			g.render(ctx, ErrInternal(errors.New("timed out gossiping tx")))
+	//		}
+	//
+	//		return
+	//	}
+	//
+	//	g.renderError(ctx, ErrInternal(errors.Wrap(err, "got an error broadcasting your transaction")))
+	//case tx := <-evt.Result:
+	//	g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
+	//}
 }
 
 func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
-	g.render(ctx, &ledgerStatusResponse{node: g.node, ledger: g.ledger, network: g.network, publicKey: g.keys.PublicKey()})
+	g.render(ctx, &ledgerStatusResponse{client: g.client, ledger: g.ledger, publicKey: g.keys.PublicKey()})
 }
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
-	var sender common.AccountID
-	var creator common.AccountID
+	var sender wavelet.AccountID
+	var creator wavelet.AccountID
 	var offset, limit uint64
 	var err error
 
@@ -235,8 +246,8 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 			return
 		}
 
-		if len(slice) != common.SizeAccountID {
-			g.renderError(ctx, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", common.SizeAccountID)))
+		if len(slice) != wavelet.SizeAccountID {
+			g.renderError(ctx, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", wavelet.SizeAccountID)))
 			return
 		}
 
@@ -251,8 +262,8 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 			return
 		}
 
-		if len(slice) != common.SizeAccountID {
-			g.renderError(ctx, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", common.SizeAccountID)))
+		if len(slice) != wavelet.SizeAccountID {
+			g.renderError(ctx, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", wavelet.SizeAccountID)))
 			return
 		}
 
@@ -277,19 +288,15 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 		}
 	}
 
-	rootDepth := g.ledger.LastRound().End.Depth
+	rootDepth := g.ledger.Graph().RootDepth()
 
 	var transactions transactionList
 
-	for _, tx := range g.ledger.ListTransactions(offset, limit, sender, creator) {
+	for _, tx := range g.ledger.Graph().ListTransactions(offset, limit, sender, creator) {
 		status := "received"
 
 		if tx.Depth <= rootDepth {
-			if g.ledger.TransactionApplied(tx.ID) {
-				status = "applied"
-			} else {
-				status = "failed"
-			}
+			status = "applied"
 		}
 
 		transactions = append(transactions, &transaction{tx: tx, status: status})
@@ -311,31 +318,28 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	if len(slice) != common.SizeTransactionID {
-		g.renderError(ctx, ErrBadRequest(errors.Errorf("transaction ID must be %d bytes long", common.SizeTransactionID)))
+	if len(slice) != wavelet.SizeTransactionID {
+		g.renderError(ctx, ErrBadRequest(errors.Errorf("transaction ID must be %d bytes long", wavelet.SizeTransactionID)))
 		return
 	}
 
-	var id common.TransactionID
+	var id wavelet.TransactionID
 	copy(id[:], slice)
 
-	tx, exists := g.ledger.FindTransaction(id)
+	tx := g.ledger.Graph().FindTransaction(id)
+	//tx, exists := g.ledger.FindTransaction(id)
 
-	if !exists {
+	if tx == nil {
 		g.renderError(ctx, ErrBadRequest(errors.Errorf("could not find transaction with ID %x", id)))
 		return
 	}
 
-	rootDepth := g.ledger.LastRound().End.Depth
+	rootDepth := g.ledger.Graph().RootDepth()
 
 	res := &transaction{tx: tx}
 
 	if tx.Depth <= rootDepth {
-		if g.ledger.TransactionApplied(tx.ID) {
-			res.status = "applied"
-		} else {
-			res.status = "failed"
-		}
+		res.status = "applied"
 	} else {
 		res.status = "received"
 	}
@@ -356,12 +360,12 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	if len(slice) != common.SizeAccountID {
-		g.renderError(ctx, ErrBadRequest(errors.Errorf("account ID must be %d bytes long", common.SizeAccountID)))
+	if len(slice) != wavelet.SizeAccountID {
+		g.renderError(ctx, ErrBadRequest(errors.Errorf("account ID must be %d bytes long", wavelet.SizeAccountID)))
 		return
 	}
 
-	var id common.AccountID
+	var id wavelet.AccountID
 	copy(id[:], slice)
 
 	g.render(ctx, &account{ledger: g.ledger, id: id})
@@ -381,12 +385,12 @@ func (g *Gateway) contractScope(next fasthttp.RequestHandler) fasthttp.RequestHa
 			return
 		}
 
-		if len(slice) != common.SizeTransactionID {
-			g.renderError(ctx, ErrBadRequest(errors.Errorf("contract ID must be %d bytes long", common.SizeTransactionID)))
+		if len(slice) != wavelet.SizeTransactionID {
+			g.renderError(ctx, ErrBadRequest(errors.Errorf("contract ID must be %d bytes long", wavelet.SizeTransactionID)))
 			return
 		}
 
-		var contractID common.TransactionID
+		var contractID wavelet.TransactionID
 		copy(contractID[:], slice)
 
 		ctx.SetUserValue("contract_id", contractID)
@@ -396,7 +400,7 @@ func (g *Gateway) contractScope(next fasthttp.RequestHandler) fasthttp.RequestHa
 }
 
 func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {
-	id, ok := ctx.UserValue("contract_id").(common.TransactionID)
+	id, ok := ctx.UserValue("contract_id").(wavelet.TransactionID)
 	if !ok {
 		g.renderError(ctx, ErrBadRequest(errors.New("id must be a TransactionID")))
 		return
@@ -417,7 +421,7 @@ func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {
 }
 
 func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
-	id, ok := ctx.UserValue("contract_id").(common.TransactionID)
+	id, ok := ctx.UserValue("contract_id").(wavelet.TransactionID)
 	if !ok {
 		g.renderError(ctx, ErrBadRequest(errors.New("id must be a TransactionID")))
 		return

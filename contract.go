@@ -5,7 +5,6 @@ import (
 	"github.com/perlin-network/life/compiler"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
-	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
 )
@@ -23,7 +22,7 @@ const (
 )
 
 type ContractExecutor struct {
-	contractID common.AccountID
+	contractID AccountID
 	ctx        *TransactionContext
 
 	gasTable       map[string]uint64
@@ -32,7 +31,7 @@ type ContractExecutor struct {
 	enableLogging bool
 }
 
-func NewContractExecutor(contractID common.AccountID, ctx *TransactionContext) *ContractExecutor {
+func NewContractExecutor(contractID AccountID, ctx *TransactionContext) *ContractExecutor {
 	return &ContractExecutor{contractID: contractID, ctx: ctx}
 }
 
@@ -70,7 +69,7 @@ func (c *ContractExecutor) LoadMemorySnapshot() ([]byte, error) {
 	return mem, nil
 }
 
-func (c *ContractExecutor) SaveMemorySnapshot(contractID common.AccountID, memory []byte) {
+func (c *ContractExecutor) SaveMemorySnapshot(contractID AccountID, memory []byte) {
 	numPages := uint64(len(memory) / PageSize)
 
 	c.ctx.WriteAccountContractNumPages(contractID, numPages)
@@ -156,14 +155,14 @@ func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, payload ..
 		vm.Memory = mem
 	}
 
-	c.header = make([]byte, common.SizeTransactionID+common.SizeAccountID+8+len(payload))
+	c.header = make([]byte, SizeTransactionID+SizeAccountID+8+len(payload))
 
-	copy(c.header[0:common.SizeTransactionID], tx.ID[:])
-	copy(c.header[common.SizeTransactionID:common.SizeTransactionID+common.SizeAccountID], tx.Creator[:])
+	copy(c.header[0:SizeTransactionID], tx.ID[:])
+	copy(c.header[SizeTransactionID:SizeTransactionID+SizeAccountID], tx.Creator[:])
 
-	binary.LittleEndian.PutUint64(c.header[common.SizeTransactionID+common.SizeAccountID:8+common.SizeTransactionID+common.SizeAccountID], amount)
+	binary.LittleEndian.PutUint64(c.header[SizeTransactionID+SizeAccountID:8+SizeTransactionID+SizeAccountID], amount)
 
-	copy(c.header[8+common.SizeTransactionID+common.SizeAccountID:8+common.SizeTransactionID+common.SizeAccountID+len(payload)], payload)
+	copy(c.header[8+SizeTransactionID+SizeAccountID:8+SizeTransactionID+SizeAccountID+len(payload)], payload)
 
 	entry = "_contract_" + entry
 
@@ -264,8 +263,10 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 					dataPtr := int(uint32(frame.Locals[0]))
 					dataLen := int(uint32(frame.Locals[1]))
 
-					logger := log.Contract(c.contractID, "log")
-					logger.Log().Msg(string(vm.Memory[dataPtr : dataPtr+dataLen]))
+					logger := log.Contracts("log")
+					logger.Debug().
+						Hex("contract_id", c.contractID[:]).
+						Msg(string(vm.Memory[dataPtr : dataPtr+dataLen]))
 				}
 				return 0
 			}

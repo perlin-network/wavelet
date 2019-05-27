@@ -134,7 +134,7 @@ type LedgerStatusResponse struct {
 	PeerAddresses []string `json:"peers"`
 
 	RootID     string `json:"root_id"`
-	ViewID     uint64 `json:"view_id"`
+	RoundID    uint64 `json:"round_id"`
 	Difficulty uint64 `json:"difficulty"`
 }
 
@@ -155,7 +155,7 @@ func (l *LedgerStatusResponse) UnmarshalJSON(b []byte) error {
 	}
 
 	l.RootID = string(v.GetStringBytes("root_id"))
-	l.ViewID = v.GetUint64("view_id")
+	l.RoundID = v.GetUint64("round_id")
 	l.Difficulty = v.GetUint64("difficulty")
 
 	return nil

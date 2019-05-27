@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# This script compiles wavelet and pctl in a Docker container for the specified environments.
+# This script compiles wavelet and wctl in a Docker container for the specified environments.
 set -eu
 
 # get platform

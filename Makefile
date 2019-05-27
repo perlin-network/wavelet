@@ -1,16 +1,17 @@
-.PHONY: wavelet all build-all docker docker_aws test bench clean
-.PHONY: linux
-.PHONY: windows
-.PHONY: darwin
-.PHONY: linux-arm
-
 BINOUT = $(shell pwd)/build
-WAVELET_DIR = $(shell pwd)/cmd/wavelet
 
-all: build-all test bench
+protoc:
+	protoc --gogofaster_out=plugins=grpc:. -I=. rpc.proto
 
-build-all: linux windows darwin linux-arm64
-	@echo "Done building all targets."
+test:
+	go test -coverprofile=coverage.txt -covermode=atomic -timeout 300s -v -bench -race ./...
+
+bench:
+	go test -bench=. -benchmem
+
+upload:
+	cd cmd/graph && env GOOS=linux GOARCH=amd64 go build -o main
+	rsync -avz cmd/graph/main root@104.248.44.250:/root
 
 docker:
 	docker build -t wavelet .
@@ -28,6 +29,15 @@ docker_hub:
 	docker tag wavelet:latest repo.treescale.com/perlin/wavelet
 	docker push repo.treescale.com/perlin/wavelet
 
+clean:
+	rm -rf $(BINOUT)
+
+build-all: linux windows darwin linux-arm64
+	@echo "Done building all targets."
+
+release: clean build-all
+	scripts/release.sh
+
 linux:
 	scripts/build.sh -a linux-amd64
 
@@ -39,18 +49,3 @@ darwin:
 
 linux-arm64:
 	scripts/build.sh -a linux-arm64
-
-test:
-	go test -coverprofile=coverage.txt -covermode=atomic -timeout 300s -v -bench -race ./...
-
-wavelet:
-	go run $(WAVELET_DIR)/main.go --config $(WAVELET_DIR)/config/config.toml
-
-bench:
-	go test -bench=. -benchmem
-
-clean:
-	rm -rf $(BINOUT)
-
-release: clean build-all
-	scripts/release.sh

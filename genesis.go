@@ -3,8 +3,6 @@ package wavelet
 import (
 	"encoding/hex"
 	"github.com/perlin-network/wavelet/avl"
-	"github.com/perlin-network/wavelet/common"
-	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/valyala/fastjson"
 )
@@ -54,7 +52,7 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 		}
 
 		var fields *fastjson.Object
-		var id common.AccountID
+		var id AccountID
 		var n int
 
 		n, err = hex.Decode(id[:], key)
@@ -107,5 +105,5 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 	tx := Transaction{}
 	tx.rehash()
 
-	return NewRound(0, tree.Checksum(), 0, sys.MinDifficulty, Transaction{}, tx)
+	return NewRound(0, tree.Checksum(), 0, Transaction{}, tx)
 }

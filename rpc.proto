@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package wavelet;
+
+message QueryRequest {
+    uint64 round_index = 1;
+}
+
+message QueryResponse {
+    bytes round = 1;
+}
+
+message OutOfSyncRequest {
+}
+
+message OutOfSyncResponse {
+    bytes round = 1;
+}
+
+message SyncInfo {
+    bytes latest_round = 1;
+    repeated bytes checksums = 2;
+}
+
+message SyncRequest {
+    oneof Data {
+        uint64 round_id = 1;
+        bytes checksum = 2;
+    }
+}
+
+message SyncResponse {
+    oneof Data {
+        SyncInfo header = 1;
+        bytes chunk = 2;
+    }
+}
+
+message DownloadTxRequest {
+    repeated bytes ids = 1;
+}
+
+message DownloadTxResponse {
+    repeated bytes transactions = 1;
+}
+
+message Transactions {
+    repeated bytes transactions = 1;
+}
+
+message Empty {
+}
+
+service Wavelet {
+    rpc Gossip (stream Transactions) returns (Empty) {
+    }
+    rpc Query (QueryRequest) returns (QueryResponse) {
+    }
+
+    rpc CheckOutOfSync (OutOfSyncRequest) returns (OutOfSyncResponse) {
+    }
+    rpc Sync (stream SyncRequest) returns (stream SyncResponse) {
+    }
+
+    rpc DownloadTx (DownloadTxRequest) returns (DownloadTxResponse) {
+    }
+}

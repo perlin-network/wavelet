@@ -44,6 +44,10 @@ func main() {
 			Usage: "Port a local HTTP API.",
 		},
 		cli.StringFlag{
+			Name:  "key",
+			Usage: "Private key hex-encoded",
+		},
+		cli.StringFlag{
 			Name:  "wallet",
 			Usage: "path to file containing hex-encoded private key",
 		},
@@ -569,18 +573,26 @@ func setup(c *cli.Context) (*wctl.Client, error) {
 	host := c.String("api.host")
 	port := c.Uint("api.port")
 	privateKeyFile := c.String("wallet")
+	privateKey := c.String("key")
 
 	if port == 0 {
 		return nil, errors.New("port is missing")
 	}
 
-	if len(privateKeyFile) == 0 {
-		return nil, errors.New("private key file is missing")
+	var privateKeyBytes []byte
+	var err error
+
+	if len(privateKey) != 0 {
+		privateKeyBytes = []byte(privateKey)
+	} else if len(privateKeyFile) != 0 {
+		privateKeyBytes, err = ioutil.ReadFile(privateKeyFile)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to read private key %s", privateKeyFile)
+		}
 	}
 
-	privateKeyBytes, err := ioutil.ReadFile(privateKeyFile)
-	if err != nil {
-		return nil, errors.Wrapf(err, "failed to read private key %s", privateKeyFile)
+	if len(privateKeyBytes) == 0 {
+		return nil, errors.New("private key is missing")
 	}
 
 	rawPrivateKey, err := hex.DecodeString(string(privateKeyBytes))

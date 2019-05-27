@@ -3,7 +3,6 @@ package wavelet
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -19,7 +18,7 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 
 	r := bytes.NewReader(tx.Payload)
 
-	var recipient common.AccountID
+	var recipient AccountID
 
 	if _, err := io.ReadFull(r, recipient[:]); err != nil {
 		return errors.Wrap(err, "transfer: failed to decode recipient")
@@ -89,8 +88,9 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 
 	ctx.WriteAccountBalance(tx.Creator, creatorBalance-amount-gas)
 
-	logger := log.Contract(recipient, "gas")
+	logger := log.Contracts("gas")
 	logger.Info().
+		Hex("contract_id", recipient[:]).
 		Uint64("gas", gas).
 		Hex("creator_id", tx.Creator[:]).
 		Hex("contract_id", recipient[:]).
@@ -153,6 +153,57 @@ func ProcessContractTransaction(ctx *TransactionContext) error {
 
 	ctx.WriteAccountContractCode(tx.ID, tx.Payload)
 	executor.SaveMemorySnapshot(tx.ID, vm.Memory)
+
+	return nil
+}
+
+func ProcessBatchTransaction(ctx *TransactionContext) error {
+	tx := ctx.Transaction()
+
+	if len(tx.Payload) == 0 {
+		return errors.New("batch: payload must not be empty for batch transaction")
+	}
+
+	reader := bytes.NewReader(tx.Payload)
+
+	var buf [4]byte
+
+	if _, err := io.ReadFull(reader, buf[:1]); err != nil {
+		return errors.Wrap(err, "batch: length not specified in batch transaction")
+	}
+
+	size := int(buf[0])
+
+	for i := 0; i < size; i++ {
+		if _, err := io.ReadFull(reader, buf[:1]); err != nil {
+			return errors.Wrap(err, "batch: could not read tag")
+		}
+
+		tag := buf[0]
+
+		if _, err := io.ReadFull(reader, buf[:4]); err != nil {
+			return errors.Wrap(err, "batch: could not read payload size")
+		}
+
+		size := binary.BigEndian.Uint32(buf[:4])
+
+		payload := make([]byte, size)
+
+		if _, err := io.ReadFull(reader, payload[:]); err != nil {
+			return errors.Wrap(err, "batch: could not read payload")
+		}
+
+		var item Transaction
+
+		item.ID = tx.ID
+		item.Sender = tx.Sender
+		item.Creator = tx.Creator
+		item.Nonce = tx.Nonce
+		item.Tag = tag
+		item.Payload = payload
+
+		ctx.SendTransaction(&item)
+	}
 
 	return nil
 }

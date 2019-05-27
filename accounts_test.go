@@ -2,19 +2,16 @@ package wavelet
 
 import (
 	"bytes"
-	"github.com/perlin-network/wavelet/common"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/stretchr/testify/assert"
 	"testing"
 	"testing/quick"
 )
 
 func TestSmartContract(t *testing.T) {
-	fn := func(id common.TransactionID, code [2 * 1024]byte) bool {
-		db, cleanup := GetKV("level", "db")
-		defer cleanup()
-
-		accounts := newAccounts(db)
-		tree := accounts.snapshot()
+	fn := func(id TransactionID, code [2 * 1024]byte) bool {
+		accounts := NewAccounts(store.NewInmem())
+		tree := accounts.Snapshot()
 
 		returned, available := ReadAccountContractCode(tree, id)
 		if returned != nil || available == true {

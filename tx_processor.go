@@ -2,7 +2,6 @@ package wavelet
 
 import (
 	"github.com/perlin-network/wavelet/avl"
-	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
@@ -13,26 +12,26 @@ type TransactionProcessor func(ctx *TransactionContext) error
 type TransactionContext struct {
 	tree *avl.Tree
 
-	balances map[common.AccountID]uint64
-	stakes   map[common.AccountID]uint64
+	balances map[AccountID]uint64
+	stakes   map[AccountID]uint64
 
-	contracts        map[common.TransactionID][]byte
-	contractNumPages map[common.TransactionID]uint64
-	contractPages    map[common.TransactionID]map[uint64][]byte
+	contracts        map[TransactionID][]byte
+	contractNumPages map[TransactionID]uint64
+	contractPages    map[TransactionID]map[uint64][]byte
 
 	transactions queue.Queue
 	tx           *Transaction
 }
 
-func newTransactionContext(tree *avl.Tree, tx *Transaction) *TransactionContext {
+func NewTransactionContext(tree *avl.Tree, tx *Transaction) *TransactionContext {
 	ctx := &TransactionContext{
 		tree:     tree,
-		balances: make(map[common.AccountID]uint64),
-		stakes:   make(map[common.AccountID]uint64),
+		balances: make(map[AccountID]uint64),
+		stakes:   make(map[AccountID]uint64),
 
-		contracts:        make(map[common.TransactionID][]byte),
-		contractNumPages: make(map[common.TransactionID]uint64),
-		contractPages:    make(map[common.TransactionID]map[uint64][]byte),
+		contracts:        make(map[TransactionID][]byte),
+		contractNumPages: make(map[TransactionID]uint64),
+		contractPages:    make(map[TransactionID]map[uint64][]byte),
 
 		tx: tx,
 	}
@@ -50,7 +49,7 @@ func (c *TransactionContext) SendTransaction(tx *Transaction) {
 	c.transactions.PushBack(tx)
 }
 
-func (c *TransactionContext) ReadAccountBalance(id common.AccountID) (uint64, bool) {
+func (c *TransactionContext) ReadAccountBalance(id AccountID) (uint64, bool) {
 	if balance, ok := c.balances[id]; ok {
 		return balance, true
 	}
@@ -63,7 +62,7 @@ func (c *TransactionContext) ReadAccountBalance(id common.AccountID) (uint64, bo
 	return balance, exists
 }
 
-func (c *TransactionContext) ReadAccountStake(id common.AccountID) (uint64, bool) {
+func (c *TransactionContext) ReadAccountStake(id AccountID) (uint64, bool) {
 	if stake, ok := c.stakes[id]; ok {
 		return stake, true
 	}
@@ -76,7 +75,7 @@ func (c *TransactionContext) ReadAccountStake(id common.AccountID) (uint64, bool
 	return stake, exists
 }
 
-func (c *TransactionContext) ReadAccountContractCode(id common.TransactionID) ([]byte, bool) {
+func (c *TransactionContext) ReadAccountContractCode(id TransactionID) ([]byte, bool) {
 	if code, ok := c.contracts[id]; ok {
 		return code, true
 	}
@@ -89,7 +88,7 @@ func (c *TransactionContext) ReadAccountContractCode(id common.TransactionID) ([
 	return code, exists
 }
 
-func (c *TransactionContext) ReadAccountContractNumPages(id common.AccountID) (uint64, bool) {
+func (c *TransactionContext) ReadAccountContractNumPages(id AccountID) (uint64, bool) {
 	if numPages, ok := c.contractNumPages[id]; ok {
 		return numPages, true
 	}
@@ -102,7 +101,7 @@ func (c *TransactionContext) ReadAccountContractNumPages(id common.AccountID) (u
 	return numPages, exists
 }
 
-func (c *TransactionContext) ReadAccountContractPage(id common.AccountID, idx uint64) ([]byte, bool) {
+func (c *TransactionContext) ReadAccountContractPage(id AccountID, idx uint64) ([]byte, bool) {
 	if pages, ok := c.contractPages[id]; ok {
 		if page, ok := pages[idx]; ok {
 			return page, true
@@ -117,23 +116,23 @@ func (c *TransactionContext) ReadAccountContractPage(id common.AccountID, idx ui
 	return page, exists
 }
 
-func (c *TransactionContext) WriteAccountBalance(id common.AccountID, balance uint64) {
+func (c *TransactionContext) WriteAccountBalance(id AccountID, balance uint64) {
 	c.balances[id] = balance
 }
 
-func (c *TransactionContext) WriteAccountStake(id common.AccountID, stake uint64) {
+func (c *TransactionContext) WriteAccountStake(id AccountID, stake uint64) {
 	c.stakes[id] = stake
 }
 
-func (c *TransactionContext) WriteAccountContractCode(id common.TransactionID, code []byte) {
+func (c *TransactionContext) WriteAccountContractCode(id TransactionID, code []byte) {
 	c.contracts[id] = code
 }
 
-func (c *TransactionContext) WriteAccountContractNumPages(id common.TransactionID, numPages uint64) {
+func (c *TransactionContext) WriteAccountContractNumPages(id TransactionID, numPages uint64) {
 	c.contractNumPages[id] = numPages
 }
 
-func (c *TransactionContext) WriteAccountContractPage(id common.TransactionID, idx uint64, page []byte) {
+func (c *TransactionContext) WriteAccountContractPage(id TransactionID, idx uint64, page []byte) {
 	pages, exist := c.contractPages[id]
 	if !exist {
 		pages = make(map[uint64][]byte)
@@ -158,19 +157,27 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 		}
 	}
 
+	balanceLogger := log.Accounts("balance_updated")
+	stakeLogger := log.Accounts("stake_updated")
+	pageLogger := log.Accounts("num_pages_updated")
+
 	// If the transaction processor executed properly, apply changes from
 	// the transactions context over to our accounts snapshot.
 
 	for id, balance := range c.balances {
-		logger := log.Account(id, "balance_updated")
-		logger.Log().Uint64("balance", balance).Msg("Updated balance.")
+		balanceLogger.Log().
+			Hex("account_id", id[:]).
+			Uint64("balance", balance).
+			Msg("")
 
 		WriteAccountBalance(c.tree, id, balance)
 	}
 
 	for id, stake := range c.stakes {
-		logger := log.Account(id, "stake_updated")
-		logger.Log().Uint64("stake", stake).Msg("Updated stake.")
+		stakeLogger.Log().
+			Hex("account_id", id[:]).
+			Uint64("stake", stake).
+			Msg("")
 
 		WriteAccountStake(c.tree, id, stake)
 	}
@@ -180,8 +187,10 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 	}
 
 	for id, numPages := range c.contractNumPages {
-		logger := log.Account(id, "num_pages_updated")
-		logger.Log().Uint64("num_pages", numPages).Msg("Updated number of memory pages for a contract.")
+		pageLogger.Log().
+			Hex("account_id", id[:]).
+			Uint64("num_pages", numPages).
+			Msg("")
 
 		WriteAccountContractNumPages(c.tree, id, numPages)
 	}

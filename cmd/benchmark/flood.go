@@ -25,14 +25,33 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 			go func() {
 				defer wg.Done()
 
-				var payload [9]byte
+				var base [9]byte
 
-				payload[0] = 1
-				binary.LittleEndian.PutUint64(payload[1:9], uint64(i))
+				base[0] = 1
+				binary.LittleEndian.PutUint64(base[1:9], uint64(i))
+
+				var tags []byte
+				var payloads [][]byte
+
+				for i := 0; i < 10; i++ {
+					tags = append(tags, sys.TagStake)
+					payloads = append(payloads, base[:])
+				}
+
+				var size [4]byte
+				var buf []byte
+
+				for i := range tags {
+					buf = append(buf, tags[i])
+
+					binary.BigEndian.PutUint32(size[:4], uint32(len(payloads[i])))
+					buf = append(buf, size[:4]...)
+					buf = append(buf, payloads[i]...)
+				}
 
 				var res wctl.SendTransactionResponse
 
-				res, err := client.SendTransaction(sys.TagStake, payload[:])
+				res, err := client.SendTransaction(sys.TagBatch, append([]byte{byte(len(tags))}, buf...))
 
 				if err != nil {
 					chRes <- res

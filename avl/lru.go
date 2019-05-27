@@ -2,12 +2,9 @@ package avl
 
 import (
 	"container/list"
-	"sync"
 )
 
 type lru struct {
-	sync.Mutex
-
 	size int
 
 	elements map[[MerkleHashSize]byte]*list.Element
@@ -22,15 +19,12 @@ type objectInfo struct {
 func newLRU(size int) *lru {
 	return &lru{
 		size:     size,
-		elements: make(map[[MerkleHashSize]byte]*list.Element),
+		elements: make(map[[MerkleHashSize]byte]*list.Element, size),
 		access:   list.New(),
 	}
 }
 
 func (l *lru) load(key [MerkleHashSize]byte) (interface{}, bool) {
-	l.Lock()
-	defer l.Unlock()
-
 	elem, ok := l.elements[key]
 	if !ok {
 		return nil, false
@@ -41,9 +35,6 @@ func (l *lru) load(key [MerkleHashSize]byte) (interface{}, bool) {
 }
 
 func (l *lru) put(key [MerkleHashSize]byte, val interface{}) {
-	l.Lock()
-	defer l.Unlock()
-
 	elem, ok := l.elements[key]
 
 	if ok {
@@ -65,9 +56,6 @@ func (l *lru) put(key [MerkleHashSize]byte, val interface{}) {
 }
 
 func (l *lru) remove(key [MerkleHashSize]byte) {
-	l.Lock()
-	defer l.Unlock()
-
 	elem, ok := l.elements[key]
 	if ok {
 		delete(l.elements, key)

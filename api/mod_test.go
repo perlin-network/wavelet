@@ -10,9 +10,7 @@ import (
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/noise/xnoise"
 	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -98,8 +96,9 @@ func TestListTransaction(t *testing.T) {
 
 	// Build an expected response
 	var expectedResponse transactionList
-	for _, tx := range gateway.ledger.ListTransactions(0, 0, common.AccountID{}, common.AccountID{}) {
+	for _, tx := range gateway.ledger.Graph().ListTransactions(0, 0, wavelet.AccountID{}, wavelet.AccountID{}) {
 		txRes := &transaction{tx: tx}
+		txRes.status = "applied"
 
 		//_, err := txRes.marshal()
 		//assert.NoError(t, err)
@@ -220,16 +219,19 @@ func TestGetTransaction(t *testing.T) {
 	_ = wavelet.NewTransaction(keys, sys.TagTransfer, buf[:])
 	assert.NoError(t, err)
 
-	var txId common.TransactionID
-	for _, tx := range gateway.ledger.ListTransactions(0, 0, common.AccountID{}, common.AccountID{}) {
+	var txId wavelet.TransactionID
+	for _, tx := range gateway.ledger.Graph().ListTransactions(0, 0, wavelet.AccountID{}, wavelet.AccountID{}) {
 		txId = tx.ID
 		break
 	}
 
-	tx, found := gateway.ledger.FindTransaction(txId)
-	if !found {
+	tx := gateway.ledger.Graph().FindTransaction(txId)
+	if tx == nil {
 		t.Fatal("not found")
 	}
+
+	txRes := &transaction{tx: tx}
+	txRes.status = "applied"
 
 	tests := []struct {
 		name         string
@@ -245,7 +247,7 @@ func TestGetTransaction(t *testing.T) {
 			wantCode:     http.StatusBadRequest,
 			wantResponse: &testErrResponse{
 				StatusText: "Bad request.",
-				ErrorText:  fmt.Sprintf("transaction ID must be %d bytes long", common.SizeTransactionID),
+				ErrorText:  fmt.Sprintf("transaction ID must be %d bytes long", wavelet.SizeTransactionID),
 			},
 		},
 		{
@@ -253,7 +255,7 @@ func TestGetTransaction(t *testing.T) {
 			sessionToken: sess.id,
 			id:           hex.EncodeToString(txId[:]),
 			wantCode:     http.StatusOK,
-			wantResponse: &transaction{tx: tx},
+			wantResponse: txRes,
 		},
 	}
 
@@ -472,14 +474,14 @@ func TestGetAccount(t *testing.T) {
 	idBytes, err := hex.DecodeString(idHex)
 	assert.NoError(t, err)
 
-	var id32 common.AccountID
+	var id32 wavelet.AccountID
 	copy(id32[:], idBytes)
 
 	wavelet.WriteAccountBalance(gateway.ledger.Snapshot(), id32, 10)
 	wavelet.WriteAccountStake(gateway.ledger.Snapshot(), id32, 11)
 	wavelet.WriteAccountContractNumPages(gateway.ledger.Snapshot(), id32, 12)
 
-	var id common.AccountID
+	var id wavelet.AccountID
 	copy(id[:], idBytes)
 
 	tests := []struct {
@@ -547,7 +549,7 @@ func TestGetContractCode(t *testing.T) {
 	idBytes, err := hex.DecodeString(idHex)
 	assert.NoError(t, err)
 
-	var id32 common.AccountID
+	var id32 wavelet.AccountID
 	copy(id32[:], idBytes)
 
 	s := gateway.ledger.Snapshot()
@@ -682,11 +684,20 @@ func TestGetLedger(t *testing.T) {
 	assert.NoError(t, err)
 	gateway.keys = keys
 
-	n, err := xnoise.ListenTCP(0)
+	listener, err := net.Listen("tcp", ":0")
 	assert.NoError(t, err)
-	gateway.node = n
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
 
-	gateway.network = skademlia.New(net.JoinHostPort("127.0.0.1", strconv.Itoa(n.Addr().(*net.TCPAddr).Port)), keys, xnoise.DialTCP)
+	gateway.client = skademlia.NewClient(addr, keys,
+		skademlia.WithC1(sys.SKademliaC1),
+		skademlia.WithC2(sys.SKademliaC2),
+	)
+
+	//n, err := xnoise.ListenTCP(0)
+	//assert.NoError(t, err)
+	//gateway.node = n
+
+	//gateway.network = skademlia.New(net.JoinHostPort("127.0.0.1", strconv.Itoa(n.Addr().(*net.TCPAddr).Port)), keys, xnoise.DialTCP)
 
 	request := httptest.NewRequest("GET", "http://localhost/ledger", nil)
 	request.Header.Add(HeaderSessionToken, sess.id)
@@ -706,15 +717,15 @@ func TestGetLedger(t *testing.T) {
 		PublicKey     string   `json:"public_key"`
 		HostAddress   string   `json:"address"`
 		RootID        string   `json:"root_id"`
-		ViewID        uint64   `json:"view_id"`
+		RoundID       uint64   `json:"round_id"`
 		Difficulty    uint64   `json:"difficulty"`
 		PeerAddresses []string `json:"peers"`
 	}{
 		PublicKey:     hex.EncodeToString(publicKey[:]),
-		HostAddress:   "[::]:" + strconv.Itoa(n.Addr().(*net.TCPAddr).Port),
+		HostAddress:   "127.0.0.1:" + strconv.Itoa(listener.Addr().(*net.TCPAddr).Port),
 		PeerAddresses: nil,
-		RootID:        "1e173f2403ea3f29349cacb7c99ea1c3ef9b30c6476f580f07c5a9791533fde8",
-		ViewID:        1,
+		RootID:        "403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc",
+		RoundID:       0,
 		Difficulty:    uint64(sys.MinDifficulty),
 	}
 
@@ -845,7 +856,7 @@ func createLedger(t *testing.T) *wavelet.Ledger {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ledger := wavelet.NewLedger(keys, store.NewInmem(), nil)
+	ledger := wavelet.NewLedger(store.NewInmem(), skademlia.NewClient(":0", keys))
 	return ledger
 }
 

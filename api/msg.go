@@ -4,11 +4,9 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/common"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/valyala/fastjson"
@@ -57,8 +55,8 @@ func (s *sessionInitRequest) bind(parser *fastjson.Parser, body []byte) error {
 		return errors.Wrap(err, "public key provided is not hex-formatted")
 	}
 
-	if len(publicKeyBuf) != common.SizeAccountID {
-		return errors.Errorf("public key must be size %d", common.SizeAccountID)
+	if len(publicKeyBuf) != wavelet.SizeAccountID {
+		return errors.Errorf("public key must be size %d", wavelet.SizeAccountID)
 	}
 
 	signatureBuf, err := hex.DecodeString(s.Signature)
@@ -66,8 +64,8 @@ func (s *sessionInitRequest) bind(parser *fastjson.Parser, body []byte) error {
 		return errors.Wrap(err, "signature provided is not hex-formatted")
 	}
 
-	if len(signatureBuf) != common.SizeSignature {
-		return errors.Errorf("signature must be size %d", common.SizeSignature)
+	if len(signatureBuf) != wavelet.SizeSignature {
+		return errors.Errorf("signature must be size %d", wavelet.SizeSignature)
 	}
 
 	var publicKey edwards25519.PublicKey
@@ -102,8 +100,8 @@ type sendTransactionRequest struct {
 	Signature string `json:"signature"`
 
 	// Internal fields.
-	creator   common.AccountID
-	signature common.Signature
+	creator   wavelet.AccountID
+	signature wavelet.Signature
 	payload   []byte
 }
 
@@ -123,11 +121,11 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 		return errors.Wrap(err, "sender public key provided is not hex-formatted")
 	}
 
-	if len(senderBuf) != common.SizeAccountID {
-		return errors.Errorf("sender public key must be size %d", common.SizeAccountID)
+	if len(senderBuf) != wavelet.SizeAccountID {
+		return errors.Errorf("sender public key must be size %d", wavelet.SizeAccountID)
 	}
 
-	if s.Tag > sys.TagStake {
+	if s.Tag > sys.TagBatch {
 		return errors.New("unknown transaction tag specified")
 	}
 
@@ -141,8 +139,8 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 		return errors.Wrap(err, "sender signature provided is not hex-formatted")
 	}
 
-	if len(signatureBuf) != common.SizeSignature {
-		return errors.Errorf("sender signature must be size %d", common.SizeSignature)
+	if len(signatureBuf) != wavelet.SizeSignature {
+		return errors.Errorf("sender signature must be size %d", wavelet.SizeSignature)
 	}
 
 	copy(s.creator[:], senderBuf)
@@ -186,7 +184,8 @@ func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, er
 		o.Set("parent_ids", nil)
 	}
 
-	round := s.ledger.LastRound()
+	//round := s.ledger.LastRound()
+	round := s.ledger.Rounds().Latest()
 
 	if s.tx.IsCritical(round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)) {
 		o.Set("is_critical", arena.NewTrue())
@@ -200,38 +199,33 @@ func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, er
 type ledgerStatusResponse struct {
 	// Internal fields.
 
-	node      *noise.Node
-	ledger    *wavelet.Ledger
-	network   *skademlia.Protocol
+	client *skademlia.Client
+	ledger *wavelet.Ledger
+	//network   *skademlia.Protocol
 	publicKey edwards25519.PublicKey
 }
 
 func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
-	if s.node == nil || s.ledger == nil {
+	if s.client == nil || s.ledger == nil {
 		return nil, errors.New("insufficient parameters were provided")
 	}
 
-	round := s.ledger.LastRound()
+	//round := s.ledger.LastRound()
+	round := s.ledger.Rounds().Latest()
 
 	o := arena.NewObject()
 
 	o.Set("public_key", arena.NewString(hex.EncodeToString(s.publicKey[:])))
-	o.Set("address", arena.NewString(s.node.Addr().String()))
+	o.Set("address", arena.NewString(s.client.ID().Address()))
 	o.Set("root_id", arena.NewString(hex.EncodeToString(round.End.ID[:])))
-	o.Set("view_id", arena.NewNumberString(strconv.FormatUint(s.ledger.RoundID(), 10)))
+	o.Set("round_id", arena.NewNumberString(strconv.FormatUint(s.ledger.Rounds().Latest().Index, 10)))
 	o.Set("difficulty", arena.NewNumberString(strconv.FormatUint(uint64(round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)), 10)))
 
-	peers := s.network.Peers(s.node)
+	peers := s.client.ClosestPeerIDs()
 	if len(peers) > 0 {
 		peersArray := arena.NewArray()
 		for i := range peers {
-			id := peers[i].Ctx().Get(skademlia.KeyID)
-
-			if id == nil {
-				continue
-			}
-
-			peersArray.SetArrayItem(i, arena.NewString(id.(*skademlia.ID).Address()))
+			peersArray.SetArrayItem(i, arena.NewString(peers[i].Address()))
 		}
 		o.Set("peers", peersArray)
 	} else {
@@ -306,12 +300,12 @@ func (s transactionList) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 
 type account struct {
 	// Internal fields.
-	id     common.AccountID
+	id     wavelet.AccountID
 	ledger *wavelet.Ledger
 }
 
 func (s *account) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
-	if s.ledger == nil || s.id == common.ZeroAccountID {
+	if s.ledger == nil || s.id == wavelet.ZeroAccountID {
 		return nil, errors.New("insufficient fields specified")
 	}
 
