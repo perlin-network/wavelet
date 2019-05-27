@@ -20,17 +20,16 @@ import (
 
 type CLI struct {
 	rl     *readline.Instance
+	client *skademlia.Client
 	ledger *wavelet.Ledger
 	logger zerolog.Logger
 	keys   *skademlia.Keypair
 	tree   string
 }
 
-func NewCLI(
-	ledger *wavelet.Ledger, keys *skademlia.Keypair,
-) (*CLI, error) {
+func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Keypair) (*CLI, error) {
 	completer := readline.NewPrefixCompleter(
-		readline.PcItem("s"), readline.PcItem("status"),
+		readline.PcItem("l"), readline.PcItem("status"),
 		readline.PcItem("p"), readline.PcItem("pay"),
 		readline.PcItem("c"), readline.PcItem("call"),
 		readline.PcItem("f"), readline.PcItem("find"),
@@ -57,6 +56,7 @@ func NewCLI(
 
 	return &CLI{
 		rl:     rl,
+		client: client,
 		ledger: ledger,
 		logger: log.Node(),
 		tree:   completer.Tree("    "),
@@ -92,7 +92,7 @@ func (cli *CLI) Start() {
 		}
 
 		switch {
-		case line == "s" || line == "status":
+		case line == "l" || line == "status":
 			cli.status()
 		case strings.HasPrefix(line, "p "):
 			cli.pay(toCMD(line, 2), nil)
@@ -136,24 +136,29 @@ func (cli *CLI) status() {
 	stake, _ := wavelet.ReadAccountStake(snapshot, publicKey)
 	nonce, _ := wavelet.ReadAccountNonce(snapshot, publicKey)
 
-	cli.logger.Info().
-		Str("id", hex.EncodeToString(publicKey[:])).
-		Uint64("balance", balance).
-		Uint64("stake", stake).
-		Uint64("nonce", nonce).
-		Msg("Here is your wallet information.")
-
 	round := cli.ledger.Rounds().Latest()
+	rootDepth := cli.ledger.Graph().RootDepth()
+
+	peers := cli.client.ClosestPeerIDs()
+	peerIDs := make([]string, 0, len(peers))
+
+	for _, id := range peers {
+		peerIDs = append(peerIDs, id.String())
+	}
 
 	cli.logger.Info().
 		Uint8("difficulty", round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
 		Uint64("round", round.Index).
 		Hex("root_id", round.End.ID[:]).
 		Uint64("height", cli.ledger.Graph().Height()).
-		//Uint64("num_tx", ledger.NumTransactions()).
-		//Uint64("num_tx_in_store", ledger.NumTransactionInStore()).
-		//Uint64("num_missing_tx", ledger.NumMissingTransactions()).
-		Msg("Here is the current state of the ledger.")
+		Str("id", hex.EncodeToString(publicKey[:])).
+		Uint64("balance", balance).
+		Uint64("stake", stake).
+		Uint64("nonce", nonce).
+		Strs("peers", peerIDs).
+		Int("num_tx", cli.ledger.Graph().DepthLen(&rootDepth, nil)).
+		Int("num_missing_tx", cli.ledger.Graph().MissingLen()).
+		Msg("Here is the current status of your node.")
 }
 
 func (cli *CLI) pay(cmd []string, additional []byte) {
@@ -184,7 +189,7 @@ func (cli *CLI) pay(cmd []string, additional []byte) {
 		payload.Write(additional)
 	}
 
-	cli.sendTx(payload.Bytes(), sys.TagTransfer)
+	cli.sendTransaction(payload.Bytes(), sys.TagTransfer)
 }
 
 func (cli *CLI) call(cmd []string) {
@@ -290,7 +295,7 @@ func (cli *CLI) find(cmd []string) {
 			Uint64("nonce", nonce).
 			Bool("is_contract", isContract).
 			Uint64("num_pages", numPages).
-			Msgf("Account: %s", cmd[1])
+			Msgf("Account: %s", cmd[0])
 
 		return
 	}
@@ -340,7 +345,7 @@ func (cli *CLI) spawn(cmd []string) {
 		return
 	}
 
-	cli.sendTx(code, sys.TagContract)
+	cli.sendTransaction(code, sys.TagContract)
 }
 
 func (cli *CLI) placeStake(cmd []string) {
@@ -361,7 +366,7 @@ func (cli *CLI) placeStake(cmd []string) {
 	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
 	payload.Write(intBuf[:8])
 
-	cli.sendTx(payload.Bytes(), sys.TagStake)
+	cli.sendTransaction(payload.Bytes(), sys.TagStake)
 }
 
 func (cli *CLI) withdrawStake(cmd []string) {
@@ -382,13 +387,13 @@ func (cli *CLI) withdrawStake(cmd []string) {
 	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
 	payload.Write(intBuf[:8])
 
-	cli.sendTx(payload.Bytes(), sys.TagStake)
+	cli.sendTransaction(payload.Bytes(), sys.TagStake)
 }
 
-func (cli *CLI) sendTx(body []byte, tag byte) {
+func (cli *CLI) sendTransaction(body []byte, tag byte) {
 	tx := wavelet.AttachSenderToTransaction(
 		cli.keys,
-		wavelet.NewTransaction(cli.keys, sys.TagContract, body),
+		wavelet.NewTransaction(cli.keys, tag, body),
 		cli.ledger.Graph().FindEligibleParents()...,
 	)
 
