@@ -14,15 +14,7 @@ type GraphOption func(*Graph)
 
 func WithRoot(root Transaction) GraphOption {
 	return func(graph *Graph) {
-		ptr := &root
-
-		graph.depthIndex[root.Depth] = append(graph.depthIndex[root.Depth], ptr)
-		graph.eligibleIndex.ReplaceOrInsert((*sortByDepthTX)(ptr))
-
-		graph.transactions[root.ID] = ptr
-
-		graph.height = root.Depth + 1
-		graph.rootDepth = root.Depth
+		graph.UpdateRoot(root)
 	}
 }
 
@@ -113,7 +105,7 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 	}
 
 	if g.rootDepth > sys.MaxDepthDiff+tx.Depth {
-		return errors.Errorf("transactions depth is too low compared to root: root depth is %d, but tx depth is %d", tx.Depth, g.rootDepth)
+		return errors.Errorf("transactions depth is too low compared to root: root depth is %d, but tx depth is %d", g.rootDepth, tx.Depth)
 	}
 
 	if err := g.validateTransaction(tx); err != nil {
@@ -161,15 +153,36 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 // missing.
 func (g *Graph) MarkTransactionAsMissing(id TransactionID, depth uint64) {
 	g.Lock()
-	g.missing[id] = depth
+	if g.rootDepth <= sys.MaxDepthDiff+depth {
+		g.missing[id] = depth
+	}
 	g.Unlock()
 }
 
-// UpdateRoot updates the root depth of the graph to disallow new transactions
+// UpdateRoot forcefully adds a root transaction to the graph, and updates all
+// relevant graph indices as a result of setting a new root with its new depth.
+func (g *Graph) UpdateRoot(root Transaction) {
+	ptr := &root
+
+	g.Lock()
+
+	g.depthIndex[root.Depth] = append(g.depthIndex[root.Depth], ptr)
+	g.eligibleIndex.ReplaceOrInsert((*sortByDepthTX)(ptr))
+
+	g.transactions[root.ID] = ptr
+
+	g.height = root.Depth + 1
+
+	g.Unlock()
+
+	g.UpdateRootDepth(root.Depth)
+}
+
+// UpdateRootDepth updates the root depth of the graph to disallow new transactions
 // from being added to the graph whose depth is less than root depth by at most
 // DEPTH_DIFF. It additionally clears away any missing transactions that are at
 // a depth below the root depth by more than DEPTH_DIFF.
-func (g *Graph) UpdateRoot(rootDepth uint64) {
+func (g *Graph) UpdateRootDepth(rootDepth uint64) {
 	var pendingDepth []*sortByDepthTX
 	var pendingSeed []*sortBySeedTX
 
@@ -377,6 +390,35 @@ func (g *Graph) Missing() []TransactionID {
 	g.RUnlock()
 
 	return missing
+}
+
+func (g *Graph) ListTransactions(offset, limit uint64, sender, creator AccountID) (transactions []*Transaction) {
+	g.RLock()
+	defer g.RUnlock()
+
+	for _, tx := range g.transactions {
+		if (sender == ZeroAccountID && creator == ZeroAccountID) || (sender != ZeroAccountID && tx.Sender == sender) || (creator != ZeroAccountID && tx.Creator == creator) {
+			transactions = append(transactions, tx)
+		}
+	}
+
+	sort.Slice(transactions, func(i, j int) bool {
+		return transactions[i].Depth < transactions[j].Depth
+	})
+
+	if offset != 0 || limit != 0 {
+		if offset >= limit || offset >= uint64(len(transactions)) {
+			return nil
+		}
+
+		if offset+limit > uint64(len(transactions)) {
+			limit = uint64(len(transactions)) - offset
+		}
+
+		transactions = transactions[offset : offset+limit]
+	}
+
+	return
 }
 
 // FindTransaction returns transaction with id from graph, and nil otherwise.
@@ -600,4 +642,8 @@ func (g *Graph) validateTransactionParents(tx *Transaction) error {
 	}
 
 	return nil
+}
+
+func (g *Graph) RootDepth() uint64 {
+	return g.rootDepth
 }

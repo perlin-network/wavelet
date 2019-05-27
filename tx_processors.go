@@ -193,16 +193,16 @@ func ProcessBatchTransaction(ctx *TransactionContext) error {
 			return errors.Wrap(err, "batch: could not read payload")
 		}
 
-		var tx Transaction
+		var item Transaction
 
-		tx.ID = tx.ID
-		tx.Sender = tx.Sender
-		tx.Creator = tx.Creator
-		tx.Nonce = tx.Nonce
-		tx.Tag = tag
-		tx.Payload = payload
+		item.ID = tx.ID
+		item.Sender = tx.Sender
+		item.Creator = tx.Creator
+		item.Nonce = tx.Nonce
+		item.Tag = tag
+		item.Payload = payload
 
-		ctx.SendTransaction(&tx)
+		ctx.SendTransaction(&item)
 	}
 
 	return nil

@@ -5,10 +5,13 @@ go 1.12
 replace github.com/go-interpreter/wagon => github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39
 
 require (
+	github.com/buaazp/fasthttprouter v0.1.1
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
+	github.com/fasthttp/websocket v1.4.0
 	github.com/gogo/protobuf v1.2.1
 	github.com/golang/snappy v0.0.1
 	github.com/google/btree v1.0.0
+	github.com/google/uuid v1.1.1
 	github.com/gorilla/websocket v1.4.0
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
 	github.com/perlin-network/life v0.0.0-20190521143330-57f3819c2df0
