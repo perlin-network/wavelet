@@ -259,6 +259,27 @@ func start(cfg *Config) {
 
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
+	client.OnPeerJoin(func(conn *grpc.ClientConn, id *skademlia.ID) {
+		publicKey := id.PublicKey()
+
+		logger := log.Network("joined")
+		logger.Info().
+			Hex("public_key", publicKey[:]).
+			Str("address", id.Address()).
+			Msg("Peer has joined.")
+
+	})
+
+	client.OnPeerLeave(func(conn *grpc.ClientConn, id *skademlia.ID) {
+		publicKey := id.PublicKey()
+
+		logger := log.Network("left")
+		logger.Info().
+			Hex("public_key", publicKey[:]).
+			Str("address", id.Address()).
+			Msg("Peer has left.")
+	})
+
 	var kv store.KV = store.NewInmem()
 
 	if len(cfg.Database) > 0 {
