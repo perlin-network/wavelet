@@ -158,7 +158,7 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 	if err == nil {
 		l.gossiper.Push(tx)
 
-		if tx.Tag != sys.TagNop && tx.Sender != l.client.Keys().PublicKey() && l.finalizer.Preferred() == nil {
+		if tx.Tag != sys.TagNop && tx.Sender != l.client.Keys().PublicKey() {
 			l.nopsTimeLock.Lock()
 			l.nops = true
 			l.nopsTime = time.Now()
