@@ -56,6 +56,10 @@ type Ledger struct {
 
 	consensus sync.WaitGroup
 
+	nops         bool
+	nopsTime     time.Time
+	nopsTimeLock sync.Mutex
+
 	sync      chan struct{}
 	syncTimer *time.Timer
 	syncVotes chan vote
@@ -121,6 +125,9 @@ func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 			sys.TagBatch:    ProcessBatchTransaction,
 		},
 
+		nops:     false,
+		nopsTime: time.Now(),
+
 		sync:      make(chan struct{}),
 		syncTimer: time.NewTimer(0),
 		syncVotes: make(chan vote, sys.SnowballK),
@@ -150,6 +157,13 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 
 	if err == nil {
 		l.gossiper.Push(tx)
+
+		if tx.Tag != sys.TagNop && tx.Sender != l.client.Keys().PublicKey() && l.finalizer.Preferred() == nil {
+			l.nopsTimeLock.Lock()
+			l.nops = true
+			l.nopsTime = time.Now()
+			l.nopsTimeLock.Unlock()
+		}
 	}
 
 	return nil
@@ -186,10 +200,76 @@ func (l *Ledger) Rounds() *Rounds {
 func (l *Ledger) PerformConsensus() {
 	go l.PullMissingTransactions()
 	go l.FinalizeRounds()
+	go l.BroadcastNops()
 }
 
 func (l *Ledger) Snapshot() *avl.Tree {
 	return l.accounts.Snapshot()
+}
+
+// BroadcastNops periodically has the node send nop transactions should they have sufficient
+// balance available. They are broadcasted if no other transaction that is not a nop transaction
+// is not broadcasted by the node after 500 milliseconds. These conditions only apply so long as
+// at least onen transaction gets broadcasted by the node within the current round. Once a round
+// is tenatively being finalized, a node will stop broadcasting nops.
+func (l *Ledger) BroadcastNops() {
+	keys := l.client.Keys()
+
+	l.consensus.Add(1)
+	defer l.consensus.Done()
+
+	for {
+		select {
+		case <-l.sync:
+			return
+		default:
+		}
+
+		balance, _ := ReadAccountBalance(l.accounts.Snapshot(), keys.PublicKey())
+
+		if balance < sys.TransactionFeeAmount {
+			select {
+			case <-l.sync:
+				return
+			case <-time.After(1 * time.Second):
+			}
+			continue
+		}
+
+		if l.finalizer.Preferred() != nil {
+			l.nopsTimeLock.Lock()
+			l.nops = false
+			l.nopsTime = time.Now()
+			l.nopsTimeLock.Unlock()
+
+			select {
+			case <-l.sync:
+				return
+			case <-time.After(500 * time.Millisecond):
+			}
+			continue
+		}
+
+		l.nopsTimeLock.Lock()
+		nops := l.nops
+		elapsed := time.Now().Sub(l.nopsTime)
+		l.nopsTimeLock.Unlock()
+
+		if !nops || elapsed < 500*time.Millisecond {
+			select {
+			case <-l.sync:
+				return
+			case <-time.After(250 * time.Millisecond):
+			}
+			continue
+		}
+
+		nop := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), l.graph.FindEligibleParents()...)
+
+		if err := l.AddTransaction(nop); err != nil {
+			continue
+		}
+	}
 }
 
 // PullMissingTransactions is an infinite loop continually sending RPC requests
@@ -536,6 +616,11 @@ FINALIZE_ROUNDS:
 			Hex("old_merkle_root", current.Merkle[:]).
 			Uint64("round_depth", finalized.End.Depth-finalized.Start.Depth).
 			Msg("Finalized consensus round, and initialized a new round.")
+
+		l.nopsTimeLock.Lock()
+		l.nops = false
+		l.nopsTime = time.Now()
+		l.nopsTimeLock.Unlock()
 
 		//go ExportGraphDOT(finalized, l.graph)
 	}
