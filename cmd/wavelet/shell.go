@@ -169,6 +169,7 @@ func (cli *CLI) status() {
 		Strs("peers", peerIDs).
 		Int("num_tx", cli.ledger.Graph().DepthLen(&rootDepth, nil)).
 		Int("num_missing_tx", cli.ledger.Graph().MissingLen()).
+		Int("num_tx_in_store", cli.ledger.Graph().Len()).
 		Str("preferred_id", preferredID).
 		Int("preferred_votes", count).
 		Msg("Here is the current status of your node.")
@@ -297,38 +298,17 @@ func (cli *CLI) find(cmd []string) {
 		return
 	}
 
-	if len(buf) == wavelet.SizeAccountID {
-		var accountID wavelet.AccountID
-		copy(accountID[:], buf)
-
-		balance, _ := wavelet.ReadAccountBalance(snapshot, accountID)
-		stake, _ := wavelet.ReadAccountStake(snapshot, accountID)
-		nonce, _ := wavelet.ReadAccountNonce(snapshot, accountID)
-
-		_, isContract := wavelet.ReadAccountContractCode(snapshot, accountID)
-		numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, accountID)
-
-		cli.logger.Info().
-			Uint64("balance", balance).
-			Uint64("stake", stake).
-			Uint64("nonce", nonce).
-			Bool("is_contract", isContract).
-			Uint64("num_pages", numPages).
-			Msgf("Account: %s", cmd[0])
-
+	if len(buf) != wavelet.SizeTransactionID && len(buf) != wavelet.SizeAccountID {
+		cli.logger.Error().Int("length", len(buf)).Msg("You have specified an invalid transaction/account ID to find.")
 		return
 	}
 
-	if len(buf) == wavelet.SizeTransactionID {
-		var id wavelet.TransactionID
-		copy(id[:], buf)
+	var txID wavelet.TransactionID
+	copy(txID[:], buf)
 
-		tx := cli.ledger.Graph().FindTransaction(id)
-		if tx == nil {
-			cli.logger.Error().Msg("Could not find transaction in the ledger.")
-			return
-		}
+	tx := cli.ledger.Graph().FindTransaction(txID)
 
+	if tx != nil {
 		var parents []string
 		for _, parentID := range tx.ParentIDs {
 			parents = append(parents, hex.EncodeToString(parentID[:]))
@@ -341,12 +321,30 @@ func (cli *CLI) find(cmd []string) {
 			Uint64("nonce", tx.Nonce).
 			Uint8("tag", tx.Tag).
 			Uint64("depth", tx.Depth).
-			Msgf("Transaction: %s", cmd[1])
+			Hex("seed", tx.Seed[:]).
+			Uint8("seed_zero_prefix_len", tx.SeedLen).
+			Msgf("Transaction: %s", cmd[0])
 
 		return
 	}
 
-	cli.logger.Error().Int("length", len(buf)).Msg("Could not find what you're looking for: perhaps the address you entered is incorrect?")
+	var accountID wavelet.AccountID
+	copy(accountID[:], buf)
+
+	balance, _ := wavelet.ReadAccountBalance(snapshot, accountID)
+	stake, _ := wavelet.ReadAccountStake(snapshot, accountID)
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, accountID)
+
+	_, isContract := wavelet.ReadAccountContractCode(snapshot, accountID)
+	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, accountID)
+
+	cli.logger.Info().
+		Uint64("balance", balance).
+		Uint64("stake", stake).
+		Uint64("nonce", nonce).
+		Bool("is_contract", isContract).
+		Uint64("num_pages", numPages).
+		Msgf("Account: %s", cmd[0])
 }
 
 func (cli *CLI) spawn(cmd []string) {

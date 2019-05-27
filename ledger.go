@@ -276,7 +276,7 @@ FINALIZE_ROUNDS:
 		default:
 		}
 
-		if _, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK); err != nil {
+		if len(l.client.ClosestPeers()) < sys.SnowballK {
 			select {
 			case <-l.sync:
 				return
@@ -434,7 +434,7 @@ FINALIZE_ROUNDS:
 
 			// Randomly sample a peer to query. If no peers are available, stop querying.
 
-			peers, err := SelectPeers(l.client.ClosestPeers(), 1)
+			peers, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
 			if err != nil {
 				close(workerChan)
 				workerWG.Wait()
@@ -445,8 +445,9 @@ FINALIZE_ROUNDS:
 				continue FINALIZE_ROUNDS
 			}
 
-			conn := peers[0]
-			workerChan <- conn
+			for _, peer := range peers {
+				workerChan <- peer
+			}
 		}
 
 		close(workerChan)
