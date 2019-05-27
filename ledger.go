@@ -118,14 +118,6 @@ func NewLedger(client *skademlia.Client) *Ledger {
 	return ledger
 }
 
-func (l *Ledger) Rounds() *Rounds {
-	return l.rounds
-}
-
-func (l *Ledger) Snapshot() *avl.Tree {
-	return l.accounts.Snapshot()
-}
-
 // AddTransaction adds a transaction to the ledger. If the transaction has
 // never been added in the ledgers graph before, it is pushed to the gossip
 // mechanism to then be gossiped to this nodes peers. If the transaction is
