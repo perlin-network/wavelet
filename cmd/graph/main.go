@@ -30,6 +30,7 @@ import _ "net/http/pprof"
 func main() {
 	pprofFlag := flag.Bool("pprof", false, "host pprof server on port 9000")
 	apiPortFlag := flag.Int("api.port", 0, "api port")
+
 	flag.Parse()
 
 	if *pprofFlag {

@@ -31,8 +31,7 @@ import (
 import _ "net/http/pprof"
 
 type Config struct {
-	Pprof    bool
-	Remote   bool
+	NAT      bool
 	Host     string
 	Port     uint
 	Wallet   string
@@ -43,7 +42,7 @@ type Config struct {
 }
 
 func main() {
-	log.Register(log.NewConsoleWriter(nil, log.FilterFor(log.ModuleNode, log.ModuleConsensus, log.ModuleMetrics)))
+	log.Register(log.NewConsoleWriter(nil, log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
 	logger := log.Node()
 
 	app := cli.NewApp()
@@ -56,14 +55,9 @@ func main() {
 
 	app.Flags = []cli.Flag{
 		altsrc.NewBoolFlag(cli.BoolFlag{
-			Name:   "pprof",
-			Usage:  "Starts pprof http server if set to true",
-			EnvVar: "WAVELET_PPROF",
-		}),
-		altsrc.NewBoolFlag(cli.BoolFlag{
-			Name:   "remote",
-			Usage:  "Connect to remote peers",
-			EnvVar: "WAVELET_REMOTE",
+			Name:   "nat",
+			Usage:  "Enable port forwarding: only required for personal PCs.",
+			EnvVar: "WAVELET_NAT",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "host",
@@ -172,8 +166,6 @@ func main() {
 	app.Action = func(c *cli.Context) error {
 		c.String("config")
 		config := &Config{
-			Remote:   c.Bool("remote"),
-			Pprof:    c.Bool("pprof"),
 			Host:     c.String("host"),
 			Port:     c.Uint("port"),
 			Wallet:   c.String("wallet"),
@@ -214,12 +206,6 @@ func main() {
 func start(cfg *Config) {
 	logger := log.Node()
 
-	if cfg.Pprof {
-		go func() {
-			fmt.Println(http.ListenAndServe("localhost:9000", nil))
-		}()
-	}
-
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil {
 		panic(err)
@@ -227,7 +213,7 @@ func start(cfg *Config) {
 
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
 
-	if cfg.Remote {
+	if cfg.NAT {
 		if len(cfg.Peers) > 1 {
 			resolver := nat.NewPMP()
 
@@ -274,6 +260,7 @@ func start(cfg *Config) {
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
 	var kv store.KV = store.NewInmem()
+
 	if len(cfg.Database) > 0 {
 		kv, err = store.NewLevelDB(cfg.Database)
 		if err != nil {

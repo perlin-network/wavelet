@@ -33,7 +33,7 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 		readline.PcItem("p"), readline.PcItem("pay"),
 		readline.PcItem("c"), readline.PcItem("call"),
 		readline.PcItem("f"), readline.PcItem("find"),
-		readline.PcItem("spawn"),
+		readline.PcItem("s"), readline.PcItem("spawn"),
 		readline.PcItem("ps"), readline.PcItem("place-stake"),
 		readline.PcItem("ws"), readline.PcItem("withdraw-stake"),
 		readline.PcItem("help"),
@@ -52,7 +52,7 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 		return nil, err
 	}
 
-	log.Set(log.NewConsoleWriter(rl.Stderr(), log.FilterFor(log.ModuleNode, log.ModuleConsensus, log.ModuleMetrics)))
+	log.Set(log.NewConsoleWriter(rl.Stderr(), log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
 
 	return &CLI{
 		rl:     rl,
@@ -104,6 +104,8 @@ func (cli *CLI) Start() {
 			cli.find(toCMD(line, 2))
 		case strings.HasPrefix(line, "find "):
 			cli.find(toCMD(line, 5))
+		case strings.HasPrefix(line, "s "):
+			cli.spawn(toCMD(line, 2))
 		case strings.HasPrefix(line, "spawn "):
 			cli.spawn(toCMD(line, 5))
 		case strings.HasPrefix(line, "ps "):
@@ -115,6 +117,7 @@ func (cli *CLI) Start() {
 		case strings.HasPrefix(line, "withdraw-stake "):
 			cli.withdrawStake(toCMD(line, 15))
 		case line == "":
+			fallthrough
 		case line == "help":
 			cli.usage()
 		default:
@@ -189,7 +192,13 @@ func (cli *CLI) pay(cmd []string, additional []byte) {
 		payload.Write(additional)
 	}
 
-	cli.sendTransaction(payload.Bytes(), sys.TagTransfer)
+	tx, err := cli.sendTransaction(payload.Bytes(), sys.TagTransfer)
+	if err != nil {
+		return
+	}
+
+	cli.logger.Info().
+		Msgf("Success! Your payment transaction ID: %x", tx.ID)
 }
 
 func (cli *CLI) call(cmd []string) {
@@ -327,7 +336,7 @@ func (cli *CLI) find(cmd []string) {
 		return
 	}
 
-	cli.logger.Error().Int("length", len(buf)).Msg("Unexpected address length")
+	cli.logger.Error().Int("length", len(buf)).Msg("Could not find what you're looking for: perhaps the address you entered is incorrect?")
 }
 
 func (cli *CLI) spawn(cmd []string) {
@@ -345,7 +354,13 @@ func (cli *CLI) spawn(cmd []string) {
 		return
 	}
 
-	cli.sendTransaction(code, sys.TagContract)
+	tx, err := cli.sendTransaction(code, sys.TagContract)
+	if err != nil {
+		return
+	}
+
+	cli.logger.Info().
+		Msgf("Success! Your smart contracts ID: %x", tx.ID)
 }
 
 func (cli *CLI) placeStake(cmd []string) {
@@ -366,7 +381,13 @@ func (cli *CLI) placeStake(cmd []string) {
 	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
 	payload.Write(intBuf[:8])
 
-	cli.sendTransaction(payload.Bytes(), sys.TagStake)
+	tx, err := cli.sendTransaction(payload.Bytes(), sys.TagStake)
+	if err != nil {
+		return
+	}
+
+	cli.logger.Info().
+		Msgf("Success! Your stake placement transaction ID: %x", tx.ID)
 }
 
 func (cli *CLI) withdrawStake(cmd []string) {
@@ -387,10 +408,16 @@ func (cli *CLI) withdrawStake(cmd []string) {
 	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
 	payload.Write(intBuf[:8])
 
-	cli.sendTransaction(payload.Bytes(), sys.TagStake)
+	tx, err := cli.sendTransaction(payload.Bytes(), sys.TagStake)
+	if err != nil {
+		return
+	}
+
+	cli.logger.Info().
+		Msgf("Success! Your stake withdrawal transaction ID: %x", tx.ID)
 }
 
-func (cli *CLI) sendTransaction(body []byte, tag byte) {
+func (cli *CLI) sendTransaction(body []byte, tag byte) (wavelet.Transaction, error) {
 	tx := wavelet.AttachSenderToTransaction(
 		cli.keys,
 		wavelet.NewTransaction(cli.keys, tag, body),
@@ -398,6 +425,13 @@ func (cli *CLI) sendTransaction(body []byte, tag byte) {
 	)
 
 	if err := cli.ledger.AddTransaction(tx); err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
-		cli.logger.Error().Msgf("error adding tx to graph [%v]: %+v\n", err, tx)
+		cli.logger.
+			Err(err).
+			Hex("tx_id", tx.ID[:]).
+			Msg("Failed to create your transaction.")
+
+		return tx, err
 	}
+
+	return tx, nil
 }

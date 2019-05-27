@@ -1,16 +1,16 @@
 ```bash
-go run main.go -api.port 9000
+go run *.go -api.port 9000
 
 # or use a config file
-go run main.go -config config.toml --daemon=false
+go run *.go -config config.toml --daemon=false
 ```
 
 ```bash
-go run main.go --db.path testdb2 --port 3001 --private_key_file random --peers tcp://127.0.0.1:3000
+go run *.go --db --port 3001 --private_key_file random --peers tcp://127.0.0.1:3000
 ```
 
 ```bash
-# commands [if you just press enter, it'll send a nop transaction]
+# commands
 
 # Pays a random address should [address] not be specified.
 # Pays 1 PERL by default unless [amount] is specified.
