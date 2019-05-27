@@ -33,7 +33,7 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 				var tags []byte
 				var payloads [][]byte
 
-				for i := 0; i < 10; i++ {
+				for i := 0; i < 40; i++ {
 					tags = append(tags, sys.TagStake)
 					payloads = append(payloads, base[:])
 				}
