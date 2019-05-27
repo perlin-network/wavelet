@@ -1,37 +1,35 @@
 package main
 
 import (
+	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/perlin-network/wavelet/sys"
+	"github.com/perlin-network/wavelet/wctl"
+	"github.com/pkg/errors"
+	"gopkg.in/urfave/cli.v1"
 	"io/ioutil"
 	"os"
 	"sort"
-	"time"
-
-	"github.com/perlin-network/graph/wire"
-	apiClient "github.com/perlin-network/wavelet/cmd/wctl/client"
-	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/params"
-	"github.com/pkg/errors"
-	"github.com/urfave/cli"
 	"strconv"
+	"time"
 )
 
 func main() {
-
 	app := cli.NewApp()
 
 	app.Name = "wctl"
-	app.Author = "Perlin Network"
+	app.Author = "Perlin"
 	app.Email = "support@perlin.net"
-	app.Version = params.Version
+	app.Version = sys.Version
 	app.Usage = "a cli client to interact with the wavelet node"
 
 	cli.VersionPrinter = func(c *cli.Context) {
-		fmt.Printf("Version:    %s\n", c.App.Version)
-		fmt.Printf("Go Version: %s\n", params.GoVersion)
-		fmt.Printf("Git Commit: %s\n", params.GitCommit)
-		fmt.Printf("OS/Arch:    %s\n", params.OSArch)
+		fmt.Printf("Version:    %s\n", sys.Version)
+		fmt.Printf("Go Version: %s\n", sys.GoVersion)
+		fmt.Printf("Git Commit: %s\n", sys.GitCommit)
+		fmt.Printf("OS/Arch:    %s\n", sys.OSArch)
 		fmt.Printf("Built:      %s\n", c.App.Compiled.Format(time.ANSIC))
 	}
 
@@ -39,39 +37,363 @@ func main() {
 		cli.StringFlag{
 			Name:  "api.host",
 			Value: "localhost",
-			Usage: "Host of the local HTTP API `API_HOST`.",
+			Usage: "Host of the local HTTP API.",
 		},
 		cli.IntFlag{
 			Name:  "api.port",
-			Usage: "Port of the local HTTP API `API_PORT` (required).",
+			Usage: "Port a local HTTP API.",
 		},
 		cli.StringFlag{
-			Name:  "api.private_key_file",
-			Usage: "The file containing private key that will make transactions through the API `API_PRIVATE_KEY_FILE` (required).",
+			Name:  "key",
+			Usage: "Private key hex-encoded",
 		},
 		cli.StringFlag{
-			Name:  "log_level",
-			Value: "info",
-			Usage: "Minimum level at which logs will be printed to stdout. One of off|debug|info|warn|error|fatal `LOG_LEVEL`.",
+			Name:  "wallet",
+			Usage: "path to file containing hex-encoded private key",
 		},
 	}
 
 	app.Commands = []cli.Command{
 		{
-			Name:  "server_version",
-			Usage: "get the version information of the api server",
+			Name:  "poll_broadcaster",
+			Usage: "continuously receive broadcaster updates",
 			Flags: commonFlags,
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
 				if err != nil {
 					return err
 				}
-				res, err := client.ServerVersion()
+
+				client.UseHTTPS = true
+				evChan, err := client.PollLoggerSink(nil, wctl.RouteWSBroadcaster)
 				if err != nil {
 					return err
 				}
-				jsonOut, _ := json.Marshal(res)
-				fmt.Printf("%s\n", jsonOut)
+
+				for ev := range evChan {
+					output(ev)
+				}
+				return nil
+			},
+		},
+		{
+			Name:  "poll_consensus",
+			Usage: "continuously receive consensus updates",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+
+				client.UseHTTPS = true
+				evChan, err := client.PollLoggerSink(nil, wctl.RouteWSConsensus)
+				if err != nil {
+					return err
+				}
+
+				for ev := range evChan {
+					output(ev)
+				}
+				return nil
+			},
+		},
+		{
+			Name:  "poll_stake",
+			Usage: "continuously receive stake updates",
+			Flags: commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+
+				client.UseHTTPS = true
+				evChan, err := client.PollLoggerSink(nil, wctl.RouteWSStake)
+				if err != nil {
+					return err
+				}
+
+				for ev := range evChan {
+					output(ev)
+				}
+				return nil
+			},
+		},
+		{
+			Name:  "poll_accounts",
+			Usage: "continuously receive account updates",
+			Flags: append(commonFlags,
+				[]cli.Flag{
+					cli.StringFlag{
+						Name:  "account_id",
+						Usage: "account id to list (default: all)",
+					},
+				}...,
+			),
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+
+				// get these optional variables
+				var accountID *string
+				if len(c.String("account_id")) > 0 {
+					tmp := c.String("account_id")
+					accountID = &tmp
+				}
+
+				client.UseHTTPS = false
+				evChan, err := client.PollAccounts(nil, accountID)
+				if err != nil {
+					return err
+				}
+
+				for ev := range evChan {
+					output(ev)
+				}
+				return nil
+			},
+		},
+		{
+			Name:  "poll_contracts",
+			Usage: "continuously receive contract updates",
+			Flags: append(commonFlags,
+				[]cli.Flag{
+					cli.StringFlag{
+						Name:  "contract_id",
+						Usage: "contract id to list (default: all)",
+					},
+				}...,
+			),
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+
+				// get these optional variables
+				var contractID *string
+				if len(c.String("contract_id")) > 0 {
+					tmp := c.String("contract_id")
+					contractID = &tmp
+				}
+
+				client.UseHTTPS = true
+				evChan, err := client.PollContracts(nil, contractID)
+				if err != nil {
+					return err
+				}
+
+				for ev := range evChan {
+					output(ev)
+				}
+				return nil
+			},
+		},
+		{
+			Name:  "poll_transactions",
+			Usage: "continuously receive transaction updates",
+			Flags: append(commonFlags,
+				[]cli.Flag{
+					cli.StringFlag{
+						Name:  "tx_id",
+						Usage: "transactions to list (default: all)",
+					},
+					cli.StringFlag{
+						Name:  "sender_id",
+						Usage: "sender id of transactions to list (default: all)",
+					},
+					cli.StringFlag{
+						Name:  "creator_id",
+						Usage: "creator id of transactions to list (default: all)",
+					},
+				}...,
+			),
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+
+				// get these optional variables
+				var txID *string
+				var senderID *string
+				var creatorID *string
+				if len(c.String("tx_id")) > 0 {
+					tmp := c.String("tx_id")
+					txID = &tmp
+				}
+				if len(c.String("sender_id")) > 0 {
+					tmp := c.String("sender_id")
+					senderID = &tmp
+				}
+				if len(c.String("creator_id")) > 0 {
+					tmp := c.String("creator_id")
+					creatorID = &tmp
+				}
+
+				client.UseHTTPS = true
+				evChan, err := client.PollTransactions(nil, txID, senderID, creatorID)
+				if err != nil {
+					return err
+				}
+
+				for ev := range evChan {
+					output(ev)
+				}
+				return nil
+			},
+		},
+		{
+			Name:  "ledger_status",
+			Usage: "get the status of the ledger",
+			Flags: append(commonFlags,
+				[]cli.Flag{
+					cli.StringFlag{
+						Name:  "sender_id",
+						Usage: "sender id of transactions to list (default: all)",
+					},
+					cli.StringFlag{
+						Name:  "creator_id",
+						Usage: "creator id of transactions to list (default: all)",
+					},
+					cli.IntFlag{
+						Name:  "offset",
+						Usage: "an offset of the number of transactions to list",
+					},
+					cli.IntFlag{
+						Name:  "limit",
+						Usage: "limit to max number of transactions to list",
+					},
+				}...,
+			),
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+
+				// get these optional variables
+				var senderID *string
+				var creatorID *string
+				var offset *uint64
+				var limit *uint64
+				if len(c.String("sender_id")) > 0 {
+					tmp := c.String("sender_id")
+					senderID = &tmp
+				}
+				if len(c.String("creator_id")) > 0 {
+					tmp := c.String("creator_id")
+					creatorID = &tmp
+				}
+				if c.Uint("offset") > 0 {
+					tmp := uint64(c.Uint("offset"))
+					offset = &tmp
+				}
+				if c.Uint("limit") > 0 {
+					tmp := uint64(c.Uint("limit"))
+					limit = &tmp
+				}
+
+				res, err := client.GetLedgerStatus(senderID, creatorID, offset, limit)
+				if err != nil {
+					return err
+				}
+
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
+				}
+
+				return nil
+			},
+		},
+		{
+			Name:      "get_account",
+			Usage:     "get an account",
+			ArgsUsage: "<account ID>",
+			Flags:     commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				acctID := c.Args().Get(0)
+
+				res, err := client.GetAccount(acctID)
+				if err != nil {
+					return err
+				}
+
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
+				}
+
+				return nil
+			},
+		},
+		{
+			Name:      "get_contract_code",
+			Usage:     "get the payload of a contract",
+			ArgsUsage: "<contract ID>",
+			Flags:     commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				contractID := c.Args().Get(0)
+
+				res, err := client.GetContractCode(contractID)
+				if err != nil {
+					return err
+				}
+
+				fmt.Println(res)
+
+				return nil
+			},
+		},
+		{
+			Name:      "get_contract_pages",
+			Usage:     "get the page of a contract",
+			ArgsUsage: "<contract ID>",
+			Flags: append(commonFlags,
+				[]cli.Flag{
+					cli.StringFlag{
+						Name:  "page_idx",
+						Usage: "page offset of the contract",
+					},
+				}...,
+			),
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				contractID := c.Args().Get(0)
+
+				// get these optional variables
+				var pageIdx *uint64
+				if c.Uint("page_idx") > 0 {
+					tmp := uint64(c.Uint("page_idx"))
+					pageIdx = &tmp
+				}
+
+				res, err := client.GetContractPages(contractID, pageIdx)
+				if err != nil {
+					return err
+				}
+
+				fmt.Println(res)
+
 				return nil
 			},
 		},
@@ -79,7 +401,14 @@ func main() {
 			Name:      "send_transaction",
 			Usage:     "send a transaction",
 			ArgsUsage: "<tag> <json payload>",
-			Flags:     commonFlags,
+			Flags: append(commonFlags,
+				[]cli.Flag{
+					cli.StringFlag{
+						Name:  "payload",
+						Usage: "the path to the payload file",
+					},
+				}...,
+			),
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
 				if err != nil {
@@ -91,170 +420,126 @@ func main() {
 					return err
 				}
 
-				payload := c.Args().Get(1)
-				tx, err := client.SendTransaction(uint32(tag), []byte(payload))
-				if err != nil {
-					return err
-				}
-				jsonOut, _ := json.Marshal(tx)
-				fmt.Printf("%s\n", jsonOut)
-				return nil
-			},
-		},
-		{
-			Name:  "recent_transactions",
-			Usage: "get recent transactions",
-			Flags: commonFlags,
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-				transactions, err := client.RecentTransactions(nil)
-				if err != nil {
-					return err
-				}
-				for _, tx := range transactions {
-					log.Info().Msgf("%v", tx)
-				}
-				return nil
-			},
-		},
-		cli.Command{
-			Name:  "poll_accounts",
-			Usage: "continuously receive account updates",
-			Flags: commonFlags,
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-				evChan, err := client.PollAccountUpdates(nil)
-				if err != nil {
-					return err
-				}
-				for ev := range evChan {
-					log.Info().Msgf("%v", ev)
-				}
-				return nil
-			},
-		},
-		{
-			Name:      "poll_transactions",
-			Usage:     "continuously receive transaction updates",
-			ArgsUsage: "<accepted | applied>",
-			Flags:     commonFlags,
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-				event := c.Args().Get(0)
+				payload := []byte(c.Args().Get(1))
 
-				var evChan <-chan wire.Transaction
-				switch event {
-				case "accepted":
-					evChan, err = client.PollAcceptedTransactions(nil)
-				case "applied":
-					evChan, err = client.PollAppliedTransactions(nil)
-				default:
-					return errors.Errorf("invalid event type specified: %v", event)
-				}
-				if err != nil {
-					return err
-				}
-
-				for ev := range evChan {
-					log.Info().Msgf("%v", ev)
-				}
-				return nil
-			},
-		},
-		{
-			Name:  "stats_reset",
-			Usage: "reset the stats counters",
-			Flags: commonFlags,
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-				res := new(interface{})
-				if err := client.StatsReset(res); err != nil {
-					return err
-				}
-				jsonOut, _ := json.Marshal(res)
-				log.Info().Msgf("%s", string(jsonOut))
-				return nil
-			},
-		},
-		{
-			Name:      "send_contract",
-			Usage:     "send a smart contract",
-			Flags:     commonFlags,
-			ArgsUsage: "<contract_filename>",
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-				filename := c.Args().Get(0)
-				tx, err := client.SendContract(filename)
-				if err != nil {
-					return err
-				}
-				jsonOut, _ := json.Marshal(tx)
-				fmt.Printf("%s\n", jsonOut)
-				return nil
-			},
-		},
-		{
-			Name:      "get_contract",
-			Usage:     "get smart contract by transaction ID",
-			Flags:     commonFlags,
-			ArgsUsage: "<transaction_id> <output_filename>",
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-
-				contractID := c.Args().Get(0)
-				filename := c.Args().Get(1)
-				if _, err = client.GetContract(contractID, filename); err != nil {
-					return err
-				}
-				log.Info().Msgf("saved contract %s to file %s", contractID, filename)
-				return nil
-			},
-		},
-		{
-			Name:  "list_contracts",
-			Usage: "lists the most recent smart contracts",
-			Flags: commonFlags,
-			Action: func(c *cli.Context) error {
-				client, err := setup(c)
-				if err != nil {
-					return err
-				}
-				contracts, err := client.ListContracts(nil, nil)
-				if err != nil {
-					return err
-				}
-				fmt.Println("Contract IDs:")
-				if len(contracts) == 0 {
-					fmt.Println("    none found")
-				} else {
-					for i, contract := range contracts {
-						fmt.Printf(" %d) %s\n", i+1, contract.TransactionID)
+				if c.String("payload") != "" {
+					payload, err = ioutil.ReadFile(c.String("payload"))
+					if err != nil {
+						return err
 					}
 				}
+
+				res, err := client.SendTransaction(byte(tag), []byte(payload))
+				if err != nil {
+					return err
+				}
+
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
+				}
+
 				return nil
 			},
 		},
 		{
-			Name:  "execute_contract",
-			Usage: "executes a contract",
+			Name:      "get_transaction",
+			Usage:     "get a transaction",
+			ArgsUsage: "<transaction ID>",
+			Flags:     commonFlags,
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+				txID := c.Args().Get(0)
+
+				res, err := client.GetTransaction(txID)
+				if err != nil {
+					return err
+				}
+
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
+				}
+
+				return nil
+			},
+		},
+		{
+			Name:  "list_transactions",
+			Usage: "list recent transactions",
+			Flags: append(commonFlags,
+				[]cli.Flag{
+					cli.StringFlag{
+						Name:  "sender_id",
+						Usage: "sender id of transactions to list (default: all)",
+					},
+					cli.StringFlag{
+						Name:  "creator_id",
+						Usage: "creator id of transactions to list (default: all)",
+					},
+					cli.IntFlag{
+						Name:  "offset",
+						Usage: "an offset of the number of transactions to list",
+					},
+					cli.IntFlag{
+						Name:  "limit",
+						Usage: "limit to max number of transactions to list",
+					},
+				}...,
+			),
+			Action: func(c *cli.Context) error {
+				client, err := setup(c)
+				if err != nil {
+					return err
+				}
+
+				// get these optional variables
+				var senderID *string
+				var creatorID *string
+				var offset *uint64
+				var limit *uint64
+				if len(c.String("sender_id")) > 0 {
+					tmp := c.String("sender_id")
+					senderID = &tmp
+				}
+				if len(c.String("creator_id")) > 0 {
+					tmp := c.String("creator_id")
+					creatorID = &tmp
+				}
+				if c.Uint("offset") > 0 {
+					tmp := uint64(c.Uint("offset"))
+					offset = &tmp
+				}
+				if c.Uint("limit") > 0 {
+					tmp := uint64(c.Uint("limit"))
+					limit = &tmp
+				}
+
+				res, err := client.ListTransactions(senderID, creatorID, offset, limit)
+				if err != nil {
+					return err
+				}
+
+				buf, err := json.Marshal(res)
+				if err != nil {
+					fmt.Println(err)
+				} else {
+					output(buf)
+				}
+
+				return nil
+			},
+		},
+		{
+			Name:  "poll_metrics",
+			Usage: "continuously receive metrics",
 			Flags: commonFlags,
 			Action: func(c *cli.Context) error {
 				client, err := setup(c)
@@ -262,16 +547,15 @@ func main() {
 					return err
 				}
 
-				contractID := c.Args().Get(0)
-				entry := c.Args().Get(1)
-				param := c.Args().Get(2)
-
-				result, err := client.ExecuteContract(contractID, entry, []byte(param))
+				client.UseHTTPS = false
+				evChan, err := client.PollLoggerSink(nil, wctl.RouteWSMetrics)
 				if err != nil {
 					return err
 				}
 
-				fmt.Println(string(result.Result))
+				for ev := range evChan {
+					output(ev)
+				}
 				return nil
 			},
 		},
@@ -281,35 +565,49 @@ func main() {
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	if err := app.Run(os.Args); err != nil {
-		log.Error().Msgf("Failed to parse configuration/command-line arguments: %v", err)
+		fmt.Printf("Failed to parse configuration/command-line arguments: %+v\n", err)
 	}
 }
 
-func setup(c *cli.Context) (*apiClient.Client, error) {
+func setup(c *cli.Context) (*wctl.Client, error) {
 	host := c.String("api.host")
 	port := c.Uint("api.port")
-	privateKeyFile := c.String("api.private_key_file")
-	log.SetLevel(c.String("log_level"))
+	privateKeyFile := c.String("wallet")
+	privateKey := c.String("key")
 
 	if port == 0 {
 		return nil, errors.New("port is missing")
 	}
 
-	if len(privateKeyFile) == 0 {
-		return nil, errors.New("private key file is missing")
+	var privateKeyBytes []byte
+	var err error
+
+	if len(privateKey) != 0 {
+		privateKeyBytes = []byte(privateKey)
+	} else if len(privateKeyFile) != 0 {
+		privateKeyBytes, err = ioutil.ReadFile(privateKeyFile)
+		if err != nil {
+			return nil, errors.Wrapf(err, "failed to read private key %s", privateKeyFile)
+		}
 	}
 
-	privateKeyBytes, err := ioutil.ReadFile(privateKeyFile)
+	if len(privateKeyBytes) == 0 {
+		return nil, errors.New("private key is missing")
+	}
+
+	rawPrivateKey, err := hex.DecodeString(string(privateKeyBytes))
 	if err != nil {
-		return nil, errors.Wrapf(err, "Unable to open api private key file: %s", privateKeyFile)
+		return nil, errors.Wrapf(err, "failed to hex decode private key %s", privateKeyFile)
 	}
 
-	client, err := apiClient.NewClient(apiClient.Config{
-		APIHost:    host,
-		APIPort:    port,
-		PrivateKey: string(privateKeyBytes),
-		UseHTTPS:   false,
-	})
+	config := wctl.Config{
+		APIHost:  host,
+		APIPort:  uint16(port),
+		UseHTTPS: false,
+	}
+	copy(config.PrivateKey[:], rawPrivateKey)
+
+	client, err := wctl.NewClient(config)
 	if err != nil {
 		return nil, err
 	}
@@ -319,6 +617,16 @@ func setup(c *cli.Context) (*apiClient.Client, error) {
 		return nil, err
 	}
 
-	log.Debug().Str("SessionToken", client.SessionToken).Msg(" ")
 	return client, nil
+}
+
+// Write bytes to stdout; do JSON indent if possible.
+func output(buf []byte) {
+	var out bytes.Buffer
+
+	if err := json.Indent(&out, buf, "", "\t"); err != nil {
+		out.Write(buf)
+	}
+
+	fmt.Println(string(out.Bytes()))
 }

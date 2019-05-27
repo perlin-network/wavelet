@@ -1,0 +1,31 @@
+wallet = "config/wallet.txt"
+port = 3000
+host = "127.0.0.1"
+db = "db"
+
+[api]
+port = 9000
+
+[system]
+# Timeout for querying a transaction to K peers.
+# In seconds.
+query_timeout = 10
+# Max graph depth difference to search for eligible transaction
+# parents from for our node.
+max_depth_diff = 5
+# In milliseconds.
+expected_consensus_time = 1000
+critical_timestamp_average_window_size = 3
+min_stake = 100
+transaction_fee_amount = 2
+
+# Snowball consensus protocol parameters.
+[system.snowball]
+k = 1
+alpha = 0.8
+beta = 10
+
+# Difficulty to define a critical transaction.
+[system.difficulty]
+min = 5
+max = 16

@@ -1,194 +1,148 @@
 package main
 
 import (
-	"bufio"
 	"encoding/hex"
-	"encoding/json"
+	"errors"
 	"fmt"
-
-	"io/ioutil"
-	"os"
-	"os/signal"
-	"sort"
-	"strconv"
-	"strings"
-	"time"
-
+	"github.com/perlin-network/noise"
+	"github.com/perlin-network/noise/cipher"
+	"github.com/perlin-network/noise/edwards25519"
+	"github.com/perlin-network/noise/handshake"
+	"github.com/perlin-network/noise/nat"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
+	"github.com/perlin-network/wavelet/internal/snappy"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/node"
-	"github.com/perlin-network/wavelet/params"
-	"github.com/perlin-network/wavelet/payload"
-	"github.com/perlin-network/wavelet/security"
-
-	"github.com/perlin-network/graph/database"
-	"github.com/perlin-network/graph/graph"
-
-	"github.com/perlin-network/noise/crypto"
-	"github.com/perlin-network/noise/crypto/ed25519"
-	"github.com/perlin-network/noise/network"
-	"github.com/perlin-network/noise/network/discovery"
-	"github.com/perlin-network/noise/network/nat"
-
-	"github.com/pkg/errors"
+	"github.com/perlin-network/wavelet/store"
+	"github.com/perlin-network/wavelet/sys"
+	"google.golang.org/grpc"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"os"
+	"sort"
+	"strconv"
+	"time"
 )
 
-// Config describes how to start the node
+import _ "net/http/pprof"
+
 type Config struct {
-	PrivateKeyFile     string
-	Host               string
-	Port               uint
-	DatabasePath       string
-	ResetDatabase      bool
-	GenesisPath        string
-	Peers              []string
-	APIHost            string
-	APIPort            uint
-	APIPrivateKeysFile string
-	Daemon             bool
-	LogLevel           string
-	UseNAT             bool
+	NAT      bool
+	Host     string
+	Port     uint
+	Wallet   string
+	Genesis  *string
+	APIPort  uint
+	Peers    []string
+	Database string
 }
 
 func main() {
+	log.Register(log.NewConsoleWriter(nil, log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
+	logger := log.Node()
+
 	app := cli.NewApp()
 
 	app.Name = "wavelet"
-	app.Author = "Perlin Network"
+	app.Author = "Perlin"
 	app.Email = "support@perlin.net"
-	app.Version = params.Version
+	app.Version = sys.Version
 	app.Usage = "a bleeding fast ledger with a powerful compute layer"
 
 	app.Flags = []cli.Flag{
-		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "host",
-			Value: "localhost",
-			Usage: "Listen for peers on host address `HOST`.",
-		}),
-		// note: use IntFlag for numbers, UintFlag don't seem to work with the toml files
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "port",
-			Value: 3000,
-			Usage: "Listen for peers on port `PORT`.",
+		altsrc.NewBoolFlag(cli.BoolFlag{
+			Name:   "nat",
+			Usage:  "Enable port forwarding: only required for personal PCs.",
+			EnvVar: "WAVELET_NAT",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "api.host",
-			Value: "localhost",
-			Usage: "Host a local HTTP API at host `API_HOST`.",
+			Name:   "host",
+			Value:  "127.0.0.1",
+			Usage:  "Listen for peers on host address.",
+			EnvVar: "WAVELET_NODE_HOST",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "api.port",
-			Usage: "Host a local HTTP API at port `API_PORT`.",
+			Name:   "port",
+			Value:  3000,
+			Usage:  "Listen for peers on port.",
+			EnvVar: "WAVELET_NODE_PORT",
 		}),
-		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "api.private_keys_file",
-			Value: "wallets.txt",
-			Usage: "TXT file containing private keys that can make transactions through the API `API_PRIVATE_KEYS_FILE`",
-		}),
-		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "db.path",
-			Value: "testdb",
-			Usage: "Load/initialize LevelDB store from `DB_PATH`.",
-		}),
-		altsrc.NewBoolFlag(cli.BoolFlag{
-			Name:  "db.reset",
-			Usage: "Clear out the existing data in the datastore before initializing the DB.",
-		}),
-		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "services",
-			Value: "services",
-			Usage: "Load WebAssembly transaction processor services from `SERVICES_PATH`.",
-		}),
-		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "genesis",
-			Value: "genesis.json",
-			Usage: "JSON file containing account data to initialize the ledger from `GENESIS_FILE`.",
-		}),
-		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "private_key_file",
-			Value: "wallet.txt",
-			Usage: "TXT file that contain's the node's private key `PRIVATE_KEY_FILE`. Leave `PRIVATE_KEY_FILE` = 'random' if you want to randomly generate a wallet.",
-		}),
-		altsrc.NewStringSliceFlag(cli.StringSliceFlag{
-			Name:  "peers",
-			Usage: "Bootstrap to peers whose address are formatted as tcp://[host]:[port] from `PEERS`.",
-		}),
-		altsrc.NewBoolFlag(cli.BoolFlag{
-			Name:  "daemon",
-			Usage: "Run node in daemon mode. Daemon mode means no standard input needed.",
-		}),
-		altsrc.NewBoolFlag(cli.BoolFlag{
-			Name:  "nat",
-			Usage: "Use network address traversal (NAT).",
-		}),
-		altsrc.NewStringFlag(cli.StringFlag{
-			Name:  "log_level",
-			Value: "info",
-			Usage: "Minimum level at which logs will be printed to stdout. One of off|debug|info|warn|error|fatal `LOG_LEVEL`.",
-		}),
-		// from params package
 		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "params.consensus_k",
-			Value: params.ConsensusK,
-			Usage: "Consensus parameter k number of confirmations.",
+			Name:   "api.port",
+			Value:  0,
+			Usage:  "Host a local HTTP API at port.",
+			EnvVar: "WAVELET_API_PORT",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "wallet",
+			Value:  "config/wallet.txt",
+			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded private key to a wallet may also be specified.",
+			EnvVar: "WAVELET_WALLET",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "genesis",
+			Usage:  "Genesis JSON file contents representing initial fields of some set of accounts at round 0.",
+			EnvVar: "WAVELET_GENESIS",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "db",
+			Usage:  "Directory path to the database. If empty, a temporary in-memory database will be used instead.",
+			EnvVar: "WAVELET_DB_PATH",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:  "sys.query_timeout",
+			Value: int(sys.QueryTimeout.Seconds()),
+			Usage: "Timeout in seconds for querying a transaction to K peers.",
+		}),
+		altsrc.NewUint64Flag(cli.Uint64Flag{
+			Name:  "sys.max_depth_diff",
+			Value: sys.MaxDepthDiff,
+			Usage: "Max graph depth difference to search for eligible transaction parents from for our node.",
+		}),
+		altsrc.NewUint64Flag(cli.Uint64Flag{
+			Name:  "sys.transaction_fee_amount",
+			Value: sys.TransactionFeeAmount,
+		}),
+		altsrc.NewUint64Flag(cli.Uint64Flag{
+			Name:  "sys.min_stake",
+			Value: sys.MinimumStake,
+			Usage: "minimum stake to garner validator rewards and have importance in consensus",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:   "sys.snowball.k",
+			Value:  sys.SnowballK,
+			Usage:  "Snowball consensus protocol parameter k",
+			EnvVar: "WAVELET_SNOWBALL_K",
 		}),
 		altsrc.NewFloat64Flag(cli.Float64Flag{
-			Name:  "params.consensus_alpha",
-			Value: float64(params.ConsensusAlpha),
-			Usage: "Consensus parameter alpha for positive strong preferences. Should be between 0-1.",
+			Name:   "sys.snowball.alpha",
+			Value:  sys.SnowballAlpha,
+			Usage:  "Snowball consensus protocol parameter alpha",
+			EnvVar: "WAVELET_SNOWBALL_ALPHA",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "params.consensus_query_timeout_ms",
-			Value: params.ConsensusQueryTimeout,
-			Usage: "Timeout for querying a transaction to K peers.",
+			Name:   "sys.snowball.beta",
+			Value:  sys.SnowballBeta,
+			Usage:  "Snowball consensus protocol parameter beta",
+			EnvVar: "WAVELET_SNOWBALL_BETA",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "params.graph_update_period_ms",
-			Value: params.GraphUpdatePeriodMs,
-			Usage: "Ledger graph update period in milliseconds.",
+			Name:  "sys.difficulty.min",
+			Value: int(sys.MinDifficulty),
+			Usage: "Minimum difficulty to define a critical transaction",
 		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "params.sync_hint_period_ms",
-			Value: params.SyncHintPeriodMs,
-			Usage: "Sync hint period in milliseconds.",
+		altsrc.NewFloat64Flag(cli.Float64Flag{
+			Name:  "sys.difficulty.scale",
+			Value: sys.DifficultyScaleFactor,
+			Usage: "Factor to scale a transactions confidence down by to compute the difficulty needed to define a critical transaction",
 		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "params.sync_hint_num_peers",
-			Value: params.SyncHintNumPeers,
-			Usage: "Sync hint number of peers.",
-		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "params.sync_neighbors_likelihood",
-			Value: params.SyncNeighborsLikelihood,
-			Usage: "Sync probability will ask nodes to see if we're missing any of its parents/children.",
-		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "params.sync_num_peers",
-			Value: params.SyncNumPeers,
-			Usage: "Sync number of peers that will query for missing transactions.",
-		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "params.validator_reward_depth",
-			Value: params.ValidatorRewardDepth,
-			Usage: "Validator reward depth.",
-		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "params.validator_reward_amount",
-			Value: int(params.ValidatorRewardAmount),
-			Usage: "Validator reward amount.",
-		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "params.transaction_fee_percentage",
-			Value: params.TransactionFeePercentage,
-			Usage: "Transaction fee percentage.",
-		}),
-		// config specifies the file that overrides altsrc
 		cli.StringFlag{
-			Name:  "config",
-			Usage: "Wavelet TOML configuration file. `CONFIG_FILE`",
+			Name:  "config, c",
+			Usage: "Path to TOML config file, will override the arguments.",
 		},
 	}
 
@@ -203,81 +157,39 @@ func main() {
 
 	cli.VersionPrinter = func(c *cli.Context) {
 		fmt.Printf("Version:    %s\n", c.App.Version)
-		fmt.Printf("Go Version: %s\n", params.GoVersion)
-		fmt.Printf("Git Commit: %s\n", params.GitCommit)
-		fmt.Printf("OS/Arch:    %s\n", params.OSArch)
+		fmt.Printf("Go Version: %s\n", sys.GoVersion)
+		fmt.Printf("Git Commit: %s\n", sys.GitCommit)
+		fmt.Printf("OS/Arch:    %s\n", sys.OSArch)
 		fmt.Printf("Built:      %s\n", c.App.Compiled.Format(time.ANSIC))
 	}
 
 	app.Action = func(c *cli.Context) error {
+		c.String("config")
 		config := &Config{
-			PrivateKeyFile:     c.String("private_key_file"),
-			Host:               c.String("host"),
-			Port:               c.Uint("port"),
-			DatabasePath:       c.String("db.path"),
-			ResetDatabase:      c.Bool("db.reset"),
-			GenesisPath:        c.String("genesis"),
-			Peers:              c.StringSlice("peers"),
-			APIHost:            c.String("api.host"),
-			APIPort:            c.Uint("api.port"),
-			APIPrivateKeysFile: c.String("api.private_keys_file"),
-			Daemon:             c.Bool("daemon"),
-			LogLevel:           c.String("log_level"),
-			UseNAT:             c.Bool("nat"),
+			Host:     c.String("host"),
+			Port:     c.Uint("port"),
+			Wallet:   c.String("wallet"),
+			APIPort:  c.Uint("api.port"),
+			Peers:    c.Args(),
+			Database: c.String("db"),
 		}
 
-		if c.Uint("params.consensus_k") > 0 {
-			params.ConsensusK = int(c.Uint("params.consensus_k"))
+		if genesis := c.String("genesis"); len(genesis) > 0 {
+			config.Genesis = &genesis
 		}
 
-		if c.Float64("params.consensus_alpha") >= 0 && c.Float64("params.consensus_alpha") <= 1 {
-			params.ConsensusAlpha = float32(c.Float64("params.consensus_alpha"))
-		}
+		// set the the sys variables
+		sys.SnowballK = c.Int("sys.snowball.k")
+		sys.SnowballAlpha = c.Float64("sys.snowball.alpha")
+		sys.SnowballBeta = c.Int("sys.snowball.beta")
+		sys.QueryTimeout = time.Duration(c.Int("sys.query_timeout")) * time.Second
+		sys.MaxDepthDiff = c.Uint64("sys.max_depth_diff")
+		sys.MinDifficulty = byte(c.Int("sys.difficulty.min"))
+		sys.DifficultyScaleFactor = c.Float64("sys.difficulty.scale")
+		sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
+		sys.MinimumStake = c.Uint64("sys.min_stake")
 
-		if c.Uint("params.consensus_query_timeout_ms") > 0 {
-			params.ConsensusQueryTimeout = int(c.Uint("params.consensus_query_timeout_ms"))
-		}
-
-		if c.Uint("params.graph_update_period_ms") > 0 {
-			params.GraphUpdatePeriodMs = int(c.Uint("params.graph_update_period_ms"))
-		}
-
-		if c.Uint("params.sync_hint_period_ms") > 0 {
-			params.SyncHintPeriodMs = int(c.Uint("params.sync_hint_period_ms"))
-		}
-
-		if c.Uint("params.sync_hint_num_peers") >= 0 {
-			params.SyncHintNumPeers = int(c.Uint("params.sync_hint_num_peers"))
-		}
-
-		if c.Uint("params.sync_neighbors_likelihood") > 0 {
-			params.SyncNeighborsLikelihood = int(c.Uint("params.sync_neighbors_likelihood"))
-		}
-
-		if c.Uint("params.sync_num_peers") >= 0 {
-			params.SyncNumPeers = int(c.Uint("params.sync_num_peers"))
-		}
-
-		if c.Uint("params.validator_reward_depth") >= 0 {
-			params.ValidatorRewardDepth = int(c.Uint("params.validator_reward_depth"))
-		}
-
-		if c.Uint64("params.validator_reward_amount") >= 0 {
-			params.ValidatorRewardAmount = c.Uint64("params.validator_reward_amount")
-		}
-
-		if c.Uint("params.transaction_fee_percentage") >= 0 {
-			params.TransactionFeePercentage = int(c.Uint("params.transaction_fee_percentage"))
-		}
-
-		// start the plugin
-		w, err := runServer(config)
-		if err != nil {
-			return err
-		}
-
-		// run the shell version of the node
-		runShell(w)
+		start(config)
 
 		return nil
 	}
@@ -287,325 +199,193 @@ func main() {
 
 	err := app.Run(os.Args)
 	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to parse configuration/command-line arugments.")
+		logger.Fatal().Err(err).Msg("Failed to parse configuration/command-line arguments.")
 	}
 }
 
-func runServer(c *Config) (*node.Wavelet, error) {
-	log.SetLevel(c.LogLevel)
+func start(cfg *Config) {
+	logger := log.Node()
 
-	jsonConfig, _ := json.MarshalIndent(c, "", "  ")
-	log.Debug().Msgf("Config: %s", string(jsonConfig))
-	log.Debug().Msgf("Params: %s", params.DumpParams())
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
+	if err != nil {
+		panic(err)
+	}
 
-	var privateKeyHex string
-	if len(c.PrivateKeyFile) > 0 && c.PrivateKeyFile != "random" {
-		bytes, err := ioutil.ReadFile(c.PrivateKeyFile)
+	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
+
+	if cfg.NAT {
+		if len(cfg.Peers) > 1 {
+			resolver := nat.NewPMP()
+
+			if err := resolver.AddMapping("tcp",
+				uint16(listener.Addr().(*net.TCPAddr).Port),
+				uint16(listener.Addr().(*net.TCPAddr).Port),
+				30*time.Minute,
+			); err != nil {
+				panic(err)
+			}
+		}
+
+		resp, err := http.Get("http://myexternalip.com/raw")
 		if err != nil {
-			return nil, errors.Wrapf(err, "Unable to open server private key file: %s", c.PrivateKeyFile)
+			panic(err)
 		}
-		privateKeyHex = strings.TrimSpace(string(bytes))
-	} else {
-		log.Info().Msg("Generating a random wallet")
-		privateKeyHex = ed25519.RandomKeyPair().PrivateKeyHex()
-	}
 
-	keys, err := crypto.FromPrivateKey(security.SignaturePolicy, privateKeyHex)
-	if err != nil {
-		return nil, errors.Wrap(err, "Unable to decode server private key")
-	}
-
-	w := node.NewPlugin(node.Options{
-		DatabasePath:  c.DatabasePath,
-		GenesisPath:   c.GenesisPath,
-		ResetDatabase: c.ResetDatabase,
-	})
-
-	builder := network.NewBuilder()
-
-	builder.SetKeys(keys)
-	builder.SetAddress(network.FormatAddress("tcp", c.Host, uint16(c.Port)))
-
-	builder.AddPlugin(new(discovery.Plugin))
-	if c.UseNAT {
-		nat.RegisterPlugin(builder)
-	}
-	builder.AddPlugin(w)
-
-	net, err := builder.Build()
-	if err != nil {
-		return nil, errors.Wrap(err, "Failed to initialize networking.")
-	}
-
-	go net.Listen()
-
-	net.BlockUntilListening()
-
-	if len(c.Peers) > 0 {
-		net.Bootstrap(c.Peers...)
-	}
-
-	if c.APIPort > 0 {
-		var clients []*api.ClientInfo
-
-		if len(c.APIPrivateKeysFile) > 0 {
-			bytes, err := ioutil.ReadFile(c.APIPrivateKeysFile)
-			if err != nil {
-				return nil, errors.Wrapf(err, "Unable to open api private keys file: %s", c.APIPrivateKeysFile)
-			}
-			privateKeysHex := strings.Split(string(bytes), "\n")
-			for i, privateKeyHex := range privateKeysHex {
-				trimmed := strings.TrimSpace(privateKeyHex)
-				if len(trimmed) == 0 {
-					continue
-				}
-				keys, err := crypto.FromPrivateKey(security.SignaturePolicy, trimmed)
-				if err != nil {
-					log.Info().Msgf("Unable to decode key %d from file %s", i, c.APIPrivateKeysFile)
-					continue
-				}
-				clients = append(clients, &api.ClientInfo{
-					PublicKey: keys.PublicKeyHex(),
-					Permissions: api.ClientPermissions{
-						CanSendTransaction: true,
-						CanPollTransaction: true,
-						CanControlStats:    true,
-						CanAccessLedger:    true,
-					},
-				})
-			}
+		ip, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			panic(err)
 		}
-		go api.Run(net, api.Options{
-			ListenAddr: fmt.Sprintf("%s:%d", c.APIHost, c.APIPort),
-			Clients:    clients,
-		})
 
-		log.Info().
-			Str("host", c.APIHost).
-			Uint("port", c.APIPort).
-			Msg("Local HTTP API is being served.")
+		if err := resp.Body.Close(); err != nil {
+			panic(err)
+		}
+
+		addr = net.JoinHostPort(string(ip), strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
 	}
 
-	exit := make(chan os.Signal, 1)
-	signal.Notify(exit, os.Interrupt)
+	logger.Info().Str("addr", addr).Msg("Listening for peers.")
 
-	if c.Daemon {
-		<-exit
-
-		net.Close()
-		os.Exit(0)
+	keys, err := keys(cfg.Wallet)
+	if err != nil {
+		panic(err)
 	}
+
+	client := skademlia.NewClient(
+		addr, keys,
+		skademlia.WithC1(sys.SKademliaC1),
+		skademlia.WithC2(sys.SKademliaC2),
+		skademlia.WithDialOptions(grpc.WithDefaultCallOptions(grpc.UseCompressor(snappy.Name))),
+	)
+
+	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
+
+	var kv store.KV = store.NewInmem()
+
+	if len(cfg.Database) > 0 {
+		kv, err = store.NewLevelDB(cfg.Database)
+		if err != nil {
+			logger.Fatal().Err(err).Msgf("Failed to create/open database located at %q.", cfg.Database)
+		}
+	}
+
+	ledger := wavelet.NewLedger(kv, client)
 
 	go func() {
-		<-exit
+		server := client.Listen()
 
-		net.Close()
-		os.Exit(0)
+		wavelet.RegisterWaveletServer(server, ledger.Protocol())
+
+		if err := server.Serve(listener); err != nil {
+			panic(err)
+		}
 	}()
 
-	return w, nil
-}
-
-func runShell(w *node.Wavelet) error {
-	reader := bufio.NewReader(os.Stdin)
-
-	for {
-		fmt.Print("Enter a message: ")
-
-		bytes, _, err := reader.ReadLine()
-		if err != nil {
-			log.Fatal().Err(err).Msg("Failed to read line from stdin.")
-		}
-
-		cmd := strings.Split(string(bytes), " ")
-
-		switch cmd[0] {
-		case "w":
-			if len(cmd) < 2 {
-				w.Ledger.Do(func(l *wavelet.Ledger) {
-					log.Info().
-						Str("id", hex.EncodeToString(w.Wallet.PublicKey)).
-						Uint64("nonce", w.Wallet.CurrentNonce(l)).
-						Uint64("balance", w.Wallet.GetBalance(l)).
-						Uint64("stake", w.Wallet.GetStake(l)).
-						Msg("Here is your wallet information.")
-				})
-
-				continue
-			}
-
-			accountID, err := hex.DecodeString(cmd[1])
-
-			if err != nil {
-				log.Error().Msg("The account ID you specified is invalid.")
-				continue
-			}
-
-			var account *wavelet.Account
-
-			w.Ledger.Do(func(l *wavelet.Ledger) {
-				account = wavelet.LoadAccount(l.Accounts, accountID)
-			})
-
-			if err != nil {
-				log.Error().Msg("There is no account with that ID in the database.")
-				continue
-			}
-
-			log.Info().
-				Uint64("nonce", account.GetNonce()).
-				Uint64("balance", account.GetBalance()).
-				Uint64("stake", account.GetStake()).
-				Msgf("Account: %s", cmd[1])
-		case "p":
-			recipient := "71e6c9b83a7ef02bae6764991eefe53360a0a09be53887b2d3900d02c00a3858"
-			amount := 1
-
-			if len(cmd) >= 2 {
-				recipient = cmd[1]
-			}
-
-			if len(cmd) >= 3 {
-				amount, err = strconv.Atoi(cmd[2])
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to convert payment amount to an uint64.")
-					continue
-				}
-			}
-
-			recipientDecoded, err := hex.DecodeString(recipient)
-			if err != nil {
-				log.Error().Err(err).Msg("cannot decode recipient")
-				continue
-			}
-
-			payload := payload.NewWriter(nil)
-			payload.WriteBytes(recipientDecoded)
-			payload.WriteUint64(uint64(amount))
-
-			if len(cmd) >= 5 {
-				payload.WriteString(cmd[3])
-
-				for i := 4; i < len(cmd); i++ {
-					arg := cmd[i]
-
-					switch arg[0] {
-					case 'S':
-						payload.WriteString(arg[1:])
-					case 'B':
-						payload.WriteBytes([]byte(arg[1:]))
-					case '1', '2', '4', '8':
-						var val uint64
-						fmt.Sscanf(arg[1:], "%d", &val)
-
-						switch arg[0] {
-						case '1':
-							payload.WriteByte(byte(val))
-						case '2':
-							payload.WriteUint16(uint16(val))
-						case '4':
-							payload.WriteUint32(uint32(val))
-						case '8':
-							payload.WriteUint64(uint64(val))
-						}
-					case 'H':
-						b, err := hex.DecodeString(arg[1:])
-						if err != nil {
-							log.Fatal().Err(err).Msgf("cannot decode hex: %s", arg[1:])
-						}
-
-						payload.WriteBytes(b)
-					default:
-						log.Fatal().Msgf("invalid arg: %s", arg)
-					}
-				}
-			}
-
-			wired := w.MakeTransaction(params.TagGeneric, payload.Bytes())
-			go w.BroadcastTransaction(wired)
-
-			log.Info().Msgf("Success! Your payment transaction ID: %s", hex.EncodeToString(graph.Symbol(wired)))
-		case "ps":
-			if len(cmd) < 2 {
-				continue
-			}
-
-			amount, err := strconv.Atoi(cmd[1])
-			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to convert staking amount to a uint64.")
-			}
-
-			wired := w.MakeTransaction(params.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
-			go w.BroadcastTransaction(wired)
-
-			log.Info().Msgf("Success! Your stake placement transaction ID: %s", hex.EncodeToString(graph.Symbol(wired)))
-		case "ws":
-			if len(cmd) < 2 {
-				continue
-			}
-
-			amount, err := strconv.Atoi(cmd[1])
-			if err != nil {
-				log.Fatal().Err(err).Msg("Failed to convert withdraw amount to an uint64.")
-			}
-
-			wired := w.MakeTransaction(params.TagStake, payload.NewWriter(nil).WriteUint64(uint64(amount)).Bytes())
-			go w.BroadcastTransaction(wired)
-
-			log.Info().Msgf("Success! Your stake withdrawal transaction ID: %s", hex.EncodeToString(graph.Symbol(wired)))
-		case "c":
-			if len(cmd) < 2 {
-				continue
-			}
-
-			bytes, err := ioutil.ReadFile(cmd[1])
-			if err != nil {
-				log.Error().
-					Err(err).
-					Str("path", cmd[1]).
-					Msg("Failed to find/load the smart contract code from the given path.")
-				continue
-			}
-
-			wired := w.MakeTransaction(params.TagCreateContract, bytes)
-			go w.BroadcastTransaction(wired)
-
-			log.Info().Msgf("Success! Your smart contract ID: %s", hex.EncodeToString(graph.Symbol(wired)))
-		case "tx":
-			if len(cmd) < 2 {
-				continue
-			}
-
-			var tx *database.Transaction
-
-			w.Ledger.Do(func(l *wavelet.Ledger) {
-				tx, err = l.GetBySymbol([]byte(cmd[1]))
-			})
-
-			if err != nil {
-				log.Error().Err(err).Msg("Unable to find transaction.")
-				continue
-			}
-
-			var txParents []string
-			for _, parent := range tx.Parents {
-				txParents = append(txParents, string(parent))
-			}
-
-			log.Info().
-				Str("sender", hex.EncodeToString(tx.Sender)).
-				Uint64("nonce", tx.Nonce).
-				Uint32("tag", tx.Tag).
-				Strs("parents", txParents).
-				Bytes("payload", tx.Payload).
-				Msg("Here is the transaction you requested.")
-		default:
-			wired := w.MakeTransaction(params.TagNop, nil)
-			go w.BroadcastTransaction(wired)
-
-			log.Info().Msgf("Your nop transaction ID: %s", hex.EncodeToString(graph.Symbol(wired)))
+	for _, addr := range cfg.Peers {
+		if _, err := client.Dial(addr); err != nil {
+			fmt.Printf("Error dialing %s: %v\n", addr, err)
 		}
 	}
 
-	return nil
+	if peers := client.Bootstrap(); len(peers) > 0 {
+		var ids []string
+
+		for _, id := range peers {
+			ids = append(ids, id.String())
+		}
+
+		logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
+	}
+
+	if cfg.APIPort > 0 {
+		go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
+	}
+
+	shell, err := NewCLI(client, ledger, keys)
+	if err != nil {
+		panic(err)
+	}
+
+	shell.Start()
+}
+
+func keys(wallet string) (*skademlia.Keypair, error) {
+	var keys *skademlia.Keypair
+
+	logger := log.Node()
+
+	privateKeyBuf, err := ioutil.ReadFile(wallet)
+
+	if err == nil {
+		var privateKey edwards25519.PrivateKey
+
+		n, err := hex.Decode(privateKey[:], privateKeyBuf)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode your private key from %q", wallet)
+		}
+
+		if n != edwards25519.SizePrivateKey {
+			return nil, fmt.Errorf("private key located in %q is not of the right length", wallet)
+		}
+
+		keys, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+		if err != nil {
+			return nil, fmt.Errorf("the private key specified in %q is invalid", wallet)
+		}
+
+		publicKey := keys.PublicKey()
+
+		logger.Info().
+			Hex("privateKey", privateKey[:]).
+			Hex("publicKey", publicKey[:]).
+			Msg("Wallet loaded.")
+
+		return keys, nil
+	}
+
+	if os.IsNotExist(err) {
+		// If a private key is specified instead of a path to a wallet, then simply use the provided private key instead.
+		if len(wallet) == hex.EncodedLen(edwards25519.SizePrivateKey) {
+			var privateKey edwards25519.PrivateKey
+
+			n, err := hex.Decode(privateKey[:], []byte(wallet))
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode the private key specified: %s", wallet)
+			}
+
+			if n != edwards25519.SizePrivateKey {
+				return nil, fmt.Errorf("private key %s is not of the right length", wallet)
+			}
+
+			keys, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+			if err != nil {
+				return nil, fmt.Errorf("the private key specified is invalid: %s", wallet)
+			}
+
+			publicKey := keys.PublicKey()
+
+			logger.Info().
+				Hex("privateKey", privateKey[:]).
+				Hex("publicKey", publicKey[:]).
+				Msg("A private key was provided instead of a wallet file.")
+
+			return keys, nil
+		}
+
+		keys, err = skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
+		if err != nil {
+			return nil, errors.New("failed to generate a new wallet")
+		}
+
+		privateKey := keys.PrivateKey()
+		publicKey := keys.PublicKey()
+
+		logger.Info().
+			Hex("privateKey", privateKey[:]).
+			Hex("publicKey", publicKey[:]).
+			Msg("Existing wallet not found: generated a new one.")
+
+		return keys, nil
+	}
+
+	return keys, err
 }

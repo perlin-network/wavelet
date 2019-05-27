@@ -1,111 +1,84 @@
 package wavelet
 
 import (
-	"crypto/sha1"
-	"encoding/binary"
-	"github.com/perlin-network/graph/database"
-	"github.com/perlin-network/pem-avl"
-	"reflect"
-	"unsafe"
+	"encoding/hex"
+	"fmt"
+	"github.com/pkg/errors"
+	"google.golang.org/grpc"
+	"io/ioutil"
+	"math/rand"
+	"strconv"
+	"strings"
 )
 
-type prefixedStore struct {
-	database.Store
-
-	prefix []byte
-}
-
-var _ pem_avl.KVStore = (*prefixedStore)(nil)
-
-func newPrefixedStore(store database.Store, prefix []byte) prefixedStore {
-	return prefixedStore{Store: store, prefix: prefix}
-}
-
-func (s prefixedStore) Get(key []byte) []byte {
-	ret, _ := s.Store.Get(merge(s.prefix, key))
-	return ret
-}
-
-func (s prefixedStore) Has(key []byte) bool {
-	ok, err := s.Store.Has(merge(s.prefix, key))
-
-	if err != nil {
-		panic(err)
+func SelectPeers(peers []*grpc.ClientConn, amount int) ([]*grpc.ClientConn, error) {
+	if len(peers) < amount {
+		return peers, errors.Errorf("only connected to %d peer(s), but require a minimum of %d peer(s)", len(peers), amount)
 	}
 
-	return ok
-}
+	if len(peers) > amount {
+		rand.Shuffle(len(peers), func(i, j int) {
+			peers[i], peers[j] = peers[j], peers[i]
+		})
 
-func (s prefixedStore) Set(key []byte, value []byte) {
-	err := s.Store.Put(merge(s.prefix, key), value)
-
-	if err != nil {
-		panic(err)
-	}
-}
-
-func (s prefixedStore) Delete(key []byte) {
-	err := s.Store.Delete(merge(s.prefix, key))
-
-	if err != nil {
-		panic(err)
-	}
-}
-
-// writeBytes converts string to a byte slice without memory allocation.
-//
-// Note it may break if string and/or slice header will change
-// in the future go versions.
-func writeBytes(a string) []byte {
-	sh := (*reflect.StringHeader)(unsafe.Pointer(&a))
-	bh := reflect.SliceHeader{
-		Data: sh.Data,
-		Len:  sh.Len,
-		Cap:  sh.Len,
-	}
-	return *(*[]byte)(unsafe.Pointer(&bh))
-}
-
-func writeString(a []byte) string {
-	return *(*string)(unsafe.Pointer(&a))
-}
-
-func writeUint64(a uint64) []byte {
-	bytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(bytes, a)
-
-	return bytes
-}
-
-func readUint64(a []byte) uint64 {
-	return binary.LittleEndian.Uint64(a)
-}
-
-func writeBoolean(a bool) []byte {
-	if a {
-		return []byte{0x1}
-	} else {
-		return []byte{0x0}
-	}
-}
-
-func readBoolean(a []byte) bool {
-	if len(a) > 0 && a[0] == 0x1 {
-		return true
+		peers = peers[:amount]
 	}
 
-	return false
+	return peers, nil
 }
 
-func hash(a string) uint64 {
-	sha1Hash := sha1.Sum(writeBytes(a))
-	return binary.LittleEndian.Uint64(sha1Hash[0:8])
-}
+func ExportGraphDOT(round *Round, graph *Graph) {
+	visited := map[TransactionID]struct{}{round.Start.ID: {}}
 
-func merge(a ...[]byte) (result []byte) {
-	for _, arr := range a {
-		result = append(result[:], arr[:]...)
+	queue := AcquireQueue()
+	defer ReleaseQueue(queue)
+
+	queue.PushBack(&round.End)
+
+	var dot strings.Builder
+
+	dot.WriteString("digraph G {")
+
+	for queue.Len() > 0 {
+		popped := queue.PopFront().(*Transaction)
+
+		dot.WriteByte('\n')
+		dot.WriteByte('\t')
+		dot.WriteString(strconv.Quote(hex.EncodeToString(popped.ID[:])))
+		dot.WriteString(" -> ")
+		dot.WriteByte('{')
+		dot.WriteByte(' ')
+
+		for _, parentID := range popped.ParentIDs {
+			if _, seen := visited[parentID]; seen {
+				continue
+			}
+
+			visited[parentID] = struct{}{}
+
+			parent := graph.FindTransaction(parentID)
+
+			if parent == nil {
+				return
+			}
+
+			if parent.Depth <= round.Start.Depth {
+				continue
+			}
+
+			queue.PushBack(parent)
+
+			dot.WriteString(strconv.Quote(hex.EncodeToString(parentID[:])))
+			dot.WriteByte(' ')
+		}
+
+		dot.WriteByte('}')
 	}
 
-	return
+	dot.WriteByte('\n')
+	dot.WriteByte('}')
+
+	if err := ioutil.WriteFile(fmt.Sprintf("rounds/%d.dot", round.Index), []byte(dot.String()), 0644); err != nil {
+		fmt.Println("error saving graph:", err)
+	}
 }
