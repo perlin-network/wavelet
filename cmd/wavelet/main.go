@@ -23,6 +23,15 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"os"
+	"sort"
+	"strconv"
+	"syscall"
+	"time"
+
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher"
 	"github.com/perlin-network/noise/edwards25519"
@@ -32,19 +41,14 @@ import (
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/internal/snappy"
+	"github.com/perlin-network/wavelet/keystore"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
+	"golang.org/x/crypto/ssh/terminal"
 	"google.golang.org/grpc"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
-	"io/ioutil"
-	"net"
-	"net/http"
-	"os"
-	"sort"
-	"strconv"
-	"time"
 )
 
 import _ "net/http/pprof"
@@ -346,24 +350,46 @@ func start(cfg *Config) {
 
 func keys(wallet string) (*skademlia.Keypair, error) {
 	var keys *skademlia.Keypair
+	var privateKey *edwards25519.PrivateKey
 
 	logger := log.Node()
 
-	privateKeyBuf, err := ioutil.ReadFile(wallet)
+	encrypted, err := keystore.IsProbablyEncrypted(wallet)
 
 	if err == nil {
-		var privateKey edwards25519.PrivateKey
+		if encrypted {
+			enc, err := keystore.ReadFromEncryptedFile(wallet)
+			if err != nil {
+				return nil, err
+			}
+			for i := 0; i < 3; i++ {
+				passwordBytes, err := terminal.ReadPassword(int(syscall.Stdin))
+				if err != nil {
+					return nil, err
+				}
 
-		n, err := hex.Decode(privateKey[:], privateKeyBuf)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode your private key from %q", wallet)
+				privateKey, err = enc.Decrypt(string(passwordBytes))
+				if err != nil {
+					fmt.Println(err)
+					return nil, err
+				}
+				if err == nil {
+					continue
+				}
+			}
+			if privateKey == nil {
+				return nil, fmt.Errorf("exceeded password attempts for %q", wallet)
+			}
+
+		} else {
+			ptk, err := keystore.ReadFromPlainTextFile(wallet)
+			privateKey, err = ptk.ExtractFromPlainTextKey()
+			if err != nil {
+				return nil, err
+			}
 		}
 
-		if n != edwards25519.SizePrivateKey {
-			return nil, fmt.Errorf("private key located in %q is not of the right length", wallet)
-		}
-
-		keys, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+		keys, err = skademlia.LoadKeys(*privateKey, sys.SKademliaC1, sys.SKademliaC2)
 		if err != nil {
 			return nil, fmt.Errorf("the private key specified in %q is invalid", wallet)
 		}

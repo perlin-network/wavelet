@@ -15,8 +15,9 @@ require (
 	github.com/golang/snappy v0.0.1
 	github.com/google/btree v1.0.0
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
-	github.com/perlin-network/life v0.0.0-20190723115110-3091ed0c1be8
-	github.com/perlin-network/noise v0.0.0-20190527211417-79abfb78fdba
+	github.com/mitchellh/mapstructure v1.1.2
+	github.com/perlin-network/life v0.0.0-20190521143330-57f3819c2df0
+	github.com/perlin-network/noise v0.0.0-20190521210107-a466908636c5
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
 	github.com/pkg/errors v0.8.1
 	github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a
@@ -27,10 +28,10 @@ require (
 	github.com/valyala/fasthttp v1.3.0
 	github.com/valyala/fastjson v1.4.1
 	golang.org/x/crypto v0.0.0-20190513172903-22d7a77e9e5f
-	golang.org/x/net v0.0.0-20190522155817-f3200d17e092 // indirect
 	golang.org/x/sys v0.0.0-20190522044717-8097e1b27ff5 // indirect
 	golang.org/x/text v0.3.2 // indirect
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
+	golang.org/x/tools/gopls v0.1.3 // indirect
 	google.golang.org/grpc v1.20.1
 	gopkg.in/urfave/cli.v1 v1.20.0
 )
