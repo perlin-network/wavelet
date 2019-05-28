@@ -163,9 +163,14 @@ func ProcessContractTransaction(ctx *TransactionContext) error {
 		return errors.New("contract: there already exists a contract spawned with the specified code")
 	}
 
+	balance, _ := ctx.ReadAccountBalance(tx.Creator)
+	if balance < tx.GasLimit {
+		return errors.Errorf("contract: not enough balance, wanting %d PERLs", tx.GasLimit)
+	}
+
 	executor := NewContractExecutor(tx.ID, ctx).WithGasTable(sys.GasTable)
 
-	vm, err := executor.Init(tx.Payload, 50000000)
+	vm, err := executor.Init(tx.Payload, tx.GasLimit)
 	if err != nil {
 		return errors.New("contract: code for contract is not valid WebAssembly code")
 	}
