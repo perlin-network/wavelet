@@ -195,8 +195,8 @@ func (cli *CLI) status() {
 }
 
 func (cli *CLI) pay(cmd []string, additional []byte) {
-	if len(cmd) != 2 {
-		fmt.Println("pay <recipient> <amount>")
+	if len(cmd) < 2 || len(cmd) > 3 {
+		fmt.Println("pay <recipient> <amount> [gas-limit]")
 		return
 	}
 
@@ -212,10 +212,26 @@ func (cli *CLI) pay(cmd []string, additional []byte) {
 		return
 	}
 
-	var intBuf [8]byte
 	payload := bytes.NewBuffer(nil)
 	payload.Write(recipient[:])
+
+	var intBuf [8]byte
 	binary.LittleEndian.PutUint64(intBuf[:], uint64(amount))
+	payload.Write(intBuf[:])
+
+	gasLimit := 0
+	if len(cmd) == 3 {
+		gasLimit, err = strconv.Atoi(cmd[2])
+		if err != nil {
+			cli.logger.Error().
+				Err(err).
+				Str("gas-limit", cmd[2]).
+				Msg("Failed to convert gas-limit.")
+			return
+		}
+	}
+
+	binary.LittleEndian.PutUint64(intBuf[:], uint64(gasLimit))
 	payload.Write(intBuf[:])
 
 	if additional != nil {
@@ -227,25 +243,24 @@ func (cli *CLI) pay(cmd []string, additional []byte) {
 		return
 	}
 
-	cli.logger.Info().
-		Msgf("Success! Your payment transaction ID: %x", tx.ID)
+	cli.logger.Info().Msgf("Success! Your payment transaction ID: %x", tx.ID)
 }
 
 func (cli *CLI) call(cmd []string) {
 	if len(cmd) < 4 {
-		fmt.Println("call <smart-contract-address> <amount> <function> [function parameters]")
+		fmt.Println("call <smart-contract-address> <amount> <gas-limit> <function> [function parameters]")
 		return
 	}
 
 	var intBuf [8]byte
 	payload := bytes.NewBuffer(nil)
-	binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(cmd[2])))
+	binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(cmd[3])))
 	payload.Write(intBuf[:3])
-	payload.WriteString(cmd[2])
+	payload.WriteString(cmd[3])
 
 	params := bytes.NewBuffer(nil)
 
-	for i := 3; i < len(cmd); i++ {
+	for i := 4; i < len(cmd); i++ {
 		arg := cmd[i]
 
 		switch arg[0] {
@@ -298,7 +313,7 @@ func (cli *CLI) call(cmd []string) {
 		payload.Write(buf)
 	}
 
-	cli.pay(cmd[:2], payload.Bytes())
+	cli.pay(cmd[:3], payload.Bytes())
 }
 
 func (cli *CLI) find(cmd []string) {
@@ -400,16 +415,21 @@ func (cli *CLI) spawn(cmd []string) {
 		return
 	}
 
-	tx := wavelet.NewTransaction(cli.keys, sys.TagContract, code)
-	tx.GasLimit = uint64(gasLimit)
+	var intBuf [8]byte
+	payload := bytes.NewBuffer(nil)
+
+	binary.LittleEndian.PutUint64(intBuf[:], uint64(gasLimit))
+	payload.Write(intBuf[:])
+	payload.Write(code)
+
+	tx := wavelet.NewTransaction(cli.keys, sys.TagContract, payload.Bytes())
 
 	tx, err = cli.sendTransaction(tx)
 	if err != nil {
 		return
 	}
 
-	cli.logger.Info().
-		Msgf("Success! Your smart contracts ID: %x", tx.ID)
+	cli.logger.Info().Msgf("Success! Your smart contracts ID: %x", tx.ID)
 }
 
 func (cli *CLI) placeStake(cmd []string) {

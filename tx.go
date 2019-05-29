@@ -54,8 +54,6 @@ type Transaction struct {
 
 	Seed    [blake2b.Size256]byte // BLAKE2b(Sender || ParentIDs)
 	SeedLen byte                  // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
-
-	GasLimit uint64
 }
 
 func NewTransaction(creator *skademlia.Keypair, tag byte, payload []byte) Transaction {
@@ -159,9 +157,6 @@ func (t Transaction) Marshal() []byte {
 	binary.BigEndian.PutUint64(buf[:8], t.Depth)
 	w.Write(buf[:8])
 
-	binary.BigEndian.PutUint64(buf[:8], uint64(t.GasLimit))
-	w.Write(buf[:8])
-
 	w.WriteByte(t.Tag)
 
 	binary.BigEndian.PutUint32(buf[:4], uint32(len(t.Payload)))
@@ -232,13 +227,6 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 	}
 
 	t.Depth = binary.BigEndian.Uint64(buf[:8])
-
-	if _, err = io.ReadFull(r, buf[:8]); err != nil {
-		err = errors.Wrap(err, "could not read transaction gas limit")
-		return
-	}
-
-	t.GasLimit = binary.BigEndian.Uint64(buf[:8])
 
 	if _, err = io.ReadFull(r, buf[:1]); err != nil {
 		err = errors.Wrap(err, "could not read transaction tag")

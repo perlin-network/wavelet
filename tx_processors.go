@@ -57,6 +57,16 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 		return errors.Errorf("transfer: not enough balance, wanting %d PERLs", amount)
 	}
 
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		return errors.Wrap(err, "transfer: failed to decode gas limit of transfer")
+	}
+
+	gasLimit := binary.LittleEndian.Uint64(buf[:])
+
+	if creatorBalance < gasLimit {
+		return errors.Errorf("transfer: not enough balance for gas limit, wanting %d PERLs", gasLimit)
+	}
+
 	ctx.WriteAccountBalance(tx.Creator, creatorBalance-amount)
 
 	recipientBalance, _ := ctx.ReadAccountBalance(recipient)
@@ -92,9 +102,9 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 			return errors.Wrap(err, "transfer: failed to decode smart contract function invocation parameters")
 		}
 
-		_, gas, err = executor.Run(amount, 50000000, string(funcName), funcParams...)
+		_, gas, err = executor.Run(amount, gasLimit, string(funcName), funcParams...)
 	} else {
-		_, gas, err = executor.Run(amount, 50000000, "on_money_received")
+		_, gas, err = executor.Run(amount, gasLimit, "on_money_received")
 	}
 
 	if err != nil && errors.Cause(err) != ErrContractFunctionNotFound {
@@ -155,7 +165,7 @@ func ProcessStakeTransaction(ctx *TransactionContext) error {
 func ProcessContractTransaction(ctx *TransactionContext) error {
 	tx := ctx.Transaction()
 
-	if len(tx.Payload) == 0 {
+	if len(tx.Payload) < 9 {
 		return errors.New("contract: no code specified for contract to be spawned")
 	}
 
@@ -163,19 +173,21 @@ func ProcessContractTransaction(ctx *TransactionContext) error {
 		return errors.New("contract: there already exists a contract spawned with the specified code")
 	}
 
+	gasLimit := binary.LittleEndian.Uint64(tx.Payload[:8])
+
 	balance, _ := ctx.ReadAccountBalance(tx.Creator)
-	if balance < tx.GasLimit {
-		return errors.Errorf("contract: not enough balance, wanting %d PERLs", tx.GasLimit)
+	if balance < gasLimit {
+		return errors.Errorf("contract: not enough balance, wanting %d PERLs", gasLimit)
 	}
 
 	executor := NewContractExecutor(tx.ID, ctx).WithGasTable(sys.GasTable)
 
-	vm, err := executor.Init(tx.Payload, tx.GasLimit)
+	vm, err := executor.Init(tx.Payload[8:], gasLimit)
 	if err != nil {
 		return errors.New("contract: code for contract is not valid WebAssembly code")
 	}
 
-	ctx.WriteAccountContractCode(tx.ID, tx.Payload)
+	ctx.WriteAccountContractCode(tx.ID, tx.Payload[8:])
 	executor.SaveMemorySnapshot(tx.ID, vm.Memory)
 
 	return nil
