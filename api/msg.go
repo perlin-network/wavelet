@@ -203,7 +203,6 @@ func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, er
 		o.Set("parent_ids", nil)
 	}
 
-	//round := s.ledger.LastRound()
 	round := s.ledger.Rounds().Latest()
 
 	if s.tx.IsCritical(round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)) {
@@ -220,7 +219,6 @@ type ledgerStatusResponse struct {
 
 	client *skademlia.Client
 	ledger *wavelet.Ledger
-	//network   *skademlia.Protocol
 	publicKey edwards25519.PublicKey
 }
 
@@ -229,7 +227,6 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 		return nil, errors.New("insufficient parameters were provided")
 	}
 
-	//round := s.ledger.LastRound()
 	round := s.ledger.Rounds().Latest()
 
 	o := arena.NewObject()
