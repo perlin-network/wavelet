@@ -207,43 +207,6 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	}
 
 	g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
-
-	//evt := wavelet.EventBroadcast{
-	//	Tag:       req.Tag,
-	//	Payload:   req.payload,
-	//	Creator:   req.creator,
-	//	Signature: req.signature,
-	//	Result:    make(chan wavelet.Transaction, 1),
-	//	Error:     make(chan error, 1),
-	//}
-	//
-	//select {
-	//case <-time.After(1 * time.Second):
-	//	g.renderError(ctx, ErrInternal(errors.New("broadcasting queue is full")))
-	//	return
-	//case g.ledger.BroadcastQueue <- evt:
-	//}
-	//
-	//select {
-	//case <-time.After(1 * time.Second):
-	//	g.renderError(ctx, ErrInternal(errors.New("its taking too long to broadcast your transaction")))
-	//	return
-	//case err, ok := <-evt.Error:
-	//	if !ok {
-	//		select {
-	//		case tx := <-evt.Result:
-	//			g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
-	//		case <-time.After(3 * time.Second):
-	//			g.render(ctx, ErrInternal(errors.New("timed out gossiping tx")))
-	//		}
-	//
-	//		return
-	//	}
-	//
-	//	g.renderError(ctx, ErrInternal(errors.Wrap(err, "got an error broadcasting your transaction")))
-	//case tx := <-evt.Result:
-	//	g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
-	//}
 }
 
 func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
@@ -346,7 +309,6 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 	copy(id[:], slice)
 
 	tx := g.ledger.Graph().FindTransaction(id)
-	//tx, exists := g.ledger.FindTransaction(id)
 
 	if tx == nil {
 		g.renderError(ctx, ErrBadRequest(errors.Errorf("could not find transaction with ID %x", id)))
