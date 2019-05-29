@@ -65,9 +65,45 @@ func (s *sessionInitRequest) bind(parser *fastjson.Parser, body []byte) error {
 		return err
 	}
 
-	s.PublicKey = string(v.GetStringBytes("public_key"))
-	s.Signature = string(v.GetStringBytes("signature"))
-	s.TimeMillis = v.GetUint64("time_millis")
+	publicKeyVal := v.Get("public_key")
+	if publicKeyVal == nil {
+		return errors.New("missing public_key")
+	}
+	if publicKeyVal.Type() != fastjson.TypeString {
+		return errors.New("public_key is not a string")
+	}
+	publicKeyStr, err := publicKeyVal.StringBytes()
+	if err != nil {
+		return errors.Wrap(err, "invalid public_key")
+	}
+
+	signatureVal := v.Get("signature")
+	if signatureVal == nil {
+		return errors.New("missing signature")
+	}
+	if signatureVal.Type() != fastjson.TypeString {
+		return errors.New("signature is not a string")
+	}
+	signatureStr, err := signatureVal.StringBytes()
+	if err != nil {
+		return errors.Wrap(err, "invalid signature")
+	}
+
+	timeMillisVal := v.Get("time_millis")
+	if timeMillisVal == nil {
+		return errors.New("missing time_millis")
+	}
+	if timeMillisVal.Type() != fastjson.TypeNumber {
+		return errors.New("time_millis is not a number")
+	}
+	timeMillis, err := timeMillisVal.Uint64()
+	if err != nil {
+		return errors.Wrap(err, "invalid time_millis")
+	}
+
+	s.PublicKey = string(publicKeyStr)
+	s.Signature = string(signatureStr)
+	s.TimeMillis = timeMillis
 
 	publicKeyBuf, err := hex.DecodeString(s.PublicKey)
 	if err != nil {
@@ -130,10 +166,58 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 		return err
 	}
 
-	s.Sender = string(v.GetStringBytes("sender"))
-	s.Tag = byte(v.GetUint("tag"))
-	s.Payload = string(v.GetStringBytes("payload"))
-	s.Signature = string(v.GetStringBytes("signature"))
+	senderVal := v.Get("sender")
+	if senderVal == nil {
+		return errors.New("missing sender")
+	}
+	if senderVal.Type() != fastjson.TypeString {
+		return errors.New("sender is not a string")
+	}
+	senderStr, err := senderVal.StringBytes()
+	if err != nil {
+		return errors.Wrap(err, "invalid sender")
+	}
+
+	payloadVal := v.Get("payload")
+	if payloadVal == nil {
+		return errors.New("missing payload")
+	}
+	if payloadVal.Type() != fastjson.TypeString {
+		return errors.New("payload is not a string")
+	}
+	payloadStr, err := payloadVal.StringBytes()
+	if err != nil {
+		return errors.Wrap(err, "invalid payload")
+	}
+
+	signatureVal := v.Get("signature")
+	if signatureVal == nil {
+		return errors.New("missing signature")
+	}
+	if signatureVal.Type() != fastjson.TypeString {
+		return errors.New("signature is not a string")
+	}
+	signatureStr, err := signatureVal.StringBytes()
+	if err != nil {
+		return errors.Wrap(err, "invalid signature")
+	}
+
+	tagVal := v.Get("tag")
+	if tagVal == nil {
+		return errors.New("missing tag")
+	}
+	if tagVal.Type() != fastjson.TypeNumber {
+		return errors.New("tag is not a number")
+	}
+	tag, err := tagVal.Uint()
+	if err != nil {
+		return errors.Wrap(err, "invalid tag")
+	}
+
+	s.Sender = string(senderStr)
+	s.Payload = string(payloadStr)
+	s.Signature = string(signatureStr)
+	s.Tag = byte(tag)
 
 	senderBuf, err := hex.DecodeString(s.Sender)
 	if err != nil {
