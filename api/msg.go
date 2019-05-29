@@ -60,6 +60,10 @@ type sessionInitRequest struct {
 }
 
 func (s *sessionInitRequest) bind(parser *fastjson.Parser, body []byte) error {
+	if err := fastjson.ValidateBytes(body); err != nil {
+		return errors.Wrap(err, "invalid json")
+	}
+
 	v, err := parser.ParseBytes(body)
 	if err != nil {
 		return err
@@ -161,6 +165,10 @@ type sendTransactionRequest struct {
 }
 
 func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) error {
+	if err := fastjson.ValidateBytes(body); err != nil {
+		return errors.Wrap(err, "invalid json")
+	}
+
 	v, err := parser.ParseBytes(body)
 	if err != nil {
 		return err
