@@ -29,7 +29,8 @@ import (
 type TransactionProcessor func(ctx *TransactionContext) error
 
 type TransactionContext struct {
-	tree *avl.Tree
+	ledger *Ledger
+	tree   *avl.Tree
 
 	balances map[AccountID]uint64
 	stakes   map[AccountID]uint64
@@ -42,8 +43,9 @@ type TransactionContext struct {
 	tx           *Transaction
 }
 
-func NewTransactionContext(tree *avl.Tree, tx *Transaction) *TransactionContext {
+func NewTransactionContext(ledger *Ledger, tree *avl.Tree, tx *Transaction) *TransactionContext {
 	ctx := &TransactionContext{
+		ledger:   ledger,
 		tree:     tree,
 		balances: make(map[AccountID]uint64),
 		stakes:   make(map[AccountID]uint64),

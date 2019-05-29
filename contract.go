@@ -24,8 +24,10 @@ import (
 	"github.com/perlin-network/life/compiler"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/blake2b"
 )
 
 var (
@@ -287,6 +289,90 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 						Hex("contract_id", c.contractID[:]).
 						Msg(string(vm.Memory[dataPtr : dataPtr+dataLen]))
 				}
+				return 0
+			}
+		case "_round_id":
+			return func(vm *exec.VirtualMachine) int64 {
+				frame := vm.GetCurrentFrame()
+				outPtr := int(uint32(frame.Locals[0]))
+				outLen := int(uint32(frame.Locals[1]))
+
+				latestRoundID := c.ctx.ledger.Rounds().Latest().ID[:]
+				if outLen != len(latestRoundID) {
+					return 1
+				}
+				copy(vm.Memory[outPtr:outPtr+outLen], latestRoundID)
+				return 0
+			}
+		case "_sign":
+			return func(vm *exec.VirtualMachine) int64 {
+				vm.Gas += 1000 // TODO: Figure out a proper amount
+
+				frame := vm.GetCurrentFrame()
+				keyPtr, keyLen := int(uint32(frame.Locals[0])), int(uint32(frame.Locals[1]))
+				dataPtr, dataLen := int(uint32(frame.Locals[2])), int(uint32(frame.Locals[3]))
+				outPtr, outLen := int(uint32(frame.Locals[4])), int(uint32(frame.Locals[5]))
+
+				if keyLen != edwards25519.SizePrivateKey || outLen != edwards25519.SizeSignature {
+					return 1
+				}
+
+				key := vm.Memory[keyPtr : keyPtr+keyLen]
+				data := vm.Memory[dataPtr : dataPtr+dataLen]
+				out := vm.Memory[outPtr : outPtr+outLen]
+
+				priv := edwards25519.PrivateKey{}
+				copy(priv[:], key)
+				result := edwards25519.Sign(priv, data)
+				copy(out, result[:])
+				return 0
+			}
+		case "_verify":
+			return func(vm *exec.VirtualMachine) int64 {
+				vm.Gas += 1000 // TODO: Figure out a proper amount
+
+				frame := vm.GetCurrentFrame()
+				keyPtr, keyLen := int(uint32(frame.Locals[0])), int(uint32(frame.Locals[1]))
+				dataPtr, dataLen := int(uint32(frame.Locals[2])), int(uint32(frame.Locals[3]))
+				sigPtr, sigLen := int(uint32(frame.Locals[4])), int(uint32(frame.Locals[5]))
+
+				if keyLen != edwards25519.SizePublicKey || sigLen != edwards25519.SizeSignature {
+					return 1
+				}
+
+				key := vm.Memory[keyPtr : keyPtr+keyLen]
+				data := vm.Memory[dataPtr : dataPtr+dataLen]
+				sig := vm.Memory[sigPtr : sigPtr+sigLen]
+
+				var pub edwards25519.PublicKey
+				var edSig edwards25519.Signature
+
+				copy(pub[:], key)
+				copy(edSig[:], sig)
+
+				ok := edwards25519.Verify(pub, data, edSig)
+				if ok {
+					return 0
+				} else {
+					return 1
+				}
+			}
+		case "_hash_blake2b":
+			return func(vm *exec.VirtualMachine) int64 {
+				vm.Gas += 200 // TODO: Figure out a proper amount
+
+				frame := vm.GetCurrentFrame()
+				dataPtr, dataLen := int(uint32(frame.Locals[0])), int(uint32(frame.Locals[1]))
+				outPtr, outLen := int(uint32(frame.Locals[2])), int(uint32(frame.Locals[3]))
+				if outLen != blake2b.Size {
+					return 1
+				}
+
+				data := vm.Memory[dataPtr : dataPtr+dataLen]
+				out := vm.Memory[outPtr : outPtr+outLen]
+
+				b := blake2b.Sum512(data)
+				copy(out, b[:])
 				return 0
 			}
 		default:
