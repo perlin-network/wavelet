@@ -217,8 +217,8 @@ func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, er
 type ledgerStatusResponse struct {
 	// Internal fields.
 
-	client *skademlia.Client
-	ledger *wavelet.Ledger
+	client    *skademlia.Client
+	ledger    *wavelet.Ledger
 	publicKey edwards25519.PublicKey
 }
 
