@@ -30,7 +30,7 @@ func newRatelimiter(maxPerSec float64, expirationTTL time.Duration) *rateLimiter
 	}
 }
 
-// Return the rate limiter for the current id if it
+// Return the rate limiter for the key if it
 // already exists. Otherwise, create a new one.
 func (r *rateLimiter) getLimiter(key string) *limiter {
 	r.Lock()
