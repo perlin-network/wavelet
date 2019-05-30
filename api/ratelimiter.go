@@ -16,9 +16,13 @@ type limiter struct {
 }
 
 type rateLimiter struct {
-	max           float64 // rate per second
+	// Rate per second
+	max float64
+
+	// Determine how long (since lastSeen) should the limiter be kept in the map.
 	expirationTTL time.Duration
-	limiters      map[string]*limiter
+
+	limiters map[string]*limiter
 	sync.RWMutex
 }
 
