@@ -20,12 +20,17 @@
 package wavelet
 
 import (
+	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/binary"
 	"github.com/perlin-network/life/compiler"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/blake2b"
 )
 
 var (
@@ -289,6 +294,91 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				}
 				return 0
 			}
+		case "_round_id":
+			return func(vm *exec.VirtualMachine) int64 {
+				frame := vm.GetCurrentFrame()
+				outPtr := int(uint32(frame.Locals[0]))
+				outLen := int(uint32(frame.Locals[1]))
+
+				latestRoundID := c.ctx.round.ID[:]
+				if outLen != len(latestRoundID) {
+					return 1
+				}
+				copy(vm.Memory[outPtr:outPtr+outLen], latestRoundID)
+				return 0
+			}
+		case "_verify_ed25519":
+			var gas uint64
+			var ok bool
+			if gas, ok = sys.GasTable["wavelet.verify.ed25519"]; !ok {
+				panic("gas entry not found")
+			}
+
+			return func(vm *exec.VirtualMachine) int64 {
+				vm.Gas += gas
+
+				frame := vm.GetCurrentFrame()
+				keyPtr, keyLen := int(uint32(frame.Locals[0])), int(uint32(frame.Locals[1]))
+				dataPtr, dataLen := int(uint32(frame.Locals[2])), int(uint32(frame.Locals[3]))
+				sigPtr, sigLen := int(uint32(frame.Locals[4])), int(uint32(frame.Locals[5]))
+
+				if keyLen != edwards25519.SizePublicKey || sigLen != edwards25519.SizeSignature {
+					return 1
+				}
+
+				key := vm.Memory[keyPtr : keyPtr+keyLen]
+				data := vm.Memory[dataPtr : dataPtr+dataLen]
+				sig := vm.Memory[sigPtr : sigPtr+sigLen]
+
+				var pub edwards25519.PublicKey
+				var edSig edwards25519.Signature
+
+				copy(pub[:], key)
+				copy(edSig[:], sig)
+
+				ok := edwards25519.Verify(pub, data, edSig)
+				if ok {
+					return 0
+				} else {
+					return 1
+				}
+			}
+		case "_hash_blake2b_256":
+			return buildHashImpl(
+				"wavelet.hash.blake2b256",
+				blake2b.Size256,
+				func(data, out []byte) {
+					b := blake2b.Sum256(data)
+					copy(out, b[:])
+				},
+			)
+		case "_hash_blake2b_512":
+			return buildHashImpl(
+				"wavelet.hash.blake2b512",
+				blake2b.Size,
+				func(data, out []byte) {
+					b := blake2b.Sum512(data)
+					copy(out, b[:])
+				},
+			)
+		case "_hash_sha256":
+			return buildHashImpl(
+				"wavelet.hash.sha256",
+				sha256.Size,
+				func(data, out []byte) {
+					b := sha256.Sum256(data)
+					copy(out, b[:])
+				},
+			)
+		case "_hash_sha512":
+			return buildHashImpl(
+				"wavelet.hash.sha512",
+				sha512.Size,
+				func(data, out []byte) {
+					b := sha512.Sum512(data)
+					copy(out, b[:])
+				},
+			)
 		default:
 			panic("unknown field")
 		}
@@ -299,4 +389,28 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 
 func (c *ContractExecutor) ResolveGlobal(module, field string) int64 {
 	panic("no global variables")
+}
+
+func buildHashImpl(gasKey string, size int, f func(data, out []byte)) func(vm *exec.VirtualMachine) int64 {
+	var gas uint64
+	var ok bool
+	if gas, ok = sys.GasTable[gasKey]; !ok {
+		panic("gas entry not found")
+	}
+
+	return func(vm *exec.VirtualMachine) int64 {
+		vm.Gas += gas
+
+		frame := vm.GetCurrentFrame()
+		dataPtr, dataLen := int(uint32(frame.Locals[0])), int(uint32(frame.Locals[1]))
+		outPtr, outLen := int(uint32(frame.Locals[2])), int(uint32(frame.Locals[3]))
+		if outLen != size {
+			return 1
+		}
+
+		data := vm.Memory[dataPtr : dataPtr+dataLen]
+		out := vm.Memory[outPtr : outPtr+outLen]
+		f(data, out)
+		return 0
+	}
 }

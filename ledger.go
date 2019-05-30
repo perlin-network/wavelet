@@ -1091,7 +1091,7 @@ func (l *Ledger) SyncToLatestRound() {
 // ApplyTransactionToSnapshot applies a transactions intended changes to a snapshot
 // of the ledgers current state.
 func (l *Ledger) ApplyTransactionToSnapshot(snapshot *avl.Tree, tx *Transaction) error {
-	ctx := NewTransactionContext(snapshot, tx)
+	ctx := NewTransactionContext(l.Rounds().Latest(), snapshot, tx)
 
 	if err := ctx.apply(l.processors); err != nil {
 		return errors.Wrap(err, "could not apply transaction to snapshot")
