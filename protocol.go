@@ -45,6 +45,8 @@ func (p *Protocol) Gossip(stream Wavelet_GossipServer) error {
 			tx, err := UnmarshalTransaction(bytes.NewReader(buf))
 
 			if err != nil {
+				logger := log.TX("gossip")
+				logger.Err(err).Msg("Failed to unmarshal transaction")
 				continue
 			}
 

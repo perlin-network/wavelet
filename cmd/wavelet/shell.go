@@ -62,6 +62,7 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 		&readline.Config{
 			Prompt:            "\033[31m»»»\033[0m ",
 			AutoComplete:      completer,
+			HistoryFile:       "/tmp/readline.tmp",
 			InterruptPrompt:   "^C",
 			EOFPrompt:         "exit",
 			HistorySearchFold: true,
@@ -195,8 +196,8 @@ func (cli *CLI) status() {
 }
 
 func (cli *CLI) pay(cmd []string, additional []byte) {
-	if len(cmd) < 2 {
-		fmt.Println("pay <recipient> <amount>")
+	if len(cmd) < 2 || len(cmd) > 3 {
+		fmt.Println("pay <recipient> <amount> [gas-limit]")
 		return
 	}
 
@@ -206,46 +207,66 @@ func (cli *CLI) pay(cmd []string, additional []byte) {
 		return
 	}
 
+	if len(recipient) != wavelet.SizeAccountID {
+		cli.logger.Error().Int("length", len(recipient)).Msg("You have specified an invalid account ID to find.")
+		return
+	}
+
 	amount, err := strconv.Atoi(cmd[1])
 	if err != nil {
 		cli.logger.Error().Err(err).Msg("Failed to convert payment amount to an uint64.")
 		return
 	}
 
-	var intBuf [8]byte
 	payload := bytes.NewBuffer(nil)
 	payload.Write(recipient[:])
+
+	var intBuf [8]byte
 	binary.LittleEndian.PutUint64(intBuf[:], uint64(amount))
+	payload.Write(intBuf[:])
+
+	gasLimit := 0
+	if len(cmd) == 3 {
+		gasLimit, err = strconv.Atoi(cmd[2])
+		if err != nil {
+			cli.logger.Error().
+				Err(err).
+				Str("gas-limit", cmd[2]).
+				Msg("Failed to convert gas-limit.")
+			return
+		}
+	}
+
+	binary.LittleEndian.PutUint64(intBuf[:], uint64(gasLimit))
 	payload.Write(intBuf[:])
 
 	if additional != nil {
 		payload.Write(additional)
 	}
 
-	tx, err := cli.sendTransaction(payload.Bytes(), sys.TagTransfer)
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagTransfer, payload.Bytes()))
 	if err != nil {
 		return
 	}
 
-	cli.logger.Info().
-		Msgf("Success! Your payment transaction ID: %x", tx.ID)
+	cli.logger.Info().Msgf("Success! Your payment transaction ID: %x", tx.ID)
 }
 
 func (cli *CLI) call(cmd []string) {
 	if len(cmd) < 4 {
-		fmt.Println("call <smart-contract-address> <amount> <function> [function parameters]")
+		fmt.Println("call <smart-contract-address> <amount> <gas-limit> <function> [function parameters]")
 		return
 	}
 
 	var intBuf [8]byte
 	payload := bytes.NewBuffer(nil)
-	binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(cmd[2])))
-	payload.Write(intBuf[:3])
-	payload.WriteString(cmd[2])
+	binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(cmd[3])))
+	payload.Write(intBuf[:4])
+	payload.WriteString(cmd[3])
 
 	params := bytes.NewBuffer(nil)
 
-	for i := 3; i < len(cmd); i++ {
+	for i := 4; i < len(cmd); i++ {
 		arg := cmd[i]
 
 		switch arg[0] {
@@ -298,7 +319,7 @@ func (cli *CLI) call(cmd []string) {
 		payload.Write(buf)
 	}
 
-	cli.pay(cmd[:2], payload.Bytes())
+	cli.pay(cmd[:3], payload.Bytes())
 }
 
 func (cli *CLI) find(cmd []string) {
@@ -367,8 +388,8 @@ func (cli *CLI) find(cmd []string) {
 }
 
 func (cli *CLI) spawn(cmd []string) {
-	if len(cmd) != 1 {
-		fmt.Println("spawn <path-to-smart-contract>")
+	if len(cmd) != 2 {
+		fmt.Println("spawn <path-to-smart-contract> <gas-limit>")
 		return
 	}
 
@@ -376,18 +397,45 @@ func (cli *CLI) spawn(cmd []string) {
 	if err != nil {
 		cli.logger.Error().
 			Err(err).
-			Str("path", cmd[1]).
+			Str("path", cmd[0]).
 			Msg("Failed to find/load the smart contract code from the given path.")
 		return
 	}
 
-	tx, err := cli.sendTransaction(code, sys.TagContract)
+	gasLimit, err := strconv.Atoi(cmd[1])
+	if err != nil {
+		cli.logger.Error().
+			Err(err).
+			Str("gas-limit", cmd[1]).
+			Msg("Failed to convert gas-limit.")
+		return
+	}
+
+	balance, _ := wavelet.ReadAccountBalance(cli.ledger.Snapshot(), cli.keys.PublicKey())
+	if balance < uint64(gasLimit) {
+		cli.logger.Error().
+			Err(err).
+			Str("gas-limit", cmd[1]).
+			Uint64("balance", balance).
+			Msg("Not enough balance for given gas-limit.")
+		return
+	}
+
+	var intBuf [8]byte
+	payload := bytes.NewBuffer(nil)
+
+	binary.LittleEndian.PutUint64(intBuf[:], uint64(gasLimit))
+	payload.Write(intBuf[:])
+	payload.Write(code)
+
+	tx := wavelet.NewTransaction(cli.keys, sys.TagContract, payload.Bytes())
+
+	tx, err = cli.sendTransaction(tx)
 	if err != nil {
 		return
 	}
 
-	cli.logger.Info().
-		Msgf("Success! Your smart contracts ID: %x", tx.ID)
+	cli.logger.Info().Msgf("Success! Your smart contracts ID: %x", tx.ID)
 }
 
 func (cli *CLI) placeStake(cmd []string) {
@@ -408,7 +456,7 @@ func (cli *CLI) placeStake(cmd []string) {
 	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
 	payload.Write(intBuf[:8])
 
-	tx, err := cli.sendTransaction(payload.Bytes(), sys.TagStake)
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagStake, payload.Bytes()))
 	if err != nil {
 		return
 	}
@@ -435,7 +483,7 @@ func (cli *CLI) withdrawStake(cmd []string) {
 	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
 	payload.Write(intBuf[:8])
 
-	tx, err := cli.sendTransaction(payload.Bytes(), sys.TagStake)
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagStake, payload.Bytes()))
 	if err != nil {
 		return
 	}
@@ -444,12 +492,8 @@ func (cli *CLI) withdrawStake(cmd []string) {
 		Msgf("Success! Your stake withdrawal transaction ID: %x", tx.ID)
 }
 
-func (cli *CLI) sendTransaction(body []byte, tag byte) (wavelet.Transaction, error) {
-	tx := wavelet.AttachSenderToTransaction(
-		cli.keys,
-		wavelet.NewTransaction(cli.keys, tag, body),
-		cli.ledger.Graph().FindEligibleParents()...,
-	)
+func (cli *CLI) sendTransaction(tx wavelet.Transaction) (wavelet.Transaction, error) {
+	tx = wavelet.AttachSenderToTransaction(cli.keys, tx, cli.ledger.Graph().FindEligibleParents()...)
 
 	if err := cli.ledger.AddTransaction(tx); err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
 		cli.logger.

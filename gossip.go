@@ -22,6 +22,7 @@ package wavelet
 import (
 	"context"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/log"
 	"sync"
 )
 
@@ -86,6 +87,9 @@ func (g *Gossiper) Gossip(transactions [][]byte) {
 
 		go func() {
 			if err := stream.Send(batch); err != nil {
+				logger := log.TX("gossip")
+				logger.Err(err).Msg("Failed to send batch")
+
 				g.streamsLock.Lock()
 				delete(g.streams, target)
 				g.streamsLock.Unlock()

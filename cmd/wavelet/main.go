@@ -346,8 +346,6 @@ func start(cfg *Config) {
 	}
 
 	shell.Start()
-
-	select {}
 }
 
 func keys(wallet string) (*skademlia.Keypair, error) {

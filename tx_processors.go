@@ -51,10 +51,19 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 
 	amount := binary.LittleEndian.Uint64(buf[:])
 
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		return errors.Wrap(err, "transfer: failed to decode gas limit of transfer")
+	}
+
+	gasLimit := binary.LittleEndian.Uint64(buf[:])
+
 	creatorBalance, _ := ctx.ReadAccountBalance(tx.Creator)
 
-	if creatorBalance < amount {
-		return errors.Errorf("transfer: not enough balance, wanting %d PERLs", amount)
+	if creatorBalance < amount+gasLimit {
+		return errors.Errorf(
+			"transfer: transaction creator tried to send %d PERLs with %d gas limit, but only has %d PERLs",
+			amount, gasLimit, creatorBalance,
+		)
 	}
 
 	ctx.WriteAccountBalance(tx.Creator, creatorBalance-amount)
@@ -68,12 +77,14 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 
 	executor := NewContractExecutor(recipient, ctx).WithGasTable(sys.GasTable).EnableLogging()
 
-	var gas uint64
-	var err error
+	var (
+		gas uint64
+		err error
+	)
 
 	if r.Len() > 0 {
 		if _, err := io.ReadFull(r, buf[:4]); err != nil {
-			return errors.Wrap(err, "transfer: failed to decode smart contract function name to invoke")
+			return errors.Wrap(err, "transfer: failed to decode size of smart contract function name to invoke")
 		}
 
 		funcName := make([]byte, binary.LittleEndian.Uint32(buf[:4]))
@@ -82,27 +93,26 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 			return errors.Wrap(err, "transfer: failed to decode smart contract function name to invoke")
 		}
 
-		if _, err := io.ReadFull(r, buf[:4]); err != nil {
-			return errors.Wrap(err, "transfer: failed to decode smart contract function invocation parameters")
+		var funcParams []byte
+		if r.Len() > 0 {
+			if _, err := io.ReadFull(r, buf[:4]); err != nil {
+				return errors.Wrap(err, "transfer: failed to decode number of smart contract function invocation parameters")
+			}
+
+			funcParams = make([]byte, binary.LittleEndian.Uint32(buf[:4]))
+
+			if _, err := io.ReadFull(r, funcParams); err != nil {
+				return errors.Wrap(err, "transfer: failed to decode smart contract function invocation parameters")
+			}
 		}
 
-		funcParams := make([]byte, binary.LittleEndian.Uint32(buf[:4]))
-
-		if _, err := io.ReadFull(r, funcParams); err != nil {
-			return errors.Wrap(err, "transfer: failed to decode smart contract function invocation parameters")
-		}
-
-		_, gas, err = executor.Run(amount, 50000000, string(funcName), funcParams...)
+		_, gas, err = executor.Run(amount, gasLimit, string(funcName), funcParams...)
 	} else {
-		_, gas, err = executor.Run(amount, 50000000, "on_money_received")
+		_, gas, err = executor.Run(amount, gasLimit, "on_money_received")
 	}
 
 	if err != nil && errors.Cause(err) != ErrContractFunctionNotFound {
 		return errors.Wrap(err, "transfer: failed to execute smart contract method")
-	}
-
-	if creatorBalance < amount {
-		return errors.Errorf("transfer: transaction creator tried to send %d PERLs, but only has %d PERLs", amount, creatorBalance)
 	}
 
 	ctx.WriteAccountBalance(tx.Creator, creatorBalance-amount-gas)
@@ -155,7 +165,7 @@ func ProcessStakeTransaction(ctx *TransactionContext) error {
 func ProcessContractTransaction(ctx *TransactionContext) error {
 	tx := ctx.Transaction()
 
-	if len(tx.Payload) == 0 {
+	if len(tx.Payload) < 9 {
 		return errors.New("contract: no code specified for contract to be spawned")
 	}
 
@@ -163,14 +173,21 @@ func ProcessContractTransaction(ctx *TransactionContext) error {
 		return errors.New("contract: there already exists a contract spawned with the specified code")
 	}
 
+	gasLimit := binary.LittleEndian.Uint64(tx.Payload[:8])
+
+	balance, _ := ctx.ReadAccountBalance(tx.Creator)
+	if balance < gasLimit {
+		return errors.Errorf("contract: not enough balance, wanting %d PERLs", gasLimit)
+	}
+
 	executor := NewContractExecutor(tx.ID, ctx).WithGasTable(sys.GasTable)
 
-	vm, err := executor.Init(tx.Payload, 50000000)
+	vm, err := executor.Init(tx.Payload[8:], gasLimit)
 	if err != nil {
 		return errors.New("contract: code for contract is not valid WebAssembly code")
 	}
 
-	ctx.WriteAccountContractCode(tx.ID, tx.Payload)
+	ctx.WriteAccountContractCode(tx.ID, tx.Payload[8:])
 	executor.SaveMemorySnapshot(tx.ID, vm.Memory)
 
 	return nil
