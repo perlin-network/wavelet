@@ -62,6 +62,7 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 		&readline.Config{
 			Prompt:            "\033[31m»»»\033[0m ",
 			AutoComplete:      completer,
+			HistoryFile:       "/tmp/readline.tmp",
 			InterruptPrompt:   "^C",
 			EOFPrompt:         "exit",
 			HistorySearchFold: true,
@@ -206,6 +207,11 @@ func (cli *CLI) pay(cmd []string, additional []byte) {
 		return
 	}
 
+	if len(recipient) != wavelet.SizeAccountID {
+		cli.logger.Error().Int("length", len(recipient)).Msg("You have specified an invalid account ID to find.")
+		return
+	}
+
 	amount, err := strconv.Atoi(cmd[1])
 	if err != nil {
 		cli.logger.Error().Err(err).Msg("Failed to convert payment amount to an uint64.")
@@ -255,7 +261,7 @@ func (cli *CLI) call(cmd []string) {
 	var intBuf [8]byte
 	payload := bytes.NewBuffer(nil)
 	binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(cmd[3])))
-	payload.Write(intBuf[:3])
+	payload.Write(intBuf[:4])
 	payload.WriteString(cmd[3])
 
 	params := bytes.NewBuffer(nil)

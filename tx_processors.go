@@ -51,20 +51,19 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 
 	amount := binary.LittleEndian.Uint64(buf[:])
 
-	creatorBalance, _ := ctx.ReadAccountBalance(tx.Creator)
-
-	if creatorBalance < amount {
-		return errors.Errorf("transfer: not enough balance, wanting %d PERLs", amount)
-	}
-
 	if _, err := io.ReadFull(r, buf[:]); err != nil {
 		return errors.Wrap(err, "transfer: failed to decode gas limit of transfer")
 	}
 
 	gasLimit := binary.LittleEndian.Uint64(buf[:])
 
-	if creatorBalance < gasLimit {
-		return errors.Errorf("transfer: not enough balance for gas limit, wanting %d PERLs", gasLimit)
+	creatorBalance, _ := ctx.ReadAccountBalance(tx.Creator)
+
+	if creatorBalance < amount+gasLimit {
+		return errors.Errorf(
+			"transfer: transaction creator tried to send %d PERLs with %d gas limit, but only has %d PERLs",
+			amount, gasLimit, creatorBalance,
+		)
 	}
 
 	ctx.WriteAccountBalance(tx.Creator, creatorBalance-amount)
@@ -78,12 +77,14 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 
 	executor := NewContractExecutor(recipient, ctx).WithGasTable(sys.GasTable).EnableLogging()
 
-	var gas uint64
-	var err error
+	var (
+		gas uint64
+		err error
+	)
 
 	if r.Len() > 0 {
 		if _, err := io.ReadFull(r, buf[:4]); err != nil {
-			return errors.Wrap(err, "transfer: failed to decode smart contract function name to invoke")
+			return errors.Wrap(err, "transfer: failed to decode size of smart contract function name to invoke")
 		}
 
 		funcName := make([]byte, binary.LittleEndian.Uint32(buf[:4]))
@@ -92,14 +93,17 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 			return errors.Wrap(err, "transfer: failed to decode smart contract function name to invoke")
 		}
 
-		if _, err := io.ReadFull(r, buf[:4]); err != nil {
-			return errors.Wrap(err, "transfer: failed to decode smart contract function invocation parameters")
-		}
+		var funcParams []byte
+		if r.Len() > 0 {
+			if _, err := io.ReadFull(r, buf[:4]); err != nil {
+				return errors.Wrap(err, "transfer: failed to decode number of smart contract function invocation parameters")
+			}
 
-		funcParams := make([]byte, binary.LittleEndian.Uint32(buf[:4]))
+			funcParams = make([]byte, binary.LittleEndian.Uint32(buf[:4]))
 
-		if _, err := io.ReadFull(r, funcParams); err != nil {
-			return errors.Wrap(err, "transfer: failed to decode smart contract function invocation parameters")
+			if _, err := io.ReadFull(r, funcParams); err != nil {
+				return errors.Wrap(err, "transfer: failed to decode smart contract function invocation parameters")
+			}
 		}
 
 		_, gas, err = executor.Run(amount, gasLimit, string(funcName), funcParams...)
@@ -109,10 +113,6 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 
 	if err != nil && errors.Cause(err) != ErrContractFunctionNotFound {
 		return errors.Wrap(err, "transfer: failed to execute smart contract method")
-	}
-
-	if creatorBalance < amount {
-		return errors.Errorf("transfer: transaction creator tried to send %d PERLs, but only has %d PERLs", amount, creatorBalance)
 	}
 
 	ctx.WriteAccountBalance(tx.Creator, creatorBalance-amount-gas)
