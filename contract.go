@@ -298,7 +298,7 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				outPtr := int(uint32(frame.Locals[0]))
 				outLen := int(uint32(frame.Locals[1]))
 
-				latestRoundID := c.ctx.ledger.Rounds().Latest().ID[:]
+				latestRoundID := c.ctx.round.ID[:]
 				if outLen != len(latestRoundID) {
 					return 1
 				}
