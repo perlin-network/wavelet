@@ -614,6 +614,7 @@ func TestGetLedger(t *testing.T) {
 // Test the rate limit on all endpoints
 func TestEndpointsRateLimit(t *testing.T) {
 	gateway := New()
+	gateway.rateLimiter = newRatelimiter(10, 10*time.Minute)
 	gateway.setup()
 
 	gateway.ledger = createLedger(t)
