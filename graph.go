@@ -426,7 +426,7 @@ func (g *Graph) ListTransactions(offset, limit uint64, sender, creator AccountID
 	})
 
 	if offset != 0 || limit != 0 {
-		if offset >= limit || offset >= uint64(len(transactions)) {
+		if offset >= uint64(len(transactions)) {
 			return nil
 		}
 
