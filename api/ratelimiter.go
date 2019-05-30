@@ -26,10 +26,10 @@ type rateLimiter struct {
 	sync.RWMutex
 }
 
-func newRatelimiter(maxPerSec float64, expirationTTL time.Duration) *rateLimiter {
+func newRatelimiter(maxPerSec float64) *rateLimiter {
 	return &rateLimiter{
 		max:           maxPerSec,
-		expirationTTL: expirationTTL,
+		expirationTTL: 1 * time.Second,
 		limiters:      make(map[string]*limiter),
 	}
 }

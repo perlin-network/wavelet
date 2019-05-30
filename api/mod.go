@@ -61,7 +61,7 @@ func New() *Gateway {
 		sinks:       make(map[string]*sink),
 		parserPool:  new(fastjson.ParserPool),
 		arenaPool:   new(fastjson.ArenaPool),
-		rateLimiter: newRatelimiter(1000, 10*time.Minute),
+		rateLimiter: newRatelimiter(1000),
 	}
 }
 
