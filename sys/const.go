@@ -245,7 +245,10 @@ var (
 		"call_indirect":           10000,
 		"current_memory":          100,
 		"grow_memory":             10000,
+		"wavelet.hash.blake2b256": 1500,  // TODO: Review
 		"wavelet.hash.blake2b512": 2000,  // TODO: Review
+		"wavelet.hash.sha256":     2500,  // TODO: Review
+		"wavelet.hash.sha512":     3000,  // TODO: Review
 		"wavelet.verify.ed25519":  50000, // TODO: Review
 	}
 )
