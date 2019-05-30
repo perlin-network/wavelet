@@ -1,3 +1,22 @@
+// Copyright (c) 2019 Perlin
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of
+// this software and associated documentation files (the "Software"), to deal in
+// the Software without restriction, including without limitation the rights to
+// use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+// the Software, and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+// FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+// IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 package wavelet
 
 import (
@@ -11,6 +30,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
+	queue2 "github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"google.golang.org/grpc"
@@ -36,6 +56,10 @@ type Ledger struct {
 
 	consensus sync.WaitGroup
 
+	nops         bool
+	nopsTime     time.Time
+	nopsTimeLock sync.Mutex
+
 	sync      chan struct{}
 	syncTimer *time.Timer
 	syncVotes chan vote
@@ -44,11 +68,11 @@ type Ledger struct {
 	cacheChunks   *LRU
 }
 
-func NewLedger(client *skademlia.Client) *Ledger {
-	kv := store.NewInmem()
-
+func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 	metrics := NewMetrics(context.TODO())
+
 	accounts := NewAccounts(kv)
+	go accounts.GC(context.Background())
 
 	rounds, err := NewRounds(kv, sys.PruningLimit)
 
@@ -101,6 +125,9 @@ func NewLedger(client *skademlia.Client) *Ledger {
 			sys.TagBatch:    ProcessBatchTransaction,
 		},
 
+		nops:     false,
+		nopsTime: time.Now(),
+
 		sync:      make(chan struct{}),
 		syncTimer: time.NewTimer(0),
 		syncVotes: make(chan vote, sys.SnowballK),
@@ -110,7 +137,7 @@ func NewLedger(client *skademlia.Client) *Ledger {
 	}
 
 	go ledger.SyncToLatestRound()
-	ledger.PerformConsensus()
+	go ledger.PerformConsensus()
 
 	return ledger
 }
@@ -130,6 +157,13 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 
 	if err == nil {
 		l.gossiper.Push(tx)
+
+		if tx.Tag != sys.TagNop && tx.Sender != l.client.Keys().PublicKey() {
+			l.nopsTimeLock.Lock()
+			l.nops = true
+			l.nopsTime = time.Now()
+			l.nopsTimeLock.Unlock()
+		}
 	}
 
 	return nil
@@ -149,12 +183,93 @@ func (l *Ledger) Graph() *Graph {
 	return l.graph
 }
 
+// Finalizer returns the Snowball finalizer which finalizes the contents of individual
+// consensus rounds.
+func (l *Ledger) Finalizer() *Snowball {
+	return l.finalizer
+}
+
+// Rounds returns the round manager for the ledger.
+func (l *Ledger) Rounds() *Rounds {
+	return l.rounds
+}
+
 // PerformConsensus spawns workers related to performing consensus, such as pulling
 // missing transactions and incrementally finalizing intervals of transactions in
 // the ledgers graph.
 func (l *Ledger) PerformConsensus() {
 	go l.PullMissingTransactions()
 	go l.FinalizeRounds()
+	go l.BroadcastNops()
+}
+
+func (l *Ledger) Snapshot() *avl.Tree {
+	return l.accounts.Snapshot()
+}
+
+// BroadcastNops periodically has the node send nop transactions should they have sufficient
+// balance available. They are broadcasted if no other transaction that is not a nop transaction
+// is not broadcasted by the node after 500 milliseconds. These conditions only apply so long as
+// at least onen transaction gets broadcasted by the node within the current round. Once a round
+// is tenatively being finalized, a node will stop broadcasting nops.
+func (l *Ledger) BroadcastNops() {
+	keys := l.client.Keys()
+
+	l.consensus.Add(1)
+	defer l.consensus.Done()
+
+	for {
+		select {
+		case <-l.sync:
+			return
+		default:
+		}
+
+		balance, _ := ReadAccountBalance(l.accounts.Snapshot(), keys.PublicKey())
+
+		if balance < sys.TransactionFeeAmount {
+			select {
+			case <-l.sync:
+				return
+			case <-time.After(1 * time.Second):
+			}
+			continue
+		}
+
+		if l.finalizer.Preferred() != nil {
+			l.nopsTimeLock.Lock()
+			l.nops = false
+			l.nopsTime = time.Now()
+			l.nopsTimeLock.Unlock()
+
+			select {
+			case <-l.sync:
+				return
+			case <-time.After(500 * time.Millisecond):
+			}
+			continue
+		}
+
+		l.nopsTimeLock.Lock()
+		nops := l.nops
+		elapsed := time.Now().Sub(l.nopsTime)
+		l.nopsTimeLock.Unlock()
+
+		if !nops || elapsed < 500*time.Millisecond {
+			select {
+			case <-l.sync:
+				return
+			case <-time.After(250 * time.Millisecond):
+			}
+			continue
+		}
+
+		nop := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), l.graph.FindEligibleParents()...)
+
+		if err := l.AddTransaction(nop); err != nil {
+			continue
+		}
+	}
 }
 
 // PullMissingTransactions is an infinite loop continually sending RPC requests
@@ -180,7 +295,7 @@ func (l *Ledger) PullMissingTransactions() {
 			continue
 		}
 
-		peers := l.client.AllPeers()
+		peers := l.client.ClosestPeers()
 
 		if len(peers) == 0 {
 			select {
@@ -232,6 +347,7 @@ func (l *Ledger) PullMissingTransactions() {
 		}
 
 		l.metrics.downloadedTX.Mark(count)
+		l.metrics.receivedTX.Mark(count)
 
 		select {
 		case <-l.sync:
@@ -259,7 +375,7 @@ FINALIZE_ROUNDS:
 		default:
 		}
 
-		if _, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK); err != nil {
+		if len(l.client.ClosestPeers()) < sys.SnowballK {
 			select {
 			case <-l.sync:
 				return
@@ -348,6 +464,10 @@ FINALIZE_ROUNDS:
 							return
 						}
 
+						if round.End.Depth <= round.Start.Depth {
+							return
+						}
+
 						if round.Index != current.Index+1 {
 							if round.Index > sys.SyncIfRoundsDifferBy+current.Index {
 								select {
@@ -363,20 +483,31 @@ FINALIZE_ROUNDS:
 							return
 						}
 
+						if err := l.AddTransaction(round.Start); err != nil {
+							return
+						}
+
+						if err := l.AddTransaction(round.End); err != nil {
+							return
+						}
+
 						if !round.End.IsCritical(currentDifficulty) {
 							return
 						}
 
 						results, err := l.CollapseTransactions(round.Index, round.Start, round.End, false)
 						if err != nil {
+							fmt.Println(err)
 							return
 						}
 
 						if uint64(results.appliedCount) != round.Applied {
+							fmt.Printf("applied %d but expected %d\n", results.appliedCount, round.Applied)
 							return
 						}
 
 						if results.snapshot.Checksum() != round.Merkle {
+							fmt.Printf("got merkle %x but expected %x\n", results.snapshot.Checksum(), round.Merkle)
 							return
 						}
 
@@ -405,7 +536,7 @@ FINALIZE_ROUNDS:
 
 			// Randomly sample a peer to query. If no peers are available, stop querying.
 
-			peers, err := SelectPeers(l.client.ClosestPeers(), 1)
+			peers, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
 			if err != nil {
 				close(workerChan)
 				workerWG.Wait()
@@ -416,8 +547,9 @@ FINALIZE_ROUNDS:
 				continue FINALIZE_ROUNDS
 			}
 
-			conn := peers[0]
-			workerChan <- conn
+			for _, peer := range peers {
+				workerChan <- peer
+			}
 		}
 
 		close(workerChan)
@@ -461,7 +593,7 @@ FINALIZE_ROUNDS:
 				Msg("Pruned away round and transactions.")
 		}
 
-		l.graph.UpdateRoot(finalized.End.Depth)
+		l.graph.UpdateRootDepth(finalized.End.Depth)
 
 		if err = l.accounts.Commit(results.snapshot); err != nil {
 			fmt.Printf("Failed to commit collaped state to our database: %v\n", err)
@@ -484,6 +616,11 @@ FINALIZE_ROUNDS:
 			Hex("old_merkle_root", current.Merkle[:]).
 			Uint64("round_depth", finalized.End.Depth-finalized.Start.Depth).
 			Msg("Finalized consensus round, and initialized a new round.")
+
+		l.nopsTimeLock.Lock()
+		l.nops = false
+		l.nopsTime = time.Now()
+		l.nopsTimeLock.Unlock()
 
 		//go ExportGraphDOT(finalized, l.graph)
 	}
@@ -550,6 +687,11 @@ func (l *Ledger) SyncToLatestRound() {
 						return
 					}
 
+					if round.End.Depth <= round.Start.Depth {
+						wg.Done()
+						return
+					}
+
 					if round.Index < sys.SyncIfRoundsDifferBy+current.Index {
 						wg.Done()
 						return
@@ -567,40 +709,382 @@ func (l *Ledger) SyncToLatestRound() {
 				break
 			}
 
-			l.syncTimer.Reset((5000 / (1 + time.Duration(l.syncer.Progress()))) * time.Second)
+			l.syncTimer.Reset((1500 / (1 + 2*time.Duration(l.syncer.Progress()))) * time.Millisecond)
 
 			select {
 			case <-l.syncTimer.C:
 			}
 		}
 
-		// Wait for all consensus-related workers to close.
+		// Reset syncing Snowball sampler. Check if it is a false alarm such that we don't have to sync.
 
-		close(l.sync)
-		l.consensus.Wait()
+		current := l.rounds.Latest()
+		proposed := l.syncer.Preferred()
 
-		// Wait for the vote processor worker to close.
+		if proposed.Index < sys.SyncIfRoundsDifferBy+current.Index {
+			l.syncer.Reset()
+			continue
+		}
 
-		voteWG.Add(1)
-		close(l.syncVotes)
-		voteWG.Wait()
+		shutdown := func() {
+			close(l.sync)
+			l.consensus.Wait() // Wait for all consensus-related workers to shutdown.
 
-		// Reset all Snowball samplers.
+			voteWG.Add(1)
+			close(l.syncVotes)
+			voteWG.Wait() // Wait for the vote processor worker to shutdown.
 
-		l.finalizer.Reset()
-		l.syncer.Reset()
+			l.finalizer.Reset() // Reset consensus Snowball sampler.
+			l.syncer.Reset()    // Reset syncing Snowball sampler.
+		}
 
-		// TODO(kenta): Sync here.
+		restart := func() { // Respawn all previously stopped workers.
+			l.syncVotes = make(chan vote, sys.SnowballK)
+			go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
 
-		// Spawn a new vote processor worker.
+			l.sync = make(chan struct{})
+			go l.PerformConsensus()
+		}
 
-		l.syncVotes = make(chan vote, sys.SnowballK)
-		go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
+		shutdown() // Shutdown all consensus-related workers.
 
-		// Respawn all consensus-related workers.
+		logger := log.Sync("syncing")
+		logger.Info().
+			Uint64("current_round", current.Index).
+			Uint64("proposed_round", proposed.Index).
+			Msg("Noticed that we are out of sync; downloading latest state tree from our peer(s).")
 
-		l.sync = make(chan struct{})
-		l.PerformConsensus()
+	SYNC:
+
+		conns, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
+		if err != nil {
+			logger.Warn().Msg("It looks like there are no peers for us to sync with. Retrying...")
+
+			select {
+			case <-time.After(1 * time.Second):
+			}
+
+			goto SYNC
+		}
+
+		req := &SyncRequest{Data: &SyncRequest_RoundId{RoundId: current.Index}}
+
+		type response struct {
+			header *SyncInfo
+			latest Round
+			stream Wavelet_SyncClient
+		}
+
+		responses := make([]response, 0, len(conns))
+
+		for _, conn := range conns {
+			stream, err := NewWaveletClient(conn).Sync(context.Background())
+			if err != nil {
+				continue
+			}
+
+			if err := stream.Send(req); err != nil {
+				continue
+			}
+
+			res, err := stream.Recv()
+			if err != nil {
+				continue
+			}
+
+			header := res.GetHeader()
+
+			if header == nil {
+				continue
+			}
+
+			latest, err := UnmarshalRound(bytes.NewReader(header.LatestRound))
+			if err != nil {
+				continue
+			}
+
+			if latest.Index == 0 || len(header.Checksums) == 0 {
+				continue
+			}
+
+			responses = append(responses, response{header: header, latest: latest, stream: stream})
+		}
+
+		if len(responses) == 0 {
+			goto SYNC
+		}
+
+		dispose := func() {
+			for _, res := range responses {
+				if err := res.stream.CloseSend(); err != nil {
+					continue
+				}
+			}
+		}
+
+		set := make(map[uint64][]response)
+
+		for _, v := range responses {
+			set[v.latest.Index] = append(set[v.latest.Index], v)
+		}
+
+		// Select a round to sync to which the majority of peers are on.
+
+		var latest *Round
+		var majority []response
+
+		for _, votes := range set {
+			if len(votes) >= len(set)*2/3 {
+				latest = &votes[0].latest
+				majority = votes
+				break
+			}
+		}
+
+		// If there is no majority or a tie, dispose all streams and try again.
+
+		if majority == nil {
+			logger.Warn().Msg("It looks like our peers could not decide on what the latest round currently is. Retrying...")
+
+			dispose()
+			goto SYNC
+		}
+
+		logger.Debug().
+			Uint64("latest_round", latest.Index).
+			Hex("latest_round_root", latest.End.ID[:]).
+			Msg("Discovered the round which the majority of our peers are currently in.")
+
+		type source struct {
+			idx      int
+			checksum [blake2b.Size256]byte
+			streams  []Wavelet_SyncClient
+		}
+
+		var sources []source
+
+		idx := 0
+
+		// For each chunk checksum from the set of checksums provided by each
+		// peer, pick the majority checksum.
+
+		for {
+			set := make(map[[blake2b.Size256]byte][]Wavelet_SyncClient)
+
+			for _, response := range majority {
+				if idx >= len(response.header.Checksums) {
+					continue
+				}
+
+				var checksum [blake2b.Size256]byte
+				copy(checksum[:], response.header.Checksums[idx])
+
+				set[checksum] = append(set[checksum], response.stream)
+			}
+
+			if len(set) == 0 {
+				break // We have finished going through all responses. Engage in syncing.
+			}
+
+			// Figure out what the majority of peers believe the checksum is for a chunk
+			// at index idx. If a majority is found, mark the peers as a viable source
+			// for grabbing the chunks contents to then reassemble together an AVL+ tree
+			// diff to apply to our ledger state to complete syncing.
+
+			consistent := false
+
+			for checksum, voters := range set {
+				if len(voters) == 0 || len(voters) < len(majority)*2/3 {
+					continue
+				}
+
+				sources = append(sources, source{idx: idx, checksum: checksum, streams: voters})
+				consistent = true
+				break
+			}
+
+			// If peers could not come up with a consistent checksum for some
+			// chunk at a consistent idx, dispose all streams and try again.
+
+			if !consistent {
+				dispose()
+				goto SYNC
+			}
+
+			idx++
+		}
+
+		chunks := make([][]byte, len(sources))
+
+		// Streams may not concurrently send and receive messages at once.
+
+		streamLocks := make(map[Wavelet_SyncClient]*sync.Mutex)
+		var streamLock sync.Mutex
+
+		workers := make(chan source, 16)
+
+		var workerWG sync.WaitGroup
+		workerWG.Add(cap(workers))
+
+		var chunkWG sync.WaitGroup
+		chunkWG.Add(len(chunks))
+
+		logger.Debug().
+			Int("num_chunks", len(sources)).
+			Int("num_workers", cap(workers)).
+			Msg("Starting up workers to downloaded all chunks of data needed to sync to the latest round...")
+
+		for i := 0; i < cap(workers); i++ {
+			go func() {
+				for src := range workers {
+					req := &SyncRequest{Data: &SyncRequest_Checksum{Checksum: src.checksum[:]}}
+
+					for i := 0; i < len(src.streams); i++ {
+						stream := src.streams[rand.Intn(len(src.streams))]
+
+						// Lock the stream so that other workers may not concurrently interact
+						// with the exact same stream at once.
+
+						streamLock.Lock()
+						if _, exists := streamLocks[stream]; !exists {
+							streamLocks[stream] = new(sync.Mutex)
+						}
+						lock := streamLocks[stream]
+						streamLock.Unlock()
+
+						lock.Lock()
+
+						if err := stream.Send(req); err != nil {
+							lock.Unlock()
+							continue
+						}
+
+						res, err := stream.Recv()
+						if err != nil {
+							lock.Unlock()
+							continue
+						}
+
+						lock.Unlock()
+
+						chunk := res.GetChunk()
+						if chunk == nil {
+							continue
+						}
+
+						if len(chunk) > sys.SyncChunkSize {
+							continue
+						}
+
+						if blake2b.Sum256(chunk[:]) != src.checksum {
+							continue
+						}
+
+						// We found the chunk! Store the chunks contents.
+
+						chunks[src.idx] = chunk
+						break
+					}
+
+					chunkWG.Done()
+				}
+
+				workerWG.Done()
+			}()
+		}
+
+		for _, src := range sources {
+			workers <- src
+		}
+
+		chunkWG.Wait() // Wait until all chunks have been received.
+		close(workers)
+		workerWG.Wait() // Wait until all workers have been closed.
+
+		logger.Debug().
+			Int("num_chunks", len(sources)).
+			Int("num_workers", cap(workers)).
+			Msg("Downloaded whatever chunks were available to sync to the latest round, and shutted down all workers. Checking validity of chunks...")
+
+		dispose() // Shutdown all streams as we no longer need them.
+
+		var diff []byte
+
+		for i, chunk := range chunks {
+			if chunk == nil {
+				logger.Error().
+					Uint64("target_round", latest.Index).
+					Hex("chunk_checksum", sources[i].checksum[:]).
+					Msg("Could not download one of the chunks necessary to sync to the latest round! Retrying...")
+
+				goto SYNC
+			}
+
+			diff = append(diff, chunk...)
+		}
+
+		logger.Info().
+			Int("num_chunks", len(sources)).
+			Uint64("target_round", latest.Index).
+			Msg("All chunks have been successfully verified and re-assembled into a diff. Applying diff...")
+
+		snapshot := l.accounts.Snapshot()
+
+		if err := snapshot.ApplyDiff(diff); err != nil {
+			logger.Error().
+				Uint64("target_round", latest.Index).
+				Err(err).
+				Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
+			goto SYNC
+		}
+
+		if checksum := snapshot.Checksum(); checksum != latest.Merkle {
+			logger.Error().
+				Uint64("target_round", latest.Index).
+				Hex("expected_merkle_root", latest.Merkle[:]).
+				Hex("yielded_merkle_root", checksum[:]).
+				Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
+
+			goto SYNC
+		}
+
+		pruned, err := l.rounds.Save(latest)
+		if err != nil {
+			fmt.Printf("Failed to save finalized round to our database: %v\n", err)
+			goto SYNC
+		}
+
+		if pruned != nil {
+			count := l.graph.PruneBelowDepth(pruned.End.Depth)
+
+			logger := log.Consensus("prune")
+			logger.Debug().
+				Int("num_tx", count).
+				Uint64("current_round_id", latest.Index).
+				Uint64("pruned_round_id", pruned.Index).
+				Msg("Pruned away round and transactions.")
+		}
+
+		l.graph.UpdateRoot(latest.End)
+
+		if err := l.accounts.Commit(snapshot); err != nil {
+			panic(errors.Wrap(err, "failed to commit collapsed state to our database"))
+		}
+
+		logger = log.Sync("apply")
+		logger.Info().
+			Int("num_chunks", len(chunks)).
+			Uint64("old_round", current.Index).
+			Uint64("new_round", latest.Index).
+			Uint8("old_difficulty", current.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
+			Uint8("new_difficulty", latest.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
+			Hex("new_root", latest.End.ID[:]).
+			Hex("old_root", current.End.ID[:]).
+			Hex("new_merkle_root", latest.Merkle[:]).
+			Hex("old_merkle_root", current.Merkle[:]).
+			Msg("Successfully built a new state tree out of chunk(s) we have received from peers.")
+
+		restart()
 	}
 }
 
@@ -640,8 +1124,8 @@ type CollapseResults struct {
 // It is important to note that transactions that are inspected over are specifically transactions
 // that are within the depth interval (start, end] where start is the interval starting point depth,
 // and end is the interval ending point depth.
-func (l *Ledger) CollapseTransactions(round uint64, start Transaction, end Transaction, logging bool) (CollapseResults, error) {
-	if results, exists := l.cacheCollapse.load(end.Seed); exists {
+func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transaction, logging bool) (CollapseResults, error) {
+	if results, exists := l.cacheCollapse.load(end.ID); exists {
 		return results.(CollapseResults), nil
 	}
 
@@ -650,18 +1134,24 @@ func (l *Ledger) CollapseTransactions(round uint64, start Transaction, end Trans
 	results.snapshot = l.accounts.Snapshot()
 	results.snapshot.SetViewID(round)
 
-	visited := map[TransactionID]struct{}{start.ID: {}}
+	visited := map[TransactionID]struct{}{root.ID: {}}
 
-	queue := AcquireQueue()
-	defer ReleaseQueue(queue)
+	queue := queue2.New()
+	//defer ReleaseQueue(queue)
 
 	queue.PushBack(&end)
 
-	order := AcquireQueue()
-	defer ReleaseQueue(order)
+	order := queue2.New()
+	//defer ReleaseQueue(order)
 
 	for queue.Len() > 0 {
 		popped := queue.PopFront().(*Transaction)
+
+		if popped.Depth <= root.Depth {
+			continue
+		}
+
+		order.PushBack(popped)
 
 		for _, parentID := range popped.ParentIDs {
 			if _, seen := visited[parentID]; seen {
@@ -677,14 +1167,8 @@ func (l *Ledger) CollapseTransactions(round uint64, start Transaction, end Trans
 				return results, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, end.ID)
 			}
 
-			if parent.Depth <= start.Depth {
-				continue
-			}
-
 			queue.PushBack(parent)
 		}
-
-		order.PushBack(popped)
 	}
 
 	// Apply transactions in reverse order from the end of the round
@@ -693,7 +1177,7 @@ func (l *Ledger) CollapseTransactions(round uint64, start Transaction, end Trans
 	for order.Len() > 0 {
 		popped := order.PopBack().(*Transaction)
 
-		if err := l.RewardValidators(results.snapshot, start, popped, logging); err != nil {
+		if err := l.RewardValidators(results.snapshot, root, popped, logging); err != nil {
 			if logging {
 				logEventTX("failed", popped, err)
 			}
@@ -706,6 +1190,8 @@ func (l *Ledger) CollapseTransactions(round uint64, start Transaction, end Trans
 			if logging {
 				logEventTX("failed", popped, err)
 			}
+
+			fmt.Println(err)
 
 			results.rejectedCount += popped.LogicalUnits()
 			continue
@@ -723,7 +1209,7 @@ func (l *Ledger) CollapseTransactions(round uint64, start Transaction, end Trans
 		results.appliedCount += popped.LogicalUnits()
 	}
 
-	startDepth, endDepth := start.Depth+1, end.Depth
+	startDepth, endDepth := root.Depth+1, end.Depth
 
 	for _, tx := range l.graph.GetTransactionsByDepth(&startDepth, &endDepth) {
 		results.ignoredCount += tx.LogicalUnits()
@@ -731,7 +1217,7 @@ func (l *Ledger) CollapseTransactions(round uint64, start Transaction, end Trans
 
 	results.ignoredCount -= results.appliedCount + results.rejectedCount
 
-	l.cacheCollapse.put(end.Seed, results)
+	l.cacheCollapse.put(end.ID, results)
 	return results, nil
 }
 

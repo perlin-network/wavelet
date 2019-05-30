@@ -1,3 +1,22 @@
+// Copyright (c) 2019 Perlin
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of
+// this software and associated documentation files (the "Software"), to deal in
+// the Software without restriction, including without limitation the rights to
+// use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+// the Software, and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+// FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+// IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 package main
 
 import (
@@ -10,8 +29,10 @@ import (
 	"github.com/perlin-network/noise/nat"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/internal/snappy"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
@@ -27,6 +48,8 @@ import _ "net/http/pprof"
 
 func main() {
 	pprofFlag := flag.Bool("pprof", false, "host pprof server on port 9000")
+	apiPortFlag := flag.Int("api.port", 0, "api port")
+
 	flag.Parse()
 
 	if *pprofFlag {
@@ -35,7 +58,7 @@ func main() {
 		}()
 	}
 
-	log.Register(log.NewConsoleWriter(log.FilterFor(log.ModuleNode, log.ModuleConsensus, log.ModuleMetrics)))
+	log.Set("graph", log.NewConsoleWriter(nil, log.FilterFor(log.ModuleNode, log.ModuleSync, log.ModuleConsensus, log.ModuleMetrics)))
 
 	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
@@ -89,7 +112,7 @@ func main() {
 
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
-	ledger := wavelet.NewLedger(client)
+	ledger := wavelet.NewLedger(store.NewInmem(), client)
 
 	go func() {
 		server := client.Listen()
@@ -100,6 +123,10 @@ func main() {
 			panic(err)
 		}
 	}()
+
+	if *apiPortFlag > 0 {
+		go api.New().StartHTTP(*apiPortFlag, client, ledger, keys)
+	}
 
 	if len(flag.Args()) > 1 {
 		for _, addr := range flag.Args()[1:] {

@@ -1,3 +1,22 @@
+// Copyright (c) 2019 Perlin
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of
+// this software and associated documentation files (the "Software"), to deal in
+// the Software without restriction, including without limitation the rights to
+// use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+// the Software, and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+// FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+// IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 package wavelet
 
 import (
@@ -219,7 +238,7 @@ func TestGraphUpdateRoot(t *testing.T) {
 	numChildren := len(graph.children)
 
 	// Update the root to a transaction at the top of the graph.
-	graph.UpdateRoot((*graph.depthIndex[graph.height-1][0]).Depth)
+	graph.UpdateRootDepth((*graph.depthIndex[graph.height-1][0]).Depth)
 
 	assert.Len(t, graph.missing, 30)
 	assert.Len(t, graph.children, numChildren)
@@ -321,7 +340,7 @@ func TestGraphFindEligibleCriticalInBigGraph(t *testing.T) {
 
 	for i := 0; i < 500; i++ {
 		if i == 500/3 { // Prune away any eligible critical transactions a third through the graph.
-			graph.UpdateRoot(graph.height - 1)
+			graph.UpdateRootDepth(graph.height - 1)
 		}
 
 		if i == 500/2 { // Create an eligible critical transaction in the middle of the graph.

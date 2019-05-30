@@ -1,10 +1,32 @@
+// Copyright (c) 2019 Perlin
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of
+// this software and associated documentation files (the "Software"), to deal in
+// the Software without restriction, including without limitation the rights to
+// use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+// the Software, and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+// FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+// IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 package wavelet
 
 import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/blake2b"
 )
 
 type Protocol struct {
@@ -53,12 +75,69 @@ func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse
 	return res, nil
 }
 
-func (p *Protocol) InitializeSync(context.Context, *SyncRequest) (*SyncResponse, error) {
-	return &SyncResponse{}, nil
+func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
+	req, err := stream.Recv()
+	if err != nil {
+		return err
+	}
+
+	res := &SyncResponse{}
+
+	diff := p.ledger.accounts.Snapshot().DumpDiff(req.GetRoundId())
+	header := &SyncInfo{LatestRound: p.ledger.rounds.Latest().Marshal()}
+
+	for i := 0; i < len(diff); i += sys.SyncChunkSize {
+		end := i + sys.SyncChunkSize
+
+		if end > len(diff) {
+			end = len(diff)
+		}
+
+		checksum := blake2b.Sum256(diff[i:end])
+		p.ledger.cacheChunks.put(checksum, diff[i:end])
+
+		header.Checksums = append(header.Checksums, checksum[:])
+	}
+
+	res.Data = &SyncResponse_Header{Header: header}
+
+	if err := stream.Send(res); err != nil {
+		return err
+	}
+
+	res.Data = &SyncResponse_Chunk{}
+
+	for {
+		req, err := stream.Recv()
+
+		if err != nil {
+			return err
+		}
+
+		var checksum [blake2b.Size256]byte
+		copy(checksum[:], req.GetChecksum())
+
+		if chunk, found := p.ledger.cacheChunks.load(checksum); found {
+			chunk := chunk.([]byte)
+
+			logger := log.Sync("provide_chunk")
+			logger.Info().
+				Hex("requested_hash", req.GetChecksum()).
+				Msg("Responded to sync chunk request.")
+
+			res.Data.(*SyncResponse_Chunk).Chunk = chunk
+		} else {
+			res.Data.(*SyncResponse_Chunk).Chunk = nil
+		}
+
+		if err = stream.Send(res); err != nil {
+			return err
+		}
+	}
 }
 
 func (p *Protocol) CheckOutOfSync(context.Context, *OutOfSyncRequest) (*OutOfSyncResponse, error) {
-	return &OutOfSyncResponse{}, nil
+	return &OutOfSyncResponse{Round: p.ledger.rounds.Latest().Marshal()}, nil
 }
 
 func (p *Protocol) DownloadTx(ctx context.Context, req *DownloadTxRequest) (*DownloadTxResponse, error) {
@@ -74,8 +153,4 @@ func (p *Protocol) DownloadTx(ctx context.Context, req *DownloadTxRequest) (*Dow
 	}
 
 	return res, nil
-}
-
-func (p *Protocol) DownloadChunk(context.Context, *DownloadChunkRequest) (*DownloadChunkResponse, error) {
-	return &DownloadChunkResponse{}, nil
 }

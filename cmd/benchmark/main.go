@@ -1,3 +1,22 @@
+// Copyright (c) 2019 Perlin
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of
+// this software and associated documentation files (the "Software"), to deal in
+// the Software without restriction, including without limitation the rights to
+// use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+// the Software, and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+// FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+// IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 package main
 
 import (
@@ -42,7 +61,7 @@ func main() {
 	}
 
 	app.Before = func(context *cli.Context) error {
-		log.Logger = zerolog.New(os.Stderr).With().Timestamp().Logger().Output(logger.NewConsoleWriter())
+		log.Logger = zerolog.New(os.Stderr).With().Timestamp().Logger().Output(logger.NewConsoleWriter(nil))
 
 		return nil
 	}
@@ -193,11 +212,15 @@ func commandRemote(c *cli.Context) error {
 				continue
 			}
 
-			metrics := v.Get("metrics")
-
 			log.Info().
-				Float64("accepted_tps", metrics.GetFloat64("tx.accepted", "mean.rate")).
-				Float64("received_tps", metrics.GetFloat64("tx.received", "mean.rate")).
+				Float64("accepted_tps", v.GetFloat64("tps.accepted")).
+				Float64("received_tps", v.GetFloat64("tps.received")).
+				Float64("gossiped_tps", v.GetFloat64("tps.gossiped")).
+				Float64("downloaded_tps", v.GetFloat64("tps.downloaded")).
+				Float64("queried_rps", v.GetFloat64("rps.queried")).
+				Int64("query_latency_max_ms", v.GetInt64("query.latency.max.ms")).
+				Int64("query_latency_min_ms", v.GetInt64("query.latency.min.ms")).
+				Float64("query_latency_mean_ms", v.GetFloat64("query.latency.mean.ms")).
 				Msg("Benchmarking...")
 		}
 	}()
