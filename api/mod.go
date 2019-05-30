@@ -45,10 +45,12 @@ type Gateway struct {
 	network *skademlia.Protocol
 	keys    *skademlia.Keypair
 
-	router   *fasthttprouter.Router
-	server   *fasthttp.Server
-	registry *sessionRegistry
-	sinks    map[string]*sink
+	router        *fasthttprouter.Router
+	server        *fasthttp.Server
+	sinks         map[string]*sink
+	enableTimeout bool
+
+	rateLimiter *rateLimiter
 
 	parserPool *fastjson.ParserPool
 	arenaPool  *fastjson.ArenaPool
@@ -56,14 +58,14 @@ type Gateway struct {
 
 func New() *Gateway {
 	return &Gateway{
-		registry:   newSessionRegistry(),
-		sinks:      make(map[string]*sink),
-		parserPool: new(fastjson.ParserPool),
-		arenaPool:  new(fastjson.ArenaPool),
+		sinks:       make(map[string]*sink),
+		parserPool:  new(fastjson.ParserPool),
+		arenaPool:   new(fastjson.ArenaPool),
+		rateLimiter: newRatelimiter(1000),
 	}
 }
 
-func (g *Gateway) setup(enableTimeout bool) {
+func (g *Gateway) setup() {
 	// Setup websocket logging sinks.
 
 	sinkNetwork := g.registerWebsocketSink("ws://network/")
@@ -86,60 +88,82 @@ func (g *Gateway) setup(enableTimeout bool) {
 	r.HandleOPTIONS = false
 	r.NotFound = g.notFound()
 
-	var base = []middleware{
-		recoverer,
-		cors(),
-	}
-
-	if enableTimeout {
-		base = append(base, timeout(60*time.Second, "Request timeout!"))
-	}
-
-	var authenticated = append(base, g.authenticated)
-	var contract = append(authenticated, g.contractScope)
-
 	// Websocket endpoints.
-	r.GET("/poll/network", g.securePoll(sinkNetwork))
-	r.GET("/poll/broadcaster", chain(g.securePoll(sinkBroadcaster), base))
-	r.GET("/poll/consensus", chain(g.securePoll(sinkConsensus), base))
-	r.GET("/poll/stake", chain(g.securePoll(sinkStake), base))
-	r.GET("/poll/accounts", chain(g.securePoll(sinkAccounts), base))
-	r.GET("/poll/contract", chain(g.securePoll(sinkContracts), base))
-	r.GET("/poll/tx", chain(g.securePoll(sinkTransactions), base))
-	r.GET("/poll/metrics", chain(g.securePoll(sinkMetrics), base))
+	r.GET("/poll/network", g.applyMiddleware(g.poll(sinkNetwork), "/poll/network"))
+	r.GET("/poll/broadcaster", g.applyMiddleware(g.poll(sinkBroadcaster), "/poll/broadcaster"))
+	r.GET("/poll/consensus", g.applyMiddleware(g.poll(sinkConsensus), "/poll/consensus"))
+	r.GET("/poll/stake", g.applyMiddleware(g.poll(sinkStake), "/poll/stake"))
+	r.GET("/poll/accounts", g.applyMiddleware(g.poll(sinkAccounts), "/poll/accounts"))
+	r.GET("/poll/contract", g.applyMiddleware(g.poll(sinkContracts), "/poll/contract"))
+	r.GET("/poll/tx", g.applyMiddleware(g.poll(sinkTransactions), "/poll/tx"))
+	r.GET("/poll/metrics", g.applyMiddleware(g.poll(sinkMetrics), "/poll/metrics"))
 
 	// Debug endpoint.
-	r.GET("/debug/*p", pprofhandler.PprofHandler)
-
-	// Session endpoint.
-	r.POST("/session/init", chain(g.initSession, base))
+	r.GET("/debug/*p", g.applyMiddleware(pprofhandler.PprofHandler, "/debug/*p"))
 
 	// Ledger endpoint.
-	r.GET("/ledger", chain(g.ledgerStatus, authenticated))
+	r.GET("/ledger", g.applyMiddleware(g.ledgerStatus, "/ledger"))
 
 	// Account endpoints.
-	r.GET("/accounts/:id", chain(g.getAccount, authenticated))
+	r.GET("/accounts/:id", g.applyMiddleware(g.getAccount, ""))
 
 	// Contract endpoints.
-	r.GET("/contract/:id/page/:index", chain(g.getContractPages, contract))
-	r.GET("/contract/:id/page", chain(g.getContractPages, contract))
-	r.GET("/contract/:id", chain(g.getContractCode, contract))
+	r.GET("/contract/:id/page/:index", g.applyMiddleware(g.getContractPages, "/contract/:id/page/:index", g.contractScope))
+	r.GET("/contract/:id/page", g.applyMiddleware(g.getContractPages, "/contract/:id/page", g.contractScope))
+	r.GET("/contract/:id", g.applyMiddleware(g.getContractCode, "/contract/:id", g.contractScope))
 
 	// Transaction endpoints.
-	r.POST("/tx/send", chain(g.sendTransaction, authenticated))
-	r.GET("/tx/:id", chain(g.getTransaction, authenticated))
-	r.GET("/tx", chain(g.listTransactions, authenticated))
+	r.POST("/tx/send", g.applyMiddleware(g.sendTransaction, ""))
+	r.GET("/tx/:id", g.applyMiddleware(g.getTransaction, ""))
+	r.GET("/tx", g.applyMiddleware(g.listTransactions, "/tx"))
 
 	g.router = r
 }
 
+// Apply base middleware to the handler and along with middleware passed.
+// If rateLimiterKey is not empty, enable rate limit.
+func (g *Gateway) applyMiddleware(f fasthttp.RequestHandler, rateLimiterKey string, m ...middleware) fasthttp.RequestHandler {
+	var list []middleware
+
+	if len(rateLimiterKey) == 0 {
+		list = []middleware{
+			recoverer,
+			cors(),
+		}
+	} else {
+		// Base middleware with rate limiter middleware.
+		// Rate limiter middleware should be after recoverer and before anything else
+		list = []middleware{
+			recoverer,
+			g.rateLimiter.limit(rateLimiterKey),
+			cors(),
+		}
+	}
+
+	if g.enableTimeout {
+		list = append(list, timeout(60*time.Second, "Request timeout!"))
+	}
+
+	if len(m) > 0 {
+		for i := range m {
+			list = append(list, m[i])
+		}
+	}
+
+	return chain(f, list)
+}
+
 func (g *Gateway) StartHTTP(port int, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair) {
+	stop := g.rateLimiter.cleanup(10 * time.Minute)
+	defer stop()
+
 	g.client = c
 	g.ledger = l
 
 	g.keys = k
 
-	g.setup(false)
+	g.enableTimeout = false
+	g.setup()
 
 	logger := log.Node()
 	logger.Info().Int("port", port).Msg("Started HTTP API server.")
@@ -158,27 +182,6 @@ func (g *Gateway) Shutdown() {
 		return
 	}
 	_ = g.server.Shutdown()
-}
-
-func (g *Gateway) initSession(ctx *fasthttp.RequestCtx) {
-	req := new(sessionInitRequest)
-
-	parser := g.parserPool.Get()
-	err := req.bind(parser, ctx.PostBody())
-	g.parserPool.Put(parser)
-
-	if err != nil {
-		g.renderError(ctx, ErrBadRequest(err))
-		return
-	}
-
-	session, err := g.registry.newSession()
-	if err != nil {
-		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "failed to create session")))
-		return
-	}
-
-	g.render(ctx, &sessionInitResponse{Token: session.id})
 }
 
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
@@ -485,39 +488,8 @@ func (g *Gateway) notFound() func(ctx *fasthttp.RequestCtx) {
 	}
 }
 
-func (g *Gateway) authenticated(next fasthttp.RequestHandler) fasthttp.RequestHandler {
-	return fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) {
-		token := string(ctx.Request.Header.Peek(HeaderSessionToken))
-		if len(token) == 0 {
-			g.renderError(ctx, ErrBadRequest(errors.Errorf("session token not specified via HTTP header %q", HeaderSessionToken)))
-			return
-		}
-
-		session, exists := g.registry.getSession(token)
-		if !exists {
-			g.renderError(ctx, ErrBadRequest(errors.Errorf("could not find session %s", token)))
-			return
-		}
-
-		ctx.SetUserValue(KeySession, session)
-		next(ctx)
-	})
-}
-
-func (g *Gateway) securePoll(sink *sink) func(ctx *fasthttp.RequestCtx) {
+func (g *Gateway) poll(sink *sink) func(ctx *fasthttp.RequestCtx) {
 	return func(ctx *fasthttp.RequestCtx) {
-		token := string(ctx.QueryArgs().Peek(KeyToken))
-
-		if len(token) == 0 {
-			g.renderError(ctx, ErrBadRequest(errors.New("specify a session token through url query params")))
-			return
-		}
-
-		if _, exists := g.registry.getSession(token); !exists {
-			g.renderError(ctx, ErrBadRequest(errors.Errorf("could not find session %s", token)))
-			return
-		}
-
 		if err := sink.serve(ctx); err != nil {
 			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "failed to init websocket session")))
 		}

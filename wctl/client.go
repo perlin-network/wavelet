@@ -44,8 +44,6 @@ type Client struct {
 
 	edwards25519.PrivateKey
 	edwards25519.PublicKey
-
-	SessionToken string
 }
 
 func NewClient(config Config) (*Client, error) {
@@ -84,7 +82,6 @@ func (c *Client) Request(path string, method string, body MarshalableJSON) ([]by
 	req.URI().Update(addr)
 	req.Header.SetMethod(method)
 	req.Header.SetContentType("application/json")
-	req.Header.Add(HeaderSessionToken, c.SessionToken)
 
 	if body != nil {
 		raw, err := body.MarshalJSON()
@@ -119,39 +116,14 @@ func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 	url := fmt.Sprintf("%s://%s:%d%s", prot, c.Config.APIHost, c.Config.APIPort, path)
 
 	header := make(http.Header)
-	header.Add(HeaderSessionToken, c.SessionToken)
 
 	dialer := &websocket.Dialer{}
 	conn, _, err := dialer.Dial(url, header)
 	return conn, err
 }
 
-// Init instantiates a new session with the Wavelet nodes HTTP API.
-func (c *Client) Init() error {
-	var res SessionInitResponse
-
-	millis := time.Now().UnixNano() * 1000
-	message := []byte(fmt.Sprintf("%s%d", SessionInitMessage, millis))
-
-	signature := edwards25519.Sign(c.PrivateKey, message)
-
-	req := SessionInitRequest{
-		PublicKey:  hex.EncodeToString(c.PublicKey[:]),
-		TimeMillis: uint64(millis),
-		Signature:  hex.EncodeToString(signature[:]),
-	}
-
-	if err := c.RequestJSON(RouteSessionInit, ReqPost, &req, &res); err != nil {
-		return err
-	}
-
-	c.SessionToken = res.Token
-
-	return nil
-}
-
 func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan []byte, error) {
-	path := fmt.Sprintf("%s?token=%s", sinkRoute, c.SessionToken)
+	path := fmt.Sprintf("%s", sinkRoute)
 
 	if stop == nil {
 		stop = make(chan struct{})
@@ -185,7 +157,7 @@ func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan 
 }
 
 func (c *Client) PollAccounts(stop <-chan struct{}, accountID *string) (<-chan []byte, error) {
-	path := fmt.Sprintf("%s?token=%s", RouteWSAccounts, c.SessionToken)
+	path := fmt.Sprintf("%s", RouteWSAccounts)
 	if accountID != nil {
 		path = fmt.Sprintf("%s&id=%s", path, *accountID)
 	}
@@ -222,7 +194,7 @@ func (c *Client) PollAccounts(stop <-chan struct{}, accountID *string) (<-chan [
 }
 
 func (c *Client) PollContracts(stop <-chan struct{}, contractID *string) (<-chan []byte, error) {
-	path := fmt.Sprintf("%s?token=%s", RouteWSContracts, c.SessionToken)
+	path := fmt.Sprintf("%s", RouteWSContracts)
 	if contractID != nil {
 		path = fmt.Sprintf("%sid=%s&", path, *contractID)
 	}
@@ -259,7 +231,7 @@ func (c *Client) PollContracts(stop <-chan struct{}, contractID *string) (<-chan
 }
 
 func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *string, creatorID *string) (<-chan []byte, error) {
-	path := fmt.Sprintf("%s?token=%s", RouteWSTransactions, c.SessionToken)
+	path := fmt.Sprintf("%s", RouteWSTransactions)
 	if txID != nil {
 		path = fmt.Sprintf("%stx_id=%s&", path, *txID)
 	}
