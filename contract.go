@@ -26,6 +26,7 @@ import (
 	"github.com/perlin-network/life/utils"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 )
@@ -304,32 +305,15 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				copy(vm.Memory[outPtr:outPtr+outLen], latestRoundID)
 				return 0
 			}
-		case "_sign":
-			return func(vm *exec.VirtualMachine) int64 {
-				vm.Gas += 1000 // TODO: Figure out a proper amount
-
-				frame := vm.GetCurrentFrame()
-				keyPtr, keyLen := int(uint32(frame.Locals[0])), int(uint32(frame.Locals[1]))
-				dataPtr, dataLen := int(uint32(frame.Locals[2])), int(uint32(frame.Locals[3]))
-				outPtr, outLen := int(uint32(frame.Locals[4])), int(uint32(frame.Locals[5]))
-
-				if keyLen != edwards25519.SizePrivateKey || outLen != edwards25519.SizeSignature {
-					return 1
-				}
-
-				key := vm.Memory[keyPtr : keyPtr+keyLen]
-				data := vm.Memory[dataPtr : dataPtr+dataLen]
-				out := vm.Memory[outPtr : outPtr+outLen]
-
-				priv := edwards25519.PrivateKey{}
-				copy(priv[:], key)
-				result := edwards25519.Sign(priv, data)
-				copy(out, result[:])
-				return 0
+		case "_verify_ed25519":
+			var gas uint64
+			var ok bool
+			if gas, ok = sys.GasTable["wavelet.verify.ed25519"]; !ok {
+				panic("gas entry not found")
 			}
-		case "_verify":
+
 			return func(vm *exec.VirtualMachine) int64 {
-				vm.Gas += 1000 // TODO: Figure out a proper amount
+				vm.Gas += gas
 
 				frame := vm.GetCurrentFrame()
 				keyPtr, keyLen := int(uint32(frame.Locals[0])), int(uint32(frame.Locals[1]))
@@ -357,9 +341,15 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 					return 1
 				}
 			}
-		case "_hash_blake2b":
+		case "_hash_blake2b_512":
+			var gas uint64
+			var ok bool
+			if gas, ok = sys.GasTable["wavelet.hash.blake2b512"]; !ok {
+				panic("gas entry not found")
+			}
+
 			return func(vm *exec.VirtualMachine) int64 {
-				vm.Gas += 200 // TODO: Figure out a proper amount
+				vm.Gas += gas
 
 				frame := vm.GetCurrentFrame()
 				dataPtr, dataLen := int(uint32(frame.Locals[0])), int(uint32(frame.Locals[1]))
