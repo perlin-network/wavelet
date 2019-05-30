@@ -631,11 +631,6 @@ func setup(c *cli.Context) (*wctl.Client, error) {
 		return nil, err
 	}
 
-	err = client.Init()
-	if err != nil {
-		return nil, err
-	}
-
 	return client, nil
 }
 

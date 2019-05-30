@@ -22,7 +22,6 @@ package api
 import (
 	"encoding/base64"
 	"encoding/hex"
-	"fmt"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
@@ -33,17 +32,11 @@ import (
 	"strconv"
 )
 
-const (
-	SessionInitMessage = "perlin_session_init_"
-)
-
 type marshalableJSON interface {
 	marshalJSON(arena *fastjson.Arena) ([]byte, error)
 }
 
 var (
-	_ marshalableJSON = (*sessionInitResponse)(nil)
-
 	_ marshalableJSON = (*sendTransactionResponse)(nil)
 
 	_ marshalableJSON = (*ledgerStatusResponse)(nil)
@@ -52,105 +45,6 @@ var (
 
 	_ marshalableJSON = (*account)(nil)
 )
-
-type sessionInitRequest struct {
-	PublicKey  string `json:"public_key"`
-	Signature  string `json:"signature"`
-	TimeMillis uint64 `json:"time_millis"`
-}
-
-func (s *sessionInitRequest) bind(parser *fastjson.Parser, body []byte) error {
-	if err := fastjson.ValidateBytes(body); err != nil {
-		return errors.Wrap(err, "invalid json")
-	}
-
-	v, err := parser.ParseBytes(body)
-	if err != nil {
-		return err
-	}
-
-	publicKeyVal := v.Get("public_key")
-	if publicKeyVal == nil {
-		return errors.New("missing public_key")
-	}
-	if publicKeyVal.Type() != fastjson.TypeString {
-		return errors.New("public_key is not a string")
-	}
-	publicKeyStr, err := publicKeyVal.StringBytes()
-	if err != nil {
-		return errors.Wrap(err, "invalid public_key")
-	}
-
-	signatureVal := v.Get("signature")
-	if signatureVal == nil {
-		return errors.New("missing signature")
-	}
-	if signatureVal.Type() != fastjson.TypeString {
-		return errors.New("signature is not a string")
-	}
-	signatureStr, err := signatureVal.StringBytes()
-	if err != nil {
-		return errors.Wrap(err, "invalid signature")
-	}
-
-	timeMillisVal := v.Get("time_millis")
-	if timeMillisVal == nil {
-		return errors.New("missing time_millis")
-	}
-	if timeMillisVal.Type() != fastjson.TypeNumber {
-		return errors.New("time_millis is not a number")
-	}
-	timeMillis, err := timeMillisVal.Uint64()
-	if err != nil {
-		return errors.Wrap(err, "invalid time_millis")
-	}
-
-	s.PublicKey = string(publicKeyStr)
-	s.Signature = string(signatureStr)
-	s.TimeMillis = timeMillis
-
-	publicKeyBuf, err := hex.DecodeString(s.PublicKey)
-	if err != nil {
-		return errors.Wrap(err, "public key provided is not hex-formatted")
-	}
-
-	if len(publicKeyBuf) != wavelet.SizeAccountID {
-		return errors.Errorf("public key must be size %d", wavelet.SizeAccountID)
-	}
-
-	signatureBuf, err := hex.DecodeString(s.Signature)
-	if err != nil {
-		return errors.Wrap(err, "signature provided is not hex-formatted")
-	}
-
-	if len(signatureBuf) != wavelet.SizeSignature {
-		return errors.Errorf("signature must be size %d", wavelet.SizeSignature)
-	}
-
-	var publicKey edwards25519.PublicKey
-	copy(publicKey[:], publicKeyBuf)
-
-	var signature edwards25519.Signature
-	copy(signature[:], signatureBuf)
-
-	if !edwards25519.Verify(publicKey, []byte(fmt.Sprintf("%s%d", SessionInitMessage, s.TimeMillis)), signature) {
-		return errors.Wrap(err, "signature verification failed")
-	}
-
-	return nil
-}
-
-type sessionInitResponse struct {
-	Token string `json:"token"`
-}
-
-func (s *sessionInitResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
-	o := arena.NewObject()
-
-	o.Set("token", arena.NewString(s.Token))
-
-	return o.MarshalTo(nil), nil
-}
 
 type sendTransactionRequest struct {
 	Sender    string `json:"sender"`

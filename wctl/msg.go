@@ -21,18 +21,14 @@ package wctl
 
 import (
 	"github.com/valyala/fastjson"
-	"strconv"
 )
 
 const (
-	SessionInitMessage = "perlin_session_init_"
-
-	RouteSessionInit = "/session/init"
-	RouteLedger      = "/ledger"
-	RouteAccount     = "/accounts"
-	RouteContract    = "/contract"
-	RouteTxList      = "/tx"
-	RouteTxSend      = "/tx/send"
+	RouteLedger   = "/ledger"
+	RouteAccount  = "/accounts"
+	RouteContract = "/contract"
+	RouteTxList   = "/tx"
+	RouteTxSend   = "/tx/send"
 
 	RouteWSBroadcaster  = "/poll/broadcaster"
 	RouteWSConsensus    = "/poll/consensus"
@@ -42,21 +38,17 @@ const (
 	RouteWSTransactions = "/poll/tx"
 	RouteWSMetrics      = "/poll/metrics"
 
-	HeaderSessionToken = "X-Session-Token"
-
 	ReqPost = "POST"
 	ReqGet  = "GET"
 )
 
 var (
-	_ UnmarshalableJSON = (*SessionInitResponse)(nil)
 	_ UnmarshalableJSON = (*SendTransactionResponse)(nil)
 	_ UnmarshalableJSON = (*LedgerStatusResponse)(nil)
 	_ UnmarshalableJSON = (*Transaction)(nil)
 	_ UnmarshalableJSON = (*TransactionList)(nil)
 	_ UnmarshalableJSON = (*Account)(nil)
 
-	_ MarshalableJSON = (*SessionInitRequest)(nil)
 	_ MarshalableJSON = (*SendTransactionRequest)(nil)
 )
 
@@ -66,40 +58,6 @@ type UnmarshalableJSON interface {
 
 type MarshalableJSON interface {
 	MarshalJSON() ([]byte, error)
-}
-
-type SessionInitRequest struct {
-	PublicKey  string `json:"public_key"`
-	Signature  string `json:"signature"`
-	TimeMillis uint64 `json:"time_millis"`
-}
-
-func (s *SessionInitRequest) MarshalJSON() ([]byte, error) {
-	var arena fastjson.Arena
-	o := arena.NewObject()
-
-	o.Set("public_key", arena.NewString(s.PublicKey))
-	o.Set("signature", arena.NewString(s.Signature))
-	o.Set("time_millis", arena.NewNumberString(strconv.FormatUint(s.TimeMillis, 10)))
-
-	return o.MarshalTo(nil), nil
-}
-
-type SessionInitResponse struct {
-	Token string `json:"token"`
-}
-
-func (s *SessionInitResponse) UnmarshalJSON(b []byte) error {
-	var parser fastjson.Parser
-
-	v, err := parser.ParseBytes(b)
-	if err != nil {
-		return err
-	}
-
-	s.Token = string(v.GetStringBytes("token"))
-
-	return nil
 }
 
 type SendTransactionRequest struct {
