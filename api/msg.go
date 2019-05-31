@@ -219,9 +219,16 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 
 	o.Set("public_key", arena.NewString(hex.EncodeToString(s.publicKey[:])))
 	o.Set("address", arena.NewString(s.client.ID().Address()))
-	o.Set("root_id", arena.NewString(hex.EncodeToString(round.End.ID[:])))
-	o.Set("round_id", arena.NewNumberString(strconv.FormatUint(s.ledger.Rounds().Latest().Index, 10)))
-	o.Set("difficulty", arena.NewNumberString(strconv.FormatUint(uint64(round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)), 10)))
+
+	r := arena.NewObject()
+	r.Set("merkle_root", arena.NewString(hex.EncodeToString(round.Merkle[:])))
+	r.Set("start_id", arena.NewString(hex.EncodeToString(round.Start.ID[:])))
+	r.Set("end_id", arena.NewString(hex.EncodeToString(round.End.ID[:])))
+	r.Set("applied", arena.NewNumberString(strconv.FormatUint(round.Applied, 10)))
+	r.Set("depth", arena.NewNumberString(strconv.FormatUint(round.End.Depth-round.Start.Depth, 10)))
+	r.Set("difficulty", arena.NewNumberString(strconv.FormatUint(uint64(round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)), 10)))
+
+	o.Set("round", r)
 
 	peers := s.client.ClosestPeerIDs()
 	if len(peers) > 0 {
