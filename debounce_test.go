@@ -32,15 +32,15 @@ func TestDebouncerOverfill(t *testing.T) {
 
 	size := len(Transaction{}.Marshal())
 
-	d := NewTransactionDebouncer(ctx, WithBufferLen(10*size), WithPeriod(1*time.Second))
+	d := NewDebouncer(ctx, WithBufferLen(10*size), WithPeriod(1*time.Second))
 
 	for i := 0; i < 10; i++ {
-		d.Push(Transaction{})
+		d.Push(Transaction{}.Marshal())
 	}
 
 	done := make(chan struct{})
 	go func() {
-		d.Push(Transaction{})
+		d.Push(Transaction{}.Marshal())
 		close(done)
 	}()
 
@@ -62,10 +62,10 @@ func TestDebouncerBufferFull(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewTransactionDebouncer(ctx, WithBufferLen(100*size), WithAction(a), WithPeriod(10*time.Millisecond))
+	d := NewDebouncer(ctx, WithBufferLen(100*size), WithAction(a), WithPeriod(10*time.Millisecond))
 
 	for i := 0; i < 1000; i++ {
-		d.Push(Transaction{})
+		d.Push(Transaction{}.Marshal())
 	}
 
 	time.Sleep(20 * time.Millisecond)
@@ -86,10 +86,10 @@ func TestDebouncerTimer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewTransactionDebouncer(ctx, WithBufferLen(1*size), WithAction(a), WithPeriod(1*time.Millisecond))
+	d := NewDebouncer(ctx, WithBufferLen(1*size), WithAction(a), WithPeriod(1*time.Millisecond))
 
 	for i := 0; i < 100; i++ {
-		d.Push(Transaction{})
+		d.Push(Transaction{}.Marshal())
 	}
 
 	time.Sleep(4 * time.Millisecond)
@@ -103,9 +103,9 @@ func BenchmarkDebouncer(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewTransactionDebouncer(ctx)
+	d := NewDebouncer(ctx)
 
 	for i := 0; i < b.N; i++ {
-		d.Push(Transaction{})
+		d.Push(Transaction{}.Marshal())
 	}
 }

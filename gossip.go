@@ -33,10 +33,10 @@ type Gossiper struct {
 	streams     map[string]Wavelet_GossipClient
 	streamsLock sync.Mutex
 
-	debouncer *TransactionDebouncer
+	debouncer *Debouncer
 }
 
-func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics, opts ...TransactionDebouncerOption) *Gossiper {
+func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics, opts ...DebouncerOption) *Gossiper {
 	g := &Gossiper{
 		client:  client,
 		metrics: metrics,
@@ -44,13 +44,13 @@ func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics
 		streams: make(map[string]Wavelet_GossipClient),
 	}
 
-	g.debouncer = NewTransactionDebouncer(ctx, append(opts, WithAction(g.Gossip))...)
+	g.debouncer = NewDebouncer(ctx, append(opts, WithAction(g.Gossip))...)
 
 	return g
 }
 
 func (g *Gossiper) Push(tx Transaction) {
-	g.debouncer.Push(tx)
+	g.debouncer.Push(tx.Marshal())
 
 	if g.metrics != nil {
 		g.metrics.gossipedTX.Mark(int64(tx.LogicalUnits()))

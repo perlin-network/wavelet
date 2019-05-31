@@ -20,6 +20,7 @@
 package api
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"github.com/buaazp/fasthttprouter"
@@ -54,15 +55,21 @@ type Gateway struct {
 
 	parserPool *fastjson.ParserPool
 	arenaPool  *fastjson.ArenaPool
+
+	debouncer *wavelet.Debouncer
 }
 
 func New() *Gateway {
-	return &Gateway{
+	g := &Gateway{
 		sinks:       make(map[string]*sink),
 		parserPool:  new(fastjson.ParserPool),
 		arenaPool:   new(fastjson.ArenaPool),
 		rateLimiter: newRatelimiter(1000),
 	}
+
+	g.debouncer = wavelet.NewDebouncer(context.TODO(), wavelet.WithAction(g.flush), wavelet.WithLimit(3000))
+
+	return g
 }
 
 func (g *Gateway) setup() {
@@ -526,30 +533,37 @@ func (g *Gateway) registerWebsocketSink(rawURL string) *sink {
 }
 
 func (g *Gateway) Write(buf []byte) (n int, err error) {
-	var p fastjson.Parser
-
-	v, err := p.ParseBytes(buf)
-
-	if err != nil {
-		return n, errors.Errorf("cannot parse: %q", err)
-	}
-
-	mod := v.GetStringBytes(log.KeyModule)
-	if mod == nil {
-		return n, errors.Errorf("all logs must have the field %q", log.KeyModule)
-	}
-
-	sink, exists := g.sinks[string(mod)]
-	if !exists {
-		return len(buf), nil
-	}
 
 	cpy := make([]byte, len(buf))
 	copy(cpy, buf)
 
-	sink.broadcast <- broadcastItem{value: v, buf: cpy}
+	g.debouncer.Push(cpy)
 
 	return len(buf), nil
+}
+
+func (g *Gateway) flush(bufs [][]byte) {
+	//logger := log.Node()
+	var p fastjson.Parser
+
+	for _, buf := range bufs {
+		v, err := p.ParseBytes(buf)
+		if err != nil {
+			continue
+		}
+
+		mod := v.GetStringBytes(log.KeyModule)
+		if mod == nil {
+			continue
+		}
+
+		sink, exists := g.sinks[string(mod)]
+		if !exists {
+			continue
+		}
+
+		sink.broadcast <- broadcastItem{value: v, buf: buf}
+	}
 }
 
 func (g *Gateway) render(ctx *fasthttp.RequestCtx, m marshalableJSON) {
