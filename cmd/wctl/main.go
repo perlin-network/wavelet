@@ -35,6 +35,14 @@ import (
 	"time"
 )
 
+var tagConversion = map[string]byte {
+	`nop`: sys.TagNop,
+	`transfer`: sys.TagTransfer,
+	`contract`: sys.TagContract,
+	`batch`: sys.TagBatch,
+	`stake`: sys.TagStake,
+}
+
 func main() {
 	app := cli.NewApp()
 
@@ -228,6 +236,10 @@ func main() {
 						Name:  "creator_id",
 						Usage: "creator id of transactions to list (default: all)",
 					},
+					cli.StringFlag{
+						Name:  "tag",
+						Usage: "tag of transactions to list (default: all)",
+					},
 				}...,
 			),
 			Action: func(c *cli.Context) error {
@@ -237,9 +249,13 @@ func main() {
 				}
 
 				// get these optional variables
-				var txID *string
-				var senderID *string
-				var creatorID *string
+				var (
+					txID *string
+				 	senderID *string
+					creatorID *string
+					tag *byte
+				)
+
 				if len(c.String("tx_id")) > 0 {
 					tmp := c.String("tx_id")
 					txID = &tmp
@@ -252,9 +268,14 @@ func main() {
 					tmp := c.String("creator_id")
 					creatorID = &tmp
 				}
+				if len(c.String("tag")) > 0 {
+					tmp := c.String("tag")
+					t := tagConversion[tmp]
+					tag = &t
+				}
 
 				client.UseHTTPS = true
-				evChan, err := client.PollTransactions(nil, txID, senderID, creatorID)
+				evChan, err := client.PollTransactions(nil, txID, senderID, creatorID, tag)
 				if err != nil {
 					return err
 				}
