@@ -35,12 +35,12 @@ import (
 	"time"
 )
 
-var tagConversion = map[string]byte {
-	`nop`: sys.TagNop,
+var tagConversion = map[string]byte{
+	`nop`:      sys.TagNop,
 	`transfer`: sys.TagTransfer,
 	`contract`: sys.TagContract,
-	`batch`: sys.TagBatch,
-	`stake`: sys.TagStake,
+	`batch`:    sys.TagBatch,
+	`stake`:    sys.TagStake,
 }
 
 func main() {
@@ -91,7 +91,6 @@ func main() {
 					return err
 				}
 
-				client.UseHTTPS = true
 				evChan, err := client.PollLoggerSink(nil, wctl.RouteWSBroadcaster)
 				if err != nil {
 					return err
@@ -113,7 +112,6 @@ func main() {
 					return err
 				}
 
-				client.UseHTTPS = true
 				evChan, err := client.PollLoggerSink(nil, wctl.RouteWSConsensus)
 				if err != nil {
 					return err
@@ -135,7 +133,6 @@ func main() {
 					return err
 				}
 
-				client.UseHTTPS = true
 				evChan, err := client.PollLoggerSink(nil, wctl.RouteWSStake)
 				if err != nil {
 					return err
@@ -164,14 +161,12 @@ func main() {
 					return err
 				}
 
-				// get these optional variables
 				var accountID *string
 				if len(c.String("account_id")) > 0 {
 					tmp := c.String("account_id")
 					accountID = &tmp
 				}
 
-				client.UseHTTPS = false
 				evChan, err := client.PollAccounts(nil, accountID)
 				if err != nil {
 					return err
@@ -207,7 +202,6 @@ func main() {
 					contractID = &tmp
 				}
 
-				client.UseHTTPS = true
 				evChan, err := client.PollContracts(nil, contractID)
 				if err != nil {
 					return err
@@ -250,10 +244,10 @@ func main() {
 
 				// get these optional variables
 				var (
-					txID *string
-				 	senderID *string
+					txID      *string
+					senderID  *string
 					creatorID *string
-					tag *byte
+					tag       *byte
 				)
 
 				if len(c.String("tx_id")) > 0 {
@@ -274,7 +268,6 @@ func main() {
 					tag = &t
 				}
 
-				client.UseHTTPS = true
 				evChan, err := client.PollTransactions(nil, txID, senderID, creatorID, tag)
 				if err != nil {
 					return err
@@ -587,7 +580,6 @@ func main() {
 					return err
 				}
 
-				client.UseHTTPS = false
 				evChan, err := client.PollLoggerSink(nil, wctl.RouteWSMetrics)
 				if err != nil {
 					return err

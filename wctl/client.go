@@ -23,7 +23,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"github.com/gorilla/websocket"
+	"github.com/fasthttp/websocket"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/valyala/fasthttp"
 	"net/http"
@@ -114,11 +114,11 @@ func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 	}
 
 	url := fmt.Sprintf("%s://%s:%d%s", prot, c.Config.APIHost, c.Config.APIPort, path)
+	dialer := &websocket.Dialer{
+		HandshakeTimeout: 3 * time.Second,
+	}
 
-	header := make(http.Header)
-
-	dialer := &websocket.Dialer{}
-	conn, _, err := dialer.Dial(url, header)
+	conn, _, err := dialer.Dial(url, nil)
 	return conn, err
 }
 

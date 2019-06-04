@@ -1,49 +1,68 @@
 package api
 
 import (
-	"crypto/rand"
 	"github.com/fasthttp/websocket"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 	"net/url"
 	"testing"
+	"time"
 )
 
 func TestPollTx(t *testing.T) {
 	gateway := New()
 	gateway.setup()
 
-	gateway.ledger = createLedger(t)
+	log.Set("ws", gateway)
 
-	// Create a transaction
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	var buf [200]byte
-	_, err = rand.Read(buf[:])
-	assert.NoError(t, err)
-	_ = wavelet.NewTransaction(keys, sys.TagTransfer, buf[:])
-	assert.NoError(t, err)
+	ledger := wavelet.NewLedger(store.NewInmem(), skademlia.NewClient(":0", keys))
+
+	go gateway.StartHTTP(8080, nil, ledger, keys)
+	defer gateway.Shutdown()
+
+	time.Sleep(100 * time.Millisecond)
 
 	t.Run("tag-filter", func(t *testing.T) {
-		u := url.URL{Scheme: "ws", Host: "localhost:8080", Path:`/poll/tx?tag=1"`}
+		u := url.URL{Scheme: "ws", Host: ":8080", Path: `/poll/tx`, RawQuery: "tag=1"}
 		c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
 		if !assert.NoError(t, err) {
 			return
 		}
 
-		response := make(chan []byte, 1)
+		response := make(chan []byte, 10)
+		stop := make(chan struct{})
 		go func() {
-			_, msg, err := c.ReadMessage()
-			if !assert.NoError(t, err) {
-				return
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+
+				_, msg, err := c.ReadMessage()
+				if !assert.NoError(t, err) {
+					return
+				}
+				response <- msg
 			}
-			response <-  msg
 		}()
 
+		// log 2 messages with different tags
+		logger := log.TX("test")
+		logger.Log().Uint8("tag", sys.TagTransfer).Msg("")
 
+		logger.Log().Uint8("tag", sys.TagStake).Msg("")
+
+		time.Sleep(100 * time.Millisecond)
+
+		close(stop)
 
 		assert.Equal(t, 1, len(response))
 	})
