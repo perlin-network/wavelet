@@ -1105,6 +1105,7 @@ func (l *Ledger) ApplyTransactionToSnapshot(snapshot *avl.Tree, tx *Transaction)
 // after calling CollapseTransactions.
 type CollapseResults struct {
 	rejectedCount int
+	appliedIDs    []TransactionID
 	appliedCount  int
 	ignoredCount  int
 	snapshot      *avl.Tree
@@ -1126,12 +1127,20 @@ type CollapseResults struct {
 // and end is the interval ending point depth.
 func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transaction, logging bool) (CollapseResults, error) {
 	if results, exists := l.cacheCollapse.load(end.ID); exists {
-		return results.(CollapseResults), nil
+		res := results.(CollapseResults)
+		if logging {
+			for _, txID := range res.appliedIDs {
+				logEventTX("applied", l.graph.FindTransaction(txID))
+			}
+		}
+
+		return res, nil
 	}
 
-	var results CollapseResults
+	results := CollapseResults{
+		snapshot: l.accounts.Snapshot(),
+	}
 
-	results.snapshot = l.accounts.Snapshot()
 	results.snapshot.SetViewID(round)
 
 	visited := map[TransactionID]struct{}{root.ID: {}}
@@ -1196,6 +1205,8 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 			results.rejectedCount += popped.LogicalUnits()
 			continue
 		}
+
+		results.appliedIDs = append(results.appliedIDs, popped.ID)
 
 		if logging {
 			logEventTX("applied", popped)
