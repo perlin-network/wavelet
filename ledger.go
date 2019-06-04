@@ -1129,10 +1129,11 @@ type CollapseResults struct {
 // It is important to note that transactions that are inspected over are specifically transactions
 // that are within the depth interval (start, end] where start is the interval starting point depth,
 // and end is the interval ending point depth.
-func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transaction, logging bool) (CollapseResults, error) {
-	if results, exists := l.cacheCollapse.load(end.ID); exists {
-		res := results.(CollapseResults)
-		if logging {
+func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transaction, logging bool) (*CollapseResults, error) {
+	var res *CollapseResults
+
+	defer func() {
+		if res != nil && logging {
 			for _, tx := range res.applied {
 				logEventTX("applied", tx)
 			}
@@ -1141,25 +1142,22 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 				logEventTX("failed", tx, res.rejectedErrors[i])
 			}
 		}
+	}()
 
+	if results, exists := l.cacheCollapse.load(end.ID); exists {
+		res = results.(*CollapseResults)
 		return res, nil
 	}
 
-	results := CollapseResults{
-		snapshot: l.accounts.Snapshot(),
-	}
-
-	results.snapshot.SetViewID(round)
+	res = &CollapseResults{snapshot: l.accounts.Snapshot()}
+	res.snapshot.SetViewID(round)
 
 	visited := map[TransactionID]struct{}{root.ID: {}}
 
 	queue := queue2.New()
-	//defer ReleaseQueue(queue)
-
 	queue.PushBack(&end)
 
 	order := queue2.New()
-	//defer ReleaseQueue(order)
 
 	for queue.Len() > 0 {
 		popped := queue.PopFront().(*Transaction)
@@ -1181,16 +1179,16 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 
 			if parent == nil {
 				l.graph.MarkTransactionAsMissing(parentID, popped.Depth)
-				return results, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, end.ID)
+				return res, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, end.ID)
 			}
 
 			queue.PushBack(parent)
 		}
 	}
 
-	results.applied = make([]*Transaction, 0, order.Len())
-	results.rejected = make([]*Transaction, 0, order.Len())
-	results.rejectedErrors = make([]error, 0, order.Len())
+	res.applied = make([]*Transaction, 0, order.Len())
+	res.rejected = make([]*Transaction, 0, order.Len())
+	res.rejectedErrors = make([]error, 0, order.Len())
 
 	// Apply transactions in reverse order from the end of the round
 	// all the way down to the beginning of the round.
@@ -1198,43 +1196,43 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 	for order.Len() > 0 {
 		popped := order.PopBack().(*Transaction)
 
-		if err := l.RewardValidators(results.snapshot, root, popped, logging); err != nil {
-			results.rejected = append(results.rejected, popped)
-			results.rejectedErrors = append(results.rejectedErrors, err)
-			results.rejectedCount += popped.LogicalUnits()
+		if err := l.RewardValidators(res.snapshot, root, popped, logging); err != nil {
+			res.rejected = append(res.rejected, popped)
+			res.rejectedErrors = append(res.rejectedErrors, err)
+			res.rejectedCount += popped.LogicalUnits()
 
 			continue
 		}
 
-		if err := l.ApplyTransactionToSnapshot(results.snapshot, popped); err != nil {
-			results.rejected = append(results.rejected, popped)
-			results.rejectedErrors = append(results.rejectedErrors, err)
-			results.rejectedCount += popped.LogicalUnits()
+		if err := l.ApplyTransactionToSnapshot(res.snapshot, popped); err != nil {
+			res.rejected = append(res.rejected, popped)
+			res.rejectedErrors = append(res.rejectedErrors, err)
+			res.rejectedCount += popped.LogicalUnits()
 
 			continue
 		}
 
 		// Update nonce.
 
-		nonce, _ := ReadAccountNonce(results.snapshot, popped.Creator)
-		WriteAccountNonce(results.snapshot, popped.Creator, nonce+1)
+		nonce, _ := ReadAccountNonce(res.snapshot, popped.Creator)
+		WriteAccountNonce(res.snapshot, popped.Creator, nonce+1)
 
 		// Update statistics.
 
-		results.applied = append(results.applied, popped)
-		results.appliedCount += popped.LogicalUnits()
+		res.applied = append(res.applied, popped)
+		res.appliedCount += popped.LogicalUnits()
 	}
 
 	startDepth, endDepth := root.Depth+1, end.Depth
 
 	for _, tx := range l.graph.GetTransactionsByDepth(&startDepth, &endDepth) {
-		results.ignoredCount += tx.LogicalUnits()
+		res.ignoredCount += tx.LogicalUnits()
 	}
 
-	results.ignoredCount -= results.appliedCount + results.rejectedCount
+	res.ignoredCount -= res.appliedCount + res.rejectedCount
 
-	l.cacheCollapse.put(end.ID, results)
-	return results, nil
+	l.cacheCollapse.put(end.ID, res)
+	return res, nil
 }
 
 func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Transaction, logging bool) error {
