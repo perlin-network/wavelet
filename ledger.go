@@ -1104,11 +1104,15 @@ func (l *Ledger) ApplyTransactionToSnapshot(snapshot *avl.Tree, tx *Transaction)
 // to understand what counts of accepted, rejected, or otherwise ignored transactions truly represent
 // after calling CollapseTransactions.
 type CollapseResults struct {
-	rejectedCount int
-	appliedIDs    []TransactionID
+	applied        []*Transaction
+	rejected       []*Transaction
+	rejectedErrors []error
+
 	appliedCount  int
+	rejectedCount int
 	ignoredCount  int
-	snapshot      *avl.Tree
+
+	snapshot *avl.Tree
 }
 
 // CollapseTransactions takes all transactions recorded within a graph depth interval, and applies
@@ -1129,8 +1133,12 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 	if results, exists := l.cacheCollapse.load(end.ID); exists {
 		res := results.(CollapseResults)
 		if logging {
-			for _, txID := range res.appliedIDs {
-				logEventTX("applied", l.graph.FindTransaction(txID))
+			for _, tx := range res.applied {
+				logEventTX("applied", tx)
+			}
+
+			for i, tx := range res.rejected {
+				logEventTX("failed", tx, res.rejectedErrors[i])
 			}
 		}
 
@@ -1180,6 +1188,10 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 		}
 	}
 
+	results.applied = make([]*Transaction, 0, order.Len())
+	results.rejected = make([]*Transaction, 0, order.Len())
+	results.rejectedErrors = make([]error, 0, order.Len())
+
 	// Apply transactions in reverse order from the end of the round
 	// all the way down to the beginning of the round.
 
@@ -1187,29 +1199,19 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 		popped := order.PopBack().(*Transaction)
 
 		if err := l.RewardValidators(results.snapshot, root, popped, logging); err != nil {
-			if logging {
-				logEventTX("failed", popped, err)
-			}
-
+			results.rejected = append(results.rejected, popped)
+			results.rejectedErrors = append(results.rejectedErrors, err)
 			results.rejectedCount += popped.LogicalUnits()
+
 			continue
 		}
 
 		if err := l.ApplyTransactionToSnapshot(results.snapshot, popped); err != nil {
-			if logging {
-				logEventTX("failed", popped, err)
-			}
-
-			fmt.Println(err)
-
+			results.rejected = append(results.rejected, popped)
+			results.rejectedErrors = append(results.rejectedErrors, err)
 			results.rejectedCount += popped.LogicalUnits()
+
 			continue
-		}
-
-		results.appliedIDs = append(results.appliedIDs, popped.ID)
-
-		if logging {
-			logEventTX("applied", popped)
 		}
 
 		// Update nonce.
@@ -1217,6 +1219,9 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 		nonce, _ := ReadAccountNonce(results.snapshot, popped.Creator)
 		WriteAccountNonce(results.snapshot, popped.Creator, nonce+1)
 
+		// Update statistics.
+
+		results.applied = append(results.applied, popped)
 		results.appliedCount += popped.LogicalUnits()
 	}
 
