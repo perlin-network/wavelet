@@ -72,6 +72,7 @@ func (c *client) writeWorker() {
 		ticker.Stop()
 		_ = c.conn.Close()
 	}()
+
 	for {
 		select {
 		case message, ok := <-c.send:
@@ -86,12 +87,15 @@ func (c *client) writeWorker() {
 				return
 			}
 
-			n := len(c.send)
-			for i := 0; i < n; i++ {
-				err := c.conn.WriteMessage(websocket.TextMessage, message)
-
-				if err != nil {
-					return
+		L:
+			for {
+				select {
+				case msg := <-c.send:
+					if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+						return
+					}
+				default:
+					break L
 				}
 			}
 		case <-ticker.C:
