@@ -81,7 +81,7 @@ func (g *Gateway) setup() {
 	sinkStake := g.registerWebsocketSink("ws://stake/")
 	sinkAccounts := g.registerWebsocketSink("ws://accounts/?id=account_id")
 	sinkContracts := g.registerWebsocketSink("ws://contract/?id=contract_id")
-	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id")
+	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id&tag=tag")
 	sinkMetrics := g.registerWebsocketSink("ws://metrics/")
 
 	log.Set("ws", g)

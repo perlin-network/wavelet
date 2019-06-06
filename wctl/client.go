@@ -23,7 +23,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"github.com/gorilla/websocket"
+	"github.com/fasthttp/websocket"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/valyala/fasthttp"
 	"net/http"
@@ -114,11 +114,11 @@ func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 	}
 
 	url := fmt.Sprintf("%s://%s:%d%s", prot, c.Config.APIHost, c.Config.APIPort, path)
+	dialer := &websocket.Dialer{
+		HandshakeTimeout: 3 * time.Second,
+	}
 
-	header := make(http.Header)
-
-	dialer := &websocket.Dialer{}
-	conn, _, err := dialer.Dial(url, header)
+	conn, _, err := dialer.Dial(url, nil)
 	return conn, err
 }
 
@@ -230,7 +230,7 @@ func (c *Client) PollContracts(stop <-chan struct{}, contractID *string) (<-chan
 	return evChan, nil
 }
 
-func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *string, creatorID *string) (<-chan []byte, error) {
+func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *string, creatorID *string, tag *byte) (<-chan []byte, error) {
 	path := fmt.Sprintf("%s", RouteWSTransactions)
 	if txID != nil {
 		path = fmt.Sprintf("%stx_id=%s&", path, *txID)
@@ -240,6 +240,9 @@ func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *
 	}
 	if creatorID != nil {
 		path = fmt.Sprintf("%screator=%s&", path, *creatorID)
+	}
+	if tag != nil {
+		path = fmt.Sprintf("%stag=%x&", path, *tag)
 	}
 
 	if stop == nil {
