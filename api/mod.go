@@ -273,6 +273,10 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 		}
 	}
 
+	if limit > maxPaginationLimit {
+		limit = maxPaginationLimit
+	}
+
 	rootDepth := g.ledger.Graph().RootDepth()
 
 	var transactions transactionList

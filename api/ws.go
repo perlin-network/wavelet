@@ -28,10 +28,11 @@ import (
 )
 
 const (
-	writeWait      = 10 * time.Second
-	pongWait       = 60 * time.Second
-	pingPeriod     = (pongWait * 9) / 10
-	maxMessageSize = 512
+	writeWait          = 10 * time.Second
+	pongWait           = 60 * time.Second
+	pingPeriod         = (pongWait * 9) / 10
+	maxMessageSize     = 512
+	maxPaginationLimit = 5000
 )
 
 var upgrader = websocket.FastHTTPUpgrader{
@@ -75,28 +76,21 @@ func (c *client) writeWorker() {
 
 	for {
 		select {
-		case message, ok := <-c.send:
-			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+		case msg, ok := <-c.send:
 			if !ok {
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
-			err := c.conn.WriteMessage(websocket.TextMessage, message)
-			if err != nil {
-				return
+			if len(msg) == 0 {
+				continue
 			}
 
-		L:
-			for {
-				select {
-				case msg := <-c.send:
-					if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-						return
-					}
-				default:
-					break L
-				}
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+
+			err := c.conn.WriteMessage(websocket.TextMessage, msg)
+			if err != nil {
+				return
 			}
 		case <-ticker.C:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))

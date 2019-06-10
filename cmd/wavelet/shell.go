@@ -343,6 +343,28 @@ func (cli *CLI) find(cmd []string) {
 		return
 	}
 
+	var accountID wavelet.AccountID
+	copy(accountID[:], buf)
+
+	balance, _ := wavelet.ReadAccountBalance(snapshot, accountID)
+	stake, _ := wavelet.ReadAccountStake(snapshot, accountID)
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, accountID)
+
+	_, isContract := wavelet.ReadAccountContractCode(snapshot, accountID)
+	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, accountID)
+
+	if balance > 0 || stake > 0 || nonce > 0 || isContract || numPages > 0 {
+		cli.logger.Info().
+			Uint64("balance", balance).
+			Uint64("stake", stake).
+			Uint64("nonce", nonce).
+			Bool("is_contract", isContract).
+			Uint64("num_pages", numPages).
+			Msgf("Account: %s", cmd[0])
+
+		return
+	}
+
 	var txID wavelet.TransactionID
 	copy(txID[:], buf)
 
@@ -367,29 +389,11 @@ func (cli *CLI) find(cmd []string) {
 
 		return
 	}
-
-	var accountID wavelet.AccountID
-	copy(accountID[:], buf)
-
-	balance, _ := wavelet.ReadAccountBalance(snapshot, accountID)
-	stake, _ := wavelet.ReadAccountStake(snapshot, accountID)
-	nonce, _ := wavelet.ReadAccountNonce(snapshot, accountID)
-
-	_, isContract := wavelet.ReadAccountContractCode(snapshot, accountID)
-	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, accountID)
-
-	cli.logger.Info().
-		Uint64("balance", balance).
-		Uint64("stake", stake).
-		Uint64("nonce", nonce).
-		Bool("is_contract", isContract).
-		Uint64("num_pages", numPages).
-		Msgf("Account: %s", cmd[0])
 }
 
 func (cli *CLI) spawn(cmd []string) {
-	if len(cmd) != 2 {
-		fmt.Println("spawn <path-to-smart-contract> <gas-limit>")
+	if len(cmd) != 1 {
+		fmt.Println("spawn <path-to-smart-contract>")
 		return
 	}
 
@@ -402,24 +406,7 @@ func (cli *CLI) spawn(cmd []string) {
 		return
 	}
 
-	gasLimit, err := strconv.Atoi(cmd[1])
-	if err != nil {
-		cli.logger.Error().
-			Err(err).
-			Str("gas-limit", cmd[1]).
-			Msg("Failed to convert gas-limit.")
-		return
-	}
-
-	balance, _ := wavelet.ReadAccountBalance(cli.ledger.Snapshot(), cli.keys.PublicKey())
-	if balance < uint64(gasLimit) {
-		cli.logger.Error().
-			Err(err).
-			Str("gas-limit", cmd[1]).
-			Uint64("balance", balance).
-			Msg("Not enough balance for given gas-limit.")
-		return
-	}
+	gasLimit := 0
 
 	var intBuf [8]byte
 	payload := bytes.NewBuffer(nil)
