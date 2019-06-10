@@ -93,7 +93,7 @@ func TestPollLog(t *testing.T) {
 			}
 		}()
 
-		// log 2 messages with different tags
+		// log bunch of messages but only about 2 accounts
 		logger := log.Accounts("test")
 		id := ""
 		for i := 0; i < 10; i++ {
