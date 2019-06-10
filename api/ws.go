@@ -47,7 +47,7 @@ var upgrader = websocket.FastHTTPUpgrader{
 
 type client struct {
 	sink      *sink
-	debouncer debouncer.IDebouncer
+	debouncer debouncer.Debouncer
 	conn      *websocket.Conn
 
 	filters map[string]string
@@ -105,15 +105,10 @@ func (c *client) writeWorker() {
 	}
 }
 
-func (c *client) send(data []interface{}) {
+func (c *client) send(data [][]byte) {
 	for _, msg := range data {
-		t, ok := msg.([]byte)
-		if !ok {
-			continue
-		}
-
 		select {
-		case c.sendC <- t:
+		case c.sendC <- msg:
 		default:
 			close(c.sendC)
 			delete(c.sink.clients, c)
@@ -141,9 +136,9 @@ func (s *sink) serve(ctx *fasthttp.RequestCtx) error {
 
 		ctx := context.TODO()
 		if s.groupKey != "" {
-			client.debouncer = debouncer.NewGroupDebouncer(ctx, client.send, 100*time.Millisecond)
+			client.debouncer = debouncer.NewDeduper(ctx, client.send, 100*time.Millisecond)
 		} else {
-			client.debouncer = debouncer.NewBatchDebouncer(ctx, client.send, 100*time.Millisecond, 16384)
+			client.debouncer = debouncer.NewLimiter(ctx, client.send, 100*time.Millisecond, 16384)
 		}
 
 		s.join <- client

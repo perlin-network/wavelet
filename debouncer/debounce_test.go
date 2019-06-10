@@ -31,15 +31,15 @@ func TestDebouncerOverfill(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewBatchDebouncer(ctx, func([]interface{}) {}, 1*time.Second, 10)
+	d := NewLimiter(ctx, func([][]byte) {}, 1*time.Second, 10)
 
 	for i := 0; i < 10; i++ {
-		d.Add(interface{}(nil), 1, "")
+		d.Add([]byte{}, 1, "")
 	}
 
 	done := make(chan struct{})
 	go func() {
-		d.Add(interface{}(nil), 1, "")
+		d.Add([]byte{}, 1, "")
 		close(done)
 	}()
 
@@ -52,17 +52,17 @@ func TestDebouncerOverfill(t *testing.T) {
 
 func TestDebouncerBufferFull(t *testing.T) {
 	called := 0
-	a := func([]interface{}) {
+	a := func([][]byte) {
 		called++
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewBatchDebouncer(ctx, a, 10*time.Millisecond, 100)
+	d := NewLimiter(ctx, a, 10*time.Millisecond, 100)
 
 	for i := 0; i < 1000; i++ {
-		d.Add(interface{}(nil), 1, "")
+		d.Add([]byte{}, 1, "")
 	}
 
 	time.Sleep(20 * time.Millisecond)
@@ -74,17 +74,17 @@ func TestDebouncerBufferFull(t *testing.T) {
 
 func TestDebouncerTimer(t *testing.T) {
 	called := 0
-	a := func([]interface{}) {
+	a := func([][]byte) {
 		called++
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewBatchDebouncer(ctx, a, 1*time.Millisecond, 1)
+	d := NewLimiter(ctx, a, 1*time.Millisecond, 1)
 
 	for i := 0; i < 100; i++ {
-		d.Add(interface{}(nil), 1, "")
+		d.Add([]byte{}, 1, "")
 	}
 
 	time.Sleep(4 * time.Millisecond)
@@ -98,27 +98,27 @@ func BenchmarkDebouncer(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewBatchDebouncer(ctx, func([]interface{}) {}, 50*time.Millisecond, 16384)
+	d := NewLimiter(ctx, func([][]byte) {}, 50*time.Millisecond, 16384)
 	for i := 0; i < b.N; i++ {
-		d.Add(interface{}(nil), 1, "")
+		d.Add([]byte{}, 1, "")
 	}
 }
 
 func TestFuncDebouncer(t *testing.T) {
 	called := 0
 	size := 0
-	action := func(data []interface{}) {
+	action := func(data [][]byte) {
 		size = len(data)
 		called++
 	}
 
-	fd := NewGroupDebouncer(context.TODO(), action, 100*time.Millisecond)
+	fd := NewDeduper(context.TODO(), action, 100*time.Millisecond)
 	var key string
 	for i := 0; i < 10; i++ {
 		if i%5 == 0 {
 			key = strconv.Itoa(i)
 		}
-		fd.Add(interface{}(nil), 1, key)
+		fd.Add([]byte{}, 1, key)
 	}
 
 	time.Sleep(300 * time.Millisecond)

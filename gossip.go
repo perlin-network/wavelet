@@ -35,7 +35,7 @@ type Gossiper struct {
 	streams     map[string]Wavelet_GossipClient
 	streamsLock sync.Mutex
 
-	debouncer *debouncer.BatchDebouncer
+	debouncer *debouncer.Limiter
 }
 
 func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics) *Gossiper {
@@ -46,7 +46,7 @@ func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics
 		streams: make(map[string]Wavelet_GossipClient),
 	}
 
-	g.debouncer = debouncer.NewBatchDebouncer(ctx, g.Gossip, 50*time.Millisecond, 16384)
+	g.debouncer = debouncer.NewLimiter(ctx, g.Gossip, 50*time.Millisecond, 16384)
 
 	return g
 }
@@ -60,19 +60,10 @@ func (g *Gossiper) Push(tx Transaction) {
 	}
 }
 
-func (g *Gossiper) Gossip(transactions []interface{}) {
+func (g *Gossiper) Gossip(transactions [][]byte) {
 	var err error
 
-	ttx := make([][]byte, len(transactions))
-	for i, tx := range transactions {
-		t, ok := tx.([]byte)
-		if !ok {
-			continue
-		}
-		ttx[i] = t
-	}
-
-	batch := &Transactions{Transactions: ttx}
+	batch := &Transactions{Transactions: transactions}
 
 	conns := g.client.ClosestPeers()
 

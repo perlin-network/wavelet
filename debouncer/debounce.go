@@ -25,30 +25,30 @@ import (
 	"time"
 )
 
-type IDebouncer interface {
-	Add(interface{}, int, string)
+type Debouncer interface {
+	Add([]byte, int, string)
 }
 
 var (
-	_ IDebouncer = (*GroupDebouncer)(nil)
-	_ IDebouncer = (*BatchDebouncer)(nil)
+	_ Debouncer = (*Deduper)(nil)
+	_ Debouncer = (*Limiter)(nil)
 )
 
-type GroupDebouncer struct {
+type Deduper struct {
 	sync.Mutex
-	action func([]interface{})
+	action func([][]byte)
 
-	payload map[string]interface{}
+	payload map[string][]byte
 	timer   *time.Timer
 	period  time.Duration
 }
 
-func NewGroupDebouncer(ctx context.Context, action func([]interface{}), period time.Duration) *GroupDebouncer {
-	d := &GroupDebouncer{
+func NewDeduper(ctx context.Context, action func([][]byte), period time.Duration) *Deduper {
+	d := &Deduper{
 		action:  action,
 		period:  period,
 		timer:   time.NewTimer(period),
-		payload: make(map[string]interface{}),
+		payload: make(map[string][]byte),
 	}
 	d.timer.Stop()
 
@@ -59,7 +59,7 @@ func NewGroupDebouncer(ctx context.Context, action func([]interface{}), period t
 				return
 			case <-d.timer.C:
 				d.Lock()
-				payload := make([]interface{}, 0, len(d.payload))
+				payload := make([][]byte, 0, len(d.payload))
 				for _, v := range d.payload {
 					payload = append(payload, v)
 				}
@@ -72,28 +72,28 @@ func NewGroupDebouncer(ctx context.Context, action func([]interface{}), period t
 	return d
 }
 
-func (d *GroupDebouncer) Add(payload interface{}, _ int, key string) {
+func (d *Deduper) Add(payload []byte, _ int, key string) {
 	d.Lock()
 	d.payload[key] = payload
 	d.timer.Reset(d.period)
 	d.Unlock()
 }
 
-type BatchDebouncer struct {
+type Limiter struct {
 	sync.Mutex
 
-	action func([]interface{})
+	action func([][]byte)
 
 	timer  *time.Timer
 	period time.Duration
 
-	buffer      []interface{}
+	buffer      [][]byte
 	bufferSize  int
 	bufferLimit int
 }
 
-func NewBatchDebouncer(ctx context.Context, action func([]interface{}), period time.Duration, limit int) *BatchDebouncer {
-	d := &BatchDebouncer{
+func NewLimiter(ctx context.Context, action func([][]byte), period time.Duration, limit int) *Limiter {
+	d := &Limiter{
 		action:      action,
 		period:      period,
 		bufferLimit: limit,
@@ -122,7 +122,7 @@ func NewBatchDebouncer(ctx context.Context, action func([]interface{}), period t
 	return d
 }
 
-func (d *BatchDebouncer) Add(payload interface{}, size int, _ string) {
+func (d *Limiter) Add(payload []byte, size int, _ string) {
 	d.Lock()
 	if d.bufferSize >= d.bufferLimit {
 		d.action(d.buffer)
