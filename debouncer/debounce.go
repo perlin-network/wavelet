@@ -87,9 +87,9 @@ type Limiter struct {
 	timer  *time.Timer
 	period time.Duration
 
-	buffer      [][]byte
-	bufferSize  int
-	bufferLimit int
+	buffer       [][]byte
+	bufferOffset int
+	bufferLimit  int
 }
 
 func NewLimiter(ctx context.Context, action func([][]byte), period time.Duration, limit int) *Limiter {
@@ -109,10 +109,10 @@ func NewLimiter(ctx context.Context, action func([][]byte), period time.Duration
 				return
 			case <-d.timer.C:
 				d.Lock()
-				if d.bufferSize > 0 {
+				if d.bufferOffset > 0 {
 					d.action(d.buffer)
 					d.buffer = d.buffer[:0]
-					d.bufferSize = 0
+					d.bufferOffset = 0
 				}
 				d.Unlock()
 			}
@@ -124,16 +124,16 @@ func NewLimiter(ctx context.Context, action func([][]byte), period time.Duration
 
 func (d *Limiter) Add(payload []byte, size int, _ string) {
 	d.Lock()
-	if d.bufferSize >= d.bufferLimit {
+	if d.bufferOffset >= d.bufferLimit {
 		d.action(d.buffer)
 		d.buffer = d.buffer[:0]
-		d.bufferSize = 0
+		d.bufferOffset = 0
 	}
 
 	d.timer.Reset(d.period)
 
 	d.buffer = append(d.buffer, payload)
-	d.bufferSize += size
+	d.bufferOffset += size
 
 	d.Unlock()
 }

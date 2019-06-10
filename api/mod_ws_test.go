@@ -61,7 +61,7 @@ func TestPollLog(t *testing.T) {
 
 		logger.Log().Uint8("tag", sys.TagStake).Msg("")
 
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(150 * time.Millisecond)
 
 		close(stop)
 

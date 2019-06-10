@@ -68,14 +68,14 @@ func New() *Gateway {
 func (g *Gateway) setup() {
 	// Setup websocket logging sinks.
 
-	sinkNetwork := g.registerWebsocketSink("ws://network/", "")
-	sinkBroadcaster := g.registerWebsocketSink("ws://broadcaster/", "")
-	sinkConsensus := g.registerWebsocketSink("ws://consensus/", "")
-	sinkStake := g.registerWebsocketSink("ws://stake/?id=account_id", "")
+	sinkNetwork := g.registerWebsocketSink("ws://network/")
+	sinkBroadcaster := g.registerWebsocketSink("ws://broadcaster/")
+	sinkConsensus := g.registerWebsocketSink("ws://consensus/")
+	sinkStake := g.registerWebsocketSink("ws://stake/?id=account_id")
 	sinkAccounts := g.registerWebsocketSink("ws://accounts/?id=account_id", "account_id")
-	sinkContracts := g.registerWebsocketSink("ws://contract/?id=contract_id", "")
-	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id&tag=tag", "")
-	sinkMetrics := g.registerWebsocketSink("ws://metrics/", "")
+	sinkContracts := g.registerWebsocketSink("ws://contract/?id=contract_id")
+	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id&tag=tag")
+	sinkMetrics := g.registerWebsocketSink("ws://metrics/")
 
 	log.Set("ws", g)
 
@@ -500,7 +500,7 @@ func (g *Gateway) poll(sink *sink) func(ctx *fasthttp.RequestCtx) {
 	}
 }
 
-func (g *Gateway) registerWebsocketSink(rawURL string, groupKey string) *sink {
+func (g *Gateway) registerWebsocketSink(rawURL string, groupKeys ...string) *sink {
 	u, err := url.Parse(rawURL)
 
 	if err != nil {
@@ -516,13 +516,17 @@ func (g *Gateway) registerWebsocketSink(rawURL string, groupKey string) *sink {
 	}
 
 	sink := &sink{
-		groupKey:  groupKey,
 		filters:   filters,
 		broadcast: make(chan broadcastItem),
 		join:      make(chan *client),
 		leave:     make(chan *client),
 		clients:   make(map[*client]struct{}),
 	}
+
+	if len(groupKeys) > 0 {
+		sink.groupKey = groupKeys[0]
+	}
+
 	go sink.run()
 
 	g.sinks[u.Hostname()] = sink
