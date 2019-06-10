@@ -406,16 +406,7 @@ func (cli *CLI) spawn(cmd []string) {
 		return
 	}
 
-	gasLimit := 0
-
-	var intBuf [8]byte
-	payload := bytes.NewBuffer(nil)
-
-	binary.LittleEndian.PutUint64(intBuf[:], uint64(gasLimit))
-	payload.Write(intBuf[:])
-	payload.Write(code)
-
-	tx := wavelet.NewTransaction(cli.keys, sys.TagContract, payload.Bytes())
+	tx := wavelet.NewTransaction(cli.keys, sys.TagContract, code)
 
 	tx, err = cli.sendTransaction(tx)
 	if err != nil {

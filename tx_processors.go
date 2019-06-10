@@ -165,7 +165,7 @@ func ProcessStakeTransaction(ctx *TransactionContext) error {
 func ProcessContractTransaction(ctx *TransactionContext) error {
 	tx := ctx.Transaction()
 
-	if len(tx.Payload) < 9 {
+	if len(tx.Payload) == 0 {
 		return errors.New("contract: no code specified for contract to be spawned")
 	}
 
@@ -173,22 +173,20 @@ func ProcessContractTransaction(ctx *TransactionContext) error {
 		return errors.New("contract: there already exists a contract spawned with the specified code")
 	}
 
-	gasLimit := binary.LittleEndian.Uint64(tx.Payload[:8])
-
 	balance, _ := ctx.ReadAccountBalance(tx.Creator)
-	if balance < gasLimit {
-		return errors.Errorf("contract: not enough balance, wanting %d PERLs", gasLimit)
+
+	cost := uint64(len(tx.Payload)) / sys.GasTable["wavelet.contract.spawn.cost"]
+
+	if cost < sys.GasTable["wavelet.contract.spawn.min"] {
+		cost = sys.GasTable["wavelet.contract.spawn.min"]
 	}
 
-	executor := NewContractExecutor(tx.ID, ctx).WithGasTable(sys.GasTable)
-
-	vm, err := executor.Init(tx.Payload[8:], gasLimit)
-	if err != nil {
-		return errors.New("contract: code for contract is not valid WebAssembly code")
+	if balance < cost {
+		return errors.Errorf("contract: transaction creator must have %d PERLs to spawn contract, but they only have %d PERLs", cost, balance)
 	}
 
-	ctx.WriteAccountContractCode(tx.ID, tx.Payload[8:])
-	executor.SaveMemorySnapshot(tx.ID, vm.Memory)
+	ctx.WriteAccountContractCode(tx.ID, tx.Payload)
+	ctx.WriteAccountBalance(tx.Creator, balance-cost)
 
 	return nil
 }
