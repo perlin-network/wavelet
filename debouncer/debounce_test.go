@@ -17,11 +17,12 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package wavelet
+package debouncer
 
 import (
 	"context"
 	"github.com/stretchr/testify/assert"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -30,17 +31,15 @@ func TestDebouncerOverfill(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	size := len(Transaction{}.Marshal())
-
-	d := NewTransactionDebouncer(ctx, WithBufferLen(10*size), WithPeriod(1*time.Second))
+	d := NewBatchDebouncer(ctx, func([]interface{}) {}, 1*time.Second, 10)
 
 	for i := 0; i < 10; i++ {
-		d.Push(Transaction{})
+		d.Add(interface{}(nil), 1, "")
 	}
 
 	done := make(chan struct{})
 	go func() {
-		d.Push(Transaction{})
+		d.Add(interface{}(nil), 1, "")
 		close(done)
 	}()
 
@@ -53,19 +52,17 @@ func TestDebouncerOverfill(t *testing.T) {
 
 func TestDebouncerBufferFull(t *testing.T) {
 	called := 0
-	a := func([][]byte) {
+	a := func([]interface{}) {
 		called++
 	}
-
-	size := len(Transaction{}.Marshal())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewTransactionDebouncer(ctx, WithBufferLen(100*size), WithAction(a), WithPeriod(10*time.Millisecond))
+	d := NewBatchDebouncer(ctx, a, 10*time.Millisecond, 100)
 
 	for i := 0; i < 1000; i++ {
-		d.Push(Transaction{})
+		d.Add(interface{}(nil), 1, "")
 	}
 
 	time.Sleep(20 * time.Millisecond)
@@ -77,19 +74,17 @@ func TestDebouncerBufferFull(t *testing.T) {
 
 func TestDebouncerTimer(t *testing.T) {
 	called := 0
-	a := func([][]byte) {
+	a := func([]interface{}) {
 		called++
 	}
-
-	size := len(Transaction{}.Marshal())
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewTransactionDebouncer(ctx, WithBufferLen(1*size), WithAction(a), WithPeriod(1*time.Millisecond))
+	d := NewBatchDebouncer(ctx, a, 1*time.Millisecond, 1)
 
 	for i := 0; i < 100; i++ {
-		d.Push(Transaction{})
+		d.Add(interface{}(nil), 1, "")
 	}
 
 	time.Sleep(4 * time.Millisecond)
@@ -103,9 +98,31 @@ func BenchmarkDebouncer(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewTransactionDebouncer(ctx)
-
+	d := NewBatchDebouncer(ctx, func([]interface{}) {}, 50*time.Millisecond, 16384)
 	for i := 0; i < b.N; i++ {
-		d.Push(Transaction{})
+		d.Add(interface{}(nil), 1, "")
 	}
+}
+
+func TestFuncDebouncer(t *testing.T) {
+	called := 0
+	size := 0
+	action := func(data []interface{}) {
+		size = len(data)
+		called++
+	}
+
+	fd := NewGroupDebouncer(context.TODO(), action, 100*time.Millisecond)
+	var key string
+	for i := 0; i < 10; i++ {
+		if i%5 == 0 {
+			key = strconv.Itoa(i)
+		}
+		fd.Add(interface{}(nil), 1, key)
+	}
+
+	time.Sleep(300 * time.Millisecond)
+
+	assert.Equal(t, 1, called)
+	assert.Equal(t, 2, size)
 }

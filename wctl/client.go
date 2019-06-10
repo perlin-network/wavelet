@@ -27,6 +27,7 @@ import (
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/valyala/fasthttp"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -107,29 +108,28 @@ func (c *Client) Request(path string, method string, body MarshalableJSON) ([]by
 }
 
 // EstablishWS will create a websocket connection.
-func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
+func (c *Client) EstablishWS(path string, query url.Values) (*websocket.Conn, error) {
 	prot := "ws"
 	if c.Config.UseHTTPS {
 		prot = "wss"
 	}
 
-	url := fmt.Sprintf("%s://%s:%d%s", prot, c.Config.APIHost, c.Config.APIPort, path)
+	host := fmt.Sprintf("%s:%d", c.Config.APIHost, c.Config.APIPort)
+	uri := url.URL{Scheme: prot, Host: host, RawQuery: query.Encode(), Path: path}
 	dialer := &websocket.Dialer{
 		HandshakeTimeout: 3 * time.Second,
 	}
 
-	conn, _, err := dialer.Dial(url, nil)
+	conn, _, err := dialer.Dial(uri.String(), nil)
 	return conn, err
 }
 
 func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan []byte, error) {
-	path := fmt.Sprintf("%s", sinkRoute)
-
 	if stop == nil {
 		stop = make(chan struct{})
 	}
 
-	ws, err := c.EstablishWS(path)
+	ws, err := c.EstablishWS(sinkRoute, url.Values{})
 	if err != nil {
 		return nil, err
 	}
@@ -157,16 +157,16 @@ func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan 
 }
 
 func (c *Client) PollAccounts(stop <-chan struct{}, accountID *string) (<-chan []byte, error) {
-	path := fmt.Sprintf("%s", RouteWSAccounts)
+	v := url.Values{}
 	if accountID != nil {
-		path = fmt.Sprintf("%s&id=%s", path, *accountID)
+		v.Set("id", *accountID)
 	}
 
 	if stop == nil {
 		stop = make(chan struct{})
 	}
 
-	ws, err := c.EstablishWS(path)
+	ws, err := c.EstablishWS(RouteWSAccounts, v)
 	if err != nil {
 		return nil, err
 	}
@@ -194,16 +194,16 @@ func (c *Client) PollAccounts(stop <-chan struct{}, accountID *string) (<-chan [
 }
 
 func (c *Client) PollContracts(stop <-chan struct{}, contractID *string) (<-chan []byte, error) {
-	path := fmt.Sprintf("%s", RouteWSContracts)
+	v := url.Values{}
 	if contractID != nil {
-		path = fmt.Sprintf("%sid=%s&", path, *contractID)
+		v.Set("id", *contractID)
 	}
 
 	if stop == nil {
 		stop = make(chan struct{})
 	}
 
-	ws, err := c.EstablishWS(path)
+	ws, err := c.EstablishWS(RouteWSContracts, v)
 	if err != nil {
 		return nil, err
 	}
@@ -231,25 +231,25 @@ func (c *Client) PollContracts(stop <-chan struct{}, contractID *string) (<-chan
 }
 
 func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *string, creatorID *string, tag *byte) (<-chan []byte, error) {
-	path := fmt.Sprintf("%s", RouteWSTransactions)
+	v := url.Values{}
 	if txID != nil {
-		path = fmt.Sprintf("%stx_id=%s&", path, *txID)
+		v.Set("tx_id", *txID)
 	}
 	if senderID != nil {
-		path = fmt.Sprintf("%ssender=%s&", path, *senderID)
+		v.Set("sender", *senderID)
 	}
 	if creatorID != nil {
-		path = fmt.Sprintf("%screator=%s&", path, *creatorID)
+		v.Set("creator", *creatorID)
 	}
 	if tag != nil {
-		path = fmt.Sprintf("%stag=%x&", path, *tag)
+		v.Set("tag", fmt.Sprintf("%x", *tag))
 	}
 
 	if stop == nil {
 		stop = make(chan struct{})
 	}
 
-	ws, err := c.EstablishWS(path)
+	ws, err := c.EstablishWS(RouteWSTransactions, v)
 	if err != nil {
 		return nil, err
 	}

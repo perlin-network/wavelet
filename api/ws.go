@@ -20,7 +20,9 @@
 package api
 
 import (
+	"context"
 	"github.com/fasthttp/websocket"
+	"github.com/perlin-network/wavelet/debouncer"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 	"strconv"
@@ -44,11 +46,12 @@ var upgrader = websocket.FastHTTPUpgrader{
 }
 
 type client struct {
-	sink *sink
-	conn *websocket.Conn
+	sink      *sink
+	debouncer debouncer.IDebouncer
+	conn      *websocket.Conn
 
 	filters map[string]string
-	send    chan []byte
+	sendC   chan []byte
 }
 
 func (c *client) readWorker() {
@@ -76,7 +79,7 @@ func (c *client) writeWorker() {
 
 	for {
 		select {
-		case msg, ok := <-c.send:
+		case msg, ok := <-c.sendC:
 			if !ok {
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
@@ -102,6 +105,23 @@ func (c *client) writeWorker() {
 	}
 }
 
+func (c *client) send(data []interface{}) {
+	for _, msg := range data {
+		t, ok := msg.([]byte)
+		if !ok {
+			continue
+		}
+
+		select {
+		case c.sendC <- t:
+		default:
+			close(c.sendC)
+			delete(c.sink.clients, c)
+			return
+		}
+	}
+}
+
 func (s *sink) serve(ctx *fasthttp.RequestCtx) error {
 	filters := make(map[string]string)
 	values := ctx.QueryArgs()
@@ -112,7 +132,20 @@ func (s *sink) serve(ctx *fasthttp.RequestCtx) error {
 	}
 
 	return upgrader.Upgrade(ctx, func(conn *websocket.Conn) {
-		client := &client{filters: filters, sink: s, conn: conn, send: make(chan []byte, 256)}
+		client := &client{
+			filters: filters,
+			sink:    s,
+			conn:    conn,
+			sendC:   make(chan []byte, 256),
+		}
+
+		ctx := context.TODO()
+		if s.groupKey != "" {
+			client.debouncer = debouncer.NewGroupDebouncer(ctx, client.send, 100*time.Millisecond)
+		} else {
+			client.debouncer = debouncer.NewBatchDebouncer(ctx, client.send, 100*time.Millisecond, 16384)
+		}
+
 		s.join <- client
 
 		go client.readWorker()
@@ -129,8 +162,9 @@ type broadcastItem struct {
 }
 
 type sink struct {
-	clients map[*client]struct{}
-	filters map[string]string
+	groupKey string
+	clients  map[*client]struct{}
+	filters  map[string]string
 
 	broadcast   chan broadcastItem
 	join, leave chan *client
@@ -144,7 +178,7 @@ func (s *sink) run() {
 		case client := <-s.leave:
 			if _, ok := s.clients[client]; ok {
 				delete(s.clients, client)
-				close(client.send)
+				close(client.sendC)
 			}
 		case msg := <-s.broadcast:
 		L:
@@ -157,12 +191,15 @@ func (s *sink) run() {
 					}
 				}
 
-				select {
-				case client.send <- msg.buf:
-				default:
-					close(client.send)
-					delete(s.clients, client)
+				key := ""
+				if s.groupKey != "" {
+					k := msg.value.GetStringBytes(s.groupKey)
+					if k != nil {
+						key = string(k)
+					}
 				}
+
+				client.debouncer.Add(msg.buf, len(msg.buf), key)
 			}
 		}
 	}
