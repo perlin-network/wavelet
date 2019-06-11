@@ -8,6 +8,7 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
+	"github.com/valyala/fastjson"
 	"net/url"
 	"strconv"
 	"testing"
@@ -107,6 +108,18 @@ func TestPollLog(t *testing.T) {
 
 		close(stop)
 
-		assert.Equal(t, 2, len(response))
+		assert.Equal(t, 1, len(response))
+
+		v, err := fastjson.Parse(string(<-response))
+		if !assert.NoError(t, err) {
+			return
+		}
+
+		vals, err := v.Array()
+		if !assert.NoError(t, err) {
+			return
+		}
+
+		assert.Equal(t, 2, len(vals))
 	})
 }

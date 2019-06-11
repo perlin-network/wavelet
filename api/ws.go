@@ -21,6 +21,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/fasthttp/websocket"
 	"github.com/perlin-network/wavelet/debouncer"
 	"github.com/valyala/fasthttp"
@@ -110,12 +111,20 @@ func (c *client) writeWorker() {
 }
 
 func (c *client) send(data [][]byte) {
+	var batch []json.RawMessage
 	for _, msg := range data {
-		select {
-		case c.sendC <- msg:
-		default:
-			return
-		}
+		batch = append(batch, json.RawMessage(msg))
+	}
+
+	b, err := json.Marshal(batch)
+	if err != nil {
+		return
+	}
+
+	select {
+	case c.sendC <- b:
+	default:
+		return
 	}
 }
 
@@ -176,6 +185,7 @@ func (s *sink) run() {
 			if _, ok := s.clients[client]; ok {
 				delete(s.clients, client)
 				close(client.sendC)
+				client.sendC = nil
 			}
 		case msg := <-s.broadcast:
 		L:

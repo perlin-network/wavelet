@@ -538,7 +538,6 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 	var p fastjson.Parser
 
 	v, err := p.ParseBytes(buf)
-
 	if err != nil {
 		return n, errors.Errorf("cannot parse: %q", err)
 	}
