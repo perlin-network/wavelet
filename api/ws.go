@@ -55,19 +55,23 @@ type client struct {
 }
 
 func (c *client) readWorker() {
-	defer func() {
-		c.sink.leave <- c
-		_ = c.conn.Close()
-	}()
 	c.conn.SetReadLimit(maxMessageSize)
 	_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
-	c.conn.SetPongHandler(func(string) error { _ = c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+
+	c.conn.SetPongHandler(func(string) error {
+		_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
 	for {
 		_, _, err := c.conn.ReadMessage()
 		if err != nil {
 			break
 		}
 	}
+
+	c.sink.leave <- c
+	_ = c.conn.Close()
 }
 
 func (c *client) writeWorker() {
@@ -110,8 +114,6 @@ func (c *client) send(data [][]byte) {
 		select {
 		case c.sendC <- msg:
 		default:
-			close(c.sendC)
-			delete(c.sink.clients, c)
 			return
 		}
 	}
