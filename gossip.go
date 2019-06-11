@@ -46,7 +46,7 @@ func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics
 		streams: make(map[string]Wavelet_GossipClient),
 	}
 
-	g.debouncer = debouncer.NewLimiter(ctx, g.Gossip, 50*time.Millisecond, 16384)
+	g.debouncer = debouncer.NewLimiter(ctx, g.Gossip, 2200*time.Millisecond, 1638400)
 
 	return g
 }

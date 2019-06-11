@@ -147,9 +147,9 @@ func (s *sink) serve(ctx *fasthttp.RequestCtx) error {
 
 		ctx := context.TODO()
 		if s.groupKey != "" {
-			client.debouncer = debouncer.NewDeduper(ctx, client.send, 100*time.Millisecond)
+			client.debouncer = debouncer.NewDeduper(ctx, client.send, 2200*time.Millisecond)
 		} else {
-			client.debouncer = debouncer.NewLimiter(ctx, client.send, 100*time.Millisecond, 16384)
+			client.debouncer = debouncer.NewLimiter(ctx, client.send, 2200*time.Millisecond, 1638400)
 		}
 
 		s.join <- client
