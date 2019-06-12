@@ -20,7 +20,6 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"github.com/fasthttp/websocket"
 	"github.com/perlin-network/wavelet/debouncer"
@@ -145,12 +144,7 @@ func (s *sink) serve(ctx *fasthttp.RequestCtx) error {
 			sendC:   make(chan []byte, 256),
 		}
 
-		ctx := context.TODO()
-		if s.groupKey != "" {
-			client.debouncer = debouncer.NewDeduper(ctx, client.send, 2200*time.Millisecond)
-		} else {
-			client.debouncer = debouncer.NewLimiter(ctx, client.send, 2200*time.Millisecond, 1638400)
-		}
+		client.debouncer = s.debounceFactory(debouncer.WithAction(client.send), debouncer.WithPeriod(2200*time.Millisecond), debouncer.WithBufferLimit(1638400))
 
 		s.join <- client
 
@@ -168,9 +162,10 @@ type broadcastItem struct {
 }
 
 type sink struct {
-	groupKey string
-	clients  map[*client]struct{}
-	filters  map[string]string
+	debounceFactory debouncer.DebounceFactory
+	clients         map[*client]struct{}
+	filters         map[string]string
+	groupKey        string
 
 	broadcast   chan broadcastItem
 	join, leave chan *client
@@ -206,7 +201,7 @@ func (s *sink) run() {
 					}
 				}
 
-				client.debouncer.Add(msg.buf, len(msg.buf), key)
+				client.debouncer.Add(debouncer.WithPayload(msg.buf), debouncer.WithGroupKey(key))
 			}
 		}
 	}

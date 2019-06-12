@@ -20,11 +20,13 @@
 package api
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/debouncer"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
@@ -67,15 +69,16 @@ func New() *Gateway {
 
 func (g *Gateway) setup() {
 	// Setup websocket logging sinks.
+	ctx := context.Background()
 
-	sinkNetwork := g.registerWebsocketSink("ws://network/")
-	sinkBroadcaster := g.registerWebsocketSink("ws://broadcaster/")
-	sinkConsensus := g.registerWebsocketSink("ws://consensus/")
-	sinkStake := g.registerWebsocketSink("ws://stake/?id=account_id")
-	sinkAccounts := g.registerWebsocketSink("ws://accounts/?id=account_id", "account_id")
-	sinkContracts := g.registerWebsocketSink("ws://contract/?id=contract_id")
-	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id&tag=tag")
-	sinkMetrics := g.registerWebsocketSink("ws://metrics/")
+	sinkNetwork := g.registerWebsocketSink("ws://network/", debouncer.MakeFactory(ctx, debouncer.LIMITER))
+	sinkBroadcaster := g.registerWebsocketSink("ws://broadcaster/", debouncer.MakeFactory(ctx, debouncer.LIMITER))
+	sinkConsensus := g.registerWebsocketSink("ws://consensus/", debouncer.MakeFactory(ctx, debouncer.LIMITER))
+	sinkStake := g.registerWebsocketSink("ws://stake/?id=account_id", debouncer.MakeFactory(ctx, debouncer.LIMITER))
+	sinkAccounts := g.registerWebsocketSink("ws://accounts/?id=account_id", debouncer.MakeFactory(ctx, debouncer.DEDUPER, debouncer.WithPeriod(100 * time.Millisecond)), "account_id")
+	sinkContracts := g.registerWebsocketSink("ws://contract/?id=contract_id", debouncer.MakeFactory(ctx, debouncer.LIMITER))
+	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id&tag=tag", debouncer.MakeFactory(ctx, debouncer.LIMITER))
+	sinkMetrics := g.registerWebsocketSink("ws://metrics/", debouncer.MakeFactory(ctx, debouncer.LIMITER, debouncer.WithPeriod(1*time.Second)))
 
 	log.Set("ws", g)
 
@@ -500,7 +503,7 @@ func (g *Gateway) poll(sink *sink) func(ctx *fasthttp.RequestCtx) {
 	}
 }
 
-func (g *Gateway) registerWebsocketSink(rawURL string, groupKeys ...string) *sink {
+func (g *Gateway) registerWebsocketSink(rawURL string, debounceFactory debouncer.DebounceFactory, groupKeys ...string) *sink {
 	u, err := url.Parse(rawURL)
 
 	if err != nil {
@@ -516,11 +519,12 @@ func (g *Gateway) registerWebsocketSink(rawURL string, groupKeys ...string) *sin
 	}
 
 	sink := &sink{
-		filters:   filters,
-		broadcast: make(chan broadcastItem),
-		join:      make(chan *client),
-		leave:     make(chan *client),
-		clients:   make(map[*client]struct{}),
+		filters:         filters,
+		broadcast:       make(chan broadcastItem),
+		join:            make(chan *client),
+		leave:           make(chan *client),
+		clients:         make(map[*client]struct{}),
+		debounceFactory: debounceFactory,
 	}
 
 	if len(groupKeys) > 0 {

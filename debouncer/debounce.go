@@ -26,30 +26,141 @@ import (
 )
 
 type Debouncer interface {
-	Add([]byte, int, string)
+	Add(...DebounceOptionSetter)
 }
 
+const (
+	DUMMY int = iota
+	LIMITER
+	DEDUPER
+)
+
 var (
+	_ Debouncer = (*Dummy)(nil)
 	_ Debouncer = (*Deduper)(nil)
 	_ Debouncer = (*Limiter)(nil)
 )
 
+type config struct {
+	action      func([][]byte)
+	period      time.Duration
+	bufferLimit int
+}
+
+type ConfigSetter func(cfg *config)
+
+func gatherConfig(css []ConfigSetter) *config {
+	cfg := &config{
+		action:      func([][]byte) {},
+		period:      50 * time.Millisecond,
+		bufferLimit: 16384,
+	}
+
+	for _, cs := range css {
+		cs(cfg)
+	}
+
+	return cfg
+}
+
+func WithAction(action func([][]byte)) ConfigSetter {
+	return func(cfg *config) {
+		cfg.action = action
+	}
+}
+
+func WithPeriod(period time.Duration) ConfigSetter {
+	return func(cfg *config) {
+		cfg.period = period
+	}
+}
+
+func WithBufferLimit(limit int) ConfigSetter {
+	return func(cfg *config) {
+		cfg.bufferLimit = limit
+	}
+}
+
+type options struct {
+	payload  []byte
+	groupKey string
+}
+
+type DebounceOptionSetter func(o *options)
+
+func gatherOptions(oss []DebounceOptionSetter) *options {
+	o := &options{
+		payload: make([]byte, 1),
+	}
+
+	for _, os := range oss {
+		os(o)
+	}
+
+	return o
+}
+
+func WithPayload(p []byte) DebounceOptionSetter {
+	return func(o *options) {
+		o.payload = p
+	}
+}
+
+func WithGroupKey(k string) DebounceOptionSetter {
+	return func(o *options) {
+		o.groupKey = k
+	}
+}
+
+type DebounceFactory func(css ...ConfigSetter) Debouncer
+
+func MakeFactory(ctx context.Context, debounceType int, factorySetters ...ConfigSetter) DebounceFactory {
+	return func(css ...ConfigSetter) Debouncer {
+		css = append(css, factorySetters...)
+
+		switch debounceType {
+		case DEDUPER:
+			return NewDeduper(ctx, css...)
+		case LIMITER:
+			return NewLimiter(ctx, css...)
+		case DUMMY:
+			fallthrough
+		default:
+			return NewDummy(css...)
+		}
+	}
+}
+
+type Dummy struct {
+	config
+}
+
+func NewDummy(css ...ConfigSetter) Debouncer {
+	cfg := gatherConfig(css)
+	return &Dummy{*cfg}
+}
+
+func (d *Dummy) Add(oss ...DebounceOptionSetter) {
+	o := gatherOptions(oss)
+
+	if d.action != nil {
+		d.action([][]byte{o.payload})
+	}
+}
+
 type Deduper struct {
 	sync.Mutex
-	action func([][]byte)
+	config
 
 	payload map[string][]byte
 	timer   *time.Timer
-	period  time.Duration
 }
 
-func NewDeduper(ctx context.Context, action func([][]byte), period time.Duration) *Deduper {
-	d := &Deduper{
-		action:  action,
-		period:  period,
-		timer:   time.NewTimer(period),
-		payload: make(map[string][]byte),
-	}
+func NewDeduper(ctx context.Context, css ...ConfigSetter) *Deduper {
+	cfg := gatherConfig(css)
+	d := &Deduper{config: *cfg}
+	d.payload = make(map[string][]byte)
+	d.timer = time.NewTimer(d.period)
 	d.timer.Stop()
 
 	go func() {
@@ -72,34 +183,28 @@ func NewDeduper(ctx context.Context, action func([][]byte), period time.Duration
 	return d
 }
 
-func (d *Deduper) Add(payload []byte, _ int, key string) {
+func (d *Deduper) Add(oss ...DebounceOptionSetter) {
+	o := gatherOptions(oss)
+
 	d.Lock()
-	d.payload[key] = payload
+	d.payload[o.groupKey] = o.payload
 	d.timer.Reset(d.period)
 	d.Unlock()
 }
 
 type Limiter struct {
 	sync.Mutex
+	config
 
-	action func([][]byte)
-
-	timer  *time.Timer
-	period time.Duration
-
+	timer        *time.Timer
 	buffer       [][]byte
 	bufferOffset int
-	bufferLimit  int
 }
 
-func NewLimiter(ctx context.Context, action func([][]byte), period time.Duration, limit int) *Limiter {
-	d := &Limiter{
-		action:      action,
-		period:      period,
-		bufferLimit: limit,
-		timer:       time.NewTimer(period),
-	}
-
+func NewLimiter(ctx context.Context, css ...ConfigSetter) *Limiter {
+	cfg := gatherConfig(css)
+	d := &Limiter{config: *cfg}
+	d.timer = time.NewTimer(d.period)
 	d.timer.Stop()
 
 	go func() {
@@ -122,7 +227,9 @@ func NewLimiter(ctx context.Context, action func([][]byte), period time.Duration
 	return d
 }
 
-func (d *Limiter) Add(payload []byte, size int, _ string) {
+func (d *Limiter) Add(oss ...DebounceOptionSetter) {
+	o := gatherOptions(oss)
+
 	d.Lock()
 	if d.bufferOffset >= d.bufferLimit {
 		d.action(d.buffer)
@@ -132,8 +239,8 @@ func (d *Limiter) Add(payload []byte, size int, _ string) {
 
 	d.timer.Reset(d.period)
 
-	d.buffer = append(d.buffer, payload)
-	d.bufferOffset += size
+	d.buffer = append(d.buffer, o.payload)
+	d.bufferOffset += len(o.payload)
 
 	d.Unlock()
 }

@@ -46,14 +46,19 @@ func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics
 		streams: make(map[string]Wavelet_GossipClient),
 	}
 
-	g.debouncer = debouncer.NewLimiter(ctx, g.Gossip, 2200*time.Millisecond, 1638400)
+	g.debouncer = debouncer.NewLimiter(
+		ctx,
+		debouncer.WithAction(g.Gossip),
+		debouncer.WithPeriod(2200*time.Millisecond),
+		debouncer.WithBufferLimit(1638400),
+	)
 
 	return g
 }
 
 func (g *Gossiper) Push(tx Transaction) {
 	data := tx.Marshal()
-	g.debouncer.Add(data, len(data), "")
+	g.debouncer.Add(debouncer.WithPayload(data))
 
 	if g.metrics != nil {
 		g.metrics.gossipedTX.Mark(int64(tx.LogicalUnits()))

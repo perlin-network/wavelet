@@ -62,7 +62,7 @@ func TestPollLog(t *testing.T) {
 
 		logger.Log().Uint8("tag", sys.TagStake).Msg("")
 
-		time.Sleep(150 * time.Millisecond)
+		time.Sleep(2500 * time.Millisecond)
 
 		close(stop)
 
@@ -78,6 +78,7 @@ func TestPollLog(t *testing.T) {
 
 		response := make(chan []byte, 10)
 		stop := make(chan struct{})
+
 		go func() {
 			for {
 				select {
@@ -105,10 +106,11 @@ func TestPollLog(t *testing.T) {
 		}
 
 		time.Sleep(200 * time.Millisecond)
-
 		close(stop)
 
-		assert.Equal(t, 1, len(response))
+		if !assert.Equal(t, 1, len(response)) {
+			return
+		}
 
 		v, err := fastjson.Parse(string(<-response))
 		if !assert.NoError(t, err) {
