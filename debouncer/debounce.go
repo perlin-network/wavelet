@@ -44,10 +44,11 @@ var (
 )
 
 type config struct {
-	batchAction  func([][]byte)
-	singleAction func([]byte)
-	period       time.Duration
-	bufferLimit  int
+	batchAction     func([][]byte)
+	singleAction    func([]byte)
+	period          time.Duration
+	bufferLimit     int
+	useSingleAction bool
 }
 
 type ConfigSetter func(cfg *config)
@@ -224,7 +225,13 @@ func NewDeduper(ctx context.Context, css ...ConfigSetter) *Deduper {
 				for _, v := range d.payload {
 					payload = append(payload, v)
 				}
-				d.batchAction(payload)
+
+				if d.useSingleAction && len(payload) == 1 {
+					d.singleAction(payload[0])
+				} else {
+					d.batchAction(payload)
+				}
+
 				d.Unlock()
 			}
 		}
@@ -265,7 +272,12 @@ func NewLimiter(ctx context.Context, css ...ConfigSetter) *Limiter {
 			case <-d.timer.C:
 				d.Lock()
 				if d.bufferOffset > 0 {
-					d.batchAction(d.buffer)
+					if d.useSingleAction && len(d.buffer) == 1 {
+						d.singleAction(d.buffer[0])
+					} else {
+						d.batchAction(d.buffer)
+					}
+
 					d.buffer = d.buffer[:0]
 					d.bufferOffset = 0
 				}
