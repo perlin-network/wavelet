@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-func TestDebouncerOverfill(t *testing.T) {
+func TestLimiterOverfill(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -50,7 +50,7 @@ func TestDebouncerOverfill(t *testing.T) {
 	}
 }
 
-func TestDebouncerBufferFull(t *testing.T) {
+func TestLimiterBufferFull(t *testing.T) {
 	called := 0
 	a := func([][]byte) {
 		called++
@@ -59,7 +59,7 @@ func TestDebouncerBufferFull(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewLimiter(ctx, WithAction(a), WithPeriod(10*time.Millisecond), WithBufferLimit(100))
+	d := NewLimiter(ctx, WithBatchAction(a), WithPeriod(10*time.Millisecond), WithBufferLimit(100))
 
 	for i := 0; i < 1000; i++ {
 		d.Add()
@@ -72,7 +72,7 @@ func TestDebouncerBufferFull(t *testing.T) {
 	assert.Equal(t, 10, called)
 }
 
-func TestDebouncerTimer(t *testing.T) {
+func TestLimiterTimer(t *testing.T) {
 	called := 0
 	a := func([][]byte) {
 		called++
@@ -81,7 +81,7 @@ func TestDebouncerTimer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewLimiter(ctx, WithAction(a), WithPeriod(1*time.Millisecond), WithBufferLimit(1))
+	d := NewLimiter(ctx, WithBatchAction(a), WithPeriod(1*time.Millisecond), WithBufferLimit(1))
 
 	for i := 0; i < 100; i++ {
 		d.Add()
@@ -94,7 +94,7 @@ func TestDebouncerTimer(t *testing.T) {
 	assert.Equal(t, 100, called)
 }
 
-func BenchmarkDebouncer(b *testing.B) {
+func BenchmarkLimiter(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -104,7 +104,7 @@ func BenchmarkDebouncer(b *testing.B) {
 	}
 }
 
-func TestFuncDebouncer(t *testing.T) {
+func TestDeduper(t *testing.T) {
 	called := 0
 	size := 0
 	action := func(data [][]byte) {
@@ -112,7 +112,7 @@ func TestFuncDebouncer(t *testing.T) {
 		called++
 	}
 
-	fd := NewDeduper(context.TODO(), WithAction(action), WithPeriod(100*time.Millisecond))
+	fd := NewDeduper(context.TODO(), WithBatchAction(action), WithPeriod(100*time.Millisecond))
 	var key string
 	for i := 0; i < 10; i++ {
 		if i%5 == 0 {
@@ -122,8 +122,28 @@ func TestFuncDebouncer(t *testing.T) {
 		fd.Add(WithGroupKey(key))
 	}
 
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	assert.Equal(t, 1, called)
 	assert.Equal(t, 2, size)
+}
+
+func TestSingle(t *testing.T) {
+	called := 0
+	var payload []byte
+	action := func(data []byte) {
+		called++
+		payload = data
+	}
+
+	fd := NewSingle(context.TODO(), WithSingleAction(action), WithPeriod(100*time.Millisecond))
+	var key string
+	for i := 0; i < 10; i++ {
+		fd.Add(WithPayload([]byte(strconv.Itoa(i))), WithGroupKey(key))
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	assert.Equal(t, 1, called)
+	assert.Equal(t, []byte("9"), payload)
 }

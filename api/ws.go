@@ -109,7 +109,15 @@ func (c *client) writeWorker() {
 	}
 }
 
-func (c *client) send(data [][]byte) {
+func (c *client) send(data []byte) {
+	select {
+	case c.sendC <- data:
+	default:
+		return
+	}
+}
+
+func (c *client) sendBatch(data [][]byte) {
 	var batch []json.RawMessage
 	for _, msg := range data {
 		batch = append(batch, json.RawMessage(msg))
@@ -120,11 +128,7 @@ func (c *client) send(data [][]byte) {
 		return
 	}
 
-	select {
-	case c.sendC <- b:
-	default:
-		return
-	}
+	c.send(b)
 }
 
 func (s *sink) serve(ctx *fasthttp.RequestCtx) error {
@@ -144,7 +148,12 @@ func (s *sink) serve(ctx *fasthttp.RequestCtx) error {
 			sendC:   make(chan []byte, 256),
 		}
 
-		client.debouncer = s.debounceFactory(debouncer.WithAction(client.send), debouncer.WithPeriod(2200*time.Millisecond), debouncer.WithBufferLimit(1638400))
+		client.debouncer = s.debounceFactory(
+			debouncer.WithSingleAction(client.send),
+			debouncer.WithBatchAction(client.sendBatch),
+			debouncer.WithPeriod(2200*time.Millisecond),
+			debouncer.WithBufferLimit(1638400),
+		)
 
 		s.join <- client
 

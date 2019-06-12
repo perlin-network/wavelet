@@ -212,13 +212,6 @@ func commandRemote(c *cli.Context) error {
 				continue
 			}
 
-			logs, err := v.Array()
-			if err != nil || len(logs) == 0 {
-				continue
-			}
-
-			v = logs[len(logs)-1]
-
 			log.Info().
 				Float64("accepted_tps", v.GetFloat64("tps.accepted")).
 				Float64("received_tps", v.GetFloat64("tps.received")).

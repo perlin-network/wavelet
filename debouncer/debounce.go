@@ -33,25 +33,28 @@ const (
 	DUMMY int = iota
 	LIMITER
 	DEDUPER
+	SINGLE
 )
 
 var (
 	_ Debouncer = (*Dummy)(nil)
 	_ Debouncer = (*Deduper)(nil)
 	_ Debouncer = (*Limiter)(nil)
+	_ Debouncer = (*Single)(nil)
 )
 
 type config struct {
-	action      func([][]byte)
-	period      time.Duration
-	bufferLimit int
+	batchAction  func([][]byte)
+	singleAction func([]byte)
+	period       time.Duration
+	bufferLimit  int
 }
 
 type ConfigSetter func(cfg *config)
 
 func gatherConfig(css []ConfigSetter) *config {
 	cfg := &config{
-		action:      func([][]byte) {},
+		batchAction: func([][]byte) {},
 		period:      50 * time.Millisecond,
 		bufferLimit: 16384,
 	}
@@ -63,9 +66,15 @@ func gatherConfig(css []ConfigSetter) *config {
 	return cfg
 }
 
-func WithAction(action func([][]byte)) ConfigSetter {
+func WithBatchAction(action func([][]byte)) ConfigSetter {
 	return func(cfg *config) {
-		cfg.action = action
+		cfg.batchAction = action
+	}
+}
+
+func WithSingleAction(action func([]byte)) ConfigSetter {
+	return func(cfg *config) {
+		cfg.singleAction = action
 	}
 }
 
@@ -123,6 +132,8 @@ func MakeFactory(ctx context.Context, debounceType int, factorySetters ...Config
 			return NewDeduper(ctx, css...)
 		case LIMITER:
 			return NewLimiter(ctx, css...)
+		case SINGLE:
+			return NewSingle(ctx, css...)
 		case DUMMY:
 			fallthrough
 		default:
@@ -143,9 +154,48 @@ func NewDummy(css ...ConfigSetter) Debouncer {
 func (d *Dummy) Add(oss ...DebounceOptionSetter) {
 	o := gatherOptions(oss)
 
-	if d.action != nil {
-		d.action([][]byte{o.payload})
+	if d.batchAction != nil {
+		d.batchAction([][]byte{o.payload})
 	}
+}
+
+type Single struct {
+	sync.Mutex
+	config
+
+	payload []byte
+	timer   *time.Timer
+}
+
+func NewSingle(ctx context.Context, css ...ConfigSetter) *Single {
+	cfg := gatherConfig(css)
+	d := &Single{config: *cfg}
+	d.timer = time.NewTimer(d.period)
+	d.timer.Stop()
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-d.timer.C:
+				d.Lock()
+				d.singleAction(d.payload)
+				d.Unlock()
+			}
+		}
+	}()
+
+	return d
+}
+
+func (d *Single) Add(oss ...DebounceOptionSetter) {
+	o := gatherOptions(oss)
+
+	d.Lock()
+	d.payload = o.payload
+	d.timer.Reset(d.period)
+	d.Unlock()
 }
 
 type Deduper struct {
@@ -174,7 +224,7 @@ func NewDeduper(ctx context.Context, css ...ConfigSetter) *Deduper {
 				for _, v := range d.payload {
 					payload = append(payload, v)
 				}
-				d.action(payload)
+				d.batchAction(payload)
 				d.Unlock()
 			}
 		}
@@ -215,7 +265,7 @@ func NewLimiter(ctx context.Context, css ...ConfigSetter) *Limiter {
 			case <-d.timer.C:
 				d.Lock()
 				if d.bufferOffset > 0 {
-					d.action(d.buffer)
+					d.batchAction(d.buffer)
 					d.buffer = d.buffer[:0]
 					d.bufferOffset = 0
 				}
@@ -232,7 +282,7 @@ func (d *Limiter) Add(oss ...DebounceOptionSetter) {
 
 	d.Lock()
 	if d.bufferOffset >= d.bufferLimit {
-		d.action(d.buffer)
+		d.batchAction(d.buffer)
 		d.buffer = d.buffer[:0]
 		d.bufferOffset = 0
 	}

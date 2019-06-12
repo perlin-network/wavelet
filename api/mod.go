@@ -75,10 +75,10 @@ func (g *Gateway) setup() {
 	sinkBroadcaster := g.registerWebsocketSink("ws://broadcaster/", debouncer.MakeFactory(ctx, debouncer.LIMITER))
 	sinkConsensus := g.registerWebsocketSink("ws://consensus/", debouncer.MakeFactory(ctx, debouncer.LIMITER))
 	sinkStake := g.registerWebsocketSink("ws://stake/?id=account_id", debouncer.MakeFactory(ctx, debouncer.LIMITER))
-	sinkAccounts := g.registerWebsocketSink("ws://accounts/?id=account_id", debouncer.MakeFactory(ctx, debouncer.DEDUPER, debouncer.WithPeriod(100 * time.Millisecond)), "account_id")
+	sinkAccounts := g.registerWebsocketSink("ws://accounts/?id=account_id", debouncer.MakeFactory(ctx, debouncer.DEDUPER, debouncer.WithPeriod(100*time.Millisecond)), "account_id")
 	sinkContracts := g.registerWebsocketSink("ws://contract/?id=contract_id", debouncer.MakeFactory(ctx, debouncer.LIMITER))
 	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id&tag=tag", debouncer.MakeFactory(ctx, debouncer.LIMITER))
-	sinkMetrics := g.registerWebsocketSink("ws://metrics/", debouncer.MakeFactory(ctx, debouncer.LIMITER, debouncer.WithPeriod(1*time.Second)))
+	sinkMetrics := g.registerWebsocketSink("ws://metrics/", debouncer.MakeFactory(ctx, debouncer.SINGLE, debouncer.WithPeriod(1*time.Second)))
 
 	log.Set("ws", g)
 
