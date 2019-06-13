@@ -119,7 +119,7 @@ func TestDeduper(t *testing.T) {
 			key = strconv.Itoa(i)
 		}
 
-		fd.Add(WithGroupKey(key))
+		fd.Add(WithGroupKeys(key))
 	}
 
 	time.Sleep(200 * time.Millisecond)
@@ -139,7 +139,7 @@ func TestSingle(t *testing.T) {
 	fd := NewSingle(context.TODO(), WithSingleAction(action), WithPeriod(100*time.Millisecond))
 	var key string
 	for i := 0; i < 10; i++ {
-		fd.Add(WithPayload([]byte(strconv.Itoa(i))), WithGroupKey(key))
+		fd.Add(WithPayload([]byte(strconv.Itoa(i))), WithGroupKeys(key))
 	}
 
 	time.Sleep(200 * time.Millisecond)

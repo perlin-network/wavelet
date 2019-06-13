@@ -525,10 +525,7 @@ func (g *Gateway) registerWebsocketSink(rawURL string, debounceFactory debouncer
 		leave:           make(chan *client),
 		clients:         make(map[*client]struct{}),
 		debounceFactory: debounceFactory,
-	}
-
-	if len(groupKeys) > 0 {
-		sink.groupKey = groupKeys[0]
+		groupKeys:       groupKeys,
 	}
 
 	go sink.run()

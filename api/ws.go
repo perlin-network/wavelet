@@ -174,7 +174,7 @@ type sink struct {
 	debounceFactory debouncer.DebounceFactory
 	clients         map[*client]struct{}
 	filters         map[string]string
-	groupKey        string
+	groupKeys       []string
 
 	broadcast   chan broadcastItem
 	join, leave chan *client
@@ -202,15 +202,15 @@ func (s *sink) run() {
 					}
 				}
 
-				key := ""
-				if s.groupKey != "" {
-					k := msg.value.GetStringBytes(s.groupKey)
+				keys := make([]string, 0, len(s.groupKeys))
+				for _, groupKey := range s.groupKeys {
+					k := msg.value.GetStringBytes(groupKey)
 					if k != nil {
-						key = string(k)
+						keys = append(keys, string(k))
 					}
 				}
 
-				client.debouncer.Add(debouncer.WithPayload(msg.buf), debouncer.WithGroupKey(key))
+				client.debouncer.Add(debouncer.WithPayload(msg.buf), debouncer.WithGroupKeys(keys...))
 			}
 		}
 	}

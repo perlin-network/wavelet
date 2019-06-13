@@ -92,8 +92,8 @@ func WithBufferLimit(limit int) ConfigSetter {
 }
 
 type options struct {
-	payload  []byte
-	groupKey string
+	payload   []byte
+	groupKeys []string
 }
 
 type DebounceOptionSetter func(o *options)
@@ -116,9 +116,9 @@ func WithPayload(p []byte) DebounceOptionSetter {
 	}
 }
 
-func WithGroupKey(k string) DebounceOptionSetter {
+func WithGroupKeys(keys ...string) DebounceOptionSetter {
 	return func(o *options) {
-		o.groupKey = k
+		o.groupKeys = keys
 	}
 }
 
@@ -244,7 +244,12 @@ func (d *Deduper) Add(oss ...DebounceOptionSetter) {
 	o := gatherOptions(oss)
 
 	d.Lock()
-	d.payload[o.groupKey] = o.payload
+	k := ""
+	for _, key := range o.groupKeys {
+		k += key
+	}
+
+	d.payload[k] = o.payload
 	d.timer.Reset(d.period)
 	d.Unlock()
 }
