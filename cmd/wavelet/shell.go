@@ -406,7 +406,19 @@ func (cli *CLI) spawn(cmd []string) {
 		return
 	}
 
-	tx := wavelet.NewTransaction(cli.keys, sys.TagContract, code)
+	var buf [8]byte
+
+	w := bytes.NewBuffer(nil)
+
+	binary.LittleEndian.PutUint64(buf[:], 1000000) // Gas fee.
+	w.Write(buf[:])
+
+	binary.LittleEndian.PutUint64(buf[:], 0) // Payload size.
+	w.Write(buf[:])
+
+	w.Write(code) // Smart contract code.
+
+	tx := wavelet.NewTransaction(cli.keys, sys.TagContract, w.Bytes())
 
 	tx, err = cli.sendTransaction(tx)
 	if err != nil {

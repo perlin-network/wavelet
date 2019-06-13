@@ -26,6 +26,7 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"io"
+	"io/ioutil"
 )
 
 func ProcessNopTransaction(_ *TransactionContext) error {
@@ -106,9 +107,9 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 			}
 		}
 
-		_, gas, err = executor.Run(amount, gasLimit, string(funcName), funcParams...)
+		gas, err = executor.Run(amount, gasLimit, string(funcName), funcParams...)
 	} else {
-		_, gas, err = executor.Run(amount, gasLimit, "on_money_received")
+		gas, err = executor.Run(amount, gasLimit, "on_money_received")
 	}
 
 	if err != nil && errors.Cause(err) != ErrContractFunctionNotFound {
@@ -165,28 +166,60 @@ func ProcessStakeTransaction(ctx *TransactionContext) error {
 func ProcessContractTransaction(ctx *TransactionContext) error {
 	tx := ctx.Transaction()
 
-	if len(tx.Payload) == 0 {
-		return errors.New("contract: no code specified for contract to be spawned")
-	}
-
 	if _, exists := ctx.ReadAccountContractCode(tx.ID); exists {
 		return errors.New("contract: there already exists a contract spawned with the specified code")
 	}
 
+	r := bytes.NewReader(tx.Payload)
+
+	var buf [8]byte
+
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		return errors.Wrap(err, "contract: failed to read gas limit from payload")
+	}
+
+	gasLimit := binary.LittleEndian.Uint64(buf[:])
+
+	if gasLimit == 0 {
+		return errors.New("contract: gas limit greater than zero must be specified for spawning a smart contract")
+	}
+
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		return errors.Wrap(err, "contract: failed to read input parameters length")
+	}
+
+	payload := make([]byte, binary.LittleEndian.Uint64(buf[:]))
+
+	if _, err := io.ReadFull(r, payload[:]); err != nil {
+		return errors.Wrap(err, "contract: failed to read input parameters")
+	}
+
+	code, err := ioutil.ReadAll(r)
+	if err != nil {
+		return errors.Wrap(err, "contract: failed to read contract code")
+	}
+
 	balance, _ := ctx.ReadAccountBalance(tx.Creator)
 
-	cost := uint64(len(tx.Payload)) / sys.GasTable["wavelet.contract.spawn.cost"]
+	storagePrice := uint64(len(tx.Payload)) / sys.GasTable["wavelet.contract.spawn.cost"]
 
-	if cost < sys.GasTable["wavelet.contract.spawn.min"] {
-		cost = sys.GasTable["wavelet.contract.spawn.min"]
+	if storagePrice < sys.GasTable["wavelet.contract.spawn.min"] {
+		storagePrice = sys.GasTable["wavelet.contract.spawn.min"]
 	}
 
-	if balance < cost {
-		return errors.Errorf("contract: transaction creator must have %d PERLs to spawn contract, but they only have %d PERLs", cost, balance)
+	if balance < storagePrice+gasLimit {
+		return errors.Errorf("contract: transaction creator must have %d PERLs to spawn contract, but they only have %d PERLs", storagePrice, balance)
 	}
 
-	ctx.WriteAccountContractCode(tx.ID, tx.Payload)
-	ctx.WriteAccountBalance(tx.Creator, balance-cost)
+	gas, err := NewContractExecutor(tx.ID, ctx).WithGasTable(sys.GasTable).EnableLogging().Spawn(code, payload, gasLimit)
+
+	ctx.WriteAccountBalance(tx.Creator, balance-storagePrice-gas)
+
+	if err != nil {
+		return errors.Wrap(err, "contract: failed to init smart contract")
+	}
+
+	ctx.WriteAccountContractCode(tx.ID, code)
 
 	return nil
 }
