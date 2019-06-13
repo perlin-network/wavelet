@@ -169,10 +169,21 @@ func (s *sink) run() {
 }
 
 func (s *sink) send(buf []byte) {
+	o, err := fastjson.ParseBytes(buf)
+	if err != nil {
+		return
+	}
+
 SENDING:
 	for c := range s.clients {
 		for key, condition := range c.filters {
-			if fastjson.GetString(buf, key) != condition {
+			val := o.Get(key)
+
+			if val == nil {
+				continue SENDING
+			}
+
+			if !fastjsonEquals(val, condition) {
 				continue SENDING
 			}
 		}
