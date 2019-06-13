@@ -17,10 +17,12 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package debouncer
+package debounce
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"strconv"
 	"testing"
@@ -59,10 +61,15 @@ func TestLimiterBufferFull(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewLimiter(ctx, WithBatchAction(a), WithPeriod(10*time.Millisecond), WithBufferLimit(100))
+	d := NewLimiter(ctx, WithAction(a), WithPeriod(10*time.Millisecond), WithBufferLimit(100))
 
 	for i := 0; i < 1000; i++ {
-		d.Add()
+		var msg [1]byte
+
+		_, err := rand.Read(msg[:])
+		assert.NoError(t, err)
+
+		d.Add(Bytes(msg[:]))
 	}
 
 	time.Sleep(20 * time.Millisecond)
@@ -81,10 +88,10 @@ func TestLimiterTimer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewLimiter(ctx, WithBatchAction(a), WithPeriod(1*time.Millisecond), WithBufferLimit(1))
+	d := NewLimiter(ctx, WithAction(a), WithPeriod(1*time.Millisecond), WithBufferLimit(1))
 
 	for i := 0; i < 100; i++ {
-		d.Add()
+		d.Add(Bytes([]byte{0x00, 0x01, 0x02}))
 	}
 
 	time.Sleep(4 * time.Millisecond)
@@ -112,38 +119,18 @@ func TestDeduper(t *testing.T) {
 		called++
 	}
 
-	fd := NewDeduper(context.TODO(), WithBatchAction(action), WithPeriod(100*time.Millisecond))
+	fd := NewDeduper(context.TODO(), WithAction(action), WithPeriod(100*time.Millisecond), WithKeys("test"))
 	var key string
 	for i := 0; i < 10; i++ {
 		if i%5 == 0 {
 			key = strconv.Itoa(i)
 		}
 
-		fd.Add(WithGroupKeys(key))
+		fd.Add(Bytes([]byte(fmt.Sprintf(`{"test": "%s"}`, key))))
 	}
 
 	time.Sleep(200 * time.Millisecond)
 
 	assert.Equal(t, 1, called)
 	assert.Equal(t, 2, size)
-}
-
-func TestSingle(t *testing.T) {
-	called := 0
-	var payload []byte
-	action := func(data []byte) {
-		called++
-		payload = data
-	}
-
-	fd := NewSingle(context.TODO(), WithSingleAction(action), WithPeriod(100*time.Millisecond))
-	var key string
-	for i := 0; i < 10; i++ {
-		fd.Add(WithPayload([]byte(strconv.Itoa(i))), WithGroupKeys(key))
-	}
-
-	time.Sleep(200 * time.Millisecond)
-
-	assert.Equal(t, 1, called)
-	assert.Equal(t, []byte("9"), payload)
 }

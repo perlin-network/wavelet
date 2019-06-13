@@ -22,7 +22,7 @@ package wavelet
 import (
 	"context"
 	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/wavelet/debouncer"
+	"github.com/perlin-network/wavelet/debounce"
 	"github.com/perlin-network/wavelet/log"
 	"sync"
 	"time"
@@ -35,7 +35,7 @@ type Gossiper struct {
 	streams     map[string]Wavelet_GossipClient
 	streamsLock sync.Mutex
 
-	debouncer *debouncer.Limiter
+	debouncer *debounce.Limiter
 }
 
 func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics) *Gossiper {
@@ -46,19 +46,18 @@ func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics
 		streams: make(map[string]Wavelet_GossipClient),
 	}
 
-	g.debouncer = debouncer.NewLimiter(
+	g.debouncer = debounce.NewLimiter(
 		ctx,
-		debouncer.WithBatchAction(g.Gossip),
-		debouncer.WithPeriod(2200*time.Millisecond),
-		debouncer.WithBufferLimit(1638400),
+		debounce.WithAction(g.Gossip),
+		debounce.WithPeriod(2200*time.Millisecond),
+		debounce.WithBufferLimit(1638400),
 	)
 
 	return g
 }
 
 func (g *Gossiper) Push(tx Transaction) {
-	data := tx.Marshal()
-	g.debouncer.Add(debouncer.WithPayload(data))
+	g.debouncer.Add(debounce.Bytes(tx.Marshal()))
 
 	if g.metrics != nil {
 		g.metrics.gossipedTX.Mark(int64(tx.LogicalUnits()))

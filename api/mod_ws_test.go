@@ -19,7 +19,7 @@ func TestPollLog(t *testing.T) {
 	gateway := New()
 	gateway.setup()
 
-	log.Set("ws", gateway)
+	log.SetWriter(log.LoggerWebsocket, gateway)
 
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
