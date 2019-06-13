@@ -37,10 +37,10 @@ func TestSinkEqual(t *testing.T) {
         }`)
 	assert.NoError(t, err)
 
-	assert.True(t, valueEqual(v.Get("str"), "bar"))
-	assert.True(t, valueEqual(v.Get("int"), "123"))
-	assert.True(t, valueEqual(v.Get("float"), "1.23"))
-	assert.True(t, valueEqual(v.Get("bool"), "true"))
-	assert.True(t, valueEqual(v.Get("obj"), `{"key":"value"}`))
-	assert.True(t, valueEqual(v.Get("arr"), `[1,"str"]`))
+	assert.True(t, fastjsonEquals(v.Get("str"), "bar"))
+	assert.True(t, fastjsonEquals(v.Get("int"), "123"))
+	assert.True(t, fastjsonEquals(v.Get("float"), "1.23"))
+	assert.True(t, fastjsonEquals(v.Get("bool"), "true"))
+	assert.True(t, fastjsonEquals(v.Get("obj"), `{"key":"value"}`))
+	assert.True(t, fastjsonEquals(v.Get("arr"), `[1,"str"]`))
 }

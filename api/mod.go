@@ -20,11 +20,13 @@
 package api
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/debounce"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
@@ -61,23 +63,36 @@ func New() *Gateway {
 		sinks:       make(map[string]*sink),
 		parserPool:  new(fastjson.ParserPool),
 		arenaPool:   new(fastjson.ArenaPool),
-		rateLimiter: newRatelimiter(1000),
+		rateLimiter: newRateLimiter(1000),
 	}
 }
 
 func (g *Gateway) setup() {
 	// Setup websocket logging sinks.
+	sinkNetwork := g.registerWebsocketSink("ws://network/", nil)
+	sinkConsensus := g.registerWebsocketSink("ws://consensus/", nil)
+	sinkStake := g.registerWebsocketSink("ws://stake/?id=account_id", nil)
+	sinkAccounts := g.registerWebsocketSink("ws://accounts/?id=account_id",
+		debounce.NewFactory(debounce.TypeDeduper,
+			debounce.WithPeriod(500*time.Millisecond),
+			debounce.WithKeys("account_id"),
+		),
+	)
+	sinkContracts := g.registerWebsocketSink("ws://contract/?id=contract_id",
+		debounce.NewFactory(debounce.TypeDeduper,
+			debounce.WithPeriod(500*time.Millisecond),
+			debounce.WithKeys("contract_id"),
+		),
+	)
+	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id&tag=tag",
+		debounce.NewFactory(debounce.TypeLimiter,
+			debounce.WithPeriod(2200*time.Millisecond),
+			debounce.WithBufferLimit(1638400),
+		),
+	)
+	sinkMetrics := g.registerWebsocketSink("ws://metrics/", nil)
 
-	sinkNetwork := g.registerWebsocketSink("ws://network/")
-	sinkBroadcaster := g.registerWebsocketSink("ws://broadcaster/")
-	sinkConsensus := g.registerWebsocketSink("ws://consensus/")
-	sinkStake := g.registerWebsocketSink("ws://stake/")
-	sinkAccounts := g.registerWebsocketSink("ws://accounts/?id=account_id")
-	sinkContracts := g.registerWebsocketSink("ws://contract/?id=contract_id")
-	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id&tag=tag")
-	sinkMetrics := g.registerWebsocketSink("ws://metrics/")
-
-	log.Set("ws", g)
+	log.SetWriter(log.LoggerWebsocket, g)
 
 	// Setup HTTP router.
 
@@ -90,7 +105,6 @@ func (g *Gateway) setup() {
 
 	// Websocket endpoints.
 	r.GET("/poll/network", g.applyMiddleware(g.poll(sinkNetwork), "/poll/network"))
-	r.GET("/poll/broadcaster", g.applyMiddleware(g.poll(sinkBroadcaster), "/poll/broadcaster"))
 	r.GET("/poll/consensus", g.applyMiddleware(g.poll(sinkConsensus), "/poll/consensus"))
 	r.GET("/poll/stake", g.applyMiddleware(g.poll(sinkStake), "/poll/stake"))
 	r.GET("/poll/accounts", g.applyMiddleware(g.poll(sinkAccounts), "/poll/accounts"))
@@ -500,16 +514,16 @@ func (g *Gateway) poll(sink *sink) func(ctx *fasthttp.RequestCtx) {
 	}
 }
 
-func (g *Gateway) registerWebsocketSink(rawURL string) *sink {
+func (g *Gateway) registerWebsocketSink(rawURL string, factory *debounce.Factory) *sink {
 	u, err := url.Parse(rawURL)
 
 	if err != nil {
 		panic(err)
 	}
 
-	// Map JSON log keys to HTTP query parameters.
-	filters := make(map[string]string)
 	values := u.Query()
+
+	filters := make(map[string]string)
 
 	for key := range values {
 		filters[key] = values.Get(key)
@@ -522,6 +536,11 @@ func (g *Gateway) registerWebsocketSink(rawURL string) *sink {
 		leave:     make(chan *client),
 		clients:   make(map[*client]struct{}),
 	}
+
+	if factory != nil {
+		sink.debouncer = factory.Init(context.Background(), debounce.WithAction(sink.debounce))
+	}
+
 	go sink.run()
 
 	g.sinks[u.Hostname()] = sink
@@ -533,7 +552,6 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 	var p fastjson.Parser
 
 	v, err := p.ParseBytes(buf)
-
 	if err != nil {
 		return n, errors.Errorf("cannot parse: %q", err)
 	}

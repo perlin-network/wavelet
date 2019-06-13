@@ -592,29 +592,19 @@ func TestGetLedger(t *testing.T) {
 
 	publicKey := keys.PublicKey()
 
-	ledgerStatusResponse := struct {
-		PublicKey     string   `json:"public_key"`
-		HostAddress   string   `json:"address"`
-		RootID        string   `json:"root_id"`
-		RoundID       uint64   `json:"round_id"`
-		Difficulty    uint64   `json:"difficulty"`
-		PeerAddresses []string `json:"peers"`
-	}{
-		PublicKey:     hex.EncodeToString(publicKey[:]),
-		HostAddress:   "127.0.0.1:" + strconv.Itoa(listener.Addr().(*net.TCPAddr).Port),
-		PeerAddresses: nil,
-		RootID:        "403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc",
-		RoundID:       0,
-		Difficulty:    uint64(sys.MinDifficulty),
-	}
+	expectedJSON := fmt.Sprintf(
+		`{"public_key":"%s","address":"127.0.0.1:%d","round":{"merkle_root":"13f939735a62b1abfcfd345e2410f336","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc","applied":0,"depth":0,"difficulty":8},"peers":null}`,
+		hex.EncodeToString(publicKey[:]),
+		listener.Addr().(*net.TCPAddr).Port,
+	)
 
-	assert.NoError(t, compareJson(ledgerStatusResponse, response))
+	assert.NoError(t, compareJson([]byte(expectedJSON), response))
 }
 
 // Test the rate limit on all endpoints
 func TestEndpointsRateLimit(t *testing.T) {
 	gateway := New()
-	gateway.rateLimiter = newRatelimiter(10)
+	gateway.rateLimiter = newRateLimiter(10)
 	gateway.setup()
 
 	gateway.ledger = createLedger(t)
@@ -639,11 +629,6 @@ func TestEndpointsRateLimit(t *testing.T) {
 	}{
 		{
 			url:           "/poll/network",
-			method:        "GET",
-			isRateLimited: true,
-		},
-		{
-			url:           "/poll/broadcaster",
 			method:        "GET",
 			isRateLimited: true,
 		},
@@ -747,17 +732,12 @@ func TestEndpointsRateLimit(t *testing.T) {
 	}
 }
 
-func compareJson(expected interface{}, response []byte) error {
-	b, err := json.Marshal(expected)
-	if err != nil {
-		return err
-	}
-
-	if bytes.Equal(bytes.TrimSpace(response), b) {
+func compareJson(expected []byte, response []byte) error {
+	if bytes.Equal(bytes.TrimSpace(response), expected) {
 		return nil
 	}
 
-	return errors.Errorf("expected response `%s`, found `%s`", string(b), string(response))
+	return errors.Errorf("expected response `%s`, found `%s`", string(expected), string(response))
 }
 
 func createLedger(t *testing.T) *wavelet.Ledger {

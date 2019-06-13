@@ -7,7 +7,7 @@ import (
 )
 
 func TestRateLimit(t *testing.T) {
-	rl := newRatelimiter(2)
+	rl := newRateLimiter(2)
 	rl.expirationTTL = 30 * time.Millisecond
 
 	// check existing limited should be returned

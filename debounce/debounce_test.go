@@ -17,30 +17,31 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package wavelet
+package debounce
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
 	"github.com/stretchr/testify/assert"
+	"strconv"
 	"testing"
 	"time"
 )
 
-func TestDebouncerOverfill(t *testing.T) {
+func TestLimiterOverfill(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	size := len(Transaction{}.Marshal())
-
-	d := NewTransactionDebouncer(ctx, WithBufferLen(10*size), WithPeriod(1*time.Second))
+	d := NewLimiter(ctx, WithPeriod(1*time.Second), WithBufferLimit(10))
 
 	for i := 0; i < 10; i++ {
-		d.Push(Transaction{})
+		d.Add()
 	}
 
 	done := make(chan struct{})
 	go func() {
-		d.Push(Transaction{})
+		d.Add()
 		close(done)
 	}()
 
@@ -51,21 +52,24 @@ func TestDebouncerOverfill(t *testing.T) {
 	}
 }
 
-func TestDebouncerBufferFull(t *testing.T) {
+func TestLimiterBufferFull(t *testing.T) {
 	called := 0
 	a := func([][]byte) {
 		called++
 	}
 
-	size := len(Transaction{}.Marshal())
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewTransactionDebouncer(ctx, WithBufferLen(100*size), WithAction(a), WithPeriod(10*time.Millisecond))
+	d := NewLimiter(ctx, WithAction(a), WithPeriod(10*time.Millisecond), WithBufferLimit(100))
 
 	for i := 0; i < 1000; i++ {
-		d.Push(Transaction{})
+		var msg [1]byte
+
+		_, err := rand.Read(msg[:])
+		assert.NoError(t, err)
+
+		d.Add(Bytes(msg[:]))
 	}
 
 	time.Sleep(20 * time.Millisecond)
@@ -75,21 +79,19 @@ func TestDebouncerBufferFull(t *testing.T) {
 	assert.Equal(t, 10, called)
 }
 
-func TestDebouncerTimer(t *testing.T) {
+func TestLimiterTimer(t *testing.T) {
 	called := 0
 	a := func([][]byte) {
 		called++
 	}
 
-	size := len(Transaction{}.Marshal())
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewTransactionDebouncer(ctx, WithBufferLen(1*size), WithAction(a), WithPeriod(1*time.Millisecond))
+	d := NewLimiter(ctx, WithAction(a), WithPeriod(1*time.Millisecond), WithBufferLimit(1))
 
 	for i := 0; i < 100; i++ {
-		d.Push(Transaction{})
+		d.Add(Bytes([]byte{0x00, 0x01, 0x02}))
 	}
 
 	time.Sleep(4 * time.Millisecond)
@@ -99,13 +101,36 @@ func TestDebouncerTimer(t *testing.T) {
 	assert.Equal(t, 100, called)
 }
 
-func BenchmarkDebouncer(b *testing.B) {
+func BenchmarkLimiter(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewTransactionDebouncer(ctx)
-
+	d := NewLimiter(ctx)
 	for i := 0; i < b.N; i++ {
-		d.Push(Transaction{})
+		d.Add()
 	}
+}
+
+func TestDeduper(t *testing.T) {
+	called := 0
+	size := 0
+	action := func(data [][]byte) {
+		size = len(data)
+		called++
+	}
+
+	fd := NewDeduper(context.TODO(), WithAction(action), WithPeriod(100*time.Millisecond), WithKeys("test"))
+	var key string
+	for i := 0; i < 10; i++ {
+		if i%5 == 0 {
+			key = strconv.Itoa(i)
+		}
+
+		fd.Add(Bytes([]byte(fmt.Sprintf(`{"test": "%s"}`, key))))
+	}
+
+	time.Sleep(200 * time.Millisecond)
+
+	assert.Equal(t, 1, called)
+	assert.Equal(t, 2, size)
 }
