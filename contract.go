@@ -179,14 +179,21 @@ func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, payload ..
 		vm.Memory = mem
 	}
 
-	c.header = make([]byte, SizeTransactionID+SizeAccountID+8+len(payload))
+	buf := make([]byte, 8)
 
-	copy(c.header[0:SizeTransactionID], tx.ID[:])
-	copy(c.header[SizeTransactionID:SizeTransactionID+SizeAccountID], tx.Creator[:])
+	c.header = nil
 
-	binary.LittleEndian.PutUint64(c.header[SizeTransactionID+SizeAccountID:8+SizeTransactionID+SizeAccountID], amount)
+	binary.LittleEndian.PutUint64(buf[:], uint64(c.ctx.round.Index))
+	c.header = append(c.header, buf...)
 
-	copy(c.header[8+SizeTransactionID+SizeAccountID:8+SizeTransactionID+SizeAccountID+len(payload)], payload)
+	c.header = append(c.header, c.ctx.round.ID[:]...)
+	c.header = append(c.header, tx.ID[:]...)
+	c.header = append(c.header, tx.Creator[:]...)
+
+	binary.LittleEndian.PutUint64(buf[:], amount)
+	c.header = append(c.header, buf...)
+
+	c.header = append(c.header, payload...)
 
 	entry = "_contract_" + entry
 
@@ -292,19 +299,6 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 						Hex("contract_id", c.contractID[:]).
 						Msg(string(vm.Memory[dataPtr : dataPtr+dataLen]))
 				}
-				return 0
-			}
-		case "_round_id":
-			return func(vm *exec.VirtualMachine) int64 {
-				frame := vm.GetCurrentFrame()
-				outPtr := int(uint32(frame.Locals[0]))
-				outLen := int(uint32(frame.Locals[1]))
-
-				latestRoundID := c.ctx.round.ID[:]
-				if outLen != len(latestRoundID) {
-					return 1
-				}
-				copy(vm.Memory[outPtr:outPtr+outLen], latestRoundID)
 				return 0
 			}
 		case "_verify_ed25519":

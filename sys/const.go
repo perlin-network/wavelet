@@ -246,7 +246,7 @@ var (
 		"current_memory":              100,
 		"grow_memory":                 10000,
 		"wavelet.contract.spawn.min":  10000, // TODO(kenta): Review
-		"wavelet.contract.spawn.cost": 10000, // TODO(kenta): Review
+		"wavelet.contract.spawn.cost": 1000,  // TODO(kenta): Review
 		"wavelet.hash.blake2b256":     1500,  // TODO: Review
 		"wavelet.hash.blake2b512":     2000,  // TODO: Review
 		"wavelet.hash.sha256":         2500,  // TODO: Review
