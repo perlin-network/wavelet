@@ -105,7 +105,7 @@ func TestPollLog(t *testing.T) {
 			logger.Log().Str("account_id", id).Msg("")
 		}
 
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(1000 * time.Millisecond)
 		close(stop)
 
 		if !assert.Equal(t, 1, len(response)) {

@@ -633,11 +633,6 @@ func TestEndpointsRateLimit(t *testing.T) {
 			isRateLimited: true,
 		},
 		{
-			url:           "/poll/broadcaster",
-			method:        "GET",
-			isRateLimited: true,
-		},
-		{
 			url:           "/poll/consensus",
 			method:        "GET",
 			isRateLimited: true,
