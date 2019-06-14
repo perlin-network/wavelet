@@ -61,7 +61,7 @@ type Config struct {
 }
 
 func main() {
-	log.Set("wavelet", log.NewConsoleWriter(nil, log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
+	log.SetWriter(log.LoggerWavelet, log.NewConsoleWriter(nil, log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
 	logger := log.Node()
 
 	app := cli.NewApp()
@@ -346,8 +346,6 @@ func start(cfg *Config) {
 	}
 
 	shell.Start()
-
-	select {}
 }
 
 func keys(wallet string) (*skademlia.Keypair, error) {

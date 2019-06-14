@@ -21,6 +21,7 @@ package api
 
 import (
 	"github.com/fasthttp/websocket"
+	"github.com/perlin-network/wavelet/debounce"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 	"strconv"
@@ -28,10 +29,11 @@ import (
 )
 
 const (
-	writeWait      = 10 * time.Second
-	pongWait       = 60 * time.Second
-	pingPeriod     = (pongWait * 9) / 10
-	maxMessageSize = 512
+	writeWait          = 10 * time.Second
+	pongWait           = 60 * time.Second
+	pingPeriod         = (pongWait * 9) / 10
+	maxMessageSize     = 512
+	maxPaginationLimit = 5000
 )
 
 var upgrader = websocket.FastHTTPUpgrader{
@@ -47,23 +49,27 @@ type client struct {
 	conn *websocket.Conn
 
 	filters map[string]string
-	send    chan []byte
+	queue   chan []byte
 }
 
 func (c *client) readWorker() {
-	defer func() {
-		c.sink.leave <- c
-		_ = c.conn.Close()
-	}()
 	c.conn.SetReadLimit(maxMessageSize)
 	_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
-	c.conn.SetPongHandler(func(string) error { _ = c.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
+
+	c.conn.SetPongHandler(func(string) error {
+		_ = c.conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
 	for {
 		_, _, err := c.conn.ReadMessage()
 		if err != nil {
 			break
 		}
 	}
+
+	c.sink.leave <- c
+	_ = c.conn.Close()
 }
 
 func (c *client) writeWorker() {
@@ -72,27 +78,24 @@ func (c *client) writeWorker() {
 		ticker.Stop()
 		_ = c.conn.Close()
 	}()
+
 	for {
 		select {
-		case message, ok := <-c.send:
-			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+		case msg, ok := <-c.queue:
 			if !ok {
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
-			err := c.conn.WriteMessage(websocket.TextMessage, message)
-			if err != nil {
-				return
+			if len(msg) == 0 {
+				continue
 			}
 
-			n := len(c.send)
-			for i := 0; i < n; i++ {
-				err := c.conn.WriteMessage(websocket.TextMessage, message)
+			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 
-				if err != nil {
-					return
-				}
+			err := c.conn.WriteMessage(websocket.TextMessage, msg)
+			if err != nil {
+				return
 			}
 		case <-ticker.C:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(writeWait))
@@ -105,8 +108,9 @@ func (c *client) writeWorker() {
 }
 
 func (s *sink) serve(ctx *fasthttp.RequestCtx) error {
-	filters := make(map[string]string)
 	values := ctx.QueryArgs()
+
+	filters := make(map[string]string)
 	for queryKey, key := range s.filters {
 		if queryValue := values.Peek(queryKey); len(queryValue) > 0 {
 			filters[key] = string(queryValue)
@@ -114,13 +118,16 @@ func (s *sink) serve(ctx *fasthttp.RequestCtx) error {
 	}
 
 	return upgrader.Upgrade(ctx, func(conn *websocket.Conn) {
-		client := &client{filters: filters, sink: s, conn: conn, send: make(chan []byte, 256)}
+		client := &client{
+			filters: filters,
+			sink:    s,
+			conn:    conn,
+			queue:   make(chan []byte, 256),
+		}
+
 		s.join <- client
 
 		go client.readWorker()
-
-		// Block here because we need to keep the FastHTTPHandler active because of the way it works
-		// Refer to https://github.com/fasthttp/websocket/issues/6
 		client.writeWorker()
 	})
 }
@@ -136,6 +143,8 @@ type sink struct {
 
 	broadcast   chan broadcastItem
 	join, leave chan *client
+
+	debouncer debounce.Debouncer
 }
 
 func (s *sink) run() {
@@ -146,31 +155,88 @@ func (s *sink) run() {
 		case client := <-s.leave:
 			if _, ok := s.clients[client]; ok {
 				delete(s.clients, client)
-				close(client.send)
+				close(client.queue)
+				client.queue = nil
 			}
 		case msg := <-s.broadcast:
-		L:
-			for client := range s.clients {
-				for key, condition := range client.filters {
-					o := msg.value.Get(key)
-
-					if o != nil && !valueEqual(o, condition) {
-						continue L
-					}
-				}
-
-				select {
-				case client.send <- msg.buf:
-				default:
-					close(client.send)
-					delete(s.clients, client)
-				}
+			if s.debouncer != nil {
+				s.debouncer.Add(debounce.Bytes(msg.buf)) // TODO(kenta): debounce.ByKeys(keys...)
+			} else {
+				s.send(msg.buf)
 			}
 		}
 	}
 }
 
-func valueEqual(v *fastjson.Value, filter string) bool {
+func (s *sink) send(buf []byte) {
+	o, err := fastjson.ParseBytes(buf)
+	if err != nil {
+		return
+	}
+
+SENDING:
+	for c := range s.clients {
+		for key, condition := range c.filters {
+			val := o.Get(key)
+
+			if val == nil {
+				continue SENDING
+			}
+
+			if !fastjsonEquals(val, condition) {
+				continue SENDING
+			}
+		}
+
+		select {
+		case c.queue <- buf:
+		default:
+		}
+	}
+}
+
+func (s *sink) debounce(batch [][]byte) {
+SENDING:
+	for c := range s.clients {
+		idx, obj := 0, fastjson.MustParse("[]")
+
+	BATCHING:
+		for _, buf := range batch {
+			o, err := fastjson.ParseBytes(buf)
+			if err != nil {
+				continue BATCHING
+			}
+
+			for key, condition := range c.filters {
+				val := o.Get(key)
+
+				if val == nil {
+					continue BATCHING
+				}
+
+				if !fastjsonEquals(val, condition) {
+					continue BATCHING
+				}
+			}
+
+			obj.SetArrayItem(idx, o)
+			idx++
+		}
+
+		if idx == 0 {
+			continue SENDING
+		}
+
+		buf := obj.MarshalTo(nil)
+
+		select {
+		case c.queue <- buf:
+		default:
+		}
+	}
+}
+
+func fastjsonEquals(v *fastjson.Value, filter string) bool {
 	switch v.Type() {
 	case fastjson.TypeArray:
 		fallthrough

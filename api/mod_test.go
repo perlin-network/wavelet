@@ -27,7 +27,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/buaazp/fasthttprouter"
-	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/store"
@@ -47,60 +46,9 @@ import (
 	"time"
 )
 
-func TestInitSession(t *testing.T) {
-	publicKey, privateKey, err := edwards25519.GenerateKey(rand.Reader)
-	assert.NoError(t, err)
-	gateway := New()
-	gateway.setup(false)
-
-	tests := []struct {
-		name     string
-		url      string
-		req      sessionInitRequest
-		wantCode int
-	}{
-		{
-			url:      "/session/init",
-			name:     "bad request",
-			req:      getBadCredentialRequest(),
-			wantCode: http.StatusBadRequest,
-		},
-		{
-			url:      "/session/init",
-			name:     "good request",
-			req:      getGoodCredentialRequest(t, privateKey, publicKey),
-			wantCode: http.StatusOK,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			body, err := json.Marshal(tc.req)
-			assert.NoError(t, err)
-
-			request, err := http.NewRequest("POST", "http://localhost"+tc.url, bytes.NewReader(body))
-			assert.Nil(t, err)
-
-			w, err := serve(gateway.router, request)
-			assert.NoError(t, err)
-			assert.NotNil(t, w)
-
-			assert.NotNil(t, w.Body)
-
-			_, err = ioutil.ReadAll(w.Body)
-			assert.Nil(t, err)
-
-			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
-		})
-	}
-}
-
 func TestListTransaction(t *testing.T) {
 	gateway := New()
-	gateway.setup(false)
-
-	sess, err := gateway.registry.newSession()
-	assert.NoError(t, err)
+	gateway.setup()
 
 	gateway.ledger = createLedger(t)
 
@@ -197,7 +145,6 @@ func TestListTransaction(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			request, err := http.NewRequest("GET", "http://localhost"+tc.url, nil)
 			assert.NoError(t, err)
-			request.Header.Add(HeaderSessionToken, sess.id)
 
 			w, err := serve(gateway.router, request)
 			if err != nil {
@@ -222,10 +169,7 @@ func TestListTransaction(t *testing.T) {
 
 func TestGetTransaction(t *testing.T) {
 	gateway := New()
-	gateway.setup(false)
-
-	sess, err := gateway.registry.newSession()
-	assert.NoError(t, err)
+	gateway.setup()
 
 	gateway.ledger = createLedger(t)
 
@@ -254,16 +198,14 @@ func TestGetTransaction(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		sessionToken string
 		id           string
 		wantCode     int
 		wantResponse marshalableJSON
 	}{
 		{
-			name:         "invalid id length",
-			sessionToken: sess.id,
-			id:           "1c331c1d",
-			wantCode:     http.StatusBadRequest,
+			name:     "invalid id length",
+			id:       "1c331c1d",
+			wantCode: http.StatusBadRequest,
 			wantResponse: &testErrResponse{
 				StatusText: "Bad request.",
 				ErrorText:  fmt.Sprintf("transaction ID must be %d bytes long", wavelet.SizeTransactionID),
@@ -271,7 +213,6 @@ func TestGetTransaction(t *testing.T) {
 		},
 		{
 			name:         "success",
-			sessionToken: sess.id,
 			id:           hex.EncodeToString(txId[:]),
 			wantCode:     http.StatusOK,
 			wantResponse: txRes,
@@ -282,10 +223,6 @@ func TestGetTransaction(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			request, err := http.NewRequest("GET", "http://localhost/tx/"+tc.id, nil)
 			assert.NoError(t, err)
-
-			if tc.sessionToken != "" {
-				request.Header.Add(HeaderSessionToken, tc.sessionToken)
-			}
 
 			w, err := serve(gateway.router, request)
 			assert.NoError(t, err)
@@ -307,22 +244,16 @@ func TestGetTransaction(t *testing.T) {
 
 func TestSendTransaction(t *testing.T) {
 	gateway := New()
-	gateway.setup(false)
+	gateway.setup()
 
 	tests := []struct {
-		name         string
-		wantCode     int
-		sessionToken string
-		req          sendTransactionRequest
+		name     string
+		wantCode int
+		req      sendTransactionRequest
 	}{
 		{
-			name:     "missing token",
+			name:     "ok",
 			wantCode: http.StatusBadRequest,
-		},
-		{
-			name:         "token not exist",
-			wantCode:     http.StatusBadRequest,
-			sessionToken: "invalid token",
 		},
 	}
 
@@ -332,10 +263,6 @@ func TestSendTransaction(t *testing.T) {
 			assert.NoError(t, err)
 
 			request := httptest.NewRequest("POST", "http://localhost/tx/send", bytes.NewReader(reqBody))
-
-			if tc.sessionToken != "" {
-				request.Header.Add(HeaderSessionToken, tc.sessionToken)
-			}
 
 			w, err := serve(gateway.router, request)
 			assert.NoError(t, err)
@@ -351,10 +278,7 @@ func TestSendTransaction(t *testing.T) {
 
 func TestSendTransactionRandom(t *testing.T) {
 	gateway := New()
-	gateway.setup(false)
-
-	sess, err := gateway.registry.newSession()
-	assert.NoError(t, err)
+	gateway.setup()
 
 	type request struct {
 		Sender    string `json:"sender"`
@@ -368,43 +292,6 @@ func TestSendTransactionRandom(t *testing.T) {
 		assert.NoError(t, err)
 
 		request := httptest.NewRequest("POST", "http://localhost/tx/send", bytes.NewReader(reqBody))
-		request.Header.Add(HeaderSessionToken, sess.id)
-
-		res, err := serve(gateway.router, request)
-		assert.NoError(t, err)
-
-		assert.NotNil(t, res)
-		assert.NotEqual(t, http.StatusNotFound, res.StatusCode)
-
-		return true
-	}
-
-	if err := quick.Check(f, &quick.Config{
-		MaxCountScale: 10,
-	}); err != nil {
-		t.Error(err)
-	}
-}
-
-func TestInitSessionRandom(t *testing.T) {
-	gateway := New()
-	gateway.setup(false)
-
-	sess, err := gateway.registry.newSession()
-	assert.NoError(t, err)
-
-	type request struct {
-		PublicKey  string `json:"public_key"`
-		Signature  string `json:"signature"`
-		TimeMillis uint64 `json:"time_millis"`
-	}
-
-	f := func(req request) bool {
-		reqBody, err := json.Marshal(req)
-		assert.NoError(t, err)
-
-		request := httptest.NewRequest("POST", "http://localhost/session/init", bytes.NewReader(reqBody))
-		request.Header.Add(HeaderSessionToken, sess.id)
 
 		res, err := serve(gateway.router, request)
 		assert.NoError(t, err)
@@ -425,21 +312,13 @@ func TestInitSessionRandom(t *testing.T) {
 // Test POST APIs with completely random payload
 func TestPostPayloadRandom(t *testing.T) {
 	gateway := New()
-	gateway.setup(false)
-
-	sess, err := gateway.registry.newSession()
-	assert.NoError(t, err)
+	gateway.setup()
 
 	tests := []struct {
-		url          string
-		sessionToken string
+		url string
 	}{
 		{
-			url: "/session/init",
-		},
-		{
-			url:          "/tx/send",
-			sessionToken: sess.id,
+			url: "/tx/send",
 		},
 	}
 
@@ -457,9 +336,6 @@ func TestPostPayloadRandom(t *testing.T) {
 				}
 
 				request := httptest.NewRequest("POST", "http://localhost"+tc.url, bytes.NewReader(payload))
-				if tc.sessionToken != "" {
-					request.Header.Add(HeaderSessionToken, tc.sessionToken)
-				}
 
 				res, err := serve(gateway.router, request)
 
@@ -482,10 +358,7 @@ func TestPostPayloadRandom(t *testing.T) {
 
 func TestGetAccount(t *testing.T) {
 	gateway := New()
-	gateway.setup(false)
-
-	sess, err := gateway.registry.newSession()
-	assert.NoError(t, err)
+	gateway.setup()
 
 	gateway.ledger = createLedger(t)
 
@@ -535,7 +408,6 @@ func TestGetAccount(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			request := httptest.NewRequest("GET", "http://localhost"+tc.url, nil)
-			request.Header.Add(HeaderSessionToken, sess.id)
 
 			w, err := serve(gateway.router, request)
 			assert.NoError(t, err)
@@ -557,10 +429,7 @@ func TestGetAccount(t *testing.T) {
 
 func TestGetContractCode(t *testing.T) {
 	gateway := New()
-	gateway.setup(false)
-
-	sess, err := gateway.registry.newSession()
-	assert.NoError(t, err)
+	gateway.setup()
 
 	gateway.ledger = createLedger(t)
 
@@ -609,7 +478,6 @@ func TestGetContractCode(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			request := httptest.NewRequest("GET", "http://localhost"+tc.url, nil)
-			request.Header.Add(HeaderSessionToken, sess.id)
 
 			w, err := serve(gateway.router, request)
 			assert.NoError(t, err)
@@ -631,10 +499,7 @@ func TestGetContractCode(t *testing.T) {
 
 func TestGetContractPages(t *testing.T) {
 	gateway := New()
-	gateway.setup(false)
-
-	sess, err := gateway.registry.newSession()
-	assert.NoError(t, err)
+	gateway.setup()
 
 	gateway.ledger = createLedger(t)
 
@@ -670,7 +535,6 @@ func TestGetContractPages(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			request := httptest.NewRequest("GET", "http://localhost"+tc.url, nil)
-			request.Header.Add(HeaderSessionToken, sess.id)
 
 			w, err := serve(gateway.router, request)
 			assert.NoError(t, err)
@@ -692,10 +556,7 @@ func TestGetContractPages(t *testing.T) {
 
 func TestGetLedger(t *testing.T) {
 	gateway := New()
-	gateway.setup(false)
-
-	sess, err := gateway.registry.newSession()
-	assert.NoError(t, err)
+	gateway.setup()
 
 	gateway.ledger = createLedger(t)
 
@@ -719,7 +580,6 @@ func TestGetLedger(t *testing.T) {
 	//gateway.network = skademlia.New(net.JoinHostPort("127.0.0.1", strconv.Itoa(n.Addr().(*net.TCPAddr).Port)), keys, xnoise.DialTCP)
 
 	request := httptest.NewRequest("GET", "http://localhost/ledger", nil)
-	request.Header.Add(HeaderSessionToken, sess.id)
 
 	w, err := serve(gateway.router, request)
 	assert.NoError(t, err)
@@ -732,143 +592,152 @@ func TestGetLedger(t *testing.T) {
 
 	publicKey := keys.PublicKey()
 
-	ledgerStatusResponse := struct {
-		PublicKey     string   `json:"public_key"`
-		HostAddress   string   `json:"address"`
-		RootID        string   `json:"root_id"`
-		RoundID       uint64   `json:"round_id"`
-		Difficulty    uint64   `json:"difficulty"`
-		PeerAddresses []string `json:"peers"`
-	}{
-		PublicKey:     hex.EncodeToString(publicKey[:]),
-		HostAddress:   "127.0.0.1:" + strconv.Itoa(listener.Addr().(*net.TCPAddr).Port),
-		PeerAddresses: nil,
-		RootID:        "403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc",
-		RoundID:       0,
-		Difficulty:    uint64(sys.MinDifficulty),
-	}
+	expectedJSON := fmt.Sprintf(
+		`{"public_key":"%s","address":"127.0.0.1:%d","round":{"merkle_root":"13f939735a62b1abfcfd345e2410f336","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc","applied":0,"depth":0,"difficulty":8},"peers":null}`,
+		hex.EncodeToString(publicKey[:]),
+		listener.Addr().(*net.TCPAddr).Port,
+	)
 
-	assert.NoError(t, compareJson(ledgerStatusResponse, response))
+	assert.NoError(t, compareJson([]byte(expectedJSON), response))
 }
 
-// Test the authenticate checking of all the APIs that require authentication
-func TestAuthenticatedAPI(t *testing.T) {
+// Test the rate limit on all endpoints
+func TestEndpointsRateLimit(t *testing.T) {
 	gateway := New()
-	gateway.setup(false)
+	gateway.rateLimiter = newRateLimiter(10)
+	gateway.setup()
 
-	contractID := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
+	gateway.ledger = createLedger(t)
+
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+	gateway.keys = keys
+
+	listener, err := net.Listen("tcp", ":0")
+	assert.NoError(t, err)
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
+
+	gateway.client = skademlia.NewClient(addr, keys,
+		skademlia.WithC1(sys.SKademliaC1),
+		skademlia.WithC2(sys.SKademliaC2),
+	)
 
 	tests := []struct {
-		url    string
-		method string
+		url           string
+		method        string
+		isRateLimited bool
 	}{
 		{
-			url:    "/ledger",
-			method: "GET",
+			url:           "/poll/network",
+			method:        "GET",
+			isRateLimited: true,
 		},
 		{
-			url:    "/accounts/1",
-			method: "GET",
+			url:           "/poll/consensus",
+			method:        "GET",
+			isRateLimited: true,
 		},
 		{
-			url:    "/contract/" + contractID,
-			method: "GET",
+			url:           "/poll/stake",
+			method:        "GET",
+			isRateLimited: true,
 		},
 		{
-			url:    "/contract/" + contractID + "/page",
-			method: "GET",
+			url:           "/poll/accounts",
+			method:        "GET",
+			isRateLimited: true,
 		},
 		{
-			url:    "/contract/" + contractID + "/page/1",
-			method: "GET",
+			url:           "/poll/contract",
+			method:        "GET",
+			isRateLimited: true,
 		},
 		{
-			url:    "/tx",
-			method: "GET",
+			url:           "/poll/tx",
+			method:        "GET",
+			isRateLimited: true,
 		},
 		{
-			url:    "/tx/1",
-			method: "GET",
+			url:           "/poll/metrics",
+			method:        "GET",
+			isRateLimited: true,
 		},
 		{
-			url:    "/tx/send",
-			method: "POST",
+			url:           "/ledger",
+			method:        "GET",
+			isRateLimited: true,
+		},
+		{
+			url:           "/accounts/1",
+			method:        "GET",
+			isRateLimited: false,
+		},
+		{
+			url:           "/contract/1/page/1",
+			method:        "GET",
+			isRateLimited: true,
+		},
+		{
+			url:           "/contract/1/page",
+			method:        "GET",
+			isRateLimited: true,
+		},
+		{
+			url:           "/contract/1",
+			method:        "GET",
+			isRateLimited: true,
+		},
+		{
+			url:           "/tx/send",
+			method:        "POST",
+			isRateLimited: false,
+		},
+		{
+			url:           "/tx/1",
+			method:        "GET",
+			isRateLimited: false,
+		},
+		{
+			url:           "/tx",
+			method:        "GET",
+			isRateLimited: true,
 		},
 	}
+
+	maxPerSecond := 10
 
 	for _, tc := range tests {
 		t.Run(tc.url, func(t *testing.T) {
-			// Without session header
-			{
+			// We assume the loop will complete in less than 1 second.
+			for i := 0; i < maxPerSecond*2; i++ {
 				request := httptest.NewRequest(tc.method, "http://localhost"+tc.url, nil)
+				w, err := serve(gateway.router, request)
+				assert.NoError(t, err)
+				assert.NotNil(t, w)
 
-				testAuthenticatedAPI(t, gateway, request, testErrResponse{
-					StatusText: "Bad request.",
-					ErrorText:  "session token not specified via HTTP header \"X-Session-Token\"",
-				})
-			}
+				_, err = ioutil.ReadAll(w.Body)
+				assert.NoError(t, err)
 
-			// With invalid session
-			{
-				request := httptest.NewRequest(tc.method, "http://localhost"+tc.url, nil)
-				request.Header.Add(HeaderSessionToken, "invalid token")
-
-				testAuthenticatedAPI(t, gateway, request, testErrResponse{
-					StatusText: "Bad request.",
-					ErrorText:  "could not find session invalid token",
-				})
+				if tc.isRateLimited {
+					if i < maxPerSecond {
+						assert.NotEqual(t, http.StatusTooManyRequests, w.StatusCode)
+					} else {
+						assert.Equal(t, http.StatusTooManyRequests, w.StatusCode)
+					}
+				} else {
+					assert.NotEqual(t, http.StatusTooManyRequests, w.StatusCode)
+				}
 			}
 		})
 	}
 }
 
-func testAuthenticatedAPI(t *testing.T, gateway *Gateway, request *http.Request, res testErrResponse) {
-	w, err := serve(gateway.router, request)
-	assert.NoError(t, err)
-	assert.NotNil(t, w)
-
-	response, err := ioutil.ReadAll(w.Body)
-	assert.Nil(t, err)
-
-	assert.Equal(t, http.StatusBadRequest, w.StatusCode, "status code")
-
-	assert.NoError(t, compareJson(res, response))
-}
-
-func getGoodCredentialRequest(t *testing.T, privateKey edwards25519.PrivateKey, publicKey edwards25519.PublicKey) sessionInitRequest {
-	t.Helper()
-
-	millis := time.Now().Unix() * 1000
-	authStr := fmt.Sprintf("%s%d", SessionInitMessage, millis)
-
-	sig := edwards25519.Sign(privateKey, []byte(authStr))
-
-	return sessionInitRequest{
-		PublicKey:  hex.EncodeToString(publicKey[:]),
-		TimeMillis: uint64(millis),
-		Signature:  hex.EncodeToString(sig[:]),
-	}
-}
-
-func getBadCredentialRequest() sessionInitRequest {
-	return sessionInitRequest{
-		PublicKey:  "bad key",
-		TimeMillis: uint64(time.Now().Unix() * 1000),
-		Signature:  hex.EncodeToString([]byte("bad sig")),
-	}
-}
-
-func compareJson(expected interface{}, response []byte) error {
-	b, err := json.Marshal(expected)
-	if err != nil {
-		return err
-	}
-
-	if bytes.Equal(bytes.TrimSpace(response), b) {
+func compareJson(expected []byte, response []byte) error {
+	if bytes.Equal(bytes.TrimSpace(response), expected) {
 		return nil
 	}
 
-	return errors.Errorf("expected response `%s`, found `%s`", string(b), string(response))
+	return errors.Errorf("expected response `%s`, found `%s`", string(expected), string(response))
 }
 
 func createLedger(t *testing.T) *wavelet.Ledger {

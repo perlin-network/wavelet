@@ -22,7 +22,10 @@ package wavelet
 import (
 	"context"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/debounce"
+	"github.com/perlin-network/wavelet/log"
 	"sync"
+	"time"
 )
 
 type Gossiper struct {
@@ -32,10 +35,10 @@ type Gossiper struct {
 	streams     map[string]Wavelet_GossipClient
 	streamsLock sync.Mutex
 
-	debouncer *TransactionDebouncer
+	debouncer *debounce.Limiter
 }
 
-func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics, opts ...TransactionDebouncerOption) *Gossiper {
+func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics) *Gossiper {
 	g := &Gossiper{
 		client:  client,
 		metrics: metrics,
@@ -43,13 +46,18 @@ func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics
 		streams: make(map[string]Wavelet_GossipClient),
 	}
 
-	g.debouncer = NewTransactionDebouncer(ctx, append(opts, WithAction(g.Gossip))...)
+	g.debouncer = debounce.NewLimiter(
+		ctx,
+		debounce.WithAction(g.Gossip),
+		debounce.WithPeriod(2200*time.Millisecond),
+		debounce.WithBufferLimit(1638400),
+	)
 
 	return g
 }
 
 func (g *Gossiper) Push(tx Transaction) {
-	g.debouncer.Push(tx)
+	g.debouncer.Add(debounce.Bytes(tx.Marshal()))
 
 	if g.metrics != nil {
 		g.metrics.gossipedTX.Mark(int64(tx.LogicalUnits()))
@@ -86,6 +94,9 @@ func (g *Gossiper) Gossip(transactions [][]byte) {
 
 		go func() {
 			if err := stream.Send(batch); err != nil {
+				logger := log.TX("gossip")
+				logger.Err(err).Msg("Failed to send batch")
+
 				g.streamsLock.Lock()
 				delete(g.streams, target)
 				g.streamsLock.Unlock()

@@ -26,6 +26,7 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"io"
+	"io/ioutil"
 )
 
 func ProcessNopTransaction(_ *TransactionContext) error {
@@ -51,10 +52,19 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 
 	amount := binary.LittleEndian.Uint64(buf[:])
 
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		return errors.Wrap(err, "transfer: failed to decode gas limit of transfer")
+	}
+
+	gasLimit := binary.LittleEndian.Uint64(buf[:])
+
 	creatorBalance, _ := ctx.ReadAccountBalance(tx.Creator)
 
-	if creatorBalance < amount {
-		return errors.Errorf("transfer: not enough balance, wanting %d PERLs", amount)
+	if creatorBalance < amount+gasLimit {
+		return errors.Errorf(
+			"transfer: transaction creator tried to send %d PERLs with %d gas limit, but only has %d PERLs",
+			amount, gasLimit, creatorBalance,
+		)
 	}
 
 	ctx.WriteAccountBalance(tx.Creator, creatorBalance-amount)
@@ -68,12 +78,14 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 
 	executor := NewContractExecutor(recipient, ctx).WithGasTable(sys.GasTable).EnableLogging()
 
-	var gas uint64
-	var err error
+	var (
+		gas uint64
+		err error
+	)
 
 	if r.Len() > 0 {
 		if _, err := io.ReadFull(r, buf[:4]); err != nil {
-			return errors.Wrap(err, "transfer: failed to decode smart contract function name to invoke")
+			return errors.Wrap(err, "transfer: failed to decode size of smart contract function name to invoke")
 		}
 
 		funcName := make([]byte, binary.LittleEndian.Uint32(buf[:4]))
@@ -82,27 +94,26 @@ func ProcessTransferTransaction(ctx *TransactionContext) error {
 			return errors.Wrap(err, "transfer: failed to decode smart contract function name to invoke")
 		}
 
-		if _, err := io.ReadFull(r, buf[:4]); err != nil {
-			return errors.Wrap(err, "transfer: failed to decode smart contract function invocation parameters")
+		var funcParams []byte
+		if r.Len() > 0 {
+			if _, err := io.ReadFull(r, buf[:4]); err != nil {
+				return errors.Wrap(err, "transfer: failed to decode number of smart contract function invocation parameters")
+			}
+
+			funcParams = make([]byte, binary.LittleEndian.Uint32(buf[:4]))
+
+			if _, err := io.ReadFull(r, funcParams); err != nil {
+				return errors.Wrap(err, "transfer: failed to decode smart contract function invocation parameters")
+			}
 		}
 
-		funcParams := make([]byte, binary.LittleEndian.Uint32(buf[:4]))
-
-		if _, err := io.ReadFull(r, funcParams); err != nil {
-			return errors.Wrap(err, "transfer: failed to decode smart contract function invocation parameters")
-		}
-
-		_, gas, err = executor.Run(amount, 50000000, string(funcName), funcParams...)
+		gas, err = executor.Run(amount, gasLimit, string(funcName), funcParams...)
 	} else {
-		_, gas, err = executor.Run(amount, 50000000, "on_money_received")
+		gas, err = executor.Run(amount, gasLimit, "on_money_received")
 	}
 
 	if err != nil && errors.Cause(err) != ErrContractFunctionNotFound {
 		return errors.Wrap(err, "transfer: failed to execute smart contract method")
-	}
-
-	if creatorBalance < amount {
-		return errors.Errorf("transfer: transaction creator tried to send %d PERLs, but only has %d PERLs", amount, creatorBalance)
 	}
 
 	ctx.WriteAccountBalance(tx.Creator, creatorBalance-amount-gas)
@@ -155,23 +166,60 @@ func ProcessStakeTransaction(ctx *TransactionContext) error {
 func ProcessContractTransaction(ctx *TransactionContext) error {
 	tx := ctx.Transaction()
 
-	if len(tx.Payload) == 0 {
-		return errors.New("contract: no code specified for contract to be spawned")
-	}
-
 	if _, exists := ctx.ReadAccountContractCode(tx.ID); exists {
 		return errors.New("contract: there already exists a contract spawned with the specified code")
 	}
 
-	executor := NewContractExecutor(tx.ID, ctx).WithGasTable(sys.GasTable)
+	r := bytes.NewReader(tx.Payload)
 
-	vm, err := executor.Init(tx.Payload, 50000000)
-	if err != nil {
-		return errors.New("contract: code for contract is not valid WebAssembly code")
+	var buf [8]byte
+
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		return errors.Wrap(err, "contract: failed to read gas limit from payload")
 	}
 
-	ctx.WriteAccountContractCode(tx.ID, tx.Payload)
-	executor.SaveMemorySnapshot(tx.ID, vm.Memory)
+	gasLimit := binary.LittleEndian.Uint64(buf[:])
+
+	if gasLimit == 0 {
+		return errors.New("contract: gas limit greater than zero must be specified for spawning a smart contract")
+	}
+
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		return errors.Wrap(err, "contract: failed to read input parameters length")
+	}
+
+	payload := make([]byte, binary.LittleEndian.Uint64(buf[:]))
+
+	if _, err := io.ReadFull(r, payload[:]); err != nil {
+		return errors.Wrap(err, "contract: failed to read input parameters")
+	}
+
+	code, err := ioutil.ReadAll(r)
+	if err != nil {
+		return errors.Wrap(err, "contract: failed to read contract code")
+	}
+
+	balance, _ := ctx.ReadAccountBalance(tx.Creator)
+
+	storagePrice := uint64(len(tx.Payload)) / sys.GasTable["wavelet.contract.spawn.cost"]
+
+	if storagePrice < sys.GasTable["wavelet.contract.spawn.min"] {
+		storagePrice = sys.GasTable["wavelet.contract.spawn.min"]
+	}
+
+	if balance < storagePrice+gasLimit {
+		return errors.Errorf("contract: transaction creator must have %d PERLs to spawn contract, but they only have %d PERLs", storagePrice, balance)
+	}
+
+	gas, err := NewContractExecutor(tx.ID, ctx).WithGasTable(sys.GasTable).EnableLogging().Spawn(code, payload, gasLimit)
+
+	ctx.WriteAccountBalance(tx.Creator, balance-storagePrice-gas)
+
+	if err != nil {
+		return errors.Wrap(err, "contract: failed to init smart contract")
+	}
+
+	ctx.WriteAccountContractCode(tx.ID, code)
 
 	return nil
 }

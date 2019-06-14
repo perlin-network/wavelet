@@ -422,11 +422,11 @@ func (g *Graph) ListTransactions(offset, limit uint64, sender, creator AccountID
 	}
 
 	sort.Slice(transactions, func(i, j int) bool {
-		return transactions[i].Depth < transactions[j].Depth
+		return transactions[i].Depth > transactions[j].Depth
 	})
 
 	if offset != 0 || limit != 0 {
-		if offset >= limit || offset >= uint64(len(transactions)) {
+		if offset >= uint64(len(transactions)) {
 			return nil
 		}
 

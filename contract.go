@@ -20,12 +20,17 @@
 package wavelet
 
 import (
+	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/binary"
 	"github.com/perlin-network/life/compiler"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/blake2b"
 )
 
 var (
@@ -42,10 +47,11 @@ const (
 
 type ContractExecutor struct {
 	contractID AccountID
-	ctx        *TransactionContext
 
-	gasTable       map[string]uint64
-	header, result []byte
+	ctx     *TransactionContext
+	table   map[string]uint64
+	payload []byte
+	result  []byte
 
 	enableLogging bool
 }
@@ -55,7 +61,7 @@ func NewContractExecutor(contractID AccountID, ctx *TransactionContext) *Contrac
 }
 
 func (c *ContractExecutor) WithGasTable(gasTable map[string]uint64) *ContractExecutor {
-	c.gasTable = gasTable
+	c.table = gasTable
 	return c
 }
 
@@ -151,47 +157,41 @@ func (c *ContractExecutor) Init(code []byte, gasLimit uint64) (*exec.VirtualMach
 	return vm, nil
 }
 
-func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, payload ...byte) ([]byte, uint64, error) {
+func (c *ContractExecutor) InitPayload(amount uint64, payload []byte) {
 	tx := c.ctx.Transaction()
 
-	code, available := c.ctx.ReadAccountContractCode(c.contractID)
-	if !available {
-		return nil, 0, ErrNotSmartContract
-	}
+	buf := make([]byte, 8)
 
+	c.payload = nil
+
+	binary.LittleEndian.PutUint64(buf[:], uint64(c.ctx.round.Index))
+	c.payload = append(c.payload, buf...)
+
+	c.payload = append(c.payload, c.ctx.round.ID[:]...)
+	c.payload = append(c.payload, tx.ID[:]...)
+	c.payload = append(c.payload, tx.Creator[:]...)
+
+	binary.LittleEndian.PutUint64(buf[:], amount)
+	c.payload = append(c.payload, buf...)
+
+	c.payload = append(c.payload, payload...)
+}
+
+func (c *ContractExecutor) Spawn(code, payload []byte, gasLimit uint64) (uint64, error) {
 	vm, err := c.Init(code, gasLimit)
 	if err != nil {
-		return nil, 0, err
+		return 0, err
 	}
 
-	// Load memory snapshot if available.
-	mem, err := c.LoadMemorySnapshot()
-	if err != nil {
-		return nil, 0, errors.Wrap(err, "contract: failed to load memory snapshot")
-	}
+	c.InitPayload(0, payload)
 
-	if mem != nil {
-		vm.Memory = mem
-	}
-
-	c.header = make([]byte, SizeTransactionID+SizeAccountID+8+len(payload))
-
-	copy(c.header[0:SizeTransactionID], tx.ID[:])
-	copy(c.header[SizeTransactionID:SizeTransactionID+SizeAccountID], tx.Creator[:])
-
-	binary.LittleEndian.PutUint64(c.header[SizeTransactionID+SizeAccountID:8+SizeTransactionID+SizeAccountID], amount)
-
-	copy(c.header[8+SizeTransactionID+SizeAccountID:8+SizeTransactionID+SizeAccountID+len(payload)], payload)
-
-	entry = "_contract_" + entry
-
-	entryID, exists := vm.GetFunctionExport(entry)
+	entry, exists := vm.GetFunctionExport("_contract_init")
 	if !exists {
-		return nil, vm.Gas, errors.Wrapf(ErrContractFunctionNotFound, "`%s` does not exist", entry)
+		return 0, errors.Wrap(ErrContractFunctionNotFound, "`_contract_init` does not exist")
 	}
 
 	// Execute virtual machine.
-	vm.Ignite(entryID)
+	vm.Ignite(entry)
 
 	for !vm.Exited {
 		vm.Execute()
@@ -203,21 +203,75 @@ func (c *ContractExecutor) Run(amount, gasLimit uint64, entry string, payload ..
 	}
 
 	if vm.ExitError != nil {
-		return nil, vm.Gas, utils.UnifyError(vm.ExitError)
+		return vm.Gas, utils.UnifyError(vm.ExitError)
 	}
 
-	// Save memory snapshot.
-	c.SaveMemorySnapshot(c.contractID, vm.Memory)
+	// Save memory snapshot if no errors occurred.
+	if len(c.result) == 0 {
+		c.SaveMemorySnapshot(c.contractID, vm.Memory)
+	}
 
-	return c.result, vm.Gas, nil
+	return vm.Gas, nil
+}
+
+func (c *ContractExecutor) Run(amount, gasLimit uint64, entrypoint string, payload ...byte) (uint64, error) {
+	code, available := c.ctx.ReadAccountContractCode(c.contractID)
+	if !available {
+		return 0, ErrNotSmartContract
+	}
+
+	vm, err := c.Init(code, gasLimit)
+	if err != nil {
+		return 0, err
+	}
+
+	// Load memory snapshot if available.
+	mem, err := c.LoadMemorySnapshot()
+	if err != nil {
+		return 0, errors.Wrap(err, "contract: failed to load memory snapshot")
+	}
+
+	if mem != nil {
+		vm.Memory = mem
+	}
+
+	c.InitPayload(amount, payload)
+
+	entry, exists := vm.GetFunctionExport("_contract_" + entrypoint)
+	if !exists {
+		return 0, errors.Wrapf(ErrContractFunctionNotFound, "fn `_contract_%s` does not exist", entrypoint)
+	}
+
+	// Execute virtual machine.
+	vm.Ignite(entry)
+
+	for !vm.Exited {
+		vm.Execute()
+
+		if vm.Delegate != nil {
+			vm.Delegate()
+			vm.Delegate = nil
+		}
+	}
+
+	if vm.ExitError != nil {
+		return vm.Gas, utils.UnifyError(vm.ExitError)
+	}
+
+	// Save memory snapshot if no errors occurred.
+	if len(c.result) == 0 {
+		c.SaveMemorySnapshot(c.contractID, vm.Memory)
+	}
+
+	return vm.Gas, nil
 }
 
 func (c *ContractExecutor) GetCost(key string) int64 {
-	if c.gasTable == nil {
+	if c.table == nil {
 		return 1
 	}
 
-	cost, ok := c.gasTable[key]
+	cost, ok := c.table[key]
 
 	if !ok {
 		return 1
@@ -255,14 +309,14 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 			}
 		case "_payload_len":
 			return func(vm *exec.VirtualMachine) int64 {
-				return int64(len(c.header))
+				return int64(len(c.payload))
 			}
 		case "_payload":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
 
 				outPtr := int(uint32(frame.Locals[0]))
-				copy(vm.Memory[outPtr:], c.header)
+				copy(vm.Memory[outPtr:], c.payload)
 				return 0
 			}
 		case "_result":
@@ -289,6 +343,78 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				}
 				return 0
 			}
+		case "_verify_ed25519":
+			var gas uint64
+			var ok bool
+			if gas, ok = sys.GasTable["wavelet.verify.ed25519"]; !ok {
+				panic("gas entry not found")
+			}
+
+			return func(vm *exec.VirtualMachine) int64 {
+				vm.Gas += gas
+
+				frame := vm.GetCurrentFrame()
+				keyPtr, keyLen := int(uint32(frame.Locals[0])), int(uint32(frame.Locals[1]))
+				dataPtr, dataLen := int(uint32(frame.Locals[2])), int(uint32(frame.Locals[3]))
+				sigPtr, sigLen := int(uint32(frame.Locals[4])), int(uint32(frame.Locals[5]))
+
+				if keyLen != edwards25519.SizePublicKey || sigLen != edwards25519.SizeSignature {
+					return 1
+				}
+
+				key := vm.Memory[keyPtr : keyPtr+keyLen]
+				data := vm.Memory[dataPtr : dataPtr+dataLen]
+				sig := vm.Memory[sigPtr : sigPtr+sigLen]
+
+				var pub edwards25519.PublicKey
+				var edSig edwards25519.Signature
+
+				copy(pub[:], key)
+				copy(edSig[:], sig)
+
+				ok := edwards25519.Verify(pub, data, edSig)
+				if ok {
+					return 0
+				} else {
+					return 1
+				}
+			}
+		case "_hash_blake2b_256":
+			return buildHashImpl(
+				"wavelet.hash.blake2b256",
+				blake2b.Size256,
+				func(data, out []byte) {
+					b := blake2b.Sum256(data)
+					copy(out, b[:])
+				},
+			)
+		case "_hash_blake2b_512":
+			return buildHashImpl(
+				"wavelet.hash.blake2b512",
+				blake2b.Size,
+				func(data, out []byte) {
+					b := blake2b.Sum512(data)
+					copy(out, b[:])
+				},
+			)
+		case "_hash_sha256":
+			return buildHashImpl(
+				"wavelet.hash.sha256",
+				sha256.Size,
+				func(data, out []byte) {
+					b := sha256.Sum256(data)
+					copy(out, b[:])
+				},
+			)
+		case "_hash_sha512":
+			return buildHashImpl(
+				"wavelet.hash.sha512",
+				sha512.Size,
+				func(data, out []byte) {
+					b := sha512.Sum512(data)
+					copy(out, b[:])
+				},
+			)
 		default:
 			panic("unknown field")
 		}
@@ -299,4 +425,28 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 
 func (c *ContractExecutor) ResolveGlobal(module, field string) int64 {
 	panic("no global variables")
+}
+
+func buildHashImpl(gasKey string, size int, f func(data, out []byte)) func(vm *exec.VirtualMachine) int64 {
+	var gas uint64
+	var ok bool
+	if gas, ok = sys.GasTable[gasKey]; !ok {
+		panic("gas entry not found")
+	}
+
+	return func(vm *exec.VirtualMachine) int64 {
+		vm.Gas += gas
+
+		frame := vm.GetCurrentFrame()
+		dataPtr, dataLen := int(uint32(frame.Locals[0])), int(uint32(frame.Locals[1]))
+		outPtr, outLen := int(uint32(frame.Locals[2])), int(uint32(frame.Locals[3]))
+		if outLen != size {
+			return 1
+		}
+
+		data := vm.Memory[dataPtr : dataPtr+dataLen]
+		out := vm.Memory[outPtr : outPtr+outLen]
+		f(data, out)
+		return 0
+	}
 }

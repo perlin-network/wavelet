@@ -42,6 +42,9 @@ var (
 )
 
 const (
+	LoggerWavelet   = "wavelet"
+	LoggerWebsocket = "ws"
+
 	KeyModule = "mod"
 	KeyEvent  = "event"
 
@@ -52,13 +55,9 @@ const (
 	ModuleContract  = "contract"
 	ModuleSync      = "sync"
 	ModuleStake     = "stake"
-	ModuleTx        = "tx"
+	ModuleTX        = "tx"
 	ModuleMetrics   = "metrics"
 )
-
-func Set(key string, w io.Writer) {
-	output.Set(key, w)
-}
 
 func init() {
 	setupChildLoggers()
@@ -72,8 +71,12 @@ func setupChildLoggers() {
 	contract = logger.With().Str(KeyModule, ModuleContract).Logger()
 	syncer = logger.With().Str(KeyModule, ModuleSync).Logger()
 	stake = logger.With().Str(KeyModule, ModuleStake).Logger()
-	tx = logger.With().Str(KeyModule, ModuleTx).Logger()
+	tx = logger.With().Str(KeyModule, ModuleTX).Logger()
 	metrics = logger.With().Str(KeyModule, ModuleMetrics).Logger()
+}
+
+func SetWriter(key string, writer io.Writer) {
+	output.SetWriter(key, writer)
 }
 
 func Node() zerolog.Logger {

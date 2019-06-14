@@ -29,7 +29,7 @@ type multiWriter struct {
 	writers map[string]io.Writer
 }
 
-func (t *multiWriter) Set(key string, writer io.Writer) {
+func (t *multiWriter) SetWriter(key string, writer io.Writer) {
 	t.Lock()
 	defer t.Unlock()
 

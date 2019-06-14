@@ -23,10 +23,11 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"github.com/gorilla/websocket"
+	"github.com/fasthttp/websocket"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/valyala/fasthttp"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -44,8 +45,6 @@ type Client struct {
 
 	edwards25519.PrivateKey
 	edwards25519.PublicKey
-
-	SessionToken string
 }
 
 func NewClient(config Config) (*Client, error) {
@@ -84,7 +83,6 @@ func (c *Client) Request(path string, method string, body MarshalableJSON) ([]by
 	req.URI().Update(addr)
 	req.Header.SetMethod(method)
 	req.Header.SetContentType("application/json")
-	req.Header.Add(HeaderSessionToken, c.SessionToken)
 
 	if body != nil {
 		raw, err := body.MarshalJSON()
@@ -110,54 +108,28 @@ func (c *Client) Request(path string, method string, body MarshalableJSON) ([]by
 }
 
 // EstablishWS will create a websocket connection.
-func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
+func (c *Client) EstablishWS(path string, query url.Values) (*websocket.Conn, error) {
 	prot := "ws"
 	if c.Config.UseHTTPS {
 		prot = "wss"
 	}
 
-	url := fmt.Sprintf("%s://%s:%d%s", prot, c.Config.APIHost, c.Config.APIPort, path)
+	host := fmt.Sprintf("%s:%d", c.Config.APIHost, c.Config.APIPort)
+	uri := url.URL{Scheme: prot, Host: host, RawQuery: query.Encode(), Path: path}
+	dialer := &websocket.Dialer{
+		HandshakeTimeout: 3 * time.Second,
+	}
 
-	header := make(http.Header)
-	header.Add(HeaderSessionToken, c.SessionToken)
-
-	dialer := &websocket.Dialer{}
-	conn, _, err := dialer.Dial(url, header)
+	conn, _, err := dialer.Dial(uri.String(), nil)
 	return conn, err
 }
 
-// Init instantiates a new session with the Wavelet nodes HTTP API.
-func (c *Client) Init() error {
-	var res SessionInitResponse
-
-	millis := time.Now().UnixNano() * 1000
-	message := []byte(fmt.Sprintf("%s%d", SessionInitMessage, millis))
-
-	signature := edwards25519.Sign(c.PrivateKey, message)
-
-	req := SessionInitRequest{
-		PublicKey:  hex.EncodeToString(c.PublicKey[:]),
-		TimeMillis: uint64(millis),
-		Signature:  hex.EncodeToString(signature[:]),
-	}
-
-	if err := c.RequestJSON(RouteSessionInit, ReqPost, &req, &res); err != nil {
-		return err
-	}
-
-	c.SessionToken = res.Token
-
-	return nil
-}
-
 func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan []byte, error) {
-	path := fmt.Sprintf("%s?token=%s", sinkRoute, c.SessionToken)
-
 	if stop == nil {
 		stop = make(chan struct{})
 	}
 
-	ws, err := c.EstablishWS(path)
+	ws, err := c.EstablishWS(sinkRoute, url.Values{})
 	if err != nil {
 		return nil, err
 	}
@@ -185,16 +157,16 @@ func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan 
 }
 
 func (c *Client) PollAccounts(stop <-chan struct{}, accountID *string) (<-chan []byte, error) {
-	path := fmt.Sprintf("%s?token=%s", RouteWSAccounts, c.SessionToken)
+	v := url.Values{}
 	if accountID != nil {
-		path = fmt.Sprintf("%s&id=%s", path, *accountID)
+		v.Set("id", *accountID)
 	}
 
 	if stop == nil {
 		stop = make(chan struct{})
 	}
 
-	ws, err := c.EstablishWS(path)
+	ws, err := c.EstablishWS(RouteWSAccounts, v)
 	if err != nil {
 		return nil, err
 	}
@@ -222,16 +194,16 @@ func (c *Client) PollAccounts(stop <-chan struct{}, accountID *string) (<-chan [
 }
 
 func (c *Client) PollContracts(stop <-chan struct{}, contractID *string) (<-chan []byte, error) {
-	path := fmt.Sprintf("%s?token=%s", RouteWSContracts, c.SessionToken)
+	v := url.Values{}
 	if contractID != nil {
-		path = fmt.Sprintf("%sid=%s&", path, *contractID)
+		v.Set("id", *contractID)
 	}
 
 	if stop == nil {
 		stop = make(chan struct{})
 	}
 
-	ws, err := c.EstablishWS(path)
+	ws, err := c.EstablishWS(RouteWSContracts, v)
 	if err != nil {
 		return nil, err
 	}
@@ -258,23 +230,26 @@ func (c *Client) PollContracts(stop <-chan struct{}, contractID *string) (<-chan
 	return evChan, nil
 }
 
-func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *string, creatorID *string) (<-chan []byte, error) {
-	path := fmt.Sprintf("%s?token=%s", RouteWSTransactions, c.SessionToken)
+func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *string, creatorID *string, tag *byte) (<-chan []byte, error) {
+	v := url.Values{}
 	if txID != nil {
-		path = fmt.Sprintf("%stx_id=%s&", path, *txID)
+		v.Set("tx_id", *txID)
 	}
 	if senderID != nil {
-		path = fmt.Sprintf("%ssender=%s&", path, *senderID)
+		v.Set("sender", *senderID)
 	}
 	if creatorID != nil {
-		path = fmt.Sprintf("%screator=%s&", path, *creatorID)
+		v.Set("creator", *creatorID)
+	}
+	if tag != nil {
+		v.Set("tag", fmt.Sprintf("%x", *tag))
 	}
 
 	if stop == nil {
 		stop = make(chan struct{})
 	}
 
-	ws, err := c.EstablishWS(path)
+	ws, err := c.EstablishWS(RouteWSTransactions, v)
 	if err != nil {
 		return nil, err
 	}
