@@ -410,7 +410,7 @@ func (cli *CLI) spawn(cmd []string) {
 
 	w := bytes.NewBuffer(nil)
 
-	binary.LittleEndian.PutUint64(buf[:], 1000000) // Gas fee.
+	binary.LittleEndian.PutUint64(buf[:], 100000000) // Gas fee.
 	w.Write(buf[:])
 
 	binary.LittleEndian.PutUint64(buf[:], 0) // Payload size.
