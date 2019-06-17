@@ -20,8 +20,8 @@ func TestRewardWithdrawals(t *testing.T) {
 
 		rw := RewardWithdrawal{
 			accountID: a,
-			round: uint64(i),
-			amount: rand.Uint64(),
+			round:     uint64(i),
+			amount:    rand.Uint64(),
 		}
 
 		if !assert.NoError(t, StoreRewardWithdrawal(storage, rw)) {
@@ -39,5 +39,5 @@ func TestRewardWithdrawals(t *testing.T) {
 	}
 
 	assert.Equal(t, 7, len(rws))
-	assert.True(t, sort.SliceIsSorted(rws, func(i, j int) bool {return rws[i].round < rws[j].round}))
+	assert.True(t, sort.SliceIsSorted(rws, func(i, j int) bool { return rws[i].round < rws[j].round }))
 }

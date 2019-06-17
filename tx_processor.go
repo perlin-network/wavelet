@@ -30,8 +30,8 @@ import (
 type TransactionProcessor func(ctx *TransactionContext) error
 
 type TransactionContext struct {
-	round *Round
-	tree  *avl.Tree
+	round   *Round
+	tree    *avl.Tree
 	storage store.KV
 
 	balances          map[AccountID]uint64
@@ -49,8 +49,8 @@ type TransactionContext struct {
 
 func NewTransactionContext(round *Round, tree *avl.Tree, storage store.KV, tx *Transaction) *TransactionContext {
 	ctx := &TransactionContext{
-		round:    round,
-		tree:     tree,
+		round:   round,
+		tree:    tree,
 		storage: storage,
 
 		balances:          make(map[AccountID]uint64),
@@ -240,8 +240,8 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 
 		rw := RewardWithdrawal{
 			accountID: accountID,
-			amount: amount,
-			round: c.round.Index,
+			amount:    amount,
+			round:     c.round.Index,
 		}
 
 		if err := StoreRewardWithdrawal(c.storage, rw); err != nil {

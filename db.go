@@ -33,34 +33,35 @@ import (
 
 var (
 	keyAccounts       = [...]byte{0x1}
-	keyAccountNonce   = [...]byte{0x2}
-	keyAccountBalance = [...]byte{0x3}
-	keyAccountStake   = [...]byte{0x4}
+	keyAccountsLen    = [...]byte{0x2}
+	keyAccountNonce   = [...]byte{0x3}
+	keyAccountBalance = [...]byte{0x4}
+	keyAccountStake   = [...]byte{0x5}
+	keyAccountReward  = [...]byte{0x6}
 
-	keyAccountContractCode     = [...]byte{0x5}
-	keyAccountContractNumPages = [...]byte{0x6}
-	keyAccountContractPages    = [...]byte{0x7}
+	keyAccountContractCode     = [...]byte{0x7}
+	keyAccountContractNumPages = [...]byte{0x8}
+	keyAccountContractPages    = [...]byte{0x9}
 
-	keyRounds           = [...]byte{0x8}
-	keyRoundLatestIx    = [...]byte{0x9}
-	keyRoundOldestIx    = [...]byte{0x10}
-	keyRoundStoredCount = [...]byte{0x11}
+	keyRounds           = [...]byte{0x10}
+	keyRoundLatestIx    = [...]byte{0x11}
+	keyRoundOldestIx    = [...]byte{0x12}
+	keyRoundStoredCount = [...]byte{0x13}
 
-	keyAccountReward = [...]byte{0x12}
-	keyRewardWithdrawals = [...]byte{0x13}
+	keyRewardWithdrawals = [...]byte{0x14}
 )
 
 type RewardWithdrawal struct {
 	accountID AccountID
-	amount uint64
-	round uint64
+	amount    uint64
+	round     uint64
 }
 
 func (rw RewardWithdrawal) Key() []byte {
 	return append(
 		keyRewardWithdrawals[:],
 		append(
-			[]byte(strconv.FormatUint(rw.round, 10)),
+			[]byte(fmt.Sprintf("%020d", rw.round)),
 			rw.accountID[:]...,
 		)...,
 	)
@@ -239,9 +240,23 @@ func writeUnderAccounts(tree *avl.Tree, id AccountID, key, value []byte) {
 	tree.Insert(append(keyAccounts[:], append(key, id[:]...)...), value[:])
 }
 
-func StoreRound(
-	kv store.KV, round Round, currentIx, oldestIx uint32, storedCount uint8,
-) error {
+func ReadAccountsLen(tree *avl.Tree) uint64 {
+	buf, exists := tree.Lookup(keyAccountsLen[:])
+	if !exists {
+		return 0
+	}
+
+	return binary.BigEndian.Uint64(buf)
+}
+
+func WriteAccountsLen(tree *avl.Tree, size uint64) {
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], size)
+
+	tree.Insert(keyAccountsLen[:], buf[:])
+}
+
+func StoreRound(kv store.KV, round Round, currentIx, oldestIx uint32, storedCount uint8) error {
 	if err := kv.Put(keyRoundStoredCount[:], []byte{byte(storedCount)}); err != nil {
 		return errors.Wrap(err, "error storing stored rounds count")
 	}
