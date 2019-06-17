@@ -163,6 +163,8 @@ func (cli *CLI) status() {
 	snapshot := cli.ledger.Snapshot()
 	publicKey := cli.keys.PublicKey()
 
+	accountsLen := wavelet.ReadAccountsLen(snapshot)
+
 	balance, _ := wavelet.ReadAccountBalance(snapshot, publicKey)
 	stake, _ := wavelet.ReadAccountStake(snapshot, publicKey)
 	nonce, _ := wavelet.ReadAccountNonce(snapshot, publicKey)
@@ -190,6 +192,7 @@ func (cli *CLI) status() {
 		Int("num_tx", cli.ledger.Graph().DepthLen(&rootDepth, nil)).
 		Int("num_missing_tx", cli.ledger.Graph().MissingLen()).
 		Int("num_tx_in_store", cli.ledger.Graph().Len()).
+		Uint64("num_accounts_in_store", accountsLen).
 		Str("preferred_id", preferredID).
 		Int("preferred_votes", count).
 		Msg("Here is the current status of your node.")

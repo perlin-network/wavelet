@@ -65,6 +65,8 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 	var balance uint64
 	var stake uint64
 
+	set := make(map[AccountID]struct{}) // Ensure that there are no duplicate account entries in the JSON.
+
 	accounts.Visit(func(key []byte, val *fastjson.Value) {
 		if err != nil {
 			return
@@ -77,12 +79,21 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 		n, err = hex.Decode(id[:], key)
 
 		if n != cap(id) && err == nil {
-			err = errors.Errorf("got an invalid account id: %s", key)
+			err = errors.Errorf("got an invalid account id: %x", key)
+			return
 		}
 
 		if err != nil {
+			err = errors.Wrapf(err, "got an invalid account id: %x", key)
 			return
 		}
+
+		if _, exists := set[id]; exists {
+			err = errors.Errorf("found duplicate entries for account id %x in genesis file", id)
+			return
+		}
+
+		set[id] = struct{}{}
 
 		fields, err = val.Object()
 
@@ -115,6 +126,11 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 				WriteAccountStake(tree, id, uint64(stake))
 			}
 		})
+
+		if err == nil {
+			WriteAccountsLen(tree, ReadAccountsLen(tree)+1)
+			WriteAccountNonce(tree, id, 1)
+		}
 	})
 
 	if err != nil {
