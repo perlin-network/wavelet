@@ -1214,7 +1214,10 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 
 		// Update nonce.
 
-		nonce, _ := ReadAccountNonce(res.snapshot, popped.Creator)
+		nonce, exists := ReadAccountNonce(res.snapshot, popped.Creator)
+		if !exists {
+			WriteAccountsLen(res.snapshot, ReadAccountsLen(res.snapshot)+1)
+		}
 		WriteAccountNonce(res.snapshot, popped.Creator, nonce+1)
 
 		// Update statistics.

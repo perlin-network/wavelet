@@ -213,12 +213,16 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 		return nil, errors.New("insufficient parameters were provided")
 	}
 
+	snapshot := s.ledger.Snapshot()
 	round := s.ledger.Rounds().Latest()
+
+	accountsLen := wavelet.ReadAccountsLen(snapshot)
 
 	o := arena.NewObject()
 
 	o.Set("public_key", arena.NewString(hex.EncodeToString(s.publicKey[:])))
 	o.Set("address", arena.NewString(s.client.ID().Address()))
+	o.Set("num_accounts", arena.NewNumberString(strconv.FormatUint(accountsLen, 10)))
 
 	r := arena.NewObject()
 	r.Set("merkle_root", arena.NewString(hex.EncodeToString(round.Merkle[:])))
