@@ -24,6 +24,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/filter"
 	"github.com/syndtr/goleveldb/leveldb/opt"
+	"github.com/syndtr/goleveldb/leveldb/util"
 )
 
 var _ WriteBatch = (*leveldbWriteBatch)(nil)
@@ -99,6 +100,17 @@ func (l *leveldbKV) CommitWriteBatch(batch WriteBatch) error {
 
 func (l *leveldbKV) Delete(key []byte) error {
 	return l.db.Delete(key, nil)
+}
+
+func (l *leveldbKV) GetRange(prefix []byte, filter func(k, v []byte) bool) ([][]byte, error) {
+	var res [][]byte
+	iter := l.db.NewIterator(util.BytesPrefix(prefix), nil)
+	for iter.Next() && filter(iter.Key(), iter.Value()) {
+		res = append(res, iter.Value())
+	}
+	iter.Release()
+
+	return res, iter.Error()
 }
 
 func NewLevelDB(dir string) (*leveldbKV, error) {

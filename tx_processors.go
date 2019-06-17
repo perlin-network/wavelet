@@ -22,6 +22,7 @@ package wavelet
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -144,20 +145,34 @@ func ProcessStakeTransaction(ctx *TransactionContext) error {
 	balance, _ := ctx.ReadAccountBalance(tx.Creator)
 	stake, _ := ctx.ReadAccountStake(tx.Creator)
 
-	if placeStake := buf[0] == 1; placeStake {
+	switch buf[0] {
+	case sys.PlaceStake:
 		if balance < delta {
 			return errors.New("stake: balance < delta")
 		}
 
 		ctx.WriteAccountBalance(tx.Creator, balance-delta)
 		ctx.WriteAccountStake(tx.Creator, stake+delta)
-	} else {
+	case sys.WithdrawStake:
 		if stake < delta {
 			return errors.New("stake: stake < delta")
 		}
 
 		ctx.WriteAccountBalance(tx.Creator, balance+delta)
 		ctx.WriteAccountStake(tx.Creator, stake-delta)
+	case sys.WithdrawReward:
+		if delta < sys.MinimumRewardWithdraw {
+			return fmt.Errorf("%d is less than minimum amount of reward to withdraw (%d)", delta, sys.MinimumRewardWithdraw)
+		}
+
+		reward, _ := ctx.ReadAccountReward(tx.Creator)
+		if reward < delta {
+			return errors.New("reward: reward < delta")
+		}
+
+		ctx.WriteRewardWithdrawRequest(tx.Creator, delta)
+	default:
+		return fmt.Errorf("unrecognised stake transaction type - %x", buf[0])
 	}
 
 	return nil

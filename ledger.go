@@ -43,6 +43,7 @@ import (
 type Ledger struct {
 	client  *skademlia.Client
 	metrics *Metrics
+	storage store.KV
 
 	accounts *Accounts
 	rounds   *Rounds
@@ -108,6 +109,7 @@ func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 	ledger := &Ledger{
 		client:  client,
 		metrics: metrics,
+		storage: kv,
 
 		accounts: accounts,
 		rounds:   rounds,
@@ -1091,7 +1093,7 @@ func (l *Ledger) SyncToLatestRound() {
 // ApplyTransactionToSnapshot applies a transactions intended changes to a snapshot
 // of the ledgers current state.
 func (l *Ledger) ApplyTransactionToSnapshot(snapshot *avl.Tree, tx *Transaction) error {
-	ctx := NewTransactionContext(l.Rounds().Latest(), snapshot, tx)
+	ctx := NewTransactionContext(l.Rounds().Latest(), snapshot, l.storage, tx)
 
 	if err := ctx.apply(l.processors); err != nil {
 		return errors.Wrap(err, "could not apply transaction to snapshot")
@@ -1334,7 +1336,7 @@ func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Tran
 	}
 
 	creatorBalance, _ := ReadAccountBalance(snapshot, tx.Creator)
-	recipientBalance, _ := ReadAccountBalance(snapshot, rewardee.Sender)
+	rewardBalance, _ := ReadAccountReward(snapshot, rewardee.Sender)
 
 	fee := sys.TransactionFeeAmount
 
@@ -1343,7 +1345,22 @@ func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Tran
 	}
 
 	WriteAccountBalance(snapshot, tx.Creator, creatorBalance-fee)
-	WriteAccountBalance(snapshot, rewardee.Sender, recipientBalance+fee)
+	if logging {
+		logger := log.Accounts("balance_updated")
+		logger.Log().
+			Hex("account_id", tx.Creator[:]).
+			Uint64("balance", creatorBalance-fee).
+			Msg("")
+	}
+
+	WriteAccountReward(snapshot, rewardee.Sender, rewardBalance+fee)
+	if logging {
+		logger := log.Accounts("reward_updated")
+		logger.Log().
+			Hex("account_id", rewardee.Sender[:]).
+			Uint64("reward", rewardBalance+fee).
+			Msg("")
+	}
 
 	if logging {
 		logger := log.Stake("reward_validator")

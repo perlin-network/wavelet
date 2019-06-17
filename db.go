@@ -27,6 +27,7 @@ import (
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/pkg/errors"
+	"io"
 	"strconv"
 )
 
@@ -44,7 +45,67 @@ var (
 	keyRoundLatestIx    = [...]byte{0x9}
 	keyRoundOldestIx    = [...]byte{0x10}
 	keyRoundStoredCount = [...]byte{0x11}
+
+	keyAccountReward = [...]byte{0x12}
+	keyRewardWithdrawals = [...]byte{0x13}
 )
+
+type RewardWithdrawal struct {
+	accountID AccountID
+	amount uint64
+	round uint64
+}
+
+func (rw RewardWithdrawal) Key() []byte {
+	return append(
+		keyRewardWithdrawals[:],
+		append(
+			[]byte(strconv.FormatUint(rw.round, 10)),
+			rw.accountID[:]...,
+		)...,
+	)
+}
+
+func (rw RewardWithdrawal) Marshal() []byte {
+	var w bytes.Buffer
+
+	w.Write(rw.accountID[:])
+
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], rw.amount)
+	w.Write(buf[:8])
+
+	binary.BigEndian.PutUint64(buf[:], rw.round)
+	w.Write(buf[:8])
+
+	return w.Bytes()
+}
+
+func UnmarshalRewardWithdrawal(r io.Reader) (RewardWithdrawal, error) {
+	var rw RewardWithdrawal
+	if _, err := io.ReadFull(r, rw.accountID[:]); err != nil {
+		err = errors.Wrap(err, "failed to decode reward withdrawal account id")
+		return rw, err
+	}
+
+	var buf [8]byte
+
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		err = errors.Wrap(err, "failed to decode reward withdrawal amount")
+		return rw, err
+	}
+
+	rw.amount = binary.BigEndian.Uint64(buf[:8])
+
+	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		err = errors.Wrap(err, "failed to decode reward withdrawal round")
+		return rw, err
+	}
+
+	rw.round = binary.BigEndian.Uint64(buf[:8])
+
+	return rw, nil
+}
 
 func ReadAccountNonce(tree *avl.Tree, id AccountID) (uint64, bool) {
 	buf, exists := readUnderAccounts(tree, id, keyAccountNonce[:])
@@ -92,6 +153,21 @@ func WriteAccountStake(tree *avl.Tree, id AccountID, stake uint64) {
 	binary.LittleEndian.PutUint64(buf[:], stake)
 
 	writeUnderAccounts(tree, id, keyAccountStake[:], buf[:])
+}
+
+func ReadAccountReward(tree *avl.Tree, id AccountID) (uint64, bool) {
+	buf, exists := readUnderAccounts(tree, id, keyAccountReward[:])
+	if !exists || len(buf) == 0 {
+		return 0, false
+	}
+
+	return binary.LittleEndian.Uint64(buf), true
+}
+
+func WriteAccountReward(tree *avl.Tree, id AccountID, reward uint64) {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], reward)
+	writeUnderAccounts(tree, id, keyAccountReward[:], buf[:])
 }
 
 func ReadAccountContractCode(tree *avl.Tree, id TransactionID) ([]byte, bool) {
@@ -227,4 +303,36 @@ func LoadRounds(kv store.KV) ([]*Round, uint32, uint32, error) {
 	}
 
 	return rounds, latestIx, oldestIx, nil
+}
+
+func GetRewardWithdrawals(kv store.KV, roundLimit uint64) ([]RewardWithdrawal, error) {
+	filter := func(k, v []byte) bool {
+		rw, err := UnmarshalRewardWithdrawal(bytes.NewReader(v))
+		if err != nil {
+			return false
+		}
+
+		return rw.round <= roundLimit
+	}
+
+	data, err := kv.GetRange(keyRewardWithdrawals[:], filter)
+	if err != nil {
+		return nil, err
+	}
+
+	rws := make([]RewardWithdrawal, len(data))
+	for i, d := range data {
+		rw, err := UnmarshalRewardWithdrawal(bytes.NewReader(d))
+		if err != nil {
+			return nil, err
+		}
+
+		rws[i] = rw
+	}
+
+	return rws, nil
+}
+
+func StoreRewardWithdrawal(kv store.KV, rw RewardWithdrawal) error {
+	return kv.Put(rw.Key(), rw.Marshal())
 }
