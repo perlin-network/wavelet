@@ -170,7 +170,7 @@ func (c *TransactionContext) WriteAccountReward(id AccountID, reward uint64) {
 }
 
 func (c *TransactionContext) WriteRewardWithdrawRequest(id AccountID, amount uint64) {
-
+	c.rewardWithdrawals[id] = amount
 }
 
 func (c *TransactionContext) WriteAccountContractCode(id TransactionID, code []byte) {

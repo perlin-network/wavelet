@@ -1236,8 +1236,54 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 
 	res.ignoredCount -= res.appliedCount + res.rejectedCount
 
+	if round > uint64(sys.RewardWithdrawalsRoundLimit) {
+		if err := l.processRewardWithdrawals(round, res.snapshot); err != nil {
+			if logging {
+				logger := log.Accounts("reward-process")
+				logger.Error().Err(err).Msg("Error processing reward withdrawals")
+			}
+		}
+	}
+
 	l.cacheCollapse.put(end.ID, res)
 	return res, nil
+}
+
+func (l *Ledger) processRewardWithdrawals(round uint64, snapshot *avl.Tree) error {
+	rws, err := GetRewardWithdrawals(l.storage, round-uint64(sys.RewardWithdrawalsRoundLimit))
+	if err != nil {
+		return err
+	}
+
+	var errs error
+	for _, rw := range rws {
+		reward, ok := ReadAccountReward(snapshot, rw.accountID)
+		if !ok || reward < rw.amount {
+			errMsg := fmt.Sprintf("reward: not enough reward to withdraw (%d < %d)", reward, rw.amount)
+			if errs == nil {
+				errs = errors.New(errMsg)
+			} else {
+				errs = errors.Wrap(errs, errMsg)
+			}
+
+			continue
+		}
+
+		WriteAccountReward(snapshot, rw.accountID, reward-rw.amount)
+
+		balance, _ := ReadAccountBalance(snapshot, rw.accountID)
+		WriteAccountBalance(snapshot, rw.accountID, balance+rw.amount)
+
+		if err := l.storage.Delete(rw.Key()); err != nil {
+			if errs == nil {
+				errs = err
+			} else {
+				errs = errors.Wrap(errs, err.Error())
+			}
+		}
+	}
+
+	return errs
 }
 
 func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Transaction, logging bool) error {

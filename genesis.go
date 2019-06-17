@@ -29,7 +29,8 @@ import (
 const defaultGenesis = `
 {
   "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405": {
-    "balance": 10000000000000000000
+    "balance": 10000000000000000000,
+    "reward": 5000000
   },
   "696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a": {
     "balance": 10000000000000000000
@@ -62,8 +63,7 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 		panic(err)
 	}
 
-	var balance uint64
-	var stake uint64
+	var balance, stake, reward uint64
 
 	set := make(map[AccountID]struct{}) // Ensure that there are no duplicate account entries in the JSON.
 
@@ -124,6 +124,15 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 				}
 
 				WriteAccountStake(tree, id, uint64(stake))
+			case "reward":
+				reward, err = v.Uint64()
+
+				if err != nil {
+					err = errors.Wrapf(err, "failed to cast type for key %q", key)
+					return
+				}
+
+				WriteAccountReward(tree, id, uint64(reward))
 			}
 		})
 

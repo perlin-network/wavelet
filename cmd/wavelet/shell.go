@@ -137,6 +137,8 @@ func (cli *CLI) Start() {
 			cli.withdrawStake(toCMD(line, 3))
 		case strings.HasPrefix(line, "withdraw-stake "):
 			cli.withdrawStake(toCMD(line, 15))
+		case strings.HasPrefix(line, "wr "):
+			cli.withdrawReward(toCMD(line, 3))
 		case strings.HasPrefix(line, "withdraw-reward "):
 			cli.withdrawReward(toCMD(line, 16))
 		case line == "":
@@ -170,6 +172,7 @@ func (cli *CLI) status() {
 
 	balance, _ := wavelet.ReadAccountBalance(snapshot, publicKey)
 	stake, _ := wavelet.ReadAccountStake(snapshot, publicKey)
+	reward, _ := wavelet.ReadAccountReward(snapshot, publicKey)
 	nonce, _ := wavelet.ReadAccountNonce(snapshot, publicKey)
 
 	round := cli.ledger.Rounds().Latest()
@@ -190,6 +193,7 @@ func (cli *CLI) status() {
 		Str("id", hex.EncodeToString(publicKey[:])).
 		Uint64("balance", balance).
 		Uint64("stake", stake).
+		Uint64("reward", reward).
 		Uint64("nonce", nonce).
 		Strs("peers", peerIDs).
 		Int("num_tx", cli.ledger.Graph().DepthLen(&rootDepth, nil)).

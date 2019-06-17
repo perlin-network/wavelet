@@ -78,6 +78,8 @@ var (
 
 	MinimumRewardWithdraw = MinimumStake
 
+	RewardWithdrawalsRoundLimit = 50
+
 	PruningLimit = uint8(30)
 
 	GasTable = map[string]uint64{

@@ -161,6 +161,7 @@ func ProcessStakeTransaction(ctx *TransactionContext) error {
 		ctx.WriteAccountBalance(tx.Creator, balance+delta)
 		ctx.WriteAccountStake(tx.Creator, stake-delta)
 	case sys.WithdrawReward:
+
 		if delta < sys.MinimumRewardWithdraw {
 			return fmt.Errorf("%d is less than minimum amount of reward to withdraw (%d)", delta, sys.MinimumRewardWithdraw)
 		}
