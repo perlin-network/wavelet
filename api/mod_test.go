@@ -593,7 +593,7 @@ func TestGetLedger(t *testing.T) {
 	publicKey := keys.PublicKey()
 
 	expectedJSON := fmt.Sprintf(
-		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":2,"round":{"merkle_root":"9f14f6ac7bd4964a02a38de7d2ad02ed","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc","applied":0,"depth":0,"difficulty":8},"peers":null}`,
+		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":2,"round":{"merkle_root":"c3b53c6d21dd78d9420e3cdd5953e364","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc","applied":0,"depth":0,"difficulty":8},"peers":null}`,
 		hex.EncodeToString(publicKey[:]),
 		listener.Addr().(*net.TCPAddr).Port,
 	)

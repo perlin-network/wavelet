@@ -4,6 +4,7 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
+	"os"
 	"sort"
 	"testing"
 )
@@ -13,6 +14,10 @@ func TestRewardWithdrawals(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
+
+	defer func() {
+		_ = os.RemoveAll("temp")
+	}()
 
 	var a AccountID
 	for i := 10; i > 0; i-- {
