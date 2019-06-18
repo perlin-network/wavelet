@@ -1244,7 +1244,7 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 }
 
 func (l *Ledger) processRewardWithdrawals(round uint64, snapshot *avl.Tree, logging bool) {
-	rws := GetRewardWithdrawals(snapshot, round-uint64(sys.RewardWithdrawalsRoundLimit))
+	rws := GetRewardWithdrawalRequests(snapshot, round-uint64(sys.RewardWithdrawalsRoundLimit))
 
 	balanceLogger := log.Accounts("balance_updated")
 	rewardLogger := log.Accounts("reward_updated")

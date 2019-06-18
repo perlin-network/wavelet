@@ -206,7 +206,7 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 	balanceLogger := log.Accounts("balance_updated")
 	stakeLogger := log.Accounts("stake_updated")
 	pageLogger := log.Accounts("num_pages_updated")
-	rewardWithdrawLogger := log.Stake("withdrawal_requested")
+	rewardWithdrawLogger := log.Stake("reward_withdrawal_requested")
 
 	// If the transaction processor executed properly, apply changes from
 	// the transactions context over to our accounts snapshot.
@@ -235,13 +235,13 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 			Uint64("amount", amount).
 			Msg("")
 
-		rw := RewardWithdrawal{
+		rw := RewardWithdrawalRequest{
 			accountID: accountID,
 			amount:    amount,
 			round:     c.round.Index,
 		}
 
-		StoreRewardWithdrawal(c.tree, rw)
+		StoreRewardWithdrawalRequest(c.tree, rw)
 	}
 
 	for id, code := range c.contracts {

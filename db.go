@@ -51,13 +51,13 @@ var (
 	keyRewardWithdrawals = [...]byte{0x14}
 )
 
-type RewardWithdrawal struct {
+type RewardWithdrawalRequest struct {
 	accountID AccountID
 	amount    uint64
 	round     uint64
 }
 
-func (rw RewardWithdrawal) Key() []byte {
+func (rw RewardWithdrawalRequest) Key() []byte {
 	var w bytes.Buffer
 	w.Write(keyRewardWithdrawals[:])
 
@@ -70,7 +70,7 @@ func (rw RewardWithdrawal) Key() []byte {
 	return w.Bytes()
 }
 
-func (rw RewardWithdrawal) Marshal() []byte {
+func (rw RewardWithdrawalRequest) Marshal() []byte {
 	var w bytes.Buffer
 
 	w.Write(rw.accountID[:])
@@ -85,8 +85,8 @@ func (rw RewardWithdrawal) Marshal() []byte {
 	return w.Bytes()
 }
 
-func UnmarshalRewardWithdrawal(r io.Reader) (RewardWithdrawal, error) {
-	var rw RewardWithdrawal
+func UnmarshalRewardWithdrawalRequest(r io.Reader) (RewardWithdrawalRequest, error) {
+	var rw RewardWithdrawalRequest
 	if _, err := io.ReadFull(r, rw.accountID[:]); err != nil {
 		err = errors.Wrap(err, "failed to decode reward withdrawal account id")
 		return rw, err
@@ -323,15 +323,15 @@ func LoadRounds(kv store.KV) ([]*Round, uint32, uint32, error) {
 	return rounds, latestIx, oldestIx, nil
 }
 
-func GetRewardWithdrawals(tree *avl.Tree, roundLimit uint64) []RewardWithdrawal {
-	var rws []RewardWithdrawal
+func GetRewardWithdrawalRequests(tree *avl.Tree, roundLimit uint64) []RewardWithdrawalRequest {
+	var rws []RewardWithdrawalRequest
 
 	cb := func(k, v []byte) {
 		if !bytes.Equal(k[:1], keyRewardWithdrawals[:]) {
 			return
 		}
 
-		rw, err := UnmarshalRewardWithdrawal(bytes.NewReader(v))
+		rw, err := UnmarshalRewardWithdrawalRequest(bytes.NewReader(v))
 		if err != nil {
 			return
 		}
@@ -346,6 +346,6 @@ func GetRewardWithdrawals(tree *avl.Tree, roundLimit uint64) []RewardWithdrawal 
 	return rws
 }
 
-func StoreRewardWithdrawal(tree *avl.Tree, rw RewardWithdrawal) {
+func StoreRewardWithdrawalRequest(tree *avl.Tree, rw RewardWithdrawalRequest) {
 	tree.Insert(rw.Key(), rw.Marshal())
 }
