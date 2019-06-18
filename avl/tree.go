@@ -120,6 +120,13 @@ func (t *Tree) Range(callback func(key, value []byte)) {
 	t.doRange(callback, t.root)
 }
 
+func (t *Tree) RangeWithLowerBound(key []byte, callback func(key, value []byte) bool) {
+	if t.root == nil {
+		return
+	}
+	t.root.rangeWithLowerBound(t, key, callback)
+}
+
 func (t *Tree) doRange(callback func(k []byte, v []byte), n *node) {
 	if n == nil {
 		return

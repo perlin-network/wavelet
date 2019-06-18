@@ -21,6 +21,7 @@ package avl
 
 import (
 	"bytes"
+	"encoding/binary"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/stretchr/testify/assert"
 	"math/rand"
@@ -209,6 +210,53 @@ func TestTree_Difference(t *testing.T) {
 	assert.Equal(t, len3, 0)
 	assert.True(t, len1 > len2)
 	assert.True(t, len2 > len3)
+}
+
+func TestTree_RangeWithLowerBound(t *testing.T) {
+	tree := New(store.NewInmem())
+	for i := uint64(0); i < 50; i++ {
+		var buf [8]byte
+		binary.BigEndian.PutUint64(buf[:], i)
+		tree.Insert(buf[:], buf[:])
+	}
+	assert.NoError(t, tree.Commit())
+
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], 20)
+	var result []uint64
+
+	// Early stop
+	tree.RangeWithLowerBound(buf[:], func(key, value []byte) bool {
+		k := binary.BigEndian.Uint64(key)
+		v := binary.BigEndian.Uint64(value)
+		assert.Equal(t, k, v)
+		result = append(result, k)
+		if k == 42 {
+			return false
+		} else {
+			return true
+		}
+	})
+	var expected []uint64
+	for i := uint64(20); i <= 42; i++ {
+		expected = append(expected, i)
+	}
+	assert.Equal(t, result, expected)
+
+	// Full iteration
+	result = nil
+	tree.RangeWithLowerBound(buf[:], func(key, value []byte) bool {
+		k := binary.BigEndian.Uint64(key)
+		v := binary.BigEndian.Uint64(value)
+		assert.Equal(t, k, v)
+		result = append(result, k)
+		return true
+	})
+	expected = nil
+	for i := uint64(20); i <= 49; i++ {
+		expected = append(expected, i)
+	}
+	assert.Equal(t, result, expected)
 }
 
 func BenchmarkAVL(b *testing.B) {
