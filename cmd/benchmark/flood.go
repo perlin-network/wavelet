@@ -46,7 +46,7 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 
 				var base [9]byte
 
-				base[0] = 1
+				base[0] = sys.PlaceStake
 				binary.LittleEndian.PutUint64(base[1:9], uint64(i))
 
 				var tags []byte

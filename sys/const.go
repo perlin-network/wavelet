@@ -32,6 +32,12 @@ const (
 	TagBatch
 )
 
+const (
+	WithdrawStake byte = iota
+	PlaceStake
+	WithdrawReward
+)
+
 var (
 	// S/Kademlia overlay network parameters.
 	SKademliaC1 = 1
@@ -69,6 +75,10 @@ var (
 
 	// Minimum amount of stake to start being able to reap validator rewards.
 	MinimumStake uint64 = 100
+
+	MinimumRewardWithdraw = MinimumStake
+
+	RewardWithdrawalsRoundLimit = 50
 
 	PruningLimit = uint8(30)
 

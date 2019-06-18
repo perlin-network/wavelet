@@ -1234,8 +1234,54 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 
 	res.ignoredCount -= res.appliedCount + res.rejectedCount
 
+	if round > uint64(sys.RewardWithdrawalsRoundLimit) {
+		l.processRewardWithdrawals(round, res.snapshot, logging)
+	}
+
 	l.cacheCollapse.put(end.ID, res)
+
 	return res, nil
+}
+
+func (l *Ledger) processRewardWithdrawals(round uint64, snapshot *avl.Tree, logging bool) {
+	rws := GetRewardWithdrawalRequests(snapshot, round-uint64(sys.RewardWithdrawalsRoundLimit))
+
+	balanceLogger := log.Accounts("balance_updated")
+	rewardLogger := log.Accounts("reward_updated")
+
+	var errs error
+	for _, rw := range rws {
+		reward, ok := ReadAccountReward(snapshot, rw.accountID)
+		if !ok || reward < rw.amount {
+			errMsg := fmt.Sprintf("reward: not enough reward to withdraw (%d < %d)", reward, rw.amount)
+			if errs == nil {
+				errs = errors.New(errMsg)
+			} else {
+				errs = errors.Wrap(errs, errMsg)
+			}
+
+			continue
+		}
+
+		WriteAccountReward(snapshot, rw.accountID, reward-rw.amount)
+		if logging {
+			rewardLogger.Log().
+				Hex("account_id", rw.accountID[:]).
+				Uint64("reward", reward-rw.amount).
+				Msg("")
+		}
+
+		balance, _ := ReadAccountBalance(snapshot, rw.accountID)
+		WriteAccountBalance(snapshot, rw.accountID, balance+rw.amount)
+		if logging {
+			balanceLogger.Log().
+				Hex("account_id", rw.accountID[:]).
+				Uint64("balance", balance+rw.amount).
+				Msg("")
+		}
+
+		snapshot.Delete(rw.Key())
+	}
 }
 
 func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Transaction, logging bool) error {
@@ -1337,7 +1383,7 @@ func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Tran
 	}
 
 	creatorBalance, _ := ReadAccountBalance(snapshot, tx.Creator)
-	recipientBalance, _ := ReadAccountBalance(snapshot, rewardee.Sender)
+	rewardBalance, _ := ReadAccountReward(snapshot, rewardee.Sender)
 
 	fee := sys.TransactionFeeAmount
 
@@ -1346,7 +1392,22 @@ func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Tran
 	}
 
 	WriteAccountBalance(snapshot, tx.Creator, creatorBalance-fee)
-	WriteAccountBalance(snapshot, rewardee.Sender, recipientBalance+fee)
+	if logging {
+		logger := log.Accounts("balance_updated")
+		logger.Log().
+			Hex("account_id", tx.Creator[:]).
+			Uint64("balance", creatorBalance-fee).
+			Msg("")
+	}
+
+	WriteAccountReward(snapshot, rewardee.Sender, rewardBalance+fee)
+	if logging {
+		logger := log.Accounts("reward_updated")
+		logger.Log().
+			Hex("account_id", rewardee.Sender[:]).
+			Uint64("reward", rewardBalance+fee).
+			Msg("")
+	}
 
 	if logging {
 		logger := log.Stake("reward_validator")

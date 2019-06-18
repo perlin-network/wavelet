@@ -251,6 +251,27 @@ func (n *node) lookup(t *Tree, key []byte) ([]byte, bool) {
 	panic(errors.Errorf("avl: on lookup, found an unsupported node kind %d", n.kind))
 }
 
+func (n *node) iterateFrom(t *Tree, key []byte, callback func(key, value []byte) bool) bool {
+	if n.kind == NodeLeafValue {
+		if bytes.Compare(key, n.key) <= 0 {
+			return callback(n.key, n.value)
+		}
+		return true
+	} else if n.kind == NodeNonLeaf {
+		child := t.mustLoadLeft(n)
+
+		if bytes.Compare(key, child.key) <= 0 {
+			cont := child.iterateFrom(t, key, callback)
+			if !cont {
+				return false
+			}
+		}
+		return t.mustLoadRight(n).iterateFrom(t, key, callback)
+	}
+
+	panic(errors.Errorf("avl: on lookup, found an unsupported node kind %d", n.kind))
+}
+
 func (n *node) delete(t *Tree, key []byte) (*node, bool) {
 	if n.kind == NodeLeafValue {
 		if bytes.Equal(n.key, key) {

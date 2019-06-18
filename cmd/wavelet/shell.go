@@ -55,6 +55,7 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 		readline.PcItem("s"), readline.PcItem("spawn"),
 		readline.PcItem("ps"), readline.PcItem("place-stake"),
 		readline.PcItem("ws"), readline.PcItem("withdraw-stake"),
+		readline.PcItem("wr"), readline.PcItem("withdraw-reward"),
 		readline.PcItem("help"),
 	)
 
@@ -136,6 +137,10 @@ func (cli *CLI) Start() {
 			cli.withdrawStake(toCMD(line, 3))
 		case strings.HasPrefix(line, "withdraw-stake "):
 			cli.withdrawStake(toCMD(line, 15))
+		case strings.HasPrefix(line, "wr "):
+			cli.withdrawReward(toCMD(line, 3))
+		case strings.HasPrefix(line, "withdraw-reward "):
+			cli.withdrawReward(toCMD(line, 16))
 		case line == "":
 			fallthrough
 		case line == "help":
@@ -167,6 +172,7 @@ func (cli *CLI) status() {
 
 	balance, _ := wavelet.ReadAccountBalance(snapshot, publicKey)
 	stake, _ := wavelet.ReadAccountStake(snapshot, publicKey)
+	reward, _ := wavelet.ReadAccountReward(snapshot, publicKey)
 	nonce, _ := wavelet.ReadAccountNonce(snapshot, publicKey)
 
 	round := cli.ledger.Rounds().Latest()
@@ -187,6 +193,7 @@ func (cli *CLI) status() {
 		Str("id", hex.EncodeToString(publicKey[:])).
 		Uint64("balance", balance).
 		Uint64("stake", stake).
+		Uint64("reward", reward).
 		Uint64("nonce", nonce).
 		Strs("peers", peerIDs).
 		Int("num_tx", cli.ledger.Graph().DepthLen(&rootDepth, nil)).
@@ -445,7 +452,7 @@ func (cli *CLI) placeStake(cmd []string) {
 
 	var intBuf [8]byte
 	payload := bytes.NewBuffer(nil)
-	payload.WriteByte(1)
+	payload.WriteByte(sys.PlaceStake)
 	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
 	payload.Write(intBuf[:8])
 
@@ -472,7 +479,7 @@ func (cli *CLI) withdrawStake(cmd []string) {
 
 	var intBuf [8]byte
 	payload := bytes.NewBuffer(nil)
-	payload.WriteByte(0)
+	payload.WriteByte(sys.WithdrawStake)
 	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
 	payload.Write(intBuf[:8])
 
@@ -483,6 +490,33 @@ func (cli *CLI) withdrawStake(cmd []string) {
 
 	cli.logger.Info().
 		Msgf("Success! Your stake withdrawal transaction ID: %x", tx.ID)
+}
+
+func (cli *CLI) withdrawReward(cmd []string) {
+	if len(cmd) != 1 {
+		fmt.Println("withdraw-reward <amount>")
+		return
+	}
+
+	amount, err := strconv.ParseUint(cmd[0], 10, 64)
+	if err != nil {
+		cli.logger.Error().Err(err).Msg("Failed to convert withdraw amount to an uint64.")
+		return
+	}
+
+	var intBuf [8]byte
+	payload := bytes.NewBuffer(nil)
+	payload.WriteByte(sys.WithdrawReward)
+	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
+	payload.Write(intBuf[:8])
+
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagStake, payload.Bytes()))
+	if err != nil {
+		return
+	}
+
+	cli.logger.Info().
+		Msgf("Success! Your reward withdrawal transaction ID: %x", tx.ID)
 }
 
 func (cli *CLI) sendTransaction(tx wavelet.Transaction) (wavelet.Transaction, error) {
