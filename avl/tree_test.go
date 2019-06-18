@@ -212,7 +212,7 @@ func TestTree_Difference(t *testing.T) {
 	assert.True(t, len2 > len3)
 }
 
-func TestTree_RangeWithLowerBound(t *testing.T) {
+func TestTree_IterateFrom(t *testing.T) {
 	tree := New(store.NewInmem())
 	for i := uint64(0); i < 50; i++ {
 		var buf [8]byte
@@ -226,7 +226,7 @@ func TestTree_RangeWithLowerBound(t *testing.T) {
 	var result []uint64
 
 	// Early stop
-	tree.IterateWithLowerBound(buf[:], func(key, value []byte) bool {
+	tree.IterateFrom(buf[:], func(key, value []byte) bool {
 		k := binary.BigEndian.Uint64(key)
 		v := binary.BigEndian.Uint64(value)
 		assert.Equal(t, k, v)
@@ -245,7 +245,7 @@ func TestTree_RangeWithLowerBound(t *testing.T) {
 
 	// Full iteration
 	result = nil
-	tree.IterateWithLowerBound(buf[:], func(key, value []byte) bool {
+	tree.IterateFrom(buf[:], func(key, value []byte) bool {
 		k := binary.BigEndian.Uint64(key)
 		v := binary.BigEndian.Uint64(value)
 		assert.Equal(t, k, v)

@@ -120,18 +120,18 @@ func (t *Tree) Iterate(callback func(key, value []byte)) {
 	t.doIterate(callback, t.root)
 }
 
-func (t *Tree) IterateWithLowerBound(key []byte, callback func(key, value []byte) bool) {
+func (t *Tree) IterateFrom(key []byte, callback func(key, value []byte) bool) {
 	if t.root == nil {
 		return
 	}
-	t.root.iterateWithLowerBound(t, key, callback)
+	t.root.iterateFrom(t, key, callback)
 }
 
 func (t *Tree) IteratePrefix(prefix []byte, callback func(key, value []byte)) {
 	if t.root == nil {
 		return
 	}
-	t.root.iterateWithLowerBound(t, prefix, func(key, value []byte) bool {
+	t.root.iterateFrom(t, prefix, func(key, value []byte) bool {
 		if !bytes.HasPrefix(key, prefix) {
 			return false
 		}
