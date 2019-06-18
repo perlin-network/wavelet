@@ -327,10 +327,6 @@ func GetRewardWithdrawalRequests(tree *avl.Tree, roundLimit uint64) []RewardWith
 	var rws []RewardWithdrawalRequest
 
 	cb := func(k, v []byte) {
-		if !bytes.Equal(k[:1], keyRewardWithdrawals[:]) {
-			return
-		}
-
 		rw, err := UnmarshalRewardWithdrawalRequest(bytes.NewReader(v))
 		if err != nil {
 			return
@@ -341,7 +337,7 @@ func GetRewardWithdrawalRequests(tree *avl.Tree, roundLimit uint64) []RewardWith
 		}
 	}
 
-	tree.Iterate(cb)
+	tree.IteratePrefix(keyRewardWithdrawals[:], cb)
 
 	return rws
 }
