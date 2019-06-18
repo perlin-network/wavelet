@@ -23,10 +23,6 @@ func TestRewardWithdrawals(t *testing.T) {
 		}
 
 		StoreRewardWithdrawal(tree, rw)
-
-		defer func() {
-			tree.Delete(rw.Key())
-		}()
 	}
 
 	rws := GetRewardWithdrawals(tree, 7)
