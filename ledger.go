@@ -56,9 +56,10 @@ type Ledger struct {
 
 	consensus sync.WaitGroup
 
-	nops         bool
-	nopsTime     time.Time
-	nopsTimeLock sync.Mutex
+	txCreatedTime time.Time
+	txReceivedTime time.Time
+	nops bool
+	nopsTimeLock  sync.Mutex
 
 	sync      chan struct{}
 	syncTimer *time.Timer
@@ -125,8 +126,8 @@ func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 			sys.TagBatch:    ProcessBatchTransaction,
 		},
 
-		nops:     false,
-		nopsTime: time.Now(),
+		txReceivedTime: time.Time{},
+		txCreatedTime: time.Time{},
 
 		sync:      make(chan struct{}),
 		syncTimer: time.NewTimer(0),
@@ -158,12 +159,18 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 	if err == nil {
 		l.gossiper.Push(tx)
 
-		if tx.Tag != sys.TagNop && tx.Sender != l.client.Keys().PublicKey() {
-			l.nopsTimeLock.Lock()
-			l.nops = true
-			l.nopsTime = time.Now()
-			l.nopsTimeLock.Unlock()
+		l.nopsTimeLock.Lock()
+		l.nops = true
+
+		if tx.Sender == l.client.Keys().PublicKey() {
+			if tx.Tag != sys.TagNop {
+				l.txCreatedTime = time.Now()
+			}
+		} else {
+			l.txReceivedTime= time.Now()
 		}
+
+		l.nopsTimeLock.Unlock()
 	}
 
 	return nil
@@ -225,8 +232,20 @@ func (l *Ledger) BroadcastNops() {
 		default:
 		}
 
-		balance, _ := ReadAccountBalance(l.accounts.Snapshot(), keys.PublicKey())
+		l.nopsTimeLock.Lock()
+		nops := l.nops
+		l.nopsTimeLock.Unlock()
 
+		if !nops || l.finalizer.Preferred() != nil {
+			select {
+			case <-l.sync:
+				return
+			case <-time.After(500 * time.Millisecond):
+			}
+			continue
+		}
+
+		balance, _ := ReadAccountBalance(l.accounts.Snapshot(), keys.PublicKey())
 		if balance < sys.TransactionFeeAmount {
 			select {
 			case <-l.sync:
@@ -236,26 +255,12 @@ func (l *Ledger) BroadcastNops() {
 			continue
 		}
 
-		if l.finalizer.Preferred() != nil {
-			l.nopsTimeLock.Lock()
-			l.nops = false
-			l.nopsTime = time.Now()
-			l.nopsTimeLock.Unlock()
-
-			select {
-			case <-l.sync:
-				return
-			case <-time.After(500 * time.Millisecond):
-			}
-			continue
-		}
-
 		l.nopsTimeLock.Lock()
-		nops := l.nops
-		elapsed := time.Now().Sub(l.nopsTime)
+		txReceived := l.txReceivedTime
+		txCreated := l.txCreatedTime
 		l.nopsTimeLock.Unlock()
 
-		if !nops || elapsed < 500*time.Millisecond {
+		if time.Since(txCreated) < 250 * time.Millisecond || time.Since(txReceived) < 100 * time.Millisecond {
 			select {
 			case <-l.sync:
 				return
@@ -264,6 +269,7 @@ func (l *Ledger) BroadcastNops() {
 			continue
 		}
 
+		fmt.Println("nopsing...")
 		nop := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), l.graph.FindEligibleParents()...)
 
 		if err := l.AddTransaction(nop); err != nil {
@@ -619,9 +625,7 @@ FINALIZE_ROUNDS:
 
 		l.nopsTimeLock.Lock()
 		l.nops = false
-		l.nopsTime = time.Now()
 		l.nopsTimeLock.Unlock()
-
 		//go ExportGraphDOT(finalized, l.graph)
 	}
 }
