@@ -58,13 +58,16 @@ type RewardWithdrawal struct {
 }
 
 func (rw RewardWithdrawal) Key() []byte {
-	return append(
-		keyRewardWithdrawals[:],
-		append(
-			[]byte(fmt.Sprintf("%020d", rw.round)),
-			rw.accountID[:]...,
-		)...,
-	)
+	var w bytes.Buffer
+	w.Write(keyRewardWithdrawals[:])
+
+	var buf [8]byte
+	binary.BigEndian.PutUint64(buf[:], rw.round)
+	w.Write(buf[:8])
+
+	w.Write(rw.accountID[:])
+
+	return w.Bytes()
 }
 
 func (rw RewardWithdrawal) Marshal() []byte {

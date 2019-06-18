@@ -1235,20 +1235,19 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 	res.ignoredCount -= res.appliedCount + res.rejectedCount
 
 	if round > uint64(sys.RewardWithdrawalsRoundLimit) {
-		if err := l.processRewardWithdrawals(round, res.snapshot); err != nil {
-			if logging {
-				logger := log.Accounts("reward-process")
-				logger.Error().Err(err).Msg("Error processing reward withdrawals")
-			}
-		}
+		l.processRewardWithdrawals(round, res.snapshot, logging)
 	}
 
 	l.cacheCollapse.put(end.ID, res)
+
 	return res, nil
 }
 
-func (l *Ledger) processRewardWithdrawals(round uint64, snapshot *avl.Tree) error {
+func (l *Ledger) processRewardWithdrawals(round uint64, snapshot *avl.Tree, logging bool) {
 	rws := GetRewardWithdrawals(snapshot, round-uint64(sys.RewardWithdrawalsRoundLimit))
+
+	balanceLogger := log.Accounts("balance_updated")
+	rewardLogger := log.Accounts("reward_updated")
 
 	var errs error
 	for _, rw := range rws {
@@ -1265,14 +1264,24 @@ func (l *Ledger) processRewardWithdrawals(round uint64, snapshot *avl.Tree) erro
 		}
 
 		WriteAccountReward(snapshot, rw.accountID, reward-rw.amount)
+		if logging {
+			rewardLogger.Log().
+				Hex("account_id", rw.accountID[:]).
+				Uint64("reward", reward-rw.amount).
+				Msg("")
+		}
 
 		balance, _ := ReadAccountBalance(snapshot, rw.accountID)
 		WriteAccountBalance(snapshot, rw.accountID, balance+rw.amount)
+		if logging {
+			balanceLogger.Log().
+				Hex("account_id", rw.accountID[:]).
+				Uint64("balance", balance+rw.amount).
+				Msg("")
+		}
 
 		snapshot.Delete(rw.Key())
 	}
-
-	return errs
 }
 
 func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Transaction, logging bool) error {

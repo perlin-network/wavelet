@@ -206,7 +206,7 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 	balanceLogger := log.Accounts("balance_updated")
 	stakeLogger := log.Accounts("stake_updated")
 	pageLogger := log.Accounts("num_pages_updated")
-	rewardWithdrawLogger := log.Accounts("reward_withdraw_updated")
+	rewardWithdrawLogger := log.Stake("withdrawal_requested")
 
 	// If the transaction processor executed properly, apply changes from
 	// the transactions context over to our accounts snapshot.
