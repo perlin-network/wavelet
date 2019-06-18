@@ -149,16 +149,6 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	}
 
 	copy(s.creator[:], senderBuf)
-
-	var signature edwards25519.Signature
-	copy(signature[:], signatureBuf)
-
-	var nonce [8]byte // TODO(kenta): nonce
-
-	if !edwards25519.Verify(s.creator, append(nonce[:], append([]byte{s.Tag}, s.payload...)...), signature) {
-		return errors.Wrap(err, "sender signature verification failed")
-	}
-
 	copy(s.signature[:], signatureBuf)
 
 	return nil
@@ -333,6 +323,9 @@ func (s *account) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 
 	stake, _ := wavelet.ReadAccountStake(snapshot, s.id)
 	o.Set("stake", arena.NewNumberString(strconv.FormatUint(stake, 10)))
+
+	reward, _ := wavelet.ReadAccountReward(snapshot, s.id)
+	o.Set("reward", arena.NewNumberString(strconv.FormatUint(reward, 10)))
 
 	_, isContract := wavelet.ReadAccountContractCode(snapshot, s.id)
 	if isContract {
