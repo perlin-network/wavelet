@@ -75,7 +75,7 @@ func (g *Gateway) setup() {
 	sinkAccounts := g.registerWebsocketSink("ws://accounts/?id=account_id",
 		debounce.NewFactory(debounce.TypeDeduper,
 			debounce.WithPeriod(500*time.Millisecond),
-			debounce.WithKeys("account_id"),
+			debounce.WithKeys("account_id", "event"),
 		),
 	)
 	sinkContracts := g.registerWebsocketSink("ws://contract/?id=contract_id",
