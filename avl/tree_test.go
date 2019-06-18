@@ -226,7 +226,7 @@ func TestTree_RangeWithLowerBound(t *testing.T) {
 	var result []uint64
 
 	// Early stop
-	tree.RangeWithLowerBound(buf[:], func(key, value []byte) bool {
+	tree.IterateWithLowerBound(buf[:], func(key, value []byte) bool {
 		k := binary.BigEndian.Uint64(key)
 		v := binary.BigEndian.Uint64(value)
 		assert.Equal(t, k, v)
@@ -245,7 +245,7 @@ func TestTree_RangeWithLowerBound(t *testing.T) {
 
 	// Full iteration
 	result = nil
-	tree.RangeWithLowerBound(buf[:], func(key, value []byte) bool {
+	tree.IterateWithLowerBound(buf[:], func(key, value []byte) bool {
 		k := binary.BigEndian.Uint64(key)
 		v := binary.BigEndian.Uint64(value)
 		assert.Equal(t, k, v)

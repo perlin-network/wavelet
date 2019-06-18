@@ -116,18 +116,31 @@ func (t *Tree) Revert(snapshot *Tree) {
 	t.root = snapshot.root
 }
 
-func (t *Tree) Range(callback func(key, value []byte)) {
-	t.doRange(callback, t.root)
+func (t *Tree) Iterate(callback func(key, value []byte)) {
+	t.doIterate(callback, t.root)
 }
 
-func (t *Tree) RangeWithLowerBound(key []byte, callback func(key, value []byte) bool) {
+func (t *Tree) IterateWithLowerBound(key []byte, callback func(key, value []byte) bool) {
 	if t.root == nil {
 		return
 	}
-	t.root.rangeWithLowerBound(t, key, callback)
+	t.root.iterateWithLowerBound(t, key, callback)
 }
 
-func (t *Tree) doRange(callback func(k []byte, v []byte), n *node) {
+func (t *Tree) IteratePrefix(prefix []byte, callback func(key, value []byte)) {
+	if t.root == nil {
+		return
+	}
+	t.root.iterateWithLowerBound(t, prefix, func(key, value []byte) bool {
+		if !bytes.HasPrefix(key, prefix) {
+			return false
+		}
+		callback(key, value)
+		return true
+	})
+}
+
+func (t *Tree) doIterate(callback func(k []byte, v []byte), n *node) {
 	if n == nil {
 		return
 	}
@@ -137,8 +150,8 @@ func (t *Tree) doRange(callback func(k []byte, v []byte), n *node) {
 		return
 	}
 
-	t.doRange(callback, t.mustLoadLeft(n))
-	t.doRange(callback, t.mustLoadRight(n))
+	t.doIterate(callback, t.mustLoadLeft(n))
+	t.doIterate(callback, t.mustLoadRight(n))
 }
 
 func (t *Tree) PrintContents() {

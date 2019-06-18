@@ -341,7 +341,7 @@ func GetRewardWithdrawalRequests(tree *avl.Tree, roundLimit uint64) []RewardWith
 		}
 	}
 
-	tree.Range(cb)
+	tree.Iterate(cb)
 
 	return rws
 }
