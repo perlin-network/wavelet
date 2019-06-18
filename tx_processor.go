@@ -32,10 +32,9 @@ type TransactionContext struct {
 	round *Round
 	tree  *avl.Tree
 
-	balances          map[AccountID]uint64
-	stakes            map[AccountID]uint64
-	rewards           map[AccountID]uint64
-	rewardWithdrawals map[AccountID]uint64
+	balances map[AccountID]uint64
+	stakes   map[AccountID]uint64
+	rewards  map[AccountID]uint64
 
 	contracts        map[TransactionID][]byte
 	contractNumPages map[TransactionID]uint64
@@ -50,13 +49,12 @@ func NewTransactionContext(round *Round, tree *avl.Tree, tx *Transaction) *Trans
 		round: round,
 		tree:  tree,
 
-		balances:          make(map[AccountID]uint64),
-		stakes:            make(map[AccountID]uint64),
-		rewards:           make(map[AccountID]uint64),
-		rewardWithdrawals: make(map[AccountID]uint64),
-		contracts:         make(map[TransactionID][]byte),
-		contractNumPages:  make(map[TransactionID]uint64),
-		contractPages:     make(map[TransactionID]map[uint64][]byte),
+		balances:         make(map[AccountID]uint64),
+		stakes:           make(map[AccountID]uint64),
+		rewards:          make(map[AccountID]uint64),
+		contracts:        make(map[TransactionID][]byte),
+		contractNumPages: make(map[TransactionID]uint64),
+		contractPages:    make(map[TransactionID]map[uint64][]byte),
 
 		tx: tx,
 	}
@@ -166,10 +164,6 @@ func (c *TransactionContext) WriteAccountReward(id AccountID, reward uint64) {
 	c.rewards[id] = reward
 }
 
-func (c *TransactionContext) WriteRewardWithdrawRequest(id AccountID, amount uint64) {
-	c.rewardWithdrawals[id] = amount
-}
-
 func (c *TransactionContext) WriteAccountContractCode(id TransactionID, code []byte) {
 	c.contracts[id] = code
 }
@@ -206,7 +200,7 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 	balanceLogger := log.Accounts("balance_updated")
 	stakeLogger := log.Accounts("stake_updated")
 	pageLogger := log.Accounts("num_pages_updated")
-	rewardWithdrawLogger := log.Stake("reward_withdrawal_requested")
+	rewardLogger := log.Accounts("reward_updated")
 
 	// If the transaction processor executed properly, apply changes from
 	// the transactions context over to our accounts snapshot.
@@ -229,19 +223,14 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 		WriteAccountStake(c.tree, id, stake)
 	}
 
-	for accountID, amount := range c.rewardWithdrawals {
-		rewardWithdrawLogger.Log().
-			Hex("account_id", accountID[:]).
-			Uint64("amount", amount).
+	for id, reward := range c.rewards {
+		rewardLogger.Log().
+			Hex("account_id", id[:]).
+			Uint64("reward", reward).
 			Msg("")
 
-		rw := RewardWithdrawalRequest{
-			accountID: accountID,
-			amount:    amount,
-			round:     c.round.Index,
-		}
-
-		StoreRewardWithdrawalRequest(c.tree, rw)
+		WriteAccountReward(c.tree, id, reward)
+		StoreRewardWithdrawalRequest(c.tree, RewardWithdrawalRequest{accountID: id, amount: reward, round: c.round.Index})
 	}
 
 	for id, code := range c.contracts {

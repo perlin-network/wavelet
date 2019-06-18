@@ -1247,32 +1247,11 @@ func (l *Ledger) processRewardWithdrawals(round uint64, snapshot *avl.Tree, logg
 	rws := GetRewardWithdrawalRequests(snapshot, round-uint64(sys.RewardWithdrawalsRoundLimit))
 
 	balanceLogger := log.Accounts("balance_updated")
-	rewardLogger := log.Accounts("reward_updated")
 
-	var errs error
 	for _, rw := range rws {
-		reward, ok := ReadAccountReward(snapshot, rw.accountID)
-		if !ok || reward < rw.amount {
-			errMsg := fmt.Sprintf("reward: not enough reward to withdraw (%d < %d)", reward, rw.amount)
-			if errs == nil {
-				errs = errors.New(errMsg)
-			} else {
-				errs = errors.Wrap(errs, errMsg)
-			}
-
-			continue
-		}
-
-		WriteAccountReward(snapshot, rw.accountID, reward-rw.amount)
-		if logging {
-			rewardLogger.Log().
-				Hex("account_id", rw.accountID[:]).
-				Uint64("reward", reward-rw.amount).
-				Msg("")
-		}
-
 		balance, _ := ReadAccountBalance(snapshot, rw.accountID)
 		WriteAccountBalance(snapshot, rw.accountID, balance+rw.amount)
+
 		if logging {
 			balanceLogger.Log().
 				Hex("account_id", rw.accountID[:]).

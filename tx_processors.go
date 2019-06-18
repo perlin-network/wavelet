@@ -161,17 +161,17 @@ func ProcessStakeTransaction(ctx *TransactionContext) error {
 		ctx.WriteAccountBalance(tx.Creator, balance+delta)
 		ctx.WriteAccountStake(tx.Creator, stake-delta)
 	case sys.WithdrawReward:
-
 		if delta < sys.MinimumRewardWithdraw {
-			return fmt.Errorf("%d is less than minimum amount of reward to withdraw (%d)", delta, sys.MinimumRewardWithdraw)
+			return fmt.Errorf("stake: %d is less than minimum amount of reward to withdraw (%d)", delta, sys.MinimumRewardWithdraw)
 		}
 
 		reward, _ := ctx.ReadAccountReward(tx.Creator)
+
 		if reward < delta {
-			return errors.New("reward: reward < delta")
+			return errors.New("stake: reward < delta")
 		}
 
-		ctx.WriteRewardWithdrawRequest(tx.Creator, delta)
+		ctx.WriteAccountReward(tx.Creator, reward-delta)
 	default:
 		return fmt.Errorf("unrecognised stake transaction type - %x", buf[0])
 	}

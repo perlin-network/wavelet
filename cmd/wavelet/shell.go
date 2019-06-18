@@ -359,6 +359,7 @@ func (cli *CLI) find(cmd []string) {
 	balance, _ := wavelet.ReadAccountBalance(snapshot, accountID)
 	stake, _ := wavelet.ReadAccountStake(snapshot, accountID)
 	nonce, _ := wavelet.ReadAccountNonce(snapshot, accountID)
+	reward, _ := wavelet.ReadAccountReward(snapshot, accountID)
 
 	_, isContract := wavelet.ReadAccountContractCode(snapshot, accountID)
 	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, accountID)
@@ -368,6 +369,7 @@ func (cli *CLI) find(cmd []string) {
 			Uint64("balance", balance).
 			Uint64("stake", stake).
 			Uint64("nonce", nonce).
+			Uint64("reward", reward).
 			Bool("is_contract", isContract).
 			Uint64("num_pages", numPages).
 			Msgf("Account: %s", cmd[0])
