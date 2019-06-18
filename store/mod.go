@@ -34,8 +34,6 @@ type KV interface {
 	NewWriteBatch() WriteBatch
 	CommitWriteBatch(batch WriteBatch) error
 
-	GetRange(prefix []byte, filter func(k, v []byte) bool) ([][]byte, error)
-
 	Delete(key []byte) error
 }
 

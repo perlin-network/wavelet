@@ -43,7 +43,6 @@ import (
 type Ledger struct {
 	client  *skademlia.Client
 	metrics *Metrics
-	storage store.KV
 
 	accounts *Accounts
 	rounds   *Rounds
@@ -109,7 +108,6 @@ func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 	ledger := &Ledger{
 		client:  client,
 		metrics: metrics,
-		storage: kv,
 
 		accounts: accounts,
 		rounds:   rounds,
@@ -1093,7 +1091,7 @@ func (l *Ledger) SyncToLatestRound() {
 // ApplyTransactionToSnapshot applies a transactions intended changes to a snapshot
 // of the ledgers current state.
 func (l *Ledger) ApplyTransactionToSnapshot(snapshot *avl.Tree, tx *Transaction) error {
-	ctx := NewTransactionContext(l.Rounds().Latest(), snapshot, l.storage, tx)
+	ctx := NewTransactionContext(l.Rounds().Latest(), snapshot, tx)
 
 	if err := ctx.apply(l.processors); err != nil {
 		return errors.Wrap(err, "could not apply transaction to snapshot")
@@ -1250,10 +1248,7 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 }
 
 func (l *Ledger) processRewardWithdrawals(round uint64, snapshot *avl.Tree) error {
-	rws, err := GetRewardWithdrawals(l.storage, round-uint64(sys.RewardWithdrawalsRoundLimit))
-	if err != nil {
-		return err
-	}
+	rws := GetRewardWithdrawals(snapshot, round-uint64(sys.RewardWithdrawalsRoundLimit))
 
 	var errs error
 	for _, rw := range rws {
@@ -1274,13 +1269,7 @@ func (l *Ledger) processRewardWithdrawals(round uint64, snapshot *avl.Tree) erro
 		balance, _ := ReadAccountBalance(snapshot, rw.accountID)
 		WriteAccountBalance(snapshot, rw.accountID, balance+rw.amount)
 
-		if err := l.storage.Delete(rw.Key()); err != nil {
-			if errs == nil {
-				errs = err
-			} else {
-				errs = errors.Wrap(errs, err.Error())
-			}
-		}
+		snapshot.Delete(rw.Key())
 	}
 
 	return errs

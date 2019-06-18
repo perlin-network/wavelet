@@ -139,10 +139,6 @@ func (s *inmemKV) Delete(key []byte) error {
 	return nil
 }
 
-func (s *inmemKV) GetRange(_ []byte, _ func(k, v []byte) bool) ([][]byte, error) {
-	return nil, errors.New("not implemented")
-}
-
 func NewInmem() *inmemKV {
 	var comparator skiplist.GreaterThanFunc = func(lhs, rhs interface{}) bool {
 		return bytes.Compare(lhs.([]byte), rhs.([]byte)) == 1

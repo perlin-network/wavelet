@@ -22,7 +22,6 @@ package wavelet
 import (
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/store"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 )
@@ -30,9 +29,8 @@ import (
 type TransactionProcessor func(ctx *TransactionContext) error
 
 type TransactionContext struct {
-	round   *Round
-	tree    *avl.Tree
-	storage store.KV
+	round *Round
+	tree  *avl.Tree
 
 	balances          map[AccountID]uint64
 	stakes            map[AccountID]uint64
@@ -47,11 +45,10 @@ type TransactionContext struct {
 	tx           *Transaction
 }
 
-func NewTransactionContext(round *Round, tree *avl.Tree, storage store.KV, tx *Transaction) *TransactionContext {
+func NewTransactionContext(round *Round, tree *avl.Tree, tx *Transaction) *TransactionContext {
 	ctx := &TransactionContext{
-		round:   round,
-		tree:    tree,
-		storage: storage,
+		round: round,
+		tree:  tree,
 
 		balances:          make(map[AccountID]uint64),
 		stakes:            make(map[AccountID]uint64),
@@ -244,9 +241,7 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 			round:     c.round.Index,
 		}
 
-		if err := StoreRewardWithdrawal(c.storage, rw); err != nil {
-			return err
-		}
+		StoreRewardWithdrawal(c.tree, rw)
 	}
 
 	for id, code := range c.contracts {

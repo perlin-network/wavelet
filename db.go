@@ -320,34 +320,29 @@ func LoadRounds(kv store.KV) ([]*Round, uint32, uint32, error) {
 	return rounds, latestIx, oldestIx, nil
 }
 
-func GetRewardWithdrawals(kv store.KV, roundLimit uint64) ([]RewardWithdrawal, error) {
-	filter := func(k, v []byte) bool {
+func GetRewardWithdrawals(tree *avl.Tree, roundLimit uint64) []RewardWithdrawal {
+	var rws []RewardWithdrawal
+
+	cb := func(k, v []byte) {
+		if !bytes.Equal(k[:1], keyRewardWithdrawals[:]) {
+			return
+		}
+
 		rw, err := UnmarshalRewardWithdrawal(bytes.NewReader(v))
 		if err != nil {
-			return false
+			return
 		}
 
-		return rw.round <= roundLimit
-	}
-
-	data, err := kv.GetRange(keyRewardWithdrawals[:], filter)
-	if err != nil {
-		return nil, err
-	}
-
-	rws := make([]RewardWithdrawal, len(data))
-	for i, d := range data {
-		rw, err := UnmarshalRewardWithdrawal(bytes.NewReader(d))
-		if err != nil {
-			return nil, err
+		if rw.round <= roundLimit {
+			rws = append(rws, rw)
 		}
-
-		rws[i] = rw
 	}
 
-	return rws, nil
+	tree.Range(cb)
+
+	return rws
 }
 
-func StoreRewardWithdrawal(kv store.KV, rw RewardWithdrawal) error {
-	return kv.Put(rw.Key(), rw.Marshal())
+func StoreRewardWithdrawal(tree *avl.Tree, rw RewardWithdrawal) {
+	tree.Insert(rw.Key(), rw.Marshal())
 }
