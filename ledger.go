@@ -126,8 +126,8 @@ func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 			sys.TagBatch:    ProcessBatchTransaction,
 		},
 
-		txReceivedTime: time.Time{},
-		txCreatedTime: time.Time{},
+		txReceivedTime: time.Now(),
+		txCreatedTime: time.Now(),
 
 		sync:      make(chan struct{}),
 		syncTimer: time.NewTimer(0),
@@ -269,7 +269,6 @@ func (l *Ledger) BroadcastNops() {
 			continue
 		}
 
-		fmt.Println("nopsing...")
 		nop := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), l.graph.FindEligibleParents()...)
 
 		if err := l.AddTransaction(nop); err != nil {

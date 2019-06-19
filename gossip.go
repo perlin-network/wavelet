@@ -49,8 +49,8 @@ func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics
 	g.debouncer = debounce.NewLimiter(
 		ctx,
 		debounce.WithAction(g.Gossip),
-		debounce.WithPeriod(2200*time.Millisecond),
-		debounce.WithBufferLimit(1638400),
+		debounce.WithPeriod(100*time.Millisecond),
+		debounce.WithBufferLimit(16384),
 	)
 
 	return g
