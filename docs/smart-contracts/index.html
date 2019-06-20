@@ -1,0 +1,356 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge"/><title>Smart Contracts · Wavelet</title><meta name="viewport" content="width=device-width"/><meta name="generator" content="Docusaurus"/><meta name="description" content="&lt;p&gt;A smart contract is an account that autonomously operates according to some code, instead of some designated wallet holder. A smart contract may create, send, and receive both transactions and PERLs much like any other account, though holds additional state much like any arbitrary program.&lt;/p&gt;
+"/><meta name="docsearch:language" content="en"/><meta property="og:title" content="Smart Contracts · Wavelet"/><meta property="og:type" content="website"/><meta property="og:url" content="https://perlin-network.github.io/wavelet/"/><meta property="og:description" content="&lt;p&gt;A smart contract is an account that autonomously operates according to some code, instead of some designated wallet holder. A smart contract may create, send, and receive both transactions and PERLs much like any other account, though holds additional state much like any arbitrary program.&lt;/p&gt;
+"/><meta property="og:image" content="https://perlin-network.github.io/wavelet/img/undraw_online.svg"/><meta name="twitter:card" content="summary"/><meta name="twitter:image" content="https://perlin-network.github.io/wavelet/img/undraw_tweetstorm.svg"/><link rel="shortcut icon" href="/wavelet/img/favicon.ico"/><link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/monokai.min.css"/><script type="text/javascript" src="https://buttons.github.io/buttons.js"></script><script src="/wavelet/js/scrollSpy.js"></script><link rel="stylesheet" href="/wavelet/css/main.css"/><script src="/wavelet/js/codetabs.js"></script></head><body class="sideNavVisible separateOnPageNav"><div class="fixedHeaderContainer"><div class="headerWrapper wrapper"><header><a href="/wavelet/"><img class="logo" src="/wavelet/img/favicon.ico" alt="Wavelet"/><h2 class="headerTitleWithLogo">Wavelet</h2></a><div class="navigationWrapper navigationSlider"><nav class="slidingNav"><ul class="nav-site nav-site-internal"><li class="siteNavGroupActive"><a href="/wavelet/docs/setup" target="_self">Docs</a></li><li class=""><a href="/wavelet/help" target="_self">Help</a></li><li class=""><a target="_self"></a></li></ul></nav></div></header></div></div><div class="navPusher"><div class="docMainWrapper wrapper"><div class="container docsNavContainer" id="docsNav"><nav class="toc"><div class="toggleNav"><section class="navWrapper wrapper"><div class="navBreadcrumb wrapper"><div class="navToggle" id="navToggler"><div class="hamburger-menu"><div class="line1"></div><div class="line2"></div><div class="line3"></div></div></div><h2><i>›</i><span>Documentation</span></h2><div class="tocToggler" id="tocToggler"><i class="icon-toc"></i></div></div><div class="navGroups"><div class="navGroup"><h3 class="navGroupCategoryTitle">Documentation</h3><ul class=""><li class="navListItem"><a class="navItem" href="/wavelet/docs/setup">Quickstart</a></li><li class="navListItem"><a class="navItem" href="/wavelet/docs/transactions">Transactions</a></li><li class="navListItem navListItemActive"><a class="navItem" href="/wavelet/docs/smart-contracts">Smart Contracts</a></li></ul></div></div></section></div><script>
+            var coll = document.getElementsByClassName('collapsible');
+            var checkActiveCategory = true;
+            for (var i = 0; i < coll.length; i++) {
+              var links = coll[i].nextElementSibling.getElementsByTagName('*');
+              if (checkActiveCategory){
+                for (var j = 0; j < links.length; j++) {
+                  if (links[j].classList.contains('navListItemActive')){
+                    coll[i].nextElementSibling.classList.toggle('hide');
+                    coll[i].childNodes[1].classList.toggle('rotate');
+                    checkActiveCategory = false;
+                    break;
+                  }
+                }
+              }
+
+              coll[i].addEventListener('click', function() {
+                var arrow = this.childNodes[1];
+                arrow.classList.toggle('rotate');
+                var content = this.nextElementSibling;
+                content.classList.toggle('hide');
+              });
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+              createToggler('#navToggler', '#docsNav', 'docsSliderActive');
+              createToggler('#tocToggler', 'body', 'tocActive');
+
+              var headings = document.querySelector('.toc-headings');
+              headings && headings.addEventListener('click', function(event) {
+                var el = event.target;
+                while(el !== headings){
+                  if (el.tagName === 'A') {
+                    document.body.classList.remove('tocActive');
+                    break;
+                  } else{
+                    el = el.parentNode;
+                  }
+                }
+              }, false);
+
+              function createToggler(togglerSelector, targetSelector, className) {
+                var toggler = document.querySelector(togglerSelector);
+                var target = document.querySelector(targetSelector);
+
+                if (!toggler) {
+                  return;
+                }
+
+                toggler.onclick = function(event) {
+                  event.preventDefault();
+
+                  target.classList.toggle(className);
+                };
+              }
+            });
+        </script></nav></div><div class="container mainContainer"><div class="wrapper"><div class="post"><header class="postHeader"><a class="edit-page-link button" href="https://github.com/perlin-network/wavelet/edit/master/site/docs/smart-contracts.md" target="_blank" rel="noreferrer noopener">Edit</a><h1 class="postHeaderTitle">Smart Contracts</h1></header><article><div><span><p>A smart contract is an account that autonomously operates according to some code, instead of some designated wallet holder. A smart contract may create, send, and receive both transactions and PERLs much like any other account, though holds additional state much like any arbitrary program.</p>
+<p>The intent of supporting smart contracts is to enable developers to write and deploy pieces of code which are verifiably and autonomously executed across a large networked cluster of untrusted computers.</p>
+<p>Wavelet supports deploying out smart contracts whose code is written in any language that compiles down to WebAssembly. For the moment, Wavelet smart contract development supports the Rust programming language as a first-class citizen.</p>
+<p>In the future, additional programming languages such as C, C++, AssemblyScript, Zig, and Go (tinygo) will be officially supported. We are looking for contributors interested in maintaining independent smart contract
+SDKs including the ones maintained by us at Perlin.</p>
+<p>In this tutorial, we will look first-hand on how a simple WebAssembly (Rust) smart contract may be created, tested, and deployed on Wavelet.</p>
+<h2><a class="anchor" aria-hidden="true" id="setup"></a><a href="#setup" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Setup</h2>
+<p>As a prerequisite, make sure <a href="https://www.rust-lang.org/tools/install">you have Rust installed</a> with the WebAssembly compiler backend target installed on the Nightly channel.</p>
+<p>To install the WebAssembly compiler backend target after installing Rust, execute the following command below and wait until it completes:</p>
+<pre><code class="hljs css language-shell">❯ rustup target add wasm32-unknown-unknown
+</code></pre>
+<p>Now, let's get started building our first WebAssembly smart contract.</p>
+<h2><a class="anchor" aria-hidden="true" id="my-first-smart-contract"></a><a href="#my-first-smart-contract" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>My First Smart Contract</h2>
+<p>Writing a smart contract is much like writing any other typical Rust application. To start off, first create a new Rust project which will house the contents of your smart contract:</p>
+<pre><code class="hljs css language-shell">❯ cargo new --lib my-first-contract; cd my-first-contract 
+</code></pre>
+<p>Afterwards, lets import in Wavelet's Rust smart contract SDK into our <code>Cargo.toml</code>, and turn on Link-time Optimization (LTO) by default to reduce our resulting smart contracts binary size. The larger the smart contract binary, the more expensive it will be in terms of PERLs to deploy it on Wavelet.</p>
+<pre><code class="hljs css language-toml"><span class="hljs-section">[profile.release]</span>
+<span class="hljs-attr">lto</span> = <span class="hljs-literal">true</span>
+<span class="hljs-section">
+[dependencies]</span>
+<span class="hljs-attr">smart_contract</span> = <span class="hljs-string">"0.1.0"</span>
+<span class="hljs-attr">smart_contract_macro</span> = <span class="hljs-string">"0.1.0"</span>
+</code></pre>
+<p>Open up <code>src/lib.rs</code> and paste the code below. What our first smart contract will do is that whenever the
+smart contract receives any amount of PERLs from some sender, it will always send the sender back half of the PERLs
+it receives.</p>
+<pre><code class="hljs css language-rust"><span class="hljs-keyword">use</span> std::error::Error;
+
+<span class="hljs-keyword">use</span> smart_contract::payload::Parameters;
+<span class="hljs-keyword">use</span> smart_contract::transaction::{Transaction, Transfer};
+<span class="hljs-keyword">use</span> smart_contract_macro::smart_contract;
+
+<span class="hljs-keyword">pub</span> <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">Contract</span></span>;
+
+<span class="hljs-meta">#[smart_contract]</span>
+<span class="hljs-keyword">impl</span> Contract {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">init</span></span>(_params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-keyword">Self</span> {
+        <span class="hljs-keyword">Self</span> {}
+    }
+
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">on_money_received</span></span>(&amp;<span class="hljs-keyword">mut</span> <span class="hljs-keyword">self</span>, params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-built_in">Result</span>&lt;(), <span class="hljs-built_in">Box</span>&lt;dyn Error&gt;&gt; {
+        <span class="hljs-comment">// Create and send transaction.</span>
+        Transfer {
+            destination: params.sender,
+            amount: (params.amount + <span class="hljs-number">1</span>) / <span class="hljs-number">2</span>,
+            func_name: <span class="hljs-built_in">vec!</span>[],
+            func_params: <span class="hljs-built_in">vec!</span>[],
+        }
+        .send_transaction();
+
+        <span class="hljs-literal">Ok</span>(())
+    }
+}
+</code></pre>
+<p>Let's go over what the code above does.</p>
+<pre><code class="hljs css language-rust"><span class="hljs-keyword">pub</span> <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">Contract</span></span>;
+
+<span class="hljs-meta">#[smart_contract]</span>
+<span class="hljs-keyword">impl</span> Contract {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">init</span></span>(_params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-keyword">Self</span> {
+        <span class="hljs-keyword">Self</span>{}
+    }
+    
+    ...
+}
+</code></pre>
+<p>What the code above does is create a new <code>struct Contract</code> with an impl block tagged with the SDK-provided <code>#[smart_contract]</code> procedural macro.</p>
+<h3><a class="anchor" aria-hidden="true" id="the-init-function"></a><a href="#the-init-function" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>The <code>init</code> Function</h3>
+<p>An <code>init</code> function is defined, which acts much like a constructor in other programming languages to optionally initiate memory, populate any of our <code>struct Contract</code>'s fields, or invoke any arbitrary functions.</p>
+<p>The <code>init</code> function in particular is special, because it is called <em>only once</em> at the very moment the smart contract is successfully spawned by some account in
+Wavelet's network. The <code>init</code> function may not be manually called or executed at any other point in time.</p>
+<h2><a class="anchor" aria-hidden="true" id="invoking-smart-contract-functions"></a><a href="#invoking-smart-contract-functions" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Invoking Smart Contract Functions</h2>
+<p>As you might have noticed, our smart contract defines a function <code>on_money_received</code>. How would we invoke this function?</p>
+<p>Every smart contract function is invoked by creating and publishing a smart contract invocation transaction. Within your transaction, you would specify the name of the function you
+wish to invoke, and also optionally specify an arbitrary function binary payload.</p>
+<p>The payload in this case is a series of bytes representative of a list of input parameters to be passed on to your smart contract function upon invocation.</p>
+<p>Given that smart contracts are much like any other accounts, apart from providing an arbitrary function binary payload, you may also send/delegate some amount of PERLs to the smart contract as well. The PERLs
+in this case would be deposited into the balance of the smart contracts account.</p>
+<h3><a class="anchor" aria-hidden="true" id="payload-format"></a><a href="#payload-format" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Payload Format</h3>
+<p>To construct the binary payload you wish to pass on to your transaction, all you need to do is follow these simple rules.</p>
+<ol>
+<li>List out your typed parameters. Have all integer-typed parameters be little-endian encoded into bytes, and all variable-sized arrays be length-prefixed with an unsigned little-endian 32-bit integer.</li>
+<li>Concatenate the bytes of your parameters up together, and there you have it: your binary payload.</li>
+</ol>
+<p>What you would then do is take your function binary payload, and create a transaction with tagged to perform a <code>Transfer</code> operation, whose operational payload
+is encoded as follows:</p>
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th></tr>
+</thead>
+<tbody>
+<tr><td>Smart Contract ID</td><td>256-bit address of a deployed smart contract.</td></tr>
+<tr><td>Num PERLs Sent</td><td>Unsigned 64-bit little-endian integer, representative of some amount of PERLs to be sent to a specified smart contract account.</td></tr>
+<tr><td>Gas Limit</td><td>Unsigned 64-bit little-endian integer, representative of the maximum gas fee that may be deducted from the transaction creators account.</td></tr>
+<tr><td>Function Name</td><td>Length-prefixed string, representative of the name of the smart contract function to be invoked.</td></tr>
+<tr><td>Function Payload</td><td>Length-prefixed array of bytes passed as input parameters to the smart contract function to be invoked.</td></tr>
+</tbody>
+</table>
+<p>In the case of wishing to invoke <code>on_money_received</code>, you would assign <code>on_money_received</code>, and set some amount of PERLs to send to the contract, and then proceed
+to create and publish your transaction on Wavelet.</p>
+<h3><a class="anchor" aria-hidden="true" id="gas-limits-and-fees"></a><a href="#gas-limits-and-fees" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Gas Limits and Fees</h3>
+<p>Now, there is no free lunch: every smart contract deployment and call costs some amount of computational resources to the network. To compensate, some lump sum amount of PERLs must be provided as a fee, which we refer to as <em>gas</em>.</p>
+<p>More specifically, gas is a transactional fee designated to be some number of PERLs, that is computed and deducted from your balance based on the number of instructions that nodes have to execute to complete and verify your smart contract
+function invocation call across the network.</p>
+<p>Additionally, as you might have noticed from the binary payload layout format above, there exists a concept of a <em>gas limit</em>. A gas limit denotes the maximum amount of PERLs that you may propose to the network to expend on your behalf for
+completing your smart contract call.</p>
+<p>Should in amidst calling your smart contract function that an insufficient gas limit was specified (such that the mid-way through invoking your desired function you run out of gas), all changes made in-memory by the execution of your function
+will be rolled back, and an amount of PERLs all the way up to the gas limit specified will be deducted from your account.</p>
+<h2><a class="anchor" aria-hidden="true" id="developing-smart-contracts"></a><a href="#developing-smart-contracts" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Developing Smart Contracts</h2>
+<p>Now, let's take a step back. Noticeably, each and every smart contract function under Wavelet's Rust smart contract SDK has a
+single function input parameter <code>params: &amp;mut Parameters</code>.</p>
+<h3><a class="anchor" aria-hidden="true" id="parsing-input-parameters"></a><a href="#parsing-input-parameters" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Parsing Input Parameters</h3>
+<p>The <code>Parameters</code> struct is a wrapper around your smart contract function calls binary function payload; acting as a convenient API
+for parsing and decoding your smart contract calls input parameters.</p>
+<p>The <code>Parameters</code> struct additionally provides further context about the transaction calling
+the smart contract function. More specifically, the <code>Parameters</code> struct provides the following information:</p>
+<pre><code class="hljs css language-rust"><span class="hljs-keyword">pub</span> <span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">Parameters</span></span> {
+    <span class="hljs-comment">// An ascending, incremental counter that made by used as a notion of time.</span>
+    <span class="hljs-keyword">pub</span> round_idx: <span class="hljs-built_in">u64</span>, 
+    
+    <span class="hljs-comment">// A non-deterministic set of 32 bytes which may be used for seeding random number generators.</span>
+    <span class="hljs-keyword">pub</span> round_id: [<span class="hljs-built_in">u8</span>; <span class="hljs-number">32</span>], 
+    
+    <span class="hljs-comment">// The ID of the smart contract function call transaction.</span>
+    <span class="hljs-keyword">pub</span> transaction_id: [<span class="hljs-built_in">u8</span>; <span class="hljs-number">32</span>], 
+    
+    <span class="hljs-comment">// The wallet that created and published the transaction.</span>
+    <span class="hljs-keyword">pub</span> sender: [<span class="hljs-built_in">u8</span>; <span class="hljs-number">32</span>], 
+    
+    <span class="hljs-comment">// Number of PERLs delegated to the smart contract call.</span>
+    <span class="hljs-keyword">pub</span> amount: <span class="hljs-built_in">u64</span>, 
+    
+    ...
+}
+</code></pre>
+<p>The following code below demonstrates how input parameters may be decoded and read in your smart contract using the <code>Parameters</code> struct.</p>
+<pre><code class="hljs css language-rust"><span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">a_smart_contract_function</span></span>(params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-built_in">Result</span>&lt;(), <span class="hljs-built_in">Box</span>&lt;dyn Error&gt;&gt; {
+    <span class="hljs-keyword">let</span> _a: <span class="hljs-built_in">u8</span> = params.read(); <span class="hljs-comment">// Read a single unsigned byte.</span>
+    <span class="hljs-keyword">let</span> _b: <span class="hljs-built_in">i8</span> = params.read(); <span class="hljs-comment">// Read a single signed byte.</span>
+    
+    <span class="hljs-keyword">let</span> _c: <span class="hljs-built_in">u16</span> = params.read(); <span class="hljs-comment">// Read a single unsigned 16-bit integer.</span>
+    <span class="hljs-keyword">let</span> _d: <span class="hljs-built_in">i16</span> = params.read(); <span class="hljs-comment">// Read a single signed 16-bit integer.</span>
+    
+    <span class="hljs-keyword">let</span> _e: <span class="hljs-built_in">u32</span> = params.read(); <span class="hljs-comment">// Read a single unsigned 32-bit integer.</span>
+    <span class="hljs-keyword">let</span> _f: <span class="hljs-built_in">i32</span> = params.read(); <span class="hljs-comment">// Read a single signed 32-bit integer.</span>
+        
+    <span class="hljs-keyword">let</span> _g: <span class="hljs-built_in">u64</span> = params.read(); <span class="hljs-comment">// Read a single unsigned 64-bit integer.</span>
+    <span class="hljs-keyword">let</span> _h: <span class="hljs-built_in">i64</span> = params.read(); <span class="hljs-comment">// Read a single signed 64-bit integer.</span>
+        
+    <span class="hljs-keyword">let</span> _i: <span class="hljs-built_in">u128</span> = params.read(); <span class="hljs-comment">// Read a single unsigned 128-bit integer.</span>
+    <span class="hljs-keyword">let</span> _j: <span class="hljs-built_in">i128</span> = params.read(); <span class="hljs-comment">// Read a single signed 128-bit integer.</span>
+    
+    <span class="hljs-keyword">let</span> _k: <span class="hljs-built_in">bool</span> = params.read(); <span class="hljs-comment">// Read a single byte as a boolean. 0 is false, 1 is true.</span>
+    
+    <span class="hljs-keyword">let</span> _l: <span class="hljs-built_in">String</span> = params.read(); <span class="hljs-comment">// Read a single string prefixed by an unsigned 32-bit integer.</span>
+    
+    <span class="hljs-keyword">let</span> _m: <span class="hljs-built_in">Vec</span>&lt;<span class="hljs-built_in">u8</span>&gt; = params.read(); <span class="hljs-comment">// Read a vector of bytes prefixed by an unsigned 32-bit integer.</span>
+    
+    <span class="hljs-keyword">let</span> _n: [<span class="hljs-built_in">u8</span>; <span class="hljs-number">32</span>] = params.read(); <span class="hljs-comment">// Read exactly 32 bytes.</span>
+    <span class="hljs-keyword">let</span> _wallet_address: [<span class="hljs-built_in">u8</span>; <span class="hljs-number">32</span>] = params.read(); <span class="hljs-comment">// Wallet addresses in Wavelet are 32 bytes.</span>
+    
+    <span class="hljs-comment">// Note that the `read()` function may be type-postfixed as well.</span>
+    <span class="hljs-comment">// For example: `let wallet_address = params.read::&lt;[u8; 32&gt;();`</span>
+    
+    <span class="hljs-literal">Ok</span>(())
+}
+</code></pre>
+<p>In the case of the smart contract that we are creating, to invoke <code>on_money_received</code>, we only require knowledge of the wallet address of the user
+who sent money to our smart contract, which is accessible via <code>params.sender</code>.</p>
+<h3><a class="anchor" aria-hidden="true" id="sending-transactions"></a><a href="#sending-transactions" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Sending Transactions</h3>
+<p>Given that a smart contract is much like any other account, a smart contract may also send and submit transactions as well.</p>
+<p>In the case of our smart contract, our intent is to send back half the PERLs of however many PERLs the smart contract receives. The core code that performs said intent is written within the <code>on_money_received</code> function like so:</p>
+<pre><code class="hljs css language-rust"><span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">on_money_received</span></span>(&amp;<span class="hljs-keyword">mut</span> <span class="hljs-keyword">self</span>, params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-built_in">Result</span>&lt;(), <span class="hljs-built_in">Box</span>&lt;dyn Error&gt;&gt; {
+    <span class="hljs-comment">// Create and send transaction.</span>
+    Transfer {
+        destination: params.sender,
+        amount: (params.amount + <span class="hljs-number">1</span>) / <span class="hljs-number">2</span>,
+        func_name: <span class="hljs-built_in">vec!</span>[],
+        func_params: <span class="hljs-built_in">vec!</span>[],
+    }
+    .send_transaction();
+
+    <span class="hljs-literal">Ok</span>(())
+}
+</code></pre>
+<p>The smart contract SDK provides transaction types such as <code>Transfer</code> as structs, which may be
+populated with a recipient and PERL amount. Calling <code>send_transaction</code> on the struct would then
+have the contract send a transaction under its own account, which is to then be processed by the
+network.</p>
+<p>Other arbitrary transaction types may be sent from a smart contract as well, such as the <code>Contract</code> type which
+is utilized to spawn new smart contracts. This allows for smart contract systems which may spawn and manage other smart contracts
+for example.</p>
+<p>Note that if invalid parameters are specified in a transaction sent by a smart contract, the smart contract
+may still continue executing until it finishes invoking the function that you have called.</p>
+<h3><a class="anchor" aria-hidden="true" id="error-handling"></a><a href="#error-handling" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Error Handling</h3>
+<p>Smart contract functions may denote successful execution by returning an <code>Ok(())</code>, or a boxed <code>Error</code> otherwise. Returning an <code>Error</code> would roll-back any changes made within a contracts in-memory state in amidst invocation.</p>
+<p>Note however
+that all instructions that were executed before an <code>Error</code> is returned would still be deducted from your balance in the form of
+gas fees.</p>
+<p>In the case of our smart contract, we simply return <code>Ok(())</code>, though may optionally return an <code>Error</code> if for example we might want
+our smart contract to only process transactions that send a minimum of 1500 PERLs.</p>
+<pre><code class="hljs css language-rust"><span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">on_money_received</span></span>(&amp;<span class="hljs-keyword">mut</span> <span class="hljs-keyword">self</span>, params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-built_in">Result</span>&lt;(), <span class="hljs-built_in">Box</span>&lt;dyn Error&gt;&gt; {
+    <span class="hljs-keyword">if</span> params.amount &lt; <span class="hljs-number">1500</span> {
+        <span class="hljs-keyword">return</span> <span class="hljs-literal">Err</span>(<span class="hljs-string">"A minimum of 1500 PERLs must be sent."</span>.into());
+    }
+    
+    Transfer {
+        destination: params.sender,
+        amount: (params.amount + <span class="hljs-number">1</span>) / <span class="hljs-number">2</span>,
+        func_name: <span class="hljs-built_in">vec!</span>[],
+        func_params: <span class="hljs-built_in">vec!</span>[],
+    }
+    .send_transaction();
+
+    <span class="hljs-literal">Ok</span>(())
+}
+</code></pre>
+<h3><a class="anchor" aria-hidden="true" id="debug-logging"></a><a href="#debug-logging" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Debug Logging</h3>
+<p>An additional macro is provided within the Rust smart contract SDK, which is the <code>debug!()</code> macro. The
+macro follows the <a href="https://github.com/rust-lang/rfcs/blob/master/text/2361-dbg-macro.md">RFC 2361 <code>dbg!()</code> macro's</a> specification.</p>
+<p>Any variable alongside its contents may easily be printed out on any of your nodes terminal using the provided <code>debug!()</code> macro.</p>
+<pre><code class="hljs css language-rust"><span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">test_function</span></span>(params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-built_in">Result</span>&lt;(), <span class="hljs-built_in">Box</span>&lt;dyn Error&gt;&gt; {
+    debug!(<span class="hljs-string">"Hello world!"</span>);
+    
+    <span class="hljs-literal">Ok</span>(())
+}
+</code></pre>
+<h2><a class="anchor" aria-hidden="true" id="deploying-smart-contracts"></a><a href="#deploying-smart-contracts" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Deploying Smart Contracts</h2>
+<p>So there you have it; your first smart contract. Let's now compile it down into a WebAssembly binary using Rust's package manager:</p>
+<pre><code class="hljs css language-shell">❯ cargo build --release --target wasm32-unknown-unknown
+</code></pre>
+<p>You may then find your first WebAssembly smart contract compiled into a binary in <code>target/wasm32-unknown-unknown/my_first_contract.wasm</code>. Make sure to keep track of the file path to your contracts binary,
+as we will need it later for deploying it on Wavelet.</p>
+<h3><a class="anchor" aria-hidden="true" id="the-spawn-command"></a><a href="#the-spawn-command" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>The <code>spawn</code> Command</h3>
+<p>In any one of your nodes terminals, to deploy your first smart contract, simply run:</p>
+<pre><code class="hljs css language-shell">❯ spawn [file path to your contract binary here]
+INF Success! Your smart contracts ID: 17b9165d75334fafcd9b85163409deeb6bb7873218e6406677af2da1a73ee560
+</code></pre>
+<p>Once one consensus round passes by, you may use the <code>find</code> command to confirm whether or not
+your smart contract has been successfully deployed.</p>
+<pre><code class="hljs css language-json">❯ f 17b9165d75334fafcd9b85163409deeb6bb7873218e6406677af2da1a73ee560
+
+{
+    "account": "17b9165d75334fafcd9b85163409deeb6bb7873218e6406677af2da1a73ee560",
+    "balance": 0,
+    "is_contract": true,
+    "nonce": 0,
+    "num_pages": 18,
+    "reward": 0,
+    "stake": 0
+}
+</code></pre>
+<p>You may then try send some PERLs to your smart contract and check if it works as expected.</p>
+<pre><code class="hljs css language-json">❯ p 17b9165d75334fafcd9b85163409deeb6bb7873218e6406677af2da1a73ee560 1000
+INF Success! Your payment transaction ID: 9b696a6456dd6a497226b5f0de60833bbeb451612a4a0a0a96d1f566d9383e6a
+INF Deducted PERLs for invoking smart contract function.
+
+❯ f 17b9165d75334fafcd9b85163409deeb6bb7873218e6406677af2da1a73ee560
+
+{
+    "account": "17b9165d75334fafcd9b85163409deeb6bb7873218e6406677af2da1a73ee560",
+    "balance": 500,
+    "is_contract": true,
+    "nonce": 0,
+    "num_pages": 18,
+    "reward": 0,
+    "stake": 0
+}
+</code></pre>
+<h3><a class="anchor" aria-hidden="true" id="the-call-command"></a><a href="#the-call-command" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>The <code>call</code> Command</h3>
+<p>In the case that you may want to specify arbitrary input parameters and execute functions from your own self-made smart contracts, you may use the <code>call</code> command in any of your nodes terminals like so:</p>
+<pre><code class="hljs css language-shell">❯ call [contract address] [amount of perls to send] [gas limit] [function name] [function payload]
+</code></pre>
+<p>As an example, say that you created a smart contract which exposes a function called <code>transfer</code>.
+The function takes in a boolean, a 32-byte wallet address, and an unsigned 64-bit integer.</p>
+<p>We wish to invoke the <code>transfer</code> function with the following input parameter set:</p>
+<pre><code class="hljs css language-shell">(`true`, `17b9165d75334fafcd9b85163409deeb6bb7873218e6406677af2da1a73ee560`, 1000)
+</code></pre>
+<p>We would encode our set into a <code>[function payload]</code> like so:</p>
+<pre><code class="hljs css language-shell">11 H17b9165d75334fafcd9b85163409deeb6bb7873218e6406677af2da1a73ee560 81000
+</code></pre>
+<p>For a more thorough understanding on how to construct the <code>[function payload]</code> field,
+skim over the table below which details how parameters for the payload are fed into the terminal:</p>
+<table>
+<thead>
+<tr><th>Prefix</th><th>Parameter Type</th></tr>
+</thead>
+<tbody>
+<tr><td>1/2/4/8</td><td>Unsigned 8/16/32/64-bit integer</td></tr>
+<tr><td>H</td><td>Non-length-prefixed hex-encoded bytes</td></tr>
+<tr><td>S</td><td>Length-prefixed string</td></tr>
+</tbody>
+</table>
+<p>Given this, we may now construct any arbitrary function binary payload within our terminal. The final <code>call</code> command we would execute, assuming a gas limit of 999999 PERLs, would then be:</p>
+<pre><code class="hljs css language-shell">❯ call [contract address] 0 999999 transfer 11 H17b9165d75334fafcd9b85163409deeb6bb7873218e6406677af2da1a73ee560 81000
+</code></pre>
+</span></div></article></div><div class="docs-prevnext"><a class="docs-prev button" href="/wavelet/docs/transactions"><span class="arrow-prev">← </span><span>Transactions</span></a></div></div></div><nav class="onPageNav"><ul class="toc-headings"><li><a href="#setup">Setup</a></li><li><a href="#my-first-smart-contract">My First Smart Contract</a><ul class="toc-headings"><li><a href="#the-init-function">The <code>init</code> Function</a></li></ul></li><li><a href="#invoking-smart-contract-functions">Invoking Smart Contract Functions</a><ul class="toc-headings"><li><a href="#payload-format">Payload Format</a></li><li><a href="#gas-limits-and-fees">Gas Limits and Fees</a></li></ul></li><li><a href="#developing-smart-contracts">Developing Smart Contracts</a><ul class="toc-headings"><li><a href="#parsing-input-parameters">Parsing Input Parameters</a></li><li><a href="#sending-transactions">Sending Transactions</a></li><li><a href="#error-handling">Error Handling</a></li><li><a href="#debug-logging">Debug Logging</a></li></ul></li><li><a href="#deploying-smart-contracts">Deploying Smart Contracts</a><ul class="toc-headings"><li><a href="#the-spawn-command">The <code>spawn</code> Command</a></li><li><a href="#the-call-command">The <code>call</code> Command</a></li></ul></li></ul></nav></div><footer class="nav-footer" id="footer"><section class="sitemap"><a href="/wavelet/" class="nav-home"><img src="/wavelet/img/favicon.ico" alt="Wavelet" width="56" height="44"/></a><div><h5>Docs</h5><a href="/wavelet/docs/en/setup">Getting Started</a></div><div><h5>Community</h5><a href="https://discord.gg/dMYfDPM" target="_blank" rel="noreferrer noopener">Discord</a><a href="https://twitter.com/PerlinNetwork" target="_blank" rel="noreferrer noopener">Twitter</a></div><div><h5>More</h5><a href="https://github.com/perlin-network/wavelet">GitHub</a><a class="github-button" href="https://github.com/perlin-network/wavelet" data-icon="octicon-star" data-count-href="/perlin-network/wavelet/stargazers" data-show-count="true" data-count-aria-label="# stargazers on GitHub" aria-label="Star this project on GitHub">Star</a></div></section><a href="https://perlin.net" target="_blank" rel="noreferrer noopener" class="fbOpenSource"><img src="/wavelet/img/perlin-logo.svg" alt="Perlin Open Source" width="170" height="60"/></a><section class="copyright">Copyright © 2019 Perlin</section></footer></div><script>window.twttr=(function(d,s, id){var js,fjs=d.getElementsByTagName(s)[0],t=window.twttr||{};if(d.getElementById(id))return t;js=d.createElement(s);js.id=id;js.src='https://platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js, fjs);t._e = [];t.ready = function(f) {t._e.push(f);};return t;}(document, 'script', 'twitter-wjs'));</script></body></html>

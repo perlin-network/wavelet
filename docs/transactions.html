@@ -1,0 +1,181 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge"/><title>Transactions · Wavelet</title><meta name="viewport" content="width=device-width"/><meta name="generator" content="Docusaurus"/><meta name="description" content="&lt;p&gt;A transaction is an atomic set of changes to be applied to Wavelet&#x27;s network-wide replicated state;&lt;/p&gt;
+"/><meta name="docsearch:language" content="en"/><meta property="og:title" content="Transactions · Wavelet"/><meta property="og:type" content="website"/><meta property="og:url" content="https://perlin-network.github.io/wavelet/"/><meta property="og:description" content="&lt;p&gt;A transaction is an atomic set of changes to be applied to Wavelet&#x27;s network-wide replicated state;&lt;/p&gt;
+"/><meta property="og:image" content="https://perlin-network.github.io/wavelet/img/undraw_online.svg"/><meta name="twitter:card" content="summary"/><meta name="twitter:image" content="https://perlin-network.github.io/wavelet/img/undraw_tweetstorm.svg"/><link rel="shortcut icon" href="/wavelet/img/favicon.ico"/><link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/monokai.min.css"/><script type="text/javascript" src="https://buttons.github.io/buttons.js"></script><script src="/wavelet/js/scrollSpy.js"></script><link rel="stylesheet" href="/wavelet/css/main.css"/><script src="/wavelet/js/codetabs.js"></script></head><body class="sideNavVisible separateOnPageNav"><div class="fixedHeaderContainer"><div class="headerWrapper wrapper"><header><a href="/wavelet/"><img class="logo" src="/wavelet/img/favicon.ico" alt="Wavelet"/><h2 class="headerTitleWithLogo">Wavelet</h2></a><div class="navigationWrapper navigationSlider"><nav class="slidingNav"><ul class="nav-site nav-site-internal"><li class="siteNavGroupActive"><a href="/wavelet/docs/setup" target="_self">Docs</a></li><li class=""><a href="/wavelet/help" target="_self">Help</a></li><li class=""><a target="_self"></a></li></ul></nav></div></header></div></div><div class="navPusher"><div class="docMainWrapper wrapper"><div class="container docsNavContainer" id="docsNav"><nav class="toc"><div class="toggleNav"><section class="navWrapper wrapper"><div class="navBreadcrumb wrapper"><div class="navToggle" id="navToggler"><div class="hamburger-menu"><div class="line1"></div><div class="line2"></div><div class="line3"></div></div></div><h2><i>›</i><span>Documentation</span></h2><div class="tocToggler" id="tocToggler"><i class="icon-toc"></i></div></div><div class="navGroups"><div class="navGroup"><h3 class="navGroupCategoryTitle">Documentation</h3><ul class=""><li class="navListItem"><a class="navItem" href="/wavelet/docs/setup">Quickstart</a></li><li class="navListItem navListItemActive"><a class="navItem" href="/wavelet/docs/transactions">Transactions</a></li><li class="navListItem"><a class="navItem" href="/wavelet/docs/smart-contracts">Smart Contracts</a></li></ul></div></div></section></div><script>
+            var coll = document.getElementsByClassName('collapsible');
+            var checkActiveCategory = true;
+            for (var i = 0; i < coll.length; i++) {
+              var links = coll[i].nextElementSibling.getElementsByTagName('*');
+              if (checkActiveCategory){
+                for (var j = 0; j < links.length; j++) {
+                  if (links[j].classList.contains('navListItemActive')){
+                    coll[i].nextElementSibling.classList.toggle('hide');
+                    coll[i].childNodes[1].classList.toggle('rotate');
+                    checkActiveCategory = false;
+                    break;
+                  }
+                }
+              }
+
+              coll[i].addEventListener('click', function() {
+                var arrow = this.childNodes[1];
+                arrow.classList.toggle('rotate');
+                var content = this.nextElementSibling;
+                content.classList.toggle('hide');
+              });
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+              createToggler('#navToggler', '#docsNav', 'docsSliderActive');
+              createToggler('#tocToggler', 'body', 'tocActive');
+
+              var headings = document.querySelector('.toc-headings');
+              headings && headings.addEventListener('click', function(event) {
+                var el = event.target;
+                while(el !== headings){
+                  if (el.tagName === 'A') {
+                    document.body.classList.remove('tocActive');
+                    break;
+                  } else{
+                    el = el.parentNode;
+                  }
+                }
+              }, false);
+
+              function createToggler(togglerSelector, targetSelector, className) {
+                var toggler = document.querySelector(togglerSelector);
+                var target = document.querySelector(targetSelector);
+
+                if (!toggler) {
+                  return;
+                }
+
+                toggler.onclick = function(event) {
+                  event.preventDefault();
+
+                  target.classList.toggle(className);
+                };
+              }
+            });
+        </script></nav></div><div class="container mainContainer"><div class="wrapper"><div class="post"><header class="postHeader"><a class="edit-page-link button" href="https://github.com/perlin-network/wavelet/edit/master/site/docs/transactions.md" target="_blank" rel="noreferrer noopener">Edit</a><h1 class="postHeaderTitle">Transactions</h1></header><article><div><span><p>A transaction is an atomic set of changes to be applied to Wavelet's network-wide replicated state;
+proposed by some arbitrary account that is commonly referred to as the <em>transaction's creator</em>.</p>
+<p>These changes are denoted on the transaction through the specification of two entries: a <em>tag</em>, and a <em>payload</em>.</p>
+<p>Functionally, one may think of a tag as an identifier for some form of operation to be applied to the ledgers state, with the payload providing
+further detail on how the operation designated by the tag should be performed.</p>
+<p>More importantly, there only exists a limited number of tags such that there are constraints in how one may
+change or modify Wavelet's state. Each individual tag holds further constraints on how the payload may be
+structured/formed.</p>
+<h2><a class="anchor" aria-hidden="true" id="tags-and-payloads"></a><a href="#tags-and-payloads" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Tags and Payloads</h2>
+<p>Internally, a tag is represented by a single byte, with the payload being an unsigned little-endian 32-bit
+integer-prefixed variable length byte array.</p>
+<p>The following table below denotes all the available tags and their operations in Wavelet:</p>
+<table>
+<thead>
+<tr><th>Tag</th><th>Binary</th><th>Description</th></tr>
+</thead>
+<tbody>
+<tr><td><code>Nop</code></td><td>0x00</td><td>No-op. <code>Nop</code> transactions must have an empty payload.</td></tr>
+<tr><td><code>Transfer</code></td><td>0x01</td><td>Send PERLs to an arbitrary account, or invoke a smart contract function with a specified gas limit and a binary payload. For information on how <code>Transfer</code> transaction payloads are constructed, <a href="#the-transfer-transaction">click here</a>.</td></tr>
+<tr><td><code>Stake</code></td><td>0x02</td><td>Place/withdraw stakes of virtual currency to become/withdraw from being a validator, or convert rewards into PERLs which were earned from participating in the network as a validator. For more information on how <code>Stake</code> transaction payloads are constructed, <a href="#the-stake-transaction">click here</a>.</td></tr>
+<tr><td><code>Contract</code></td><td>0x03</td><td>Spawn and initialize a new smart contract with a specified gas limit and a binary payload. For information on how <code>Contract</code> transaction payloads are constructed, <a href="#the-contract-transaction">click here</a>.</td></tr>
+<tr><td><code>Batch</code></td><td>0x04</td><td>Atomically apply a series of operations by specifying a list of tags and payloads. For information on how <code>Batch</code> transaction payloads are constructed, <a href="#the-batch-transaction">click here</a>.</td></tr>
+</tbody>
+</table>
+<h2><a class="anchor" aria-hidden="true" id="identities-and-signatures"></a><a href="#identities-and-signatures" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Identities and Signatures</h2>
+<p>All transactions are fingerprinted by the checksum of their contents. The checksum, otherwise known as the transaction's ID, is generated using the BLAKE2b 256-bit
+hash function.</p>
+<p>All account IDs within Wavelet are 256-bit public keys of an Ed25519 keypair, with all cryptographic signatures made by Wavelet accounts complying with the Ed25519
+cryptographic signature scheme standard.</p>
+<h2><a class="anchor" aria-hidden="true" id="sender-and-creator"></a><a href="#sender-and-creator" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Sender and Creator</h2>
+<p>A transaction lists/references two account ID's: a <em>transaction creator</em>, and a <em>transaction sender</em>. All operations/changes denoted within a transaction are to be applied with respect to its creators account.</p>
+<p>A creator may optionally delegate the responsibilities of broadcasting and spreading their transaction to another account, being a transaction sender.</p>
+<p>Upon the creation of a transaction, the transaction creator would sign the tag, payload, and nonce of the transaction and pass it over to another account that
+would play the role of being the transactions sender. The sender would then assign consensus-related information to the transaction, sign the entirety of
+the transaction, and broadcast it out to the network to be verified and finalized by other Wavelet nodes.</p>
+<h2><a class="anchor" aria-hidden="true" id="replay-attacks"></a><a href="#replay-attacks" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Replay Attacks</h2>
+<p>A nonce is associated to each and every Wavelet account. A nonce is an incremental, ascending counter that gets incremented every single time a transaction
+that was created by some given account gets finalized and apply to the ledgers state.</p>
+<p>The nonce is used to prevent replay attacks, where after an account creates a transaction, there may exist a possibility that several nodes may attempt
+to re-sign the transaction such that the transaction may operate and be applied on the ledger indefinite amounts of times.</p>
+<p>By attaching a nonce counter, once a single instance of some accounts transaction gets finalized, no other node may re-sign and re-broadcast the transaction
+to cause a replay attack.</p>
+<h2><a class="anchor" aria-hidden="true" id="binary-format"></a><a href="#binary-format" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Binary Format</h2>
+<p>Transactions are encoded using a simple binary encoding scheme, where all integers are little-endian encoded, and all variable-sized arrays are
+length-prefixed with an unsigned 32-bit little-endian integer.</p>
+<p>The current binary format of a Wavelet transaction is denoted as follows:</p>
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th></tr>
+</thead>
+<tbody>
+<tr><td>Sender Account ID</td><td>256-bit wallet address/public key.</td></tr>
+<tr><td>Creator Account ID</td><td>256-bit wallet address/public key.</td></tr>
+<tr><td>Nonce</td><td>Latest nonce value of the creators account, denoted as an unsigned 64-bit little-endian integer.</td></tr>
+<tr><td>Parent IDs</td><td>Length-prefixed array of 256-bit transaction IDs; assigned by the transactions sender.</td></tr>
+<tr><td>Depth</td><td>Unsigned 64-bit little-endian integer; assigned by the transactions sender.</td></tr>
+<tr><td>Tag</td><td>8-bit integer (byte) identifying the transactions operation.</td></tr>
+<tr><td>Payload</td><td>Length-prefixed array of bytes providing further details of the operation invoked under the transactions designated tag.</td></tr>
+<tr><td>Sender Signature</td><td>Ed25519 signature of the contents of the entire transaction; assigned by the transactions sender.</td></tr>
+<tr><td>Creator Signature</td><td>Ed25519 signature of the tag, nonce, and payload concatenated together.</td></tr>
+</tbody>
+</table>
+<p>As a space-saving optimization, should the sender and creator of the transaction be the exact same
+account, the creator's ID and signature is omitted when encoding the transaction into binary.</p>
+<h2><a class="anchor" aria-hidden="true" id="payload-binary-formats"></a><a href="#payload-binary-formats" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Payload Binary Formats</h2>
+<p>Let's go over a few of the different payload formats for certain tag types.</p>
+<h3><a class="anchor" aria-hidden="true" id="the-transfer-transaction"></a><a href="#the-transfer-transaction" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>The <code>Transfer</code> Transaction</h3>
+<p>The intent of a <code>Transfer</code> transaction is to either send PERLs to a specified recipient account, or to otherwise invoke a function from a smart
+contract.</p>
+<p>A <code>Transfer</code> transaction is structured, assuming the same binary encoding scheme for transactions in general, as follows:</p>
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th></tr>
+</thead>
+<tbody>
+<tr><td>Recipient Account ID</td><td>256-bit wallet/smart contract account address.</td></tr>
+<tr><td>Num PERLs Sent</td><td>Unsigned 64-bit little-endian integer, representative of some amount of PERLs to be sent to the designated recipient.</td></tr>
+<tr><td>Gas Limit</td><td>Unsigned 64-bit little-endian integer, representative of the maximum gas fee that may be deducted from the transaction creators account.</td></tr>
+<tr><td>Function Name</td><td>Length-prefixed string, representative of the name of the smart contract function to be invoked.</td></tr>
+<tr><td>Function Payload</td><td>Length-prefixed array of bytes passed as input parameters to the smart contract function to be invoked.</td></tr>
+</tbody>
+</table>
+<p>For more information on how to invoke a function from a smart contract, or for what the Gas Limit, Function Name, or Function Payload
+represents within a <code>Transfer</code> transaction, <a href="/wavelet/docs/smart-contracts#invoking-smart-contract-functions">click here</a>.</p>
+<h3><a class="anchor" aria-hidden="true" id="the-stake-transaction"></a><a href="#the-stake-transaction" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>The <code>Stake</code> Transaction</h3>
+<p>The intent of a <code>Stake</code> transaction is to either:</p>
+<ol>
+<li>place a stake of virtual currency to register yourself as a validator or otherwise have more voting
+power within the network,</li>
+<li>withdraw existing stakes of virtual currency to withdraw yourself from being a validator, or</li>
+<li>to convert your earned rewards
+into PERLs which were earned from your work in validating and protecting the Wavelet network as a validator.</li>
+</ol>
+<p>A <code>Stake</code> transaction is structured, assuming the same binary encoding scheme for transactions in general, as follows:</p>
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th></tr>
+</thead>
+<tbody>
+<tr><td>Operation</td><td>A single byte, where 0x00 = <code>Withdraw Stake</code>, 0x01 = <code>Place Stake</code>, and 0x02 = <code>Withdraw Rewards</code>.</td></tr>
+<tr><td>Amount</td><td>An unsigned little-endian 64-bit integer denoting some amount of PERLs to either place as stake, withdraw from stake, or withdraw from available rewards.</td></tr>
+</tbody>
+</table>
+<h3><a class="anchor" aria-hidden="true" id="the-contract-transaction"></a><a href="#the-contract-transaction" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>The <code>Contract</code> Transaction</h3>
+<p>The intent of a <code>Contract</code> transaction is to spawn a new smart contract, whose ID is the transactions ID. Code for the smart contract is provided
+in the transaction as the functions payload.</p>
+<p>More specifically, a <code>Contract</code> transaction is structured, assuming the same binary encoding scheme for transactions in general, as follows:</p>
+<table>
+<thead>
+<tr><th>Field</th><th>Type</th></tr>
+</thead>
+<tbody>
+<tr><td>Gas Limit</td><td>Unsigned 64-bit little-endian integer, representative of the maximum gas fee that may be deducted from the transaction creators account.</td></tr>
+<tr><td>Payload</td><td>Length-prefixed array of bytes passed as input parameters to the smart contracts <code>init</code> function. *Note: The length prefixed is an unsigned 64-bit little-endian integer.</td></tr>
+<tr><td>Code</td><td>Non-length-prefixed array of bytes representative of the smart contracts code.</td></tr>
+</tbody>
+</table>
+<p>For more information on how to deploy a smart contract, <a href="/wavelet/docs/smart-contracts#deploying-smart-contracts">click here</a>.</p>
+<h3><a class="anchor" aria-hidden="true" id="the-batch-transaction"></a><a href="#the-batch-transaction" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>The <code>Batch</code> Transaction</h3>
+<p>The intent of a <code>Batch</code> transaction is to atomically apply a batch of operations within a single transaction.</p>
+<p>The payload of a <code>Batch</code> transaction is structed as a length-prefixed variable-length list of entries comprised of both tags and payloads, with the prefixed length encoded as
+a single unsigned byte.</p>
+</span></div></article></div><div class="docs-prevnext"><a class="docs-prev button" href="/wavelet/docs/setup"><span class="arrow-prev">← </span><span>Quickstart</span></a><a class="docs-next button" href="/wavelet/docs/smart-contracts"><span>Smart Contracts</span><span class="arrow-next"> →</span></a></div></div></div><nav class="onPageNav"><ul class="toc-headings"><li><a href="#tags-and-payloads">Tags and Payloads</a></li><li><a href="#identities-and-signatures">Identities and Signatures</a></li><li><a href="#sender-and-creator">Sender and Creator</a></li><li><a href="#replay-attacks">Replay Attacks</a></li><li><a href="#binary-format">Binary Format</a></li><li><a href="#payload-binary-formats">Payload Binary Formats</a><ul class="toc-headings"><li><a href="#the-transfer-transaction">The <code>Transfer</code> Transaction</a></li><li><a href="#the-stake-transaction">The <code>Stake</code> Transaction</a></li><li><a href="#the-contract-transaction">The <code>Contract</code> Transaction</a></li><li><a href="#the-batch-transaction">The <code>Batch</code> Transaction</a></li></ul></li></ul></nav></div><footer class="nav-footer" id="footer"><section class="sitemap"><a href="/wavelet/" class="nav-home"><img src="/wavelet/img/favicon.ico" alt="Wavelet" width="56" height="44"/></a><div><h5>Docs</h5><a href="/wavelet/docs/en/setup">Getting Started</a></div><div><h5>Community</h5><a href="https://discord.gg/dMYfDPM" target="_blank" rel="noreferrer noopener">Discord</a><a href="https://twitter.com/PerlinNetwork" target="_blank" rel="noreferrer noopener">Twitter</a></div><div><h5>More</h5><a href="https://github.com/perlin-network/wavelet">GitHub</a><a class="github-button" href="https://github.com/perlin-network/wavelet" data-icon="octicon-star" data-count-href="/perlin-network/wavelet/stargazers" data-show-count="true" data-count-aria-label="# stargazers on GitHub" aria-label="Star this project on GitHub">Star</a></div></section><a href="https://perlin.net" target="_blank" rel="noreferrer noopener" class="fbOpenSource"><img src="/wavelet/img/perlin-logo.svg" alt="Perlin Open Source" width="170" height="60"/></a><section class="copyright">Copyright © 2019 Perlin</section></footer></div><script>window.twttr=(function(d,s, id){var js,fjs=d.getElementsByTagName(s)[0],t=window.twttr||{};if(d.getElementById(id))return t;js=d.createElement(s);js.id=id;js.src='https://platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js, fjs);t._e = [];t.ready = function(f) {t._e.push(f);};return t;}(document, 'script', 'twitter-wjs'));</script></body></html>

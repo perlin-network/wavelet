@@ -1,0 +1,144 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge"/><title>Getting started · Wavelet</title><meta name="viewport" content="width=device-width"/><meta name="generator" content="Docusaurus"/><meta name="description" content="&lt;p&gt;To get started running your own personal Wavelet testnet, download one of the&lt;/p&gt;
+"/><meta name="docsearch:language" content="en"/><meta property="og:title" content="Getting started · Wavelet"/><meta property="og:type" content="website"/><meta property="og:url" content="https://perlin-network.github.io/wavelet/"/><meta property="og:description" content="&lt;p&gt;To get started running your own personal Wavelet testnet, download one of the&lt;/p&gt;
+"/><meta property="og:image" content="https://perlin-network.github.io/wavelet/img/undraw_online.svg"/><meta name="twitter:card" content="summary"/><meta name="twitter:image" content="https://perlin-network.github.io/wavelet/img/undraw_tweetstorm.svg"/><link rel="shortcut icon" href="/wavelet/img/favicon.ico"/><link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/monokai.min.css"/><script type="text/javascript" src="https://buttons.github.io/buttons.js"></script><script src="/wavelet/js/scrollSpy.js"></script><link rel="stylesheet" href="/wavelet/css/main.css"/><script src="/wavelet/js/codetabs.js"></script></head><body class="sideNavVisible separateOnPageNav"><div class="fixedHeaderContainer"><div class="headerWrapper wrapper"><header><a href="/wavelet/"><img class="logo" src="/wavelet/img/favicon.ico" alt="Wavelet"/><h2 class="headerTitleWithLogo">Wavelet</h2></a><div class="navigationWrapper navigationSlider"><nav class="slidingNav"><ul class="nav-site nav-site-internal"><li class="siteNavGroupActive siteNavItemActive"><a href="/wavelet/docs/setup" target="_self">Docs</a></li><li class=""><a href="/wavelet/help" target="_self">Help</a></li><li class=""><a target="_self"></a></li></ul></nav></div></header></div></div><div class="navPusher"><div class="docMainWrapper wrapper"><div class="container docsNavContainer" id="docsNav"><nav class="toc"><div class="toggleNav"><section class="navWrapper wrapper"><div class="navBreadcrumb wrapper"><div class="navToggle" id="navToggler"><div class="hamburger-menu"><div class="line1"></div><div class="line2"></div><div class="line3"></div></div></div><h2><i>›</i><span>Documentation</span></h2><div class="tocToggler" id="tocToggler"><i class="icon-toc"></i></div></div><div class="navGroups"><div class="navGroup"><h3 class="navGroupCategoryTitle">Documentation</h3><ul class=""><li class="navListItem navListItemActive"><a class="navItem" href="/wavelet/docs/setup">Quickstart</a></li><li class="navListItem"><a class="navItem" href="/wavelet/docs/transactions">Transactions</a></li><li class="navListItem"><a class="navItem" href="/wavelet/docs/smart-contracts">Smart Contracts</a></li></ul></div></div></section></div><script>
+            var coll = document.getElementsByClassName('collapsible');
+            var checkActiveCategory = true;
+            for (var i = 0; i < coll.length; i++) {
+              var links = coll[i].nextElementSibling.getElementsByTagName('*');
+              if (checkActiveCategory){
+                for (var j = 0; j < links.length; j++) {
+                  if (links[j].classList.contains('navListItemActive')){
+                    coll[i].nextElementSibling.classList.toggle('hide');
+                    coll[i].childNodes[1].classList.toggle('rotate');
+                    checkActiveCategory = false;
+                    break;
+                  }
+                }
+              }
+
+              coll[i].addEventListener('click', function() {
+                var arrow = this.childNodes[1];
+                arrow.classList.toggle('rotate');
+                var content = this.nextElementSibling;
+                content.classList.toggle('hide');
+              });
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+              createToggler('#navToggler', '#docsNav', 'docsSliderActive');
+              createToggler('#tocToggler', 'body', 'tocActive');
+
+              var headings = document.querySelector('.toc-headings');
+              headings && headings.addEventListener('click', function(event) {
+                var el = event.target;
+                while(el !== headings){
+                  if (el.tagName === 'A') {
+                    document.body.classList.remove('tocActive');
+                    break;
+                  } else{
+                    el = el.parentNode;
+                  }
+                }
+              }, false);
+
+              function createToggler(togglerSelector, targetSelector, className) {
+                var toggler = document.querySelector(togglerSelector);
+                var target = document.querySelector(targetSelector);
+
+                if (!toggler) {
+                  return;
+                }
+
+                toggler.onclick = function(event) {
+                  event.preventDefault();
+
+                  target.classList.toggle(className);
+                };
+              }
+            });
+        </script></nav></div><div class="container mainContainer"><div class="wrapper"><div class="post"><header class="postHeader"><a class="edit-page-link button" href="https://github.com/perlin-network/wavelet/edit/master/site/docs/setup.md" target="_blank" rel="noreferrer noopener">Edit</a><h1 class="postHeaderTitle">Getting started</h1></header><article><div><span><p>To get started running your own personal Wavelet testnet, download one of the
+pre-built binaries <a href="https://github.com/perlin-network/wavelet/releases">here</a>.</p>
+<p>Wavelet currently supports <strong>Windows</strong>, <strong>Linux</strong>, and <strong>Mac OSX</strong>. However, extensive testing was done primarily on
+Linux. In the case that any errors arise, please open a Github issue with the error you are experiencing.</p>
+<h2><a class="anchor" aria-hidden="true" id="quickstart"></a><a href="#quickstart" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Quickstart</h2>
+<p>Run the following commands in 3 separate terminal instances. Wavelet requires each node to be connected to atleast
+2 other nodes at all times before transactions may start being made.</p>
+<pre><code class="hljs css language-shell-session">[Terminal <span class="hljs-number">1</span>] ❯ ./wavelet --port <span class="hljs-number">3000</span> --api.port <span class="hljs-number">9000</span> --wallet config/wallet.txt
+[Terminal <span class="hljs-number">2</span>] ❯ ./wavelet --port <span class="hljs-number">3001</span> --api.port <span class="hljs-number">9001</span> --wallet config/wallet2.txt <span class="hljs-number">127.0</span><span class="hljs-number">.0</span><span class="hljs-number">.1</span>:<span class="hljs-number">3000</span>
+[Terminal <span class="hljs-number">3</span>] ❯ ./wavelet --port <span class="hljs-number">3002</span> --api.port <span class="hljs-number">9002</span> --wallet config/wallet3.txt <span class="hljs-number">127.0</span><span class="hljs-number">.0</span><span class="hljs-number">.1</span>:<span class="hljs-number">3000</span>
+</code></pre>
+<p>Running the commands above will spawn three Wavelet nodes listening on ports <strong>3000</strong>, <strong>3001</strong>, and <strong>3002</strong>, with HTTP APIs hosted
+on ports <strong>9000</strong>, <strong>9001</strong>, and <strong>9002</strong>.</p>
+<h3><a class="anchor" aria-hidden="true" id="bootstrap-nodes"></a><a href="#bootstrap-nodes" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Bootstrap Nodes</h3>
+<p>Node 2 and Node 3 discover and interconnect with one another by designating Node 1 as a bootstrap node. Additional bootstrap nodes may be specified by providing their addresses in a space-delimited list like
+so:</p>
+<pre><code class="hljs css language-shell-session">❯ ./wavelet --port <span class="hljs-number">3000</span> --api.port <span class="hljs-number">9000</span> --wallet config/wallet.txt <span class="hljs-number">127.0</span><span class="hljs-number">.0</span><span class="hljs-number">.1</span>:<span class="hljs-number">3001</span> <span class="hljs-number">127.0</span><span class="hljs-number">.0</span><span class="hljs-number">.1</span>:<span class="hljs-number">3002</span>
+</code></pre>
+<p>By default, nodes will persist all transactional and state data in-memory, such that nodes lose all data the very moment they
+are shut down. A database path might be provided using the <code>--db.path [directory path]</code> flag to persist all data on-disk.</p>
+<p>If everything runs properly, you should see this in Terminal 1:</p>
+<pre><code class="hljs css language-shell">❯ ./wavelet --port 3000 --api.port 9000 --wallet config/wallet.txt
+INF Listening for peers. addr: 127.0.0.1:3000
+INF Wallet loaded. privateKey: [private key] publicKey: [public key]
+INF Started HTTP API server. port: 9000
+</code></pre>
+<h3><a class="anchor" aria-hidden="true" id="wallet-management"></a><a href="#wallet-management" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Wallet Management</h3>
+<p>Should the <code>--wallet [wallet path]</code> flag not be specified, a new wallet will randomly be generated. In the case that the default wallets are specified for each node, the wallet addresses of each individual node are:</p>
+<table>
+<thead>
+<tr><th>Node</th><th>Wallet address</th></tr>
+</thead>
+<tbody>
+<tr><td>1</td><td>400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405</td></tr>
+<tr><td>2</td><td>696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a</td></tr>
+<tr><td>3</td><td>f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467</td></tr>
+</tbody>
+</table>
+<h3><a class="anchor" aria-hidden="true" id="setting-up-genesis"></a><a href="#setting-up-genesis" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Setting Up Genesis</h3>
+<p>If the default wallets are used, Node 1 and Node 2 by default should have a significant amount of PERLs in their wallet; with Node
+3 having zero PERLs.</p>
+<p>These initially minted PERLs are specified through a genesis file that must be equivalent across
+all nodes within the network. The genesis file is in JSON format, and specifies the initial balance, reward, and stake each individual
+node has at the genesis of the network.</p>
+<p><strong>PERLs</strong> are the cryptocurrency at the hearth of Wavelet's security, safety, and economy. PERLs may be
+spent for spawning/invoking smart contracts, sent/received as an asset, and otherwise earned by assisting the network with
+validating and processing transactions.</p>
+<h2><a class="anchor" aria-hidden="true" id="my-first-transaction"></a><a href="#my-first-transaction" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>My First Transaction</h2>
+<p>Now, let's get to making your first transaction. In Node 1's terminal, type the following and press [Enter]:</p>
+<pre><code class="hljs css language-shell">❯ p f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467 128
+</code></pre>
+<p>The command above will send Node 3 <strong>128 PERLs</strong>. And there you have it; your first transaction.</p>
+<pre><code class="hljs css language-shell">INF Finalized consensus round, and initialized a new round.
+</code></pre>
+<p>The very moment you see the above line in Node 1's terminal, your transaction is finalized with its intent of transferring
+PERLs from Node 1 to Node 3 being applied, finalized, and replicated across all the nodes in your local network.</p>
+<h3><a class="anchor" aria-hidden="true" id="the-find-command"></a><a href="#the-find-command" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>The <code>find</code> Command</h3>
+<p>To check that your transaction has been applied and finalized successfully, you may execute the following command on any of
+your nodes:</p>
+<pre><code class="hljs css language-json">❯ f f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467
+
+{
+    "account": "f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467",
+    "balance": 128,
+    "is_contract": false,
+    "nonce": 0,
+    "num_pages": 0,
+    "reward": 0,
+    "stake": 0
+}
+
+❯ f 400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405
+
+{
+    "account": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+    "balance": 9999999999999999872,
+    "is_contract": false,
+    "nonce": 0,
+    "num_pages": 0,
+    "reward": 0,
+    "stake": 0
+}
+</code></pre>
+<p>The <code>f</code> command is short for the <code>find [wallet address/smart contract address/transaction id]</code> command, which searches
+for and prints out the details of any wallet/smart contract/transaction you desire.</p>
+</span></div></article></div><div class="docs-prevnext"><a class="docs-next button" href="/wavelet/docs/transactions"><span>Transactions</span><span class="arrow-next"> →</span></a></div></div></div><nav class="onPageNav"><ul class="toc-headings"><li><a href="#quickstart">Quickstart</a><ul class="toc-headings"><li><a href="#bootstrap-nodes">Bootstrap Nodes</a></li><li><a href="#wallet-management">Wallet Management</a></li><li><a href="#setting-up-genesis">Setting Up Genesis</a></li></ul></li><li><a href="#my-first-transaction">My First Transaction</a><ul class="toc-headings"><li><a href="#the-find-command">The <code>find</code> Command</a></li></ul></li></ul></nav></div><footer class="nav-footer" id="footer"><section class="sitemap"><a href="/wavelet/" class="nav-home"><img src="/wavelet/img/favicon.ico" alt="Wavelet" width="56" height="44"/></a><div><h5>Docs</h5><a href="/wavelet/docs/en/setup">Getting Started</a></div><div><h5>Community</h5><a href="https://discord.gg/dMYfDPM" target="_blank" rel="noreferrer noopener">Discord</a><a href="https://twitter.com/PerlinNetwork" target="_blank" rel="noreferrer noopener">Twitter</a></div><div><h5>More</h5><a href="https://github.com/perlin-network/wavelet">GitHub</a><a class="github-button" href="https://github.com/perlin-network/wavelet" data-icon="octicon-star" data-count-href="/perlin-network/wavelet/stargazers" data-show-count="true" data-count-aria-label="# stargazers on GitHub" aria-label="Star this project on GitHub">Star</a></div></section><a href="https://perlin.net" target="_blank" rel="noreferrer noopener" class="fbOpenSource"><img src="/wavelet/img/perlin-logo.svg" alt="Perlin Open Source" width="170" height="60"/></a><section class="copyright">Copyright © 2019 Perlin</section></footer></div><script>window.twttr=(function(d,s, id){var js,fjs=d.getElementsByTagName(s)[0],t=window.twttr||{};if(d.getElementById(id))return t;js=d.createElement(s);js.id=id;js.src='https://platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js, fjs);t._e = [];t.ready = function(f) {t._e.push(f);};return t;}(document, 'script', 'twitter-wjs'));</script></body></html>
