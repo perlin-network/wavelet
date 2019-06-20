@@ -231,6 +231,7 @@ func commandRemote(c *cli.Context) error {
 		if _, err := flood(client); err != nil {
 			fmt.Println(err)
 		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 

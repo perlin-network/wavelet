@@ -82,9 +82,7 @@ func (g *Gossiper) Gossip(transactions [][]byte) {
 		if !exists {
 			client := NewWaveletClient(conn)
 
-			ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(5*time.Second))
-
-			if stream, err = client.Gossip(ctx); err != nil {
+			if stream, err = client.Gossip(context.Background()); err != nil {
 				g.streamsLock.Unlock()
 				continue
 			}

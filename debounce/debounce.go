@@ -94,7 +94,7 @@ func NewDeduper(ctx context.Context, opts ...ConfigOption) *Deduper {
 
 				action := d.action
 				d.mu.Unlock()
-				action(payload)
+				go action(payload)
 			}
 		}
 	}()
@@ -156,7 +156,7 @@ func NewLimiter(ctx context.Context, opts ...ConfigOption) *Limiter {
 				}
 				d.mu.Unlock()
 				if action != nil {
-					action(buffer)
+					go action(buffer)
 				}
 			}
 		}
@@ -191,6 +191,6 @@ func (d *Limiter) Add(oss ...PayloadOption) {
 	d.mu.Unlock()
 
 	if action != nil {
-		action(buffer)
+		go action(buffer)
 	}
 }
