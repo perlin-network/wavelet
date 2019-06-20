@@ -72,7 +72,6 @@ func (g *Gossiper) Gossip(transactions [][]byte) {
 	conns := g.client.ClosestPeers()
 
 	var wg sync.WaitGroup
-	wg.Add(len(conns))
 
 	for _, conn := range conns {
 		target := conn.Target()
@@ -83,7 +82,9 @@ func (g *Gossiper) Gossip(transactions [][]byte) {
 		if !exists {
 			client := NewWaveletClient(conn)
 
-			if stream, err = client.Gossip(context.Background()); err != nil {
+			ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(5*time.Second))
+
+			if stream, err = client.Gossip(ctx); err != nil {
 				g.streamsLock.Unlock()
 				continue
 			}
@@ -91,6 +92,8 @@ func (g *Gossiper) Gossip(transactions [][]byte) {
 			g.streams[target] = stream
 		}
 		g.streamsLock.Unlock()
+
+		wg.Add(1)
 
 		go func() {
 			if err := stream.Send(batch); err != nil {

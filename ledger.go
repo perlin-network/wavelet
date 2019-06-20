@@ -36,6 +36,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 )
@@ -56,10 +57,10 @@ type Ledger struct {
 
 	consensus sync.WaitGroup
 
-	txCreatedTime time.Time
+	txCreatedTime  time.Time
 	txReceivedTime time.Time
-	nops bool
-	nopsTimeLock  sync.Mutex
+	nops           bool
+	nopsTimeLock   sync.Mutex
 
 	sync      chan struct{}
 	syncTimer *time.Timer
@@ -127,7 +128,7 @@ func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 		},
 
 		txReceivedTime: time.Now(),
-		txCreatedTime: time.Now(),
+		txCreatedTime:  time.Now(),
 
 		sync:      make(chan struct{}),
 		syncTimer: time.NewTimer(0),
@@ -167,7 +168,7 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 				l.txCreatedTime = time.Now()
 			}
 		} else {
-			l.txReceivedTime= time.Now()
+			l.txReceivedTime = time.Now()
 		}
 
 		l.nopsTimeLock.Unlock()
@@ -260,7 +261,7 @@ func (l *Ledger) BroadcastNops() {
 		txCreated := l.txCreatedTime
 		l.nopsTimeLock.Unlock()
 
-		if time.Since(txCreated) < 250 * time.Millisecond || time.Since(txReceived) < 100 * time.Millisecond {
+		if time.Since(txCreated) < 250*time.Millisecond || time.Since(txReceived) < 100*time.Millisecond {
 			select {
 			case <-l.sync:
 				return
@@ -315,6 +316,8 @@ func (l *Ledger) PullMissingTransactions() {
 		rand.Shuffle(len(peers), func(i, j int) {
 			peers[i], peers[j] = peers[j], peers[i]
 		})
+
+		fmt.Println("Trying to download missing transactions. count =", len(missing))
 
 		req := &DownloadTxRequest{Ids: make([][]byte, len(missing))}
 
@@ -408,7 +411,9 @@ FINALIZE_ROUNDS:
 
 			results, err := l.CollapseTransactions(current.Index+1, current.End, *eligible, false)
 			if err != nil {
-				fmt.Println(err)
+				if !strings.Contains(err.Error(), "missing ancestor") {
+					fmt.Println(err)
+				}
 				continue
 			}
 
@@ -502,7 +507,9 @@ FINALIZE_ROUNDS:
 
 						results, err := l.CollapseTransactions(round.Index, round.Start, round.End, false)
 						if err != nil {
-							fmt.Println(err)
+							if !strings.Contains(err.Error(), "missing ancestor") {
+								fmt.Println(err)
+							}
 							return
 						}
 
@@ -568,7 +575,9 @@ FINALIZE_ROUNDS:
 
 		results, err := l.CollapseTransactions(finalized.Index, finalized.Start, finalized.End, true)
 		if err != nil {
-			fmt.Println(err)
+			if !strings.Contains(err.Error(), "missing ancestor") {
+				fmt.Println(err)
+			}
 			continue
 		}
 
