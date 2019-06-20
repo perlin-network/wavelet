@@ -327,6 +327,9 @@ func (s *account) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	reward, _ := wavelet.ReadAccountReward(snapshot, s.id)
 	o.Set("reward", arena.NewNumberString(strconv.FormatUint(reward, 10)))
 
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, s.id)
+	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(nonce, 10)))
+
 	_, isContract := wavelet.ReadAccountContractCode(snapshot, s.id)
 	if isContract {
 		o.Set("is_contract", arena.NewTrue())

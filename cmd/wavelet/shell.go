@@ -321,13 +321,12 @@ func (cli *CLI) call(cmd []string) {
 			cli.logger.Error().Msgf("Invalid argument specified: %s", arg)
 			return
 		}
-
-		buf := params.Bytes()
-
-		binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(buf)))
-		payload.Write(intBuf[:4])
-		payload.Write(buf)
 	}
+
+	buf := params.Bytes()
+	binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(buf)))
+	payload.Write(intBuf[:4])
+	payload.Write(buf)
 
 	cli.pay(cmd[:3], payload.Bytes())
 }
