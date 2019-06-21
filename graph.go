@@ -123,9 +123,9 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 		return ErrAlreadyExists
 	}
 
-	if g.rootDepth > sys.MaxDepthDiff+tx.Depth {
+	/*if g.rootDepth > sys.MaxDepthDiff+tx.Depth {
 		return errors.Errorf("transactions depth is too low compared to root: root depth is %d, but tx depth is %d", g.rootDepth, tx.Depth)
-	}
+	}*/
 
 	if err := g.validateTransaction(tx); err != nil {
 		return errors.Wrap(err, "failed to validate transaction")

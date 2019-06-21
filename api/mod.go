@@ -201,6 +201,11 @@ func (g *Gateway) Shutdown() {
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	req := new(sendTransactionRequest)
 
+	if g.ledger.TakeSendToken() == false {
+		g.renderError(ctx, ErrInternal(errors.New("rate limit")))
+		return
+	}
+
 	parser := g.parserPool.Get()
 	err := req.bind(parser, ctx.PostBody())
 	g.parserPool.Put(parser)

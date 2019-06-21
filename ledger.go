@@ -68,6 +68,8 @@ type Ledger struct {
 
 	cacheCollapse *LRU
 	cacheChunks   *LRU
+
+	sendQuotaTokenBucket chan struct{}
 }
 
 func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
@@ -136,12 +138,33 @@ func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 
 		cacheCollapse: NewLRU(16),
 		cacheChunks:   NewLRU(1024), // In total, it will take up 1024 * 4MB.
+
+		sendQuotaTokenBucket: make(chan struct{}, 2000),
 	}
 
 	go ledger.SyncToLatestRound()
 	go ledger.PerformConsensus()
+	go ledger.FeedSendTokenIntoBucket()
 
 	return ledger
+}
+
+func (l *Ledger) FeedSendTokenIntoBucket() {
+	for range time.Tick(1 * time.Millisecond) {
+		select {
+		case l.sendQuotaTokenBucket <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (l *Ledger) TakeSendToken() bool {
+	select {
+	case <-l.sendQuotaTokenBucket:
+		return true
+	default:
+		return false
+	}
 }
 
 // AddTransaction adds a transaction to the ledger. If the transaction has
@@ -151,6 +174,8 @@ func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(tx Transaction) error {
+	l.TakeSendToken()
+
 	err := l.graph.AddTransaction(tx)
 
 	if err != nil && errors.Cause(err) != ErrAlreadyExists {
@@ -318,6 +343,12 @@ func (l *Ledger) PullMissingTransactions() {
 		})
 
 		fmt.Println("Trying to download missing transactions. count =", len(missing))
+		rand.Shuffle(len(missing), func(i, j int) {
+			missing[i], missing[j] = missing[j], missing[i]
+		})
+		if len(missing) > 256 {
+			missing = missing[:256]
+		}
 
 		req := &DownloadTxRequest{Ids: make([][]byte, len(missing))}
 
@@ -357,11 +388,11 @@ func (l *Ledger) PullMissingTransactions() {
 		l.metrics.downloadedTX.Mark(count)
 		l.metrics.receivedTX.Mark(count)
 
-		select {
+		/*select {
 		case <-l.sync:
 			return
 		case <-time.After(100 * time.Millisecond):
-		}
+		}*/
 	}
 }
 
@@ -514,7 +545,7 @@ FINALIZE_ROUNDS:
 						}
 
 						if uint64(results.appliedCount) != round.Applied {
-							fmt.Printf("applied %d but expected %d\n", results.appliedCount, round.Applied)
+							fmt.Printf("applied %d but expected %d, rejected = %d, ignored = %d\n", results.appliedCount, round.Applied, results.rejectedCount, results.ignoredCount)
 							return
 						}
 
