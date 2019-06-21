@@ -1,0 +1,221 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge"/><title>Governance · Wavelet</title><meta name="viewport" content="width=device-width"/><meta name="generator" content="Docusaurus"/><meta name="description" content="&lt;p&gt;Governance over the validation and finalization of transactions in Wavelet is established by a reputation&lt;/p&gt;
+"/><meta name="docsearch:language" content="en"/><meta property="og:title" content="Governance · Wavelet"/><meta property="og:type" content="website"/><meta property="og:url" content="https://perlin-network.github.io/wavelet/"/><meta property="og:description" content="&lt;p&gt;Governance over the validation and finalization of transactions in Wavelet is established by a reputation&lt;/p&gt;
+"/><meta property="og:image" content="https://perlin-network.github.io/wavelet/img/undraw_online.svg"/><meta name="twitter:card" content="summary"/><meta name="twitter:image" content="https://perlin-network.github.io/wavelet/img/undraw_tweetstorm.svg"/><link rel="shortcut icon" href="/wavelet/img/favicon.ico"/><link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/monokai.min.css"/><script type="text/javascript" src="https://buttons.github.io/buttons.js"></script><script src="/wavelet/js/scrollSpy.js"></script><link rel="stylesheet" href="/wavelet/css/main.css"/><script src="/wavelet/js/codetabs.js"></script></head><body class="sideNavVisible separateOnPageNav"><div class="fixedHeaderContainer"><div class="headerWrapper wrapper"><header><a href="/wavelet/"><img class="logo" src="/wavelet/img/favicon.ico" alt="Wavelet"/><h2 class="headerTitleWithLogo">Wavelet</h2></a><div class="navigationWrapper navigationSlider"><nav class="slidingNav"><ul class="nav-site nav-site-internal"><li class="siteNavGroupActive"><a href="/wavelet/docs/setup" target="_self">Docs</a></li><li class=""><a href="/wavelet/help" target="_self">Help</a></li><li class=""><a target="_self"></a></li></ul></nav></div></header></div></div><div class="navPusher"><div class="docMainWrapper wrapper"><div class="container docsNavContainer" id="docsNav"><nav class="toc"><div class="toggleNav"><section class="navWrapper wrapper"><div class="navBreadcrumb wrapper"><div class="navToggle" id="navToggler"><div class="hamburger-menu"><div class="line1"></div><div class="line2"></div><div class="line3"></div></div></div><h2><i>›</i><span>Documentation</span></h2><div class="tocToggler" id="tocToggler"><i class="icon-toc"></i></div></div><div class="navGroups"><div class="navGroup"><h3 class="navGroupCategoryTitle">Documentation</h3><ul class=""><li class="navListItem"><a class="navItem" href="/wavelet/docs/setup">Quickstart</a></li><li class="navListItem"><a class="navItem" href="/wavelet/docs/transactions">Transactions</a></li><li class="navListItem"><a class="navItem" href="/wavelet/docs/smart-contracts">Smart Contracts</a></li><li class="navListItem navListItemActive"><a class="navItem" href="/wavelet/docs/governance">Governance</a></li></ul></div></div></section></div><script>
+            var coll = document.getElementsByClassName('collapsible');
+            var checkActiveCategory = true;
+            for (var i = 0; i < coll.length; i++) {
+              var links = coll[i].nextElementSibling.getElementsByTagName('*');
+              if (checkActiveCategory){
+                for (var j = 0; j < links.length; j++) {
+                  if (links[j].classList.contains('navListItemActive')){
+                    coll[i].nextElementSibling.classList.toggle('hide');
+                    coll[i].childNodes[1].classList.toggle('rotate');
+                    checkActiveCategory = false;
+                    break;
+                  }
+                }
+              }
+
+              coll[i].addEventListener('click', function() {
+                var arrow = this.childNodes[1];
+                arrow.classList.toggle('rotate');
+                var content = this.nextElementSibling;
+                content.classList.toggle('hide');
+              });
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+              createToggler('#navToggler', '#docsNav', 'docsSliderActive');
+              createToggler('#tocToggler', 'body', 'tocActive');
+
+              var headings = document.querySelector('.toc-headings');
+              headings && headings.addEventListener('click', function(event) {
+                var el = event.target;
+                while(el !== headings){
+                  if (el.tagName === 'A') {
+                    document.body.classList.remove('tocActive');
+                    break;
+                  } else{
+                    el = el.parentNode;
+                  }
+                }
+              }, false);
+
+              function createToggler(togglerSelector, targetSelector, className) {
+                var toggler = document.querySelector(togglerSelector);
+                var target = document.querySelector(targetSelector);
+
+                if (!toggler) {
+                  return;
+                }
+
+                toggler.onclick = function(event) {
+                  event.preventDefault();
+
+                  target.classList.toggle(className);
+                };
+              }
+            });
+        </script></nav></div><div class="container mainContainer"><div class="wrapper"><div class="post"><header class="postHeader"><a class="edit-page-link button" href="https://github.com/perlin-network/wavelet/edit/master/site/docs/governance.md" target="_blank" rel="noreferrer noopener">Edit</a><h1 class="postHeaderTitle">Governance</h1></header><article><div><span><p>Governance over the validation and finalization of transactions in Wavelet is established by a reputation
+system, where each and every account hoists a reputation score based on some amount of PERLs they have
+staked into the network.</p>
+<p>The larger the reputation of a given particular account, the more influence/voting power they may have in affecting
+the finality of transactions across the network.</p>
+<p>We consider nodes whose accounts have greater influence over the finality of transactions in Wavelet over other nodes
+to be <em>validators</em>. As a great majority of finality across the network is thus managed by the validators
+that have the highest stakes within Wavelet's network, an incentive mechanism needs to be introduced to incentivize
+validators to want to keep the network safe and correct.</p>
+<p>The incentive scheme chosen is this case, is that for every transaction created and broadcasted by any
+arbitrary account, transaction fees are charged.</p>
+<p>These transaction fees  are distributed as rewards to Wavelet's validators, based on the frequency/amount of activity each
+individual validator partakes in keeping Wavelet safe and correct.</p>
+<p>One striking bit to consider is that rewards recorded on an account is completely different from the balance recorded on an account.
+There exists a process which a validator must partake to convert rewards into PERLs that may then be deposited into their accounts balance.</p>
+<h2><a class="anchor" aria-hidden="true" id="placing-stake"></a><a href="#placing-stake" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Placing Stake</h2>
+<p>In order to become a validator, you must stake/expend a minimum amount of PERLs into the network. The exact minimum is defined within code, and is tentative and therefore
+may be changed based on community discussions at a later date. To see the current minimum stake, <a href="https://github.com/perlin-network/wavelet/blob/master/sys/const.go#L77">click here</a>.</p>
+<p>Note that the conversion rate between PERLs and stake is 1:1. The larger the amount of stake you have deposited into your account, the more influence/voting power you will have over
+other nodes when within the entire network.</p>
+<p>To deposit a stake of PERLs into the network, on your nodes terminal, enter:</p>
+<pre><code class="hljs css language-shell">❯ ps [amount of PERLs to stake]
+INF Success! Your stake placement transaction ID: &lt;..&gt;
+</code></pre>
+<p>After a single consensus round finalizes, you may then check if the amount of PERLs was properly deducted from your account,
+and deposited into your stake by using the <code>find</code> command.</p>
+<pre><code class="hljs css language-json">❯ f 400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405
+
+{
+    "account": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+    "balance": 10000000000000000000,
+    "is_contract": false,
+    "nonce": 0,
+    "num_pages": 0,
+    "reward": 0,
+    "stake": 0
+}
+
+❯ ps 100
+INF Success! Your stake placement transaction ID: &lt;..&gt;
+INF Finalized consensus round, and initialized a new round.
+
+❯ f 400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405
+
+{
+    "account": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+    "balance": 9999999999999999900,
+    "is_contract": false,
+    "nonce": 2,
+    "num_pages": 0,
+    "reward": 0,
+    "stake": 100
+}
+</code></pre>
+<h2><a class="anchor" aria-hidden="true" id="withdrawing-stake"></a><a href="#withdrawing-stake" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Withdrawing Stake</h2>
+<p>Should you wish to withdraw and convert your stake into PERLs, withdraw from being a validator, or diminish your voting power over the network,
+you may then execute the following on your nodes terminal:</p>
+<pre><code class="hljs css language-shell">❯ ws [amount of stake to withdraw]
+INF Success! Your stake withdrawal transaction ID: &lt;..&gt;
+</code></pre>
+<p>After a single consensus round finalizes, you may then check if the amount of PERLs was properly deducted from your stake,
+and deposited into your balance by using the <code>find</code> command.</p>
+<pre><code class="hljs css language-json">❯ f 400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405
+
+{
+    "account": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+    "balance": 9999999999999999900,
+    "is_contract": false,
+    "nonce": 2,
+    "num_pages": 0,
+    "reward": 0,
+    "stake": 100
+}
+
+❯ ws 100
+INF Success! Your stake withdrawal transaction ID: &lt;..&gt;
+INF Finalized consensus round, and initialized a new round.
+
+❯ f 400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405
+
+{
+    "account": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+    "balance": 10000000000000000000,
+    "is_contract": false,
+    "nonce": 4,
+    "num_pages": 0,
+    "reward": 0,
+    "stake": 0
+}
+</code></pre>
+<h2><a class="anchor" aria-hidden="true" id="fees-and-rewards"></a><a href="#fees-and-rewards" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Fees and Rewards</h2>
+<p>As a validator, having more weight in assisting with the settlement of transactions naturally attracts the attention of both potentially
+good or bad actors within the Wavelet network. In compensation, rewards are dispersed to validators in the form of transaction fees deducted on
+each and every transaction finalized within the network.</p>
+<p>There is one big challenge however in figuring out how to disperse rewards fairly over a cluster of untrusted machines:
+how do we know how much effort a validator has put into validating and protecting the network in comparison to other validators?</p>
+<p>Wavelet incentivizes and judges the efforts of a validator fairly by dispersing awards only to validators that participate
+in the network by building transactions on top of other nodes transactions.</p>
+<p>To illustrate how this system works, denote a transaction <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mtext>tx</mtext></mrow><annotation encoding="application/x-tex">\text{tx}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.61508em;vertical-align:0em;"></span><span class="mord text"><span class="mord">tx</span></span></span></span></span> that has just been finalized. Then:</p>
+<ol>
+<li>Let <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mtext>eligible</mtext><mo>=</mo><mo stretchy="false">{</mo><mtext>tx’.sender</mtext><mi mathvariant="normal">≠</mi><mtext>tx.sender </mtext><mo>∣</mo><mtext>tx’</mtext><mo>∈</mo><mtext>tx.ancestors</mtext><mo stretchy="false">}</mo></mrow><annotation encoding="application/x-tex">\text{eligible} = \{ \text{tx&#x27;.sender} \neq \text{tx.sender}\ \mid \text{tx&#x27;} \in \text{tx.ancestors} \}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="mord text"><span class="mord">eligible</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">{</span><span class="mord text"><span class="mord">tx’.sender</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel"><span class="mrel"><span class="mord"><span class="vlist-t vlist-t2"><span class="vlist-r"><span class="vlist" style="height:0.69444em;"><span style="top:-3em;"><span class="pstrut" style="height:3em;"></span><span class="rlap"><span class="strut" style="height:0.8888799999999999em;vertical-align:-0.19444em;"></span><span class="inner"><span class="mrel"></span></span><span class="fix"></span></span></span></span><span class="vlist-s">​</span></span><span class="vlist-r"><span class="vlist" style="height:0.19444em;"><span></span></span></span></span></span></span><span class="mrel">=</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord text"><span class="mord">tx.sender</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mspace"> </span><span class="mrel">∣</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.73354em;vertical-align:-0.0391em;"></span><span class="mord text"><span class="mord">tx’</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord text"><span class="mord">tx.ancestors</span></span><span class="mclose">}</span></span></span></span>. If <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi mathvariant="normal">∣</mi><mtext>eligible</mtext><mi mathvariant="normal">∣</mi><mo>=</mo><mn>0</mn></mrow><annotation encoding="application/x-tex">|\text{eligible}| = 0</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord">∣</span><span class="mord text"><span class="mord">eligible</span></span><span class="mord">∣</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.64444em;vertical-align:0em;"></span><span class="mord">0</span></span></span></span>, terminate the procedure.</li>
+<li>Let <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mtext>validators</mtext><mo>=</mo><mo stretchy="false">{</mo><mtext>tx’.sender</mtext><mo>∣</mo><mtext>tx’</mtext><mo>∈</mo><mtext>eligible</mtext><mo stretchy="false">}</mo></mrow><annotation encoding="application/x-tex">\text{validators} = \{ \text{tx&#x27;.sender} \mid \text{tx&#x27;} \in \text{eligible} \}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord text"><span class="mord">validators</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">{</span><span class="mord text"><span class="mord">tx’.sender</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∣</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.73354em;vertical-align:-0.0391em;"></span><span class="mord text"><span class="mord">tx’</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord text"><span class="mord">eligible</span></span><span class="mclose">}</span></span></span></span>. Concatenate and hash together all of <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mo stretchy="false">{</mo><mtext>tx’.id</mtext><mo>∣</mo><mtext>tx’</mtext><mo>∈</mo><mtext>eligible</mtext><mo stretchy="false">}</mo></mrow><annotation encoding="application/x-tex">\{ \text{tx&#x27;.id} \mid \text{tx&#x27;} \in \text{eligible} \}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mopen">{</span><span class="mord text"><span class="mord">tx’.id</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∣</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.73354em;vertical-align:-0.0391em;"></span><span class="mord text"><span class="mord">tx’</span></span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:1em;vertical-align:-0.25em;"></span><span class="mord text"><span class="mord">eligible</span></span><span class="mclose">}</span></span></span></span> using <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>H</mi></mrow><annotation encoding="application/x-tex">H</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.08125em;">H</span></span></span></span> to construct a checksum that acts as an entropy source <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>E</mi></mrow><annotation encoding="application/x-tex">E</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.05764em;">E</span></span></span></span>.</li>
+<li>Let <span class="katex"><span class="katex-mathml"><math><semantics><mrow><msup><mi>X</mi><mo mathvariant="normal">′</mo></msup></mrow><annotation encoding="application/x-tex">X&#x27;</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.751892em;vertical-align:0em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07847em;">X</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.751892em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">′</span></span></span></span></span></span></span></span></span></span></span></span> be some threshold value that is the last 16 bits of <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>E</mi></mrow><annotation encoding="application/x-tex">E</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.05764em;">E</span></span></span></span>, and denote a random variable <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>X</mi></mrow><annotation encoding="application/x-tex">X</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.68333em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.07847em;">X</span></span></span></span> which models a weighted uniform distribution over the set of all candidate validators. We then select a validator <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>v</mi><mo>∈</mo><mtext>validators</mtext></mrow><annotation encoding="application/x-tex">v \in \text{validators}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.5782em;vertical-align:-0.0391em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">∈</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord text"><span class="mord">validators</span></span></span></span></span> that has a weight <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>X</mi><mo>≥</mo><msup><mi>X</mi><mo mathvariant="normal">′</mo></msup></mrow><annotation encoding="application/x-tex">X \geq X&#x27;</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.8193em;vertical-align:-0.13597em;"></span><span class="mord mathdefault" style="margin-right:0.07847em;">X</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span><span class="mrel">≥</span><span class="mspace" style="margin-right:0.2777777777777778em;"></span></span><span class="base"><span class="strut" style="height:0.751892em;vertical-align:0em;"></span><span class="mord"><span class="mord mathdefault" style="margin-right:0.07847em;">X</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.751892em;"><span style="top:-3.063em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight"><span class="mord mtight">′</span></span></span></span></span></span></span></span></span></span></span></span> as the transaction fee reward recipient.</li>
+<li>Transfer some amount of transaction fees from <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mtext>tx.sender</mtext></mrow><annotation encoding="application/x-tex">\text{tx.sender}</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.69444em;vertical-align:0em;"></span><span class="mord text"><span class="mord">tx.sender</span></span></span></span></span>'s balance to the intended
+rewardee's <span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>v</mi></mrow><annotation encoding="application/x-tex">v</annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.43056em;vertical-align:0em;"></span><span class="mord mathdefault" style="margin-right:0.03588em;">v</span></span></span></span> reward balance.</li>
+</ol>
+<p>Such a system incentivizes validators to actively create and broadcast transactions given that rewards are dispersed to those who build transactions on top of other transactions.</p>
+<h2><a class="anchor" aria-hidden="true" id="withdrawing-rewards"></a><a href="#withdrawing-rewards" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Withdrawing Rewards</h2>
+<p>After accumulating a minimum amount of reward as a validator, you may convert your reward into PERLs
+that may be expended for whatever reason you desire. The exact minimum is defined within code,
+and is tentative and therefore may be changed based on community discussions at a later date.
+To see the current minimum reward that may be withdrawn, <a href="https://github.com/perlin-network/wavelet/blob/master/sys/const.go#L79">click here</a>.</p>
+<p>Unlike withdrawing stake, withdrawing rewards is as delayed process. After withdrawing some amount of reward, only after a certain number
+of consensus rounds pass by will your reward convert into PERLs that you may expend. The exact number of rounds is defined within code, and is
+tentative and therefore may be changed based on community discussions at a later date. To see the current number of consensus rounds
+that must pass before your reward withdrawal request is completed, <a href="https://github.com/perlin-network/wavelet/blob/master/sys/const.go#L81">click here</a>.</p>
+<p>Note that once a reward withdrawal request is submitted, it may not be canceled. To initiate your reward withdrawal request, in your nodes terminal, enter:</p>
+<pre><code class="hljs css language-go">❯ wr [amount of reward to withdraw into PERLs]
+INF Success! Your reward withdrawal transaction ID: &lt;..&gt;
+</code></pre>
+<p>After a single consensus round finalizes, you may then check if the amount of reward you specified is withdrawn from your account by using the <code>find</code> command.</p>
+<pre><code class="hljs css language-json">❯ f 400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405
+
+{
+    "account": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+    "balance": 10000000000000000000,
+    "is_contract": false,
+    "nonce": 4,
+    "num_pages": 0,
+    "reward": 50000,
+    "stake": 0
+}
+
+❯ wr 100
+INF Success! Your reward withdrawal transaction ID: &lt;..&gt;
+INF Finalized consensus round, and initialized a new round.
+
+❯ f 400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405
+
+{
+    "account": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+    "balance": 10000000000000000000,
+    "is_contract": false,
+    "nonce": 6,
+    "num_pages": 0,
+    "reward": 49900,
+    "stake": 0
+}
+
+* After some number of consensus rounds...
+
+{
+    "account": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+    "balance": 10000000000000000100,
+    "is_contract": false,
+    "nonce": 6,
+    "num_pages": 0,
+    "reward": 49900,
+    "stake": 0
+}
+
+</code></pre>
+</span></div></article></div><div class="docs-prevnext"><a class="docs-prev button" href="/wavelet/docs/smart-contracts"><span class="arrow-prev">← </span><span>Smart Contracts</span></a></div></div></div><nav class="onPageNav"><ul class="toc-headings"><li><a href="#placing-stake">Placing Stake</a></li><li><a href="#withdrawing-stake">Withdrawing Stake</a></li><li><a href="#fees-and-rewards">Fees and Rewards</a></li><li><a href="#withdrawing-rewards">Withdrawing Rewards</a></li></ul></nav></div><footer class="nav-footer" id="footer"><section class="sitemap"><a href="/wavelet/" class="nav-home"><img src="/wavelet/img/favicon.ico" alt="Wavelet" width="56" height="44"/></a><div><h5>Docs</h5><a href="/wavelet/docs/en/setup">Getting Started</a></div><div><h5>Community</h5><a href="https://discord.gg/dMYfDPM" target="_blank" rel="noreferrer noopener">Discord</a><a href="https://twitter.com/PerlinNetwork" target="_blank" rel="noreferrer noopener">Twitter</a></div><div><h5>More</h5><a href="https://github.com/perlin-network/wavelet">GitHub</a><a class="github-button" href="https://github.com/perlin-network/wavelet" data-icon="octicon-star" data-count-href="/perlin-network/wavelet/stargazers" data-show-count="true" data-count-aria-label="# stargazers on GitHub" aria-label="Star this project on GitHub">Star</a></div></section><a href="https://perlin.net" target="_blank" rel="noreferrer noopener" class="fbOpenSource"><img src="/wavelet/img/perlin-logo.svg" alt="Perlin Open Source" width="170" height="60"/></a><section class="copyright">Copyright © 2019 Perlin</section></footer></div><script>window.twttr=(function(d,s, id){var js,fjs=d.getElementsByTagName(s)[0],t=window.twttr||{};if(d.getElementById(id))return t;js=d.createElement(s);js.id=id;js.src='https://platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js, fjs);t._e = [];t.ready = function(f) {t._e.push(f);};return t;}(document, 'script', 'twitter-wjs'));</script></body></html>
