@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="67.805" height="67.463" viewBox="0 0 67.805 67.463">
+    <defs>
+        <style>
+            .cls-1{fill:#8164fb}.cls-2{fill:none;stroke:#fff;stroke-linecap:round;stroke-miterlimit:10;stroke-width:1.5px;stroke-dasharray:4 4}.cls-3{fill:#fff}
+        </style>
+    </defs>
+    <g id="icon-clarity" transform="translate(0 .004)">
+        <g id="Layer_1" data-name="Layer 1" transform="translate(0 -.004)">
+            <path id="Path_205" d="M33.772 67.459a77.227 77.227 0 0 1-15.207-1.546C7.252 63.242 1.862 57.473.653 45.942a113.088 113.088 0 0 1 .19-25.93C2.066 10.336 7.533 4.37 16.935 1.917A70.63 70.63 0 0 1 38.522.132 61.48 61.48 0 0 1 48.958 1.4C60.37 4 65.823 9.738 67.1 21.361a107.01 107.01 0 0 1-.176 25.923c-1.37 10.14-6.739 15.881-16.668 18.369-5.381 1.37-10.856 1.637-16.484 1.806z" class="cls-1" data-name="Path 205" transform="translate(0 .004)"/>
+            <circle id="Ellipse_49" cx="12.473" cy="12.473" r="12.473" class="cls-2" data-name="Ellipse 49" transform="translate(27.223 15.463)"/>
+            <circle id="Ellipse_50" cx="15.46" cy="15.46" r="15.46" class="cls-1" data-name="Ellipse 50" transform="translate(10 26.713)"/>
+            <circle id="Ellipse_51" cx="12.473" cy="12.473" r="12.473" class="cls-3" data-name="Ellipse 51" transform="translate(14.75 27.943)"/>
+        </g>
+    </g>
+</svg>
