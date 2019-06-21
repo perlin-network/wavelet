@@ -404,9 +404,7 @@ FINALIZE_ROUNDS:
 
 			results, err := l.CollapseTransactions(current.Index+1, current.End, *eligible, false)
 			if err != nil {
-				if !strings.Contains(err.Error(), "missing ancestor") {
-					fmt.Println(err)
-				}
+				fmt.Println(err)
 				continue
 			}
 
@@ -1185,7 +1183,7 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 
 			if parent == nil {
 				l.graph.MarkTransactionAsMissing(parentID, popped.Depth)
-				return res, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, end.ID)
+				return nil, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, end.ID)
 			}
 
 			queue.PushBack(parent)
@@ -1201,6 +1199,14 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 
 	for order.Len() > 0 {
 		popped := order.PopBack().(*Transaction)
+
+		// Update nonce.
+
+		nonce, exists := ReadAccountNonce(res.snapshot, popped.Creator)
+		if !exists {
+			WriteAccountsLen(res.snapshot, ReadAccountsLen(res.snapshot)+1)
+		}
+		WriteAccountNonce(res.snapshot, popped.Creator, nonce+1)
 
 		if err := l.RewardValidators(res.snapshot, root, popped, logging); err != nil {
 			res.rejected = append(res.rejected, popped)
@@ -1218,14 +1224,6 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 			continue
 		}
 
-		// Update nonce.
-
-		nonce, exists := ReadAccountNonce(res.snapshot, popped.Creator)
-		if !exists {
-			WriteAccountsLen(res.snapshot, ReadAccountsLen(res.snapshot)+1)
-		}
-		WriteAccountNonce(res.snapshot, popped.Creator, nonce+1)
-
 		// Update statistics.
 
 		res.applied = append(res.applied, popped)
@@ -1240,7 +1238,7 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 
 	res.ignoredCount -= res.appliedCount + res.rejectedCount
 
-	if round > uint64(sys.RewardWithdrawalsRoundLimit) {
+	if round >= uint64(sys.RewardWithdrawalsRoundLimit) {
 		l.processRewardWithdrawals(round, res.snapshot, logging)
 	}
 

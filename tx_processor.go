@@ -20,6 +20,7 @@
 package wavelet
 
 import (
+	"github.com/gogo/protobuf/sortkeys"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/phf/go-queue/queue"
@@ -247,8 +248,15 @@ func (c *TransactionContext) apply(processors map[byte]TransactionProcessor) err
 	}
 
 	for id, pages := range c.contractPages {
-		for idx, page := range pages {
-			WriteAccountContractPage(c.tree, id, idx, page)
+		indices := make([]uint64, 0, len(pages))
+		for idx := range pages {
+			indices = append(indices, idx)
+		}
+
+		sortkeys.Uint64s(indices)
+
+		for _, idx := range indices {
+			WriteAccountContractPage(c.tree, id, idx, pages[idx])
 		}
 	}
 
