@@ -106,25 +106,25 @@ Wavelet's network. The `init` function may not be manually called or executed at
 
 ## Invoking Smart Contract Functions
 
-As you might have noticed, our smart contract defines a function `on_money_received`. How would we invoke this function?
-
-Every smart contract function is invoked by creating and publishing a smart contract invocation transaction. Within your transaction, you would specify the name of the function you
- wish to invoke, and also optionally specify an arbitrary function binary payload.
+Smart contract functions may be invoked by creating and publishing a smart contract invocation transaction. Within the transaction, you would specify the name of the function you
+ wish to invoke, and optionally specify an arbitrary function binary payload as well.
  
 The payload in this case is a series of bytes representative of a list of input parameters to be passed on to your smart contract function upon invocation.
 
-Given that smart contracts are much like any other accounts, apart from providing an arbitrary function binary payload, you may also send/delegate some amount of PERLs to the smart contract as well. The PERLs
-in this case would be deposited into the balance of the smart contracts account.
+Given that smart contracts are much like any other accounts, apart from providing an arbitrary function binary payload, you may also send/delegate some amount of PERLs to the smart contract as well.
+
+The PERLs
+in this case would be deposited into the balance of the smart contracts account, rendering the transaction to operate similarly to a typical `Transfer` transaction.
 
 ### Payload Format
 
-To construct the binary payload you wish to pass on to your transaction, all you need to do is follow these simple rules.
+To construct the input parameters you wish to pass on to your transaction into a binary payload, all you need to do is follow these simple rules.
 
-1. List out your typed parameters. Have all integer-typed parameters be little-endian encoded into bytes, and all variable-sized arrays be length-prefixed with an unsigned little-endian 32-bit integer.
-2. Concatenate the bytes of your parameters up together, and there you have it: your binary payload.
+1. Have all integer-typed parameters be little-endian encoded into bytes, and all variable-sized arrays be length-prefixed with an unsigned little-endian 32-bit integer.
+2. Concatenate the bytes of your parameters up together.
 
-What you would then do is take your function binary payload, and create a transaction with tagged to perform a `Transfer` operation, whose operational payload
-is encoded as follows:
+To create your transaction, you would then take your binary payload, tag your transaction to perform a `Transfer` operation, and encode
+the transactions payload according to the specification below:
 
 | Field | Type |
 | ----- | ---- |
@@ -134,20 +134,26 @@ is encoded as follows:
 | Function Name | Length-prefixed string, representative of the name of the smart contract function to be invoked. |
 | Function Payload | Length-prefixed array of bytes passed as input parameters to the smart contract function to be invoked. |
 
-In the case of wishing to invoke `on_money_received`, you would assign `on_money_received`, and set some amount of PERLs to send to the contract, and then proceed
-to create and publish your transaction on Wavelet.
+As an example, should you wish to invoke your smart contract function `on_money_received`, you would:
+
+1. assign the ID of your deployed smart contract to Smart Contract ID,
+2. assign `on_money_received` as the Function Name,
+3. assign some amount of PERLs to Num PERLs Sent,
+4. create a new transaction with the `Transfer` tag,
+5. serialize and assign your payload to your transaction, and
+6. publish your transaction out to the network.
 
 ### Gas Limits and Fees
 
-Now, there is no free lunch: every smart contract deployment and call costs some amount of computational resources to the network. To compensate, some lump sum amount of PERLs must be provided as a fee, which we refer to as _gas_.
+Every smart contract deployment and call costs some amount of computational resources to the network. To compensate, some lump sum amount of PERLs must be provided as a fee, which we refer to as _gas_.
 
-More specifically, gas is a transactional fee designated to be some number of PERLs, that is computed and deducted from your balance based on the number of instructions that nodes have to execute to complete and verify your smart contract
+Gas is a transactional fee designated to be some number of PERLs, that is computed and deducted from your balance based on the number of computational instructions that nodes have to execute to complete and verify your smart contract
 function invocation call across the network.
 
-Additionally, as you might have noticed from the binary payload layout format above, there exists a concept of a _gas limit_. A gas limit denotes the maximum amount of PERLs that you may propose to the network to expend on your behalf for
-completing your smart contract call.
+As you might have noticed from the binary payload layout format above, additionally, there exists a concept of a _gas limit_ as well. A gas limit denotes the maximum gas fee that you are willing to expend on your behalf for
+the network to complete and finalize your smart contract call.
 
-Should in amidst calling your smart contract function that an insufficient gas limit was specified (such that the mid-way through invoking your desired function you run out of gas), all changes made in-memory by the execution of your function
+Should in amidst the invocation your smart contract function that the gas limit you specified was insufficient (such that the mid-way through invoking your desired function you run out of gas), all changes made in-memory to the contract by the execution of your function
 will be rolled back, and an amount of PERLs all the way up to the gas limit specified will be deducted from your account.
 
 ## Developing Smart Contracts
