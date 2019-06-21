@@ -63,7 +63,7 @@ var (
 )
 
 type Deduper struct {
-	sync.Mutex
+	mu sync.Mutex
 	Config
 
 	set   map[string][]byte
@@ -86,14 +86,15 @@ func NewDeduper(ctx context.Context, opts ...ConfigOption) *Deduper {
 			case <-ctx.Done():
 				return
 			case <-d.timer.C:
-				d.Lock()
+				d.mu.Lock()
 				payload := make([][]byte, 0, len(d.set))
 				for _, v := range d.set {
 					payload = append(payload, v)
 				}
 
-				d.action(payload)
-				d.Unlock()
+				action := d.action
+				d.mu.Unlock()
+				go action(payload)
 			}
 		}
 	}()
@@ -114,14 +115,14 @@ func (d *Deduper) Add(oss ...PayloadOption) {
 		key += fastjson.GetString(o.buf, k)
 	}
 
-	d.Lock()
+	d.mu.Lock()
 	d.set[key] = o.buf
 	d.timer.Reset(d.period)
-	d.Unlock()
+	d.mu.Unlock()
 }
 
 type Limiter struct {
-	sync.Mutex
+	mu sync.Mutex
 	Config
 
 	timer        *time.Timer
@@ -143,14 +144,20 @@ func NewLimiter(ctx context.Context, opts ...ConfigOption) *Limiter {
 			case <-ctx.Done():
 				return
 			case <-d.timer.C:
-				d.Lock()
-				if d.bufferOffset > 0 {
-					d.action(d.buffer)
+				var buffer [][]byte
+				var action func([][]byte)
 
-					d.buffer = d.buffer[:0]
+				d.mu.Lock()
+				if d.bufferOffset > 0 {
+					action = d.action
+					buffer = d.buffer
+					d.buffer = nil
 					d.bufferOffset = 0
 				}
-				d.Unlock()
+				d.mu.Unlock()
+				if action != nil {
+					go action(buffer)
+				}
 			}
 		}
 	}()
@@ -165,10 +172,14 @@ func (d *Limiter) Add(oss ...PayloadOption) {
 		return
 	}
 
-	d.Lock()
+	var buffer [][]byte
+	var action func([][]byte)
+
+	d.mu.Lock()
 	if d.bufferOffset >= d.bufferLimit {
-		d.action(d.buffer)
-		d.buffer = d.buffer[:0]
+		action = d.action
+		buffer = d.buffer
+		d.buffer = nil
 		d.bufferOffset = 0
 	}
 
@@ -177,5 +188,9 @@ func (d *Limiter) Add(oss ...PayloadOption) {
 	d.buffer = append(d.buffer, o.buf)
 	d.bufferOffset += len(o.buf)
 
-	d.Unlock()
+	d.mu.Unlock()
+
+	if action != nil {
+		go action(buffer)
+	}
 }

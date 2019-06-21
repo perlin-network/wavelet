@@ -36,6 +36,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 )
@@ -56,9 +57,8 @@ type Ledger struct {
 
 	consensus sync.WaitGroup
 
-	nops         bool
-	nopsTime     time.Time
-	nopsTimeLock sync.Mutex
+	broadcastNops     bool
+	broadcastNopsLock sync.Mutex
 
 	sync      chan struct{}
 	syncTimer *time.Timer
@@ -66,6 +66,8 @@ type Ledger struct {
 
 	cacheCollapse *LRU
 	cacheChunks   *LRU
+
+	sendQuotaTokenBucket chan struct{}
 }
 
 func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
@@ -125,21 +127,39 @@ func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 			sys.TagBatch:    ProcessBatchTransaction,
 		},
 
-		nops:     false,
-		nopsTime: time.Now(),
-
 		sync:      make(chan struct{}),
 		syncTimer: time.NewTimer(0),
 		syncVotes: make(chan vote, sys.SnowballK),
 
 		cacheCollapse: NewLRU(16),
 		cacheChunks:   NewLRU(1024), // In total, it will take up 1024 * 4MB.
+
+		sendQuotaTokenBucket: make(chan struct{}, 2000),
 	}
 
 	go ledger.SyncToLatestRound()
 	go ledger.PerformConsensus()
+	go ledger.FeedSendTokenIntoBucket()
 
 	return ledger
+}
+
+func (l *Ledger) FeedSendTokenIntoBucket() {
+	for range time.Tick(1 * time.Millisecond) {
+		select {
+		case l.sendQuotaTokenBucket <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (l *Ledger) TakeSendToken() bool {
+	select {
+	case <-l.sendQuotaTokenBucket:
+		return true
+	default:
+		return false
+	}
 }
 
 // AddTransaction adds a transaction to the ledger. If the transaction has
@@ -149,6 +169,8 @@ func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(tx Transaction) error {
+	l.TakeSendToken()
+
 	err := l.graph.AddTransaction(tx)
 
 	if err != nil && errors.Cause(err) != ErrAlreadyExists {
@@ -158,12 +180,11 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 	if err == nil {
 		l.gossiper.Push(tx)
 
-		if tx.Tag != sys.TagNop && tx.Sender != l.client.Keys().PublicKey() {
-			l.nopsTimeLock.Lock()
-			l.nops = true
-			l.nopsTime = time.Now()
-			l.nopsTimeLock.Unlock()
+		l.broadcastNopsLock.Lock()
+		if tx.Sender == l.client.Keys().PublicKey() && l.finalizer.Preferred() == nil && !l.broadcastNops {
+			l.broadcastNops = true
 		}
+		l.broadcastNopsLock.Unlock()
 	}
 
 	return nil
@@ -200,76 +221,40 @@ func (l *Ledger) Rounds() *Rounds {
 func (l *Ledger) PerformConsensus() {
 	go l.PullMissingTransactions()
 	go l.FinalizeRounds()
-	go l.BroadcastNops()
 }
 
 func (l *Ledger) Snapshot() *avl.Tree {
 	return l.accounts.Snapshot()
 }
 
-// BroadcastNops periodically has the node send nop transactions should they have sufficient
+// BroadcastNop has the node send a nop transaction should they have sufficient
 // balance available. They are broadcasted if no other transaction that is not a nop transaction
 // is not broadcasted by the node after 500 milliseconds. These conditions only apply so long as
-// at least onen transaction gets broadcasted by the node within the current round. Once a round
-// is tenatively being finalized, a node will stop broadcasting nops.
-func (l *Ledger) BroadcastNops() {
+// at least one transaction gets broadcasted by the node within the current round. Once a round
+// is tentatively being finalized, a node will stop broadcasting nops.
+func (l *Ledger) BroadcastNop() *Transaction {
+	l.broadcastNopsLock.Lock()
+	broadcastNops := l.broadcastNops
+	l.broadcastNopsLock.Unlock()
+
+	if !broadcastNops {
+		return nil
+	}
+
 	keys := l.client.Keys()
 
-	l.consensus.Add(1)
-	defer l.consensus.Done()
-
-	for {
-		select {
-		case <-l.sync:
-			return
-		default:
-		}
-
-		balance, _ := ReadAccountBalance(l.accounts.Snapshot(), keys.PublicKey())
-
-		if balance < sys.TransactionFeeAmount {
-			select {
-			case <-l.sync:
-				return
-			case <-time.After(1 * time.Second):
-			}
-			continue
-		}
-
-		if l.finalizer.Preferred() != nil {
-			l.nopsTimeLock.Lock()
-			l.nops = false
-			l.nopsTime = time.Now()
-			l.nopsTimeLock.Unlock()
-
-			select {
-			case <-l.sync:
-				return
-			case <-time.After(500 * time.Millisecond):
-			}
-			continue
-		}
-
-		l.nopsTimeLock.Lock()
-		nops := l.nops
-		elapsed := time.Now().Sub(l.nopsTime)
-		l.nopsTimeLock.Unlock()
-
-		if !nops || elapsed < 500*time.Millisecond {
-			select {
-			case <-l.sync:
-				return
-			case <-time.After(250 * time.Millisecond):
-			}
-			continue
-		}
-
-		nop := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), l.graph.FindEligibleParents()...)
-
-		if err := l.AddTransaction(nop); err != nil {
-			continue
-		}
+	balance, _ := ReadAccountBalance(l.accounts.Snapshot(), keys.PublicKey())
+	if balance < sys.TransactionFeeAmount {
+		return nil
 	}
+
+	nop := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), l.graph.FindEligibleParents()...)
+
+	if err := l.AddTransaction(nop); err != nil {
+		return nil
+	}
+
+	return l.graph.FindTransaction(nop.ID)
 }
 
 // PullMissingTransactions is an infinite loop continually sending RPC requests
@@ -311,6 +296,14 @@ func (l *Ledger) PullMissingTransactions() {
 			peers[i], peers[j] = peers[j], peers[i]
 		})
 
+		fmt.Println("Trying to download missing transactions. count =", len(missing))
+		rand.Shuffle(len(missing), func(i, j int) {
+			missing[i], missing[j] = missing[j], missing[i]
+		})
+		if len(missing) > 256 {
+			missing = missing[:256]
+		}
+
 		req := &DownloadTxRequest{Ids: make([][]byte, len(missing))}
 
 		for i, id := range missing {
@@ -348,12 +341,6 @@ func (l *Ledger) PullMissingTransactions() {
 
 		l.metrics.downloadedTX.Mark(count)
 		l.metrics.receivedTX.Mark(count)
-
-		select {
-		case <-l.sync:
-			return
-		case <-time.After(100 * time.Millisecond):
-		}
 	}
 }
 
@@ -392,10 +379,24 @@ FINALIZE_ROUNDS:
 			eligible := l.graph.FindEligibleCritical(currentDifficulty)
 
 			if eligible == nil {
+				nop := l.BroadcastNop()
+
+				if nop != nil {
+					if !nop.IsCritical(currentDifficulty) {
+						select {
+						case <-l.sync:
+							return
+						case <-time.After(500 * time.Microsecond):
+						}
+					}
+
+					continue FINALIZE_ROUNDS
+				}
+
 				select {
 				case <-l.sync:
 					return
-				case <-time.After(100 * time.Millisecond):
+				case <-time.After(1 * time.Millisecond):
 				}
 
 				continue FINALIZE_ROUNDS
@@ -403,7 +404,9 @@ FINALIZE_ROUNDS:
 
 			results, err := l.CollapseTransactions(current.Index+1, current.End, *eligible, false)
 			if err != nil {
-				fmt.Println(err)
+				if !strings.Contains(err.Error(), "missing ancestor") {
+					fmt.Println(err)
+				}
 				continue
 			}
 
@@ -412,6 +415,10 @@ FINALIZE_ROUNDS:
 
 			continue FINALIZE_ROUNDS
 		}
+
+		l.broadcastNopsLock.Lock()
+		l.broadcastNops = false
+		l.broadcastNopsLock.Unlock()
 
 		workerChan := make(chan *grpc.ClientConn, 16)
 
@@ -497,12 +504,14 @@ FINALIZE_ROUNDS:
 
 						results, err := l.CollapseTransactions(round.Index, round.Start, round.End, false)
 						if err != nil {
-							fmt.Println(err)
+							if !strings.Contains(err.Error(), "missing ancestor") {
+								fmt.Println(err)
+							}
 							return
 						}
 
 						if uint64(results.appliedCount) != round.Applied {
-							fmt.Printf("applied %d but expected %d\n", results.appliedCount, round.Applied)
+							fmt.Printf("applied %d but expected %d, rejected = %d, ignored = %d\n", results.appliedCount, round.Applied, results.rejectedCount, results.ignoredCount)
 							return
 						}
 
@@ -563,7 +572,9 @@ FINALIZE_ROUNDS:
 
 		results, err := l.CollapseTransactions(finalized.Index, finalized.Start, finalized.End, true)
 		if err != nil {
-			fmt.Println(err)
+			if !strings.Contains(err.Error(), "missing ancestor") {
+				fmt.Println(err)
+			}
 			continue
 		}
 
@@ -616,11 +627,6 @@ FINALIZE_ROUNDS:
 			Hex("old_merkle_root", current.Merkle[:]).
 			Uint64("round_depth", finalized.End.Depth-finalized.Start.Depth).
 			Msg("Finalized consensus round, and initialized a new round.")
-
-		l.nopsTimeLock.Lock()
-		l.nops = false
-		l.nopsTime = time.Now()
-		l.nopsTimeLock.Unlock()
 
 		//go ExportGraphDOT(finalized, l.graph)
 	}

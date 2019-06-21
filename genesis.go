@@ -34,6 +34,9 @@ const defaultGenesis = `
   },
   "696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a": {
     "balance": 10000000000000000000
+  },
+  "f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467": {
+    "balance": 10000000000000000000
   }
 }
 `

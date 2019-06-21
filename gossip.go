@@ -49,8 +49,8 @@ func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics
 	g.debouncer = debounce.NewLimiter(
 		ctx,
 		debounce.WithAction(g.Gossip),
-		debounce.WithPeriod(2200*time.Millisecond),
-		debounce.WithBufferLimit(1638400),
+		debounce.WithPeriod(100*time.Millisecond),
+		debounce.WithBufferLimit(16384),
 	)
 
 	return g
@@ -72,7 +72,6 @@ func (g *Gossiper) Gossip(transactions [][]byte) {
 	conns := g.client.ClosestPeers()
 
 	var wg sync.WaitGroup
-	wg.Add(len(conns))
 
 	for _, conn := range conns {
 		target := conn.Target()
@@ -91,6 +90,8 @@ func (g *Gossiper) Gossip(transactions [][]byte) {
 			g.streams[target] = stream
 		}
 		g.streamsLock.Unlock()
+
+		wg.Add(1)
 
 		go func() {
 			if err := stream.Send(batch); err != nil {
