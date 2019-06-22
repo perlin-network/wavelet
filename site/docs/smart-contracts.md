@@ -41,6 +41,9 @@ Afterwards, lets import in Wavelet's Rust smart contract SDK into our `Cargo.tom
 [profile.release]
 lto = true
 
+[lib]
+crate-type = ["cdylib"]
+
 [dependencies]
 smart-contract = "0.1.0"
 smart-contract-macros = "0.1.0"
@@ -55,7 +58,7 @@ use std::error::Error;
 
 use smart_contract::payload::Parameters;
 use smart_contract::transaction::{Transaction, Transfer};
-use smart_contract_macro::smart_contract;
+use smart_contract_macros::smart_contract;
 
 pub struct Contract;
 
