@@ -227,8 +227,15 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 	peers := s.client.ClosestPeerIDs()
 	if len(peers) > 0 {
 		peersArray := arena.NewArray()
+
 		for i := range peers {
-			peersArray.SetArrayItem(i, arena.NewString(peers[i].Address()))
+			publicKey := peers[i].PublicKey()
+
+			peer := arena.NewObject()
+			peer.Set("address", arena.NewString(peers[i].Address()))
+			peer.Set("public_key", arena.NewString(hex.EncodeToString(publicKey[:])))
+
+			peersArray.SetArrayItem(i, peer)
 		}
 		o.Set("peers", peersArray)
 	} else {
