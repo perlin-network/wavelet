@@ -369,6 +369,13 @@ func ErrBadRequest(err error) *errResponse {
 	}
 }
 
+func ErrNotFound(err error) *errResponse {
+	return &errResponse{
+		Err:            err,
+		HTTPStatusCode: http.StatusNotFound,
+	}
+}
+
 func ErrInternal(err error) *errResponse {
 	return &errResponse{
 		Err:            err,

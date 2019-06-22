@@ -201,7 +201,7 @@ func (g *Gateway) Shutdown() {
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	req := new(sendTransactionRequest)
 
-	if g.ledger.TakeSendToken() == false {
+	if g.ledger != nil && g.ledger.TakeSendToken() == false {
 		g.renderError(ctx, ErrInternal(errors.New("rate limit")))
 		return
 	}
@@ -337,7 +337,7 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 	tx := g.ledger.Graph().FindTransaction(id)
 
 	if tx == nil {
-		g.renderError(ctx, ErrBadRequest(errors.Errorf("could not find transaction with ID %x", id)))
+		g.renderError(ctx, ErrNotFound(errors.Errorf("could not find transaction with ID %x", id)))
 		return
 	}
 
@@ -416,7 +416,7 @@ func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {
 	code, available := wavelet.ReadAccountContractCode(g.ledger.Snapshot(), id)
 
 	if len(code) == 0 || !available {
-		g.renderError(ctx, ErrBadRequest(errors.Errorf("could not find contract with ID %x", id)))
+		g.renderError(ctx, ErrNotFound(errors.Errorf("could not find contract with ID %x", id)))
 		return
 	}
 
@@ -457,7 +457,7 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 	numPages, available := wavelet.ReadAccountContractNumPages(snapshot, id)
 
 	if !available {
-		g.renderError(ctx, ErrBadRequest(errors.Errorf("could not find any pages for contract with ID %x", id)))
+		g.renderError(ctx, ErrNotFound(errors.Errorf("could not find any pages for contract with ID %x", id)))
 		return
 	}
 

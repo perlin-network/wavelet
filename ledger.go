@@ -57,8 +57,9 @@ type Ledger struct {
 
 	consensus sync.WaitGroup
 
-	broadcastNops     bool
-	broadcastNopsLock sync.Mutex
+	broadcastNops      bool
+	broadcastNopsDelay time.Time
+	broadcastNopsLock  sync.Mutex
 
 	sync      chan struct{}
 	syncTimer *time.Timer
@@ -169,8 +170,6 @@ func (l *Ledger) TakeSendToken() bool {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(tx Transaction) error {
-	l.TakeSendToken()
-
 	err := l.graph.AddTransaction(tx)
 
 	if err != nil && errors.Cause(err) != ErrAlreadyExists {
@@ -178,10 +177,16 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 	}
 
 	if err == nil {
+		l.TakeSendToken()
+
+		if tx.Tag != sys.TagNop {
+			l.broadcastNopsDelay = time.Now()
+		}
+
 		l.gossiper.Push(tx)
 
 		l.broadcastNopsLock.Lock()
-		if tx.Sender == l.client.Keys().PublicKey() && l.finalizer.Preferred() == nil && !l.broadcastNops {
+		if tx.Sender == l.client.Keys().PublicKey() && l.finalizer.Preferred() == nil {
 			l.broadcastNops = true
 		}
 		l.broadcastNopsLock.Unlock()
@@ -235,9 +240,10 @@ func (l *Ledger) Snapshot() *avl.Tree {
 func (l *Ledger) BroadcastNop() *Transaction {
 	l.broadcastNopsLock.Lock()
 	broadcastNops := l.broadcastNops
+	broadcastNopsDelay := l.broadcastNopsDelay
 	l.broadcastNopsLock.Unlock()
 
-	if !broadcastNops {
+	if !broadcastNops || time.Now().Sub(broadcastNopsDelay) < 100*time.Millisecond {
 		return nil
 	}
 
