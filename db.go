@@ -52,9 +52,9 @@ var (
 )
 
 type RewardWithdrawalRequest struct {
-	accountID AccountID
-	amount    uint64
-	round     uint64
+	account AccountID
+	amount  uint64
+	round   uint64
 }
 
 func (rw RewardWithdrawalRequest) Key() []byte {
@@ -65,7 +65,7 @@ func (rw RewardWithdrawalRequest) Key() []byte {
 	binary.BigEndian.PutUint64(buf[:], rw.round)
 	w.Write(buf[:8])
 
-	w.Write(rw.accountID[:])
+	w.Write(rw.account[:])
 
 	return w.Bytes()
 }
@@ -73,7 +73,7 @@ func (rw RewardWithdrawalRequest) Key() []byte {
 func (rw RewardWithdrawalRequest) Marshal() []byte {
 	var w bytes.Buffer
 
-	w.Write(rw.accountID[:])
+	w.Write(rw.account[:])
 
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:], rw.amount)
@@ -87,8 +87,8 @@ func (rw RewardWithdrawalRequest) Marshal() []byte {
 
 func UnmarshalRewardWithdrawalRequest(r io.Reader) (RewardWithdrawalRequest, error) {
 	var rw RewardWithdrawalRequest
-	if _, err := io.ReadFull(r, rw.accountID[:]); err != nil {
-		err = errors.Wrap(err, "failed to decode reward withdrawal account id")
+	if _, err := io.ReadFull(r, rw.account[:]); err != nil {
+		err = errors.Wrap(err, "failed to decode reward withdrawal account ID")
 		return rw, err
 	}
 

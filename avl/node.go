@@ -330,27 +330,8 @@ func (n *node) rehashNoWrite() [MerkleHashSize]byte {
 }
 
 func (n *node) clone() *node {
-	clone := &node{
-		id:       n.id,
-		left:     n.left,
-		right:    n.right,
-		leftObj:  n.leftObj,
-		rightObj: n.rightObj,
-
-		key:   make([]byte, len(n.key)),
-		value: make([]byte, len(n.value)),
-
-		kind:  n.kind,
-		depth: n.depth,
-		size:  n.size,
-
-		viewID: n.viewID,
-	}
-
-	copy(clone.key, n.key)
-	copy(clone.value, n.value)
-
-	return clone
+	cloned := *n
+	return &cloned
 }
 
 func (n *node) update(t *Tree, fn func(node *node)) *node {

@@ -206,8 +206,8 @@ func (cli *CLI) status() {
 }
 
 func (cli *CLI) pay(cmd []string, additional []byte) {
-	if len(cmd) < 2 || len(cmd) > 3 {
-		fmt.Println("pay <recipient> <amount> [gas-limit]")
+	if len(cmd) != 2 {
+		fmt.Println("pay <recipient> <amount>")
 		return
 	}
 
@@ -235,23 +235,27 @@ func (cli *CLI) pay(cmd []string, additional []byte) {
 	binary.LittleEndian.PutUint64(intBuf[:], uint64(amount))
 	payload.Write(intBuf[:])
 
-	gasLimit := 0
-	if len(cmd) == 3 {
-		gasLimit, err = strconv.Atoi(cmd[2])
-		if err != nil {
-			cli.logger.Error().
-				Err(err).
-				Str("gas-limit", cmd[2]).
-				Msg("Failed to convert gas-limit.")
-			return
+	snapshot := cli.ledger.Snapshot()
+
+	var recipientID wavelet.AccountID
+	copy(recipientID[:], recipient)
+
+	balance, _ := wavelet.ReadAccountBalance(snapshot, cli.keys.PublicKey())
+	_, codeAvailable := wavelet.ReadAccountContractCode(snapshot, recipientID)
+
+	if codeAvailable {
+		binary.LittleEndian.PutUint64(intBuf[:], balance) // Set gas limit by default to the balance the user has.
+		payload.Write(intBuf[:])
+
+		if additional != nil {
+			payload.Write(additional)
+		} else {
+			defaultFuncName := "on_money_received"
+
+			binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(defaultFuncName)))
+			payload.Write(intBuf[:4])
+			payload.WriteString(defaultFuncName)
 		}
-	}
-
-	binary.LittleEndian.PutUint64(intBuf[:], uint64(gasLimit))
-	payload.Write(intBuf[:])
-
-	if additional != nil {
-		payload.Write(additional)
 	}
 
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagTransfer, payload.Bytes()))
@@ -424,8 +428,8 @@ func (cli *CLI) spawn(cmd []string) {
 	binary.LittleEndian.PutUint64(buf[:], 100000000) // Gas fee.
 	w.Write(buf[:])
 
-	binary.LittleEndian.PutUint64(buf[:], 0) // Payload size.
-	w.Write(buf[:])
+	binary.LittleEndian.PutUint32(buf[:4], 0) // Payload size.
+	w.Write(buf[:4])
 
 	w.Write(code) // Smart contract code.
 

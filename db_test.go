@@ -37,9 +37,9 @@ func TestRewardWithdrawals(t *testing.T) {
 		rand.Read(a[:])
 
 		rw := RewardWithdrawalRequest{
-			accountID: a,
-			round:     uint64(i + 1),
-			amount:    rand.Uint64(),
+			account: a,
+			round:   uint64(i + 1),
+			amount:  rand.Uint64(),
 		}
 
 		rws[i] = rw

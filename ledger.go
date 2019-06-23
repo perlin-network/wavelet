@@ -53,8 +53,6 @@ type Ledger struct {
 	finalizer *Snowball
 	syncer    *Snowball
 
-	processors map[byte]TransactionProcessor
-
 	consensus sync.WaitGroup
 
 	broadcastNops      bool
@@ -119,14 +117,6 @@ func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 		gossiper:  gossiper,
 		finalizer: finalizer,
 		syncer:    syncer,
-
-		processors: map[byte]TransactionProcessor{
-			sys.TagNop:      ProcessNopTransaction,
-			sys.TagTransfer: ProcessTransferTransaction,
-			sys.TagContract: ProcessContractTransaction,
-			sys.TagStake:    ProcessStakeTransaction,
-			sys.TagBatch:    ProcessBatchTransaction,
-		},
 
 		sync:      make(chan struct{}),
 		syncTimer: time.NewTimer(0),
@@ -762,7 +752,7 @@ func (l *Ledger) SyncToLatestRound() {
 		logger.Info().
 			Uint64("current_round", current.Index).
 			Uint64("proposed_round", proposed.Index).
-			Msg("Noticed that we are out of sync; downloading latest state tree from our peer(s).")
+			Msg("Noticed that we are out of sync; downloading latest state Snapshot from our peer(s).")
 
 	SYNC:
 
@@ -1092,7 +1082,7 @@ func (l *Ledger) SyncToLatestRound() {
 			Hex("old_root", current.End.ID[:]).
 			Hex("new_merkle_root", latest.Merkle[:]).
 			Hex("old_merkle_root", current.Merkle[:]).
-			Msg("Successfully built a new state tree out of chunk(s) we have received from peers.")
+			Msg("Successfully built a new state Snapshot out of chunk(s) we have received from peers.")
 
 		restart()
 	}
@@ -1101,10 +1091,31 @@ func (l *Ledger) SyncToLatestRound() {
 // ApplyTransactionToSnapshot applies a transactions intended changes to a snapshot
 // of the ledgers current state.
 func (l *Ledger) ApplyTransactionToSnapshot(snapshot *avl.Tree, tx *Transaction) error {
-	ctx := NewTransactionContext(l.Rounds().Latest(), snapshot, tx)
+	round := l.Rounds().Latest()
+	original := snapshot.Snapshot()
 
-	if err := ctx.apply(l.processors); err != nil {
-		return errors.Wrap(err, "could not apply transaction to snapshot")
+	switch tx.Tag {
+	case sys.TagNop:
+	case sys.TagTransfer:
+		if _, err := ApplyTransferTransaction(snapshot, round, tx, nil); err != nil {
+			snapshot.Revert(original)
+			return errors.Wrap(err, "could not apply transfer transaction")
+		}
+	case sys.TagStake:
+		if _, err := ApplyStakeTransaction(snapshot, round, tx); err != nil {
+			snapshot.Revert(original)
+			return errors.Wrap(err, "could not apply stake transaction")
+		}
+	case sys.TagContract:
+		if _, err := ApplyContractTransaction(snapshot, round, tx, nil); err != nil {
+			snapshot.Revert(original)
+			return errors.Wrap(err, "could not apply contract transaction")
+		}
+	case sys.TagBatch:
+		if _, err := ApplyBatchTransaction(snapshot, round, tx); err != nil {
+			snapshot.Revert(original)
+			return errors.Wrap(err, "could not apply batch transaction")
+		}
 	}
 
 	return nil
@@ -1227,6 +1238,8 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 			res.rejectedErrors = append(res.rejectedErrors, err)
 			res.rejectedCount += popped.LogicalUnits()
 
+			fmt.Println(err)
+
 			continue
 		}
 
@@ -1259,12 +1272,12 @@ func (l *Ledger) processRewardWithdrawals(round uint64, snapshot *avl.Tree, logg
 	balanceLogger := log.Accounts("balance_updated")
 
 	for _, rw := range rws {
-		balance, _ := ReadAccountBalance(snapshot, rw.accountID)
-		WriteAccountBalance(snapshot, rw.accountID, balance+rw.amount)
+		balance, _ := ReadAccountBalance(snapshot, rw.account)
+		WriteAccountBalance(snapshot, rw.account, balance+rw.amount)
 
 		if logging {
 			balanceLogger.Log().
-				Hex("account_id", rw.accountID[:]).
+				Hex("account_id", rw.account[:]).
 				Uint64("balance", balance+rw.amount).
 				Msg("")
 		}
@@ -1325,7 +1338,7 @@ func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Tran
 
 				// Record entropy source.
 				if _, err := hasher.Write(popped.ID[:]); err != nil {
-					return errors.Wrap(err, "stake: failed to hash transaction id for entropy source")
+					return errors.Wrap(err, "stake: failed to hash transaction ID for entropy source")
 				}
 			}
 		}
