@@ -130,7 +130,7 @@ More specifically, a `Contract` transaction is structured, assuming the same bin
 | Field | Type |
 | ----- | ---- |
 | Gas Limit | Unsigned 64-bit little-endian integer, representative of the maximum gas fee that may be deducted from the transaction creators account. |
-| Payload | Length-prefixed array of bytes passed as input parameters to the smart contracts `init` function. *Note: The length prefixed is an unsigned 64-bit little-endian integer.|
+| Payload | Length-prefixed array of bytes passed as input parameters to the smart contracts `init` function. |
 | Code | Non-length-prefixed array of bytes representative of the smart contracts code. |
 
 For more information on how to deploy a smart contract, [click here](smart-contracts.md#deploying-smart-contracts).
