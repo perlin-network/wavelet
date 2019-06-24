@@ -401,7 +401,7 @@ func (t *Tree) ApplyDiffWithUpdateNotifier(diff []byte, updateNotifier func(key,
 	preloaded := make(map[[MerkleHashSize]byte]*node)
 
 	for reader.Len() > 0 {
-		n, err := deserializeFromDifference(reader, t.viewID)
+		n, err := DeserializeFromDifference(reader, t.viewID)
 		if err != nil {
 			return err
 		}

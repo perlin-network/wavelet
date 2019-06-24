@@ -425,7 +425,7 @@ func (n *node) dfs(t *Tree, allowMissingNodes bool, cb func(*node) (bool, error)
 	return nil
 }
 
-func deserializeFromDifference(r *bytes.Reader, localViewID uint64) (*node, error) {
+func DeserializeFromDifference(r *bytes.Reader, localViewID uint64) (*node, error) {
 	var buf64 [8]byte
 
 	var id [MerkleHashSize]byte

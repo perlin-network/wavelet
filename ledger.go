@@ -606,6 +606,8 @@ FINALIZE_ROUNDS:
 
 		l.metrics.acceptedTX.Mark(int64(results.appliedCount))
 
+		l.LogChanges(results.snapshot, current.Index)
+
 		logger := log.Consensus("round_end")
 		logger.Info().
 			Int("num_applied_tx", results.appliedCount).
@@ -1264,6 +1266,57 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 	l.cacheCollapse.put(end.ID, res)
 
 	return res, nil
+}
+
+// LogChanges logs all changes made to an AVL tree state snapshot for the purposes
+// of logging out changes to account state to Wavelet's HTTP API.
+func (l *Ledger) LogChanges(snapshot *avl.Tree, lastRound uint64) {
+	balanceLogger := log.Accounts("balance_updated")
+	stakeLogger := log.Accounts("stake_updated")
+	rewardLogger := log.Accounts("reward_updated")
+	numPagesLogger := log.Accounts("num_pages_updated")
+
+	balanceKey := append(keyAccounts[:], keyAccountBalance[:]...)
+	stakeKey := append(keyAccounts[:], keyAccountStake[:]...)
+	rewardKey := append(keyAccounts[:], keyAccountReward[:]...)
+	numPagesKey := append(keyAccounts[:], keyAccountContractNumPages[:]...)
+
+	var id AccountID
+
+	snapshot.IterateLeafDiff(lastRound, func(key, value []byte) bool {
+		switch {
+		case bytes.HasPrefix(key, balanceKey):
+			copy(id[:], key[len(balanceKey):])
+
+			balanceLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("balance", binary.LittleEndian.Uint64(value)).
+				Msg("")
+		case bytes.HasPrefix(key, stakeKey):
+			copy(id[:], key[len(stakeKey):])
+
+			stakeLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("stake", binary.LittleEndian.Uint64(value)).
+				Msg("")
+		case bytes.HasPrefix(key, rewardKey):
+			copy(id[:], key[len(rewardKey):])
+
+			rewardLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("reward", binary.LittleEndian.Uint64(value)).
+				Msg("")
+		case bytes.HasPrefix(key, numPagesKey):
+			copy(id[:], key[len(numPagesKey):])
+
+			numPagesLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("num_pages", binary.LittleEndian.Uint64(value)).
+				Msg("")
+		}
+
+		return true
+	})
 }
 
 func (l *Ledger) processRewardWithdrawals(round uint64, snapshot *avl.Tree, logging bool) {
