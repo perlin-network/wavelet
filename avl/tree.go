@@ -351,11 +351,9 @@ func (t *Tree) SetViewID(viewID uint64) {
 	t.viewID = viewID
 }
 
-func (t *Tree) DumpDiff(prevViewID uint64) []byte {
+func (t *Tree) iterateDiff(prevViewID uint64, callback func(n *node) bool) {
 	var stack queue.Queue
 	stack.PushBack(t.root)
-
-	buf := bytes.NewBuffer(nil)
 
 	for stack.Len() > 0 {
 		current := stack.PopBack().(*node)
@@ -364,15 +362,35 @@ func (t *Tree) DumpDiff(prevViewID uint64) []byte {
 			continue
 		}
 
-		current.serializeForDifference(buf)
+		cont := callback(current)
+		if !cont {
+			break
+		}
 
 		if current.size > 1 {
 			stack.PushBack(t.mustLoadRight(current))
 			stack.PushBack(t.mustLoadLeft(current))
 		}
 	}
+}
 
+func (t *Tree) DumpDiff(prevViewID uint64) []byte {
+	buf := bytes.NewBuffer(nil)
+	t.iterateDiff(prevViewID, func(n *node) bool {
+		n.serializeForDifference(buf)
+		return true
+	})
 	return buf.Bytes()
+}
+
+func (t *Tree) IterateLeafDiff(prevViewID uint64, callback func(key, value []byte) bool) {
+	t.iterateDiff(prevViewID, func(n *node) bool {
+		if n.kind == NodeLeafValue {
+			return callback(n.key, n.value)
+		} else {
+			return true
+		}
+	})
 }
 
 func (t *Tree) ApplyDiffWithUpdateNotifier(diff []byte, updateNotifier func(key, value []byte)) error {
