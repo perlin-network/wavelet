@@ -20,6 +20,7 @@
 package wavelet
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
@@ -46,6 +47,12 @@ func ApplyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 
 	senderBalance, _ := ReadAccountBalance(snapshot, tx.Creator)
 	recipientBalance, _ := ReadAccountBalance(snapshot, params.Recipient)
+
+	// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
+	if hex.EncodeToString(tx.Sender[:]) == sys.FaucetAddress {
+		WriteAccountBalance(snapshot, params.Recipient, recipientBalance+params.Amount)
+		return snapshot, nil
+	}
 
 	if senderBalance < params.Amount {
 		return nil, errors.Errorf("transfer: %x tried send %d PERLs to %x, but only has %d PERLs",

@@ -35,11 +35,11 @@ func ParseTransferTransaction(payload []byte) (Transfer, error) {
 
 	tx.Amount = binary.LittleEndian.Uint64(b)
 
-	if _, err := io.ReadFull(r, b); err != nil {
-		return tx, errors.Wrap(err, "transfer: failed to decode gas limit")
-	}
-
 	if r.Len() > 0 {
+		if _, err := io.ReadFull(r, b); err != nil {
+			return tx, errors.Wrap(err, "transfer: failed to decode gas limit")
+		}
+
 		tx.GasLimit = binary.LittleEndian.Uint64(b)
 	}
 

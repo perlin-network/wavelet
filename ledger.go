@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
@@ -238,9 +239,12 @@ func (l *Ledger) BroadcastNop() *Transaction {
 	}
 
 	keys := l.client.Keys()
+	publicKey := keys.PublicKey()
 
-	balance, _ := ReadAccountBalance(l.accounts.Snapshot(), keys.PublicKey())
-	if balance < sys.TransactionFeeAmount {
+	balance, _ := ReadAccountBalance(l.accounts.Snapshot(), publicKey)
+
+	// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
+	if balance < sys.TransactionFeeAmount && hex.EncodeToString(publicKey[:]) != sys.FaucetAddress {
 		return nil
 	}
 
@@ -1101,6 +1105,8 @@ func (l *Ledger) ApplyTransactionToSnapshot(snapshot *avl.Tree, tx *Transaction)
 	case sys.TagTransfer:
 		if _, err := ApplyTransferTransaction(snapshot, round, tx, nil); err != nil {
 			snapshot.Revert(original)
+
+			fmt.Println(err)
 			return errors.Wrap(err, "could not apply transfer transaction")
 		}
 	case sys.TagStake:
@@ -1227,12 +1233,15 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 		}
 		WriteAccountNonce(res.snapshot, popped.Creator, nonce+1)
 
-		if err := l.RewardValidators(res.snapshot, root, popped, logging); err != nil {
-			res.rejected = append(res.rejected, popped)
-			res.rejectedErrors = append(res.rejectedErrors, err)
-			res.rejectedCount += popped.LogicalUnits()
+		// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
+		if hex.EncodeToString(popped.Sender[:]) != sys.FaucetAddress {
+			if err := l.RewardValidators(res.snapshot, root, popped, logging); err != nil {
+				res.rejected = append(res.rejected, popped)
+				res.rejectedErrors = append(res.rejectedErrors, err)
+				res.rejectedCount += popped.LogicalUnits()
 
-			continue
+				continue
+			}
 		}
 
 		if err := l.ApplyTransactionToSnapshot(res.snapshot, popped); err != nil {
