@@ -82,17 +82,17 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 		n, err = hex.Decode(id[:], key)
 
 		if n != cap(id) && err == nil {
-			err = errors.Errorf("got an invalid account id: %x", key)
+			err = errors.Errorf("got an invalid account ID: %x", key)
 			return
 		}
 
 		if err != nil {
-			err = errors.Wrapf(err, "got an invalid account id: %x", key)
+			err = errors.Wrapf(err, "got an invalid account ID: %x", key)
 			return
 		}
 
 		if _, exists := set[id]; exists {
-			err = errors.Errorf("found duplicate entries for account id %x in genesis file", id)
+			err = errors.Errorf("found duplicate entries for account ID %x in genesis file", id)
 			return
 		}
 

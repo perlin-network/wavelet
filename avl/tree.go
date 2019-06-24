@@ -46,14 +46,13 @@ type Tree struct {
 
 	root *node
 
-	cache   *lru
-	pending *nodeMap
+	cache *lru
 
 	viewID uint64
 }
 
 func New(kv store.KV) *Tree {
-	t := &Tree{kv: kv, cache: newLRU(DefaultCacheSize), pending: new(nodeMap), maxWriteBatchSize: MaxWriteBatchSize}
+	t := &Tree{kv: kv, cache: newLRU(DefaultCacheSize), maxWriteBatchSize: MaxWriteBatchSize}
 
 	// Load root node if it already exists.
 	if buf, err := t.kv.Get(RootKey); err == nil && len(buf) == MerkleHashSize {
@@ -109,7 +108,7 @@ func (t *Tree) Delete(k []byte) bool {
 }
 
 func (t *Tree) Snapshot() *Tree {
-	return &Tree{kv: t.kv, cache: t.cache, pending: new(nodeMap), maxWriteBatchSize: t.maxWriteBatchSize, root: t.root}
+	return &Tree{kv: t.kv, cache: t.cache, maxWriteBatchSize: t.maxWriteBatchSize, root: t.root}
 }
 
 func (t *Tree) Revert(snapshot *Tree) {
@@ -174,18 +173,17 @@ func (t *Tree) doPrintContents(n *node, depth int) {
 	}
 }
 
-func (t *Tree) queueWrite(n *node) {
-	t.pending.Store(n.id, n)
-}
-
 func (t *Tree) Commit() error {
+	if t.root == nil {
+		return nil
+	}
 	batch := t.kv.NewWriteBatch()
 
 	err := t.root.dfs(t, false, func(n *node) (bool, error) {
-		if _, ok := t.pending.Load(n.id); !ok {
+		if n.wroteBack {
 			return false, nil
 		}
-		t.pending.Delete(n.id)
+		n.wroteBack = true
 		var buf bytes.Buffer
 		n.serialize(&buf)
 
@@ -274,10 +272,6 @@ func (t *Tree) Checksum() [MerkleHashSize]byte {
 }
 
 func (t *Tree) loadNode(id [MerkleHashSize]byte) (*node, error) {
-	if n, ok := t.pending.Load(id); ok {
-		return n, nil
-	}
-
 	if n, ok := t.cache.load(id); ok {
 		return n.(*node), nil
 	}
@@ -289,6 +283,7 @@ func (t *Tree) loadNode(id [MerkleHashSize]byte) (*node, error) {
 	}
 
 	n := mustDeserialize(bytes.NewReader(buf))
+	n.wroteBack = true
 	t.cache.put(id, n)
 
 	return n, nil
@@ -300,6 +295,32 @@ func (t *Tree) mustLoadNode(id [MerkleHashSize]byte) *node {
 		panic(err)
 	}
 	return n
+}
+
+func (t *Tree) loadLeft(n *node) (*node, error) {
+	if n.leftObj != nil {
+		return n.leftObj, nil
+	}
+
+	ret, err := t.loadNode(n.left)
+	if err != nil {
+		return nil, err
+	}
+	n.leftObj = ret
+	return ret, nil
+}
+
+func (t *Tree) loadRight(n *node) (*node, error) {
+	if n.rightObj != nil {
+		return n.rightObj, nil
+	}
+
+	ret, err := t.loadNode(n.right)
+	if err != nil {
+		return nil, err
+	}
+	n.rightObj = ret
+	return ret, nil
 }
 
 func (t *Tree) mustLoadLeft(n *node) *node {
@@ -321,7 +342,6 @@ func (t *Tree) mustLoadRight(n *node) *node {
 }
 
 func (t *Tree) deleteNodeAndMetadata(id [MerkleHashSize]byte) {
-	t.pending.Delete(id)
 	t.cache.remove(id)
 	_ = t.kv.Delete(append(NodeKeyPrefix, id[:]...))
 	_ = t.kv.Delete(append(GCAliveMarkPrefix, id[:]...))
@@ -331,11 +351,9 @@ func (t *Tree) SetViewID(viewID uint64) {
 	t.viewID = viewID
 }
 
-func (t *Tree) DumpDiff(prevViewID uint64) []byte {
+func (t *Tree) iterateDiff(prevViewID uint64, callback func(n *node) bool) {
 	var stack queue.Queue
 	stack.PushBack(t.root)
-
-	buf := bytes.NewBuffer(nil)
 
 	for stack.Len() > 0 {
 		current := stack.PopBack().(*node)
@@ -344,18 +362,38 @@ func (t *Tree) DumpDiff(prevViewID uint64) []byte {
 			continue
 		}
 
-		current.serializeForDifference(buf)
+		cont := callback(current)
+		if !cont {
+			break
+		}
 
 		if current.size > 1 {
-			stack.PushBack(t.mustLoadNode(current.right))
-			stack.PushBack(t.mustLoadNode(current.left))
+			stack.PushBack(t.mustLoadRight(current))
+			stack.PushBack(t.mustLoadLeft(current))
 		}
 	}
+}
 
+func (t *Tree) DumpDiff(prevViewID uint64) []byte {
+	buf := bytes.NewBuffer(nil)
+	t.iterateDiff(prevViewID, func(n *node) bool {
+		n.serializeForDifference(buf)
+		return true
+	})
 	return buf.Bytes()
 }
 
-func (t *Tree) ApplyDiff(diff []byte) error {
+func (t *Tree) IterateLeafDiff(prevViewID uint64, callback func(key, value []byte) bool) {
+	t.iterateDiff(prevViewID, func(n *node) bool {
+		if n.kind == NodeLeafValue {
+			return callback(n.key, n.value)
+		} else {
+			return true
+		}
+	})
+}
+
+func (t *Tree) ApplyDiffWithUpdateNotifier(diff []byte, updateNotifier func(key, value []byte)) error {
 	reader := bytes.NewReader(diff)
 
 	var root *node
@@ -363,7 +401,7 @@ func (t *Tree) ApplyDiff(diff []byte) error {
 	preloaded := make(map[[MerkleHashSize]byte]*node)
 
 	for reader.Len() > 0 {
-		n, err := deserializeFromDifference(reader, t.viewID)
+		n, err := DeserializeFromDifference(reader, t.viewID)
 		if err != nil {
 			return err
 		}
@@ -386,19 +424,19 @@ func (t *Tree) ApplyDiff(diff []byte) error {
 		return nil
 	}
 
-	_, _, _, _, err := populateDiffs(t, root.id, preloaded, make(map[[MerkleHashSize]byte]struct{}))
+	_, err := populateDiffs(t, root.id, preloaded, make(map[[MerkleHashSize]byte]struct{}), updateNotifier)
 	if err != nil {
 		return errors.Wrap(err, "invalid difference")
-	}
-
-	for _, n := range preloaded {
-		t.pending.Store(n.id, n)
 	}
 
 	t.viewID = root.viewID
 	t.root = root
 
 	return nil
+}
+
+func (t *Tree) ApplyDiff(diff []byte) error {
+	return t.ApplyDiffWithUpdateNotifier(diff, nil)
 }
 
 type GCProfile struct {

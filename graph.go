@@ -594,7 +594,7 @@ func (g *Graph) deleteProgeny(id TransactionID) {
 
 func (g *Graph) validateTransaction(tx Transaction) error {
 	if tx.ID == ZeroTransactionID {
-		return errors.New("tx must have an id")
+		return errors.New("tx must have an ID")
 	}
 
 	if tx.Sender == ZeroAccountID {

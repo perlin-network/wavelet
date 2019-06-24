@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
@@ -52,8 +53,6 @@ type Ledger struct {
 	gossiper  *Gossiper
 	finalizer *Snowball
 	syncer    *Snowball
-
-	processors map[byte]TransactionProcessor
 
 	consensus sync.WaitGroup
 
@@ -119,14 +118,6 @@ func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 		gossiper:  gossiper,
 		finalizer: finalizer,
 		syncer:    syncer,
-
-		processors: map[byte]TransactionProcessor{
-			sys.TagNop:      ProcessNopTransaction,
-			sys.TagTransfer: ProcessTransferTransaction,
-			sys.TagContract: ProcessContractTransaction,
-			sys.TagStake:    ProcessStakeTransaction,
-			sys.TagBatch:    ProcessBatchTransaction,
-		},
 
 		sync:      make(chan struct{}),
 		syncTimer: time.NewTimer(0),
@@ -248,9 +239,12 @@ func (l *Ledger) BroadcastNop() *Transaction {
 	}
 
 	keys := l.client.Keys()
+	publicKey := keys.PublicKey()
 
-	balance, _ := ReadAccountBalance(l.accounts.Snapshot(), keys.PublicKey())
-	if balance < sys.TransactionFeeAmount {
+	balance, _ := ReadAccountBalance(l.accounts.Snapshot(), publicKey)
+
+	// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
+	if balance < sys.TransactionFeeAmount && hex.EncodeToString(publicKey[:]) != sys.FaucetAddress {
 		return nil
 	}
 
@@ -616,6 +610,8 @@ FINALIZE_ROUNDS:
 
 		l.metrics.acceptedTX.Mark(int64(results.appliedCount))
 
+		l.LogChanges(results.snapshot, current.Index)
+
 		logger := log.Consensus("round_end")
 		logger.Info().
 			Int("num_applied_tx", results.appliedCount).
@@ -762,7 +758,7 @@ func (l *Ledger) SyncToLatestRound() {
 		logger.Info().
 			Uint64("current_round", current.Index).
 			Uint64("proposed_round", proposed.Index).
-			Msg("Noticed that we are out of sync; downloading latest state tree from our peer(s).")
+			Msg("Noticed that we are out of sync; downloading latest state Snapshot from our peer(s).")
 
 	SYNC:
 
@@ -1092,7 +1088,7 @@ func (l *Ledger) SyncToLatestRound() {
 			Hex("old_root", current.End.ID[:]).
 			Hex("new_merkle_root", latest.Merkle[:]).
 			Hex("old_merkle_root", current.Merkle[:]).
-			Msg("Successfully built a new state tree out of chunk(s) we have received from peers.")
+			Msg("Successfully built a new state Snapshot out of chunk(s) we have received from peers.")
 
 		restart()
 	}
@@ -1101,10 +1097,33 @@ func (l *Ledger) SyncToLatestRound() {
 // ApplyTransactionToSnapshot applies a transactions intended changes to a snapshot
 // of the ledgers current state.
 func (l *Ledger) ApplyTransactionToSnapshot(snapshot *avl.Tree, tx *Transaction) error {
-	ctx := NewTransactionContext(l.Rounds().Latest(), snapshot, tx)
+	round := l.Rounds().Latest()
+	original := snapshot.Snapshot()
 
-	if err := ctx.apply(l.processors); err != nil {
-		return errors.Wrap(err, "could not apply transaction to snapshot")
+	switch tx.Tag {
+	case sys.TagNop:
+	case sys.TagTransfer:
+		if _, err := ApplyTransferTransaction(snapshot, round, tx, nil); err != nil {
+			snapshot.Revert(original)
+
+			fmt.Println(err)
+			return errors.Wrap(err, "could not apply transfer transaction")
+		}
+	case sys.TagStake:
+		if _, err := ApplyStakeTransaction(snapshot, round, tx); err != nil {
+			snapshot.Revert(original)
+			return errors.Wrap(err, "could not apply stake transaction")
+		}
+	case sys.TagContract:
+		if _, err := ApplyContractTransaction(snapshot, round, tx, nil); err != nil {
+			snapshot.Revert(original)
+			return errors.Wrap(err, "could not apply contract transaction")
+		}
+	case sys.TagBatch:
+		if _, err := ApplyBatchTransaction(snapshot, round, tx); err != nil {
+			snapshot.Revert(original)
+			return errors.Wrap(err, "could not apply batch transaction")
+		}
 	}
 
 	return nil
@@ -1214,18 +1233,23 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 		}
 		WriteAccountNonce(res.snapshot, popped.Creator, nonce+1)
 
-		if err := l.RewardValidators(res.snapshot, root, popped, logging); err != nil {
-			res.rejected = append(res.rejected, popped)
-			res.rejectedErrors = append(res.rejectedErrors, err)
-			res.rejectedCount += popped.LogicalUnits()
+		// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
+		if hex.EncodeToString(popped.Sender[:]) != sys.FaucetAddress {
+			if err := l.RewardValidators(res.snapshot, root, popped, logging); err != nil {
+				res.rejected = append(res.rejected, popped)
+				res.rejectedErrors = append(res.rejectedErrors, err)
+				res.rejectedCount += popped.LogicalUnits()
 
-			continue
+				continue
+			}
 		}
 
 		if err := l.ApplyTransactionToSnapshot(res.snapshot, popped); err != nil {
 			res.rejected = append(res.rejected, popped)
 			res.rejectedErrors = append(res.rejectedErrors, err)
 			res.rejectedCount += popped.LogicalUnits()
+
+			fmt.Println(err)
 
 			continue
 		}
@@ -1253,18 +1277,69 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 	return res, nil
 }
 
+// LogChanges logs all changes made to an AVL tree state snapshot for the purposes
+// of logging out changes to account state to Wavelet's HTTP API.
+func (l *Ledger) LogChanges(snapshot *avl.Tree, lastRound uint64) {
+	balanceLogger := log.Accounts("balance_updated")
+	stakeLogger := log.Accounts("stake_updated")
+	rewardLogger := log.Accounts("reward_updated")
+	numPagesLogger := log.Accounts("num_pages_updated")
+
+	balanceKey := append(keyAccounts[:], keyAccountBalance[:]...)
+	stakeKey := append(keyAccounts[:], keyAccountStake[:]...)
+	rewardKey := append(keyAccounts[:], keyAccountReward[:]...)
+	numPagesKey := append(keyAccounts[:], keyAccountContractNumPages[:]...)
+
+	var id AccountID
+
+	snapshot.IterateLeafDiff(lastRound, func(key, value []byte) bool {
+		switch {
+		case bytes.HasPrefix(key, balanceKey):
+			copy(id[:], key[len(balanceKey):])
+
+			balanceLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("balance", binary.LittleEndian.Uint64(value)).
+				Msg("")
+		case bytes.HasPrefix(key, stakeKey):
+			copy(id[:], key[len(stakeKey):])
+
+			stakeLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("stake", binary.LittleEndian.Uint64(value)).
+				Msg("")
+		case bytes.HasPrefix(key, rewardKey):
+			copy(id[:], key[len(rewardKey):])
+
+			rewardLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("reward", binary.LittleEndian.Uint64(value)).
+				Msg("")
+		case bytes.HasPrefix(key, numPagesKey):
+			copy(id[:], key[len(numPagesKey):])
+
+			numPagesLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("num_pages", binary.LittleEndian.Uint64(value)).
+				Msg("")
+		}
+
+		return true
+	})
+}
+
 func (l *Ledger) processRewardWithdrawals(round uint64, snapshot *avl.Tree, logging bool) {
 	rws := GetRewardWithdrawalRequests(snapshot, round-uint64(sys.RewardWithdrawalsRoundLimit))
 
 	balanceLogger := log.Accounts("balance_updated")
 
 	for _, rw := range rws {
-		balance, _ := ReadAccountBalance(snapshot, rw.accountID)
-		WriteAccountBalance(snapshot, rw.accountID, balance+rw.amount)
+		balance, _ := ReadAccountBalance(snapshot, rw.account)
+		WriteAccountBalance(snapshot, rw.account, balance+rw.amount)
 
 		if logging {
 			balanceLogger.Log().
-				Hex("account_id", rw.accountID[:]).
+				Hex("account_id", rw.account[:]).
 				Uint64("balance", balance+rw.amount).
 				Msg("")
 		}
@@ -1325,7 +1400,7 @@ func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Tran
 
 				// Record entropy source.
 				if _, err := hasher.Write(popped.ID[:]); err != nil {
-					return errors.Wrap(err, "stake: failed to hash transaction id for entropy source")
+					return errors.Wrap(err, "stake: failed to hash transaction ID for entropy source")
 				}
 			}
 		}
