@@ -1234,7 +1234,7 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 		WriteAccountNonce(res.snapshot, popped.Creator, nonce+1)
 
 		// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
-		if hex.EncodeToString(popped.Sender[:]) != sys.FaucetAddress {
+		if hex.EncodeToString(popped.Creator[:]) != sys.FaucetAddress {
 			if err := l.RewardValidators(res.snapshot, root, popped, logging); err != nil {
 				res.rejected = append(res.rejected, popped)
 				res.rejectedErrors = append(res.rejectedErrors, err)

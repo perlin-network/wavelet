@@ -49,7 +49,7 @@ func ApplyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 	recipientBalance, _ := ReadAccountBalance(snapshot, params.Recipient)
 
 	// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
-	if hex.EncodeToString(tx.Sender[:]) == sys.FaucetAddress {
+	if hex.EncodeToString(tx.Creator[:]) == sys.FaucetAddress {
 		WriteAccountBalance(snapshot, params.Recipient, recipientBalance+params.Amount)
 		return snapshot, nil
 	}
