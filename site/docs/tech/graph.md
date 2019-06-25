@@ -76,7 +76,7 @@ In other words we prioritise "leaf" transactions to be parents.
 3. If there are exactly `MaxParentsPerTransaction` parents found then return those, otherwise continue to #1 
 
 #### Critical transaction selection
-Potential critical transactions (see critical transaction) stored in separate index in form of balanced tree, same way as eligible parent transactions - sorted by depth first and seed length second.
+Potential [critical transactions](#transaction-criticality) stored in separate index in form of balanced tree, same way as eligible parent transactions - sorted by depth first and seed length second.
 Tree is traversed in ascending order, i.e. lower depth and higher seed len first. First critical transaction with depth higher than root's will be taken. Meanwhile if there will be found transactions during traversal which have depth lower or equal than root's or which aren't critical for given difficulty, they will be removed from this index.
 
 ##### Algorithm
