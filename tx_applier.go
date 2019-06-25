@@ -46,11 +46,12 @@ func ApplyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 	}
 
 	senderBalance, _ := ReadAccountBalance(snapshot, tx.Creator)
-	recipientBalance, _ := ReadAccountBalance(snapshot, params.Recipient)
 
 	// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
 	if hex.EncodeToString(tx.Creator[:]) == sys.FaucetAddress {
+		recipientBalance, _ := ReadAccountBalance(snapshot, params.Recipient)
 		WriteAccountBalance(snapshot, params.Recipient, recipientBalance+params.Amount)
+
 		return snapshot, nil
 	}
 
@@ -61,6 +62,8 @@ func ApplyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 
 	if !codeAvailable {
 		WriteAccountBalance(snapshot, tx.Creator, senderBalance-params.Amount)
+
+		recipientBalance, _ := ReadAccountBalance(snapshot, params.Recipient)
 		WriteAccountBalance(snapshot, params.Recipient, recipientBalance+params.Amount)
 
 		return snapshot, nil
@@ -84,6 +87,8 @@ func ApplyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 	}
 
 	WriteAccountBalance(snapshot, tx.Creator, senderBalance-params.Amount)
+
+	recipientBalance, _ := ReadAccountBalance(snapshot, params.Recipient)
 	WriteAccountBalance(snapshot, params.Recipient, recipientBalance+params.Amount)
 
 	executor := &ContractExecutor{}
@@ -94,6 +99,8 @@ func ApplyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 
 	if executor.GasLimitExceeded { // Revert changes and have the sender pay gas fees.
 		WriteAccountBalance(snapshot, tx.Creator, senderBalance-executor.Gas)
+
+		recipientBalance, _ := ReadAccountBalance(snapshot, params.Recipient)
 		WriteAccountBalance(snapshot, params.Recipient, recipientBalance)
 
 		logger := log.Contracts("gas")
