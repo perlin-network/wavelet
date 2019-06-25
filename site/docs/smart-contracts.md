@@ -373,10 +373,10 @@ In the case that you may want to specify arbitrary input parameters and execute 
 ❯ call [contract address] [amount of perls to send] [gas limit] [function name] [function payload]
 ```
 
-As an example, say that you created a smart contract which exposes a function called `transfer`.
+As an example, say that you created a smart contract which exposes a function called `register_member`.
 The function takes in a boolean, a 32-byte wallet address, and an unsigned 64-bit integer.
 
-We wish to invoke the `transfer` function with the following input parameter set:
+We wish to invoke the `register_member` function with the following input parameter set:
  
 ```shell
 (true, `17b9165d75334fafcd9b85163409deeb6bb7873218e6406677af2da1a73ee560`, 1000)
@@ -400,5 +400,5 @@ skim over the table below which details how parameters for the payload are fed i
 Given this, we may now construct any arbitrary function binary payload within our terminal. The final `call` command we would execute, assuming a gas limit of 999999 PERLs, would then be:
 
 ```shell
-❯ call [contract address] 0 999999 transfer 11 H17b9165d75334fafcd9b85163409deeb6bb7873218e6406677af2da1a73ee560 81000
+❯ call [contract address] 0 999999 register_member 11 H17b9165d75334fafcd9b85163409deeb6bb7873218e6406677af2da1a73ee560 81000
 ```
