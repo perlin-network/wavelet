@@ -316,7 +316,7 @@ So there you have it; your first smart contract. Let's now compile it down into 
 ❯ cargo build --release --target wasm32-unknown-unknown
 ```
 
-You may then find your first WebAssembly smart contract compiled into a binary in `target/wasm32-unknown-unknown/my_first_contract.wasm`. Make sure to keep track of the file path to your contracts binary,
+You may then find your first WebAssembly smart contract compiled into a binary in `target/wasm32-unknown-unknown/release/my_first_contract.wasm`. Make sure to keep track of the file path to your contracts binary,
 as we will need it later for deploying it on Wavelet.
 
 ### The `spawn` Command
