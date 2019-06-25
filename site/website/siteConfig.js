@@ -12,7 +12,7 @@
 const users = [
     {
         caption: 'Perlin',
-        image: '/wavelet/img/icon-cumulus.svg',
+        image: '/img/icon-cumulus.svg',
         infoLink: 'https://perlin.net/cloudify',
         pinned: true,
     },
@@ -20,13 +20,13 @@ const users = [
         caption: 'Clarify',
         // You will need to prepend the image path with your baseUrl
         // if it is not '/', like: '/test-site/img/image.jpg'.
-        image: '/wavelet/img/icon-clarify.svg',
+        image: '/img/icon-clarify.svg',
         infoLink: 'https://perlin.net/clarify',
         pinned: true,
     },
     {
         caption: 'Certify',
-        image: '/wavelet/img/icon-certify.svg',
+        image: '/img/icon-certify.svg',
         infoLink: 'https://perlin.net/certify',
         pinned: true,
     }
@@ -36,8 +36,8 @@ const siteConfig = {
     title: 'Wavelet', // Title for your website.
     tagline: 'An open ledger for writing scalable, mission-critical, decentralized WebAssembly applications in Go.',
 
-    url: 'https://perlin-network.github.io',
-    baseUrl: "/wavelet/",
+    url: 'https://wavelet.perlin.net',
+    baseUrl: "/",
     projectName: 'wavelet',
     organizationName: 'perlin-network',
     // For top-level user or org sites, the organization is still the same.
