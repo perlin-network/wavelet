@@ -63,9 +63,8 @@ Then if there is a parent with depth lower than transaction one by `MaxDepthDiff
 If transaction's depth is not bigger exactly by one than max depth of parents - then such parents considered invalid. 
 In the opposite case - transaction considered as the one which has valid parents.
 
-
 #### Parents selection
-As was mentioned in the begining, potential parents transaction are stored in separate index - balanced tree in particular. Transaction are sorted by depth and in case of equal depth - by seed length (see transaction seed).
+As was mentioned in the begining, potential parents transaction are stored in separate index - balanced tree in particular. Transaction are sorted by depth and in case of equal depth - by seed length ([seed](#transaction-seed)).
 Tree is traversed in descending order, i.e. higher depth goes first. First `MaxParentsPerTransaction` number of eligible parents will be selected as parents for new transaction. If parent has depth lower than graph by `MaxDepthDiff` rounds or has children which present in the graph and "complete" such parent won't be taken and instead will be removed from parents index in the graph.
 In other words we prioritise "leaf" transactions to be parents.  
 
@@ -85,3 +84,11 @@ Tree is traversed in ascending order, i.e. lower depth and higher seed len first
     * if transaction depth is lower or equal than root depth - such transaction cannot be selected as critical and should be deleted from critical index
     * if transaction is not critical for given difficulty - such transaction cannot be selected as critical and should be deleted from critical index
 2. Return found critical transaction or nil if its not found
+
+#### Transaction Seed
+Transaction [seed](https://github.com/perlin-network/wavelet/blob/master/tx.go#L55) its a value which is computed as [blake2b](https://en.wikipedia.org/wiki/BLAKE_(hash_function)#BLAKE2) 256 hash checksum from transaction sender id and all parent transaction ids.
+
+Transaction [seed length](https://github.com/perlin-network/wavelet/blob/master/tx.go#L56) is computed as a number of leading zero bits in transaction seed. 
+
+#### Transaction Criticality
+Transaction is considered [critical](https://github.com/perlin-network/wavelet/blob/master/tx.go#L279) for given difficulty if its seed length is greater or equal to given difficulty.
