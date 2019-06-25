@@ -37,7 +37,9 @@ const siteConfig = {
     tagline: 'An open ledger for writing scalable, mission-critical, decentralized WebAssembly applications in Go.',
 
     url: 'https://wavelet.perlin.net',
-    baseUrl: "/",
+    cname: 'wavelet.perlin.net',
+
+    baseUrl: '/',
     projectName: 'wavelet',
     organizationName: 'perlin-network',
     // For top-level user or org sites, the organization is still the same.
@@ -76,6 +78,8 @@ const siteConfig = {
             "system-ui"
         ]
     },
+
+    gaTrackingId: "UA-142724552-1",
 
     repoUrl: 'https://github.com/perlin-network/wavelet',
     editUrl: 'https://github.com/perlin-network/wavelet/edit/master/site/docs/',
