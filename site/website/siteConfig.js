@@ -34,7 +34,7 @@ const users = [
 
 const siteConfig = {
     title: 'Wavelet', // Title for your website.
-    tagline: 'An open ledger for writing scalable, mission-critical, decentralized WebAssembly applications in Go.',
+    tagline: 'An open ledger for writing scalable, mission-critical, decentralized WebAssembly applications.',
 
     url: 'https://wavelet.perlin.net',
     cname: 'wavelet.perlin.net',
