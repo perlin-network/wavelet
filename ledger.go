@@ -70,7 +70,7 @@ type Ledger struct {
 	sendQuotaTokenBucket chan struct{}
 }
 
-func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
+func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 	metrics := NewMetrics(context.TODO())
 
 	accounts := NewAccounts(kv)
@@ -81,7 +81,7 @@ func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 	var round *Round
 
 	if rounds != nil && err != nil {
-		genesis := performInception(accounts.tree, nil)
+		genesis := performInception(accounts.tree, genesis)
 		if err := accounts.Commit(nil); err != nil {
 			panic(err)
 		}

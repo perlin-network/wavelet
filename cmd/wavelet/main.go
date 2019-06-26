@@ -308,7 +308,7 @@ func start(cfg *Config) {
 		}
 	}
 
-	ledger := wavelet.NewLedger(kv, client)
+	ledger := wavelet.NewLedger(kv, client, cfg.Genesis)
 
 	go func() {
 		server := client.Listen()

@@ -43,7 +43,7 @@ func TestPollLog(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ledger := wavelet.NewLedger(store.NewInmem(), skademlia.NewClient(":0", keys))
+	ledger := wavelet.NewLedger(store.NewInmem(), skademlia.NewClient(":0", keys), nil)
 
 	go gateway.StartHTTP(8080, nil, ledger, keys)
 	defer gateway.Shutdown()

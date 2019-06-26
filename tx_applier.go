@@ -223,7 +223,7 @@ func ApplyContractTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 	balance, _ := ReadAccountBalance(snapshot, sender)
 
 	if balance < params.GasLimit {
-		return nil, errors.Errorf("contract: %x tried to spawn a contract using a gas limit of %d PERLs but only has %d PERLs", params.GasLimit, balance)
+		return nil, errors.Errorf("contract: %x tried to spawn a contract using a gas limit of %d PERLs but only has %d PERLs", sender, params.GasLimit, balance)
 	}
 
 	executor := &ContractExecutor{}
