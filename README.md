@@ -18,7 +18,7 @@
 
 **wavelet** is an open ledger for scalable, mission-critical, decentralized WebAssembly applications. It's protocol and implementation is written in [Go](https://golang.org/) by [the Perlin team](https://perlin.net).
 
-Refer to the docs located [here](https://wavelet.perlin.net) to learn how to locally setup your own three-node cluster, how to write/deploy a WebAssembly smart contract, or how Wavelet actually works.
+Refer to the docs located [here](https://wavelet.perlin.net) to learn how to locally setup your own three-node cluster, learn how to write/deploy a WebAssembly smart contract, or learn how Wavelet actually works.
 
 ## We're hiring!
 
