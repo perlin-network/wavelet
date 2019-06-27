@@ -60,6 +60,10 @@ func ParseTransferTransaction(payload []byte) (Transfer, error) {
 		}
 
 		tx.GasLimit = binary.LittleEndian.Uint64(b)
+
+		if tx.GasLimit == 0 {
+			return tx, errors.New("transfer: gas limit must be greater than zero")
+		}
 	}
 
 	if r.Len() > 0 {
@@ -110,6 +114,10 @@ func ParseStakeTransaction(payload []byte) (Stake, error) {
 
 	tx.Amount = binary.LittleEndian.Uint64(payload[1:9])
 
+	if tx.Amount == 0 {
+		return tx, errors.New("stake: amount must be greater than zero")
+	}
+
 	if tx.Opcode == sys.WithdrawReward && tx.Amount < sys.MinimumRewardWithdraw {
 		return tx, errors.Errorf("stake: must withdraw a reward of a minimum of %d PERLs, but requested to withdraw %d PERLs", sys.MinimumRewardWithdraw, tx.Amount)
 	}
@@ -157,6 +165,10 @@ func ParseContractTransaction(payload []byte) (Contract, error) {
 		return tx, errors.Wrap(err, "contract: failed to decode smart contract code")
 	}
 
+	if len(tx.Code) == 0 {
+		return tx, errors.New("contract: smart contract must have code of length greater than zero")
+	}
+
 	return tx, nil
 }
 
@@ -178,6 +190,11 @@ func ParseBatchTransaction(payload []byte) (Batch, error) {
 	}
 
 	tx.Size = b[0]
+
+	if tx.Size == 0 {
+		return tx, errors.New("batch: size must be greater than zero")
+	}
+
 	tx.Tags = make([]uint8, tx.Size)
 	tx.Payloads = make([][]byte, tx.Size)
 
