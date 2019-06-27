@@ -20,7 +20,7 @@
 
 Wavelet's very first protocol specification was written by Kenta Iwasaki and Heyang Zhou. This repository serves as Wavelet's initial [Go](https://golang.org/) implementation written by [the Perlin team](https://perlin.net).
 
-Refer to the docs located [here](https://wavelet.perlin.net) to learn how to locally setup your own three-node cluster, learn how to write/deploy a WebAssembly smart contract, or learn how Wavelet actually works.
+Refer to the docs located [here](https://wavelet.perlin.net) to learn how to locally setup your own three-node cluster, to learn how to write and deploy your very first WebAssembly smart contract, or to learn how Wavelet actually works.
 
 ## We're hiring!
 
