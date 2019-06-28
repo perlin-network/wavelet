@@ -1,6 +1,4 @@
-// Package parser implements a JSON payload parser for each of the
-// transaction tags.
-package parser
+package wavelet
 
 import (
 	"bytes"
@@ -9,13 +7,14 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/perlin-network/wavelet"
 	"github.com/pkg/errors"
+
+	"github.com/perlin-network/wavelet"
 )
 
 // Parser defines a generic JSON transaction payload parser.
 type Parser struct {
-	TransactionTag string // Transaction tag
+	Tag string // Transaction tag
 }
 
 var (
@@ -130,7 +129,7 @@ func (parser *Parser) parseTransfer(json map[string]interface{}) ([]byte, error)
 
 // parseStake parses a transaction payload with the stake tag.
 func (parser *Parser) parseStake(json map[string]interface{}) ([]byte, error) {
-
+	
 }
 
 // parseContract parses a transaction payload with the contract tag.
