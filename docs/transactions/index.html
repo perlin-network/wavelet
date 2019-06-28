@@ -115,6 +115,7 @@ length-prefixed with an unsigned 32-bit little-endian integer.</p>
 <tr><th>Field</th><th>Type</th></tr>
 </thead>
 <tbody>
+<tr><td>Flag</td><td>A single byte that is 1 if the Creator Account ID is the same as the Sender Account ID, and is 0 otherwise.</td></tr>
 <tr><td>Sender Account ID</td><td>256-bit wallet address/public key.</td></tr>
 <tr><td>Creator Account ID</td><td>256-bit wallet address/public key.</td></tr>
 <tr><td>Nonce</td><td>Latest nonce value of the creators account, denoted as an unsigned 64-bit little-endian integer.</td></tr>
@@ -127,7 +128,9 @@ length-prefixed with an unsigned 32-bit little-endian integer.</p>
 </tbody>
 </table>
 <p>As a space-saving optimization, should the sender and creator of the transaction be the exact same
-account, the creator's ID and signature is omitted when encoding the transaction into binary.</p>
+account, the creator's account ID and signature is omitted when encoding the transaction into binary.
+The flag byte is responsible for recording whether or not the sender and creator of the transaction is
+the same.</p>
 <h2><a class="anchor" aria-hidden="true" id="payload-binary-formats"></a><a href="#payload-binary-formats" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Payload Binary Formats</h2>
 <p>Let's go over a few of the different payload formats for certain tag types.</p>
 <h3><a class="anchor" aria-hidden="true" id="the-transfer-transaction"></a><a href="#the-transfer-transaction" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>The <code>Transfer</code> Transaction</h3>
