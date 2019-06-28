@@ -68,6 +68,7 @@ The current binary format of a Wavelet transaction is denoted as follows:
 
 | Field | Type |
 | ----- | ---- |
+| Flag | A single byte that is 1 if the Creator Account ID is the same as the Sender Account ID, and is 0 otherwise. |
 | Sender Account ID | 256-bit wallet address/public key. | 
 | Creator Account ID | 256-bit wallet address/public key. | 
 | Nonce | Latest nonce value of the creators account, denoted as an unsigned 64-bit little-endian integer. | 
@@ -79,7 +80,9 @@ The current binary format of a Wavelet transaction is denoted as follows:
 | Creator Signature | Ed25519 signature of the tag, nonce, and payload concatenated together. |
 
 As a space-saving optimization, should the sender and creator of the transaction be the exact same
-account, the creator's ID and signature is omitted when encoding the transaction into binary.
+account, the creator's account ID and signature is omitted when encoding the transaction into binary.
+The flag byte is responsible for recording whether or not the sender and creator of the transaction is
+the same.
 
 ## Payload Binary Formats
 
