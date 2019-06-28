@@ -170,13 +170,13 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 	if err == nil {
 		l.TakeSendToken()
 
+		l.gossiper.Push(tx)
+
+		l.broadcastNopsLock.Lock()
 		if tx.Tag != sys.TagNop {
 			l.broadcastNopsDelay = time.Now()
 		}
 
-		l.gossiper.Push(tx)
-
-		l.broadcastNopsLock.Lock()
 		if tx.Sender == l.client.Keys().PublicKey() && l.finalizer.Preferred() == nil {
 			l.broadcastNops = true
 		}
