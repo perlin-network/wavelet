@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 
 	"github.com/perlin-network/wavelet"
 	"github.com/pkg/errors"
@@ -15,10 +16,6 @@ import (
 // Parser defines a generic JSON transaction payload parser.
 type Parser struct {
 	TransactionTag string // Transaction tag
-
-	Ledger *wavelet.Ledger // Ledger
-
-	PublicKey edwards25519.PublicKey // Public key
 }
 
 var (
@@ -44,7 +41,6 @@ var (
 func NewParser(transactionTag string) *Parser {
 	return &Parser{
 		TransactionTag: transactionTag, // Set transaction tag
-		Ledger: ledger, // Set ledger
 	} // Initialize parser
 }
 
@@ -87,28 +83,49 @@ func (parser *Parser) ParseJSON(data []byte) ([]byte, error) {
 func (parser *Parser) parseTransfer(json map[string]interface{}) ([]byte, error) {
 	payload := bytes.NewBuffer(nil) // Initialize buffer
 
-	recipient, recipientID, err := parseRecipient(json) // Parse recipient
+	recipient, err := parseRecipient(json) // Parse recipient
 	if err != nil {                        // Check for errors
 		return nil, err // Return found error
 	}
 
 	_, err = payload.Write(recipient[:]) // Write recipient value
-
-	if err != nil { // Check for errors
+	if err != nil {                      // Check for errors
 		return nil, err // Return found error
 	}
 
 	amount, err := parseAmount(json) // Parse amount
-	if err != nil { // Check for errors
+	if err != nil {                  // Check for errors
 		return nil, err // Return found error
 	}
 
 	_, err = payload.Write(amount[:]) // Write amount value
-	if err != nil { // Check for errors
+	if err != nil {                   // Check for errors
 		return nil, err // Return found error
 	}
 
-	_, codeAvailable := wavelet.ReadAccountContractCode(parser.Ledger.Snapshot(), recipientID) // Check code is available
+	gasLimit, err := parseGasLimit(json)  // Parse gas imit
+	if err != nil && err != ErrNilField { // Check for errors
+		return nil, err // Return found error
+	}
+
+	if err == nil {
+		_, err = payload.Write(gasLimit[:]) // Write gas limit
+		if err != nil {                     // Check for errors
+			return nil, err // Return found error
+		}
+	}
+
+	funcNameLength, funcName, funcParamsLength, funcParams, err := parseFunction(json) // Parse function
+	if err != nil && err != ErrNilField {                                              // Check for errors
+		return nil, err // Return found error
+	}
+
+	payload.Write(funcNameLength[:4])   // Write name length
+	payload.WriteString(funcName)       // Write function name
+	payload.Write(funcParamsLength[:4]) // Write length of function parameters
+	payload.Write(funcParams)           // Write parameters
+
+	return payload.Bytes(), nil // Return payload
 }
 
 // parseStake parses a transaction payload with the stake tag.
@@ -140,22 +157,106 @@ func parseAmount(json map[string]interface{}) ([8]byte, error) {
 	return intBuf, nil // Return buffer contents
 }
 
+// parseGasLimit gets the gas limit of a particular transaction.
+func parseGasLimit(json map[string]interface{}) ([8]byte, error) {
+	if json["gas_limit"] == nil { // Check no value
+		return [8]byte{}, ErrNilField // Return nil field error
+	}
+
+	gasLimit := uint64(json["gas_limit"].(float64)) // Get uint64 gas limit value
+
+	var intBuf [8]byte                                 // Initialize integer buffer
+	binary.LittleEndian.PutUint64(intBuf[:], gasLimit) // Write to buffer
+
+	return intBuf, nil // Return buffer contents
+}
+
+// parseFunction gets a payload's target function, as well as the parameters
+// corresponding to such a function.
+func parseFunction(json map[string]interface{}) ([8]byte, string, [8]byte, []byte, error) {
+	if json["fn_name"] == nil {
+		return [8]byte{}, "", [8]byte{}, nil, ErrNilField // Return nil field error
+	}
+
+	funcName := json["fn_name"].(string) // Get function name
+
+	var intBuf [8]byte // Initialize integer buffer
+
+	var functionNameLength [8]byte                                               // Initialize dedicated len buffer
+	binary.LittleEndian.PutUint32(functionNameLength[:4], uint32(len(funcName))) // Write to buffer
+
+	params := bytes.NewBuffer(nil) // Initialize payload buffer
+
+	if json["fn_payload"] != nil { // Check does have function payload
+		for _, payload := range json["fn_payload"].([]string) { // Iterate through payloads
+			switch payload[0] {
+			case 'S':
+				binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(payload[1:]))) // Write to buffer
+				params.Write(intBuf[:4])                                            // Write to buffer
+				params.WriteString(payload[1:])                                     // Write to buffer
+			case 'B':
+				binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(payload[1:]))) // Write to buffer
+				params.Write(intBuf[:4])                                            // Write to buffer
+				params.Write([]byte(payload[1:]))                                   // Write to buffer
+			case '1', '2', '4', '8':
+				var val uint64 // Initialize value buffer
+
+				_, err := fmt.Sscanf(payload[1:], "%d", &val) // Scan payload into value buffer
+				if err != nil {                               // Check for errors
+					return [8]byte{}, "", [8]byte{}, nil, err // Return found error
+				}
+
+				switch payload[0] { // Handle different integer sizes
+				case '1':
+					params.WriteByte(byte(val)) // Write to buffer
+				case '2':
+					binary.LittleEndian.PutUint16(intBuf[:2], uint16(val)) // Write to buffer
+					params.Write(intBuf[:2])                               // Write to buffer
+				case '4':
+					binary.LittleEndian.PutUint32(intBuf[:4], uint32(val)) // Write to buffer
+					params.Write(intBuf[:4])                               // Write to buffer
+				case '8':
+					binary.LittleEndian.PutUint64(intBuf[:8], uint64(val)) // Write to buffer
+					params.Write(intBuf[:8])                               // Write to buffer
+				}
+			case 'H':
+				buf, err := hex.DecodeString(payload[1:]) // Decode hex string
+				if err != nil {                           // Check for errors
+					return [8]byte{}, "", [8]byte{}, nil, err // Return found error
+				}
+
+				params.Write(buf) // Write to params
+			default:
+				return [8]byte{}, "", [8]byte{}, nil, nil // No params
+			}
+		}
+
+		binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(params.Bytes()))) // Write length of function parameters to buffer
+	}
+
+	return functionNameLength, funcName, intBuf, params.Bytes(), nil // Return params
+}
+
 // parseRecipient gets the recipient of the transaction from the JSON map,
 // and performs address length safety checks immediately after.
-func parseRecipient(json map[string]interface{}) ([]byte, wavelet.AccountID, error) {
+func parseRecipient(json map[string]interface{}) ([]byte, error) {
+	if json["recipient"] == nil { // Check no value
+		return nil, ErrNilField // Return nil field error
+	}
+
 	recipient, err := hex.DecodeString(json["recipient"].(string))
 	if err != nil { // Check for errors
-		return nil, wavelet.AccountID{}, err // Return found error
+		return nil, err // Return found error
 	}
 
 	if len(recipient) != wavelet.SizeAccountID {
-		return nil, wavelet.AccountID{}, err // Return invalid recipient ID error
+		return nil, err // Return invalid recipient ID error
 	}
 
 	var recipientID wavelet.AccountID // Initialize ID buffer
-	copy(recipientID[:], recipient) // Copy address to buffer
+	copy(recipientID[:], recipient)   // Copy address to buffer
 
-	return recipient, recipientID, nil // Return recipient
+	return recipient, nil // Return recipient
 }
 
 // parseJSONBytes parses a given raw JSON input, and converts such an input
