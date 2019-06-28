@@ -22,12 +22,14 @@ package avl
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/perlin-network/wavelet/store"
-	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"os"
 	"testing"
 	"testing/quick"
+
+	"github.com/perlin-network/wavelet/store"
+	"github.com/stretchr/testify/assert"
+	"github.com/valyala/bytebufferpool"
 )
 
 func TestSerialize(t *testing.T) {
@@ -39,8 +41,10 @@ func TestSerialize(t *testing.T) {
 	fn := func(key, value []byte) bool {
 		node := newLeafNode(tree, key, value)
 
-		var buf bytes.Buffer
-		node.serialize(&buf)
+		buf := bytebufferpool.Get()
+		defer bytebufferpool.Put(buf)
+
+		node.serialize(buf)
 
 		assert.ObjectsAreEqual(node, mustDeserialize(bytes.NewReader(buf.Bytes())))
 
