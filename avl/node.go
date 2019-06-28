@@ -25,8 +25,10 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/pkg/errors"
 	"math"
+
+	"github.com/pkg/errors"
+	"github.com/valyala/bytebufferpool"
 )
 
 const MerkleHashSize = 16
@@ -322,8 +324,9 @@ func (n *node) rehash() {
 }
 
 func (n *node) rehashNoWrite() [MerkleHashSize]byte {
-	var buf bytes.Buffer
-	n.serialize(&buf)
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+	n.serialize(buf)
 	return md5.Sum(buf.Bytes())
 }
 
@@ -356,7 +359,7 @@ func (n *node) getString() string {
 	}
 }
 
-func (n *node) serializeForDifference(buf *bytes.Buffer) {
+func (n *node) serializeForDifference(buf *bytebufferpool.ByteBuffer) {
 	var buf64 [8]byte
 
 	buf.Write(n.id[:])
@@ -499,7 +502,7 @@ func DeserializeFromDifference(r *bytes.Reader, localViewID uint64) (*node, erro
 	}
 }
 
-func (n *node) serialize(buf *bytes.Buffer) {
+func (n *node) serialize(buf *bytebufferpool.ByteBuffer) {
 	buf.WriteByte(byte(n.kind))
 
 	if n.kind != NodeLeafValue {
