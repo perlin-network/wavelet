@@ -11,8 +11,8 @@ require (
 	github.com/gogo/protobuf v1.2.1
 	github.com/golang/snappy v0.0.1
 	github.com/google/btree v1.0.0
-	github.com/google/uuid v1.1.1
-	github.com/gorilla/websocket v1.4.0
+	github.com/google/uuid v1.1.1 // indirect
+	github.com/gorilla/websocket v1.4.0 // indirect
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/perlin-network/life v0.0.0-20190521143330-57f3819c2df0

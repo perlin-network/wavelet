@@ -160,7 +160,7 @@ func (s *sink) run() {
 			}
 		case msg := <-s.broadcast:
 			if s.debouncer != nil {
-				s.debouncer.Add(debounce.Bytes(msg.buf)) // TODO(kenta): debounce.ByKeys(keys...)
+				s.debouncer.Add(debounce.Bytes(msg.buf))
 			} else {
 				s.send(msg.buf)
 			}

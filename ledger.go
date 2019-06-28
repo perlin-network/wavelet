@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
@@ -36,6 +37,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
 )
@@ -52,13 +54,11 @@ type Ledger struct {
 	finalizer *Snowball
 	syncer    *Snowball
 
-	processors map[byte]TransactionProcessor
-
 	consensus sync.WaitGroup
 
-	nops         bool
-	nopsTime     time.Time
-	nopsTimeLock sync.Mutex
+	broadcastNops      bool
+	broadcastNopsDelay time.Time
+	broadcastNopsLock  sync.Mutex
 
 	sync      chan struct{}
 	syncTimer *time.Timer
@@ -66,9 +66,11 @@ type Ledger struct {
 
 	cacheCollapse *LRU
 	cacheChunks   *LRU
+
+	sendQuotaTokenBucket chan struct{}
 }
 
-func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
+func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 	metrics := NewMetrics(context.TODO())
 
 	accounts := NewAccounts(kv)
@@ -79,7 +81,7 @@ func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 	var round *Round
 
 	if rounds != nil && err != nil {
-		genesis := performInception(accounts.tree, nil)
+		genesis := performInception(accounts.tree, genesis)
 		if err := accounts.Commit(nil); err != nil {
 			panic(err)
 		}
@@ -117,29 +119,39 @@ func NewLedger(kv store.KV, client *skademlia.Client) *Ledger {
 		finalizer: finalizer,
 		syncer:    syncer,
 
-		processors: map[byte]TransactionProcessor{
-			sys.TagNop:      ProcessNopTransaction,
-			sys.TagTransfer: ProcessTransferTransaction,
-			sys.TagContract: ProcessContractTransaction,
-			sys.TagStake:    ProcessStakeTransaction,
-			sys.TagBatch:    ProcessBatchTransaction,
-		},
-
-		nops:     false,
-		nopsTime: time.Now(),
-
 		sync:      make(chan struct{}),
 		syncTimer: time.NewTimer(0),
 		syncVotes: make(chan vote, sys.SnowballK),
 
 		cacheCollapse: NewLRU(16),
 		cacheChunks:   NewLRU(1024), // In total, it will take up 1024 * 4MB.
+
+		sendQuotaTokenBucket: make(chan struct{}, 2000),
 	}
 
 	go ledger.SyncToLatestRound()
 	go ledger.PerformConsensus()
+	go ledger.FeedSendTokenIntoBucket()
 
 	return ledger
+}
+
+func (l *Ledger) FeedSendTokenIntoBucket() {
+	for range time.Tick(1 * time.Millisecond) {
+		select {
+		case l.sendQuotaTokenBucket <- struct{}{}:
+		default:
+		}
+	}
+}
+
+func (l *Ledger) TakeSendToken() bool {
+	select {
+	case <-l.sendQuotaTokenBucket:
+		return true
+	default:
+		return false
+	}
 }
 
 // AddTransaction adds a transaction to the ledger. If the transaction has
@@ -156,14 +168,19 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 	}
 
 	if err == nil {
+		l.TakeSendToken()
+
 		l.gossiper.Push(tx)
 
-		if tx.Tag != sys.TagNop && tx.Sender != l.client.Keys().PublicKey() {
-			l.nopsTimeLock.Lock()
-			l.nops = true
-			l.nopsTime = time.Now()
-			l.nopsTimeLock.Unlock()
+		l.broadcastNopsLock.Lock()
+		if tx.Tag != sys.TagNop {
+			l.broadcastNopsDelay = time.Now()
 		}
+
+		if tx.Sender == l.client.Keys().PublicKey() && l.finalizer.Preferred() == nil {
+			l.broadcastNops = true
+		}
+		l.broadcastNopsLock.Unlock()
 	}
 
 	return nil
@@ -200,76 +217,44 @@ func (l *Ledger) Rounds() *Rounds {
 func (l *Ledger) PerformConsensus() {
 	go l.PullMissingTransactions()
 	go l.FinalizeRounds()
-	go l.BroadcastNops()
 }
 
 func (l *Ledger) Snapshot() *avl.Tree {
 	return l.accounts.Snapshot()
 }
 
-// BroadcastNops periodically has the node send nop transactions should they have sufficient
+// BroadcastNop has the node send a nop transaction should they have sufficient
 // balance available. They are broadcasted if no other transaction that is not a nop transaction
 // is not broadcasted by the node after 500 milliseconds. These conditions only apply so long as
-// at least onen transaction gets broadcasted by the node within the current round. Once a round
-// is tenatively being finalized, a node will stop broadcasting nops.
-func (l *Ledger) BroadcastNops() {
-	keys := l.client.Keys()
+// at least one transaction gets broadcasted by the node within the current round. Once a round
+// is tentatively being finalized, a node will stop broadcasting nops.
+func (l *Ledger) BroadcastNop() *Transaction {
+	l.broadcastNopsLock.Lock()
+	broadcastNops := l.broadcastNops
+	broadcastNopsDelay := l.broadcastNopsDelay
+	l.broadcastNopsLock.Unlock()
 
-	l.consensus.Add(1)
-	defer l.consensus.Done()
-
-	for {
-		select {
-		case <-l.sync:
-			return
-		default:
-		}
-
-		balance, _ := ReadAccountBalance(l.accounts.Snapshot(), keys.PublicKey())
-
-		if balance < sys.TransactionFeeAmount {
-			select {
-			case <-l.sync:
-				return
-			case <-time.After(1 * time.Second):
-			}
-			continue
-		}
-
-		if l.finalizer.Preferred() != nil {
-			l.nopsTimeLock.Lock()
-			l.nops = false
-			l.nopsTime = time.Now()
-			l.nopsTimeLock.Unlock()
-
-			select {
-			case <-l.sync:
-				return
-			case <-time.After(500 * time.Millisecond):
-			}
-			continue
-		}
-
-		l.nopsTimeLock.Lock()
-		nops := l.nops
-		elapsed := time.Now().Sub(l.nopsTime)
-		l.nopsTimeLock.Unlock()
-
-		if !nops || elapsed < 500*time.Millisecond {
-			select {
-			case <-l.sync:
-				return
-			case <-time.After(250 * time.Millisecond):
-			}
-			continue
-		}
-
-		nop := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), l.graph.FindEligibleParents()...)
-
-		if err := l.AddTransaction(nop); err != nil {
-			continue
-		}
+	if !broadcastNops || time.Now().Sub(broadcastNopsDelay) < 100*time.Millisecond {
+		return nil
 	}
+
+	keys := l.client.Keys()
+	publicKey := keys.PublicKey()
+
+	balance, _ := ReadAccountBalance(l.accounts.Snapshot(), publicKey)
+
+	// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
+	if balance < sys.TransactionFeeAmount && hex.EncodeToString(publicKey[:]) != sys.FaucetAddress {
+		return nil
+	}
+
+	nop := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), l.graph.FindEligibleParents()...)
+
+	if err := l.AddTransaction(nop); err != nil {
+		return nil
+	}
+
+	return l.graph.FindTransaction(nop.ID)
 }
 
 // PullMissingTransactions is an infinite loop continually sending RPC requests
@@ -311,6 +296,14 @@ func (l *Ledger) PullMissingTransactions() {
 			peers[i], peers[j] = peers[j], peers[i]
 		})
 
+		fmt.Println("Trying to download missing transactions. count =", len(missing))
+		rand.Shuffle(len(missing), func(i, j int) {
+			missing[i], missing[j] = missing[j], missing[i]
+		})
+		if len(missing) > 256 {
+			missing = missing[:256]
+		}
+
 		req := &DownloadTxRequest{Ids: make([][]byte, len(missing))}
 
 		for i, id := range missing {
@@ -348,12 +341,6 @@ func (l *Ledger) PullMissingTransactions() {
 
 		l.metrics.downloadedTX.Mark(count)
 		l.metrics.receivedTX.Mark(count)
-
-		select {
-		case <-l.sync:
-			return
-		case <-time.After(100 * time.Millisecond):
-		}
 	}
 }
 
@@ -392,10 +379,24 @@ FINALIZE_ROUNDS:
 			eligible := l.graph.FindEligibleCritical(currentDifficulty)
 
 			if eligible == nil {
+				nop := l.BroadcastNop()
+
+				if nop != nil {
+					if !nop.IsCritical(currentDifficulty) {
+						select {
+						case <-l.sync:
+							return
+						case <-time.After(500 * time.Microsecond):
+						}
+					}
+
+					continue FINALIZE_ROUNDS
+				}
+
 				select {
 				case <-l.sync:
 					return
-				case <-time.After(100 * time.Millisecond):
+				case <-time.After(1 * time.Millisecond):
 				}
 
 				continue FINALIZE_ROUNDS
@@ -412,6 +413,10 @@ FINALIZE_ROUNDS:
 
 			continue FINALIZE_ROUNDS
 		}
+
+		l.broadcastNopsLock.Lock()
+		l.broadcastNops = false
+		l.broadcastNopsLock.Unlock()
 
 		workerChan := make(chan *grpc.ClientConn, 16)
 
@@ -497,12 +502,14 @@ FINALIZE_ROUNDS:
 
 						results, err := l.CollapseTransactions(round.Index, round.Start, round.End, false)
 						if err != nil {
-							fmt.Println(err)
+							if !strings.Contains(err.Error(), "missing ancestor") {
+								fmt.Println(err)
+							}
 							return
 						}
 
 						if uint64(results.appliedCount) != round.Applied {
-							fmt.Printf("applied %d but expected %d\n", results.appliedCount, round.Applied)
+							fmt.Printf("applied %d but expected %d, rejected = %d, ignored = %d\n", results.appliedCount, round.Applied, results.rejectedCount, results.ignoredCount)
 							return
 						}
 
@@ -563,7 +570,9 @@ FINALIZE_ROUNDS:
 
 		results, err := l.CollapseTransactions(finalized.Index, finalized.Start, finalized.End, true)
 		if err != nil {
-			fmt.Println(err)
+			if !strings.Contains(err.Error(), "missing ancestor") {
+				fmt.Println(err)
+			}
 			continue
 		}
 
@@ -601,6 +610,8 @@ FINALIZE_ROUNDS:
 
 		l.metrics.acceptedTX.Mark(int64(results.appliedCount))
 
+		l.LogChanges(results.snapshot, current.Index)
+
 		logger := log.Consensus("round_end")
 		logger.Info().
 			Int("num_applied_tx", results.appliedCount).
@@ -616,11 +627,6 @@ FINALIZE_ROUNDS:
 			Hex("old_merkle_root", current.Merkle[:]).
 			Uint64("round_depth", finalized.End.Depth-finalized.Start.Depth).
 			Msg("Finalized consensus round, and initialized a new round.")
-
-		l.nopsTimeLock.Lock()
-		l.nops = false
-		l.nopsTime = time.Now()
-		l.nopsTimeLock.Unlock()
 
 		//go ExportGraphDOT(finalized, l.graph)
 	}
@@ -752,7 +758,7 @@ func (l *Ledger) SyncToLatestRound() {
 		logger.Info().
 			Uint64("current_round", current.Index).
 			Uint64("proposed_round", proposed.Index).
-			Msg("Noticed that we are out of sync; downloading latest state tree from our peer(s).")
+			Msg("Noticed that we are out of sync; downloading latest state Snapshot from our peer(s).")
 
 	SYNC:
 
@@ -1082,7 +1088,7 @@ func (l *Ledger) SyncToLatestRound() {
 			Hex("old_root", current.End.ID[:]).
 			Hex("new_merkle_root", latest.Merkle[:]).
 			Hex("old_merkle_root", current.Merkle[:]).
-			Msg("Successfully built a new state tree out of chunk(s) we have received from peers.")
+			Msg("Successfully built a new state Snapshot out of chunk(s) we have received from peers.")
 
 		restart()
 	}
@@ -1091,10 +1097,33 @@ func (l *Ledger) SyncToLatestRound() {
 // ApplyTransactionToSnapshot applies a transactions intended changes to a snapshot
 // of the ledgers current state.
 func (l *Ledger) ApplyTransactionToSnapshot(snapshot *avl.Tree, tx *Transaction) error {
-	ctx := NewTransactionContext(l.Rounds().Latest(), snapshot, tx)
+	round := l.Rounds().Latest()
+	original := snapshot.Snapshot()
 
-	if err := ctx.apply(l.processors); err != nil {
-		return errors.Wrap(err, "could not apply transaction to snapshot")
+	switch tx.Tag {
+	case sys.TagNop:
+	case sys.TagTransfer:
+		if _, err := ApplyTransferTransaction(snapshot, round, tx, nil); err != nil {
+			snapshot.Revert(original)
+
+			fmt.Println(err)
+			return errors.Wrap(err, "could not apply transfer transaction")
+		}
+	case sys.TagStake:
+		if _, err := ApplyStakeTransaction(snapshot, round, tx); err != nil {
+			snapshot.Revert(original)
+			return errors.Wrap(err, "could not apply stake transaction")
+		}
+	case sys.TagContract:
+		if _, err := ApplyContractTransaction(snapshot, round, tx, nil); err != nil {
+			snapshot.Revert(original)
+			return errors.Wrap(err, "could not apply contract transaction")
+		}
+	case sys.TagBatch:
+		if _, err := ApplyBatchTransaction(snapshot, round, tx); err != nil {
+			snapshot.Revert(original)
+			return errors.Wrap(err, "could not apply batch transaction")
+		}
 	}
 
 	return nil
@@ -1179,7 +1208,7 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 
 			if parent == nil {
 				l.graph.MarkTransactionAsMissing(parentID, popped.Depth)
-				return res, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, end.ID)
+				return nil, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, end.ID)
 			}
 
 			queue.PushBack(parent)
@@ -1196,12 +1225,23 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 	for order.Len() > 0 {
 		popped := order.PopBack().(*Transaction)
 
-		if err := l.RewardValidators(res.snapshot, root, popped, logging); err != nil {
-			res.rejected = append(res.rejected, popped)
-			res.rejectedErrors = append(res.rejectedErrors, err)
-			res.rejectedCount += popped.LogicalUnits()
+		// Update nonce.
 
-			continue
+		nonce, exists := ReadAccountNonce(res.snapshot, popped.Creator)
+		if !exists {
+			WriteAccountsLen(res.snapshot, ReadAccountsLen(res.snapshot)+1)
+		}
+		WriteAccountNonce(res.snapshot, popped.Creator, nonce+1)
+
+		// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
+		if hex.EncodeToString(popped.Creator[:]) != sys.FaucetAddress {
+			if err := l.RewardValidators(res.snapshot, root, popped, logging); err != nil {
+				res.rejected = append(res.rejected, popped)
+				res.rejectedErrors = append(res.rejectedErrors, err)
+				res.rejectedCount += popped.LogicalUnits()
+
+				continue
+			}
 		}
 
 		if err := l.ApplyTransactionToSnapshot(res.snapshot, popped); err != nil {
@@ -1209,13 +1249,10 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 			res.rejectedErrors = append(res.rejectedErrors, err)
 			res.rejectedCount += popped.LogicalUnits()
 
+			fmt.Println(err)
+
 			continue
 		}
-
-		// Update nonce.
-
-		nonce, _ := ReadAccountNonce(res.snapshot, popped.Creator)
-		WriteAccountNonce(res.snapshot, popped.Creator, nonce+1)
 
 		// Update statistics.
 
@@ -1231,8 +1268,84 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 
 	res.ignoredCount -= res.appliedCount + res.rejectedCount
 
+	if round >= uint64(sys.RewardWithdrawalsRoundLimit) {
+		l.processRewardWithdrawals(round, res.snapshot, logging)
+	}
+
 	l.cacheCollapse.put(end.ID, res)
+
 	return res, nil
+}
+
+// LogChanges logs all changes made to an AVL tree state snapshot for the purposes
+// of logging out changes to account state to Wavelet's HTTP API.
+func (l *Ledger) LogChanges(snapshot *avl.Tree, lastRound uint64) {
+	balanceLogger := log.Accounts("balance_updated")
+	stakeLogger := log.Accounts("stake_updated")
+	rewardLogger := log.Accounts("reward_updated")
+	numPagesLogger := log.Accounts("num_pages_updated")
+
+	balanceKey := append(keyAccounts[:], keyAccountBalance[:]...)
+	stakeKey := append(keyAccounts[:], keyAccountStake[:]...)
+	rewardKey := append(keyAccounts[:], keyAccountReward[:]...)
+	numPagesKey := append(keyAccounts[:], keyAccountContractNumPages[:]...)
+
+	var id AccountID
+
+	snapshot.IterateLeafDiff(lastRound, func(key, value []byte) bool {
+		switch {
+		case bytes.HasPrefix(key, balanceKey):
+			copy(id[:], key[len(balanceKey):])
+
+			balanceLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("balance", binary.LittleEndian.Uint64(value)).
+				Msg("")
+		case bytes.HasPrefix(key, stakeKey):
+			copy(id[:], key[len(stakeKey):])
+
+			stakeLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("stake", binary.LittleEndian.Uint64(value)).
+				Msg("")
+		case bytes.HasPrefix(key, rewardKey):
+			copy(id[:], key[len(rewardKey):])
+
+			rewardLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("reward", binary.LittleEndian.Uint64(value)).
+				Msg("")
+		case bytes.HasPrefix(key, numPagesKey):
+			copy(id[:], key[len(numPagesKey):])
+
+			numPagesLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("num_pages", binary.LittleEndian.Uint64(value)).
+				Msg("")
+		}
+
+		return true
+	})
+}
+
+func (l *Ledger) processRewardWithdrawals(round uint64, snapshot *avl.Tree, logging bool) {
+	rws := GetRewardWithdrawalRequests(snapshot, round-uint64(sys.RewardWithdrawalsRoundLimit))
+
+	balanceLogger := log.Accounts("balance_updated")
+
+	for _, rw := range rws {
+		balance, _ := ReadAccountBalance(snapshot, rw.account)
+		WriteAccountBalance(snapshot, rw.account, balance+rw.amount)
+
+		if logging {
+			balanceLogger.Log().
+				Hex("account_id", rw.account[:]).
+				Uint64("balance", balance+rw.amount).
+				Msg("")
+		}
+
+		snapshot.Delete(rw.Key())
+	}
 }
 
 func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Transaction, logging bool) error {
@@ -1287,7 +1400,7 @@ func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Tran
 
 				// Record entropy source.
 				if _, err := hasher.Write(popped.ID[:]); err != nil {
-					return errors.Wrap(err, "stake: failed to hash transaction id for entropy source")
+					return errors.Wrap(err, "stake: failed to hash transaction ID for entropy source")
 				}
 			}
 		}
@@ -1334,7 +1447,7 @@ func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Tran
 	}
 
 	creatorBalance, _ := ReadAccountBalance(snapshot, tx.Creator)
-	recipientBalance, _ := ReadAccountBalance(snapshot, rewardee.Sender)
+	rewardBalance, _ := ReadAccountReward(snapshot, rewardee.Sender)
 
 	fee := sys.TransactionFeeAmount
 
@@ -1343,7 +1456,22 @@ func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Tran
 	}
 
 	WriteAccountBalance(snapshot, tx.Creator, creatorBalance-fee)
-	WriteAccountBalance(snapshot, rewardee.Sender, recipientBalance+fee)
+	if logging {
+		logger := log.Accounts("balance_updated")
+		logger.Log().
+			Hex("account_id", tx.Creator[:]).
+			Uint64("balance", creatorBalance-fee).
+			Msg("")
+	}
+
+	WriteAccountReward(snapshot, rewardee.Sender, rewardBalance+fee)
+	if logging {
+		logger := log.Accounts("reward_updated")
+		logger.Log().
+			Hex("account_id", rewardee.Sender[:]).
+			Uint64("reward", rewardBalance+fee).
+			Msg("")
+	}
 
 	if logging {
 		logger := log.Stake("reward_validator")

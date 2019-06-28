@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="63.868" height="63.546" viewBox="0 0 63.868 63.546">
+    <defs>
+        <style>
+            .cls-1{fill:#8cda42}.cls-2{clip-path:url(#clip-path)}.cls-3{fill:#8164fb}.cls-4{fill:#614bbc}.cls-5,.cls-6{fill:none;stroke:#fff;stroke-linecap:round;stroke-miterlimit:10;stroke-width:1.324px}.cls-6{stroke-dasharray:12.45 12.45}
+        </style>
+        <clipPath id="clip-path">
+            <path id="Path_71" d="M31.811 63.542a72.744 72.744 0 0 1-14.324-1.456C6.831 59.571 1.754 54.136.615 43.274A106.522 106.522 0 0 1 .794 18.85C1.946 9.735 7.1 4.116 15.952 1.806A66.53 66.53 0 0 1 36.286.124a57.911 57.911 0 0 1 9.829 1.2C56.865 3.771 62 9.173 63.206 20.121a100.8 100.8 0 0 1-.165 24.418c-1.291 9.551-6.348 14.959-15.7 17.3a70.924 70.924 0 0 1-15.53 1.703z" class="cls-1" data-name="Path 71" transform="translate(0 .004)"/>
+        </clipPath>
+    </defs>
+    <g id="icon-scalable" transform="translate(0 .004)">
+        <g id="Layer_1" data-name="Layer 1" transform="translate(0 -.004)">
+            <g id="Mask_Group_6" class="cls-2" data-name="Mask Group 6">
+                <g id="icon-scalable-2" data-name="icon-scalable" transform="translate(0 .003)">
+                    <g id="Layer_1-2" data-name="Layer 1">
+                        <path id="Path_114" d="M31.812 63.544a72.744 72.744 0 0 1-14.324-1.456C6.831 59.572 1.754 54.138.616 43.276a106.522 106.522 0 0 1 .178-24.425C1.946 9.737 7.1 4.117 15.952 1.807A66.53 66.53 0 0 1 36.286.126a57.911 57.911 0 0 1 9.829 1.2C56.865 3.773 62 9.174 63.206 20.122a100.8 100.8 0 0 1-.165 24.418c-1.291 9.551-6.348 14.959-15.7 17.3a70.924 70.924 0 0 1-15.529 1.704z" class="cls-3" data-name="Path 114"/>
+                        <path id="Rectangle_161" d="M0 0h13.98v13.98H0z" class="cls-4" data-name="Rectangle 161" transform="translate(24.928 24.709)"/>
+                        <path id="Rectangle_162" d="M0 0h5.798v5.798H0z" class="cls-4" data-name="Rectangle 162" transform="translate(45.374 12.623)"/>
+                        <path id="Rectangle_163" d="M0 0h5.798v5.798H0z" class="cls-4" data-name="Rectangle 163" transform="translate(45.374 45.129)"/>
+                        <path id="Rectangle_164" d="M0 0h5.798v5.798H0z" class="cls-4" data-name="Rectangle 164" transform="translate(12.695 45.129)"/>
+                        <path id="Rectangle_165" d="M0 0h5.798v5.798H0z" class="cls-4" data-name="Rectangle 165" transform="translate(12.695 12.623)"/>
+                        <path id="Path_115" d="M48.247 44.057v3.971h-3.972" class="cls-5" data-name="Path 115"/>
+                        <path id="Line_27" d="M12.358 0H0" class="cls-6" data-name="Line 27" transform="translate(23.683 48.028)"/>
+                        <path id="Path_116" d="M19.56 48.028h-3.972v-3.971" class="cls-5" data-name="Path 116"/>
+                        <path id="Line_28" d="M0 12.358V0" class="cls-6" data-name="Line 28" transform="translate(15.595 23.458)"/>
+                        <path id="Path_117" d="M15.588 19.341V15.37h3.972" class="cls-5" data-name="Path 117"/>
+                        <path id="Line_29" d="M0 0h12.358" class="cls-6" data-name="Line 29" transform="translate(27.8 15.37)"/>
+                        <path id="Path_118" d="M44.275 15.37h3.971v3.971" class="cls-5" data-name="Path 118"/>
+                        <path id="Line_30" d="M0 0v12.351" class="cls-6" data-name="Line 30" transform="translate(48.247 27.582)"/>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

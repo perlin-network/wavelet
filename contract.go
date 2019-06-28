@@ -27,6 +27,7 @@ import (
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
 	"github.com/perlin-network/noise/edwards25519"
+	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -34,7 +35,7 @@ import (
 )
 
 var (
-	ErrNotSmartContract         = errors.New("contract: specified account id is not a smart contract")
+	ErrNotSmartContract         = errors.New("contract: specified account ID is not a smart contract")
 	ErrContractFunctionNotFound = errors.New("contract: smart contract func not found")
 
 	_ exec.ImportResolver = (*ContractExecutor)(nil)
@@ -46,233 +47,20 @@ const (
 )
 
 type ContractExecutor struct {
-	contractID AccountID
+	ID       AccountID
+	Snapshot *avl.Tree
 
-	ctx     *TransactionContext
-	table   map[string]uint64
-	payload []byte
-	result  []byte
+	Gas              uint64
+	GasLimitExceeded bool
 
-	enableLogging bool
+	Payload []byte
+	Error   []byte
+
+	Queue []*Transaction
 }
 
-func NewContractExecutor(contractID AccountID, ctx *TransactionContext) *ContractExecutor {
-	return &ContractExecutor{contractID: contractID, ctx: ctx}
-}
-
-func (c *ContractExecutor) WithGasTable(gasTable map[string]uint64) *ContractExecutor {
-	c.table = gasTable
-	return c
-}
-
-func (c *ContractExecutor) EnableLogging() *ContractExecutor {
-	c.enableLogging = true
-	return c
-}
-
-func (c *ContractExecutor) LoadMemorySnapshot() ([]byte, error) {
-	numPages, exists := c.ctx.ReadAccountContractNumPages(c.contractID)
-	if !exists {
-		return nil, nil
-	}
-
-	mem := make([]byte, PageSize*numPages)
-
-	for pageIdx := uint64(0); pageIdx < numPages; pageIdx++ {
-		page, _ := c.ctx.ReadAccountContractPage(c.contractID, pageIdx)
-
-		// Zero-filled by default.
-		if len(page) > 0 {
-			if len(page) != PageSize {
-				return nil, errors.Errorf("page %d has a size of %d != PageSize", pageIdx, len(page))
-			}
-
-			copy(mem[PageSize*pageIdx:PageSize*(pageIdx+1)], page)
-		}
-	}
-
-	return mem, nil
-}
-
-func (c *ContractExecutor) SaveMemorySnapshot(contractID AccountID, memory []byte) {
-	numPages := uint64(len(memory) / PageSize)
-
-	c.ctx.WriteAccountContractNumPages(contractID, numPages)
-
-	for pageIdx := uint64(0); pageIdx < numPages; pageIdx++ {
-		old, _ := c.ctx.ReadAccountContractPage(contractID, pageIdx)
-
-		identical := true
-
-		for idx := uint64(0); idx < PageSize; idx++ {
-			if len(old) == 0 && memory[pageIdx*PageSize+idx] != 0 {
-				identical = false
-				break
-			}
-
-			if len(old) != 0 && memory[pageIdx*PageSize+idx] != old[idx] {
-				identical = false
-				break
-			}
-		}
-
-		if !identical {
-			allZero := true
-
-			for idx := uint64(0); idx < PageSize; idx++ {
-				if memory[pageIdx*PageSize+idx] != 0 {
-					allZero = false
-					break
-				}
-			}
-
-			// If the page is empty, save an empty byte array. Otherwise, save the pages content.
-			if allZero {
-				c.ctx.WriteAccountContractPage(contractID, pageIdx, []byte{})
-			} else {
-				c.ctx.WriteAccountContractPage(contractID, pageIdx, memory[pageIdx*PageSize:(pageIdx+1)*PageSize])
-			}
-		}
-	}
-}
-
-func (c *ContractExecutor) Init(code []byte, gasLimit uint64) (*exec.VirtualMachine, error) {
-	config := exec.VMConfig{
-		DefaultMemoryPages: 16,
-		MaxMemoryPages:     32,
-
-		DefaultTableSize: PageSize,
-		MaxTableSize:     PageSize,
-
-		MaxValueSlots:     4096,
-		MaxCallStackDepth: 256,
-		GasLimit:          gasLimit,
-	}
-
-	vm, err := exec.NewVirtualMachine(code, config, c, c)
-	if err != nil {
-		return nil, errors.Wrap(err, "contract: failed to init smart contract vm")
-	}
-
-	return vm, nil
-}
-
-func (c *ContractExecutor) InitPayload(amount uint64, payload []byte) {
-	tx := c.ctx.Transaction()
-
-	buf := make([]byte, 8)
-
-	c.payload = nil
-
-	binary.LittleEndian.PutUint64(buf[:], uint64(c.ctx.round.Index))
-	c.payload = append(c.payload, buf...)
-
-	c.payload = append(c.payload, c.ctx.round.ID[:]...)
-	c.payload = append(c.payload, tx.ID[:]...)
-	c.payload = append(c.payload, tx.Creator[:]...)
-
-	binary.LittleEndian.PutUint64(buf[:], amount)
-	c.payload = append(c.payload, buf...)
-
-	c.payload = append(c.payload, payload...)
-}
-
-func (c *ContractExecutor) Spawn(code, payload []byte, gasLimit uint64) (uint64, error) {
-	vm, err := c.Init(code, gasLimit)
-	if err != nil {
-		return 0, err
-	}
-
-	c.InitPayload(0, payload)
-
-	entry, exists := vm.GetFunctionExport("_contract_init")
-	if !exists {
-		return 0, errors.Wrap(ErrContractFunctionNotFound, "`_contract_init` does not exist")
-	}
-
-	// Execute virtual machine.
-	vm.Ignite(entry)
-
-	for !vm.Exited {
-		vm.Execute()
-
-		if vm.Delegate != nil {
-			vm.Delegate()
-			vm.Delegate = nil
-		}
-	}
-
-	if vm.ExitError != nil {
-		return vm.Gas, utils.UnifyError(vm.ExitError)
-	}
-
-	// Save memory snapshot if no errors occurred.
-	if len(c.result) == 0 {
-		c.SaveMemorySnapshot(c.contractID, vm.Memory)
-	}
-
-	return vm.Gas, nil
-}
-
-func (c *ContractExecutor) Run(amount, gasLimit uint64, entrypoint string, payload ...byte) (uint64, error) {
-	code, available := c.ctx.ReadAccountContractCode(c.contractID)
-	if !available {
-		return 0, ErrNotSmartContract
-	}
-
-	vm, err := c.Init(code, gasLimit)
-	if err != nil {
-		return 0, err
-	}
-
-	// Load memory snapshot if available.
-	mem, err := c.LoadMemorySnapshot()
-	if err != nil {
-		return 0, errors.Wrap(err, "contract: failed to load memory snapshot")
-	}
-
-	if mem != nil {
-		vm.Memory = mem
-	}
-
-	c.InitPayload(amount, payload)
-
-	entry, exists := vm.GetFunctionExport("_contract_" + entrypoint)
-	if !exists {
-		return 0, errors.Wrapf(ErrContractFunctionNotFound, "fn `_contract_%s` does not exist", entrypoint)
-	}
-
-	// Execute virtual machine.
-	vm.Ignite(entry)
-
-	for !vm.Exited {
-		vm.Execute()
-
-		if vm.Delegate != nil {
-			vm.Delegate()
-			vm.Delegate = nil
-		}
-	}
-
-	if vm.ExitError != nil {
-		return vm.Gas, utils.UnifyError(vm.ExitError)
-	}
-
-	// Save memory snapshot if no errors occurred.
-	if len(c.result) == 0 {
-		c.SaveMemorySnapshot(c.contractID, vm.Memory)
-	}
-
-	return vm.Gas, nil
-}
-
-func (c *ContractExecutor) GetCost(key string) int64 {
-	if c.table == nil {
-		return 1
-	}
-
-	cost, ok := c.table[key]
-
+func (e *ContractExecutor) GetCost(key string) int64 {
+	cost, ok := sys.GasTable[key]
 	if !ok {
 		return 1
 	}
@@ -280,7 +68,7 @@ func (c *ContractExecutor) GetCost(key string) int64 {
 	return int64(cost)
 }
 
-func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport {
+func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport {
 	switch module {
 	case "env":
 		switch field {
@@ -296,27 +84,27 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				payloadPtr := int(uint32(frame.Locals[1]))
 				payloadLen := int(uint32(frame.Locals[2]))
 
-				inputs := vm.Memory[payloadPtr : payloadPtr+payloadLen]
+				payload := vm.Memory[payloadPtr : payloadPtr+payloadLen]
 
-				c.ctx.transactions.PushBack(&Transaction{
-					Sender:  c.contractID,
-					Creator: c.contractID,
+				e.Queue = append(e.Queue, &Transaction{
+					Sender:  e.ID,
+					Creator: e.ID,
 					Tag:     tag,
-					Payload: inputs,
+					Payload: payload,
 				})
 
 				return 0
 			}
 		case "_payload_len":
 			return func(vm *exec.VirtualMachine) int64 {
-				return int64(len(c.payload))
+				return int64(len(e.Payload))
 			}
 		case "_payload":
 			return func(vm *exec.VirtualMachine) int64 {
 				frame := vm.GetCurrentFrame()
 
 				outPtr := int(uint32(frame.Locals[0]))
-				copy(vm.Memory[outPtr:], c.payload)
+				copy(vm.Memory[outPtr:], e.Payload)
 				return 0
 			}
 		case "_result":
@@ -325,33 +113,26 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				dataPtr := int(uint32(frame.Locals[0]))
 				dataLen := int(uint32(frame.Locals[1]))
 
-				c.result = make([]byte, dataLen)
-				copy(c.result, vm.Memory[dataPtr:dataPtr+dataLen])
+				e.Error = make([]byte, dataLen)
+				copy(e.Error, vm.Memory[dataPtr:dataPtr+dataLen])
 				return 0
 			}
 		case "_log":
 			return func(vm *exec.VirtualMachine) int64 {
-				if c.enableLogging {
-					frame := vm.GetCurrentFrame()
-					dataPtr := int(uint32(frame.Locals[0]))
-					dataLen := int(uint32(frame.Locals[1]))
+				frame := vm.GetCurrentFrame()
+				dataPtr := int(uint32(frame.Locals[0]))
+				dataLen := int(uint32(frame.Locals[1]))
 
-					logger := log.Contracts("log")
-					logger.Debug().
-						Hex("contract_id", c.contractID[:]).
-						Msg(string(vm.Memory[dataPtr : dataPtr+dataLen]))
-				}
+				logger := log.Contracts("log")
+				logger.Debug().
+					Hex("contract_id", e.ID[:]).
+					Msg(string(vm.Memory[dataPtr : dataPtr+dataLen]))
+
 				return 0
 			}
 		case "_verify_ed25519":
-			var gas uint64
-			var ok bool
-			if gas, ok = sys.GasTable["wavelet.verify.ed25519"]; !ok {
-				panic("gas entry not found")
-			}
-
 			return func(vm *exec.VirtualMachine) int64 {
-				vm.Gas += gas
+				vm.Gas += uint64(e.GetCost("wavelet.verify.ed25519"))
 
 				frame := vm.GetCurrentFrame()
 				keyPtr, keyLen := int(uint32(frame.Locals[0])), int(uint32(frame.Locals[1]))
@@ -381,7 +162,7 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 			}
 		case "_hash_blake2b_256":
 			return buildHashImpl(
-				"wavelet.hash.blake2b256",
+				uint64(e.GetCost("wavelet.hash.blake2b256")),
 				blake2b.Size256,
 				func(data, out []byte) {
 					b := blake2b.Sum256(data)
@@ -390,7 +171,7 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 			)
 		case "_hash_blake2b_512":
 			return buildHashImpl(
-				"wavelet.hash.blake2b512",
+				uint64(e.GetCost("wavelet.hash.blake2b512")),
 				blake2b.Size,
 				func(data, out []byte) {
 					b := blake2b.Sum512(data)
@@ -399,7 +180,7 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 			)
 		case "_hash_sha256":
 			return buildHashImpl(
-				"wavelet.hash.sha256",
+				uint64(e.GetCost("wavelet.hash.sha256")),
 				sha256.Size,
 				func(data, out []byte) {
 					b := sha256.Sum256(data)
@@ -408,7 +189,7 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 			)
 		case "_hash_sha512":
 			return buildHashImpl(
-				"wavelet.hash.sha512",
+				uint64(e.GetCost("wavelet.hash.sha512")),
 				sha512.Size,
 				func(data, out []byte) {
 					b := sha512.Sum512(data)
@@ -423,17 +204,167 @@ func (c *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 	}
 }
 
-func (c *ContractExecutor) ResolveGlobal(module, field string) int64 {
-	panic("no global variables")
+func (e *ContractExecutor) ResolveGlobal(module, field string) int64 {
+	panic("global variables are disallowed in smart contracts")
 }
 
-func buildHashImpl(gasKey string, size int, f func(data, out []byte)) func(vm *exec.VirtualMachine) int64 {
-	var gas uint64
-	var ok bool
-	if gas, ok = sys.GasTable[gasKey]; !ok {
-		panic("gas entry not found")
+func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Round, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte) error {
+	config := exec.VMConfig{
+		DefaultMemoryPages: 4,
+		MaxMemoryPages:     32,
+
+		DefaultTableSize: PageSize,
+		MaxTableSize:     PageSize,
+
+		MaxValueSlots:     4096,
+		MaxCallStackDepth: 256,
+		GasLimit:          gasLimit,
 	}
 
+	vm, err := exec.NewVirtualMachine(code, config, e, e)
+	if err != nil {
+		return errors.Wrap(err, "could not init vm")
+	}
+
+	if mem := LoadContractMemorySnapshot(snapshot, id); mem != nil {
+		vm.Memory = mem
+	}
+
+	e.ID = id
+	e.Snapshot = snapshot
+
+	e.Payload = buildContractPayload(round, tx, amount, params)
+
+	entry, exists := vm.GetFunctionExport("_contract_" + name)
+	if !exists {
+		return errors.Wrapf(ErrContractFunctionNotFound, `fn "_contract_%s" does not exist`, name)
+	}
+
+	vm.Ignite(entry)
+
+	for !vm.Exited {
+		vm.Execute()
+
+		if vm.Delegate != nil {
+			vm.Delegate()
+			vm.Delegate = nil
+		}
+	}
+
+	if vm.ExitError == nil && len(e.Error) == 0 {
+		SaveContractMemorySnapshot(snapshot, id, vm.Memory)
+	}
+
+	if vm.ExitError != nil && utils.UnifyError(vm.ExitError).Error() == "gas limit exceeded" {
+		e.Gas = gasLimit
+		e.GasLimitExceeded = true
+	} else {
+		e.Gas = vm.Gas
+		e.GasLimitExceeded = false
+	}
+
+	return nil
+}
+
+func LoadContractMemorySnapshot(snapshot *avl.Tree, id AccountID) []byte {
+	numPages, exists := ReadAccountContractNumPages(snapshot, id)
+	if !exists {
+		return nil
+	}
+
+	mem := make([]byte, PageSize*numPages)
+
+	for pageIdx := uint64(0); pageIdx < numPages; pageIdx++ {
+		page, _ := ReadAccountContractPage(snapshot, id, pageIdx)
+
+		if len(page) > 0 {
+			copy(mem[PageSize*pageIdx:PageSize*(pageIdx+1)], page)
+		}
+	}
+
+	return mem
+}
+
+func SaveContractMemorySnapshot(snapshot *avl.Tree, id AccountID, mem []byte) {
+	numPages := uint64(len(mem) / PageSize)
+
+	WriteAccountContractNumPages(snapshot, id, numPages)
+
+	for pageIdx := uint64(0); pageIdx < numPages; pageIdx++ {
+		old, _ := ReadAccountContractPage(snapshot, id, pageIdx)
+
+		identical := true
+
+		for idx := uint64(0); idx < PageSize; idx++ {
+			if len(old) == 0 && mem[pageIdx*PageSize+idx] != 0 {
+				identical = false
+				break
+			}
+
+			if len(old) != 0 && mem[pageIdx*PageSize+idx] != old[idx] {
+				identical = false
+				break
+			}
+		}
+
+		if !identical {
+			allZero := true
+
+			for idx := uint64(0); idx < PageSize; idx++ {
+				if mem[pageIdx*PageSize+idx] != 0 {
+					allZero = false
+					break
+				}
+			}
+
+			// If the page is empty, save an empty byte array. Otherwise, save the pages content.
+
+			if allZero {
+				WriteAccountContractPage(snapshot, id, pageIdx, []byte{})
+			} else {
+				WriteAccountContractPage(snapshot, id, pageIdx, mem[pageIdx*PageSize:(pageIdx+1)*PageSize])
+			}
+		}
+	}
+}
+
+func buildContractPayload(round *Round, tx *Transaction, amount uint64, params []byte) []byte {
+	p := make([]byte, 0)
+	b := make([]byte, 8)
+
+	var nilAccountID AccountID
+	var nilTransactionID TransactionID
+
+	if round != nil {
+		binary.LittleEndian.PutUint64(b[:], uint64(round.Index))
+	} else {
+		binary.LittleEndian.PutUint64(b[:], 0)
+	}
+	p = append(p, b...)
+
+	if round != nil {
+		p = append(p, round.ID[:]...)
+	} else {
+		p = append(p, nilAccountID[:]...)
+	}
+
+	if tx != nil {
+		p = append(p, tx.ID[:]...)
+		p = append(p, tx.Creator[:]...)
+	} else {
+		p = append(p, nilTransactionID[:]...)
+		p = append(p, nilAccountID[:]...)
+	}
+
+	binary.LittleEndian.PutUint64(b[:], amount)
+	p = append(p, b...)
+
+	p = append(p, params...)
+
+	return p
+}
+
+func buildHashImpl(gas uint64, size int, f func(data, out []byte)) func(vm *exec.VirtualMachine) int64 {
 	return func(vm *exec.VirtualMachine) int64 {
 		vm.Gas += gas
 

@@ -467,7 +467,7 @@ func TestGetContractCode(t *testing.T) {
 		{
 			name:     "id not exist",
 			url:      "/contract/" + "3132333435363738393031323334353637383930313233343536373839303132",
-			wantCode: http.StatusBadRequest,
+			wantCode: http.StatusNotFound,
 			wantError: testErrResponse{
 				StatusText: "Bad request.",
 				ErrorText:  fmt.Sprintf("could not find contract with ID %s", "3132333435363738393031323334353637383930313233343536373839303132"),
@@ -524,7 +524,7 @@ func TestGetContractPages(t *testing.T) {
 		{
 			name:     "id not exist",
 			url:      "/contract/3132333435363738393031323334353637383930313233343536373839303132/page/1",
-			wantCode: http.StatusBadRequest,
+			wantCode: http.StatusNotFound,
 			wantError: testErrResponse{
 				StatusText: "Bad request.",
 				ErrorText:  fmt.Sprintf("could not find any pages for contract with ID %s", "3132333435363738393031323334353637383930313233343536373839303132"),
@@ -593,7 +593,7 @@ func TestGetLedger(t *testing.T) {
 	publicKey := keys.PublicKey()
 
 	expectedJSON := fmt.Sprintf(
-		`{"public_key":"%s","address":"127.0.0.1:%d","round":{"merkle_root":"13f939735a62b1abfcfd345e2410f336","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc","applied":0,"depth":0,"difficulty":8},"peers":null}`,
+		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"round":{"merkle_root":"1a822467f036f127afe8c3c4df987fa7","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc","applied":0,"depth":0,"difficulty":8},"peers":null}`,
 		hex.EncodeToString(publicKey[:]),
 		listener.Addr().(*net.TCPAddr).Port,
 	)
@@ -744,7 +744,7 @@ func createLedger(t *testing.T) *wavelet.Ledger {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ledger := wavelet.NewLedger(store.NewInmem(), skademlia.NewClient(":0", keys))
+	ledger := wavelet.NewLedger(store.NewInmem(), skademlia.NewClient(":0", keys), nil)
 	return ledger
 }
 

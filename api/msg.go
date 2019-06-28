@@ -149,16 +149,6 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	}
 
 	copy(s.creator[:], senderBuf)
-
-	var signature edwards25519.Signature
-	copy(signature[:], signatureBuf)
-
-	var nonce [8]byte // TODO(kenta): nonce
-
-	if !edwards25519.Verify(s.creator, append(nonce[:], append([]byte{s.Tag}, s.payload...)...), signature) {
-		return errors.Wrap(err, "sender signature verification failed")
-	}
-
 	copy(s.signature[:], signatureBuf)
 
 	return nil
@@ -213,12 +203,16 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 		return nil, errors.New("insufficient parameters were provided")
 	}
 
+	snapshot := s.ledger.Snapshot()
 	round := s.ledger.Rounds().Latest()
+
+	accountsLen := wavelet.ReadAccountsLen(snapshot)
 
 	o := arena.NewObject()
 
 	o.Set("public_key", arena.NewString(hex.EncodeToString(s.publicKey[:])))
 	o.Set("address", arena.NewString(s.client.ID().Address()))
+	o.Set("num_accounts", arena.NewNumberString(strconv.FormatUint(accountsLen, 10)))
 
 	r := arena.NewObject()
 	r.Set("merkle_root", arena.NewString(hex.EncodeToString(round.Merkle[:])))
@@ -233,8 +227,15 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 	peers := s.client.ClosestPeerIDs()
 	if len(peers) > 0 {
 		peersArray := arena.NewArray()
+
 		for i := range peers {
-			peersArray.SetArrayItem(i, arena.NewString(peers[i].Address()))
+			publicKey := peers[i].PublicKey()
+
+			peer := arena.NewObject()
+			peer.Set("address", arena.NewString(peers[i].Address()))
+			peer.Set("public_key", arena.NewString(hex.EncodeToString(publicKey[:])))
+
+			peersArray.SetArrayItem(i, peer)
 		}
 		o.Set("peers", peersArray)
 	} else {
@@ -330,6 +331,12 @@ func (s *account) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	stake, _ := wavelet.ReadAccountStake(snapshot, s.id)
 	o.Set("stake", arena.NewNumberString(strconv.FormatUint(stake, 10)))
 
+	reward, _ := wavelet.ReadAccountReward(snapshot, s.id)
+	o.Set("reward", arena.NewNumberString(strconv.FormatUint(reward, 10)))
+
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, s.id)
+	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(nonce, 10)))
+
 	_, isContract := wavelet.ReadAccountContractCode(snapshot, s.id)
 	if isContract {
 		o.Set("is_contract", arena.NewTrue())
@@ -366,6 +373,13 @@ func ErrBadRequest(err error) *errResponse {
 	return &errResponse{
 		Err:            err,
 		HTTPStatusCode: http.StatusBadRequest,
+	}
+}
+
+func ErrNotFound(err error) *errResponse {
+	return &errResponse{
+		Err:            err,
+		HTTPStatusCode: http.StatusNotFound,
 	}
 }
 

@@ -32,6 +32,12 @@ const (
 	TagBatch
 )
 
+const (
+	WithdrawStake byte = iota
+	PlaceStake
+	WithdrawReward
+)
+
 var (
 	// S/Kademlia overlay network parameters.
 	SKademliaC1 = 1
@@ -70,7 +76,13 @@ var (
 	// Minimum amount of stake to start being able to reap validator rewards.
 	MinimumStake uint64 = 100
 
+	MinimumRewardWithdraw = MinimumStake
+
+	RewardWithdrawalsRoundLimit = 50
+
 	PruningLimit = uint8(30)
+
+	FaucetAddress = "0f569c84d434fb0ca682c733176f7c0c2d853fce04d95ae131d2f9b4124d93d8"
 
 	GasTable = map[string]uint64{
 		"nop":                         1,

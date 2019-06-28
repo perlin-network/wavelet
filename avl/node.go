@@ -42,6 +42,8 @@ type node struct {
 	id, left, right   [MerkleHashSize]byte
 	leftObj, rightObj *node
 
+	wroteBack bool
+
 	viewID uint64
 
 	key, value []byte
@@ -66,10 +68,6 @@ func newLeafNode(t *Tree, key, value []byte) *node {
 	}
 
 	n.rehash()
-
-	if t != nil {
-		t.queueWrite(n)
-	}
 
 	return n
 }
@@ -111,7 +109,7 @@ func (n *node) sync(t *Tree, left *node, right *node) {
 }
 
 func (n *node) leftRotate(t *Tree) *node {
-	right := t.mustLoadNode(n.right)
+	right := t.mustLoadRight(n)
 
 	n = n.update(t, func(node *node) {
 		node.right = right.left
@@ -251,6 +249,27 @@ func (n *node) lookup(t *Tree, key []byte) ([]byte, bool) {
 	panic(errors.Errorf("avl: on lookup, found an unsupported node kind %d", n.kind))
 }
 
+func (n *node) iterateFrom(t *Tree, key []byte, callback func(key, value []byte) bool) bool {
+	if n.kind == NodeLeafValue {
+		if bytes.Compare(key, n.key) <= 0 {
+			return callback(n.key, n.value)
+		}
+		return true
+	} else if n.kind == NodeNonLeaf {
+		child := t.mustLoadLeft(n)
+
+		if bytes.Compare(key, child.key) <= 0 {
+			cont := child.iterateFrom(t, key, callback)
+			if !cont {
+				return false
+			}
+		}
+		return t.mustLoadRight(n).iterateFrom(t, key, callback)
+	}
+
+	panic(errors.Errorf("avl: on lookup, found an unsupported node kind %d", n.kind))
+}
+
 func (n *node) delete(t *Tree, key []byte) (*node, bool) {
 	if n.kind == NodeLeafValue {
 		if bytes.Equal(n.key, key) {
@@ -309,27 +328,8 @@ func (n *node) rehashNoWrite() [MerkleHashSize]byte {
 }
 
 func (n *node) clone() *node {
-	clone := &node{
-		id:       n.id,
-		left:     n.left,
-		right:    n.right,
-		leftObj:  n.leftObj,
-		rightObj: n.rightObj,
-
-		key:   make([]byte, len(n.key)),
-		value: make([]byte, len(n.value)),
-
-		kind:  n.kind,
-		depth: n.depth,
-		size:  n.size,
-
-		viewID: n.viewID,
-	}
-
-	copy(clone.key, n.key)
-	copy(clone.value, n.value)
-
-	return clone
+	cloned := *n
+	return &cloned
 }
 
 func (n *node) update(t *Tree, fn func(node *node)) *node {
@@ -339,7 +339,7 @@ func (n *node) update(t *Tree, fn func(node *node)) *node {
 	cpy.rehash()
 
 	if cpy.id != n.id {
-		t.queueWrite(cpy)
+		cpy.wroteBack = false
 	}
 
 	return cpy
@@ -398,7 +398,7 @@ func (n *node) dfs(t *Tree, allowMissingNodes bool, cb func(*node) (bool, error)
 		return nil
 	}
 
-	left, err := t.loadNode(n.left)
+	left, err := t.loadLeft(n)
 	if err != nil {
 		if !allowMissingNodes {
 			return err
@@ -410,7 +410,7 @@ func (n *node) dfs(t *Tree, allowMissingNodes bool, cb func(*node) (bool, error)
 		}
 	}
 
-	right, err := t.loadNode(n.right)
+	right, err := t.loadRight(n)
 	if err != nil {
 		if !allowMissingNodes {
 			return err
@@ -425,7 +425,7 @@ func (n *node) dfs(t *Tree, allowMissingNodes bool, cb func(*node) (bool, error)
 	return nil
 }
 
-func deserializeFromDifference(r *bytes.Reader, localViewID uint64) (*node, error) {
+func DeserializeFromDifference(r *bytes.Reader, localViewID uint64) (*node, error) {
 	var buf64 [8]byte
 
 	var id [MerkleHashSize]byte
@@ -623,9 +623,13 @@ func mustDeserialize(r *bytes.Reader) *node {
 }
 
 // populateDiffs constructs a valid AVL tree from the incoming preloaded tree difference.
-func populateDiffs(t *Tree, id [MerkleHashSize]byte, preloaded map[[MerkleHashSize]byte]*node, visited map[[MerkleHashSize]byte]struct{}) (uint64 /* size */, byte /* depth */, uint64 /* view id */, []byte /* key */, error) {
+func populateDiffs(t *Tree, id [MerkleHashSize]byte, preloaded map[[MerkleHashSize]byte]*node, visited map[[MerkleHashSize]byte]struct{}, updateNotifier func(key, value []byte)) (*node, error) {
+	if t.root != nil && !t.root.wroteBack {
+		return nil, errors.New("cannot call populateDiffs() on a dirty tree")
+	}
+
 	if _, seen := visited[id]; seen {
-		return 0, 0, 0, nil, errors.New("cycle detected")
+		return nil, errors.New("cycle detected")
 	}
 	visited[id] = struct{}{}
 
@@ -634,9 +638,9 @@ func populateDiffs(t *Tree, id [MerkleHashSize]byte, preloaded map[[MerkleHashSi
 	if n == nil {
 		n, err = t.loadNode(id)
 		if err != nil {
-			return 0, 0, 0, nil, err
+			return nil, err
 		}
-		return n.size, n.depth, n.viewID, n.key, nil
+		return n, nil
 	}
 
 	if n.size != 0 || n.depth != 0 {
@@ -647,55 +651,61 @@ func populateDiffs(t *Tree, id [MerkleHashSize]byte, preloaded map[[MerkleHashSi
 		n.size = 1
 		n.depth = 0
 		if n.id != n.rehashNoWrite() {
-			return 0, 0, 0, nil, errors.New("hash mismatch")
+			return nil, errors.New("hash mismatch")
 		}
-		return n.size, n.depth, n.viewID, n.key, nil
+		if updateNotifier != nil {
+			updateNotifier(n.key, n.value)
+		}
+		return n, nil
 	} else if n.kind == NodeNonLeaf {
-		leftSize, leftDepth, leftViewID, leftKey, err := populateDiffs(t, n.left, preloaded, visited)
+		leftNode, err := populateDiffs(t, n.left, preloaded, visited, updateNotifier)
 		if err != nil {
-			return 0, 0, 0, nil, err
+			return nil, err
 		}
 
-		rightSize, rightDepth, rightViewID, rightKey, err := populateDiffs(t, n.right, preloaded, visited)
+		rightNode, err := populateDiffs(t, n.right, preloaded, visited, updateNotifier)
 		if err != nil {
-			return 0, 0, 0, nil, err
+			return nil, err
 		}
 
-		n.size = leftSize + rightSize
+		n.size = leftNode.size + rightNode.size
 
-		newDepth := leftDepth
-		if rightDepth > leftDepth {
-			newDepth = rightDepth
+		newDepth := leftNode.depth
+		if rightNode.depth > leftNode.depth {
+			newDepth = rightNode.depth
 		}
 
 		if newDepth+1 < newDepth {
-			return 0, 0, 0, nil, errors.New("depth overflow")
+			return nil, errors.New("depth overflow")
 		}
 
 		n.depth = newDepth + 1
 
-		if bytes.Compare(leftKey, rightKey) > 0 {
-			n.key = leftKey
+		if bytes.Compare(leftNode.key, rightNode.key) > 0 {
+			n.key = leftNode.key
 		} else {
-			n.key = rightKey
+			n.key = rightNode.key
 		}
 
-		balanceFactor := int(leftDepth) - int(rightDepth)
+		balanceFactor := int(leftNode.depth) - int(rightNode.depth)
 		if balanceFactor < -1 || balanceFactor > 1 {
-			return 0, 0, 0, nil, errors.New("invalid balance factor")
+			return nil, errors.New("invalid balance factor")
 		}
 
-		if n.viewID < leftViewID || n.viewID < rightViewID {
-			return 0, 0, 0, nil, errors.New("invalid view id")
+		if n.viewID < leftNode.viewID || n.viewID < rightNode.viewID {
+			return nil, errors.New("invalid view id")
 		}
 
 		if n.id != n.rehashNoWrite() {
-			return 0, 0, 0, nil, errors.New("hash mismatch")
+			return nil, errors.New("hash mismatch")
 		}
 
-		return n.size, n.depth, n.viewID, n.key, nil
+		n.leftObj = leftNode
+		n.rightObj = rightNode
+
+		return n, nil
 	} else {
-		return 0, 0, 0, nil, errors.New("unknown node kind")
+		return nil, errors.New("unknown node kind")
 	}
 
 }

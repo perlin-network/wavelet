@@ -29,9 +29,13 @@ import (
 const defaultGenesis = `
 {
   "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405": {
-    "balance": 10000000000000000000
+    "balance": 10000000000000000000,
+    "reward": 5000000
   },
   "696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a": {
+    "balance": 10000000000000000000
+  },
+  "f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467": {
     "balance": 10000000000000000000
   }
 }
@@ -62,8 +66,9 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 		panic(err)
 	}
 
-	var balance uint64
-	var stake uint64
+	var balance, stake, reward uint64
+
+	set := make(map[AccountID]struct{}) // Ensure that there are no duplicate account entries in the JSON.
 
 	accounts.Visit(func(key []byte, val *fastjson.Value) {
 		if err != nil {
@@ -77,12 +82,21 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 		n, err = hex.Decode(id[:], key)
 
 		if n != cap(id) && err == nil {
-			err = errors.Errorf("got an invalid account id: %s", key)
+			err = errors.Errorf("got an invalid account ID: %x", key)
+			return
 		}
 
 		if err != nil {
+			err = errors.Wrapf(err, "got an invalid account ID: %x", key)
 			return
 		}
+
+		if _, exists := set[id]; exists {
+			err = errors.Errorf("found duplicate entries for account ID %x in genesis file", id)
+			return
+		}
+
+		set[id] = struct{}{}
 
 		fields, err = val.Object()
 
@@ -113,8 +127,22 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 				}
 
 				WriteAccountStake(tree, id, uint64(stake))
+			case "reward":
+				reward, err = v.Uint64()
+
+				if err != nil {
+					err = errors.Wrapf(err, "failed to cast type for key %q", key)
+					return
+				}
+
+				WriteAccountReward(tree, id, uint64(reward))
 			}
 		})
+
+		if err == nil {
+			WriteAccountsLen(tree, ReadAccountsLen(tree)+1)
+			WriteAccountNonce(tree, id, 1)
+		}
 	})
 
 	if err != nil {

@@ -112,7 +112,7 @@ func main() {
 
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
-	ledger := wavelet.NewLedger(store.NewInmem(), client)
+	ledger := wavelet.NewLedger(store.NewInmem(), client, nil)
 
 	go func() {
 		server := client.Listen()
