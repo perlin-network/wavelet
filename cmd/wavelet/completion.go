@@ -17,38 +17,61 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package wavelet
+package main
 
-import (
-	"crypto/md5"
+import "github.com/chzyer/readline"
 
-	"golang.org/x/crypto/blake2b"
+/*
+func (cli *CLI) getCompletionPeers() *readline.PrefixCompleter {
+	fn := func(s string) (l []string) {
+		// Get a list of peers
+		peers := cli.client.ClosestPeerIDs()
+		l = make([]string, 0, len(peers))
 
-	_ "github.com/perlin-network/wavelet/internal/snappy"
-)
+		for _, id := range peers {
+			pub := id.PublicKey()
+			l = append(l, hex.EncodeToString(pub[:]))
+		}
 
-const (
-	SizeTransactionID   = blake2b.Size256
-	SizeTransactionSeed = blake2b.Size256
-	SizeRoundID         = blake2b.Size256
-	SizeMerkleNodeID    = md5.Size
-	SizeAccountID       = 32
-	SizeSignature       = 64
-)
+		// Get current ID
+		publicKey := cli.keys.PublicKey()
 
-type TransactionID = [SizeTransactionID]byte
-type TransactionSeed = [SizeTransactionSeed]byte
-type RoundID = [SizeRoundID]byte
-type MerkleNodeID = [SizeMerkleNodeID]byte
-type AccountID = [SizeAccountID]byte
-type Signature = [SizeSignature]byte
+		// Get root ID
+		round := cli.ledger.Rounds().Latest()
 
-var (
-	ZeroTransactionID TransactionID
-	ZeroRoundID       RoundID
-	ZeroMerkleNodeID  MerkleNodeID
-	ZeroAccountID     AccountID
-	ZeroSignature     Signature
+		l = append(l,
+			hex.EncodeToString(round.End.ID[:]),
+			hex.EncodeToString(publicKey[:]),
+		)
 
-	ZeroRoundPtr = &Round{}
-)
+		fields := strings.Fields(s)
+
+		if len(fields) > 1 {
+			l = containStrings(l, fields[1], false)
+		}
+
+		return
+	}
+
+	return readline.PcItemDynamic(fn)
+}
+*/
+
+func (cli *CLI) getCompleter() *readline.PrefixCompleter {
+	return readline.PcItemDynamic(func(string) []string {
+		return cli.completion
+	})
+}
+
+func (cli *CLI) addCompletion(ids ...string) {
+MainLoop:
+	for _, id := range ids {
+		for _, c := range cli.completion {
+			if c == id {
+				continue MainLoop
+			}
+		}
+
+		cli.completion = append(cli.completion, id)
+	}
+}
