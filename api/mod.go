@@ -201,7 +201,7 @@ func (g *Gateway) Shutdown() {
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	req := new(sendTransactionRequest)
 
-	if g.ledger != nil && g.ledger.TakeSendToken() == false {
+	if g.ledger != nil && g.ledger.TakeSendQuota() == false {
 		g.renderError(ctx, ErrInternal(errors.New("rate limit")))
 		return
 	}
