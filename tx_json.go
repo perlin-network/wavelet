@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/valyala/fastjson"
 )
@@ -30,6 +31,9 @@ var (
 
 	// ErrNilField defines an error describing a field value equal to nil.
 	ErrNilField = errors.New("field is nil")
+
+	// ErrInvalidOperation defines an error describing an invalid operation value.
+	ErrInvalidOperation = errors.New("operation is invalid")
 )
 
 /* BEGIN EXPORTED METHODS */
@@ -131,6 +135,34 @@ func (parser *Parser) parseTransfer(data []byte) ([]byte, error) {
 
 // parseStake parses a transaction payload with the stake tag.
 func (parser *Parser) parseStake(data []byte) ([]byte, error) {
+	payload := bytes.NewBuffer(nil) // Initialize buffer
+
+	parsedData, err := parseJSONBytes(data) // Parse data
+	if err != nil {                         // Check for errors
+		return nil, err // Return found error
+	}
+
+	operation, err := parseOperation(parsedData) // Parse operation
+	if err != nil {                              // Check for errors
+		return nil, err // Return found error
+	}
+
+	amount, err := parseAmount(parsedData) // Parse amount
+	if err != nil {                        // Check for errors
+		return nil, err // Return found error
+	}
+
+	err = payload.WriteByte(operation) // Write operation
+	if err != nil {                    // Check for errors
+		return nil, err // Return found error
+	}
+
+	_, err = payload.Write(amount[:]) // Write amount
+	if err != nil {                   // Check for errors
+		return nil, err // Return found error
+	}
+
+	return payload.Bytes(), nil // Return payload
 }
 
 // parseContract parses a transaction payload with the contract tag.
@@ -149,9 +181,26 @@ func (parser *Parser) parseBatch(data []byte) ([]byte, error) {
 	BEGIN PARSER HELPER METHODS
 */
 
+func parseOperation(json *fastjson.Value) (byte, error) {
+	if !json.Exists("operation") { // Check no value
+		return byte(0), ErrNilField // Return nil field error
+	}
+
+	switch string(json.GetStringBytes("operation")) { // Handle different operations
+	case "0x00":
+		return sys.WithdrawStake, nil // Return parsed
+	case "0x01":
+		return sys.PlaceStake, nil // Return parsed
+	case "0x02":
+		return sys.WithdrawReward, nil // Return parsed
+	}
+
+	return byte(0), ErrInvalidOperation // Return invalid operation error
+}
+
 // parseAmount gets the amount of PERLs sent in a given transaction.
 func parseAmount(json *fastjson.Value) ([8]byte, error) {
-	if !json.Exists("amount") { // Check amount does not exist
+	if !json.Exists("amount") { // Check no value
 		return [8]byte{}, ErrNilField // Return nil field error
 	}
 
@@ -180,7 +229,7 @@ func parseGasLimit(json *fastjson.Value) ([8]byte, error) {
 // parseFunction gets a payload's target function, as well as the parameters
 // corresponding to such a function.
 func parseFunction(json *fastjson.Value) ([8]byte, string, [8]byte, []byte, error) {
-	if !json.Exists("fn_name") {
+	if !json.Exists("fn_name") { // Check no value
 		return [8]byte{}, "", [8]byte{}, nil, ErrNilField // Return nil field error
 	}
 

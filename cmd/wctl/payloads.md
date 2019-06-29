@@ -22,6 +22,11 @@ via the `--payload` flag. The names of each of the aforementioned payload fields
 
 ### Stake
 
+| Payload Field | JSON Field                      |
+|---------------|---------------------------------|
+| Operation     | operation (string, e.g. "0x00") |
+| Amount        | amount                          |
+
 ### Contract
 
 ### Batch
