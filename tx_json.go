@@ -112,10 +112,10 @@ func (parser *TransactionParserJSON) parseTransfer(data []byte) ([]byte, error) 
 		return nil, err // Return found error
 	}
 
-	amount, err := parseAmount(json) // Parse amount
-	if err != nil {                  // Check for errors
-		return nil, err // Return found error
-	}
+	decodedAmount := uint64(json.GetFloat64("amount")) // Get amount value
+
+	var amount [8]byte                                      // Initialize integer buffer
+	binary.LittleEndian.PutUint64(amount[:], decodedAmount) // Write to buffer
 
 	_, err = payload.Write(amount[:]) // Write amount value
 	if err != nil {                   // Check for errors
@@ -163,10 +163,10 @@ func (parser *TransactionParserJSON) parseStake(data []byte) ([]byte, error) {
 		return nil, err // Return found error
 	}
 
-	amount, err := parseAmount(json) // Parse amount
-	if err != nil {                  // Check for errors
-		return nil, err // Return found error
-	}
+	decodedAmount := uint64(json.GetFloat64("amount")) // Get amount value
+
+	var amount [8]byte                                      // Initialize integer buffer
+	binary.LittleEndian.PutUint64(amount[:], decodedAmount) // Write to buffer
 
 	err = payload.WriteByte(operation) // Write operation
 	if err != nil {                    // Check for errors
@@ -305,20 +305,6 @@ func parseOperation(json *fastjson.Value) (byte, error) {
 	}
 
 	return byte(0), ErrInvalidOperation // Return invalid operation error
-}
-
-// parseAmount gets the amount of PERLs sent in a given transaction.
-func parseAmount(json *fastjson.Value) ([8]byte, error) {
-	if !json.Exists("amount") { // Check no value
-		return [8]byte{}, ErrNilField // Return nil field error
-	}
-
-	amount := uint64(json.GetFloat64("amount")) // Get amount value
-
-	var intBuf [8]byte                               // Initialize integer buffer
-	binary.LittleEndian.PutUint64(intBuf[:], amount) // Write to buffer
-
-	return intBuf, nil // Return buffer contents
 }
 
 // parseGasLimit gets the gas limit of a particular transaction.
