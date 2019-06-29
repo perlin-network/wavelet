@@ -4,12 +4,10 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 
 	"github.com/pkg/errors"
-
-	"github.com/perlin-network/wavelet"
+	"github.com/valyala/fastjson"
 )
 
 // Parser defines a generic JSON transaction payload parser.
@@ -39,36 +37,31 @@ var (
 // NewParser initializes a new parser with the given transaction type.
 func NewParser(transactionTag string) *Parser {
 	return &Parser{
-		TransactionTag: transactionTag, // Set transaction tag
+		Tag: transactionTag, // Set transaction tag
 	} // Initialize parser
 }
 
 // ParseJSON parses the given JSON payload input.
 func (parser *Parser) ParseJSON(data []byte) ([]byte, error) {
-	if parser.TransactionTag == "" { // Check no transaction tag
+	if parser.Tag == "" { // Check no transaction tag
 		return nil, ErrNoTag // Return no tag error
 	}
 
-	if !getValidTags()[parser.TransactionTag] { // Check invalid
+	if !getValidTags()[parser.Tag] { // Check invalid
 		return nil, ErrInvalidTag // Return error
 	}
 
-	parsedJSON, err := parseJSONBytes(data) // Parse JSON
-	if err != nil {                         // Check for errors
-		return nil, err // Return found error
-	}
-
-	switch parser.TransactionTag { // Handle different tag types
+	switch parser.Tag { // Handle different tag types
 	case "nop":
 		return nil, nil // Nothing to do!
 	case "transfer":
-		return parser.parseTransfer(parsedJSON) // Parse
+		return parser.parseTransfer(data) // Parse
 	case "stake":
-		return parser.parseStake(parsedJSON) // Parse
+		return parser.parseStake(data) // Parse
 	case "contract":
-		return parser.parseContract(parsedJSON) // Parse
+		return parser.parseContract(data) // Parse
 	case "batch":
-		return parser.parseBatch(parsedJSON) // Parse
+		return parser.parseBatch(data) // Parse
 	}
 
 	return nil, ErrCouldNotParse // Return error (shouldn't ever get here)
@@ -78,12 +71,21 @@ func (parser *Parser) ParseJSON(data []byte) ([]byte, error) {
 
 /* BEGIN INTERNAL METHODS */
 
+/*
+	BEGIN TAG HANDLERS
+*/
+
 // parseTransfer parses a transaction payload with the transfer tag.
-func (parser *Parser) parseTransfer(json map[string]interface{}) ([]byte, error) {
+func (parser *Parser) parseTransfer(data []byte) ([]byte, error) {
 	payload := bytes.NewBuffer(nil) // Initialize buffer
 
-	recipient, err := parseRecipient(json) // Parse recipient
-	if err != nil {                        // Check for errors
+	parsedData, err := parseJSONBytes(data) // Parse data
+	if err != nil {                         // Check for errors
+		return nil, err // Return found error
+	}
+
+	recipient, err := parseRecipient(parsedData) // Parse recipient
+	if err != nil {                              // Check for errors
 		return nil, err // Return found error
 	}
 
@@ -92,8 +94,8 @@ func (parser *Parser) parseTransfer(json map[string]interface{}) ([]byte, error)
 		return nil, err // Return found error
 	}
 
-	amount, err := parseAmount(json) // Parse amount
-	if err != nil {                  // Check for errors
+	amount, err := parseAmount(parsedData) // Parse amount
+	if err != nil {                        // Check for errors
 		return nil, err // Return found error
 	}
 
@@ -102,8 +104,8 @@ func (parser *Parser) parseTransfer(json map[string]interface{}) ([]byte, error)
 		return nil, err // Return found error
 	}
 
-	gasLimit, err := parseGasLimit(json)  // Parse gas imit
-	if err != nil && err != ErrNilField { // Check for errors
+	gasLimit, err := parseGasLimit(parsedData) // Parse gas imit
+	if err != nil && err != ErrNilField {      // Check for errors
 		return nil, err // Return found error
 	}
 
@@ -114,8 +116,8 @@ func (parser *Parser) parseTransfer(json map[string]interface{}) ([]byte, error)
 		}
 	}
 
-	funcNameLength, funcName, funcParamsLength, funcParams, err := parseFunction(json) // Parse function
-	if err != nil && err != ErrNilField {                                              // Check for errors
+	funcNameLength, funcName, funcParamsLength, funcParams, err := parseFunction(parsedData) // Parse function
+	if err != nil && err != ErrNilField {                                                    // Check for errors
 		return nil, err // Return found error
 	}
 
@@ -128,27 +130,32 @@ func (parser *Parser) parseTransfer(json map[string]interface{}) ([]byte, error)
 }
 
 // parseStake parses a transaction payload with the stake tag.
-func (parser *Parser) parseStake(json map[string]interface{}) ([]byte, error) {
-	
+func (parser *Parser) parseStake(data []byte) ([]byte, error) {
 }
 
 // parseContract parses a transaction payload with the contract tag.
-func (parser *Parser) parseContract(json map[string]interface{}) ([]byte, error) {
-
+func (parser *Parser) parseContract(data []byte) ([]byte, error) {
 }
 
 // parseBatch parses a transaction payload with the batch tag.
-func (parser *Parser) parseBatch(json map[string]interface{}) ([]byte, error) {
-
+func (parser *Parser) parseBatch(data []byte) ([]byte, error) {
 }
 
+/*
+	END TAG HANDLERS
+*/
+
+/*
+	BEGIN PARSER HELPER METHODS
+*/
+
 // parseAmount gets the amount of PERLs sent in a given transaction.
-func parseAmount(json map[string]interface{}) ([8]byte, error) {
-	if json["amount"] == nil { // Check no value
+func parseAmount(json *fastjson.Value) ([8]byte, error) {
+	if !json.Exists("amount") { // Check amount does not exist
 		return [8]byte{}, ErrNilField // Return nil field error
 	}
 
-	amount := uint64(json["amount"].(float64)) // Get uint64 amount value
+	amount := uint64(json.GetFloat64("amount")) // Get amount value
 
 	var intBuf [8]byte                               // Initialize integer buffer
 	binary.LittleEndian.PutUint64(intBuf[:], amount) // Write to buffer
@@ -157,12 +164,12 @@ func parseAmount(json map[string]interface{}) ([8]byte, error) {
 }
 
 // parseGasLimit gets the gas limit of a particular transaction.
-func parseGasLimit(json map[string]interface{}) ([8]byte, error) {
-	if json["gas_limit"] == nil { // Check no value
+func parseGasLimit(json *fastjson.Value) ([8]byte, error) {
+	if !json.Exists("gas_limit") { // Check no value
 		return [8]byte{}, ErrNilField // Return nil field error
 	}
 
-	gasLimit := uint64(json["gas_limit"].(float64)) // Get uint64 gas limit value
+	gasLimit := uint64(json.GetFloat64("gas_limit")) // Get uint64 gas limit value
 
 	var intBuf [8]byte                                 // Initialize integer buffer
 	binary.LittleEndian.PutUint64(intBuf[:], gasLimit) // Write to buffer
@@ -172,12 +179,12 @@ func parseGasLimit(json map[string]interface{}) ([8]byte, error) {
 
 // parseFunction gets a payload's target function, as well as the parameters
 // corresponding to such a function.
-func parseFunction(json map[string]interface{}) ([8]byte, string, [8]byte, []byte, error) {
-	if json["fn_name"] == nil {
+func parseFunction(json *fastjson.Value) ([8]byte, string, [8]byte, []byte, error) {
+	if !json.Exists("fn_name") {
 		return [8]byte{}, "", [8]byte{}, nil, ErrNilField // Return nil field error
 	}
 
-	funcName := json["fn_name"].(string) // Get function name
+	funcName := string(json.GetStringBytes("fn_name")) // Get function name
 
 	var intBuf [8]byte // Initialize integer buffer
 
@@ -186,8 +193,10 @@ func parseFunction(json map[string]interface{}) ([8]byte, string, [8]byte, []byt
 
 	params := bytes.NewBuffer(nil) // Initialize payload buffer
 
-	if json["fn_payload"] != nil { // Check does have function payload
-		for _, payload := range json["fn_payload"].([]string) { // Iterate through payloads
+	if json.Exists("fn_payload") { // Check does have function payload
+		for _, payloadValue := range json.GetArray("fn_payload") { // Iterate through payloads
+			payload := payloadValue.String() // Convert to string
+
 			switch payload[0] {
 			case 'S':
 				binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(payload[1:]))) // Write to buffer
@@ -238,42 +247,42 @@ func parseFunction(json map[string]interface{}) ([8]byte, string, [8]byte, []byt
 
 // parseRecipient gets the recipient of the transaction from the JSON map,
 // and performs address length safety checks immediately after.
-func parseRecipient(json map[string]interface{}) ([]byte, error) {
-	if json["recipient"] == nil { // Check no value
+func parseRecipient(json *fastjson.Value) ([]byte, error) {
+	if !json.Exists("recipient") { // Check no value
 		return nil, ErrNilField // Return nil field error
 	}
 
-	recipient, err := hex.DecodeString(json["recipient"].(string))
-	if err != nil { // Check for errors
+	recipient, err := hex.DecodeString(string(json.GetStringBytes("recipient"))) // Decode recipient hex string
+	if err != nil {                                                              // Check for errors
 		return nil, err // Return found error
 	}
 
-	if len(recipient) != wavelet.SizeAccountID {
+	if len(recipient) != SizeAccountID {
 		return nil, err // Return invalid recipient ID error
 	}
 
-	var recipientID wavelet.AccountID // Initialize ID buffer
-	copy(recipientID[:], recipient)   // Copy address to buffer
+	var recipientID AccountID       // Initialize ID buffer
+	copy(recipientID[:], recipient) // Copy address to buffer
 
 	return recipient, nil // Return recipient
 }
 
 // parseJSONBytes parses a given raw JSON input, and converts such an input
-// to a string -> interface map.
-func parseJSONBytes(data []byte) (map[string]interface{}, error) {
-	var parsedPayloadJSON map[string]interface{} // Initialize parsed buffer
+// to a fastjson value pointer.
+func parseJSONBytes(data []byte) (*fastjson.Value, error) {
+	var p fastjson.Parser // Initialize parser
 
-	err := json.Unmarshal(data, &parsedPayloadJSON) // Unmarshal JSON
-	if err != nil {                                 // Check for errors
-		return nil, err // Return error
+	v, err := p.Parse(string(data)) // Parse json
+	if err != nil {                 // Check for errors
+		return nil, err // Return found error
 	}
 
-	return parsedPayloadJSON, nil // Return parsed
+	return v, nil // Return parsed
 }
 
 // getValidTags gets a populated map of valid tags.
 func getValidTags() map[string]bool {
-	var tagStrings = []string{"nop", "transfer", "stake", "contract", "batch"} // Declare valid tag strings
+	tagStrings := []string{"nop", "transfer", "stake", "contract", "batch"} // Declare valid tag strings
 
 	tags := make(map[string]bool) // Init tags map
 
@@ -283,5 +292,9 @@ func getValidTags() map[string]bool {
 
 	return tags // Return tags
 }
+
+/*
+	END PARSER HELPER METHODS
+*/
 
 /* END INTERNAL METHODS */
