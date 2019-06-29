@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"io/ioutil"
 
 	"github.com/perlin-network/wavelet/sys"
@@ -149,45 +148,55 @@ func (parser *TransactionParserJSON) parseTransfer(data []byte) ([]byte, error) 
 			params := bytes.NewBuffer(nil) // Initialize payload buffer
 
 			for _, payloadValue := range json.GetArray("fn_payload") { // Iterate through payloads
-				payload := payloadValue.String() // Convert to string
+				if !payloadValue.Exists("type") { // Check does not declare type
+					return nil, ErrNilField // Return nil field error
+				}
 
-				switch payload[0] {
-				case 'S':
-					binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(payload[1:]))) // Write to buffer
-					params.Write(intBuf[:4])                                            // Write to buffer
-					params.WriteString(payload[1:])                                     // Write to buffer
-				case 'B':
-					binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(payload[1:]))) // Write to buffer
-					params.Write(intBuf[:4])                                            // Write to buffer
-					params.Write([]byte(payload[1:]))                                   // Write to buffer
-				case '1', '2', '4', '8':
-					var val uint64 // Initialize value buffer
+				payloadType := string(payloadValue.GetStringBytes("type")) // Get payload type
 
-					_, err := fmt.Sscanf(payload[1:], "%d", &val) // Scan payload into value buffer
-					if err != nil {                               // Check for errors
+				switch payloadType { // Handle different payload types
+				case "string":
+					value := string(payloadValue.GetStringBytes("value")) // Get value
+
+					binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(value))) // Write value length to buffer
+
+					params.Write(intBuf[:4])  // Write to buffer
+					params.WriteString(value) // Write value
+				case "bytes":
+					value := payloadValue.GetStringBytes("value") // Get value
+
+					binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(value))) // Write value length to buffer
+
+					params.Write(intBuf[:4]) // Write to buffer
+					params.Write(value)      // Write value
+				case "uint8", "uint16", "uint32", "uint64":
+					value := payloadValue.GetInt64("value") // Get value
+
+					switch payloadType { // Handle different int sizes
+					case "uint8":
+						params.WriteByte(byte(value)) // Write value
+					case "uint16":
+						binary.LittleEndian.PutUint16(intBuf[:2], uint16(value)) // Write to buffer
+
+						params.Write(intBuf[:2]) // Write value
+					case "uint32":
+						binary.LittleEndian.PutUint32(intBuf[:4], uint32(value)) // Write to buffer
+
+						params.Write(intBuf[:4]) // Write value
+					case "uint64":
+						binary.LittleEndian.PutUint64(intBuf[:8], uint64(value)) // Write to buffer
+
+						params.Write(intBuf[:8]) // Write value
+					}
+				case "hex":
+					value := string(payloadValue.GetStringBytes("value")) // Get value
+
+					buf, err := hex.DecodeString(value) // Decode value
+					if err != nil {                     // Check for errors
 						return nil, err // Return found error
 					}
 
-					switch payload[0] { // Handle different integer sizes
-					case '1':
-						params.WriteByte(byte(val)) // Write to buffer
-					case '2':
-						binary.LittleEndian.PutUint16(intBuf[:2], uint16(val)) // Write to buffer
-						params.Write(intBuf[:2])                               // Write to buffer
-					case '4':
-						binary.LittleEndian.PutUint32(intBuf[:4], uint32(val)) // Write to buffer
-						params.Write(intBuf[:4])                               // Write to buffer
-					case '8':
-						binary.LittleEndian.PutUint64(intBuf[:8], uint64(val)) // Write to buffer
-						params.Write(intBuf[:8])                               // Write to buffer
-					}
-				case 'H':
-					buf, err := hex.DecodeString(payload[1:]) // Decode hex string
-					if err != nil {                           // Check for errors
-						return nil, err // Return found error
-					}
-
-					params.Write(buf) // Write to params
+					params.Write(buf) // Write value
 				}
 			}
 
@@ -227,16 +236,10 @@ func (parser *TransactionParserJSON) parseStake(data []byte) ([]byte, error) {
 	switch json.GetInt("operation") { // Handle different operations
 	case 0:
 		operation = sys.WithdrawStake // Set operation
-
-		break // Break
 	case 1:
 		operation = sys.WithdrawReward // Set operation
-
-		break // Break
 	case 2:
 		operation = sys.WithdrawReward // Set operation
-
-		break // Break
 	}
 
 	decodedAmount := uint64(json.GetFloat64("amount")) // Get amount value
@@ -288,45 +291,55 @@ func (parser *TransactionParserJSON) parseContract(data []byte) ([]byte, error) 
 		params := bytes.NewBuffer(nil) // Initialize payload buffer
 
 		for _, payloadValue := range json.GetArray("fn_payload") { // Iterate through payloads
-			payload := payloadValue.String() // Convert to string
+			if !payloadValue.Exists("type") { // Check does not declare type
+				return nil, ErrNilField // Return nil field error
+			}
 
-			switch payload[0] {
-			case 'S':
-				binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(payload[1:]))) // Write to buffer
-				params.Write(intBuf[:4])                                            // Write to buffer
-				params.WriteString(payload[1:])                                     // Write to buffer
-			case 'B':
-				binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(payload[1:]))) // Write to buffer
-				params.Write(intBuf[:4])                                            // Write to buffer
-				params.Write([]byte(payload[1:]))                                   // Write to buffer
-			case '1', '2', '4', '8':
-				var val uint64 // Initialize value buffer
+			payloadType := string(payloadValue.GetStringBytes("type")) // Get payload type
 
-				_, err := fmt.Sscanf(payload[1:], "%d", &val) // Scan payload into value buffer
-				if err != nil {                               // Check for errors
+			switch payloadType { // Handle different payload types
+			case "string":
+				value := string(payloadValue.GetStringBytes("value")) // Get value
+
+				binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(value))) // Write value length to buffer
+
+				params.Write(intBuf[:4])  // Write to buffer
+				params.WriteString(value) // Write value
+			case "bytes":
+				value := payloadValue.GetStringBytes("value") // Get value
+
+				binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(value))) // Write value length to buffer
+
+				params.Write(intBuf[:4]) // Write to buffer
+				params.Write(value)      // Write value
+			case "uint8", "uint16", "uint32", "uint64":
+				value := payloadValue.GetInt64("value") // Get value
+
+				switch payloadType { // Handle different int sizes
+				case "uint8":
+					params.WriteByte(byte(value)) // Write value
+				case "uint16":
+					binary.LittleEndian.PutUint16(intBuf[:2], uint16(value)) // Write to buffer
+
+					params.Write(intBuf[:2]) // Write value
+				case "uint32":
+					binary.LittleEndian.PutUint32(intBuf[:4], uint32(value)) // Write to buffer
+
+					params.Write(intBuf[:4]) // Write value
+				case "uint64":
+					binary.LittleEndian.PutUint64(intBuf[:8], uint64(value)) // Write to buffer
+
+					params.Write(intBuf[:8]) // Write value
+				}
+			case "hex":
+				value := string(payloadValue.GetStringBytes("value")) // Get value
+
+				buf, err := hex.DecodeString(value) // Decode value
+				if err != nil {                     // Check for errors
 					return nil, err // Return found error
 				}
 
-				switch payload[0] { // Handle different integer sizes
-				case '1':
-					params.WriteByte(byte(val)) // Write to buffer
-				case '2':
-					binary.LittleEndian.PutUint16(intBuf[:2], uint16(val)) // Write to buffer
-					params.Write(intBuf[:2])                               // Write to buffer
-				case '4':
-					binary.LittleEndian.PutUint32(intBuf[:4], uint32(val)) // Write to buffer
-					params.Write(intBuf[:4])                               // Write to buffer
-				case '8':
-					binary.LittleEndian.PutUint64(intBuf[:8], uint64(val)) // Write to buffer
-					params.Write(intBuf[:8])                               // Write to buffer
-				}
-			case 'H':
-				buf, err := hex.DecodeString(payload[1:]) // Decode hex string
-				if err != nil {                           // Check for errors
-					return nil, err // Return found error
-				}
-
-				params.Write(buf) // Write to params
+				params.Write(buf) // Write value
 			}
 		}
 
