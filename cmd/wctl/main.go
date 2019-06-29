@@ -30,12 +30,11 @@ import (
 	"strconv"
 	"time"
 
-	"gopkg.in/urfave/cli.v1"
-
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
+	"gopkg.in/urfave/cli.v1"
 )
 
 var tagConversion = map[string]byte{
@@ -464,7 +463,7 @@ func main() {
 						return err
 					}
 
-					parser := wavelet.NewTransactionParserJSON(c.Args().Get(0)) // Initialize parser
+					parser := wavelet.NewParser(c.Args().Get(0)) // Initialize parser
 
 					parsedPayload, err := parser.ParseJSON(payloadFile) // Parse payload file contents
 					if err != nil {                                     // Check for errors
