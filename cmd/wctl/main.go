@@ -21,7 +21,6 @@ package main
 
 import (
 	"bytes"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -35,7 +34,6 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
-	"gopkg.in/urfave/cli.v1"
 )
 
 var tagConversion = map[string]byte{
@@ -464,29 +462,14 @@ func main() {
 						return err
 					}
 
-					var parsedPayloadJSON map[string]interface{}
+					parser := wavelet.NewParser(c.Args().Get(0)) // Initialize parser
 
-					err = json.Unmarshal(payloadFile, &parsedPayloadJSON)
-					if err != nil {
-						return err
+					parsedPayload, err := parser.ParseJSON(payloadFile) // Parse payload file contents
+					if err != nil {                                     // Check for errors
+						return err // Return found error
 					}
 
-					recipient, err := hex.DecodeString(parsedPayloadJSON["recipient"].(string))
-					if err != nil {
-						return err
-					}
-
-					if len(recipient) != wavelet.SizeAccountID {
-						return errors.New("invalid account ID specified")
-					}
-
-					amount := uint64(parsedPayloadJSON["amount"].(float64))
-
-					payload.Write(recipient[:])
-
-					var intBuf [8]byte
-					binary.LittleEndian.PutUint64(intBuf[:], amount)
-					payload.Write(intBuf[:])
+					payload.Write(parsedPayload) // Write payload to buffer
 				}
 
 				res, err := client.SendTransaction(byte(tag), payload.Bytes())
