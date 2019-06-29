@@ -11,11 +11,6 @@ import (
 	"github.com/valyala/fastjson"
 )
 
-// TransactionParserJSON defines a generic JSON transaction payload parser.
-type TransactionParserJSON struct {
-	Tag string // Transaction tag
-}
-
 var (
 	// ErrNoTag defines an error describing an empty Tag.
 	ErrNoTag = errors.New("no tag specified")
@@ -38,16 +33,9 @@ var (
 
 /* BEGIN EXPORTED METHODS */
 
-// NewTransactionParserJSON initializes a new transaction JSON parser with the given transaction type.
-func NewTransactionParserJSON(tag string) *TransactionParserJSON {
-	return &TransactionParserJSON{
-		Tag: tag, // Set tag
-	} // Initialize parser
-}
-
 // ParseJSON parses the given JSON payload input.
-func (parser *TransactionParserJSON) ParseJSON(data []byte) ([]byte, error) {
-	if parser.Tag == "" { // Check no transaction tag
+func ParseJSON(data []byte, tag string) ([]byte, error) {
+	if tag == "" { // Check no transaction tag
 		return nil, ErrNoTag // Return no tag error
 	}
 
@@ -57,8 +45,8 @@ func (parser *TransactionParserJSON) ParseJSON(data []byte) ([]byte, error) {
 
 	valid := false // Initialize valid buffer
 
-	for _, tag := range sys.TagNames { // Iterate through valid string tag names
-		if tag == parser.Tag { // Check valid tag
+	for _, currentTag := range sys.TagNames { // Iterate through valid string tag names
+		if currentTag == tag { // Check valid tag
 			valid = true // Set valid
 
 			break // Break
@@ -69,17 +57,17 @@ func (parser *TransactionParserJSON) ParseJSON(data []byte) ([]byte, error) {
 		return nil, ErrInvalidTag // Return error
 	}
 
-	switch parser.Tag { // Handle different tag types
+	switch tag { // Handle different tag types
 	case "nop":
 		return nil, nil // Nothing to do!
 	case "transfer":
-		return parser.parseTransfer(data) // Parse
+		return parseTransfer(data) // Parse
 	case "stake":
-		return parser.parseStake(data) // Parse
+		return parseStake(data) // Parse
 	case "contract":
-		return parser.parseContract(data) // Parse
+		return parseContract(data) // Parse
 	case "batch":
-		return parser.parseBatch(data) // Parse
+		return parseBatch(data) // Parse
 	}
 
 	return nil, ErrCouldNotParse // Return error (shouldn't ever get here)
@@ -94,7 +82,7 @@ func (parser *TransactionParserJSON) ParseJSON(data []byte) ([]byte, error) {
 */
 
 // parseTransfer parses a transaction payload with the transfer tag.
-func (parser *TransactionParserJSON) parseTransfer(data []byte) ([]byte, error) {
+func parseTransfer(data []byte) ([]byte, error) {
 	payload := bytes.NewBuffer(nil) // Initialize buffer
 
 	var p fastjson.Parser // Initialize parser
@@ -225,7 +213,7 @@ func (parser *TransactionParserJSON) parseTransfer(data []byte) ([]byte, error) 
 }
 
 // parseStake parses a transaction payload with the stake tag.
-func (parser *TransactionParserJSON) parseStake(data []byte) ([]byte, error) {
+func parseStake(data []byte) ([]byte, error) {
 	payload := bytes.NewBuffer(nil) // Initialize buffer
 
 	var p fastjson.Parser // Initialize parser
@@ -275,7 +263,7 @@ func (parser *TransactionParserJSON) parseStake(data []byte) ([]byte, error) {
 }
 
 // parseContract parses a transaction payload with the contract tag.
-func (parser *TransactionParserJSON) parseContract(data []byte) ([]byte, error) {
+func parseContract(data []byte) ([]byte, error) {
 	payload := bytes.NewBuffer(nil) // Initialize buffer
 
 	var p fastjson.Parser // Initialize parser
@@ -377,7 +365,7 @@ func (parser *TransactionParserJSON) parseContract(data []byte) ([]byte, error) 
 }
 
 // parseBatch parses a transaction payload with the batch tag.
-func (parser *TransactionParserJSON) parseBatch(data []byte) ([]byte, error) {
+func parseBatch(data []byte) ([]byte, error) {
 	payload := bytes.NewBuffer(nil) // Initialize buffer
 
 	var p fastjson.Parser // Initialize parser
@@ -405,10 +393,8 @@ func (parser *TransactionParserJSON) parseBatch(data []byte) ([]byte, error) {
 			return nil, err // Return found error
 		}
 
-		txParser := NewTransactionParserJSON(string(tx.GetStringBytes("tag"))) // Initialize parser
-
-		txPayload, err := txParser.ParseJSON(txJSON) // Parse JSON
-		if err != nil {                              // Check for errors
+		txPayload, err := ParseJSON(txJSON, string(tx.GetStringBytes("tag"))) // Parse JSON
+		if err != nil {                                                       // Check for errors
 			return nil, err // Return found error
 		}
 
