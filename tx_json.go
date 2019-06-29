@@ -167,7 +167,7 @@ func (parser *Parser) parseStake(data []byte) ([]byte, error) {
 func (parser *Parser) parseContract(data []byte) ([]byte, error) {
 	payload := bytes.NewBuffer(nil) // Initialize buffer
 
-	parsedData, err := parseJOSNBytes(data) // Parse data
+	parsedData, err := parseJSONBytes(data) // Parse data
 	if err != nil {                         // Check for errors
 		return nil, err // Return found error
 	}
@@ -182,8 +182,8 @@ func (parser *Parser) parseContract(data []byte) ([]byte, error) {
 		return nil, err // Return found error
 	}
 
-	code, err := parseContractCode(json) // Parse contract code
-	if err != nil {                      // Check for errors
+	code, err := parseContractCode(parsedData) // Parse contract code
+	if err != nil {                            // Check for errors
 		return nil, err // Return found error
 	}
 
@@ -212,6 +212,45 @@ func (parser *Parser) parseContract(data []byte) ([]byte, error) {
 
 // parseBatch parses a transaction payload with the batch tag.
 func (parser *Parser) parseBatch(data []byte) ([]byte, error) {
+	payload := bytes.NewBuffer(nil) // Initialize buffer
+
+	parsedData, err := parseJSONBytes(data) // Parse data
+	if err != nil {                         // Check for errors
+		return nil, err // Return found error
+	}
+
+	if !parsedData.Exists("payloads") { // Check no value
+		return nil, ErrNilField // Return nil field error
+	}
+
+	transactions := parsedData.GetArray("payloads") // Get payloads
+
+	var batchLength [8]byte // Initialize batch length buffer
+
+	binary.LittleEndian.PutUint64(batchLength[:], uint64(len(transactions))) // Write batch length to buffer
+
+	payload.Write(batchLength[:4]) // Write batch length
+
+	for _, transaction := range transactions { // Iterate through transactions
+		json, err := transaction.StringBytes() // Get JSON
+		if err != nil {                        // Check for errors
+			return nil, err // Return found error
+		}
+
+		txParser := NewParser(string(transaction.GetStringBytes("tag"))) // Initialize parser
+
+		txPayload, err := txParser.ParseJSON(json) // Parse JSON
+		if err != nil {                            // Check for errors
+			return nil, err // Return found error
+		}
+
+		_, err = payload.Write(txPayload) // Write payload
+		if err != nil {                   // Check for errors
+			return nil, err // Return found error
+		}
+	}
+
+	return payload.Bytes(), nil // Return payload
 }
 
 /*
@@ -222,6 +261,7 @@ func (parser *Parser) parseBatch(data []byte) ([]byte, error) {
 	BEGIN PARSER HELPER METHODS
 */
 
+// parseOperation gets the operation of a particular stake transaction.
 func parseOperation(json *fastjson.Value) (byte, error) {
 	if !json.Exists("operation") { // Check no value
 		return byte(0), ErrNilField // Return nil field error

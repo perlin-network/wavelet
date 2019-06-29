@@ -36,3 +36,7 @@ via the `--payload` flag. The names of each of the aforementioned payload fields
 | Code          | contract_code (string, path to file) |
 
 ### Batch
+
+| Payload Field | JSON Field                                                   |
+|---------------|--------------------------------------------------------------|
+| Payloads      | payloads (array, including tag along with standard payloads) |
