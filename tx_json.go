@@ -51,6 +51,10 @@ func (parser *TransactionParserJSON) ParseJSON(data []byte) ([]byte, error) {
 		return nil, ErrNoTag // Return no tag error
 	}
 
+	if err := fastjson.ValidateBytes(data); err != nil { // Check not valid JSON
+		return nil, err // Return found error
+	}
+
 	valid := false // Initialize valid buffer
 
 	for _, tag := range sys.TagNames { // Iterate through valid string tag names
