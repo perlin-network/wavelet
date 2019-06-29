@@ -134,15 +134,69 @@ func (parser *TransactionParserJSON) parseTransfer(data []byte) ([]byte, error) 
 		}
 	}
 
-	funcNameLength, funcName, funcParamsLength, funcParams, err := parseFunction(json) // Parse function
-	if err != nil && err != ErrNilField {                                              // Check for errors
-		return nil, err // Return found error
-	}
+	if json.Exists("fn_name") { // Check has function name
+		funcName := string(json.GetStringBytes("fn_name")) // Get function name
 
-	payload.Write(funcNameLength[:4])   // Write name length
-	payload.WriteString(funcName)       // Write function name
-	payload.Write(funcParamsLength[:4]) // Write length of function parameters
-	payload.Write(funcParams)           // Write parameters
+		var funcNameLength [8]byte                                               // Initialize dedicated len buffer
+		binary.LittleEndian.PutUint32(funcNameLength[:4], uint32(len(funcName))) // Write to buffer
+
+		payload.Write(funcNameLength[:4]) // Write name length
+		payload.WriteString(funcName)     // Write function name
+
+		if json.Exists("fn_payload") { // Check has function payload
+			var intBuf [8]byte // Initialize integer buffer
+
+			params := bytes.NewBuffer(nil) // Initialize payload buffer
+
+			for _, payloadValue := range json.GetArray("fn_payload") { // Iterate through payloads
+				payload := payloadValue.String() // Convert to string
+
+				switch payload[0] {
+				case 'S':
+					binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(payload[1:]))) // Write to buffer
+					params.Write(intBuf[:4])                                            // Write to buffer
+					params.WriteString(payload[1:])                                     // Write to buffer
+				case 'B':
+					binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(payload[1:]))) // Write to buffer
+					params.Write(intBuf[:4])                                            // Write to buffer
+					params.Write([]byte(payload[1:]))                                   // Write to buffer
+				case '1', '2', '4', '8':
+					var val uint64 // Initialize value buffer
+
+					_, err := fmt.Sscanf(payload[1:], "%d", &val) // Scan payload into value buffer
+					if err != nil {                               // Check for errors
+						return nil, err // Return found error
+					}
+
+					switch payload[0] { // Handle different integer sizes
+					case '1':
+						params.WriteByte(byte(val)) // Write to buffer
+					case '2':
+						binary.LittleEndian.PutUint16(intBuf[:2], uint16(val)) // Write to buffer
+						params.Write(intBuf[:2])                               // Write to buffer
+					case '4':
+						binary.LittleEndian.PutUint32(intBuf[:4], uint32(val)) // Write to buffer
+						params.Write(intBuf[:4])                               // Write to buffer
+					case '8':
+						binary.LittleEndian.PutUint64(intBuf[:8], uint64(val)) // Write to buffer
+						params.Write(intBuf[:8])                               // Write to buffer
+					}
+				case 'H':
+					buf, err := hex.DecodeString(payload[1:]) // Decode hex string
+					if err != nil {                           // Check for errors
+						return nil, err // Return found error
+					}
+
+					params.Write(buf) // Write to params
+				}
+			}
+
+			binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(params.Bytes()))) // Write length of function parameters to buffer
+
+			payload.Write(intBuf[:4])     // Write length of function parameters
+			payload.Write(params.Bytes()) // Write parameters
+		}
+	}
 
 	return payload.Bytes(), nil // Return payload
 }
@@ -314,26 +368,6 @@ func parseOperation(json *fastjson.Value) (byte, error) {
 	}
 
 	return byte(0), ErrInvalidOperation // Return invalid operation error
-}
-
-// parseFunction gets a payload's target function, as well as the parameters
-// corresponding to such a function.
-func parseFunction(json *fastjson.Value) ([8]byte, string, [8]byte, []byte, error) {
-	if !json.Exists("fn_name") { // Check no value
-		return [8]byte{}, "", [8]byte{}, nil, ErrNilField // Return nil field error
-	}
-
-	funcName := string(json.GetStringBytes("fn_name")) // Get function name
-
-	funcParamsLength, funcParams, err := parseFunctionPayload(json) // Parse payload
-	if err != nil {                                                 // Check for errors
-		return [8]byte{}, "", [8]byte{}, nil, err // Return found error
-	}
-
-	var functionNameLength [8]byte                                               // Initialize dedicated len buffer
-	binary.LittleEndian.PutUint32(functionNameLength[:4], uint32(len(funcName))) // Write to buffer
-
-	return functionNameLength, funcName, funcParamsLength, funcParams, nil // Return params
 }
 
 // parseFunctionPayload gets a payload's target function's payload.
