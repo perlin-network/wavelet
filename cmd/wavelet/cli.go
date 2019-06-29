@@ -52,7 +52,7 @@ type CLI struct {
 }
 
 func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Keypair) (*CLI, error) {
-	CLI := &CLI{
+	c := &CLI{
 		client: client,
 		ledger: ledger,
 		logger: log.Node(),
@@ -60,68 +60,68 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 		app:    cli.NewApp(),
 	}
 
-	CLI.app.Name = "wavelet"
-	CLI.app.HideVersion = true
-	CLI.app.UsageText = "command [arguments...]"
-	CLI.app.CommandNotFound = func(ctx *cli.Context, s string) {
-		CLI.logger.Error().
+	c.app.Name = "wavelet"
+	c.app.HideVersion = true
+	c.app.UsageText = "command [arguments...]"
+	c.app.CommandNotFound = func(ctx *cli.Context, s string) {
+		c.logger.Error().
 			Msg("Unknown command: " + s)
 	}
 
 	// List of commands and their actions
-	CLI.app.Commands = []cli.Command{
+	c.app.Commands = []cli.Command{
 		{
 			Name:        "status",
 			Aliases:     []string{"l"},
-			Action:      a(CLI.status),
+			Action:      a(c.status),
 			Description: "print out information about your node",
 		},
 		{
 			Name:        "pay",
 			Aliases:     []string{"p"},
-			Action:      a(CLI.pay),
+			Action:      a(c.pay),
 			Description: "pay the address an amount of PERLs",
 		},
 		{
 			Name:        "call",
 			Aliases:     []string{"c"},
-			Action:      a(CLI.call),
+			Action:      a(c.call),
 			Description: "invoke a function on a smart contract",
 		},
 		{
 			Name:        "find",
 			Aliases:     []string{"f"},
-			Action:      a(CLI.find),
+			Action:      a(c.find),
 			Description: "search for any wallet/smart contract/transaction",
 		},
 		{
 			Name:        "spawn",
 			Aliases:     []string{"s"},
-			Action:      a(CLI.spawn),
+			Action:      a(c.spawn),
 			Description: "test deploy a smart contract",
 		},
 		{
 			Name:        "place-stake",
 			Aliases:     []string{"ps"},
-			Action:      a(CLI.placeStake),
+			Action:      a(c.placeStake),
 			Description: "deposit a stake of PERLs into the network",
 		},
 		{
 			Name:        "withdraw-stake",
 			Aliases:     []string{"ws"},
-			Action:      a(CLI.withdrawStake),
+			Action:      a(c.withdrawStake),
 			Description: "withdraw stake and diminish voting power",
 		},
 		{
 			Name:        "withdraw-reward",
 			Aliases:     []string{"wr"},
-			Action:      a(CLI.withdrawReward),
+			Action:      a(c.withdrawReward),
 			Description: "withdraw rewards into PERLs",
 		},
 		{
 			Name:    "exit",
 			Aliases: []string{"quit", ":q"},
-			Action:  a(CLI.exit),
+			Action:  a(c.exit),
 		},
 	}
 
@@ -130,7 +130,7 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 	s.WriteString("Commands:\n")
 	w := tabwriter.NewWriter(&s, 0, 0, 1, ' ', 0)
 
-	for _, c := range CLI.app.VisibleCommands() {
+	for _, c := range c.app.VisibleCommands() {
 		fmt.Fprintf(w,
 			"    %s (%s) %s\t%s\n",
 			c.Name, strings.Join(c.Aliases, ", "), c.Usage,
@@ -139,22 +139,22 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 	}
 
 	w.Flush()
-	CLI.app.CustomAppHelpTemplate = s.String()
+	c.app.CustomAppHelpTemplate = s.String()
 
 	// Add in autocompletion
 	var completers = make(
 		[]readline.PrefixCompleterInterface,
-		0, len(CLI.app.Commands)*2+1,
+		0, len(c.app.Commands)*2+1,
 	)
 
-	for _, cmd := range CLI.app.Commands {
+	for _, cmd := range c.app.Commands {
 		completers = append(completers, readline.PcItem(
-			cmd.Name, CLI.getCompleter(),
+			cmd.Name, c.getCompleter(),
 		))
 
 		for _, alias := range cmd.Aliases {
 			completers = append(completers, readline.PcItem(
-				alias, CLI.getCompleter(),
+				alias, c.getCompleter(),
 			))
 		}
 	}
@@ -175,7 +175,7 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 		return nil, err
 	}
 
-	CLI.rl = rl
+	c.rl = rl
 
 	log.SetWriter(
 		log.LoggerWavelet,
@@ -188,7 +188,7 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 		)),
 	)
 
-	return CLI, nil
+	return c, nil
 }
 
 func (cli *CLI) Start() {
