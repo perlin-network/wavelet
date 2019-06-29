@@ -29,4 +29,10 @@ via the `--payload` flag. The names of each of the aforementioned payload fields
 
 ### Contract
 
+| Payload Field | JSON Field                           |
+|---------------|--------------------------------------|
+| Gas Limit     | gas_limit                            |
+| Payload       | fn_payload                           |
+| Code          | contract_code (string, path to file) |
+
 ### Batch
