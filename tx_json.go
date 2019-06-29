@@ -246,7 +246,7 @@ func (parser *TransactionParserJSON) parseContract(data []byte) ([]byte, error) 
 		return nil, err // Return found error
 	}
 
-	if !json.Exists("gas_limit") { // Check no value
+	if !json.Exists("gas_limit") || !json.Exists("contract_code") { // Check no value
 		return nil, ErrNilField // Return nil field error
 	}
 
@@ -260,28 +260,62 @@ func (parser *TransactionParserJSON) parseContract(data []byte) ([]byte, error) 
 		return nil, err // Return found error
 	}
 
-	functionPayloadLength, functionPayload, err := parseFunctionPayload(json) // Parse function payload
-	if err != nil {                                                           // Check for errors
-		return nil, err // Return found error
+	if json.Exists("fn_payload") { // Check has function payload
+		var intBuf [8]byte // Initialize integer buffer
+
+		params := bytes.NewBuffer(nil) // Initialize payload buffer
+
+		for _, payloadValue := range json.GetArray("fn_payload") { // Iterate through payloads
+			payload := payloadValue.String() // Convert to string
+
+			switch payload[0] {
+			case 'S':
+				binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(payload[1:]))) // Write to buffer
+				params.Write(intBuf[:4])                                            // Write to buffer
+				params.WriteString(payload[1:])                                     // Write to buffer
+			case 'B':
+				binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(payload[1:]))) // Write to buffer
+				params.Write(intBuf[:4])                                            // Write to buffer
+				params.Write([]byte(payload[1:]))                                   // Write to buffer
+			case '1', '2', '4', '8':
+				var val uint64 // Initialize value buffer
+
+				_, err := fmt.Sscanf(payload[1:], "%d", &val) // Scan payload into value buffer
+				if err != nil {                               // Check for errors
+					return nil, err // Return found error
+				}
+
+				switch payload[0] { // Handle different integer sizes
+				case '1':
+					params.WriteByte(byte(val)) // Write to buffer
+				case '2':
+					binary.LittleEndian.PutUint16(intBuf[:2], uint16(val)) // Write to buffer
+					params.Write(intBuf[:2])                               // Write to buffer
+				case '4':
+					binary.LittleEndian.PutUint32(intBuf[:4], uint32(val)) // Write to buffer
+					params.Write(intBuf[:4])                               // Write to buffer
+				case '8':
+					binary.LittleEndian.PutUint64(intBuf[:8], uint64(val)) // Write to buffer
+					params.Write(intBuf[:8])                               // Write to buffer
+				}
+			case 'H':
+				buf, err := hex.DecodeString(payload[1:]) // Decode hex string
+				if err != nil {                           // Check for errors
+					return nil, err // Return found error
+				}
+
+				params.Write(buf) // Write to params
+			}
+		}
+
+		binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(params.Bytes()))) // Write length of function parameters to buffer
+
+		payload.Write(intBuf[:4])     // Write length of function parameters
+		payload.Write(params.Bytes()) // Write parameters
 	}
 
-	code, err := parseContractCode(json) // Parse contract code
-	if err != nil {                      // Check for errors
-		return nil, err // Return found error
-	}
-
-	_, err = payload.Write(gasLimit[:]) // Write to buffer
-	if err != nil {                     // Check for errors
-		return nil, err // Return found error
-	}
-
-	_, err = payload.Write(functionPayloadLength[:4]) // Write to buffer
-	if err != nil {                                   // Check for errors
-		return nil, err // Return found error
-	}
-
-	_, err = payload.Write(functionPayload) // Write to buffer
-	if err != nil {                         // Check for errors
+	code, err := ioutil.ReadFile(string(json.GetStringBytes("contract_code"))) // Read contract code
+	if err != nil {                                                            // Check for errors
 		return nil, err // Return found error
 	}
 
@@ -368,81 +402,6 @@ func parseOperation(json *fastjson.Value) (byte, error) {
 	}
 
 	return byte(0), ErrInvalidOperation // Return invalid operation error
-}
-
-// parseFunctionPayload gets a payload's target function's payload.
-func parseFunctionPayload(json *fastjson.Value) ([8]byte, []byte, error) {
-	if !json.Exists("fn_payload") { // Check no value
-		return [8]byte{}, nil, ErrNilField // Return nil field error
-	}
-
-	var intBuf [8]byte // Initialize integer buffer
-
-	params := bytes.NewBuffer(nil) // Initialize payload buffer
-
-	for _, payloadValue := range json.GetArray("fn_payload") { // Iterate through payloads
-		payload := payloadValue.String() // Convert to string
-
-		switch payload[0] {
-		case 'S':
-			binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(payload[1:]))) // Write to buffer
-			params.Write(intBuf[:4])                                            // Write to buffer
-			params.WriteString(payload[1:])                                     // Write to buffer
-		case 'B':
-			binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(payload[1:]))) // Write to buffer
-			params.Write(intBuf[:4])                                            // Write to buffer
-			params.Write([]byte(payload[1:]))                                   // Write to buffer
-		case '1', '2', '4', '8':
-			var val uint64 // Initialize value buffer
-
-			_, err := fmt.Sscanf(payload[1:], "%d", &val) // Scan payload into value buffer
-			if err != nil {                               // Check for errors
-				return [8]byte{}, nil, err // Return found error
-			}
-
-			switch payload[0] { // Handle different integer sizes
-			case '1':
-				params.WriteByte(byte(val)) // Write to buffer
-			case '2':
-				binary.LittleEndian.PutUint16(intBuf[:2], uint16(val)) // Write to buffer
-				params.Write(intBuf[:2])                               // Write to buffer
-			case '4':
-				binary.LittleEndian.PutUint32(intBuf[:4], uint32(val)) // Write to buffer
-				params.Write(intBuf[:4])                               // Write to buffer
-			case '8':
-				binary.LittleEndian.PutUint64(intBuf[:8], uint64(val)) // Write to buffer
-				params.Write(intBuf[:8])                               // Write to buffer
-			}
-		case 'H':
-			buf, err := hex.DecodeString(payload[1:]) // Decode hex string
-			if err != nil {                           // Check for errors
-				return [8]byte{}, nil, err // Return found error
-			}
-
-			params.Write(buf) // Write to params
-		default:
-			return [8]byte{}, nil, nil // No params
-		}
-	}
-
-	binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(params.Bytes()))) // Write length of function parameters to buffer
-
-	return intBuf, params.Bytes(), nil // Return params
-}
-
-// parseContractCode gets the code of a particular payload's corresponding
-// contract.
-func parseContractCode(json *fastjson.Value) ([]byte, error) {
-	if !json.Exists("contract_code") { // Check no value
-		return nil, ErrNilField // Return nil field error
-	}
-
-	code, err := ioutil.ReadFile(string(json.GetStringBytes("contract_code"))) // Read contract code
-	if err != nil {                                                            // Check for errors
-		return nil, err // Return found error
-	}
-
-	return code, nil // Return contract code
 }
 
 // getValidTags gets a populated map of valid tags.
