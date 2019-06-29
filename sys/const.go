@@ -19,9 +19,7 @@
 
 package sys
 
-import (
-	"time"
-)
+import "time"
 
 // Transaction tags.
 const (
@@ -264,5 +262,14 @@ var (
 		"wavelet.hash.sha256":         2500,  // TODO: Review
 		"wavelet.hash.sha512":         3000,  // TODO: Review
 		"wavelet.verify.ed25519":      50000, // TODO: Review
+	}
+
+	// String representations of each tag name.
+	TagNames = []string{
+		"TagNop",
+		"TagTransfer",
+		"TagContract",
+		"TagStake",
+		"TagBatch",
 	}
 )

@@ -51,7 +51,17 @@ func (parser *TransactionParserJSON) ParseJSON(data []byte) ([]byte, error) {
 		return nil, ErrNoTag // Return no tag error
 	}
 
-	if !getValidTags()[parser.Tag] { // Check invalid
+	valid := false // Initialize valid buffer
+
+	for _, tag := range sys.TagNames { // Iterate through valid string tag names
+		if tag == parser.Tag { // Check valid tag
+			valid = true // Set valid
+
+			break // Break
+		}
+	}
+
+	if !valid { // Check invalid
 		return nil, ErrInvalidTag // Return error
 	}
 
@@ -409,27 +419,6 @@ func (parser *TransactionParserJSON) parseBatch(data []byte) ([]byte, error) {
 
 /*
 	END TAG HANDLERS
-*/
-
-/*
-	BEGIN PARSER HELPER METHODS
-*/
-
-// getValidTags gets a populated map of valid tags.
-func getValidTags() map[string]bool {
-	tagStrings := []string{"nop", "transfer", "stake", "contract", "batch"} // Declare valid tag strings
-
-	tags := make(map[string]bool) // Init tags map
-
-	for _, tagString := range tagStrings { // Iterate through tag string representations
-		tags[tagString] = true // Set valid
-	}
-
-	return tags // Return tags
-}
-
-/*
-	END PARSER HELPER METHODS
 */
 
 /* END INTERNAL METHODS */
