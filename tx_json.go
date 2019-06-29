@@ -275,6 +275,12 @@ func parseOperation(json *fastjson.Value) (byte, error) {
 		return byte(0), ErrNilField // Return nil field error
 	}
 
+	operation := json.GetInt("operation") // Get operation code
+
+	if byte(operation) >= sys.TagBatch || byte(operation) < 0 { // Check invalid value
+		return byte(0), ErrInvalidOperation // Return invalid operation error
+	}
+
 	switch json.GetInt("operation") { // Handle different operations
 	case 0:
 		return sys.WithdrawStake, nil // Return parsed
