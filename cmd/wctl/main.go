@@ -463,7 +463,7 @@ func main() {
 						return err
 					}
 
-					parser := wavelet.NewParser(c.Args().Get(0)) // Initialize parser
+					parser := wavelet.NewTransactionParserJSON(c.Args().Get(0)) // Initialize parser
 
 					parsedPayload, err := parser.ParseJSON(payloadFile) // Parse payload file contents
 					if err != nil {                                     // Check for errors
