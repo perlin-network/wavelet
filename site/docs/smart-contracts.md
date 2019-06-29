@@ -395,7 +395,7 @@ skim over the table below which details how parameters for the payload are fed i
 | -------- | ---------------- |
 | 1/2/4/8 | Unsigned 8/16/32/64-bit integer |
 | H | Non-length-prefixed hex-encoded bytes |
-| S | Length-prefixed string |
+| S | String ending with a null terminator character '\0' |
 
 Given this, we may now construct any arbitrary function binary payload within our terminal. The final `call` command we would execute, assuming a gas limit of 999999 PERLs, would then be:
 

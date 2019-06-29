@@ -345,9 +345,8 @@ func (cli *CLI) call(cmd []string) {
 
 		switch arg[0] {
 		case 'S':
-			binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(arg[1:])))
-			params.Write(intBuf[:4])
 			params.WriteString(arg[1:])
+			params.WriteByte(0)
 		case 'B':
 			binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(arg[1:])))
 			params.Write(intBuf[:4])
