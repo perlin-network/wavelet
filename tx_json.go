@@ -81,13 +81,15 @@ func (parser *TransactionParserJSON) ParseJSON(data []byte) ([]byte, error) {
 func (parser *TransactionParserJSON) parseTransfer(data []byte) ([]byte, error) {
 	payload := bytes.NewBuffer(nil) // Initialize buffer
 
-	parsedData, err := parseJSONBytes(data) // Parse data
-	if err != nil {                         // Check for errors
+	var p fastjson.Parser // Initialize parser
+
+	json, err := p.Parse(string(data)) // Parse json
+	if err != nil {                    // Check for errors
 		return nil, err // Return found error
 	}
 
-	recipient, err := parseRecipient(parsedData) // Parse recipient
-	if err != nil {                              // Check for errors
+	recipient, err := parseRecipient(json) // Parse recipient
+	if err != nil {                        // Check for errors
 		return nil, err // Return found error
 	}
 
@@ -96,8 +98,8 @@ func (parser *TransactionParserJSON) parseTransfer(data []byte) ([]byte, error) 
 		return nil, err // Return found error
 	}
 
-	amount, err := parseAmount(parsedData) // Parse amount
-	if err != nil {                        // Check for errors
+	amount, err := parseAmount(json) // Parse amount
+	if err != nil {                  // Check for errors
 		return nil, err // Return found error
 	}
 
@@ -106,8 +108,8 @@ func (parser *TransactionParserJSON) parseTransfer(data []byte) ([]byte, error) 
 		return nil, err // Return found error
 	}
 
-	gasLimit, err := parseGasLimit(parsedData) // Parse gas imit
-	if err != nil && err != ErrNilField {      // Check for errors
+	gasLimit, err := parseGasLimit(json)  // Parse gas limit
+	if err != nil && err != ErrNilField { // Check for errors
 		return nil, err // Return found error
 	}
 
@@ -118,8 +120,8 @@ func (parser *TransactionParserJSON) parseTransfer(data []byte) ([]byte, error) 
 		}
 	}
 
-	funcNameLength, funcName, funcParamsLength, funcParams, err := parseFunction(parsedData) // Parse function
-	if err != nil && err != ErrNilField {                                                    // Check for errors
+	funcNameLength, funcName, funcParamsLength, funcParams, err := parseFunction(json) // Parse function
+	if err != nil && err != ErrNilField {                                              // Check for errors
 		return nil, err // Return found error
 	}
 
@@ -135,18 +137,20 @@ func (parser *TransactionParserJSON) parseTransfer(data []byte) ([]byte, error) 
 func (parser *TransactionParserJSON) parseStake(data []byte) ([]byte, error) {
 	payload := bytes.NewBuffer(nil) // Initialize buffer
 
-	parsedData, err := parseJSONBytes(data) // Parse data
-	if err != nil {                         // Check for errors
+	var p fastjson.Parser // Initialize parser
+
+	json, err := p.Parse(string(data)) // Parse json
+	if err != nil {                    // Check for errors
 		return nil, err // Return found error
 	}
 
-	operation, err := parseOperation(parsedData) // Parse operation
-	if err != nil {                              // Check for errors
-		return nil, err // Return found error
-	}
-
-	amount, err := parseAmount(parsedData) // Parse amount
+	operation, err := parseOperation(json) // Parse operation
 	if err != nil {                        // Check for errors
+		return nil, err // Return found error
+	}
+
+	amount, err := parseAmount(json) // Parse amount
+	if err != nil {                  // Check for errors
 		return nil, err // Return found error
 	}
 
@@ -167,23 +171,25 @@ func (parser *TransactionParserJSON) parseStake(data []byte) ([]byte, error) {
 func (parser *TransactionParserJSON) parseContract(data []byte) ([]byte, error) {
 	payload := bytes.NewBuffer(nil) // Initialize buffer
 
-	parsedData, err := parseJSONBytes(data) // Parse data
-	if err != nil {                         // Check for errors
+	var p fastjson.Parser // Initialize parser
+
+	json, err := p.Parse(string(data)) // Parse json
+	if err != nil {                    // Check for errors
 		return nil, err // Return found error
 	}
 
-	gasLimit, err := parseGasLimit(parsedData) // Parse gas limit
-	if err != nil {                            // Check for errors
+	gasLimit, err := parseGasLimit(json) // Parse gas limit
+	if err != nil {                      // Check for errors
 		return nil, err // Return found error
 	}
 
-	functionPayloadLength, functionPayload, err := parseFunctionPayload(parsedData) // Parse function payload
-	if err != nil {                                                                 // Check for errors
+	functionPayloadLength, functionPayload, err := parseFunctionPayload(json) // Parse function payload
+	if err != nil {                                                           // Check for errors
 		return nil, err // Return found error
 	}
 
-	code, err := parseContractCode(parsedData) // Parse contract code
-	if err != nil {                            // Check for errors
+	code, err := parseContractCode(json) // Parse contract code
+	if err != nil {                      // Check for errors
 		return nil, err // Return found error
 	}
 
@@ -214,16 +220,18 @@ func (parser *TransactionParserJSON) parseContract(data []byte) ([]byte, error) 
 func (parser *TransactionParserJSON) parseBatch(data []byte) ([]byte, error) {
 	payload := bytes.NewBuffer(nil) // Initialize buffer
 
-	parsedData, err := parseJSONBytes(data) // Parse data
-	if err != nil {                         // Check for errors
+	var p fastjson.Parser // Initialize parser
+
+	json, err := p.Parse(string(data)) // Parse json
+	if err != nil {                    // Check for errors
 		return nil, err // Return found error
 	}
 
-	if !parsedData.Exists("payloads") { // Check no value
+	if !json.Exists("payloads") { // Check no value
 		return nil, ErrNilField // Return nil field error
 	}
 
-	transactions := parsedData.GetArray("payloads") // Get payloads
+	transactions := json.GetArray("payloads") // Get payloads
 
 	var batchLength [8]byte // Initialize batch length buffer
 
@@ -232,15 +240,15 @@ func (parser *TransactionParserJSON) parseBatch(data []byte) ([]byte, error) {
 	payload.Write(batchLength[:4]) // Write batch length
 
 	for _, tx := range transactions { // Iterate through transactions
-		json, err := tx.StringBytes() // Get JSON
-		if err != nil {               // Check for errors
+		txJSON, err := tx.StringBytes() // Get JSON
+		if err != nil {                 // Check for errors
 			return nil, err // Return found error
 		}
 
 		txParser := NewTransactionParserJSON(string(tx.GetStringBytes("tag"))) // Initialize parser
 
-		txPayload, err := txParser.ParseJSON(json) // Parse JSON
-		if err != nil {                            // Check for errors
+		txPayload, err := txParser.ParseJSON(txJSON) // Parse JSON
+		if err != nil {                              // Check for errors
 			return nil, err // Return found error
 		}
 
@@ -422,19 +430,6 @@ func parseRecipient(json *fastjson.Value) ([]byte, error) {
 	copy(recipientID[:], recipient) // Copy address to buffer
 
 	return recipient, nil // Return recipient
-}
-
-// parseJSONBytes parses a given raw JSON input, and converts such an input
-// to a fastjson value pointer.
-func parseJSONBytes(data []byte) (*fastjson.Value, error) {
-	var p fastjson.Parser // Initialize parser
-
-	v, err := p.Parse(string(data)) // Parse json
-	if err != nil {                 // Check for errors
-		return nil, err // Return found error
-	}
-
-	return v, nil // Return parsed
 }
 
 // getValidTags gets a populated map of valid tags.
