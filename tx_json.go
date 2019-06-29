@@ -212,9 +212,31 @@ func (parser *TransactionParserJSON) parseStake(data []byte) ([]byte, error) {
 		return nil, err // Return found error
 	}
 
-	operation, err := parseOperation(json) // Parse operation
-	if err != nil {                        // Check for errors
-		return nil, err // Return found error
+	if !json.Exists("operation") { // Check no value
+		return nil, ErrNilField // Return nil field error
+	}
+
+	var operation byte // Initialize operation buffer
+
+	operationInt := json.GetInt("operation") // Get operation code
+
+	if byte(operationInt) >= sys.TagBatch || byte(operationInt) < 0 { // Check invalid value
+		return nil, ErrInvalidOperation // Return invalid operation error
+	}
+
+	switch json.GetInt("operation") { // Handle different operations
+	case 0:
+		operation = sys.WithdrawStake // Set operation
+
+		break // Break
+	case 1:
+		operation = sys.WithdrawReward // Set operation
+
+		break // Break
+	case 2:
+		operation = sys.WithdrawReward // Set operation
+
+		break // Break
 	}
 
 	decodedAmount := uint64(json.GetFloat64("amount")) // Get amount value
@@ -379,30 +401,6 @@ func (parser *TransactionParserJSON) parseBatch(data []byte) ([]byte, error) {
 /*
 	BEGIN PARSER HELPER METHODS
 */
-
-// parseOperation gets the operation of a particular stake transaction.
-func parseOperation(json *fastjson.Value) (byte, error) {
-	if !json.Exists("operation") { // Check no value
-		return byte(0), ErrNilField // Return nil field error
-	}
-
-	operation := json.GetInt("operation") // Get operation code
-
-	if byte(operation) >= sys.TagBatch || byte(operation) < 0 { // Check invalid value
-		return byte(0), ErrInvalidOperation // Return invalid operation error
-	}
-
-	switch json.GetInt("operation") { // Handle different operations
-	case 0:
-		return sys.WithdrawStake, nil // Return parsed
-	case 1:
-		return sys.PlaceStake, nil // Return parsed
-	case 2:
-		return sys.WithdrawReward, nil // Return parsed
-	}
-
-	return byte(0), ErrInvalidOperation // Return invalid operation error
-}
 
 // getValidTags gets a populated map of valid tags.
 func getValidTags() map[string]bool {
