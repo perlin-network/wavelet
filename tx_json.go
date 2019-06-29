@@ -91,7 +91,7 @@ func (parser *TransactionParserJSON) parseTransfer(data []byte) ([]byte, error) 
 		return nil, err // Return found error
 	}
 
-	if !json.Exists("recipient") || !json.Exists("amount") || !json.Exists("gas_limit") { // Check no value
+	if !json.Exists("recipient") || !json.Exists("amount") { // Check no value
 		return nil, ErrNilField // Return nil field error
 	}
 
@@ -122,12 +122,12 @@ func (parser *TransactionParserJSON) parseTransfer(data []byte) ([]byte, error) 
 		return nil, err // Return found error
 	}
 
-	gasLimit, err := parseGasLimit(json)  // Parse gas limit
-	if err != nil && err != ErrNilField { // Check for errors
-		return nil, err // Return found error
-	}
+	if json.Exists("gas_limit") { // Check has gas limit value
+		decodedGasLimit := uint64(json.GetFloat64("gas_limit")) // Get uint64 gas limit value
 
-	if err == nil {
+		var gasLimit [8]byte                                        // Initialize integer buffer
+		binary.LittleEndian.PutUint64(gasLimit[:], decodedGasLimit) // Write to buffer
+
 		_, err = payload.Write(gasLimit[:]) // Write gas limit
 		if err != nil {                     // Check for errors
 			return nil, err // Return found error
@@ -192,8 +192,17 @@ func (parser *TransactionParserJSON) parseContract(data []byte) ([]byte, error) 
 		return nil, err // Return found error
 	}
 
-	gasLimit, err := parseGasLimit(json) // Parse gas limit
-	if err != nil {                      // Check for errors
+	if !json.Exists("gas_limit") { // Check no value
+		return nil, ErrNilField // Return nil field error
+	}
+
+	decodedGasLimit := uint64(json.GetFloat64("gas_limit")) // Get uint64 gas limit value
+
+	var gasLimit [8]byte                                        // Initialize integer buffer
+	binary.LittleEndian.PutUint64(gasLimit[:], decodedGasLimit) // Write to buffer
+
+	_, err = payload.Write(gasLimit[:]) // Write gas limit
+	if err != nil {                     // Check for errors
 		return nil, err // Return found error
 	}
 
@@ -305,20 +314,6 @@ func parseOperation(json *fastjson.Value) (byte, error) {
 	}
 
 	return byte(0), ErrInvalidOperation // Return invalid operation error
-}
-
-// parseGasLimit gets the gas limit of a particular transaction.
-func parseGasLimit(json *fastjson.Value) ([8]byte, error) {
-	if !json.Exists("gas_limit") { // Check no value
-		return [8]byte{}, ErrNilField // Return nil field error
-	}
-
-	gasLimit := uint64(json.GetFloat64("gas_limit")) // Get uint64 gas limit value
-
-	var intBuf [8]byte                                 // Initialize integer buffer
-	binary.LittleEndian.PutUint64(intBuf[:], gasLimit) // Write to buffer
-
-	return intBuf, nil // Return buffer contents
 }
 
 // parseFunction gets a payload's target function, as well as the parameters
