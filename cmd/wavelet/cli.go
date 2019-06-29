@@ -179,7 +179,7 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 
 	log.SetWriter(
 		log.LoggerWavelet,
-		log.NewConsoleWriter(rl.Stderr(), log.FilterFor(
+		log.NewConsoleWriter(rl.Stdout(), log.FilterFor(
 			log.ModuleNode,
 			log.ModuleNetwork,
 			log.ModuleSync,
