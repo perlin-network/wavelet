@@ -21,6 +21,7 @@ package wavelet
 
 import (
 	"bytes"
+	"encoding/hex"
 	"github.com/google/btree"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/sys"
@@ -33,6 +34,10 @@ type GraphOption func(*Graph)
 
 func WithRoot(root Transaction) GraphOption {
 	return func(graph *Graph) {
+		if graph.indexer != nil {
+			graph.indexer.Index(hex.EncodeToString(root.ID[:]))
+		}
+
 		graph.UpdateRoot(root)
 	}
 }
@@ -40,6 +45,12 @@ func WithRoot(root Transaction) GraphOption {
 func WithMetrics(metrics *Metrics) GraphOption {
 	return func(graph *Graph) {
 		graph.metrics = metrics
+	}
+}
+
+func WithIndexer(indexer *Indexer) GraphOption {
+	return func(graph *Graph) {
+		graph.indexer = indexer
 	}
 }
 
@@ -75,6 +86,7 @@ type Graph struct {
 	sync.RWMutex
 
 	metrics *Metrics
+	indexer *Indexer
 
 	transactions map[TransactionID]*Transaction    // All transactions. Includes incomplete transactions.
 	children     map[TransactionID][]TransactionID // Children of transactions. Includes incomplete/missing transactions.
@@ -272,6 +284,10 @@ func (g *Graph) PruneBelowDepth(targetDepth uint64) int {
 
 			g.eligibleIndex.Delete((*sortByDepthTX)(tx))
 			g.seedIndex.Delete((*sortBySeedTX)(tx))
+
+			if g.indexer != nil {
+				g.indexer.Index(hex.EncodeToString(tx.ID[:]))
+			}
 		}
 
 		delete(g.depthIndex, depth)
@@ -548,6 +564,10 @@ func (g *Graph) updateGraph(tx *Transaction) error {
 
 		if complete {
 			delete(g.incomplete, childID)
+
+			if g.indexer != nil {
+				g.indexer.Remove(hex.EncodeToString(tx.ID[:]))
+			}
 
 			if err := g.updateGraph(child); err != nil {
 				continue

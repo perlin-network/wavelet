@@ -299,13 +299,9 @@ func start(cfg *Config) {
 			Msg("Peer has left.")
 	})
 
-	var kv store.KV = store.NewInmem()
-
-	if len(cfg.Database) > 0 {
-		kv, err = store.NewLevelDB(cfg.Database)
-		if err != nil {
-			logger.Fatal().Err(err).Msgf("Failed to create/open database located at %q.", cfg.Database)
-		}
+	kv, err := store.NewLevelDB(cfg.Database)
+	if err != nil {
+		logger.Fatal().Err(err).Msgf("Failed to create/open database located at %q.", cfg.Database)
 	}
 
 	ledger := wavelet.NewLedger(kv, client, cfg.Genesis)

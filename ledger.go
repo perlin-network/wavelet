@@ -45,6 +45,7 @@ import (
 type Ledger struct {
 	client  *skademlia.Client
 	metrics *Metrics
+	indexer *Indexer
 
 	accounts *Accounts
 	rounds   *Rounds
@@ -67,11 +68,12 @@ type Ledger struct {
 	cacheCollapse *LRU
 	cacheChunks   *LRU
 
-	sendQuotaTokenBucket chan struct{}
+	sendQuota chan struct{}
 }
 
 func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 	metrics := NewMetrics(context.TODO())
+	indexer := NewIndexer()
 
 	accounts := NewAccounts(kv)
 	go accounts.GC(context.Background())
@@ -101,7 +103,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 		panic("???: COULD NOT FIND GENESIS, OR STORAGE IS CORRUPTED.")
 	}
 
-	graph := NewGraph(WithMetrics(metrics), WithRoot(round.End), VerifySignatures())
+	graph := NewGraph(WithMetrics(metrics), WithIndexer(indexer), WithRoot(round.End), VerifySignatures())
 
 	gossiper := NewGossiper(context.TODO(), client, metrics)
 	finalizer := NewSnowball(WithBeta(sys.SnowballBeta))
@@ -110,6 +112,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 	ledger := &Ledger{
 		client:  client,
 		metrics: metrics,
+		indexer: indexer,
 
 		accounts: accounts,
 		rounds:   rounds,
@@ -126,32 +129,14 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 		cacheCollapse: NewLRU(16),
 		cacheChunks:   NewLRU(1024), // In total, it will take up 1024 * 4MB.
 
-		sendQuotaTokenBucket: make(chan struct{}, 2000),
+		sendQuota: make(chan struct{}, 2000),
 	}
 
 	go ledger.SyncToLatestRound()
 	go ledger.PerformConsensus()
-	go ledger.FeedSendTokenIntoBucket()
+	go ledger.PushSendQuota()
 
 	return ledger
-}
-
-func (l *Ledger) FeedSendTokenIntoBucket() {
-	for range time.Tick(1 * time.Millisecond) {
-		select {
-		case l.sendQuotaTokenBucket <- struct{}{}:
-		default:
-		}
-	}
-}
-
-func (l *Ledger) TakeSendToken() bool {
-	select {
-	case <-l.sendQuotaTokenBucket:
-		return true
-	default:
-		return false
-	}
 }
 
 // AddTransaction adds a transaction to the ledger. If the transaction has
@@ -168,7 +153,7 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 	}
 
 	if err == nil {
-		l.TakeSendToken()
+		l.TakeSendQuota()
 
 		l.gossiper.Push(tx)
 
@@ -184,6 +169,65 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 	}
 
 	return nil
+}
+
+// Find searches through complete transaction and account indices for a specified
+// query string. All indices that queried are in the form of tries. It is safe
+// to call this method concurrently.
+func (l *Ledger) Find(query string, count int) []string {
+	var err error
+
+	results := make([]string, 0, count)
+	prefix := []byte(query)
+
+	if len(query)%2 == 1 { // Cut off a single character.
+		prefix = prefix[:len(prefix)-1]
+	}
+
+	prefix, err = hex.DecodeString(string(prefix))
+	if err != nil {
+		return nil
+	}
+
+	bucketPrefix := append(keyAccounts[:], keyAccountNonce[:]...)
+	fullQuery := append(bucketPrefix, prefix...)
+
+	l.Snapshot().IterateFrom(fullQuery, func(key, _ []byte) bool {
+		if !bytes.HasPrefix(key, fullQuery) {
+			return false
+		}
+
+		if len(results) >= count {
+			return false
+		}
+
+		results = append(results, hex.EncodeToString(key[len(bucketPrefix):]))
+		return true
+	})
+
+	return append(results, l.indexer.Find(query, count-len(results))...)
+}
+
+// PushSendQuota permits one token into this nodes send quota bucket every millisecond
+// such that the node may add one single transaction into its graph.
+func (l *Ledger) PushSendQuota() {
+	for range time.Tick(1 * time.Millisecond) {
+		select {
+		case l.sendQuota <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// TakeSendQuota removes one token from this nodes send quota bucket to signal
+// that the node has added one single transaction into its graph.
+func (l *Ledger) TakeSendQuota() bool {
+	select {
+	case <-l.sendQuota:
+		return true
+	default:
+		return false
+	}
 }
 
 // Protocol returns an implementation of WaveletServer to handle incoming
