@@ -32,6 +32,9 @@ var (
 
 	// ErrInvalidOperation defines an error describing an invalid operation value.
 	ErrInvalidOperation = errors.New("operation is invalid")
+
+	// ErrInvalidAccountIDSize defines an error describing an invalid account ID size.
+	ErrInvalidAccountIDSize = errors.New("account ID is of an invalid size")
 )
 
 /* BEGIN EXPORTED METHODS */
@@ -88,10 +91,21 @@ func (parser *TransactionParserJSON) parseTransfer(data []byte) ([]byte, error) 
 		return nil, err // Return found error
 	}
 
-	recipient, err := parseRecipient(json) // Parse recipient
-	if err != nil {                        // Check for errors
+	if !json.Exists("recipient") || !json.Exists("amount") || !json.Exists("gas_limit") { // Check no value
+		return nil, ErrNilField // Return nil field error
+	}
+
+	decodedRecipient, err := hex.DecodeString(string(json.GetStringBytes("recipient"))) // Decode recipient hex string
+	if err != nil {                                                                     // Check for errors
 		return nil, err // Return found error
 	}
+
+	if len(decodedRecipient) != SizeAccountID { // Check invalid length
+		return nil, ErrInvalidAccountIDSize // Return invalid recipient ID error
+	}
+
+	var recipient AccountID              // Initialize ID buffer
+	copy(recipient[:], decodedRecipient) // Copy address to buffer
 
 	_, err = payload.Write(recipient[:]) // Write recipient value
 	if err != nil {                      // Check for errors
@@ -414,28 +428,6 @@ func parseContractCode(json *fastjson.Value) ([]byte, error) {
 	}
 
 	return code, nil // Return contract code
-}
-
-// parseRecipient gets the recipient of the transaction from the JSON map,
-// and performs address length safety checks immediately after.
-func parseRecipient(json *fastjson.Value) ([]byte, error) {
-	if !json.Exists("recipient") { // Check no value
-		return nil, ErrNilField // Return nil field error
-	}
-
-	recipient, err := hex.DecodeString(string(json.GetStringBytes("recipient"))) // Decode recipient hex string
-	if err != nil {                                                              // Check for errors
-		return nil, err // Return found error
-	}
-
-	if len(recipient) != SizeAccountID {
-		return nil, err // Return invalid recipient ID error
-	}
-
-	var recipientID AccountID       // Initialize ID buffer
-	copy(recipientID[:], recipient) // Copy address to buffer
-
-	return recipient, nil // Return recipient
 }
 
 // getValidTags gets a populated map of valid tags.
