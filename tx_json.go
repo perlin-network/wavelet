@@ -12,13 +12,13 @@ import (
 	"github.com/valyala/fastjson"
 )
 
-// Parser defines a generic JSON transaction payload parser.
-type Parser struct {
+// TransactionParserJSON defines a generic JSON transaction payload parser.
+type TransactionParserJSON struct {
 	Tag string // Transaction tag
 }
 
 var (
-	// ErrNoTag defines an error describing an empty TransactionTag.
+	// ErrNoTag defines an error describing an empty Tag.
 	ErrNoTag = errors.New("no tag specified")
 
 	// ErrInvalidTag defines an error describing an invalid TransactionTag.
@@ -36,15 +36,15 @@ var (
 
 /* BEGIN EXPORTED METHODS */
 
-// NewParser initializes a new parser with the given transaction type.
-func NewParser(transactionTag string) *Parser {
-	return &Parser{
-		Tag: transactionTag, // Set transaction tag
+// NewTransactionParserJSON initializes a new transaction JSON parser with the given transaction type.
+func NewTransactionParserJSON(tag string) *TransactionParserJSON {
+	return &TransactionParserJSON{
+		Tag: tag, // Set tag
 	} // Initialize parser
 }
 
 // ParseJSON parses the given JSON payload input.
-func (parser *Parser) ParseJSON(data []byte) ([]byte, error) {
+func (parser *TransactionParserJSON) ParseJSON(data []byte) ([]byte, error) {
 	if parser.Tag == "" { // Check no transaction tag
 		return nil, ErrNoTag // Return no tag error
 	}
@@ -78,7 +78,7 @@ func (parser *Parser) ParseJSON(data []byte) ([]byte, error) {
 */
 
 // parseTransfer parses a transaction payload with the transfer tag.
-func (parser *Parser) parseTransfer(data []byte) ([]byte, error) {
+func (parser *TransactionParserJSON) parseTransfer(data []byte) ([]byte, error) {
 	payload := bytes.NewBuffer(nil) // Initialize buffer
 
 	parsedData, err := parseJSONBytes(data) // Parse data
@@ -132,7 +132,7 @@ func (parser *Parser) parseTransfer(data []byte) ([]byte, error) {
 }
 
 // parseStake parses a transaction payload with the stake tag.
-func (parser *Parser) parseStake(data []byte) ([]byte, error) {
+func (parser *TransactionParserJSON) parseStake(data []byte) ([]byte, error) {
 	payload := bytes.NewBuffer(nil) // Initialize buffer
 
 	parsedData, err := parseJSONBytes(data) // Parse data
@@ -164,7 +164,7 @@ func (parser *Parser) parseStake(data []byte) ([]byte, error) {
 }
 
 // parseContract parses a transaction payload with the contract tag.
-func (parser *Parser) parseContract(data []byte) ([]byte, error) {
+func (parser *TransactionParserJSON) parseContract(data []byte) ([]byte, error) {
 	payload := bytes.NewBuffer(nil) // Initialize buffer
 
 	parsedData, err := parseJSONBytes(data) // Parse data
@@ -211,7 +211,7 @@ func (parser *Parser) parseContract(data []byte) ([]byte, error) {
 }
 
 // parseBatch parses a transaction payload with the batch tag.
-func (parser *Parser) parseBatch(data []byte) ([]byte, error) {
+func (parser *TransactionParserJSON) parseBatch(data []byte) ([]byte, error) {
 	payload := bytes.NewBuffer(nil) // Initialize buffer
 
 	parsedData, err := parseJSONBytes(data) // Parse data
@@ -231,13 +231,13 @@ func (parser *Parser) parseBatch(data []byte) ([]byte, error) {
 
 	payload.Write(batchLength[:4]) // Write batch length
 
-	for _, transaction := range transactions { // Iterate through transactions
-		json, err := transaction.StringBytes() // Get JSON
-		if err != nil {                        // Check for errors
+	for _, tx := range transactions { // Iterate through transactions
+		json, err := tx.StringBytes() // Get JSON
+		if err != nil {               // Check for errors
 			return nil, err // Return found error
 		}
 
-		txParser := NewParser(string(transaction.GetStringBytes("tag"))) // Initialize parser
+		txParser := NewTransactionParserJSON(string(tx.GetStringBytes("tag"))) // Initialize parser
 
 		txPayload, err := txParser.ParseJSON(json) // Parse JSON
 		if err != nil {                            // Check for errors
@@ -267,12 +267,12 @@ func parseOperation(json *fastjson.Value) (byte, error) {
 		return byte(0), ErrNilField // Return nil field error
 	}
 
-	switch string(json.GetStringBytes("operation")) { // Handle different operations
-	case "0x00":
+	switch json.GetInt("operation") { // Handle different operations
+	case 0:
 		return sys.WithdrawStake, nil // Return parsed
-	case "0x01":
+	case 1:
 		return sys.PlaceStake, nil // Return parsed
-	case "0x02":
+	case 2:
 		return sys.WithdrawReward, nil // Return parsed
 	}
 

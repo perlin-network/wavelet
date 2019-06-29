@@ -24,7 +24,7 @@ via the `--payload` flag. The names of each of the aforementioned payload fields
 
 | Payload Field | JSON Field                      |
 |---------------|---------------------------------|
-| Operation     | operation (string, e.g. "0x00") |
+| Operation     | operation (int, e.g. 0x00 -> 0) |
 | Amount        | amount                          |
 
 ### Contract
