@@ -34,6 +34,7 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
+	"gopkg.in/urfave/cli.v1"
 )
 
 var tagConversion = map[string]byte{
