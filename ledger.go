@@ -1313,7 +1313,7 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 	res.ignoredCount -= res.appliedCount + res.rejectedCount
 
 	if round >= uint64(sys.RewardWithdrawalsRoundLimit) {
-		l.processRewardWithdrawals(round, res.snapshot, logging)
+		l.processRewardWithdrawals(round, res.snapshot)
 	}
 
 	l.cacheCollapse.put(end.ID, res)
@@ -1372,21 +1372,12 @@ func (l *Ledger) LogChanges(snapshot *avl.Tree, lastRound uint64) {
 	})
 }
 
-func (l *Ledger) processRewardWithdrawals(round uint64, snapshot *avl.Tree, logging bool) {
+func (l *Ledger) processRewardWithdrawals(round uint64, snapshot *avl.Tree) {
 	rws := GetRewardWithdrawalRequests(snapshot, round-uint64(sys.RewardWithdrawalsRoundLimit))
-
-	balanceLogger := log.Accounts("balance_updated")
 
 	for _, rw := range rws {
 		balance, _ := ReadAccountBalance(snapshot, rw.account)
 		WriteAccountBalance(snapshot, rw.account, balance+rw.amount)
-
-		if logging {
-			balanceLogger.Log().
-				Hex("account_id", rw.account[:]).
-				Uint64("balance", balance+rw.amount).
-				Msg("")
-		}
 
 		snapshot.Delete(rw.Key())
 	}
@@ -1500,22 +1491,7 @@ func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Tran
 	}
 
 	WriteAccountBalance(snapshot, tx.Creator, creatorBalance-fee)
-	if logging {
-		logger := log.Accounts("balance_updated")
-		logger.Log().
-			Hex("account_id", tx.Creator[:]).
-			Uint64("balance", creatorBalance-fee).
-			Msg("")
-	}
-
 	WriteAccountReward(snapshot, rewardee.Sender, rewardBalance+fee)
-	if logging {
-		logger := log.Accounts("reward_updated")
-		logger.Log().
-			Hex("account_id", rewardee.Sender[:]).
-			Uint64("reward", rewardBalance+fee).
-			Msg("")
-	}
 
 	if logging {
 		logger := log.Stake("reward_validator")
