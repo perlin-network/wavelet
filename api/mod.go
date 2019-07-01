@@ -23,12 +23,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
-	"strconv"
 	"strings"
-	"time"
 
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
@@ -40,6 +35,12 @@ import (
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/pprofhandler"
 	"github.com/valyala/fastjson"
+
+	"io"
+	"net/http"
+	"net/url"
+	"strconv"
+	"time"
 )
 
 type Gateway struct {
@@ -246,7 +247,6 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 	queryArgs := ctx.QueryArgs()
 	if raw := string(queryArgs.Peek("sender")); len(raw) > 0 {
 		slice, err := hex.DecodeString(raw)
-
 		if err != nil {
 			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
 			return
@@ -262,7 +262,6 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 
 	if raw := string(queryArgs.Peek("creator")); len(raw) > 0 {
 		slice, err := hex.DecodeString(raw)
-
 		if err != nil {
 			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "creator ID must be presented as valid hex")))
 			return
@@ -523,7 +522,6 @@ func (g *Gateway) poll(sink *sink) func(ctx *fasthttp.RequestCtx) {
 
 func (g *Gateway) registerWebsocketSink(rawURL string, factory *debounce.Factory) *sink {
 	u, err := url.Parse(rawURL)
-
 	if err != nil {
 		panic(err)
 	}
