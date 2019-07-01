@@ -21,12 +21,13 @@ package wavelet
 
 import (
 	"bytes"
+	"sort"
+	"sync"
+
 	"github.com/google/btree"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
-	"sort"
-	"sync"
 )
 
 type GraphOption func(*Graph)
@@ -648,7 +649,7 @@ func (g *Graph) validateTransaction(tx Transaction) error {
 		var nonce [8]byte // TODO(kenta): nonce
 
 		if tx.Sender != tx.Creator {
-			if !edwards25519.Verify(tx.Creator, append(nonce[:], append([]byte{tx.Tag}, tx.Payload...)...), tx.CreatorSignature) {
+			if !edwards25519.Verify(tx.Creator, append(nonce[:], append([]byte{byte(tx.Tag)}, tx.Payload...)...), tx.CreatorSignature) {
 				return errors.New("tx has invalid creator signature")
 			}
 		}
