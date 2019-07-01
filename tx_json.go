@@ -45,9 +45,11 @@ func ParseJSON(data []byte, tag string) ([]byte, error) {
 
 	valid := false // Initialize valid buffer
 
-	for i := 0; i < 5; i++ { // Iterate through tags
-		if tag == sys.Tag(i).String() { // Check valid tag
-			valid = true // Set true
+	for _, currentTag := range sys.TagNames { // Iterate through valid string tag names
+		if currentTag == tag { // Check valid tag
+			valid = true // Set valid
+
+			break // Break
 		}
 	}
 
@@ -229,7 +231,7 @@ func parseStake(data []byte) ([]byte, error) {
 
 	operationInt := json.GetInt("operation") // Get operation code
 
-	if sys.Tag(operationInt) >= sys.TagBatch || sys.Tag(operationInt) < 0 { // Check invalid value
+	if byte(operationInt) >= sys.TagBatch || byte(operationInt) < 0 { // Check invalid value
 		return nil, ErrInvalidOperation // Return invalid operation error
 	}
 
