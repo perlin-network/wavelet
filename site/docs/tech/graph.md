@@ -92,3 +92,9 @@ Transaction [seed length](https://github.com/perlin-network/wavelet/blob/master/
 
 #### Transaction Criticality
 Transaction is considered [critical](https://github.com/perlin-network/wavelet/blob/master/tx.go#L279) for given difficulty if its seed length is greater or equal to given difficulty.
+
+#### Pruning Transactions
+Pruning transactions [below certain depth](https://github.com/perlin-network/wavelet/blob/master/graph.go#L266) means deleting transactions with depth below given, from all indexes. This is required in case of new state of ledger (new round) either after syncing or after consensus achieved. 
+For ease of deleting transactions from the graph by given depth, transaction ids are stored in separate index by depth.
+So when needed, transaction ids are selected according to given depth and deleted from all other indexes and depth index as well.
+Missing transactions checked separately afterwards and removed as well. Number of pruned transactions returned. 
