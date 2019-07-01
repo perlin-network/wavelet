@@ -21,13 +21,13 @@ package wavelet
 
 import (
 	"bytes"
-	"sort"
-	"sync"
-
+	"encoding/hex"
 	"github.com/google/btree"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"sort"
+	"sync"
 )
 
 type GraphOption func(*Graph)

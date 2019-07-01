@@ -8,7 +8,7 @@ require (
 	github.com/buaazp/fasthttprouter v0.1.1
 	github.com/chzyer/logex v1.1.10 // indirect
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
-	github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1 // indirect
+	github.com/dghubble/trie v0.0.0-20190512033633-6d8e3fa705df
 	github.com/fasthttp/websocket v1.4.0
 	github.com/gogo/protobuf v1.2.1
 	github.com/golang/snappy v0.0.1
