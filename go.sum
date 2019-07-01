@@ -13,6 +13,7 @@ github.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDk
 github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e/go.mod h1:F5haX7vjVVG0kc13fIWeqUViNPyEJxv/OmvnBo0Yme4=
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
+github.com/dghubble/trie v0.0.0-20190512033633-6d8e3fa705df h1:WRQekGjYIb3oD1ofBVwBa7+0S+2XtUCefOiFCow9/Cw=
 github.com/dghubble/trie v0.0.0-20190512033633-6d8e3fa705df/go.mod h1:P5ymVhkUtwRIkYn2IuBeuVezlrsshMKWQJymph3GOp8=
 github.com/fasthttp/websocket v1.4.0 h1:hWw+gsVLA82cQFDF/vzydHjOedj1Oo00T/uKk+J5kcs=
 github.com/fasthttp/websocket v1.4.0/go.mod h1:4nypHRMj3oQPKA3/LllCXx0F0L5VyVKlMgo3lgbbwBM=
