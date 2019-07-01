@@ -20,10 +20,10 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
-	"strings"
 
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
@@ -425,7 +425,7 @@ func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {
 	ctx.Response.Header.Set("Content-Type", "application/wasm")
 	ctx.Response.Header.Set("Content-Length", strconv.Itoa(hex.EncodedLen(len(code))))
 
-	_, _ = io.Copy(ctx, strings.NewReader(hex.EncodeToString(code)))
+	_, _ = io.Copy(ctx, bytes.NewReader(code))
 }
 
 func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
