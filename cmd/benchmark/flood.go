@@ -21,11 +21,12 @@ package main
 
 import (
 	"encoding/binary"
+	"runtime"
+	"sync"
+
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
-	"runtime"
-	"sync"
 )
 
 func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionResponse, error) {
@@ -53,7 +54,7 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 				var payloads [][]byte
 
 				for i := 0; i < 40; i++ {
-					tags = append(tags, sys.TagStake)
+					tags = append(tags, byte(sys.TagStake))
 					payloads = append(payloads, base[:])
 				}
 
@@ -70,8 +71,7 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 
 				var res wctl.SendTransactionResponse
 
-				res, err := client.SendTransaction(sys.TagBatch, append([]byte{byte(len(tags))}, buf...))
-
+				res, err := client.SendTransaction(byte(sys.TagBatch), append([]byte{byte(len(tags))}, buf...))
 				if err != nil {
 					chRes <- res
 					chErr <- err

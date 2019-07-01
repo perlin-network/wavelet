@@ -34,10 +34,10 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
-	"gopkg.in/urfave/cli.v1"
+	"github.com/urfave/cli"
 )
 
-var tagConversion = map[string]byte{
+var tagConversion = map[string]sys.Tag{
 	`nop`:      sys.TagNop,
 	`transfer`: sys.TagTransfer,
 	`contract`: sys.TagContract,
@@ -266,7 +266,7 @@ func main() {
 				}
 				if len(c.String("tag")) > 0 {
 					tmp := c.String("tag")
-					t := tagConversion[tmp]
+					t := byte(tagConversion[tmp])
 					tag = &t
 				}
 
