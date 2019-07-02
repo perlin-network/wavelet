@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"github.com/stretchr/testify/assert"
 	"testing"
 	"testing/quick"
 )
@@ -12,7 +13,5 @@ func TestParseJSON(t *testing.T) {
 		return !(err != nil && payload != nil)   // Check errored but still returned
 	}
 
-	if err := quick.Check(f, nil); err != nil { // Check for errors
-		t.Fatal(err) // Panic
-	}
+	assert.NoError(t, quick.Check(f, nil)) // Check no errors
 }
