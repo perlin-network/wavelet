@@ -24,6 +24,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/filter"
 	"github.com/syndtr/goleveldb/leveldb/opt"
+	"github.com/syndtr/goleveldb/leveldb/storage"
 )
 
 var _ WriteBatch = (*leveldbWriteBatch)(nil)
@@ -107,9 +108,19 @@ func NewLevelDB(dir string) (*leveldbKV, error) {
 		NoWriteMerge: true,
 	}
 
-	db, err := leveldb.OpenFile(dir, opts)
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create Level DB")
+	var db *leveldb.DB
+	var err error
+
+	if len(dir) == 0 {
+		db, err = leveldb.Open(storage.NewMemStorage(), opts)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to init leveldb")
+		}
+	} else {
+		db, err = leveldb.OpenFile(dir, opts)
+		if err != nil {
+			return nil, errors.Wrap(err, "failed to init leveldb")
+		}
 	}
 
 	return &leveldbKV{

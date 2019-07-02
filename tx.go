@@ -182,7 +182,13 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 	var buf [8]byte
 
 	if _, err = io.ReadFull(r, buf[:1]); err != nil {
-		err = errors.Wrap(err, "failed to decode check bit to see if transaction creator is recorded")
+		err = errors.Wrap(err, "failed to decode flag to see if transaction creator is recorded")
+		return
+	}
+
+	if buf[0] != 0 && buf[0] != 1 {
+		err = errors.Errorf("flag must be zero or one, but is %d instead", buf[0])
+		return
 	}
 
 	creatorRecorded := buf[0] == 1

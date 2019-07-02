@@ -204,7 +204,7 @@ func (g *Gateway) Shutdown() {
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	req := new(sendTransactionRequest)
 
-	if g.ledger != nil && g.ledger.TakeSendToken() == false {
+	if g.ledger != nil && g.ledger.TakeSendQuota() == false {
 		g.renderError(ctx, ErrInternal(errors.New("rate limit")))
 		return
 	}
@@ -423,7 +423,7 @@ func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {
 
 	ctx.Response.Header.Set("Content-Disposition", "attachment; filename="+hex.EncodeToString(id[:])+".wasm")
 	ctx.Response.Header.Set("Content-Type", "application/wasm")
-	ctx.Response.Header.Set("Content-Length", strconv.Itoa(hex.EncodedLen(len(code))))
+	ctx.Response.Header.Set("Content-Length", strconv.Itoa(len(code)))
 
 	_, _ = io.Copy(ctx, bytes.NewReader(code))
 }
