@@ -4,7 +4,7 @@
     "fn_name": "on_money_received",
     "fn_payload": [
         {
-            "type": "Uint64",
+            "type": "uint64",
             "value": 10
         }
     ],
