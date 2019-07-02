@@ -1,0 +1,12 @@
+{
+    "recipient": "0750020d837389c0343fb20f4f73393ed7765ed4bd2cf5545ca6326d2271521a",
+    "amount": 10,
+    "fn_name": "on_money_received",
+    "fn_payload": [
+        {
+            "type": "Uint64",
+            "value": 10
+        }
+    ],
+    "gas_limit": 5
+}

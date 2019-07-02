@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"io/ioutil"
+	"strconv"
 
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -46,8 +47,10 @@ func ParseJSON(data []byte, tag string) ([]byte, error) {
 	valid := false // Initialize valid buffer
 
 	for i := 0; i < 5; i++ { // Iterate through tags
-		if tag == sys.Tag(i).String() { // Check valid tag
+		if tag == strconv.Itoa(int(sys.Tag(i))) { // Check valid tag
 			valid = true // Set true
+
+			tag = sys.Tag(i).String() // Set tag to formal name
 		}
 	}
 
@@ -56,15 +59,15 @@ func ParseJSON(data []byte, tag string) ([]byte, error) {
 	}
 
 	switch tag { // Handle different tag types
-	case "nop":
+	case "TagNop":
 		return nil, nil // Nothing to do!
-	case "transfer":
+	case "TagTransfer":
 		return parseTransfer(data) // Parse
-	case "stake":
+	case "TagStake":
 		return parseStake(data) // Parse
-	case "contract":
+	case "TagContract":
 		return parseContract(data) // Parse
-	case "batch":
+	case "TagBatch":
 		return parseBatch(data) // Parse
 	}
 
