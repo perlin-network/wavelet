@@ -1384,6 +1384,16 @@ func (l *Ledger) processRewardWithdrawals(round uint64, snapshot *avl.Tree) {
 }
 
 func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Transaction, logging bool) error {
+	fee := sys.TransactionFeeAmount
+
+	creatorBalance, _ := ReadAccountBalance(snapshot, tx.Creator)
+
+	if creatorBalance < fee {
+		return errors.Errorf("stake: creator %x does not have enough PERLs to pay transaction fees (requested %d PERLs) to %x", tx.Creator, fee, rewardee.Sender)
+	}
+
+	WriteAccountBalance(snapshot, tx.Creator, creatorBalance-fee)
+
 	var candidates []*Transaction
 	var stakes []uint64
 	var totalStake uint64
@@ -1481,17 +1491,8 @@ func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Tran
 		rewardee = candidates[len(candidates)-1]
 	}
 
-	creatorBalance, _ := ReadAccountBalance(snapshot, tx.Creator)
-	rewardBalance, _ := ReadAccountReward(snapshot, rewardee.Sender)
-
-	fee := sys.TransactionFeeAmount
-
-	if creatorBalance < fee {
-		return errors.Errorf("stake: creator %x does not have enough PERLs to pay transaction fees (requested %d PERLs) to %x", tx.Creator, fee, rewardee.Sender)
-	}
-
-	WriteAccountBalance(snapshot, tx.Creator, creatorBalance-fee)
-	WriteAccountReward(snapshot, rewardee.Sender, rewardBalance+fee)
+	rewardeeBalance, _ := ReadAccountReward(snapshot, rewardee.Sender)
+	WriteAccountReward(snapshot, rewardee.Sender, rewardeeBalance+fee)
 
 	if logging {
 		logger := log.Stake("reward_validator")
