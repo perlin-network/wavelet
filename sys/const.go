@@ -264,6 +264,14 @@ var (
 		"wavelet.hash.sha512":     3000, // TODO: Review
 		"wavelet.verify.ed25519":  5000, // TODO: Review
 	}
+
+	TagConversion = map[string]Tag{
+		`nop`:      TagNop,
+		`transfer`: TagTransfer,
+		`contract`: TagContract,
+		`batch`:    TagBatch,
+		`stake`:    TagStake,
+	}
 )
 
 // String converts a given tag to a string.
@@ -272,5 +280,5 @@ func (tag Tag) String() string {
 		return "" // Return invalid tag
 	}
 
-	return []string{"TagNop", "TagTransfer", "TagContract", "TagStake", "TagBatch"}[tag] // Return tag
+	return []string{"nop", "transfer", "contract", "stake", "batch"}[tag] // Return tag
 }

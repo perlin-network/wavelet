@@ -37,14 +37,6 @@ import (
 	"github.com/urfave/cli"
 )
 
-var tagConversion = map[string]sys.Tag{
-	`nop`:      sys.TagNop,
-	`transfer`: sys.TagTransfer,
-	`contract`: sys.TagContract,
-	`batch`:    sys.TagBatch,
-	`stake`:    sys.TagStake,
-}
-
 func main() {
 	app := cli.NewApp()
 
@@ -266,7 +258,7 @@ func main() {
 				}
 				if len(c.String("tag")) > 0 {
 					tmp := c.String("tag")
-					t := byte(tagConversion[tmp])
+					t := byte(sys.TagConversion[tmp])
 					tag = &t
 				}
 
