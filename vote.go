@@ -45,26 +45,7 @@ func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, 
 		if len(votes) == cap(votes) {
 			snapshot := accounts.Snapshot()
 
-			counts := make(map[RoundID]float64, len(votes))
-			stakes := make(map[RoundID]float64, len(votes))
-
-			for _, vote := range votes {
-				if vote.preferred == nil {
-					vote.preferred = ZeroRoundPtr
-				}
-
-				counts[vote.preferred.ID] += 1.0
-
-				stake, _ := ReadAccountStake(snapshot, vote.voter.PublicKey())
-
-				if stake < sys.MinimumStake {
-					stake = sys.MinimumStake
-				}
-
-				stakes[vote.preferred.ID] += float64(stake)
-			}
-
-			maxCount := float64(0)
+			stakes := make(map[AccountID]float64, len(votes))
 			maxStake := float64(0)
 
 			for _, vote := range votes {
@@ -72,21 +53,30 @@ func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, 
 					vote.preferred = ZeroRoundPtr
 				}
 
-				if maxCount < counts[vote.preferred.ID] {
-					maxCount = counts[vote.preferred.ID]
+				stake, _ := ReadAccountStake(snapshot, vote.voter.PublicKey())
+
+				if stake < sys.MinimumStake {
+					stake = sys.MinimumStake
 				}
 
-				if maxStake < stakes[vote.preferred.ID] {
+				stakes[vote.voter.PublicKey()] = float64(stake)
+
+				if maxStake < stakes[vote.voter.PublicKey()] {
 					maxStake = stakes[vote.voter.PublicKey()]
 				}
 			}
+
+			counts := make(map[RoundID]float64, len(votes))
+			totalCount := float64(0)
 
 			for _, vote := range votes {
 				if vote.preferred == nil {
 					vote.preferred = ZeroRoundPtr
 				}
 
-				counts[vote.preferred.ID] = (counts[vote.preferred.ID] / maxCount) * (stakes[vote.preferred.ID] / maxStake)
+				count := stakes[vote.voter.PublicKey()] / maxStake
+				counts[vote.preferred.ID] += count
+				totalCount += count
 			}
 
 			var majority *Round
@@ -96,7 +86,7 @@ func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, 
 					vote.preferred = ZeroRoundPtr
 				}
 
-				if counts[vote.preferred.ID] >= sys.SnowballAlpha {
+				if counts[vote.preferred.ID]/totalCount >= sys.SnowballAlpha {
 					majority = vote.preferred
 					break
 				}
