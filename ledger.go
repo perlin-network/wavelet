@@ -1389,7 +1389,7 @@ func (l *Ledger) RewardValidators(snapshot *avl.Tree, root Transaction, tx *Tran
 	creatorBalance, _ := ReadAccountBalance(snapshot, tx.Creator)
 
 	if creatorBalance < fee {
-		return errors.Errorf("stake: creator %x does not have enough PERLs to pay transaction fees (requested %d PERLs) to %x", tx.Creator, fee, rewardee.Sender)
+		return errors.Errorf("stake: creator %x does not have enough PERLs to pay transaction fees", tx.Creator, fee)
 	}
 
 	WriteAccountBalance(snapshot, tx.Creator, creatorBalance-fee)
