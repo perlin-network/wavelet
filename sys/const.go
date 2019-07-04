@@ -265,7 +265,7 @@ var (
 		"wavelet.verify.ed25519":  5000, // TODO: Review
 	}
 
-	TagConversion = map[string]Tag{
+	TagLabels = map[string]Tag{
 		`nop`:      TagNop,
 		`transfer`: TagTransfer,
 		`contract`: TagContract,

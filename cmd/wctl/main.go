@@ -258,7 +258,7 @@ func main() {
 				}
 				if len(c.String("tag")) > 0 {
 					tmp := c.String("tag")
-					t := byte(sys.TagConversion[tmp])
+					t := byte(sys.TagLabels[tmp])
 					tag = &t
 				}
 
