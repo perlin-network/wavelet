@@ -82,6 +82,10 @@ func ParseTransferTransaction(payload []byte) (Transfer, error) {
 		if _, err := io.ReadFull(r, tx.FuncName); err != nil {
 			return tx, errors.Wrap(err, "transfer: failed to decode smart contract function name to invoke")
 		}
+
+		if string(tx.FuncName) == "init" {
+			return tx, errors.New("transfer: not allowed to call init function for smart contract")
+		}
 	}
 
 	if r.Len() > 0 {
