@@ -11,6 +11,29 @@ import (
 	"github.com/valyala/fastjson"
 )
 
+const (
+	// RecipientPayloadParamName defines a string representation of the recipient payload param.
+	RecipientPayloadParamName = "recipient"
+
+	// AmountPayloadParamName defines a string representation of the amount payload param.
+	AmountPayloadParamName = "amount"
+
+	// GasLimitPayloadParamName defines a string representation of the gas_limit payload param.
+	GasLimitPayloadParamName = "gas_limit"
+
+	// FuncNamePayloadParamName defines a string representation of the fn_name payload param.
+	FuncNamePayloadParamName = "fn_name"
+
+	// FuncPayloadPayloadParamName defines a string representation of the fn_payload payload param.
+	FuncPayloadPayloadParamName = "fn_payload"
+
+	// OperationPayloadParamName defines a string representation of the operation payload param.
+	OperationPayloadParamName = "operation"
+
+	// ContractCodePayloadParamName defines a string representation of the contract_code payload param.
+	ContractCodePayloadParamName = "contract_code"
+)
+
 var (
 	// ErrNoTag defines an error describing an empty Tag.
 	ErrNoTag = errors.New("no tag specified")
@@ -30,9 +53,6 @@ var (
 	// ErrInvalidAccountIDSize defines an error describing an invalid account ID size.
 	ErrInvalidAccountIDSize = errors.New("account ID is of an invalid size")
 )
-
-// PayloadFieldNames represents all valid JSON payload field names.
-var PayloadFieldNames = []string{"recipient", "amount", "gas_limit", "fn_name", "fn_payload", "operation", "contract_code", "payloads"}
 
 /* BEGIN EXPORTED METHODS */
 
@@ -89,8 +109,8 @@ func parseTransfer(data []byte) ([]byte, error) {
 		return nil, ErrNilField // Return nil field error
 	}
 
-	decodedRecipient, err := hex.DecodeString(string(json.GetStringBytes(PayloadFieldNames[0]))) // Decode recipient hex string
-	if err != nil {                                                                              // Check for errors
+	decodedRecipient, err := hex.DecodeString(string(json.GetStringBytes(RecipientPayloadParamName))) // Decode recipient hex string
+	if err != nil {                                                                                   // Check for errors
 		return nil, err // Return found error
 	}
 
@@ -106,7 +126,7 @@ func parseTransfer(data []byte) ([]byte, error) {
 		return nil, err // Return found error
 	}
 
-	decodedAmount := uint64(json.GetUint64(PayloadFieldNames[1])) // Get amount value
+	decodedAmount := uint64(json.GetUint64(AmountPayloadParamName)) // Get amount value
 
 	var amount [8]byte                                      // Initialize integer buffer
 	binary.LittleEndian.PutUint64(amount[:], decodedAmount) // Write to buffer
@@ -116,8 +136,8 @@ func parseTransfer(data []byte) ([]byte, error) {
 		return nil, err // Return found error
 	}
 
-	if json.Exists(PayloadFieldNames[2]) { // Check has gas limit value
-		decodedGasLimit := uint64(json.GetFloat64(PayloadFieldNames[2])) // Get uint64 gas limit value
+	if json.Exists(GasLimitPayloadParamName) { // Check has gas limit value
+		decodedGasLimit := uint64(json.GetFloat64(GasLimitPayloadParamName)) // Get uint64 gas limit value
 
 		var gasLimit [8]byte                                        // Initialize integer buffer
 		binary.LittleEndian.PutUint64(gasLimit[:], decodedGasLimit) // Write to buffer
@@ -128,8 +148,8 @@ func parseTransfer(data []byte) ([]byte, error) {
 		}
 	}
 
-	if json.Exists(PayloadFieldNames[3]) { // Check has function name
-		funcName := string(json.GetStringBytes(PayloadFieldNames[3])) // Get function name
+	if json.Exists(FuncNamePayloadParamName) { // Check has function name
+		funcName := string(json.GetStringBytes(FuncNamePayloadParamName)) // Get function name
 
 		var funcNameLength [8]byte                                               // Initialize dedicated len buffer
 		binary.LittleEndian.PutUint32(funcNameLength[:4], uint32(len(funcName))) // Write to buffer
@@ -137,12 +157,12 @@ func parseTransfer(data []byte) ([]byte, error) {
 		payload.Write(funcNameLength[:4]) // Write name length
 		payload.WriteString(funcName)     // Write function name
 
-		if json.Exists(PayloadFieldNames[4]) { // Check has function payload
+		if json.Exists(FuncPayloadPayloadParamName) { // Check has function payload
 			var intBuf [8]byte // Initialize integer buffer
 
 			params := bytes.NewBuffer(nil) // Initialize payload buffer
 
-			for _, payloadValue := range json.GetArray(PayloadFieldNames[4]) { // Iterate through payloads
+			for _, payloadValue := range json.GetArray(FuncPayloadPayloadParamName) { // Iterate through payloads
 				if !payloadValue.Exists("type") { // Check does not declare type
 					return nil, ErrNilField // Return nil field error
 				}
@@ -216,19 +236,19 @@ func parseStake(data []byte) ([]byte, error) {
 		return nil, err // Return found error
 	}
 
-	if !json.Exists(PayloadFieldNames[5]) { // Check no value
+	if !json.Exists(OperationPayloadParamName) { // Check no value
 		return nil, ErrNilField // Return nil field error
 	}
 
 	var operation byte // Initialize operation buffer
 
-	operationInt := json.GetInt(PayloadFieldNames[5]) // Get operation code
+	operationInt := json.GetInt(OperationPayloadParamName) // Get operation code
 
 	if sys.Tag(operationInt) >= sys.TagBatch || sys.Tag(operationInt) < 0 { // Check invalid value
 		return nil, ErrInvalidOperation // Return invalid operation error
 	}
 
-	switch json.GetInt(PayloadFieldNames[5]) { // Handle different operations
+	switch json.GetInt(OperationPayloadParamName) { // Handle different operations
 	case 0:
 		operation = sys.WithdrawStake // Set operation
 	case 1:
@@ -237,7 +257,7 @@ func parseStake(data []byte) ([]byte, error) {
 		operation = sys.WithdrawReward // Set operation
 	}
 
-	decodedAmount := uint64(json.GetFloat64(PayloadFieldNames[1])) // Get amount value
+	decodedAmount := uint64(json.GetFloat64(AmountPayloadParamName)) // Get amount value
 
 	var amount [8]byte                                      // Initialize integer buffer
 	binary.LittleEndian.PutUint64(amount[:], decodedAmount) // Write to buffer
@@ -266,11 +286,11 @@ func parseContract(data []byte) ([]byte, error) {
 		return nil, err // Return found error
 	}
 
-	if !json.Exists(PayloadFieldNames[2]) || !json.Exists("contract_code") { // Check no value
+	if !json.Exists(GasLimitPayloadParamName) || !json.Exists("contract_code") { // Check no value
 		return nil, ErrNilField // Return nil field error
 	}
 
-	decodedGasLimit := uint64(json.GetFloat64(PayloadFieldNames[2])) // Get uint64 gas limit value
+	decodedGasLimit := uint64(json.GetFloat64(GasLimitPayloadParamName)) // Get uint64 gas limit value
 
 	var gasLimit [8]byte                                        // Initialize integer buffer
 	binary.LittleEndian.PutUint64(gasLimit[:], decodedGasLimit) // Write to buffer
@@ -344,8 +364,8 @@ func parseContract(data []byte) ([]byte, error) {
 		payload.Write(params.Bytes()) // Write parameters
 	}
 
-	code, err := ioutil.ReadFile(string(json.GetStringBytes(PayloadFieldNames[6]))) // Read contract code
-	if err != nil {                                                                 // Check for errors
+	code, err := ioutil.ReadFile(string(json.GetStringBytes(ContractCodePayloadParamName))) // Read contract code
+	if err != nil {                                                                         // Check for errors
 		return nil, err // Return found error
 	}
 
