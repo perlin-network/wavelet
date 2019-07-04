@@ -19,13 +19,14 @@
 
 package sys
 
-import (
-	"time"
-)
+import "time"
+
+// Tag is a wrapper for a transaction tag.
+type Tag byte
 
 // Transaction tags.
 const (
-	TagNop byte = iota
+	TagNop Tag = iota
 	TagTransfer
 	TagContract
 	TagStake
@@ -263,4 +264,21 @@ var (
 		"wavelet.hash.sha512":     3000, // TODO: Review
 		"wavelet.verify.ed25519":  5000, // TODO: Review
 	}
+
+	TagLabels = map[string]Tag{
+		`nop`:      TagNop,
+		`transfer`: TagTransfer,
+		`contract`: TagContract,
+		`batch`:    TagBatch,
+		`stake`:    TagStake,
+	}
 )
+
+// String converts a given tag to a string.
+func (tag Tag) String() string {
+	if tag < 0 || tag > 4 { // Check out of bounds
+		return "" // Return invalid tag
+	}
+
+	return []string{"nop", "transfer", "contract", "stake", "batch"}[tag] // Return tag
+}

@@ -22,10 +22,11 @@ package wavelet
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/perlin-network/wavelet/sys"
-	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
+
+	"github.com/perlin-network/wavelet/sys"
+	"github.com/pkg/errors"
 )
 
 type Transfer struct {
@@ -203,7 +204,7 @@ func ParseBatchTransaction(payload []byte) (Batch, error) {
 			return tx, errors.Wrap(err, "batch: could not read tag")
 		}
 
-		if b[0] == sys.TagBatch {
+		if sys.Tag(b[0]) == sys.TagBatch {
 			return tx, errors.New("batch: entries inside batch cannot be batch transactions themselves")
 		}
 

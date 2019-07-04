@@ -24,15 +24,18 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/debounce"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/pprofhandler"
 	"github.com/valyala/fastjson"
+
 	"io"
 	"net/http"
 	"net/url"
@@ -217,7 +220,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 
 	tx := wavelet.AttachSenderToTransaction(
 		g.keys,
-		wavelet.Transaction{Tag: req.Tag, Payload: req.payload, Creator: req.creator, CreatorSignature: req.signature},
+		wavelet.Transaction{Tag: sys.Tag(req.Tag), Payload: req.payload, Creator: req.creator, CreatorSignature: req.signature},
 		g.ledger.Graph().FindEligibleParents()...,
 	)
 
@@ -244,7 +247,6 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 	queryArgs := ctx.QueryArgs()
 	if raw := string(queryArgs.Peek("sender")); len(raw) > 0 {
 		slice, err := hex.DecodeString(raw)
-
 		if err != nil {
 			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
 			return
@@ -260,7 +262,6 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 
 	if raw := string(queryArgs.Peek("creator")); len(raw) > 0 {
 		slice, err := hex.DecodeString(raw)
-
 		if err != nil {
 			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "creator ID must be presented as valid hex")))
 			return
@@ -521,7 +522,6 @@ func (g *Gateway) poll(sink *sink) func(ctx *fasthttp.RequestCtx) {
 
 func (g *Gateway) registerWebsocketSink(rawURL string, factory *debounce.Factory) *sink {
 	u, err := url.Parse(rawURL)
-
 	if err != nil {
 		panic(err)
 	}

@@ -24,6 +24,11 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"strconv"
+	"strings"
+
 	"github.com/chzyer/readline"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
@@ -31,10 +36,6 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
-	"io"
-	"io/ioutil"
-	"strconv"
-	"strings"
 )
 
 type CLI struct {
@@ -462,7 +463,7 @@ func (cli *CLI) find(cmd []string) {
 			Hex("sender", tx.Sender[:]).
 			Hex("creator", tx.Creator[:]).
 			Uint64("nonce", tx.Nonce).
-			Uint8("tag", tx.Tag).
+			Uint8("tag", byte(tx.Tag)).
 			Uint64("depth", tx.Depth).
 			Hex("seed", tx.Seed[:]).
 			Uint8("seed_zero_prefix_len", tx.SeedLen).
