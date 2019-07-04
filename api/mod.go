@@ -470,7 +470,7 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 	page, available := wavelet.ReadAccountContractPage(snapshot, id, idx)
 
 	if len(page) == 0 || !available {
-		g.renderError(ctx, ErrBadRequest(errors.Errorf("page %d is either empty, or does not exist", idx)))
+		_, _ = ctx.Write([]byte{})
 		return
 	}
 
