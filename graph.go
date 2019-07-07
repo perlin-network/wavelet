@@ -26,13 +26,15 @@ import (
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/blake2b"
+	"math/bits"
 	"sort"
 	"sync"
 )
 
 type GraphOption func(*Graph)
 
-func WithRoot(root Transaction) GraphOption {
+func WithRoot(root *Transaction) GraphOption {
 	return func(graph *Graph) {
 		if graph.indexer != nil {
 			graph.indexer.Index(hex.EncodeToString(root.ID[:]))
@@ -127,7 +129,7 @@ func NewGraph(opts ...GraphOption) *Graph {
 // AddTransaction adds sufficiently valid transactions with a strongly connected ancestry
 // to the graph, and otherwise buffers incomplete transactions, or otherwise rejects
 // invalid transactions.
-func (g *Graph) AddTransaction(tx Transaction) error {
+func (g *Graph) AddTransaction(tx *Transaction) error {
 	g.Lock()
 	defer g.Unlock()
 
@@ -143,9 +145,7 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 		return errors.Wrap(err, "failed to validate transaction")
 	}
 
-	ptr := &tx
-
-	g.transactions[tx.ID] = ptr
+	g.transactions[tx.ID] = tx
 	delete(g.missing, tx.ID)
 
 	parentsMissing := false
@@ -177,7 +177,7 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 		return ErrMissingParents
 	}
 
-	return g.updateGraph(ptr)
+	return g.updateGraph(tx)
 }
 
 // MarkTransactionAsMissing marks a transaction at some given depth to be
@@ -192,15 +192,15 @@ func (g *Graph) MarkTransactionAsMissing(id TransactionID, depth uint64) {
 
 // UpdateRoot forcefully adds a root transaction to the graph, and updates all
 // relevant graph indices as a result of setting a new root with its new depth.
-func (g *Graph) UpdateRoot(root Transaction) {
-	ptr := &root
-
+func (g *Graph) UpdateRoot(root *Transaction) {
 	g.Lock()
 
-	g.depthIndex[root.Depth] = append(g.depthIndex[root.Depth], ptr)
-	g.eligibleIndex.ReplaceOrInsert((*sortByDepthTX)(ptr))
+	g.PrepareSeed(root)
 
-	g.transactions[root.ID] = ptr
+	g.depthIndex[root.Depth] = append(g.depthIndex[root.Depth], root)
+	g.eligibleIndex.ReplaceOrInsert((*sortByDepthTX)(root))
+
+	g.transactions[root.ID] = root
 
 	g.height = root.Depth + 1
 
@@ -519,8 +519,49 @@ func (g *Graph) RootDepth() uint64 {
 	return rootDepth
 }
 
+func (g *Graph) PrepareSeed(tx *Transaction) error {
+	hasher, err := blake2b.New(32, nil)
+	if err != nil {
+		panic(err) // should never happen
+	}
+
+	_, err = hasher.Write(tx.Sender[:])
+	if err != nil {
+		panic(err) // should never happen
+	}
+
+	for _, parent := range tx.ParentIDs {
+		parentTx, ok := g.transactions[parent]
+		if !ok {
+			return errors.New("missing parent in graph")
+		}
+
+		if !parentTx.SeedPrepared {
+			return errors.New("parent tx does not contain a pre-calculated seed")
+		}
+
+		_, err = hasher.Write(parentTx.Seed[:])
+		if err != nil {
+			panic(err) // should never happen
+		}
+	}
+
+	seed := hasher.Sum(nil)
+	copy(tx.Seed[:], seed)
+	tx.SeedLen = byte(prefixLen(seed))
+	tx.SeedPrepared = true
+
+	return nil
+}
+
 func (g *Graph) updateGraph(tx *Transaction) error {
 	if err := g.validateTransactionParents(tx); err != nil {
+		g.deleteProgeny(tx.ID)
+
+		return err
+	}
+
+	if err := g.PrepareSeed(tx); err != nil {
 		g.deleteProgeny(tx.ID)
 
 		return err
@@ -612,7 +653,7 @@ func (g *Graph) deleteProgeny(id TransactionID) {
 	}
 }
 
-func (g *Graph) validateTransaction(tx Transaction) error {
+func (g *Graph) validateTransaction(tx *Transaction) error {
 	if tx.ID == ZeroTransactionID {
 		return errors.New("tx must have an ID")
 	}
@@ -717,4 +758,14 @@ func (g *Graph) validateTransactionParents(tx *Transaction) error {
 	}
 
 	return nil
+}
+
+func prefixLen(buf []byte) int {
+	for i, b := range buf {
+		if b != 0 {
+			return i*8 + bits.LeadingZeros8(uint8(b))
+		}
+	}
+
+	return len(buf)*8 - 1
 }

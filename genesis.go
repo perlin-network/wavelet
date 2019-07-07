@@ -149,8 +149,8 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 		panic(err)
 	}
 
-	tx := Transaction{}
+	tx := &Transaction{}
 	tx.rehash()
 
-	return NewRound(0, tree.Checksum(), 0, Transaction{}, tx)
+	return NewRound(0, tree.Checksum(), 0, &Transaction{}, tx)
 }

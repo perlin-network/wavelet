@@ -25,11 +25,11 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/bits"
 	"sort"
 
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
@@ -53,12 +53,13 @@ type Transaction struct {
 
 	ID TransactionID // BLAKE2b(*).
 
-	Seed    [blake2b.Size256]byte // BLAKE2b(Sender || ParentIDs)
-	SeedLen byte                  // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
+	Seed         [blake2b.Size256]byte // BLAKE2b(Sender || ParentIDs)
+	SeedLen      byte                  // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
+	SeedPrepared bool
 }
 
-func NewTransaction(creator *skademlia.Keypair, tag sys.Tag, payload []byte) Transaction {
-	tx := Transaction{Tag: tag, Payload: payload}
+func NewTransaction(creator *skademlia.Keypair, tag sys.Tag, payload []byte) *Transaction {
+	tx := &Transaction{Tag: tag, Payload: payload}
 
 	var nonce [8]byte // TODO(kenta): nonce
 
@@ -68,7 +69,7 @@ func NewTransaction(creator *skademlia.Keypair, tag sys.Tag, payload []byte) Tra
 	return tx
 }
 
-func NewBatchTransaction(creator *skademlia.Keypair, tags []byte, payloads [][]byte) Transaction {
+func NewBatchTransaction(creator *skademlia.Keypair, tags []byte, payloads [][]byte) *Transaction {
 	if len(tags) != len(payloads) {
 		panic("UNEXPECTED: Number of tags must be equivalent to number of payloads.")
 	}
@@ -91,7 +92,7 @@ func NewBatchTransaction(creator *skademlia.Keypair, tags []byte, payloads [][]b
 	return NewTransaction(creator, sys.TagBatch, append([]byte{byte(len(tags))}, buf...))
 }
 
-func AttachSenderToTransaction(sender *skademlia.Keypair, tx Transaction, parents ...*Transaction) Transaction {
+func AttachSenderToTransaction(sender *skademlia.Keypair, tx *Transaction, parents ...*Transaction) *Transaction {
 	if len(parents) > 0 {
 		tx.ParentIDs = make([]TransactionID, 0, len(parents))
 
@@ -127,13 +128,10 @@ func (t *Transaction) rehash() *Transaction {
 		buf = append(buf, parentID[:]...)
 	}
 
-	t.Seed = blake2b.Sum256(buf)
-	t.SeedLen = byte(prefixLen(t.Seed[:]))
-
 	return t
 }
 
-func (t Transaction) Marshal() []byte {
+func (t *Transaction) Marshal() []byte {
 	w := bytes.NewBuffer(make([]byte, 0, 222+(32*len(t.ParentIDs))+len(t.Payload)))
 
 	w.Write(t.Sender[:])
@@ -173,7 +171,9 @@ func (t Transaction) Marshal() []byte {
 	return w.Bytes()
 }
 
-func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
+func UnmarshalTransaction(r io.Reader) (t *Transaction, err error) {
+	t = &Transaction{}
+
 	if _, err = io.ReadFull(r, t.Sender[:]); err != nil {
 		err = errors.Wrap(err, "failed to decode transaction sender")
 		return
@@ -273,23 +273,19 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 	return t, nil
 }
 
-func prefixLen(buf []byte) int {
-	for i, b := range buf {
-		if b != 0 {
-			return i*8 + bits.LeadingZeros8(uint8(b))
-		}
+// Returns (is_critical, known)
+func (tx *Transaction) IsCritical(difficulty byte) bool {
+	if !tx.SeedPrepared {
+		logger := log.TX("IsCritical")
+		logger.Error().Msg("BUG: IsCritical called before critical seed is computed.")
+		return false
 	}
-
-	return len(buf)*8 - 1
-}
-
-func (tx Transaction) IsCritical(difficulty byte) bool {
 	return tx.SeedLen >= difficulty
 }
 
 // LogicalUnits counts the total number of atomic logical units of changes
 // the specified tx comprises of.
-func (tx Transaction) LogicalUnits() int {
+func (tx *Transaction) LogicalUnits() int {
 	if tx.Tag != sys.TagBatch {
 		return 1
 	}
@@ -303,6 +299,6 @@ func (tx Transaction) LogicalUnits() int {
 	return int(buf[0])
 }
 
-func (tx Transaction) String() string {
+func (tx *Transaction) String() string {
 	return fmt.Sprintf("Transaction{ID: %x}", tx.ID)
 }

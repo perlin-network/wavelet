@@ -220,7 +220,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 
 	tx := wavelet.AttachSenderToTransaction(
 		g.keys,
-		wavelet.Transaction{Tag: sys.Tag(req.Tag), Payload: req.payload, Creator: req.creator, CreatorSignature: req.signature},
+		&wavelet.Transaction{Tag: sys.Tag(req.Tag), Payload: req.payload, Creator: req.creator, CreatorSignature: req.signature},
 		g.ledger.Graph().FindEligibleParents()...,
 	)
 
@@ -231,7 +231,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
+	g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: tx})
 }
 
 func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
