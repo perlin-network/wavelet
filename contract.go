@@ -23,6 +23,7 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/binary"
+
 	"github.com/perlin-network/life/compiler"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
@@ -89,7 +90,7 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				e.Queue = append(e.Queue, &Transaction{
 					Sender:  e.ID,
 					Creator: e.ID,
-					Tag:     tag,
+					Tag:     sys.Tag(tag),
 					Payload: payload,
 				})
 

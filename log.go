@@ -21,6 +21,7 @@ package wavelet
 
 import (
 	"encoding/hex"
+
 	"github.com/perlin-network/wavelet/log"
 )
 
@@ -37,7 +38,7 @@ func logEventTX(event string, tx *Transaction, other ...interface{}) {
 		Hex("sender_id", tx.Sender[:]).
 		Hex("creator_id", tx.Creator[:]).
 		Uint64("depth", tx.Depth).
-		Uint8("tag", tx.Tag)
+		Uint8("tag", byte(tx.Tag))
 
 	for _, o := range other {
 		switch o := o.(type) {

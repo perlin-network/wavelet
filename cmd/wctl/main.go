@@ -24,24 +24,18 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/perlin-network/wavelet/sys"
-	"github.com/perlin-network/wavelet/wctl"
-	"github.com/pkg/errors"
-	"gopkg.in/urfave/cli.v1"
 	"io/ioutil"
 	"os"
 	"sort"
 	"strconv"
 	"time"
-)
 
-var tagConversion = map[string]byte{
-	`nop`:      sys.TagNop,
-	`transfer`: sys.TagTransfer,
-	`contract`: sys.TagContract,
-	`batch`:    sys.TagBatch,
-	`stake`:    sys.TagStake,
-}
+	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/sys"
+	"github.com/perlin-network/wavelet/wctl"
+	"github.com/pkg/errors"
+	"github.com/urfave/cli"
+)
 
 func main() {
 	app := cli.NewApp()
@@ -264,7 +258,7 @@ func main() {
 				}
 				if len(c.String("tag")) > 0 {
 					tmp := c.String("tag")
-					t := tagConversion[tmp]
+					t := byte(sys.TagLabels[tmp])
 					tag = &t
 				}
 
@@ -453,16 +447,23 @@ func main() {
 					return err
 				}
 
-				payload := []byte(c.Args().Get(1))
+				payload := bytes.NewBuffer(nil)
 
 				if c.String("payload") != "" {
-					payload, err = ioutil.ReadFile(c.String("payload"))
+					payloadFile, err := ioutil.ReadFile(c.String("payload"))
 					if err != nil {
 						return err
 					}
+
+					parsedPayload, err := wavelet.ParseJSON(payloadFile, c.Args().Get(0)) // Parse payload file contents
+					if err != nil {                                                       // Check for errors
+						return err // Return found error
+					}
+
+					payload.Write(parsedPayload) // Write payload to buffer
 				}
 
-				res, err := client.SendTransaction(byte(tag), []byte(payload))
+				res, err := client.SendTransaction(byte(tag), payload.Bytes())
 				if err != nil {
 					return err
 				}

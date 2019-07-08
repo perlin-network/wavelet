@@ -39,7 +39,7 @@ func main() {
 	flagC2 := flag.Uint("c2", 16, "S/Kademlia C2 protocol parameter.")
 	flag.Parse()
 
-	if err := os.Mkdir(GenPath, 0755); err != nil && !os.IsExist(err) {
+	if err := os.Mkdir(GenPath, 0600); err != nil && !os.IsExist(err) {
 		if os.IsPermission(err) {
 			log.Fatal().Err(err).Msgf("Failed to get permission to create directory %q to store wallets in.", GenPath)
 		}
@@ -68,7 +68,7 @@ func main() {
 			log.Fatal().Msg("An unknown error occurred marshaling a newly generated keypairs private key into hex.")
 		}
 
-		if err := ioutil.WriteFile(walletFilePath, privateKeyBuf, 0755); err != nil {
+		if err := ioutil.WriteFile(walletFilePath, privateKeyBuf, 0600); err != nil {
 			log.Fatal().Err(err).Msg("Failed to write private key to file.")
 		}
 

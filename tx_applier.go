@@ -22,6 +22,7 @@ package wavelet
 import (
 	"encoding/hex"
 	"fmt"
+
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
@@ -291,7 +292,7 @@ func ApplyBatchTransaction(snapshot *avl.Tree, round *Round, tx *Transaction) (*
 			Sender:  tx.Sender,
 			Creator: tx.Creator,
 			Nonce:   tx.Nonce,
-			Tag:     params.Tags[i],
+			Tag:     sys.Tag(params.Tags[i]),
 			Payload: params.Payloads[i],
 		}
 

@@ -23,15 +23,16 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
+	"math"
+	"math/bits"
+	"sort"
+
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
-	"io"
-	"math"
-	"math/bits"
-	"sort"
 )
 
 type Transaction struct {
@@ -44,7 +45,7 @@ type Transaction struct {
 
 	Depth uint64 // Graph depth.
 
-	Tag     byte
+	Tag     sys.Tag
 	Payload []byte
 
 	SenderSignature  Signature
@@ -56,13 +57,13 @@ type Transaction struct {
 	SeedLen byte                  // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
 }
 
-func NewTransaction(creator *skademlia.Keypair, tag byte, payload []byte) Transaction {
+func NewTransaction(creator *skademlia.Keypair, tag sys.Tag, payload []byte) Transaction {
 	tx := Transaction{Tag: tag, Payload: payload}
 
 	var nonce [8]byte // TODO(kenta): nonce
 
 	tx.Creator = creator.PublicKey()
-	tx.CreatorSignature = edwards25519.Sign(creator.PrivateKey(), append(nonce[:], append([]byte{tx.Tag}, tx.Payload...)...))
+	tx.CreatorSignature = edwards25519.Sign(creator.PrivateKey(), append(nonce[:], append([]byte{byte(tx.Tag)}, tx.Payload...)...))
 
 	return tx
 }
@@ -157,7 +158,7 @@ func (t Transaction) Marshal() []byte {
 	binary.BigEndian.PutUint64(buf[:8], t.Depth)
 	w.Write(buf[:8])
 
-	w.WriteByte(t.Tag)
+	w.WriteByte(byte(t.Tag))
 
 	binary.BigEndian.PutUint32(buf[:4], uint32(len(t.Payload)))
 	w.Write(buf[:4])
@@ -181,7 +182,13 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 	var buf [8]byte
 
 	if _, err = io.ReadFull(r, buf[:1]); err != nil {
-		err = errors.Wrap(err, "failed to decode check bit to see if transaction creator is recorded")
+		err = errors.Wrap(err, "failed to decode flag to see if transaction creator is recorded")
+		return
+	}
+
+	if buf[0] != 0 && buf[0] != 1 {
+		err = errors.Errorf("flag must be zero or one, but is %d instead", buf[0])
+		return
 	}
 
 	creatorRecorded := buf[0] == 1
@@ -233,7 +240,7 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 		return
 	}
 
-	t.Tag = buf[0]
+	t.Tag = sys.Tag(buf[0])
 
 	if _, err = io.ReadFull(r, buf[:4]); err != nil {
 		err = errors.Wrap(err, "could not read transaction payload length")

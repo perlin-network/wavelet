@@ -6,13 +6,13 @@ replace github.com/go-interpreter/wagon => github.com/perlin-network/wagon v0.3.
 
 require (
 	github.com/buaazp/fasthttprouter v0.1.1
+	github.com/chzyer/logex v1.1.10 // indirect
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
+	github.com/dghubble/trie v0.0.0-20190512033633-6d8e3fa705df
 	github.com/fasthttp/websocket v1.4.0
 	github.com/gogo/protobuf v1.2.1
 	github.com/golang/snappy v0.0.1
 	github.com/google/btree v1.0.0
-	github.com/google/uuid v1.1.1 // indirect
-	github.com/gorilla/websocket v1.4.0 // indirect
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
 	github.com/perlin-network/life v0.0.0-20190521143330-57f3819c2df0
 	github.com/perlin-network/noise v0.0.0-20190527211417-79abfb78fdba
@@ -22,6 +22,7 @@ require (
 	github.com/rs/zerolog v1.14.3
 	github.com/stretchr/testify v1.3.0
 	github.com/syndtr/goleveldb v1.0.0
+	github.com/urfave/cli v1.20.0
 	github.com/valyala/fasthttp v1.3.0
 	github.com/valyala/fastjson v1.4.1
 	golang.org/x/crypto v0.0.0-20190513172903-22d7a77e9e5f

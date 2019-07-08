@@ -22,10 +22,11 @@ package wavelet
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/perlin-network/wavelet/sys"
-	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
+
+	"github.com/perlin-network/wavelet/sys"
+	"github.com/pkg/errors"
 )
 
 type Transfer struct {
@@ -60,6 +61,10 @@ func ParseTransferTransaction(payload []byte) (Transfer, error) {
 		}
 
 		tx.GasLimit = binary.LittleEndian.Uint64(b)
+
+		if tx.GasLimit == 0 {
+			return tx, errors.New("transfer: gas limit must be greater than zero")
+		}
 	}
 
 	if r.Len() > 0 {
@@ -67,10 +72,19 @@ func ParseTransferTransaction(payload []byte) (Transfer, error) {
 			return tx, errors.Wrap(err, "transfer: failed to decode size of smart contract function name to invoke")
 		}
 
-		tx.FuncName = make([]byte, binary.LittleEndian.Uint32(b[:4]))
+		size := binary.LittleEndian.Uint32(b[:4])
+		if size > 1024 {
+			return tx, errors.New("transfer: smart contract function name exceeds 1024 characters")
+		}
+
+		tx.FuncName = make([]byte, size)
 
 		if _, err := io.ReadFull(r, tx.FuncName); err != nil {
 			return tx, errors.Wrap(err, "transfer: failed to decode smart contract function name to invoke")
+		}
+
+		if string(tx.FuncName) == "init" {
+			return tx, errors.New("transfer: not allowed to call init function for smart contract")
 		}
 	}
 
@@ -79,7 +93,12 @@ func ParseTransferTransaction(payload []byte) (Transfer, error) {
 			return tx, errors.Wrap(err, "transfer: failed to decode number of smart contract function invocation parameters")
 		}
 
-		tx.FuncParams = make([]byte, binary.LittleEndian.Uint32(b[:4]))
+		size := binary.LittleEndian.Uint32(b[:4])
+		if size > 1024*1024 {
+			return tx, errors.New("transfer: smart contract payload exceeds 1MB")
+		}
+
+		tx.FuncParams = make([]byte, size)
 
 		if _, err := io.ReadFull(r, tx.FuncParams); err != nil {
 			return tx, errors.Wrap(err, "transfer: failed to decode smart contract function invocation parameters")
@@ -109,6 +128,10 @@ func ParseStakeTransaction(payload []byte) (Stake, error) {
 	}
 
 	tx.Amount = binary.LittleEndian.Uint64(payload[1:9])
+
+	if tx.Amount == 0 {
+		return tx, errors.New("stake: amount must be greater than zero")
+	}
 
 	if tx.Opcode == sys.WithdrawReward && tx.Amount < sys.MinimumRewardWithdraw {
 		return tx, errors.Errorf("stake: must withdraw a reward of a minimum of %d PERLs, but requested to withdraw %d PERLs", sys.MinimumRewardWithdraw, tx.Amount)
@@ -145,7 +168,11 @@ func ParseContractTransaction(payload []byte) (Contract, error) {
 		return tx, errors.Wrap(err, "contract: failed to decode number of smart contract init parameters")
 	}
 
-	tx.Params = make([]byte, binary.LittleEndian.Uint32(b[:4]))
+	size := binary.LittleEndian.Uint32(b[:4])
+	if size > 1024*1024 {
+		return tx, errors.New("contract: smart contract payload exceeds 1MB")
+	}
+	tx.Params = make([]byte, size)
 
 	if _, err := io.ReadFull(r, tx.Params); err != nil {
 		return tx, errors.Wrap(err, "contract: failed to decode smart contract init parameters")
@@ -155,6 +182,10 @@ func ParseContractTransaction(payload []byte) (Contract, error) {
 
 	if tx.Code, err = ioutil.ReadAll(r); err != nil {
 		return tx, errors.Wrap(err, "contract: failed to decode smart contract code")
+	}
+
+	if len(tx.Code) == 0 {
+		return tx, errors.New("contract: smart contract must have code of length greater than zero")
 	}
 
 	return tx, nil
@@ -178,6 +209,11 @@ func ParseBatchTransaction(payload []byte) (Batch, error) {
 	}
 
 	tx.Size = b[0]
+
+	if tx.Size == 0 {
+		return tx, errors.New("batch: size must be greater than zero")
+	}
+
 	tx.Tags = make([]uint8, tx.Size)
 	tx.Payloads = make([][]byte, tx.Size)
 
@@ -186,7 +222,7 @@ func ParseBatchTransaction(payload []byte) (Batch, error) {
 			return tx, errors.Wrap(err, "batch: could not read tag")
 		}
 
-		if b[0] == sys.TagBatch {
+		if sys.Tag(b[0]) == sys.TagBatch {
 			return tx, errors.New("batch: entries inside batch cannot be batch transactions themselves")
 		}
 
@@ -196,7 +232,12 @@ func ParseBatchTransaction(payload []byte) (Batch, error) {
 			return tx, errors.Wrap(err, "batch: could not read payload size")
 		}
 
-		tx.Payloads[i] = make([]byte, binary.BigEndian.Uint32(b[:4]))
+		size := binary.BigEndian.Uint32(b[:4])
+		if size > 2*1024*1024 {
+			return tx, errors.New("batch: payload size exceeds 2MB")
+		}
+
+		tx.Payloads[i] = make([]byte, size)
 
 		if _, err := io.ReadFull(r, tx.Payloads[i]); err != nil {
 			return tx, errors.Wrap(err, "batch: could not read payload")
