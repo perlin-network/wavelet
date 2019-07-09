@@ -1,8 +1,24 @@
 #### REST API endpoints
 
+* Some of the endpoints are rate limited per IP Address to 1000 requests per second.
+If an IP Address exceeds the limit, the response would be an error with code `429` and message `Too Many Requests`.
+
+* Some of the types have constant size in bytes, as specified below:
+
+    |Type|Size in bytes|
+    |---|---|
+    |Account ID|32|
+    |Public Key|32|
+    |Signature|64|
+    |Transaction / Contract ID|32|
+    |Merkle ID|16|
+    |Round ID|32|
+
 **Ledger**
 ----
-   Get ledger current status
+   Get ledger current status.
+   
+   This endpoint is rate limited.
 
 * **URL**
 
@@ -91,8 +107,9 @@ Get Account Information
     ```
  
 * **Error Response:**
-
-    * **Code:** 400 BAD REQUEST <br />
+    
+    * **Reason:** Invalid Account ID size <br />
+    **Code:** 400 BAD REQUEST <br />
     **Content:**
     ```json
     {
@@ -100,9 +117,8 @@ Get Account Information
       "error": "account ID must be 32 bytes long"
     }
     ```
- 
-    OR
-
+    <br />
+    
     * **Code:** 400 BAD REQUEST <br />
     **Content:**
     ```json
@@ -132,8 +148,8 @@ Get Account Information
  
     ```json
     {
-      "sender": "[hex-encoded sender ID]",
-      "tag": "[0 = nop, 1 = transfer, 2 = contract, 3 = stake, 4 = batch",
+      "sender": "[hex-encoded sender ID, must be 32 bytes long]",
+      "tag": "[possible values: 0 = nop, 1 = transfer, 2 = contract, 3 = stake, 4 = batch",
       "payload": "[hex-encoded payload, empty for nop]",
       "signature": "[hex-encoded edwards25519 signature, which consists of private key, nonce, tag, and payload]"
     }
@@ -166,7 +182,10 @@ Get Account Information
 
 **Transaction List**
  ----
+ 
    Get Transaction List
+ 
+   This endpoint is rate limited.
  
 * **URL**
  
@@ -178,15 +197,15 @@ Get Account Information
    
 *  **URL Params**
  
-    * **Query:**
+    * **Optional Query:**
         
         `sender=[string]` where `sender` is the hex-encoded Sender ID. Used to filter by Sender ID.
         
         `creator=[string]` where `creator` is the hex-encoded Creator ID. Used to filter by Creator ID.
         
-        `offset=[integer]` where `offset` is page offset.
+        `offset=[integer]` where `offset` is page offset. Default 0.
         
-        `limit=[integer]` where `limit` is page limit.
+        `limit=[integer]` where `limit` is page limit. If 0, it'll return all transactions.
         
 * **Data Params**
  
@@ -223,7 +242,7 @@ Get Account Information
 
 **Transaction Detail**
  ----
-   Get Transaction Detail
+   Get Transaction Details by ID
  
 * **URL**
  
@@ -266,6 +285,7 @@ Get Account Information
 * **Error Response:**
     
     * **Code:** 400 BAD REQUEST <br />
+    **Desc:**  The Transaction ID is not a valid size. Its size must be 32 bytes<br />
     **Content:**
     ```json
     {
@@ -274,9 +294,10 @@ Get Account Information
     }
     ```
     
-    OR
+    <br />
   
     * **Code:** 400 BAD REQUEST <br />
+    **Desc:** Transaction ID is not a valid hex<br />
     **Content:**
     ```json
     {
@@ -285,9 +306,10 @@ Get Account Information
     }
     ```
     
-    OR
+    <br />
   
     * **Code:** 404 NOT FOUND <br />
+    **Desc:** Transaction ID does not exist<br />
     **Content:**
     ```json
     {
@@ -298,7 +320,9 @@ Get Account Information
 
 **Contract Code**
  ----
-   Get Contract Code By ID
+   Get Contract Code By ID.
+   
+   This endpoint is rate limited.
  
 * **URL**
  
@@ -320,11 +344,12 @@ Get Account Information
  
     * **Code:** 200 <br />
     **Content:**
-    Hex-encoded of the contract web assembly code.
+    Th contract web assembly code.
   
 * **Error Response:**
     
     * **Code:** 400 BAD REQUEST <br />
+    **Desc:** The Contract ID is not a valid size. Its size must be 32 bytes<br />
     **Content:**
     ```json
     {
@@ -333,9 +358,10 @@ Get Account Information
     }
     ```
     
-    OR
+    <br />
   
     * **Code:** 400 BAD REQUEST <br />
+    **Desc:** The contract ID is not a valid hex<br />
     **Content:**
     ```json
     {
@@ -344,9 +370,10 @@ Get Account Information
     }
     ```
     
-    OR
+    <br />
   
     * **Code:** 404 NOT FOUND <br />
+    **Desc:** The Contract ID does not exist<br />
     **Content:**
     ```json
     {
@@ -354,14 +381,18 @@ Get Account Information
       "error": "could not find contract with ID [...]"
     }
     ```
-    OR
+    
+    <br />
   
     * **Code:** 429 TOO MANY REQUEST <br />
+    **Desc:** The request is rate limited<br />
     **Content:** `Too Many Requests`
     
 **Contract Page**
  ----
    Get Contract Page
+   
+   This endpoint is rate limited.
  
 * **URL**
  
@@ -390,6 +421,7 @@ Get Account Information
 * **Error Response:**
     
     * **Code:** 400 BAD REQUEST <br />
+    **Desc:** The Contract ID is not a valid size. Its size must be 32 bytes<br />
     **Content:**
     ```json
     {
@@ -398,9 +430,10 @@ Get Account Information
     }
     ```
     
-    OR
+    <br />
   
     * **Code:** 400 BAD REQUEST <br />
+    **Desc:** The contract ID is not a valid hex<br />
     **Content:**
     ```json
     {
@@ -409,9 +442,10 @@ Get Account Information
     }
     ```
     
-    OR
+    <br />
   
     * **Code:** 404 NOT FOUND <br />
+    **Desc:** The contract does not have any page<br />
     **Content:**
     ```json
     {
@@ -420,9 +454,10 @@ Get Account Information
     }
     ```
     
-    OR
+    <br />
       
     * **Code:** 400 BAD REQUEST <br />
+    **Desc:** The page is either empty or does not exist <br />
     **Content:**
     ```json
     {
@@ -431,9 +466,10 @@ Get Account Information
     }
     ```
     
-    OR
+    <br />
       
     * **Code:** 400 BAD REQUEST <br />
+    **Desc:** The index does not exist<br />
     **Content:**
     ```json
     {
@@ -442,7 +478,8 @@ Get Account Information
     }
     ```
     
-    OR
+    <br />
   
     * **Code:** 429 TOO MANY REQUEST <br />
+    **Desc:** The request is rate limited<br />
     **Content:** `Too Many Requests`

@@ -1,5 +1,14 @@
 #### Websocket endpoints
 
+* To prevent flooding, the endpoints, /accounts, /contract, and /tx are debounced. The debounce can also has a buffer, if specified.<br />
+The way the debounce works is, if there's no new event within certain duration or the buffer is full, then the buffer will be released. <br />
+To prevent duplicated events, debounce can also dedupe the events based on certain properties. <br />
+Below are conditions for each of the debounced endpoints :
+    * `/poll/accounts` is debounced with a duration of 500 milliseconds and deduped using `account_id` and `event`
+    * `/poll/contract` is debounced with a duration of 500 milliseconds and deduped using `contract_id`.
+    * `/poll/tx` is debounced with a duration of 2200 milliseconds and buffer size of around 1.6 MB.
+
+
 **Poll Accounts**
  ----
    Listen to account events 
@@ -9,8 +18,10 @@
     `/poll/accounts`
 
 * **Query Param:**
+
+    Optional parameters to filter the events by certain properties.
             
-    `id=[string]` where `id` is the hex-encoded Account ID. Used to filter the events by Account ID.
+    `id=[string]` where `id` is the hex-encoded Account ID.
  
 * **Message:**
 
@@ -164,6 +175,8 @@
     `/poll/stake`
   
 * **Query Params:**
+
+    Optional parameters to filter the events by certain properties.
             
     `id=[string]` where `id` is the hex-encoded Account ID. Used to filter the events by Account ID.
  
@@ -198,8 +211,10 @@
     `/poll/contract`
  
 * **Query Params:**
+
+    Optional parameters to filter the events by certain properties.
             
-    `id=[string]` where `id` is the hex-encoded Contract ID. Used to filter the events by Contract ID.
+    `id=[string]` where `id` is the hex-encoded Contract ID.
  
 * **Message:**
 
@@ -271,14 +286,16 @@
     `/poll/tx`
   
 * **Query Params:**
-         
-    `id=[string]` where `id` is the hex-encoded Transaction ID. Used to filter the events by Transaction ID.
 
-    `sender=[string]` where `sender` is the hex-encoded Sender ID. Used to filter the events by Sender ID.
+    Optional parameters to filter the events by certain properties.  
+     
+    `id=[string]` where `id` is the hex-encoded Transaction ID.
+
+    `sender=[string]` where `sender` is the hex-encoded Sender ID.
         
-    `creator=[string]` where `creator` is the hex-encoded Creator ID. Used to filter the events by Creator ID.
+    `creator=[string]` where `creator` is the hex-encoded Creator ID.
                
-    `tag=[integer]` where `tag` is the tag. Used to filter the events by tag.
+    `tag=[integer]` where `tag` is the tag.
  
 * **Message:**
 
