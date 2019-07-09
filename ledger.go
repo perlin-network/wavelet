@@ -35,6 +35,7 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/peer"
 	"math/rand"
 	"strings"
@@ -133,7 +134,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 	}
 
 	go ledger.SyncToLatestRound()
-	go ledger.PerformConsensus()
+	ledger.PerformConsensus()
 	go ledger.PushSendQuota()
 
 	return ledger
@@ -312,6 +313,12 @@ func (l *Ledger) PullMissingTransactions() {
 	defer l.consensus.Done()
 
 	for {
+		select {
+		case <-l.sync:
+			return
+		default:
+		}
+
 		missing := l.graph.Missing()
 
 		if len(missing) == 0 {
@@ -324,7 +331,14 @@ func (l *Ledger) PullMissingTransactions() {
 			continue
 		}
 
-		peers := l.client.ClosestPeers()
+		closestPeers := l.client.ClosestPeers()
+
+		peers := make([]*grpc.ClientConn, 0, len(closestPeers))
+		for _, p := range closestPeers {
+			if p.GetState() == connectivity.Ready {
+				peers = append(peers, p)
+			}
+		}
 
 		if len(peers) == 0 {
 			select {
@@ -370,8 +384,8 @@ func (l *Ledger) PullMissingTransactions() {
 
 		for _, buf := range batch.Transactions {
 			tx, err := UnmarshalTransaction(bytes.NewReader(buf))
-
 			if err != nil {
+				fmt.Printf("error unmarshaling downloaded tx [%v]: %+v", err, tx)
 				continue
 			}
 
@@ -793,7 +807,7 @@ func (l *Ledger) SyncToLatestRound() {
 			go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
 
 			l.sync = make(chan struct{})
-			go l.PerformConsensus()
+			l.PerformConsensus()
 		}
 
 		shutdown() // Shutdown all consensus-related workers.
