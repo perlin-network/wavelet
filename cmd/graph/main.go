@@ -128,8 +128,8 @@ func main() {
 		go api.New().StartHTTP(*apiPortFlag, client, ledger, keys)
 	}
 
-	if len(flag.Args()) > 1 {
-		for _, addr := range flag.Args()[1:] {
+	if len(flag.Args()) > 0 {
+		for _, addr := range flag.Args()[:] {
 			if _, err := client.Dial(addr); err != nil {
 				fmt.Printf("Error dialing %s: %v\n", addr, err)
 			}

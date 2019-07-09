@@ -1226,7 +1226,7 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 			}
 
 			for i, tx := range res.rejected {
-				logEventTX("failed", tx, res.rejectedErrors[i])
+				logEventTX("rejected", tx, res.rejectedErrors[i])
 			}
 		}
 	}()
