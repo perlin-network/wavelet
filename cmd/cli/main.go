@@ -1,13 +1,125 @@
 package main
 
 import (
-	"github.com/atotto/clipboard"
-	"github.com/fatih/color"
-	"github.com/gdamore/tcell"
-	"github.com/perlin-network/wavelet/log"
-	"github.com/rivo/tview"
+	"fmt"
+	"os"
+
+	"github.com/diamondburned/tview/v2"
+	"github.com/perlin-network/wavelet/cmd/cli/server"
+	"github.com/perlin-network/wavelet/cmd/cli/tui/logger"
+	"github.com/perlin-network/wavelet/sys"
+	flag "github.com/spf13/pflag"
+	"github.com/spf13/viper"
 )
 
+var log *logger.Logger
+
+func main() {
+	// Add the config file flag
+	var configFile string
+	flag.StringVarP(&configFile, "config", "c", "",
+		"Path to TOML config file, overrides command line arguments.")
+
+	// promptConfigDialog when true starts the TUI with a dialog to change
+	// parameters
+	var promptConfigDialog bool
+	flag.BoolVarP(&promptConfigDialog, "prompt-config", "p", true,
+		"Start the TUI with a dialog to change parameters.")
+
+	// Add the server config flags
+	c := server.Config{}
+
+	flag.StringVar(&c.Host, "host", "127.0.0.1",
+		"Listen for peers on host address.")
+	flag.BoolVar(&c.NAT, "nat", false,
+		"Enable port forwarding, only required for PCs.")
+	flag.UintVar(&c.Port, "port", 3000,
+		"Listen for peers on port.")
+	flag.UintVar(&c.APIPort, "api.port", 0,
+		"Start a local API HTTP server at this port.")
+	flag.StringVar(&c.Wallet, "wallet", "config/wallet.txt",
+		"Path to file containing hex-encoded private key. If "+
+			"the path specified is invalid, or no file exists at the "+
+			"specified path, a random wallet will be generated. "+
+			"Optionally, a 128-length hex-encoded private key to a "+
+			"wallet may also be specified.")
+	flag.StringVar(&c.Genesis, "genesis", "",
+		"Genesis JSON file contents representing initial fields of some set "+
+			"of accounts at round 0.")
+	flag.StringVar(&c.Database, "db", "",
+		"Directory path to the database. If empty, a temporary in-memory "+
+			"database will be used instead.")
+
+	// Add the flags for the sys package
+	flag.DurationVar(&sys.QueryTimeout, "sys.query_timeout", sys.QueryTimeout,
+		"Timeout in seconds for querying a transaction to K peers.")
+	flag.Uint64Var(&sys.MaxDepthDiff, "sys.max_depth_diff", sys.MaxDepthDiff,
+		"Max graph depth difference to search for eligible transaction "+
+			"parents from for our node.")
+	flag.Uint64Var(&sys.TransactionFeeAmount, "sys.transaction_fee_amount",
+		sys.TransactionFeeAmount,
+		"Amount of transaction fee.")
+	flag.Uint64Var(&sys.MinimumStake, "sys.min_stake", sys.MinimumStake,
+		"Minimum stake to garner validator rewards and have importance in "+
+			"consensus.")
+	flag.IntVar(&sys.SnowballK, "sys.snowball.k", sys.SnowballK,
+		"Snowball consensus protocol parameter K.")
+	flag.Float64Var(&sys.SnowballAlpha, "sys.snowball.alpha", sys.SnowballAlpha,
+		"Snowball consensus protocol parameter Alpha.")
+	flag.IntVar(&sys.SnowballBeta, "sys.snowball.beta", sys.SnowballBeta,
+		"Snowball consensus protocol parameter Beta.")
+	flag.Float64Var(&sys.DifficultyScaleFactor, "sys.difficulty.scale",
+		sys.DifficultyScaleFactor,
+		"Factor to scale a transactions confidence down by to "+
+			"compute the difficulty needed to define a critical transaction")
+
+	// Oddballs
+	difficulty := flag.Int("sys.min.difficulty", int(sys.MinDifficulty),
+		"Minimum difficulty to define a critical transaction.")
+
+	// Parse the flags
+	flag.Parse()
+
+	// Assign stuff to parse the config file if provided one
+	if configFile != "" {
+		// Bind (p)flag to Viper
+		viper.BindPFlags(flag.CommandLine)
+
+		// Set the config file path to the variable parsed
+		viper.SetConfigFile(configFile)
+
+		if err := viper.ReadInConfig(); err != nil {
+			fatal("Failed to read config:", err)
+		}
+	}
+
+	// Set the oddballs
+	sys.MinDifficulty = byte(*difficulty)
+
+	// Make a new global logger
+	log = logger.NewLogger()
+
+	tview.Initialize()
+
+	// TODO(diamond): actual TUI code lmao
+	/* This to be called in the dialog callback
+	srv, err := server.New(c, log)
+	if err != nil {
+		fatal("Failed to start server", err)
+	}
+	*/
+
+	if err := tview.Run(); err != nil {
+		fatal(err)
+	}
+}
+
+func fatal(i ...interface{}) {
+	fmt.Fprintln(os.Stderr, i...)
+	os.Exit(1)
+}
+
+/*
 func main() {
 	app := tview.NewApplication()
 	defer app.Stop()
@@ -109,3 +221,4 @@ func main() {
 		panic(err)
 	}
 }
+*/

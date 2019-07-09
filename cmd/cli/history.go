@@ -1,7 +1,6 @@
 package main
 
-import "sync"
-
+/*
 type History struct {
 	Max   int
 	Data  []string
@@ -77,3 +76,4 @@ func (h *History) Next() string {
 func (h *History) Update() {
 	h.Index = len(h.Data)
 }
+*/
