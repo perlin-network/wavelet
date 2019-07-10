@@ -485,7 +485,7 @@ FINALIZE_ROUNDS:
 		go CollectVotes(l.accounts, l.finalizer, voteChan, &workerWG)
 
 		req := &QueryRequest{RoundIndex: current.Index + 1}
-
+		t := time.Now()
 		for i := 0; i < cap(workerChan); i++ {
 			go func() {
 				for conn := range workerChan {
@@ -616,7 +616,7 @@ FINALIZE_ROUNDS:
 				workerChan <- peer
 			}
 		}
-
+		fmt.Println("Time consensus took -", time.Now().Sub(t))
 		close(workerChan)
 		workerWG.Wait() // Wait for query workers to close.
 		workerWG.Add(1)

@@ -24,6 +24,8 @@ import (
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/debounce"
 	"github.com/perlin-network/wavelet/log"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"sync"
 	"time"
 )
@@ -69,10 +71,15 @@ func (g *Gossiper) Gossip(transactions [][]byte) {
 
 	batch := &Transactions{Transactions: transactions}
 
-	conns := g.client.ClosestPeers()
+	peers := g.client.ClosestPeers()
+	conns := make([]*grpc.ClientConn, 0, len(peers))
+	for _, p := range peers {
+		if p.GetState() == connectivity.Ready {
+			conns = append(peers, p)
+		}
+	}
 
 	var wg sync.WaitGroup
-
 	for _, conn := range conns {
 		target := conn.Target()
 
