@@ -307,9 +307,6 @@ func TestGraphFindEligibleCritical(t *testing.T) {
 		eligible := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
 
 		for {
-			if err := graph.PrepareSeed(eligible); err != nil {
-				t.Error(err)
-			}
 			if eligible.IsCritical(difficulty) {
 				break
 			}
@@ -350,9 +347,6 @@ func TestGraphFindEligibleCriticalInBigGraph(t *testing.T) {
 			eligible = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
 
 			for {
-				if err := graph.PrepareSeed(eligible); err != nil {
-					t.Error(err)
-				}
 				if eligible.IsCritical(difficulty) {
 					break
 				}
@@ -377,9 +371,6 @@ func TestGraphFindEligibleCriticalInBigGraph(t *testing.T) {
 			tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...)
 
 			for { // Be sure we never create a transaction with the difficulty we set.
-				if err := graph.PrepareSeed(tx); err != nil {
-					t.Error(err)
-				}
 				if !tx.IsCritical(difficulty) {
 					break
 				}

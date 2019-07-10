@@ -23,16 +23,15 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"io"
-	"math"
-	"sort"
-
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
+	"io"
+	"math"
+	"math/bits"
+	"sort"
 )
 
 type Transaction struct {
@@ -41,7 +40,8 @@ type Transaction struct {
 
 	Nonce uint64
 
-	ParentIDs []TransactionID // Transactions parents.
+	ParentIDs   []TransactionID // Transactions parents.
+	ParentSeeds []TransactionSeed
 
 	Depth uint64 // Graph depth.
 
@@ -53,9 +53,8 @@ type Transaction struct {
 
 	ID TransactionID // BLAKE2b(*).
 
-	Seed         [blake2b.Size256]byte // BLAKE2b(Sender || ParentIDs)
-	SeedLen      byte                  // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
-	SeedPrepared bool
+	Seed    TransactionSeed // BLAKE2b(Sender || ParentIDs)
+	SeedLen byte            // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
 }
 
 func NewTransaction(creator *skademlia.Keypair, tag sys.Tag, payload []byte) *Transaction {
@@ -92,12 +91,20 @@ func NewBatchTransaction(creator *skademlia.Keypair, tags []byte, payloads [][]b
 	return NewTransaction(creator, sys.TagBatch, append([]byte{byte(len(tags))}, buf...))
 }
 
-func AttachSenderToTransaction(sender *skademlia.Keypair, tx *Transaction, parents ...*Transaction) *Transaction {
+func AttachSenderToTransaction(sender *skademlia.Keypair, _tx *Transaction, parents ...*Transaction) *Transaction {
+	tx := *_tx
+	AttachSenderToTransactionInPlace(sender, &tx, parents...)
+	return &tx
+}
+
+func AttachSenderToTransactionInPlace(sender *skademlia.Keypair, tx *Transaction, parents ...*Transaction) {
 	if len(parents) > 0 {
 		tx.ParentIDs = make([]TransactionID, 0, len(parents))
+		tx.ParentSeeds = make([]TransactionSeed, 0, len(parents))
 
 		for _, parent := range parents {
 			tx.ParentIDs = append(tx.ParentIDs, parent.ID)
+			tx.ParentSeeds = append(tx.ParentSeeds, parent.Seed)
 
 			if tx.Depth < parent.Depth {
 				tx.Depth = parent.Depth
@@ -115,20 +122,41 @@ func AttachSenderToTransaction(sender *skademlia.Keypair, tx *Transaction, paren
 	tx.SenderSignature = edwards25519.Sign(sender.PrivateKey(), tx.Marshal())
 
 	tx.rehash()
-
-	return tx
 }
 
-func (t *Transaction) rehash() *Transaction {
+func (t *Transaction) rehash() {
 	t.ID = blake2b.Sum256(t.Marshal())
 
-	buf := make([]byte, 0, SizeAccountID+len(t.ParentIDs)*SizeTransactionID)
-	buf = append(buf, t.Sender[:]...)
-	for _, parentID := range t.ParentIDs {
-		buf = append(buf, parentID[:]...)
-	}
+	// Calculate the new seed.
+	{
+		hasher, err := blake2b.New(32, nil)
+		if err != nil {
+			panic(err) // should never happen
+		}
 
-	return t
+		_, err = hasher.Write(t.Sender[:])
+		if err != nil {
+			panic(err) // should never happen
+		}
+
+		for _, parentSeed := range t.ParentSeeds {
+			_, err = hasher.Write(parentSeed[:])
+			if err != nil {
+				panic(err) // should never happen
+			}
+		}
+
+		// Write 8-bit hash of transaction content to reduce conflicts.
+		_, err = hasher.Write(t.ID[:1])
+		if err != nil {
+			panic(err) // should never happen
+		}
+
+		seed := hasher.Sum(nil)
+		copy(t.Seed[:], seed)
+
+		t.SeedLen = byte(prefixLen(seed))
+	}
 }
 
 func (t *Transaction) Marshal() []byte {
@@ -151,6 +179,9 @@ func (t *Transaction) Marshal() []byte {
 	w.WriteByte(byte(len(t.ParentIDs)))
 	for _, parentID := range t.ParentIDs {
 		w.Write(parentID[:])
+	}
+	for _, parentSeed := range t.ParentSeeds {
+		w.Write(parentSeed[:])
 	}
 
 	binary.BigEndian.PutUint64(buf[:8], t.Depth)
@@ -228,6 +259,15 @@ func UnmarshalTransaction(r io.Reader) (t *Transaction, err error) {
 		}
 	}
 
+	t.ParentSeeds = make([]TransactionSeed, len(t.ParentIDs))
+
+	for i := range t.ParentSeeds {
+		if _, err = io.ReadFull(r, t.ParentSeeds[i][:]); err != nil {
+			err = errors.Wrapf(err, "failed to decode parent seed %d", i)
+			return
+		}
+	}
+
 	if _, err = io.ReadFull(r, buf[:8]); err != nil {
 		err = errors.Wrap(err, "could not read transaction depth")
 		return
@@ -273,13 +313,7 @@ func UnmarshalTransaction(r io.Reader) (t *Transaction, err error) {
 	return t, nil
 }
 
-// Returns (is_critical, known)
 func (tx *Transaction) IsCritical(difficulty byte) bool {
-	if !tx.SeedPrepared {
-		logger := log.TX("IsCritical")
-		logger.Error().Msg("BUG: IsCritical called before critical seed is computed.")
-		return false
-	}
 	return tx.SeedLen >= difficulty
 }
 
@@ -301,4 +335,14 @@ func (tx *Transaction) LogicalUnits() int {
 
 func (tx *Transaction) String() string {
 	return fmt.Sprintf("Transaction{ID: %x}", tx.ID)
+}
+
+func prefixLen(buf []byte) int {
+	for i, b := range buf {
+		if b != 0 {
+			return i*8 + bits.LeadingZeros8(uint8(b))
+		}
+	}
+
+	return len(buf)*8 - 1
 }

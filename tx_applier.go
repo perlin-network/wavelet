@@ -34,6 +34,40 @@ type ContractExecutorState struct {
 	GasLimit uint64
 }
 
+func ApplyTransaction(round *Round, snapshot *avl.Tree, tx *Transaction) error {
+	original := snapshot.Snapshot()
+
+	switch tx.Tag {
+	case sys.TagNop:
+	case sys.TagTransfer:
+		if _, err := ApplyTransferTransaction(snapshot, round, tx, nil); err != nil {
+			snapshot.Revert(original)
+
+			// FIXME: cleanup logging
+			fmt.Println(err)
+
+			return errors.Wrap(err, "could not apply transfer transaction")
+		}
+	case sys.TagStake:
+		if _, err := ApplyStakeTransaction(snapshot, round, tx); err != nil {
+			snapshot.Revert(original)
+			return errors.Wrap(err, "could not apply stake transaction")
+		}
+	case sys.TagContract:
+		if _, err := ApplyContractTransaction(snapshot, round, tx, nil); err != nil {
+			snapshot.Revert(original)
+			return errors.Wrap(err, "could not apply contract transaction")
+		}
+	case sys.TagBatch:
+		if _, err := ApplyBatchTransaction(snapshot, round, tx); err != nil {
+			snapshot.Revert(original)
+			return errors.Wrap(err, "could not apply batch transaction")
+		}
+	}
+
+	return nil
+}
+
 func ApplyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction, state *ContractExecutorState) (*avl.Tree, error) {
 	params, err := ParseTransferTransaction(tx.Payload)
 	if err != nil {
