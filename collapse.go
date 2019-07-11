@@ -23,7 +23,7 @@ func processRewardWithdrawals(round uint64, snapshot *avl.Tree) {
 	}
 }
 
-func RewardValidators(g *Graph, snapshot *avl.Tree, root *Transaction, tx *Transaction, logging bool) error {
+func rewardValidators(g *Graph, snapshot *avl.Tree, root *Transaction, tx *Transaction, logging bool) error {
 	fee := sys.TransactionFeeAmount
 
 	creatorBalance, _ := ReadAccountBalance(snapshot, tx.Creator)
@@ -207,7 +207,7 @@ func CollapseTransactions(g *Graph, accounts *Accounts, round uint64, latestRoun
 
 		// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
 		if hex.EncodeToString(popped.Creator[:]) != sys.FaucetAddress {
-			if err := RewardValidators(g, res.snapshot, root, popped, logging); err != nil {
+			if err := rewardValidators(g, res.snapshot, root, popped, logging); err != nil {
 				res.rejected = append(res.rejected, popped)
 				res.rejectedErrors = append(res.rejectedErrors, err)
 				res.rejectedCount += popped.LogicalUnits()
