@@ -30,7 +30,7 @@ import (
 )
 
 type ContractExecutorState struct {
-	Sender   AccountID
+	GasPayer AccountID
 	GasLimit uint64
 }
 
@@ -80,109 +80,115 @@ func ApplyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 		return nil, errors.New("transfer: transactions to non-contract accounts should not specify gas limit or function names or params")
 	}
 
-	senderBalance, _ := ReadAccountBalance(snapshot, tx.Creator)
+	// senderBalance/recipientBalance should be hidden from other code.
+	{
+		senderBalance, _ := ReadAccountBalance(snapshot, tx.Creator)
 
-	// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
-	if hex.EncodeToString(tx.Creator[:]) == sys.FaucetAddress {
+		// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
+		if hex.EncodeToString(tx.Creator[:]) == sys.FaucetAddress {
+			recipientBalance, _ := ReadAccountBalance(snapshot, params.Recipient)
+			WriteAccountBalance(snapshot, params.Recipient, recipientBalance+params.Amount)
+
+			return snapshot, nil
+		}
+
+		if senderBalance < params.Amount {
+			return nil, errors.Errorf("transfer: %x tried send %d PERLs to %x, but only has %d PERLs",
+				tx.Creator, params.Amount, params.Recipient, senderBalance)
+		}
+
+		senderBalance -= params.Amount
+		WriteAccountBalance(snapshot, tx.Creator, senderBalance)
+
 		recipientBalance, _ := ReadAccountBalance(snapshot, params.Recipient)
-		WriteAccountBalance(snapshot, params.Recipient, recipientBalance+params.Amount)
-
-		return snapshot, nil
+		recipientBalance += params.Amount
+		WriteAccountBalance(snapshot, params.Recipient, recipientBalance)
 	}
 
-	if senderBalance < params.Amount {
-		return nil, errors.Errorf("transfer: %x tried send %d PERLs to %x, but only has %d PERLs",
-			tx.Creator, params.Amount, params.Recipient, senderBalance)
+	gasPayer := tx.Creator
+	if state != nil {
+		gasPayer = state.GasPayer
+	} else {
+		state = &ContractExecutorState{GasPayer: tx.Creator, GasLimit: params.GasLimit}
 	}
+
+	gasPayerBalance, _ := ReadAccountBalance(snapshot, gasPayer)
 
 	if !codeAvailable {
-		WriteAccountBalance(snapshot, tx.Creator, senderBalance-params.Amount)
-
-		recipientBalance, _ := ReadAccountBalance(snapshot, params.Recipient)
-		WriteAccountBalance(snapshot, params.Recipient, recipientBalance+params.Amount)
-
 		return snapshot, nil
 	}
 
-	sender := tx.Creator
-	if state != nil {
-		sender = state.Sender
-		params.GasLimit = state.GasLimit
+	realGasLimit := state.GasLimit
+	if params.GasLimit < realGasLimit {
+		realGasLimit = params.GasLimit
 	}
 
-	if params.GasLimit == 0 {
+	if realGasLimit == 0 {
 		return nil, errors.New("transfer: gas limit for invoking smart contract must be greater than zero")
 	}
 
-	senderBalance, _ = ReadAccountBalance(snapshot, sender)
-
-	if senderBalance < params.GasLimit {
-		return nil, errors.Errorf("transfer: %x attempted to claim a gas limit of %d PERLs, but only has %d PERLs",
-			sender, params.GasLimit, senderBalance)
+	if gasPayerBalance < realGasLimit {
+		return nil, errors.Errorf("transfer: attempted to deduct gas fee from %x of %d PERLs, but only has %d PERLs",
+			gasPayer, realGasLimit, gasPayerBalance)
 	}
-
-	WriteAccountBalance(snapshot, tx.Creator, senderBalance-params.Amount)
-
-	recipientBalance, _ := ReadAccountBalance(snapshot, params.Recipient)
-	WriteAccountBalance(snapshot, params.Recipient, recipientBalance+params.Amount)
 
 	executor := &ContractExecutor{}
+	snapshotBeforeExec := snapshot.Snapshot()
 
-	if err := executor.Execute(snapshot, params.Recipient, round, tx, params.Amount, params.GasLimit, string(params.FuncName), params.FuncParams, code); err != nil {
-		return nil, errors.Wrap(err, "transfer: failed to invoke smart contract")
+	invocationErr := executor.Execute(snapshot, params.Recipient, round, tx, params.Amount, realGasLimit, string(params.FuncName), params.FuncParams, code)
+
+	// gasPayerBalance >= realGasLimit >= executor.Gas must always hold.
+	if realGasLimit < executor.Gas {
+		panic("BUG: realGasLimit < executor.Gas")
 	}
 
-	if executor.GasLimitExceeded { // Revert changes and have the sender pay gas fees.
-		WriteAccountBalance(snapshot, tx.Creator, senderBalance-executor.Gas)
+	if executor.GasLimitExceeded || invocationErr != nil { // Revert changes and have the gas payer pay gas fees.
+		snapshot.Revert(snapshotBeforeExec)
+		WriteAccountBalance(snapshot, gasPayer, gasPayerBalance-executor.Gas)
 
-		recipientBalance, _ := ReadAccountBalance(snapshot, params.Recipient)
-		WriteAccountBalance(snapshot, params.Recipient, recipientBalance)
-
-		logger := log.Contracts("gas")
-		logger.Info().
-			Hex("sender_id", tx.Creator[:]).
-			Hex("contract_id", params.Recipient[:]).
-			Uint64("gas", executor.Gas).
-			Uint64("gas_limit", params.GasLimit).
-			Msg("Exceeded gas limit while invoking smart contract function.")
+		if invocationErr != nil {
+			logger := log.Contracts("transfer")
+			logger.Info().Err(invocationErr).Msg("failed to invoke smart contract")
+		} else {
+			logger := log.Contracts("gas")
+			logger.Info().
+				Hex("sender_id", tx.Creator[:]).
+				Hex("contract_id", params.Recipient[:]).
+				Uint64("gas", executor.Gas).
+				Uint64("gas_limit", realGasLimit).
+				Msg("Exceeded gas limit while invoking smart contract function.")
+		}
 	} else {
-		WriteAccountBalance(snapshot, tx.Creator, senderBalance-params.Amount-executor.Gas)
+		WriteAccountBalance(snapshot, gasPayer, gasPayerBalance-executor.Gas)
 
 		logger := log.Contracts("gas")
 		logger.Info().
 			Hex("sender_id", tx.Creator[:]).
 			Hex("contract_id", params.Recipient[:]).
 			Uint64("gas", executor.Gas).
-			Uint64("gas_limit", params.GasLimit).
+			Uint64("gas_limit", realGasLimit).
 			Msg("Deducted PERLs for invoking smart contract function.")
 
-		if state == nil {
-			state = &ContractExecutorState{Sender: tx.Sender}
-		}
-
-		if params.GasLimit > executor.Gas {
-			state.GasLimit = params.GasLimit - executor.Gas
-		}
+		state.GasLimit -= executor.Gas
 
 		for _, entry := range executor.Queue {
+			var newSnapshot *avl.Tree
 			switch entry.Tag {
 			case sys.TagNop:
 			case sys.TagTransfer:
-				if _, err := ApplyTransferTransaction(snapshot, round, entry, state); err != nil {
-					return nil, err
-				}
+				newSnapshot, err = ApplyTransferTransaction(snapshot, round, entry, state)
 			case sys.TagStake:
-				if _, err := ApplyStakeTransaction(snapshot, round, entry); err != nil {
-					return nil, err
-				}
+				newSnapshot, err = ApplyStakeTransaction(snapshot, round, entry)
 			case sys.TagContract:
-				if _, err := ApplyContractTransaction(snapshot, round, entry, state); err != nil {
-					return nil, err
-				}
+				newSnapshot, err = ApplyContractTransaction(snapshot, round, entry, state)
 			case sys.TagBatch:
-				if _, err := ApplyBatchTransaction(snapshot, round, entry); err != nil {
-					return nil, err
-				}
+				newSnapshot, err = ApplyBatchTransaction(snapshot, round, entry)
+			}
+			if err != nil {
+				logger := log.Contracts("transfer")
+				logger.Info().Err(err).Msg("failed to process sub-transaction")
+			} else {
+				snapshot.Revert(newSnapshot)
 			}
 		}
 	}
@@ -247,7 +253,7 @@ func ApplyContractTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 
 	sender := tx.Creator
 	if state != nil {
-		sender = state.Sender
+		sender = state.GasPayer
 		params.GasLimit = state.GasLimit
 	}
 
@@ -271,7 +277,7 @@ func ApplyContractTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 
 	if !executor.GasLimitExceeded {
 		if state == nil {
-			state = &ContractExecutorState{Sender: tx.Sender}
+			state = &ContractExecutorState{GasPayer: tx.Sender}
 		}
 
 		if params.GasLimit > executor.Gas {

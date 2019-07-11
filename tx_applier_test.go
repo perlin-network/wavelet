@@ -22,11 +22,13 @@ package wavelet
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
+	"io/ioutil"
 	"math/rand"
 	"testing"
 )
@@ -78,13 +80,7 @@ func TestApplyTransaction_Single(t *testing.T) {
 			account.effect.Stake += amount
 			account.effect.Balance -= amount
 
-			var intBuf [8]byte
-			payload := bytes.NewBuffer(nil)
-			payload.WriteByte(sys.PlaceStake)
-			binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
-			payload.Write(intBuf[:8])
-
-			tx := AttachSenderToTransaction(account.keys, NewTransaction(account.keys, sys.TagStake, payload.Bytes()))
+			tx := AttachSenderToTransaction(account.keys, NewTransaction(account.keys, sys.TagStake, buildPlaceStakePayload(amount)))
 			err := ApplyTransaction(&round, state, tx)
 			assert.NoError(t, err)
 		case 1:
@@ -100,13 +96,7 @@ func TestApplyTransaction_Single(t *testing.T) {
 			fromAccount.effect.Balance -= amount
 			toAccount.effect.Balance += amount
 
-			payload := bytes.NewBuffer(nil)
-			payload.Write(toAccountID[:])
-			var intBuf [8]byte
-			binary.LittleEndian.PutUint64(intBuf[:], amount)
-			payload.Write(intBuf[:])
-
-			tx := AttachSenderToTransaction(fromAccount.keys, NewTransaction(fromAccount.keys, sys.TagTransfer, payload.Bytes()))
+			tx := AttachSenderToTransaction(fromAccount.keys, NewTransaction(fromAccount.keys, sys.TagTransfer, buildTransferPayload(toAccountID, amount)))
 			err := ApplyTransaction(&round, state, tx)
 			assert.NoError(t, err)
 		default:
@@ -167,13 +157,7 @@ func TestApplyTransaction_Collapse(t *testing.T) {
 		account := accounts[accountIDs[rng.Intn(len(accountIDs))]]
 		account.effect.Stake += amount
 
-		var intBuf [8]byte
-		payload := bytes.NewBuffer(nil)
-		payload.WriteByte(sys.PlaceStake)
-		binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
-		payload.Write(intBuf[:8])
-
-		tx := AttachSenderToTransaction(account.keys, NewTransaction(account.keys, sys.TagStake, payload.Bytes()), graph.FindEligibleParents()...)
+		tx := AttachSenderToTransaction(account.keys, NewTransaction(account.keys, sys.TagStake, buildPlaceStakePayload(amount)), graph.FindEligibleParents()...)
 		err := graph.AddTransaction(tx)
 		assert.NoError(t, err)
 		if tx.IsCritical(4) {
@@ -281,6 +265,104 @@ func TestApplyBatchTransaction(t *testing.T) {
 
 	finalBobBalance, _ := ReadAccountBalance(state, bobID)
 	assert.Equal(t, finalBobBalance, uint64(100))
+}
+
+func TestApplyContractTransaction(t *testing.T) {
+	state := avl.New(store.NewInmem())
+	round := NewRound(0, state.Checksum(), 0, &Transaction{}, &Transaction{})
+	account, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	accountID := account.PublicKey()
+
+	code, err := ioutil.ReadFile("testdata/transfer_back.wasm")
+	assert.NoError(t, err)
+
+	// Case 1 - balance < gas_fee
+	WriteAccountBalance(state, accountID, 99999)
+	tx := AttachSenderToTransaction(account, NewTransaction(account, sys.TagContract, buildContractSpawnPayload(100000, code)))
+	err = ApplyTransaction(&round, state, tx)
+	assert.Error(t, err)
+
+	// Case 2 - Success
+	WriteAccountBalance(state, accountID, 100000)
+	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagContract, buildContractSpawnPayload(100000, code)))
+	err = ApplyTransaction(&round, state, tx)
+	assert.NoError(t, err)
+
+	finalBalance, _ := ReadAccountBalance(state, accountID)
+	assert.Condition(t, func() bool { return finalBalance > 0 && finalBalance < 100000 })
+
+	// Try to transfer some money
+	WriteAccountBalance(state, accountID, 1000000000)
+	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagTransfer, buildTransferWithInvocationPayload(
+		AccountID(tx.ID),
+		200000000,
+		500000,
+		[]byte("on_money_received"),
+		nil,
+	)))
+	err = ApplyTransaction(&round, state, tx)
+	assert.NoError(t, err)
+	finalBalance, _ = ReadAccountBalance(state, accountID)
+	assert.Condition(t, func() bool { return finalBalance > 1000000000-100000000-500000 && finalBalance < 1000000000-100000000 })
+
+	code, err = ioutil.ReadFile("testdata/recursive_invocation.wasm")
+	assert.NoError(t, err)
+
+	WriteAccountBalance(state, accountID, 100000000)
+	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagContract, buildContractSpawnPayload(100000, code)))
+	err = ApplyTransaction(&round, state, tx)
+	assert.NoError(t, err)
+	recursiveInvocationContractID := AccountID(tx.ID)
+
+	WriteAccountBalance(state, accountID, 6000000)
+	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagTransfer, buildTransferWithInvocationPayload(
+		recursiveInvocationContractID,
+		0,
+		5000000,
+		[]byte("bomb"),
+		recursiveInvocationContractID[:],
+	)))
+	err = ApplyTransaction(&round, state, tx)
+	assert.NoError(t, err)
+
+	finalBalance, _ = ReadAccountBalance(state, accountID)
+	fmt.Println(finalBalance)
+	assert.Condition(t, func() bool { return finalBalance >= 1000000 && finalBalance < 1100000 }) // GasLimit specified in contract is 100000
+}
+
+func buildTransferWithInvocationPayload(dest AccountID, amount uint64, gasLimit uint64, funcName []byte, param []byte) []byte {
+	payload := bytes.NewBuffer(nil)
+	payload.Write(dest[:])
+	var intBuf [8]byte
+	binary.LittleEndian.PutUint64(intBuf[:], amount)
+	payload.Write(intBuf[:])
+
+	binary.LittleEndian.PutUint64(intBuf[:], gasLimit)
+	payload.Write(intBuf[:])
+
+	binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(funcName)))
+	payload.Write(intBuf[:4])
+	payload.Write(funcName)
+
+	binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(param)))
+	payload.Write(intBuf[:4])
+	payload.Write(param)
+
+	return payload.Bytes()
+}
+
+func buildContractSpawnPayload(gasLimit uint64, code []byte) []byte {
+	var buf [8]byte
+	w := bytes.NewBuffer(nil)
+	binary.LittleEndian.PutUint64(buf[:], gasLimit) // Gas fee.
+	w.Write(buf[:])
+	binary.LittleEndian.PutUint32(buf[:4], 0) // Payload size.
+	w.Write(buf[:4])
+
+	w.Write(code) // Smart contract code.
+	return w.Bytes()
 }
 
 func buildTransferPayload(dest AccountID, amount uint64) []byte {
