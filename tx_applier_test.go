@@ -127,7 +127,8 @@ func TestApplyTransaction_Single(t *testing.T) {
 func TestApplyTransaction_Collapse(t *testing.T) {
 	const InitialBalance = 100000000
 
-	state := avl.New(store.NewInmem())
+	stateStore := store.NewInmem()
+	state := avl.New(stateStore)
 	var initialRoot *Transaction
 
 	viewID := uint64(0)
@@ -155,12 +156,13 @@ func TestApplyTransaction_Collapse(t *testing.T) {
 	}
 
 	rng := rand.New(rand.NewSource(42))
-
 	round := NewRound(viewID, state.Checksum(), 0, &Transaction{}, initialRoot)
+	accountState := NewAccounts(stateStore)
+	accountState.Commit(state)
 
 	var criticalCount int
 
-	for criticalCount < 1000 {
+	for criticalCount < 100 {
 		amount := rng.Uint64()%100 + 1
 		account := accounts[accountIDs[rng.Intn(len(accountIDs))]]
 		account.effect.Stake += amount
@@ -175,7 +177,9 @@ func TestApplyTransaction_Collapse(t *testing.T) {
 		err := graph.AddTransaction(tx)
 		assert.NoError(t, err)
 		if tx.IsCritical(4) {
-			results, err := graph.CollapseTransactions(state, viewID+1, &round, round.End, tx, false)
+			results, err := CollapseTransactions(graph, accountState, viewID+1, &round, round.End, tx, false)
+			assert.NoError(t, err)
+			err = accountState.Commit(results.snapshot)
 			assert.NoError(t, err)
 			state = results.snapshot
 			round = NewRound(viewID+1, state.Checksum(), uint64(results.appliedCount), round.End, tx)
@@ -188,4 +192,120 @@ func TestApplyTransaction_Collapse(t *testing.T) {
 			criticalCount++
 		}
 	}
+}
+
+func TestApplyTransferTransaction(t *testing.T) {
+	state := avl.New(store.NewInmem())
+	round := NewRound(0, state.Checksum(), 0, &Transaction{}, &Transaction{})
+	alice, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+	bob, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	aliceID := alice.PublicKey()
+	bobID := bob.PublicKey()
+
+	// Case 1 - Success
+	WriteAccountBalance(state, aliceID, 1)
+
+	tx := AttachSenderToTransaction(alice, NewTransaction(alice, sys.TagTransfer, buildTransferPayload(bobID, 1)))
+	err = ApplyTransaction(&round, state, tx)
+	assert.NoError(t, err)
+
+	// Case 2 - Not enough balance
+	tx = AttachSenderToTransaction(alice, NewTransaction(alice, sys.TagTransfer, buildTransferPayload(bobID, 1)))
+	err = ApplyTransaction(&round, state, tx)
+	assert.Error(t, err)
+
+	// Case 3 - Self-transfer without enough balance
+	tx = AttachSenderToTransaction(alice, NewTransaction(alice, sys.TagTransfer, buildTransferPayload(aliceID, 1)))
+	err = ApplyTransaction(&round, state, tx)
+	assert.Error(t, err)
+}
+
+func TestApplyStakeTransaction(t *testing.T) {
+	state := avl.New(store.NewInmem())
+	round := NewRound(0, state.Checksum(), 0, &Transaction{}, &Transaction{})
+	account, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	accountID := account.PublicKey()
+
+	// Case 1 - Placement success
+	WriteAccountBalance(state, accountID, 100)
+
+	tx := AttachSenderToTransaction(account, NewTransaction(account, sys.TagStake, buildPlaceStakePayload(100)))
+	err = ApplyTransaction(&round, state, tx)
+	assert.NoError(t, err)
+
+	// Case 2 - Not enough balance
+	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagStake, buildPlaceStakePayload(100)))
+	err = ApplyTransaction(&round, state, tx)
+	assert.Error(t, err)
+
+	// Case 3 - Withdrawal success
+	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagStake, buildWithdrawStakePayload(100)))
+	err = ApplyTransaction(&round, state, tx)
+	assert.NoError(t, err)
+
+	finalBalance, _ := ReadAccountBalance(state, accountID)
+	assert.Equal(t, finalBalance, uint64(100))
+}
+
+func TestApplyBatchTransaction(t *testing.T) {
+	state := avl.New(store.NewInmem())
+	round := NewRound(0, state.Checksum(), 0, &Transaction{}, &Transaction{})
+	alice, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+	bob, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	aliceID := alice.PublicKey()
+	bobID := bob.PublicKey()
+
+	WriteAccountBalance(state, aliceID, 100)
+
+	// initial stake
+	tx := AttachSenderToTransaction(alice, NewTransaction(alice, sys.TagStake, buildPlaceStakePayload(100)))
+	err = ApplyTransaction(&round, state, tx)
+	assert.NoError(t, err)
+
+	// this implies order
+	tx = AttachSenderToTransaction(alice, NewBatchTransaction(
+		alice,
+		[]byte{byte(sys.TagStake), byte(sys.TagTransfer)},
+		[][]byte{buildWithdrawStakePayload(100), buildTransferPayload(bobID, 100)},
+	))
+	err = ApplyTransaction(&round, state, tx)
+	assert.NoError(t, err)
+
+	finalBobBalance, _ := ReadAccountBalance(state, bobID)
+	assert.Equal(t, finalBobBalance, uint64(100))
+}
+
+func buildTransferPayload(dest AccountID, amount uint64) []byte {
+	payload := bytes.NewBuffer(nil)
+	payload.Write(dest[:])
+	var intBuf [8]byte
+	binary.LittleEndian.PutUint64(intBuf[:], amount)
+	payload.Write(intBuf[:])
+	return payload.Bytes()
+}
+
+func buildPlaceStakePayload(amount uint64) []byte {
+	var intBuf [8]byte
+	payload := bytes.NewBuffer(nil)
+	payload.WriteByte(sys.PlaceStake)
+	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
+	payload.Write(intBuf[:8])
+	return payload.Bytes()
+}
+
+func buildWithdrawStakePayload(amount uint64) []byte {
+	var intBuf [8]byte
+	payload := bytes.NewBuffer(nil)
+	payload.WriteByte(sys.WithdrawStake)
+	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
+	payload.Write(intBuf[:8])
+	return payload.Bytes()
 }

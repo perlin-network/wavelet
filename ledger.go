@@ -1187,7 +1187,7 @@ func (l *Ledger) CollapseTransactions(round uint64, root *Transaction, end *Tran
 	}
 
 	var err error
-	res, err = l.graph.CollapseTransactions(l.accounts, round, l.Rounds().Latest(), root, end, logging)
+	res, err = CollapseTransactions(l.graph, l.accounts, round, l.Rounds().Latest(), root, end, logging)
 	if err != nil {
 		return nil, err
 	}

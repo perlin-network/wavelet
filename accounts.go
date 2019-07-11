@@ -30,10 +30,6 @@ import (
 	"unsafe"
 )
 
-type LikeAccounts interface {
-	Snapshot() *avl.Tree
-}
-
 type Accounts struct {
 	sync.RWMutex
 

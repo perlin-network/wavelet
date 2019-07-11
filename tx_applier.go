@@ -34,14 +34,14 @@ type ContractExecutorState struct {
 	GasLimit uint64
 }
 
-func ApplyTransaction(round *Round, snapshot *avl.Tree, tx *Transaction) error {
-	original := snapshot.Snapshot()
+func ApplyTransaction(round *Round, state *avl.Tree, tx *Transaction) error {
+	original := state.Snapshot()
 
 	switch tx.Tag {
 	case sys.TagNop:
 	case sys.TagTransfer:
-		if _, err := ApplyTransferTransaction(snapshot, round, tx, nil); err != nil {
-			snapshot.Revert(original)
+		if _, err := ApplyTransferTransaction(state, round, tx, nil); err != nil {
+			state.Revert(original)
 
 			// FIXME: cleanup logging
 			fmt.Println(err)
@@ -49,18 +49,18 @@ func ApplyTransaction(round *Round, snapshot *avl.Tree, tx *Transaction) error {
 			return errors.Wrap(err, "could not apply transfer transaction")
 		}
 	case sys.TagStake:
-		if _, err := ApplyStakeTransaction(snapshot, round, tx); err != nil {
-			snapshot.Revert(original)
+		if _, err := ApplyStakeTransaction(state, round, tx); err != nil {
+			state.Revert(original)
 			return errors.Wrap(err, "could not apply stake transaction")
 		}
 	case sys.TagContract:
-		if _, err := ApplyContractTransaction(snapshot, round, tx, nil); err != nil {
-			snapshot.Revert(original)
+		if _, err := ApplyContractTransaction(state, round, tx, nil); err != nil {
+			state.Revert(original)
 			return errors.Wrap(err, "could not apply contract transaction")
 		}
 	case sys.TagBatch:
-		if _, err := ApplyBatchTransaction(snapshot, round, tx); err != nil {
-			snapshot.Revert(original)
+		if _, err := ApplyBatchTransaction(state, round, tx); err != nil {
+			state.Revert(original)
 			return errors.Wrap(err, "could not apply batch transaction")
 		}
 	}
