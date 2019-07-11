@@ -445,7 +445,7 @@ FINALIZE_ROUNDS:
 				continue FINALIZE_ROUNDS
 			}
 
-			results, err := l.CollapseTransactions(current.Index+1, current.End, eligible, false)
+			results, err := l.collapseTransactions(current.Index+1, current.End, eligible, false)
 			if err != nil {
 				fmt.Println(err)
 				continue
@@ -543,7 +543,7 @@ FINALIZE_ROUNDS:
 							return
 						}
 
-						results, err := l.CollapseTransactions(round.Index, round.Start, round.End, false)
+						results, err := l.collapseTransactions(round.Index, round.Start, round.End, false)
 						if err != nil {
 							if !strings.Contains(err.Error(), "missing ancestor") {
 								fmt.Println(err)
@@ -611,7 +611,7 @@ FINALIZE_ROUNDS:
 		finalized := l.finalizer.Preferred()
 		l.finalizer.Reset()
 
-		results, err := l.CollapseTransactions(finalized.Index, finalized.Start, finalized.End, true)
+		results, err := l.collapseTransactions(finalized.Index, finalized.Start, finalized.End, true)
 		if err != nil {
 			if !strings.Contains(err.Error(), "missing ancestor") {
 				fmt.Println(err)
@@ -1137,10 +1137,10 @@ func (l *Ledger) SyncToLatestRound() {
 	}
 }
 
-// CollapseResults is what is returned by calling CollapseTransactions. Refer to CollapseTransactions
+// collapseResults is what returned by calling collapseTransactions. Refer to collapseTransactions
 // to understand what counts of accepted, rejected, or otherwise ignored transactions truly represent
-// after calling CollapseTransactions.
-type CollapseResults struct {
+// after calling collapseTransactions.
+type collapseResults struct {
 	applied        []*Transaction
 	rejected       []*Transaction
 	rejectedErrors []error
@@ -1152,7 +1152,7 @@ type CollapseResults struct {
 	snapshot *avl.Tree
 }
 
-// CollapseTransactions takes all transactions recorded within a graph depth interval, and applies
+// collapseTransactions takes all transactions recorded within a graph depth interval, and applies
 // all valid and available ones to a snapshot of all accounts stored in the ledger. It returns
 // an updated snapshot with all finalized transactions applied, alongside count summaries of the
 // number of applied, rejected, or otherwise ignored transactions.
@@ -1166,8 +1166,8 @@ type CollapseResults struct {
 // It is important to note that transactions that are inspected over are specifically transactions
 // that are within the depth interval (start, end] where start is the interval starting point depth,
 // and end is the interval ending point depth.
-func (l *Ledger) CollapseTransactions(round uint64, root *Transaction, end *Transaction, logging bool) (*CollapseResults, error) {
-	var res *CollapseResults
+func (l *Ledger) collapseTransactions(round uint64, root *Transaction, end *Transaction, logging bool) (*collapseResults, error) {
+	var res *collapseResults
 
 	defer func() {
 		if res != nil && logging {
@@ -1182,12 +1182,12 @@ func (l *Ledger) CollapseTransactions(round uint64, root *Transaction, end *Tran
 	}()
 
 	if results, exists := l.cacheCollapse.load(end.ID); exists {
-		res = results.(*CollapseResults)
+		res = results.(*collapseResults)
 		return res, nil
 	}
 
 	var err error
-	res, err = CollapseTransactions(l.graph, l.accounts, round, l.Rounds().Latest(), root, end, logging)
+	res, err = collapseTransactions(l.graph, l.accounts, round, l.Rounds().Latest(), root, end, logging)
 	if err != nil {
 		return nil, err
 	}

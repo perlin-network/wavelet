@@ -149,8 +149,8 @@ func rewardValidators(g *Graph, snapshot *avl.Tree, root *Transaction, tx *Trans
 	return nil
 }
 
-func CollapseTransactions(g *Graph, accounts *Accounts, round uint64, latestRound *Round, root *Transaction, end *Transaction, logging bool) (*CollapseResults, error) {
-	res := &CollapseResults{snapshot: accounts.Snapshot()}
+func collapseTransactions(g *Graph, accounts *Accounts, round uint64, latestRound *Round, root *Transaction, end *Transaction, logging bool) (*collapseResults, error) {
+	res := &collapseResults{snapshot: accounts.Snapshot()}
 	res.snapshot.SetViewID(round)
 
 	visited := map[TransactionID]struct{}{root.ID: {}}

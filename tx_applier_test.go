@@ -177,7 +177,7 @@ func TestApplyTransaction_Collapse(t *testing.T) {
 		err := graph.AddTransaction(tx)
 		assert.NoError(t, err)
 		if tx.IsCritical(4) {
-			results, err := CollapseTransactions(graph, accountState, viewID+1, &round, round.End, tx, false)
+			results, err := collapseTransactions(graph, accountState, viewID+1, &round, round.End, tx, false)
 			assert.NoError(t, err)
 			err = accountState.Commit(results.snapshot)
 			assert.NoError(t, err)
