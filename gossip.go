@@ -24,8 +24,6 @@ import (
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/debounce"
 	"github.com/perlin-network/wavelet/log"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
 	"sync"
 	"time"
 )
@@ -67,36 +65,42 @@ func (g *Gossiper) Push(tx Transaction) {
 }
 
 func (g *Gossiper) Gossip(transactions [][]byte) {
-	var err error
+	//var err error
 
 	batch := &Transactions{Transactions: transactions}
 
 	peers := g.client.ClosestPeers()
-	conns := make([]*grpc.ClientConn, 0, len(peers))
-	for _, p := range peers {
-		if p.GetState() == connectivity.Ready {
-			conns = append(peers, p)
-		}
-	}
 
 	var wg sync.WaitGroup
-	for _, conn := range conns {
-		target := conn.Target()
+	for _, p := range peers {
+		//if p.GetState() != connectivity.Ready {
+		//	continue
+		//}
+		//target := conn.Target()
+		client := NewWaveletClient(p)
 
-		g.streamsLock.Lock()
-		stream, exists := g.streams[conn.Target()]
-
-		if !exists {
-			client := NewWaveletClient(conn)
-
-			if stream, err = client.Gossip(context.Background()); err != nil {
-				g.streamsLock.Unlock()
-				continue
-			}
-
-			g.streams[target] = stream
+		ctx, _ := context.WithTimeout(context.Background(), 100 * time.Millisecond)
+		stream, err := client.Gossip(ctx)
+		if err != nil {
+			//fmt.Println("gossiping error", err)
+			//g.streamsLock.Unlock()
+			continue
 		}
-		g.streamsLock.Unlock()
+		//g.streamsLock.Lock()
+		//stream, exists := g.streams[conn.Target()]
+		//
+		//if !exists {
+		//	client := NewWaveletClient(conn)
+		//
+		//	ctx, _ := context.WithTimeout(context.Background(), 100 * time.Millisecond)
+		//	if stream, err = client.Gossip(ctx); err != nil {
+		//		g.streamsLock.Unlock()
+		//		continue
+		//	}
+		//
+		//	g.streams[target] = stream
+		//}
+		//g.streamsLock.Unlock()
 
 		wg.Add(1)
 
@@ -105,9 +109,9 @@ func (g *Gossiper) Gossip(transactions [][]byte) {
 				logger := log.TX("gossip")
 				logger.Err(err).Msg("Failed to send batch")
 
-				g.streamsLock.Lock()
-				delete(g.streams, target)
-				g.streamsLock.Unlock()
+				//g.streamsLock.Lock()
+				//delete(g.streams, target)
+				//g.streamsLock.Unlock()
 			}
 
 			wg.Done()

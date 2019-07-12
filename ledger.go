@@ -63,7 +63,6 @@ type Ledger struct {
 	broadcastNopsLock  sync.Mutex
 
 	sync      chan struct{}
-	syncTimer *time.Timer
 	syncVotes chan vote
 
 	cacheCollapse *LRU
@@ -107,8 +106,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 	graph := NewGraph(WithMetrics(metrics), WithIndexer(indexer), WithRoot(round.End), VerifySignatures())
 
 	gossiper := NewGossiper(context.TODO(), client, metrics)
-	finalizer := NewSnowball(WithBeta(sys.SnowballBeta))
-	syncer := NewSnowball(WithBeta(sys.SnowballBeta))
+	finalizer := NewSnowball(WithName("finalizer"), WithBeta(sys.SnowballBeta))
+	syncer := NewSnowball(WithName("syncer"), WithBeta(100))
 
 	ledger := &Ledger{
 		client:  client,
@@ -124,7 +123,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 		syncer:    syncer,
 
 		sync:      make(chan struct{}),
-		syncTimer: time.NewTimer(0),
 		syncVotes: make(chan vote, sys.SnowballK),
 
 		cacheCollapse: NewLRU(16),
@@ -310,7 +308,10 @@ func (l *Ledger) BroadcastNop() *Transaction {
 // up. It is intended to call PullMissingTransactions() in a new goroutine.
 func (l *Ledger) PullMissingTransactions() {
 	l.consensus.Add(1)
-	defer l.consensus.Done()
+	defer func(){
+		l.consensus.Done()
+		fmt.Println("??? pull missing loop stopped")
+	}()
 
 	for {
 		select {
@@ -354,7 +355,7 @@ func (l *Ledger) PullMissingTransactions() {
 			peers[i], peers[j] = peers[j], peers[i]
 		})
 
-		fmt.Println("Trying to download missing transactions. count =", len(missing))
+		//fmt.Println("Trying to download missing transactions. count =", len(missing))
 		rand.Shuffle(len(missing), func(i, j int) {
 			missing[i], missing[j] = missing[j], missing[i]
 		})
@@ -409,8 +410,12 @@ func (l *Ledger) PullMissingTransactions() {
 // applied to the current ledger state, and the graph is updated to cleanup artifacts from
 // the old round.
 func (l *Ledger) FinalizeRounds() {
+	fmt.Println("??? finalization loop started")
 	l.consensus.Add(1)
-	defer l.consensus.Done()
+	defer func(){
+		l.consensus.Done()
+		fmt.Println("??? finalization loop stopped")
+	}()
 
 FINALIZE_ROUNDS:
 	for {
@@ -462,7 +467,7 @@ FINALIZE_ROUNDS:
 
 			results, err := l.CollapseTransactions(current.Index+1, current.End, *eligible, false)
 			if err != nil {
-				fmt.Println(err)
+				fmt.Println("error collapsing transactions during finalization", err)
 				continue
 			}
 
@@ -612,8 +617,8 @@ FINALIZE_ROUNDS:
 				continue FINALIZE_ROUNDS
 			}
 
-			for _, peer := range peers {
-				workerChan <- peer
+			for _, p := range peers {
+				workerChan <- p
 			}
 		}
 		fmt.Println("Time consensus took -", time.Now().Sub(t))
@@ -696,6 +701,7 @@ func (l *Ledger) SyncToLatestRound() {
 	go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
 
 	for {
+		t := time.Now()
 		for {
 			conns, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
 			if err != nil {
@@ -773,11 +779,10 @@ func (l *Ledger) SyncToLatestRound() {
 				break
 			}
 
-			l.syncTimer.Reset((1500 / (1 + 2*time.Duration(l.syncer.Progress()))) * time.Millisecond)
+			//l.syncTimer.Reset((1500 / (1 + 2*time.Duration(l.syncer.Progress()))) * time.Millisecond)
+			//l.syncTimer.Reset(50 * time.Millisecond)
 
-			select {
-			case <-l.syncTimer.C:
-			}
+			time.Sleep(10 * time.Millisecond)
 		}
 
 		// Reset syncing Snowball sampler. Check if it is a false alarm such that we don't have to sync.
@@ -789,6 +794,8 @@ func (l *Ledger) SyncToLatestRound() {
 			l.syncer.Reset()
 			continue
 		}
+		fmt.Println(">>> time took to find out that we out of sync - ", time.Now().Sub(t))
+		t = time.Now()
 
 		shutdown := func() {
 			close(l.sync)
@@ -824,9 +831,7 @@ func (l *Ledger) SyncToLatestRound() {
 		if err != nil {
 			logger.Warn().Msg("It looks like there are no peers for us to sync with. Retrying...")
 
-			select {
-			case <-time.After(1 * time.Second):
-			}
+			time.Sleep(1 * time.Second)
 
 			goto SYNC
 		}
@@ -1147,6 +1152,7 @@ func (l *Ledger) SyncToLatestRound() {
 			Hex("new_merkle_root", latest.Merkle[:]).
 			Hex("old_merkle_root", current.Merkle[:]).
 			Msg("Successfully built a new state Snapshot out of chunk(s) we have received from peers.")
+		fmt.Println(">>> time took actually to sync - ", time.Now().Sub(t))
 
 		restart()
 	}
