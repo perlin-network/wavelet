@@ -68,6 +68,53 @@ func TestTree_Commit(t *testing.T) {
 	}
 }
 
+func TestTree_DeleteUntilEmpty(t *testing.T) {
+	kv, cleanup := GetKV("level", "db")
+	defer cleanup()
+
+	values := map[string]string{
+		"key":   "value",
+		"foo":   "bar",
+		"lorem": "ipsum",
+	}
+
+	{
+		tree := New(kv)
+		for k, v := range values {
+			tree.Insert([]byte(k), []byte(v))
+		}
+
+		assert.NoError(t, tree.Commit())
+	}
+
+	{
+		tree := New(kv)
+
+		// Delete all the keys
+		for k := range values {
+			assert.True(t, tree.Delete([]byte(k)))
+		}
+
+		// None of the keys should exist
+		for k := range values {
+			_, ok := tree.Lookup([]byte(k))
+			assert.False(t, ok)
+		}
+
+		assert.NoError(t, tree.Commit())
+	}
+
+	{
+		tree := New(kv)
+
+		// Previous change should be commited
+		for k := range values {
+			_, ok := tree.Lookup([]byte(k))
+			assert.False(t, ok)
+		}
+	}
+}
+
 func TestTree_Snapshot(t *testing.T) {
 	kv, cleanup := GetKV("level", "db")
 	defer cleanup()

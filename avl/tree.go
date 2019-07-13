@@ -175,8 +175,13 @@ func (t *Tree) doPrintContents(n *node, depth int) {
 
 func (t *Tree) Commit() error {
 	if t.root == nil {
+		// Tree is empty, so just delete the root.
+		// If deleting the root fails because it doesn't exist, ignore the error.
+		_ = t.kv.Delete(RootKey)
+
 		return nil
 	}
+
 	batch := t.kv.NewWriteBatch()
 
 	err := t.root.dfs(t, false, func(n *node) (bool, error) {
@@ -210,14 +215,7 @@ func (t *Tree) Commit() error {
 		}
 	}
 
-	if t.root != nil {
-		return t.kv.Put(RootKey, t.root.id[:])
-	}
-
-	// If deleting the root fails because it doesn't exist, ignore the error.
-	_ = t.kv.Delete(RootKey)
-
-	return nil
+	return t.kv.Put(RootKey, t.root.id[:])
 }
 
 func (t *Tree) getNextOldRootIndex() uint64 {
