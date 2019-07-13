@@ -239,7 +239,7 @@ func (cli *CLI) pay(cmd []string) {
 	balance, _ := wavelet.ReadAccountBalance(snapshot, cli.keys.PublicKey())
 	_, codeAvailable := wavelet.ReadAccountContractCode(snapshot, recipientID)
 
-	if balance < amount {
+	if balance < amount+sys.TransactionFeeAmount {
 		cli.logger.Error().Uint64("your_balance", balance).Uint64("amount_to_send", amount).Msg("You do not have enough PERLs to send.")
 		return
 	}
@@ -252,7 +252,7 @@ func (cli *CLI) pay(cmd []string) {
 	payload.Write(intBuf[:])
 
 	if codeAvailable {
-		binary.LittleEndian.PutUint64(intBuf[:], balance) // Set gas limit by default to the balance the user has.
+		binary.LittleEndian.PutUint64(intBuf[:], balance-sys.TransactionFeeAmount) // Set gas limit by default to the balance the user has.
 		payload.Write(intBuf[:])
 
 		defaultFuncName := "on_money_received"
