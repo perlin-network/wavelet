@@ -53,7 +53,7 @@ var (
 	QueryTimeout = 1 * time.Second
 
 	// Number of rounds we should be behind before we start syncing.
-	SyncIfRoundsDifferBy uint64 = 5
+	SyncIfRoundsDifferBy uint64 = 2
 
 	// Size of individual chunks sent for a syncing peer.
 	SyncChunkSize = 16384

@@ -107,7 +107,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 
 	gossiper := NewGossiper(context.TODO(), client, metrics)
 	finalizer := NewSnowball(WithName("finalizer"), WithBeta(sys.SnowballBeta))
-	syncer := NewSnowball(WithName("syncer"), WithBeta(100))
+	syncer := NewSnowball(WithName("syncer"), WithBeta(sys.SnowballBeta))
 
 	ledger := &Ledger{
 		client:  client,
@@ -131,8 +131,9 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 		sendQuota: make(chan struct{}, 2000),
 	}
 
-	go ledger.SyncToLatestRound()
 	ledger.PerformConsensus()
+
+	go ledger.SyncToLatestRound()
 	go ledger.PushSendQuota()
 
 	return ledger
@@ -308,10 +309,7 @@ func (l *Ledger) BroadcastNop() *Transaction {
 // up. It is intended to call PullMissingTransactions() in a new goroutine.
 func (l *Ledger) PullMissingTransactions() {
 	l.consensus.Add(1)
-	defer func(){
-		l.consensus.Done()
-		fmt.Println("??? pull missing loop stopped")
-	}()
+	defer l.consensus.Done()
 
 	for {
 		select {
@@ -355,7 +353,6 @@ func (l *Ledger) PullMissingTransactions() {
 			peers[i], peers[j] = peers[j], peers[i]
 		})
 
-		//fmt.Println("Trying to download missing transactions. count =", len(missing))
 		rand.Shuffle(len(missing), func(i, j int) {
 			missing[i], missing[j] = missing[j], missing[i]
 		})
@@ -372,7 +369,7 @@ func (l *Ledger) PullMissingTransactions() {
 		conn := peers[0]
 		client := NewWaveletClient(conn)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		batch, err := client.DownloadTx(ctx, req)
 		if err != nil {
 			fmt.Println("failed to download missing transactions:", err)
@@ -410,12 +407,8 @@ func (l *Ledger) PullMissingTransactions() {
 // applied to the current ledger state, and the graph is updated to cleanup artifacts from
 // the old round.
 func (l *Ledger) FinalizeRounds() {
-	fmt.Println("??? finalization loop started")
 	l.consensus.Add(1)
-	defer func(){
-		l.consensus.Done()
-		fmt.Println("??? finalization loop stopped")
-	}()
+	defer l.consensus.Done()
 
 FINALIZE_ROUNDS:
 	for {
@@ -490,7 +483,7 @@ FINALIZE_ROUNDS:
 		go CollectVotes(l.accounts, l.finalizer, voteChan, &workerWG)
 
 		req := &QueryRequest{RoundIndex: current.Index + 1}
-		t := time.Now()
+
 		for i := 0; i < cap(workerChan); i++ {
 			go func() {
 				for conn := range workerChan {
@@ -598,21 +591,20 @@ FINALIZE_ROUNDS:
 				workerWG.Wait()
 				workerWG.Add(1)
 				close(voteChan)
-				workerWG.Wait() // Wait for vote processor worker to close.
+				workerWG.Wait() // Wait for vote processor worker to stop
 
 				return
 			default:
 			}
 
-			// Randomly sample a peer to query. If no peers are available, stop querying.
-
+			// Randomly sample a peer to query
 			peers, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
 			if err != nil {
 				close(workerChan)
 				workerWG.Wait()
 				workerWG.Add(1)
 				close(voteChan)
-				workerWG.Wait() // Wait for vote processor worker to close.
+				workerWG.Wait() // Wait for vote processor worker to stop
 
 				continue FINALIZE_ROUNDS
 			}
@@ -621,12 +613,12 @@ FINALIZE_ROUNDS:
 				workerChan <- p
 			}
 		}
-		fmt.Println("Time consensus took -", time.Now().Sub(t))
+
 		close(workerChan)
-		workerWG.Wait() // Wait for query workers to close.
+		workerWG.Wait() // Wait for query workers to stop
 		workerWG.Add(1)
 		close(voteChan)
-		workerWG.Wait() // Wait for vote processor worker to close.
+		workerWG.Wait() // Wait for vote processor worker to stop
 
 		finalized := l.finalizer.Preferred()
 		l.finalizer.Reset()
@@ -701,7 +693,6 @@ func (l *Ledger) SyncToLatestRound() {
 	go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
 
 	for {
-		t := time.Now()
 		for {
 			conns, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
 			if err != nil {
@@ -779,10 +770,7 @@ func (l *Ledger) SyncToLatestRound() {
 				break
 			}
 
-			//l.syncTimer.Reset((1500 / (1 + 2*time.Duration(l.syncer.Progress()))) * time.Millisecond)
-			//l.syncTimer.Reset(50 * time.Millisecond)
-
-			time.Sleep(10 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond)
 		}
 
 		// Reset syncing Snowball sampler. Check if it is a false alarm such that we don't have to sync.
@@ -794,8 +782,6 @@ func (l *Ledger) SyncToLatestRound() {
 			l.syncer.Reset()
 			continue
 		}
-		fmt.Println(">>> time took to find out that we out of sync - ", time.Now().Sub(t))
-		t = time.Now()
 
 		shutdown := func() {
 			close(l.sync)
@@ -1152,7 +1138,6 @@ func (l *Ledger) SyncToLatestRound() {
 			Hex("new_merkle_root", latest.Merkle[:]).
 			Hex("old_merkle_root", current.Merkle[:]).
 			Msg("Successfully built a new state Snapshot out of chunk(s) we have received from peers.")
-		fmt.Println(">>> time took actually to sync - ", time.Now().Sub(t))
 
 		restart()
 	}
