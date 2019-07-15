@@ -82,12 +82,15 @@ func (g *Gossiper) Gossip(transactions [][]byte) {
 		wg.Add(1)
 
 		go func() {
+			defer func() {
+				_ = stream.CloseSend()
+				wg.Done()
+			}()
+
 			if err := stream.Send(batch); err != nil {
 				logger := log.TX("gossip")
 				logger.Err(err).Msg("Failed to send batch")
 			}
-
-			wg.Done()
 		}()
 	}
 
