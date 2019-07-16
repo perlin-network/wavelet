@@ -609,7 +609,7 @@ FINALIZE_ROUNDS:
 		close(voteChan)
 		workerWG.Wait() // Wait for vote processor worker to close.
 
-		finalized := l.finalizer.Preferred()
+		finalized := l.finalizer.Preferred().(*Round)
 		l.finalizer.Reset()
 
 		results, err := l.CollapseTransactions(finalized.Index, finalized.Start, finalized.End, true)
@@ -769,7 +769,7 @@ func (l *Ledger) SyncToLatestRound() {
 		// Reset syncing Snowball sampler. Check if it is a false alarm such that we don't have to sync.
 
 		current := l.rounds.Latest()
-		proposed := l.syncer.Preferred()
+		proposed := l.syncer.Preferred().(*Round)
 
 		if proposed.Index < sys.SyncIfRoundsDifferBy+current.Index {
 			l.syncer.Reset()

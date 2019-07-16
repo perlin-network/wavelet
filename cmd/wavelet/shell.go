@@ -163,7 +163,7 @@ func (cli *CLI) status() {
 	preferredID := "N/A"
 
 	if preferred := cli.ledger.Finalizer().Preferred(); preferred != nil {
-		preferredID = hex.EncodeToString(preferred.ID[:])
+		preferredID = hex.EncodeToString(preferred.(*wavelet.Round).ID[:])
 	}
 
 	count := cli.ledger.Finalizer().Progress()

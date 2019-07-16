@@ -92,7 +92,11 @@ func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, 
 				}
 			}
 
-			snowball.Tick(majority)
+			if majority == ZeroRoundPtr || majority == nil {
+				snowball.Tick(nil)
+			} else {
+				snowball.Tick(majority)
+			}
 
 			voters = make(map[AccountID]struct{}, sys.SnowballK)
 			votes = votes[:0]

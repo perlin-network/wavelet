@@ -68,9 +68,8 @@ func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse
 	}
 
 	preferred := p.ledger.finalizer.Preferred()
-
 	if preferred != nil {
-		res.Round = preferred.Marshal()
+		res.Round = preferred.(*Round).Marshal()
 		return res, nil
 	}
 

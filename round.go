@@ -22,6 +22,7 @@ package wavelet
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"io"
@@ -56,6 +57,10 @@ func NewRound(index uint64, merkle MerkleNodeID, applied uint64, start, end Tran
 	r.ID = blake2b.Sum256(r.Marshal())
 
 	return r
+}
+
+func (r *Round) GetID() string {
+	return fmt.Sprintf("%x", r.ID)
 }
 
 func (r Round) Marshal() []byte {
