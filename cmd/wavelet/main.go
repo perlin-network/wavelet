@@ -98,7 +98,6 @@ func main() {
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "wallet",
-			Value:  "config/wallet.txt",
 			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded private key to a wallet may also be specified.",
 			EnvVar: "WAVELET_WALLET",
 		}),

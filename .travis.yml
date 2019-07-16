@@ -11,6 +11,7 @@ matrix:
         - "1.12.5"
       install: true
       script:
+        - GO111MODULE=on go build -o $GOPATH/bin/wavelet ./cmd/wavelet
         - GO111MODULE=on go test -coverprofile=coverage.txt -covermode=atomic -bench -race ./...
       after_success:
         - bash <(curl -s https://codecov.io/bash)
