@@ -65,45 +65,32 @@ func (g *Gossiper) Push(tx Transaction) {
 }
 
 func (g *Gossiper) Gossip(transactions [][]byte) {
-	var err error
-
 	batch := &Transactions{Transactions: transactions}
 
-	conns := g.client.ClosestPeers()
+	peers := g.client.ClosestPeers()
 
 	var wg sync.WaitGroup
+	for _, p := range peers {
+		client := NewWaveletClient(p)
 
-	for _, conn := range conns {
-		target := conn.Target()
-
-		g.streamsLock.Lock()
-		stream, exists := g.streams[conn.Target()]
-
-		if !exists {
-			client := NewWaveletClient(conn)
-
-			if stream, err = client.Gossip(context.Background()); err != nil {
-				g.streamsLock.Unlock()
-				continue
-			}
-
-			g.streams[target] = stream
+		ctx, _ := context.WithTimeout(context.Background(), 100 * time.Millisecond)
+		stream, err := client.Gossip(ctx)
+		if err != nil {
+			continue
 		}
-		g.streamsLock.Unlock()
 
 		wg.Add(1)
 
 		go func() {
+			defer func() {
+				_ = stream.CloseSend()
+				wg.Done()
+			}()
+
 			if err := stream.Send(batch); err != nil {
 				logger := log.TX("gossip")
 				logger.Err(err).Msg("Failed to send batch")
-
-				g.streamsLock.Lock()
-				delete(g.streams, target)
-				g.streamsLock.Unlock()
 			}
-
-			wg.Done()
 		}()
 	}
 

@@ -35,6 +35,7 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/peer"
 	"math/rand"
 	"strings"
@@ -62,7 +63,6 @@ type Ledger struct {
 	broadcastNopsLock  sync.Mutex
 
 	sync      chan struct{}
-	syncTimer *time.Timer
 	syncVotes chan vote
 
 	outOfSync bool
@@ -110,8 +110,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 	graph := NewGraph(WithMetrics(metrics), WithIndexer(indexer), WithRoot(round.End), VerifySignatures())
 
 	gossiper := NewGossiper(context.TODO(), client, metrics)
-	finalizer := NewSnowball(WithBeta(sys.SnowballBeta))
-	syncer := NewSnowball(WithBeta(sys.SnowballBeta))
+	finalizer := NewSnowball(WithName("finalizer"), WithBeta(sys.SnowballBeta))
+	syncer := NewSnowball(WithName("syncer"), WithBeta(sys.SnowballBeta))
 
 	ledger := &Ledger{
 		client:  client,
@@ -127,7 +127,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 		syncer:    syncer,
 
 		sync:      make(chan struct{}),
-		syncTimer: time.NewTimer(0),
 		syncVotes: make(chan vote, sys.SnowballK),
 
 		outOfSync: true, // start as of of sync, since we need to check whether we synced first
@@ -138,8 +137,9 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 		sendQuota: make(chan struct{}, 2000),
 	}
 
+	ledger.PerformConsensus()
+
 	go ledger.SyncToLatestRound()
-	go ledger.PerformConsensus()
 	go ledger.PushSendQuota()
 
 	return ledger
@@ -344,7 +344,14 @@ func (l *Ledger) PullMissingTransactions() {
 			continue
 		}
 
-		peers := l.client.ClosestPeers()
+		closestPeers := l.client.ClosestPeers()
+
+		peers := make([]*grpc.ClientConn, 0, len(closestPeers))
+		for _, p := range closestPeers {
+			if p.GetState() == connectivity.Ready {
+				peers = append(peers, p)
+			}
+		}
 
 		if len(peers) == 0 {
 			select {
@@ -360,7 +367,6 @@ func (l *Ledger) PullMissingTransactions() {
 			peers[i], peers[j] = peers[j], peers[i]
 		})
 
-		fmt.Println("Trying to download missing transactions. count =", len(missing))
 		rand.Shuffle(len(missing), func(i, j int) {
 			missing[i], missing[j] = missing[j], missing[i]
 		})
@@ -377,7 +383,7 @@ func (l *Ledger) PullMissingTransactions() {
 		conn := peers[0]
 		client := NewWaveletClient(conn)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		batch, err := client.DownloadTx(ctx, req)
 		if err != nil {
 			fmt.Println("failed to download missing transactions:", err)
@@ -390,8 +396,8 @@ func (l *Ledger) PullMissingTransactions() {
 
 		for _, buf := range batch.Transactions {
 			tx, err := UnmarshalTransaction(bytes.NewReader(buf))
-
 			if err != nil {
+				fmt.Printf("error unmarshaling downloaded tx [%v]: %+v", err, tx)
 				continue
 			}
 
@@ -468,7 +474,7 @@ FINALIZE_ROUNDS:
 
 			results, err := l.CollapseTransactions(current.Index+1, current.End, *eligible, false)
 			if err != nil {
-				fmt.Println(err)
+				fmt.Println("error collapsing transactions during finalization", err)
 				continue
 			}
 
@@ -599,35 +605,34 @@ FINALIZE_ROUNDS:
 				workerWG.Wait()
 				workerWG.Add(1)
 				close(voteChan)
-				workerWG.Wait() // Wait for vote processor worker to close.
+				workerWG.Wait() // Wait for vote processor worker to stop
 
 				return
 			default:
 			}
 
-			// Randomly sample a peer to query. If no peers are available, stop querying.
-
+			// Randomly sample a peer to query
 			peers, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
 			if err != nil {
 				close(workerChan)
 				workerWG.Wait()
 				workerWG.Add(1)
 				close(voteChan)
-				workerWG.Wait() // Wait for vote processor worker to close.
+				workerWG.Wait() // Wait for vote processor worker to stop
 
 				continue FINALIZE_ROUNDS
 			}
 
-			for _, peer := range peers {
-				workerChan <- peer
+			for _, p := range peers {
+				workerChan <- p
 			}
 		}
 
 		close(workerChan)
-		workerWG.Wait() // Wait for query workers to close.
+		workerWG.Wait() // Wait for query workers to stop
 		workerWG.Add(1)
 		close(voteChan)
-		workerWG.Wait() // Wait for vote processor worker to close.
+		workerWG.Wait() // Wait for vote processor worker to stop
 
 		finalized := l.finalizer.Preferred().(*Round)
 		l.finalizer.Reset()
@@ -817,7 +822,7 @@ func (l *Ledger) SyncToLatestRound() {
 			go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
 
 			l.sync = make(chan struct{})
-			go l.PerformConsensus()
+			l.PerformConsensus()
 		}
 
 		shutdown() // Shutdown all consensus-related workers.
@@ -833,9 +838,7 @@ func (l *Ledger) SyncToLatestRound() {
 		if err != nil {
 			logger.Warn().Msg("It looks like there are no peers for us to sync with. Retrying...")
 
-			select {
-			case <-time.After(1 * time.Second):
-			}
+			time.Sleep(1 * time.Second)
 
 			goto SYNC
 		}
