@@ -89,7 +89,7 @@ func (s *Snowball) Tick(v Identifiable) {
 		return
 	}
 
-	if v == nil { // Have nil responses reset Snowball.
+	if v == nil || v.GetID() == "" { // Have nil responses reset Snowball.
 		s.lastID = ""
 		s.count = 0
 
@@ -109,7 +109,7 @@ func (s *Snowball) Tick(v Identifiable) {
 
 	if s.lastID != id { // Handle termination case.
 		if s.lastID != "" {
-			fmt.Printf("Snowball liveness fault: Last ID is %s with count %d, and new ID is %s.\n", s.lastID, s.count, id)
+			fmt.Printf("Snowball liveness fault: Last ID is %s with count %d, and new ID is %q.\n", s.lastID, s.count, id)
 		}
 
 		s.lastID = id

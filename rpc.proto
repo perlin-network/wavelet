@@ -30,10 +30,11 @@ message QueryResponse {
 }
 
 message OutOfSyncRequest {
+    uint64 round_index = 1;
 }
 
 message OutOfSyncResponse {
-    bytes round = 1;
+    bool out_of_sync = 1;
 }
 
 message SyncInfo {

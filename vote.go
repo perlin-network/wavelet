@@ -27,7 +27,7 @@ import (
 
 type vote struct {
 	voter     *skademlia.ID
-	preferred *Round
+	value Identifiable
 }
 
 func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, wg *sync.WaitGroup) {
@@ -49,10 +49,6 @@ func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, 
 			maxStake := float64(0)
 
 			for _, vote := range votes {
-				if vote.preferred == nil {
-					vote.preferred = ZeroRoundPtr
-				}
-
 				stake, _ := ReadAccountStake(snapshot, vote.voter.PublicKey())
 
 				if stake < sys.MinimumStake {
@@ -66,37 +62,24 @@ func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, 
 				}
 			}
 
-			counts := make(map[RoundID]float64, len(votes))
+			counts := make(map[string]float64, len(votes))
 			totalCount := float64(0)
 
 			for _, vote := range votes {
-				if vote.preferred == nil {
-					vote.preferred = ZeroRoundPtr
-				}
-
 				count := stakes[vote.voter.PublicKey()] / maxStake
-				counts[vote.preferred.ID] += count
+				counts[vote.value.GetID()] += count
 				totalCount += count
 			}
 
-			var majority *Round
-
+			var majority Identifiable
 			for _, vote := range votes {
-				if vote.preferred == nil {
-					vote.preferred = ZeroRoundPtr
-				}
-
-				if counts[vote.preferred.ID]/totalCount >= sys.SnowballAlpha {
-					majority = vote.preferred
+				if counts[vote.value.GetID()]/totalCount >= sys.SnowballAlpha {
+					majority = vote.value
 					break
 				}
 			}
 
-			if majority == ZeroRoundPtr || majority == nil {
-				snowball.Tick(nil)
-			} else {
-				snowball.Tick(majority)
-			}
+			snowball.Tick(majority)
 
 			voters = make(map[AccountID]struct{}, sys.SnowballK)
 			votes = votes[:0]

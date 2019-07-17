@@ -61,7 +61,6 @@ func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse
 	res := &QueryResponse{}
 
 	round, err := p.ledger.rounds.GetByIndex(req.RoundIndex)
-
 	if err == nil {
 		res.Round = round.Marshal()
 		return res, nil
@@ -137,8 +136,10 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 	}
 }
 
-func (p *Protocol) CheckOutOfSync(context.Context, *OutOfSyncRequest) (*OutOfSyncResponse, error) {
-	return &OutOfSyncResponse{Round: p.ledger.rounds.Latest().Marshal()}, nil
+func (p *Protocol) CheckOutOfSync(ctx context.Context, req *OutOfSyncRequest) (*OutOfSyncResponse, error) {
+	return &OutOfSyncResponse{
+		OutOfSync: p.ledger.rounds.Latest().Index >= sys.SyncIfRoundsDifferBy+req.RoundIndex,
+	}, nil
 }
 
 func (p *Protocol) DownloadTx(ctx context.Context, req *DownloadTxRequest) (*DownloadTxResponse, error) {

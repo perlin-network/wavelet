@@ -22,12 +22,14 @@ package wavelet
 import (
 	"bytes"
 	"encoding/hex"
+	"fmt"
 	"github.com/google/btree"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"sort"
 	"sync"
+	"time"
 )
 
 type GraphOption func(*Graph)
@@ -120,6 +122,13 @@ func NewGraph(opts ...GraphOption) *Graph {
 	for _, opt := range opts {
 		opt(g)
 	}
+
+	go func() {
+		t := time.NewTicker(1 * time.Second)
+		for range t.C {
+			fmt.Printf("txs - %d, missing - %d, incomplete - %d\n", len(g.transactions), len(g.missing), len(g.incomplete))
+		}
+	}()
 
 	return g
 }

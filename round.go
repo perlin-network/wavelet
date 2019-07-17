@@ -60,6 +60,10 @@ func NewRound(index uint64, merkle MerkleNodeID, applied uint64, start, end Tran
 }
 
 func (r *Round) GetID() string {
+	if r == nil || r.ID == ZeroRoundID {
+		return ""
+	}
+
 	return fmt.Sprintf("%x", r.ID)
 }
 

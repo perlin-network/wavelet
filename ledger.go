@@ -65,6 +65,10 @@ type Ledger struct {
 	syncTimer *time.Timer
 	syncVotes chan vote
 
+	outOfSync bool
+	outOfSyncTxBuff []Transaction
+	outOfSyncLock sync.Mutex
+
 	cacheCollapse *LRU
 	cacheChunks   *LRU
 
@@ -126,6 +130,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 		syncTimer: time.NewTimer(0),
 		syncVotes: make(chan vote, sys.SnowballK),
 
+		outOfSync: true, // start as of of sync, since we need to check whether we synced first
+
 		cacheCollapse: NewLRU(16),
 		cacheChunks:   NewLRU(1024), // In total, it will take up 1024 * 4MB.
 
@@ -146,6 +152,14 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(tx Transaction) error {
+	l.outOfSyncLock.Lock()
+	if l.outOfSync {
+		l.outOfSyncTxBuff = append(l.outOfSyncTxBuff, tx)
+		l.outOfSyncLock.Unlock()
+		return nil
+	}
+	l.outOfSyncLock.Unlock()
+
 	err := l.graph.AddTransaction(tx)
 
 	if err != nil && errors.Cause(err) != ErrAlreadyExists {
@@ -312,6 +326,12 @@ func (l *Ledger) PullMissingTransactions() {
 	defer l.consensus.Done()
 
 	for {
+		select {
+		case <-l.sync:
+			return
+		default:
+		}
+
 		missing := l.graph.Missing()
 
 		if len(missing) == 0 {
@@ -504,12 +524,12 @@ FINALIZE_ROUNDS:
 
 						round, err := UnmarshalRound(bytes.NewReader(res.Round))
 						if err != nil {
-							voteChan <- vote{voter: voter, preferred: nil}
+							voteChan <- vote{voter: voter, value: ZeroRoundPtr}
 							return
 						}
 
 						if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
-							voteChan <- vote{voter: voter, preferred: nil}
+							voteChan <- vote{voter: voter, value: ZeroRoundPtr}
 							return
 						}
 
@@ -520,7 +540,7 @@ FINALIZE_ROUNDS:
 						if round.Index != current.Index+1 {
 							if round.Index > sys.SyncIfRoundsDifferBy+current.Index {
 								select {
-								case l.syncVotes <- vote{voter: voter, preferred: &round}:
+								case l.syncVotes <- vote{voter: voter, value: &round}:
 								default:
 								}
 							}
@@ -562,7 +582,7 @@ FINALIZE_ROUNDS:
 							return
 						}
 
-						voteChan <- vote{voter: voter, preferred: &round}
+						voteChan <- vote{voter: voter, value: &round}
 					}
 
 					l.metrics.queryLatency.Time(f)
@@ -676,12 +696,22 @@ FINALIZE_ROUNDS:
 	}
 }
 
+type outOfSyncVote struct {
+	outOfSync bool
+}
+
+func (o *outOfSyncVote) GetID() string {
+	return fmt.Sprintf("%v", o.outOfSync)
+}
+
 func (l *Ledger) SyncToLatestRound() {
 	voteWG := new(sync.WaitGroup)
 
 	go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
 
+	syncTimeoutMultiplier := 0
 	for {
+		t := time.Now()
 		for {
 			conns, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
 			if err != nil {
@@ -705,7 +735,11 @@ func (l *Ledger) SyncToLatestRound() {
 
 					p := &peer.Peer{}
 
-					res, err := client.CheckOutOfSync(ctx, &OutOfSyncRequest{}, grpc.Peer(p))
+					res, err := client.CheckOutOfSync(
+						ctx,
+						&OutOfSyncRequest{RoundIndex: current.Index},
+						grpc.Peer(p),
+					)
 					if err != nil {
 						cancel()
 						wg.Done()
@@ -726,28 +760,7 @@ func (l *Ledger) SyncToLatestRound() {
 						return
 					}
 
-					round, err := UnmarshalRound(bytes.NewReader(res.Round))
-					if err != nil {
-						wg.Done()
-						return
-					}
-
-					if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
-						wg.Done()
-						return
-					}
-
-					if round.End.Depth <= round.Start.Depth {
-						wg.Done()
-						return
-					}
-
-					if round.Index < sys.SyncIfRoundsDifferBy+current.Index {
-						wg.Done()
-						return
-					}
-
-					l.syncVotes <- vote{voter: voter, preferred: &round}
+					l.syncVotes <- vote{voter: voter, value: &outOfSyncVote{outOfSync: res.OutOfSync}}
 
 					wg.Done()
 				}()
@@ -758,23 +771,34 @@ func (l *Ledger) SyncToLatestRound() {
 			if l.syncer.Decided() {
 				break
 			}
-
-			l.syncTimer.Reset((1500 / (1 + 2*time.Duration(l.syncer.Progress()))) * time.Millisecond)
-
-			select {
-			case <-l.syncTimer.C:
-			}
 		}
 
 		// Reset syncing Snowball sampler. Check if it is a false alarm such that we don't have to sync.
 
 		current := l.rounds.Latest()
-		proposed := l.syncer.Preferred().(*Round)
+		preferred := l.syncer.Preferred()
 
-		if proposed.Index < sys.SyncIfRoundsDifferBy+current.Index {
+		outOfSync := preferred.(*outOfSyncVote).outOfSync
+
+		l.outOfSyncLock.Lock()
+		l.outOfSync = outOfSync
+		l.outOfSyncLock.Unlock()
+
+		if !outOfSync {
 			l.syncer.Reset()
+
+			if syncTimeoutMultiplier < 60 {
+				syncTimeoutMultiplier++
+			}
+			time.Sleep(time.Duration(syncTimeoutMultiplier) * time.Second)
+
 			continue
 		}
+
+		syncTimeoutMultiplier = 0
+
+		fmt.Println("time took to find out we out of sync - ", time.Now().Sub(t))
+		t = time.Now()
 
 		shutdown := func() {
 			close(l.sync)
@@ -801,7 +825,6 @@ func (l *Ledger) SyncToLatestRound() {
 		logger := log.Sync("syncing")
 		logger.Info().
 			Uint64("current_round", current.Index).
-			Uint64("proposed_round", proposed.Index).
 			Msg("Noticed that we are out of sync; downloading latest state Snapshot from our peer(s).")
 
 	SYNC:
@@ -1133,6 +1156,18 @@ func (l *Ledger) SyncToLatestRound() {
 			Hex("new_merkle_root", latest.Merkle[:]).
 			Hex("old_merkle_root", current.Merkle[:]).
 			Msg("Successfully built a new state Snapshot out of chunk(s) we have received from peers.")
+
+		fmt.Println("time took actually to sync - ", time.Now().Sub(t))
+
+		l.outOfSyncLock.Lock()
+		txs := make([]Transaction, len(l.outOfSyncTxBuff))
+		copy(txs, l.outOfSyncTxBuff)
+		l.outOfSyncTxBuff = nil
+		l.outOfSyncLock.Unlock()
+
+		for i := range txs {
+			_ = l.AddTransaction(txs[i])
+		}
 
 		restart()
 	}
