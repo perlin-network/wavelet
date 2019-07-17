@@ -157,7 +157,7 @@ func TestApplyTransaction_Collapse(t *testing.T) {
 		account := accounts[accountIDs[rng.Intn(len(accountIDs))]]
 		account.effect.Stake += amount
 
-		tx := AttachSenderToTransaction(account.keys, NewTransaction(account.keys, 0, buildPlaceStakePayload(amount), sys.TagStake), graph.FindEligibleParents()...)
+		tx := AttachSenderToTransaction(account.keys, NewTransaction(account.keys, viewID+1, buildPlaceStakePayload(amount), sys.TagStake), graph.FindEligibleParents()...)
 		err := graph.AddTransaction(tx)
 		assert.NoError(t, err)
 		if tx.IsCritical(4) {

@@ -145,9 +145,13 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(tx *Transaction) error {
-	if tx.Round != l.Rounds().Latest().Index {
-		return errors.New("transaction round index does match our local round index")
-	}
+	// This check needs to be deferred to collapseTransactions because the incoming tx might not necessarily be in
+	// our current round.
+	/*
+		if tx.Round != l.Rounds().Latest().Index {
+			return errors.New("transaction round index does match our local round index")
+		}
+	*/
 	err := l.graph.AddTransaction(tx)
 
 	if err != nil && errors.Cause(err) != ErrAlreadyExists {

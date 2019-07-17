@@ -150,6 +150,8 @@ func rewardValidators(g *Graph, snapshot *avl.Tree, root *Transaction, tx *Trans
 }
 
 func collapseTransactions(g *Graph, accounts *Accounts, round uint64, latestRound *Round, root *Transaction, end *Transaction, logging bool) (*collapseResults, error) {
+	nonceSeen := make(map[[SizeAccountID + 8]byte]struct{})
+
 	res := &collapseResults{snapshot: accounts.Snapshot()}
 	res.snapshot.SetViewID(round)
 
@@ -165,6 +167,21 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, latestRoun
 
 		if popped.Depth <= root.Depth {
 			continue
+		}
+
+		if popped.Round != round {
+			continue
+		}
+
+		// Check that the nonce is used only once per account.
+		{
+			var key [SizeAccountID + 8]byte
+			copy(key[:SizeAccountID], popped.Creator[:])
+			binary.LittleEndian.PutUint64(key[SizeAccountID:], popped.Nonce)
+			if _, seen := nonceSeen[key]; seen {
+				continue
+			}
+			nonceSeen[key] = struct{}{}
 		}
 
 		order.PushBack(popped)
