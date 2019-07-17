@@ -53,6 +53,10 @@ type sendTransactionRequest struct {
 	Payload   string `json:"payload"`
 	Signature string `json:"signature"`
 
+	// These two fields are stringified uint64's. Using string here because nonce/round might exceed the maximum value of JS integers.
+	Nonce string `json:"nonce"`
+	Round string `json:"round"`
+
 	// Internal fields.
 	creator   wavelet.AccountID
 	signature wavelet.Signature
@@ -117,10 +121,36 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 		return errors.Wrap(err, "invalid tag")
 	}
 
+	roundVal := v.Get("round")
+	if roundVal == nil {
+		return errors.New("missing round")
+	}
+	if roundVal.Type() != fastjson.TypeString {
+		return errors.New("round is not a string")
+	}
+	roundStr, err := roundVal.StringBytes()
+	if err != nil {
+		return errors.Wrap(err, "invalid round")
+	}
+
+	nonceVal := v.Get("nonce")
+	if nonceVal == nil {
+		return errors.New("missing nonce")
+	}
+	if nonceVal.Type() != fastjson.TypeString {
+		return errors.New("nonce is not a string")
+	}
+	nonceStr, err := nonceVal.StringBytes()
+	if err != nil {
+		return errors.Wrap(err, "invalid nonce")
+	}
+
 	s.Sender = string(senderStr)
 	s.Payload = string(payloadStr)
 	s.Signature = string(signatureStr)
 	s.Tag = byte(tag)
+	s.Round = string(roundStr)
+	s.Nonce = string(nonceStr)
 
 	senderBuf, err := hex.DecodeString(s.Sender)
 	if err != nil {

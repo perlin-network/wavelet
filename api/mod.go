@@ -218,9 +218,21 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	nonce, err := strconv.ParseUint(req.Nonce, 10, 64)
+	if err != nil {
+		g.renderError(ctx, ErrBadRequest(err))
+		return
+	}
+
+	round, err := strconv.ParseUint(req.Round, 10, 64)
+	if err != nil {
+		g.renderError(ctx, ErrBadRequest(err))
+		return
+	}
+
 	tx := wavelet.AttachSenderToTransaction(
 		g.keys,
-		&wavelet.Transaction{Tag: sys.Tag(req.Tag), Payload: req.payload, Creator: req.creator, CreatorSignature: req.signature},
+		&wavelet.Transaction{Nonce: nonce, Round: round, Tag: sys.Tag(req.Tag), Payload: req.payload, Creator: req.creator, CreatorSignature: req.signature},
 		g.ledger.Graph().FindEligibleParents()...,
 	)
 

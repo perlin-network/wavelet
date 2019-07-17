@@ -34,7 +34,7 @@ func TestNewGraph(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	tx := AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagNop))
 
 	graph := NewGraph(WithRoot(tx))
 	eligible := graph.FindEligibleParents()
@@ -42,7 +42,7 @@ func TestNewGraph(t *testing.T) {
 	assert.Len(t, eligible, 1)
 	assert.Equal(t, tx, eligible[0])
 
-	tx2 := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), eligible...)
+	tx2 := AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagNop), eligible...)
 
 	assert.NoError(t, graph.AddTransaction(tx2))
 	assert.NotNil(t, graph.FindTransaction(tx2.ID))
@@ -63,7 +63,7 @@ func TestGraphFuzz(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagNop))
 	graph := NewGraph(WithRoot(root))
 
 	count := 1
@@ -77,7 +77,7 @@ func TestGraphFuzz(t *testing.T) {
 			_, err = rand.Read(payload[:])
 			assert.NoError(t, err)
 
-			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...))
+			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, 0, payload[:], sys.TagTransfer), graph.FindEligibleParents()...))
 		}
 
 		for _, tx := range depth {
@@ -137,7 +137,7 @@ func TestGraphPruneBelowDepth(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagNop))
 	graph := NewGraph(WithRoot(root))
 
 	count := 1
@@ -157,7 +157,7 @@ func TestGraphPruneBelowDepth(t *testing.T) {
 			_, err = rand.Read(payload[:])
 			assert.NoError(t, err)
 
-			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...))
+			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, 0, payload[:], sys.TagTransfer), graph.FindEligibleParents()...))
 		}
 
 		for _, tx := range depth {
@@ -201,7 +201,7 @@ func TestGraphUpdateRoot(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagNop))
 	graph := NewGraph(WithRoot(root))
 
 	for i := 0; i < 50; i++ {
@@ -213,7 +213,7 @@ func TestGraphUpdateRoot(t *testing.T) {
 			_, err = rand.Read(payload[:])
 			assert.NoError(t, err)
 
-			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...))
+			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, 0, payload[:], sys.TagTransfer), graph.FindEligibleParents()...))
 		}
 
 		for _, tx := range depth {
@@ -244,13 +244,13 @@ func TestGraphUpdateRoot(t *testing.T) {
 	assert.Len(t, graph.children, numChildren)
 
 	// Create a transaction that is at an ineligible depth exceeding DEPTH_DIFF.
-	tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.depthIndex[(graph.height-1)-(sys.MaxDepthDiff+2)][0])
+	tx := AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagNop), graph.depthIndex[(graph.height-1)-(sys.MaxDepthDiff+2)][0])
 
 	// An error should occur.
 	assert.Error(t, graph.AddTransaction(tx))
 
 	// Create a transaction at an eligible depth.
-	tx = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
+	tx = AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagNop), graph.FindEligibleParents()...)
 
 	// No error should occur.
 	assert.NoError(t, graph.AddTransaction(tx))
@@ -262,7 +262,7 @@ func TestGraphValidateTransactionParents(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagNop))
 	graph := NewGraph(WithRoot(root))
 
 	for i := 0; i < 50; i++ {
@@ -274,7 +274,7 @@ func TestGraphValidateTransactionParents(t *testing.T) {
 			_, err = rand.Read(payload[:])
 			assert.NoError(t, err)
 
-			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...))
+			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, 0, payload[:], sys.TagTransfer), graph.FindEligibleParents()...))
 		}
 
 		for _, tx := range depth {
@@ -282,7 +282,7 @@ func TestGraphValidateTransactionParents(t *testing.T) {
 		}
 	}
 
-	tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.depthIndex[(graph.height-1)-(sys.MaxDepthDiff+2)][0])
+	tx := AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagNop), graph.depthIndex[(graph.height-1)-(sys.MaxDepthDiff+2)][0])
 	assert.NoError(t, graph.validateTransactionParents(tx))
 
 	assert.Equal(t, len(tx.ParentIDs), len(tx.ParentSeeds))
@@ -305,14 +305,14 @@ func TestGraphFindEligibleCritical(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagNop))
 	graph := NewGraph(WithRoot(root))
 
 	// Go through a range of difficulties, and check if we can always
 	// find the eligible critical transaction.
 
 	for difficulty := byte(2); difficulty < 8; difficulty++ {
-		eligible := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
+		eligible := AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagNop), graph.FindEligibleParents()...)
 
 		for {
 			if eligible.IsCritical(difficulty) {
@@ -322,13 +322,13 @@ func TestGraphFindEligibleCritical(t *testing.T) {
 			sender, err := skademlia.NewKeys(1, 1)
 			assert.NoError(t, err)
 
-			eligible = AttachSenderToTransaction(sender, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
+			eligible = AttachSenderToTransaction(sender, NewTransaction(keys, 0, nil, sys.TagNop), graph.FindEligibleParents()...)
 		}
 
 		assert.NoError(t, graph.AddTransaction(eligible))
 		assert.Equal(t, graph.FindEligibleCritical(difficulty), eligible)
 
-		root = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+		root = AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagNop))
 		graph = NewGraph(WithRoot(root))
 	}
 }
@@ -339,7 +339,7 @@ func TestGraphFindEligibleCriticalInBigGraph(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagNop))
 	graph := NewGraph(WithRoot(root))
 
 	difficulty := byte(8)
@@ -352,7 +352,7 @@ func TestGraphFindEligibleCriticalInBigGraph(t *testing.T) {
 		}
 
 		if i == 500/2 { // Create an eligible critical transaction in the middle of the graph.
-			eligible = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
+			eligible = AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagNop), graph.FindEligibleParents()...)
 
 			for {
 				if eligible.IsCritical(difficulty) {
@@ -362,7 +362,7 @@ func TestGraphFindEligibleCriticalInBigGraph(t *testing.T) {
 				sender, err := skademlia.NewKeys(1, 1)
 				assert.NoError(t, err)
 
-				eligible = AttachSenderToTransaction(sender, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
+				eligible = AttachSenderToTransaction(sender, NewTransaction(keys, 0, nil, sys.TagNop), graph.FindEligibleParents()...)
 			}
 
 			assert.NoError(t, graph.AddTransaction(eligible))
@@ -376,7 +376,7 @@ func TestGraphFindEligibleCriticalInBigGraph(t *testing.T) {
 			_, err = rand.Read(payload[:])
 			assert.NoError(t, err)
 
-			tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...)
+			tx := AttachSenderToTransaction(keys, NewTransaction(keys, 0, payload[:], sys.TagTransfer), graph.FindEligibleParents()...)
 
 			for { // Be sure we never create a transaction with the difficulty we set.
 				if !tx.IsCritical(difficulty) {
@@ -386,7 +386,7 @@ func TestGraphFindEligibleCriticalInBigGraph(t *testing.T) {
 				sender, err := skademlia.NewKeys(1, 1)
 				assert.NoError(t, err)
 
-				tx = AttachSenderToTransaction(sender, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...)
+				tx = AttachSenderToTransaction(sender, NewTransaction(keys, 0, payload[:], sys.TagTransfer), graph.FindEligibleParents()...)
 			}
 
 			depth = append(depth, tx)

@@ -58,7 +58,7 @@ func TestListTransaction(t *testing.T) {
 	var buf [200]byte
 	_, err = rand.Read(buf[:])
 	assert.NoError(t, err)
-	_ = wavelet.NewTransaction(keys, sys.TagTransfer, buf[:])
+	_ = wavelet.NewTransaction(keys, 0, buf[:], sys.TagTransfer)
 	assert.NoError(t, err)
 
 	// Build an expected response
@@ -179,7 +179,7 @@ func TestGetTransaction(t *testing.T) {
 	var buf [200]byte
 	_, err = rand.Read(buf[:])
 	assert.NoError(t, err)
-	_ = wavelet.NewTransaction(keys, sys.TagTransfer, buf[:])
+	_ = wavelet.NewTransaction(keys, 0, buf[:], sys.TagTransfer)
 	assert.NoError(t, err)
 
 	var txId wavelet.TransactionID
@@ -285,6 +285,8 @@ func TestSendTransactionRandom(t *testing.T) {
 		Tag       byte   `json:"tag"`
 		Payload   string `json:"payload"`
 		Signature string `json:"signature"`
+		Nonce     string `json:"nonce"`
+		Round     string `json:"round"`
 	}
 
 	f := func(req request) bool {
@@ -593,7 +595,7 @@ func TestGetLedger(t *testing.T) {
 	publicKey := keys.PublicKey()
 
 	expectedJSON := fmt.Sprintf(
-		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"round":{"merkle_root":"1a822467f036f127afe8c3c4df987fa7","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc","applied":0,"depth":0,"difficulty":8},"peers":null}`,
+		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"round":{"merkle_root":"1a822467f036f127afe8c3c4df987fa7","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"0f2dfeb03485c703d0c8584a40d135192ecb150247e9377595ed718d84b08a85","applied":0,"depth":0,"difficulty":8},"peers":null}`,
 		hex.EncodeToString(publicKey[:]),
 		listener.Addr().(*net.TCPAddr).Port,
 	)

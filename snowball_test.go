@@ -34,10 +34,10 @@ func TestNewSnowball(t *testing.T) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	start := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, nil))
+	start := AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagTransfer))
 
-	endA := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagStake, nil))
-	endB := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagContract, nil))
+	endA := AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagStake))
+	endB := AttachSenderToTransaction(keys, NewTransaction(keys, 0, nil, sys.TagContract))
 
 	a := NewRound(1, ZeroMerkleNodeID, 1337, start, endA)
 	b := NewRound(1, ZeroMerkleNodeID, 1010, start, endB)

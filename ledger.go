@@ -145,6 +145,9 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(tx *Transaction) error {
+	if tx.Round != l.Rounds().Latest().Index {
+		return errors.New("transaction round index does match our local round index")
+	}
 	err := l.graph.AddTransaction(tx)
 
 	if err != nil && errors.Cause(err) != ErrAlreadyExists {
@@ -291,7 +294,7 @@ func (l *Ledger) BroadcastNop() *Transaction {
 		return nil
 	}
 
-	nop := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), l.graph.FindEligibleParents()...)
+	nop := AttachSenderToTransaction(keys, NewTransaction(keys, l.Rounds().Latest().Index, nil, sys.TagNop), l.graph.FindEligibleParents()...)
 
 	if err := l.AddTransaction(nop); err != nil {
 		return nil

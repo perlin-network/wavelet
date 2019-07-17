@@ -21,6 +21,7 @@ package wavelet
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"github.com/perlin-network/noise/edwards25519"
@@ -44,6 +45,7 @@ type Transaction struct {
 	ParentSeeds []TransactionSeed
 
 	Depth uint64 // Graph depth.
+	Round uint64 // The round index that this transaction belongs to
 
 	Tag     sys.Tag
 	Payload []byte
@@ -57,18 +59,25 @@ type Transaction struct {
 	SeedLen byte            // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
 }
 
-func NewTransaction(creator *skademlia.Keypair, tag sys.Tag, payload []byte) *Transaction {
-	tx := &Transaction{Tag: tag, Payload: payload}
+func NewTransaction(creator *skademlia.Keypair, round uint64, payload []byte, tag sys.Tag) *Transaction {
+	var nonce [8]byte
+	_, err := rand.Read(nonce[:])
+	if err != nil {
+		panic("BUG: rand.Read failed")
+	}
+	return NewTransactionWithNonce(creator, round, tag, payload, binary.LittleEndian.Uint64(nonce[:]))
+}
 
-	var nonce [8]byte // TODO(kenta): nonce
+func NewTransactionWithNonce(creator *skademlia.Keypair, round uint64, tag sys.Tag, payload []byte, nonce uint64) *Transaction {
+	tx := &Transaction{Round: round, Tag: tag, Payload: payload, Nonce: nonce}
 
 	tx.Creator = creator.PublicKey()
-	tx.CreatorSignature = edwards25519.Sign(creator.PrivateKey(), append(nonce[:], append([]byte{byte(tx.Tag)}, tx.Payload...)...))
+	tx.CreatorSignature = edwards25519.Sign(creator.PrivateKey(), tx.MarshalCreator())
 
 	return tx
 }
 
-func NewBatchTransaction(creator *skademlia.Keypair, tags []byte, payloads [][]byte) *Transaction {
+func NewBatchTransaction(creator *skademlia.Keypair, round uint64, tags []byte, payloads [][]byte) *Transaction {
 	if len(tags) != len(payloads) {
 		panic("UNEXPECTED: Number of tags must be equivalent to number of payloads.")
 	}
@@ -88,7 +97,7 @@ func NewBatchTransaction(creator *skademlia.Keypair, tags []byte, payloads [][]b
 		buf = append(buf, payloads[i]...)
 	}
 
-	return NewTransaction(creator, sys.TagBatch, append([]byte{byte(len(tags))}, buf...))
+	return NewTransaction(creator, round, append([]byte{byte(len(tags))}, buf...), sys.TagBatch)
 }
 
 func AttachSenderToTransaction(sender *skademlia.Keypair, _tx *Transaction, parents ...*Transaction) *Transaction {
@@ -187,6 +196,9 @@ func (t *Transaction) Marshal() []byte {
 	binary.BigEndian.PutUint64(buf[:8], t.Depth)
 	w.Write(buf[:8])
 
+	binary.BigEndian.PutUint64(buf[:8], t.Round)
+	w.Write(buf[:8])
+
 	w.WriteByte(byte(t.Tag))
 
 	binary.BigEndian.PutUint32(buf[:4], uint32(len(t.Payload)))
@@ -200,6 +212,23 @@ func (t *Transaction) Marshal() []byte {
 	}
 
 	return w.Bytes()
+}
+
+func (t *Transaction) MarshalCreator() []byte {
+	ret := make([]byte, 0)
+
+	var buf [8]byte
+
+	binary.LittleEndian.PutUint64(buf[:], t.Nonce)
+	ret = append(ret, buf[:]...)
+
+	binary.LittleEndian.PutUint64(buf[:], t.Round)
+	ret = append(ret, buf[:]...)
+
+	ret = append(ret, byte(t.Tag))
+	ret = append(ret, t.Payload...)
+
+	return ret
 }
 
 func UnmarshalTransaction(r io.Reader) (t *Transaction, err error) {
@@ -274,6 +303,13 @@ func UnmarshalTransaction(r io.Reader) (t *Transaction, err error) {
 	}
 
 	t.Depth = binary.BigEndian.Uint64(buf[:8])
+
+	if _, err = io.ReadFull(r, buf[:8]); err != nil {
+		err = errors.Wrap(err, "could not read transaction round")
+		return
+	}
+
+	t.Round = binary.BigEndian.Uint64(buf[:8])
 
 	if _, err = io.ReadFull(r, buf[:1]); err != nil {
 		err = errors.Wrap(err, "could not read transaction tag")

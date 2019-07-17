@@ -262,7 +262,7 @@ func (cli *CLI) pay(cmd []string) {
 		payload.WriteString(defaultFuncName)
 	}
 
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagTransfer, payload.Bytes()))
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, cli.ledger.Rounds().Latest().Index, payload.Bytes(), sys.TagTransfer))
 	if err != nil {
 		return
 	}
@@ -394,7 +394,7 @@ func (cli *CLI) call(cmd []string) {
 	payload.Write(intBuf[:4])
 	payload.Write(funcParams)
 
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagTransfer, payload.Bytes()))
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, cli.ledger.Rounds().Latest().Index, payload.Bytes(), sys.TagTransfer))
 	if err != nil {
 		return
 	}
@@ -500,7 +500,7 @@ func (cli *CLI) spawn(cmd []string) {
 
 	w.Write(code) // Smart contract code.
 
-	tx := wavelet.NewTransaction(cli.keys, sys.TagContract, w.Bytes())
+	tx := wavelet.NewTransaction(cli.keys, cli.ledger.Rounds().Latest().Index, w.Bytes(), sys.TagContract)
 
 	tx, err = cli.sendTransaction(tx)
 	if err != nil {
@@ -528,7 +528,7 @@ func (cli *CLI) placeStake(cmd []string) {
 	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
 	payload.Write(intBuf[:8])
 
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagStake, payload.Bytes()))
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, cli.ledger.Rounds().Latest().Index, payload.Bytes(), sys.TagStake))
 	if err != nil {
 		return
 	}
@@ -555,7 +555,7 @@ func (cli *CLI) withdrawStake(cmd []string) {
 	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
 	payload.Write(intBuf[:8])
 
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagStake, payload.Bytes()))
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, cli.ledger.Rounds().Latest().Index, payload.Bytes(), sys.TagStake))
 	if err != nil {
 		return
 	}
@@ -582,7 +582,7 @@ func (cli *CLI) withdrawReward(cmd []string) {
 	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
 	payload.Write(intBuf[:8])
 
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagStake, payload.Bytes()))
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, cli.ledger.Rounds().Latest().Index, payload.Bytes(), sys.TagStake))
 	if err != nil {
 		return
 	}
