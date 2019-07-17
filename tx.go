@@ -93,11 +93,11 @@ func NewBatchTransaction(creator *skademlia.Keypair, tags []byte, payloads [][]b
 
 func AttachSenderToTransaction(sender *skademlia.Keypair, _tx *Transaction, parents ...*Transaction) *Transaction {
 	tx := *_tx
-	AttachSenderToTransactionInPlace(sender, &tx, parents...)
+	AppendSenderToTransaction(sender, &tx, parents...)
 	return &tx
 }
 
-func AttachSenderToTransactionInPlace(sender *skademlia.Keypair, tx *Transaction, parents ...*Transaction) {
+func AppendSenderToTransaction(sender *skademlia.Keypair, tx *Transaction, parents ...*Transaction) {
 	if len(parents) > 0 {
 		tx.ParentIDs = make([]TransactionID, 0, len(parents))
 		tx.ParentSeeds = make([]TransactionSeed, 0, len(parents))

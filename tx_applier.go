@@ -209,6 +209,8 @@ func executeContractInTransactionContext(
 	funcParams []byte,
 	state *contractExecutorState,
 ) error {
+	logger := log.Contracts("execute")
+
 	gasPayer := state.GasPayer
 	gasPayerBalance, _ := ReadAccountBalance(snapshot, gasPayer)
 
@@ -239,10 +241,10 @@ func executeContractInTransactionContext(
 
 	// gasPayerBalance >= realGasLimit >= executor.Gas && state.GasLimit >= realGasLimit must always hold.
 	if realGasLimit < executor.Gas {
-		panic("BUG: realGasLimit < executor.Gas")
+		logger.Fatal().Msg("BUG: realGasLimit < executor.Gas")
 	}
 	if state.GasLimit < realGasLimit {
-		panic("BUG: state.GasLimit < realGasLimit")
+		logger.Fatal().Msg("BUG: state.GasLimit < realGasLimit")
 	}
 
 	if executor.GasLimitExceeded || invocationErr != nil { // Revert changes and have the gas payer pay gas fees.
@@ -251,10 +253,8 @@ func executeContractInTransactionContext(
 		state.GasLimit -= executor.Gas
 
 		if invocationErr != nil {
-			logger := log.Contracts("execute")
 			logger.Info().Err(invocationErr).Msg("failed to invoke smart contract")
 		} else {
-			logger := log.Contracts("execute")
 			logger.Info().
 				Hex("sender_id", tx.Creator[:]).
 				Hex("contract_id", contractID[:]).
@@ -266,7 +266,6 @@ func executeContractInTransactionContext(
 		WriteAccountBalance(snapshot, gasPayer, gasPayerBalance-executor.Gas)
 		state.GasLimit -= executor.Gas
 
-		logger := log.Contracts("execute")
 		logger.Info().
 			Hex("sender_id", tx.Creator[:]).
 			Hex("contract_id", contractID[:]).
@@ -277,7 +276,6 @@ func executeContractInTransactionContext(
 		for _, entry := range executor.Queue {
 			err := applyTransaction(round, snapshot, entry, state)
 			if err != nil {
-				logger := log.Contracts("execute")
 				logger.Info().Err(err).Msg("failed to process sub-transaction")
 			}
 		}
