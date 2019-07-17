@@ -95,6 +95,7 @@ type Graph struct {
 
 	missing    map[TransactionID]uint64   // Transactions that we are missing. Maps to depth of child of missing transaction.
 	incomplete map[TransactionID]struct{} // Transactions that don't have all parents available.
+	incompleteDependency map[TransactionID][]TransactionID
 
 	eligibleIndex *btree.BTree              // Transactions that are eligible to be parent transactions.
 	seedIndex     *btree.BTree              // Indexes transactions by the number of zero bits prefixed of BLAKE2b(Sender || ParentIDs).
@@ -113,6 +114,7 @@ func NewGraph(opts ...GraphOption) *Graph {
 
 		missing:    make(map[TransactionID]uint64),
 		incomplete: make(map[TransactionID]struct{}),
+		incompleteDependency: make(map[TransactionID][]TransactionID),
 
 		eligibleIndex: btree.New(32),
 		seedIndex:     btree.New(32),
@@ -169,6 +171,11 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 
 				if _, recorded := g.missing[parentID]; !recorded {
 					g.missing[parentID] = tx.Depth
+					if dependencies, ok := g.incompleteDependency[parentID]; !ok {
+						g.incompleteDependency[parentID] = []TransactionID{tx.ID}
+					} else {
+						g.incompleteDependency[parentID] = append(dependencies, tx.ID)
+					}
 				}
 			}
 
@@ -303,12 +310,19 @@ func (g *Graph) PruneBelowDepth(targetDepth uint64) int {
 	}
 
 	for id, depth := range g.missing {
-		if depth > targetDepth {
-			continue
-		}
+		if depth <= targetDepth {
+			delete(g.children, id)
+			delete(g.missing, id)
 
-		delete(g.children, id)
-		delete(g.missing, id)
+			for _, txID := range g.incompleteDependency[id] {
+				delete(g.incomplete, txID)
+				if tx, ok := g.transactions[txID]; ok {
+					if err := g.updateGraph(tx); err != nil {
+						continue
+					}
+				}
+			}
+		}
 	}
 
 	g.Unlock()
