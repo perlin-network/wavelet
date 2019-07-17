@@ -22,6 +22,7 @@ package wavelet
 import (
 	"encoding/hex"
 	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
 	"github.com/valyala/fastjson"
 )
@@ -44,6 +45,8 @@ const defaultGenesis = `
 // performInception loads data expected to exist at the birth of any node in this ledgers network.
 // The data is fed in as .json.
 func performInception(tree *avl.Tree, genesis *string) Round {
+	logger := log.Node()
+
 	var buf []byte
 
 	if genesis != nil {
@@ -57,13 +60,13 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 	parsed, err := p.ParseBytes(buf)
 
 	if err != nil {
-		panic(err)
+		logger.Fatal().Err(err).Msg("ParseBytes()")
 	}
 
 	accounts, err := parsed.Object()
 
 	if err != nil {
-		panic(err)
+		logger.Fatal().Err(err).Msg("parsed.Object()")
 	}
 
 	var balance, stake, reward uint64
@@ -146,7 +149,7 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 	})
 
 	if err != nil {
-		panic(err)
+		logger.Fatal().Err(err).Msg("accounts.Visit")
 	}
 
 	tx := &Transaction{}

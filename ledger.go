@@ -71,6 +71,8 @@ type Ledger struct {
 }
 
 func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
+	logger := log.Node()
+
 	metrics := NewMetrics(context.TODO())
 	indexer := NewIndexer()
 
@@ -84,13 +86,13 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 	if rounds != nil && err != nil {
 		genesis := performInception(accounts.tree, genesis)
 		if err := accounts.Commit(nil); err != nil {
-			panic(err)
+			logger.Fatal().Err(err).Msg("BUG: accounts.Commit")
 		}
 
 		ptr := &genesis
 
 		if _, err := rounds.Save(ptr); err != nil {
-			panic(err)
+			logger.Fatal().Err(err).Msg("BUG: rounds.Save")
 		}
 
 		round = ptr
@@ -99,7 +101,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 	}
 
 	if round == nil {
-		panic("???: COULD NOT FIND GENESIS, OR STORAGE IS CORRUPTED.")
+		logger.Fatal().Err(err).Msg("BUG: COULD NOT FIND GENESIS, OR STORAGE IS CORRUPTED.")
 	}
 
 	graph := NewGraph(WithMetrics(metrics), WithIndexer(indexer), WithRoot(round.End), VerifySignatures())
@@ -1117,7 +1119,8 @@ func (l *Ledger) SyncToLatestRound() {
 		l.graph.UpdateRoot(latest.End)
 
 		if err := l.accounts.Commit(snapshot); err != nil {
-			panic(errors.Wrap(err, "failed to commit collapsed state to our database"))
+			logger := log.Node()
+			logger.Fatal().Err(err).Msg("failed to commit collapsed state to our database")
 		}
 
 		logger = log.Sync("apply")

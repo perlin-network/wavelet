@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
@@ -69,12 +70,14 @@ func NewTransaction(creator *skademlia.Keypair, tag sys.Tag, payload []byte) *Tr
 }
 
 func NewBatchTransaction(creator *skademlia.Keypair, tags []byte, payloads [][]byte) *Transaction {
+	logger := log.TX("new_batch")
+
 	if len(tags) != len(payloads) {
-		panic("UNEXPECTED: Number of tags must be equivalent to number of payloads.")
+		logger.Fatal().Msg("UNEXPECTED: Number of tags must be equivalent to number of payloads.")
 	}
 
 	if len(tags) == math.MaxUint8 {
-		panic("UNEXPECTED: Total number of tags/payloads in a single batch transaction is 255.")
+		logger.Fatal().Msg("UNEXPECTED: Total number of tags/payloads in a single batch transaction is 255.")
 	}
 
 	var size [4]byte
@@ -91,12 +94,14 @@ func NewBatchTransaction(creator *skademlia.Keypair, tags []byte, payloads [][]b
 	return NewTransaction(creator, sys.TagBatch, append([]byte{byte(len(tags))}, buf...))
 }
 
+// Attaches sender to a transaction without modifying it in-place.
 func AttachSenderToTransaction(sender *skademlia.Keypair, _tx *Transaction, parents ...*Transaction) *Transaction {
 	tx := *_tx
 	AppendSenderToTransaction(sender, &tx, parents...)
 	return &tx
 }
 
+// Appends sender to a transaction in-place.
 func AppendSenderToTransaction(sender *skademlia.Keypair, tx *Transaction, parents ...*Transaction) {
 	if len(parents) > 0 {
 		tx.ParentIDs = make([]TransactionID, 0, len(parents))
@@ -125,31 +130,33 @@ func AppendSenderToTransaction(sender *skademlia.Keypair, tx *Transaction, paren
 }
 
 func (t *Transaction) rehash() {
+	logger := log.Node()
+
 	t.ID = blake2b.Sum256(t.Marshal())
 
 	// Calculate the new seed.
 	{
 		hasher, err := blake2b.New(32, nil)
 		if err != nil {
-			panic(err) // should never happen
+			logger.Fatal().Err(err).Msg("BUG: blake2b.New") // should never happen
 		}
 
 		_, err = hasher.Write(t.Sender[:])
 		if err != nil {
-			panic(err) // should never happen
+			logger.Fatal().Err(err).Msg("BUG: hasher.Write (1)") // should never happen
 		}
 
 		for _, parentSeed := range t.ParentSeeds {
 			_, err = hasher.Write(parentSeed[:])
 			if err != nil {
-				panic(err) // should never happen
+				logger.Fatal().Err(err).Msg("BUG: hasher.Write (2)") // should never happen
 			}
 		}
 
 		// Write 8-bit hash of transaction content to reduce conflicts.
 		_, err = hasher.Write(t.ID[:1])
 		if err != nil {
-			panic(err) // should never happen
+			logger.Fatal().Err(err).Msg("BUG: hasher.Write (3)") // should never happen
 		}
 
 		seed := hasher.Sum(nil)
