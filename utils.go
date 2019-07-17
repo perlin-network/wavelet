@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 	"io/ioutil"
 	"math/rand"
 	"strconv"
@@ -35,15 +36,22 @@ func SelectPeers(peers []*grpc.ClientConn, amount int) ([]*grpc.ClientConn, erro
 		return peers, errors.Errorf("only connected to %d peer(s), but require a minimum of %d peer(s)", len(peers), amount)
 	}
 
-	if len(peers) > amount {
-		rand.Shuffle(len(peers), func(i, j int) {
-			peers[i], peers[j] = peers[j], peers[i]
-		})
-
-		peers = peers[:amount]
+	activePeers := make([]*grpc.ClientConn, 0, len(peers))
+	for _, p := range peers {
+		if p.GetState() == connectivity.Ready {
+			activePeers = append(activePeers, p)
+		}
 	}
 
-	return peers, nil
+	if len(activePeers) > amount {
+		rand.Shuffle(len(activePeers), func(i, j int) {
+			activePeers[i], activePeers[j] = activePeers[j], activePeers[i]
+		})
+
+		activePeers = activePeers[:amount]
+	}
+
+	return activePeers, nil
 }
 
 func ExportGraphDOT(round *Round, graph *Graph) {

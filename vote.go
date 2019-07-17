@@ -48,21 +48,21 @@ func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, 
 			stakes := make(map[AccountID]float64, len(votes))
 			maxStake := float64(0)
 
-			for _, vote := range votes {
+			for i, vote := range votes {
 				if vote.preferred == nil {
-					vote.preferred = ZeroRoundPtr
+					votes[i].preferred = ZeroRoundPtr
 				}
 
-				stake, _ := ReadAccountStake(snapshot, vote.voter.PublicKey())
-
-				if stake < sys.MinimumStake {
-					stake = sys.MinimumStake
+				s, _ := ReadAccountStake(snapshot, vote.voter.PublicKey())
+				if s < sys.MinimumStake {
+					s = sys.MinimumStake
 				}
 
-				stakes[vote.voter.PublicKey()] = float64(stake)
+				stake := float64(s)
+				stakes[vote.voter.PublicKey()] = stake
 
-				if maxStake < stakes[vote.voter.PublicKey()] {
-					maxStake = stakes[vote.voter.PublicKey()]
+				if maxStake < stake {
+					maxStake = stake
 				}
 			}
 
@@ -70,10 +70,6 @@ func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, 
 			totalCount := float64(0)
 
 			for _, vote := range votes {
-				if vote.preferred == nil {
-					vote.preferred = ZeroRoundPtr
-				}
-
 				count := stakes[vote.voter.PublicKey()] / maxStake
 				counts[vote.preferred.ID] += count
 				totalCount += count
@@ -82,10 +78,6 @@ func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, 
 			var majority *Round
 
 			for _, vote := range votes {
-				if vote.preferred == nil {
-					vote.preferred = ZeroRoundPtr
-				}
-
 				if counts[vote.preferred.ID]/totalCount >= sys.SnowballAlpha {
 					majority = vote.preferred
 					break

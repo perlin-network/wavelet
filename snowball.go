@@ -32,6 +32,12 @@ func WithBeta(beta int) SnowballOption {
 	}
 }
 
+func WithName(name string) SnowballOption {
+	return func(snowball *Snowball) {
+		snowball.name = name
+	}
+}
+
 const (
 	SnowballDefaultBeta = 150
 )
@@ -46,6 +52,7 @@ type Snowball struct {
 	counts  map[RoundID]int
 	count   int
 	decided bool
+	name string
 }
 
 func NewSnowball(opts ...SnowballOption) *Snowball {
@@ -53,6 +60,7 @@ func NewSnowball(opts ...SnowballOption) *Snowball {
 		beta:       SnowballDefaultBeta,
 		candidates: make(map[RoundID]*Round),
 		counts:     make(map[RoundID]int),
+		name: "default",
 	}
 
 	for _, opt := range opts {
@@ -104,7 +112,7 @@ func (s *Snowball) Tick(round *Round) {
 
 	if s.lastID != round.ID { // Handle termination case.
 		if s.lastID != ZeroRoundID {
-			fmt.Printf("Snowball liveness fault: Last ID is %x with count %d, and new ID is %x.\n", s.lastID, s.count, round.ID)
+			fmt.Printf("Snowball (%s) liveness fault: Last ID is %x with count %d, and new ID is %x.\n", s.name, s.lastID, s.count, round.ID)
 		}
 
 		s.lastID = round.ID
