@@ -124,7 +124,7 @@ func AttachSenderToTransaction(sender *skademlia.Keypair, tx Transaction, parent
 	return tx
 }
 
-func (tx *Transaction) rehash() *Transaction {
+func (tx *Transaction) rehash() {
 	logger := log.Node()
 
 	tx.ID = blake2b.Sum256(tx.Marshal())
@@ -158,8 +158,6 @@ func (tx *Transaction) rehash() *Transaction {
 	copy(tx.Seed[:], seed)
 
 	tx.SeedLen = byte(prefixLen(seed))
-
-	return tx
 }
 
 func (tx Transaction) Marshal() []byte {
