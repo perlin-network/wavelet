@@ -23,6 +23,13 @@ func processRewardWithdrawals(round uint64, snapshot *avl.Tree) {
 	}
 }
 
+// rewardValidators deducts a transaction fee from a transactions creator, and transfers the fee
+// to a rewardee which is determined by a validator reward scheme given the selected ancestry
+// of the transaction.
+//
+// If no rewardee is selected, then the transaction fee is simply burned. A reference to
+// a transaction is expected when calling this function to prevent any additional requirements
+// of looking up said transaction within the graph.
 func rewardValidators(g *Graph, snapshot *avl.Tree, tx *Transaction, logging bool) error {
 	fee := sys.TransactionFeeAmount
 
