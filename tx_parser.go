@@ -29,14 +29,41 @@ import (
 	"github.com/pkg/errors"
 )
 
-type Transfer struct {
-	Recipient AccountID
-	Amount    uint64
-	GasLimit  uint64
+type (
+	Transfer struct {
+		Recipient AccountID
+		Amount    uint64
 
-	FuncName   []byte
-	FuncParams []byte
-}
+		// The rest of the fields below are only populated
+		// should the transaction be made with a recipient
+		// that is a smart contract address.
+
+		GasLimit   uint64
+		GasDeposit uint64
+
+		FuncName   []byte
+		FuncParams []byte
+	}
+
+	Stake struct {
+		Opcode byte
+		Amount uint64
+	}
+
+	Contract struct {
+		GasLimit   uint64
+		GasDeposit uint64
+
+		Params []byte
+		Code   []byte
+	}
+
+	Batch struct {
+		Size     uint8
+		Tags     []uint8
+		Payloads [][]byte
+	}
+)
 
 // ParseTransferTransaction parses and performs sanity checks on the payload of a transfer transaction.
 func ParseTransferTransaction(payload []byte) (Transfer, error) {
@@ -65,6 +92,12 @@ func ParseTransferTransaction(payload []byte) (Transfer, error) {
 		if tx.GasLimit == 0 {
 			return tx, errors.New("transfer: gas limit must be greater than zero")
 		}
+
+		if _, err := io.ReadFull(r, b[:8]); err != nil {
+			return tx, errors.Wrap(err, "transfer: failed to decode gas deposit")
+		}
+
+		tx.GasDeposit = binary.LittleEndian.Uint64(b)
 	}
 
 	if r.Len() > 0 {
@@ -108,11 +141,6 @@ func ParseTransferTransaction(payload []byte) (Transfer, error) {
 	return tx, nil
 }
 
-type Stake struct {
-	Opcode byte
-	Amount uint64
-}
-
 // ParseStakeTransaction parses and performs sanity checks on the payload of a stake transaction.
 func ParseStakeTransaction(payload []byte) (Stake, error) {
 	tx := Stake{}
@@ -140,13 +168,6 @@ func ParseStakeTransaction(payload []byte) (Stake, error) {
 	return tx, nil
 }
 
-type Contract struct {
-	GasLimit uint64
-
-	Params []byte
-	Code   []byte
-}
-
 // ParseContractTransaction parses and performs sanity checks on the payload of a contract transaction.
 func ParseContractTransaction(payload []byte) (Contract, error) {
 	r := bytes.NewReader(payload)
@@ -163,6 +184,12 @@ func ParseContractTransaction(payload []byte) (Contract, error) {
 	if tx.GasLimit == 0 {
 		return tx, errors.New("contract: gas limit for invoking smart contract must be greater than zero")
 	}
+
+	if _, err := io.ReadFull(r, b[:8]); err != nil {
+		return tx, errors.Wrap(err, "contract: failed to decode gas deposit")
+	}
+
+	tx.GasDeposit = binary.LittleEndian.Uint64(b)
 
 	if _, err := io.ReadFull(r, b[:4]); err != nil {
 		return tx, errors.Wrap(err, "contract: failed to decode number of smart contract init parameters")
@@ -189,12 +216,6 @@ func ParseContractTransaction(payload []byte) (Contract, error) {
 	}
 
 	return tx, nil
-}
-
-type Batch struct {
-	Size     uint8
-	Tags     []uint8
-	Payloads [][]byte
 }
 
 // ParseBatchTransaction parses and performs sanity checks on the payload of a batch transaction.

@@ -110,7 +110,7 @@ func applyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 		return nil
 	}
 
-	err = executeContractInTransactionContext(tx, params.Recipient, code, snapshot, round, params.Amount, params.GasLimit, params.FuncName, params.FuncParams, state)
+	err = executeContractInTransactionContext(tx, params.Recipient, code, snapshot, round, params.Amount, params.GasDeposit, params.GasLimit, params.FuncName, params.FuncParams, state)
 	return err
 }
 
@@ -165,13 +165,14 @@ func applyContractTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 		return err
 	}
 
-	if _, exists := ReadAccountContractNumPages(snapshot, tx.ID); exists {
+	if _, exists := ReadAccountContractCode(snapshot, tx.ID); exists {
 		return errors.New("contract: already exists")
 	}
 
+	// Record the code of the smart contract into the ledgers state.
 	WriteAccountContractCode(snapshot, tx.ID, params.Code)
-	err = executeContractInTransactionContext(tx, AccountID(tx.ID), params.Code, snapshot, round, 0, params.GasLimit, []byte("init"), params.Params, state)
-	return err
+
+	return executeContractInTransactionContext(tx, AccountID(tx.ID), params.Code, snapshot, round, 0, params.GasDeposit, params.GasLimit, []byte("init"), params.Params, state)
 }
 
 func applyBatchTransaction(snapshot *avl.Tree, round *Round, tx *Transaction, state *contractExecutorState) error {
@@ -204,6 +205,7 @@ func executeContractInTransactionContext(
 	snapshot *avl.Tree,
 	round *Round,
 	amount uint64,
+	requestedGasDeposit uint64,
 	requestedGasLimit uint64,
 	funcName []byte,
 	funcParams []byte,
