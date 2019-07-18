@@ -41,6 +41,8 @@ func TestNewRounds(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		r := &Round{
 			Index: uint64(i + 1),
+			Start: &Transaction{},
+			End:   &Transaction{},
 		}
 		_, err := rm.Save(r)
 		assert.NoError(t, err)
@@ -78,6 +80,8 @@ func TestRoundsCircular(t *testing.T) {
 	for i := 0; i < 15; i++ {
 		r := &Round{
 			Index: uint64(i + 1),
+			Start: &Transaction{},
+			End:   &Transaction{},
 		}
 		_, err := rm.Save(r)
 		assert.NoError(t, err)

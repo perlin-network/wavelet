@@ -23,16 +23,16 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/perlin-network/noise/edwards25519"
+	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/sys"
+	"github.com/pkg/errors"
+	"golang.org/x/crypto/blake2b"
 	"io"
 	"math"
 	"math/bits"
 	"sort"
-
-	"github.com/perlin-network/noise/edwards25519"
-	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/wavelet/sys"
-	"github.com/pkg/errors"
-	"golang.org/x/crypto/blake2b"
 )
 
 type Transaction struct {
@@ -41,7 +41,8 @@ type Transaction struct {
 
 	Nonce uint64
 
-	ParentIDs []TransactionID // Transactions parents.
+	ParentIDs   []TransactionID // Transactions parents.
+	ParentSeeds []TransactionSeed
 
 	Depth uint64 // Graph depth.
 
@@ -53,12 +54,12 @@ type Transaction struct {
 
 	ID TransactionID // BLAKE2b(*).
 
-	Seed    [blake2b.Size256]byte // BLAKE2b(Sender || ParentIDs)
-	SeedLen byte                  // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
+	Seed    TransactionSeed // BLAKE2b(Sender || ParentIDs)
+	SeedLen byte            // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
 }
 
-func NewTransaction(creator *skademlia.Keypair, tag sys.Tag, payload []byte) Transaction {
-	tx := Transaction{Tag: tag, Payload: payload}
+func NewTransaction(creator *skademlia.Keypair, tag sys.Tag, payload []byte) *Transaction {
+	tx := &Transaction{Tag: tag, Payload: payload}
 
 	var nonce [8]byte // TODO(kenta): nonce
 
@@ -68,13 +69,15 @@ func NewTransaction(creator *skademlia.Keypair, tag sys.Tag, payload []byte) Tra
 	return tx
 }
 
-func NewBatchTransaction(creator *skademlia.Keypair, tags []byte, payloads [][]byte) Transaction {
+func NewBatchTransaction(creator *skademlia.Keypair, tags []byte, payloads [][]byte) *Transaction {
+	logger := log.TX("new_batch")
+
 	if len(tags) != len(payloads) {
-		panic("UNEXPECTED: Number of tags must be equivalent to number of payloads.")
+		logger.Fatal().Msg("UNEXPECTED: Number of tags must be equivalent to number of payloads.")
 	}
 
 	if len(tags) == math.MaxUint8 {
-		panic("UNEXPECTED: Total number of tags/payloads in a single batch transaction is 255.")
+		logger.Fatal().Msg("UNEXPECTED: Total number of tags/payloads in a single batch transaction is 255.")
 	}
 
 	var size [4]byte
@@ -91,12 +94,22 @@ func NewBatchTransaction(creator *skademlia.Keypair, tags []byte, payloads [][]b
 	return NewTransaction(creator, sys.TagBatch, append([]byte{byte(len(tags))}, buf...))
 }
 
-func AttachSenderToTransaction(sender *skademlia.Keypair, tx Transaction, parents ...*Transaction) Transaction {
+// Attaches sender to a transaction without modifying it in-place.
+func AttachSenderToTransaction(sender *skademlia.Keypair, _tx *Transaction, parents ...*Transaction) *Transaction {
+	tx := *_tx
+	AppendSenderToTransaction(sender, &tx, parents...)
+	return &tx
+}
+
+// Appends sender to a transaction in-place.
+func AppendSenderToTransaction(sender *skademlia.Keypair, tx *Transaction, parents ...*Transaction) {
 	if len(parents) > 0 {
 		tx.ParentIDs = make([]TransactionID, 0, len(parents))
+		tx.ParentSeeds = make([]TransactionSeed, 0, len(parents))
 
 		for _, parent := range parents {
 			tx.ParentIDs = append(tx.ParentIDs, parent.ID)
+			tx.ParentSeeds = append(tx.ParentSeeds, parent.Seed)
 
 			if tx.Depth < parent.Depth {
 				tx.Depth = parent.Depth
@@ -114,26 +127,46 @@ func AttachSenderToTransaction(sender *skademlia.Keypair, tx Transaction, parent
 	tx.SenderSignature = edwards25519.Sign(sender.PrivateKey(), tx.Marshal())
 
 	tx.rehash()
-
-	return tx
 }
 
-func (t *Transaction) rehash() *Transaction {
+func (t *Transaction) rehash() {
+	logger := log.Node()
+
 	t.ID = blake2b.Sum256(t.Marshal())
 
-	buf := make([]byte, 0, SizeAccountID+len(t.ParentIDs)*SizeTransactionID)
-	buf = append(buf, t.Sender[:]...)
-	for _, parentID := range t.ParentIDs {
-		buf = append(buf, parentID[:]...)
+	// Calculate the new seed.
+	{
+		hasher, err := blake2b.New(32, nil)
+		if err != nil {
+			logger.Fatal().Err(err).Msg("BUG: blake2b.New") // should never happen
+		}
+
+		_, err = hasher.Write(t.Sender[:])
+		if err != nil {
+			logger.Fatal().Err(err).Msg("BUG: hasher.Write (1)") // should never happen
+		}
+
+		for _, parentSeed := range t.ParentSeeds {
+			_, err = hasher.Write(parentSeed[:])
+			if err != nil {
+				logger.Fatal().Err(err).Msg("BUG: hasher.Write (2)") // should never happen
+			}
+		}
+
+		// Write 8-bit hash of transaction content to reduce conflicts.
+		_, err = hasher.Write(t.ID[:1])
+		if err != nil {
+			logger.Fatal().Err(err).Msg("BUG: hasher.Write (3)") // should never happen
+		}
+
+		seed := hasher.Sum(nil)
+		copy(t.Seed[:], seed)
+
+		t.SeedLen = byte(prefixLen(seed))
 	}
-
-	t.Seed = blake2b.Sum256(buf)
-	t.SeedLen = byte(prefixLen(t.Seed[:]))
-
-	return t
 }
 
-func (t Transaction) Marshal() []byte {
+func (t *Transaction) Marshal() []byte {
 	w := bytes.NewBuffer(make([]byte, 0, 222+(32*len(t.ParentIDs))+len(t.Payload)))
 
 	w.Write(t.Sender[:])
@@ -154,6 +187,9 @@ func (t Transaction) Marshal() []byte {
 	for _, parentID := range t.ParentIDs {
 		w.Write(parentID[:])
 	}
+	for _, parentSeed := range t.ParentSeeds {
+		w.Write(parentSeed[:])
+	}
 
 	binary.BigEndian.PutUint64(buf[:8], t.Depth)
 	w.Write(buf[:8])
@@ -173,7 +209,9 @@ func (t Transaction) Marshal() []byte {
 	return w.Bytes()
 }
 
-func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
+func UnmarshalTransaction(r io.Reader) (t *Transaction, err error) {
+	t = &Transaction{}
+
 	if _, err = io.ReadFull(r, t.Sender[:]); err != nil {
 		err = errors.Wrap(err, "failed to decode transaction sender")
 		return
@@ -228,6 +266,15 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 		}
 	}
 
+	t.ParentSeeds = make([]TransactionSeed, len(t.ParentIDs))
+
+	for i := range t.ParentSeeds {
+		if _, err = io.ReadFull(r, t.ParentSeeds[i][:]); err != nil {
+			err = errors.Wrapf(err, "failed to decode parent seed %d", i)
+			return
+		}
+	}
+
 	if _, err = io.ReadFull(r, buf[:8]); err != nil {
 		err = errors.Wrap(err, "could not read transaction depth")
 		return
@@ -273,23 +320,13 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 	return t, nil
 }
 
-func prefixLen(buf []byte) int {
-	for i, b := range buf {
-		if b != 0 {
-			return i*8 + bits.LeadingZeros8(uint8(b))
-		}
-	}
-
-	return len(buf)*8 - 1
-}
-
-func (tx Transaction) IsCritical(difficulty byte) bool {
+func (tx *Transaction) IsCritical(difficulty byte) bool {
 	return tx.SeedLen >= difficulty
 }
 
 // LogicalUnits counts the total number of atomic logical units of changes
 // the specified tx comprises of.
-func (tx Transaction) LogicalUnits() int {
+func (tx *Transaction) LogicalUnits() int {
 	if tx.Tag != sys.TagBatch {
 		return 1
 	}
@@ -303,6 +340,16 @@ func (tx Transaction) LogicalUnits() int {
 	return int(buf[0])
 }
 
-func (tx Transaction) String() string {
+func (tx *Transaction) String() string {
 	return fmt.Sprintf("Transaction{ID: %x}", tx.ID)
+}
+
+func prefixLen(buf []byte) int {
+	for i, b := range buf {
+		if b != 0 {
+			return i*8 + bits.LeadingZeros8(uint8(b))
+		}
+	}
+
+	return len(buf)*8 - 1
 }

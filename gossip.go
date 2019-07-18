@@ -56,7 +56,7 @@ func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics
 	return g
 }
 
-func (g *Gossiper) Push(tx Transaction) {
+func (g *Gossiper) Push(tx *Transaction) {
 	g.debouncer.Add(debounce.Bytes(tx.Marshal()))
 
 	if g.metrics != nil {

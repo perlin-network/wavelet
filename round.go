@@ -40,11 +40,11 @@ type Round struct {
 
 	Applied uint64
 
-	Start Transaction
-	End   Transaction
+	Start *Transaction
+	End   *Transaction
 }
 
-func NewRound(index uint64, merkle MerkleNodeID, applied uint64, start, end Transaction) Round {
+func NewRound(index uint64, merkle MerkleNodeID, applied uint64, start, end *Transaction) Round {
 	r := Round{
 		Index:   index,
 		Merkle:  merkle,
