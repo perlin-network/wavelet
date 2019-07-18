@@ -504,7 +504,7 @@ FINALIZE_ROUNDS:
 					f := func() {
 						client := NewWaveletClient(conn)
 
-						ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+						ctx, cancel := context.WithTimeout(context.Background(), 500 * time.Millisecond)
 
 						p := &peer.Peer{}
 

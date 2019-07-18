@@ -66,25 +66,21 @@ func TestGraphFuzz(t *testing.T) {
 	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
 	graph := NewGraph(WithRoot(root))
 
+	var (
+		payload [50]byte
+		tx Transaction
+	)
+
 	count := 1
 
 	for i := 0; i < 500; i++ {
-		var depth []Transaction
+		_, err = rand.Read(payload[:])
+		assert.NoError(t, err)
 
-		for i := 0; i < rand.Intn(sys.MaxParentsPerTransaction)+1; i++ {
-			var payload [50]byte
+		tx = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...)
+		assert.NoError(t, graph.AddTransaction(tx))
 
-			_, err = rand.Read(payload[:])
-			assert.NoError(t, err)
-
-			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...))
-		}
-
-		for _, tx := range depth {
-			assert.NoError(t, graph.AddTransaction(tx))
-		}
-
-		count += len(depth)
+		count++
 	}
 
 	assert.Len(t, graph.GetTransactionsByDepth(nil, nil), count)
@@ -114,7 +110,7 @@ func TestGraphFuzz(t *testing.T) {
 	})
 
 	for _, tx := range transactions {
-		graph.AddTransaction(tx)
+		_ = graph.AddTransaction(tx)
 	}
 
 	assert.Len(t, graph.transactions, count)
@@ -140,8 +136,12 @@ func TestGraphPruneBelowDepth(t *testing.T) {
 	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
 	graph := NewGraph(WithRoot(root))
 
-	count := 1
+	var (
+		payload [50]byte
+		tx Transaction
+	)
 
+	count := 1
 	pruneDepth := uint64(0)
 
 	for i := 0; i < 500; i++ {
@@ -149,22 +149,12 @@ func TestGraphPruneBelowDepth(t *testing.T) {
 			pruneDepth = graph.height
 		}
 
-		var depth []Transaction
+		_, err = rand.Read(payload[:])
+		assert.NoError(t, err)
 
-		for i := 0; i < rand.Intn(sys.MaxParentsPerTransaction)+1; i++ {
-			var payload [50]byte
-
-			_, err = rand.Read(payload[:])
-			assert.NoError(t, err)
-
-			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...))
-		}
-
-		for _, tx := range depth {
-			assert.NoError(t, graph.AddTransaction(tx))
-		}
-
-		count += len(depth)
+		tx = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...)
+		assert.NoError(t, graph.AddTransaction(tx))
+		count++
 	}
 
 	pruneCount := graph.PruneBelowDepth(pruneDepth)
@@ -193,6 +183,57 @@ func TestGraphPruneBelowDepth(t *testing.T) {
 	assert.Len(t, graph.missing, 250)
 	graph.PruneBelowDepth(500)
 	assert.Len(t, graph.missing, 0)
+}
+
+func TestGraphPruneBelowDepthCompletion(t *testing.T) {
+	t.Parallel()
+
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	graph := NewGraph(WithRoot(root))
+
+	var payload [50]byte
+	_, err = rand.Read(payload[:])
+	assert.NoError(t, err)
+	missingParent := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...)
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	var tx Transaction
+
+	count := 1
+	for i := 0; i < 500; i++ {
+		_, err = rand.Read(payload[:])
+		assert.NoError(t, err)
+
+		var parents []*Transaction
+		// add first transaction with parent which is not added to the graph yet (is missing)
+		if i == 0 {
+			parents  = []*Transaction{&missingParent}
+		} else {
+			parents = []*Transaction{&tx}
+		}
+
+		tx = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), parents...)
+		_ = graph.AddTransaction(tx)
+
+		count++
+	}
+
+	assert.Equal(t, count - 1, len(graph.incomplete))
+	assert.Equal(t, 1, len(graph.missing))
+	assert.Equal(t, count, len(graph.transactions))
+
+	// ensure pruning removes one transaction which results to "completing" all of its descendants
+	pruneCount := graph.PruneBelowDepth(missingParent.Depth+1)
+
+	assert.Equal(t, 1, pruneCount)
+	assert.Equal(t, 0, len(graph.incomplete))
+	assert.Equal(t, 0, len(graph.missing))
+	assert.Equal(t, count - 1, len(graph.transactions))
 }
 
 func TestGraphUpdateRoot(t *testing.T) {

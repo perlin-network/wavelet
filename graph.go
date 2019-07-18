@@ -22,14 +22,12 @@ package wavelet
 import (
 	"bytes"
 	"encoding/hex"
-	"fmt"
 	"github.com/google/btree"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"sort"
 	"sync"
-	"time"
 )
 
 type GraphOption func(*Graph)
@@ -94,8 +92,7 @@ type Graph struct {
 	children     map[TransactionID][]TransactionID // Children of transactions. Includes incomplete/missing transactions.
 
 	missing    map[TransactionID]uint64   // Transactions that we are missing. Maps to depth of child of missing transaction.
-	incomplete map[TransactionID]struct{} // Transactions that don't have all parents available.
-	incompleteDependency map[TransactionID][]TransactionID
+	incomplete map[TransactionID]uint64 // Transactions that don't have all parents available.
 
 	eligibleIndex *btree.BTree              // Transactions that are eligible to be parent transactions.
 	seedIndex     *btree.BTree              // Indexes transactions by the number of zero bits prefixed of BLAKE2b(Sender || ParentIDs).
@@ -113,8 +110,7 @@ func NewGraph(opts ...GraphOption) *Graph {
 		children:     make(map[TransactionID][]TransactionID),
 
 		missing:    make(map[TransactionID]uint64),
-		incomplete: make(map[TransactionID]struct{}),
-		incompleteDependency: make(map[TransactionID][]TransactionID),
+		incomplete: make(map[TransactionID]uint64),
 
 		eligibleIndex: btree.New(32),
 		seedIndex:     btree.New(32),
@@ -124,13 +120,6 @@ func NewGraph(opts ...GraphOption) *Graph {
 	for _, opt := range opts {
 		opt(g)
 	}
-
-	go func() {
-		t := time.NewTicker(1 * time.Second)
-		for range t.C {
-			fmt.Printf("txs - %d, missing - %d, incomplete - %d\n", len(g.transactions), len(g.missing), len(g.incomplete))
-		}
-	}()
 
 	return g
 }
@@ -171,11 +160,6 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 
 				if _, recorded := g.missing[parentID]; !recorded {
 					g.missing[parentID] = tx.Depth
-					if dependencies, ok := g.incompleteDependency[parentID]; !ok {
-						g.incompleteDependency[parentID] = []TransactionID{tx.ID}
-					} else {
-						g.incompleteDependency[parentID] = append(dependencies, tx.ID)
-					}
 				}
 			}
 
@@ -188,7 +172,7 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 	}
 
 	if parentsMissing {
-		g.incomplete[tx.ID] = struct{}{}
+		g.incomplete[tx.ID] = tx.Depth
 
 		return ErrMissingParents
 	}
@@ -295,9 +279,6 @@ func (g *Graph) PruneBelowDepth(targetDepth uint64) int {
 			delete(g.transactions, tx.ID)
 			delete(g.children, tx.ID)
 
-			delete(g.missing, tx.ID)
-			delete(g.incomplete, tx.ID)
-
 			g.eligibleIndex.Delete((*sortByDepthTX)(tx))
 			g.seedIndex.Delete((*sortBySeedTX)(tx))
 
@@ -309,19 +290,21 @@ func (g *Graph) PruneBelowDepth(targetDepth uint64) int {
 		delete(g.depthIndex, depth)
 	}
 
+	for id, depth := range g.incomplete {
+		if depth <= targetDepth {
+			delete(g.incomplete, id)
+
+			g.completeChildren(id)
+		}
+	}
+
 	for id, depth := range g.missing {
 		if depth <= targetDepth {
-			delete(g.children, id)
 			delete(g.missing, id)
 
-			for _, txID := range g.incompleteDependency[id] {
-				delete(g.incomplete, txID)
-				if tx, ok := g.transactions[txID]; ok {
-					if err := g.updateGraph(tx); err != nil {
-						continue
-					}
-				}
-			}
+			g.completeChildren(id)
+
+			delete(g.children, id)
 		}
 	}
 
@@ -561,7 +544,13 @@ func (g *Graph) updateGraph(tx *Transaction) error {
 		g.metrics.receivedTX.Mark(int64(tx.LogicalUnits()))
 	}
 
-	for _, childID := range g.children[tx.ID] {
+	g.completeChildren(tx.ID)
+
+	return nil
+}
+
+func (g *Graph) completeChildren(parentID TransactionID) {
+	for _, childID := range g.children[parentID] {
 		if _, incomplete := g.incomplete[childID]; !incomplete {
 			continue
 		}
@@ -589,7 +578,7 @@ func (g *Graph) updateGraph(tx *Transaction) error {
 			delete(g.incomplete, childID)
 
 			if g.indexer != nil {
-				g.indexer.Remove(hex.EncodeToString(tx.ID[:]))
+				g.indexer.Remove(hex.EncodeToString(parentID[:]))
 			}
 
 			if err := g.updateGraph(child); err != nil {
@@ -597,8 +586,6 @@ func (g *Graph) updateGraph(tx *Transaction) error {
 			}
 		}
 	}
-
-	return nil
 }
 
 func (g *Graph) deleteProgeny(id TransactionID) {
