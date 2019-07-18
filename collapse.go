@@ -23,7 +23,14 @@ func processRewardWithdrawals(round uint64, snapshot *avl.Tree) {
 	}
 }
 
-func rewardValidators(g *Graph, snapshot *avl.Tree, root *Transaction, tx *Transaction, logging bool) error {
+// rewardValidators deducts a transaction fee from a transactions creator, and transfers the fee
+// to a rewardee which is determined by a validator reward scheme given the selected ancestry
+// of the transaction.
+//
+// If no rewardee is selected, then the transaction fee is simply burned. A reference to
+// a transaction is expected when calling this function to prevent any additional requirements
+// of looking up said transaction within the graph.
+func rewardValidators(g *Graph, snapshot *avl.Tree, tx *Transaction, logging bool) error {
 	fee := sys.TransactionFeeAmount
 
 	creatorBalance, _ := ReadAccountBalance(snapshot, tx.Creator)
@@ -149,21 +156,21 @@ func rewardValidators(g *Graph, snapshot *avl.Tree, root *Transaction, tx *Trans
 	return nil
 }
 
-func collapseTransactions(g *Graph, accounts *Accounts, round uint64, latestRound *Round, root *Transaction, end *Transaction, logging bool) (*collapseResults, error) {
+func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *Round, start, end Transaction, logging bool) (*collapseResults, error) {
 	res := &collapseResults{snapshot: accounts.Snapshot()}
 	res.snapshot.SetViewID(round)
 
-	visited := map[TransactionID]struct{}{root.ID: {}}
+	visited := map[TransactionID]struct{}{start.ID: {}}
 
 	queue := queue2.New()
-	queue.PushBack(end)
+	queue.PushBack(&end)
 
 	order := queue2.New()
 
 	for queue.Len() > 0 {
 		popped := queue.PopFront().(*Transaction)
 
-		if popped.Depth <= root.Depth {
+		if popped.Depth <= start.Depth {
 			continue
 		}
 
@@ -207,7 +214,7 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, latestRoun
 
 		// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
 		if hex.EncodeToString(popped.Creator[:]) != sys.FaucetAddress {
-			if err := rewardValidators(g, res.snapshot, root, popped, logging); err != nil {
+			if err := rewardValidators(g, res.snapshot, popped, logging); err != nil {
 				res.rejected = append(res.rejected, popped)
 				res.rejectedErrors = append(res.rejectedErrors, err)
 				res.rejectedCount += popped.LogicalUnits()
@@ -216,7 +223,7 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, latestRoun
 			}
 		}
 
-		if err := ApplyTransaction(latestRound, res.snapshot, popped); err != nil {
+		if err := ApplyTransaction(current, res.snapshot, popped); err != nil {
 			res.rejected = append(res.rejected, popped)
 			res.rejectedErrors = append(res.rejectedErrors, err)
 			res.rejectedCount += popped.LogicalUnits()
@@ -232,7 +239,7 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, latestRoun
 		res.appliedCount += popped.LogicalUnits()
 	}
 
-	startDepth, endDepth := root.Depth+1, end.Depth
+	startDepth, endDepth := start.Depth+1, end.Depth
 
 	for _, tx := range g.GetTransactionsByDepth(&startDepth, &endDepth) {
 		res.ignoredCount += tx.LogicalUnits()

@@ -52,7 +52,7 @@ type Snowball struct {
 	counts  map[RoundID]int
 	count   int
 	decided bool
-	name string
+	name    string
 }
 
 func NewSnowball(opts ...SnowballOption) *Snowball {
@@ -60,7 +60,7 @@ func NewSnowball(opts ...SnowballOption) *Snowball {
 		beta:       SnowballDefaultBeta,
 		candidates: make(map[RoundID]*Round),
 		counts:     make(map[RoundID]int),
-		name: "default",
+		name:       "default",
 	}
 
 	for _, opt := range opts {

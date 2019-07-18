@@ -146,10 +146,13 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 // invalid or fails any validation checks, an error is returned. No error
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
-func (l *Ledger) AddTransaction(tx *Transaction) error {
+func (l *Ledger) AddTransaction(tx Transaction) error {
 	err := l.graph.AddTransaction(tx)
 
 	if err != nil && errors.Cause(err) != ErrAlreadyExists {
+		if !strings.Contains(errors.Cause(err).Error(), "transaction has no parents") {
+			fmt.Println(err)
+		}
 		return err
 	}
 
@@ -459,13 +462,13 @@ FINALIZE_ROUNDS:
 				continue FINALIZE_ROUNDS
 			}
 
-			results, err := l.collapseTransactions(current.Index+1, current.End, eligible, false)
+			results, err := l.collapseTransactions(current.Index+1, current.End, *eligible, false)
 			if err != nil {
 				fmt.Println("error collapsing transactions during finalization", err)
 				continue
 			}
 
-			candidate := NewRound(current.Index+1, results.snapshot.Checksum(), uint64(results.appliedCount), current.End, eligible)
+			candidate := NewRound(current.Index+1, results.snapshot.Checksum(), uint64(results.appliedCount), current.End, *eligible)
 			l.finalizer.Prefer(&candidate)
 
 			continue FINALIZE_ROUNDS
@@ -1174,7 +1177,7 @@ type collapseResults struct {
 // It is important to note that transactions that are inspected over are specifically transactions
 // that are within the depth interval (start, end] where start is the interval starting point depth,
 // and end is the interval ending point depth.
-func (l *Ledger) collapseTransactions(round uint64, root *Transaction, end *Transaction, logging bool) (*collapseResults, error) {
+func (l *Ledger) collapseTransactions(round uint64, start, end Transaction, logging bool) (*collapseResults, error) {
 	var res *collapseResults
 
 	defer func() {
@@ -1195,7 +1198,8 @@ func (l *Ledger) collapseTransactions(round uint64, root *Transaction, end *Tran
 	}
 
 	var err error
-	res, err = collapseTransactions(l.graph, l.accounts, round, l.Rounds().Latest(), root, end, logging)
+
+	res, err = collapseTransactions(l.graph, l.accounts, round, l.Rounds().Latest(), start, end, logging)
 	if err != nil {
 		return nil, err
 	}
