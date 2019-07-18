@@ -40,7 +40,7 @@ func TestNewGraph(t *testing.T) {
 	eligible := graph.FindEligibleParents()
 
 	assert.Len(t, eligible, 1)
-	assert.Equal(t, tx, eligible[0])
+	assert.Equal(t, tx, *eligible[0])
 
 	tx2 := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), eligible...)
 
@@ -69,7 +69,7 @@ func TestGraphFuzz(t *testing.T) {
 	count := 1
 
 	for i := 0; i < 500; i++ {
-		var depth []*Transaction
+		var depth []Transaction
 
 		for i := 0; i < rand.Intn(sys.MaxParentsPerTransaction)+1; i++ {
 			var payload [50]byte
@@ -95,14 +95,14 @@ func TestGraphFuzz(t *testing.T) {
 	assert.Len(t, graph.incomplete, 0)
 	assert.Len(t, graph.Missing(), 0)
 
-	var transactions []*Transaction
+	var transactions []Transaction
 
 	for _, tx := range graph.transactions {
 		if tx.ID == root.ID {
 			continue
 		}
 
-		transactions = append(transactions, tx)
+		transactions = append(transactions, *tx)
 	}
 
 	assert.Len(t, transactions, count-1)
@@ -149,7 +149,7 @@ func TestGraphPruneBelowDepth(t *testing.T) {
 			pruneDepth = graph.height
 		}
 
-		var depth []*Transaction
+		var depth []Transaction
 
 		for i := 0; i < rand.Intn(sys.MaxParentsPerTransaction)+1; i++ {
 			var payload [50]byte
@@ -205,7 +205,7 @@ func TestGraphUpdateRoot(t *testing.T) {
 	graph := NewGraph(WithRoot(root))
 
 	for i := 0; i < 50; i++ {
-		var depth []*Transaction
+		var depth []Transaction
 
 		for i := 0; i < rand.Intn(sys.MaxParentsPerTransaction)+1; i++ {
 			var payload [50]byte
@@ -266,7 +266,7 @@ func TestGraphValidateTransactionParents(t *testing.T) {
 	graph := NewGraph(WithRoot(root))
 
 	for i := 0; i < 50; i++ {
-		var depth []*Transaction
+		var depth []Transaction
 
 		for i := 0; i < rand.Intn(sys.MaxParentsPerTransaction)+1; i++ {
 			var payload [50]byte
@@ -283,20 +283,20 @@ func TestGraphValidateTransactionParents(t *testing.T) {
 	}
 
 	tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.depthIndex[(graph.height-1)-(sys.MaxDepthDiff+2)][0])
-	assert.NoError(t, graph.validateTransactionParents(tx))
+	assert.NoError(t, graph.validateTransactionParents(&tx))
 
 	assert.Equal(t, len(tx.ParentIDs), len(tx.ParentSeeds))
 
 	parentSeed := tx.ParentSeeds[0]
 	tx.ParentSeeds[0] = [32]byte{}
-	assert.Error(t, graph.validateTransactionParents(tx))
+	assert.Error(t, graph.validateTransactionParents(&tx))
 	tx.ParentSeeds[0] = parentSeed
 
 	tx.Depth += sys.MaxDepthDiff
-	assert.True(t, errors.Cause(graph.validateTransactionParents(tx)) == ErrDepthLimitExceeded)
+	assert.True(t, errors.Cause(graph.validateTransactionParents(&tx)) == ErrDepthLimitExceeded)
 
 	tx.Depth--
-	assert.True(t, errors.Cause(graph.validateTransactionParents(tx)) != ErrDepthLimitExceeded)
+	assert.True(t, errors.Cause(graph.validateTransactionParents(&tx)) != ErrDepthLimitExceeded)
 }
 
 func TestGraphFindEligibleCritical(t *testing.T) {
@@ -326,7 +326,7 @@ func TestGraphFindEligibleCritical(t *testing.T) {
 		}
 
 		assert.NoError(t, graph.AddTransaction(eligible))
-		assert.Equal(t, graph.FindEligibleCritical(difficulty), eligible)
+		assert.Equal(t, *graph.FindEligibleCritical(difficulty), eligible)
 
 		root = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
 		graph = NewGraph(WithRoot(root))
@@ -344,7 +344,7 @@ func TestGraphFindEligibleCriticalInBigGraph(t *testing.T) {
 
 	difficulty := byte(8)
 
-	var eligible *Transaction
+	var eligible Transaction
 
 	for i := 0; i < 500; i++ {
 		if i == 500/3 { // Prune away any eligible critical transactions a third through the graph.
@@ -368,7 +368,7 @@ func TestGraphFindEligibleCriticalInBigGraph(t *testing.T) {
 			assert.NoError(t, graph.AddTransaction(eligible))
 		}
 
-		var depth []*Transaction
+		var depth []Transaction
 
 		for i := 0; i < rand.Intn(sys.MaxParentsPerTransaction)+1; i++ {
 			var payload [50]byte
@@ -397,5 +397,5 @@ func TestGraphFindEligibleCriticalInBigGraph(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, graph.FindEligibleCritical(difficulty), eligible)
+	assert.Equal(t, *graph.FindEligibleCritical(difficulty), eligible)
 }

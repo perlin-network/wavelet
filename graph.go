@@ -32,7 +32,7 @@ import (
 
 type GraphOption func(*Graph)
 
-func WithRoot(root *Transaction) GraphOption {
+func WithRoot(root Transaction) GraphOption {
 	return func(graph *Graph) {
 		if graph.indexer != nil {
 			graph.indexer.Index(hex.EncodeToString(root.ID[:]))
@@ -127,7 +127,7 @@ func NewGraph(opts ...GraphOption) *Graph {
 // AddTransaction adds sufficiently valid transactions with a strongly connected ancestry
 // to the graph, and otherwise buffers incomplete transactions, or otherwise rejects
 // invalid transactions.
-func (g *Graph) AddTransaction(tx *Transaction) error {
+func (g *Graph) AddTransaction(tx Transaction) error {
 	g.Lock()
 	defer g.Unlock()
 
@@ -143,7 +143,9 @@ func (g *Graph) AddTransaction(tx *Transaction) error {
 		return errors.Wrap(err, "failed to validate transaction")
 	}
 
-	g.transactions[tx.ID] = tx
+	ptr := &tx
+
+	g.transactions[tx.ID] = ptr
 	delete(g.missing, tx.ID)
 
 	parentsMissing := false
@@ -175,7 +177,7 @@ func (g *Graph) AddTransaction(tx *Transaction) error {
 		return ErrMissingParents
 	}
 
-	return g.updateGraph(tx)
+	return g.updateGraph(ptr)
 }
 
 // MarkTransactionAsMissing marks a transaction at some given depth to be
@@ -190,13 +192,15 @@ func (g *Graph) MarkTransactionAsMissing(id TransactionID, depth uint64) {
 
 // UpdateRoot forcefully adds a root transaction to the graph, and updates all
 // relevant graph indices as a result of setting a new root with its new depth.
-func (g *Graph) UpdateRoot(root *Transaction) {
+func (g *Graph) UpdateRoot(root Transaction) {
+	ptr := &root
+
 	g.Lock()
 
-	g.depthIndex[root.Depth] = append(g.depthIndex[root.Depth], root)
-	g.eligibleIndex.ReplaceOrInsert((*sortByDepthTX)(root))
+	g.depthIndex[root.Depth] = append(g.depthIndex[root.Depth], ptr)
+	g.eligibleIndex.ReplaceOrInsert((*sortByDepthTX)(ptr))
 
-	g.transactions[root.ID] = root
+	g.transactions[root.ID] = ptr
 
 	g.height = root.Depth + 1
 
@@ -608,7 +612,7 @@ func (g *Graph) deleteProgeny(id TransactionID) {
 	}
 }
 
-func (g *Graph) validateTransaction(tx *Transaction) error {
+func (g *Graph) validateTransaction(tx Transaction) error {
 	if tx.ID == ZeroTransactionID {
 		return errors.New("tx must have an ID")
 	}

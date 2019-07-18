@@ -27,6 +27,8 @@ import (
 )
 
 func TestNewRounds(t *testing.T) {
+	t.Parallel()
+
 	storage := store.NewInmem()
 
 	rm, err := NewRounds(storage, 10)
@@ -41,8 +43,8 @@ func TestNewRounds(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		r := &Round{
 			Index: uint64(i + 1),
-			Start: &Transaction{},
-			End:   &Transaction{},
+			Start: Transaction{},
+			End:   Transaction{},
 		}
 		_, err := rm.Save(r)
 		assert.NoError(t, err)
@@ -66,6 +68,8 @@ func TestNewRounds(t *testing.T) {
 }
 
 func TestRoundsCircular(t *testing.T) {
+	t.Parallel()
+
 	storage := store.NewInmem()
 
 	rm, err := NewRounds(storage, 10)
@@ -80,8 +84,8 @@ func TestRoundsCircular(t *testing.T) {
 	for i := 0; i < 15; i++ {
 		r := &Round{
 			Index: uint64(i + 1),
-			Start: &Transaction{},
-			End:   &Transaction{},
+			Start: Transaction{},
+			End:   Transaction{},
 		}
 		_, err := rm.Save(r)
 		assert.NoError(t, err)

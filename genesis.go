@@ -152,8 +152,8 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 		logger.Fatal().Err(err).Msg("accounts.Visit")
 	}
 
-	tx := &Transaction{}
+	tx := Transaction{}
 	tx.rehash()
 
-	return NewRound(0, tree.Checksum(), 0, &Transaction{}, tx)
+	return NewRound(0, tree.Checksum(), 0, Transaction{}, tx)
 }

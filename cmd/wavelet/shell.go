@@ -591,7 +591,7 @@ func (cli *CLI) withdrawReward(cmd []string) {
 		Msgf("Success! Your reward withdrawal transaction ID: %x", tx.ID)
 }
 
-func (cli *CLI) sendTransaction(tx *wavelet.Transaction) (*wavelet.Transaction, error) {
+func (cli *CLI) sendTransaction(tx wavelet.Transaction) (wavelet.Transaction, error) {
 	tx = wavelet.AttachSenderToTransaction(cli.keys, tx, cli.ledger.Graph().FindEligibleParents()...)
 
 	if err := cli.ledger.AddTransaction(tx); err != nil && errors.Cause(err) != wavelet.ErrMissingParents {

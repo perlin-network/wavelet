@@ -56,7 +56,7 @@ func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics
 	return g
 }
 
-func (g *Gossiper) Push(tx *Transaction) {
+func (g *Gossiper) Push(tx Transaction) {
 	g.debouncer.Add(debounce.Bytes(tx.Marshal()))
 
 	if g.metrics != nil {
@@ -73,7 +73,7 @@ func (g *Gossiper) Gossip(transactions [][]byte) {
 	for _, p := range peers {
 		client := NewWaveletClient(p)
 
-		ctx, _ := context.WithTimeout(context.Background(), 100 * time.Millisecond)
+		ctx, _ := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		stream, err := client.Gossip(ctx)
 		if err != nil {
 			continue
