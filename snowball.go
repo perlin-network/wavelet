@@ -56,7 +56,7 @@ type Snowball struct {
 	counts  map[string]int
 	count   int
 	decided bool
-	name string
+	name    string
 }
 
 func NewSnowball(opts ...SnowballOption) *Snowball {
@@ -64,7 +64,7 @@ func NewSnowball(opts ...SnowballOption) *Snowball {
 		beta:       SnowballDefaultBeta,
 		candidates: make(map[string]Identifiable),
 		counts:     make(map[string]int),
-		name: "default",
+		name:       "default",
 	}
 
 	for _, opt := range opts {
@@ -117,7 +117,7 @@ func (s *Snowball) Tick(v Identifiable) {
 
 	if s.lastID != id { // Handle termination case.
 		if s.lastID != "" {
-			fmt.Printf("Snowball (%s) liveness fault: Last ID is %x with count %d, and new ID is %x.\n", s.name, s.lastID, s.count, id)
+			fmt.Printf("Snowball (%s) liveness fault: Last ID is %s with count %d, and new ID is %s.\n", s.name, s.lastID, s.count, id)
 		}
 
 		s.lastID = id

@@ -73,7 +73,7 @@ func (g *Gossiper) Gossip(transactions [][]byte) {
 	for _, p := range peers {
 		client := NewWaveletClient(p)
 
-		ctx, _ := context.WithTimeout(context.Background(), 100 * time.Millisecond)
+		ctx, _ := context.WithTimeout(context.Background(), 100*time.Millisecond)
 		stream, err := client.Gossip(ctx)
 		if err != nil {
 			continue

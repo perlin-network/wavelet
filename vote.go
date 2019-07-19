@@ -26,7 +26,7 @@ import (
 )
 
 type vote struct {
-	voter     *skademlia.ID
+	voter *skademlia.ID
 	value Identifiable
 }
 

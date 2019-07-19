@@ -68,7 +68,7 @@ func TestGraphFuzz(t *testing.T) {
 
 	var (
 		payload [50]byte
-		tx Transaction
+		tx      Transaction
 	)
 
 	count := 1
@@ -138,7 +138,7 @@ func TestGraphPruneBelowDepth(t *testing.T) {
 
 	var (
 		payload [50]byte
-		tx Transaction
+		tx      Transaction
 	)
 
 	count := 1
@@ -185,57 +185,6 @@ func TestGraphPruneBelowDepth(t *testing.T) {
 	assert.Len(t, graph.missing, 0)
 }
 
-func TestGraphPruneBelowDepthCompletion(t *testing.T) {
-	t.Parallel()
-
-	keys, err := skademlia.NewKeys(1, 1)
-	assert.NoError(t, err)
-
-	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
-	graph := NewGraph(WithRoot(root))
-
-	var payload [50]byte
-	_, err = rand.Read(payload[:])
-	assert.NoError(t, err)
-	missingParent := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...)
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	var tx Transaction
-
-	count := 1
-	for i := 0; i < 500; i++ {
-		_, err = rand.Read(payload[:])
-		assert.NoError(t, err)
-
-		var parents []*Transaction
-		// add first transaction with parent which is not added to the graph yet (is missing)
-		if i == 0 {
-			parents  = []*Transaction{&missingParent}
-		} else {
-			parents = []*Transaction{&tx}
-		}
-
-		tx = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), parents...)
-		_ = graph.AddTransaction(tx)
-
-		count++
-	}
-
-	assert.Equal(t, count - 1, len(graph.incomplete))
-	assert.Equal(t, 1, len(graph.missing))
-	assert.Equal(t, count, len(graph.transactions))
-
-	// ensure pruning removes one transaction which results to "completing" all of its descendants
-	pruneCount := graph.PruneBelowDepth(missingParent.Depth+1)
-
-	assert.Equal(t, 1, pruneCount)
-	assert.Equal(t, 0, len(graph.incomplete))
-	assert.Equal(t, 0, len(graph.missing))
-	assert.Equal(t, count - 1, len(graph.transactions))
-}
-
 func TestGraphUpdateRoot(t *testing.T) {
 	t.Parallel()
 
@@ -245,21 +194,17 @@ func TestGraphUpdateRoot(t *testing.T) {
 	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
 	graph := NewGraph(WithRoot(root))
 
+	var (
+		payload [50]byte
+		tx      Transaction
+	)
+
 	for i := 0; i < 50; i++ {
-		var depth []Transaction
+		_, err = rand.Read(payload[:])
+		assert.NoError(t, err)
 
-		for i := 0; i < rand.Intn(sys.MaxParentsPerTransaction)+1; i++ {
-			var payload [50]byte
-
-			_, err = rand.Read(payload[:])
-			assert.NoError(t, err)
-
-			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...))
-		}
-
-		for _, tx := range depth {
-			assert.NoError(t, graph.AddTransaction(tx))
-		}
+		tx = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...)
+		assert.NoError(t, graph.AddTransaction(tx))
 	}
 
 	// Assert that updating the root removes missing transactions and
@@ -285,7 +230,7 @@ func TestGraphUpdateRoot(t *testing.T) {
 	assert.Len(t, graph.children, numChildren)
 
 	// Create a transaction that is at an ineligible depth exceeding DEPTH_DIFF.
-	tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.depthIndex[(graph.height-1)-(sys.MaxDepthDiff+2)][0])
+	tx = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.depthIndex[(graph.height-1)-(sys.MaxDepthDiff+2)][0])
 
 	// An error should occur.
 	assert.Error(t, graph.AddTransaction(tx))
@@ -295,6 +240,50 @@ func TestGraphUpdateRoot(t *testing.T) {
 
 	// No error should occur.
 	assert.NoError(t, graph.AddTransaction(tx))
+}
+
+func TestGraph_UpdateRootDepth(t *testing.T) {
+	t.Parallel()
+
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	graph := NewGraph(WithRoot(root))
+
+	missingParent := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), &root)
+
+	var (
+		payload [50]byte
+		tx      Transaction
+	)
+
+	num := 50
+	for i := 0; i < num; i++ {
+		_, err = rand.Read(payload[:])
+		assert.NoError(t, err)
+
+		var parent *Transaction
+		if i == 0 {
+			parent = &missingParent
+		} else {
+			parent = &tx
+		}
+
+		tx = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), parent)
+		_ = graph.AddTransaction(tx)
+	}
+
+	assert.Equal(t, num+1, len(graph.transactions))
+	assert.Equal(t, 1, len(graph.missing))
+	assert.Equal(t, num, len(graph.incomplete))
+
+	// ensure updating root will delete missing transactions after some threshold and complete it's descendants
+	graph.UpdateRootDepth(missingParent.Depth + sys.MaxDepthDiff + 1)
+
+	assert.Equal(t, num+1, len(graph.transactions))
+	assert.Equal(t, 0, len(graph.missing))
+	assert.Equal(t, 0, len(graph.incomplete))
 }
 
 func TestGraphValidateTransactionParents(t *testing.T) {

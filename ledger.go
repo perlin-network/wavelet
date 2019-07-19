@@ -65,9 +65,9 @@ type Ledger struct {
 	sync      chan struct{}
 	syncVotes chan vote
 
-	outOfSync bool
+	outOfSync       bool
 	outOfSyncTxBuff []Transaction
-	outOfSyncLock sync.Mutex
+	outOfSyncLock   sync.Mutex
 
 	cacheCollapse *LRU
 	cacheChunks   *LRU
@@ -505,7 +505,7 @@ FINALIZE_ROUNDS:
 					f := func() {
 						client := NewWaveletClient(conn)
 
-						ctx, cancel := context.WithTimeout(context.Background(), 500 * time.Millisecond)
+						ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 
 						p := &peer.Peer{}
 
@@ -719,7 +719,6 @@ func (l *Ledger) SyncToLatestRound() {
 
 	syncTimeoutMultiplier := 0
 	for {
-		t := time.Now()
 		for {
 			conns, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
 			if err != nil {
@@ -804,9 +803,6 @@ func (l *Ledger) SyncToLatestRound() {
 		}
 
 		syncTimeoutMultiplier = 0
-
-		fmt.Println("time took to find out we out of sync - ", time.Now().Sub(t))
-		t = time.Now()
 
 		shutdown := func() {
 			close(l.sync)
@@ -1163,8 +1159,6 @@ func (l *Ledger) SyncToLatestRound() {
 			Hex("old_merkle_root", current.Merkle[:]).
 			Msg("Successfully built a new state Snapshot out of chunk(s) we have received from peers.")
 
-		fmt.Println("time took actually to sync - ", time.Now().Sub(t))
-
 		l.outOfSyncLock.Lock()
 		txs := make([]Transaction, len(l.outOfSyncTxBuff))
 		copy(txs, l.outOfSyncTxBuff)
@@ -1291,7 +1285,7 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 
 			parent := l.graph.FindTransaction(parentID)
 			if parent == nil {
-				l.graph.MarkTransactionAsMissing(parentID, popped.Depth - 1)
+				l.graph.MarkTransactionAsMissing(parentID, popped.Depth-1)
 				return nil, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, end.ID)
 			}
 

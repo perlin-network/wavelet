@@ -91,7 +91,7 @@ type Graph struct {
 	transactions map[TransactionID]*Transaction    // All transactions. Includes incomplete transactions.
 	children     map[TransactionID][]TransactionID // Children of transactions. Includes incomplete/missing transactions.
 
-	missing    map[TransactionID]uint64   // Transactions that we are missing. Maps to depth of child of missing transaction.
+	missing    map[TransactionID]uint64 // Transactions that we are missing. Maps to depth of child of missing transaction.
 	incomplete map[TransactionID]uint64 // Transactions that don't have all parents available.
 
 	eligibleIndex *btree.BTree              // Transactions that are eligible to be parent transactions.
@@ -225,12 +225,21 @@ func (g *Graph) UpdateRootDepth(rootDepth uint64) {
 	g.rootDepth = rootDepth
 
 	for id, depth := range g.missing {
-		if rootDepth <= sys.MaxDepthDiff+depth {
-			continue
+		if rootDepth > sys.MaxDepthDiff+depth {
+			delete(g.missing, id)
+			g.completeChildren(id)
+			delete(g.children, id)
+		}
+	}
+
+	for id, depth := range g.incomplete {
+		if rootDepth > sys.MaxDepthDiff+depth {
+			delete(g.incomplete, id)
+			delete(g.transactions, id)
+			g.completeChildren(id)
+			delete(g.children, id)
 		}
 
-		delete(g.children, id)
-		delete(g.missing, id)
 	}
 
 	g.eligibleIndex.Ascend(func(i btree.Item) bool {
@@ -271,12 +280,12 @@ func (g *Graph) PruneBelowDepth(targetDepth uint64) int {
 
 	g.Lock()
 
-	for depth := range g.depthIndex {
+	for depth, transactions := range g.depthIndex {
 		if depth > targetDepth {
 			continue
 		}
 
-		for _, tx := range g.depthIndex[depth] {
+		for _, tx := range transactions {
 			count += tx.LogicalUnits()
 
 			delete(g.transactions, tx.ID)
@@ -293,21 +302,18 @@ func (g *Graph) PruneBelowDepth(targetDepth uint64) int {
 		delete(g.depthIndex, depth)
 	}
 
-	for id, depth := range g.incomplete {
-		if depth <= targetDepth {
-			delete(g.incomplete, id)
-			count++
-			g.completeChildren(id)
-		}
-	}
-
 	for id, depth := range g.missing {
 		if depth <= targetDepth {
 			delete(g.missing, id)
 			count++
-			g.completeChildren(id)
-
 			delete(g.children, id)
+		}
+	}
+
+	for id, depth := range g.incomplete {
+		if depth <= targetDepth {
+			delete(g.incomplete, id)
+			count++
 		}
 	}
 
@@ -579,7 +585,7 @@ func (g *Graph) completeChildren(parentID TransactionID) {
 				break
 			}
 
-			if _, exists := g.transactions[parentID]; !exists {
+			if _, missing := g.missing[parentID]; missing {
 				complete = false
 				break
 			}
