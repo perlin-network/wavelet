@@ -202,6 +202,7 @@ func (cli *CLI) status() {
 		Int("num_tx", cli.ledger.Graph().DepthLen(&rootDepth, nil)).
 		Int("num_missing_tx", cli.ledger.Graph().MissingLen()).
 		Int("num_tx_in_store", cli.ledger.Graph().Len()).
+		Int("num_incomplete_tx", cli.ledger.Graph().IncompleteLen()).
 		Uint64("num_accounts_in_store", accountsLen).
 		Str("preferred_id", preferredID).
 		Int("preferred_votes", count).

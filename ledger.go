@@ -432,6 +432,7 @@ FINALIZE_ROUNDS:
 		default:
 		}
 
+		finalizationTime := time.Now()
 		if len(l.client.ClosestPeers()) < sys.SnowballK {
 			select {
 			case <-l.sync:
@@ -511,6 +512,7 @@ FINALIZE_ROUNDS:
 						res, err := client.Query(ctx, req, grpc.Peer(p))
 						if err != nil {
 							cancel()
+							fmt.Println(err)
 							return
 						}
 
@@ -697,6 +699,7 @@ FINALIZE_ROUNDS:
 			Uint64("round_depth", finalized.End.Depth-finalized.Start.Depth).
 			Msg("Finalized consensus round, and initialized a new round.")
 
+		fmt.Println(">>> time finalization took -", time.Now().Sub(finalizationTime))
 		//go ExportGraphDOT(finalized, l.graph)
 	}
 }
@@ -736,7 +739,7 @@ func (l *Ledger) SyncToLatestRound() {
 				client := NewWaveletClient(conn)
 
 				go func() {
-					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+					ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 
 					p := &peer.Peer{}
 
@@ -1287,9 +1290,8 @@ func (l *Ledger) CollapseTransactions(round uint64, root Transaction, end Transa
 			visited[parentID] = struct{}{}
 
 			parent := l.graph.FindTransaction(parentID)
-
 			if parent == nil {
-				l.graph.MarkTransactionAsMissing(parentID, popped.Depth)
+				l.graph.MarkTransactionAsMissing(parentID, popped.Depth - 1)
 				return nil, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, end.ID)
 			}
 

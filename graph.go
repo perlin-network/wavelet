@@ -159,7 +159,7 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 				parentsMissing = true
 
 				if _, recorded := g.missing[parentID]; !recorded {
-					g.missing[parentID] = tx.Depth
+					g.missing[parentID] = tx.Depth - 1
 				}
 			}
 
@@ -186,6 +186,9 @@ func (g *Graph) MarkTransactionAsMissing(id TransactionID, depth uint64) {
 	g.Lock()
 	if g.rootDepth <= sys.MaxDepthDiff+depth {
 		g.missing[id] = depth
+	}
+	for _, childID := range g.children[id] {
+		g.incomplete[childID] = depth
 	}
 	g.Unlock()
 }
@@ -293,7 +296,7 @@ func (g *Graph) PruneBelowDepth(targetDepth uint64) int {
 	for id, depth := range g.incomplete {
 		if depth <= targetDepth {
 			delete(g.incomplete, id)
-
+			count++
 			g.completeChildren(id)
 		}
 	}
@@ -301,7 +304,7 @@ func (g *Graph) PruneBelowDepth(targetDepth uint64) int {
 	for id, depth := range g.missing {
 		if depth <= targetDepth {
 			delete(g.missing, id)
-
+			count++
 			g.completeChildren(id)
 
 			delete(g.children, id)
@@ -493,6 +496,14 @@ func (g *Graph) Len() int {
 func (g *Graph) MissingLen() int {
 	g.RLock()
 	num := len(g.missing)
+	g.RUnlock()
+
+	return num
+}
+
+func (g *Graph) IncompleteLen() int {
+	g.RLock()
+	num := len(g.incomplete)
 	g.RUnlock()
 
 	return num
