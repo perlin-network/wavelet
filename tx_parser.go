@@ -38,11 +38,15 @@ type (
 		// should the transaction be made with a recipient
 		// that is a smart contract address.
 
-		GasLimit   uint64
-		GasDeposit uint64
+		GasLimit uint64
 
 		FuncName   []byte
 		FuncParams []byte
+
+		// Optional gas deposit/balance related fields.
+		GasDeposit uint64
+		// This field is required to prevent the DoS attack by transferring a very small amount of money to GasDeposit.
+		UseGasBalance bool
 	}
 
 	Stake struct {
@@ -92,12 +96,6 @@ func ParseTransferTransaction(payload []byte) (Transfer, error) {
 		if tx.GasLimit == 0 {
 			return tx, errors.New("transfer: gas limit must be greater than zero")
 		}
-
-		if _, err := io.ReadFull(r, b[:8]); err != nil {
-			return tx, errors.Wrap(err, "transfer: failed to decode gas deposit")
-		}
-
-		tx.GasDeposit = binary.LittleEndian.Uint64(b)
 	}
 
 	if r.Len() > 0 {
@@ -127,7 +125,7 @@ func ParseTransferTransaction(payload []byte) (Transfer, error) {
 		}
 
 		size := binary.LittleEndian.Uint32(b[:4])
-		if size > 1024*1024 {
+		if size > 1*1024*1024 {
 			return tx, errors.New("transfer: smart contract payload exceeds 1MB")
 		}
 
@@ -136,6 +134,18 @@ func ParseTransferTransaction(payload []byte) (Transfer, error) {
 		if _, err := io.ReadFull(r, tx.FuncParams); err != nil {
 			return tx, errors.Wrap(err, "transfer: failed to decode smart contract function invocation parameters")
 		}
+	}
+
+	if r.Len() > 0 {
+		if _, err := io.ReadFull(r, b[:8]); err != nil {
+			return tx, errors.Wrap(err, "transfer: failed to decode gas deposit")
+		}
+		tx.GasDeposit = binary.LittleEndian.Uint64(b)
+
+		if _, err := io.ReadFull(r, b[:1]); err != nil {
+			return tx, errors.Wrap(err, "transfer: failed to decode use_gas_balance")
+		}
+		tx.UseGasBalance = b[0] != 0
 	}
 
 	return tx, nil

@@ -32,24 +32,24 @@ import (
 )
 
 var (
-	keyAccounts       = [...]byte{0x1}
-	keyAccountsLen    = [...]byte{0x2}
-	keyAccountNonce   = [...]byte{0x3}
-	keyAccountBalance = [...]byte{0x4}
-	keyAccountStake   = [...]byte{0x5}
-	keyAccountReward  = [...]byte{0x6}
+	// Global prefixes.
+	keyAccounts          = [...]byte{0x1}
+	keyAccountsLen       = [...]byte{0x2}
+	keyRounds            = [...]byte{0x3}
+	keyRoundLatestIx     = [...]byte{0x4}
+	keyRoundOldestIx     = [...]byte{0x5}
+	keyRoundStoredCount  = [...]byte{0x6}
+	keyRewardWithdrawals = [...]byte{0x7}
 
-	keyAccountContractCode       = [...]byte{0x7}
-	keyAccountContractNumPages   = [...]byte{0x8}
-	keyAccountContractPages      = [...]byte{0x9}
-	keyAccountContractGasBalance = [...]byte{0x10}
-
-	keyRounds           = [...]byte{0x10}
-	keyRoundLatestIx    = [...]byte{0x11}
-	keyRoundOldestIx    = [...]byte{0x12}
-	keyRoundStoredCount = [...]byte{0x13}
-
-	keyRewardWithdrawals = [...]byte{0x14}
+	// Account-local prefixes.
+	keyAccountNonce              = [...]byte{0x1}
+	keyAccountBalance            = [...]byte{0x2}
+	keyAccountStake              = [...]byte{0x3}
+	keyAccountReward             = [...]byte{0x4}
+	keyAccountContractCode       = [...]byte{0x5}
+	keyAccountContractNumPages   = [...]byte{0x6}
+	keyAccountContractPages      = [...]byte{0x7}
+	keyAccountContractGasBalance = [...]byte{0x8}
 )
 
 type RewardWithdrawalRequest struct {
