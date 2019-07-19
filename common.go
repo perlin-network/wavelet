@@ -27,14 +27,16 @@ import (
 import _ "github.com/perlin-network/wavelet/internal/snappy"
 
 const (
-	SizeTransactionID = blake2b.Size256
-	SizeRoundID       = blake2b.Size256
-	SizeMerkleNodeID  = md5.Size
-	SizeAccountID     = 32
-	SizeSignature     = 64
+	SizeTransactionID   = blake2b.Size256
+	SizeTransactionSeed = blake2b.Size256
+	SizeRoundID         = blake2b.Size256
+	SizeMerkleNodeID    = md5.Size
+	SizeAccountID       = 32
+	SizeSignature       = 64
 )
 
 type TransactionID = [SizeTransactionID]byte
+type TransactionSeed = [SizeTransactionSeed]byte
 type RoundID = [SizeRoundID]byte
 type MerkleNodeID = [SizeMerkleNodeID]byte
 type AccountID = [SizeAccountID]byte

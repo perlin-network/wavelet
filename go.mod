@@ -33,5 +33,3 @@ require (
 	google.golang.org/grpc v1.20.1
 	gopkg.in/urfave/cli.v1 v1.20.0
 )
-
-replace github.com/perlin-network/noise => ../noise

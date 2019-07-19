@@ -73,6 +73,7 @@ The current binary format of a Wavelet transaction is denoted as follows:
 | Creator Account ID | 256-bit wallet address/public key. | 
 | Nonce | Latest nonce value of the creators account, denoted as an unsigned 64-bit little-endian integer. | 
 | Parent IDs | Length-prefixed array of 256-bit transaction IDs; assigned by the transactions sender. |
+| Parent Seeds | Array of 256-bit transaction seeds, with the same length as the Parent IDs field and therefore not length-prefixed; must correspond to the transactions specified by Parent IDs. |
 | Depth | Unsigned 64-bit little-endian integer; assigned by the transactions sender. |
 | Tag | 8-bit integer (byte) identifying the transactions operation. |
 | Payload | Length-prefixed array of bytes providing further details of the operation invoked under the transactions designated tag. |

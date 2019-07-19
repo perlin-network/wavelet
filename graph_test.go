@@ -313,6 +313,14 @@ func TestGraphValidateTransactionParents(t *testing.T) {
 	}
 
 	tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.depthIndex[(graph.height-1)-(sys.MaxDepthDiff+2)][0])
+	assert.NoError(t, graph.validateTransactionParents(&tx))
+
+	assert.Equal(t, len(tx.ParentIDs), len(tx.ParentSeeds))
+
+	parentSeed := tx.ParentSeeds[0]
+	tx.ParentSeeds[0] = [32]byte{}
+	assert.Error(t, graph.validateTransactionParents(&tx))
+	tx.ParentSeeds[0] = parentSeed
 
 	tx.Depth += sys.MaxDepthDiff
 	assert.True(t, errors.Cause(graph.validateTransactionParents(&tx)) == ErrDepthLimitExceeded)

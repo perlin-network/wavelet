@@ -721,7 +721,7 @@ func (g *Graph) validateTransactionParents(tx *Transaction) error {
 
 	var maxDepth uint64
 
-	for _, parentID := range tx.ParentIDs {
+	for i, parentID := range tx.ParentIDs {
 		parent, exists := g.transactions[parentID]
 
 		if !exists {
@@ -734,6 +734,10 @@ func (g *Graph) validateTransactionParents(tx *Transaction) error {
 
 		if maxDepth < parent.Depth { // Update max depth witnessed from parents.
 			maxDepth = parent.Depth
+		}
+
+		if parent.Seed != tx.ParentSeeds[i] {
+			return errors.New("parent seed mismatch")
 		}
 	}
 
