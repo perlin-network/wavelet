@@ -101,6 +101,10 @@ func applyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 		return errors.Wrap(err, "failed to execute transferValue on balance")
 	}
 
+	if !codeAvailable {
+		return nil
+	}
+
 	if params.GasDeposit != 0 {
 		err = transferValue(
 			"PERL (Gas Deposit)",
@@ -113,10 +117,6 @@ func applyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 		if err != nil {
 			return errors.Wrap(err, "failed to execute transferValue on gas deposit")
 		}
-	}
-
-	if !codeAvailable {
-		return nil
 	}
 
 	err = executeContractInTransactionContext(tx, params.Recipient, code, snapshot, round, params.Amount, params.GasLimit, params.FuncName, params.FuncParams, state)
