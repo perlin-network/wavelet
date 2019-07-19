@@ -307,13 +307,44 @@ func TestApplyContractTransaction(t *testing.T) {
 	finalBalance, _ := ReadAccountBalance(state, accountID)
 	assert.Condition(t, func() bool { return finalBalance > 0 && finalBalance < 100000 })
 
+	contractID := AccountID(tx.ID)
+
 	// Try to transfer some money
 	WriteAccountBalance(state, accountID, 1000000000)
-	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagTransfer, buildTransferWithInvocationPayload(AccountID(tx.ID), 200000000, 500000, []byte("on_money_received"), nil, 0, false)))
+	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagTransfer, buildTransferWithInvocationPayload(contractID, 200000000, 500000, []byte("on_money_received"), nil, 0)))
 	err = ApplyTransaction(&round, state, &tx)
 	assert.NoError(t, err)
 	finalBalance, _ = ReadAccountBalance(state, accountID)
-	assert.Condition(t, func() bool { return finalBalance > 1000000000-100000000-500000 && finalBalance < 1000000000-100000000 })
+	assert.True(t, finalBalance > 1000000000-100000000-500000 && finalBalance < 1000000000-100000000)
+
+	// Try to invoke with contract gas balance
+	WriteAccountBalance(state, accountID, 200000000)
+	WriteAccountContractGasBalance(state, contractID, 1000000000)
+	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagTransfer, buildTransferWithInvocationPayload(contractID, 200000000, 500000, []byte("on_money_received"), nil, 0)))
+	err = ApplyTransaction(&round, state, &tx)
+	assert.NoError(t, err)
+	finalBalance, _ = ReadAccountBalance(state, accountID)
+	assert.Equal(t, finalBalance, uint64(100000000))
+	finalGasBalance, _ := ReadAccountContractGasBalance(state, contractID)
+	assert.True(t, finalGasBalance > 0 && finalGasBalance < 1000000000)
+
+	// Try to invoke with both balances
+	WriteAccountBalance(state, accountID, 300000000)
+	WriteAccountContractGasBalance(state, contractID, 10)
+	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagTransfer, buildTransferWithInvocationPayload(contractID, 200000000, 500000, []byte("on_money_received"), nil, 0)))
+	err = ApplyTransaction(&round, state, &tx)
+	assert.NoError(t, err)
+	finalBalance, _ = ReadAccountBalance(state, accountID)
+	assert.True(t, finalBalance > 200000000-500000 && finalBalance < 200000000)
+	finalGasBalance, _ = ReadAccountContractGasBalance(state, contractID)
+	assert.Equal(t, finalGasBalance, uint64(0))
+
+	// Now it should fail
+	WriteAccountBalance(state, accountID, 200000000)
+	WriteAccountContractGasBalance(state, contractID, 0)
+	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagTransfer, buildTransferWithInvocationPayload(contractID, 200000000, 500000, []byte("on_money_received"), nil, 0)))
+	err = ApplyTransaction(&round, state, &tx)
+	assert.Error(t, err)
 
 	code, err = ioutil.ReadFile("testdata/recursive_invocation.wasm")
 	assert.NoError(t, err)
@@ -325,15 +356,15 @@ func TestApplyContractTransaction(t *testing.T) {
 	recursiveInvocationContractID := AccountID(tx.ID)
 
 	WriteAccountBalance(state, accountID, 6000000)
-	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagTransfer, buildTransferWithInvocationPayload(recursiveInvocationContractID, 0, 5000000, []byte("bomb"), recursiveInvocationContractID[:], 0, false)))
+	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagTransfer, buildTransferWithInvocationPayload(recursiveInvocationContractID, 0, 5000000, []byte("bomb"), recursiveInvocationContractID[:], 0)))
 	err = ApplyTransaction(&round, state, &tx)
 	assert.NoError(t, err)
 
 	finalBalance, _ = ReadAccountBalance(state, accountID)
-	assert.Condition(t, func() bool { return finalBalance >= 1000000 && finalBalance < 1100000 }) // GasLimit specified in contract is 100000
+	assert.True(t, finalBalance >= 1000000 && finalBalance < 1100000) // GasLimit specified in contract is 100000
 }
 
-func buildTransferWithInvocationPayload(dest AccountID, amount uint64, gasLimit uint64, funcName []byte, param []byte, gasDeposit uint64, useGasBalance bool) []byte {
+func buildTransferWithInvocationPayload(dest AccountID, amount uint64, gasLimit uint64, funcName []byte, param []byte, gasDeposit uint64) []byte {
 	payload := bytes.NewBuffer(nil)
 	payload.Write(dest[:])
 	var intBuf [8]byte
@@ -353,12 +384,6 @@ func buildTransferWithInvocationPayload(dest AccountID, amount uint64, gasLimit 
 
 	binary.LittleEndian.PutUint64(intBuf[:], gasDeposit)
 	payload.Write(intBuf[:])
-
-	if useGasBalance {
-		payload.WriteByte(1)
-	} else {
-		payload.WriteByte(0)
-	}
 
 	return payload.Bytes()
 }
