@@ -119,7 +119,7 @@ func applyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 		return nil
 	}
 
-	err = executeContractInTransactionContext(tx, params.Recipient, code, snapshot, round, params.Amount, params.GasLimit, params.FuncName, params.FuncParams, params.UseGasBalance, state)
+	err = executeContractInTransactionContext(tx, params.Recipient, code, snapshot, round, params.Amount, params.GasLimit, params.FuncName, params.FuncParams, state)
 	return err
 }
 
@@ -195,7 +195,7 @@ func applyContractTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 		}
 	}
 
-	return executeContractInTransactionContext(tx, AccountID(tx.ID), params.Code, snapshot, round, 0, params.GasLimit, []byte("init"), params.Params, false, state)
+	return executeContractInTransactionContext(tx, AccountID(tx.ID), params.Code, snapshot, round, 0, params.GasLimit, []byte("init"), params.Params, state)
 }
 
 func applyBatchTransaction(snapshot *avl.Tree, round *Round, tx *Transaction, state *contractExecutorState) error {
@@ -257,22 +257,13 @@ func executeContractInTransactionContext(
 	requestedGasLimit uint64,
 	funcName []byte,
 	funcParams []byte,
-	useGasBalance bool,
 	state *contractExecutorState,
 ) error {
 	logger := log.Contracts("execute")
 
-	var gasPayer AccountID
-	var readPayableBalance func(*avl.Tree, AccountID) (uint64, bool)
-	var writePayableBalance func(*avl.Tree, AccountID, uint64)
-
-	if useGasBalance {
-		gasPayer, readPayableBalance, writePayableBalance = contractID, ReadAccountContractGasBalance, WriteAccountContractGasBalance
-	} else {
-		gasPayer, readPayableBalance, writePayableBalance = state.GasPayer, ReadAccountBalance, WriteAccountBalance
-	}
-
-	gasPayerBalance, _ := readPayableBalance(snapshot, gasPayer)
+	gasPayerBalance, _ := ReadAccountBalance(snapshot, state.GasPayer)
+	contractGasBalance, _ := ReadAccountContractGasBalance(snapshot, contractID)
+	availableBalance := gasPayerBalance + contractGasBalance
 
 	if !state.GasLimitIsSet {
 		state.GasLimit = requestedGasLimit
@@ -289,9 +280,9 @@ func executeContractInTransactionContext(
 		return errors.New("execute_contract: gas limit for invoking smart contract must be greater than zero")
 	}
 
-	if gasPayerBalance < realGasLimit {
+	if availableBalance < realGasLimit {
 		return errors.Errorf("execute_contract: attempted to deduct gas fee from %x of %d PERLs, but only has %d PERLs",
-			gasPayer, realGasLimit, gasPayerBalance)
+			state.GasPayer, realGasLimit, availableBalance)
 	}
 
 	executor := &ContractExecutor{}
@@ -299,7 +290,7 @@ func executeContractInTransactionContext(
 
 	invocationErr := executor.Execute(snapshot, contractID, round, tx, amount, realGasLimit, string(funcName), funcParams, code)
 
-	// gasPayerBalance >= realGasLimit >= executor.Gas && state.GasLimit >= realGasLimit must always hold.
+	// availableBalance >= realGasLimit >= executor.Gas && state.GasLimit >= realGasLimit must always hold.
 	if realGasLimit < executor.Gas {
 		logger.Fatal().Msg("BUG: realGasLimit < executor.Gas")
 	}
@@ -309,7 +300,15 @@ func executeContractInTransactionContext(
 
 	if executor.GasLimitExceeded || invocationErr != nil { // Revert changes and have the gas payer pay gas fees.
 		snapshot.Revert(snapshotBeforeExec)
-		writePayableBalance(snapshot, gasPayer, gasPayerBalance-executor.Gas)
+		if executor.Gas > contractGasBalance {
+			WriteAccountContractGasBalance(snapshot, contractID, 0)
+			if gasPayerBalance < (executor.Gas - contractGasBalance) {
+				logger.Fatal().Msg("BUG: gasPayerBalance < (executor.Gas - contractGasBalance)")
+			}
+			WriteAccountBalance(snapshot, state.GasPayer, gasPayerBalance-(executor.Gas-contractGasBalance))
+		} else {
+			WriteAccountContractGasBalance(snapshot, contractID, contractGasBalance-executor.Gas)
+		}
 		state.GasLimit -= executor.Gas
 
 		if invocationErr != nil {
@@ -323,7 +322,15 @@ func executeContractInTransactionContext(
 				Msg("Exceeded gas limit while invoking smart contract function.")
 		}
 	} else {
-		writePayableBalance(snapshot, gasPayer, gasPayerBalance-executor.Gas)
+		if executor.Gas > contractGasBalance {
+			WriteAccountContractGasBalance(snapshot, contractID, 0)
+			if gasPayerBalance < (executor.Gas - contractGasBalance) {
+				logger.Fatal().Msg("BUG: gasPayerBalance < (executor.Gas - contractGasBalance)")
+			}
+			WriteAccountBalance(snapshot, state.GasPayer, gasPayerBalance-(executor.Gas-contractGasBalance))
+		} else {
+			WriteAccountContractGasBalance(snapshot, contractID, contractGasBalance-executor.Gas)
+		}
 		state.GasLimit -= executor.Gas
 
 		logger.Info().

@@ -45,8 +45,10 @@ type (
 
 		// Optional gas deposit/balance related fields.
 		GasDeposit uint64
-		// This field is required to prevent the DoS attack by transferring a very small amount of money to GasDeposit.
-		UseGasBalance bool
+
+		// This field can be used to prevent the DoS attack by transferring a very small amount of money to GasDeposit.
+		// But let's wait for a better solution.
+		// UseGasBalance bool
 	}
 
 	Stake struct {
@@ -141,11 +143,6 @@ func ParseTransferTransaction(payload []byte) (Transfer, error) {
 			return tx, errors.Wrap(err, "transfer: failed to decode gas deposit")
 		}
 		tx.GasDeposit = binary.LittleEndian.Uint64(b)
-
-		if _, err := io.ReadFull(r, b[:1]); err != nil {
-			return tx, errors.Wrap(err, "transfer: failed to decode use_gas_balance")
-		}
-		tx.UseGasBalance = b[0] != 0
 	}
 
 	return tx, nil
