@@ -361,7 +361,7 @@ func TestApplyContractTransaction(t *testing.T) {
 	assert.NoError(t, err)
 
 	finalBalance, _ = ReadAccountBalance(state, accountID)
-	assert.True(t, finalBalance >= 1000000 && finalBalance < 1100000) // GasLimit specified in contract is 100000
+	assert.True(t, finalBalance >= 1000000 && finalBalance < 2000000) // GasLimit specified in contract is 1000000
 }
 
 func buildTransferWithInvocationPayload(dest AccountID, amount uint64, gasLimit uint64, funcName []byte, param []byte, gasDeposit uint64) []byte {
