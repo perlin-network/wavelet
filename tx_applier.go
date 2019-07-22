@@ -169,6 +169,10 @@ func applyContractTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 		return errors.New("contract: already exists")
 	}
 
+	if err := wasmValidator.ValidateWasm(params.Code); err != nil {
+		return errors.Wrap(err, "invalid wasm")
+	}
+
 	WriteAccountContractCode(snapshot, tx.ID, params.Code)
 	err = executeContractInTransactionContext(tx, AccountID(tx.ID), params.Code, snapshot, round, 0, params.GasLimit, []byte("init"), params.Params, state)
 	return err
