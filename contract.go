@@ -251,6 +251,10 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 		return errors.Wrapf(ErrContractFunctionNotFound, `fn "_contract_%s" does not exist`, name)
 	}
 
+	if vm.FunctionCode[entry].NumParams != 0 {
+		return errors.New("entry function must not have parameters")
+	}
+
 	vm.Ignite(entry)
 
 	for !vm.Exited {
