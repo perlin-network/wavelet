@@ -32,23 +32,24 @@ import (
 )
 
 var (
-	keyAccounts       = [...]byte{0x1}
-	keyAccountsLen    = [...]byte{0x2}
-	keyAccountNonce   = [...]byte{0x3}
-	keyAccountBalance = [...]byte{0x4}
-	keyAccountStake   = [...]byte{0x5}
-	keyAccountReward  = [...]byte{0x6}
+	// Global prefixes.
+	keyAccounts          = [...]byte{0x1}
+	keyAccountsLen       = [...]byte{0x2}
+	keyRounds            = [...]byte{0x3}
+	keyRoundLatestIx     = [...]byte{0x4}
+	keyRoundOldestIx     = [...]byte{0x5}
+	keyRoundStoredCount  = [...]byte{0x6}
+	keyRewardWithdrawals = [...]byte{0x7}
 
-	keyAccountContractCode     = [...]byte{0x7}
-	keyAccountContractNumPages = [...]byte{0x8}
-	keyAccountContractPages    = [...]byte{0x9}
-
-	keyRounds           = [...]byte{0x10}
-	keyRoundLatestIx    = [...]byte{0x11}
-	keyRoundOldestIx    = [...]byte{0x12}
-	keyRoundStoredCount = [...]byte{0x13}
-
-	keyRewardWithdrawals = [...]byte{0x14}
+	// Account-local prefixes.
+	keyAccountNonce              = [...]byte{0x1}
+	keyAccountBalance            = [...]byte{0x2}
+	keyAccountStake              = [...]byte{0x3}
+	keyAccountReward             = [...]byte{0x4}
+	keyAccountContractCode       = [...]byte{0x5}
+	keyAccountContractNumPages   = [...]byte{0x6}
+	keyAccountContractPages      = [...]byte{0x7}
+	keyAccountContractGasBalance = [...]byte{0x8}
 )
 
 type RewardWithdrawalRequest struct {
@@ -227,6 +228,21 @@ func WriteAccountContractPage(tree *avl.Tree, id TransactionID, idx uint64, page
 	encoded := snappy.Encode(nil, page)
 
 	writeUnderAccounts(tree, id, append(keyAccountContractPages[:], buf[:]...), encoded)
+}
+
+func ReadAccountContractGasBalance(tree *avl.Tree, id TransactionID) (uint64, bool) {
+	buf, exists := readUnderAccounts(tree, id, keyAccountContractGasBalance[:])
+	if !exists || len(buf) == 0 {
+		return 0, false
+	}
+
+	return binary.LittleEndian.Uint64(buf), true
+}
+
+func WriteAccountContractGasBalance(tree *avl.Tree, id TransactionID, gasBalance uint64) {
+	var buf [8]byte
+	binary.LittleEndian.PutUint64(buf[:], gasBalance)
+	writeUnderAccounts(tree, id, keyAccountContractGasBalance[:], buf[:])
 }
 
 func readUnderAccounts(tree *avl.Tree, id AccountID, key []byte) ([]byte, bool) {

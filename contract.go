@@ -23,7 +23,6 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/binary"
-
 	"github.com/perlin-network/life/compiler"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
@@ -85,7 +84,9 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				payloadPtr := int(uint32(frame.Locals[1]))
 				payloadLen := int(uint32(frame.Locals[2]))
 
-				payload := vm.Memory[payloadPtr : payloadPtr+payloadLen]
+				payloadRef := vm.Memory[payloadPtr : payloadPtr+payloadLen]
+				payload := make([]byte, len(payloadRef))
+				copy(payload, payloadRef)
 
 				e.Queue = append(e.Queue, &Transaction{
 					Sender:  e.ID,

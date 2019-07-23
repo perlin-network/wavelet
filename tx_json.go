@@ -21,6 +21,9 @@ const (
 	// PayloadParamNameGasLimit defines a string representation of the gas_limit payload param.
 	PayloadParamNameGasLimit = "gas_limit"
 
+	// PayloadParamNameGasDeposit defines a string representation of the gas_deposit payload param.
+	PayloadParamNameGasDeposit = "gas_deposit"
+
 	// PayloadParamNameFuncName defines a string representation of the fn_name payload param.
 	PayloadParamNameFuncName = "fn_name"
 
@@ -137,7 +140,7 @@ func parseTransfer(data []byte) ([]byte, error) {
 	}
 
 	if json.Exists(PayloadParamNameGasLimit) { // Check has gas limit value
-		decodedGasLimit := uint64(json.GetFloat64(PayloadParamNameGasLimit)) // Get uint64 gas limit value
+		decodedGasLimit := uint64(json.GetUint64(PayloadParamNameGasLimit)) // Get uint64 gas limit value
 
 		var gasLimit [8]byte                                        // Initialize integer buffer
 		binary.LittleEndian.PutUint64(gasLimit[:], decodedGasLimit) // Write to buffer
@@ -146,6 +149,18 @@ func parseTransfer(data []byte) ([]byte, error) {
 		if err != nil {                     // Check for errors
 			return nil, err // Return found error
 		}
+	}
+
+	var gasDeposit [8]byte // Initialize integer buffer
+
+	if json.Exists(PayloadParamNameGasDeposit) { // Check has gas deposit value
+		decodedGasDeposit := uint64(json.GetUint64(PayloadParamNameGasDeposit)) // Get uint64 gas deposit value
+		binary.LittleEndian.PutUint64(gasDeposit[:], decodedGasDeposit)         // Write to buffer
+	}
+
+	_, err = payload.Write(gasDeposit[:]) // Write gas deposit
+	if err != nil {                       // Check for errors
+		return nil, err // Return foudn error
 	}
 
 	if json.Exists(PayloadParamNameFuncName) { // Check has function name
@@ -290,7 +305,7 @@ func parseContract(data []byte) ([]byte, error) {
 		return nil, ErrNilField // Return nil field error
 	}
 
-	decodedGasLimit := uint64(json.GetFloat64(PayloadParamNameGasLimit)) // Get uint64 gas limit value
+	decodedGasLimit := uint64(json.GetUint64(PayloadParamNameGasLimit)) // Get uint64 gas limit value
 
 	var gasLimit [8]byte                                        // Initialize integer buffer
 	binary.LittleEndian.PutUint64(gasLimit[:], decodedGasLimit) // Write to buffer
@@ -298,6 +313,20 @@ func parseContract(data []byte) ([]byte, error) {
 	_, err = payload.Write(gasLimit[:]) // Write gas limit
 	if err != nil {                     // Check for errors
 		return nil, err // Return found error
+	}
+
+	var decodedGasDeposit uint64
+
+	if json.Exists(PayloadParamNameGasDeposit) {
+		decodedGasDeposit = uint64(json.GetUint64(PayloadParamNameGasDeposit)) // Get uiint64 gas deposit value
+	}
+
+	var gasDeposit [8]byte
+	binary.LittleEndian.PutUint64(gasDeposit[:], decodedGasDeposit) // Write to buffer
+
+	_, err = payload.Write(gasDeposit[:]) // Write gas deposit
+	if err != nil {
+		return nil, err
 	}
 
 	if json.Exists("fn_payload") { // Check has function payload
