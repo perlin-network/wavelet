@@ -2,7 +2,6 @@ package wavelet
 
 import (
 	"net"
-	"os"
 	"strconv"
 	"testing"
 
@@ -69,7 +68,7 @@ func newNode(t *testing.T) (*skademlia.Client, string, func()) {
 	client := skademlia.NewClient(addr, keys, skademlia.WithC1(sys.SKademliaC1), skademlia.WithC2(sys.SKademliaC2))
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
-	kv, cleanup := newKV("level", "db")
+	kv, cleanup := store.NewTestKV(t, "level", "db")
 	ledger := NewLedger(kv, client, nil)
 	server := client.Listen()
 	RegisterWaveletServer(server, ledger.Protocol())
@@ -84,29 +83,4 @@ func newNode(t *testing.T) (*skademlia.Client, string, func()) {
 		server.GracefulStop()
 		cleanup()
 	}
-}
-
-func newKV(kv string, path string) (store.KV, func()) {
-	if kv == "inmem" {
-		inmemdb := store.NewInmem()
-		return inmemdb, func() {
-			_ = inmemdb.Close()
-		}
-	}
-	if kv == "level" {
-		// Remove existing db
-		_ = os.RemoveAll(path)
-
-		leveldb, err := store.NewLevelDB(path)
-		if err != nil {
-			panic("failed to create LevelDB: " + err.Error())
-		}
-
-		return leveldb, func() {
-			_ = leveldb.Close()
-			_ = os.RemoveAll(path)
-		}
-	}
-
-	panic("unknown kv " + kv)
 }
