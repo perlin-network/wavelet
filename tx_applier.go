@@ -21,6 +21,7 @@ package wavelet
 
 import (
 	"encoding/hex"
+
 	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
@@ -71,21 +72,21 @@ func applyTransaction(round *Round, state *avl.Tree, tx *Transaction, execState 
 }
 
 func applyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction, state *contractExecutorState) error {
-	params, err := ParseTransferTransaction(tx.Payload)
+	payload, err := ParseTransfer(tx.Payload)
 	if err != nil {
 		return err
 	}
 
-	code, codeAvailable := ReadAccountContractCode(snapshot, params.Recipient)
+	code, codeAvailable := ReadAccountContractCode(snapshot, payload.Recipient)
 
-	if !codeAvailable && (params.GasLimit > 0 || len(params.FuncName) > 0 || len(params.FuncParams) > 0) {
+	if !codeAvailable && (payload.GasLimit > 0 || len(payload.FuncName) > 0 || len(payload.FuncParams) > 0) {
 		return errors.New("transfer: transactions to non-contract accounts should not specify gas limit or function names or params")
 	}
 
 	// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
 	if hex.EncodeToString(tx.Creator[:]) == sys.FaucetAddress {
-		recipientBalance, _ := ReadAccountBalance(snapshot, params.Recipient)
-		WriteAccountBalance(snapshot, params.Recipient, recipientBalance+params.Amount)
+		recipientBalance, _ := ReadAccountBalance(snapshot, payload.Recipient)
+		WriteAccountBalance(snapshot, payload.Recipient, recipientBalance+payload.Amount)
 
 		return nil
 	}
@@ -93,8 +94,8 @@ func applyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 	err = transferValue(
 		"PERL",
 		snapshot,
-		tx.Creator, params.Recipient,
-		params.Amount,
+		tx.Creator, payload.Recipient,
+		payload.Amount,
 		ReadAccountBalance, WriteAccountBalance,
 		ReadAccountBalance, WriteAccountBalance,
 	)
@@ -106,12 +107,12 @@ func applyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 		return nil
 	}
 
-	if params.GasDeposit != 0 {
+	if payload.GasDeposit != 0 {
 		err = transferValue(
 			"PERL (Gas Deposit)",
 			snapshot,
-			tx.Creator, params.Recipient,
-			params.GasDeposit,
+			tx.Creator, payload.Recipient,
+			payload.GasDeposit,
 			ReadAccountBalance, WriteAccountBalance,
 			ReadAccountContractGasBalance, WriteAccountContractGasBalance,
 		)
@@ -120,15 +121,15 @@ func applyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 		}
 	}
 
-	if len(params.FuncName) == 0 {
+	if len(payload.FuncName) == 0 {
 		return nil
 	}
 
-	return executeContractInTransactionContext(tx, params.Recipient, code, snapshot, round, params.Amount, params.GasLimit, params.FuncName, params.FuncParams, state)
+	return executeContractInTransactionContext(tx, payload.Recipient, code, snapshot, round, payload.Amount, payload.GasLimit, payload.FuncName, payload.FuncParams, state)
 }
 
 func applyStakeTransaction(snapshot *avl.Tree, round *Round, tx *Transaction) error {
-	params, err := ParseStakeTransaction(tx.Payload)
+	payload, err := ParseStake(tx.Payload)
 	if err != nil {
 		return err
 	}
@@ -137,34 +138,34 @@ func applyStakeTransaction(snapshot *avl.Tree, round *Round, tx *Transaction) er
 	stake, _ := ReadAccountStake(snapshot, tx.Creator)
 	reward, _ := ReadAccountReward(snapshot, tx.Creator)
 
-	switch params.Opcode {
+	switch payload.Opcode {
 	case sys.PlaceStake:
-		if balance < params.Amount {
-			return errors.Errorf("stake: %x attempt to place a stake of %d PERLs, but only has %d PERLs", tx.Creator, params.Amount, balance)
+		if balance < payload.Amount {
+			return errors.Errorf("stake: %x attempt to place a stake of %d PERLs, but only has %d PERLs", tx.Creator, payload.Amount, balance)
 		}
 
-		WriteAccountBalance(snapshot, tx.Creator, balance-params.Amount)
-		WriteAccountStake(snapshot, tx.Creator, stake+params.Amount)
+		WriteAccountBalance(snapshot, tx.Creator, balance-payload.Amount)
+		WriteAccountStake(snapshot, tx.Creator, stake+payload.Amount)
 	case sys.WithdrawStake:
-		if stake < params.Amount {
-			return errors.Errorf("stake: %x attempt to withdraw a stake of %d PERLs, but only has staked %d PERLs", tx.Creator, params.Amount, stake)
+		if stake < payload.Amount {
+			return errors.Errorf("stake: %x attempt to withdraw a stake of %d PERLs, but only has staked %d PERLs", tx.Creator, payload.Amount, payload)
 		}
 
-		WriteAccountBalance(snapshot, tx.Creator, balance+params.Amount)
-		WriteAccountStake(snapshot, tx.Creator, stake-params.Amount)
+		WriteAccountBalance(snapshot, tx.Creator, balance+payload.Amount)
+		WriteAccountStake(snapshot, tx.Creator, stake-payload.Amount)
 	case sys.WithdrawReward:
-		if params.Amount < sys.MinimumRewardWithdraw {
-			return errors.Errorf("stake: %x attempt to withdraw rewards amounting to %d PERLs, but system requires the minimum amount to withdraw to be %d PERLs", tx.Creator, params.Amount, sys.MinimumRewardWithdraw)
+		if payload.Amount < sys.MinimumRewardWithdraw {
+			return errors.Errorf("stake: %x attempt to withdraw rewards amounting to %d PERLs, but system requires the minimum amount to withdraw to be %d PERLs", tx.Creator, payload.Amount, sys.MinimumRewardWithdraw)
 		}
 
-		if reward < params.Amount {
-			return errors.Errorf("stake: %x attempt to withdraw rewards amounting to %d PERLs, but only has rewards amounting to %d PERLs", tx.Creator, params.Amount, reward)
+		if reward < payload.Amount {
+			return errors.Errorf("stake: %x attempt to withdraw rewards amounting to %d PERLs, but only has rewards amounting to %d PERLs", tx.Creator, payload.Amount, reward)
 		}
 
-		WriteAccountReward(snapshot, tx.Creator, reward-params.Amount)
+		WriteAccountReward(snapshot, tx.Creator, reward-payload.Amount)
 		StoreRewardWithdrawalRequest(snapshot, RewardWithdrawalRequest{
 			account: tx.Creator,
-			amount:  params.Amount,
+			amount:  payload.Amount,
 			round:   round.Index,
 		})
 	}
@@ -173,7 +174,7 @@ func applyStakeTransaction(snapshot *avl.Tree, round *Round, tx *Transaction) er
 }
 
 func applyContractTransaction(snapshot *avl.Tree, round *Round, tx *Transaction, state *contractExecutorState) error {
-	params, err := ParseContractTransaction(tx.Payload)
+	payload, err := ParseContract(tx.Payload)
 	if err != nil {
 		return err
 	}
@@ -183,18 +184,18 @@ func applyContractTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 	}
 
 	// Record the code of the smart contract into the ledgers state.
-	if err := wasm.GetValidator().ValidateWasm(params.Code); err != nil {
+	if err := wasm.GetValidator().ValidateWasm(payload.Code); err != nil {
 		return errors.Wrap(err, "invalid wasm")
 	}
 
-	WriteAccountContractCode(snapshot, tx.ID, params.Code)
+	WriteAccountContractCode(snapshot, tx.ID, payload.Code)
 
-	if params.GasDeposit != 0 {
+	if payload.GasDeposit != 0 {
 		err = transferValue(
 			"PERL (Gas Deposit)",
 			snapshot,
 			tx.Creator, AccountID(tx.ID),
-			params.GasDeposit,
+			payload.GasDeposit,
 			ReadAccountBalance, WriteAccountBalance,
 			ReadAccountContractGasBalance, WriteAccountContractGasBalance,
 		)
@@ -203,26 +204,26 @@ func applyContractTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 		}
 	}
 
-	return executeContractInTransactionContext(tx, AccountID(tx.ID), params.Code, snapshot, round, 0, params.GasLimit, []byte("init"), params.Params, state)
+	return executeContractInTransactionContext(tx, AccountID(tx.ID), payload.Code, snapshot, round, 0, payload.GasLimit, []byte("init"), payload.Params, state)
 }
 
 func applyBatchTransaction(snapshot *avl.Tree, round *Round, tx *Transaction, state *contractExecutorState) error {
-	params, err := ParseBatchTransaction(tx.Payload)
+	payload, err := ParseBatch(tx.Payload)
 	if err != nil {
 		return err
 	}
 
-	for i := uint8(0); i < params.Size; i++ {
+	for i := uint8(0); i < payload.Size; i++ {
 		entry := &Transaction{
 			ID:      tx.ID,
 			Sender:  tx.Sender,
 			Creator: tx.Creator,
 			Nonce:   tx.Nonce,
-			Tag:     sys.Tag(params.Tags[i]),
-			Payload: params.Payloads[i],
+			Tag:     sys.Tag(payload.Tags[i]),
+			Payload: payload.Payloads[i],
 		}
 		if err := applyTransaction(round, snapshot, entry, state); err != nil {
-			return errors.Wrapf(err, "Error while processing %d/%d transaction in a batch.", i+1, params.Size)
+			return errors.Wrapf(err, "Error while processing %d/%d transaction in a batch.", i+1, payload.Size)
 		}
 	}
 

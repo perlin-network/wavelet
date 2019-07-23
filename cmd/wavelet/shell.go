@@ -236,13 +236,14 @@ func (cli *CLI) depositGas(cmd []string) {
 		return
 	}
 
+	var payload wavelet.Transfer
+	copy(payload.Recipient[:], recipient)
+	payload.GasDeposit = amount
+
 	snapshot := cli.ledger.Snapshot()
 
-	var recipientID wavelet.AccountID
-	copy(recipientID[:], recipient)
-
 	balance, _ := wavelet.ReadAccountBalance(snapshot, cli.keys.PublicKey())
-	_, codeAvailable := wavelet.ReadAccountContractCode(snapshot, recipientID)
+	_, codeAvailable := wavelet.ReadAccountContractCode(snapshot, payload.Recipient)
 
 	if balance < amount+sys.TransactionFeeAmount {
 		cli.logger.Error().Uint64("your_balance", balance).Uint64("amount_to_send", amount).Msg("You do not have enough PERLs to deposit into the smart contract.")
@@ -254,20 +255,7 @@ func (cli *CLI) depositGas(cmd []string) {
 		return
 	}
 
-	payload := bytes.NewBuffer(nil)
-	payload.Write(recipient[:])
-
-	var intBuf [8]byte
-	binary.LittleEndian.PutUint64(intBuf[:], 0) // Amount
-	payload.Write(intBuf[:])
-
-	binary.LittleEndian.PutUint64(intBuf[:], 0) // Gas Limit
-	payload.Write(intBuf[:])
-
-	binary.LittleEndian.PutUint64(intBuf[:], amount) // Gas Deposit
-	payload.Write(intBuf[:])
-
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagTransfer, payload.Bytes()))
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagTransfer, payload.Marshal()))
 	if err != nil {
 		return
 	}
@@ -298,41 +286,27 @@ func (cli *CLI) pay(cmd []string) {
 		return
 	}
 
+	var payload wavelet.Transfer
+	copy(payload.Recipient[:], recipient)
+
+	payload.Amount = amount
+
 	snapshot := cli.ledger.Snapshot()
-
-	var recipientID wavelet.AccountID
-	copy(recipientID[:], recipient)
-
 	balance, _ := wavelet.ReadAccountBalance(snapshot, cli.keys.PublicKey())
-	_, codeAvailable := wavelet.ReadAccountContractCode(snapshot, recipientID)
 
 	if balance < amount+sys.TransactionFeeAmount {
 		cli.logger.Error().Uint64("your_balance", balance).Uint64("amount_to_send", amount).Msg("You do not have enough PERLs to send.")
 		return
 	}
 
-	payload := bytes.NewBuffer(nil)
-	payload.Write(recipient[:])
-
-	var intBuf [8]byte
-	binary.LittleEndian.PutUint64(intBuf[:], amount)
-	payload.Write(intBuf[:])
-
+	_, codeAvailable := wavelet.ReadAccountContractCode(snapshot, payload.Recipient)
 	if codeAvailable {
-		binary.LittleEndian.PutUint64(intBuf[:], balance-amount-sys.TransactionFeeAmount) // Set gas limit by default to the balance the user has.
-		payload.Write(intBuf[:])
-
-		binary.LittleEndian.PutUint64(intBuf[:], 0) // Gas deposit.
-		payload.Write(intBuf[:])
-
-		defaultFuncName := "on_money_received"
-
-		binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(defaultFuncName)))
-		payload.Write(intBuf[:4])
-		payload.WriteString(defaultFuncName)
+		// Set gas limit by default to the balance the user has.
+		payload.GasLimit = balance - amount - sys.TransactionFeeAmount
+		payload.FuncName = []byte("on_money_received")
 	}
 
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagTransfer, payload.Bytes()))
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagTransfer, payload.Marshal()))
 	if err != nil {
 		return
 	}
@@ -357,13 +331,13 @@ func (cli *CLI) call(cmd []string) {
 		return
 	}
 
-	var recipientID wavelet.AccountID
-	copy(recipientID[:], recipient)
+	var payload wavelet.Transfer
+	copy(payload.Recipient[:], recipient)
 
 	snapshot := cli.ledger.Snapshot()
 
 	balance, _ := wavelet.ReadAccountBalance(snapshot, cli.keys.PublicKey())
-	_, codeAvailable := wavelet.ReadAccountContractCode(snapshot, recipientID)
+	_, codeAvailable := wavelet.ReadAccountContractCode(snapshot, payload.Recipient)
 
 	if !codeAvailable {
 		cli.logger.Error().Msg("The smart contract address you specified does not belong to a smart contract.")
@@ -389,32 +363,12 @@ func (cli *CLI) call(cmd []string) {
 
 	funcName := cmd[3]
 
+	payload.Amount = amount
+	payload.GasLimit = gasLimit
+	payload.FuncName = []byte(funcName)
+
 	var intBuf [8]byte
-
-	payload := bytes.NewBuffer(nil)
-
-	// Recipient address 32 bytes.
-	payload.Write(recipient[:])
-
-	// Amount to send.
-	binary.LittleEndian.PutUint64(intBuf[:8], amount)
-	payload.Write(intBuf[:8])
-
-	// Gas limit.
-	binary.LittleEndian.PutUint64(intBuf[:8], gasLimit) // Set gas limit by default to the balance the user has.
-	payload.Write(intBuf[:8])
-
-	// Gas deposit.
-	binary.LittleEndian.PutUint64(intBuf[:8], 0)
-	payload.Write(intBuf[:8])
-
-	// Function name.
-	binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(funcName)))
-	payload.Write(intBuf[:4])
-	payload.WriteString(funcName)
-
 	params := bytes.NewBuffer(nil)
-
 	for i := 4; i < len(cmd); i++ {
 		arg := cmd[i]
 
@@ -461,14 +415,9 @@ func (cli *CLI) call(cmd []string) {
 		}
 	}
 
-	funcParams := params.Bytes()
+	payload.FuncParams = params.Bytes()
 
-	// Function payload.
-	binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(funcParams)))
-	payload.Write(intBuf[:4])
-	payload.Write(funcParams)
-
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagTransfer, payload.Bytes()))
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagTransfer, payload.Marshal()))
 	if err != nil {
 		return
 	}
@@ -564,24 +513,12 @@ func (cli *CLI) spawn(cmd []string) {
 		return
 	}
 
-	var buf [8]byte
+	payload := wavelet.Contract{
+		GasLimit: 100000000,
+		Code:     code,
+	}
 
-	w := bytes.NewBuffer(nil)
-
-	binary.LittleEndian.PutUint64(buf[:], 100000000) // Gas fee.
-	w.Write(buf[:])
-
-	binary.LittleEndian.PutUint64(buf[:], 0) // Gas deposit.
-	w.Write(buf[:])
-
-	binary.LittleEndian.PutUint32(buf[:4], 0) // Payload size.
-	w.Write(buf[:4])
-
-	w.Write(code) // Smart contract code.
-
-	tx := wavelet.NewTransaction(cli.keys, sys.TagContract, w.Bytes())
-
-	tx, err = cli.sendTransaction(tx)
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagContract, payload.Marshal()))
 	if err != nil {
 		return
 	}
@@ -595,19 +532,18 @@ func (cli *CLI) placeStake(cmd []string) {
 		return
 	}
 
-	amount, err := strconv.Atoi(cmd[0])
+	amount, err := strconv.ParseUint(cmd[1], 10, 64)
 	if err != nil {
 		cli.logger.Error().Err(err).Msg("Failed to convert staking amount to a uint64.")
 		return
 	}
 
-	var intBuf [8]byte
-	payload := bytes.NewBuffer(nil)
-	payload.WriteByte(sys.PlaceStake)
-	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
-	payload.Write(intBuf[:8])
+	payload := wavelet.Stake{
+		Opcode: sys.PlaceStake,
+		Amount: amount,
+	}
 
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagStake, payload.Bytes()))
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagStake, payload.Marshal()))
 	if err != nil {
 		return
 	}
@@ -622,19 +558,18 @@ func (cli *CLI) withdrawStake(cmd []string) {
 		return
 	}
 
-	amount, err := strconv.ParseUint(cmd[0], 10, 64)
+	amount, err := strconv.ParseUint(cmd[1], 10, 64)
 	if err != nil {
-		cli.logger.Error().Err(err).Msg("Failed to convert withdraw amount to an uint64.")
+		cli.logger.Error().Err(err).Msg("Failed to convert staking amount to a uint64.")
 		return
 	}
 
-	var intBuf [8]byte
-	payload := bytes.NewBuffer(nil)
-	payload.WriteByte(sys.WithdrawStake)
-	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
-	payload.Write(intBuf[:8])
+	payload := wavelet.Stake{
+		Opcode: sys.WithdrawStake,
+		Amount: amount,
+	}
 
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagStake, payload.Bytes()))
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagStake, payload.Marshal()))
 	if err != nil {
 		return
 	}
@@ -655,13 +590,12 @@ func (cli *CLI) withdrawReward(cmd []string) {
 		return
 	}
 
-	var intBuf [8]byte
-	payload := bytes.NewBuffer(nil)
-	payload.WriteByte(sys.WithdrawReward)
-	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
-	payload.Write(intBuf[:8])
+	payload := wavelet.Stake{
+		Opcode: sys.WithdrawReward,
+		Amount: amount,
+	}
 
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagStake, payload.Bytes()))
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagStake, payload.Marshal()))
 	if err != nil {
 		return
 	}

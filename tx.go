@@ -23,16 +23,16 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
+	"math/bits"
+	"sort"
+
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
-	"io"
-	"math"
-	"math/bits"
-	"sort"
 )
 
 type Transaction struct {
@@ -67,31 +67,6 @@ func NewTransaction(creator *skademlia.Keypair, tag sys.Tag, payload []byte) Tra
 	tx.CreatorSignature = edwards25519.Sign(creator.PrivateKey(), append(nonce[:], append([]byte{byte(tx.Tag)}, tx.Payload...)...))
 
 	return tx
-}
-
-func NewBatchTransaction(creator *skademlia.Keypair, tags []byte, payloads [][]byte) Transaction {
-	logger := log.TX("new_batch")
-
-	if len(tags) != len(payloads) {
-		logger.Fatal().Msg("UNEXPECTED: Number of tags must be equivalent to number of payloads.")
-	}
-
-	if len(tags) == math.MaxUint8 {
-		logger.Fatal().Msg("UNEXPECTED: Total number of tags/payloads in a single batch transaction is 255.")
-	}
-
-	var size [4]byte
-	var buf []byte
-
-	for i := range tags {
-		buf = append(buf, tags[i])
-
-		binary.BigEndian.PutUint32(size[:4], uint32(len(payloads[i])))
-		buf = append(buf, size[:4]...)
-		buf = append(buf, payloads[i]...)
-	}
-
-	return NewTransaction(creator, sys.TagBatch, append([]byte{byte(len(tags))}, buf...))
 }
 
 // AttachSenderToTransaction immutably attaches sender to a transaction without modifying it in-place.
