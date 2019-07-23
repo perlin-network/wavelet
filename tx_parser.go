@@ -179,10 +179,6 @@ func ParseContractTransaction(payload []byte) (Contract, error) {
 
 	tx.GasLimit = binary.LittleEndian.Uint64(b)
 
-	if tx.GasLimit == 0 {
-		return tx, errors.New("contract: gas limit for invoking smart contract must be greater than zero")
-	}
-
 	if _, err := io.ReadFull(r, b[:8]); err != nil {
 		return tx, errors.Wrap(err, "contract: failed to decode gas deposit")
 	}
