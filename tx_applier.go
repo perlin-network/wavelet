@@ -21,6 +21,7 @@ package wavelet
 
 import (
 	"encoding/hex"
+	wasm_validation "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
@@ -169,7 +170,7 @@ func applyContractTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 		return errors.New("contract: already exists")
 	}
 
-	if err := wasmValidator.ValidateWasm(params.Code); err != nil {
+	if err := wasm_validation.GetValidator().ValidateWasm(params.Code); err != nil {
 		return errors.Wrap(err, "invalid wasm")
 	}
 

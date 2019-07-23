@@ -23,8 +23,6 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/binary"
-	wasm_validation "github.com/perlin-network/life/wasm-validation"
-
 	"github.com/perlin-network/life/compiler"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
@@ -40,22 +38,13 @@ var (
 	ErrNotSmartContract         = errors.New("contract: specified account ID is not a smart contract")
 	ErrContractFunctionNotFound = errors.New("contract: smart contract func not found")
 
-	_             exec.ImportResolver        = (*ContractExecutor)(nil)
-	_             compiler.GasPolicy         = (*ContractExecutor)(nil)
-	wasmValidator *wasm_validation.Validator = nil
+	_ exec.ImportResolver = (*ContractExecutor)(nil)
+	_ compiler.GasPolicy  = (*ContractExecutor)(nil)
 )
 
 const (
 	PageSize = 65536
 )
-
-func init() {
-	var err error
-	wasmValidator, err = wasm_validation.NewValidator()
-	if err != nil {
-		panic(errors.Wrap(err, "init: Unable to initialize smart contract validator"))
-	}
-}
 
 type ContractExecutor struct {
 	ID       AccountID
