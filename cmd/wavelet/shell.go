@@ -252,7 +252,10 @@ func (cli *CLI) pay(cmd []string) {
 	payload.Write(intBuf[:])
 
 	if codeAvailable {
-		binary.LittleEndian.PutUint64(intBuf[:], balance-sys.TransactionFeeAmount) // Set gas limit by default to the balance the user has.
+		binary.LittleEndian.PutUint64(intBuf[:], balance-amount-sys.TransactionFeeAmount) // Set gas limit by default to the balance the user has.
+		payload.Write(intBuf[:])
+
+		binary.LittleEndian.PutUint64(intBuf[:], 0) // Gas deposit.
 		payload.Write(intBuf[:])
 
 		defaultFuncName := "on_money_received"
@@ -332,6 +335,10 @@ func (cli *CLI) call(cmd []string) {
 
 	// Gas limit.
 	binary.LittleEndian.PutUint64(intBuf[:8], gasLimit) // Set gas limit by default to the balance the user has.
+	payload.Write(intBuf[:8])
+
+	// Gas deposit.
+	binary.LittleEndian.PutUint64(intBuf[:8], 0)
 	payload.Write(intBuf[:8])
 
 	// Function name.
@@ -493,6 +500,9 @@ func (cli *CLI) spawn(cmd []string) {
 	w := bytes.NewBuffer(nil)
 
 	binary.LittleEndian.PutUint64(buf[:], 100000000) // Gas fee.
+	w.Write(buf[:])
+
+	binary.LittleEndian.PutUint64(buf[:], 0) // Gas deposit.
 	w.Write(buf[:])
 
 	binary.LittleEndian.PutUint32(buf[:4], 0) // Payload size.
