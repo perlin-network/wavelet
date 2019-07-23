@@ -88,10 +88,6 @@ func ParseTransferTransaction(payload []byte) (Transfer, error) {
 		}
 
 		tx.GasLimit = binary.LittleEndian.Uint64(b)
-
-		if tx.GasLimit == 0 {
-			return tx, errors.New("transfer: gas limit must be greater than zero")
-		}
 	}
 
 	if r.Len() > 0 {

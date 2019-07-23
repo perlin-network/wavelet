@@ -1213,11 +1213,13 @@ func (l *Ledger) collapseTransactions(round uint64, start, end Transaction, logg
 // of logging out changes to account state to Wavelet's HTTP API.
 func (l *Ledger) LogChanges(snapshot *avl.Tree, lastRound uint64) {
 	balanceLogger := log.Accounts("balance_updated")
+	gasBalanceLogger := log.Accounts("gas_balance_updated")
 	stakeLogger := log.Accounts("stake_updated")
 	rewardLogger := log.Accounts("reward_updated")
 	numPagesLogger := log.Accounts("num_pages_updated")
 
 	balanceKey := append(keyAccounts[:], keyAccountBalance[:]...)
+	gasBalanceKey := append(keyAccounts[:], keyAccountContractGasBalance[:]...)
 	stakeKey := append(keyAccounts[:], keyAccountStake[:]...)
 	rewardKey := append(keyAccounts[:], keyAccountReward[:]...)
 	numPagesKey := append(keyAccounts[:], keyAccountContractNumPages[:]...)
@@ -1232,6 +1234,13 @@ func (l *Ledger) LogChanges(snapshot *avl.Tree, lastRound uint64) {
 			balanceLogger.Log().
 				Hex("account_id", id[:]).
 				Uint64("balance", binary.LittleEndian.Uint64(value)).
+				Msg("")
+		case bytes.HasPrefix(key, gasBalanceKey):
+			copy(id[:], key[len(gasBalanceKey):])
+
+			gasBalanceLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("gas_balance", binary.LittleEndian.Uint64(value)).
 				Msg("")
 		case bytes.HasPrefix(key, stakeKey):
 			copy(id[:], key[len(stakeKey):])

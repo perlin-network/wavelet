@@ -119,8 +119,11 @@ func applyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 		}
 	}
 
-	err = executeContractInTransactionContext(tx, params.Recipient, code, snapshot, round, params.Amount, params.GasLimit, params.FuncName, params.FuncParams, state)
-	return err
+	if len(params.FuncName) == 0 {
+		return nil
+	}
+
+	return executeContractInTransactionContext(tx, params.Recipient, code, snapshot, round, params.Amount, params.GasLimit, params.FuncName, params.FuncParams, state)
 }
 
 func applyStakeTransaction(snapshot *avl.Tree, round *Round, tx *Transaction) error {
@@ -274,10 +277,6 @@ func executeContractInTransactionContext(
 
 	if requestedGasLimit < realGasLimit {
 		realGasLimit = requestedGasLimit
-	}
-
-	if realGasLimit == 0 {
-		return errors.New("execute_contract: gas limit for invoking smart contract must be greater than zero")
 	}
 
 	if availableBalance < realGasLimit {
