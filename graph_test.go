@@ -20,12 +20,16 @@
 package wavelet
 
 import (
+	"bytes"
+	"fmt"
+	"math/rand"
+	"testing"
+
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
-	"math/rand"
-	"testing"
 )
 
 func TestNewGraph(t *testing.T) {
@@ -55,6 +59,144 @@ func TestNewGraph(t *testing.T) {
 	assert.NotEqual(t, tx, *eligible[0])
 
 	assert.Equal(t, graph.Height(), uint64(2))
+}
+
+func TestGraphValidateTransaction(t *testing.T) {
+	t.Parallel()
+
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	graph := NewGraph(WithRoot(root), VerifySignatures())
+
+	tests := []struct {
+		Tx  func() Transaction
+		Err string
+	}{
+		{func() Transaction { return NewTransaction(keys, sys.TagNop, nil) }, "tx must have an ID"},
+		{
+			func() Transaction {
+				tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
+				tx.Sender = ZeroAccountID
+				return tx
+			},
+			"tx must have sender associated to it",
+		},
+		{
+			func() Transaction {
+				tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
+				tx.Creator = ZeroAccountID
+				return tx
+			},
+			"tx must have a creator associated to it",
+		},
+		{
+			func() Transaction {
+				k, _ := skademlia.NewKeys(1, 1)
+				return AttachSenderToTransaction(k, NewTransaction(k, sys.TagNop, nil), []*Transaction{}...)
+			},
+			"transaction has no parents",
+		},
+		{
+			func() Transaction {
+				k, _ := skademlia.NewKeys(1, 1)
+
+				parents := []*Transaction{}
+				for i := 0; i < sys.MaxParentsPerTransaction+1; i++ {
+					tx := NewTransaction(k, sys.TagNop, nil)
+					parents = append(parents, &tx)
+				}
+
+				return AttachSenderToTransaction(k, NewTransaction(k, sys.TagNop, nil), parents...)
+			},
+			"tx has 33 parents, but tx may only have 32 parents at most",
+		},
+		{
+			func() Transaction {
+				tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
+				tx.ParentIDs = append(tx.ParentIDs, tx.ID)
+				tx.ParentSeeds = append(tx.ParentSeeds, tx.Seed)
+				tx.SenderSignature = edwards25519.Sign(keys.PrivateKey(), tx.Marshal())
+				return tx
+			},
+			"tx must not include itself in its parents",
+		},
+		{
+			func() Transaction {
+				k, _ := skademlia.NewKeys(1, 1)
+
+				// Add some unique transactions
+				parents := make([]*Transaction, 6)
+				parents[0] = &root
+				for i := 0; i < 5; i++ {
+					tx := AttachSenderToTransaction(k, NewTransaction(k, sys.TagNop, nil), []*Transaction{parents[i]}...)
+					assert.NoError(t, graph.AddTransaction(tx))
+					parents[i+1] = &tx
+				}
+
+				tx := AttachSenderToTransaction(keys, NewTransaction(k, sys.TagNop, nil), parents...)
+				tx.ParentIDs[0], tx.ParentIDs[1] = tx.ParentIDs[1], tx.ParentIDs[0]
+				tx.ParentSeeds[0], tx.ParentSeeds[1] = tx.ParentSeeds[1], tx.ParentSeeds[0]
+				tx.SenderSignature = edwards25519.Sign(keys.PrivateKey(), tx.Marshal())
+				tx.rehash()
+				return tx
+			},
+			"tx must have lexicographically sorted parent ids",
+		},
+		{
+			func() Transaction {
+				parents := graph.FindEligibleParents()
+				parents = append(parents, parents[0])
+				return AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), parents...)
+			},
+			"tx must not have duplicate parent ids",
+		},
+		{
+			func() Transaction {
+				return AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagBatch+1, nil), graph.FindEligibleParents()...)
+			},
+			"tx has an unknown tag",
+		},
+		{
+			func() Transaction {
+				return AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, nil), graph.FindEligibleParents()...)
+			},
+			"tx must have payload if not a nop transaction",
+		},
+		{
+			func() Transaction {
+				payload := bytes.NewBuffer(nil)
+				payload.Write([]byte("foobar"))
+				return AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, payload.Bytes()), graph.FindEligibleParents()...)
+			},
+			"tx must have no payload if is a nop transaction",
+		},
+		{
+			func() Transaction {
+				k, _ := skademlia.NewKeys(1, 1)
+				tx := AttachSenderToTransaction(keys, NewTransaction(k, sys.TagNop, nil), graph.FindEligibleParents()...)
+				tx.CreatorSignature[0] = '0'
+				return tx
+			},
+			"tx has invalid creator signature",
+		},
+		{
+			func() Transaction {
+				k, _ := skademlia.NewKeys(1, 1)
+				tx := AttachSenderToTransaction(keys, NewTransaction(k, sys.TagNop, nil), graph.FindEligibleParents()...)
+				tx.SenderSignature[0] = '0'
+				return tx
+			},
+			"tx has invalid sender signature",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.Err, func(t *testing.T) {
+			assert.EqualError(t, graph.AddTransaction(tt.Tx()), fmt.Sprintf("failed to validate transaction: %s", tt.Err))
+		})
+	}
 }
 
 func TestGraphFuzz(t *testing.T) {
