@@ -4,6 +4,7 @@ import (
 	"net"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher"
@@ -13,6 +14,7 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 )
 
 func TestSelectPeers(t *testing.T) {
@@ -42,6 +44,26 @@ func TestSelectPeers(t *testing.T) {
 	// Close 5 of the nodes, leaving node[0] with only 4 active peers
 	for i := 5; i < 10; i++ {
 		cleanup[i]()
+	}
+
+	// Wait for grpc.Client to detect the closed connections
+	timeout := time.NewTimer(time.Millisecond * 100)
+	ticker := time.NewTicker(time.Millisecond * 10)
+	activeCount := len(closest)
+
+	for activeCount > 4 {
+		activeCount = 0
+		select {
+		case <-ticker.C:
+			for _, peer := range closest {
+				if peer.GetState() == connectivity.Ready {
+					activeCount++
+				}
+			}
+
+		case <-timeout.C:
+			t.Fatal("test timed out")
+		}
 	}
 
 	// SelectPeers should only return 4 peers
