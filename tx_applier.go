@@ -21,6 +21,7 @@ package wavelet
 
 import (
 	"encoding/hex"
+	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
@@ -182,6 +183,10 @@ func applyContractTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 	}
 
 	// Record the code of the smart contract into the ledgers state.
+	if err := wasm.GetValidator().ValidateWasm(params.Code); err != nil {
+		return errors.Wrap(err, "invalid wasm")
+	}
+
 	WriteAccountContractCode(snapshot, tx.ID, params.Code)
 
 	if params.GasDeposit != 0 {
