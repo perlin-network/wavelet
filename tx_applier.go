@@ -284,6 +284,10 @@ func executeContractInTransactionContext(
 		realGasLimit = requestedGasLimit
 	}
 
+	if realGasLimit == 0 {
+		return errors.New("execute_contract: gas limit for invoking smart contract function must be greater than zero")
+	}
+
 	if availableBalance < realGasLimit {
 		return errors.Errorf("execute_contract: attempted to deduct gas fee from %x of %d PERLs, but only has %d PERLs",
 			state.GasPayer, realGasLimit, availableBalance)

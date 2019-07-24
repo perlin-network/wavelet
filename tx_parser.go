@@ -88,6 +88,10 @@ func ParseTransferTransaction(payload []byte) (Transfer, error) {
 		}
 
 		tx.GasLimit = binary.LittleEndian.Uint64(b)
+
+		if tx.GasLimit == 0 {
+			return tx, errors.New("transfer: gas limit for invoking smart contract function must be greater than zero")
+		}
 	}
 
 	if r.Len() > 0 {
@@ -181,6 +185,10 @@ func ParseContractTransaction(payload []byte) (Contract, error) {
 
 	if _, err := io.ReadFull(r, b[:8]); err != nil {
 		return tx, errors.Wrap(err, "contract: failed to decode gas deposit")
+	}
+
+	if tx.GasLimit == 0 {
+		return tx, errors.New("contract: gas limit for invoking smart contract function must be greater than zero")
 	}
 
 	tx.GasDeposit = binary.LittleEndian.Uint64(b)
