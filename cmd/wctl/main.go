@@ -30,7 +30,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
@@ -455,7 +454,7 @@ func main() {
 						return err
 					}
 
-					parsedPayload, err := wavelet.ParseJSON(payloadFile, c.Args().Get(0)) // Parse payload file contents
+					parsedPayload, err := wctl.ParsePayload(payloadFile, c.Args().Get(0)) // Parse payload file contents
 					if err != nil {                                                       // Check for errors
 						return err // Return found error
 					}

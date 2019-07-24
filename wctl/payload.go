@@ -17,7 +17,7 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package wavelet
+package wctl
 
 import (
 	"bytes"
@@ -25,6 +25,7 @@ import (
 	"encoding/hex"
 	"io/ioutil"
 
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/valyala/fastjson"
@@ -78,8 +79,8 @@ var (
 
 /* BEGIN EXPORTED METHODS */
 
-// ParseJSON parses the given JSON payload input.
-func ParseJSON(data []byte, tag string) ([]byte, error) {
+// ParsePayload parses the given JSON payload input.
+func ParsePayload(data []byte, tag string) ([]byte, error) {
 	if tag == "" { // Check no transaction tag
 		return nil, ErrNoTag // Return no tag error
 	}
@@ -136,11 +137,11 @@ func parseTransfer(data []byte) ([]byte, error) {
 		return nil, err // Return found error
 	}
 
-	if len(decodedRecipient) != SizeAccountID { // Check invalid length
+	if len(decodedRecipient) != wavelet.SizeAccountID { // Check invalid length
 		return nil, ErrInvalidAccountIDSize // Return invalid recipient ID error
 	}
 
-	var recipient AccountID              // Initialize ID buffer
+	var recipient wavelet.AccountID      // Initialize ID buffer
 	copy(recipient[:], decodedRecipient) // Copy address to buffer
 
 	_, err = payload.Write(recipient[:]) // Write recipient value
@@ -454,8 +455,8 @@ func parseBatch(data []byte) ([]byte, error) {
 			return nil, err // Return found error
 		}
 
-		txPayload, err := ParseJSON(txJSON, string(tx.GetStringBytes("tag"))) // Parse JSON
-		if err != nil {                                                       // Check for errors
+		txPayload, err := ParsePayload(txJSON, string(tx.GetStringBytes("tag"))) // Parse JSON
+		if err != nil {                                                          // Check for errors
 			return nil, err // Return found error
 		}
 

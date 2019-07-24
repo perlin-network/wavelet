@@ -17,21 +17,22 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package wavelet
+package wctl
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"testing/quick"
+
+	"github.com/stretchr/testify/assert"
 )
 
-// TestParseJSON tests the functionality of the ParseJSON helper method.
-func TestParseJSON(t *testing.T) {
+// TestParsePayload tests the functionality of the ParsePayload helper method.
+func TestParsePayload(t *testing.T) {
 	t.Parallel()
 
 	f := func(jsonData []byte, tag string) bool {
-		payload, err := ParseJSON(jsonData, tag) // Attempt to parse
-		return !(err != nil && payload != nil)   // Check errored but still returned
+		payload, err := ParsePayload(jsonData, tag) // Attempt to parse
+		return !(err != nil && payload != nil)      // Check errored but still returned
 	}
 
 	assert.NoError(t, quick.Check(f, nil)) // Check no errors
