@@ -22,16 +22,16 @@ package avl
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/perlin-network/wavelet/store"
-	"github.com/stretchr/testify/assert"
 	"math/rand"
-	"os"
 	"testing"
 	"testing/quick"
+
+	"github.com/perlin-network/wavelet/store"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestSerialize(t *testing.T) {
-	kv, cleanup := GetKV("level", "db")
+	kv, cleanup := store.NewTestKV(t, "level", "db")
 	defer cleanup()
 
 	tree := New(kv)
@@ -51,7 +51,7 @@ func TestSerialize(t *testing.T) {
 }
 
 func TestTree_Commit(t *testing.T) {
-	kv, cleanup := GetKV("level", "db")
+	kv, cleanup := store.NewTestKV(t, "level", "db")
 	defer cleanup()
 
 	{
@@ -69,7 +69,7 @@ func TestTree_Commit(t *testing.T) {
 }
 
 func TestTree_DeleteUntilEmpty(t *testing.T) {
-	kv, cleanup := GetKV("level", "db")
+	kv, cleanup := store.NewTestKV(t, "level", "db")
 	defer cleanup()
 
 	values := map[string]string{
@@ -116,7 +116,7 @@ func TestTree_DeleteUntilEmpty(t *testing.T) {
 }
 
 func TestTree_Snapshot(t *testing.T) {
-	kv, cleanup := GetKV("level", "db")
+	kv, cleanup := store.NewTestKV(t, "level", "db")
 	defer cleanup()
 
 	tree := New(kv)
@@ -139,10 +139,10 @@ func TestTree_Snapshot(t *testing.T) {
 }
 
 func TestTree_Diff_Randomized(t *testing.T) {
-	kv, cleanup := GetKV("level", "db")
+	kv, cleanup := store.NewTestKV(t, "level", "db")
 	defer cleanup()
 
-	kv2, cleanup2 := GetKV("level", "db2")
+	kv2, cleanup2 := store.NewTestKV(t, "level", "db2")
 	defer cleanup2()
 
 	tree1 := New(kv)
@@ -192,10 +192,10 @@ func TestTree_Diff_Randomized(t *testing.T) {
 }
 
 func TestTree_Diff_UpdateNotifier(t *testing.T) {
-	kv, cleanup1 := GetKV("level", "db")
+	kv, cleanup1 := store.NewTestKV(t, "level", "db")
 	defer cleanup1()
 
-	kv2, cleanup2 := GetKV("level", "db2")
+	kv2, cleanup2 := store.NewTestKV(t, "level", "db2")
 	defer cleanup2()
 
 	tree1 := New(kv)
@@ -231,10 +231,10 @@ func TestTree_Diff_UpdateNotifier(t *testing.T) {
 }
 
 func TestTree_ApplyEmptyDiff(t *testing.T) {
-	kv, cleanup1 := GetKV("level", "db")
+	kv, cleanup1 := store.NewTestKV(t, "level", "db")
 	defer cleanup1()
 
-	kv2, cleanup2 := GetKV("level", "db2")
+	kv2, cleanup2 := store.NewTestKV(t, "level", "db2")
 	defer cleanup2()
 
 	tree1 := New(kv)
@@ -265,10 +265,10 @@ func TestTree_ApplyEmptyDiff(t *testing.T) {
 }
 
 func TestTree_Difference(t *testing.T) {
-	kv, cleanup := GetKV("level", "db")
+	kv, cleanup := store.NewTestKV(t, "level", "db")
 	defer cleanup()
 
-	kv2, cleanup2 := GetKV("level", "db2")
+	kv2, cleanup2 := store.NewTestKV(t, "level", "db2")
 	defer cleanup2()
 
 	tree := New(kv)
@@ -366,8 +366,7 @@ func BenchmarkAVL(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N/InnerLoopCount; i++ {
-		//kv := store.NewInmem()
-		kv, cleanup := GetKV("level", "db")
+		kv, cleanup := store.NewTestKV(b, "level", "db")
 		tree := New(kv)
 
 		refMap := make(map[string][]byte)
@@ -426,29 +425,4 @@ func BenchmarkAVL(b *testing.B) {
 
 		cleanup()
 	}
-}
-
-func GetKV(kv string, path string) (store.KV, func()) {
-	if kv == "inmem" {
-		inmemdb := store.NewInmem()
-		return inmemdb, func() {
-			_ = inmemdb.Close()
-		}
-	}
-	if kv == "level" {
-		// Remove existing db
-		_ = os.RemoveAll(path)
-
-		leveldb, err := store.NewLevelDB(path)
-		if err != nil {
-			panic("failed to create LevelDB: " + err.Error())
-		}
-
-		return leveldb, func() {
-			_ = leveldb.Close()
-			_ = os.RemoveAll(path)
-		}
-	}
-
-	panic("unknown kv " + kv)
 }
