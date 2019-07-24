@@ -101,6 +101,7 @@ A `Transfer` transaction is structured, assuming the same binary encoding scheme
 | Recipient Account ID | 256-bit wallet/smart contract account address. |
 | Num PERLs Sent | Unsigned 64-bit little-endian integer, representative of some amount of PERLs to be sent to the designated recipient. |
 | Gas Limit | Unsigned 64-bit little-endian integer, representative of the maximum gas fee that may be deducted from the transaction creators account. |
+| Gas Deposit | Unsigned 64-bit little-endian integer, representative of some amount of gas fees to deposit into the smart contract. |
 | Function Name | Length-prefixed string, representative of the name of the smart contract function to be invoked. |
 | Function Payload | Length-prefixed array of bytes passed as input parameters to the smart contract function to be invoked. |
 
@@ -134,6 +135,7 @@ More specifically, a `Contract` transaction is structured, assuming the same bin
 | Field | Type |
 | ----- | ---- |
 | Gas Limit | Unsigned 64-bit little-endian integer, representative of the maximum gas fee that may be deducted from the transaction creators account. |
+| Gas Deposit | Unsigned 64-bit little-endian integer, representative of some amount of gas fees to deposit into the smart contract. |
 | Payload | Length-prefixed array of bytes passed as input parameters to the smart contracts `init` function. |
 | Code | Non-length-prefixed array of bytes representative of the smart contracts code. |
 

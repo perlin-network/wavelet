@@ -60,12 +60,14 @@ type ContractExecutor struct {
 }
 
 func (e *ContractExecutor) GetCost(key string) int64 {
-	cost, ok := sys.GasTable[key]
-	if !ok {
-		return 1
-	}
-
-	return int64(cost)
+	// FIXME(kenta): Remove for testnet.
+	return 1
+	//cost, ok := sys.GasTable[key]
+	//if !ok {
+	//	return 1
+	//}
+	//
+	//return int64(cost)
 }
 
 func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport {
@@ -84,7 +86,9 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				payloadPtr := int(uint32(frame.Locals[1]))
 				payloadLen := int(uint32(frame.Locals[2]))
 
-				payload := vm.Memory[payloadPtr : payloadPtr+payloadLen]
+				payloadRef := vm.Memory[payloadPtr : payloadPtr+payloadLen]
+				payload := make([]byte, len(payloadRef))
+				copy(payload, payloadRef)
 
 				e.Queue = append(e.Queue, &Transaction{
 					Sender:  e.ID,
