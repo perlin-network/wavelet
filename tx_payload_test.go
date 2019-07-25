@@ -1,8 +1,6 @@
 package wavelet
 
 import (
-	"bytes"
-	"encoding/binary"
 	"fmt"
 	"testing"
 
@@ -11,126 +9,132 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestParseTransferTransaction(t *testing.T) {
-	tx := validTransfer(t)
-	payload := encodeTransfer(tx)
-	tx2, err := ParseTransferTransaction(payload)
+func TestParseTransfer(t *testing.T) {
+	tf := validTransfer(t)
+	payload := tf.Marshal()
+	tf2, err := ParseTransfer(payload)
 	assert.NoError(t, err)
-	assert.Equal(t, tx, tx2)
+	assert.Equal(t, tf, tf2)
 
 	// FuncParams is optional
-	txNoFuncParams, err := ParseTransferTransaction(payload[:SizeAccountID+8+8+8+4+len(tx.FuncName)])
+	tfNoFuncParams, err := ParseTransfer(payload[:SizeAccountID+8+8+8+4+len(tf.FuncName)])
 	assert.NoError(t, err)
-	tx.FuncParams = nil
-	assert.Equal(t, tx, txNoFuncParams)
+	tf.FuncParams = nil
+	assert.Equal(t, tf, tfNoFuncParams)
 
 	// FuncName is optional
-	txNoFuncName, err := ParseTransferTransaction(payload[:SizeAccountID+8+8+8])
+	tfNoFuncName, err := ParseTransfer(payload[:SizeAccountID+8+8+8])
 	assert.NoError(t, err)
-	tx.FuncName = nil
-	assert.Equal(t, tx, txNoFuncName)
+	tf.FuncName = nil
+	assert.Equal(t, tf, tfNoFuncName)
 
 	// GasDeposit is optional
-	txNoGasDeposit, err := ParseTransferTransaction(payload[:SizeAccountID+8+8])
+	tfNoGasDeposit, err := ParseTransfer(payload[:SizeAccountID+8+8])
 	assert.NoError(t, err)
-	tx.GasDeposit = 0
-	assert.Equal(t, tx, txNoGasDeposit)
+	tf.GasDeposit = 0
+	assert.Equal(t, tf, tfNoGasDeposit)
 
 	// GasLimit is optional
-	txNoGasLimit, err := ParseTransferTransaction(payload[:SizeAccountID+8])
+	tfNoGasLimit, err := ParseTransfer(payload[:SizeAccountID+8])
 	assert.NoError(t, err)
-	tx.GasLimit = 0
-	assert.Equal(t, tx, txNoGasLimit)
+	tf.GasLimit = 0
+	assert.Equal(t, tf, tfNoGasLimit)
 }
 
-func TestParseTransferTransaction_Errors(t *testing.T) {
+func TestParseTransfer_Errors(t *testing.T) {
 	tests := []struct {
 		Err     string
-		Payload func(tx Transfer) []byte
+		Payload func(tf Transfer) []byte
 	}{
 		{
 			"failed to decode recipient",
-			func(tx Transfer) []byte {
-				payload := encodeTransfer(tx)
+			func(tf Transfer) []byte {
+				payload := tf.Marshal()
 				return payload[:SizeAccountID-1]
 			},
 		},
 		{
 			"failed to decode amount of PERLs to send",
-			func(tx Transfer) []byte {
-				payload := encodeTransfer(tx)
+			func(tf Transfer) []byte {
+				payload := tf.Marshal()
 				return payload[:SizeAccountID+7]
 			},
 		},
 		{
 			"failed to decode gas limit",
-			func(tx Transfer) []byte {
-				payload := encodeTransfer(tx)
+			func(tf Transfer) []byte {
+				payload := tf.Marshal()
 				return payload[:SizeAccountID+8+7]
 			},
 		},
 		{
 			"failed to decode gas deposit",
-			func(tx Transfer) []byte {
-				payload := encodeTransfer(tx)
+			func(tf Transfer) []byte {
+				payload := tf.Marshal()
 				return payload[:SizeAccountID+8+8+7]
 			},
 		},
-
 		{
 			"failed to decode size of smart contract function name to invoke",
-			func(tx Transfer) []byte {
-				payload := encodeTransfer(tx)
+			func(tf Transfer) []byte {
+				payload := tf.Marshal()
 				return payload[:SizeAccountID+8+8+8+3]
 			},
 		},
 		{
+			"gas limit for invoking smart contract function must be greater than zero",
+			func(tf Transfer) []byte {
+				tf.GasLimit = 0
+				return tf.Marshal()
+			},
+		},
+		{
 			"smart contract function name exceeds 1024 characters",
-			func(tx Transfer) []byte {
-				tx.FuncName = make([]byte, 1025)
-				return encodeTransfer(tx)
+			func(tf Transfer) []byte {
+				tf.FuncName = make([]byte, 1025)
+				return tf.Marshal()
 			},
 		},
 		{
 			"failed to decode smart contract function name to invoke",
-			func(tx Transfer) []byte {
-				payload := encodeTransfer(tx)
-				return payload[:SizeAccountID+8+8+8+4+len(tx.FuncName)-1]
+			func(tf Transfer) []byte {
+				payload := tf.Marshal()
+				return payload[:SizeAccountID+8+8+8+4+len(tf.FuncName)-1]
 			},
 		},
 		{
 			"not allowed to call init function for smart contract",
-			func(tx Transfer) []byte {
-				tx.FuncName = []byte("init")
-				return encodeTransfer(tx)
+			func(tf Transfer) []byte {
+				tf.FuncName = []byte("init")
+				return tf.Marshal()
 			},
 		},
 		{
 			"failed to decode number of smart contract function invocation parameters",
-			func(tx Transfer) []byte {
-				payload := encodeTransfer(tx)
-				return payload[:SizeAccountID+8+8+8+4+len(tx.FuncName)+3]
+			func(tf Transfer) []byte {
+				payload := tf.Marshal()
+				return payload[:SizeAccountID+8+8+8+4+len(tf.FuncName)+3]
 			},
 		},
 		{
 			"smart contract payload exceeds 1MB",
-			func(tx Transfer) []byte {
-				tx.FuncParams = make([]byte, (1024*1024)+1)
-				return encodeTransfer(tx)
+			func(tf Transfer) []byte {
+				tf.FuncParams = make([]byte, (1024*1024)+1)
+				return tf.Marshal()
 			},
 		},
 		{
 			"failed to decode smart contract function invocation parameters",
-			func(tx Transfer) []byte {
-				payload := encodeTransfer(tx)
-				return payload[:SizeAccountID+8+8+8+4+len(tx.FuncName)+4+len(tx.FuncParams)-1]
+			func(tf Transfer) []byte {
+				payload := tf.Marshal()
+				return payload[:SizeAccountID+8+8+8+4+len(tf.FuncName)+4+len(tf.FuncParams)-1]
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.Err, func(t *testing.T) {
-			_, err := ParseTransferTransaction(tt.Payload(validTransfer(t)))
+			_, err := ParseTransfer(tt.Payload(validTransfer(t)))
 			if err == nil {
 				t.Fatal("expecting an error, got nil instead")
 			}
@@ -139,28 +143,28 @@ func TestParseTransferTransaction_Errors(t *testing.T) {
 	}
 }
 
-func TestParseStakeTransaction(t *testing.T) {
+func TestParseStake(t *testing.T) {
 	stake := validStake(t, sys.WithdrawStake)
-	payload := encodeStake(stake)
+	payload := stake.Marshal()
 
-	stake2, err := ParseStakeTransaction(payload)
+	stake2, err := ParseStake(payload)
 	assert.NoError(t, err)
 	assert.Equal(t, stake, stake2)
 
 	// PlaceStake and WithdrawStake don't have minimum stake amount
 	stake.Amount = 1
 	stake.Opcode = sys.PlaceStake
-	stakePlace, err := ParseStakeTransaction(encodeStake(stake))
+	stakePlace, err := ParseStake(stake.Marshal())
 	assert.NoError(t, err)
 	assert.Equal(t, stake, stakePlace)
 
 	stake.Opcode = sys.WithdrawStake
-	stakeWithdraw, err := ParseStakeTransaction(encodeStake(stake))
+	stakeWithdraw, err := ParseStake(stake.Marshal())
 	assert.NoError(t, err)
 	assert.Equal(t, stake, stakeWithdraw)
 }
 
-func TestParseStakeTransaction_Errors(t *testing.T) {
+func TestParseStake_Errors(t *testing.T) {
 	tests := []struct {
 		Err     string
 		Payload func() []byte
@@ -168,14 +172,14 @@ func TestParseStakeTransaction_Errors(t *testing.T) {
 		{
 			"payload must be exactly 9 bytes",
 			func() []byte {
-				payload := encodeStake(validStake(t, sys.WithdrawReward))
+				payload := validStake(t, sys.WithdrawReward).Marshal()
 				return payload[:len(payload)-1]
 			},
 		},
 		{
 			"opcode must be 0, 1, or 2",
 			func() []byte {
-				return encodeStake(validStake(t, sys.WithdrawReward+1))
+				return validStake(t, sys.WithdrawReward+1).Marshal()
 			},
 		},
 		{
@@ -183,7 +187,7 @@ func TestParseStakeTransaction_Errors(t *testing.T) {
 			func() []byte {
 				stake := validStake(t, sys.WithdrawReward)
 				stake.Amount = 0
-				return encodeStake(stake)
+				return stake.Marshal()
 			},
 		},
 		{
@@ -191,14 +195,14 @@ func TestParseStakeTransaction_Errors(t *testing.T) {
 			func() []byte {
 				stake := validStake(t, sys.WithdrawReward)
 				stake.Amount = 1
-				return encodeStake(stake)
+				return stake.Marshal()
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.Err, func(t *testing.T) {
-			_, err := ParseStakeTransaction(tt.Payload())
+			_, err := ParseStake(tt.Payload())
 			if err == nil {
 				t.Fatal("expecting an error, got nil instead")
 			}
@@ -207,16 +211,16 @@ func TestParseStakeTransaction_Errors(t *testing.T) {
 	}
 }
 
-func TestParseContractTransaction(t *testing.T) {
+func TestParseContract(t *testing.T) {
 	contract := validContract(t)
-	payload := encodeContract(contract)
+	payload := contract.Marshal()
 
-	contract2, err := ParseContractTransaction(payload)
+	contract2, err := ParseContract(payload)
 	assert.NoError(t, err)
 	assert.Equal(t, contract, contract2)
 }
 
-func TestParseContractTransaction_Errors(t *testing.T) {
+func TestParseContract_Errors(t *testing.T) {
 	tests := []struct {
 		Err     string
 		Payload func() []byte
@@ -224,14 +228,14 @@ func TestParseContractTransaction_Errors(t *testing.T) {
 		{
 			"failed to decode gas limit",
 			func() []byte {
-				payload := encodeContract(validContract(t))
+				payload := validContract(t).Marshal()
 				return payload[:7]
 			},
 		},
 		{
 			"failed to decode gas deposit",
 			func() []byte {
-				payload := encodeContract(validContract(t))
+				payload := validContract(t).Marshal()
 				return payload[:8+7]
 			},
 		},
@@ -239,7 +243,7 @@ func TestParseContractTransaction_Errors(t *testing.T) {
 		{
 			"failed to decode number of smart contract init parameters",
 			func() []byte {
-				payload := encodeContract(validContract(t))
+				payload := validContract(t).Marshal()
 				return payload[:8+8+3]
 			},
 		},
@@ -248,15 +252,22 @@ func TestParseContractTransaction_Errors(t *testing.T) {
 			func() []byte {
 				contract := validContract(t)
 				contract.Params = make([]byte, (1024*1024)+1)
-				return encodeContract(contract)
+				return contract.Marshal()
 			},
 		},
-
+		{
+			"gas limit for invoking smart contract function must be greater than zero",
+			func() []byte {
+				contract := validContract(t)
+				contract.GasLimit = 0
+				return contract.Marshal()
+			},
+		},
 		{
 			"failed to decode smart contract init parameters",
 			func() []byte {
 				contract := validContract(t)
-				payload := encodeContract(contract)
+				payload := contract.Marshal()
 				return payload[:8+8+4+len(contract.Params)-1]
 			},
 		},
@@ -265,14 +276,14 @@ func TestParseContractTransaction_Errors(t *testing.T) {
 			func() []byte {
 				contract := validContract(t)
 				contract.Code = []byte{}
-				return encodeContract(contract)
+				return contract.Marshal()
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.Err, func(t *testing.T) {
-			_, err := ParseContractTransaction(tt.Payload())
+			_, err := ParseContract(tt.Payload())
 			if err == nil {
 				t.Fatal("expecting an error, got nil instead")
 			}
@@ -281,16 +292,16 @@ func TestParseContractTransaction_Errors(t *testing.T) {
 	}
 }
 
-func TestParseBatchTransaction(t *testing.T) {
+func TestParseBatch(t *testing.T) {
 	batch := validBatch(t)
-	payload := encodeBatch(batch)
+	payload := batch.Marshal()
 
-	batch2, err := ParseBatchTransaction(payload)
+	batch2, err := ParseBatch(payload)
 	assert.NoError(t, err)
 	assert.Equal(t, batch, batch2)
 }
 
-func TestParseBatchTransaction_Errors(t *testing.T) {
+func TestParseBatch_Errors(t *testing.T) {
 	tests := []struct {
 		Err     string
 		Payload func() []byte
@@ -304,13 +315,13 @@ func TestParseBatchTransaction_Errors(t *testing.T) {
 		{
 			"size must be greater than zero",
 			func() []byte {
-				return encodeBatch(Batch{})
+				return (Batch{}).Marshal()
 			},
 		},
 		{
 			"could not read tag",
 			func() []byte {
-				payload := encodeBatch(validBatch(t))
+				payload := validBatch(t).Marshal()
 				return payload[:1]
 			},
 		},
@@ -319,15 +330,15 @@ func TestParseBatchTransaction_Errors(t *testing.T) {
 			func() []byte {
 				batch := validBatch(t)
 				batch.Tags[0] = uint8(sys.TagBatch)
-				batch.Payloads[0] = encodeBatch(batch)
+				batch.Payloads[0] = batch.Marshal()
 
-				return encodeBatch(batch)
+				return batch.Marshal()
 			},
 		},
 		{
 			"could not read payload size",
 			func() []byte {
-				payload := encodeBatch(validBatch(t))
+				payload := validBatch(t).Marshal()
 				return payload[:1+1+3]
 			},
 		},
@@ -337,13 +348,13 @@ func TestParseBatchTransaction_Errors(t *testing.T) {
 				batch := validBatch(t)
 				batch.Payloads[0] = make([]byte, 2*1024*1024+1)
 
-				return encodeBatch(batch)
+				return batch.Marshal()
 			},
 		},
 		{
 			"could not read payload",
 			func() []byte {
-				payload := encodeBatch(validBatch(t))
+				payload := validBatch(t).Marshal()
 				return payload[:1+1+4+1]
 			},
 		},
@@ -351,7 +362,7 @@ func TestParseBatchTransaction_Errors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.Err, func(t *testing.T) {
-			_, err := ParseBatchTransaction(tt.Payload())
+			_, err := ParseBatch(tt.Payload())
 			if err == nil {
 				t.Fatal("expecting an error, got nil instead")
 			}
@@ -393,61 +404,9 @@ func validContract(t *testing.T) Contract {
 }
 
 func validBatch(t *testing.T) Batch {
-	return Batch{
-		Size: 3,
-		Tags: []uint8{
-			uint8(sys.TagTransfer), uint8(sys.TagStake), uint8(sys.TagContract),
-		},
-		Payloads: [][]byte{
-			encodeTransfer(validTransfer(t)),
-			encodeStake(validStake(t, sys.PlaceStake)),
-			encodeContract(validContract(t)),
-		},
-	}
-}
-
-func encodeTransfer(tx Transfer) []byte {
-	buf := new(bytes.Buffer)
-	buf.Write(tx.Recipient[:])
-	binary.Write(buf, binary.LittleEndian, tx.Amount)
-	binary.Write(buf, binary.LittleEndian, tx.GasLimit)
-	binary.Write(buf, binary.LittleEndian, tx.GasDeposit)
-
-	binary.Write(buf, binary.LittleEndian, uint32(len(tx.FuncName)))
-	buf.Write(tx.FuncName)
-
-	binary.Write(buf, binary.LittleEndian, uint32(len(tx.FuncParams)))
-	buf.Write(tx.FuncParams)
-
-	return buf.Bytes()
-}
-
-func encodeStake(s Stake) []byte {
-	buf := new(bytes.Buffer)
-	buf.WriteByte(s.Opcode)
-	binary.Write(buf, binary.LittleEndian, s.Amount)
-	return buf.Bytes()
-}
-
-func encodeContract(c Contract) []byte {
-	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, c.GasLimit)
-	binary.Write(buf, binary.LittleEndian, c.GasDeposit)
-	binary.Write(buf, binary.LittleEndian, uint32(len(c.Params)))
-	buf.Write(c.Params)
-	buf.Write(c.Code)
-	return buf.Bytes()
-}
-
-func encodeBatch(b Batch) []byte {
-	buf := new(bytes.Buffer)
-	buf.WriteByte(byte(b.Size))
-
-	for i := uint8(0); i < b.Size; i++ {
-		buf.WriteByte(byte(b.Tags[i]))
-		binary.Write(buf, binary.BigEndian, uint32(len(b.Payloads[i])))
-		buf.Write(b.Payloads[i])
-	}
-
-	return buf.Bytes()
+	var batch Batch
+	assert.NoError(t, batch.AddTransfer(validTransfer(t)))
+	assert.NoError(t, batch.AddStake(validStake(t, sys.PlaceStake)))
+	assert.NoError(t, batch.AddContract(validContract(t)))
+	return batch
 }
