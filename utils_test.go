@@ -4,6 +4,7 @@ import (
 	"net"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher"
@@ -13,6 +14,7 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 )
 
 func TestSelectPeers(t *testing.T) {
@@ -44,6 +46,26 @@ func TestSelectPeers(t *testing.T) {
 		cleanup[i]()
 	}
 
+	// Wait for grpc.Client to detect the closed connections
+	timeout := time.NewTimer(time.Millisecond * 100)
+	ticker := time.NewTicker(time.Millisecond * 10)
+	activeCount := len(closest)
+
+	for activeCount > 4 {
+		activeCount = 0
+		select {
+		case <-ticker.C:
+			for _, peer := range closest {
+				if peer.GetState() == connectivity.Ready {
+					activeCount++
+				}
+			}
+
+		case <-timeout.C:
+			t.Fatal("test timed out")
+		}
+	}
+
 	// SelectPeers should only return 4 peers
 	selected, err = SelectPeers(closest, 5)
 	assert.NoError(t, err)
@@ -68,7 +90,7 @@ func newNode(t *testing.T) (*skademlia.Client, string, func()) {
 	client := skademlia.NewClient(addr, keys, skademlia.WithC1(sys.SKademliaC1), skademlia.WithC2(sys.SKademliaC2))
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
-	kv, cleanup := store.NewTestKV(t, "level", "db")
+	kv, cleanup := store.NewTestKV(t, "inmem", "db")
 	ledger := NewLedger(kv, client, nil)
 	server := client.Listen()
 	RegisterWaveletServer(server, ledger.Protocol())

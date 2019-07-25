@@ -21,9 +21,10 @@ package store
 
 import (
 	"bytes"
+	"sync"
+
 	"github.com/huandu/skiplist"
 	"github.com/pkg/errors"
-	"sync"
 )
 
 type kvPair struct {
@@ -60,6 +61,14 @@ type inmemKV struct {
 }
 
 func (s *inmemKV) Close() error {
+	s.Lock()
+	defer s.Unlock()
+
+	// Do nothing if already closed
+	if s.db == nil {
+		return nil
+	}
+
 	s.db.Init()
 	s.db = nil
 	return nil
