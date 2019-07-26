@@ -11,6 +11,10 @@ import (
 	"github.com/perlin-network/noise/edwards25519"
 )
 
+var (
+	ErrCouldNotOpenCipher = errors.New("could not open secret box cipher text")
+)
+
 // SecretboxParams define the parameters needed
 // for using secretbox.
 type SecretboxParams struct {
@@ -75,7 +79,7 @@ func (c *Crypto) SecretBoxDecrypt(derivedKey []byte) (*edwards25519.PrivateKey, 
 		copy(derivedKeyArr[:], derivedKey)
 		privateKeyBytes, ok := secretbox.Open(nil, cipherText, &nonceArr, &derivedKeyArr)
 		if !ok {
-			return nil, errors.New("could not open secret box cipher text")
+			return nil, ErrCouldNotOpenCipher
 		}
 
 		var privateKey edwards25519.PrivateKey
