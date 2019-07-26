@@ -21,42 +21,6 @@ package main
 
 import "github.com/chzyer/readline"
 
-/*
-func (cli *CLI) getCompletionPeers() *readline.PrefixCompleter {
-	fn := func(s string) (l []string) {
-		// Get a list of peers
-		peers := cli.client.ClosestPeerIDs()
-		l = make([]string, 0, len(peers))
-
-		for _, id := range peers {
-			pub := id.PublicKey()
-			l = append(l, hex.EncodeToString(pub[:]))
-		}
-
-		// Get current ID
-		publicKey := cli.keys.PublicKey()
-
-		// Get root ID
-		round := cli.ledger.Rounds().Latest()
-
-		l = append(l,
-			hex.EncodeToString(round.End.ID[:]),
-			hex.EncodeToString(publicKey[:]),
-		)
-
-		fields := strings.Fields(s)
-
-		if len(fields) > 1 {
-			l = containStrings(l, fields[1], false)
-		}
-
-		return
-	}
-
-	return readline.PcItemDynamic(fn)
-}
-*/
-
 func (cli *CLI) getCompleter() *readline.PrefixCompleter {
 	return readline.PcItemDynamic(func(string) []string {
 		return cli.completion

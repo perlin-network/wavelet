@@ -406,7 +406,7 @@ func (cli *CLI) find(ctx *cli.Context) {
 			Hex("sender", tx.Sender[:]).
 			Hex("creator", tx.Creator[:]).
 			Uint64("nonce", tx.Nonce).
-			Uint8("tag", tx.Tag).
+			Uint8("tag", uint8(tx.Tag)).
 			Uint64("depth", tx.Depth).
 			Hex("seed", tx.Seed[:]).
 			Uint8("seed_zero_prefix_len", tx.SeedLen).
