@@ -62,20 +62,9 @@ func (cli *CLI) status(ctx *cli.Context) {
 		peerIDs = append(peerIDs, id.String())
 	}
 
-	// Add the IDs into the list of completions
-	// TODO(diamond): Maybe make this into variables so you don't
-	// convert it to strings twice
-	cli.addCompletion(hex.EncodeToString(round.End.ID[:]))
-	cli.addCompletion(hex.EncodeToString(publicKey[:]))
-	for _, id := range peers {
-		pub := id.PublicKey()
-		cli.addCompletion(hex.EncodeToString(pub[:]))
-	}
-
 	cli.logger.Info().
 		Uint8("difficulty", round.ExpectedDifficulty(
-			sys.MinDifficulty,
-			sys.DifficultyScaleFactor,
+			sys.MinDifficulty, sys.DifficultyScaleFactor,
 		)).
 		Uint64("round", round.Index).
 		Hex("root_id", round.End.ID[:]).
@@ -124,15 +113,15 @@ func (cli *CLI) pay(ctx *cli.Context) {
 		return
 	}
 
+	var payload wavelet.Transfer
+	copy(payload.Recipient[:], recipient)
+
+	payload.Amount = amount
+
 	snapshot := cli.ledger.Snapshot()
-
-	var recipientID wavelet.AccountID
-	copy(recipientID[:], recipient)
-
 	balance, _ := wavelet.ReadAccountBalance(snapshot, cli.keys.PublicKey())
-	_, codeAvailable := wavelet.ReadAccountContractCode(snapshot, recipientID)
 
-	if balance < amount {
+	if balance < amount+sys.TransactionFeeAmount {
 		cli.logger.Error().
 			Uint64("your_balance", balance).
 			Uint64("amount_to_send", amount).
@@ -140,39 +129,25 @@ func (cli *CLI) pay(ctx *cli.Context) {
 		return
 	}
 
-	payload := bytes.NewBuffer(nil)
-	payload.Write(recipient[:])
-
-	var intBuf [8]byte
-	binary.LittleEndian.PutUint64(intBuf[:], amount)
-	payload.Write(intBuf[:])
-
+	_, codeAvailable := wavelet.ReadAccountContractCode(
+		snapshot, payload.Recipient,
+	)
 	if codeAvailable {
 		// Set gas limit by default to the balance the user has.
-		binary.LittleEndian.PutUint64(intBuf[:], balance)
-		payload.Write(intBuf[:])
-
-		defaultFuncName := "on_money_received"
-
-		binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(defaultFuncName)))
-		payload.Write(intBuf[:4])
-		payload.WriteString(defaultFuncName)
+		payload.GasLimit = balance - amount - sys.TransactionFeeAmount
+		payload.FuncName = []byte("on_money_received")
 	}
 
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, sys.TagTransfer, payload.Bytes(),
+		cli.keys, sys.TagTransfer, payload.Marshal(),
 	))
 
 	if err != nil {
 		return
 	}
 
-	txID := hex.EncodeToString(tx.ID[:])
-
-	// Add the ID into the completion list
-	cli.addCompletion(txID)
-
-	cli.logger.Info().Msg("Success! Your payment transaction ID: " + txID)
+	cli.logger.Info().
+		Msgf("Success! Your payment transaction ID: %x", tx.ID)
 }
 
 func (cli *CLI) call(ctx *cli.Context) {
@@ -197,13 +172,13 @@ func (cli *CLI) call(ctx *cli.Context) {
 		return
 	}
 
-	var recipientID wavelet.AccountID
-	copy(recipientID[:], recipient)
+	var payload wavelet.Transfer
+	copy(payload.Recipient[:], recipient)
 
 	snapshot := cli.ledger.Snapshot()
 
 	balance, _ := wavelet.ReadAccountBalance(snapshot, cli.keys.PublicKey())
-	_, codeAvailable := wavelet.ReadAccountContractCode(snapshot, recipientID)
+	_, codeAvailable := wavelet.ReadAccountContractCode(snapshot, payload.Recipient)
 
 	if !codeAvailable {
 		cli.logger.Error().
@@ -230,35 +205,17 @@ func (cli *CLI) call(ctx *cli.Context) {
 			Uint64("your_balance", balance).
 			Uint64("cost", amount+gasLimit).
 			Msg("You do not have enough PERLs to pay for the costs to invoke the smart contract function you wanted.")
-
 		return
 	}
 
 	funcName := cmd[3]
 
+	payload.Amount = amount
+	payload.GasLimit = gasLimit
+	payload.FuncName = []byte(funcName)
+
 	var intBuf [8]byte
-
-	payload := bytes.NewBuffer(nil)
-
-	// Recipient address 32 bytes.
-	payload.Write(recipient[:])
-
-	// Amount to send.
-	binary.LittleEndian.PutUint64(intBuf[:8], amount)
-	payload.Write(intBuf[:8])
-
-	// Gas limit.
-	// Set gas limit by default to the balance the user has.
-	binary.LittleEndian.PutUint64(intBuf[:8], gasLimit)
-	payload.Write(intBuf[:8])
-
-	// Function name.
-	binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(funcName)))
-	payload.Write(intBuf[:4])
-	payload.WriteString(funcName)
-
 	params := bytes.NewBuffer(nil)
-
 	for i := 4; i < len(cmd); i++ {
 		arg := cmd[i]
 
@@ -308,28 +265,18 @@ func (cli *CLI) call(ctx *cli.Context) {
 		}
 	}
 
-	funcParams := params.Bytes()
-
-	// Function payload.
-	binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(funcParams)))
-	payload.Write(intBuf[:4])
-	payload.Write(funcParams)
+	payload.FuncParams = params.Bytes()
 
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, sys.TagTransfer, payload.Bytes(),
+		cli.keys, sys.TagTransfer, payload.Marshal(),
 	))
 
 	if err != nil {
 		return
 	}
 
-	txID := hex.EncodeToString(tx.ID[:])
-
-	// Add the ID into the completion list
-	cli.addCompletion(txID)
-
 	cli.logger.Info().
-		Msg("Success! Your smart contract invocation transaction ID: " + txID)
+		Msgf("Success! Your smart contract invocation transaction ID: %x", tx.ID)
 }
 
 func (cli *CLI) find(ctx *cli.Context) {
@@ -347,7 +294,8 @@ func (cli *CLI) find(ctx *cli.Context) {
 
 	buf, err := hex.DecodeString(address)
 	if err != nil {
-		cli.logger.Error().Err(err).Msg("Cannot decode address")
+		cli.logger.Error().Err(err).
+			Msg("Cannot decode address")
 		return
 	}
 
@@ -361,6 +309,7 @@ func (cli *CLI) find(ctx *cli.Context) {
 	copy(accountID[:], buf)
 
 	balance, _ := wavelet.ReadAccountBalance(snapshot, accountID)
+	gasBalance, _ := wavelet.ReadAccountContractGasBalance(snapshot, accountID)
 	stake, _ := wavelet.ReadAccountStake(snapshot, accountID)
 	nonce, _ := wavelet.ReadAccountNonce(snapshot, accountID)
 	reward, _ := wavelet.ReadAccountReward(snapshot, accountID)
@@ -371,6 +320,7 @@ func (cli *CLI) find(ctx *cli.Context) {
 	if balance > 0 || stake > 0 || nonce > 0 || isContract || numPages > 0 {
 		cli.logger.Info().
 			Uint64("balance", balance).
+			Uint64("gas_balance", gasBalance).
 			Uint64("stake", stake).
 			Uint64("nonce", nonce).
 			Uint64("reward", reward).
@@ -392,21 +342,12 @@ func (cli *CLI) find(ctx *cli.Context) {
 			parents = append(parents, hex.EncodeToString(parentID[:]))
 		}
 
-		// Add the IDs into the completion list
-		cli.addCompletion(cmd[0])
-		cli.addCompletion(parents...)
-		// TODO(diamond): maybe run this only once instead of twice in
-		// logger.Info().Hex() as well?
-		cli.addCompletion(hex.EncodeToString(tx.Sender[:]))
-		cli.addCompletion(hex.EncodeToString(tx.Creator[:]))
-		cli.addCompletion(hex.EncodeToString(tx.Seed[:]))
-
 		cli.logger.Info().
 			Strs("parents", parents).
 			Hex("sender", tx.Sender[:]).
 			Hex("creator", tx.Creator[:]).
 			Uint64("nonce", tx.Nonce).
-			Uint8("tag", uint8(tx.Tag)).
+			Uint8("tag", byte(tx.Tag)).
 			Uint64("depth", tx.Depth).
 			Hex("seed", tx.Seed[:]).
 			Uint8("seed_zero_prefix_len", tx.SeedLen).
@@ -434,32 +375,17 @@ func (cli *CLI) spawn(ctx *cli.Context) {
 		return
 	}
 
-	var buf [8]byte
+	payload := wavelet.Contract{
+		GasLimit: 100000000,
+		Code:     code,
+	}
 
-	w := bytes.NewBuffer(nil)
-
-	binary.LittleEndian.PutUint64(buf[:], 100000000) // Gas fee.
-	w.Write(buf[:])
-
-	binary.LittleEndian.PutUint32(buf[:4], 0) // Payload size.
-	w.Write(buf[:4])
-
-	w.Write(code) // Smart contract code.
-
-	tx := wavelet.NewTransaction(cli.keys, sys.TagContract, w.Bytes())
-
-	tx, err = cli.sendTransaction(tx)
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagContract, payload.Marshal()))
 	if err != nil {
 		return
 	}
 
-	txID := hex.EncodeToString(tx.ID[:])
-
-	// Add the ID into the completion list
-	cli.addCompletion(txID)
-
-	cli.logger.Info().
-		Msg("Success! Your smart contract ID: " + txID)
+	cli.logger.Info().Msgf("Success! Your smart contracts ID: %x", tx.ID)
 }
 
 func (cli *CLI) depositGas(ctx *cli.Context) {
@@ -543,31 +469,28 @@ func (cli *CLI) placeStake(ctx *cli.Context) {
 		return
 	}
 
-	amount, err := strconv.Atoi(cmd[0])
+	amount, err := strconv.ParseUint(cmd[1], 10, 64)
 	if err != nil {
 		cli.logger.Error().Err(err).
 			Msg("Failed to convert staking amount to a uint64.")
 		return
 	}
 
-	var intBuf [8]byte
-	payload := bytes.NewBuffer(nil)
-	payload.WriteByte(sys.PlaceStake)
-	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
-	payload.Write(intBuf[:8])
+	payload := wavelet.Stake{
+		Opcode: sys.PlaceStake,
+		Amount: amount,
+	}
 
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagStake, payload.Bytes()))
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(
+		cli.keys, sys.TagStake, payload.Marshal(),
+	))
+
 	if err != nil {
 		return
 	}
 
-	txID := hex.EncodeToString(tx.ID[:])
-
-	// Add the ID into the completion list
-	cli.addCompletion(txID)
-
 	cli.logger.Info().
-		Msg("Success! Your stake placement transaction ID: " + txID)
+		Msgf("Success! Your stake placement transaction ID: %x", tx.ID)
 }
 
 func (cli *CLI) withdrawStake(ctx *cli.Context) {
@@ -625,27 +548,21 @@ func (cli *CLI) withdrawReward(ctx *cli.Context) {
 		return
 	}
 
-	var intBuf [8]byte
-	payload := bytes.NewBuffer(nil)
-	payload.WriteByte(sys.WithdrawReward)
-	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
-	payload.Write(intBuf[:8])
+	payload := wavelet.Stake{
+		Opcode: sys.WithdrawReward,
+		Amount: amount,
+	}
 
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, sys.TagStake, payload.Bytes(),
+		cli.keys, sys.TagStake, payload.Marshal(),
 	))
 
 	if err != nil {
 		return
 	}
 
-	txID := hex.EncodeToString(tx.ID[:])
-
-	// Add the ID into the completion list
-	cli.addCompletion(txID)
-
 	cli.logger.Info().
-		Msg("Success! Your reward withdrawal transaction ID: " + txID)
+		Msgf("Success! Your reward withdrawal transaction ID: %x", tx.ID)
 }
 
 func (cli *CLI) sendTransaction(tx wavelet.Transaction) (wavelet.Transaction, error) {
