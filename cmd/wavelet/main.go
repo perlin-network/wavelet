@@ -102,7 +102,7 @@ func main() {
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "wallet",
-			Value:  "config/wallet.txt",
+			Value:  "config/wallet.json",
 			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded private key to a wallet may also be specified.",
 			EnvVar: "WAVELET_WALLET",
 		}),
@@ -349,6 +349,7 @@ func start(cfg *Config) {
 }
 
 func keys(wallet string) (*skademlia.Keypair, error) {
+	fmt.Println(wallet)
 	var keys *skademlia.Keypair
 	var privateKey *edwards25519.PrivateKey
 
@@ -362,23 +363,26 @@ func keys(wallet string) (*skademlia.Keypair, error) {
 			if err != nil {
 				return nil, err
 			}
+			logger.Info().Msg("Wallet is encrypted. Enter password:")
 			for i := 0; i < 3; i++ {
 				passwordBytes, err := terminal.ReadPassword(int(syscall.Stdin))
 				if err != nil {
 					return nil, err
 				}
-
 				privateKey, err = enc.Decrypt(string(passwordBytes))
-				if err != nil {
-					fmt.Println(err)
+				if err == keystore.ErrCouldNotOpenCipher {
+					logger.Warn().Int("remaining attempts", 2-i).Msg("Password incorrect. Retry: ")
+					continue
+				} else if err != nil {
 					return nil, err
 				}
-				if err == nil {
-					continue
+				if privateKey != nil {
+					break
 				}
 			}
 			if privateKey == nil {
-				return nil, fmt.Errorf("exceeded password attempts for %q", wallet)
+				logger.Fatal().Msg("Password attempts depleated. Closing Wavelet.")
+				os.Exit(1)
 			}
 
 		} else {

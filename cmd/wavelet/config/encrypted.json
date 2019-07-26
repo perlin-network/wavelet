@@ -1,0 +1,20 @@
+{
+  "account": "b04800c80d0f8f050d5ad0eb2fb5452a9a9adb486ba78b9bdf7b1dddb102fafe",
+  "version": 1,
+  "created": "2019-07-25T20:39:09.692787-05:00",
+  "crypto": {
+    "cipher": "secretbox",
+    "cipherText": "4438550e6e1a05fbae73ca7462273c1f17127a6e94d6ee5e192ba21dc5bcd2977e2c7a5f55b42447daff579c4204b381b75a698d757142999addb4a74a53d83e09cb46d5c325ce5a03ad2eaaba5fd8a3",
+    "cipherParams": {
+      "nonce": "2ad1580a991d09a09bc20e0cc2036400514eee9fc0559634"
+    },
+    "kdf": "scrypt",
+    "kdfParams": {
+      "n": 262144,
+      "p": 1,
+      "r": 8,
+      "keyLen": 32,
+      "salt": "5c068365d07293bb359fd2b02f4a472fd3127e47d04b4cc3fa114ba756080183"
+    }
+  }
+}
