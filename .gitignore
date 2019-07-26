@@ -31,4 +31,5 @@ cmd/wavelet/testdb*
 cmd/wavelet/wavelet
 cmd/graph/main
 cmd/benchmark/main
+cmd/benchmark/benchmark
 cmd/benchmark/wavelet
