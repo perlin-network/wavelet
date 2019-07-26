@@ -42,6 +42,19 @@ import (
 	"time"
 )
 
+type bitset uint8
+
+const (
+	outOfSync   bitset = 0
+	synced             = 1
+	finalized          = 2
+	fullySynced        = 3
+)
+
+var (
+	ErrOutOfSync = errors.New("Node is currently ouf of sync. Please try again later.")
+)
+
 type Ledger struct {
 	client  *skademlia.Client
 	metrics *Metrics
@@ -64,9 +77,8 @@ type Ledger struct {
 	sync      chan struct{}
 	syncVotes chan vote
 
-	outOfSync       bool
-	outOfSyncTxBuff []Transaction
-	outOfSyncLock   sync.Mutex
+	syncStatus     bitset
+	syncStatusLock sync.RWMutex
 
 	cacheCollapse *LRU
 	cacheChunks   *LRU
@@ -127,10 +139,10 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 		finalizer: finalizer,
 		syncer:    syncer,
 
+		syncStatus: finalized, // we start node as out of sync, but finalized
+
 		sync:      make(chan struct{}),
 		syncVotes: make(chan vote, sys.SnowballK),
-
-		outOfSync: true, // start as of of sync, since we need to check whether we synced first
 
 		cacheCollapse: NewLRU(16),
 		cacheChunks:   NewLRU(1024), // In total, it will take up 1024 * 4MB.
@@ -153,20 +165,13 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(tx Transaction) error {
-	l.outOfSyncLock.Lock()
-	if l.outOfSync {
-		l.outOfSyncTxBuff = append(l.outOfSyncTxBuff, tx)
-		l.outOfSyncLock.Unlock()
-		return nil
+	if l.isOutOfSync() && tx.Sender == l.client.Keys().PublicKey() {
+		return ErrOutOfSync
 	}
-	l.outOfSyncLock.Unlock()
 
 	err := l.graph.AddTransaction(tx)
 
 	if err != nil && errors.Cause(err) != ErrAlreadyExists {
-		if !strings.Contains(errors.Cause(err).Error(), "transaction has no parents") {
-			fmt.Println(err)
-		}
 		return err
 	}
 
@@ -640,10 +645,10 @@ FINALIZE_ROUNDS:
 		close(voteChan)
 		workerWG.Wait() // Wait for vote processor worker to stop
 
-		finalized := l.finalizer.Preferred().(*Round)
+		preferred := l.finalizer.Preferred().(*Round)
 		l.finalizer.Reset()
 
-		results, err := l.collapseTransactions(finalized.Index, finalized.Start, finalized.End, true)
+		results, err := l.collapseTransactions(preferred.Index, preferred.Start, preferred.End, true)
 		if err != nil {
 			if !strings.Contains(err.Error(), "missing ancestor") {
 				fmt.Println(err)
@@ -651,19 +656,19 @@ FINALIZE_ROUNDS:
 			continue
 		}
 
-		if uint64(results.appliedCount) != finalized.Applied {
-			fmt.Printf("Expected to have applied %d transactions finalizing a round, but only applied %d transactions instead.\n", finalized.Applied, results.appliedCount)
+		if uint64(results.appliedCount) != preferred.Applied {
+			fmt.Printf("Expected to have applied %d transactions finalizing a round, but only applied %d transactions instead.\n", preferred.Applied, results.appliedCount)
 			continue
 		}
 
-		if results.snapshot.Checksum() != finalized.Merkle {
-			fmt.Printf("Expected finalized rounds merkle root to be %x, but got %x.\n", finalized.Merkle, results.snapshot.Checksum())
+		if results.snapshot.Checksum() != preferred.Merkle {
+			fmt.Printf("Expected preferred round's merkle root to be %x, but got %x.\n", preferred.Merkle, results.snapshot.Checksum())
 			continue
 		}
 
-		pruned, err := l.rounds.Save(finalized)
+		pruned, err := l.rounds.Save(preferred)
 		if err != nil {
-			fmt.Printf("Failed to save finalized round to our database: %v\n", err)
+			fmt.Printf("Failed to save preferred round to our database: %v\n", err)
 		}
 
 		if pruned != nil {
@@ -672,12 +677,12 @@ FINALIZE_ROUNDS:
 			logger := log.Consensus("prune")
 			logger.Debug().
 				Int("num_tx", count).
-				Uint64("current_round_id", finalized.Index).
+				Uint64("current_round_id", preferred.Index).
 				Uint64("pruned_round_id", pruned.Index).
 				Msg("Pruned away round and transactions.")
 		}
 
-		l.graph.UpdateRootDepth(finalized.End.Depth)
+		l.graph.UpdateRootDepth(preferred.End.Depth)
 
 		if err = l.accounts.Commit(results.snapshot); err != nil {
 			fmt.Printf("Failed to commit collaped state to our database: %v\n", err)
@@ -687,20 +692,22 @@ FINALIZE_ROUNDS:
 
 		l.LogChanges(results.snapshot, current.Index)
 
+		l.applySync(finalized)
+
 		logger := log.Consensus("round_end")
 		logger.Info().
 			Int("num_applied_tx", results.appliedCount).
 			Int("num_rejected_tx", results.rejectedCount).
 			Int("num_ignored_tx", results.ignoredCount).
 			Uint64("old_round", current.Index).
-			Uint64("new_round", finalized.Index).
+			Uint64("new_round", preferred.Index).
 			Uint8("old_difficulty", current.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-			Uint8("new_difficulty", finalized.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-			Hex("new_root", finalized.End.ID[:]).
+			Uint8("new_difficulty", preferred.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
+			Hex("new_root", preferred.End.ID[:]).
 			Hex("old_root", current.End.ID[:]).
-			Hex("new_merkle_root", finalized.Merkle[:]).
+			Hex("new_merkle_root", preferred.Merkle[:]).
 			Hex("old_merkle_root", current.Merkle[:]).
-			Uint64("round_depth", finalized.End.Depth-finalized.Start.Depth).
+			Uint64("round_depth", preferred.End.Depth-preferred.Start.Depth).
 			Msg("Finalized consensus round, and initialized a new round.")
 
 		fmt.Println(">>> time finalization took -", time.Now().Sub(finalizationTime))
@@ -789,13 +796,9 @@ func (l *Ledger) SyncToLatestRound() {
 		current := l.rounds.Latest()
 		preferred := l.syncer.Preferred()
 
-		outOfSync := preferred.(*outOfSyncVote).outOfSync
-
-		l.outOfSyncLock.Lock()
-		l.outOfSync = outOfSync
-		l.outOfSyncLock.Unlock()
-
-		if !outOfSync {
+		oos := preferred.(*outOfSyncVote).outOfSync
+		if !oos {
+			l.applySync(synced)
 			l.syncer.Reset()
 
 			if syncTimeoutMultiplier < 60 {
@@ -805,6 +808,8 @@ func (l *Ledger) SyncToLatestRound() {
 
 			continue
 		}
+
+		l.setSync(outOfSync)
 
 		syncTimeoutMultiplier = 0
 
@@ -1164,16 +1169,6 @@ func (l *Ledger) SyncToLatestRound() {
 			Hex("old_merkle_root", current.Merkle[:]).
 			Msg("Successfully built a new state Snapshot out of chunk(s) we have received from peers.")
 
-		l.outOfSyncLock.Lock()
-		txs := make([]Transaction, len(l.outOfSyncTxBuff))
-		copy(txs, l.outOfSyncTxBuff)
-		l.outOfSyncTxBuff = nil
-		l.outOfSyncLock.Unlock()
-
-		for i := range txs {
-			_ = l.AddTransaction(txs[i])
-		}
-
 		restart()
 	}
 }
@@ -1288,4 +1283,40 @@ func (l *Ledger) LogChanges(snapshot *avl.Tree, lastRound uint64) {
 
 		return true
 	})
+}
+
+func (l *Ledger) SyncStatus() string {
+	l.syncStatusLock.RLock()
+	defer l.syncStatusLock.RUnlock()
+
+	switch l.syncStatus {
+	case outOfSync:
+		return "Node is out of sync"
+	case synced:
+		return "Node is synced, but not taking part in consensus process yet"
+	case fullySynced:
+		return "Node is fully synced"
+	default:
+		return "Sync status unknown"
+	}
+}
+
+func (l *Ledger) isOutOfSync() bool {
+	l.syncStatusLock.RLock()
+	synced := l.syncStatus == fullySynced
+	l.syncStatusLock.RUnlock()
+
+	return !synced
+}
+
+func (l *Ledger) applySync(flag bitset) {
+	l.syncStatusLock.Lock()
+	l.syncStatus |= flag
+	l.syncStatusLock.Unlock()
+}
+
+func (l *Ledger) setSync(flag bitset) {
+	l.syncStatusLock.Lock()
+	l.syncStatus = flag
+	l.syncStatusLock.Unlock()
 }

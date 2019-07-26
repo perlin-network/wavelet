@@ -45,7 +45,7 @@ var (
 	SKademliaC2 = 1
 
 	// Snowball consensus protocol parameters.
-	SnowballK     = 2
+	SnowballK     = 5
 	SnowballAlpha = 0.8
 	SnowballBeta  = 150
 

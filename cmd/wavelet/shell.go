@@ -205,6 +205,7 @@ func (cli *CLI) status() {
 		Int("num_incomplete_tx", cli.ledger.Graph().IncompleteLen()).
 		Uint64("num_accounts_in_store", accountsLen).
 		Str("preferred_id", preferredID).
+		Str("sync_status", cli.ledger.SyncStatus()).
 		Int("preferred_votes", count).
 		Msg("Here is the current status of your node.")
 }
