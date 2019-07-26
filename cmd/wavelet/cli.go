@@ -101,6 +101,12 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 			Description: "test deploy a smart contract",
 		},
 		{
+			Name:        "deposit-gas",
+			Aliases:     []string{"g"},
+			Action:      a(c.depositGas),
+			Description: "deposit gas to a smart contract",
+		},
+		{
 			Name:        "place-stake",
 			Aliases:     []string{"ps"},
 			Action:      a(c.placeStake),

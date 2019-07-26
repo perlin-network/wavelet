@@ -462,6 +462,78 @@ func (cli *CLI) spawn(ctx *cli.Context) {
 		Msg("Success! Your smart contract ID: " + txID)
 }
 
+func (cli *CLI) depositGas(ctx *cli.Context) {
+	var cmd = ctx.Args()
+
+	if len(cmd) < 2 {
+		cli.logger.Error().
+			Msg("Invalid usage: deposit-gas <recipient> <amount>")
+		return
+	}
+
+	// Get the recipient ID
+	recipient, err := hex.DecodeString(cmd[0])
+	if err != nil {
+		cli.logger.Error().Err(err).
+			Msg("The recipient you specified is invalid.")
+		return
+	}
+
+	// Check if the ID is actually invalid by length
+	if len(recipient) != wavelet.SizeAccountID {
+		cli.logger.Error().Int("length", len(recipient)).
+			Msg("You have specified an invalid account ID to find.")
+		return
+	}
+
+	// Parse the gas amount
+	amount, err := strconv.ParseUint(cmd[1], 10, 64)
+	if err != nil {
+		cli.logger.Error().Err(err).
+			Msg("Failed to convert payment amount to an uint64.")
+		return
+	}
+
+	// Make a new payload, copy the recipient over and assign the amount
+	var payload wavelet.Transfer
+	copy(payload.Recipient[:], recipient)
+	payload.GasDeposit = amount
+
+	// Get snapshot
+	snapshot := cli.ledger.Snapshot()
+
+	// Get balance and check if recipient is a smart contract
+	balance, _ := wavelet.ReadAccountBalance(snapshot, cli.keys.PublicKey())
+	_, codeAvailable := wavelet.ReadAccountContractCode(snapshot, payload.Recipient)
+
+	// Check balance
+	if balance < amount+sys.TransactionFeeAmount {
+		cli.logger.Error().
+			Uint64("your_balance", balance).
+			Uint64("amount_to_send", amount).
+			Msg("You do not have enough PERLs to deposit into the smart contract.")
+		return
+	}
+
+	// The recipient is not a smart contract
+	if !codeAvailable {
+		cli.logger.Error().Hex("recipient_id", recipient).
+			Msg("The recipient you specified is not a smart contract.")
+		return
+	}
+
+	tx, err := cli.sendTransaction(
+		wavelet.NewTransaction(cli.keys, sys.TagTransfer, payload.Marshal()),
+	)
+
+	if err != nil {
+		return
+	}
+
+	cli.logger.Info().
+		Msgf("Success! Your gas deposit transaction ID: %x", tx.ID)
+}
+
 func (cli *CLI) placeStake(ctx *cli.Context) {
 	var cmd = ctx.Args()
 
