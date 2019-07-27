@@ -23,6 +23,7 @@ require (
 	github.com/rs/zerolog v1.14.3
 	github.com/stretchr/testify v1.3.0
 	github.com/syndtr/goleveldb v1.0.0
+	github.com/urfave/cli v1.20.0
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/valyala/fasthttp v1.3.0
 	github.com/valyala/fastjson v1.4.1
