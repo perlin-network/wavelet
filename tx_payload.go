@@ -257,10 +257,10 @@ func (t Transfer) Marshal() []byte {
 	buf.Write(t.Recipient[:])
 	binary.Write(buf, binary.LittleEndian, t.Amount)
 
-	if t.FuncName != nil && len(t.FuncName) > 0 {
-		binary.Write(buf, binary.LittleEndian, t.GasLimit)
-		binary.Write(buf, binary.LittleEndian, t.GasDeposit)
+	binary.Write(buf, binary.LittleEndian, t.GasLimit)
+	binary.Write(buf, binary.LittleEndian, t.GasDeposit)
 
+	if t.FuncName != nil && len(t.FuncName) > 0 {
 		binary.Write(buf, binary.LittleEndian, uint32(len(t.FuncName)))
 		buf.Write(t.FuncName)
 

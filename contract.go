@@ -23,6 +23,7 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/binary"
+	"fmt"
 	"github.com/perlin-network/life/compiler"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
@@ -257,6 +258,11 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 			vm.Delegate()
 			vm.Delegate = nil
 		}
+	}
+
+	if vm.ExitError != nil {
+		fmt.Println("error: ", utils.UnifyError(vm.ExitError))
+		vm.PrintStackTrace()
 	}
 
 	if vm.ExitError == nil && len(e.Error) == 0 {
