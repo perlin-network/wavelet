@@ -51,7 +51,7 @@ type CLI struct {
 	completion []string
 }
 
-func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Keypair) (*CLI, error) {
+func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Keypair, stdin io.ReadCloser, stdout io.Writer) (*CLI, error) {
 	c := &CLI{
 		client: client,
 		ledger: ledger,
@@ -174,6 +174,8 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 		InterruptPrompt:   "^C",
 		EOFPrompt:         "exit",
 		HistorySearchFold: true,
+		Stdin:             stdin,
+		Stdout:            stdout,
 	})
 
 	if err != nil {

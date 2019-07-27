@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -46,9 +47,9 @@ import (
 	"google.golang.org/grpc"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
-)
 
-import _ "net/http/pprof"
+	_ "net/http/pprof"
+)
 
 type Config struct {
 	NAT      bool
@@ -62,13 +63,13 @@ type Config struct {
 }
 
 func main() {
-	Run(os.Args)
+	Run(os.Args, os.Stdin, os.Stdout)
 }
 
-func Run(args []string) {
+func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 	log.SetWriter(
 		log.LoggerWavelet,
-		log.NewConsoleWriter(nil, log.FilterFor(
+		log.NewConsoleWriter(stdout, log.FilterFor(
 			log.ModuleNode,
 			log.ModuleNetwork,
 			log.ModuleSync,
@@ -224,7 +225,7 @@ func Run(args []string) {
 		sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
 		sys.MinimumStake = c.Uint64("sys.min_stake")
 
-		start(config)
+		start(config, stdin, stdout)
 
 		return nil
 	}
@@ -238,7 +239,7 @@ func Run(args []string) {
 	}
 }
 
-func start(cfg *Config) {
+func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	logger := log.Node()
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
@@ -352,7 +353,7 @@ func start(cfg *Config) {
 		go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
 	}
 
-	shell, err := NewCLI(client, ledger, keys)
+	shell, err := NewCLI(client, ledger, keys, stdin, stdout)
 	if err != nil {
 		panic(err)
 	}
