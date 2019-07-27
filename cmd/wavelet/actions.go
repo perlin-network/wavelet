@@ -469,7 +469,7 @@ func (cli *CLI) placeStake(ctx *cli.Context) {
 		return
 	}
 
-	amount, err := strconv.ParseUint(cmd[1], 10, 64)
+	amount, err := strconv.ParseUint(cmd[0], 10, 64)
 	if err != nil {
 		cli.logger.Error().Err(err).
 			Msg("Failed to convert staking amount to a uint64.")
