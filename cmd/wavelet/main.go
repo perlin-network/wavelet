@@ -62,6 +62,10 @@ type Config struct {
 }
 
 func main() {
+	Run(os.Args)
+}
+
+func Run(args []string) {
 	log.SetWriter(
 		log.LoggerWavelet,
 		log.NewConsoleWriter(nil, log.FilterFor(
@@ -109,7 +113,6 @@ func main() {
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "wallet",
-			Value:  "config/wallet.txt",
 			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded private key to a wallet may also be specified.",
 			EnvVar: "WAVELET_WALLET",
 		}),
@@ -229,7 +232,7 @@ func main() {
 	sort.Sort(cli.FlagsByName(app.Flags))
 	sort.Sort(cli.CommandsByName(app.Commands))
 
-	if err := app.Run(os.Args); err != nil {
+	if err := app.Run(args); err != nil {
 		logger.Fatal().Err(err).
 			Msg("Failed to parse configuration/command-line arguments.")
 	}
