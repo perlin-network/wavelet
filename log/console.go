@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/rs/zerolog"
 	"io"
 	"os"
 	"sort"
@@ -30,8 +31,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/rs/zerolog"
 )
 
 const (
@@ -189,7 +188,7 @@ func (w ConsoleWriter) writeFields(evt map[string]interface{}, buf *bytes.Buffer
 	sort.Strings(fields)
 
 	if len(fields) > 0 {
-		buf.Write([]byte("\n\t"))
+		buf.WriteByte(' ')
 	}
 
 	// Move the "error" field to the front
