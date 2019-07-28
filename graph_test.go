@@ -242,7 +242,7 @@ func TestGraphUpdateRoot(t *testing.T) {
 	assert.NoError(t, graph.AddTransaction(tx))
 }
 
-func TestGraph_UpdateRootDepth(t *testing.T) {
+func TestGraphUpdateRootDepth(t *testing.T) {
 	t.Parallel()
 
 	keys, err := skademlia.NewKeys(1, 1)

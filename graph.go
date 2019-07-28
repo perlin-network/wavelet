@@ -227,7 +227,9 @@ func (g *Graph) UpdateRootDepth(rootDepth uint64) {
 	for id, depth := range g.missing {
 		if rootDepth > sys.MaxDepthDiff+depth {
 			delete(g.missing, id)
-			g.completeChildren(id)
+
+			g.resolveChildren(id)
+
 			delete(g.children, id)
 		}
 	}
@@ -236,7 +238,9 @@ func (g *Graph) UpdateRootDepth(rootDepth uint64) {
 		if rootDepth > sys.MaxDepthDiff+depth {
 			delete(g.incomplete, id)
 			delete(g.transactions, id)
-			g.completeChildren(id)
+
+			g.resolveChildren(id)
+
 			delete(g.children, id)
 		}
 
@@ -561,12 +565,12 @@ func (g *Graph) updateGraph(tx *Transaction) error {
 		g.metrics.receivedTX.Mark(int64(tx.LogicalUnits()))
 	}
 
-	g.completeChildren(tx.ID)
+	g.resolveChildren(tx.ID)
 
 	return nil
 }
 
-func (g *Graph) completeChildren(parentID TransactionID) {
+func (g *Graph) resolveChildren(parentID TransactionID) {
 	for _, childID := range g.children[parentID] {
 		if _, incomplete := g.incomplete[childID]; !incomplete {
 			continue
