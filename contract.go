@@ -232,6 +232,30 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 
 	if mem := LoadContractMemorySnapshot(snapshot, id); mem != nil {
 		vm.Memory = mem
+	} else {
+		if vm.Module.Base.Start != nil {
+			startID := int(vm.Module.Base.Start.Index)
+
+			// Give 100000 free gas to execute the start function. TODO: Fix this?
+			vm.Config.GasLimit = 100000
+			vm.Ignite(startID)
+
+			for !vm.Exited {
+				vm.Execute()
+
+				if vm.Delegate != nil {
+					return errors.Wrap(err, "start function is not allowed to call imports")
+				}
+			}
+
+			if vm.ExitError != nil {
+				return errors.Wrap(utils.UnifyError(vm.ExitError), "start function failed")
+			}
+
+			vm.Config.GasLimit = gasLimit
+			vm.Gas = 0
+			vm.GasLimitExceeded = false
+		}
 	}
 
 	e.ID = id
