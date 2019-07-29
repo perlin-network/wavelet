@@ -23,6 +23,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"os"
+	"sort"
+	"strconv"
+	"time"
+
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher"
 	"github.com/perlin-network/noise/edwards25519"
@@ -38,13 +46,6 @@ import (
 	"google.golang.org/grpc"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
-	"io/ioutil"
-	"net"
-	"net/http"
-	"os"
-	"sort"
-	"strconv"
-	"time"
 )
 
 import _ "net/http/pprof"
@@ -317,12 +318,10 @@ func start(cfg *Config) {
 	}
 
 	ledger := wavelet.NewLedger(kv, client, cfg.Genesis)
+	server := client.Listen()
 
 	go func() {
-		server := client.Listen()
-
 		wavelet.RegisterWaveletServer(server, ledger.Protocol())
-
 		if err := server.Serve(listener); err != nil {
 			panic(err)
 		}
@@ -344,8 +343,13 @@ func start(cfg *Config) {
 		logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
 	}
 
+	var apiCleanup func()
 	if cfg.APIPort > 0 {
-		go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
+		apiGateway := api.New()
+		go apiGateway.StartHTTP(int(cfg.APIPort), client, ledger, keys)
+		apiCleanup = func() {
+			apiGateway.Shutdown()
+		}
 	}
 
 	shell, err := NewCLI(client, ledger, keys)
@@ -354,6 +358,16 @@ func start(cfg *Config) {
 	}
 
 	shell.Start()
+
+	// Cleanup
+
+	if apiCleanup != nil {
+		apiCleanup()
+	}
+
+	server.GracefulStop()
+	_ = ledger.Close()
+	_ = kv.Close()
 }
 
 func keys(wallet string) (*skademlia.Keypair, error) {

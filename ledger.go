@@ -25,6 +25,11 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math/rand"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
@@ -36,10 +41,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/peer"
-	"math/rand"
-	"strings"
-	"sync"
-	"time"
 )
 
 type Ledger struct {
@@ -68,6 +69,9 @@ type Ledger struct {
 	cacheChunks   *LRU
 
 	sendQuota chan struct{}
+
+	stop   chan struct{}
+	stopWG sync.WaitGroup
 }
 
 func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
@@ -77,7 +81,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 	indexer := NewIndexer()
 
 	accounts := NewAccounts(kv)
-	go accounts.GC(context.Background())
 
 	rounds, err := NewRounds(kv, sys.PruningLimit)
 
@@ -130,14 +133,46 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 		cacheChunks:   NewLRU(1024), // In total, it will take up 1024 * 4MB.
 
 		sendQuota: make(chan struct{}, 2000),
+
+		stop: make(chan struct{}),
 	}
+
+	// All goroutines run by Ledger are shown below:
+	//
+	// * GC
+	// * PushSendQuota
+	// * SyncToLatestRound
+	// 	* PullMissingTransactions
+	// 	* SyncToLatestRound
+	// 	* CollectVotes
+	// 	* Other anonymous goroutines
+	//
+	// stopWG is waits for the following goroutines:
+	//
+	// * GC
+	// * PushSendQuota
+	// * SyncToLatestRound
+	//
+	// Other goroutines are considered sub-goroutines and are the responsibility
+	// of the 3 goroutines above (e.g. consensus-related goroutines are managed
+	// by SyncToLatestRound).
+
+	ledger.stopWG.Add(1)
+	go accounts.GC(ledger.stop, &ledger.stopWG)
 
 	ledger.PerformConsensus()
 
+	ledger.stopWG.Add(2)
 	go ledger.SyncToLatestRound()
 	go ledger.PushSendQuota()
 
 	return ledger
+}
+
+func (l *Ledger) Close() error {
+	close(l.stop)
+	l.stopWG.Wait() // Wait for all goroutines to finish
+	return nil
 }
 
 // AddTransaction adds a transaction to the ledger. If the transaction has
@@ -215,10 +250,19 @@ func (l *Ledger) Find(query string, count int) []string {
 // PushSendQuota permits one token into this nodes send quota bucket every millisecond
 // such that the node may add one single transaction into its graph.
 func (l *Ledger) PushSendQuota() {
-	for range time.Tick(1 * time.Millisecond) {
+	defer l.stopWG.Done()
+
+	ticker := time.NewTicker(1 * time.Millisecond)
+	for {
 		select {
-		case l.sendQuota <- struct{}{}:
-		default:
+		case <-ticker.C:
+			select {
+			case l.sendQuota <- struct{}{}:
+			default:
+			}
+
+		case <-l.stop:
+			return
 		}
 	}
 }
@@ -692,459 +736,486 @@ FINALIZE_ROUNDS:
 }
 
 func (l *Ledger) SyncToLatestRound() {
+	defer l.stopWG.Done()
+
 	voteWG := new(sync.WaitGroup)
+
+	shutdown := func() {
+		close(l.sync)
+		l.consensus.Wait() // Wait for all consensus-related workers to shutdown.
+
+		voteWG.Add(1)
+		close(l.syncVotes)
+		voteWG.Wait() // Wait for the vote processor worker to shutdown.
+
+		l.finalizer.Reset() // Reset consensus Snowball sampler.
+		l.syncer.Reset()    // Reset syncing Snowball sampler.
+	}
+
+	restart := func() { // Respawn all previously stopped workers.
+		l.syncVotes = make(chan vote, sys.SnowballK)
+		go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
+
+		l.sync = make(chan struct{})
+		l.PerformConsensus()
+	}
 
 	go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
 
 	for {
-		for {
-			conns, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
-			if err != nil {
-				select {
-				case <-time.After(1 * time.Second):
-				}
+		select {
+		case <-l.stop:
+			shutdown()
+			return
 
-				continue
+		default:
+			for {
+				select {
+				case <-l.stop:
+					shutdown()
+					return
+
+				default:
+					conns, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
+					if err != nil {
+						select {
+						case <-time.After(1 * time.Second):
+						}
+
+						continue
+					}
+
+					current := l.rounds.Latest()
+
+					var wg sync.WaitGroup
+					wg.Add(len(conns))
+
+					for _, conn := range conns {
+						client := NewWaveletClient(conn)
+
+						go func() {
+							ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+
+							p := &peer.Peer{}
+
+							res, err := client.CheckOutOfSync(ctx, &OutOfSyncRequest{}, grpc.Peer(p))
+							if err != nil {
+								cancel()
+								wg.Done()
+								return
+							}
+
+							cancel()
+
+							info := noise.InfoFromPeer(p)
+							if info == nil {
+								wg.Done()
+								return
+							}
+
+							voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
+							if !ok {
+								wg.Done()
+								return
+							}
+
+							round, err := UnmarshalRound(bytes.NewReader(res.Round))
+							if err != nil {
+								wg.Done()
+								return
+							}
+
+							if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
+								wg.Done()
+								return
+							}
+
+							if round.End.Depth <= round.Start.Depth {
+								wg.Done()
+								return
+							}
+
+							if round.Index < sys.SyncIfRoundsDifferBy+current.Index {
+								wg.Done()
+								return
+							}
+
+							l.syncVotes <- vote{voter: voter, preferred: &round}
+
+							wg.Done()
+						}()
+					}
+
+					wg.Wait()
+
+					if l.syncer.Decided() {
+						goto PRESYNC
+					}
+
+					time.Sleep(50 * time.Millisecond)
+				}
 			}
+
+		PRESYNC:
+
+			// Reset syncing Snowball sampler. Check if it is a false alarm such that we don't have to sync.
 
 			current := l.rounds.Latest()
+			proposed := l.syncer.Preferred()
 
-			var wg sync.WaitGroup
-			wg.Add(len(conns))
+			if proposed.Index < sys.SyncIfRoundsDifferBy+current.Index {
+				l.syncer.Reset()
+				continue
+			}
+
+			shutdown() // Shutdown all consensus-related workers.
+
+			logger := log.Sync("syncing")
+			logger.Info().
+				Uint64("current_round", current.Index).
+				Uint64("proposed_round", proposed.Index).
+				Msg("Noticed that we are out of sync; downloading latest state Snapshot from our peer(s).")
+
+		PULLSYNC:
+
+			conns, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
+			if err != nil {
+				logger.Warn().Msg("It looks like there are no peers for us to sync with. Retrying...")
+
+				time.Sleep(1 * time.Second)
+
+				goto PULLSYNC
+			}
+
+			req := &SyncRequest{Data: &SyncRequest_RoundId{RoundId: current.Index}}
+
+			type response struct {
+				header *SyncInfo
+				latest Round
+				stream Wavelet_SyncClient
+			}
+
+			responses := make([]response, 0, len(conns))
 
 			for _, conn := range conns {
-				client := NewWaveletClient(conn)
-
-				go func() {
-					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-
-					p := &peer.Peer{}
-
-					res, err := client.CheckOutOfSync(ctx, &OutOfSyncRequest{}, grpc.Peer(p))
-					if err != nil {
-						cancel()
-						wg.Done()
-						return
-					}
-
-					cancel()
-
-					info := noise.InfoFromPeer(p)
-					if info == nil {
-						wg.Done()
-						return
-					}
-
-					voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
-					if !ok {
-						wg.Done()
-						return
-					}
-
-					round, err := UnmarshalRound(bytes.NewReader(res.Round))
-					if err != nil {
-						wg.Done()
-						return
-					}
-
-					if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
-						wg.Done()
-						return
-					}
-
-					if round.End.Depth <= round.Start.Depth {
-						wg.Done()
-						return
-					}
-
-					if round.Index < sys.SyncIfRoundsDifferBy+current.Index {
-						wg.Done()
-						return
-					}
-
-					l.syncVotes <- vote{voter: voter, preferred: &round}
-
-					wg.Done()
-				}()
-			}
-
-			wg.Wait()
-
-			if l.syncer.Decided() {
-				break
-			}
-
-			time.Sleep(50 * time.Millisecond)
-		}
-
-		// Reset syncing Snowball sampler. Check if it is a false alarm such that we don't have to sync.
-
-		current := l.rounds.Latest()
-		proposed := l.syncer.Preferred()
-
-		if proposed.Index < sys.SyncIfRoundsDifferBy+current.Index {
-			l.syncer.Reset()
-			continue
-		}
-
-		shutdown := func() {
-			close(l.sync)
-			l.consensus.Wait() // Wait for all consensus-related workers to shutdown.
-
-			voteWG.Add(1)
-			close(l.syncVotes)
-			voteWG.Wait() // Wait for the vote processor worker to shutdown.
-
-			l.finalizer.Reset() // Reset consensus Snowball sampler.
-			l.syncer.Reset()    // Reset syncing Snowball sampler.
-		}
-
-		restart := func() { // Respawn all previously stopped workers.
-			l.syncVotes = make(chan vote, sys.SnowballK)
-			go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
-
-			l.sync = make(chan struct{})
-			l.PerformConsensus()
-		}
-
-		shutdown() // Shutdown all consensus-related workers.
-
-		logger := log.Sync("syncing")
-		logger.Info().
-			Uint64("current_round", current.Index).
-			Uint64("proposed_round", proposed.Index).
-			Msg("Noticed that we are out of sync; downloading latest state Snapshot from our peer(s).")
-
-	SYNC:
-
-		conns, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
-		if err != nil {
-			logger.Warn().Msg("It looks like there are no peers for us to sync with. Retrying...")
-
-			time.Sleep(1 * time.Second)
-
-			goto SYNC
-		}
-
-		req := &SyncRequest{Data: &SyncRequest_RoundId{RoundId: current.Index}}
-
-		type response struct {
-			header *SyncInfo
-			latest Round
-			stream Wavelet_SyncClient
-		}
-
-		responses := make([]response, 0, len(conns))
-
-		for _, conn := range conns {
-			stream, err := NewWaveletClient(conn).Sync(context.Background())
-			if err != nil {
-				continue
-			}
-
-			if err := stream.Send(req); err != nil {
-				continue
-			}
-
-			res, err := stream.Recv()
-			if err != nil {
-				continue
-			}
-
-			header := res.GetHeader()
-
-			if header == nil {
-				continue
-			}
-
-			latest, err := UnmarshalRound(bytes.NewReader(header.LatestRound))
-			if err != nil {
-				continue
-			}
-
-			if latest.Index == 0 || len(header.Checksums) == 0 {
-				continue
-			}
-
-			responses = append(responses, response{header: header, latest: latest, stream: stream})
-		}
-
-		if len(responses) == 0 {
-			goto SYNC
-		}
-
-		dispose := func() {
-			for _, res := range responses {
-				if err := res.stream.CloseSend(); err != nil {
-					continue
-				}
-			}
-		}
-
-		set := make(map[uint64][]response)
-
-		for _, v := range responses {
-			set[v.latest.Index] = append(set[v.latest.Index], v)
-		}
-
-		// Select a round to sync to which the majority of peers are on.
-
-		var latest *Round
-		var majority []response
-
-		for _, votes := range set {
-			if len(votes) >= len(set)*2/3 {
-				latest = &votes[0].latest
-				majority = votes
-				break
-			}
-		}
-
-		// If there is no majority or a tie, dispose all streams and try again.
-
-		if majority == nil {
-			logger.Warn().Msg("It looks like our peers could not decide on what the latest round currently is. Retrying...")
-
-			dispose()
-			goto SYNC
-		}
-
-		logger.Debug().
-			Uint64("latest_round", latest.Index).
-			Hex("latest_round_root", latest.End.ID[:]).
-			Msg("Discovered the round which the majority of our peers are currently in.")
-
-		type source struct {
-			idx      int
-			checksum [blake2b.Size256]byte
-			streams  []Wavelet_SyncClient
-		}
-
-		var sources []source
-
-		idx := 0
-
-		// For each chunk checksum from the set of checksums provided by each
-		// peer, pick the majority checksum.
-
-		for {
-			set := make(map[[blake2b.Size256]byte][]Wavelet_SyncClient)
-
-			for _, response := range majority {
-				if idx >= len(response.header.Checksums) {
+				stream, err := NewWaveletClient(conn).Sync(context.Background())
+				if err != nil {
 					continue
 				}
 
-				var checksum [blake2b.Size256]byte
-				copy(checksum[:], response.header.Checksums[idx])
-
-				set[checksum] = append(set[checksum], response.stream)
-			}
-
-			if len(set) == 0 {
-				break // We have finished going through all responses. Engage in syncing.
-			}
-
-			// Figure out what the majority of peers believe the checksum is for a chunk
-			// at index idx. If a majority is found, mark the peers as a viable source
-			// for grabbing the chunks contents to then reassemble together an AVL+ tree
-			// diff to apply to our ledger state to complete syncing.
-
-			consistent := false
-
-			for checksum, voters := range set {
-				if len(voters) == 0 || len(voters) < len(majority)*2/3 {
+				if err := stream.Send(req); err != nil {
 					continue
 				}
 
-				sources = append(sources, source{idx: idx, checksum: checksum, streams: voters})
-				consistent = true
-				break
+				res, err := stream.Recv()
+				if err != nil {
+					continue
+				}
+
+				header := res.GetHeader()
+
+				if header == nil {
+					continue
+				}
+
+				latest, err := UnmarshalRound(bytes.NewReader(header.LatestRound))
+				if err != nil {
+					continue
+				}
+
+				if latest.Index == 0 || len(header.Checksums) == 0 {
+					continue
+				}
+
+				responses = append(responses, response{header: header, latest: latest, stream: stream})
 			}
 
-			// If peers could not come up with a consistent checksum for some
-			// chunk at a consistent idx, dispose all streams and try again.
+			if len(responses) == 0 {
+				goto PULLSYNC
+			}
 
-			if !consistent {
+			dispose := func() {
+				for _, res := range responses {
+					if err := res.stream.CloseSend(); err != nil {
+						continue
+					}
+				}
+			}
+
+			set := make(map[uint64][]response)
+
+			for _, v := range responses {
+				set[v.latest.Index] = append(set[v.latest.Index], v)
+			}
+
+			// Select a round to sync to which the majority of peers are on.
+
+			var latest *Round
+			var majority []response
+
+			for _, votes := range set {
+				if len(votes) >= len(set)*2/3 {
+					latest = &votes[0].latest
+					majority = votes
+					break
+				}
+			}
+
+			// If there is no majority or a tie, dispose all streams and try again.
+
+			if majority == nil {
+				logger.Warn().Msg("It looks like our peers could not decide on what the latest round currently is. Retrying...")
+
 				dispose()
-				goto SYNC
+				goto PULLSYNC
 			}
 
-			idx++
-		}
+			logger.Debug().
+				Uint64("latest_round", latest.Index).
+				Hex("latest_round_root", latest.End.ID[:]).
+				Msg("Discovered the round which the majority of our peers are currently in.")
 
-		chunks := make([][]byte, len(sources))
+			type source struct {
+				idx      int
+				checksum [blake2b.Size256]byte
+				streams  []Wavelet_SyncClient
+			}
 
-		// Streams may not concurrently send and receive messages at once.
+			var sources []source
 
-		streamLocks := make(map[Wavelet_SyncClient]*sync.Mutex)
-		var streamLock sync.Mutex
+			idx := 0
 
-		workers := make(chan source, 16)
+			// For each chunk checksum from the set of checksums provided by each
+			// peer, pick the majority checksum.
 
-		var workerWG sync.WaitGroup
-		workerWG.Add(cap(workers))
+			for {
+				select {
+				case <-l.stop:
+					dispose()
+					shutdown()
+					return
 
-		var chunkWG sync.WaitGroup
-		chunkWG.Add(len(chunks))
+				default:
+					set := make(map[[blake2b.Size256]byte][]Wavelet_SyncClient)
 
-		logger.Debug().
-			Int("num_chunks", len(sources)).
-			Int("num_workers", cap(workers)).
-			Msg("Starting up workers to downloaded all chunks of data needed to sync to the latest round...")
-
-		for i := 0; i < cap(workers); i++ {
-			go func() {
-				for src := range workers {
-					req := &SyncRequest{Data: &SyncRequest_Checksum{Checksum: src.checksum[:]}}
-
-					for i := 0; i < len(src.streams); i++ {
-						stream := src.streams[rand.Intn(len(src.streams))]
-
-						// Lock the stream so that other workers may not concurrently interact
-						// with the exact same stream at once.
-
-						streamLock.Lock()
-						if _, exists := streamLocks[stream]; !exists {
-							streamLocks[stream] = new(sync.Mutex)
-						}
-						lock := streamLocks[stream]
-						streamLock.Unlock()
-
-						lock.Lock()
-
-						if err := stream.Send(req); err != nil {
-							lock.Unlock()
+					for _, response := range majority {
+						if idx >= len(response.header.Checksums) {
 							continue
 						}
 
-						res, err := stream.Recv()
-						if err != nil {
-							lock.Unlock()
+						var checksum [blake2b.Size256]byte
+						copy(checksum[:], response.header.Checksums[idx])
+
+						set[checksum] = append(set[checksum], response.stream)
+					}
+
+					if len(set) == 0 {
+						goto SYNC // We have finished going through all responses. Engage in syncing.
+					}
+
+					// Figure out what the majority of peers believe the checksum is for a chunk
+					// at index idx. If a majority is found, mark the peers as a viable source
+					// for grabbing the chunks contents to then reassemble together an AVL+ tree
+					// diff to apply to our ledger state to complete syncing.
+
+					consistent := false
+
+					for checksum, voters := range set {
+						if len(voters) == 0 || len(voters) < len(majority)*2/3 {
 							continue
 						}
 
-						lock.Unlock()
-
-						chunk := res.GetChunk()
-						if chunk == nil {
-							continue
-						}
-
-						if len(chunk) > sys.SyncChunkSize {
-							continue
-						}
-
-						if blake2b.Sum256(chunk[:]) != src.checksum {
-							continue
-						}
-
-						// We found the chunk! Store the chunks contents.
-
-						chunks[src.idx] = chunk
+						sources = append(sources, source{idx: idx, checksum: checksum, streams: voters})
+						consistent = true
 						break
 					}
 
-					chunkWG.Done()
+					// If peers could not come up with a consistent checksum for some
+					// chunk at a consistent idx, dispose all streams and try again.
+
+					if !consistent {
+						dispose()
+						goto PULLSYNC
+					}
+
+					idx++
 				}
-
-				workerWG.Done()
-			}()
-		}
-
-		for _, src := range sources {
-			workers <- src
-		}
-
-		chunkWG.Wait() // Wait until all chunks have been received.
-		close(workers)
-		workerWG.Wait() // Wait until all workers have been closed.
-
-		logger.Debug().
-			Int("num_chunks", len(sources)).
-			Int("num_workers", cap(workers)).
-			Msg("Downloaded whatever chunks were available to sync to the latest round, and shutted down all workers. Checking validity of chunks...")
-
-		dispose() // Shutdown all streams as we no longer need them.
-
-		var diff []byte
-
-		for i, chunk := range chunks {
-			if chunk == nil {
-				logger.Error().
-					Uint64("target_round", latest.Index).
-					Hex("chunk_checksum", sources[i].checksum[:]).
-					Msg("Could not download one of the chunks necessary to sync to the latest round! Retrying...")
-
-				goto SYNC
 			}
 
-			diff = append(diff, chunk...)
-		}
+		SYNC:
+			chunks := make([][]byte, len(sources))
 
-		logger.Info().
-			Int("num_chunks", len(sources)).
-			Uint64("target_round", latest.Index).
-			Msg("All chunks have been successfully verified and re-assembled into a diff. Applying diff...")
+			// Streams may not concurrently send and receive messages at once.
 
-		snapshot := l.accounts.Snapshot()
+			streamLocks := make(map[Wavelet_SyncClient]*sync.Mutex)
+			var streamLock sync.Mutex
 
-		if err := snapshot.ApplyDiff(diff); err != nil {
-			logger.Error().
-				Uint64("target_round", latest.Index).
-				Err(err).
-				Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
-			goto SYNC
-		}
+			workers := make(chan source, 16)
 
-		if checksum := snapshot.Checksum(); checksum != latest.Merkle {
-			logger.Error().
-				Uint64("target_round", latest.Index).
-				Hex("expected_merkle_root", latest.Merkle[:]).
-				Hex("yielded_merkle_root", checksum[:]).
-				Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
+			var workerWG sync.WaitGroup
+			workerWG.Add(cap(workers))
 
-			goto SYNC
-		}
+			var chunkWG sync.WaitGroup
+			chunkWG.Add(len(chunks))
 
-		pruned, err := l.rounds.Save(latest)
-		if err != nil {
-			fmt.Printf("Failed to save finalized round to our database: %v\n", err)
-			goto SYNC
-		}
-
-		if pruned != nil {
-			count := l.graph.PruneBelowDepth(pruned.End.Depth)
-
-			logger := log.Consensus("prune")
 			logger.Debug().
-				Int("num_tx", count).
-				Uint64("current_round_id", latest.Index).
-				Uint64("pruned_round_id", pruned.Index).
-				Msg("Pruned away round and transactions.")
+				Int("num_chunks", len(sources)).
+				Int("num_workers", cap(workers)).
+				Msg("Starting up workers to downloaded all chunks of data needed to sync to the latest round...")
+
+			for i := 0; i < cap(workers); i++ {
+				go func() {
+					for src := range workers {
+						req := &SyncRequest{Data: &SyncRequest_Checksum{Checksum: src.checksum[:]}}
+
+						for i := 0; i < len(src.streams); i++ {
+							stream := src.streams[rand.Intn(len(src.streams))]
+
+							// Lock the stream so that other workers may not concurrently interact
+							// with the exact same stream at once.
+
+							streamLock.Lock()
+							if _, exists := streamLocks[stream]; !exists {
+								streamLocks[stream] = new(sync.Mutex)
+							}
+							lock := streamLocks[stream]
+							streamLock.Unlock()
+
+							lock.Lock()
+
+							if err := stream.Send(req); err != nil {
+								lock.Unlock()
+								continue
+							}
+
+							res, err := stream.Recv()
+							if err != nil {
+								lock.Unlock()
+								continue
+							}
+
+							lock.Unlock()
+
+							chunk := res.GetChunk()
+							if chunk == nil {
+								continue
+							}
+
+							if len(chunk) > sys.SyncChunkSize {
+								continue
+							}
+
+							if blake2b.Sum256(chunk[:]) != src.checksum {
+								continue
+							}
+
+							// We found the chunk! Store the chunks contents.
+
+							chunks[src.idx] = chunk
+							break
+						}
+
+						chunkWG.Done()
+					}
+
+					workerWG.Done()
+				}()
+			}
+
+			for _, src := range sources {
+				workers <- src
+			}
+
+			chunkWG.Wait() // Wait until all chunks have been received.
+			close(workers)
+			workerWG.Wait() // Wait until all workers have been closed.
+
+			logger.Debug().
+				Int("num_chunks", len(sources)).
+				Int("num_workers", cap(workers)).
+				Msg("Downloaded whatever chunks were available to sync to the latest round, and shutted down all workers. Checking validity of chunks...")
+
+			dispose() // Shutdown all streams as we no longer need them.
+
+			var diff []byte
+
+			for i, chunk := range chunks {
+				if chunk == nil {
+					logger.Error().
+						Uint64("target_round", latest.Index).
+						Hex("chunk_checksum", sources[i].checksum[:]).
+						Msg("Could not download one of the chunks necessary to sync to the latest round! Retrying...")
+
+					goto PULLSYNC
+				}
+
+				diff = append(diff, chunk...)
+			}
+
+			logger.Info().
+				Int("num_chunks", len(sources)).
+				Uint64("target_round", latest.Index).
+				Msg("All chunks have been successfully verified and re-assembled into a diff. Applying diff...")
+
+			snapshot := l.accounts.Snapshot()
+
+			if err := snapshot.ApplyDiff(diff); err != nil {
+				logger.Error().
+					Uint64("target_round", latest.Index).
+					Err(err).
+					Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
+				goto PULLSYNC
+			}
+
+			if checksum := snapshot.Checksum(); checksum != latest.Merkle {
+				logger.Error().
+					Uint64("target_round", latest.Index).
+					Hex("expected_merkle_root", latest.Merkle[:]).
+					Hex("yielded_merkle_root", checksum[:]).
+					Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
+
+				goto PULLSYNC
+			}
+
+			pruned, err := l.rounds.Save(latest)
+			if err != nil {
+				fmt.Printf("Failed to save finalized round to our database: %v\n", err)
+				goto PULLSYNC
+			}
+
+			if pruned != nil {
+				count := l.graph.PruneBelowDepth(pruned.End.Depth)
+
+				logger := log.Consensus("prune")
+				logger.Debug().
+					Int("num_tx", count).
+					Uint64("current_round_id", latest.Index).
+					Uint64("pruned_round_id", pruned.Index).
+					Msg("Pruned away round and transactions.")
+			}
+
+			l.graph.UpdateRoot(latest.End)
+
+			if err := l.accounts.Commit(snapshot); err != nil {
+				logger := log.Node()
+				logger.Fatal().Err(err).Msg("failed to commit collapsed state to our database")
+			}
+
+			logger = log.Sync("apply")
+			logger.Info().
+				Int("num_chunks", len(chunks)).
+				Uint64("old_round", current.Index).
+				Uint64("new_round", latest.Index).
+				Uint8("old_difficulty", current.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
+				Uint8("new_difficulty", latest.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
+				Hex("new_root", latest.End.ID[:]).
+				Hex("old_root", current.End.ID[:]).
+				Hex("new_merkle_root", latest.Merkle[:]).
+				Hex("old_merkle_root", current.Merkle[:]).
+				Msg("Successfully built a new state Snapshot out of chunk(s) we have received from peers.")
+
+			restart()
 		}
-
-		l.graph.UpdateRoot(latest.End)
-
-		if err := l.accounts.Commit(snapshot); err != nil {
-			logger := log.Node()
-			logger.Fatal().Err(err).Msg("failed to commit collapsed state to our database")
-		}
-
-		logger = log.Sync("apply")
-		logger.Info().
-			Int("num_chunks", len(chunks)).
-			Uint64("old_round", current.Index).
-			Uint64("new_round", latest.Index).
-			Uint8("old_difficulty", current.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-			Uint8("new_difficulty", latest.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-			Hex("new_root", latest.End.ID[:]).
-			Hex("old_root", current.End.ID[:]).
-			Hex("new_merkle_root", latest.Merkle[:]).
-			Hex("old_merkle_root", current.Merkle[:]).
-			Msg("Successfully built a new state Snapshot out of chunk(s) we have received from peers.")
-
-		restart()
 	}
 }
 

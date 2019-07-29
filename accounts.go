@@ -20,14 +20,14 @@
 package wavelet
 
 import (
-	"context"
-	"github.com/perlin-network/wavelet/avl"
-	"github.com/perlin-network/wavelet/store"
-	"github.com/pkg/errors"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
+
+	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/store"
+	"github.com/pkg/errors"
 )
 
 type Accounts struct {
@@ -44,15 +44,19 @@ func NewAccounts(kv store.KV) *Accounts {
 }
 
 // GC periodically garbage collects every 5 seconds. Only one
-// instance of GC worker can run at any time.
-func (a *Accounts) GC(ctx context.Context) {
+// instance of GC worker can run at any time. It accepts a
+// read-only channel that is used to signal the GC to stop.
+func (a *Accounts) GC(stop <-chan struct{}, stopWG *sync.WaitGroup) {
+	defer stopWG.Done()
+
 	timer := time.NewTicker(5 * time.Second)
 	defer timer.Stop()
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-stop:
 			return
+
 		case <-timer.C:
 			p := atomic.SwapPointer((*unsafe.Pointer)(unsafe.Pointer(&a.profile)), nil)
 			if p != nil {
