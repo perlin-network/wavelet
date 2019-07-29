@@ -28,8 +28,9 @@ func TestMain(t *testing.T) {
 	port := nextPort(t)
 	apiPort := nextPort(t)
 
-	go Run([]string{"wavelet", "--port", port, "--api.port", apiPort},
+	cleanup := runWavelet(TestWaveletArgs{Port: port, APIPort: apiPort},
 		nopStdin(), ioutil.Discard)
+	defer cleanup()
 	waitForAPI(t, apiPort)
 
 	ledger := getLedgerStatusT(t, apiPort)
@@ -44,8 +45,9 @@ func TestMain_WithWalletString(t *testing.T) {
 	port := nextPort(t)
 	apiPort := nextPort(t)
 
-	go Run([]string{"wavelet", "--port", port, "--api.port", apiPort, "--wallet", wallet},
+	cleanup := runWavelet(TestWaveletArgs{Port: port, APIPort: apiPort, Wallet: wallet},
 		nopStdin(), ioutil.Discard)
+	defer cleanup()
 	waitForAPI(t, apiPort)
 
 	ledger := getLedgerStatusT(t, apiPort)
@@ -70,8 +72,9 @@ func TestMain_WithWalletFile(t *testing.T) {
 	port := nextPort(t)
 	apiPort := nextPort(t)
 
-	go Run([]string{"wavelet", "--port", port, "--api.port", apiPort, "--wallet", walletPath},
+	cleanup := runWavelet(TestWaveletArgs{Port: port, APIPort: apiPort, Wallet: walletPath},
 		nopStdin(), ioutil.Discard)
+	defer cleanup()
 	waitForAPI(t, apiPort)
 
 	ledger := getLedgerStatusT(t, apiPort)
@@ -84,8 +87,9 @@ func TestMain_WithInvalidWallet(t *testing.T) {
 	port := nextPort(t)
 	apiPort := nextPort(t)
 
-	go Run([]string{"wavelet", "--port", port, "--api.port", apiPort, "--wallet", wallet},
+	cleanup := runWavelet(TestWaveletArgs{Port: port, APIPort: apiPort, Wallet: wallet},
 		nopStdin(), ioutil.Discard)
+	defer cleanup()
 	waitForAPI(t, apiPort)
 
 	ledger := getLedgerStatusT(t, apiPort)
@@ -101,9 +105,9 @@ func TestMain_Status(t *testing.T) {
 	stdin := make(chan string)
 	stdout := newMockStdout()
 
-	go Run([]string{"wavelet", "--port", port, "--api.port", apiPort, "--wallet", defaultWallet},
+	cleanup := runWavelet(TestWaveletArgs{Port: port, APIPort: apiPort, Wallet: defaultWallet},
 		mockStdin(stdin), stdout)
-
+	defer cleanup()
 	waitForAPI(t, apiPort)
 
 	stdin <- "status"
@@ -122,9 +126,9 @@ func TestMain_Pay(t *testing.T) {
 	stdin := make(chan string)
 	stdout := newMockStdout()
 
-	go Run([]string{"wavelet", "--port", port, "--api.port", apiPort, "--wallet", defaultWallet},
+	cleanup := runWavelet(TestWaveletArgs{Port: port, APIPort: apiPort, Wallet: defaultWallet},
 		mockStdin(stdin), stdout)
-
+	defer cleanup()
 	waitForAPI(t, apiPort)
 
 	recipient := keys.PublicKey()
@@ -155,15 +159,16 @@ func TestMain_Find(t *testing.T) {
 	stdin := make(chan string)
 	stdout := newMockStdout()
 
-	go Run([]string{"wavelet", "--port", port, "--api.port", apiPort, "--wallet", defaultWallet},
+	cleanup := runWavelet(TestWaveletArgs{Port: port, APIPort: apiPort, Wallet: defaultWallet},
 		mockStdin(stdin), stdout)
-
+	defer cleanup()
 	waitForAPI(t, apiPort)
 
 	recipient := keys.PublicKey()
 	stdin <- fmt.Sprintf("p %s 99999", hex.EncodeToString(recipient[:]))
 
-	txID := extractTxID(t, stdout.Search(t, "Success! Your payment transaction ID:"))
+	out := stdout.Search(t, "Success! Your payment transaction ID:")
+	txID := extractTxID(t, out)
 
 	// Wait for the transction to be available
 	waitFor(t, func() error {
@@ -182,9 +187,9 @@ func TestMain_PlaceStake(t *testing.T) {
 	stdin := make(chan string)
 	stdout := newMockStdout()
 
-	go Run([]string{"wavelet", "--port", port, "--api.port", apiPort, "--wallet", defaultWallet},
+	cleanup := runWavelet(TestWaveletArgs{Port: port, APIPort: apiPort, Wallet: defaultWallet},
 		mockStdin(stdin), stdout)
-
+	defer cleanup()
 	waitForAPI(t, apiPort)
 
 	stdin <- "ps 1000"
@@ -204,9 +209,9 @@ func TestMain_WithdrawStake(t *testing.T) {
 	stdin := make(chan string)
 	stdout := newMockStdout()
 
-	go Run([]string{"wavelet", "--port", port, "--api.port", apiPort, "--wallet", defaultWallet},
+	cleanup := runWavelet(TestWaveletArgs{Port: port, APIPort: apiPort, Wallet: defaultWallet},
 		mockStdin(stdin), stdout)
-
+	defer cleanup()
 	waitForAPI(t, apiPort)
 
 	stdin <- "ws 1000"
@@ -226,9 +231,9 @@ func TestMain_WithdrawReward(t *testing.T) {
 	stdin := make(chan string)
 	stdout := newMockStdout()
 
-	go Run([]string{"wavelet", "--port", port, "--api.port", apiPort, "--wallet", defaultWallet},
+	cleanup := runWavelet(TestWaveletArgs{Port: port, APIPort: apiPort, Wallet: defaultWallet},
 		mockStdin(stdin), stdout)
-
+	defer cleanup()
 	waitForAPI(t, apiPort)
 
 	stdin <- "wr 1000"
@@ -441,7 +446,7 @@ func extractTxID(t *testing.T, s string) string {
 }
 
 func waitFor(t *testing.T, fn func() error) {
-	timeout := time.NewTimer(time.Second * 30)
+	timeout := time.NewTimer(time.Second * 10)
 	ticker := time.NewTicker(time.Second * 1)
 
 	for {
@@ -454,5 +459,23 @@ func waitFor(t *testing.T, fn func() error) {
 				return
 			}
 		}
+	}
+}
+
+type TestWaveletArgs struct {
+	Port    string
+	APIPort string
+	Wallet  string
+}
+
+func runWavelet(args TestWaveletArgs, stdin io.ReadCloser, stdout io.Writer) func() {
+	rawArgs := []string{"wavelet", "--port", args.Port, "--api.port", args.APIPort}
+	if args.Wallet != "" {
+		rawArgs = append(rawArgs, []string{"--wallet", args.Wallet}...)
+	}
+
+	Run(rawArgs, stdin, stdout)
+	return func() {
+		stdin.Close()
 	}
 }
