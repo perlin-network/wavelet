@@ -441,7 +441,7 @@ func extractTxID(t *testing.T, s string) string {
 }
 
 func waitFor(t *testing.T, fn func() error) {
-	timeout := time.NewTimer(time.Second * 10)
+	timeout := time.NewTimer(time.Second * 30)
 	ticker := time.NewTicker(time.Second * 1)
 
 	for {
