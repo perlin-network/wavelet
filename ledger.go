@@ -347,7 +347,7 @@ func (l *Ledger) PullMissingTransactions() {
 			select {
 			case <-l.sync:
 				return
-			case <-time.After(1 * time.Second):
+			case <-time.After(100 * time.Millisecond):
 			}
 
 			continue
@@ -521,7 +521,7 @@ FINALIZE_ROUNDS:
 						res, err := client.Query(ctx, req, grpc.Peer(p))
 						if err != nil {
 							cancel()
-							fmt.Println(err)
+							fmt.Println("error while querying peer: ", err)
 							return
 						}
 
@@ -584,7 +584,7 @@ FINALIZE_ROUNDS:
 						results, err := l.collapseTransactions(round.Index, round.Start, round.End, false)
 						if err != nil {
 							if !strings.Contains(err.Error(), "missing ancestor") {
-								fmt.Println(err)
+								fmt.Println("error collapsing transactions:", err)
 							}
 							return
 						}
@@ -651,7 +651,7 @@ FINALIZE_ROUNDS:
 		results, err := l.collapseTransactions(preferred.Index, preferred.Start, preferred.End, true)
 		if err != nil {
 			if !strings.Contains(err.Error(), "missing ancestor") {
-				fmt.Println(err)
+				fmt.Println("error collapsing transactions during finalization:", err)
 			}
 			continue
 		}
