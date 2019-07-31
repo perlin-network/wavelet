@@ -153,7 +153,7 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 	// Do not consider transactions below root.depth by exactly DEPTH_DIFF to be incomplete
 	// at all. Permit them to have incomplete parent histories.
 
-	if g.rootDepth != uint64(sys.MaxParentsPerTransaction)+tx.Depth {
+	if g.rootDepth != sys.MaxDepthDiff+tx.Depth {
 		for _, parentID := range tx.ParentIDs {
 			if _, stored := g.transactions[parentID]; !stored {
 				parentsMissing = true
