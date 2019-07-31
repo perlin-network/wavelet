@@ -231,8 +231,12 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 		return errors.Wrap(err, "could not init vm")
 	}
 
+	var firstRun bool
+
 	if mem := LoadContractMemorySnapshot(snapshot, id); mem != nil {
 		vm.Memory = mem
+	} else {
+		firstRun = true
 	}
 
 	e.ID = id
@@ -249,14 +253,33 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 		return errors.New("entry function must not have parameters")
 	}
 
-	vm.Ignite(entry)
+	if firstRun {
+		if vm.Module.Base.Start != nil {
+			startID := int(vm.Module.Base.Start.Index)
 
-	for !vm.Exited {
-		vm.Execute()
+			vm.Ignite(startID)
 
-		if vm.Delegate != nil {
-			vm.Delegate()
-			vm.Delegate = nil
+			for !vm.Exited {
+				vm.Execute()
+
+				if vm.Delegate != nil {
+					vm.Delegate()
+					vm.Delegate = nil
+				}
+			}
+		}
+	}
+
+	if vm.ExitError == nil {
+		vm.Ignite(entry)
+
+		for !vm.Exited {
+			vm.Execute()
+
+			if vm.Delegate != nil {
+				vm.Delegate()
+				vm.Delegate = nil
+			}
 		}
 	}
 
@@ -277,7 +300,11 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 		e.GasLimitExceeded = false
 	}
 
-	return nil
+	if vm.ExitError != nil {
+		return utils.UnifyError(vm.ExitError)
+	} else {
+		return nil
+	}
 }
 
 func LoadContractMemorySnapshot(snapshot *avl.Tree, id AccountID) []byte {
