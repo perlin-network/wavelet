@@ -19,23 +19,21 @@
 
 package main
 
-import "github.com/chzyer/readline"
+import (
+	"strings"
+
+	"github.com/benpye/readline"
+)
 
 func (cli *CLI) getCompleter() *readline.PrefixCompleter {
-	return readline.PcItemDynamic(func(string) []string {
-		return cli.completion
-	})
-}
-
-func (cli *CLI) addCompletion(ids ...string) {
-MainLoop:
-	for _, id := range ids {
-		for _, c := range cli.completion {
-			if c == id {
-				continue MainLoop
-			}
+	return readline.PcItemDynamic(func(line string) []string {
+		f := strings.Split(line, " ")
+		if len(f) < 2 {
+			return nil
 		}
 
-		cli.completion = append(cli.completion, id)
-	}
+		text := f[len(f)-1]
+
+		return cli.ledger.Find(text, 10)
+	})
 }

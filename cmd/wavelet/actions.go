@@ -525,9 +525,6 @@ func (cli *CLI) withdrawStake(ctx *cli.Context) {
 
 	txID := hex.EncodeToString(tx.ID[:])
 
-	// Add the ID into the completion list
-	cli.addCompletion(txID)
-
 	cli.logger.Info().
 		Msg("Success! Your stake withdrawal transaction ID: " + txID)
 }
@@ -569,9 +566,6 @@ func (cli *CLI) sendTransaction(tx wavelet.Transaction) (wavelet.Transaction, er
 	tx = wavelet.AttachSenderToTransaction(
 		cli.keys, tx, cli.ledger.Graph().FindEligibleParents()...,
 	)
-
-	// Add the ID into the completion list
-	cli.addCompletion(hex.EncodeToString(tx.ID[:]))
 
 	if err := cli.ledger.AddTransaction(tx); err != nil {
 		if errors.Cause(err) != wavelet.ErrMissingParents {

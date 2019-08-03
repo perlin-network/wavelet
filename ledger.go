@@ -25,6 +25,11 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math/rand"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
@@ -36,10 +41,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/peer"
-	"math/rand"
-	"strings"
-	"sync"
-	"time"
 )
 
 type Ledger struct {
@@ -178,10 +179,13 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 // Find searches through complete transaction and account indices for a specified
 // query string. All indices that queried are in the form of tries. It is safe
 // to call this method concurrently.
-func (l *Ledger) Find(query string, count int) []string {
+func (l *Ledger) Find(query string, max int) (results []string) {
 	var err error
 
-	results := make([]string, 0, count)
+	if max > 0 {
+		results = make([]string, 0, max)
+	}
+
 	prefix := []byte(query)
 
 	if len(query)%2 == 1 { // Cut off a single character.
@@ -201,7 +205,7 @@ func (l *Ledger) Find(query string, count int) []string {
 			return false
 		}
 
-		if len(results) >= count {
+		if max > 0 && len(results) >= max {
 			return false
 		}
 
@@ -209,7 +213,12 @@ func (l *Ledger) Find(query string, count int) []string {
 		return true
 	})
 
-	return append(results, l.indexer.Find(query, count-len(results))...)
+	var count = -1
+	if max > 0 {
+		count = max - len(results)
+	}
+
+	return append(results, l.indexer.Find(query, count)...)
 }
 
 // PushSendQuota permits one token into this nodes send quota bucket every millisecond
