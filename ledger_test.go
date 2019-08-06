@@ -43,7 +43,7 @@ func TestLedger_BroadcastNop(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	timeout := time.NewTimer(time.Second * 60)
+	timeout := time.NewTimer(time.Minute * 5)
 	for {
 		select {
 		case <-timeout.C:
