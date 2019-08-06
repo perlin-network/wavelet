@@ -293,8 +293,6 @@ func (l *Ledger) BroadcastingNop() bool {
 func (l *Ledger) WaitForConsensus(timeout time.Duration) bool {
 	l.finalizeChLock.Lock()
 	ch := make(chan struct{})
-	defer close(ch)
-
 	l.finalizeCh = ch
 	l.finalizeChLock.Unlock()
 
@@ -306,6 +304,9 @@ func (l *Ledger) WaitForConsensus(timeout time.Duration) bool {
 		return true
 
 	case <-timer.C:
+		l.finalizeChLock.Lock()
+		l.finalizeCh = nil
+		l.finalizeChLock.Unlock()
 		return false
 	}
 }
