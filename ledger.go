@@ -28,7 +28,6 @@ import (
 	"math/rand"
 	"strings"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/perlin-network/noise"
@@ -73,16 +72,32 @@ type Ledger struct {
 	sendQuota chan struct{}
 }
 
-func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
-	return newLedger(kv, client, genesis, true)
+type config struct {
+	GCDisabled bool
+	Genesis    *string
 }
 
-// NewLedgerWithoutGC should only be used for testing, as it disables GC.
-func NewLedgerWithoutGC(t testing.TB, kv store.KV, client *skademlia.Client) *Ledger {
-	return newLedger(kv, client, nil, false)
+type Option func(cfg *config)
+
+// WithoutGC disables GC. Used for testing purposes.
+func WithoutGC() Option {
+	return func(cfg *config) {
+		cfg.GCDisabled = true
+	}
 }
 
-func newLedger(kv store.KV, client *skademlia.Client, genesis *string, gc bool) *Ledger {
+func WithGenesis(genesis *string) Option {
+	return func(cfg *config) {
+		cfg.Genesis = genesis
+	}
+}
+
+func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
+	var cfg config
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	logger := log.Node()
 
 	metrics := NewMetrics(context.TODO())
@@ -90,7 +105,7 @@ func newLedger(kv store.KV, client *skademlia.Client, genesis *string, gc bool) 
 
 	accounts := NewAccounts(kv)
 
-	if gc {
+	if !cfg.GCDisabled {
 		go accounts.GC(context.Background())
 	}
 
@@ -99,7 +114,7 @@ func newLedger(kv store.KV, client *skademlia.Client, genesis *string, gc bool) 
 	var round *Round
 
 	if rounds != nil && err != nil {
-		genesis := performInception(accounts.tree, genesis)
+		genesis := performInception(accounts.tree, cfg.Genesis)
 		if err := accounts.Commit(nil); err != nil {
 			logger.Fatal().Err(err).Msg("BUG: accounts.Commit")
 		}

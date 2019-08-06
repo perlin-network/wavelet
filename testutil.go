@@ -96,7 +96,7 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
 	kv, cleanup := store.NewTestKV(t, "inmem", "db")
-	ledger := NewLedgerWithoutGC(t, kv, client)
+	ledger := NewLedger(kv, client, WithoutGC())
 	server := client.Listen()
 	RegisterWaveletServer(server, ledger.Protocol())
 

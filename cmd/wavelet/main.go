@@ -23,6 +23,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"os"
+	"sort"
+	"strconv"
+	"time"
+
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher"
 	"github.com/perlin-network/noise/edwards25519"
@@ -38,13 +46,6 @@ import (
 	"google.golang.org/grpc"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
-	"io/ioutil"
-	"net"
-	"net/http"
-	"os"
-	"sort"
-	"strconv"
-	"time"
 )
 
 import _ "net/http/pprof"
@@ -316,7 +317,7 @@ func start(cfg *Config) {
 		logger.Fatal().Err(err).Msgf("Failed to create/open database located at %q.", cfg.Database)
 	}
 
-	ledger := wavelet.NewLedger(kv, client, cfg.Genesis)
+	ledger := wavelet.NewLedger(kv, client, wavelet.WithGenesis(cfg.Genesis))
 
 	go func() {
 		server := client.Listen()

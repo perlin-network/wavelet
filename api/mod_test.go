@@ -26,15 +26,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/buaazp/fasthttprouter"
-	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/store"
-	"github.com/perlin-network/wavelet/sys"
-	"github.com/pkg/errors"
-	"github.com/stretchr/testify/assert"
-	"github.com/valyala/fasthttp"
-	"github.com/valyala/fastjson"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -44,6 +35,16 @@ import (
 	"testing"
 	"testing/quick"
 	"time"
+
+	"github.com/buaazp/fasthttprouter"
+	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/store"
+	"github.com/perlin-network/wavelet/sys"
+	"github.com/pkg/errors"
+	"github.com/stretchr/testify/assert"
+	"github.com/valyala/fasthttp"
+	"github.com/valyala/fastjson"
 )
 
 func TestListTransaction(t *testing.T) {
@@ -744,7 +745,7 @@ func createLedger(t *testing.T) *wavelet.Ledger {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
-	ledger := wavelet.NewLedger(store.NewInmem(), skademlia.NewClient(":0", keys), nil)
+	ledger := wavelet.NewLedger(store.NewInmem(), skademlia.NewClient(":0", keys))
 	return ledger
 }
 
