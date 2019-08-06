@@ -71,9 +71,6 @@ type Ledger struct {
 	cacheChunks   *LRU
 
 	sendQuota chan struct{}
-
-	finalizeCh     chan struct{}
-	finalizeChLock sync.RWMutex
 }
 
 func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
@@ -296,29 +293,6 @@ func (l *Ledger) BroadcastingNop() bool {
 	defer l.broadcastNopsLock.Unlock()
 
 	return broadcastNops
-}
-
-// WaitForConsensus blocks until the ledger reaches consensus.
-// It returns false if it took longer than the timeout duration.
-func (l *Ledger) WaitForConsensus(timeout time.Duration) bool {
-	l.finalizeChLock.Lock()
-	ch := make(chan struct{})
-	l.finalizeCh = ch
-	l.finalizeChLock.Unlock()
-
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
-	select {
-	case <-ch:
-		return true
-
-	case <-timer.C:
-		l.finalizeChLock.Lock()
-		l.finalizeCh = nil
-		l.finalizeChLock.Unlock()
-		return false
-	}
 }
 
 // BroadcastNop has the node send a nop transaction should they have sufficient
@@ -742,12 +716,6 @@ FINALIZE_ROUNDS:
 			Msg("Finalized consensus round, and initialized a new round.")
 
 		//go ExportGraphDOT(finalized, l.graph)
-
-		l.finalizeChLock.RLock()
-		if l.finalizeCh != nil {
-			l.finalizeCh <- struct{}{}
-		}
-		l.finalizeChLock.RUnlock()
 	}
 }
 

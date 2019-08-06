@@ -175,7 +175,23 @@ func (l *TestLedger) Reward() uint64 {
 func (l *TestLedger) WaitForConsensus() <-chan bool {
 	ch := make(chan bool)
 	go func() {
-		ch <- l.ledger.WaitForConsensus(time.Second * 10)
+		start := l.ledger.Rounds().Latest()
+		timeout := time.NewTimer(time.Second * 10)
+		ticker := time.NewTicker(time.Millisecond * 100)
+		for {
+			select {
+			case <-timeout.C:
+				ch <- false
+				return
+
+			case <-ticker.C:
+				current := l.ledger.Rounds().Latest()
+				if current.Index > start.Index {
+					ch <- true
+					return
+				}
+			}
+		}
 	}()
 
 	return ch
