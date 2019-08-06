@@ -20,7 +20,6 @@
 package wavelet
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -112,7 +111,7 @@ func (s *Snowball) Tick(round *Round) {
 
 	if s.lastID != round.ID { // Handle termination case.
 		if s.lastID != ZeroRoundID {
-			fmt.Printf("Snowball (%s) liveness fault: Last ID is %x with count %d, and new ID is %x.\n", s.name, s.lastID, s.count, round.ID)
+			//fmt.Printf("Snowball (%s) liveness fault: Last ID is %x with count %d, and new ID is %x.\n", s.name, s.lastID, s.count, round.ID)
 		}
 
 		s.lastID = round.ID
