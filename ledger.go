@@ -165,7 +165,9 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 	err := l.graph.AddTransaction(tx)
 
 	if err != nil && errors.Cause(err) != ErrAlreadyExists {
-		if !strings.Contains(errors.Cause(err).Error(), "transaction has no parents") {
+		if !strings.Contains(errors.Cause(err).Error(), "transaction has no parents") &&
+			!strings.Contains(errors.Cause(err).Error(), "parents for transaction are not in graph") {
+
 			fmt.Println(err)
 		}
 		return err
@@ -287,6 +289,8 @@ func (l *Ledger) Snapshot() *avl.Tree {
 	return l.accounts.Snapshot()
 }
 
+// BroadcastingNop returns true if the node is
+// supposed to broadcast nop transaction.
 func (l *Ledger) BroadcastingNop() bool {
 	l.broadcastNopsLock.Lock()
 	broadcastNops := l.broadcastNops
