@@ -309,7 +309,7 @@ func (l *Ledger) Snapshot() *avl.Tree {
 func (l *Ledger) BroadcastingNop() bool {
 	l.broadcastNopsLock.Lock()
 	broadcastNops := l.broadcastNops
-	defer l.broadcastNopsLock.Unlock()
+	l.broadcastNopsLock.Unlock()
 
 	return broadcastNops
 }
