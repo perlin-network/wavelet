@@ -8,7 +8,14 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestLedger_TransactionThroughput(t *testing.T) {
+// TestLedger_BroadcastNop checks that:
+//
+// * The ledger will keep broadcasting nop tx as long
+//   as there are unapplied tx (latestTxDepth <= rootDepth).
+//
+// * The ledger will stop broadcasting nop once there
+//   are no more unapplied tx.
+func TestLedger_BroadcastNop(t *testing.T) {
 	testnet := NewTestNetwork(t)
 	defer testnet.Cleanup()
 
@@ -26,6 +33,7 @@ func TestLedger_TransactionThroughput(t *testing.T) {
 		}
 	}
 
+	// Add lots of transactions
 	txs := make([]Transaction, 1000)
 	var err error
 
