@@ -175,7 +175,7 @@ func (l *TestLedger) Reward() uint64 {
 func (l *TestLedger) WaitForConsensus() <-chan bool {
 	ch := make(chan bool)
 	go func() {
-		ch <- l.ledger.WaitForConsensus(time.Second * 2)
+		ch <- l.ledger.WaitForConsensus(time.Second * 10)
 	}()
 
 	return ch
