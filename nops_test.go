@@ -19,6 +19,13 @@ func TestLedger_TransactionThroughput(t *testing.T) {
 	alice := testnet.AddNode(t, 1000000)
 	bob := testnet.AddNode(t, 0)
 
+	// Wait for alice to receive her PERL from the faucet
+	for <-alice.WaitForConsensus() {
+		if alice.Balance() > 0 {
+			break
+		}
+	}
+
 	txs := make([]Transaction, 1000)
 	var err error
 
