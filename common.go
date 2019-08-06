@@ -21,11 +21,10 @@ package wavelet
 
 import (
 	"crypto/md5"
-
 	"golang.org/x/crypto/blake2b"
-
-	_ "github.com/perlin-network/wavelet/internal/snappy"
 )
+
+import _ "github.com/perlin-network/wavelet/internal/snappy"
 
 const (
 	SizeTransactionID   = blake2b.Size256
