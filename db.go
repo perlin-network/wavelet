@@ -50,6 +50,7 @@ var (
 	keyAccountContractNumPages   = [...]byte{0x6}
 	keyAccountContractPages      = [...]byte{0x7}
 	keyAccountContractGasBalance = [...]byte{0x8}
+	keyAccountContractGlobals    = [...]byte{0x9}
 )
 
 type RewardWithdrawalRequest struct {
@@ -202,6 +203,14 @@ func WriteAccountContractNumPages(tree *avl.Tree, id TransactionID, numPages uin
 	binary.LittleEndian.PutUint64(buf[:], numPages)
 
 	writeUnderAccounts(tree, id, keyAccountContractNumPages[:], buf[:])
+}
+
+func ReadAccountContractGlobals(tree *avl.Tree, id TransactionID) ([]byte, bool) {
+	return readUnderAccounts(tree, id, keyAccountContractGlobals[:])
+}
+
+func WriteAccountContractGlobals(tree *avl.Tree, id TransactionID, globals []byte) {
+	writeUnderAccounts(tree, id, keyAccountContractGlobals[:], globals)
 }
 
 func ReadAccountContractPage(tree *avl.Tree, id TransactionID, idx uint64) ([]byte, bool) {

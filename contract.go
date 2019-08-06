@@ -33,6 +33,8 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
+	"reflect"
+	"unsafe"
 )
 
 var (
@@ -215,14 +217,14 @@ func (e *ContractExecutor) ResolveGlobal(module, field string) int64 {
 
 func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Round, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte) error {
 	config := exec.VMConfig{
-		DefaultMemoryPages: 4,
-		MaxMemoryPages:     32,
+		DefaultMemoryPages: sys.ContractDefaultMemoryPages,
+		MaxMemoryPages:     sys.ContractMaxMemoryPages,
 
-		DefaultTableSize: PageSize,
-		MaxTableSize:     PageSize,
+		DefaultTableSize: sys.ContractTableSize,
+		MaxTableSize:     sys.ContractTableSize,
 
-		MaxValueSlots:     4096,
-		MaxCallStackDepth: 256,
+		MaxValueSlots:     sys.ContractMaxValueSlots,
+		MaxCallStackDepth: sys.ContractMaxCallStackDepth,
 		GasLimit:          gasLimit,
 	}
 
@@ -231,10 +233,21 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 		return errors.Wrap(err, "could not init vm")
 	}
 
+	// We can safely initialize the VM first before checking this because the size of the global slice
+	// is proportional to the size of the contract's global section.
+	if len(vm.Globals) > sys.ContractMaxGlobals {
+		return errors.New("too many globals")
+	}
+
 	var firstRun bool
 
 	if mem := LoadContractMemorySnapshot(snapshot, id); mem != nil {
 		vm.Memory = mem
+		if globals, exists := LoadContractGlobals(snapshot, id); exists {
+			if len(globals) == len(vm.Globals) {
+				vm.Globals = globals
+			}
+		}
 	} else {
 		firstRun = true
 	}
@@ -290,6 +303,7 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 
 	if vm.ExitError == nil && len(e.Error) == 0 {
 		SaveContractMemorySnapshot(snapshot, id, vm.Memory)
+		SaveContractGlobals(snapshot, id, vm.Globals)
 	}
 
 	if vm.ExitError != nil && utils.UnifyError(vm.ExitError).Error() == "gas limit exceeded" {
@@ -305,6 +319,35 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 	} else {
 		return nil
 	}
+}
+
+func LoadContractGlobals(snapshot *avl.Tree, id AccountID) ([]int64, bool) {
+	raw, exists := ReadAccountContractGlobals(snapshot, id)
+	if !exists {
+		return nil, false
+	}
+
+	if len(raw)%8 != 0 {
+		return nil, false
+	}
+
+	// We cannot use the unsafe method as in SaveContractGlobals due to possible alignment issues.
+	buf := make([]int64, 0, len(raw)/8)
+	for i := 0; i < len(raw); i += 8 {
+		buf = append(buf, int64(binary.LittleEndian.Uint64(raw[i:])))
+	}
+	return buf, true
+}
+
+func SaveContractGlobals(snapshot *avl.Tree, id AccountID, globals []int64) {
+	oldHeader := (*reflect.SliceHeader)(unsafe.Pointer(&globals))
+
+	header := reflect.SliceHeader{
+		Data: oldHeader.Data,
+		Len:  oldHeader.Len * 8,
+		Cap:  oldHeader.Len * 8, // prevent appending in place
+	}
+	WriteAccountContractGlobals(snapshot, id, *(*[]byte)(unsafe.Pointer(&header)))
 }
 
 func LoadContractMemorySnapshot(snapshot *avl.Tree, id AccountID) []byte {
