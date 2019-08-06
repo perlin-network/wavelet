@@ -236,7 +236,6 @@ func (w ConsoleWriter) writeFields(evt map[string]interface{}, buf *bytes.Buffer
 			}
 		}
 
-		// Insert the field key
 		buf.WriteString(fn(field))
 
 		switch fValue := evt[field].(type) {
