@@ -51,10 +51,14 @@ func TestLedger_TransactionThroughput(t *testing.T) {
 
 			fmt.Printf("%d/%d tx applied\n", appliedCount, len(txs))
 
-			assert.True(t, alice.ledger.BroadcastingNop(),
-				"node should not stop broadcasting nop while there are unapplied tx")
+			if appliedCount < len(txs) {
+				assert.True(t, alice.ledger.BroadcastingNop(),
+					"node should not stop broadcasting nop while there are unapplied tx")
+			}
 
-			if appliedCount == len(txs) {
+			// The test is successful if all tx are applied,
+			// and nop broadcasting is stopped once all tx are applied
+			if appliedCount == len(txs) && !alice.ledger.BroadcastingNop() {
 				return
 			}
 		}
