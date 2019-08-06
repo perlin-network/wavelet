@@ -58,9 +58,10 @@ type Ledger struct {
 
 	consensus sync.WaitGroup
 
-	broadcastNops      bool
-	broadcastNopsDelay time.Time
-	broadcastNopsLock  sync.Mutex
+	broadcastNops         bool
+	broadcastNopsMaxDepth uint64
+	broadcastNopsDelay    time.Time
+	broadcastNopsLock     sync.Mutex
 
 	sync      chan struct{}
 	syncVotes chan vote
@@ -169,12 +170,13 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 		l.gossiper.Push(tx)
 
 		l.broadcastNopsLock.Lock()
-		if tx.Tag != sys.TagNop {
-			l.broadcastNopsDelay = time.Now()
-		}
-
-		if tx.Sender == l.client.Keys().PublicKey() && l.finalizer.Preferred() == nil {
+		if tx.Tag != sys.TagNop && tx.Sender == l.client.Keys().PublicKey() {
 			l.broadcastNops = true
+			l.broadcastNopsDelay = time.Now()
+
+			if tx.Depth > l.broadcastNopsMaxDepth {
+				l.broadcastNopsMaxDepth = tx.Depth
+			}
 		}
 		l.broadcastNopsLock.Unlock()
 	}
@@ -278,7 +280,7 @@ func (l *Ledger) Snapshot() *avl.Tree {
 	return l.accounts.Snapshot()
 }
 
-func (l *Ledger) BroadcastingNops() bool {
+func (l *Ledger) BroadcastingNop() bool {
 	l.broadcastNopsLock.Lock()
 	broadcastNops := l.broadcastNops
 	defer l.broadcastNopsLock.Unlock()
@@ -519,8 +521,12 @@ FINALIZE_ROUNDS:
 			continue FINALIZE_ROUNDS
 		}
 
+		// Only stop broadcasting nops if the most recently added transaction
+		// has been applied
 		l.broadcastNopsLock.Lock()
-		l.broadcastNops = false
+		if l.broadcastNops && l.broadcastNopsMaxDepth <= l.graph.RootDepth() {
+			l.broadcastNops = false
+		}
 		l.broadcastNopsLock.Unlock()
 
 		workerChan := make(chan *grpc.ClientConn, 16)

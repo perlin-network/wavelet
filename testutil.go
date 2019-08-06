@@ -261,7 +261,7 @@ func (l *TestLedger) FindTransaction(t testing.TB, id TransactionID) *Transactio
 }
 
 func (l *TestLedger) Applied(tx Transaction) bool {
-	return tx.Depth <= l.ledger.graph.RootDepth()
+	return tx.Depth <= l.ledger.Graph().RootDepth()
 }
 
 func TestWaitForConsensus(t testing.TB, timeout time.Duration, ledgers []*TestLedger) {
