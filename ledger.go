@@ -28,6 +28,7 @@ import (
 	"math/rand"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/perlin-network/noise"
@@ -76,6 +77,15 @@ type Ledger struct {
 }
 
 func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
+	return newLedger(kv, client, genesis, true)
+}
+
+// NewLedgerWithoutGC should only be used for testing, as it disables GC.
+func NewLedgerWithoutGC(t testing.TB, kv store.KV, client *skademlia.Client) *Ledger {
+	return newLedger(kv, client, nil, false)
+}
+
+func newLedger(kv store.KV, client *skademlia.Client, genesis *string, gc bool) *Ledger {
 	logger := log.Node()
 
 	metrics := NewMetrics(context.TODO())
@@ -83,8 +93,9 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 
 	accounts := NewAccounts(kv)
 
-	// TODO: disable GC only for test because it's causing test to panic
-	// go accounts.GC(context.Background())
+	if gc {
+		go accounts.GC(context.Background())
+	}
 
 	rounds, err := NewRounds(kv, sys.PruningLimit)
 
