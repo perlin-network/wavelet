@@ -19,7 +19,7 @@ func TestLedger_BroadcastNop(t *testing.T) {
 	testnet := NewTestNetwork(t)
 	defer testnet.Cleanup()
 
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 3; i++ {
 		testnet.AddNode(t, 0)
 	}
 
@@ -32,6 +32,10 @@ func TestLedger_BroadcastNop(t *testing.T) {
 			break
 		}
 	}
+
+	// Sleep for some time to give room for the nodes to
+	// bootstrap the overlay S/Kademlia network
+	time.Sleep(time.Second * 3)
 
 	// Add lots of transactions
 	txs := make([]Transaction, 1000)
