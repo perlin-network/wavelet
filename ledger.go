@@ -169,8 +169,7 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 
 	if err != nil && errors.Cause(err) != ErrAlreadyExists {
 		if !strings.Contains(errors.Cause(err).Error(), "transaction has no parents") {
-			logger := log.Node()
-			logger.Err(err).Msg("failed to add transaction")
+			fmt.Println(err)
 		}
 		return err
 	}
@@ -427,9 +426,7 @@ func (l *Ledger) PullMissingTransactions() {
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		batch, err := client.DownloadTx(ctx, req)
 		if err != nil {
-			logger := log.Node()
-			logger.Err(err).Msg("failed to download missing transactions")
-
+			fmt.Println("failed to download missing transactions:", err)
 			cancel()
 			continue
 		}
@@ -440,18 +437,12 @@ func (l *Ledger) PullMissingTransactions() {
 		for _, buf := range batch.Transactions {
 			tx, err := UnmarshalTransaction(bytes.NewReader(buf))
 			if err != nil {
-				logger := log.Node()
-				logger.Err(err).
-					Hex("tx_id", tx.ID[:]).
-					Msg("error unmarshaling downloaded tx")
+				fmt.Printf("error unmarshaling downloaded tx [%v]: %+v\n", err, tx)
 				continue
 			}
 
 			if err := l.AddTransaction(tx); err != nil && errors.Cause(err) != ErrMissingParents {
-				logger := log.Node()
-				logger.Err(err).
-					Hex("tx_id", tx.ID[:]).
-					Msg("error adding downloaded tx to graph")
+				fmt.Printf("error adding downloaded tx to graph [%v]: %+v\n", err, tx)
 				continue
 			}
 
