@@ -25,6 +25,11 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"math/rand"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
@@ -36,10 +41,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/peer"
-	"math/rand"
-	"strings"
-	"sync"
-	"time"
 )
 
 type Ledger struct {
@@ -57,9 +58,10 @@ type Ledger struct {
 
 	consensus sync.WaitGroup
 
-	broadcastNops      bool
-	broadcastNopsDelay time.Time
-	broadcastNopsLock  sync.Mutex
+	broadcastNops         bool
+	broadcastNopsMaxDepth uint64
+	broadcastNopsDelay    time.Time
+	broadcastNopsLock     sync.Mutex
 
 	sync      chan struct{}
 	syncVotes chan vote
@@ -70,21 +72,49 @@ type Ledger struct {
 	sendQuota chan struct{}
 }
 
-func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
+type config struct {
+	GCDisabled bool
+	Genesis    *string
+}
+
+type Option func(cfg *config)
+
+// WithoutGC disables GC. Used for testing purposes.
+func WithoutGC() Option {
+	return func(cfg *config) {
+		cfg.GCDisabled = true
+	}
+}
+
+func WithGenesis(genesis *string) Option {
+	return func(cfg *config) {
+		cfg.Genesis = genesis
+	}
+}
+
+func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
+	var cfg config
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	logger := log.Node()
 
 	metrics := NewMetrics(context.TODO())
 	indexer := NewIndexer()
 
 	accounts := NewAccounts(kv)
-	go accounts.GC(context.Background())
+
+	if !cfg.GCDisabled {
+		go accounts.GC(context.Background())
+	}
 
 	rounds, err := NewRounds(kv, sys.PruningLimit)
 
 	var round *Round
 
 	if rounds != nil && err != nil {
-		genesis := performInception(accounts.tree, genesis)
+		genesis := performInception(accounts.tree, cfg.Genesis)
 		if err := accounts.Commit(nil); err != nil {
 			logger.Fatal().Err(err).Msg("BUG: accounts.Commit")
 		}
@@ -162,12 +192,13 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 		l.gossiper.Push(tx)
 
 		l.broadcastNopsLock.Lock()
-		if tx.Tag != sys.TagNop {
-			l.broadcastNopsDelay = time.Now()
-		}
-
-		if tx.Sender == l.client.Keys().PublicKey() && l.finalizer.Preferred() == nil {
+		if tx.Tag != sys.TagNop && tx.Sender == l.client.Keys().PublicKey() {
 			l.broadcastNops = true
+			l.broadcastNopsDelay = time.Now()
+
+			if tx.Depth > l.broadcastNopsMaxDepth {
+				l.broadcastNopsMaxDepth = tx.Depth
+			}
 		}
 		l.broadcastNopsLock.Unlock()
 	}
@@ -269,6 +300,16 @@ func (l *Ledger) PerformConsensus() {
 
 func (l *Ledger) Snapshot() *avl.Tree {
 	return l.accounts.Snapshot()
+}
+
+// BroadcastingNop returns true if the node is
+// supposed to broadcast nop transaction.
+func (l *Ledger) BroadcastingNop() bool {
+	l.broadcastNopsLock.Lock()
+	broadcastNops := l.broadcastNops
+	l.broadcastNopsLock.Unlock()
+
+	return broadcastNops
 }
 
 // BroadcastNop has the node send a nop transaction should they have sufficient
@@ -387,7 +428,7 @@ func (l *Ledger) PullMissingTransactions() {
 		for _, buf := range batch.Transactions {
 			tx, err := UnmarshalTransaction(bytes.NewReader(buf))
 			if err != nil {
-				fmt.Printf("error unmarshaling downloaded tx [%v]: %+v", err, tx)
+				fmt.Printf("error unmarshaling downloaded tx [%v]: %+v\n", err, tx)
 				continue
 			}
 
@@ -474,8 +515,12 @@ FINALIZE_ROUNDS:
 			continue FINALIZE_ROUNDS
 		}
 
+		// Only stop broadcasting nops if the most recently added transaction
+		// has been applied
 		l.broadcastNopsLock.Lock()
-		l.broadcastNops = false
+		if l.broadcastNops && l.broadcastNopsMaxDepth <= l.finalizer.Preferred().End.Depth {
+			l.broadcastNops = false
+		}
 		l.broadcastNopsLock.Unlock()
 
 		workerChan := make(chan *grpc.ClientConn, 16)
