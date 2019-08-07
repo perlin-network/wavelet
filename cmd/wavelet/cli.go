@@ -154,14 +154,13 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 	)
 
 	for _, cmd := range c.app.Commands {
-		completers = append(completers, readline.PcItem(
-			cmd.Name, c.getCompleter(),
-		))
-
-		for _, alias := range cmd.Aliases {
-			completers = append(completers, readline.PcItem(
-				alias, c.getCompleter(),
-			))
+		switch cmd.Name {
+		case "spawn":
+			commandAddCompleter(&completers, cmd,
+				c.getPathCompleter())
+		default:
+			commandAddCompleter(&completers, cmd,
+				c.getCompleter())
 		}
 	}
 

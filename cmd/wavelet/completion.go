@@ -20,9 +20,12 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/benpye/readline"
+	"github.com/urfave/cli"
 )
 
 func (cli *CLI) getCompleter() *readline.PrefixCompleter {
@@ -36,4 +39,77 @@ func (cli *CLI) getCompleter() *readline.PrefixCompleter {
 
 		return cli.ledger.Find(text, 10)
 	})
+}
+
+type PathCompleter struct {
+	*readline.PrefixCompleter
+}
+
+func (p *PathCompleter) GetDynamicNames(line []rune) [][]rune {
+	var path string
+	words := strings.Split(string(line), " ")
+	if len(words) > 1 && words[1] != "" { // has some file
+		path = filepath.Dir(strings.Join(words[1:], " "))
+	} else {
+		path = "."
+	}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+
+	defer f.Close()
+
+	files, err := f.Readdir(-1)
+	if err != nil {
+		return nil
+	}
+
+	names := make([][]rune, 0, len(files))
+
+	for _, f := range files {
+		filename := filepath.Join(path, f.Name())
+		if f.IsDir() {
+			filename += "/"
+		} else {
+			filename += " "
+		}
+
+		names = append(names, []rune(filename))
+	}
+
+	return names
+}
+
+func (cli *CLI) getPathCompleter() readline.PrefixCompleterInterface {
+	return &PathCompleter{
+		PrefixCompleter: &readline.PrefixCompleter{
+			Callback: func(string) []string { return nil },
+			Dynamic:  true,
+			Children: nil,
+		},
+	}
+}
+
+func joinFolder(fs []string) (p string) {
+	for _, f := range fs {
+		p += f + "/"
+	}
+
+	return
+}
+
+func commandAddCompleter(completers *[]readline.PrefixCompleterInterface,
+	cmd cli.Command, completer readline.PrefixCompleterInterface) {
+
+	*completers = append(*completers, readline.PcItem(
+		cmd.Name, completer,
+	))
+
+	for _, alias := range cmd.Aliases {
+		*completers = append(*completers, readline.PcItem(
+			alias, completer,
+		))
+	}
 }
