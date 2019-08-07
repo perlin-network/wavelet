@@ -2,6 +2,7 @@ package wavelet
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -33,20 +34,26 @@ func TestLedger_BroadcastNop(t *testing.T) {
 		}
 	}
 
-	// Sleep for some time to give room for the nodes to
-	// bootstrap the overlay S/Kademlia network
-	time.Sleep(time.Second * 3)
-
 	// Add lots of transactions
-	txs := make([]Transaction, 1000)
-	var err error
+	var txsLock sync.Mutex
+	txs := make([]Transaction, 0, 10000)
 
-	fmt.Println("adding transactions...")
-	for i := 0; i < len(txs); i++ {
-		txs[i], err = alice.Pay(bob, 1)
-		assert.NoError(t, err)
-	}
+	go func() {
+		for i := 0; i < cap(txs); i++ {
+			tx, err := alice.Pay(bob, 1)
+			assert.NoError(t, err)
 
+			txsLock.Lock()
+			txs = append(txs, tx)
+			txsLock.Unlock()
+
+			// Somehow this prevents AddTransaction from
+			// returning ErrMissingParents
+			time.Sleep(time.Nanosecond * 1)
+		}
+	}()
+
+	prevRound := alice.ledger.Rounds().Latest().Index
 	timeout := time.NewTimer(time.Minute * 5)
 	for {
 		select {
@@ -55,22 +62,38 @@ func TestLedger_BroadcastNop(t *testing.T) {
 
 		case <-alice.WaitForConsensus():
 			var appliedCount int
+			var txsCount int
+
+			txsLock.Lock()
 			for _, tx := range txs {
 				if alice.Applied(tx) {
 					appliedCount++
 				}
+				txsCount++
+			}
+			txsLock.Unlock()
+
+			currRound := alice.ledger.Rounds().Latest().Index
+
+			fmt.Printf("%d/%d tx applied, round=%d, root depth=%d\n",
+				appliedCount, txsCount,
+				currRound,
+				alice.ledger.Graph().RootDepth())
+
+			if currRound-prevRound > 1 {
+				t.Fatal("more than 1 round finalized")
 			}
 
-			fmt.Printf("%d/%d tx applied\n", appliedCount, len(txs))
+			prevRound = currRound
 
-			if appliedCount < len(txs) {
+			if appliedCount < cap(txs) {
 				assert.True(t, alice.ledger.BroadcastingNop(),
 					"node should not stop broadcasting nop while there are unapplied tx")
 			}
 
 			// The test is successful if all tx are applied,
 			// and nop broadcasting is stopped once all tx are applied
-			if appliedCount == len(txs) && !alice.ledger.BroadcastingNop() {
+			if appliedCount == cap(txs) && !alice.ledger.BroadcastingNop() {
 				return
 			}
 		}
