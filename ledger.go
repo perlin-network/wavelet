@@ -180,9 +180,7 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 	err := l.graph.AddTransaction(tx)
 
 	if err != nil && errors.Cause(err) != ErrAlreadyExists {
-		if !strings.Contains(errors.Cause(err).Error(), "transaction has no parents") &&
-			!strings.Contains(errors.Cause(err).Error(), "parents for transaction are not in graph") {
-
+		if !strings.Contains(errors.Cause(err).Error(), "transaction has no parents") {
 			fmt.Println(err)
 		}
 		return err
