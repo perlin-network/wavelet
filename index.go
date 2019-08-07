@@ -57,14 +57,20 @@ func (m *Indexer) Find(query string, max int) (results []string) {
 		results = make([]string, 0, max)
 	}
 
-	m.WalkPrefix(query, func(a string, _ interface{}) bool {
+	cb := func(a string, _ interface{}) bool {
 		if max > 0 && len(results) >= max {
 			return false
 		}
 
 		results = append(results, a)
 		return true
-	})
+	}
+
+	if query != "" {
+		m.WalkPrefix(query, cb)
+	} else {
+		m.Walk(cb)
+	}
 
 	return results
 }

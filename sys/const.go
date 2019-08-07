@@ -272,6 +272,13 @@ var (
 		`batch`:    TagBatch,
 		`stake`:    TagStake,
 	}
+
+	ContractDefaultMemoryPages = 4
+	ContractMaxMemoryPages     = 32
+	ContractTableSize          = 4096
+	ContractMaxValueSlots      = 8192
+	ContractMaxCallStackDepth  = 256
+	ContractMaxGlobals         = 64
 )
 
 // String converts a given tag to a string.
