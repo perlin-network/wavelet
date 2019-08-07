@@ -520,7 +520,7 @@ FINALIZE_ROUNDS:
 		// Only stop broadcasting nops if the most recently added transaction
 		// has been applied
 		l.broadcastNopsLock.Lock()
-		if l.broadcastNops && l.broadcastNopsMaxDepth <= l.graph.RootDepth() {
+		if l.broadcastNops && l.broadcastNopsMaxDepth <= l.finalizer.Preferred().End.Depth {
 			l.broadcastNops = false
 		}
 		l.broadcastNopsLock.Unlock()

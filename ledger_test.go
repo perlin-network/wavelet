@@ -81,20 +81,13 @@ func TestLedger_AddTransaction(t *testing.T) {
 	testnet := NewTestNetwork(t)
 	defer testnet.Cleanup()
 
-	alice := testnet.AddNode(t, 1000000)
-	testnet.AddNode(t, 0) // bob
-
-	// Wait for alice to receive her PERL from the faucet
-	for <-alice.WaitForConsensus() {
-		if alice.Balance() > 0 {
-			break
-		}
-	}
+	alice := testnet.AddNode(t, 0) // alice
+	testnet.AddNode(t, 0)          // bob
 
 	start := alice.ledger.Rounds().Latest().Index
 
 	// Add just 1 transaction
-	_, err := alice.PlaceStake(100)
+	_, err := testnet.faucet.PlaceStake(100)
 	assert.NoError(t, err)
 
 	// Try to wait for 2 rounds of consensus.
