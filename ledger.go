@@ -176,8 +176,13 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 // QueueTransaction queues the transaction to be added to the ledger.
 // It should only be called by the sender.
-func (l *Ledger) QueueTransaction(tx Transaction) {
+func (l *Ledger) QueueTransaction(tx Transaction) error {
+	if tx.Sender != l.client.Keys().PublicKey() {
+		return fmt.Errorf("cannot queue transaction not from sender")
+	}
+
 	l.txQueue <- tx
+	return nil
 }
 
 // addTransaction adds a transaction to the ledger. If the transaction has
