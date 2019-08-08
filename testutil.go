@@ -197,17 +197,6 @@ func (l *TestLedger) WaitForConsensus() <-chan bool {
 	return ch
 }
 
-func (l *TestLedger) Nop() (Transaction, error) {
-	keys := l.ledger.client.Keys()
-	tx := AttachSenderToTransaction(
-		keys,
-		NewTransaction(keys, sys.TagNop, nil),
-		l.ledger.Graph().FindEligibleParents()...)
-
-	err := l.ledger.AddTransaction(tx)
-	return tx, err
-}
-
 func (l *TestLedger) Pay(to *TestLedger, amount uint64) (Transaction, error) {
 	payload := Transfer{
 		Recipient: to.PublicKey(),
@@ -215,13 +204,9 @@ func (l *TestLedger) Pay(to *TestLedger, amount uint64) (Transaction, error) {
 	}
 
 	keys := l.ledger.client.Keys()
-	tx := AttachSenderToTransaction(
-		keys,
-		NewTransaction(keys, sys.TagTransfer, payload.Marshal()),
-		l.ledger.Graph().FindEligibleParents()...)
-
-	err := l.ledger.AddTransaction(tx)
-	return tx, err
+	tx := NewTransaction(keys, sys.TagTransfer, payload.Marshal())
+	l.ledger.QueueTransaction(tx)
+	return tx, nil
 }
 
 func (l *TestLedger) PlaceStake(amount uint64) (Transaction, error) {
@@ -231,13 +216,9 @@ func (l *TestLedger) PlaceStake(amount uint64) (Transaction, error) {
 	}
 
 	keys := l.ledger.client.Keys()
-	tx := AttachSenderToTransaction(
-		keys,
-		NewTransaction(keys, sys.TagStake, payload.Marshal()),
-		l.ledger.Graph().FindEligibleParents()...)
-
-	err := l.ledger.AddTransaction(tx)
-	return tx, err
+	tx := NewTransaction(keys, sys.TagStake, payload.Marshal())
+	l.ledger.QueueTransaction(tx)
+	return tx, nil
 }
 
 func (l *TestLedger) WithdrawStake(amount uint64) (Transaction, error) {
@@ -247,13 +228,9 @@ func (l *TestLedger) WithdrawStake(amount uint64) (Transaction, error) {
 	}
 
 	keys := l.ledger.client.Keys()
-	tx := AttachSenderToTransaction(
-		keys,
-		NewTransaction(keys, sys.TagStake, payload.Marshal()),
-		l.ledger.Graph().FindEligibleParents()...)
-
-	err := l.ledger.AddTransaction(tx)
-	return tx, err
+	tx := NewTransaction(keys, sys.TagStake, payload.Marshal())
+	l.ledger.QueueTransaction(tx)
+	return tx, nil
 }
 
 func (l *TestLedger) WithdrawReward(amount uint64) (Transaction, error) {
@@ -263,13 +240,9 @@ func (l *TestLedger) WithdrawReward(amount uint64) (Transaction, error) {
 	}
 
 	keys := l.ledger.client.Keys()
-	tx := AttachSenderToTransaction(
-		keys,
-		NewTransaction(keys, sys.TagStake, payload.Marshal()),
-		l.ledger.Graph().FindEligibleParents()...)
-
-	err := l.ledger.AddTransaction(tx)
-	return tx, err
+	tx := NewTransaction(keys, sys.TagStake, payload.Marshal())
+	l.ledger.QueueTransaction(tx)
+	return tx, nil
 }
 
 func (l *TestLedger) FindTransaction(t testing.TB, id TransactionID) *Transaction {

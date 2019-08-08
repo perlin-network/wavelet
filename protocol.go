@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -50,7 +51,7 @@ func (p *Protocol) Gossip(stream Wavelet_GossipServer) error {
 				continue
 			}
 
-			if err := p.ledger.AddTransaction(tx); err != nil && errors.Cause(err) != ErrMissingParents {
+			if err := p.ledger.addTransaction(tx); err != nil && errors.Cause(err) != ErrMissingParents {
 				fmt.Printf("error adding incoming tx to graph [%v]: %+v\n", err, tx)
 			}
 		}

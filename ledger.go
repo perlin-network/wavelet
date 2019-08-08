@@ -70,6 +70,8 @@ type Ledger struct {
 	cacheChunks   *LRU
 
 	sendQuota chan struct{}
+
+	txQueue chan Transaction
 }
 
 type config struct {
@@ -160,6 +162,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		cacheChunks:   NewLRU(1024), // In total, it will take up 1024 * 4MB.
 
 		sendQuota: make(chan struct{}, 2000),
+
+		txQueue: make(chan Transaction, 1024),
 	}
 
 	ledger.PerformConsensus()
@@ -170,13 +174,19 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	return ledger
 }
 
-// AddTransaction adds a transaction to the ledger. If the transaction has
+// QueueTransaction queues the transaction to be added to the ledger.
+// It should only be called by the sender.
+func (l *Ledger) QueueTransaction(tx Transaction) {
+	l.txQueue <- tx
+}
+
+// addTransaction adds a transaction to the ledger. If the transaction has
 // never been added in the ledgers graph before, it is pushed to the gossip
 // mechanism to then be gossiped to this nodes peers. If the transaction is
 // invalid or fails any validation checks, an error is returned. No error
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
-func (l *Ledger) AddTransaction(tx Transaction) error {
+func (l *Ledger) addTransaction(tx Transaction) error {
 	err := l.graph.AddTransaction(tx)
 
 	if err != nil && errors.Cause(err) != ErrAlreadyExists {
@@ -320,12 +330,12 @@ func (l *Ledger) BroadcastingNop() bool {
 	return broadcastNops
 }
 
-// BroadcastNop has the node send a nop transaction should they have sufficient
+// broadcastNop has the node send a nop transaction should they have sufficient
 // balance available. They are broadcasted if no other transaction that is not a nop transaction
 // is not broadcasted by the node after 500 milliseconds. These conditions only apply so long as
 // at least one transaction gets broadcasted by the node within the current round. Once a round
 // is tentatively being finalized, a node will stop broadcasting nops.
-func (l *Ledger) BroadcastNop() *Transaction {
+func (l *Ledger) broadcastNop() *Transaction {
 	l.broadcastNopsLock.Lock()
 	broadcastNops := l.broadcastNops
 	broadcastNopsDelay := l.broadcastNopsDelay
@@ -347,7 +357,7 @@ func (l *Ledger) BroadcastNop() *Transaction {
 
 	nop := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), l.graph.FindEligibleParents()...)
 
-	if err := l.AddTransaction(nop); err != nil {
+	if err := l.addTransaction(nop); err != nil {
 		return nil
 	}
 
@@ -440,7 +450,7 @@ func (l *Ledger) PullMissingTransactions() {
 				continue
 			}
 
-			if err := l.AddTransaction(tx); err != nil && errors.Cause(err) != ErrMissingParents {
+			if err := l.addTransaction(tx); err != nil && errors.Cause(err) != ErrMissingParents {
 				fmt.Printf("error adding downloaded tx to graph [%v]: %+v\n", err, tx)
 				continue
 			}
@@ -465,6 +475,23 @@ func (l *Ledger) FinalizeRounds() {
 
 FINALIZE_ROUNDS:
 	for {
+		// Add sender transactions waiting in the queue
+		txAvailable := true
+		for txAvailable {
+			select {
+			case tx := <-l.txQueue:
+				tx = AttachSenderToTransaction(
+					l.client.Keys(), tx, l.graph.FindEligibleParents()...)
+
+				if err := l.addTransaction(tx); err != nil {
+					fmt.Println("failed to add queued transaction")
+				}
+
+			default:
+				txAvailable = false
+			}
+		}
+
 		select {
 		case <-l.sync:
 			return
@@ -488,7 +515,7 @@ FINALIZE_ROUNDS:
 			eligible := l.graph.FindEligibleCritical(currentDifficulty)
 
 			if eligible == nil {
-				nop := l.BroadcastNop()
+				nop := l.broadcastNop()
 
 				if nop != nil {
 					if !nop.IsCritical(currentDifficulty) {
@@ -601,11 +628,11 @@ FINALIZE_ROUNDS:
 							return
 						}
 
-						if err := l.AddTransaction(round.Start); err != nil {
+						if err := l.addTransaction(round.Start); err != nil {
 							return
 						}
 
-						if err := l.AddTransaction(round.End); err != nil {
+						if err := l.addTransaction(round.End); err != nil {
 							return
 						}
 
