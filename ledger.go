@@ -524,8 +524,8 @@ func (l *Ledger) FinalizeRounds() {
 FINALIZE_ROUNDS:
 	for {
 		// Add sender transactions waiting in the queue
-		txAvailable := true
-		for txAvailable {
+	TX_QUEUE:
+		for {
 			select {
 			case entry := <-l.txQueue:
 				tx := AttachSenderToTransaction(
@@ -535,7 +535,7 @@ FINALIZE_ROUNDS:
 				entry.Done <- l.addTransaction(tx)
 
 			default:
-				txAvailable = false
+				break TX_QUEUE
 			}
 		}
 
