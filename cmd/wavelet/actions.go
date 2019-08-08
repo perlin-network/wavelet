@@ -572,19 +572,13 @@ func (cli *CLI) withdrawReward(ctx *cli.Context) {
 }
 
 func (cli *CLI) sendTransaction(tx wavelet.Transaction) (wavelet.Transaction, error) {
-	tx = wavelet.AttachSenderToTransaction(
-		cli.keys, tx, cli.ledger.Graph().FindEligibleParents()...,
-	)
+	if err := cli.ledger.QueueTransaction(tx); err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
+		cli.logger.
+			Err(err).
+			Hex("tx_id", tx.ID[:]).
+			Msg("Failed to create your transaction.")
 
-	if err := cli.ledger.AddTransaction(tx); err != nil {
-		if errors.Cause(err) != wavelet.ErrMissingParents {
-			cli.logger.
-				Err(err).
-				Hex("tx_id", tx.ID[:]).
-				Msg("Failed to create your transaction.")
-
-			return tx, err
-		}
+		return tx, err
 	}
 
 	return tx, nil

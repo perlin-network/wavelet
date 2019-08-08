@@ -43,6 +43,12 @@ import (
 	"google.golang.org/grpc/peer"
 )
 
+type txQueueEntry struct {
+	Tx      Transaction
+	Done    chan error
+	Timeout time.Duration
+}
+
 type Ledger struct {
 	client  *skademlia.Client
 	metrics *Metrics
@@ -71,7 +77,7 @@ type Ledger struct {
 
 	sendQuota chan struct{}
 
-	txQueue chan Transaction
+	txQueue chan txQueueEntry
 }
 
 type config struct {
@@ -163,7 +169,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 		sendQuota: make(chan struct{}, 2000),
 
-		txQueue: make(chan Transaction, 1024),
+		txQueue: make(chan txQueueEntry, 1024),
 	}
 
 	ledger.PerformConsensus()
@@ -174,15 +180,45 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	return ledger
 }
 
+type QueueTxOption func(e *txQueueEntry)
+
+func WithTimeout(duration time.Duration) QueueTxOption {
+	return func(e *txQueueEntry) {
+		e.Timeout = duration
+	}
+}
+
 // QueueTransaction queues the transaction to be added to the ledger.
+// It blocks until the transaction has been added into a ledger.
 // It should only be called by the sender.
-func (l *Ledger) QueueTransaction(tx Transaction) error {
+func (l *Ledger) QueueTransaction(tx Transaction, opts ...QueueTxOption) error {
 	if tx.Sender != l.client.Keys().PublicKey() {
 		return fmt.Errorf("cannot queue transaction not from sender")
 	}
 
-	l.txQueue <- tx
-	return nil
+	entry := txQueueEntry{
+		Tx:      tx,
+		Done:    make(chan error, 1),
+		Timeout: time.Second * 3,
+	}
+
+	for _, opt := range opts {
+		opt(&entry)
+	}
+
+	select {
+	case l.txQueue <- entry:
+	default:
+		return fmt.Errorf("transaction queue is full")
+	}
+
+	select {
+	case err := <-entry.Done:
+		return err
+
+	case <-time.After(entry.Timeout):
+		return fmt.Errorf("timed out waiting for transaction to be added")
+	}
 }
 
 // addTransaction adds a transaction to the ledger. If the transaction has
@@ -484,13 +520,11 @@ FINALIZE_ROUNDS:
 		txAvailable := true
 		for txAvailable {
 			select {
-			case tx := <-l.txQueue:
-				tx = AttachSenderToTransaction(
-					l.client.Keys(), tx, l.graph.FindEligibleParents()...)
+			case entry := <-l.txQueue:
+				tx := AttachSenderToTransaction(
+					l.client.Keys(), entry.Tx, l.graph.FindEligibleParents()...)
 
-				if err := l.addTransaction(tx); err != nil {
-					fmt.Println("failed to add queued transaction")
-				}
+				entry.Done <- l.addTransaction(tx)
 
 			default:
 				txAvailable = false

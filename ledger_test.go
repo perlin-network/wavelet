@@ -46,10 +46,6 @@ func TestLedger_BroadcastNop(t *testing.T) {
 			txsLock.Lock()
 			txs = append(txs, tx)
 			txsLock.Unlock()
-
-			// Somehow this prevents AddTransaction from
-			// returning ErrMissingParents
-			time.Sleep(time.Nanosecond * 1)
 		}
 	}()
 
