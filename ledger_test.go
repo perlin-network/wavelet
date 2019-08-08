@@ -197,6 +197,10 @@ func TestLedger_PayInsufficientBalance(t *testing.T) {
 	for _, node := range testnet.Nodes() {
 		assert.EqualValues(t, aliceBalance, node.BalanceOfAccount(alice))
 		assert.EqualValues(t, 100, node.BalanceOfAccount(bob))
+
+		// All nodes should have rejected the tx
+		round := node.ledger.Rounds().Latest()
+		assert.EqualValues(t, 1, round.Rejected)
 	}
 }
 
