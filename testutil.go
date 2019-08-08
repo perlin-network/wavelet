@@ -39,6 +39,16 @@ func (n *TestNetwork) Cleanup() {
 	n.faucet.Cleanup()
 }
 
+func (n *TestNetwork) AddNodeWithWallet(t testing.TB, wallet string) *TestLedger {
+	node := NewTestLedger(t, TestLedgerConfig{
+		Peers:  []string{n.faucet.Addr()},
+		Wallet: wallet,
+	})
+	n.nodes = append(n.nodes, node)
+
+	return node
+}
+
 func (n *TestNetwork) AddNode(t testing.TB, startingBalance uint64) *TestLedger {
 	node := NewTestLedger(t, TestLedgerConfig{
 		Peers: []string{n.faucet.Addr()},

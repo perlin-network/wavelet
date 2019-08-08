@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -132,6 +133,51 @@ func TestLedger_AddTransaction(t *testing.T) {
 	}
 	if current.Ignored > 0 {
 		t.Fatal("no tx should be ignored")
+	}
+}
+
+func TestLedger_Ignore(t *testing.T) {
+	testnet := NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	alice := testnet.faucet
+	bob := testnet.AddNodeWithWallet(t, "85e7450f7cf0d9cd1d1d7bf4169c2f364eea4ba833a7280e0f931a1d92fd92c2696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a")
+	charlie := testnet.AddNodeWithWallet(t, "5b9fcd2d6f8e34f4aa472e0c3099fefd25f0ceab9e908196b1dda63e55349d22f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467")
+
+	go func() {
+		for {
+			payload := Batch{Tags: []byte{}, Payloads: [][]byte{}}
+			for i := 0; i < 40; i++ {
+				payload.AddStake(Stake{Opcode: sys.PlaceStake, Amount: 1})
+			}
+
+			tx := NewTransaction(alice.ledger.client.Keys(), sys.TagBatch, payload.Marshal())
+			_, err := alice.ledger.QueueTransaction(tx)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}()
+
+	go func() {
+		time.Sleep(time.Second * 10)
+
+		fmt.Println("charlie: ps 100")
+		_, err := charlie.PlaceStake(100)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}()
+
+	for {
+		<-bob.WaitForConsensus()
+		round := bob.ledger.Rounds().Latest()
+		fmt.Printf("round: %d, applied: %d, rejected: %d, ignored: %d\n",
+			round.Index, round.Applied, round.Rejected, round.Ignored)
+
+		if round.Ignored > 0 {
+			t.Fatal("no tx should be ignored")
+		}
 	}
 }
 
