@@ -572,7 +572,8 @@ func (cli *CLI) withdrawReward(ctx *cli.Context) {
 }
 
 func (cli *CLI) sendTransaction(tx wavelet.Transaction) (wavelet.Transaction, error) {
-	if err := cli.ledger.QueueTransaction(tx); err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
+	tx, err := cli.ledger.QueueTransaction(tx)
+	if err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
 		cli.logger.
 			Err(err).
 			Hex("tx_id", tx.ID[:]).

@@ -83,7 +83,7 @@ type Ledger struct {
 
 	sendQuota chan struct{}
 
-	txQueue chan txQueueEntry
+	txQueue chan *txQueueEntry
 }
 
 type config struct {
@@ -175,7 +175,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 		sendQuota: make(chan struct{}, 2000),
 
-		txQueue: make(chan txQueueEntry, 1024),
+		txQueue: make(chan *txQueueEntry, 1024),
 	}
 
 	ledger.PerformConsensus()
@@ -198,33 +198,33 @@ func WithTimeout(duration time.Duration) QueueTxOption {
 // It blocks until the transaction has been added into a ledger.
 // It should only be used to add transactions created by the owner
 // of the ledger.
-func (l *Ledger) QueueTransaction(tx Transaction, opts ...QueueTxOption) error {
+func (l *Ledger) QueueTransaction(tx Transaction, opts ...QueueTxOption) (Transaction, error) {
 	if tx.Creator != l.client.Keys().PublicKey() {
-		return ErrQueueTransactionNonCreator
+		return tx, ErrQueueTransactionNonCreator
 	}
 
-	entry := txQueueEntry{
+	entry := &txQueueEntry{
 		Tx:      tx,
 		Done:    make(chan error, 1),
 		Timeout: time.Second * 3,
 	}
 
 	for _, opt := range opts {
-		opt(&entry)
+		opt(entry)
 	}
 
 	select {
 	case l.txQueue <- entry:
 	default:
-		return ErrTransactionQueueFull
+		return tx, ErrTransactionQueueFull
 	}
 
 	select {
 	case err := <-entry.Done:
-		return err
+		return entry.Tx, err
 
 	case <-time.After(entry.Timeout):
-		return ErrQueueTransactionTimedOut
+		return tx, ErrQueueTransactionTimedOut
 	}
 }
 
@@ -531,6 +531,7 @@ FINALIZE_ROUNDS:
 				tx := AttachSenderToTransaction(
 					l.client.Keys(), entry.Tx, l.graph.FindEligibleParents()...)
 
+				entry.Tx = tx
 				entry.Done <- l.addTransaction(tx)
 
 			default:

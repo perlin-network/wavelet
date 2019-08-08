@@ -224,7 +224,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		Creator:          req.creator,
 		CreatorSignature: req.signature,
 	}
-	err = g.ledger.QueueTransaction(tx)
+	tx, err = g.ledger.QueueTransaction(tx)
 
 	if err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
 		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error adding your transaction to graph")))
