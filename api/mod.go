@@ -218,13 +218,13 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	tx := wavelet.AttachSenderToTransaction(
-		g.keys,
-		wavelet.Transaction{Tag: sys.Tag(req.Tag), Payload: req.payload, Creator: req.creator, CreatorSignature: req.signature},
-		g.ledger.Graph().FindEligibleParents()...,
-	)
-
-	err = g.ledger.AddTransaction(tx)
+	tx := wavelet.Transaction{
+		Tag:              sys.Tag(req.Tag),
+		Payload:          req.payload,
+		Creator:          req.creator,
+		CreatorSignature: req.signature,
+	}
+	err = g.ledger.QueueTransaction(tx)
 
 	if err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
 		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error adding your transaction to graph")))

@@ -43,6 +43,12 @@ import (
 	"google.golang.org/grpc/peer"
 )
 
+var (
+	ErrTransactionQueueFull       = errors.New("transaction queue is full")
+	ErrQueueTransactionTimedOut   = errors.New("timed out waiting for queued transaction")
+	ErrQueueTransactionNonCreator = errors.New("cannot queue transaction not from creator")
+)
+
 type txQueueEntry struct {
 	Tx      Transaction
 	Done    chan error
@@ -190,10 +196,11 @@ func WithTimeout(duration time.Duration) QueueTxOption {
 
 // QueueTransaction queues the transaction to be added to the ledger.
 // It blocks until the transaction has been added into a ledger.
-// It should only be called by the sender.
+// It should only be used to add transactions created by the owner
+// of the ledger.
 func (l *Ledger) QueueTransaction(tx Transaction, opts ...QueueTxOption) error {
-	if tx.Sender != l.client.Keys().PublicKey() {
-		return fmt.Errorf("cannot queue transaction not from sender")
+	if tx.Creator != l.client.Keys().PublicKey() {
+		return ErrQueueTransactionNonCreator
 	}
 
 	entry := txQueueEntry{
@@ -209,7 +216,7 @@ func (l *Ledger) QueueTransaction(tx Transaction, opts ...QueueTxOption) error {
 	select {
 	case l.txQueue <- entry:
 	default:
-		return fmt.Errorf("transaction queue is full")
+		return ErrTransactionQueueFull
 	}
 
 	select {
@@ -217,7 +224,7 @@ func (l *Ledger) QueueTransaction(tx Transaction, opts ...QueueTxOption) error {
 		return err
 
 	case <-time.After(entry.Timeout):
-		return fmt.Errorf("timed out waiting for transaction to be added")
+		return ErrQueueTransactionTimedOut
 	}
 }
 
