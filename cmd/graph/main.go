@@ -162,8 +162,8 @@ func main() {
 		}
 
 		for i := uint64(0); i < count; i++ {
-			tx := wavelet.AttachSenderToTransaction(keys, wavelet.NewTransaction(keys, sys.TagBatch, batch.Marshal()))
-			if err := ledger.AddTransaction(tx); err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
+			tx := wavelet.NewTransaction(keys, sys.TagBatch, batch.Marshal())
+			if tx, err := ledger.QueueTransaction(tx); err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
 				fmt.Printf("error adding tx to graph [%v]: %+v\n", err, tx)
 			}
 		}
