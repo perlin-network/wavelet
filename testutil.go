@@ -53,9 +53,86 @@ func (n *TestNetwork) AddNode(t testing.TB, startingBalance uint64) *TestLedger 
 	return node
 }
 
+func (n *TestNetwork) Nodes() []*TestLedger {
+	return append(n.nodes, n.faucet)
+}
+
+// WaitForRound waits for all the nodes in the network to
+// reach the specified round.
+func (n *TestNetwork) WaitForRound(t testing.TB, round uint64) {
+	if len(n.nodes) == 0 {
+		return
+	}
+
+	done := make(chan struct{})
+	go func() {
+		for _, node := range n.nodes {
+			for ri := range node.WaitForRound(round) {
+				if ri == round {
+					break
+				}
+			}
+		}
+
+		close(done)
+	}()
+
+	select {
+	case <-time.After(time.Second * 10):
+		t.Fatal("timed out waiting for round")
+
+	case <-done:
+		return
+	}
+}
+
 func (n *TestNetwork) WaitForConsensus(t testing.TB) {
-	all := append(n.nodes, n.faucet)
-	TestWaitForConsensus(t, time.Second*30, all)
+	if len(n.nodes) == 0 {
+		return
+	}
+
+	done := make(chan struct{})
+	go func() {
+		first := n.nodes[0]
+		round := <-first.WaitForConsensus()
+
+		for i := 1; i < len(n.nodes); i++ {
+			<-n.nodes[i].WaitForRound(round)
+		}
+
+		close(done)
+	}()
+
+	select {
+	case <-time.After(time.Second * 10):
+		t.Fatal("timed out waiting for consensus")
+
+	case <-done:
+		return
+	}
+}
+
+// WaitForLatestConsensus waits until all nodes
+// have reach the latest consensus round.
+func (n *TestNetwork) WaitForLatestConsensus(t testing.TB) {
+	if len(n.nodes) == 0 {
+		return
+	}
+
+	first := n.nodes[0]
+	current := first.RoundIndex()
+	for round := range first.WaitForConsensus() {
+		if round == 0 {
+			continue
+		}
+
+		if round == current {
+			break
+		}
+		current = round
+	}
+
+	n.WaitForRound(t, current)
 }
 
 type TestLedger struct {
@@ -172,22 +249,39 @@ func (l *TestLedger) Reward() uint64 {
 	return reward
 }
 
-func (l *TestLedger) WaitForConsensus() <-chan bool {
-	ch := make(chan bool)
+func (l *TestLedger) RoundIndex() uint64 {
+	return l.ledger.Rounds().Latest().Index
+}
+
+// WaitForConsensus waits until the node has advanced
+// by at least 1 consensus round.
+func (l *TestLedger) WaitForConsensus() <-chan uint64 {
+	return l.WaitForRound(l.ledger.Rounds().Latest().Index + 1)
+}
+
+// WaitForRound waits until the node reaches the specified round index.
+func (l *TestLedger) WaitForRound(index uint64) <-chan uint64 {
+	ch := make(chan uint64, 1)
 	go func() {
-		start := l.ledger.Rounds().Latest()
+		defer close(ch)
+
+		if current := l.ledger.Rounds().Latest().Index; current >= index {
+			ch <- current
+			return
+		}
+
 		timeout := time.NewTimer(time.Second * 3)
 		ticker := time.NewTicker(time.Millisecond * 100)
 		for {
 			select {
 			case <-timeout.C:
-				ch <- false
+				ch <- 0
 				return
 
 			case <-ticker.C:
 				current := l.ledger.Rounds().Latest()
-				if current.Index > start.Index {
-					ch <- true
+				if current.Index >= index {
+					ch <- current.Index
 					return
 				}
 			}
@@ -309,4 +403,21 @@ func loadKeys(t testing.TB, wallet string) *skademlia.Keypair {
 	}
 
 	return keys
+}
+
+func waitFor(t testing.TB, err string, fn func() bool) {
+	timeout := time.NewTimer(time.Second * 3)
+	ticker := time.NewTicker(time.Millisecond * 500)
+
+	for {
+		select {
+		case <-timeout.C:
+			t.Fatal(err)
+
+		case <-ticker.C:
+			if !fn() {
+				return
+			}
+		}
+	}
 }

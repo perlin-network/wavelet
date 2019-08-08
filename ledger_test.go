@@ -28,7 +28,7 @@ func TestLedger_BroadcastNop(t *testing.T) {
 	bob := testnet.AddNode(t, 0)
 
 	// Wait for alice to receive her PERL from the faucet
-	for <-alice.WaitForConsensus() {
+	for range alice.WaitForConsensus() {
 		if alice.Balance() > 0 {
 			break
 		}
@@ -119,4 +119,144 @@ func TestLedger_AddTransaction(t *testing.T) {
 	if current-start > 1 {
 		t.Fatal("more than 1 round finalized")
 	}
+}
+
+func TestLedger_Pay(t *testing.T) {
+	testnet := NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	for i := 0; i < 5; i++ {
+		testnet.AddNode(t, 0)
+	}
+
+	alice := testnet.AddNode(t, 1000000)
+	bob := testnet.AddNode(t, 100)
+
+	testnet.WaitForConsensus(t)
+
+	assert.NoError(t, txError(alice.Pay(bob, 1237)))
+
+	testnet.WaitForConsensus(t)
+
+	// Bob should receive the tx amount
+	assert.EqualValues(t, 1337, bob.Balance())
+
+	// Alice balance should be balance-txAmount-gas
+	aliceBalance := alice.Balance()
+	assert.True(t, aliceBalance < 1000000-1237)
+
+	// Everyone else should see the updated balance of Alice and Bob
+	for _, node := range testnet.Nodes() {
+		assert.EqualValues(t, aliceBalance, node.BalanceOfAccount(alice))
+		assert.EqualValues(t, 1337, node.BalanceOfAccount(bob))
+	}
+}
+
+func TestLedger_PayInsufficientBalance(t *testing.T) {
+	testnet := NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	for i := 0; i < 5; i++ {
+		testnet.AddNode(t, 0)
+	}
+
+	alice := testnet.AddNode(t, 1000000)
+	bob := testnet.AddNode(t, 100)
+
+	testnet.WaitForConsensus(t)
+
+	// Alice attempt to pay Bob more than what
+	// she has in her wallet
+	assert.NoError(t, txError(alice.Pay(bob, 1000001)))
+
+	testnet.WaitForConsensus(t)
+
+	// Bob should not receive the tx amount
+	assert.EqualValues(t, 100, bob.Balance())
+
+	// Alice should have paid for gas even though the tx failed
+	aliceBalance := alice.Balance()
+	assert.True(t, aliceBalance > 0)
+	assert.True(t, aliceBalance < 1000000)
+
+	// Everyone else should see the updated balance of Alice and Bob
+	for _, node := range testnet.Nodes() {
+		assert.EqualValues(t, aliceBalance, node.BalanceOfAccount(alice))
+		assert.EqualValues(t, 100, node.BalanceOfAccount(bob))
+	}
+}
+
+func TestLedger_Gossip(t *testing.T) {
+	testnet := NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	for i := 0; i < 5; i++ {
+		testnet.AddNode(t, 0)
+	}
+
+	alice := testnet.AddNode(t, 1000000)
+	bob := testnet.AddNode(t, 100)
+
+	testnet.WaitForConsensus(t)
+
+	assert.NoError(t, txError(alice.Pay(bob, 1237)))
+
+	testnet.WaitForConsensus(t)
+
+	// When a new node joins the network, it will eventually receive
+	// all transactions in the network.
+	charlie := testnet.AddNode(t, 0)
+
+	waitFor(t, "test timed out", func() bool {
+		return charlie.BalanceOfAccount(alice) == alice.Balance() &&
+			charlie.BalanceOfAccount(bob) == bob.Balance()
+	})
+}
+
+func TestLedger_Stake(t *testing.T) {
+	testnet := NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	for i := 0; i < 5; i++ {
+		testnet.AddNode(t, 0)
+	}
+
+	alice := testnet.AddNode(t, 1000000)
+
+	testnet.WaitForConsensus(t)
+
+	assert.NoError(t, txError(alice.PlaceStake(9001)))
+	testnet.WaitForConsensus(t)
+
+	assert.EqualValues(t, 9001, alice.Stake())
+
+	// Alice balance should be balance-stakeAmount-gas
+	aliceBalance := alice.Balance()
+	assert.True(t, aliceBalance < 1000000-9001)
+
+	// Everyone else should see the updated balance of Alice
+	for _, node := range testnet.Nodes() {
+		assert.EqualValues(t, aliceBalance, node.BalanceOfAccount(alice))
+		assert.EqualValues(t, alice.Stake(), node.StakeOfAccount(alice))
+	}
+
+	assert.NoError(t, txError(alice.WithdrawStake(5000)))
+	testnet.WaitForConsensus(t)
+
+	assert.EqualValues(t, 4001, alice.Stake())
+
+	// Withdrawn stake should be added to balance
+	oldBalance := aliceBalance
+	aliceBalance = alice.Balance()
+	assert.True(t, aliceBalance > oldBalance)
+
+	// Everyone else should see the updated balance of Alice
+	for _, node := range testnet.Nodes() {
+		assert.EqualValues(t, aliceBalance, node.BalanceOfAccount(alice))
+		assert.EqualValues(t, alice.Stake(), node.StakeOfAccount(alice))
+	}
+}
+
+func txError(tx Transaction, err error) error {
+	return err
 }
