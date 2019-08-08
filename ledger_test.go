@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -146,13 +145,7 @@ func TestLedger_Ignore(t *testing.T) {
 
 	go func() {
 		for {
-			payload := Batch{Tags: []byte{}, Payloads: [][]byte{}}
-			for i := 0; i < 40; i++ {
-				payload.AddStake(Stake{Opcode: sys.PlaceStake, Amount: 1})
-			}
-
-			tx := NewTransaction(alice.ledger.client.Keys(), sys.TagBatch, payload.Marshal())
-			_, err := alice.ledger.QueueTransaction(tx)
+			_, err := alice.PlaceStake(1)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -160,7 +153,12 @@ func TestLedger_Ignore(t *testing.T) {
 	}()
 
 	go func() {
-		time.Sleep(time.Second * 10)
+		for {
+			ri := <-charlie.WaitForRound(5)
+			if ri >= 5 {
+				break
+			}
+		}
 
 		fmt.Println("charlie: ps 100")
 		_, err := charlie.PlaceStake(100)
@@ -170,10 +168,14 @@ func TestLedger_Ignore(t *testing.T) {
 	}()
 
 	for {
-		<-bob.WaitForConsensus()
+		ri := <-bob.WaitForConsensus()
+		<-alice.WaitForRound(ri)
+		<-charlie.WaitForRound(ri)
+
 		round := bob.ledger.Rounds().Latest()
-		fmt.Printf("round: %d, applied: %d, rejected: %d, ignored: %d\n",
-			round.Index, round.Applied, round.Rejected, round.Ignored)
+		fmt.Printf("round: %d, applied: %d, rejected: %d, ignored: %d, alice stake: %d, charlie stake: %d\n",
+			round.Index, round.Applied, round.Rejected, round.Ignored,
+			alice.Stake(), charlie.Stake())
 
 		if round.Ignored > 0 {
 			t.Fatal("no tx should be ignored")
