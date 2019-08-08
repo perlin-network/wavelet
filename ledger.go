@@ -591,13 +591,7 @@ FINALIZE_ROUNDS:
 				continue
 			}
 
-			candidate := NewRound(
-				current.Index+1,
-				results.snapshot.Checksum(),
-				uint64(results.appliedCount),
-				uint64(results.rejectedCount),
-				uint64(results.ignoredCount),
-				current.End, *eligible)
+			candidate := NewRound(current.Index+1, results.snapshot.Checksum(), uint64(results.appliedCount), current.End, *eligible)
 			l.finalizer.Prefer(&candidate)
 
 			continue FINALIZE_ROUNDS
@@ -777,6 +771,9 @@ FINALIZE_ROUNDS:
 			fmt.Printf("Expected finalized rounds merkle root to be %x, but got %x.\n", finalized.Merkle, results.snapshot.Checksum())
 			continue
 		}
+
+		finalized.Rejected = uint64(results.rejectedCount)
+		finalized.Ignored = uint64(results.ignoredCount)
 
 		pruned, err := l.rounds.Save(finalized)
 		if err != nil {
