@@ -62,7 +62,17 @@ type Config struct {
 }
 
 func main() {
-	log.SetWriter(log.LoggerWavelet, log.NewConsoleWriter(nil, log.FilterFor(log.ModuleNode, log.ModuleNetwork, log.ModuleSync, log.ModuleConsensus, log.ModuleContract)))
+	log.SetWriter(
+		log.LoggerWavelet,
+		log.NewConsoleWriter(nil, log.FilterFor(
+			log.ModuleNode,
+			log.ModuleNetwork,
+			log.ModuleSync,
+			log.ModuleConsensus,
+			log.ModuleContract,
+		)),
+	)
+
 	logger := log.Node()
 
 	app := cli.NewApp()
@@ -167,13 +177,15 @@ func main() {
 	}
 
 	// apply the toml before processing the flags
-	app.Before = altsrc.InitInputSourceWithContext(app.Flags, func(c *cli.Context) (altsrc.InputSourceContext, error) {
-		filePath := c.String("config")
-		if len(filePath) > 0 {
-			return altsrc.NewTomlSourceFromFile(filePath)
-		}
-		return &altsrc.MapInputSource{}, nil
-	})
+	app.Before = altsrc.InitInputSourceWithContext(
+		app.Flags, func(c *cli.Context) (altsrc.InputSourceContext, error) {
+			filePath := c.String("config")
+			if len(filePath) > 0 {
+				return altsrc.NewTomlSourceFromFile(filePath)
+			}
+			return &altsrc.MapInputSource{}, nil
+		},
+	)
 
 	cli.VersionPrinter = func(c *cli.Context) {
 		fmt.Printf("Version:    %s\n", c.App.Version)
@@ -217,9 +229,9 @@ func main() {
 	sort.Sort(cli.FlagsByName(app.Flags))
 	sort.Sort(cli.CommandsByName(app.Commands))
 
-	err := app.Run(os.Args)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to parse configuration/command-line arguments.")
+	if err := app.Run(os.Args); err != nil {
+		logger.Fatal().Err(err).
+			Msg("Failed to parse configuration/command-line arguments.")
 	}
 }
 

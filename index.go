@@ -20,63 +20,57 @@
 package wavelet
 
 import (
-	"github.com/dghubble/trie"
-	"io"
-	"strings"
-	"sync"
+	"github.com/armon/go-radix"
 )
 
 // Indexer indexes all transaction IDs into a single trie for the
 // purposes of suiting the needs of implementing autocomplete
 // related components.
 type Indexer struct {
-	sync.RWMutex
-	index *trie.PathTrie
+	*radix.Tree
 }
 
 // NewIndexer instantiates trie indices for indexing complete
 // transactions by their ID.
 func NewIndexer() *Indexer {
-	return &Indexer{index: trie.NewPathTrie()}
+	return &Indexer{
+		radix.New(),
+	}
 }
 
 // Index indexes a single hex-encoded transaction ID. This
 // method is safe to call concurrently.
 func (m *Indexer) Index(id string) {
-	m.Lock()
-	m.index.Put(id, struct{}{})
-	m.Unlock()
+	m.Insert(id, nil)
 }
 
 // Remove un-indexes a single hex-encoded transaction ID. This
 // method is safe to call concurrently.
 func (m *Indexer) Remove(id string) {
-	m.Lock()
-	m.index.Delete(id)
-	m.Unlock()
+	m.Delete(id)
 }
 
 // Find searches through complete transaction indices for a specified
 // query string. All indices that queried are in the form of tries.
-func (m *Indexer) Find(query string, count int) []string {
-	results := make([]string, 0, count)
+func (m *Indexer) Find(query string, max int) (results []string) {
+	if max > 0 {
+		results = make([]string, 0, max)
+	}
 
-	m.RLock()
-	defer m.RUnlock()
-
-	_ = m.index.Walk(func(key string, _ interface{}) error {
-		if len(results) >= count {
-			return io.EOF
+	cb := func(a string, _ interface{}) bool {
+		if max > 0 && len(results) >= max {
+			return false
 		}
 
-		if !strings.HasPrefix(key, query) {
-			return io.EOF
-		}
+		results = append(results, a)
+		return true
+	}
 
-		results = append(results, key)
-
-		return nil
-	})
+	if query != "" {
+		m.WalkPrefix(query, cb)
+	} else {
+		m.Walk(cb)
+	}
 
 	return results
 }

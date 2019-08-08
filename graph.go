@@ -539,6 +539,10 @@ func (g *Graph) updateGraph(tx *Transaction) error {
 		g.metrics.receivedTX.Mark(int64(tx.LogicalUnits()))
 	}
 
+	if g.indexer != nil {
+		g.indexer.Index(hex.EncodeToString(tx.ID[:]))
+	}
+
 	for _, childID := range g.children[tx.ID] {
 		if _, incomplete := g.incomplete[childID]; !incomplete {
 			continue
