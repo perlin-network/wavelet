@@ -77,13 +77,6 @@ func TestLedger_BroadcastNop(t *testing.T) {
 				currRound.Index,
 				alice.ledger.Graph().RootDepth())
 
-			if currRound.Rejected > 0 {
-				t.Fatal("no tx should be rejected")
-			}
-			if currRound.Ignored > 0 {
-				t.Fatal("no tx should be ignored")
-			}
-
 			if currRound.Index-prevRound > 1 {
 				t.Fatal("more than 1 round finalized")
 			}
@@ -126,12 +119,6 @@ func TestLedger_AddTransaction(t *testing.T) {
 	current := alice.ledger.Rounds().Latest()
 	if current.Index-start > 1 {
 		t.Fatal("more than 1 round finalized")
-	}
-	if current.Rejected > 0 {
-		t.Fatal("no tx should be rejected")
-	}
-	if current.Ignored > 0 {
-		t.Fatal("no tx should be ignored")
 	}
 }
 
@@ -197,10 +184,6 @@ func TestLedger_PayInsufficientBalance(t *testing.T) {
 	for _, node := range testnet.Nodes() {
 		assert.EqualValues(t, aliceBalance, node.BalanceOfAccount(alice))
 		assert.EqualValues(t, 100, node.BalanceOfAccount(bob))
-
-		// All nodes should have rejected the tx
-		round := node.ledger.Rounds().Latest()
-		assert.EqualValues(t, 1, round.Rejected)
 	}
 }
 

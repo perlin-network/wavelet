@@ -41,11 +41,6 @@ type Round struct {
 
 	Applied uint64
 
-	// These are not serialized, and are only used
-	// by the local node
-	Rejected uint64
-	Ignored  uint64
-
 	Start Transaction
 	End   Transaction
 }

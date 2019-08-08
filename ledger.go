@@ -772,9 +772,6 @@ FINALIZE_ROUNDS:
 			continue
 		}
 
-		finalized.Rejected = uint64(results.rejectedCount)
-		finalized.Ignored = uint64(results.ignoredCount)
-
 		pruned, err := l.rounds.Save(finalized)
 		if err != nil {
 			fmt.Printf("Failed to save finalized round to our database: %v\n", err)
