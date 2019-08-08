@@ -70,7 +70,7 @@ func TestApplyTransaction_Single(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(42))
 
-	round := NewRound(viewID, state.Checksum(), 0, Transaction{}, initialRoot)
+	round := NewRound(viewID, state.Checksum(), 0, 0, 0, Transaction{}, initialRoot)
 
 	for i := 0; i < 10000; i++ {
 		switch rng.Intn(2) {
@@ -150,7 +150,7 @@ func TestApplyTransaction_Collapse(t *testing.T) {
 	assert.NotNil(t, graph)
 
 	rng := rand.New(rand.NewSource(42))
-	round := NewRound(viewID, state.Checksum(), 0, Transaction{}, initialRoot)
+	round := NewRound(viewID, state.Checksum(), 0, 0, 0, Transaction{}, initialRoot)
 
 	accountState := NewAccounts(stateStore)
 	assert.NoError(t, accountState.Commit(state))
@@ -171,7 +171,7 @@ func TestApplyTransaction_Collapse(t *testing.T) {
 			err = accountState.Commit(results.snapshot)
 			assert.NoError(t, err)
 			state = results.snapshot
-			round = NewRound(viewID+1, state.Checksum(), uint64(results.appliedCount), round.End, tx)
+			round = NewRound(viewID+1, state.Checksum(), uint64(results.appliedCount), uint64(results.rejectedCount), uint64(results.ignoredCount), round.End, tx)
 			viewID += 1
 
 			for id, account := range accounts {
@@ -187,7 +187,7 @@ func TestApplyTransferTransaction(t *testing.T) {
 	t.Parallel()
 
 	state := avl.New(store.NewInmem())
-	round := NewRound(0, state.Checksum(), 0, Transaction{}, Transaction{})
+	round := NewRound(0, state.Checksum(), 0, 0, 0, Transaction{}, Transaction{})
 	alice, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 	bob, err := skademlia.NewKeys(1, 1)
@@ -218,7 +218,7 @@ func TestApplyStakeTransaction(t *testing.T) {
 	t.Parallel()
 
 	state := avl.New(store.NewInmem())
-	round := NewRound(0, state.Checksum(), 0, Transaction{}, Transaction{})
+	round := NewRound(0, state.Checksum(), 0, 0, 0, Transaction{}, Transaction{})
 	account, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
@@ -249,7 +249,7 @@ func TestApplyBatchTransaction(t *testing.T) {
 	t.Parallel()
 
 	state := avl.New(store.NewInmem())
-	round := NewRound(0, state.Checksum(), 0, Transaction{}, Transaction{})
+	round := NewRound(0, state.Checksum(), 0, 0, 0, Transaction{}, Transaction{})
 	alice, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 	bob, err := skademlia.NewKeys(1, 1)
@@ -282,7 +282,7 @@ func TestApplyContractTransaction(t *testing.T) {
 	t.Parallel()
 
 	state := avl.New(store.NewInmem())
-	round := NewRound(0, state.Checksum(), 0, Transaction{}, Transaction{})
+	round := NewRound(0, state.Checksum(), 0, 0, 0, Transaction{}, Transaction{})
 	account, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 

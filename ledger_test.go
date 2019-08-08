@@ -36,10 +36,11 @@ func TestLedger_BroadcastNop(t *testing.T) {
 
 	// Add lots of transactions
 	var txsLock sync.Mutex
-	txs := make([]Transaction, 0, 10000)
+	txsCount := 10000
+	txs := make([]Transaction, 0, txsCount)
 
 	go func() {
-		for i := 0; i < cap(txs); i++ {
+		for i := 0; i < txsCount; i++ {
 			tx, err := alice.Pay(bob, 1)
 			assert.NoError(t, err)
 
@@ -69,27 +70,34 @@ func TestLedger_BroadcastNop(t *testing.T) {
 			}
 			txsLock.Unlock()
 
-			currRound := alice.ledger.Rounds().Latest().Index
+			currRound := alice.ledger.Rounds().Latest()
 
 			fmt.Printf("%d/%d tx applied, round=%d, root depth=%d\n",
 				appliedCount, txsCount,
-				currRound,
+				currRound.Index,
 				alice.ledger.Graph().RootDepth())
 
-			if currRound-prevRound > 1 {
+			if currRound.Rejected > 0 {
+				t.Fatal("no tx should be rejected")
+			}
+			if currRound.Ignored > 0 {
+				t.Fatal("no tx should be ignored")
+			}
+
+			if currRound.Index-prevRound > 1 {
 				t.Fatal("more than 1 round finalized")
 			}
 
-			prevRound = currRound
+			prevRound = currRound.Index
 
-			if appliedCount < cap(txs) {
+			if appliedCount < txsCount {
 				assert.True(t, alice.ledger.BroadcastingNop(),
 					"node should not stop broadcasting nop while there are unapplied tx")
 			}
 
 			// The test is successful if all tx are applied,
 			// and nop broadcasting is stopped once all tx are applied
-			if appliedCount == cap(txs) && !alice.ledger.BroadcastingNop() {
+			if appliedCount == txsCount && !alice.ledger.BroadcastingNop() {
 				return
 			}
 		}
@@ -115,9 +123,15 @@ func TestLedger_AddTransaction(t *testing.T) {
 	<-alice.WaitForConsensus()
 	<-alice.WaitForConsensus()
 
-	current := alice.ledger.Rounds().Latest().Index
-	if current-start > 1 {
+	current := alice.ledger.Rounds().Latest()
+	if current.Index-start > 1 {
 		t.Fatal("more than 1 round finalized")
+	}
+	if current.Rejected > 0 {
+		t.Fatal("no tx should be rejected")
+	}
+	if current.Ignored > 0 {
+		t.Fatal("no tx should be ignored")
 	}
 }
 

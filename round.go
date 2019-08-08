@@ -22,10 +22,11 @@ package wavelet
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/pkg/errors"
-	"golang.org/x/crypto/blake2b"
 	"io"
 	"math"
+
+	"github.com/pkg/errors"
+	"golang.org/x/crypto/blake2b"
 )
 
 // Round represents a network-wide finalized non-overlapping graph depth interval that
@@ -38,19 +39,23 @@ type Round struct {
 	Index  uint64
 	Merkle MerkleNodeID
 
-	Applied uint64
+	Applied  uint64
+	Rejected uint64
+	Ignored  uint64
 
 	Start Transaction
 	End   Transaction
 }
 
-func NewRound(index uint64, merkle MerkleNodeID, applied uint64, start, end Transaction) Round {
+func NewRound(index uint64, merkle MerkleNodeID, applied uint64, rejected uint64, ignored uint64, start, end Transaction) Round {
 	r := Round{
-		Index:   index,
-		Merkle:  merkle,
-		Applied: applied,
-		Start:   start,
-		End:     end,
+		Index:    index,
+		Merkle:   merkle,
+		Applied:  applied,
+		Rejected: rejected,
+		Ignored:  ignored,
+		Start:    start,
+		End:      end,
 	}
 
 	r.ID = blake2b.Sum256(r.Marshal())
@@ -69,6 +74,10 @@ func (r Round) Marshal() []byte {
 	w.Write(r.Merkle[:])
 
 	binary.BigEndian.PutUint64(buf[:], r.Applied)
+	w.Write(buf[:8])
+	binary.BigEndian.PutUint64(buf[:], r.Rejected)
+	w.Write(buf[:8])
+	binary.BigEndian.PutUint64(buf[:], r.Ignored)
 	w.Write(buf[:8])
 
 	w.Write(r.Start.Marshal())
@@ -113,6 +122,20 @@ func UnmarshalRound(r io.Reader) (round Round, err error) {
 	}
 
 	round.Applied = binary.BigEndian.Uint64(buf[:8])
+
+	if _, err = io.ReadFull(r, buf[:]); err != nil {
+		err = errors.Wrap(err, "failed to decode number of rejected tx")
+		return
+	}
+
+	round.Rejected = binary.BigEndian.Uint64(buf[:8])
+
+	if _, err = io.ReadFull(r, buf[:]); err != nil {
+		err = errors.Wrap(err, "failed to decode number of ignored tx")
+		return
+	}
+
+	round.Ignored = binary.BigEndian.Uint64(buf[:8])
 
 	if round.Start, err = UnmarshalTransaction(r); err != nil {
 		err = errors.Wrap(err, "failed to decode round start transaction")

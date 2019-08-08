@@ -591,7 +591,13 @@ FINALIZE_ROUNDS:
 				continue
 			}
 
-			candidate := NewRound(current.Index+1, results.snapshot.Checksum(), uint64(results.appliedCount), current.End, *eligible)
+			candidate := NewRound(
+				current.Index+1,
+				results.snapshot.Checksum(),
+				uint64(results.appliedCount),
+				uint64(results.rejectedCount),
+				uint64(results.ignoredCount),
+				current.End, *eligible)
 			l.finalizer.Prefer(&candidate)
 
 			continue FINALIZE_ROUNDS

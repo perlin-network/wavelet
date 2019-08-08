@@ -20,10 +20,11 @@
 package wavelet
 
 import (
+	"testing"
+
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func TestNewSnowball(t *testing.T) {
@@ -39,8 +40,8 @@ func TestNewSnowball(t *testing.T) {
 	endA := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagStake, nil))
 	endB := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagContract, nil))
 
-	a := NewRound(1, ZeroMerkleNodeID, 1337, start, endA)
-	b := NewRound(1, ZeroMerkleNodeID, 1010, start, endB)
+	a := NewRound(1, ZeroMerkleNodeID, 1337, 42, 69, start, endA)
+	b := NewRound(1, ZeroMerkleNodeID, 1010, 12, 34, start, endB)
 
 	// Check that Snowball terminates properly given unanimous sampling of Round A.
 
