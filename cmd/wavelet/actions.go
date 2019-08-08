@@ -27,6 +27,7 @@ import (
 	"io/ioutil"
 	"strconv"
 
+	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -372,6 +373,14 @@ func (cli *CLI) spawn(ctx *cli.Context) {
 			Err(err).
 			Str("path", cmd[0]).
 			Msg("Failed to find/load the smart contract code from the given path.")
+		return
+	}
+
+	if err := wasm.GetValidator().ValidateWasm(code); err != nil {
+		cli.logger.Error().
+			Err(err).
+			Str("path", cmd[0]).
+			Msg("Invalid wasm")
 		return
 	}
 
