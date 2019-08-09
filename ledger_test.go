@@ -113,10 +113,17 @@ func TestLedger_Ignore(t *testing.T) {
 	charlie := testnet.AddNodeWithWallet(t, "5b9fcd2d6f8e34f4aa472e0c3099fefd25f0ceab9e908196b1dda63e55349d22f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467")
 
 	go func() {
+		timeout := time.NewTimer(time.Second * 10)
 		for {
-			_, err := alice.PlaceStake(1)
-			if err != nil {
-				t.Fatal(err)
+			select {
+			case <-timeout.C:
+				return
+
+			default:
+				_, err := alice.PlaceStake(1)
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
 		}
 	}()
@@ -138,6 +145,10 @@ func TestLedger_Ignore(t *testing.T) {
 
 	for {
 		ri := <-bob.WaitForConsensus()
+		if ri == 0 {
+			return
+		}
+
 		<-alice.WaitForRound(ri)
 		<-charlie.WaitForRound(ri)
 
