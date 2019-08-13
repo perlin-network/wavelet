@@ -60,13 +60,16 @@ type Config struct {
 	APIPort  uint
 	Peers    []string
 	Database string
+
+	// Only for testing
+	WithoutGC bool
 }
 
 func main() {
-	Run(os.Args, os.Stdin, os.Stdout)
+	Run(os.Args, os.Stdin, os.Stdout, false)
 }
 
-func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
+func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 	log.SetWriter(
 		log.LoggerWavelet,
 		log.NewConsoleWriter(stdout, log.FilterFor(
@@ -202,12 +205,13 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 	app.Action = func(c *cli.Context) error {
 		c.String("config")
 		config := &Config{
-			Host:     c.String("host"),
-			Port:     c.Uint("port"),
-			Wallet:   c.String("wallet"),
-			APIPort:  c.Uint("api.port"),
-			Peers:    c.Args(),
-			Database: c.String("db"),
+			Host:      c.String("host"),
+			Port:      c.Uint("port"),
+			Wallet:    c.String("wallet"),
+			APIPort:   c.Uint("api.port"),
+			Peers:     c.Args(),
+			Database:  c.String("db"),
+			WithoutGC: withoutGC,
 		}
 
 		if genesis := c.String("genesis"); len(genesis) > 0 {
@@ -321,7 +325,12 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 		logger.Fatal().Err(err).Msgf("Failed to create/open database located at %q.", cfg.Database)
 	}
 
-	ledger := wavelet.NewLedger(kv, client, wavelet.WithGenesis(cfg.Genesis))
+	opts := []wavelet.Option{wavelet.WithGenesis(cfg.Genesis)}
+	if cfg.WithoutGC {
+		opts = append(opts, wavelet.WithoutGC())
+	}
+
+	ledger := wavelet.NewLedger(kv, client, opts...)
 
 	go func() {
 		server := client.Listen()

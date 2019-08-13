@@ -403,15 +403,18 @@ func (s *mockStdout) Write(p []byte) (n int, err error) {
 		return len(p), nil
 	}
 
+	buf := make([]byte, len(p))
+	copy(buf, p)
 	for ni >= 0 {
-		copy(s.buf[s.bi:], p[:ni])
+		copy(s.buf[s.bi:], buf[:ni])
 		s.bi += ni
 
 		s.Lines <- string(s.buf[:s.bi])
 
+		s.buf = s.buf[s.bi:]
 		s.bi = 0
-		p = p[ni+1:]
-		ni = bytes.Index(p, []byte{'\n'})
+		buf = buf[ni+1:]
+		ni = bytes.Index(buf, []byte{'\n'})
 	}
 
 	return len(p), nil
@@ -474,8 +477,11 @@ func runWavelet(args TestWaveletArgs, stdin io.ReadCloser, stdout io.Writer) fun
 		rawArgs = append(rawArgs, []string{"--wallet", args.Wallet}...)
 	}
 
-	Run(rawArgs, stdin, stdout)
+	go Run(rawArgs, stdin, stdout, true)
 	return func() {
 		stdin.Close()
+
+		// Since Ledger doesn't have a proper cleanup method yet, just sleep
+		time.Sleep(time.Millisecond * 500)
 	}
 }
