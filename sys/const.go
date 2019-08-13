@@ -62,6 +62,9 @@ var (
 	// parents from for our node.
 	MaxDepthDiff uint64 = 10
 
+	//
+	MaxDownloadDepthDiff uint64 = 1500
+
 	// Max number of parents referencable by a transaction.
 	MaxParentsPerTransaction = 32
 

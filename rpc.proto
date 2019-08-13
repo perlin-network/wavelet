@@ -57,6 +57,11 @@ message SyncResponse {
 }
 
 message DownloadTxRequest {
+    repeated bytes skip_ids = 1;
+    uint64 depth = 2;
+}
+
+message DownloadMissingTxRequest {
     repeated bytes ids = 1;
 }
 
@@ -72,16 +77,12 @@ message Empty {
 }
 
 service Wavelet {
-    rpc Gossip (stream Transactions) returns (Empty) {
-    }
-    rpc Query (QueryRequest) returns (QueryResponse) {
-    }
+    rpc Gossip (stream Transactions) returns (Empty) {}
+    rpc Query (QueryRequest) returns (QueryResponse) {}
 
-    rpc CheckOutOfSync (OutOfSyncRequest) returns (OutOfSyncResponse) {
-    }
-    rpc Sync (stream SyncRequest) returns (stream SyncResponse) {
-    }
+    rpc CheckOutOfSync (OutOfSyncRequest) returns (OutOfSyncResponse) {}
+    rpc Sync (stream SyncRequest) returns (stream SyncResponse) {}
 
-    rpc DownloadTx (DownloadTxRequest) returns (DownloadTxResponse) {
-    }
+    rpc DownloadTx (DownloadTxRequest) returns (DownloadTxResponse) {}
+    rpc DownloadMissingTx (DownloadMissingTxRequest) returns (DownloadTxResponse) {}
 }

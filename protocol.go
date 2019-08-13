@@ -142,7 +142,7 @@ func (p *Protocol) CheckOutOfSync(ctx context.Context, req *OutOfSyncRequest) (*
 	}, nil
 }
 
-func (p *Protocol) DownloadTx(ctx context.Context, req *DownloadTxRequest) (*DownloadTxResponse, error) {
+func (p *Protocol) DownloadMissingTx(ctx context.Context, req *DownloadMissingTxRequest) (*DownloadTxResponse, error) {
 	res := &DownloadTxResponse{Transactions: make([][]byte, 0, len(req.Ids))}
 
 	for _, buf := range req.Ids {
@@ -155,4 +155,28 @@ func (p *Protocol) DownloadTx(ctx context.Context, req *DownloadTxRequest) (*Dow
 	}
 
 	return res, nil
+}
+
+func (p *Protocol) DownloadTx(ctx context.Context, req *DownloadTxRequest) (*DownloadTxResponse, error) {
+	lowLimit := req.Depth - sys.MaxDepthDiff
+	highLimit := req.Depth + sys.MaxDownloadDepthDiff
+
+	receivedIDs := make(map[TransactionID]struct{}, len(req.SkipIds))
+	for _, buf := range req.SkipIds {
+		var id TransactionID
+		copy(id[:], buf)
+
+		receivedIDs[id] = struct{}{}
+	}
+
+
+	var txs [][]byte
+	hostTXs := p.ledger.Graph().GetTransactionsByDepth(&lowLimit, &highLimit)
+	for _, tx := range hostTXs {
+		if _, ok := receivedIDs[tx.ID]; !ok {
+			txs = append(txs, tx.Marshal())
+		}
+	}
+
+	return &DownloadTxResponse{Transactions: txs}, nil
 }
