@@ -19,7 +19,7 @@ There are 3 reasons why transaction won't be added and action will result with e
 - transaction is not valid (see [Transaction validation](#transactionvalidation))
 
 If none of the above is true, then transaction will be added to one of the indices, which won't affect graph structure, call it temporary transactions.
-In order for transaction to be part of the graph it should be "complete" - graph should have all of the parents of the transaction and they should be "complete" as well. This validation is performed only for transaction with depth below root depth by exactly [MaxParentsPerTransaction](https://github.com/perlin-network/wavelet/blob/master/sys/const.go#L65) rounds.
+In order for transaction to be part of the graph it should be "complete" - graph should have all of the parents of the transaction and they should be "complete" as well. This validation is performed only for transaction with depth below root depth by exactly [MaxParentsPerTransaction](https://github.com/perlin-network/wavelet/blob/master/sys/const.go#L65) levels.
 Doing so we allow for some "old" transactions to be added without requirements for parent to be present and complete.
 All of the missing or incomplete parents will be stored as missing transactions (see downloading transactions). And for those which present in the graph, they will be stored in `children` index.
 If at least one of the ancestors is missing, transaction will be stored in `incomplete` index and error will be returned.
@@ -34,7 +34,7 @@ In such case child transaction will be marked as complete and added to the graph
 
 ##### Algorithm
 1. Check if transaction already exists - return error if so
-2. Check if transaction depth is below root depth by `MaxDepthDiff` round - return error if so
+2. Check if transaction depth is below root depth by `MaxDepthDiff` levels - return error if so
 3. Validate transaction, return error if not valid
 4. Store transaction in one of the indices, which just holds information about transaction without affecting actual graph
 5. If transaction depth plus `MaxParentsPerTransaction` equals to root depth then check for all parents to be present and complete
@@ -58,19 +58,19 @@ Here are conditions which needs to be met in order for transaction to be valid (
 - sender and creator (if they aren't the same) should have correct signatures
 
 ##### Transaction parents validation
-First of all if transaction's depth is below root depth by `MaxDepthDiff` rounds we do not check its parents at all.
-Then if there is a parent with depth lower than transaction one by `MaxDepthDiff` round, such parent is considered invalid and error is returned.
+First of all if transaction's depth is below root depth by `MaxDepthDiff` levels we do not check its parents at all.
+Then if there is a parent with depth lower than transaction one by `MaxDepthDiff` levels, such parent is considered invalid and error is returned.
 If transaction's depth is not bigger exactly by one than max depth of parents - then such parents considered invalid. 
 In the opposite case - transaction considered as the one which has valid parents.
 
 #### Parents selection
 As was mentioned in the begining, potential parents transaction are stored in separate index - balanced tree in particular. Transaction are sorted by depth and in case of equal depth - by seed length ([seed](#transactionseed)).
-Tree is traversed in descending order, i.e. higher depth goes first. First `MaxParentsPerTransaction` number of eligible parents will be selected as parents for new transaction. If parent has depth lower than graph by `MaxDepthDiff` rounds or has children which present in the graph and "complete" such parent won't be taken and instead will be removed from parents index in the graph.
+Tree is traversed in descending order, i.e. higher depth goes first. First `MaxParentsPerTransaction` number of eligible parents will be selected as parents for new transaction. If parent has depth lower than graph by `MaxDepthDiff` levels or has children which present in the graph and "complete" such parent won't be taken and instead will be removed from parents index in the graph.
 In other words we prioritise "leaf" transactions to be parents.  
 
 ##### Algorithm
 1. Descend eligible parents balanced tree
-    * if there is transaction found which has lower depth than graph height by `MaxDepthDiff` round it should not be selected as parent and deleted from parents index
+    * if there is transaction found which has lower depth than graph height by `MaxDepthDiff` levels it should not be selected as parent and deleted from parents index
     * if there is transaction found which has children and at least one of them is neither missing nor incomplete, such transaction should not be selected as parent and should be deleted from parents index
 2. Add transaction to selected parents
 3. If there are exactly `MaxParentsPerTransaction` parents found then return those, otherwise continue to #1 
