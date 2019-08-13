@@ -17,12 +17,14 @@ import (
 	"time"
 
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/phayes/freeport"
 	"github.com/stretchr/testify/assert"
 )
 
 var defaultWallet = "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"
+var wallet2 = "85e7450f7cf0d9cd1d1d7bf4169c2f364eea4ba833a7280e0f931a1d92fd92c2696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a"
 
 func TestMain(t *testing.T) {
 	port := nextPort(t)
@@ -145,6 +147,108 @@ func TestMain_Pay(t *testing.T) {
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, defaultWallet[64:], tx.Sender)
 	assert.EqualValues(t, defaultWallet[64:], tx.Creator)
+}
+
+func TestMain_Spawn(t *testing.T) {
+	port := nextPort(t)
+	apiPort := nextPort(t)
+
+	stdin := make(chan string)
+	stdout := newMockStdout()
+
+	cleanup := runWavelet(TestWaveletArgs{Port: port, APIPort: apiPort, Wallet: defaultWallet},
+		mockStdin(stdin), stdout)
+	defer cleanup()
+	waitForAPI(t, apiPort)
+
+	stdin <- "spawn ../../testdata/transfer_back.wasm"
+
+	txID := extractTxID(t, stdout.Search(t, "Success! Your smart contracts ID:"))
+
+	var tx *TestTransaction
+	var err error
+	waitFor(t, func() error {
+		tx, err = getTransaction(apiPort, txID)
+		return err
+	})
+
+	assert.EqualValues(t, txID, tx.ID)
+	assert.EqualValues(t, defaultWallet[64:], tx.Sender)
+	assert.EqualValues(t, defaultWallet[64:], tx.Creator)
+}
+
+func TestMain_Call(t *testing.T) {
+	testnet := wavelet.NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	node := testnet.AddNode(t, 0)
+
+	port := nextPort(t)
+	apiPort := nextPort(t)
+
+	stdin := make(chan string)
+	stdout := newMockStdout()
+
+	cleanup := runWavelet(TestWaveletArgs{Port: port, APIPort: apiPort, Wallet: wallet2, Peers: []string{node.Addr()}},
+		mockStdin(stdin), stdout)
+	defer cleanup()
+	waitForAPI(t, apiPort)
+
+	time.Sleep(time.Second * 1)
+
+	stdin <- "spawn ../../testdata/transfer_back.wasm"
+
+	txID := extractTxID(t, stdout.Search(t, "Success! Your smart contracts ID:"))
+
+	// Wait for consensus
+	stdout.Search(t, "Finalized consensus round")
+
+	var tx *TestTransaction
+	var err error
+	waitFor(t, func() error {
+		tx, err = getTransaction(apiPort, txID)
+		return err
+	})
+
+	stdin <- fmt.Sprintf("call %s 1000 100000 on_money_received", tx.ID)
+	stdout.Search(t, "Your smart contract invocation transaction ID:")
+}
+
+func TestMain_DepositGas(t *testing.T) {
+	testnet := wavelet.NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	node := testnet.AddNode(t, 0)
+
+	port := nextPort(t)
+	apiPort := nextPort(t)
+
+	stdin := make(chan string)
+	stdout := newMockStdout()
+
+	cleanup := runWavelet(TestWaveletArgs{Port: port, APIPort: apiPort, Wallet: wallet2, Peers: []string{node.Addr()}},
+		mockStdin(stdin), stdout)
+	defer cleanup()
+	waitForAPI(t, apiPort)
+
+	time.Sleep(time.Second * 1)
+
+	stdin <- "spawn ../../testdata/transfer_back.wasm"
+
+	txID := extractTxID(t, stdout.Search(t, "Success! Your smart contracts ID:"))
+
+	// Wait for consensus
+	stdout.Search(t, "Finalized consensus round")
+
+	var tx *TestTransaction
+	var err error
+	waitFor(t, func() error {
+		tx, err = getTransaction(apiPort, txID)
+		return err
+	})
+
+	stdin <- fmt.Sprintf("deposit-gas %s 99999", tx.ID)
+	stdout.Search(t, "Your gas deposit transaction ID:")
 }
 
 func TestMain_Find(t *testing.T) {
@@ -272,9 +376,14 @@ func waitForAPI(t *testing.T, apiPort string) {
 }
 
 type TestLedgerStatus struct {
-	PublicKey string   `json:"public_key"`
-	Address   string   `json:"address"`
-	Peers     []string `json:"peers"`
+	PublicKey string     `json:"public_key"`
+	Address   string     `json:"address"`
+	Peers     []TestPeer `json:"peers"`
+}
+
+type TestPeer struct {
+	Address   string `json:"address"`
+	PublicKey string `json:"public_key"`
 }
 
 type TestTransaction struct {
@@ -390,29 +499,25 @@ type mockStdout struct {
 func newMockStdout() *mockStdout {
 	return &mockStdout{
 		Lines: make(chan string, 256),
-		buf:   make([]byte, 2048),
-		bi:    0,
+		buf:   make([]byte, 0),
 	}
 }
 
 func (s *mockStdout) Write(p []byte) (n int, err error) {
+	s.buf = append(s.buf, p...)
+
 	ni := bytes.Index(p, []byte{'\n'})
 	if ni < 0 {
-		copy(s.buf[s.bi:], p)
-		s.bi += len(p)
 		return len(p), nil
 	}
 
 	buf := make([]byte, len(p))
 	copy(buf, p)
 	for ni >= 0 {
-		copy(s.buf[s.bi:], buf[:ni])
-		s.bi += ni
+		str := string(s.buf[:ni])
+		s.Lines <- str
 
-		s.Lines <- string(s.buf[:s.bi])
-
-		s.buf = s.buf[s.bi:]
-		s.bi = 0
+		s.buf = s.buf[ni+1:]
 		buf = buf[ni+1:]
 		ni = bytes.Index(buf, []byte{'\n'})
 	}
@@ -469,12 +574,16 @@ type TestWaveletArgs struct {
 	Port    string
 	APIPort string
 	Wallet  string
+	Peers   []string
 }
 
 func runWavelet(args TestWaveletArgs, stdin io.ReadCloser, stdout io.Writer) func() {
 	rawArgs := []string{"wavelet", "--port", args.Port, "--api.port", args.APIPort}
 	if args.Wallet != "" {
 		rawArgs = append(rawArgs, []string{"--wallet", args.Wallet}...)
+	}
+	if args.Peers != nil {
+		rawArgs = append(rawArgs, args.Peers...)
 	}
 
 	go Run(rawArgs, stdin, stdout, true)
