@@ -39,6 +39,10 @@ func (n *TestNetwork) Cleanup() {
 	n.faucet.Cleanup()
 }
 
+func (n *TestNetwork) Faucet() *TestLedger {
+	return n.faucet
+}
+
 func (n *TestNetwork) AddNode(t testing.TB, startingBalance uint64) *TestLedger {
 	node := NewTestLedger(t, TestLedgerConfig{
 		Peers: []string{n.faucet.Addr()},
@@ -158,6 +162,12 @@ func (l *TestLedger) Stake() uint64 {
 	snapshot := l.ledger.Snapshot()
 	stake, _ := ReadAccountStake(snapshot, l.PublicKey())
 	return stake
+}
+
+func (l *TestLedger) StakeWithPublicKey(key AccountID) uint64 {
+	snapshot := l.ledger.Snapshot()
+	balance, _ := ReadAccountStake(snapshot, key)
+	return balance
 }
 
 func (l *TestLedger) StakeOfAccount(node *TestLedger) uint64 {
