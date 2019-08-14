@@ -17,11 +17,10 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package wavelet
+package lru
 
 import (
 	"container/list"
-	"golang.org/x/crypto/blake2b"
 	"sync"
 )
 
@@ -30,24 +29,24 @@ type LRU struct {
 
 	size int
 
-	elements map[[blake2b.Size256]byte]*list.Element
+	elements map[interface{}]*list.Element
 	access   *list.List // *objectInfo
 }
 
 type objectInfo struct {
-	key [blake2b.Size256]byte
+	key interface{}
 	obj interface{}
 }
 
 func NewLRU(size int) *LRU {
 	return &LRU{
 		size:     size,
-		elements: make(map[[blake2b.Size256]byte]*list.Element, size),
+		elements: make(map[interface{}]*list.Element, size),
 		access:   list.New(),
 	}
 }
 
-func (l *LRU) load(key [blake2b.Size256]byte) (interface{}, bool) {
+func (l *LRU) Load(key interface{}) (interface{}, bool) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -60,7 +59,7 @@ func (l *LRU) load(key [blake2b.Size256]byte) (interface{}, bool) {
 	return elem.Value.(*objectInfo).obj, ok
 }
 
-func (l *LRU) put(key [blake2b.Size256]byte, val interface{}) {
+func (l *LRU) Put(key interface{}, val interface{}) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -84,7 +83,7 @@ func (l *LRU) put(key [blake2b.Size256]byte, val interface{}) {
 	}
 }
 
-func (l *LRU) remove(key [blake2b.Size256]byte) {
+func (l *LRU) Remove(key interface{}) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -93,22 +92,4 @@ func (l *LRU) remove(key [blake2b.Size256]byte) {
 		delete(l.elements, key)
 		l.access.Remove(elem)
 	}
-}
-
-func (l *LRU) mostRecentlyUsed(n int) [][blake2b.Size256]byte {
-	l.Lock()
-	defer l.Unlock()
-
-	out := make([][blake2b.Size256]byte, 0)
-
-	current := l.access.Front()
-	for current != nil {
-		out = append(out, current.Value.(*objectInfo).key)
-		if len(out) == n {
-			break
-		}
-		current = current.Next()
-	}
-
-	return out
 }

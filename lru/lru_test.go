@@ -17,7 +17,7 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package avl
+package lru
 
 import (
 	"github.com/stretchr/testify/assert"
@@ -25,24 +25,24 @@ import (
 )
 
 func TestLRU(t *testing.T) {
-	lru := newLRU(2)
+	lru := NewLRU(2)
 
-	lru.put([MerkleHashSize]byte{'a'}, 1)
-	lru.put([MerkleHashSize]byte{'b'}, 2)
-	_, ok := lru.load([MerkleHashSize]byte{'b'})
+	lru.Put([32]byte{'a'}, 1)
+	lru.Put([32]byte{'b'}, 2)
+	_, ok := lru.Load([32]byte{'b'})
 	assert.True(t, ok)
-	_, ok = lru.load([MerkleHashSize]byte{'a'})
+	_, ok = lru.Load([32]byte{'a'})
 	assert.True(t, ok)
 
-	lru.put([MerkleHashSize]byte{'c'}, 3)
-	_, ok = lru.load([MerkleHashSize]byte{'b'})
+	lru.Put([32]byte{'c'}, 3)
+	_, ok = lru.Load([32]byte{'b'})
 	assert.False(t, ok)
 
-	val, ok := lru.load([MerkleHashSize]byte{'a'})
+	val, ok := lru.Load([32]byte{'a'})
 	assert.True(t, ok)
 	assert.Equal(t, 1, val.(int))
 
-	val, ok = lru.load([MerkleHashSize]byte{'c'})
+	val, ok = lru.Load([32]byte{'c'})
 	assert.True(t, ok)
 	assert.Equal(t, 3, val.(int))
 }
