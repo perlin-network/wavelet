@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -143,6 +144,77 @@ func TestMain_Call(t *testing.T) {
 	tx := w.WaitForTransction(t, txID)
 	w.Stdin <- fmt.Sprintf("call %s 1000 100000 on_money_received", tx.ID)
 	w.Stdout.Search(t, "Your smart contract invocation transaction ID:")
+}
+
+func TestMain_CallWithParams(t *testing.T) {
+	w := NewTestWavelet(t, &TestWaveletConfig{wallet2})
+	defer w.Cleanup()
+
+	for i := 0; i < 3; i++ {
+		w.Testnet.AddNode(t, 0)
+	}
+
+	time.Sleep(time.Second * 1)
+
+	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
+
+	txID := extractTxID(t, w.Stdout.Search(t, "Success! Your smart contracts ID:"))
+	w.WaitForConsensus(t)
+	tx := w.WaitForTransction(t, txID)
+
+	params := "Sfoobar Bloremipsum 142 21337 4666666 831415926535 Hbada55"
+
+	w.Stdin <- fmt.Sprintf("call %s 1000 100000 on_money_received %s", tx.ID, params)
+
+	txID = extractTxID(t, w.Stdout.Search(t, "Your smart contract invocation transaction ID:"))
+	tx = w.WaitForTransction(t, txID)
+
+	encodedParams, err := base64.StdEncoding.DecodeString(tx.Payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	encodedParams = encodedParams[wavelet.SizeAccountID:]
+	encodedParams = encodedParams[8+8+8+4:] // Amount, gas limit, gas deposit
+	encodedParams = encodedParams[len("on_money_received"):]
+	encodedParams = encodedParams[4:] // Params length
+
+	hexParams := hex.EncodeToString(encodedParams)
+
+	// foobar
+	buf := hexParams[:14]
+	assert.EqualValues(t, hex.EncodeToString(append([]byte("foobar"), byte(0))), buf)
+	hexParams = hexParams[14:]
+
+	// loremipsum
+	buf = hexParams[:28]
+	assert.EqualValues(t, "0a000000", buf[:8])
+	assert.EqualValues(t, hex.EncodeToString([]byte("loremipsum")), buf[8:])
+	hexParams = hexParams[28:]
+
+	// 42
+	buf = hexParams[:2]
+	assert.EqualValues(t, "2a", buf[:2])
+	hexParams = hexParams[2:]
+
+	// 1337
+	buf = hexParams[:4]
+	assert.EqualValues(t, "3905", buf[:4])
+	hexParams = hexParams[4:]
+
+	// 666666
+	buf = hexParams[:8]
+	assert.EqualValues(t, "2a2c0a00", buf[:8])
+	hexParams = hexParams[8:]
+
+	// 31415926535
+	buf = hexParams[:16]
+	assert.EqualValues(t, "07ff885007000000", buf[:16])
+	hexParams = hexParams[16:]
+
+	// 0xbada55
+	buf = hexParams
+	assert.EqualValues(t, "bada55", buf)
 }
 
 func TestMain_DepositGas(t *testing.T) {
@@ -295,6 +367,7 @@ type TestTransaction struct {
 	ID      string `json:"id"`
 	Sender  string `json:"sender"`
 	Creator string `json:"creator"`
+	Payload string `json:"payload"`
 }
 
 func nopStdin() io.ReadCloser {
