@@ -28,6 +28,7 @@ import (
 	"math/rand"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/perlin-network/noise"
@@ -484,6 +485,8 @@ FINALIZE_ROUNDS:
 		current := l.rounds.Latest()
 		currentDifficulty := current.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)
 
+		consensusStartTime := time.Now()
+
 		if preferred := l.finalizer.Preferred(); preferred == nil {
 			eligible := l.graph.FindEligibleCritical(currentDifficulty)
 
@@ -531,7 +534,7 @@ FINALIZE_ROUNDS:
 		}
 		l.broadcastNopsLock.Unlock()
 
-		workerChan := make(chan *grpc.ClientConn, 16)
+		workerChan := make(chan *grpc.ClientConn, 32)
 
 		var workerWG sync.WaitGroup
 		workerWG.Add(cap(workerChan))
@@ -541,100 +544,102 @@ FINALIZE_ROUNDS:
 
 		req := &QueryRequest{RoundIndex: current.Index + 1}
 
+		var queried int32
 		for i := 0; i < cap(workerChan); i++ {
 			go func() {
 				for conn := range workerChan {
-					f := func() {
-						client := NewWaveletClient(conn)
+					queryTime := time.Now()
 
-						ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+					client := NewWaveletClient(conn)
 
-						p := &peer.Peer{}
+					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 
-						res, err := client.Query(ctx, req, grpc.Peer(p))
-						if err != nil {
-							cancel()
-							return
-						}
+					p := &peer.Peer{}
 
+					res, err := client.Query(ctx, req, grpc.Peer(p))
+					if err != nil {
 						cancel()
-
-						l.metrics.queried.Mark(1)
-
-						info := noise.InfoFromPeer(p)
-						if info == nil {
-							return
-						}
-
-						voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
-						if !ok {
-							return
-						}
-
-						round, err := UnmarshalRound(bytes.NewReader(res.Round))
-						if err != nil {
-							voteChan <- vote{voter: voter, preferred: nil}
-							return
-						}
-
-						if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
-							voteChan <- vote{voter: voter, preferred: nil}
-							return
-						}
-
-						if round.End.Depth <= round.Start.Depth {
-							return
-						}
-
-						if round.Index != current.Index+1 {
-							if round.Index > sys.SyncIfRoundsDifferBy+current.Index {
-								select {
-								case l.syncVotes <- vote{voter: voter, preferred: &round}:
-								default:
-								}
-							}
-
-							return
-						}
-
-						if round.Start.ID != current.End.ID {
-							return
-						}
-
-						if err := l.AddTransaction(round.Start); err != nil {
-							return
-						}
-
-						if err := l.AddTransaction(round.End); err != nil {
-							return
-						}
-
-						if !round.End.IsCritical(currentDifficulty) {
-							return
-						}
-
-						results, err := l.collapseTransactions(round.Index, round.Start, round.End, false)
-						if err != nil {
-							if !strings.Contains(err.Error(), "missing ancestor") {
-								fmt.Println(err)
-							}
-							return
-						}
-
-						if uint64(results.appliedCount) != round.Applied {
-							fmt.Printf("applied %d but expected %d, rejected = %d, ignored = %d\n", results.appliedCount, round.Applied, results.rejectedCount, results.ignoredCount)
-							return
-						}
-
-						if results.snapshot.Checksum() != round.Merkle {
-							fmt.Printf("got merkle %x but expected %x\n", results.snapshot.Checksum(), round.Merkle)
-							return
-						}
-
-						voteChan <- vote{voter: voter, preferred: &round}
+						continue
 					}
 
-					l.metrics.queryLatency.Time(f)
+					cancel()
+
+					atomic.AddInt32(&queried, 1)
+					l.metrics.queried.Mark(1)
+
+					info := noise.InfoFromPeer(p)
+					if info == nil {
+						continue
+					}
+
+					voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
+					if !ok {
+						continue
+					}
+
+					round, err := UnmarshalRound(bytes.NewReader(res.Round))
+					if err != nil {
+						voteChan <- vote{voter: voter, preferred: nil}
+						continue
+					}
+
+					if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
+						voteChan <- vote{voter: voter, preferred: nil}
+						continue
+					}
+
+					if round.End.Depth <= round.Start.Depth {
+						continue
+					}
+
+					if round.Index != current.Index+1 {
+						if round.Index > sys.SyncIfRoundsDifferBy+current.Index {
+							select {
+							case l.syncVotes <- vote{voter: voter, preferred: &round}:
+							default:
+							}
+						}
+
+						continue
+					}
+
+					if round.Start.ID != current.End.ID {
+						continue
+					}
+
+					if err := l.AddTransaction(round.Start); err != nil {
+						continue
+					}
+
+					if err := l.AddTransaction(round.End); err != nil {
+						continue
+					}
+
+					if !round.End.IsCritical(currentDifficulty) {
+						continue
+					}
+
+					results, err := l.collapseTransactions(round.Index, round.Start, round.End, false)
+					if err != nil {
+						if !strings.Contains(err.Error(), "missing ancestor") {
+							fmt.Println(err)
+						}
+						continue
+					}
+
+					if uint64(results.appliedCount) != round.Applied {
+						fmt.Printf("applied %d but expected %d, rejected = %d, ignored = %d\n", results.appliedCount, round.Applied, results.rejectedCount, results.ignoredCount)
+						continue
+					}
+
+					if results.snapshot.Checksum() != round.Merkle {
+						fmt.Printf("got merkle %x but expected %x\n", results.snapshot.Checksum(), round.Merkle)
+						continue
+					}
+
+					voteChan <- vote{voter: voter, preferred: &round}
+
+					l.metrics.queryLatency.Update(time.Now().Sub(queryTime))
 				}
 
 				workerWG.Done()
@@ -671,6 +676,8 @@ FINALIZE_ROUNDS:
 			}
 		}
 
+		l.metrics.queriedPerRound.Update(int64(queried))
+
 		close(workerChan)
 		workerWG.Wait() // Wait for query workers to stop
 		workerWG.Add(1)
@@ -679,6 +686,8 @@ FINALIZE_ROUNDS:
 
 		finalized := l.finalizer.Preferred()
 		l.finalizer.Reset()
+
+		l.metrics.consensusLatency.Update(time.Now().Sub(consensusStartTime))
 
 		results, err := l.collapseTransactions(finalized.Index, finalized.Start, finalized.End, true)
 		if err != nil {

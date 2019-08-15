@@ -29,26 +29,30 @@ import (
 type Metrics struct {
 	registry metrics.Registry
 
-	queried metrics.Meter
+	queried         metrics.Meter
+	queriedPerRound metrics.Gauge
 
 	gossipedTX   metrics.Meter
 	receivedTX   metrics.Meter
 	acceptedTX   metrics.Meter
 	downloadedTX metrics.Meter
 
-	queryLatency metrics.Timer
+	consensusLatency metrics.Timer
+	queryLatency     metrics.Timer
 }
 
 func NewMetrics(ctx context.Context) *Metrics {
 	registry := metrics.NewRegistry()
 
-	queried := metrics.NewRegisteredMeter("round.queried", registry)
+	queried := metrics.NewRegisteredMeter("round.queried.total", registry)
+	queriedPerRound := metrics.NewRegisteredGauge("round.queried.per_round", registry)
 
 	gossipedTX := metrics.NewRegisteredMeter("tx.gossiped", registry)
 	receivedTX := metrics.NewRegisteredMeter("tx.received", registry)
 	acceptedTX := metrics.NewRegisteredMeter("tx.accepted", registry)
 	downloadedTX := metrics.NewRegisteredMeter("tx.downloaded", registry)
 
+	consensusLatency := metrics.NewRegisteredTimer("consensus.latency", registry)
 	queryLatency := metrics.NewRegisteredTimer("query.latency", registry)
 
 	go func() {
@@ -58,7 +62,8 @@ func NewMetrics(ctx context.Context) *Metrics {
 			select {
 			case <-time.After(1 * time.Second):
 				logger.Info().
-					Int64("round.queried", queried.Count()).
+					Int64("round.queried.total", queried.Count()).
+					Int64("round.queried.per_round", queriedPerRound.Value()).
 					Int64("tx.gossiped", gossipedTX.Count()).
 					Int64("tx.received", receivedTX.Count()).
 					Int64("tx.accepted", acceptedTX.Count()).
@@ -68,9 +73,12 @@ func NewMetrics(ctx context.Context) *Metrics {
 					Float64("tps.received", receivedTX.RateMean()).
 					Float64("tps.accepted", acceptedTX.RateMean()).
 					Float64("tps.downloaded", downloadedTX.RateMean()).
-					Int64("query.latency.max.ms", queryLatency.Max()/(1.0e+7)).
-					Int64("query.latency.min.ms", queryLatency.Min()/(1.0e+7)).
-					Float64("query.latency.mean.ms", queryLatency.Mean()/(1.0e+7)).
+					Int64("query.latency.max.ms", queryLatency.Max()/int64(time.Millisecond)).
+					Int64("query.latency.min.ms", queryLatency.Min()/int64(time.Millisecond)).
+					Float64("query.latency.mean.ms", queryLatency.Mean()/float64(time.Millisecond)).
+					Int64("consensus.latency.max.ms", consensusLatency.Max()/int64(time.Millisecond)).
+					Int64("consensus.latency.min.ms", consensusLatency.Min()/int64(time.Millisecond)).
+					Float64("consensus.latency.mean.ms", consensusLatency.Mean()/float64(time.Millisecond)).
 					Msg("Updated metrics.")
 			case <-ctx.Done():
 				return
@@ -81,14 +89,16 @@ func NewMetrics(ctx context.Context) *Metrics {
 	return &Metrics{
 		registry: registry,
 
-		queried: queried,
+		queried:         queried,
+		queriedPerRound: queriedPerRound,
 
 		gossipedTX:   gossipedTX,
 		receivedTX:   receivedTX,
 		acceptedTX:   acceptedTX,
 		downloadedTX: downloadedTX,
 
-		queryLatency: queryLatency,
+		consensusLatency: consensusLatency,
+		queryLatency:     queryLatency,
 	}
 }
 
@@ -100,5 +110,6 @@ func (m *Metrics) Stop() {
 	m.acceptedTX.Stop()
 	m.downloadedTX.Stop()
 
+	m.consensusLatency.Stop()
 	m.queryLatency.Stop()
 }
