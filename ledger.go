@@ -472,6 +472,8 @@ FINALIZE_ROUNDS:
 		default:
 		}
 
+		consensusStartTime := time.Now()
+
 		if len(l.client.ClosestPeers()) < sys.SnowballK {
 			select {
 			case <-l.sync:
@@ -484,8 +486,6 @@ FINALIZE_ROUNDS:
 
 		current := l.rounds.Latest()
 		currentDifficulty := current.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)
-
-		consensusStartTime := time.Now()
 
 		if preferred := l.finalizer.Preferred(); preferred == nil {
 			eligible := l.graph.FindEligibleCritical(currentDifficulty)
@@ -687,8 +687,6 @@ FINALIZE_ROUNDS:
 		finalized := l.finalizer.Preferred()
 		l.finalizer.Reset()
 
-		l.metrics.consensusLatency.Update(time.Now().Sub(consensusStartTime))
-
 		results, err := l.collapseTransactions(finalized.Index, finalized.Start, finalized.End, true)
 		if err != nil {
 			if !strings.Contains(err.Error(), "missing ancestor") {
@@ -750,6 +748,7 @@ FINALIZE_ROUNDS:
 			Msg("Finalized consensus round, and initialized a new round.")
 
 		//go ExportGraphDOT(finalized, l.graph)
+		l.metrics.consensusLatency.Update(time.Now().Sub(consensusStartTime))
 	}
 }
 

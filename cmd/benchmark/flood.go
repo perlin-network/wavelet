@@ -20,10 +20,10 @@
 package main
 
 import (
+	"encoding/hex"
 	"runtime"
 	"sync"
 
-	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
@@ -73,22 +73,9 @@ func sendTransaction(
 
 	defer wg.Done()
 
-	n := 40
-	payload := wavelet.Batch{
-		Tags:     make([]uint8, 0, n),
-		Payloads: make([][]byte, 0, n),
-	}
-
-	stake := wavelet.Stake{Opcode: sys.PlaceStake, Amount: uint64(i)}
-	for i := 0; i < 40; i++ {
-		if err := payload.AddStake(stake); err != nil {
-			// Shouldn't happen
-			panic(err)
-		}
-	}
-
 	var res wctl.SendTransactionResponse
-	res, err := client.SendTransaction(byte(sys.TagBatch), payload.Marshal())
+	payload, _ := hex.DecodeString("980506420d58e3b7ebf9327a2357a9c7f778e328695ab64039c568a6c31c6796000000000000000040420f0000000000000000000000000005000000636c69636b00000000")
+	res, err := client.SendTransaction(byte(sys.TagTransfer), payload)
 	if err != nil {
 		chRes <- res
 		chErr <- err

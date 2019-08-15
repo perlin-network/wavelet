@@ -342,12 +342,12 @@ func executeContractInTransactionContext(
 		}
 		state.GasLimit -= executor.Gas
 
-		logger.Info().
-			Hex("sender_id", tx.Creator[:]).
-			Hex("contract_id", contractID[:]).
-			Uint64("gas", executor.Gas).
-			Uint64("gas_limit", realGasLimit).
-			Msg("Deducted PERLs for invoking smart contract function.")
+		//logger.Info().
+		//	Hex("sender_id", tx.Creator[:]).
+		//	Hex("contract_id", contractID[:]).
+		//	Uint64("gas", executor.Gas).
+		//	Uint64("gas_limit", realGasLimit).
+		//	Msg("Deducted PERLs for invoking smart contract function.")
 
 		for _, entry := range executor.Queue {
 			err := applyTransaction(round, snapshot, entry, state)
