@@ -271,6 +271,7 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 		if err != nil {
 			return errors.Wrap(err, "cannot clone vm")
 		}
+		vm.Config.GasLimit = gasLimit
 	} else {
 		config := exec.VMConfig{
 			DefaultMemoryPages: sys.ContractDefaultMemoryPages,
