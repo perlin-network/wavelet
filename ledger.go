@@ -28,7 +28,6 @@ import (
 	"math/rand"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/perlin-network/noise"
@@ -464,292 +463,291 @@ func (l *Ledger) FinalizeRounds() {
 	l.consensus.Add(1)
 	defer l.consensus.Done()
 
-FINALIZE_ROUNDS:
 	for {
+		l.metrics.finalizationLatency.Time(l.finalize)
+	}
+}
+
+func (l *Ledger) finalize() {
+	select {
+	case <-l.sync:
+		return
+	default:
+	}
+
+	if len(l.client.ClosestPeers()) < sys.SnowballK {
 		select {
 		case <-l.sync:
+			return
+		case <-time.After(1 * time.Second):
+		}
+
+		return
+	}
+
+	current := l.rounds.Latest()
+	currentDifficulty := current.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)
+
+	if preferred := l.finalizer.Preferred(); preferred == nil {
+		eligible := l.graph.FindEligibleCritical(currentDifficulty)
+
+		if eligible == nil {
+			nop := l.BroadcastNop()
+
+			if nop != nil {
+				if !nop.IsCritical(currentDifficulty) {
+					select {
+					case <-l.sync:
+						return
+					case <-time.After(500 * time.Microsecond):
+					}
+				}
+
+				return
+			}
+
+			select {
+			case <-l.sync:
+				return
+			case <-time.After(1 * time.Millisecond):
+			}
+
+			return
+		}
+
+		results, err := l.collapseTransactions(current.Index+1, current.End, *eligible, false)
+		if err != nil {
+			fmt.Println("error collapsing transactions during finalization", err)
+			return
+		}
+
+		candidate := NewRound(current.Index+1, results.snapshot.Checksum(), uint64(results.appliedCount), current.End, *eligible)
+		l.finalizer.Prefer(&candidate)
+	}
+
+	// Only stop broadcasting nops if the most recently added transaction
+	// has been applied
+	l.broadcastNopsLock.Lock()
+	if l.broadcastNops && l.broadcastNopsMaxDepth <= l.finalizer.Preferred().End.Depth {
+		l.broadcastNops = false
+	}
+	l.broadcastNopsLock.Unlock()
+
+	workerChan := make(chan *grpc.ClientConn, 32)
+
+	var workerWG sync.WaitGroup
+	workerWG.Add(cap(workerChan))
+
+	voteChan := make(chan vote, sys.SnowballK)
+	go CollectVotes(l.accounts, l.finalizer, voteChan, &workerWG)
+
+	var queried int32
+	for i := 0; i < cap(workerChan); i++ {
+		go func() {
+			for conn := range workerChan {
+				l.metrics.queryLatency.Time(func() {
+					l.query(conn, voteChan, current, currentDifficulty)
+				})
+			}
+
+			workerWG.Done()
+		}()
+	}
+
+	for !l.finalizer.Decided() {
+		select {
+		case <-l.sync:
+			close(workerChan)
+			workerWG.Wait()
+			workerWG.Add(1)
+			close(voteChan)
+			workerWG.Wait() // Wait for vote processor worker to stop
+
 			return
 		default:
 		}
 
-		consensusStartTime := time.Now()
+		// Randomly sample a peer to query
+		peers, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
+		if err != nil {
+			close(workerChan)
+			workerWG.Wait()
+			workerWG.Add(1)
+			close(voteChan)
+			workerWG.Wait() // Wait for vote processor worker to stop
 
-		if len(l.client.ClosestPeers()) < sys.SnowballK {
+			return
+		}
+
+		for _, p := range peers {
+			workerChan <- p
+		}
+	}
+
+	l.metrics.queriedPerRound.Update(int64(queried))
+
+	close(workerChan)
+	workerWG.Wait() // Wait for query workers to stop
+	workerWG.Add(1)
+	close(voteChan)
+	workerWG.Wait() // Wait for vote processor worker to stop
+
+	finalized := l.finalizer.Preferred()
+	l.finalizer.Reset()
+
+	results, err := l.collapseTransactions(finalized.Index, finalized.Start, finalized.End, true)
+	if err != nil {
+		if !strings.Contains(err.Error(), "missing ancestor") {
+			fmt.Println(err)
+		}
+		return
+	}
+
+	if uint64(results.appliedCount) != finalized.Applied {
+		fmt.Printf("Expected to have applied %d transactions finalizing a round, but only applied %d transactions instead.\n", finalized.Applied, results.appliedCount)
+		return
+	}
+
+	if results.snapshot.Checksum() != finalized.Merkle {
+		fmt.Printf("Expected finalized rounds merkle root to be %x, but got %x.\n", finalized.Merkle, results.snapshot.Checksum())
+		return
+	}
+
+	pruned, err := l.rounds.Save(finalized)
+	if err != nil {
+		fmt.Printf("Failed to save finalized round to our database: %v\n", err)
+	}
+
+	if pruned != nil {
+		count := l.graph.PruneBelowDepth(pruned.End.Depth)
+
+		logger := log.Consensus("prune")
+		logger.Debug().
+			Int("num_tx", count).
+			Uint64("current_round_id", finalized.Index).
+			Uint64("pruned_round_id", pruned.Index).
+			Msg("Pruned away round and transactions.")
+	}
+
+	l.graph.UpdateRootDepth(finalized.End.Depth)
+
+	if err = l.accounts.Commit(results.snapshot); err != nil {
+		fmt.Printf("Failed to commit collaped state to our database: %v\n", err)
+	}
+
+	l.metrics.acceptedTX.Mark(int64(results.appliedCount))
+
+	l.LogChanges(results.snapshot, current.Index)
+
+	logger := log.Consensus("round_end")
+	logger.Info().
+		Int("num_applied_tx", results.appliedCount).
+		Int("num_rejected_tx", results.rejectedCount).
+		Int("num_ignored_tx", results.ignoredCount).
+		Uint64("old_round", current.Index).
+		Uint64("new_round", finalized.Index).
+		Uint8("old_difficulty", current.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
+		Uint8("new_difficulty", finalized.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
+		Hex("new_root", finalized.End.ID[:]).
+		Hex("old_root", current.End.ID[:]).
+		Hex("new_merkle_root", finalized.Merkle[:]).
+		Hex("old_merkle_root", current.Merkle[:]).
+		Uint64("round_depth", finalized.End.Depth-finalized.Start.Depth).
+		Msg("Finalized consensus round, and initialized a new round.")
+
+	//go ExportGraphDOT(finalized, l.graph)
+}
+
+func (l *Ledger) query(conn *grpc.ClientConn, voteChan chan<- vote, current *Round, currentDifficulty byte) {
+	client := NewWaveletClient(conn)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+
+	p := &peer.Peer{}
+
+	req := &QueryRequest{RoundIndex: current.Index + 1}
+
+	res, err := client.Query(ctx, req, grpc.Peer(p))
+	if err != nil {
+		cancel()
+		return
+	}
+
+	cancel()
+
+	l.metrics.queried.Mark(1)
+
+	info := noise.InfoFromPeer(p)
+	if info == nil {
+		return
+	}
+
+	voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
+	if !ok {
+		return
+	}
+
+	round, err := UnmarshalRound(bytes.NewReader(res.Round))
+	if err != nil {
+		voteChan <- vote{voter: voter, preferred: nil}
+		return
+	}
+
+	if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
+		voteChan <- vote{voter: voter, preferred: nil}
+		return
+	}
+
+	if round.End.Depth <= round.Start.Depth {
+		return
+	}
+
+	if round.Index != current.Index+1 {
+		if round.Index > sys.SyncIfRoundsDifferBy+current.Index {
 			select {
-			case <-l.sync:
-				return
-			case <-time.After(1 * time.Second):
-			}
-
-			continue FINALIZE_ROUNDS
-		}
-
-		current := l.rounds.Latest()
-		currentDifficulty := current.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)
-
-		if preferred := l.finalizer.Preferred(); preferred == nil {
-			eligible := l.graph.FindEligibleCritical(currentDifficulty)
-
-			if eligible == nil {
-				nop := l.BroadcastNop()
-
-				if nop != nil {
-					if !nop.IsCritical(currentDifficulty) {
-						select {
-						case <-l.sync:
-							return
-						case <-time.After(500 * time.Microsecond):
-						}
-					}
-
-					continue FINALIZE_ROUNDS
-				}
-
-				select {
-				case <-l.sync:
-					return
-				case <-time.After(1 * time.Millisecond):
-				}
-
-				continue FINALIZE_ROUNDS
-			}
-
-			results, err := l.collapseTransactions(current.Index+1, current.End, *eligible, false)
-			if err != nil {
-				fmt.Println("error collapsing transactions during finalization", err)
-				continue
-			}
-
-			candidate := NewRound(current.Index+1, results.snapshot.Checksum(), uint64(results.appliedCount), current.End, *eligible)
-			l.finalizer.Prefer(&candidate)
-
-			continue FINALIZE_ROUNDS
-		}
-
-		// Only stop broadcasting nops if the most recently added transaction
-		// has been applied
-		l.broadcastNopsLock.Lock()
-		if l.broadcastNops && l.broadcastNopsMaxDepth <= l.finalizer.Preferred().End.Depth {
-			l.broadcastNops = false
-		}
-		l.broadcastNopsLock.Unlock()
-
-		workerChan := make(chan *grpc.ClientConn, 32)
-
-		var workerWG sync.WaitGroup
-		workerWG.Add(cap(workerChan))
-
-		voteChan := make(chan vote, sys.SnowballK)
-		go CollectVotes(l.accounts, l.finalizer, voteChan, &workerWG)
-
-		req := &QueryRequest{RoundIndex: current.Index + 1}
-
-		var queried int32
-		for i := 0; i < cap(workerChan); i++ {
-			go func() {
-				for conn := range workerChan {
-					queryTime := time.Now()
-
-					client := NewWaveletClient(conn)
-
-					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-
-					p := &peer.Peer{}
-
-					res, err := client.Query(ctx, req, grpc.Peer(p))
-					if err != nil {
-						cancel()
-						continue
-					}
-
-					cancel()
-
-					atomic.AddInt32(&queried, 1)
-					l.metrics.queried.Mark(1)
-
-					info := noise.InfoFromPeer(p)
-					if info == nil {
-						continue
-					}
-
-					voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
-					if !ok {
-						continue
-					}
-
-					round, err := UnmarshalRound(bytes.NewReader(res.Round))
-					if err != nil {
-						voteChan <- vote{voter: voter, preferred: nil}
-						continue
-					}
-
-					if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
-						voteChan <- vote{voter: voter, preferred: nil}
-						continue
-					}
-
-					if round.End.Depth <= round.Start.Depth {
-						continue
-					}
-
-					if round.Index != current.Index+1 {
-						if round.Index > sys.SyncIfRoundsDifferBy+current.Index {
-							select {
-							case l.syncVotes <- vote{voter: voter, preferred: &round}:
-							default:
-							}
-						}
-
-						continue
-					}
-
-					if round.Start.ID != current.End.ID {
-						continue
-					}
-
-					if err := l.AddTransaction(round.Start); err != nil {
-						continue
-					}
-
-					if err := l.AddTransaction(round.End); err != nil {
-						continue
-					}
-
-					if !round.End.IsCritical(currentDifficulty) {
-						continue
-					}
-
-					results, err := l.collapseTransactions(round.Index, round.Start, round.End, false)
-					if err != nil {
-						if !strings.Contains(err.Error(), "missing ancestor") {
-							fmt.Println(err)
-						}
-						continue
-					}
-
-					if uint64(results.appliedCount) != round.Applied {
-						fmt.Printf("applied %d but expected %d, rejected = %d, ignored = %d\n", results.appliedCount, round.Applied, results.rejectedCount, results.ignoredCount)
-						continue
-					}
-
-					if results.snapshot.Checksum() != round.Merkle {
-						fmt.Printf("got merkle %x but expected %x\n", results.snapshot.Checksum(), round.Merkle)
-						continue
-					}
-
-					voteChan <- vote{voter: voter, preferred: &round}
-
-					l.metrics.queryLatency.Update(time.Now().Sub(queryTime))
-				}
-
-				workerWG.Done()
-			}()
-		}
-
-		for !l.finalizer.Decided() {
-			select {
-			case <-l.sync:
-				close(workerChan)
-				workerWG.Wait()
-				workerWG.Add(1)
-				close(voteChan)
-				workerWG.Wait() // Wait for vote processor worker to stop
-
-				return
+			case l.syncVotes <- vote{voter: voter, preferred: &round}:
 			default:
 			}
-
-			// Randomly sample a peer to query
-			peers, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
-			if err != nil {
-				close(workerChan)
-				workerWG.Wait()
-				workerWG.Add(1)
-				close(voteChan)
-				workerWG.Wait() // Wait for vote processor worker to stop
-
-				continue FINALIZE_ROUNDS
-			}
-
-			for _, p := range peers {
-				workerChan <- p
-			}
 		}
 
-		l.metrics.queriedPerRound.Update(int64(queried))
-
-		close(workerChan)
-		workerWG.Wait() // Wait for query workers to stop
-		workerWG.Add(1)
-		close(voteChan)
-		workerWG.Wait() // Wait for vote processor worker to stop
-
-		finalized := l.finalizer.Preferred()
-		l.finalizer.Reset()
-
-		results, err := l.collapseTransactions(finalized.Index, finalized.Start, finalized.End, true)
-		if err != nil {
-			if !strings.Contains(err.Error(), "missing ancestor") {
-				fmt.Println(err)
-			}
-			continue
-		}
-
-		if uint64(results.appliedCount) != finalized.Applied {
-			fmt.Printf("Expected to have applied %d transactions finalizing a round, but only applied %d transactions instead.\n", finalized.Applied, results.appliedCount)
-			continue
-		}
-
-		if results.snapshot.Checksum() != finalized.Merkle {
-			fmt.Printf("Expected finalized rounds merkle root to be %x, but got %x.\n", finalized.Merkle, results.snapshot.Checksum())
-			continue
-		}
-
-		pruned, err := l.rounds.Save(finalized)
-		if err != nil {
-			fmt.Printf("Failed to save finalized round to our database: %v\n", err)
-		}
-
-		if pruned != nil {
-			count := l.graph.PruneBelowDepth(pruned.End.Depth)
-
-			logger := log.Consensus("prune")
-			logger.Debug().
-				Int("num_tx", count).
-				Uint64("current_round_id", finalized.Index).
-				Uint64("pruned_round_id", pruned.Index).
-				Msg("Pruned away round and transactions.")
-		}
-
-		l.graph.UpdateRootDepth(finalized.End.Depth)
-
-		if err = l.accounts.Commit(results.snapshot); err != nil {
-			fmt.Printf("Failed to commit collaped state to our database: %v\n", err)
-		}
-
-		l.metrics.acceptedTX.Mark(int64(results.appliedCount))
-
-		l.LogChanges(results.snapshot, current.Index)
-
-		logger := log.Consensus("round_end")
-		logger.Info().
-			Int("num_applied_tx", results.appliedCount).
-			Int("num_rejected_tx", results.rejectedCount).
-			Int("num_ignored_tx", results.ignoredCount).
-			Uint64("old_round", current.Index).
-			Uint64("new_round", finalized.Index).
-			Uint8("old_difficulty", current.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-			Uint8("new_difficulty", finalized.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-			Hex("new_root", finalized.End.ID[:]).
-			Hex("old_root", current.End.ID[:]).
-			Hex("new_merkle_root", finalized.Merkle[:]).
-			Hex("old_merkle_root", current.Merkle[:]).
-			Uint64("round_depth", finalized.End.Depth-finalized.Start.Depth).
-			Msg("Finalized consensus round, and initialized a new round.")
-
-		//go ExportGraphDOT(finalized, l.graph)
-		l.metrics.consensusLatency.Update(time.Now().Sub(consensusStartTime))
+		return
 	}
+
+	if round.Start.ID != current.End.ID {
+		return
+	}
+
+	if err := l.AddTransaction(round.Start); err != nil {
+		return
+	}
+
+	if err := l.AddTransaction(round.End); err != nil {
+		return
+	}
+
+	if !round.End.IsCritical(currentDifficulty) {
+		return
+	}
+
+	results, err := l.collapseTransactions(round.Index, round.Start, round.End, false)
+	if err != nil {
+		if !strings.Contains(err.Error(), "missing ancestor") {
+			fmt.Println(err)
+		}
+		return
+	}
+
+	if uint64(results.appliedCount) != round.Applied {
+		fmt.Printf("applied %d but expected %d, rejected = %d, ignored = %d\n", results.appliedCount, round.Applied, results.rejectedCount, results.ignoredCount)
+		return
+	}
+
+	if results.snapshot.Checksum() != round.Merkle {
+		fmt.Printf("got merkle %x but expected %x\n", results.snapshot.Checksum(), round.Merkle)
+		return
+	}
+
+	voteChan <- vote{voter: voter, preferred: &round}
 }
 
 func (l *Ledger) SyncToLatestRound() {
@@ -1260,12 +1258,15 @@ func (l *Ledger) collapseTransactions(round uint64, start, end Transaction, logg
 
 	var err error
 
+	t := time.Now()
 	res, err = collapseTransactions(l.graph, l.accounts, round, l.Rounds().Latest(), start, end, logging)
 	if err != nil {
 		return nil, err
 	}
 
 	l.cacheCollapse.put(end.ID, res)
+
+	l.metrics.collapseLatency.Update(time.Now().Sub(t))
 
 	return res, nil
 }

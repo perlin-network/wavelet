@@ -37,8 +37,9 @@ type Metrics struct {
 	acceptedTX   metrics.Meter
 	downloadedTX metrics.Meter
 
-	consensusLatency metrics.Timer
-	queryLatency     metrics.Timer
+	collapseLatency     metrics.Timer
+	finalizationLatency metrics.Timer
+	queryLatency        metrics.Timer
 }
 
 func NewMetrics(ctx context.Context) *Metrics {
@@ -52,7 +53,8 @@ func NewMetrics(ctx context.Context) *Metrics {
 	acceptedTX := metrics.NewRegisteredMeter("tx.accepted", registry)
 	downloadedTX := metrics.NewRegisteredMeter("tx.downloaded", registry)
 
-	consensusLatency := metrics.NewRegisteredTimer("consensus.latency", registry)
+	collapseLatency := metrics.NewRegisteredTimer("collapse.latency", registry)
+	finalizationLatency := metrics.NewRegisteredTimer("finalization.latency", registry)
 	queryLatency := metrics.NewRegisteredTimer("query.latency", registry)
 
 	go func() {
@@ -73,12 +75,15 @@ func NewMetrics(ctx context.Context) *Metrics {
 					Float64("tps.received", receivedTX.RateMean()).
 					Float64("tps.accepted", acceptedTX.RateMean()).
 					Float64("tps.downloaded", downloadedTX.RateMean()).
-					Int64("query.latency.max.ms", queryLatency.Max()/int64(time.Millisecond)).
-					Int64("query.latency.min.ms", queryLatency.Min()/int64(time.Millisecond)).
-					Float64("query.latency.mean.ms", queryLatency.Mean()/float64(time.Millisecond)).
-					Int64("consensus.latency.max.ms", consensusLatency.Max()/int64(time.Millisecond)).
-					Int64("consensus.latency.min.ms", consensusLatency.Min()/int64(time.Millisecond)).
-					Float64("consensus.latency.mean.ms", consensusLatency.Mean()/float64(time.Millisecond)).
+					Str("query.latency.max.ms", time.Duration(queryLatency.Max()).String()).
+					Str("query.latency.min.ms", time.Duration(queryLatency.Min()).String()).
+					Str("query.latency.mean.ms", time.Duration(queryLatency.Mean()).String()).
+					Str("finalization.latency.max.ms", time.Duration(finalizationLatency.Max()).String()).
+					Str("finalization.latency.min.ms", time.Duration(finalizationLatency.Min()).String()).
+					Str("finalization.latency.mean.ms", time.Duration(finalizationLatency.Mean()).String()).
+					Str("collapse.latency.max.ms", time.Duration(collapseLatency.Max()).String()).
+					Str("collapse.latency.min.ms", time.Duration(collapseLatency.Min()).String()).
+					Str("collapse.latency.mean.ms", time.Duration(collapseLatency.Mean()).String()).
 					Msg("Updated metrics.")
 			case <-ctx.Done():
 				return
@@ -97,8 +102,9 @@ func NewMetrics(ctx context.Context) *Metrics {
 		acceptedTX:   acceptedTX,
 		downloadedTX: downloadedTX,
 
-		consensusLatency: consensusLatency,
-		queryLatency:     queryLatency,
+		collapseLatency:     collapseLatency,
+		finalizationLatency: finalizationLatency,
+		queryLatency:        queryLatency,
 	}
 }
 
@@ -110,6 +116,7 @@ func (m *Metrics) Stop() {
 	m.acceptedTX.Stop()
 	m.downloadedTX.Stop()
 
-	m.consensusLatency.Stop()
+	m.collapseLatency.Stop()
+	m.finalizationLatency.Stop()
 	m.queryLatency.Stop()
 }
