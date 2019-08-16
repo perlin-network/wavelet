@@ -3,8 +3,10 @@
 <url> <loc>https://wavelet.perlin.net/help</loc> <changefreq>weekly</changefreq> <priority>0.5</priority> <xhtml:link rel="alternate" hreflang="en" href="https://wavelet.perlin.net/en/help" /> </url>
 <url> <loc>https://wavelet.perlin.net/index</loc> <changefreq>weekly</changefreq> <priority>0.5</priority> <xhtml:link rel="alternate" hreflang="en" href="https://wavelet.perlin.net/en/index" /> </url>
 <url> <loc>https://wavelet.perlin.net/users</loc> <changefreq>weekly</changefreq> <priority>0.5</priority> <xhtml:link rel="alternate" hreflang="en" href="https://wavelet.perlin.net/en/users" /> </url>
+<url> <loc>https://wavelet.perlin.net/docs/api</loc> <changefreq>hourly</changefreq> <priority>1.0</priority> <xhtml:link rel="alternate" hreflang="en" href="https://wavelet.perlin.net/docs/api" /> </url>
 <url> <loc>https://wavelet.perlin.net/docs/governance</loc> <changefreq>hourly</changefreq> <priority>1.0</priority> <xhtml:link rel="alternate" hreflang="en" href="https://wavelet.perlin.net/docs/governance" /> </url>
 <url> <loc>https://wavelet.perlin.net/docs/setup</loc> <changefreq>hourly</changefreq> <priority>1.0</priority> <xhtml:link rel="alternate" hreflang="en" href="https://wavelet.perlin.net/docs/setup" /> </url>
 <url> <loc>https://wavelet.perlin.net/docs/smart-contracts</loc> <changefreq>hourly</changefreq> <priority>1.0</priority> <xhtml:link rel="alternate" hreflang="en" href="https://wavelet.perlin.net/docs/smart-contracts" /> </url>
 <url> <loc>https://wavelet.perlin.net/docs/transactions</loc> <changefreq>hourly</changefreq> <priority>1.0</priority> <xhtml:link rel="alternate" hreflang="en" href="https://wavelet.perlin.net/docs/transactions" /> </url>
+<url> <loc>https://wavelet.perlin.net/docs/ws</loc> <changefreq>hourly</changefreq> <priority>1.0</priority> <xhtml:link rel="alternate" hreflang="en" href="https://wavelet.perlin.net/docs/ws" /> </url>
 </urlset>

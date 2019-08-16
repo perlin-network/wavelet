@@ -1,0 +1,358 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge"/><title>ws · Wavelet</title><meta name="viewport" content="width=device-width"/><meta name="generator" content="Docusaurus"/><meta name="description" content="&lt;h4&gt;&lt;a class=&quot;anchor&quot; aria-hidden=&quot;true&quot; id=&quot;websocket-endpoints&quot;&gt;&lt;/a&gt;&lt;a href=&quot;#websocket-endpoints&quot; aria-hidden=&quot;true&quot; class=&quot;hash-link&quot;&gt;&lt;svg class=&quot;hash-link-icon&quot; aria-hidden=&quot;true&quot; height=&quot;16&quot; version=&quot;1.1&quot; viewBox=&quot;0 0 16 16&quot; width=&quot;16&quot;&gt;&lt;path fill-rule=&quot;evenodd&quot; d=&quot;M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/a&gt;Websocket endpoints&lt;/h4&gt;
+"/><meta name="docsearch:language" content="en"/><meta property="og:title" content="ws · Wavelet"/><meta property="og:type" content="website"/><meta property="og:url" content="https://wavelet.perlin.net/"/><meta property="og:description" content="&lt;h4&gt;&lt;a class=&quot;anchor&quot; aria-hidden=&quot;true&quot; id=&quot;websocket-endpoints&quot;&gt;&lt;/a&gt;&lt;a href=&quot;#websocket-endpoints&quot; aria-hidden=&quot;true&quot; class=&quot;hash-link&quot;&gt;&lt;svg class=&quot;hash-link-icon&quot; aria-hidden=&quot;true&quot; height=&quot;16&quot; version=&quot;1.1&quot; viewBox=&quot;0 0 16 16&quot; width=&quot;16&quot;&gt;&lt;path fill-rule=&quot;evenodd&quot; d=&quot;M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/a&gt;Websocket endpoints&lt;/h4&gt;
+"/><meta property="og:image" content="https://wavelet.perlin.net/img/undraw_online.svg"/><meta name="twitter:card" content="summary"/><meta name="twitter:image" content="https://wavelet.perlin.net/img/undraw_tweetstorm.svg"/><link rel="shortcut icon" href="/img/favicon.ico"/><link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/monokai.min.css"/><script>
+              (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+              (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+              m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+              })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+              ga('create', 'UA-142724552-1', 'auto');
+              ga('send', 'pageview');
+            </script><script type="text/javascript" src="https://buttons.github.io/buttons.js"></script><script src="/js/scrollSpy.js"></script><link rel="stylesheet" href="/css/main.css"/><script src="/js/codetabs.js"></script></head><body class="sideNavVisible separateOnPageNav"><div class="fixedHeaderContainer"><div class="headerWrapper wrapper"><header><a href="/"><img class="logo" src="/img/favicon.ico" alt="Wavelet"/><h2 class="headerTitleWithLogo">Wavelet</h2></a><div class="navigationWrapper navigationSlider"><nav class="slidingNav"><ul class="nav-site nav-site-internal"><li class=""><a href="/docs/setup" target="_self">Docs</a></li><li class=""><a href="/help" target="_self">Help</a></li><li class=""><a target="_self"></a></li></ul></nav></div></header></div></div><div class="navPusher"><div class="docMainWrapper wrapper"><div class="container mainContainer"><div class="wrapper"><div class="post"><header class="postHeader"><a class="edit-page-link button" href="https://github.com/perlin-network/wavelet/edit/master/site/docs/ws.md" target="_blank" rel="noreferrer noopener">Edit</a><h1 class="postHeaderTitle">ws</h1></header><article><div><span><h4><a class="anchor" aria-hidden="true" id="websocket-endpoints"></a><a href="#websocket-endpoints" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Websocket endpoints</h4>
+<ul>
+<li>To prevent flooding, the endpoints, /accounts, /contract, and /tx are debounced. The debounce can also has a buffer, if specified.<br />
+The way the debounce works is, if there's no new event within certain duration or the buffer is full, then the buffer will be released. <br />
+To prevent duplicated events, debounce can also dedupe the events based on certain properties. <br />
+Below are conditions for each of the debounced endpoints :
+<ul>
+<li><code>/poll/accounts</code> is debounced with a duration of 500 milliseconds and deduped using <code>account_id</code> and <code>event</code></li>
+<li><code>/poll/contract</code> is debounced with a duration of 500 milliseconds and deduped using <code>contract_id</code>.</li>
+<li><code>/poll/tx</code> is debounced with a duration of 2200 milliseconds and buffer size of around 1.6 MB.</li>
+</ul></li>
+</ul>
+<h2><a class="anchor" aria-hidden="true" id="poll-accounts"></a><a href="#poll-accounts" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a><strong>Poll Accounts</strong></h2>
+<p>Listen to account events</p>
+<ul>
+<li><p><strong>URL</strong></p>
+<p><code>/poll/accounts</code></p></li>
+<li><p><strong>Query Param:</strong></p>
+<p>Optional parameters to filter the events by certain properties.</p>
+<p><code>id=[string]</code> where <code>id</code> is the hex-encoded Account ID.</p></li>
+<li><p><strong>Message:</strong></p>
+<p>A JSON array of events.</p>
+<ul>
+<li><strong>Event:</strong> Balance Updated <br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"accounts"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"balance_updated"</span>,
+  <span class="hljs-attr">"account_id"</span>: <span class="hljs-string">"746843bbdaa98008d11f705a01dc1c8dccbdf80d4f2ed657238eb2f05325a523"</span>,
+  <span class="hljs-attr">"balance"</span>: <span class="hljs-number">6</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T15:29:37+08:00"</span>
+  }
+</code></pre>
+<ul>
+<li><strong>Event:</strong> Contract Num Pages Updated <br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"accounts"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"num_pages_updated"</span>,
+  <span class="hljs-attr">"account_id"</span>: <span class="hljs-string">"2702d3247117f138ea3d7c3a386fd56c75a0d23048178f4b8dba94651c4ff9b0"</span>,
+  <span class="hljs-attr">"num_pages"</span>: <span class="hljs-number">18</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T19:24:53+08:00"</span>
+}
+</code></pre>
+<ul>
+<li><strong>Event:</strong> Stake Updated <br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"accounts"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"stake_updated"</span>,
+  <span class="hljs-attr">"account_id"</span>: <span class="hljs-string">"696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a"</span>,
+  <span class="hljs-attr">"stake"</span>: <span class="hljs-number">1000</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T19:28:09+08:00"</span>
+}
+</code></pre>
+<ul>
+<li><strong>Event:</strong> Reward Updated <br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"accounts"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"reward_updated"</span>,
+  <span class="hljs-attr">"account_id"</span>: <span class="hljs-string">"696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a"</span>,
+  <span class="hljs-attr">"reward"</span>: <span class="hljs-number">18</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T19:29:36+08:00"</span>
+}
+</code></pre></li>
+</ul>
+<h2><a class="anchor" aria-hidden="true" id="poll-network"></a><a href="#poll-network" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a><strong>Poll Network</strong></h2>
+<p>Listen to network events</p>
+<ul>
+<li><p><strong>URL</strong></p>
+<p><code>/poll/network</code></p></li>
+<li><p><strong>Query Params</strong></p>
+<p>None</p></li>
+<li><p><strong>Message:</strong></p>
+<p>A JSON object of the event.</p>
+<ul>
+<li><strong>Event:</strong> Peer Joined<br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"level"</span>: <span class="hljs-string">"info"</span>,
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"network"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"joined"</span>,
+  <span class="hljs-attr">"public_key"</span>: <span class="hljs-string">"f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467"</span>,
+  <span class="hljs-attr">"address"</span>: <span class="hljs-string">"127.0.0.1:3002"</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T19:18:15+08:00"</span>,
+  <span class="hljs-attr">"message"</span>: <span class="hljs-string">"Peer has joined."</span>
+}
+</code></pre>
+<ul>
+<li><strong>Event:</strong> Peer Left<br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"level"</span>: <span class="hljs-string">"info"</span>,
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"network"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"left"</span>,
+  <span class="hljs-attr">"public_key"</span>: <span class="hljs-string">"f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467"</span>,
+  <span class="hljs-attr">"address"</span>: <span class="hljs-string">"127.0.0.1:3002"</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T19:18:29+08:00"</span>,
+  <span class="hljs-attr">"message"</span>: <span class="hljs-string">"Peer has left."</span>
+}
+</code></pre></li>
+</ul>
+<h2><a class="anchor" aria-hidden="true" id="poll-consensus"></a><a href="#poll-consensus" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a><strong>Poll Consensus</strong></h2>
+<p>Listen to Consensus events</p>
+<ul>
+<li><p><strong>URL</strong></p>
+<p><code>/poll/consensus</code></p></li>
+<li><p><strong>Query Params</strong></p>
+<p>None</p></li>
+<li><p><strong>Message:</strong></p>
+<p>A JSON object of the event.</p>
+<ul>
+<li><strong>Event:</strong> Round End<br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"level"</span>: <span class="hljs-string">"info"</span>,
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"consensus"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"round_end"</span>,
+  <span class="hljs-attr">"num_applied_tx"</span>: <span class="hljs-number">352</span>,
+  <span class="hljs-attr">"num_rejected_tx"</span>: <span class="hljs-number">0</span>,
+  <span class="hljs-attr">"num_ignored_tx"</span>: <span class="hljs-number">0</span>,
+  <span class="hljs-attr">"old_round"</span>: <span class="hljs-number">8</span>,
+  <span class="hljs-attr">"new_round"</span>: <span class="hljs-number">9</span>,
+  <span class="hljs-attr">"old_difficulty"</span>: <span class="hljs-number">8</span>,
+  <span class="hljs-attr">"new_difficulty"</span>: <span class="hljs-number">8</span>,
+  <span class="hljs-attr">"new_root"</span>: <span class="hljs-string">"029ae28f06608050ccf53a7257345070909a4477f694940d56455862005c101c"</span>,
+  <span class="hljs-attr">"old_root"</span>: <span class="hljs-string">"c7fed1638209a0862b0e434745b40d2639e43225b3d9bcfa7cfdeb3028e0b72b"</span>,
+  <span class="hljs-attr">"new_merkle_root"</span>: <span class="hljs-string">"9d1c441f730006e2685238219690b66c"</span>,
+  <span class="hljs-attr">"old_merkle_root"</span>: <span class="hljs-string">"6dee79e9ea2147271a831f9d3d12f8ff"</span>,
+  <span class="hljs-attr">"round_depth"</span>: <span class="hljs-number">352</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T19:39:06+08:00"</span>,
+  <span class="hljs-attr">"message"</span>: <span class="hljs-string">"Finalized consensus round, and initialized a new round."</span>
+}
+</code></pre>
+<ul>
+<li><strong>Event:</strong> Prune<br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"level"</span>: <span class="hljs-string">"debug"</span>,
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"consensus"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"prune"</span>,
+  <span class="hljs-attr">"num_tx"</span>: <span class="hljs-number">1</span>,
+  <span class="hljs-attr">"current_round_id"</span>: <span class="hljs-string">"029ae28f06608050ccf53a7257345070909a4477f694940d56455862005c101c"</span>,
+  <span class="hljs-attr">"pruned_round_id"</span>: <span class="hljs-string">"c7fed1638209a0862b0e434745b40d2639e43225b3d9bcfa7cfdeb3028e0b72b"</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T20:38:13+08:00"</span>,
+  <span class="hljs-attr">"message"</span>: <span class="hljs-string">"Pruned away round and transactions."</span>
+}
+</code></pre></li>
+</ul>
+<h2><a class="anchor" aria-hidden="true" id="poll-stake"></a><a href="#poll-stake" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a><strong>Poll Stake</strong></h2>
+<p>Listen to Stake events</p>
+<ul>
+<li><p><strong>URL</strong></p>
+<p><code>/poll/stake</code></p></li>
+<li><p><strong>Query Params:</strong></p>
+<p>Optional parameters to filter the events by certain properties.</p>
+<p><code>id=[string]</code> where <code>id</code> is the hex-encoded Account ID. Used to filter the events by Account ID.</p></li>
+<li><p><strong>Message:</strong></p>
+<p>A JSON object of the event.</p>
+<ul>
+<li><strong>Event:</strong> Reward Validator<br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"level"</span>: <span class="hljs-string">"info"</span>,
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"stake"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"reward_validator"</span>,
+  <span class="hljs-attr">"creator"</span>: <span class="hljs-string">"696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a"</span>,
+  <span class="hljs-attr">"recipient"</span>: <span class="hljs-string">"400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"</span>,
+  <span class="hljs-attr">"creator_tx_id"</span>: <span class="hljs-string">"92f8fbd9e9bcdd7cd5a09f31fbd2940a5e95e8f93c5332fcd1f3135353f3fd6f"</span>,
+  <span class="hljs-attr">"rewardee_tx_id"</span>: <span class="hljs-string">"22f3bd4b136c547eeed26032e5379d31d165c0b3cecc8eedce6f21152d259725"</span>,
+  <span class="hljs-attr">"entropy"</span>: <span class="hljs-string">"400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"</span>,
+  <span class="hljs-attr">"acc"</span>: <span class="hljs-number">8.0</span>,
+  <span class="hljs-attr">"threshold"</span>: <span class="hljs-number">8.0</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T20:38:13+08:00"</span>,
+  <span class="hljs-attr">"message"</span>: <span class="hljs-string">"Rewarded validator."</span>
+}
+</code></pre></li>
+</ul>
+<h2><a class="anchor" aria-hidden="true" id="poll-contract"></a><a href="#poll-contract" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a><strong>Poll Contract</strong></h2>
+<p>Listen to contract events</p>
+<ul>
+<li><p><strong>URL</strong></p>
+<p><code>/poll/contract</code></p></li>
+<li><p><strong>Query Params:</strong></p>
+<p>Optional parameters to filter the events by certain properties.</p>
+<p><code>id=[string]</code> where <code>id</code> is the hex-encoded Contract ID.</p></li>
+<li><p><strong>Message:</strong></p>
+<p>A JSON array of events.</p>
+<ul>
+<li><strong>Event:</strong> Gas for Invoke Contract<br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"level"</span>: <span class="hljs-string">"info"</span>,
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"contract"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"gas"</span>,
+  <span class="hljs-attr">"sender_id"</span>: <span class="hljs-string">"400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"</span>,
+  <span class="hljs-attr">"contract_id"</span>: <span class="hljs-string">"2702d3247117f138ea3d7c3a386fd56c75a0d23048178f4b8dba94651c4ff9b0"</span>,
+  <span class="hljs-attr">"gas"</span>: <span class="hljs-number">288512</span>,
+  <span class="hljs-attr">"gas_limit"</span>: <span class="hljs-number">9999999999999902985</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T19:25:47+08:00"</span>,
+  <span class="hljs-attr">"message"</span>: <span class="hljs-string">"Deducted PERLs for invoking smart contract function."</span>
+}
+</code></pre>
+<ul>
+<li><strong>Event:</strong> Gas for Spawn Contract <br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"level"</span>: <span class="hljs-string">"info"</span>,
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"contract"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"gas"</span>,
+  <span class="hljs-attr">"creator_id"</span>: <span class="hljs-string">"400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"</span>,
+  <span class="hljs-attr">"contract_id"</span>: <span class="hljs-string">"66e7872ba4e4b6e0c7c874f0591b0439a957546df9b71936eee44347633055fa"</span>,
+  <span class="hljs-attr">"gas"</span>: <span class="hljs-number">3484936</span>,
+  <span class="hljs-attr">"gas_limit"</span>: <span class="hljs-number">100000000</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T20:34:06+08:00"</span>,
+  <span class="hljs-attr">"message"</span>: <span class="hljs-string">"Deducted PERLs for spawning a smart contract."</span>
+}
+</code></pre>
+<ul>
+<li><strong>Event:</strong> Exceed Gas Limit for Spawn Contract <br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"level"</span>: <span class="hljs-string">"info"</span>,
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"contract"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"gas"</span>,
+  <span class="hljs-attr">"sender_id"</span>: <span class="hljs-string">"400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"</span>,
+  <span class="hljs-attr">"contract_id"</span>: <span class="hljs-string">"2702d3247117f138ea3d7c3a386fd56c75a0d23048178f4b8dba94651c4ff9b0"</span>,
+  <span class="hljs-attr">"gas"</span>: <span class="hljs-number">1</span>,
+  <span class="hljs-attr">"gas_limit"</span>: <span class="hljs-number">1</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T20:38:13+08:00"</span>,
+  <span class="hljs-attr">"message"</span>: <span class="hljs-string">"Exceeded gas limit while invoking smart contract function."</span>
+}
+</code></pre>
+<ul>
+<li><strong>Event:</strong> Contract Log <br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"level"</span>: <span class="hljs-string">"debug"</span>,
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"contract"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"log"</span>,
+  <span class="hljs-attr">"contract_id"</span>: <span class="hljs-string">"2702d3247117f138ea3d7c3a386fd56c75a0d23048178f4b8dba94651c4ff9b0"</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T20:38:13+08:00"</span>,
+  <span class="hljs-attr">"message"</span>: <span class="hljs-string">"[...]"</span>
+}
+</code></pre></li>
+</ul>
+<h2><a class="anchor" aria-hidden="true" id="poll-transaction-br"></a><a href="#poll-transaction-br" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a><strong>Poll Transaction</strong> <br /></h2>
+<p>Listen to transaction events</p>
+<ul>
+<li><p><strong>URL</strong></p>
+<p><code>/poll/tx</code></p></li>
+<li><p><strong>Query Params:</strong></p>
+<p>Optional parameters to filter the events by certain properties.</p>
+<p><code>id=[string]</code> where <code>id</code> is the hex-encoded Transaction ID.</p>
+<p><code>sender=[string]</code> where <code>sender</code> is the hex-encoded Sender ID.</p>
+<p><code>creator=[string]</code> where <code>creator</code> is the hex-encoded Creator ID.</p>
+<p><code>tag=[integer]</code> where <code>tag</code> is the tag.</p></li>
+<li><p><strong>Message:</strong></p>
+<p>A JSON array of events.</p>
+<ul>
+<li><strong>Event:</strong> Applied<br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"tx"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"applied"</span>,
+  <span class="hljs-attr">"tx_id"</span>: <span class="hljs-string">"9ba1e35eda41e67486ab12d0a6353aefb0dc8b8156aaecae357cf06cd49659b6"</span>,
+  <span class="hljs-attr">"sender_id"</span>: <span class="hljs-string">"400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"</span>,
+  <span class="hljs-attr">"creator_id"</span>: <span class="hljs-string">"400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"</span>,
+  <span class="hljs-attr">"depth"</span>: <span class="hljs-number">9747</span>,
+  <span class="hljs-attr">"tag"</span>: <span class="hljs-number">0</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T20:48:17+08:00"</span>
+}
+</code></pre>
+<ul>
+<li><strong>Event:</strong> Gossip Error Batch<br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"level"</span>: <span class="hljs-string">"error"</span>,
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"tx"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"gossip"</span>,
+  <span class="hljs-attr">"error"</span>: <span class="hljs-string">"EOF"</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T20:49:52+08:00"</span>,
+  <span class="hljs-attr">"message"</span>: <span class="hljs-string">"Failed to send batch"</span>
+}
+</code></pre>
+<ul>
+<li><strong>Event:</strong> Gossip Error Unmarshal <br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"level"</span>: <span class="hljs-string">"error"</span>,
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"tx"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"gossip"</span>,
+  <span class="hljs-attr">"error"</span>: <span class="hljs-string">"EOF"</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T20:49:52+08:00"</span>,
+  <span class="hljs-attr">"message"</span>: <span class="hljs-string">"Failed to unmarshal transaction"</span>
+}
+</code></pre>
+<ul>
+<li><strong>Event:</strong> Failed<br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"tx"</span>,
+  <span class="hljs-attr">"event"</span>: <span class="hljs-string">"failed"</span>,
+  <span class="hljs-attr">"tx_id"</span>: <span class="hljs-string">"9ba1e35eda41e67486ab12d0a6353aefb0dc8b8156aaecae357cf06cd49659b6"</span>,
+  <span class="hljs-attr">"sender_id"</span>: <span class="hljs-string">"400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"</span>,
+  <span class="hljs-attr">"creator_id"</span>: <span class="hljs-string">"400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"</span>,
+  <span class="hljs-attr">"depth"</span>: <span class="hljs-number">9747</span>,
+  <span class="hljs-attr">"tag"</span>: <span class="hljs-number">0</span>,
+  <span class="hljs-attr">"error"</span>: <span class="hljs-string">"[...]"</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T20:48:17+08:00"</span>
+}
+</code></pre></li>
+</ul>
+<h2><a class="anchor" aria-hidden="true" id="poll-metrics"></a><a href="#poll-metrics" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a><strong>Poll Metrics</strong></h2>
+<p>Listen to metrics events. The event will be sent every 1 second.</p>
+<ul>
+<li><p><strong>URL</strong></p>
+<p><code>/poll/metrics</code></p></li>
+<li><p><strong>Query Params</strong></p>
+<p>None</p></li>
+<li><p><strong>Message:</strong></p>
+<p>A JSON object of the event.</p>
+<ul>
+<li><strong>Event:</strong> Metrics<br /></li>
+</ul>
+<pre><code class="hljs css language-json">{
+  <span class="hljs-attr">"level"</span>: <span class="hljs-string">"info"</span>,
+  <span class="hljs-attr">"mod"</span>: <span class="hljs-string">"metrics"</span>,
+  <span class="hljs-attr">"round.queried"</span>: <span class="hljs-number">210858</span>,
+  <span class="hljs-attr">"tx.gossiped"</span>: <span class="hljs-number">9946</span>,
+  <span class="hljs-attr">"tx.received"</span>: <span class="hljs-number">9946</span>,
+  <span class="hljs-attr">"tx.accepted"</span>: <span class="hljs-number">9945</span>,
+  <span class="hljs-attr">"tx.downloaded"</span>: <span class="hljs-number">0</span>,
+  <span class="hljs-attr">"rps.queried"</span>: <span class="hljs-number">34.313755465462016</span>,
+  <span class="hljs-attr">"tps.gossiped"</span>: <span class="hljs-number">1.6185518808848753</span>,
+  <span class="hljs-attr">"tps.received"</span>: <span class="hljs-number">1.6185518810250006</span>,
+  <span class="hljs-attr">"tps.accepted"</span>: <span class="hljs-number">1.6183891471878615</span>,
+  <span class="hljs-attr">"tps.downloaded"</span>: <span class="hljs-number">0</span>,
+  <span class="hljs-attr">"query.latency.max.ms"</span>: <span class="hljs-number">2</span>,
+  <span class="hljs-attr">"query.latency.min.ms"</span>: <span class="hljs-number">0</span>,
+  <span class="hljs-attr">"query.latency.mean.ms"</span>: <span class="hljs-number">0.07082125700389105</span>,
+  <span class="hljs-attr">"time"</span>: <span class="hljs-string">"2019-06-28T20:58:30+08:00"</span>,
+  <span class="hljs-attr">"message"</span>: <span class="hljs-string">"Updated metrics."</span>
+}
+</code></pre></li>
+</ul>
+</span></div></article></div><div class="docLastUpdate"><em>Last updated on 8/13/2019</em></div><div class="docs-prevnext"></div></div></div><nav class="onPageNav"><ul class="toc-headings"><li><a href="#poll-accounts"><strong>Poll Accounts</strong></a></li><li><a href="#poll-network"><strong>Poll Network</strong></a></li><li><a href="#poll-consensus"><strong>Poll Consensus</strong></a></li><li><a href="#poll-stake"><strong>Poll Stake</strong></a></li><li><a href="#poll-contract"><strong>Poll Contract</strong></a></li><li><a href="#poll-transaction-br"><strong>Poll Transaction</strong> &lt;br /&gt;</a></li><li><a href="#poll-metrics"><strong>Poll Metrics</strong></a></li></ul></nav></div><footer class="nav-footer" id="footer"><section class="sitemap"><a href="/" class="nav-home"><img src="/img/favicon.ico" alt="Wavelet" width="56" height="44"/></a><div><h5>Docs</h5><a href="/docs/en/setup">Getting Started</a></div><div><h5>Community</h5><a href="https://discord.gg/dMYfDPM" target="_blank" rel="noreferrer noopener">Discord</a><a href="https://twitter.com/PerlinNetwork" target="_blank" rel="noreferrer noopener">Twitter</a></div><div><h5>More</h5><a href="https://github.com/perlin-network/wavelet">GitHub</a><a class="github-button" href="https://github.com/perlin-network/wavelet" data-icon="octicon-star" data-count-href="/perlin-network/wavelet/stargazers" data-show-count="true" data-count-aria-label="# stargazers on GitHub" aria-label="Star this project on GitHub">Star</a></div></section><a href="https://perlin.net" target="_blank" rel="noreferrer noopener" class="fbOpenSource"><img src="/img/perlin-logo.svg" alt="Perlin Open Source" width="170" height="60"/></a><section class="copyright">Copyright © 2019 Perlin</section></footer></div><script>window.twttr=(function(d,s, id){var js,fjs=d.getElementsByTagName(s)[0],t=window.twttr||{};if(d.getElementById(id))return t;js=d.createElement(s);js.id=id;js.src='https://platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js, fjs);t._e = [];t.ready = function(f) {t._e.push(f);};return t;}(document, 'script', 'twitter-wjs'));</script></body></html>
