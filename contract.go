@@ -20,6 +20,7 @@
 package wavelet
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/binary"
@@ -44,6 +45,8 @@ var (
 
 	_ exec.ImportResolver = (*ContractExecutor)(nil)
 	_ compiler.GasPolicy  = (*ContractExecutor)(nil)
+
+	zeroPage = make([]byte, PageSize)
 )
 
 const (
@@ -433,42 +436,25 @@ func LoadContractMemorySnapshot(snapshot *avl.Tree, id AccountID) []byte {
 
 func SaveContractMemorySnapshot(snapshot *avl.Tree, id AccountID, mem []byte) {
 	numPages := uint64(len(mem) / PageSize)
-
 	WriteAccountContractNumPages(snapshot, id, numPages)
 
 	for pageIdx := uint64(0); pageIdx < numPages; pageIdx++ {
 		old, _ := ReadAccountContractPage(snapshot, id, pageIdx)
-
-		identical := true
-
-		for idx := uint64(0); idx < PageSize; idx++ {
-			if len(old) == 0 && mem[pageIdx*PageSize+idx] != 0 {
-				identical = false
-				break
-			}
-
-			if len(old) != 0 && mem[pageIdx*PageSize+idx] != old[idx] {
-				identical = false
-				break
-			}
+		identical, allZero := true, false
+		pageStart := pageIdx * PageSize
+		if len(old) == 0 {
+			allZero = bytes.Equal(zeroPage, mem[pageStart:pageStart+PageSize])
+			identical = allZero
+		} else {
+			identical = bytes.Equal(old, mem[pageStart:pageStart+PageSize])
 		}
 
 		if !identical {
-			allZero := true
-
-			for idx := uint64(0); idx < PageSize; idx++ {
-				if mem[pageIdx*PageSize+idx] != 0 {
-					allZero = false
-					break
-				}
-			}
-
 			// If the page is empty, save an empty byte array. Otherwise, save the pages content.
-
 			if allZero {
 				WriteAccountContractPage(snapshot, id, pageIdx, []byte{})
 			} else {
-				WriteAccountContractPage(snapshot, id, pageIdx, mem[pageIdx*PageSize:(pageIdx+1)*PageSize])
+				WriteAccountContractPage(snapshot, id, pageIdx, mem[pageStart:pageStart+PageSize])
 			}
 		}
 	}
