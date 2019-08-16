@@ -25,6 +25,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/perlin-network/wavelet/lru"
 
 	"github.com/perlin-network/wavelet/store"
 	"github.com/phf/go-queue/queue"
@@ -48,13 +49,13 @@ type Tree struct {
 
 	root *node
 
-	cache *lru
+	cache *lru.LRU
 
 	viewID uint64
 }
 
 func New(kv store.KV) *Tree {
-	t := &Tree{kv: kv, cache: newLRU(DefaultCacheSize), maxWriteBatchSize: MaxWriteBatchSize}
+	t := &Tree{kv: kv, cache: lru.NewLRU(DefaultCacheSize), maxWriteBatchSize: MaxWriteBatchSize}
 
 	// Load root node if it already exists.
 	if buf, err := t.kv.Get(RootKey); err == nil && len(buf) == MerkleHashSize {
@@ -71,7 +72,7 @@ func (t *Tree) WithLRUCache(size *int) *Tree {
 	if size == nil {
 		t.cache = nil
 	} else {
-		t.cache = newLRU(*size)
+		t.cache = lru.NewLRU(*size)
 	}
 
 	return t
@@ -273,7 +274,7 @@ func (t *Tree) Checksum() [MerkleHashSize]byte {
 }
 
 func (t *Tree) loadNode(id [MerkleHashSize]byte) (*node, error) {
-	if n, ok := t.cache.load(id); ok {
+	if n, ok := t.cache.Load(id); ok {
 		return n.(*node), nil
 	}
 
@@ -285,7 +286,7 @@ func (t *Tree) loadNode(id [MerkleHashSize]byte) (*node, error) {
 
 	n := mustDeserialize(bytes.NewReader(buf))
 	n.wroteBack = true
-	t.cache.put(id, n)
+	t.cache.Put(id, n)
 
 	return n, nil
 }
@@ -343,7 +344,7 @@ func (t *Tree) mustLoadRight(n *node) *node {
 }
 
 func (t *Tree) deleteNodeAndMetadata(id [MerkleHashSize]byte) {
-	t.cache.remove(id)
+	t.cache.Remove(id)
 	_ = t.kv.Delete(append(NodeKeyPrefix, id[:]...))
 	_ = t.kv.Delete(append(GCAliveMarkPrefix, id[:]...))
 }

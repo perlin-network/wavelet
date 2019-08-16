@@ -25,6 +25,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/perlin-network/wavelet/lru"
 	"math/rand"
 	"strings"
 	"sync"
@@ -66,8 +67,8 @@ type Ledger struct {
 	sync      chan struct{}
 	syncVotes chan vote
 
-	cacheCollapse *LRU
-	cacheChunks   *LRU
+	cacheCollapse *lru.LRU
+	cacheChunks   *lru.LRU
 
 	sendQuota chan struct{}
 }
@@ -156,8 +157,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		sync:      make(chan struct{}),
 		syncVotes: make(chan vote, sys.SnowballK),
 
-		cacheCollapse: NewLRU(16),
-		cacheChunks:   NewLRU(1024), // In total, it will take up 1024 * 4MB.
+		cacheCollapse: lru.NewLRU(16),
+		cacheChunks:   lru.NewLRU(1024), // In total, it will take up 1024 * 4MB.
 
 		sendQuota: make(chan struct{}, 2000),
 	}
@@ -1251,7 +1252,7 @@ func (l *Ledger) collapseTransactions(round uint64, start, end Transaction, logg
 		}
 	}()
 
-	if results, exists := l.cacheCollapse.load(end.ID); exists {
+	if results, exists := l.cacheCollapse.Load(end.ID); exists {
 		res = results.(*collapseResults)
 		return res, nil
 	}
@@ -1264,7 +1265,7 @@ func (l *Ledger) collapseTransactions(round uint64, start, end Transaction, logg
 		return nil, err
 	}
 
-	l.cacheCollapse.put(end.ID, res)
+	l.cacheCollapse.Put(end.ID, res)
 
 	l.metrics.collapseLatency.Update(time.Now().Sub(t))
 

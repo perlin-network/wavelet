@@ -30,6 +30,7 @@ import (
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/lru"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
@@ -61,6 +62,51 @@ type ContractExecutor struct {
 
 	Queue []*Transaction
 }
+
+type VMState struct {
+	Globals []int64
+	Memory  []byte
+}
+
+func (state VMState) Apply(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver) (*exec.VirtualMachine, error) {
+	if len(vm.Globals) != len(state.Globals) {
+		return nil, errors.New("global count mismatch")
+	}
+
+	return &exec.VirtualMachine{
+		Config:          vm.Config,
+		Module:          vm.Module,
+		FunctionCode:    vm.FunctionCode,
+		FunctionImports: vm.FunctionImports,
+		CallStack:       make([]exec.Frame, exec.DefaultCallStackSize),
+		CurrentFrame:    -1,
+		Table:           vm.Table,
+		Globals:         state.Globals,
+		Memory:          state.Memory,
+		Exited:          true,
+		GasPolicy:       gasPolicy,
+		ImportResolver:  importResolver,
+	}, nil
+}
+
+func CloneVM(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver) (*exec.VirtualMachine, error) {
+	return SnapshotVMState(vm).Apply(vm, gasPolicy, importResolver)
+}
+
+func SnapshotVMState(vm *exec.VirtualMachine) VMState {
+	globals := make([]int64, len(vm.Globals))
+	memory := make([]byte, len(vm.Memory))
+
+	copy(globals, vm.Globals)
+	copy(memory, vm.Memory)
+
+	return VMState{
+		Globals: globals,
+		Memory:  memory,
+	}
+}
+
+var vmCache *lru.LRU = lru.NewLRU(32)
 
 func (e *ContractExecutor) GetCost(key string) int64 {
 	// FIXME(kenta): Remove for testnet.
@@ -216,21 +262,37 @@ func (e *ContractExecutor) ResolveGlobal(module, field string) int64 {
 }
 
 func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Round, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte) error {
-	config := exec.VMConfig{
-		DefaultMemoryPages: sys.ContractDefaultMemoryPages,
-		MaxMemoryPages:     sys.ContractMaxMemoryPages,
+	var vm *exec.VirtualMachine
+	var err error
 
-		DefaultTableSize: sys.ContractTableSize,
-		MaxTableSize:     sys.ContractTableSize,
+	if _cachedVM, ok := vmCache.Load(id); ok {
+		cachedVM := _cachedVM.(*exec.VirtualMachine)
+		vm, err = CloneVM(cachedVM, e, e)
+		if err != nil {
+			return errors.Wrap(err, "cannot clone vm")
+		}
+		vm.Config.GasLimit = gasLimit
+	} else {
+		config := exec.VMConfig{
+			DefaultMemoryPages: sys.ContractDefaultMemoryPages,
+			MaxMemoryPages:     sys.ContractMaxMemoryPages,
 
-		MaxValueSlots:     sys.ContractMaxValueSlots,
-		MaxCallStackDepth: sys.ContractMaxCallStackDepth,
-		GasLimit:          gasLimit,
-	}
+			DefaultTableSize: sys.ContractTableSize,
+			MaxTableSize:     sys.ContractTableSize,
 
-	vm, err := exec.NewVirtualMachine(code, config, e, e)
-	if err != nil {
-		return errors.Wrap(err, "could not init vm")
+			MaxValueSlots:     sys.ContractMaxValueSlots,
+			MaxCallStackDepth: sys.ContractMaxCallStackDepth,
+			GasLimit:          gasLimit,
+		}
+		vm, err = exec.NewVirtualMachine(code, config, e, e)
+		if err != nil {
+			return errors.Wrap(err, "cannot initialize vm")
+		}
+		cachedVM, err := CloneVM(vm, nil, nil)
+		if err != nil {
+			return errors.Wrap(err, "cannot clone vm")
+		}
+		vmCache.Put(id, cachedVM)
 	}
 
 	// We can safely initialize the VM first before checking this because the size of the global slice
