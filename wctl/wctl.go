@@ -1,0 +1,175 @@
+// Copyright (c) 2019 Perlin
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of
+// this software and associated documentation files (the "Software"), to deal in
+// the Software without restriction, including without limitation the rights to
+// use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+// the Software, and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+// FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+// IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// Package wctl provides a client wrapper for the API.
+package wctl
+
+import (
+	"encoding/base64"
+	"fmt"
+	"net/http"
+	"net/url"
+	"time"
+
+	"github.com/perlin-network/noise/edwards25519"
+)
+
+const (
+	RouteLedger   = "/ledger"
+	RouteAccount  = "/accounts"
+	RouteContract = "/contract"
+	RouteTxList   = "/tx"
+	RouteTxSend   = "/tx/send"
+
+	RouteWSBroadcaster  = "/poll/broadcaster"
+	RouteWSConsensus    = "/poll/consensus"
+	RouteWSStake        = "/poll/stake"
+	RouteWSAccounts     = "/poll/accounts"
+	RouteWSContracts    = "/poll/contract"
+	RouteWSTransactions = "/poll/tx"
+	RouteWSMetrics      = "/poll/metrics"
+
+	ReqPost = "POST"
+	ReqGet  = "GET"
+)
+
+type UnmarshalableJSON interface {
+	UnmarshalJSON([]byte) error
+}
+
+type MarshalableJSON interface {
+	MarshalJSON() ([]byte, error)
+}
+
+type Config struct {
+	APIHost    string
+	APIPort    uint16
+	PrivateKey edwards25519.PrivateKey
+	UseHTTPS   bool
+	Timeout    time.Duration
+}
+
+type Client struct {
+	Config
+
+	stdClient *http.Client
+
+	edwards25519.PrivateKey
+	edwards25519.PublicKey
+}
+
+func NewClient(config Config) (*Client, error) {
+	if config.Timeout == 0 {
+		config.Timeout = 5 * time.Second
+	}
+
+	return &Client{
+		Config:     config,
+		PrivateKey: config.PrivateKey,
+		PublicKey:  config.PrivateKey.Public(),
+		stdClient: &http.Client{
+			Timeout: 5 * time.Second,
+		},
+	}, nil
+}
+
+func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan []byte, error) {
+	evChan := make(chan []byte)
+
+	if err := c.pollWS(stop, evChan, sinkRoute, nil); err != nil {
+		return nil, err
+	}
+
+	return evChan, nil
+}
+
+func (c *Client) PollAccounts(stop <-chan struct{}, accountID string) (<-chan []byte, error) {
+	v := url.Values{}
+	if accountID != "" {
+		v.Set("id", accountID)
+	}
+
+	evChan := make(chan []byte)
+
+	if err := c.pollWS(stop, evChan, RouteWSAccounts, v); err != nil {
+		return nil, err
+	}
+
+	return evChan, nil
+}
+
+func (c *Client) PollContracts(stop <-chan struct{}, contractID string) (<-chan []byte, error) {
+	v := url.Values{}
+	if contractID != "" {
+		v.Set("id", contractID)
+	}
+
+	evChan := make(chan []byte)
+
+	if err := c.pollWS(stop, evChan, RouteWSContracts, v); err != nil {
+		return nil, err
+	}
+
+	return evChan, nil
+}
+
+func (c *Client) PollTransactions(stop <-chan struct{}, txID string, senderID string, creatorID string, tag *byte) (<-chan []byte, error) {
+	v := url.Values{}
+
+	if txID != "" {
+		v.Set("tx_id", txID)
+	}
+
+	if senderID != "" {
+		v.Set("sender", senderID)
+	}
+
+	if creatorID != "" {
+		v.Set("creator", creatorID)
+	}
+
+	if tag != nil {
+		v.Set("tag", fmt.Sprintf("%x", *tag))
+	}
+
+	evChan := make(chan []byte)
+
+	if err := c.pollWS(stop, evChan, RouteWSTransactions, v); err != nil {
+		return nil, err
+	}
+
+	return evChan, nil
+}
+
+func (c *Client) GetContractCode(contractID string) (string, error) {
+	path := fmt.Sprintf("%s/%s", RouteContract, contractID)
+
+	res, err := c.Request(path, ReqGet, nil)
+	return string(res), err
+}
+
+func (c *Client) GetContractPages(contractID string, index *uint64) (string, error) {
+	path := fmt.Sprintf("%s/%s/page", RouteContract, contractID)
+	if index != nil {
+		path = fmt.Sprintf("%s/%d", path, *index)
+	}
+
+	res, err := c.Request(path, ReqGet, nil)
+	return base64.StdEncoding.EncodeToString(res), err
+}

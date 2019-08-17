@@ -155,13 +155,10 @@ func main() {
 					return err
 				}
 
-				var accountID *string
-				if len(c.String("account_id")) > 0 {
-					tmp := c.String("account_id")
-					accountID = &tmp
-				}
+				evChan, err := client.PollAccounts(nil,
+					c.String("account_id"),
+				)
 
-				evChan, err := client.PollAccounts(nil, accountID)
 				if err != nil {
 					return err
 				}
@@ -189,14 +186,10 @@ func main() {
 					return err
 				}
 
-				// get these optional variables
-				var contractID *string
-				if len(c.String("contract_id")) > 0 {
-					tmp := c.String("contract_id")
-					contractID = &tmp
-				}
+				evChan, err := client.PollContracts(nil,
+					c.String("contract_id"),
+				)
 
-				evChan, err := client.PollContracts(nil, contractID)
 				if err != nil {
 					return err
 				}
@@ -236,33 +229,19 @@ func main() {
 					return err
 				}
 
-				// get these optional variables
-				var (
-					txID      *string
-					senderID  *string
-					creatorID *string
-					tag       *byte
-				)
-
-				if len(c.String("tx_id")) > 0 {
-					tmp := c.String("tx_id")
-					txID = &tmp
-				}
-				if len(c.String("sender_id")) > 0 {
-					tmp := c.String("sender_id")
-					senderID = &tmp
-				}
-				if len(c.String("creator_id")) > 0 {
-					tmp := c.String("creator_id")
-					creatorID = &tmp
-				}
-				if len(c.String("tag")) > 0 {
-					tmp := c.String("tag")
-					t := byte(sys.TagLabels[tmp])
+				var tag *byte
+				if c.String("tag") != "" {
+					t := byte(sys.TagLabels[c.String("tag")])
 					tag = &t
 				}
 
-				evChan, err := client.PollTransactions(nil, txID, senderID, creatorID, tag)
+				evChan, err := client.PollTransactions(nil,
+					c.String("tx_id"),
+					c.String("sender_id"),
+					c.String("creator_id"),
+					tag,
+				)
+
 				if err != nil {
 					return err
 				}
@@ -302,29 +281,13 @@ func main() {
 					return err
 				}
 
-				// get these optional variables
-				var senderID *string
-				var creatorID *string
-				var offset *uint64
-				var limit *uint64
-				if len(c.String("sender_id")) > 0 {
-					tmp := c.String("sender_id")
-					senderID = &tmp
-				}
-				if len(c.String("creator_id")) > 0 {
-					tmp := c.String("creator_id")
-					creatorID = &tmp
-				}
-				if c.Uint("offset") > 0 {
-					tmp := uint64(c.Uint("offset"))
-					offset = &tmp
-				}
-				if c.Uint("limit") > 0 {
-					tmp := uint64(c.Uint("limit"))
-					limit = &tmp
-				}
+				res, err := client.GetLedgerStatus(
+					c.String("sender_id"),
+					c.String("creator_id"),
+					uint64(c.Uint("offset")),
+					uint64(c.Uint("limit")),
+				)
 
-				res, err := client.GetLedgerStatus(senderID, creatorID, offset, limit)
 				if err != nil {
 					return err
 				}
@@ -534,29 +497,13 @@ func main() {
 					return err
 				}
 
-				// get these optional variables
-				var senderID *string
-				var creatorID *string
-				var offset *uint64
-				var limit *uint64
-				if len(c.String("sender_id")) > 0 {
-					tmp := c.String("sender_id")
-					senderID = &tmp
-				}
-				if len(c.String("creator_id")) > 0 {
-					tmp := c.String("creator_id")
-					creatorID = &tmp
-				}
-				if c.Uint("offset") > 0 {
-					tmp := uint64(c.Uint("offset"))
-					offset = &tmp
-				}
-				if c.Uint("limit") > 0 {
-					tmp := uint64(c.Uint("limit"))
-					limit = &tmp
-				}
+				res, err := client.ListTransactions(
+					c.String("sender_id"),
+					c.String("creator_id"),
+					uint64(c.Uint("offset")),
+					uint64(c.Uint("limit")),
+				)
 
-				res, err := client.ListTransactions(senderID, creatorID, offset, limit)
 				if err != nil {
 					return err
 				}
