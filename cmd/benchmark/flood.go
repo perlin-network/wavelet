@@ -21,6 +21,7 @@ package main
 
 import (
 	"encoding/hex"
+	"github.com/perlin-network/wavelet"
 	"runtime"
 	"sync"
 
@@ -29,7 +30,7 @@ import (
 	"github.com/pkg/errors"
 )
 
-func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionResponse, error) {
+func floodTransactions(payload string) func(client *wctl.Client) ([]wctl.SendTransactionResponse, error) {
 	return func(client *wctl.Client) ([]wctl.SendTransactionResponse, error) {
 		numWorkers := runtime.NumCPU()
 
@@ -40,7 +41,7 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 		chErr := make(chan error, numWorkers)
 
 		for i := 0; i < numWorkers; i++ {
-			go sendTransaction(i+1, client, &wg, chRes, chErr)
+			go sendTransaction(i+1, client, &wg, chRes, chErr, payload)
 		}
 
 		wg.Wait()
@@ -69,13 +70,42 @@ func sendTransaction(
 	client *wctl.Client,
 	wg *sync.WaitGroup,
 	chRes chan<- wctl.SendTransactionResponse,
-	chErr chan<- error) {
+	chErr chan<- error,
+	payload string,
+) {
 
 	defer wg.Done()
 
-	var res wctl.SendTransactionResponse
-	payload, _ := hex.DecodeString("980506420d58e3b7ebf9327a2357a9c7f778e328695ab64039c568a6c31c6796000000000000000040420f0000000000000000000000000005000000636c69636b00000000")
-	res, err := client.SendTransaction(byte(sys.TagTransfer), payload)
+	var (
+		payloadB []byte
+		res wctl.SendTransactionResponse
+		tag sys.Tag
+	)
+
+	if payload != "" {
+		payloadB, _ = hex.DecodeString(payload)
+
+		tag = sys.TagTransfer
+	} else {
+			n := 40
+		batch := wavelet.Batch{
+			Tags:     make([]uint8, 0, n),
+			Payloads: make([][]byte, 0, n),
+		}
+
+		stake := wavelet.Stake{Opcode: sys.PlaceStake, Amount: uint64(i)}
+		for i := 0; i < 40; i++ {
+			if err := batch.AddStake(stake); err != nil {
+				// Shouldn't happen
+				panic(err)
+			}
+		}
+		payloadB = batch.Marshal()
+
+		tag = sys.TagBatch
+	}
+
+	res, err := client.SendTransaction(byte(tag), payloadB)
 	if err != nil {
 		chRes <- res
 		chErr <- err

@@ -93,6 +93,10 @@ func main() {
 					Usage: "private key in hex format to connect to node HTTP API with",
 					Value: "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
 				},
+				cli.StringFlag{
+					Name: "payload",
+					Usage: "payload of the transfer in case of custom transaction flood",
+				},
 			},
 			Action: commandRemote,
 		},
@@ -225,7 +229,7 @@ func commandRemote(c *cli.Context) error {
 		}
 	}()
 
-	flood := floodTransactions()
+	flood := floodTransactions(c.String("payload"))
 
 	for {
 		if _, err := flood(client); err != nil {
@@ -255,7 +259,7 @@ func commandLocal(c *cli.Context) error {
 
 	fmt.Println("Nodes are initialized!")
 
-	flood := floodTransactions()
+	flood := floodTransactions(c.String("payload"))
 
 	for {
 		if _, err := flood(nodes[0].client); err != nil {

@@ -70,20 +70,20 @@ func NewMetrics(ctx context.Context) *Metrics {
 					Int64("tx.received", receivedTX.Count()).
 					Int64("tx.accepted", acceptedTX.Count()).
 					Int64("tx.downloaded", downloadedTX.Count()).
-					Float64("rps.queried", queried.RateMean()).
-					Float64("tps.gossiped", gossipedTX.RateMean()).
-					Float64("tps.received", receivedTX.RateMean()).
-					Float64("tps.accepted", acceptedTX.RateMean()).
-					Float64("tps.downloaded", downloadedTX.RateMean()).
+					Float64("rps.queried", queried.Rate1()).
+					Float64("tps.gossiped", gossipedTX.Rate1()).
+					Float64("tps.received", receivedTX.Rate1()).
+					Float64("tps.accepted", acceptedTX.Rate1()).
+					Float64("tps.downloaded", downloadedTX.Rate1()).
 					Str("query.latency.max.ms", time.Duration(queryLatency.Max()).String()).
 					Str("query.latency.min.ms", time.Duration(queryLatency.Min()).String()).
-					Str("query.latency.mean.ms", time.Duration(queryLatency.Mean()).String()).
+					Str("query.latency.mean.ms", time.Duration(queryLatency.Rate1()).String()).
 					Str("finalization.latency.max.ms", time.Duration(finalizationLatency.Max()).String()).
 					Str("finalization.latency.min.ms", time.Duration(finalizationLatency.Min()).String()).
-					Str("finalization.latency.mean.ms", time.Duration(finalizationLatency.Mean()).String()).
+					Str("finalization.latency.mean.ms", time.Duration(finalizationLatency.Rate1()).String()).
 					Str("collapse.latency.max.ms", time.Duration(collapseLatency.Max()).String()).
 					Str("collapse.latency.min.ms", time.Duration(collapseLatency.Min()).String()).
-					Str("collapse.latency.mean.ms", time.Duration(collapseLatency.Mean()).String()).
+					Str("collapse.latency.mean.ms", time.Duration(collapseLatency.Rate1()).String()).
 					Msg("Updated metrics.")
 			case <-ctx.Done():
 				return
