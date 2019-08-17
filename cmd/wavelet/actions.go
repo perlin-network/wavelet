@@ -94,6 +94,8 @@ func (cli *CLI) pay(ctx *cli.Context) {
 		return
 	}
 
+	var payload wavelet.Transfer
+
 	recipient, err := hex.DecodeString(cmd[0])
 	if err != nil {
 		cli.logger.Error().Err(err).
@@ -101,11 +103,7 @@ func (cli *CLI) pay(ctx *cli.Context) {
 		return
 	}
 
-	if len(recipient) != wavelet.SizeAccountID {
-		cli.logger.Error().Int("length", len(recipient)).
-			Msg("You have specified an invalid account ID to find.")
-		return
-	}
+	copy(payload.Recipient[:], recipient)
 
 	amount, err := strconv.ParseUint(cmd[1], 10, 64)
 	if err != nil {
@@ -113,9 +111,6 @@ func (cli *CLI) pay(ctx *cli.Context) {
 			Msg("Failed to convert payment amount to a uint64.")
 		return
 	}
-
-	var payload wavelet.Transfer
-	copy(payload.Recipient[:], recipient)
 
 	payload.Amount = amount
 

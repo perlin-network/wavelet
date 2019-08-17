@@ -43,12 +43,13 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
+	"github.com/perlin-network/wavelet/wctl"
 	"google.golang.org/grpc"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
-)
 
-import _ "net/http/pprof"
+	_ "net/http/pprof"
+)
 
 type Config struct {
 	NAT      bool
@@ -238,12 +239,16 @@ func main() {
 func start(cfg *Config) {
 	logger := log.Node()
 
+	// TODO(diamond): change all panics to useful logger.Fatals
+
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil {
 		panic(err)
 	}
 
-	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
+	addr := net.JoinHostPort(
+		cfg.Host, strconv.Itoa(listener.Addr().(*net.TCPAddr).Port),
+	)
 
 	if cfg.NAT {
 		if len(cfg.Peers) > 1 {
@@ -272,7 +277,9 @@ func start(cfg *Config) {
 			panic(err)
 		}
 
-		addr = net.JoinHostPort(string(ip), strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
+		addr = net.JoinHostPort(
+			string(ip), strconv.Itoa(listener.Addr().(*net.TCPAddr).Port),
+		)
 	}
 
 	logger.Info().Str("addr", addr).Msg("Listening for peers.")
@@ -286,10 +293,13 @@ func start(cfg *Config) {
 		addr, keys,
 		skademlia.WithC1(sys.SKademliaC1),
 		skademlia.WithC2(sys.SKademliaC2),
-		skademlia.WithDialOptions(grpc.WithDefaultCallOptions(grpc.UseCompressor(snappy.Name))),
+		skademlia.WithDialOptions(grpc.WithDefaultCallOptions(
+			grpc.UseCompressor(snappy.Name))),
 	)
 
-	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
+	client.SetCredentials(noise.NewCredentials(
+		addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol(),
+	))
 
 	client.OnPeerJoin(func(conn *grpc.ClientConn, id *skademlia.ID) {
 		publicKey := id.PublicKey()
@@ -331,7 +341,9 @@ func start(cfg *Config) {
 
 	for _, addr := range cfg.Peers {
 		if _, err := client.Dial(addr); err != nil {
-			fmt.Printf("Error dialing %s: %v\n", addr, err)
+			logger.Warn().Err(err).
+				Str("addr", addr).
+				Msg("Error dialing")
 		}
 	}
 
@@ -345,13 +357,28 @@ func start(cfg *Config) {
 		logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
 	}
 
-	if cfg.APIPort > 0 {
-		go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
+	if cfg.APIPort == 0 {
+		cfg.APIPort = 9000
 	}
 
-	shell, err := NewCLI(client, ledger, keys)
+	go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
+
+	c, err := wctl.NewClient(wctl.Config{
+		APIHost:    "localhost",
+		APIPort:    uint16(cfg.APIPort),
+		PrivateKey: keys.PrivateKey(),
+	})
+
 	if err != nil {
-		panic(err)
+		logger.Fatal().Err(err).
+			Uint("port", cfg.APIPort).
+			Msg("Failed to connect to API")
+	}
+
+	shell, err := NewCLI(c)
+	if err != nil {
+		logger.Fatal().Err(err).
+			Msg("Failed to spawn the CLI")
 	}
 
 	shell.Start()
