@@ -77,6 +77,8 @@ in the form of [WebAssembly](https://webassembly.org/) smart contracts, with bat
 Use the same 'ole tools you know and love to efficiently and cost-effectively create your next decentralized application.
 
 [Click here](/docs/smart-contracts) for more info about Wavelet's Rust smart contract SDK.
+
+[Click here](https://github.com/perlin-network/smart-contract-as) for more info about Wavelet's AssemblyScript smart contract SDK.
 `
 
 class Index extends React.Component {
