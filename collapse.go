@@ -217,6 +217,10 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 	res.rejected = make([]*Transaction, 0, order.Len())
 	res.rejectedErrors = make([]error, 0, order.Len())
 
+	applyCtx := &ApplyContext{
+		Contracts: make(map[AccountID]*VMState),
+	}
+
 	// Apply transactions in reverse order from the end of the round
 	// all the way down to the beginning of the round.
 
@@ -242,7 +246,7 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 			}
 		}
 
-		if err := ApplyTransaction(current, res.snapshot, popped); err != nil {
+		if err := ApplyTransaction(current, res.snapshot, popped, applyCtx); err != nil {
 			res.rejected = append(res.rejected, popped)
 			res.rejectedErrors = append(res.rejectedErrors, err)
 			res.rejectedCount += popped.LogicalUnits()
@@ -268,6 +272,11 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 
 	if round >= uint64(sys.RewardWithdrawalsRoundLimit) {
 		processRewardWithdrawals(round, res.snapshot)
+	}
+
+	for id, state := range applyCtx.Contracts {
+		SaveContractMemorySnapshot(res.snapshot, id, state.Memory)
+		SaveContractGlobals(res.snapshot, id, state.Globals)
 	}
 
 	return res, nil

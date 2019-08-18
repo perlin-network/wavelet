@@ -81,7 +81,7 @@ func TestApplyTransaction_Single(t *testing.T) {
 			account.effect.Balance -= amount
 
 			tx := AttachSenderToTransaction(account.keys, NewTransaction(account.keys, sys.TagStake, buildPlaceStakePayload(amount).Marshal()))
-			err := ApplyTransaction(&round, state, &tx)
+			err := ApplyTransaction(&round, state, &tx, nil)
 			assert.NoError(t, err)
 		case 1:
 			amount := rng.Uint64()%100 + 1
@@ -97,7 +97,7 @@ func TestApplyTransaction_Single(t *testing.T) {
 			toAccount.effect.Balance += amount
 
 			tx := AttachSenderToTransaction(fromAccount.keys, NewTransaction(fromAccount.keys, sys.TagTransfer, buildTransferPayload(toAccountID, amount).Marshal()))
-			err := ApplyTransaction(&round, state, &tx)
+			err := ApplyTransaction(&round, state, &tx, nil)
 			assert.NoError(t, err)
 		default:
 			panic("unreachable")
@@ -200,17 +200,17 @@ func TestApplyTransferTransaction(t *testing.T) {
 	WriteAccountBalance(state, aliceID, 1)
 
 	tx := AttachSenderToTransaction(alice, NewTransaction(alice, sys.TagTransfer, buildTransferPayload(bobID, 1).Marshal()))
-	err = ApplyTransaction(&round, state, &tx)
+	err = ApplyTransaction(&round, state, &tx, nil)
 	assert.NoError(t, err)
 
 	// Case 2 - Not enough balance
 	tx = AttachSenderToTransaction(alice, NewTransaction(alice, sys.TagTransfer, buildTransferPayload(bobID, 1).Marshal()))
-	err = ApplyTransaction(&round, state, &tx)
+	err = ApplyTransaction(&round, state, &tx, nil)
 	assert.Error(t, err)
 
 	// Case 3 - Self-transfer without enough balance
 	tx = AttachSenderToTransaction(alice, NewTransaction(alice, sys.TagTransfer, buildTransferPayload(aliceID, 1).Marshal()))
-	err = ApplyTransaction(&round, state, &tx)
+	err = ApplyTransaction(&round, state, &tx, nil)
 	assert.Error(t, err)
 }
 
@@ -228,17 +228,17 @@ func TestApplyStakeTransaction(t *testing.T) {
 	WriteAccountBalance(state, accountID, 100)
 
 	tx := AttachSenderToTransaction(account, NewTransaction(account, sys.TagStake, buildPlaceStakePayload(100).Marshal()))
-	err = ApplyTransaction(&round, state, &tx)
+	err = ApplyTransaction(&round, state, &tx, nil)
 	assert.NoError(t, err)
 
 	// Case 2 - Not enough balance
 	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagStake, buildPlaceStakePayload(100).Marshal()))
-	err = ApplyTransaction(&round, state, &tx)
+	err = ApplyTransaction(&round, state, &tx, nil)
 	assert.Error(t, err)
 
 	// Case 3 - Withdrawal success
 	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagStake, buildWithdrawStakePayload(100).Marshal()))
-	err = ApplyTransaction(&round, state, &tx)
+	err = ApplyTransaction(&round, state, &tx, nil)
 	assert.NoError(t, err)
 
 	finalBalance, _ := ReadAccountBalance(state, accountID)
@@ -262,7 +262,7 @@ func TestApplyBatchTransaction(t *testing.T) {
 
 	// initial stake
 	tx := AttachSenderToTransaction(alice, NewTransaction(alice, sys.TagStake, buildPlaceStakePayload(100).Marshal()))
-	err = ApplyTransaction(&round, state, &tx)
+	err = ApplyTransaction(&round, state, &tx, nil)
 	assert.NoError(t, err)
 
 	// this implies order
@@ -271,7 +271,7 @@ func TestApplyBatchTransaction(t *testing.T) {
 	batch.AddTransfer(buildTransferPayload(bobID, 100))
 
 	tx = AttachSenderToTransaction(alice, NewTransaction(alice, sys.TagBatch, batch.Marshal()))
-	err = ApplyTransaction(&round, state, &tx)
+	err = ApplyTransaction(&round, state, &tx, nil)
 	assert.NoError(t, err)
 
 	finalBobBalance, _ := ReadAccountBalance(state, bobID)
@@ -294,13 +294,13 @@ func TestApplyContractTransaction(t *testing.T) {
 	// Case 1 - balance < gas_fee
 	WriteAccountBalance(state, accountID, 99999)
 	tx := AttachSenderToTransaction(account, NewTransaction(account, sys.TagContract, buildContractSpawnPayload(100000, 0, code).Marshal()))
-	err = ApplyTransaction(&round, state, &tx)
+	err = ApplyTransaction(&round, state, &tx, nil)
 	assert.Error(t, err)
 
 	// Case 2 - Success
 	WriteAccountBalance(state, accountID, 100000)
 	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagContract, buildContractSpawnPayload(100000, 0, code).Marshal()))
-	err = ApplyTransaction(&round, state, &tx)
+	err = ApplyTransaction(&round, state, &tx, nil)
 	assert.NoError(t, err)
 
 	finalBalance, _ := ReadAccountBalance(state, accountID)
@@ -311,7 +311,7 @@ func TestApplyContractTransaction(t *testing.T) {
 	// Try to transfer some money
 	WriteAccountBalance(state, accountID, 1000000000)
 	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagTransfer, buildTransferWithInvocationPayload(contractID, 200000000, 500000, []byte("on_money_received"), nil, 0).Marshal()))
-	err = ApplyTransaction(&round, state, &tx)
+	err = ApplyTransaction(&round, state, &tx, nil)
 	assert.NoError(t, err)
 	finalBalance, _ = ReadAccountBalance(state, accountID)
 	assert.True(t, finalBalance > 1000000000-100000000-500000 && finalBalance < 1000000000-100000000)
@@ -320,7 +320,7 @@ func TestApplyContractTransaction(t *testing.T) {
 	WriteAccountBalance(state, accountID, 200000000)
 	WriteAccountContractGasBalance(state, contractID, 1000000000)
 	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagTransfer, buildTransferWithInvocationPayload(contractID, 200000000, 500000, []byte("on_money_received"), nil, 0).Marshal()))
-	err = ApplyTransaction(&round, state, &tx)
+	err = ApplyTransaction(&round, state, &tx, nil)
 	assert.NoError(t, err)
 	finalBalance, _ = ReadAccountBalance(state, accountID)
 	assert.Equal(t, uint64(100000000), finalBalance)
@@ -333,7 +333,7 @@ func TestApplyContractTransaction(t *testing.T) {
 
 	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagTransfer, buildTransferWithInvocationPayload(contractID, 200000000, 500000, []byte("on_money_received"), nil, 0).Marshal()))
 
-	assert.NoError(t, ApplyTransaction(&round, state, &tx))
+	assert.NoError(t, ApplyTransaction(&round, state, &tx, nil))
 	finalBalance, _ = ReadAccountBalance(state, accountID)
 	assert.True(t, finalBalance > 200000000-500000 && finalBalance < 200000000)
 	finalGasBalance, _ = ReadAccountContractGasBalance(state, contractID)
@@ -343,20 +343,20 @@ func TestApplyContractTransaction(t *testing.T) {
 	WriteAccountBalance(state, accountID, 200000000)
 	WriteAccountContractGasBalance(state, contractID, 0)
 	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagTransfer, buildTransferWithInvocationPayload(contractID, 200000000, 500000, []byte("on_money_received"), nil, 0).Marshal()))
-	assert.Error(t, ApplyTransaction(&round, state, &tx))
+	assert.Error(t, ApplyTransaction(&round, state, &tx, nil))
 
 	code, err = ioutil.ReadFile("testdata/recursive_invocation.wasm")
 	assert.NoError(t, err)
 
 	WriteAccountBalance(state, accountID, 100000000)
 	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagContract, buildContractSpawnPayload(100000, 0, code).Marshal()))
-	err = ApplyTransaction(&round, state, &tx)
+	err = ApplyTransaction(&round, state, &tx, nil)
 	assert.NoError(t, err)
 	recursiveInvocationContractID := AccountID(tx.ID)
 
 	WriteAccountBalance(state, accountID, 6000000)
 	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagTransfer, buildTransferWithInvocationPayload(recursiveInvocationContractID, 0, 5000000, []byte("bomb"), recursiveInvocationContractID[:], 0).Marshal()))
-	err = ApplyTransaction(&round, state, &tx)
+	err = ApplyTransaction(&round, state, &tx, nil)
 	assert.NoError(t, err)
 
 	finalBalance, _ = ReadAccountBalance(state, accountID)
