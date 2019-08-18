@@ -33,11 +33,17 @@ type contractExecutorState struct {
 	GasPayer      AccountID
 	GasLimit      uint64
 	GasLimitIsSet bool
+	ApplyCtx      *ApplyContext
 }
 
-func ApplyTransaction(round *Round, state *avl.Tree, tx *Transaction) error {
+type ApplyContext struct {
+	Contracts map[AccountID]*VMState
+}
+
+func ApplyTransaction(round *Round, state *avl.Tree, tx *Transaction, applyCtx *ApplyContext) error {
 	return applyTransaction(round, state, tx, &contractExecutorState{
 		GasPayer: tx.Creator,
+		ApplyCtx: applyCtx,
 	})
 }
 
@@ -297,7 +303,17 @@ func executeContractInTransactionContext(
 	executor := &ContractExecutor{}
 	snapshotBeforeExec := snapshot.Snapshot()
 
-	invocationErr := executor.Execute(snapshot, contractID, round, tx, amount, realGasLimit, string(funcName), funcParams, code)
+	var vmState *VMState
+	var vmStateLoaded bool
+
+	if state.ApplyCtx != nil {
+		vmState, vmStateLoaded = state.ApplyCtx.Contracts[contractID]
+		if !vmStateLoaded {
+			vmState = &VMState{}
+		}
+	}
+
+	invocationErr := executor.Execute(snapshot, contractID, round, tx, amount, realGasLimit, string(funcName), funcParams, code, vmState, vmStateLoaded)
 
 	// availableBalance >= realGasLimit >= executor.Gas && state.GasLimit >= realGasLimit must always hold.
 	if realGasLimit < executor.Gas {
@@ -331,6 +347,11 @@ func executeContractInTransactionContext(
 				Msg("Exceeded gas limit while invoking smart contract function.")
 		}
 	} else {
+		// Contract invocation succeeded. VM state can be safely saved now.
+		if vmState != nil {
+			state.ApplyCtx.Contracts[contractID] = vmState
+		}
+
 		if executor.Gas > contractGasBalance {
 			WriteAccountContractGasBalance(snapshot, contractID, 0)
 			if gasPayerBalance < (executor.Gas - contractGasBalance) {
