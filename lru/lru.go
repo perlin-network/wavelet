@@ -59,6 +59,31 @@ func (l *LRU) Load(key interface{}) (interface{}, bool) {
 	return elem.Value.(*objectInfo).obj, ok
 }
 
+func (l *LRU) LoadOrPut(key interface{}, val interface{}) (interface{}, bool) {
+	l.Lock()
+	defer l.Unlock()
+
+	elem, ok := l.elements[key]
+
+	if ok {
+		val = elem.Value.(*objectInfo).obj
+		l.access.MoveToFront(elem)
+	} else {
+		l.elements[key] = l.access.PushFront(&objectInfo{
+			key: key,
+			obj: val,
+		})
+		for len(l.elements) > l.size {
+			back := l.access.Back()
+			info := back.Value.(*objectInfo)
+			delete(l.elements, info.key)
+			l.access.Remove(back)
+		}
+	}
+
+	return val, ok
+}
+
 func (l *LRU) Put(key interface{}, val interface{}) {
 	l.Lock()
 	defer l.Unlock()
@@ -73,13 +98,12 @@ func (l *LRU) Put(key interface{}, val interface{}) {
 			key: key,
 			obj: val,
 		})
-	}
-
-	for len(l.elements) > l.size {
-		back := l.access.Back()
-		info := back.Value.(*objectInfo)
-		delete(l.elements, info.key)
-		l.access.Remove(back)
+		for len(l.elements) > l.size {
+			back := l.access.Back()
+			info := back.Value.(*objectInfo)
+			delete(l.elements, info.key)
+			l.access.Remove(back)
+		}
 	}
 }
 
