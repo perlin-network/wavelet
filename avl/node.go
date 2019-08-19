@@ -21,21 +21,25 @@ package avl
 
 import (
 	"bytes"
-	"crypto/md5"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/minio/highwayhash"
 	"math"
 
 	"github.com/pkg/errors"
 	"github.com/valyala/bytebufferpool"
 )
 
-const MerkleHashSize = 16
+var (
+	hashKey = make([]byte, 32)
+)
 
 type nodeType byte
 
 const (
+	MerkleHashSize = 16
+
 	NodeNonLeaf nodeType = iota
 	NodeLeafValue
 )
@@ -327,7 +331,9 @@ func (n *node) rehashNoWrite() [MerkleHashSize]byte {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 	n.serialize(buf)
-	return md5.Sum(buf.Bytes())
+	data := buf.Bytes()
+
+	return highwayhash.Sum128(data, hashKey)
 }
 
 func (n *node) clone() *node {
