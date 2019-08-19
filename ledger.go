@@ -1217,6 +1217,12 @@ type collapseResults struct {
 	snapshot *avl.Tree
 }
 
+type CollapseState struct {
+	once    sync.Once
+	results *collapseResults
+	err     error
+}
+
 // collapseTransactions takes all transactions recorded within a graph depth interval, and applies
 // all valid and available ones to a snapshot of all accounts stored in the ledger. It returns
 // an updated snapshot with all finalized transactions applied, alongside count summaries of the
@@ -1246,21 +1252,14 @@ func (l *Ledger) collapseTransactions(round uint64, start, end Transaction, logg
 		}
 	}()
 
-	if results, exists := l.cacheCollapse.Load(end.ID); exists {
-		res = results.(*collapseResults)
-		return res, nil
-	}
+	_collapseState, _ := l.cacheCollapse.LoadOrPut(end.ID, &CollapseState{})
+	collapseState := _collapseState.(*CollapseState)
 
-	var err error
+	collapseState.once.Do(func() {
+		collapseState.results, collapseState.err = collapseTransactions(l.graph, l.accounts, round, l.Rounds().Latest(), start, end, logging)
+	})
 
-	res, err = collapseTransactions(l.graph, l.accounts, round, l.Rounds().Latest(), start, end, logging)
-	if err != nil {
-		return nil, err
-	}
-
-	l.cacheCollapse.Put(end.ID, res)
-
-	return res, nil
+	return collapseState.results, collapseState.err
 }
 
 // LogChanges logs all changes made to an AVL tree state snapshot for the purposes
