@@ -1,7 +1,7 @@
 ---
 id: decentralized-todo-app
 title: Build A Decentralized Chat Application using VueJS & Rust (WebAssembly)
-sidebar_label: Build ADecentralized Chat Application using VueJS & Rust (WebAssembly)
+sidebar_label: Build A Decentralized Chat Application using VueJS & Rust (WebAssembly)
 ---
 
 One of the first tutorials you come across when learning a new programming language is to build a Todo App.
