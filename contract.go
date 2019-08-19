@@ -68,9 +68,15 @@ type VMState struct {
 	Memory  []byte
 }
 
-func (state VMState) Apply(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver) (*exec.VirtualMachine, error) {
+func (state VMState) Apply(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver, move bool) (*exec.VirtualMachine, error) {
 	if len(vm.Globals) != len(state.Globals) {
 		return nil, errors.New("global count mismatch")
+	}
+
+	// safe as `state` is passed by value
+	if !move {
+		state.Globals = append([]int64{}, state.Globals...)
+		state.Memory = append([]byte{}, state.Memory...)
 	}
 
 	return &exec.VirtualMachine{
@@ -90,23 +96,17 @@ func (state VMState) Apply(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy
 }
 
 func CloneVM(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver) (*exec.VirtualMachine, error) {
-	return SnapshotVMState(vm).Apply(vm, gasPolicy, importResolver)
+	return SnapshotVMState(vm).Apply(vm, gasPolicy, importResolver, false)
 }
 
 func SnapshotVMState(vm *exec.VirtualMachine) VMState {
-	globals := make([]int64, len(vm.Globals))
-	memory := make([]byte, len(vm.Memory))
-
-	copy(globals, vm.Globals)
-	copy(memory, vm.Memory)
-
 	return VMState{
-		Globals: globals,
-		Memory:  memory,
+		Globals: vm.Globals,
+		Memory:  vm.Memory,
 	}
 }
 
-var vmCache *lru.LRU = lru.NewLRU(32)
+var vmCache *lru.LRU = lru.NewLRU(32) // AccountID -> *exec.VirtualMachine
 
 func (e *ContractExecutor) GetCost(key string) int64 {
 	// FIXME(kenta): Remove for testnet.
@@ -261,7 +261,8 @@ func (e *ContractExecutor) ResolveGlobal(module, field string) int64 {
 	panic("global variables are disallowed in smart contracts")
 }
 
-func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Round, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte) error {
+// If this function returns no error and `contractState` is not nil, new state of the contract MUST be written into `contractState`.
+func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Round, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte, contractState *VMState, contractStateLoaded bool) error {
 	var vm *exec.VirtualMachine
 	var err error
 
@@ -303,7 +304,13 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 
 	var firstRun bool
 
-	if mem := LoadContractMemorySnapshot(snapshot, id); mem != nil {
+	// If state cache is enabled and we have a valid state previously.
+	if contractState != nil && contractStateLoaded {
+		vm, err = contractState.Apply(vm, e, e, true)
+		if err != nil {
+			return errors.New("unable to apply state")
+		}
+	} else if mem := LoadContractMemorySnapshot(snapshot, id); mem != nil {
 		vm.Memory = mem
 		if globals, exists := LoadContractGlobals(snapshot, id); exists {
 			if len(globals) == len(vm.Globals) {
@@ -363,9 +370,13 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 		vm.PrintStackTrace()
 	}
 
-	if vm.ExitError == nil && len(e.Error) == 0 {
-		SaveContractMemorySnapshot(snapshot, id, vm.Memory)
-		SaveContractGlobals(snapshot, id, vm.Globals)
+	if vm.ExitError == nil {
+		if contractState != nil {
+			*contractState = SnapshotVMState(vm)
+		} else {
+			SaveContractMemorySnapshot(snapshot, id, vm.Memory)
+			SaveContractGlobals(snapshot, id, vm.Globals)
+		}
 	}
 
 	if vm.ExitError != nil && utils.UnifyError(vm.ExitError).Error() == "gas limit exceeded" {
