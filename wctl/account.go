@@ -7,8 +7,8 @@ import (
 var _ UnmarshalableJSON = (*Account)(nil)
 
 // GetAccount calls the /accounts endpoint of the API.
-func (c *Client) GetAccount(accountID string) (*Account, error) {
-	path := RouteAccount + "/" + accountID
+func (c *Client) GetAccount(account [32]byte) (*Account, error) {
+	path := RouteAccount + "/" + string(account[:])
 
 	var res Account
 	if err := c.RequestJSON(path, ReqGet, nil, &res); err != nil {

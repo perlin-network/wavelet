@@ -2,6 +2,7 @@ package wctl
 
 import (
 	"encoding/hex"
+	"errors"
 	"net/url"
 	"strconv"
 
@@ -11,10 +12,15 @@ import (
 )
 
 var (
-	_ UnmarshalableJSON = (*SendTransactionResponse)(nil)
+	_ UnmarshalableJSON = (*TxResponse)(nil)
 	_ UnmarshalableJSON = (*Transaction)(nil)
 	_ UnmarshalableJSON = (*TransactionList)(nil)
-	_ MarshalableJSON   = (*SendTransactionRequest)(nil)
+	_ MarshalableJSON   = (*TxRequest)(nil)
+)
+
+var (
+	// ErrInsufficientPerls is returned when you don't have enough PERLs.
+	ErrInsufficientPerls = errors.New("Insufficient PERLs")
 )
 
 // ListTransactions calls the /tx endpoint of the API to list all transactions.
@@ -62,8 +68,8 @@ func (c *Client) GetTransaction(txID string) (*Transaction, error) {
 
 // SendTransaction calls the /tx/send endpoint to send a raw payload.
 // Payloads are best crafted with wavelet.Transfer.
-func (c *Client) SendTransaction(tag byte, payload []byte) (*SendTransactionResponse, error) {
-	var res SendTransactionResponse
+func (c *Client) sendTransaction(tag byte, payload []byte) (*TxResponse, error) {
+	var res TxResponse
 
 	var nonce [8]byte // TODO(kenta): nonce
 
@@ -72,7 +78,7 @@ func (c *Client) SendTransaction(tag byte, payload []byte) (*SendTransactionResp
 		append(nonce[:], append([]byte{tag}, payload...)...),
 	)
 
-	req := SendTransactionRequest{
+	req := TxRequest{
 		Sender:    hex.EncodeToString(c.PublicKey[:]),
 		Tag:       tag,
 		Payload:   hex.EncodeToString(payload),
@@ -87,8 +93,8 @@ func (c *Client) SendTransaction(tag byte, payload []byte) (*SendTransactionResp
 }
 
 // SendTransfer sends a wavelet.Transfer instead of a Payload.
-func (c *Client) SendTransfer(tag byte, transfer wavelet.Transfer) (*SendTransactionResponse, error) {
-	return c.SendTransaction(tag, transfer.Marshal())
+func (c *Client) sendTransfer(tag byte, transfer wavelet.Transfer) (*TxResponse, error) {
+	return c.sendTransaction(tag, transfer.Marshal())
 }
 
 type Transaction struct {
@@ -173,14 +179,14 @@ func (t *TransactionList) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-type SendTransactionRequest struct {
+type TxRequest struct {
 	Sender    string `json:"sender"`
 	Tag       byte   `json:"tag"`
 	Payload   string `json:"payload"`
 	Signature string `json:"signature"`
 }
 
-func (s *SendTransactionRequest) MarshalJSON() ([]byte, error) {
+func (s *TxRequest) MarshalJSON() ([]byte, error) {
 	var arena fastjson.Arena
 	o := arena.NewObject()
 
@@ -192,13 +198,13 @@ func (s *SendTransactionRequest) MarshalJSON() ([]byte, error) {
 	return o.MarshalTo(nil), nil
 }
 
-type SendTransactionResponse struct {
+type TxResponse struct {
 	ID       string   `json:"tx_id"`
 	Parents  []string `json:"parent_ids"`
 	Critical bool     `json:"is_critical"`
 }
 
-func (s *SendTransactionResponse) UnmarshalJSON(b []byte) error {
+func (s *TxResponse) UnmarshalJSON(b []byte) error {
 	var parser fastjson.Parser
 
 	v, err := parser.ParseBytes(b)
