@@ -75,9 +75,10 @@ func TestLedger_BroadcastNop(t *testing.T) {
 
 			currRound := alice.ledger.Rounds().Latest().Index
 
-			fmt.Printf("%d/%d tx applied, round=%d, root depth=%d\n",
+			fmt.Printf("%d/%d tx applied, round=%d, prevRound=%d, root depth=%d\n",
 				appliedCount, txsCount,
 				currRound,
+				prevRound,
 				alice.ledger.Graph().RootDepth())
 
 			if currRound-prevRound > 1 {
