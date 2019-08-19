@@ -4,7 +4,7 @@ title: Build A Decentralized Chat Application using VueJS & Rust (WebAssembly)
 sidebar_label: Build A Decentralized Chat Application using VueJS & Rust (WebAssembly)
 ---
 
-One of the first tutorials you come across when learning a new programming language is to build a Todo App.
+One of the first tutorials you come across when learning a new programming language is to build a Todo App. While some think it is reinventing the wheel to build one, one can get a grasp of how the framework/libraries work.
 
 Here is the final working product: https://wavelet-todo.surge.sh, in case you are in a rush :)
 
@@ -480,3 +480,5 @@ Congratulations, you just made your very first, scalable, secure Wavelet Dapp!
 There is a lot more to explore, such as a plethora of additional functionalities provided by the Wavelet JS client, alongside the extensive set of documentation for Wavelet located on this site.
 
 Source code for the full tutorial is available here: https://github.com/johnhorsema/wavelet-todo
+
+The original tutorial is written by Jonathan Ma and can be found [here](https://medium.com/@jjmace01/build-a-decentralized-todo-app-using-vue-js-rust-webassembly-5381a1895beb).

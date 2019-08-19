@@ -376,3 +376,5 @@ If it doesn’t, either way, congratulations, you've made your very first scalab
 If you need any help, are interested to know more, or are stuck at any bits throughout the tutorial, feel free to reach us over on our Discord [here](https://discord.gg/dMYfDPM).
 
 Source code for the entire tutorial can be found [here](https://github.com/perlin-network/decentralized-chat)
+
+The original tutorial is written by Kenta Iwasaki and can be found [here](https://medium.com/perlin-network/build-a-decentralized-chat-using-javascript-rust-webassembly-c775f8484b52).
