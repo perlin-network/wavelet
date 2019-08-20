@@ -160,5 +160,7 @@ func TestLedger_CallExpensiveContract(t *testing.T) {
 
 	testnet.WaitForLatestConsensus(t)
 
+	fmt.Println(bob.Balance())
+
 	// TODO: add test case for alice (500k PERL)
 }
