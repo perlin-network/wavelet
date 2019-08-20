@@ -29,7 +29,7 @@ func TestLedger_BroadcastNop(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Wait for alice to receive her PERL from the faucet
-	for <-alice.WaitForConsensus() {
+	for range alice.WaitForConsensus() {
 		if alice.Balance() > 0 {
 			break
 		}
@@ -125,4 +125,40 @@ func TestLedger_AddTransaction(t *testing.T) {
 
 	current := alice.ledger.Rounds().Latest().Index
 	assert.Equal(t, current-start, uint64(1), "expected only 1 round to be finalized")
+}
+
+func TestLedger_CallExpensiveContract(t *testing.T) {
+	testnet := NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	testnet.AddNode(t, 500000)
+	bob := testnet.AddNode(t, 100000000)
+
+	testnet.WaitForLatestConsensus(t)
+
+	registry, err := testnet.faucet.SpawnContract("testdata/registry.wasm",
+		100000000, nil)
+	assert.NoError(t, err)
+
+	testnet.WaitForLatestConsensus(t)
+
+	contract, err := testnet.faucet.SpawnContract("testdata/registered_contract.wasm",
+		100000000, nil)
+	assert.NoError(t, err)
+
+	testnet.WaitForLatestConsensus(t)
+
+	// Deposit some gas to both smart contracts
+	_, err = testnet.faucet.DepositGas(registry.ID, 100000000)
+	assert.NoError(t, err)
+	_, err = testnet.faucet.DepositGas(contract.ID, 100000000)
+	assert.NoError(t, err)
+	testnet.WaitForLatestConsensus(t)
+
+	_, err = bob.CallContract(registry.ID, 0, 1, "track", contract.ID[:])
+	assert.NoError(t, err)
+
+	testnet.WaitForLatestConsensus(t)
+
+	// TODO: add test case for alice (500k PERL)
 }
