@@ -30,6 +30,19 @@ func NewTestKV(t testing.TB, kv string, path string) (KV, func()) {
 			_ = os.RemoveAll(path)
 		}
 
+	case "badger":
+		_ = os.RemoveAll(path)
+
+		badger, err := NewBadger(path)
+		if err != nil {
+			t.Fatalf("failed to create Badger: %s", err)
+		}
+
+		return badger, func() {
+			_ = badger.Close()
+			_ = os.RemoveAll(path)
+		}
+
 	default:
 		panic("unknown kv " + kv)
 	}

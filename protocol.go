@@ -23,8 +23,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 )
@@ -82,22 +85,53 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 	}
 
 	res := &SyncResponse{}
-
-	diff := p.ledger.accounts.Snapshot().DumpDiff(req.GetRoundId())
 	header := &SyncInfo{LatestRound: p.ledger.rounds.Latest().Marshal()}
 
-	syncChunkSize := conf.GetSyncChunkSize()
-	for i := 0; i < len(diff); i += syncChunkSize {
-		end := i + syncChunkSize
+	diffBuffer := p.ledger.fileBuffers.GetUnbounded()
+	defer p.ledger.fileBuffers.Put(diffBuffer)
 
-		if end > len(diff) {
-			end = len(diff)
+	if err := p.ledger.accounts.Snapshot().DumpDiff(req.GetRoundId(), diffBuffer); err != nil {
+		return err
+	}
+
+	chunksBuffer, err := p.ledger.fileBuffers.GetBounded(diffBuffer.Len())
+	if err != nil {
+		return err
+	}
+	defer p.ledger.fileBuffers.Put(chunksBuffer)
+
+	if _, err := io.Copy(chunksBuffer, diffBuffer); err != nil {
+		return err
+	}
+
+	type chunkInfo struct {
+		Idx  int
+		Size int
+	}
+
+	chunks := map[[blake2b.Size256]byte]chunkInfo{}
+
+	// Chunk dumped diff
+	syncChunkSize := conf.GetSyncChunkSize()
+	chunkBuf := make([]byte, syncChunkSize)
+	var i int
+	for {
+		n, err := chunksBuffer.ReadAt(chunkBuf[:], int64(i*syncChunkSize))
+		if n > 0 {
+			chunk := make([]byte, n)
+			copy(chunk, chunkBuf[:n])
+			checksum := blake2b.Sum256(chunk)
+			header.Checksums = append(header.Checksums, checksum[:])
+
+			chunks[checksum] = chunkInfo{Idx: i, Size: n}
+			i++
 		}
 
-		checksum := blake2b.Sum256(diff[i:end])
-		p.ledger.cacheChunks.Put(checksum, diff[i:end])
-
-		header.Checksums = append(header.Checksums, checksum[:])
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			return err
+		}
 	}
 
 	res.Data = &SyncResponse_Header{Header: header}
@@ -118,18 +152,24 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 		var checksum [blake2b.Size256]byte
 		copy(checksum[:], req.GetChecksum())
 
-		if chunk, found := p.ledger.cacheChunks.Load(checksum); found {
-			chunk := chunk.([]byte)
-
-			logger := log.Sync("provide_chunk")
-			logger.Info().
-				Hex("requested_hash", req.GetChecksum()).
-				Msg("Responded to sync chunk request.")
-
-			res.Data.(*SyncResponse_Chunk).Chunk = chunk
-		} else {
+		info, ok := chunks[checksum]
+		if !ok {
 			res.Data.(*SyncResponse_Chunk).Chunk = nil
+			if err = stream.Send(res); err != nil {
+				return err
+			}
 		}
+
+		if _, err := chunksBuffer.ReadAt(chunkBuf[:info.Size], int64(info.Idx*sys.SyncChunkSize)); err != nil {
+			return err
+		}
+
+		logger := log.Sync("provide_chunk")
+		logger.Info().
+			Hex("requested_hash", req.GetChecksum()).
+			Msg("Responded to sync chunk request.")
+
+		res.Data.(*SyncResponse_Chunk).Chunk = chunkBuf[:info.Size]
 
 		if err = stream.Send(res); err != nil {
 			return err

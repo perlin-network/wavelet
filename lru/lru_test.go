@@ -20,8 +20,9 @@
 package lru
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLRU(t *testing.T) {
@@ -45,4 +46,27 @@ func TestLRU(t *testing.T) {
 	val, ok = lru.Load([32]byte{'c'})
 	assert.True(t, ok)
 	assert.Equal(t, 3, val.(int))
+}
+
+func TestLRU_PutWithEvictCallback(t *testing.T) {
+	lru := NewLRU(2)
+
+	lru.Put([32]byte{'a'}, 1)
+	lru.Put([32]byte{'b'}, 2)
+
+	var called bool
+	lru.PutWithEvictCallback([32]byte{'c'}, 3, func(key interface{}, val interface{}) {
+		assert.EqualValues(t, [32]byte{'a'}, key)
+		assert.EqualValues(t, 1, val)
+		called = true
+	})
+	assert.True(t, called)
+
+	called = false
+	lru.PutWithEvictCallback([32]byte{'d'}, 4, func(key interface{}, val interface{}) {
+		assert.EqualValues(t, [32]byte{'b'}, key)
+		assert.EqualValues(t, 2, val)
+		called = true
+	})
+	assert.True(t, called)
 }
