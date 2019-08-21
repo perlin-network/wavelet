@@ -57,6 +57,10 @@ type MarshalableJSON interface {
 	MarshalJSON() ([]byte, error)
 }
 
+type Marshalable interface {
+	Marshal() []byte
+}
+
 type Config struct {
 	APIHost    string
 	APIPort    uint16

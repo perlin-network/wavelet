@@ -14,7 +14,7 @@ func (c *Client) Pay(recipient [32]byte, amount uint64) (*TxResponse, error) {
 	var t wavelet.Transfer
 
 	// Write the recipient
-	copy(t.Recipient[:], recipient[:])
+	t.Recipient = recipient
 
 	// Set the amount
 	t.Amount = amount
@@ -31,6 +31,3 @@ func (c *Client) Pay(recipient [32]byte, amount uint64) (*TxResponse, error) {
 
 	return c.sendTransfer(byte(sys.TagTransfer), t)
 }
-
-// TODO(diamond): Port the old function call API over
-func (c *Client) Call(recipient [32]byte)

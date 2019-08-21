@@ -7,7 +7,6 @@ import (
 	"strconv"
 
 	"github.com/perlin-network/noise/edwards25519"
-	"github.com/perlin-network/wavelet"
 	"github.com/valyala/fastjson"
 )
 
@@ -25,15 +24,15 @@ var (
 
 // ListTransactions calls the /tx endpoint of the API to list all transactions.
 // The arguments are optional, zero values would default them.
-func (c *Client) ListTransactions(senderID string, creatorID string, offset uint64, limit uint64) ([]Transaction, error) {
+func (c *Client) ListTransactions(senderID *[32]byte, creatorID *[32]byte, offset uint64, limit uint64) ([]Transaction, error) {
 	vals := url.Values{}
 
-	if senderID != "" {
-		vals.Set("sender", senderID)
+	if senderID != nil {
+		vals.Set("sender", string(senderID[:]))
 	}
 
-	if creatorID != "" {
-		vals.Set("creator", creatorID)
+	if creatorID != nil {
+		vals.Set("creator", string(creatorID[:]))
 	}
 
 	if offset != 0 {
@@ -55,8 +54,8 @@ func (c *Client) ListTransactions(senderID string, creatorID string, offset uint
 }
 
 // GetTransaction calls the /tx endpoint to query a single transaction.
-func (c *Client) GetTransaction(txID string) (*Transaction, error) {
-	path := RouteTxList + "/" + txID
+func (c *Client) GetTransaction(txID [32]byte) (*Transaction, error) {
+	path := RouteTxList + "/" + string(txID[:])
 
 	var res Transaction
 	if err := c.RequestJSON(path, ReqGet, nil, &res); err != nil {
@@ -93,7 +92,7 @@ func (c *Client) sendTransaction(tag byte, payload []byte) (*TxResponse, error) 
 }
 
 // SendTransfer sends a wavelet.Transfer instead of a Payload.
-func (c *Client) sendTransfer(tag byte, transfer wavelet.Transfer) (*TxResponse, error) {
+func (c *Client) sendTransfer(tag byte, transfer Marshalable) (*TxResponse, error) {
 	return c.sendTransaction(tag, transfer.Marshal())
 }
 
