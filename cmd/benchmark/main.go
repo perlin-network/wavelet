@@ -20,6 +20,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/noise/edwards25519"
@@ -96,6 +97,10 @@ func main() {
 				cli.StringFlag{
 					Name: "payload",
 					Usage: "payload of the transfer in case of custom transaction flood",
+				},
+				cli.BoolFlag{
+					Name:  "poll",
+					Usage: "fetch memory pages for every consensus round",
 				},
 			},
 			Action: commandRemote,
@@ -229,7 +234,26 @@ func commandRemote(c *cli.Context) error {
 		}
 	}()
 
-	flood := floodTransactions(c.String("payload"))
+	payload := c.String("payload")
+
+	if c.Bool("poll") {
+		if len(payload) < 64 {
+			panic("payload is too short.")
+		}
+
+		contractID := payload[:64]
+
+		onRoundEnd := func() {
+			if errs := fetchMemoryPages(client, contractID); len(errs) > 0 {
+				log.Error().Errs("Errors", errs).Msg("FetchMemoryPages")
+			}
+		}
+
+		fmt.Println("Polling consensus and fetching memory pages for every consensus round")
+		go pollConsensus(client, onRoundEnd)
+	}
+
+	flood := floodTransactions(payload)
 
 	for {
 		if _, err := flood(client); err != nil {
@@ -266,4 +290,52 @@ func commandLocal(c *cli.Context) error {
 			fmt.Println(err)
 		}
 	}
+}
+
+func pollConsensus(client *wctl.Client, onRoundEnd func()) {
+	events, err := client.PollLoggerSink(nil, wctl.RouteWSConsensus)
+	if err != nil {
+		panic(err)
+	}
+
+	evtRoundEnd := []byte("round_end")
+	var p fastjson.Parser
+	for evt := range events {
+		v, err := p.ParseBytes(evt)
+		if err != nil {
+			continue
+		}
+
+		if bytes.Equal(v.GetStringBytes("event"), evtRoundEnd) {
+			onRoundEnd()
+		}
+	}
+}
+
+// Calls GetContractPages concurrently for every page.
+// Returns an array of errors received by all of the API calls, both GetAccount and GetContractPages.
+func fetchMemoryPages(client *wctl.Client, contractID string) []error {
+	account, err := client.GetAccount(contractID)
+	if err != nil {
+		return []error{err}
+	}
+
+	chErr := make(chan error, account.NumPages)
+
+	for i := uint64(0); i < account.NumPages; i++ {
+		go func(i uint64) {
+			_, err := client.GetContractPages(account.PublicKey, &i)
+			chErr <- err
+		}(i)
+	}
+
+	var errs []error
+	for i := uint64(0); i < account.NumPages; i++ {
+		e := <-chErr
+		if e != nil {
+			errs = append(errs, e)
+		}
+	}
+
+	return errs
 }
