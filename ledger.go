@@ -1238,26 +1238,22 @@ type CollapseState struct {
 // that are within the depth interval (start, end] where start is the interval starting point depth,
 // and end is the interval ending point depth.
 func (l *Ledger) collapseTransactions(round uint64, start, end Transaction, logging bool) (*collapseResults, error) {
-	var res *collapseResults
-
-	defer func() {
-		if res != nil && logging {
-			for _, tx := range res.applied {
-				logEventTX("applied", tx)
-			}
-
-			for i, tx := range res.rejected {
-				logEventTX("rejected", tx, res.rejectedErrors[i])
-			}
-		}
-	}()
-
 	_collapseState, _ := l.cacheCollapse.LoadOrPut(end.ID, &CollapseState{})
 	collapseState := _collapseState.(*CollapseState)
 
 	collapseState.once.Do(func() {
 		collapseState.results, collapseState.err = collapseTransactions(l.graph, l.accounts, round, l.Rounds().Latest(), start, end, logging)
 	})
+
+	if logging {
+		for _, tx := range collapseState.results.applied {
+			logEventTX("applied", tx)
+		}
+
+		for i, tx := range collapseState.results.rejected {
+			logEventTX("rejected", tx, collapseState.results.rejectedErrors[i])
+		}
+	}
 
 	return collapseState.results, collapseState.err
 }
