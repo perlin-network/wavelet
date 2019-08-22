@@ -45,8 +45,8 @@ lto = true
 crate-type = ["cdylib"]
 
 [dependencies]
-smart-contract = "0.1.0"
-smart-contract-macros = "0.1.0"
+smart-contract = "0.2.0"
+smart-contract-macros = "0.2.0"
 ```
 
 Open up `src/lib.rs` and paste the code below. What our first smart contract will do is that whenever the
