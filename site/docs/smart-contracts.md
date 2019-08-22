@@ -17,7 +17,12 @@ In this tutorial, we will look first-hand on how a simple WebAssembly (Rust) sma
 
 ## Setup
 
-As a prerequisite, make sure [you have Rust installed](https://www.rust-lang.org/tools/install) with the WebAssembly compiler backend target installed on the Nightly channel.
+As a prerequisite, make sure [you have Rust installed](https://www.rust-lang.org/tools/install) with the WebAssembly compiler backend target installed on the Nightly channel. To set the Nightly channel as the default channel:
+
+```shell
+❯ rustup install nightly
+❯ rustup default nightly
+```
 
 To install the WebAssembly compiler backend target after installing Rust, execute the following command below and wait until it completes:
 
