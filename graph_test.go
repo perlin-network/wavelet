@@ -208,25 +208,21 @@ func TestGraphFuzz(t *testing.T) {
 	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
 	graph := NewGraph(WithRoot(root))
 
+	var (
+		payload [50]byte
+		tx      Transaction
+	)
+
 	count := 1
 
 	for i := 0; i < 500; i++ {
-		var depth []Transaction
+		_, err = rand.Read(payload[:])
+		assert.NoError(t, err)
 
-		for i := 0; i < rand.Intn(sys.MaxParentsPerTransaction)+1; i++ {
-			var payload [50]byte
+		tx = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...)
+		assert.NoError(t, graph.AddTransaction(tx))
 
-			_, err = rand.Read(payload[:])
-			assert.NoError(t, err)
-
-			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...))
-		}
-
-		for _, tx := range depth {
-			assert.NoError(t, graph.AddTransaction(tx))
-		}
-
-		count += len(depth)
+		count++
 	}
 
 	assert.Len(t, graph.GetTransactionsByDepth(nil, nil), count)
@@ -256,7 +252,7 @@ func TestGraphFuzz(t *testing.T) {
 	})
 
 	for _, tx := range transactions {
-		graph.AddTransaction(tx)
+		_ = graph.AddTransaction(tx)
 	}
 
 	assert.Len(t, graph.transactions, count)
@@ -282,8 +278,12 @@ func TestGraphPruneBelowDepth(t *testing.T) {
 	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
 	graph := NewGraph(WithRoot(root))
 
-	count := 1
+	var (
+		payload [50]byte
+		tx      Transaction
+	)
 
+	count := 1
 	pruneDepth := uint64(0)
 
 	for i := 0; i < 500; i++ {
@@ -291,22 +291,12 @@ func TestGraphPruneBelowDepth(t *testing.T) {
 			pruneDepth = graph.height
 		}
 
-		var depth []Transaction
+		_, err = rand.Read(payload[:])
+		assert.NoError(t, err)
 
-		for i := 0; i < rand.Intn(sys.MaxParentsPerTransaction)+1; i++ {
-			var payload [50]byte
-
-			_, err = rand.Read(payload[:])
-			assert.NoError(t, err)
-
-			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...))
-		}
-
-		for _, tx := range depth {
-			assert.NoError(t, graph.AddTransaction(tx))
-		}
-
-		count += len(depth)
+		tx = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...)
+		assert.NoError(t, graph.AddTransaction(tx))
+		count++
 	}
 
 	pruneCount := graph.PruneBelowDepth(pruneDepth)
@@ -346,21 +336,17 @@ func TestGraphUpdateRoot(t *testing.T) {
 	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
 	graph := NewGraph(WithRoot(root))
 
+	var (
+		payload [50]byte
+		tx      Transaction
+	)
+
 	for i := 0; i < 50; i++ {
-		var depth []Transaction
+		_, err = rand.Read(payload[:])
+		assert.NoError(t, err)
 
-		for i := 0; i < rand.Intn(sys.MaxParentsPerTransaction)+1; i++ {
-			var payload [50]byte
-
-			_, err = rand.Read(payload[:])
-			assert.NoError(t, err)
-
-			depth = append(depth, AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...))
-		}
-
-		for _, tx := range depth {
-			assert.NoError(t, graph.AddTransaction(tx))
-		}
+		tx = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), graph.FindEligibleParents()...)
+		assert.NoError(t, graph.AddTransaction(tx))
 	}
 
 	// Assert that updating the root removes missing transactions and
@@ -386,7 +372,7 @@ func TestGraphUpdateRoot(t *testing.T) {
 	assert.Len(t, graph.children, numChildren)
 
 	// Create a transaction that is at an ineligible depth exceeding DEPTH_DIFF.
-	tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.depthIndex[(graph.height-1)-(sys.MaxDepthDiff+2)][0])
+	tx = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.depthIndex[(graph.height-1)-(sys.MaxDepthDiff+2)][0])
 
 	// An error should occur.
 	assert.Error(t, graph.AddTransaction(tx))
@@ -396,6 +382,50 @@ func TestGraphUpdateRoot(t *testing.T) {
 
 	// No error should occur.
 	assert.NoError(t, graph.AddTransaction(tx))
+}
+
+func TestGraphUpdateRootDepth(t *testing.T) {
+	t.Parallel()
+
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	graph := NewGraph(WithRoot(root))
+
+	missingParent := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), &root)
+
+	var (
+		payload [50]byte
+		tx      Transaction
+	)
+
+	num := 50
+	for i := 0; i < num; i++ {
+		_, err = rand.Read(payload[:])
+		assert.NoError(t, err)
+
+		var parent *Transaction
+		if i == 0 {
+			parent = &missingParent
+		} else {
+			parent = &tx
+		}
+
+		tx = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagTransfer, payload[:]), parent)
+		_ = graph.AddTransaction(tx)
+	}
+
+	assert.Equal(t, num+1, len(graph.transactions))
+	assert.Equal(t, 1, len(graph.missing))
+	assert.Equal(t, num, len(graph.incomplete))
+
+	// ensure updating root will delete missing transactions after some threshold and complete it's descendants
+	graph.UpdateRootDepth(missingParent.Depth + sys.MaxDepthDiff + 1)
+
+	assert.Equal(t, num+1, len(graph.transactions))
+	assert.Equal(t, 0, len(graph.missing))
+	assert.Equal(t, 0, len(graph.incomplete))
 }
 
 func TestGraphValidateTransactionParents(t *testing.T) {

@@ -24,9 +24,8 @@ import (
 
 var wallet1 = "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"
 var wallet2 = "85e7450f7cf0d9cd1d1d7bf4169c2f364eea4ba833a7280e0f931a1d92fd92c2696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a"
-var wallet3 = "5b9fcd2d6f8e34f4aa472e0c3099fefd25f0ceab9e908196b1dda63e55349d22f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467"
 
-func TestMain(t *testing.T) {
+func TestMainMain(t *testing.T) {
 	w := NewTestWavelet(t, nil)
 	defer w.Cleanup()
 
@@ -87,15 +86,15 @@ func TestMain_Pay(t *testing.T) {
 	alice := NewTestWavelet(t, &TestWaveletConfig{wallet2})
 	defer alice.Cleanup()
 
-	bob := alice.Testnet.AddNode(t, 0)
+	bob := alice.Testnet.AddNode(t)
 
-	time.Sleep(time.Second * 1)
+	alice.Testnet.WaitForSync(t)
 
 	recipient := bob.PublicKey()
 	alice.Stdin <- fmt.Sprintf("p %s 99999", hex.EncodeToString(recipient[:]))
 
 	txID := extractTxID(t, alice.Stdout.Search(t, "Success! Your payment transaction ID:"))
-	tx := alice.WaitForTransction(t, txID)
+	tx := alice.WaitForTransaction(t, txID)
 
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, alice.PublicKey, tx.Sender)
@@ -110,15 +109,15 @@ func TestMain_Spawn(t *testing.T) {
 	defer w.Cleanup()
 
 	for i := 0; i < 3; i++ {
-		w.Testnet.AddNode(t, 0)
+		w.Testnet.AddNode(t)
 	}
 
-	time.Sleep(time.Second * 1)
+	w.Testnet.WaitForSync(t)
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
 	txID := extractTxID(t, w.Stdout.Search(t, "Success! Your smart contracts ID:"))
-	tx := w.WaitForTransction(t, txID)
+	tx := w.WaitForTransaction(t, txID)
 
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, w.PublicKey, tx.Sender)
@@ -130,10 +129,10 @@ func TestMain_Call(t *testing.T) {
 	defer w.Cleanup()
 
 	for i := 0; i < 3; i++ {
-		w.Testnet.AddNode(t, 0)
+		w.Testnet.AddNode(t)
 	}
 
-	time.Sleep(time.Second * 1)
+	w.Testnet.WaitForSync(t)
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
@@ -141,7 +140,7 @@ func TestMain_Call(t *testing.T) {
 
 	w.WaitForConsensus(t)
 
-	tx := w.WaitForTransction(t, txID)
+	tx := w.WaitForTransaction(t, txID)
 	w.Stdin <- fmt.Sprintf("call %s 1000 100000 on_money_received", tx.ID)
 	w.Stdout.Search(t, "Your smart contract invocation transaction ID:")
 }
@@ -151,23 +150,23 @@ func TestMain_CallWithParams(t *testing.T) {
 	defer w.Cleanup()
 
 	for i := 0; i < 3; i++ {
-		w.Testnet.AddNode(t, 0)
+		w.Testnet.AddNode(t)
 	}
 
-	time.Sleep(time.Second * 1)
+	w.Testnet.WaitForSync(t)
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
 	txID := extractTxID(t, w.Stdout.Search(t, "Success! Your smart contracts ID:"))
 	w.WaitForConsensus(t)
-	tx := w.WaitForTransction(t, txID)
+	tx := w.WaitForTransaction(t, txID)
 
 	params := "Sfoobar Bloremipsum 142 21337 4666666 831415926535 Hbada55"
 
 	w.Stdin <- fmt.Sprintf("call %s 1000 100000 on_money_received %s", tx.ID, params)
 
 	txID = extractTxID(t, w.Stdout.Search(t, "Your smart contract invocation transaction ID:"))
-	tx = w.WaitForTransction(t, txID)
+	tx = w.WaitForTransaction(t, txID)
 
 	encodedParams, err := base64.StdEncoding.DecodeString(tx.Payload)
 	if err != nil {
@@ -222,10 +221,10 @@ func TestMain_DepositGas(t *testing.T) {
 	defer w.Cleanup()
 
 	for i := 0; i < 3; i++ {
-		w.Testnet.AddNode(t, 0)
+		w.Testnet.AddNode(t)
 	}
 
-	time.Sleep(time.Second * 1)
+	w.Testnet.WaitForSync(t)
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
@@ -233,7 +232,7 @@ func TestMain_DepositGas(t *testing.T) {
 
 	w.WaitForConsensus(t)
 
-	tx := w.WaitForTransction(t, txID)
+	tx := w.WaitForTransaction(t, txID)
 	w.Stdin <- fmt.Sprintf("deposit-gas %s 99999", tx.ID)
 	w.Stdout.Search(t, "Your gas deposit transaction ID:")
 }
@@ -242,15 +241,15 @@ func TestMain_Find(t *testing.T) {
 	alice := NewTestWavelet(t, &TestWaveletConfig{wallet2})
 	defer alice.Cleanup()
 
-	bob := alice.Testnet.AddNode(t, 0)
+	bob := alice.Testnet.AddNode(t)
 
-	time.Sleep(time.Second * 1)
+	alice.Testnet.WaitForSync(t)
 
 	recipient := bob.PublicKey()
 	alice.Stdin <- fmt.Sprintf("p %s 99999", hex.EncodeToString(recipient[:]))
 
 	txID := extractTxID(t, alice.Stdout.Search(t, "Success! Your payment transaction ID:"))
-	alice.WaitForTransction(t, txID)
+	alice.WaitForTransaction(t, txID)
 
 	alice.Stdin <- fmt.Sprintf("find %s", txID)
 	alice.Stdout.Search(t, fmt.Sprintf("Transaction: %s", txID))
@@ -260,14 +259,14 @@ func TestMain_PlaceStake(t *testing.T) {
 	alice := NewTestWavelet(t, &TestWaveletConfig{wallet2})
 	defer alice.Cleanup()
 
-	bob := alice.Testnet.AddNode(t, 0)
+	bob := alice.Testnet.AddNode(t)
 
-	time.Sleep(time.Second * 1)
+	alice.Testnet.WaitForSync(t)
 
 	alice.Stdin <- "ps 1000"
 
 	txID := extractTxID(t, alice.Stdout.Search(t, "Success! Your stake placement transaction ID:"))
-	tx := alice.WaitForTransction(t, txID)
+	tx := alice.WaitForTransaction(t, txID)
 
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, alice.PublicKey, tx.Sender)
@@ -281,21 +280,21 @@ func TestMain_WithdrawStake(t *testing.T) {
 	alice := NewTestWavelet(t, &TestWaveletConfig{wallet2})
 	defer alice.Cleanup()
 
-	bob := alice.Testnet.AddNode(t, 0)
+	bob := alice.Testnet.AddNode(t)
 
-	time.Sleep(time.Second * 1)
+	alice.Testnet.WaitForSync(t)
 
 	alice.Stdin <- "ps 1000"
 
 	txID := extractTxID(t, alice.Stdout.Search(t, "Success! Your stake placement transaction ID:"))
-	alice.WaitForTransction(t, txID)
+	alice.WaitForTransaction(t, txID)
 
 	alice.WaitForConsensus(t)
 
 	alice.Stdin <- "ws 500"
 
 	txID = extractTxID(t, alice.Stdout.Search(t, "Success! Your stake withdrawal transaction ID:"))
-	tx := alice.WaitForTransction(t, txID)
+	tx := alice.WaitForTransaction(t, txID)
 
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, alice.PublicKey, tx.Sender)
@@ -310,15 +309,15 @@ func TestMain_WithdrawReward(t *testing.T) {
 	defer w.Cleanup()
 
 	for i := 0; i < 3; i++ {
-		w.Testnet.AddNode(t, 0)
+		w.Testnet.AddNode(t)
 	}
 
-	time.Sleep(time.Second * 1)
+	w.Testnet.WaitForSync(t)
 
 	w.Stdin <- "wr 1000"
 
 	txID := extractTxID(t, w.Stdout.Search(t, "Success! Your reward withdrawal transaction ID:"))
-	tx := w.WaitForTransction(t, txID)
+	tx := w.WaitForTransaction(t, txID)
 
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, w.PublicKey, tx.Sender)
@@ -564,7 +563,7 @@ func getLedgerStatus(apiPort string) (*TestLedgerStatus, error) {
 	return &ledger, nil
 }
 
-func (w *TestWavelet) WaitForTransction(t *testing.T, id string) *TestTransaction {
+func (w *TestWavelet) WaitForTransaction(t *testing.T, id string) *TestTransaction {
 	var tx *TestTransaction
 	var err error
 	waitFor(t, func() error {

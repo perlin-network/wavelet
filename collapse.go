@@ -251,7 +251,7 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 			res.rejectedErrors = append(res.rejectedErrors, err)
 			res.rejectedCount += popped.LogicalUnits()
 
-			fmt.Println(err)
+			fmt.Println("error applying transaction", err)
 
 			continue
 		}

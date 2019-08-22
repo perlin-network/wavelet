@@ -3,6 +3,9 @@ BINOUT = $(shell pwd)/build
 protoc:
 	protoc --gogofaster_out=plugins=grpc:. -I=. rpc.proto
 
+protoc-docker:
+	docker run --rm -v `pwd`:/src znly/protoc --gogofaster_out=plugins=grpc:. -I=. src/rpc.proto
+
 test:
 	go test -coverprofile=coverage.txt -covermode=atomic -timeout 300s -v -bench -race ./...
 

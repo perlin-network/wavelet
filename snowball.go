@@ -42,14 +42,18 @@ const (
 	SnowballDefaultBeta = 150
 )
 
+type Identifiable interface {
+	GetID() string
+}
+
 type Snowball struct {
 	sync.RWMutex
 	beta int
 
-	candidates          map[RoundID]*Round
-	preferredID, lastID RoundID
+	candidates          map[string]Identifiable
+	preferredID, lastID string
 
-	counts  map[RoundID]int
+	counts  map[string]int
 	count   int
 	decided bool
 	name    string
@@ -58,8 +62,8 @@ type Snowball struct {
 func NewSnowball(opts ...SnowballOption) *Snowball {
 	s := &Snowball{
 		beta:       SnowballDefaultBeta,
-		candidates: make(map[RoundID]*Round),
-		counts:     make(map[RoundID]int),
+		candidates: make(map[string]Identifiable),
+		counts:     make(map[string]int),
 		name:       "default",
 	}
 
@@ -73,11 +77,11 @@ func NewSnowball(opts ...SnowballOption) *Snowball {
 func (s *Snowball) Reset() {
 	s.Lock()
 
-	s.preferredID = ZeroRoundID
-	s.lastID = ZeroRoundID
+	s.preferredID = ""
+	s.lastID = ""
 
-	s.candidates = make(map[RoundID]*Round)
-	s.counts = make(map[RoundID]int)
+	s.candidates = make(map[string]Identifiable)
+	s.counts = make(map[string]int)
 	s.count = 0
 
 	s.decided = false
@@ -85,7 +89,7 @@ func (s *Snowball) Reset() {
 	s.Unlock()
 }
 
-func (s *Snowball) Tick(round *Round) {
+func (s *Snowball) Tick(v Identifiable) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -93,29 +97,30 @@ func (s *Snowball) Tick(round *Round) {
 		return
 	}
 
-	if round == nil || round.ID == ZeroRoundID { // Have nil responses reset Snowball.
-		s.lastID = ZeroRoundID
+	if v == nil || v.GetID() == "" { // Have nil responses reset Snowball.
+		s.lastID = ""
 		s.count = 0
 
 		return
 	}
 
-	if _, exists := s.candidates[round.ID]; !exists {
-		s.candidates[round.ID] = round
+	id := v.GetID()
+	if _, exists := s.candidates[id]; !exists {
+		s.candidates[id] = v
 	}
 
-	s.counts[round.ID]++ // Handle decision case.
+	s.counts[id]++ // Handle decision case.
 
-	if s.counts[round.ID] > s.counts[s.preferredID] {
-		s.preferredID = round.ID
+	if s.counts[id] > s.counts[s.preferredID] {
+		s.preferredID = id
 	}
 
-	if s.lastID != round.ID { // Handle termination case.
-		if s.lastID != ZeroRoundID {
-			fmt.Printf("Snowball (%s) liveness fault: Last ID is %x with count %d, and new ID is %x.\n", s.name, s.lastID, s.count, round.ID)
+	if s.lastID != id { // Handle termination case.
+		if s.lastID != "" {
+			fmt.Printf("Snowball (%s) liveness fault: Last ID is %s with count %d, and new ID is %s.\n", s.name, s.lastID, s.count, id)
 		}
 
-		s.lastID = round.ID
+		s.lastID = id
 		s.count = 0
 	} else {
 		s.count++
@@ -126,21 +131,18 @@ func (s *Snowball) Tick(round *Round) {
 	}
 }
 
-func (s *Snowball) Prefer(round *Round) {
+func (s *Snowball) Prefer(v Identifiable) {
 	s.Lock()
-	if _, exists := s.candidates[round.ID]; !exists {
-		s.candidates[round.ID] = round
+	id := v.GetID()
+	if _, exists := s.candidates[id]; !exists {
+		s.candidates[id] = v
 	}
-	s.preferredID = round.ID
+	s.preferredID = id
 	s.Unlock()
 }
 
-func (s *Snowball) Preferred() *Round {
+func (s *Snowball) Preferred() Identifiable {
 	s.RLock()
-	if s.preferredID == ZeroRoundID {
-		s.RUnlock()
-		return nil
-	}
 	preferred := s.candidates[s.preferredID]
 	s.RUnlock()
 

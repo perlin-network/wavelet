@@ -44,6 +44,19 @@ import (
 	"google.golang.org/grpc/peer"
 )
 
+type bitset uint8
+
+const (
+	outOfSync   bitset = 0
+	synced             = 1
+	finalized          = 2
+	fullySynced        = 3
+)
+
+var (
+	ErrOutOfSync = errors.New("Node is currently ouf of sync. Please try again later.")
+)
+
 type Ledger struct {
 	client  *skademlia.Client
 	metrics *Metrics
@@ -66,6 +79,9 @@ type Ledger struct {
 
 	sync      chan struct{}
 	syncVotes chan vote
+
+	syncStatus     bitset
+	syncStatusLock sync.RWMutex
 
 	cacheCollapse *lru.LRU
 	cacheChunks   *lru.LRU
@@ -154,6 +170,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		finalizer: finalizer,
 		syncer:    syncer,
 
+		syncStatus: finalized, // we start node as out of sync, but finalized
+
 		sync:      make(chan struct{}),
 		syncVotes: make(chan vote, sys.SnowballK),
 
@@ -178,12 +196,13 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(tx Transaction) error {
+	if l.isOutOfSync() && tx.Sender == l.client.Keys().PublicKey() {
+		return ErrOutOfSync
+	}
+
 	err := l.graph.AddTransaction(tx)
 
 	if err != nil && errors.Cause(err) != ErrAlreadyExists {
-		if !strings.Contains(errors.Cause(err).Error(), "transaction has no parents") {
-			fmt.Println(err)
-		}
 		return err
 	}
 
@@ -304,6 +323,7 @@ func (l *Ledger) Rounds() *Rounds {
 // the ledgers graph.
 func (l *Ledger) PerformConsensus() {
 	go l.PullMissingTransactions()
+	go l.SyncTransactions()
 	go l.FinalizeRounds()
 }
 
@@ -355,6 +375,107 @@ func (l *Ledger) BroadcastNop() *Transaction {
 	return l.graph.FindTransaction(nop.ID)
 }
 
+func (l *Ledger) SyncTransactions() {
+	l.consensus.Add(1)
+	defer l.consensus.Done()
+
+	pullingPeriod := 1 * time.Second
+	t := time.NewTimer(pullingPeriod)
+
+	for {
+		t.Reset(pullingPeriod)
+
+		select {
+		case <-l.sync:
+			return
+		case <-t.C:
+		}
+
+		l.syncStatusLock.RLock()
+		status := l.syncStatus
+		l.syncStatusLock.RUnlock()
+		if status != synced {
+			continue
+		}
+
+		closestPeers := l.client.ClosestPeers()
+
+		peers := make([]*grpc.ClientConn, 0, len(closestPeers))
+		for _, p := range closestPeers {
+			if p.GetState() == connectivity.Ready {
+				peers = append(peers, p)
+			}
+		}
+
+		if len(peers) == 0 {
+			select {
+			case <-l.sync:
+				return
+			default:
+			}
+
+			continue
+		}
+
+		rand.Shuffle(len(peers), func(i, j int) {
+			peers[i], peers[j] = peers[j], peers[i]
+		})
+		now := time.Now()
+		currentDepth := l.graph.RootDepth()
+		lowLimit := currentDepth - sys.MaxDepthDiff
+		highLimit := currentDepth + sys.MaxDownloadDepthDiff
+		txs := l.Graph().GetTransactionsByDepth(&lowLimit, &highLimit)
+
+		ids := make([][]byte, len(txs))
+		for i, tx := range txs {
+			ids[i] = tx.ID[:]
+		}
+
+		req := &DownloadTxRequest{
+			Depth:   currentDepth,
+			SkipIds: ids,
+		}
+
+		conn := peers[0]
+		client := NewWaveletClient(conn)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		batch, err := client.DownloadTx(ctx, req)
+		if err != nil {
+			fmt.Println("failed to download missing transactions:", err)
+			cancel()
+			continue
+		}
+		cancel()
+
+		txCount, logicalCount := 0, 0
+		for _, buf := range batch.Transactions {
+			tx, err := UnmarshalTransaction(bytes.NewReader(buf))
+			if err != nil {
+				fmt.Printf("error unmarshaling downloaded tx [%v]: %+v", err, tx)
+				continue
+			}
+
+			if err := l.AddTransaction(tx); err != nil && errors.Cause(err) != ErrMissingParents {
+				fmt.Printf("error adding synced tx to graph [%v]: %+v\n", err, tx)
+				continue
+			}
+
+			logicalCount += tx.LogicalUnits()
+			txCount++
+		}
+
+		if txCount > 0 {
+			logger := log.Consensus("transaction-sync")
+			logger.Debug().
+				Int("synced_tx", txCount).
+				Int("logical_tx", logicalCount).
+				Dur("duration", time.Now().Sub(now)).
+				Msg("Transaction downloaded")
+		}
+	}
+}
+
 // PullMissingTransactions is an infinite loop continually sending RPC requests
 // to pull any transactions identified to be missing by the ledger. It periodically
 // samples a random peer from the network, and requests the peer for the contents
@@ -378,7 +499,7 @@ func (l *Ledger) PullMissingTransactions() {
 			select {
 			case <-l.sync:
 				return
-			case <-time.After(1 * time.Second):
+			case <-time.After(100 * time.Millisecond):
 			}
 
 			continue
@@ -414,7 +535,7 @@ func (l *Ledger) PullMissingTransactions() {
 			missing = missing[:256]
 		}
 
-		req := &DownloadTxRequest{Ids: make([][]byte, len(missing))}
+		req := &DownloadMissingTxRequest{Ids: make([][]byte, len(missing))}
 
 		for i, id := range missing {
 			req.Ids[i] = id[:]
@@ -424,7 +545,7 @@ func (l *Ledger) PullMissingTransactions() {
 		client := NewWaveletClient(conn)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-		batch, err := client.DownloadTx(ctx, req)
+		batch, err := client.DownloadMissingTx(ctx, req)
 		if err != nil {
 			fmt.Println("failed to download missing transactions:", err)
 			cancel()
@@ -527,7 +648,8 @@ FINALIZE_ROUNDS:
 		// Only stop broadcasting nops if the most recently added transaction
 		// has been applied
 		l.broadcastNopsLock.Lock()
-		if l.broadcastNops && l.broadcastNopsMaxDepth <= l.finalizer.Preferred().End.Depth {
+		preferred := l.finalizer.Preferred().(*Round)
+		if l.broadcastNops && l.broadcastNopsMaxDepth <= preferred.End.Depth {
 			l.broadcastNops = false
 		}
 		l.broadcastNopsLock.Unlock()
@@ -538,7 +660,7 @@ FINALIZE_ROUNDS:
 		workerWG.Add(cap(workerChan))
 
 		voteChan := make(chan vote, sys.SnowballK)
-		go CollectVotes(l.accounts, l.finalizer, voteChan, &workerWG)
+		go CollectVotes(l.accounts, l.finalizer, voteChan, &workerWG, sys.SnowballK)
 
 		req := &QueryRequest{RoundIndex: current.Index + 1}
 
@@ -548,13 +670,14 @@ FINALIZE_ROUNDS:
 					f := func() {
 						client := NewWaveletClient(conn)
 
-						ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+						ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 
 						p := &peer.Peer{}
 
 						res, err := client.Query(ctx, req, grpc.Peer(p))
 						if err != nil {
 							cancel()
+							fmt.Println("error while querying peer: ", err)
 							return
 						}
 
@@ -574,12 +697,12 @@ FINALIZE_ROUNDS:
 
 						round, err := UnmarshalRound(bytes.NewReader(res.Round))
 						if err != nil {
-							voteChan <- vote{voter: voter, preferred: nil}
+							voteChan <- vote{voter: voter, value: ZeroRoundPtr}
 							return
 						}
 
 						if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
-							voteChan <- vote{voter: voter, preferred: nil}
+							voteChan <- vote{voter: voter, value: ZeroRoundPtr}
 							return
 						}
 
@@ -590,7 +713,7 @@ FINALIZE_ROUNDS:
 						if round.Index != current.Index+1 {
 							if round.Index > sys.SyncIfRoundsDifferBy+current.Index {
 								select {
-								case l.syncVotes <- vote{voter: voter, preferred: &round}:
+								case l.syncVotes <- vote{voter: voter, value: &round}:
 								default:
 								}
 							}
@@ -617,7 +740,7 @@ FINALIZE_ROUNDS:
 						results, err := l.collapseTransactions(round.Index, round.Start, round.End, false)
 						if err != nil {
 							if !strings.Contains(err.Error(), "missing ancestor") {
-								fmt.Println(err)
+								fmt.Println("error collapsing transactions:", err)
 							}
 							return
 						}
@@ -632,7 +755,7 @@ FINALIZE_ROUNDS:
 							return
 						}
 
-						voteChan <- vote{voter: voter, preferred: &round}
+						voteChan <- vote{voter: voter, value: &round}
 					}
 
 					l.metrics.queryLatency.Time(f)
@@ -678,30 +801,30 @@ FINALIZE_ROUNDS:
 		close(voteChan)
 		workerWG.Wait() // Wait for vote processor worker to stop
 
-		finalized := l.finalizer.Preferred()
+		preferred = l.finalizer.Preferred().(*Round)
 		l.finalizer.Reset()
 
-		results, err := l.collapseTransactions(finalized.Index, finalized.Start, finalized.End, true)
+		results, err := l.collapseTransactions(preferred.Index, preferred.Start, preferred.End, true)
 		if err != nil {
 			if !strings.Contains(err.Error(), "missing ancestor") {
-				fmt.Println(err)
+				fmt.Println("error collapsing transactions during finalization:", err)
 			}
 			continue
 		}
 
-		if uint64(results.appliedCount) != finalized.Applied {
-			fmt.Printf("Expected to have applied %d transactions finalizing a round, but only applied %d transactions instead.\n", finalized.Applied, results.appliedCount)
+		if uint64(results.appliedCount) != preferred.Applied {
+			fmt.Printf("Expected to have applied %d transactions finalizing a round, but only applied %d transactions instead.\n", preferred.Applied, results.appliedCount)
 			continue
 		}
 
-		if results.snapshot.Checksum() != finalized.Merkle {
-			fmt.Printf("Expected finalized rounds merkle root to be %x, but got %x.\n", finalized.Merkle, results.snapshot.Checksum())
+		if results.snapshot.Checksum() != preferred.Merkle {
+			fmt.Printf("Expected preferred round's merkle root to be %x, but got %x.\n", preferred.Merkle, results.snapshot.Checksum())
 			continue
 		}
 
-		pruned, err := l.rounds.Save(finalized)
+		pruned, err := l.rounds.Save(preferred)
 		if err != nil {
-			fmt.Printf("Failed to save finalized round to our database: %v\n", err)
+			fmt.Printf("Failed to save preferred round to our database: %v\n", err)
 		}
 
 		if pruned != nil {
@@ -710,12 +833,12 @@ FINALIZE_ROUNDS:
 			logger := log.Consensus("prune")
 			logger.Debug().
 				Int("num_tx", count).
-				Uint64("current_round_id", finalized.Index).
+				Uint64("current_round_id", preferred.Index).
 				Uint64("pruned_round_id", pruned.Index).
 				Msg("Pruned away round and transactions.")
 		}
 
-		l.graph.UpdateRootDepth(finalized.End.Depth)
+		l.graph.UpdateRootDepth(preferred.End.Depth)
 
 		if err = l.accounts.Commit(results.snapshot); err != nil {
 			fmt.Printf("Failed to commit collaped state to our database: %v\n", err)
@@ -725,31 +848,42 @@ FINALIZE_ROUNDS:
 
 		l.LogChanges(results.snapshot, current.Index)
 
+		l.applySync(finalized)
+
 		logger := log.Consensus("round_end")
 		logger.Info().
 			Int("num_applied_tx", results.appliedCount).
 			Int("num_rejected_tx", results.rejectedCount).
 			Int("num_ignored_tx", results.ignoredCount).
 			Uint64("old_round", current.Index).
-			Uint64("new_round", finalized.Index).
+			Uint64("new_round", preferred.Index).
 			Uint8("old_difficulty", current.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-			Uint8("new_difficulty", finalized.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-			Hex("new_root", finalized.End.ID[:]).
+			Uint8("new_difficulty", preferred.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
+			Hex("new_root", preferred.End.ID[:]).
 			Hex("old_root", current.End.ID[:]).
-			Hex("new_merkle_root", finalized.Merkle[:]).
+			Hex("new_merkle_root", preferred.Merkle[:]).
 			Hex("old_merkle_root", current.Merkle[:]).
-			Uint64("round_depth", finalized.End.Depth-finalized.Start.Depth).
+			Uint64("round_depth", preferred.End.Depth-preferred.Start.Depth).
 			Msg("Finalized consensus round, and initialized a new round.")
 
 		//go ExportGraphDOT(finalized, l.graph)
 	}
 }
 
+type outOfSyncVote struct {
+	outOfSync bool
+}
+
+func (o *outOfSyncVote) GetID() string {
+	return fmt.Sprintf("%v", o.outOfSync)
+}
+
 func (l *Ledger) SyncToLatestRound() {
 	voteWG := new(sync.WaitGroup)
 
-	go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
+	go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG, sys.SnowballK)
 
+	syncTimeoutMultiplier := 0
 	for {
 		for {
 			conns, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
@@ -770,12 +904,17 @@ func (l *Ledger) SyncToLatestRound() {
 				client := NewWaveletClient(conn)
 
 				go func() {
-					ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+					ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 
 					p := &peer.Peer{}
 
-					res, err := client.CheckOutOfSync(ctx, &OutOfSyncRequest{}, grpc.Peer(p))
+					res, err := client.CheckOutOfSync(
+						ctx,
+						&OutOfSyncRequest{RoundIndex: current.Index},
+						grpc.Peer(p),
+					)
 					if err != nil {
+						fmt.Println("error while checking out of sync", err)
 						cancel()
 						wg.Done()
 						return
@@ -795,28 +934,7 @@ func (l *Ledger) SyncToLatestRound() {
 						return
 					}
 
-					round, err := UnmarshalRound(bytes.NewReader(res.Round))
-					if err != nil {
-						wg.Done()
-						return
-					}
-
-					if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
-						wg.Done()
-						return
-					}
-
-					if round.End.Depth <= round.Start.Depth {
-						wg.Done()
-						return
-					}
-
-					if round.Index < sys.SyncIfRoundsDifferBy+current.Index {
-						wg.Done()
-						return
-					}
-
-					l.syncVotes <- vote{voter: voter, preferred: &round}
+					l.syncVotes <- vote{voter: voter, value: &outOfSyncVote{outOfSync: res.OutOfSync}}
 
 					wg.Done()
 				}()
@@ -827,19 +945,29 @@ func (l *Ledger) SyncToLatestRound() {
 			if l.syncer.Decided() {
 				break
 			}
-
-			time.Sleep(50 * time.Millisecond)
 		}
 
 		// Reset syncing Snowball sampler. Check if it is a false alarm such that we don't have to sync.
 
 		current := l.rounds.Latest()
-		proposed := l.syncer.Preferred()
+		preferred := l.syncer.Preferred()
 
-		if proposed.Index < sys.SyncIfRoundsDifferBy+current.Index {
+		oos := preferred.(*outOfSyncVote).outOfSync
+		if !oos {
+			l.applySync(synced)
 			l.syncer.Reset()
+
+			if syncTimeoutMultiplier < 60 {
+				syncTimeoutMultiplier++
+			}
+			time.Sleep(time.Duration(syncTimeoutMultiplier) * time.Second)
+
 			continue
 		}
+
+		l.setSync(outOfSync)
+
+		syncTimeoutMultiplier = 0
 
 		shutdown := func() {
 			close(l.sync)
@@ -855,7 +983,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 		restart := func() { // Respawn all previously stopped workers.
 			l.syncVotes = make(chan vote, sys.SnowballK)
-			go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
+			go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG, sys.SnowballK)
 
 			l.sync = make(chan struct{})
 			l.PerformConsensus()
@@ -866,7 +994,6 @@ func (l *Ledger) SyncToLatestRound() {
 		logger := log.Sync("syncing")
 		logger.Info().
 			Uint64("current_round", current.Index).
-			Uint64("proposed_round", proposed.Index).
 			Msg("Noticed that we are out of sync; downloading latest state Snapshot from our peer(s).")
 
 	SYNC:
@@ -1316,4 +1443,42 @@ func (l *Ledger) LogChanges(snapshot *avl.Tree, lastRound uint64) {
 
 		return true
 	})
+}
+
+func (l *Ledger) SyncStatus() string {
+	l.syncStatusLock.RLock()
+	defer l.syncStatusLock.RUnlock()
+
+	switch l.syncStatus {
+	case outOfSync:
+		return "Node is out of sync"
+	case synced:
+		return "Node is synced, but not taking part in consensus process yet"
+	case fullySynced:
+		return "Node is fully synced"
+	case finalized:
+		return "Node is taking part in consensus process"
+	default:
+		return "Sync status unknown"
+	}
+}
+
+func (l *Ledger) isOutOfSync() bool {
+	l.syncStatusLock.RLock()
+	synced := l.syncStatus == fullySynced
+	l.syncStatusLock.RUnlock()
+
+	return !synced
+}
+
+func (l *Ledger) applySync(flag bitset) {
+	l.syncStatusLock.Lock()
+	l.syncStatus |= flag
+	l.syncStatusLock.Unlock()
+}
+
+func (l *Ledger) setSync(flag bitset) {
+	l.syncStatusLock.Lock()
+	l.syncStatus = flag
+	l.syncStatusLock.Unlock()
 }
