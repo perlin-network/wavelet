@@ -329,6 +329,9 @@ func (s *account) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	balance, _ := wavelet.ReadAccountBalance(snapshot, s.id)
 	o.Set("balance", arena.NewNumberString(strconv.FormatUint(balance, 10)))
 
+	gasBalance, _ := wavelet.ReadAccountContractGasBalance(snapshot, s.id)
+	o.Set("gas_balance", arena.NewNumberString(strconv.FormatUint(gasBalance, 10)))
+
 	stake, _ := wavelet.ReadAccountStake(snapshot, s.id)
 	o.Set("stake", arena.NewNumberString(strconv.FormatUint(stake, 10)))
 

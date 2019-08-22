@@ -25,6 +25,12 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/perlin-network/wavelet/lru"
+	"math/rand"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
@@ -36,10 +42,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/peer"
-	"math/rand"
-	"strings"
-	"sync"
-	"time"
 )
 
 type bitset uint8
@@ -70,9 +72,10 @@ type Ledger struct {
 
 	consensus sync.WaitGroup
 
-	broadcastNops      bool
-	broadcastNopsDelay time.Time
-	broadcastNopsLock  sync.Mutex
+	broadcastNops         bool
+	broadcastNopsMaxDepth uint64
+	broadcastNopsDelay    time.Time
+	broadcastNopsLock     sync.Mutex
 
 	sync      chan struct{}
 	syncVotes chan vote
@@ -80,27 +83,55 @@ type Ledger struct {
 	syncStatus     bitset
 	syncStatusLock sync.RWMutex
 
-	cacheCollapse *LRU
-	cacheChunks   *LRU
+	cacheCollapse *lru.LRU
+	cacheChunks   *lru.LRU
 
 	sendQuota chan struct{}
 }
 
-func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
+type config struct {
+	GCDisabled bool
+	Genesis    *string
+}
+
+type Option func(cfg *config)
+
+// WithoutGC disables GC. Used for testing purposes.
+func WithoutGC() Option {
+	return func(cfg *config) {
+		cfg.GCDisabled = true
+	}
+}
+
+func WithGenesis(genesis *string) Option {
+	return func(cfg *config) {
+		cfg.Genesis = genesis
+	}
+}
+
+func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
+	var cfg config
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
 	logger := log.Node()
 
 	metrics := NewMetrics(context.TODO())
 	indexer := NewIndexer()
 
 	accounts := NewAccounts(kv)
-	go accounts.GC(context.Background())
+
+	if !cfg.GCDisabled {
+		go accounts.GC(context.Background())
+	}
 
 	rounds, err := NewRounds(kv, sys.PruningLimit)
 
 	var round *Round
 
 	if rounds != nil && err != nil {
-		genesis := performInception(accounts.tree, genesis)
+		genesis := performInception(accounts.tree, cfg.Genesis)
 		if err := accounts.Commit(nil); err != nil {
 			logger.Fatal().Err(err).Msg("BUG: accounts.Commit")
 		}
@@ -144,8 +175,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, genesis *string) *Ledger {
 		sync:      make(chan struct{}),
 		syncVotes: make(chan vote, sys.SnowballK),
 
-		cacheCollapse: NewLRU(16),
-		cacheChunks:   NewLRU(1024), // In total, it will take up 1024 * 4MB.
+		cacheCollapse: lru.NewLRU(16),
+		cacheChunks:   lru.NewLRU(1024), // In total, it will take up 1024 * 4MB.
 
 		sendQuota: make(chan struct{}, 2000),
 	}
@@ -181,12 +212,13 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 		l.gossiper.Push(tx)
 
 		l.broadcastNopsLock.Lock()
-		if tx.Tag != sys.TagNop {
-			l.broadcastNopsDelay = time.Now()
-		}
-
-		if tx.Sender == l.client.Keys().PublicKey() && l.finalizer.Preferred() == nil {
+		if tx.Tag != sys.TagNop && tx.Sender == l.client.Keys().PublicKey() {
 			l.broadcastNops = true
+			l.broadcastNopsDelay = time.Now()
+
+			if tx.Depth > l.broadcastNopsMaxDepth {
+				l.broadcastNopsMaxDepth = tx.Depth
+			}
 		}
 		l.broadcastNopsLock.Unlock()
 	}
@@ -197,10 +229,13 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 // Find searches through complete transaction and account indices for a specified
 // query string. All indices that queried are in the form of tries. It is safe
 // to call this method concurrently.
-func (l *Ledger) Find(query string, count int) []string {
+func (l *Ledger) Find(query string, max int) (results []string) {
 	var err error
 
-	results := make([]string, 0, count)
+	if max > 0 {
+		results = make([]string, 0, max)
+	}
+
 	prefix := []byte(query)
 
 	if len(query)%2 == 1 { // Cut off a single character.
@@ -220,7 +255,7 @@ func (l *Ledger) Find(query string, count int) []string {
 			return false
 		}
 
-		if len(results) >= count {
+		if max > 0 && len(results) >= max {
 			return false
 		}
 
@@ -228,7 +263,12 @@ func (l *Ledger) Find(query string, count int) []string {
 		return true
 	})
 
-	return append(results, l.indexer.Find(query, count-len(results))...)
+	var count = -1
+	if max > 0 {
+		count = max - len(results)
+	}
+
+	return append(results, l.indexer.Find(query, count)...)
 }
 
 // PushSendQuota permits one token into this nodes send quota bucket every millisecond
@@ -289,6 +329,16 @@ func (l *Ledger) PerformConsensus() {
 
 func (l *Ledger) Snapshot() *avl.Tree {
 	return l.accounts.Snapshot()
+}
+
+// BroadcastingNop returns true if the node is
+// supposed to broadcast nop transaction.
+func (l *Ledger) BroadcastingNop() bool {
+	l.broadcastNopsLock.Lock()
+	broadcastNops := l.broadcastNops
+	l.broadcastNopsLock.Unlock()
+
+	return broadcastNops
 }
 
 // BroadcastNop has the node send a nop transaction should they have sufficient
@@ -509,7 +559,7 @@ func (l *Ledger) PullMissingTransactions() {
 		for _, buf := range batch.Transactions {
 			tx, err := UnmarshalTransaction(bytes.NewReader(buf))
 			if err != nil {
-				fmt.Printf("error unmarshaling downloaded tx [%v]: %+v", err, tx)
+				fmt.Printf("error unmarshaling downloaded tx [%v]: %+v\n", err, tx)
 				continue
 			}
 
@@ -544,7 +594,6 @@ FINALIZE_ROUNDS:
 		default:
 		}
 
-		finalizationTime := time.Now()
 		if len(l.client.ClosestPeers()) < sys.SnowballK {
 			select {
 			case <-l.sync:
@@ -597,8 +646,13 @@ FINALIZE_ROUNDS:
 			continue FINALIZE_ROUNDS
 		}
 
+		// Only stop broadcasting nops if the most recently added transaction
+		// has been applied
 		l.broadcastNopsLock.Lock()
-		l.broadcastNops = false
+		preferred := l.finalizer.Preferred().(*Round)
+		if l.broadcastNops && l.broadcastNopsMaxDepth <= preferred.End.Depth {
+			l.broadcastNops = false
+		}
 		l.broadcastNopsLock.Unlock()
 
 		workerChan := make(chan *grpc.ClientConn, 16)
@@ -748,7 +802,7 @@ FINALIZE_ROUNDS:
 		close(voteChan)
 		workerWG.Wait() // Wait for vote processor worker to stop
 
-		preferred := l.finalizer.Preferred().(*Round)
+		preferred = l.finalizer.Preferred().(*Round)
 		l.finalizer.Reset()
 
 		results, err := l.collapseTransactions(preferred.Index, preferred.Start, preferred.End, true)
@@ -813,7 +867,6 @@ FINALIZE_ROUNDS:
 			Uint64("round_depth", preferred.End.Depth-preferred.Start.Depth).
 			Msg("Finalized consensus round, and initialized a new round.")
 
-		fmt.Println(">>> time finalization took -", time.Now().Sub(finalizationTime))
 		//go ExportGraphDOT(finalized, l.graph)
 	}
 }
@@ -827,6 +880,7 @@ func (o *outOfSyncVote) GetID() string {
 }
 
 func (l *Ledger) SyncToLatestRound() {
+	fmt.Println("Sync check started")
 	voteWG := new(sync.WaitGroup)
 
 	go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
@@ -862,6 +916,7 @@ func (l *Ledger) SyncToLatestRound() {
 						grpc.Peer(p),
 					)
 					if err != nil {
+						fmt.Println("error while checking out of sync", err)
 						cancel()
 						wg.Done()
 						return
@@ -901,6 +956,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 		oos := preferred.(*outOfSyncVote).outOfSync
 		if !oos {
+			fmt.Println("we are synced")
 			l.applySync(synced)
 			l.syncer.Reset()
 
@@ -1291,6 +1347,12 @@ type collapseResults struct {
 	snapshot *avl.Tree
 }
 
+type CollapseState struct {
+	once    sync.Once
+	results *collapseResults
+	err     error
+}
+
 // collapseTransactions takes all transactions recorded within a graph depth interval, and applies
 // all valid and available ones to a snapshot of all accounts stored in the ledger. It returns
 // an updated snapshot with all finalized transactions applied, alongside count summaries of the
@@ -1306,46 +1368,37 @@ type collapseResults struct {
 // that are within the depth interval (start, end] where start is the interval starting point depth,
 // and end is the interval ending point depth.
 func (l *Ledger) collapseTransactions(round uint64, start, end Transaction, logging bool) (*collapseResults, error) {
-	var res *collapseResults
+	_collapseState, _ := l.cacheCollapse.LoadOrPut(end.ID, &CollapseState{})
+	collapseState := _collapseState.(*CollapseState)
 
-	defer func() {
-		if res != nil && logging {
-			for _, tx := range res.applied {
-				logEventTX("applied", tx)
-			}
+	collapseState.once.Do(func() {
+		collapseState.results, collapseState.err = collapseTransactions(l.graph, l.accounts, round, l.Rounds().Latest(), start, end, logging)
+	})
 
-			for i, tx := range res.rejected {
-				logEventTX("rejected", tx, res.rejectedErrors[i])
-			}
+	if logging {
+		for _, tx := range collapseState.results.applied {
+			logEventTX("applied", tx)
 		}
-	}()
 
-	if results, exists := l.cacheCollapse.load(end.ID); exists {
-		res = results.(*collapseResults)
-		return res, nil
+		for i, tx := range collapseState.results.rejected {
+			logEventTX("rejected", tx, collapseState.results.rejectedErrors[i])
+		}
 	}
 
-	var err error
-
-	res, err = collapseTransactions(l.graph, l.accounts, round, l.Rounds().Latest(), start, end, logging)
-	if err != nil {
-		return nil, err
-	}
-
-	l.cacheCollapse.put(end.ID, res)
-
-	return res, nil
+	return collapseState.results, collapseState.err
 }
 
 // LogChanges logs all changes made to an AVL tree state snapshot for the purposes
 // of logging out changes to account state to Wavelet's HTTP API.
 func (l *Ledger) LogChanges(snapshot *avl.Tree, lastRound uint64) {
 	balanceLogger := log.Accounts("balance_updated")
+	gasBalanceLogger := log.Accounts("gas_balance_updated")
 	stakeLogger := log.Accounts("stake_updated")
 	rewardLogger := log.Accounts("reward_updated")
 	numPagesLogger := log.Accounts("num_pages_updated")
 
 	balanceKey := append(keyAccounts[:], keyAccountBalance[:]...)
+	gasBalanceKey := append(keyAccounts[:], keyAccountContractGasBalance[:]...)
 	stakeKey := append(keyAccounts[:], keyAccountStake[:]...)
 	rewardKey := append(keyAccounts[:], keyAccountReward[:]...)
 	numPagesKey := append(keyAccounts[:], keyAccountContractNumPages[:]...)
@@ -1360,6 +1413,13 @@ func (l *Ledger) LogChanges(snapshot *avl.Tree, lastRound uint64) {
 			balanceLogger.Log().
 				Hex("account_id", id[:]).
 				Uint64("balance", binary.LittleEndian.Uint64(value)).
+				Msg("")
+		case bytes.HasPrefix(key, gasBalanceKey):
+			copy(id[:], key[len(gasBalanceKey):])
+
+			gasBalanceLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("gas_balance", binary.LittleEndian.Uint64(value)).
 				Msg("")
 		case bytes.HasPrefix(key, stakeKey):
 			copy(id[:], key[len(stakeKey):])
@@ -1399,6 +1459,8 @@ func (l *Ledger) SyncStatus() string {
 		return "Node is synced, but not taking part in consensus process yet"
 	case fullySynced:
 		return "Node is fully synced"
+	case finalized:
+		return "Node is taking part in consensus process"
 	default:
 		return "Sync status unknown"
 	}

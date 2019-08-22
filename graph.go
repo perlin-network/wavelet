@@ -22,12 +22,13 @@ package wavelet
 import (
 	"bytes"
 	"encoding/hex"
+	"sort"
+	"sync"
+
 	"github.com/google/btree"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
-	"sort"
-	"sync"
 )
 
 type GraphOption func(*Graph)
@@ -152,6 +153,7 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 
 	// Do not consider transactions below root.depth by exactly DEPTH_DIFF to be incomplete
 	// at all. Permit them to have incomplete parent histories.
+
 
 	if g.rootDepth != sys.MaxDepthDiff+tx.Depth {
 		for _, parentID := range tx.ParentIDs {
@@ -667,12 +669,12 @@ func (g *Graph) validateTransaction(tx Transaction) error {
 	// Check that parents are lexicographically sorted, are not itself, and are unique.
 	set := make(map[TransactionID]struct{}, len(tx.ParentIDs))
 
-	for i := len(tx.ParentIDs) - 1; i > 0; i-- {
+	for i := len(tx.ParentIDs) - 1; i >= 0; i-- {
 		if tx.ID == tx.ParentIDs[i] {
 			return errors.New("tx must not include itself in its parents")
 		}
 
-		if bytes.Compare(tx.ParentIDs[i-1][:], tx.ParentIDs[i][:]) > 0 {
+		if i > 0 && bytes.Compare(tx.ParentIDs[i-1][:], tx.ParentIDs[i][:]) > 0 {
 			return errors.New("tx must have lexicographically sorted parent ids")
 		}
 

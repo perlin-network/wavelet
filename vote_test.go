@@ -2,7 +2,6 @@ package wavelet
 
 import (
 	"crypto/rand"
-	"fmt"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/store"
@@ -117,7 +116,7 @@ func TestCollectVotes(t *testing.T) {
 
 		close(voteC)
 		wg.Wait()
-		fmt.Println(s.count, s.lastID)
+
 		assert.False(t, s.Decided())
 	})
 

@@ -17,6 +17,7 @@ via the `--payload` flag. The names of each of the aforementioned payload fields
 | Recipient Account ID | recipient  |
 | Num PERLs Sent       | amount     |
 | Gas Limit            | gas_limit  |
+| Gas Deposit          | gas_deposit|
 | Function Name        | fn_name    |
 | Function Payload     | fn_payload |
 
@@ -32,6 +33,7 @@ via the `--payload` flag. The names of each of the aforementioned payload fields
 | Payload Field | JSON Field                           |
 |---------------|--------------------------------------|
 | Gas Limit     | gas_limit                            |
+| Gas Deposit   | gas_deposit                          |
 | Payload       | fn_payload                           |
 | Code          | contract_code (string, path to file) |
 

@@ -94,7 +94,7 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 		}
 
 		checksum := blake2b.Sum256(diff[i:end])
-		p.ledger.cacheChunks.put(checksum, diff[i:end])
+		p.ledger.cacheChunks.Put(checksum, diff[i:end])
 
 		header.Checksums = append(header.Checksums, checksum[:])
 	}
@@ -117,7 +117,7 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 		var checksum [blake2b.Size256]byte
 		copy(checksum[:], req.GetChecksum())
 
-		if chunk, found := p.ledger.cacheChunks.load(checksum); found {
+		if chunk, found := p.ledger.cacheChunks.Load(checksum); found {
 			chunk := chunk.([]byte)
 
 			logger := log.Sync("provide_chunk")

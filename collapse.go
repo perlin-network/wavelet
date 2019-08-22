@@ -1,3 +1,22 @@
+// Copyright (c) 2019 Perlin
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of
+// this software and associated documentation files (the "Software"), to deal in
+// the Software without restriction, including without limitation the rights to
+// use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+// the Software, and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+// FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+// IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 package wavelet
 
 import (
@@ -198,6 +217,10 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 	res.rejected = make([]*Transaction, 0, order.Len())
 	res.rejectedErrors = make([]error, 0, order.Len())
 
+	applyCtx := &ApplyContext{
+		Contracts: make(map[AccountID]*VMState),
+	}
+
 	// Apply transactions in reverse order from the end of the round
 	// all the way down to the beginning of the round.
 
@@ -223,7 +246,7 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 			}
 		}
 
-		if err := ApplyTransaction(current, res.snapshot, popped); err != nil {
+		if err := ApplyTransaction(current, res.snapshot, popped, applyCtx); err != nil {
 			res.rejected = append(res.rejected, popped)
 			res.rejectedErrors = append(res.rejectedErrors, err)
 			res.rejectedCount += popped.LogicalUnits()
@@ -249,6 +272,11 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 
 	if round >= uint64(sys.RewardWithdrawalsRoundLimit) {
 		processRewardWithdrawals(round, res.snapshot)
+	}
+
+	for id, state := range applyCtx.Contracts {
+		SaveContractMemorySnapshot(res.snapshot, id, state.Memory)
+		SaveContractGlobals(res.snapshot, id, state.Globals)
 	}
 
 	return res, nil

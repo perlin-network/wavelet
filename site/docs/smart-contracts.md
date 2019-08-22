@@ -17,7 +17,12 @@ In this tutorial, we will look first-hand on how a simple WebAssembly (Rust) sma
 
 ## Setup
 
-As a prerequisite, make sure [you have Rust installed](https://www.rust-lang.org/tools/install) with the WebAssembly compiler backend target installed on the Nightly channel.
+As a prerequisite, make sure [you have Rust installed](https://www.rust-lang.org/tools/install) with the WebAssembly compiler backend target installed on the Nightly channel. To set the Nightly channel as the default channel:
+
+```shell
+❯ rustup install nightly
+❯ rustup default nightly
+```
 
 To install the WebAssembly compiler backend target after installing Rust, execute the following command below and wait until it completes:
 
@@ -45,8 +50,8 @@ lto = true
 crate-type = ["cdylib"]
 
 [dependencies]
-smart-contract = "0.1.0"
-smart-contract-macros = "0.1.0"
+smart-contract = "0.2.0"
+smart-contract-macros = "0.2.0"
 ```
 
 Open up `src/lib.rs` and paste the code below. What our first smart contract will do is that whenever the
@@ -68,7 +73,7 @@ impl Contract {
         Self {}
     }
 
-    fn on_money_received(&mut self, params: &mut Parameters) -> Result<(), Box<dyn Error>> {
+    fn on_money_received(&mut self, params: &mut Parameters) -> Result<(), String> {
         // Create and send transaction.
         Transfer {
             destination: params.sender,
@@ -196,7 +201,7 @@ pub struct Parameters {
 The following code below demonstrates how input parameters may be decoded and read in your smart contract using the `Parameters` struct.
 
 ```rust
-fn a_smart_contract_function(params: &mut Parameters) -> Result<(), Box<dyn Error>> {
+fn a_smart_contract_function(params: &mut Parameters) -> Result<(), String> {
     let _a: u8 = params.read(); // Read a single unsigned byte.
     let _b: i8 = params.read(); // Read a single signed byte.
     
@@ -238,7 +243,7 @@ Given that a smart contract is much like any other account, a smart contract may
 In the case of our smart contract, our intent is to send back half the PERLs of however many PERLs the smart contract receives. The core code that performs said intent is written within the `on_money_received` function like so:
 
 ```rust
-fn on_money_received(&mut self, params: &mut Parameters) -> Result<(), Box<dyn Error>> {
+fn on_money_received(&mut self, params: &mut Parameters) -> Result<(), String> {
     // Create and send transaction.
     Transfer {
         destination: params.sender,
@@ -276,7 +281,7 @@ In the case of our smart contract, we simply return `Ok(())`, though may optiona
 our smart contract to only process transactions that send a minimum of 1500 PERLs.
 
 ```rust
-fn on_money_received(&mut self, params: &mut Parameters) -> Result<(), Box<dyn Error>> {
+fn on_money_received(&mut self, params: &mut Parameters) -> Result<(), String> {
     if params.amount < 1500 {
         return Err("A minimum of 1500 PERLs must be sent.".into());
     }
@@ -301,7 +306,7 @@ macro follows the [RFC 2361 `dbg!()` macro's](https://github.com/rust-lang/rfcs/
 Any variable alongside its contents may easily be printed out on any of your nodes terminal using the provided `debug!()` macro.
 
 ```rust
-fn test_function(params: &mut Parameters) -> Result<(), Box<dyn Error>> {
+fn test_function(params: &mut Parameters) -> Result<(), String> {
     debug!("Hello world!");
     
     Ok(())

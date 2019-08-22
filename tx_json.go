@@ -1,3 +1,22 @@
+// Copyright (c) 2019 Perlin
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of
+// this software and associated documentation files (the "Software"), to deal in
+// the Software without restriction, including without limitation the rights to
+// use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+// the Software, and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+// FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+// IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 package wavelet
 
 import (
@@ -20,6 +39,9 @@ const (
 
 	// PayloadParamNameGasLimit defines a string representation of the gas_limit payload param.
 	PayloadParamNameGasLimit = "gas_limit"
+
+	// PayloadParamNameGasDeposit defines a string representation of the gas_deposit payload param.
+	PayloadParamNameGasDeposit = "gas_deposit"
 
 	// PayloadParamNameFuncName defines a string representation of the fn_name payload param.
 	PayloadParamNameFuncName = "fn_name"
@@ -137,7 +159,7 @@ func parseTransfer(data []byte) ([]byte, error) {
 	}
 
 	if json.Exists(PayloadParamNameGasLimit) { // Check has gas limit value
-		decodedGasLimit := uint64(json.GetFloat64(PayloadParamNameGasLimit)) // Get uint64 gas limit value
+		decodedGasLimit := uint64(json.GetUint64(PayloadParamNameGasLimit)) // Get uint64 gas limit value
 
 		var gasLimit [8]byte                                        // Initialize integer buffer
 		binary.LittleEndian.PutUint64(gasLimit[:], decodedGasLimit) // Write to buffer
@@ -146,6 +168,18 @@ func parseTransfer(data []byte) ([]byte, error) {
 		if err != nil {                     // Check for errors
 			return nil, err // Return found error
 		}
+	}
+
+	var gasDeposit [8]byte // Initialize integer buffer
+
+	if json.Exists(PayloadParamNameGasDeposit) { // Check has gas deposit value
+		decodedGasDeposit := uint64(json.GetUint64(PayloadParamNameGasDeposit)) // Get uint64 gas deposit value
+		binary.LittleEndian.PutUint64(gasDeposit[:], decodedGasDeposit)         // Write to buffer
+	}
+
+	_, err = payload.Write(gasDeposit[:]) // Write gas deposit
+	if err != nil {                       // Check for errors
+		return nil, err // Return foudn error
 	}
 
 	if json.Exists(PayloadParamNameFuncName) { // Check has function name
@@ -290,7 +324,7 @@ func parseContract(data []byte) ([]byte, error) {
 		return nil, ErrNilField // Return nil field error
 	}
 
-	decodedGasLimit := uint64(json.GetFloat64(PayloadParamNameGasLimit)) // Get uint64 gas limit value
+	decodedGasLimit := uint64(json.GetUint64(PayloadParamNameGasLimit)) // Get uint64 gas limit value
 
 	var gasLimit [8]byte                                        // Initialize integer buffer
 	binary.LittleEndian.PutUint64(gasLimit[:], decodedGasLimit) // Write to buffer
@@ -298,6 +332,20 @@ func parseContract(data []byte) ([]byte, error) {
 	_, err = payload.Write(gasLimit[:]) // Write gas limit
 	if err != nil {                     // Check for errors
 		return nil, err // Return found error
+	}
+
+	var decodedGasDeposit uint64
+
+	if json.Exists(PayloadParamNameGasDeposit) {
+		decodedGasDeposit = uint64(json.GetUint64(PayloadParamNameGasDeposit)) // Get uiint64 gas deposit value
+	}
+
+	var gasDeposit [8]byte
+	binary.LittleEndian.PutUint64(gasDeposit[:], decodedGasDeposit) // Write to buffer
+
+	_, err = payload.Write(gasDeposit[:]) // Write gas deposit
+	if err != nil {
+		return nil, err
 	}
 
 	if json.Exists("fn_payload") { // Check has function payload
