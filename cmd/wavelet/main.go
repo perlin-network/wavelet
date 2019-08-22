@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -46,9 +47,9 @@ import (
 	"google.golang.org/grpc"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
-)
 
-import _ "net/http/pprof"
+	_ "net/http/pprof"
+)
 
 type Config struct {
 	NAT      bool
@@ -59,12 +60,19 @@ type Config struct {
 	APIPort  uint
 	Peers    []string
 	Database string
+
+	// Only for testing
+	WithoutGC bool
 }
 
 func main() {
+	Run(os.Args, os.Stdin, os.Stdout, false)
+}
+
+func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 	log.SetWriter(
 		log.LoggerWavelet,
-		log.NewConsoleWriter(nil, log.FilterFor(
+		log.NewConsoleWriter(stdout, log.FilterFor(
 			log.ModuleNode,
 			log.ModuleNetwork,
 			log.ModuleSync,
@@ -109,7 +117,6 @@ func main() {
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "wallet",
-			Value:  "config/wallet.txt",
 			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded private key to a wallet may also be specified.",
 			EnvVar: "WAVELET_WALLET",
 		}),
@@ -198,12 +205,13 @@ func main() {
 	app.Action = func(c *cli.Context) error {
 		c.String("config")
 		config := &Config{
-			Host:     c.String("host"),
-			Port:     c.Uint("port"),
-			Wallet:   c.String("wallet"),
-			APIPort:  c.Uint("api.port"),
-			Peers:    c.Args(),
-			Database: c.String("db"),
+			Host:      c.String("host"),
+			Port:      c.Uint("port"),
+			Wallet:    c.String("wallet"),
+			APIPort:   c.Uint("api.port"),
+			Peers:     c.Args(),
+			Database:  c.String("db"),
+			WithoutGC: withoutGC,
 		}
 
 		if genesis := c.String("genesis"); len(genesis) > 0 {
@@ -221,7 +229,7 @@ func main() {
 		sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
 		sys.MinimumStake = c.Uint64("sys.min_stake")
 
-		start(config)
+		start(config, stdin, stdout)
 
 		return nil
 	}
@@ -229,13 +237,13 @@ func main() {
 	sort.Sort(cli.FlagsByName(app.Flags))
 	sort.Sort(cli.CommandsByName(app.Commands))
 
-	if err := app.Run(os.Args); err != nil {
+	if err := app.Run(args); err != nil {
 		logger.Fatal().Err(err).
 			Msg("Failed to parse configuration/command-line arguments.")
 	}
 }
 
-func start(cfg *Config) {
+func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	logger := log.Node()
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
@@ -317,7 +325,12 @@ func start(cfg *Config) {
 		logger.Fatal().Err(err).Msgf("Failed to create/open database located at %q.", cfg.Database)
 	}
 
-	ledger := wavelet.NewLedger(kv, client, wavelet.WithGenesis(cfg.Genesis))
+	opts := []wavelet.Option{wavelet.WithGenesis(cfg.Genesis)}
+	if cfg.WithoutGC {
+		opts = append(opts, wavelet.WithoutGC())
+	}
+
+	ledger := wavelet.NewLedger(kv, client, opts...)
 
 	go func() {
 		server := client.Listen()
@@ -349,7 +362,7 @@ func start(cfg *Config) {
 		go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
 	}
 
-	shell, err := NewCLI(client, ledger, keys)
+	shell, err := NewCLI(client, ledger, keys, stdin, stdout)
 	if err != nil {
 		panic(err)
 	}
