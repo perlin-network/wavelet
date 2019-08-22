@@ -30,9 +30,9 @@ type vote struct {
 	value Identifiable
 }
 
-func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, wg *sync.WaitGroup) {
-	votes := make([]vote, 0, sys.SnowballK)
-	voters := make(map[AccountID]struct{}, sys.SnowballK)
+func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, wg *sync.WaitGroup, snowballK int) {
+	votes := make([]vote, 0, snowballK)
+	voters := make(map[AccountID]struct{}, snowballK)
 
 	for vote := range voteChan {
 		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
@@ -82,7 +82,7 @@ func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, 
 
 			snowball.Tick(majority)
 
-			voters = make(map[AccountID]struct{}, sys.SnowballK)
+			voters = make(map[AccountID]struct{}, snowballK)
 			votes = votes[:0]
 		}
 	}

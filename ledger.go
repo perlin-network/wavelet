@@ -432,7 +432,7 @@ func (l *Ledger) SyncTransactions() {
 		}
 
 		req := &DownloadTxRequest{
-			Depth: currentDepth,
+			Depth:   currentDepth,
 			SkipIds: ids,
 		}
 
@@ -475,7 +475,6 @@ func (l *Ledger) SyncTransactions() {
 		}
 	}
 }
-
 
 // PullMissingTransactions is an infinite loop continually sending RPC requests
 // to pull any transactions identified to be missing by the ledger. It periodically
@@ -661,7 +660,7 @@ FINALIZE_ROUNDS:
 		workerWG.Add(cap(workerChan))
 
 		voteChan := make(chan vote, sys.SnowballK)
-		go CollectVotes(l.accounts, l.finalizer, voteChan, &workerWG)
+		go CollectVotes(l.accounts, l.finalizer, voteChan, &workerWG, sys.SnowballK)
 
 		req := &QueryRequest{RoundIndex: current.Index + 1}
 
@@ -880,10 +879,9 @@ func (o *outOfSyncVote) GetID() string {
 }
 
 func (l *Ledger) SyncToLatestRound() {
-	fmt.Println("Sync check started")
 	voteWG := new(sync.WaitGroup)
 
-	go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
+	go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG, sys.SnowballK)
 
 	syncTimeoutMultiplier := 0
 	for {
@@ -956,7 +954,6 @@ func (l *Ledger) SyncToLatestRound() {
 
 		oos := preferred.(*outOfSyncVote).outOfSync
 		if !oos {
-			fmt.Println("we are synced")
 			l.applySync(synced)
 			l.syncer.Reset()
 
@@ -986,7 +983,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 		restart := func() { // Respawn all previously stopped workers.
 			l.syncVotes = make(chan vote, sys.SnowballK)
-			go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG)
+			go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG, sys.SnowballK)
 
 			l.sync = make(chan struct{})
 			l.PerformConsensus()

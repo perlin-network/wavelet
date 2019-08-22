@@ -43,23 +43,64 @@ func (n *TestNetwork) Faucet() *TestLedger {
 	return n.faucet
 }
 
-func (n *TestNetwork) AddNode(t testing.TB, startingBalance uint64) *TestLedger {
+func (n *TestNetwork) AddNode(t testing.TB) *TestLedger {
 	node := NewTestLedger(t, TestLedgerConfig{
 		Peers: []string{n.faucet.Addr()},
 	})
 	n.nodes = append(n.nodes, node)
 
-	if startingBalance > 0 {
-		_, err := n.faucet.Pay(node, startingBalance)
-		assert.NoError(t, err)
-	}
-
 	return node
 }
 
 func (n *TestNetwork) WaitForConsensus(t testing.TB) {
-	all := append(n.nodes, n.faucet)
-	TestWaitForConsensus(t, time.Second*30, all)
+	var wg sync.WaitGroup
+	for _, l := range append(n.nodes, n.faucet) {
+		wg.Add(1)
+		go func(ledger *TestLedger) {
+			defer wg.Done()
+			assert.True(t, <-ledger.WaitForConsensus())
+		}(l)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	timer := time.NewTimer(5 * time.Second)
+	select {
+	case <-done:
+		return
+
+	case <-timer.C:
+		t.Fatal("consensus round took too long")
+	}
+}
+
+func (n *TestNetwork) WaitForSync(t testing.TB) {
+	var wg sync.WaitGroup
+	for _, l := range append(n.nodes, n.faucet) {
+		wg.Add(1)
+		go func(ledger *TestLedger) {
+			defer wg.Done()
+			assert.True(t, <-ledger.WaitForSync())
+		}(l)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	timer := time.NewTimer(5 * time.Second)
+	select {
+	case <-done:
+		return
+	case <-timer.C:
+		t.Fatal("timeout while waiting for all nodes to be synced")
+	}
 }
 
 type TestLedger struct {
@@ -187,7 +228,8 @@ func (l *TestLedger) WaitForConsensus() <-chan bool {
 	go func() {
 		start := l.ledger.Rounds().Latest()
 		timeout := time.NewTimer(time.Second * 3)
-		ticker := time.NewTicker(time.Millisecond * 50)
+		ticker := time.NewTicker(time.Millisecond * 10)
+
 		for {
 			select {
 			case <-timeout.C:
@@ -197,6 +239,29 @@ func (l *TestLedger) WaitForConsensus() <-chan bool {
 			case <-ticker.C:
 				current := l.ledger.Rounds().Latest()
 				if current.Index > start.Index {
+					ch <- true
+					return
+				}
+			}
+		}
+	}()
+
+	return ch
+}
+
+func (l *TestLedger) WaitForSync() <-chan bool {
+	ch := make(chan bool)
+	go func() {
+		timeout := time.NewTimer(time.Second * 3)
+		ticker := time.NewTicker(time.Millisecond * 50)
+		for {
+			select {
+			case <-timeout.C:
+				ch <- false
+				return
+
+			case <-ticker.C:
+				if l.ledger.SyncStatus() == "Node is fully synced" {
 					ch <- true
 					return
 				}
@@ -288,32 +353,6 @@ func (l *TestLedger) FindTransaction(t testing.TB, id TransactionID) *Transactio
 
 func (l *TestLedger) Applied(tx Transaction) bool {
 	return tx.Depth <= l.ledger.Graph().RootDepth()
-}
-
-func TestWaitForConsensus(t testing.TB, timeout time.Duration, ledgers []*TestLedger) {
-	var wg sync.WaitGroup
-	for _, l := range ledgers {
-		wg.Add(1)
-		go func(ledger *TestLedger) {
-			defer wg.Done()
-			ledger.WaitForConsensus()
-		}(l)
-	}
-
-	done := make(chan struct{})
-	go func() {
-		wg.Wait()
-		close(done)
-	}()
-
-	timer := time.NewTimer(timeout)
-	select {
-	case <-done:
-		return
-
-	case <-timer.C:
-		t.Fatal("consensus round took too long")
-	}
 }
 
 // loadKeys returns a keypair from a wallet string, or generates a new one

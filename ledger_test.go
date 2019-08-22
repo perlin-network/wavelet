@@ -19,12 +19,14 @@ func TestLedger_BroadcastNop(t *testing.T) {
 	testnet := NewTestNetwork(t)
 	defer testnet.Cleanup()
 
-	for i := 0; i < 3; i++ {
-		testnet.AddNode(t, 0)
-	}
+	alice := testnet.AddNode(t)
+	bob := testnet.AddNode(t)
 
-	alice := testnet.AddNode(t, 1000000)
-	bob := testnet.AddNode(t, 0)
+	assert.True(t, <-alice.WaitForSync())
+	assert.True(t, <-bob.WaitForSync())
+
+	_, err := testnet.faucet.Pay(alice, 1000000)
+	assert.NoError(t, err)
 
 	// Wait for alice to receive her PERL from the faucet
 	for <-alice.WaitForConsensus() {
@@ -104,10 +106,12 @@ func TestLedger_AddTransaction(t *testing.T) {
 	testnet := NewTestNetwork(t)
 	defer testnet.Cleanup()
 
-	alice := testnet.AddNode(t, 0) // alice
-	testnet.AddNode(t, 0)          // bob
+	alice := testnet.AddNode(t) // alice
+	testnet.AddNode(t)          // bob
 
 	start := alice.ledger.Rounds().Latest().Index
+
+	assert.True(t, <-alice.WaitForSync())
 
 	// Add just 1 transaction
 	_, err := testnet.faucet.PlaceStake(100)
@@ -116,11 +120,9 @@ func TestLedger_AddTransaction(t *testing.T) {
 	// Try to wait for 2 rounds of consensus.
 	// The second call should result in timeout, because
 	// only 1 round should be finalized.
-	<-alice.WaitForConsensus()
-	<-alice.WaitForConsensus()
+	assert.True(t, <-alice.WaitForConsensus())
+	assert.False(t, <-alice.WaitForConsensus())
 
 	current := alice.ledger.Rounds().Latest().Index
-	if current-start > 1 {
-		t.Fatal("more than 1 round finalized")
-	}
+	assert.Equal(t, current-start, uint64(1), "expected only 1 round to be finalized")
 }

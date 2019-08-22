@@ -169,7 +169,6 @@ func (p *Protocol) DownloadTx(ctx context.Context, req *DownloadTxRequest) (*Dow
 		receivedIDs[id] = struct{}{}
 	}
 
-
 	var txs [][]byte
 	hostTXs := p.ledger.Graph().GetTransactionsByDepth(&lowLimit, &highLimit)
 	for _, tx := range hostTXs {

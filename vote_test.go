@@ -36,7 +36,7 @@ func TestCollectVotes(t *testing.T) {
 		wg := new(sync.WaitGroup)
 
 		wg.Add(1)
-		go CollectVotes(accounts, s, voteC, wg)
+		go CollectVotes(accounts, s, voteC, wg, sys.SnowballK)
 
 		peersNum := sys.SnowballK
 		preferred := "a"
@@ -63,10 +63,11 @@ func TestCollectVotes(t *testing.T) {
 		voteC := make(chan vote)
 		wg := new(sync.WaitGroup)
 
-		wg.Add(1)
-		go CollectVotes(accounts, s, voteC, wg)
+		peersNum := 5
 
-		peersNum := sys.SnowballK
+		wg.Add(1)
+		go CollectVotes(accounts, s, voteC, wg, peersNum)
+
 		for j := 0; j < snowballB+2; j++ {
 			for i := 0; i < peersNum; i++ {
 				preferred := "a"
@@ -86,6 +87,9 @@ func TestCollectVotes(t *testing.T) {
 		wg.Wait()
 
 		assert.True(t, s.Decided())
+		if !assert.NotNil(t, s.Preferred()) {
+			return
+		}
 		assert.Equal(t, "a", s.Preferred().GetID())
 	})
 
@@ -95,10 +99,10 @@ func TestCollectVotes(t *testing.T) {
 		voteC := make(chan vote)
 		wg := new(sync.WaitGroup)
 
+		peersNum := 5
 		wg.Add(1)
-		go CollectVotes(accounts, s, voteC, wg)
+		go CollectVotes(accounts, s, voteC, wg, peersNum)
 
-		peersNum := sys.SnowballK
 		for j := 0; j < snowballB+2; j++ {
 			for i := 0; i < peersNum; i++ {
 				preferred := "a"
@@ -127,7 +131,7 @@ func TestCollectVotes(t *testing.T) {
 		wg := new(sync.WaitGroup)
 
 		wg.Add(1)
-		go CollectVotes(accounts, s, voteC, wg)
+		go CollectVotes(accounts, s, voteC, wg, sys.SnowballK)
 
 		peersNum := sys.SnowballK - 1
 		preferred := "a"
