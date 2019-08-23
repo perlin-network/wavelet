@@ -3,6 +3,7 @@ package wavelet
 import (
 	"bytes"
 	"fmt"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 	"sync"
 	"testing"
@@ -137,18 +138,19 @@ func TestLedger_SubContractInvocation(t *testing.T) {
 
 	testnet.WaitForSync(t)
 
-	_, err := testnet.faucet.Pay(alice, 1000000)
+	var gasDeposit uint64 = 10000
+	_, err := testnet.faucet.Pay(alice, gasDeposit+sys.TransactionFeeAmount)
 	assert.NoError(t, err)
 
 	testnet.WaitForConsensus(t)
 
 	dummy, err := testnet.faucet.SpawnContract("testdata/dummy.wasm",
-		10000, nil)
+		gasDeposit, nil)
 	assert.NoError(t, err)
 
 	testnet.WaitForConsensus(t)
 
-	invoke, err := testnet.faucet.SpawnContract("testdata/invoke.wasm", 10000, nil)
+	invoke, err := testnet.faucet.SpawnContract("testdata/invoke.wasm", gasDeposit, nil)
 	assert.NoError(t, err)
 
 	testnet.WaitForConsensus(t)
@@ -157,9 +159,10 @@ func TestLedger_SubContractInvocation(t *testing.T) {
 	params.Write(dummy.ID[:])
 	params.Write([]byte("say"))
 
-	_, err = alice.CallContract(invoke.ID, 0, 1000, "invoke", params.Bytes())
-
+	_, err = alice.CallContract(invoke.ID, 0, gasDeposit, "invoke", params.Bytes())
 	assert.NoError(t, err)
 
 	testnet.WaitForConsensus(t)
+
+	fmt.Println(alice.Balance())
 }
