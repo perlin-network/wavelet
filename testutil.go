@@ -3,6 +3,7 @@ package wavelet
 import (
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"strconv"
 	"sync"
@@ -331,6 +332,28 @@ func (l *TestLedger) WithdrawStake(amount uint64) (Transaction, error) {
 	return tx, err
 }
 
+func (l *TestLedger) SpawnContract(contractPath string, gasLimit uint64, params []byte) (Transaction, error) {
+	code, err := ioutil.ReadFile(contractPath)
+	if err != nil {
+		return Transaction{}, err
+	}
+
+	payload := Contract{
+		GasLimit: gasLimit,
+		Code:     code,
+		Params:   params,
+	}
+
+	keys := l.ledger.client.Keys()
+	tx := AttachSenderToTransaction(
+		keys,
+		NewTransaction(keys, sys.TagContract, payload.Marshal()),
+		l.ledger.Graph().FindEligibleParents()...)
+
+	err = l.ledger.AddTransaction(tx)
+	return tx, err
+}
+
 func (l *TestLedger) WithdrawReward(amount uint64) (Transaction, error) {
 	payload := Stake{
 		Opcode: sys.WithdrawReward,
@@ -341,6 +364,25 @@ func (l *TestLedger) WithdrawReward(amount uint64) (Transaction, error) {
 	tx := AttachSenderToTransaction(
 		keys,
 		NewTransaction(keys, sys.TagStake, payload.Marshal()),
+		l.ledger.Graph().FindEligibleParents()...)
+
+	err := l.ledger.AddTransaction(tx)
+	return tx, err
+}
+
+func (l *TestLedger) CallContract(id [32]byte, amount uint64, gasLimit uint64, funcName string, params []byte) (Transaction, error) {
+	payload := Transfer{
+		Recipient:  id,
+		Amount:     amount,
+		GasLimit:   gasLimit,
+		FuncName:   []byte(funcName),
+		FuncParams: params,
+	}
+
+	keys := l.ledger.client.Keys()
+	tx := AttachSenderToTransaction(
+		keys,
+		NewTransaction(keys, sys.TagTransfer, payload.Marshal()),
 		l.ledger.Graph().FindEligibleParents()...)
 
 	err := l.ledger.AddTransaction(tx)

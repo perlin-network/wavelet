@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"sync"
@@ -125,4 +126,40 @@ func TestLedger_AddTransaction(t *testing.T) {
 
 	current := alice.ledger.Rounds().Latest().Index
 	assert.Equal(t, current-start, uint64(1), "expected only 1 round to be finalized")
+}
+
+func TestLedger_SubContractInvocation(t *testing.T) {
+	testnet := NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	alice := testnet.AddNode(t)
+	testnet.AddNode(t)
+
+	testnet.WaitForSync(t)
+
+	_, err := testnet.faucet.Pay(alice, 1000000)
+	assert.NoError(t, err)
+
+	testnet.WaitForConsensus(t)
+
+	dummy, err := testnet.faucet.SpawnContract("testdata/dummy.wasm",
+		10000, nil)
+	assert.NoError(t, err)
+
+	testnet.WaitForConsensus(t)
+
+	invoke, err := testnet.faucet.SpawnContract("testdata/invoke.wasm", 10000, nil)
+	assert.NoError(t, err)
+
+	testnet.WaitForConsensus(t)
+
+	params := bytes.NewBuffer(nil)
+	params.Write(dummy.ID[:])
+	params.Write([]byte("say"))
+
+	_, err = alice.CallContract(invoke.ID, 0, 1000, "invoke", params.Bytes())
+
+	assert.NoError(t, err)
+
+	testnet.WaitForConsensus(t)
 }
