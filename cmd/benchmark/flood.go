@@ -20,12 +20,13 @@
 package main
 
 import (
-	"encoding/binary"
+	"runtime"
+	"sync"
+
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
-	"runtime"
-	"sync"
 )
 
 func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionResponse, error) {
@@ -39,49 +40,7 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 		chErr := make(chan error, numWorkers)
 
 		for i := 0; i < numWorkers; i++ {
-			i := i + 1
-
-			go func() {
-				defer wg.Done()
-
-				var base [9]byte
-
-				base[0] = sys.PlaceStake
-				binary.LittleEndian.PutUint64(base[1:9], uint64(i))
-
-				var tags []byte
-				var payloads [][]byte
-
-				for i := 0; i < 40; i++ {
-					tags = append(tags, sys.TagStake)
-					payloads = append(payloads, base[:])
-				}
-
-				var size [4]byte
-				var buf []byte
-
-				for i := range tags {
-					buf = append(buf, tags[i])
-
-					binary.BigEndian.PutUint32(size[:4], uint32(len(payloads[i])))
-					buf = append(buf, size[:4]...)
-					buf = append(buf, payloads[i]...)
-				}
-
-				var res wctl.SendTransactionResponse
-
-				res, err := client.SendTransaction(sys.TagBatch, append([]byte{byte(len(tags))}, buf...))
-
-				if err != nil {
-					chRes <- res
-					chErr <- err
-
-					return
-				}
-
-				chRes <- res
-				chErr <- err
-			}()
+			go sendTransaction(i+1, client, &wg, chRes, chErr)
 		}
 
 		wg.Wait()
@@ -103,4 +62,39 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 
 		return responses, err
 	}
+}
+
+func sendTransaction(
+	i int,
+	client *wctl.Client,
+	wg *sync.WaitGroup,
+	chRes chan<- wctl.SendTransactionResponse,
+	chErr chan<- error) {
+
+	defer wg.Done()
+
+	n := 40
+	payload := wavelet.Batch{
+		Tags:     make([]uint8, 0, n),
+		Payloads: make([][]byte, 0, n),
+	}
+
+	stake := wavelet.Stake{Opcode: sys.PlaceStake, Amount: uint64(i)}
+	for i := 0; i < 40; i++ {
+		if err := payload.AddStake(stake); err != nil {
+			// Shouldn't happen
+			panic(err)
+		}
+	}
+
+	var res wctl.SendTransactionResponse
+	res, err := client.SendTransaction(byte(sys.TagBatch), payload.Marshal())
+	if err != nil {
+		chRes <- res
+		chErr <- err
+		return
+	}
+
+	chRes <- res
+	chErr <- err
 }

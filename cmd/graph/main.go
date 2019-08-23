@@ -23,6 +23,13 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"net"
+	"net/http"
+	"os"
+	"strconv"
+	"time"
+
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher"
 	"github.com/perlin-network/noise/handshake"
@@ -36,12 +43,6 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
-	"io/ioutil"
-	"net"
-	"net/http"
-	"os"
-	"strconv"
-	"time"
 )
 
 import _ "net/http/pprof"
@@ -128,8 +129,8 @@ func main() {
 		go api.New().StartHTTP(*apiPortFlag, client, ledger, keys)
 	}
 
-	if len(flag.Args()) > 1 {
-		for _, addr := range flag.Args()[1:] {
+	if len(flag.Args()) > 0 {
+		for _, addr := range flag.Args()[:] {
 			if _, err := client.Dial(addr); err != nil {
 				fmt.Printf("Error dialing %s: %v\n", addr, err)
 			}
@@ -153,13 +154,15 @@ func main() {
 			continue
 		}
 
+		var batch wavelet.Batch
+		for i := 0; i < 40; i++ {
+			if err := batch.AddNop(); err != nil {
+				panic(err)
+			}
+		}
+
 		for i := uint64(0); i < count; i++ {
-			tags := make([]byte, 40)
-			payloads := make([][]byte, 40)
-			tx := wavelet.AttachSenderToTransaction(keys, wavelet.NewBatchTransaction(keys, tags, payloads), ledger.Graph().FindEligibleParents()...)
-
-			//tx := wavelet.AttachSenderToTransaction(keys, wavelet.NewTransaction(keys, sys.TagNop, nil), ledger.Graph().FindEligibleParents()...)
-
+			tx := wavelet.AttachSenderToTransaction(keys, wavelet.NewTransaction(keys, sys.TagBatch, batch.Marshal()))
 			if err := ledger.AddTransaction(tx); err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
 				fmt.Printf("error adding tx to graph [%v]: %+v\n", err, tx)
 			}

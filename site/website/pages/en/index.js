@@ -58,7 +58,8 @@ class HomeSplash extends React.Component {
                     <ProjectTitle siteConfig={siteConfig}/>
                     <PromoSection>
                         <Button href={`${docUrl('setup')}`}>Get Started</Button>
-                        <Button>Whitepaper</Button>
+                        <Button href="/whitepaper.pdf">Whitepaper</Button>
+                        <Button href="https://lens.perlin.net">Testnet</Button>
                         <Button href="https://github.com/perlin-network/wavelet">Github</Button>
                     </PromoSection>
                 </div>
@@ -75,7 +76,9 @@ in the form of [WebAssembly](https://webassembly.org/) smart contracts, with bat
 
 Use the same 'ole tools you know and love to efficiently and cost-effectively create your next decentralized application.
 
-[Click here](https://github.com/perlin-network/smart-contract-rs) for more info about Wavelet's Rust smart contract SDK.
+[Click here](/docs/smart-contracts) for more info about Wavelet's Rust smart contract SDK.
+
+[Click here](https://github.com/perlin-network/smart-contract-as) for more info about Wavelet's AssemblyScript smart contract SDK.
 `
 
 class Index extends React.Component {

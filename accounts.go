@@ -21,13 +21,14 @@ package wavelet
 
 import (
 	"context"
-	"github.com/perlin-network/wavelet/avl"
-	"github.com/perlin-network/wavelet/store"
-	"github.com/pkg/errors"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
+
+	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/store"
+	"github.com/pkg/errors"
 )
 
 type Accounts struct {

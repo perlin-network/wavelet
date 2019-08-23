@@ -26,13 +26,13 @@ import (
 )
 
 type vote struct {
-	voter     *skademlia.ID
-	preferred *Round
+	voter *skademlia.ID
+	value Identifiable
 }
 
-func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, wg *sync.WaitGroup) {
-	votes := make([]vote, 0, sys.SnowballK)
-	voters := make(map[AccountID]struct{}, sys.SnowballK)
+func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, wg *sync.WaitGroup, snowballK int) {
+	votes := make([]vote, 0, snowballK)
+	voters := make(map[AccountID]struct{}, snowballK)
 
 	for vote := range voteChan {
 		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
@@ -45,66 +45,44 @@ func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, 
 		if len(votes) == cap(votes) {
 			snapshot := accounts.Snapshot()
 
-			counts := make(map[RoundID]float64, len(votes))
-			stakes := make(map[RoundID]float64, len(votes))
-
-			for _, vote := range votes {
-				if vote.preferred == nil {
-					vote.preferred = ZeroRoundPtr
-				}
-
-				counts[vote.preferred.ID] += 1.0
-
-				stake, _ := ReadAccountStake(snapshot, vote.voter.PublicKey())
-
-				if stake < sys.MinimumStake {
-					stake = sys.MinimumStake
-				}
-
-				stakes[vote.preferred.ID] += float64(stake)
-			}
-
-			maxCount := float64(0)
+			stakes := make(map[AccountID]float64, len(votes))
 			maxStake := float64(0)
 
 			for _, vote := range votes {
-				if vote.preferred == nil {
-					vote.preferred = ZeroRoundPtr
+				s, _ := ReadAccountStake(snapshot, vote.voter.PublicKey())
+
+				if s < sys.MinimumStake {
+					s = sys.MinimumStake
 				}
 
-				if maxCount < counts[vote.preferred.ID] {
-					maxCount = counts[vote.preferred.ID]
-				}
+				stake := float64(s)
+				stakes[vote.voter.PublicKey()] = stake
 
-				if maxStake < stakes[vote.preferred.ID] {
-					maxStake = stakes[vote.voter.PublicKey()]
+				if maxStake < stake {
+					maxStake = stake
 				}
 			}
 
-			for _, vote := range votes {
-				if vote.preferred == nil {
-					vote.preferred = ZeroRoundPtr
-				}
+			counts := make(map[string]float64, len(votes))
+			totalCount := float64(0)
 
-				counts[vote.preferred.ID] = (counts[vote.preferred.ID] / maxCount) * (stakes[vote.preferred.ID] / maxStake)
+			for _, vote := range votes {
+				count := stakes[vote.voter.PublicKey()] / maxStake
+				counts[vote.value.GetID()] += count
+				totalCount += count
 			}
 
-			var majority *Round
-
+			var majority Identifiable
 			for _, vote := range votes {
-				if vote.preferred == nil {
-					vote.preferred = ZeroRoundPtr
-				}
-
-				if counts[vote.preferred.ID] >= sys.SnowballAlpha {
-					majority = vote.preferred
+				if counts[vote.value.GetID()]/totalCount >= sys.SnowballAlpha {
+					majority = vote.value
 					break
 				}
 			}
 
 			snowball.Tick(majority)
 
-			voters = make(map[AccountID]struct{}, sys.SnowballK)
+			voters = make(map[AccountID]struct{}, snowballK)
 			votes = votes[:0]
 		}
 	}

@@ -52,16 +52,16 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
         BINARY_POSTFIX=".exe"
     fi
 
-    go build \
+    CGO_ENABLED=0 go build \
         -a \
         -o ${BUILD_BIN}/${OS}-${ARCH}/wavelet${BINARY_POSTFIX} \
         -ldflags "-s -w \
             -X ${PROJ_DIR}/sys.GitCommit=${GIT_COMMIT} \
             -X ${PROJ_DIR}/sys.GoVersion=${GO_VERSION} \
             -X ${PROJ_DIR}/sys.OSArch=${os_arch}" \
-        cmd/wavelet/main.go
+        cmd/wavelet/*.go
 
-    go build \
+    CGO_ENABLED=0 go build \
         -a \
         -o ${BUILD_BIN}/${OS}-${ARCH}/wctl${BINARY_POSTFIX} \
         -ldflags "-s -w \
@@ -70,7 +70,7 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
             -X ${PROJ_DIR}/sys.OSArch=${os_arch}" \
         cmd/wctl/main.go
 
-    go build \
+    CGO_ENABLED=0 go build \
         -a \
         -o ${BUILD_BIN}/${OS}-${ARCH}/benchmark${BINARY_POSTFIX} \
         -ldflags "-s -w \

@@ -17,7 +17,12 @@ In this tutorial, we will look first-hand on how a simple WebAssembly (Rust) sma
 
 ## Setup
 
-As a prerequisite, make sure [you have Rust installed](https://www.rust-lang.org/tools/install) with the WebAssembly compiler backend target installed on the Nightly channel.
+As a prerequisite, make sure [you have Rust installed](https://www.rust-lang.org/tools/install) with the WebAssembly compiler backend target installed on the Nightly channel. To set the Nightly channel as the default channel:
+
+```shell
+❯ rustup install nightly
+❯ rustup default nightly
+```
 
 To install the WebAssembly compiler backend target after installing Rust, execute the following command below and wait until it completes:
 
@@ -45,8 +50,8 @@ lto = true
 crate-type = ["cdylib"]
 
 [dependencies]
-smart-contract = "0.1.0"
-smart-contract-macros = "0.1.0"
+smart-contract = "0.2.0"
+smart-contract-macros = "0.2.0"
 ```
 
 Open up `src/lib.rs` and paste the code below. What our first smart contract will do is that whenever the
@@ -68,7 +73,7 @@ impl Contract {
         Self {}
     }
 
-    fn on_money_received(&mut self, params: &mut Parameters) -> Result<(), Box<dyn Error>> {
+    fn on_money_received(&mut self, params: &mut Parameters) -> Result<(), String> {
         // Create and send transaction.
         Transfer {
             destination: params.sender,
@@ -196,7 +201,7 @@ pub struct Parameters {
 The following code below demonstrates how input parameters may be decoded and read in your smart contract using the `Parameters` struct.
 
 ```rust
-fn a_smart_contract_function(params: &mut Parameters) -> Result<(), Box<dyn Error>> {
+fn a_smart_contract_function(params: &mut Parameters) -> Result<(), String> {
     let _a: u8 = params.read(); // Read a single unsigned byte.
     let _b: i8 = params.read(); // Read a single signed byte.
     
@@ -238,7 +243,7 @@ Given that a smart contract is much like any other account, a smart contract may
 In the case of our smart contract, our intent is to send back half the PERLs of however many PERLs the smart contract receives. The core code that performs said intent is written within the `on_money_received` function like so:
 
 ```rust
-fn on_money_received(&mut self, params: &mut Parameters) -> Result<(), Box<dyn Error>> {
+fn on_money_received(&mut self, params: &mut Parameters) -> Result<(), String> {
     // Create and send transaction.
     Transfer {
         destination: params.sender,
@@ -276,7 +281,7 @@ In the case of our smart contract, we simply return `Ok(())`, though may optiona
 our smart contract to only process transactions that send a minimum of 1500 PERLs.
 
 ```rust
-fn on_money_received(&mut self, params: &mut Parameters) -> Result<(), Box<dyn Error>> {
+fn on_money_received(&mut self, params: &mut Parameters) -> Result<(), String> {
     if params.amount < 1500 {
         return Err("A minimum of 1500 PERLs must be sent.".into());
     }
@@ -301,7 +306,7 @@ macro follows the [RFC 2361 `dbg!()` macro's](https://github.com/rust-lang/rfcs/
 Any variable alongside its contents may easily be printed out on any of your nodes terminal using the provided `debug!()` macro.
 
 ```rust
-fn test_function(params: &mut Parameters) -> Result<(), Box<dyn Error>> {
+fn test_function(params: &mut Parameters) -> Result<(), String> {
     debug!("Hello world!");
     
     Ok(())
@@ -316,7 +321,7 @@ So there you have it; your first smart contract. Let's now compile it down into 
 ❯ cargo build --release --target wasm32-unknown-unknown
 ```
 
-You may then find your first WebAssembly smart contract compiled into a binary in `target/wasm32-unknown-unknown/my_first_contract.wasm`. Make sure to keep track of the file path to your contracts binary,
+You may then find your first WebAssembly smart contract compiled into a binary in `target/wasm32-unknown-unknown/release/my_first_contract.wasm`. Make sure to keep track of the file path to your contracts binary,
 as we will need it later for deploying it on Wavelet.
 
 ### The `spawn` Command
@@ -373,10 +378,10 @@ In the case that you may want to specify arbitrary input parameters and execute 
 ❯ call [contract address] [amount of perls to send] [gas limit] [function name] [function payload]
 ```
 
-As an example, say that you created a smart contract which exposes a function called `transfer`.
+As an example, say that you created a smart contract which exposes a function called `register_member`.
 The function takes in a boolean, a 32-byte wallet address, and an unsigned 64-bit integer.
 
-We wish to invoke the `transfer` function with the following input parameter set:
+We wish to invoke the `register_member` function with the following input parameter set:
  
 ```shell
 (true, `17b9165d75334fafcd9b85163409deeb6bb7873218e6406677af2da1a73ee560`, 1000)
@@ -395,10 +400,10 @@ skim over the table below which details how parameters for the payload are fed i
 | -------- | ---------------- |
 | 1/2/4/8 | Unsigned 8/16/32/64-bit integer |
 | H | Non-length-prefixed hex-encoded bytes |
-| S | Length-prefixed string |
+| S | String ending with a null terminator character '\0' |
 
 Given this, we may now construct any arbitrary function binary payload within our terminal. The final `call` command we would execute, assuming a gas limit of 999999 PERLs, would then be:
 
 ```shell
-❯ call [contract address] 0 999999 transfer 11 H17b9165d75334fafcd9b85163409deeb6bb7873218e6406677af2da1a73ee560 81000
+❯ call [contract address] 0 999999 register_member 11 H17b9165d75334fafcd9b85163409deeb6bb7873218e6406677af2da1a73ee560 81000
 ```

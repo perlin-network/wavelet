@@ -22,14 +22,15 @@ package api
 import (
 	"encoding/base64"
 	"encoding/hex"
+	"net/http"
+	"strconv"
+
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/valyala/fastjson"
-	"net/http"
-	"strconv"
 )
 
 type marshalableJSON interface {
@@ -130,7 +131,7 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 		return errors.Errorf("sender public key must be size %d", wavelet.SizeAccountID)
 	}
 
-	if s.Tag > sys.TagBatch {
+	if sys.Tag(s.Tag) > sys.TagBatch {
 		return errors.New("unknown transaction tag specified")
 	}
 
@@ -327,6 +328,9 @@ func (s *account) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 
 	balance, _ := wavelet.ReadAccountBalance(snapshot, s.id)
 	o.Set("balance", arena.NewNumberString(strconv.FormatUint(balance, 10)))
+
+	gasBalance, _ := wavelet.ReadAccountContractGasBalance(snapshot, s.id)
+	o.Set("gas_balance", arena.NewNumberString(strconv.FormatUint(gasBalance, 10)))
 
 	stake, _ := wavelet.ReadAccountStake(snapshot, s.id)
 	o.Set("stake", arena.NewNumberString(strconv.FormatUint(stake, 10)))

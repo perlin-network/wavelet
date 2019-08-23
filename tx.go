@@ -23,15 +23,16 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
+	"math/bits"
+	"sort"
+
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
-	"io"
-	"math"
-	"math/bits"
-	"sort"
 )
 
 type Transaction struct {
@@ -40,11 +41,12 @@ type Transaction struct {
 
 	Nonce uint64
 
-	ParentIDs []TransactionID // Transactions parents.
+	ParentIDs   []TransactionID // Transactions parents.
+	ParentSeeds []TransactionSeed
 
 	Depth uint64 // Graph depth.
 
-	Tag     byte
+	Tag     sys.Tag
 	Payload []byte
 
 	SenderSignature  Signature
@@ -52,50 +54,34 @@ type Transaction struct {
 
 	ID TransactionID // BLAKE2b(*).
 
-	Seed    [blake2b.Size256]byte // BLAKE2b(Sender || ParentIDs)
-	SeedLen byte                  // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
+	Seed    TransactionSeed // BLAKE2b(Sender || ParentIDs)
+	SeedLen byte            // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
 }
 
-func NewTransaction(creator *skademlia.Keypair, tag byte, payload []byte) Transaction {
+func NewTransaction(creator *skademlia.Keypair, tag sys.Tag, payload []byte) Transaction {
 	tx := Transaction{Tag: tag, Payload: payload}
 
 	var nonce [8]byte // TODO(kenta): nonce
 
 	tx.Creator = creator.PublicKey()
-	tx.CreatorSignature = edwards25519.Sign(creator.PrivateKey(), append(nonce[:], append([]byte{tx.Tag}, tx.Payload...)...))
+	tx.CreatorSignature = edwards25519.Sign(creator.PrivateKey(), append(nonce[:], append([]byte{byte(tx.Tag)}, tx.Payload...)...))
 
 	return tx
 }
 
-func NewBatchTransaction(creator *skademlia.Keypair, tags []byte, payloads [][]byte) Transaction {
-	if len(tags) != len(payloads) {
-		panic("UNEXPECTED: Number of tags must be equivalent to number of payloads.")
-	}
-
-	if len(tags) == math.MaxUint8 {
-		panic("UNEXPECTED: Total number of tags/payloads in a single batch transaction is 255.")
-	}
-
-	var size [4]byte
-	var buf []byte
-
-	for i := range tags {
-		buf = append(buf, tags[i])
-
-		binary.BigEndian.PutUint32(size[:4], uint32(len(payloads[i])))
-		buf = append(buf, size[:4]...)
-		buf = append(buf, payloads[i]...)
-	}
-
-	return NewTransaction(creator, sys.TagBatch, append([]byte{byte(len(tags))}, buf...))
-}
-
+// AttachSenderToTransaction immutably attaches sender to a transaction without modifying it in-place.
 func AttachSenderToTransaction(sender *skademlia.Keypair, tx Transaction, parents ...*Transaction) Transaction {
 	if len(parents) > 0 {
 		tx.ParentIDs = make([]TransactionID, 0, len(parents))
+		tx.ParentSeeds = make([]TransactionSeed, 0, len(parents))
+
+		sort.Slice(parents, func(i, j int) bool {
+			return bytes.Compare(parents[i].ID[:], parents[j].ID[:]) < 0
+		})
 
 		for _, parent := range parents {
 			tx.ParentIDs = append(tx.ParentIDs, parent.ID)
+			tx.ParentSeeds = append(tx.ParentSeeds, parent.Seed)
 
 			if tx.Depth < parent.Depth {
 				tx.Depth = parent.Depth
@@ -103,10 +89,6 @@ func AttachSenderToTransaction(sender *skademlia.Keypair, tx Transaction, parent
 		}
 
 		tx.Depth++
-
-		sort.Slice(tx.ParentIDs, func(i, j int) bool {
-			return bytes.Compare(tx.ParentIDs[i][:], tx.ParentIDs[j][:]) < 0
-		})
 	}
 
 	tx.Sender = sender.PublicKey()
@@ -117,56 +99,80 @@ func AttachSenderToTransaction(sender *skademlia.Keypair, tx Transaction, parent
 	return tx
 }
 
-func (t *Transaction) rehash() *Transaction {
-	t.ID = blake2b.Sum256(t.Marshal())
+func (tx *Transaction) rehash() {
+	logger := log.Node()
 
-	buf := make([]byte, 0, SizeAccountID+len(t.ParentIDs)*SizeTransactionID)
-	buf = append(buf, t.Sender[:]...)
-	for _, parentID := range t.ParentIDs {
-		buf = append(buf, parentID[:]...)
+	tx.ID = blake2b.Sum256(tx.Marshal())
+
+	// Calculate the new seed.
+
+	hasher, err := blake2b.New(32, nil)
+	if err != nil {
+		logger.Fatal().Err(err).Msg("BUG: blake2b.New") // should never happen
 	}
 
-	t.Seed = blake2b.Sum256(buf)
-	t.SeedLen = byte(prefixLen(t.Seed[:]))
+	_, err = hasher.Write(tx.Sender[:])
+	if err != nil {
+		logger.Fatal().Err(err).Msg("BUG: hasher.Write (1)") // should never happen
+	}
 
-	return t
+	for _, parentSeed := range tx.ParentSeeds {
+		_, err = hasher.Write(parentSeed[:])
+		if err != nil {
+			logger.Fatal().Err(err).Msg("BUG: hasher.Write (2)") // should never happen
+		}
+	}
+
+	// Write 8-bit hash of transaction content to reduce conflicts.
+	_, err = hasher.Write(tx.ID[:1])
+	if err != nil {
+		logger.Fatal().Err(err).Msg("BUG: hasher.Write (3)") // should never happen
+	}
+
+	seed := hasher.Sum(nil)
+	copy(tx.Seed[:], seed)
+
+	tx.SeedLen = byte(prefixLen(seed))
 }
 
-func (t Transaction) Marshal() []byte {
-	w := bytes.NewBuffer(make([]byte, 0, 222+(32*len(t.ParentIDs))+len(t.Payload)))
+func (tx Transaction) Marshal() []byte {
+	w := bytes.NewBuffer(make([]byte, 0, 222+(SizeTransactionID*len(tx.ParentIDs))+SizeTransactionSeed*len(tx.ParentSeeds)+len(tx.Payload)))
 
-	w.Write(t.Sender[:])
+	w.Write(tx.Sender[:])
 
-	if t.Creator != t.Sender {
+	if tx.Creator != tx.Sender {
 		w.WriteByte(1)
-		w.Write(t.Creator[:])
+		w.Write(tx.Creator[:])
 	} else {
 		w.WriteByte(0)
 	}
 
 	var buf [8]byte
 
-	binary.BigEndian.PutUint64(buf[:8], t.Nonce)
+	binary.BigEndian.PutUint64(buf[:8], tx.Nonce)
 	w.Write(buf[:8])
 
-	w.WriteByte(byte(len(t.ParentIDs)))
-	for _, parentID := range t.ParentIDs {
+	w.WriteByte(byte(len(tx.ParentIDs)))
+	for _, parentID := range tx.ParentIDs {
 		w.Write(parentID[:])
 	}
+	for _, parentSeed := range tx.ParentSeeds {
+		w.Write(parentSeed[:])
+	}
 
-	binary.BigEndian.PutUint64(buf[:8], t.Depth)
+	binary.BigEndian.PutUint64(buf[:8], tx.Depth)
 	w.Write(buf[:8])
 
-	w.WriteByte(t.Tag)
+	w.WriteByte(byte(tx.Tag))
 
-	binary.BigEndian.PutUint32(buf[:4], uint32(len(t.Payload)))
+	binary.BigEndian.PutUint32(buf[:4], uint32(len(tx.Payload)))
 	w.Write(buf[:4])
-	w.Write(t.Payload)
+	w.Write(tx.Payload)
 
-	w.Write(t.SenderSignature[:])
+	w.Write(tx.SenderSignature[:])
 
-	if t.Creator != t.Sender {
-		w.Write(t.CreatorSignature[:])
+	if tx.Creator != tx.Sender {
+		w.Write(tx.CreatorSignature[:])
 	}
 
 	return w.Bytes()
@@ -181,7 +187,13 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 	var buf [8]byte
 
 	if _, err = io.ReadFull(r, buf[:1]); err != nil {
-		err = errors.Wrap(err, "failed to decode check bit to see if transaction creator is recorded")
+		err = errors.Wrap(err, "failed to decode flag to see if transaction creator is recorded")
+		return
+	}
+
+	if buf[0] != 0 && buf[0] != 1 {
+		err = errors.Errorf("flag must be zero or one, but is %d instead", buf[0])
+		return
 	}
 
 	creatorRecorded := buf[0] == 1
@@ -221,6 +233,15 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 		}
 	}
 
+	t.ParentSeeds = make([]TransactionSeed, len(t.ParentIDs))
+
+	for i := range t.ParentSeeds {
+		if _, err = io.ReadFull(r, t.ParentSeeds[i][:]); err != nil {
+			err = errors.Wrapf(err, "failed to decode parent seed %d", i)
+			return
+		}
+	}
+
 	if _, err = io.ReadFull(r, buf[:8]); err != nil {
 		err = errors.Wrap(err, "could not read transaction depth")
 		return
@@ -233,7 +254,7 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 		return
 	}
 
-	t.Tag = buf[0]
+	t.Tag = sys.Tag(buf[0])
 
 	if _, err = io.ReadFull(r, buf[:4]); err != nil {
 		err = errors.Wrap(err, "could not read transaction payload length")
@@ -266,16 +287,6 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 	return t, nil
 }
 
-func prefixLen(buf []byte) int {
-	for i, b := range buf {
-		if b != 0 {
-			return i*8 + bits.LeadingZeros8(uint8(b))
-		}
-	}
-
-	return len(buf)*8 - 1
-}
-
 func (tx Transaction) IsCritical(difficulty byte) bool {
 	return tx.SeedLen >= difficulty
 }
@@ -298,4 +309,14 @@ func (tx Transaction) LogicalUnits() int {
 
 func (tx Transaction) String() string {
 	return fmt.Sprintf("Transaction{ID: %x}", tx.ID)
+}
+
+func prefixLen(buf []byte) int {
+	for i, b := range buf {
+		if b != 0 {
+			return i*8 + bits.LeadingZeros8(uint8(b))
+		}
+	}
+
+	return len(buf)*8 - 1
 }

@@ -20,6 +20,11 @@
 package api
 
 import (
+	"net/url"
+	"strconv"
+	"testing"
+	"time"
+
 	"github.com/fasthttp/websocket"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
@@ -28,10 +33,6 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 	"github.com/valyala/fastjson"
-	"net/url"
-	"strconv"
-	"testing"
-	"time"
 )
 
 func TestPollLog(t *testing.T) {
@@ -77,9 +78,9 @@ func TestPollLog(t *testing.T) {
 
 		// log 2 messages with different tags
 		logger := log.TX("test")
-		logger.Log().Uint8("tag", sys.TagTransfer).Msg("")
+		logger.Log().Uint8("tag", byte(sys.TagTransfer)).Msg("")
 
-		logger.Log().Uint8("tag", sys.TagStake).Msg("")
+		logger.Log().Uint8("tag", byte(sys.TagStake)).Msg("")
 
 		time.Sleep(2500 * time.Millisecond)
 

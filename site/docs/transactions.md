@@ -68,10 +68,12 @@ The current binary format of a Wavelet transaction is denoted as follows:
 
 | Field | Type |
 | ----- | ---- |
+| Flag | A single byte that is 1 if the Creator Account ID is the same as the Sender Account ID, and is 0 otherwise. |
 | Sender Account ID | 256-bit wallet address/public key. | 
 | Creator Account ID | 256-bit wallet address/public key. | 
 | Nonce | Latest nonce value of the creators account, denoted as an unsigned 64-bit little-endian integer. | 
 | Parent IDs | Length-prefixed array of 256-bit transaction IDs; assigned by the transactions sender. |
+| Parent Seeds | Array of 256-bit transaction seeds, with the same length as the Parent IDs field and therefore not length-prefixed; must correspond to the transactions specified by Parent IDs. |
 | Depth | Unsigned 64-bit little-endian integer; assigned by the transactions sender. |
 | Tag | 8-bit integer (byte) identifying the transactions operation. |
 | Payload | Length-prefixed array of bytes providing further details of the operation invoked under the transactions designated tag. |
@@ -79,7 +81,9 @@ The current binary format of a Wavelet transaction is denoted as follows:
 | Creator Signature | Ed25519 signature of the tag, nonce, and payload concatenated together. |
 
 As a space-saving optimization, should the sender and creator of the transaction be the exact same
-account, the creator's ID and signature is omitted when encoding the transaction into binary.
+account, the creator's account ID and signature is omitted when encoding the transaction into binary.
+The flag byte is responsible for recording whether or not the sender and creator of the transaction is
+the same.
 
 ## Payload Binary Formats
 
@@ -97,6 +101,7 @@ A `Transfer` transaction is structured, assuming the same binary encoding scheme
 | Recipient Account ID | 256-bit wallet/smart contract account address. |
 | Num PERLs Sent | Unsigned 64-bit little-endian integer, representative of some amount of PERLs to be sent to the designated recipient. |
 | Gas Limit | Unsigned 64-bit little-endian integer, representative of the maximum gas fee that may be deducted from the transaction creators account. |
+| Gas Deposit | Unsigned 64-bit little-endian integer, representative of some amount of gas fees to deposit into the smart contract. |
 | Function Name | Length-prefixed string, representative of the name of the smart contract function to be invoked. |
 | Function Payload | Length-prefixed array of bytes passed as input parameters to the smart contract function to be invoked. |
 
@@ -130,6 +135,7 @@ More specifically, a `Contract` transaction is structured, assuming the same bin
 | Field | Type |
 | ----- | ---- |
 | Gas Limit | Unsigned 64-bit little-endian integer, representative of the maximum gas fee that may be deducted from the transaction creators account. |
+| Gas Deposit | Unsigned 64-bit little-endian integer, representative of some amount of gas fees to deposit into the smart contract. |
 | Payload | Length-prefixed array of bytes passed as input parameters to the smart contracts `init` function. |
 | Code | Non-length-prefixed array of bytes representative of the smart contracts code. |
 

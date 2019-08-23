@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -80,25 +81,27 @@ func TestLimiterBufferFull(t *testing.T) {
 }
 
 func TestLimiterTimer(t *testing.T) {
-	called := 0
+	var called int32
 	a := func([][]byte) {
-		called++
+		atomic.AddInt32(&called, 1)
 	}
+
+	timeout := 1 * time.Millisecond
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	d := NewLimiter(ctx, WithAction(a), WithPeriod(1*time.Millisecond), WithBufferLimit(1))
+	d := NewLimiter(ctx, WithAction(a), WithPeriod(timeout), WithBufferLimit(1))
 
 	for i := 0; i < 100; i++ {
 		d.Add(Bytes([]byte{0x00, 0x01, 0x02}))
 	}
 
-	time.Sleep(4 * time.Millisecond)
+	time.Sleep(timeout * 2)
 
 	// Since timer period is much smaller comparing to speed on which data incoming
 	// we expect number of handler calls to be based on timer (100 calls per 1 tx).
-	assert.Equal(t, 100, called)
+	assert.Equal(t, int32(100), called)
 }
 
 func BenchmarkLimiter(b *testing.B) {

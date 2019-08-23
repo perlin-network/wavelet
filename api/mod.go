@@ -20,23 +20,26 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
+
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/debounce"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/pprofhandler"
 	"github.com/valyala/fastjson"
+
 	"io"
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -201,7 +204,7 @@ func (g *Gateway) Shutdown() {
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	req := new(sendTransactionRequest)
 
-	if g.ledger != nil && g.ledger.TakeSendToken() == false {
+	if g.ledger != nil && g.ledger.TakeSendQuota() == false {
 		g.renderError(ctx, ErrInternal(errors.New("rate limit")))
 		return
 	}
@@ -217,7 +220,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 
 	tx := wavelet.AttachSenderToTransaction(
 		g.keys,
-		wavelet.Transaction{Tag: req.Tag, Payload: req.payload, Creator: req.creator, CreatorSignature: req.signature},
+		wavelet.Transaction{Tag: sys.Tag(req.Tag), Payload: req.payload, Creator: req.creator, CreatorSignature: req.signature},
 		g.ledger.Graph().FindEligibleParents()...,
 	)
 
@@ -244,7 +247,6 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 	queryArgs := ctx.QueryArgs()
 	if raw := string(queryArgs.Peek("sender")); len(raw) > 0 {
 		slice, err := hex.DecodeString(raw)
-
 		if err != nil {
 			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
 			return
@@ -260,7 +262,6 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 
 	if raw := string(queryArgs.Peek("creator")); len(raw) > 0 {
 		slice, err := hex.DecodeString(raw)
-
 		if err != nil {
 			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "creator ID must be presented as valid hex")))
 			return
@@ -422,9 +423,9 @@ func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {
 
 	ctx.Response.Header.Set("Content-Disposition", "attachment; filename="+hex.EncodeToString(id[:])+".wasm")
 	ctx.Response.Header.Set("Content-Type", "application/wasm")
-	ctx.Response.Header.Set("Content-Length", strconv.Itoa(hex.EncodedLen(len(code))))
+	ctx.Response.Header.Set("Content-Length", strconv.Itoa(len(code)))
 
-	_, _ = io.Copy(ctx, strings.NewReader(hex.EncodeToString(code)))
+	_, _ = io.Copy(ctx, bytes.NewReader(code))
 }
 
 func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
@@ -469,7 +470,7 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 	page, available := wavelet.ReadAccountContractPage(snapshot, id, idx)
 
 	if len(page) == 0 || !available {
-		g.renderError(ctx, ErrBadRequest(errors.Errorf("page %d is either empty, or does not exist", idx)))
+		_, _ = ctx.Write([]byte{})
 		return
 	}
 
@@ -521,7 +522,6 @@ func (g *Gateway) poll(sink *sink) func(ctx *fasthttp.RequestCtx) {
 
 func (g *Gateway) registerWebsocketSink(rawURL string, factory *debounce.Factory) *sink {
 	u, err := url.Parse(rawURL)
-
 	if err != nil {
 		panic(err)
 	}

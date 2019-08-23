@@ -25,9 +25,12 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/perlin-network/wavelet/lru"
+
 	"github.com/perlin-network/wavelet/store"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
+	"github.com/valyala/bytebufferpool"
 )
 
 var NodeKeyPrefix = []byte("@1:")
@@ -46,13 +49,13 @@ type Tree struct {
 
 	root *node
 
-	cache *lru
+	cache *lru.LRU
 
 	viewID uint64
 }
 
 func New(kv store.KV) *Tree {
-	t := &Tree{kv: kv, cache: newLRU(DefaultCacheSize), maxWriteBatchSize: MaxWriteBatchSize}
+	t := &Tree{kv: kv, cache: lru.NewLRU(DefaultCacheSize), maxWriteBatchSize: MaxWriteBatchSize}
 
 	// Load root node if it already exists.
 	if buf, err := t.kv.Get(RootKey); err == nil && len(buf) == MerkleHashSize {
@@ -69,7 +72,7 @@ func (t *Tree) WithLRUCache(size *int) *Tree {
 	if size == nil {
 		t.cache = nil
 	} else {
-		t.cache = newLRU(*size)
+		t.cache = lru.NewLRU(*size)
 	}
 
 	return t
@@ -175,8 +178,13 @@ func (t *Tree) doPrintContents(n *node, depth int) {
 
 func (t *Tree) Commit() error {
 	if t.root == nil {
+		// Tree is empty, so just delete the root.
+		// If deleting the root fails because it doesn't exist, ignore the error.
+		_ = t.kv.Delete(RootKey)
+
 		return nil
 	}
+
 	batch := t.kv.NewWriteBatch()
 
 	err := t.root.dfs(t, false, func(n *node) (bool, error) {
@@ -184,8 +192,9 @@ func (t *Tree) Commit() error {
 			return false, nil
 		}
 		n.wroteBack = true
-		var buf bytes.Buffer
-		n.serialize(&buf)
+		buf := bytebufferpool.Get()
+		defer bytebufferpool.Put(buf)
+		n.serialize(buf)
 
 		batch.Put(append(NodeKeyPrefix, n.id[:]...), buf.Bytes())
 		return true, nil
@@ -210,14 +219,7 @@ func (t *Tree) Commit() error {
 		}
 	}
 
-	if t.root != nil {
-		return t.kv.Put(RootKey, t.root.id[:])
-	}
-
-	// If deleting the root fails because it doesn't exist, ignore the error.
-	_ = t.kv.Delete(RootKey)
-
-	return nil
+	return t.kv.Put(RootKey, t.root.id[:])
 }
 
 func (t *Tree) getNextOldRootIndex() uint64 {
@@ -272,7 +274,7 @@ func (t *Tree) Checksum() [MerkleHashSize]byte {
 }
 
 func (t *Tree) loadNode(id [MerkleHashSize]byte) (*node, error) {
-	if n, ok := t.cache.load(id); ok {
+	if n, ok := t.cache.Load(id); ok {
 		return n.(*node), nil
 	}
 
@@ -284,7 +286,7 @@ func (t *Tree) loadNode(id [MerkleHashSize]byte) (*node, error) {
 
 	n := mustDeserialize(bytes.NewReader(buf))
 	n.wroteBack = true
-	t.cache.put(id, n)
+	t.cache.Put(id, n)
 
 	return n, nil
 }
@@ -342,7 +344,7 @@ func (t *Tree) mustLoadRight(n *node) *node {
 }
 
 func (t *Tree) deleteNodeAndMetadata(id [MerkleHashSize]byte) {
-	t.cache.remove(id)
+	t.cache.Remove(id)
 	_ = t.kv.Delete(append(NodeKeyPrefix, id[:]...))
 	_ = t.kv.Delete(append(GCAliveMarkPrefix, id[:]...))
 }
@@ -375,7 +377,8 @@ func (t *Tree) iterateDiff(prevViewID uint64, callback func(n *node) bool) {
 }
 
 func (t *Tree) DumpDiff(prevViewID uint64) []byte {
-	buf := bytes.NewBuffer(nil)
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
 	t.iterateDiff(prevViewID, func(n *node) bool {
 		n.serializeForDifference(buf)
 		return true

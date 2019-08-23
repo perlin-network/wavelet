@@ -17,32 +17,22 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package avl
+package wavelet
 
 import (
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"testing/quick"
 )
 
-func TestLRU(t *testing.T) {
-	lru := newLRU(2)
+// TestParseJSON tests the functionality of the ParseJSON helper method.
+func TestParseJSON(t *testing.T) {
+	t.Parallel()
 
-	lru.put([MerkleHashSize]byte{'a'}, 1)
-	lru.put([MerkleHashSize]byte{'b'}, 2)
-	_, ok := lru.load([MerkleHashSize]byte{'b'})
-	assert.True(t, ok)
-	_, ok = lru.load([MerkleHashSize]byte{'a'})
-	assert.True(t, ok)
+	f := func(jsonData []byte, tag string) bool {
+		payload, err := ParseJSON(jsonData, tag) // Attempt to parse
+		return !(err != nil && payload != nil)   // Check errored but still returned
+	}
 
-	lru.put([MerkleHashSize]byte{'c'}, 3)
-	_, ok = lru.load([MerkleHashSize]byte{'b'})
-	assert.False(t, ok)
-
-	val, ok := lru.load([MerkleHashSize]byte{'a'})
-	assert.True(t, ok)
-	assert.Equal(t, 1, val.(int))
-
-	val, ok = lru.load([MerkleHashSize]byte{'c'})
-	assert.True(t, ok)
-	assert.Equal(t, 3, val.(int))
+	assert.NoError(t, quick.Check(f, nil)) // Check no errors
 }
