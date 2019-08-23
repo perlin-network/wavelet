@@ -486,7 +486,7 @@ func (w *TestWavelet) Cleanup() {
 	w.Testnet.Cleanup()
 
 	// Since Ledger doesn't have a proper cleanup method yet, just sleep
-	time.Sleep(time.Millisecond * 500)
+	time.Sleep(1 * time.Second)
 }
 
 type TestWaveletConfig struct {
