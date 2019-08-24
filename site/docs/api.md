@@ -39,28 +39,32 @@ If an IP Address exceeds the limit, the response would be an error with code `42
 * **Success Response:**
 
     * **Code:** 200 <br />
-    **Content:**
+    * **Content:**
+
     ```json
     {
-      "public_key": "8419234abed4b6ad7ebf52f4c3f91a2ebcb93df2bd9fbd7f6a1946427d8806d8",
-      "address": "127.0.0.1:49891",
+      "public_key": "696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a",
+      "address": "127.0.0.1:9001",
       "num_accounts": 3,
+      "preferred_votes": 0,
+      "preferred_id": "",
       "round": {
-        "merkle_root": "1099b75eef1423a90583a1daec9fdfb9",
-        "start_id": "05937426b327cb0c4ea37f636d2fb59a8e2557932f9231f0b978cbb2f6824618",
-        "end_id": "2f4b215400d14c1414f5579e994798c0a7ca677c4dc3a6a5f8159aaae0335c6f",
-        "applied": 17160,
-        "depth": 429,
-        "difficulty": 10
+        "merkle_root": "613f573f0ed5d8b60d9659a3fc04ada1",
+        "start_id": "0000000000000000000000000000000000000000000000000000000000000000",
+        "end_id": "403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc",
+        "applied": 0,
+        "depth": 0,
+        "difficulty": 8
+      },
+      "graph": {
+        "num_tx": 1,
+        "num_missing_tx": 0,
+        "num_tx_in_store": 1
       },
       "peers": [
         {
-          "address": "127.0.0.1:49894",
-          "public_key": "c88e21ab067593c4cfed850f2044a075132878e14dbf4972853f80294b1accc4"
-        },
-        {
-          "address": "127.0.0.1:49900",
-          "public_key": "451634618a41a8904eae8da506227a049b1ff57def42ba27e1a2b1423a5badbf"
+          "address": "127.0.0.1:9000",
+          "public_key": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"
         }
       ]
     }
@@ -69,7 +73,7 @@ If an IP Address exceeds the limit, the response would be an error with code `42
 * **Error Response:**
 
     * **Code:** 429 TOO MANY REQUEST <br />
-    **Content:** `Too Many Requests`
+    * **Content:** `Too Many Requests`
 
 **Account**
 ----
@@ -94,7 +98,7 @@ Get Account Information
 * **Success Response:**
 
     * **Code:** 200 <br />
-    **Content:**
+    * **Content:**
     ```json
     {
       "public_key": "f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467",
@@ -110,7 +114,7 @@ Get Account Information
     
     * **Reason:** Invalid Account ID size <br />
     **Code:** 400 BAD REQUEST <br />
-    **Content:**
+    * **Content:**
     ```json
     {
       "status": "Bad request.",
@@ -120,7 +124,7 @@ Get Account Information
     <br />
     
     * **Code:** 400 BAD REQUEST <br />
-    **Content:**
+    * **Content:**
     ```json
     {
       "status": "Bad request.",
@@ -158,7 +162,7 @@ Get Account Information
 * **Success Response:**
  
     * **Code:** 200 <br />
-    **Content:**
+    * **Content:**
     ```json
     {
       "tx_id": "facd9c4bddc8d1080bac6d08a35cbd98ff9ef3924624d1307eced3b40d3549a0",
@@ -172,7 +176,7 @@ Get Account Information
 * **Error Response:**
  
     * **Code:** 400 BAD REQUEST <br />
-    **Content:**
+    * **Content:**
     ```json
     {
       "status": "Bad request.",
@@ -214,7 +218,7 @@ Get Account Information
 * **Success Response:**
  
     * **Code:** 200 <br />
-    **Content:**
+    * **Content:**
     ```json
     [
       {
@@ -238,7 +242,7 @@ Get Account Information
 * **Error Response:**
  
     * **Code:** 429 TOO MANY REQUEST <br />
-    **Content:** `Too Many Requests`
+    * **Content:** `Too Many Requests`
 
 **Transaction Detail**
  ----
@@ -263,7 +267,7 @@ Get Account Information
 * **Success Response:**
  
     * **Code:** 200 <br />
-    **Content:**
+    * **Content:**
     ```json
     {
       "id": "e6d9aab2d62522073daa0a30c629516fb7beb11d6a327f53eb6f6768dc6dbe09",
@@ -285,8 +289,8 @@ Get Account Information
 * **Error Response:**
     
     * **Code:** 400 BAD REQUEST <br />
-    **Desc:**  The Transaction ID is not a valid size. Its size must be 32 bytes<br />
-    **Content:**
+    * **Desc:**  The Transaction ID is not a valid size. Its size must be 32 bytes<br />
+    * **Content:**
     ```json
     {
       "status": "Bad request.",
@@ -297,8 +301,8 @@ Get Account Information
     <br />
   
     * **Code:** 400 BAD REQUEST <br />
-    **Desc:** Transaction ID is not a valid hex<br />
-    **Content:**
+    * **Desc:** Transaction ID is not a valid hex<br />
+    * **Content:**
     ```json
     {
      "status": "Bad request.",
@@ -309,8 +313,8 @@ Get Account Information
     <br />
   
     * **Code:** 404 NOT FOUND <br />
-    **Desc:** Transaction ID does not exist<br />
-    **Content:**
+    * **Desc:** Transaction ID does not exist<br />
+    * **Content:**
     ```json
     {
       "status": "Bad request.",
@@ -343,14 +347,14 @@ Get Account Information
 * **Success Response:**
  
     * **Code:** 200 <br />
-    **Content:**
+    * **Content:**
     Th contract web assembly code.
   
 * **Error Response:**
     
     * **Code:** 400 BAD REQUEST <br />
-    **Desc:** The Contract ID is not a valid size. Its size must be 32 bytes<br />
-    **Content:**
+    * **Desc:** The Contract ID is not a valid size. Its size must be 32 bytes<br />
+    * **Content:**
     ```json
     {
       "status": "Bad request.",
@@ -361,8 +365,8 @@ Get Account Information
     <br />
   
     * **Code:** 400 BAD REQUEST <br />
-    **Desc:** The contract ID is not a valid hex<br />
-    **Content:**
+    * **Desc:** The contract ID is not a valid hex<br />
+    * **Content:**
     ```json
     {
      "status": "Bad request.",
@@ -373,8 +377,8 @@ Get Account Information
     <br />
   
     * **Code:** 404 NOT FOUND <br />
-    **Desc:** The Contract ID does not exist<br />
-    **Content:**
+    * **Desc:** The Contract ID does not exist<br />
+    * **Content:**
     ```json
     {
       "status": "Bad request.",
@@ -385,8 +389,8 @@ Get Account Information
     <br />
   
     * **Code:** 429 TOO MANY REQUEST <br />
-    **Desc:** The request is rate limited<br />
-    **Content:** `Too Many Requests`
+    * **Desc:** The request is rate limited<br />
+    * **Content:** `Too Many Requests`
     
 **Contract Page**
  ----
@@ -415,14 +419,14 @@ Get Account Information
 * **Success Response:**
  
     * **Code:** 200 <br />
-    **Content:**
+    * **Content:**
     The memory snapshot.
   
 * **Error Response:**
     
     * **Code:** 400 BAD REQUEST <br />
-    **Desc:** The Contract ID is not a valid size. Its size must be 32 bytes<br />
-    **Content:**
+    * **Desc:** The Contract ID is not a valid size. Its size must be 32 bytes<br />
+    * **Content:**
     ```json
     {
       "status": "Bad request.",
@@ -433,8 +437,8 @@ Get Account Information
     <br />
   
     * **Code:** 400 BAD REQUEST <br />
-    **Desc:** The contract ID is not a valid hex<br />
-    **Content:**
+    * **Desc:** The contract ID is not a valid hex<br />
+    * **Content:**
     ```json
     {
      "status": "Bad request.",
@@ -445,8 +449,8 @@ Get Account Information
     <br />
   
     * **Code:** 404 NOT FOUND <br />
-    **Desc:** The contract does not have any page<br />
-    **Content:**
+    * **Desc:** The contract does not have any page<br />
+    * **Content:**
     ```json
     {
       "status": "Bad request.",
@@ -457,8 +461,8 @@ Get Account Information
     <br />
       
     * **Code:** 400 BAD REQUEST <br />
-    **Desc:** The page is either empty or does not exist <br />
-    **Content:**
+    * **Desc:** The page is either empty or does not exist <br />
+    * **Content:**
     ```json
     {
       "status": "Bad request.",
@@ -469,8 +473,8 @@ Get Account Information
     <br />
       
     * **Code:** 400 BAD REQUEST <br />
-    **Desc:** The index does not exist<br />
-    **Content:**
+    * **Desc:** The index does not exist<br />
+    * **Content:**
     ```json
     {
       "status": "Bad request.",
@@ -481,5 +485,5 @@ Get Account Information
     <br />
   
     * **Code:** 429 TOO MANY REQUEST <br />
-    **Desc:** The request is rate limited<br />
-    **Content:** `Too Many Requests`
+    * **Desc:** The request is rate limited<br />
+    * **Content:** `Too Many Requests`

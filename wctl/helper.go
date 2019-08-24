@@ -1,6 +1,7 @@
 package wctl
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/fasthttp/websocket"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fastjson"
 )
 
 // RequestJSON will make a request to a given path, with a given body and
@@ -127,4 +129,9 @@ func (c *Client) pollWS(stop <-chan struct{}, ev chan []byte, path string, query
 	}()
 
 	return nil
+}
+
+func jsonHex(v *fastjson.Value, dst []byte, keys ...string) error {
+	_, err := hex.Decode(dst, v.GetStringBytes(keys...))
+	return err
 }

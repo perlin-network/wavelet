@@ -9,8 +9,9 @@ import (
 
 var _ UnmarshalableJSON = (*LedgerStatusResponse)(nil)
 
-// GetLedgerStatus calls the /ledger endpoint of the API.
-func (c *Client) GetLedgerStatus(senderID string, creatorID string, offset uint64, limit uint64) (*LedgerStatusResponse, error) {
+// GetLedgerStatus calls the /ledger endpoint of the API. All arguments are
+// optional.
+func (c *Client) LedgerStatus(senderID string, creatorID string, offset uint64, limit uint64) (*LedgerStatusResponse, error) {
 	vals := url.Values{}
 
 	if senderID != "" {
@@ -40,13 +41,35 @@ func (c *Client) GetLedgerStatus(senderID string, creatorID string, offset uint6
 }
 
 type LedgerStatusResponse struct {
-	PublicKey     string   `json:"public_key"`
-	HostAddress   string   `json:"address"`
-	PeerAddresses []string `json:"peers"`
+	PublicKey      [32]byte `json:"public_key"`
+	HostAddress    string   `json:"address"`
+	NumAccounts    int      `json:"num_accounts"`
+	PreferredVotes int      `json:"preferred_votes"`
+	PreferredID    string   `json:"preferred_id"` // optional
 
-	RootID     string `json:"root_id"`
-	RoundID    uint64 `json:"round_id"`
-	Difficulty uint64 `json:"difficulty"`
+	Round struct {
+		MerkleRoot [16]byte `json:"merkle_root"`
+		StartID    [32]byte `json:"start_id"`
+		EndID      [32]byte `json:"end_id"`
+		Index      uint64   `json:"index"`
+		Applied    uint64   `json:"applied"`
+		Depth      uint64   `json:"depth"`
+		Difficulty uint64   `json:"difficulty"`
+	} `json:"round"`
+
+	Graph struct {
+		Tx        uint64 `json:"num_tx"`
+		MissingTx uint64 `json:"num_missing_tx"`
+		TxInStore uint64 `json:"num_tx_in_store"`
+		Height    uint64 `json:"height"`
+	} `json:"graph"`
+
+	Peers []Peer `json:"peers"`
+}
+
+type Peer struct {
+	Address   string `json:"address"`
+	PublicKey string `json:"public_key"`
 }
 
 func (l *LedgerStatusResponse) UnmarshalJSON(b []byte) error {
@@ -57,17 +80,43 @@ func (l *LedgerStatusResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	l.PublicKey = string(v.GetStringBytes("public_key"))
-	l.HostAddress = string(v.GetStringBytes("address"))
-
-	peerValue := v.GetArray("peers")
-	for _, peer := range peerValue {
-		l.PeerAddresses = append(l.PeerAddresses, peer.String())
+	if err := jsonHex(v, l.PublicKey[:], "public_key"); err != nil {
+		return err
 	}
 
-	l.RootID = string(v.GetStringBytes("root_id"))
-	l.RoundID = v.GetUint64("round_id")
-	l.Difficulty = v.GetUint64("difficulty")
+	l.HostAddress = string(v.GetStringBytes("address"))
+	l.NumAccounts = v.GetInt("num_accounts")
+	l.PreferredVotes = v.GetInt("preferred_votes")
+	l.PreferredID = string(v.GetStringBytes("preferred_id"))
+
+	if err := jsonHex(v, l.Round.MerkleRoot[:], "merkle_root"); err != nil {
+		return err
+	}
+
+	if err := jsonHex(v, l.Round.StartID[:], "start_id"); err != nil {
+		return err
+	}
+
+	if err := jsonHex(v, l.Round.EndID[:], "end_id"); err != nil {
+		return err
+	}
+
+	l.Round.Applied = v.GetUint64("round", "applied")
+	l.Round.Depth = v.GetUint64("round", "depth")
+	l.Round.Difficulty = v.GetUint64("round", "difficulty")
+
+	l.Graph.Tx = v.GetUint64("graph", "num_tx")
+	l.Graph.MissingTx = v.GetUint64("graph", "num_missing_tx")
+	l.Graph.TxInStore = v.GetUint64("graph", "num_tx_in_store")
+	l.Graph.Height = v.GetUint64("graph", "height")
+
+	peerValue := v.GetArray("peers")
+	l.Peers = make([]Peer, len(peerValue))
+
+	for i, peer := range peerValue {
+		l.Peers[i].Address = string(peer.GetStringBytes("address"))
+		l.Peers[i].PublicKey = string(peer.GetStringBytes("public_key"))
+	}
 
 	return nil
 }

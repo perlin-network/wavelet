@@ -1,7 +1,6 @@
 package wctl
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -45,6 +44,10 @@ func NewFunctionCall(name string, params ...[]byte) FunctionCall {
 	}
 }
 
+func (fn *FunctionCall) AddParams(params ...[]byte) {
+	fn.Params = append(fn.Params, params...)
+}
+
 func (fn FunctionCall) toTransfer(recipient [32]byte) wavelet.Transfer {
 	t := wavelet.Transfer{
 		Recipient: recipient,
@@ -65,18 +68,14 @@ func DecodeHex(s string) ([]byte, error) {
 }
 
 func EncodeString(s string) []byte {
-	return EncodeBytes([]byte(s))
+	return append([]byte(s), 0)
 }
 
 func EncodeBytes(b []byte) []byte {
 	var lenbuf = make([]byte, 4)
 	binary.LittleEndian.PutUint32(lenbuf, uint32(len(b)))
 
-	var buf bytes.Buffer
-	buf.Write(lenbuf)
-	buf.Write(b)
-
-	return buf.Bytes()
+	return append(lenbuf, b...)
 }
 
 func EncodeByte(u byte) []byte {

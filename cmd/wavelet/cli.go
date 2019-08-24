@@ -21,8 +21,10 @@ package main
 
 import (
 	"encoding/csv"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
@@ -47,14 +49,14 @@ type CLI struct {
 	logger zerolog.Logger
 	// keys   *skademlia.Keypair
 
-	client *wctl.Client
+	*wctl.Client
 
 	completion []string
 }
 
 func NewCLI(client *wctl.Client) (*CLI, error) {
 	c := &CLI{
-		client: client,
+		Client: client,
 		logger: log.Node(),
 		app:    cli.NewApp(),
 	}
@@ -240,4 +242,36 @@ func a(f func(*cli.Context)) func(*cli.Context) error {
 		f(ctx)
 		return nil
 	}
+}
+
+func (cli *CLI) recipient(arg string) (r [32]byte, ok bool) {
+	recipient, err := hex.DecodeString(arg)
+	if err != nil {
+		cli.logger.Error().Err(err).
+			Msg("The ID you specified is invalid.")
+		return
+	}
+
+	if len(recipient) != 32 {
+		cli.logger.Error().Int("length", len(recipient)).
+			Msg("The ID you specified is invalid.")
+		return
+	}
+
+	ok = true
+	copy(r[:], recipient)
+	return
+}
+
+func (cli *CLI) amount(arg string) (a uint64, ok bool) {
+	amount, err := strconv.ParseUint(arg, 10, 64)
+	if err != nil {
+		cli.logger.Error().Err(err).
+			Msg("Failed to convert payment amount to a uint64.")
+		return
+	}
+
+	ok = true
+	a = amount
+	return
 }

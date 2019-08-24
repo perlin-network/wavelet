@@ -19,10 +19,11 @@ func (c *Client) GetAccount(account [32]byte) (*Account, error) {
 }
 
 type Account struct {
-	PublicKey string `json:"public_key"`
-	Balance   uint64 `json:"balance"`
-	Stake     uint64 `json:"stake"`
-
+	PublicKey  string `json:"public_key"`
+	Balance    uint64 `json:"balance"`
+	Stake      uint64 `json:"stake"`
+	Reward     uint64 `json:"reward"`
+	Nonce      uint64 `json:"nonce"`
 	IsContract bool   `json:"is_contract"`
 	NumPages   uint64 `json:"num_mem_pages,omitempty"`
 }
@@ -38,6 +39,7 @@ func (a *Account) UnmarshalJSON(b []byte) error {
 	a.PublicKey = string(v.GetStringBytes("public_key"))
 	a.Balance = v.GetUint64("balance")
 	a.Stake = v.GetUint64("stake")
+	a.Reward = v.GetUint64("reward")
 	a.IsContract = v.GetBool("is_contract")
 	a.NumPages = v.GetUint64("num_mem_pages")
 

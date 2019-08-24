@@ -211,19 +211,58 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 
 	o := arena.NewObject()
 
-	o.Set("public_key", arena.NewString(hex.EncodeToString(s.publicKey[:])))
-	o.Set("address", arena.NewString(s.client.ID().Address()))
-	o.Set("num_accounts", arena.NewNumberString(strconv.FormatUint(accountsLen, 10)))
+	o.Set("public_key",
+		arena.NewString(hex.EncodeToString(s.publicKey[:])))
+	o.Set("address",
+		arena.NewString(s.client.ID().Address()))
+	o.Set("num_accounts",
+		arena.NewNumberString(strconv.FormatUint(accountsLen, 10)))
+	o.Set("preferred_votes",
+		arena.NewNumberInt(s.ledger.Finalizer().Progress()))
+
+	var prefID string
+	if preferred := s.ledger.Finalizer().Preferred(); preferred != nil {
+		prefID = hex.EncodeToString(preferred.ID[:])
+	}
+
+	o.Set("preferred_id",
+		arena.NewString(prefID))
 
 	r := arena.NewObject()
-	r.Set("merkle_root", arena.NewString(hex.EncodeToString(round.Merkle[:])))
-	r.Set("start_id", arena.NewString(hex.EncodeToString(round.Start.ID[:])))
-	r.Set("end_id", arena.NewString(hex.EncodeToString(round.End.ID[:])))
-	r.Set("applied", arena.NewNumberString(strconv.FormatUint(round.Applied, 10)))
-	r.Set("depth", arena.NewNumberString(strconv.FormatUint(round.End.Depth-round.Start.Depth, 10)))
-	r.Set("difficulty", arena.NewNumberString(strconv.FormatUint(uint64(round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)), 10)))
+	r.Set("merkle_root",
+		arena.NewString(hex.EncodeToString(round.Merkle[:])))
+	r.Set("start_id",
+		arena.NewString(hex.EncodeToString(round.Start.ID[:])))
+	r.Set("end_id",
+		arena.NewString(hex.EncodeToString(round.End.ID[:])))
+	r.Set("index",
+		arena.NewNumberString(strconv.FormatUint(round.Index, 10)))
+	r.Set("applied",
+		arena.NewNumberString(strconv.FormatUint(round.Applied, 10)))
+	r.Set("depth",
+		arena.NewNumberString(strconv.FormatUint(round.End.Depth-round.Start.Depth, 10)))
+	r.Set("difficulty",
+		arena.NewNumberString(strconv.FormatUint(uint64(round.ExpectedDifficulty(
+			sys.MinDifficulty,
+			sys.DifficultyScaleFactor,
+		)), 10)))
 
 	o.Set("round", r)
+
+	graph := s.ledger.Graph()
+	rootDepth := graph.RootDepth()
+
+	g := arena.NewObject()
+	g.Set("num_tx",
+		arena.NewNumberInt(graph.DepthLen(&rootDepth, nil)))
+	g.Set("num_missing_tx",
+		arena.NewNumberInt(graph.MissingLen()))
+	g.Set("num_tx_in_store",
+		arena.NewNumberInt(graph.Len()))
+	g.Set("height",
+		arena.NewNumberString(strconv.FormatUint(graph.Height(), 10)))
+
+	o.Set("graph", g)
 
 	peers := s.client.ClosestPeerIDs()
 	if len(peers) > 0 {

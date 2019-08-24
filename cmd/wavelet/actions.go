@@ -30,58 +30,48 @@ import (
 	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
+	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 )
 
 func (cli *CLI) status(ctx *cli.Context) {
-	preferredID := "N/A"
-
-	if preferred := cli.ledger.Finalizer().Preferred(); preferred != nil {
-		preferredID = hex.EncodeToString(preferred.ID[:])
+	l, err := cli.LedgerStatus("", "", 0, 0)
+	if err != nil {
+		cli.logger.Error().Err(err).
+			Msg("Failed to get the ledger status")
+		return
 	}
 
-	count := cli.ledger.Finalizer().Progress()
+	a, err := cli.GetAccount(l.PublicKey)
+	if err != nil {
+		cli.logger.Error().Err(err).
+			Msg("Failed to get the account status")
+		return
+	}
 
-	snapshot := cli.ledger.Snapshot()
-	publicKey := cli.keys.PublicKey()
-
-	accountsLen := wavelet.ReadAccountsLen(snapshot)
-
-	balance, _ := wavelet.ReadAccountBalance(snapshot, publicKey)
-	stake, _ := wavelet.ReadAccountStake(snapshot, publicKey)
-	reward, _ := wavelet.ReadAccountReward(snapshot, publicKey)
-	nonce, _ := wavelet.ReadAccountNonce(snapshot, publicKey)
-
-	round := cli.ledger.Rounds().Latest()
-	rootDepth := cli.ledger.Graph().RootDepth()
-
-	peers := cli.client.ClosestPeerIDs()
-	peerIDs := make([]string, 0, len(peers))
-
-	for _, id := range peers {
-		peerIDs = append(peerIDs, id.String())
+	var peers = make([]string, 0, len(l.Peers))
+	for _, p := range l.Peers {
+		peers = append(peers, fmt.Sprintf("%s[%x]", p.Address, p.PublicKey))
 	}
 
 	cli.logger.Info().
-		Uint8("difficulty", round.ExpectedDifficulty(
-			sys.MinDifficulty, sys.DifficultyScaleFactor,
-		)).
-		Uint64("round", round.Index).
-		Hex("root_id", round.End.ID[:]).
-		Uint64("height", cli.ledger.Graph().Height()).
-		Str("id", hex.EncodeToString(publicKey[:])).
-		Uint64("balance", balance).
-		Uint64("stake", stake).
-		Uint64("reward", reward).
-		Uint64("nonce", nonce).
-		Strs("peers", peerIDs).
-		Int("num_tx", cli.ledger.Graph().DepthLen(&rootDepth, nil)).
-		Int("num_missing_tx", cli.ledger.Graph().MissingLen()).
-		Int("num_tx_in_store", cli.ledger.Graph().Len()).
-		Uint64("num_accounts_in_store", accountsLen).
-		Str("preferred_id", preferredID).
-		Int("preferred_votes", count).
+		Uint64("difficulty", l.Round.Difficulty).
+		Uint64("round", l.Round.Index).
+		Hex("root_id", l.Round.EndID[:]).
+		Uint64("height", l.Graph.Height).
+		Hex("id", l.PublicKey[:]).
+		Uint64("balance", a.Balance).
+		Uint64("stake", a.Stake).
+		Uint64("reward", a.Reward).
+		Uint64("nonce", a.Nonce).
+		Strs("peers", peers).
+		Uint64("num_tx", l.Graph.Tx).
+		Uint64("num_missing_tx", l.Graph.MissingTx).
+		Uint64("num_tx_in_store", l.Graph.TxInStore).
+		Int("num_accounts_in_store", l.NumAccounts).
+		Str("preferred_id", l.PreferredID).
+		Int("preferred_votes", l.PreferredVotes).
 		Msg("Here is the current status of your node.")
 }
 
@@ -94,51 +84,20 @@ func (cli *CLI) pay(ctx *cli.Context) {
 		return
 	}
 
-	var payload wavelet.Transfer
-
-	recipient, err := hex.DecodeString(cmd[0])
-	if err != nil {
-		cli.logger.Error().Err(err).
-			Msg("The recipient you specified is invalid.")
+	recipient, ok := cli.recipient(cmd[0])
+	if !ok {
 		return
 	}
 
-	copy(payload.Recipient[:], recipient)
-
-	amount, err := strconv.ParseUint(cmd[1], 10, 64)
-	if err != nil {
-		cli.logger.Error().Err(err).
-			Msg("Failed to convert payment amount to a uint64.")
+	amount, ok := cli.amount(cmd[1])
+	if !ok {
 		return
 	}
 
-	payload.Amount = amount
-
-	snapshot := cli.ledger.Snapshot()
-	balance, _ := wavelet.ReadAccountBalance(snapshot, cli.keys.PublicKey())
-
-	if balance < amount+sys.TransactionFeeAmount {
-		cli.logger.Error().
-			Uint64("your_balance", balance).
-			Uint64("amount_to_send", amount).
-			Msg("You do not have enough PERLs to send.")
-		return
-	}
-
-	_, codeAvailable := wavelet.ReadAccountContractCode(
-		snapshot, payload.Recipient,
-	)
-	if codeAvailable {
-		// Set gas limit by default to the balance the user has.
-		payload.GasLimit = balance - amount - sys.TransactionFeeAmount
-		payload.FuncName = []byte("on_money_received")
-	}
-
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, sys.TagTransfer, payload.Marshal(),
-	))
-
+	tx, err := cli.Pay(recipient, amount)
 	if err != nil {
+		cli.logger.Err(err).
+			Msg("Failed to pay to recipient.")
 		return
 	}
 
@@ -155,124 +114,85 @@ func (cli *CLI) call(ctx *cli.Context) {
 		return
 	}
 
-	recipient, err := hex.DecodeString(cmd[0])
-	if err != nil {
-		cli.logger.Error().Err(err).
-			Msg("The smart contract address you specified is invalid.")
+	recipient, ok := cli.recipient(cmd[0])
+	if !ok {
 		return
 	}
 
-	if len(recipient) != wavelet.SizeAccountID {
-		cli.logger.Error().Int("length", len(recipient)).
-			Msg("You have specified an invalid account ID to find.")
+	amount, ok := cli.amount(cmd[1])
+	if !ok {
 		return
 	}
 
-	var payload wavelet.Transfer
-	copy(payload.Recipient[:], recipient)
-
-	snapshot := cli.ledger.Snapshot()
-
-	balance, _ := wavelet.ReadAccountBalance(snapshot, cli.keys.PublicKey())
-	_, codeAvailable := wavelet.ReadAccountContractCode(snapshot, payload.Recipient)
-
-	if !codeAvailable {
-		cli.logger.Error().
-			Msg("The smart contract address you specified does not belong to a smart contract.")
+	gasLimit, ok := cli.amount(cmd[2])
+	if !ok {
 		return
 	}
 
-	amount, err := strconv.ParseUint(cmd[1], 10, 64)
-	if err != nil {
-		cli.logger.Error().Err(err).
-			Msg("Failed to convert payment amount to a uint64.")
-		return
+	fn := wctl.FunctionCall{
+		Name:     cmd[3],
+		Amount:   amount,
+		GasLimit: gasLimit,
 	}
-
-	gasLimit, err := strconv.ParseUint(cmd[2], 10, 64)
-	if err != nil {
-		cli.logger.Error().Err(err).
-			Msg("Failed to convert gas limit to a uint64.")
-		return
-	}
-
-	if balance < amount+gasLimit {
-		cli.logger.Error().
-			Uint64("your_balance", balance).
-			Uint64("cost", amount+gasLimit).
-			Msg("You do not have enough PERLs to pay for the costs to invoke the smart contract function you wanted.")
-		return
-	}
-
-	funcName := cmd[3]
-
-	payload.Amount = amount
-	payload.GasLimit = gasLimit
-	payload.FuncName = []byte(funcName)
 
 	var intBuf [8]byte
-	params := bytes.NewBuffer(nil)
 	for i := 4; i < len(cmd); i++ {
 		arg := cmd[i]
 
 		switch arg[0] {
 		case 'S':
-			params.WriteString(arg[1:])
-			params.WriteByte(0)
+			fn.AddParams(wctl.EncodeString(arg[1:]))
 		case 'B':
-			binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(arg[1:])))
-			params.Write(intBuf[:4])
-			params.Write([]byte(arg[1:]))
+			fn.AddParams(wctl.EncodeBytes([]byte(arg[1:])))
 		case '1', '2', '4', '8':
 			var val uint64
-			_, err := fmt.Sscanf(arg[1:], "%d", &val)
-			if err != nil {
+			if _, err := fmt.Sscanf(arg[1:], "%d", &val); err != nil {
 				cli.logger.Error().Err(err).
 					Msgf("Got an error parsing integer: %+v", arg[1:])
+				return
 			}
 
 			switch arg[0] {
 			case '1':
-				params.WriteByte(byte(val))
+				fn.AddParams(wctl.EncodeByte(byte(val)))
 			case '2':
 				binary.LittleEndian.PutUint16(intBuf[:2], uint16(val))
-				params.Write(intBuf[:2])
+				fn.AddParams(wctl.EncodeBytes(intBuf[:2]))
 			case '4':
 				binary.LittleEndian.PutUint32(intBuf[:4], uint32(val))
-				params.Write(intBuf[:4])
+				fn.AddParams(wctl.EncodeBytes(intBuf[:4]))
 			case '8':
 				binary.LittleEndian.PutUint64(intBuf[:8], uint64(val))
-				params.Write(intBuf[:8])
+				fn.AddParams(wctl.EncodeBytes(intBuf[:8]))
 			}
 		case 'H':
-			buf, err := hex.DecodeString(arg[1:])
-
+			buf, err := wctl.DecodeHex(arg[1:])
 			if err != nil {
 				cli.logger.Error().Err(err).
 					Msgf("Cannot decode hex: %s", arg[1:])
 				return
 			}
 
-			params.Write(buf)
+			fn.AddParams(buf)
 		default:
 			cli.logger.Error().
-				Msgf("Invalid argument specified: %s", arg)
+				Str("prefix", string(arg[0])).
+				Msgf("Invalid argument prefix specified")
 			return
 		}
 	}
 
-	payload.FuncParams = params.Bytes()
-
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, sys.TagTransfer, payload.Marshal(),
-	))
-
+	tx, err := cli.Call(recipient, fn)
 	if err != nil {
+		cli.logger.Err(err).
+			Msg("Failed to call function.")
 		return
 	}
 
 	cli.logger.Info().
-		Msgf("Success! Your smart contract invocation transaction ID: %x", tx.ID)
+		Str("recipient", cmd[0]).
+		Str("tx_id", tx.ID).
+		Msgf("Smart contract function called.", tx.ID)
 }
 
 func (cli *CLI) find(ctx *cli.Context) {

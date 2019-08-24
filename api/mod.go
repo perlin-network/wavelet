@@ -202,7 +202,6 @@ func (g *Gateway) Shutdown() {
 }
 
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
-	// TODO(diamond): This is basically payload in CLI, port it over
 	req := new(sendTransactionRequest)
 
 	if g.ledger != nil && g.ledger.TakeSendQuota() == false {
@@ -221,26 +220,9 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 
 	tx := wavelet.AttachSenderToTransaction(
 		g.keys,
-		wavelet.Transaction{
-			Tag:              sys.Tag(req.Tag),
-			Payload:          req.payload,
-			Creator:          req.creator,
-			CreatorSignature: req.signature,
-		},
+		wavelet.Transaction{Tag: sys.Tag(req.Tag), Payload: req.payload, Creator: req.creator, CreatorSignature: req.signature},
 		g.ledger.Graph().FindEligibleParents()...,
 	)
-
-	snapshot := g.ledger.Snapshot()
-
-	_, codeAvailable := wavelet.ReadAccountContractCode(
-		snapshot, tx.Sender,
-	)
-
-	if codeAvailable {
-		// Set gas limit by default to the balance the user has.
-		payload.GasLimit = balance - amount - sys.TransactionFeeAmount
-		payload.FuncName = []byte("on_money_received")
-	}
 
 	err = g.ledger.AddTransaction(tx)
 
