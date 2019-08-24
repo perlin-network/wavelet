@@ -220,7 +220,12 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 
 	tx := wavelet.AttachSenderToTransaction(
 		g.keys,
-		wavelet.Transaction{Tag: sys.Tag(req.Tag), Payload: req.payload, Creator: req.creator, CreatorSignature: req.signature},
+		wavelet.Transaction{
+			Tag:              sys.Tag(req.Tag),
+			Payload:          req.payload,
+			Creator:          req.creator,
+			CreatorSignature: req.signature,
+		},
 		g.ledger.Graph().FindEligibleParents()...,
 	)
 

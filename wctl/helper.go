@@ -146,3 +146,11 @@ func jsonHex(v *fastjson.Value, dst []byte, keys ...string) error {
 
 	return nil
 }
+
+func StringIDs(ids [][32]byte) []string {
+	s := make([]string, len(ids))
+	for i := range ids {
+		s[i] = hex.EncodeToString(ids[i][:])
+	}
+	return s
+}

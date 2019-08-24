@@ -315,6 +315,8 @@ func (s *transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 	o.Set("depth", arena.NewNumberString(strconv.FormatUint(s.tx.Depth, 10)))
 	o.Set("tag", arena.NewNumberInt(int(s.tx.Tag)))
 	o.Set("payload", arena.NewString(base64.StdEncoding.EncodeToString(s.tx.Payload)))
+	o.Set("seed", arena.NewString(hex.EncodeToString(s.tx.Seed[:])))
+	o.Set("seed_len", arena.NewNumberInt(int(s.tx.SeedLen)))
 	o.Set("sender_signature", arena.NewString(hex.EncodeToString(s.tx.SenderSignature[:])))
 	o.Set("creator_signature", arena.NewString(hex.EncodeToString(s.tx.CreatorSignature[:])))
 

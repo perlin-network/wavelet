@@ -20,18 +20,11 @@
 package main
 
 import (
-	"bytes"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"io/ioutil"
-	"strconv"
 
-	wasm "github.com/perlin-network/life/wasm-validation"
-	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
-	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 )
 
@@ -191,8 +184,8 @@ func (cli *CLI) call(ctx *cli.Context) {
 
 	cli.logger.Info().
 		Str("recipient", cmd[0]).
-		Str("tx_id", tx.ID).
-		Msgf("Smart contract function called.", tx.ID)
+		Hex("tx_id", tx.ID[:]).
+		Msgf("Smart contract function called.")
 }
 
 func (cli *CLI) find(ctx *cli.Context) {
@@ -229,73 +222,7 @@ func (cli *CLI) find(ctx *cli.Context) {
 			Msgf("Account: %s", cmd[0])
 	case tx != nil:
 		cli.logger.Info().
-			Strs("parents", tx.Parents).
-			Hex("sender", tx.Sender).
-			Hex("creator", tx.Creator[:]).
-			Uint64("nonce", tx.Nonce).
-			Uint8("tag", byte(tx.Tag)).
-			Uint64("depth", tx.Depth).
-			Hex("seed", tx.Seed[:]).
-			Uint8("seed_zero_prefix_len", tx.SeedLen).
-			Msgf("Transaction: %s", cmd[0])
-	}
-
-	snapshot := cli.ledger.Snapshot()
-
-	address := cmd[0]
-
-	buf, err := hex.DecodeString(address)
-	if err != nil {
-		cli.logger.Error().Err(err).
-			Msg("Cannot decode address")
-		return
-	}
-
-	if len(buf) != wavelet.SizeTransactionID && len(buf) != wavelet.SizeAccountID {
-		cli.logger.Error().Int("length", len(buf)).
-			Msg("You have specified an invalid transaction/account ID to find.")
-		return
-	}
-
-	var accountID wavelet.AccountID
-	copy(accountID[:], buf)
-
-	balance, _ := wavelet.ReadAccountBalance(snapshot, accountID)
-	gasBalance, _ := wavelet.ReadAccountContractGasBalance(snapshot, accountID)
-	stake, _ := wavelet.ReadAccountStake(snapshot, accountID)
-	nonce, _ := wavelet.ReadAccountNonce(snapshot, accountID)
-	reward, _ := wavelet.ReadAccountReward(snapshot, accountID)
-
-	_, isContract := wavelet.ReadAccountContractCode(snapshot, accountID)
-	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, accountID)
-
-	if balance > 0 || stake > 0 || nonce > 0 || isContract || numPages > 0 {
-		cli.logger.Info().
-			Uint64("balance", balance).
-			Uint64("gas_balance", gasBalance).
-			Uint64("stake", stake).
-			Uint64("nonce", nonce).
-			Uint64("reward", reward).
-			Bool("is_contract", isContract).
-			Uint64("num_pages", numPages).
-			Msgf("Account: %s", cmd[0])
-
-		return
-	}
-
-	var txID wavelet.TransactionID
-	copy(txID[:], buf)
-
-	tx := cli.ledger.Graph().FindTransaction(txID)
-
-	if tx != nil {
-		var parents []string
-		for _, parentID := range tx.ParentIDs {
-			parents = append(parents, hex.EncodeToString(parentID[:]))
-		}
-
-		cli.logger.Info().
-			Strs("parents", parents).
+			Strs("parents", wctl.StringIDs(tx.Parents)).
 			Hex("sender", tx.Sender[:]).
 			Hex("creator", tx.Creator[:]).
 			Uint64("nonce", tx.Nonce).
@@ -304,8 +231,6 @@ func (cli *CLI) find(ctx *cli.Context) {
 			Hex("seed", tx.Seed[:]).
 			Uint8("seed_zero_prefix_len", tx.SeedLen).
 			Msgf("Transaction: %s", cmd[0])
-
-		return
 	}
 }
 
@@ -327,25 +252,26 @@ func (cli *CLI) spawn(ctx *cli.Context) {
 		return
 	}
 
-	if err := wasm.GetValidator().ValidateWasm(code); err != nil {
-		cli.logger.Error().
-			Err(err).
-			Str("path", cmd[0]).
-			Msg("Invalid wasm")
-		return
-	}
+	/*
+		if err := wasm.GetValidator().ValidateWasm(code); err != nil {
+			cli.logger.Error().
+				Err(err).
+				Str("path", cmd[0]).
+				Msg("Invalid wasm")
+			return
+		}
+	*/
 
-	payload := wavelet.Contract{
-		GasLimit: 100000000,
-		Code:     code,
-	}
-
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagContract, payload.Marshal()))
+	tx, err := cli.Spawn(code, 100000000)
 	if err != nil {
+		cli.logger.Err(err).
+			Msg("Failed to spawn smart contract.")
 		return
 	}
 
-	cli.logger.Info().Msgf("Success! Your smart contracts ID: %x", tx.ID)
+	cli.logger.Info().
+		Hex("tx_id", tx.ID[:]).
+		Msgf("Smart contract spawned.")
 }
 
 func (cli *CLI) depositGas(ctx *cli.Context) {
@@ -357,67 +283,26 @@ func (cli *CLI) depositGas(ctx *cli.Context) {
 		return
 	}
 
-	// Get the recipient ID
-	recipient, err := hex.DecodeString(cmd[0])
+	recipient, ok := cli.recipient(cmd[0])
+	if !ok {
+		return
+	}
+
+	amount, ok := cli.amount(cmd[1])
+	if !ok {
+		return
+	}
+
+	tx, err := cli.DepositGas(recipient, amount)
 	if err != nil {
-		cli.logger.Error().Err(err).
-			Msg("The recipient you specified is invalid.")
-		return
-	}
-
-	// Check if the ID is actually invalid by length
-	if len(recipient) != wavelet.SizeAccountID {
-		cli.logger.Error().Int("length", len(recipient)).
-			Msg("You have specified an invalid account ID to find.")
-		return
-	}
-
-	// Parse the gas amount
-	amount, err := strconv.ParseUint(cmd[1], 10, 64)
-	if err != nil {
-		cli.logger.Error().Err(err).
-			Msg("Failed to convert payment amount to an uint64.")
-		return
-	}
-
-	// Make a new payload, copy the recipient over and assign the amount
-	var payload wavelet.Transfer
-	copy(payload.Recipient[:], recipient)
-	payload.GasDeposit = amount
-
-	// Get snapshot
-	snapshot := cli.ledger.Snapshot()
-
-	// Get balance and check if recipient is a smart contract
-	balance, _ := wavelet.ReadAccountBalance(snapshot, cli.keys.PublicKey())
-	_, codeAvailable := wavelet.ReadAccountContractCode(snapshot, payload.Recipient)
-
-	// Check balance
-	if balance < amount+sys.TransactionFeeAmount {
-		cli.logger.Error().
-			Uint64("your_balance", balance).
-			Uint64("amount_to_send", amount).
-			Msg("You do not have enough PERLs to deposit into the smart contract.")
-		return
-	}
-
-	// The recipient is not a smart contract
-	if !codeAvailable {
-		cli.logger.Error().Hex("recipient_id", recipient).
-			Msg("The recipient you specified is not a smart contract.")
-		return
-	}
-
-	tx, err := cli.sendTransaction(
-		wavelet.NewTransaction(cli.keys, sys.TagTransfer, payload.Marshal()),
-	)
-
-	if err != nil {
+		cli.logger.Err(err).
+			Msg("Failed to deposit gas.")
 		return
 	}
 
 	cli.logger.Info().
-		Msgf("Success! Your gas deposit transaction ID: %x", tx.ID)
+		Hex("tx_id", tx.ID[:]).
+		Msgf("Gas deposited.")
 }
 
 func (cli *CLI) placeStake(ctx *cli.Context) {
@@ -429,28 +314,21 @@ func (cli *CLI) placeStake(ctx *cli.Context) {
 		return
 	}
 
-	amount, err := strconv.ParseUint(cmd[0], 10, 64)
-	if err != nil {
-		cli.logger.Error().Err(err).
-			Msg("Failed to convert staking amount to a uint64.")
+	amount, ok := cli.amount(cmd[0])
+	if !ok {
 		return
 	}
 
-	payload := wavelet.Stake{
-		Opcode: sys.PlaceStake,
-		Amount: amount,
-	}
-
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, sys.TagStake, payload.Marshal(),
-	))
-
+	tx, err := cli.PlaceStake(amount)
 	if err != nil {
+		cli.logger.Err(err).
+			Msg("Failed to place stake.")
 		return
 	}
 
 	cli.logger.Info().
-		Msgf("Success! Your stake placement transaction ID: %x", tx.ID)
+		Hex("tx_id", tx.ID[:]).
+		Msgf("Stake placed.")
 }
 
 func (cli *CLI) withdrawStake(ctx *cli.Context) {
@@ -462,31 +340,21 @@ func (cli *CLI) withdrawStake(ctx *cli.Context) {
 		return
 	}
 
-	amount, err := strconv.ParseUint(cmd[0], 10, 64)
-	if err != nil {
-		cli.logger.Error().Err(err).
-			Msg("Failed to convert withdraw amount to an uint64.")
+	amount, ok := cli.amount(cmd[0])
+	if !ok {
 		return
 	}
 
-	var intBuf [8]byte
-	payload := bytes.NewBuffer(nil)
-	payload.WriteByte(sys.WithdrawStake)
-	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
-	payload.Write(intBuf[:8])
-
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, sys.TagStake, payload.Bytes(),
-	))
-
+	tx, err := cli.WithdrawStake(amount)
 	if err != nil {
+		cli.logger.Err(err).
+			Msg("Failed to withdraw stake.")
 		return
 	}
-
-	txID := hex.EncodeToString(tx.ID[:])
 
 	cli.logger.Info().
-		Msg("Success! Your stake withdrawal transaction ID: " + txID)
+		Hex("tx_id", tx.ID[:]).
+		Msgf("Stake withdrew.")
 }
 
 func (cli *CLI) withdrawReward(ctx *cli.Context) {
@@ -498,45 +366,19 @@ func (cli *CLI) withdrawReward(ctx *cli.Context) {
 		return
 	}
 
-	amount, err := strconv.ParseUint(cmd[0], 10, 64)
-	if err != nil {
-		cli.logger.Error().Err(err).
-			Msg("Failed to convert withdraw amount to an uint64.")
+	amount, ok := cli.amount(cmd[0])
+	if !ok {
 		return
 	}
 
-	payload := wavelet.Stake{
-		Opcode: sys.WithdrawReward,
-		Amount: amount,
-	}
-
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, sys.TagStake, payload.Marshal(),
-	))
-
+	tx, err := cli.WithdrawReward(amount)
 	if err != nil {
+		cli.logger.Err(err).
+			Msg("Failed to withdraw reward.")
 		return
 	}
 
 	cli.logger.Info().
-		Msgf("Success! Your reward withdrawal transaction ID: %x", tx.ID)
-}
-
-func (cli *CLI) sendTransaction(tx wavelet.Transaction) (wavelet.Transaction, error) {
-	tx = wavelet.AttachSenderToTransaction(
-		cli.keys, tx, cli.ledger.Graph().FindEligibleParents()...,
-	)
-
-	if err := cli.ledger.AddTransaction(tx); err != nil {
-		if errors.Cause(err) != wavelet.ErrMissingParents {
-			cli.logger.
-				Err(err).
-				Hex("tx_id", tx.ID[:]).
-				Msg("Failed to create your transaction.")
-
-			return tx, err
-		}
-	}
-
-	return tx, nil
+		Hex("tx_id", tx.ID[:]).
+		Msgf("Reward withdrew.")
 }

@@ -133,34 +133,6 @@ func (c *Client) PollContracts(stop <-chan struct{}, contractID string) (<-chan 
 	return evChan, nil
 }
 
-func (c *Client) PollTransactions(stop <-chan struct{}, txID string, senderID string, creatorID string, tag *byte) (<-chan []byte, error) {
-	v := url.Values{}
-
-	if txID != "" {
-		v.Set("tx_id", txID)
-	}
-
-	if senderID != "" {
-		v.Set("sender", senderID)
-	}
-
-	if creatorID != "" {
-		v.Set("creator", creatorID)
-	}
-
-	if tag != nil {
-		v.Set("tag", fmt.Sprintf("%x", *tag))
-	}
-
-	evChan := make(chan []byte)
-
-	if err := c.pollWS(stop, evChan, RouteWSTransactions, v); err != nil {
-		return nil, err
-	}
-
-	return evChan, nil
-}
-
 func (c *Client) GetContractCode(contractID string) (string, error) {
 	path := fmt.Sprintf("%s/%s", RouteContract, contractID)
 

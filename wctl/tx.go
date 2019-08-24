@@ -3,6 +3,7 @@ package wctl
 import (
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"net/url"
 	"strconv"
 
@@ -96,6 +97,34 @@ func (c *Client) sendTransfer(tag byte, transfer Marshalable) (*TxResponse, erro
 	return c.sendTransaction(tag, transfer.Marshal())
 }
 
+func (c *Client) PollTransactions(stop <-chan struct{}, txID string, senderID string, creatorID string, tag *byte) (<-chan []byte, error) {
+	v := url.Values{}
+
+	if txID != "" {
+		v.Set("tx_id", txID)
+	}
+
+	if senderID != "" {
+		v.Set("sender", senderID)
+	}
+
+	if creatorID != "" {
+		v.Set("creator", creatorID)
+	}
+
+	if tag != nil {
+		v.Set("tag", fmt.Sprintf("%x", *tag))
+	}
+
+	evChan := make(chan []byte)
+
+	if err := c.pollWS(stop, evChan, RouteWSTransactions, v); err != nil {
+		return nil, err
+	}
+
+	return evChan, nil
+}
+
 type Transaction struct {
 	ID      [32]byte `json:"id"`
 	Sender  [32]byte `json:"sender"`
@@ -105,6 +134,9 @@ type Transaction struct {
 	Depth   uint64   `json:"depth"`
 	Tag     byte     `json:"tag"`
 	Payload []byte   `json:"payload"`
+
+	Seed    [32]byte `json:"seed"`
+	SeedLen uint8    `json"seed_len"`
 
 	SenderSignature  [64]byte `json:"sender_signature"`
 	CreatorSignature [64]byte `json:"creator_signature"`
@@ -141,6 +173,12 @@ func (t *Transaction) ParseJSON(v *fastjson.Value) error {
 	t.Depth = v.GetUint64("depth")
 	t.Tag = byte(v.GetUint("tag"))
 	t.Payload = v.GetStringBytes("payload")
+
+	if err := jsonHex(v, t.Seed[:], "seed"); err != nil {
+		return err
+	}
+
+	t.SeedLen = uint8(v.GetUint("seed_len"))
 
 	if err := jsonHex(v, t.SenderSignature[:], "sender_signature"); err != nil {
 		return err

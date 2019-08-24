@@ -1,5 +1,7 @@
 #### REST API endpoints
 
+# UPDATE ME BEFORE MERGING PR!!! THANKS!
+
 * Some of the endpoints are rate limited per IP Address to 1000 requests per second.
 If an IP Address exceeds the limit, the response would be an error with code `429` and message `Too Many Requests`.
 
