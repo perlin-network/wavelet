@@ -204,6 +204,42 @@ func (cli *CLI) find(ctx *cli.Context) {
 		return
 	}
 
+	address, ok := cli.recipient(cmd[0])
+	if !ok {
+		return
+	}
+
+	account, tx, err := cli.Find(address)
+	if err != nil {
+		cli.logger.Error().Err(err).
+			Msg("Cannot find address")
+		return
+	}
+
+	switch {
+	case account != nil:
+		cli.logger.Info().
+			Uint64("balance", account.Balance).
+			Uint64("gas_balance", account.GasBalance).
+			Uint64("stake", account.Stake).
+			Uint64("nonce", account.Nonce).
+			Uint64("reward", account.Reward).
+			Bool("is_contract", account.IsContract).
+			Uint64("num_pages", account.NumPages).
+			Msgf("Account: %s", cmd[0])
+	case tx != nil:
+		cli.logger.Info().
+			Strs("parents", tx.Parents).
+			Hex("sender", tx.Sender).
+			Hex("creator", tx.Creator[:]).
+			Uint64("nonce", tx.Nonce).
+			Uint8("tag", byte(tx.Tag)).
+			Uint64("depth", tx.Depth).
+			Hex("seed", tx.Seed[:]).
+			Uint8("seed_zero_prefix_len", tx.SeedLen).
+			Msgf("Transaction: %s", cmd[0])
+	}
+
 	snapshot := cli.ledger.Snapshot()
 
 	address := cmd[0]

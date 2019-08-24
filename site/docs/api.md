@@ -103,6 +103,7 @@ Get Account Information
     {
       "public_key": "f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467",
       "balance": 9999999999999999901,
+	  "gas_balance": ,
       "stake": 100,
       "reward": 0,
       "nonce": 152,

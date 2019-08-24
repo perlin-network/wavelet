@@ -2,6 +2,7 @@ package wctl
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -131,7 +132,17 @@ func (c *Client) pollWS(stop <-chan struct{}, ev chan []byte, path string, query
 	return nil
 }
 
+var ErrInvalidHexLength = errors.New("Invalid hex bytes length")
+
 func jsonHex(v *fastjson.Value, dst []byte, keys ...string) error {
-	_, err := hex.Decode(dst, v.GetStringBytes(keys...))
-	return err
+	i, err := hex.Decode(dst, v.GetStringBytes(keys...))
+	if err != nil {
+		return err
+	}
+
+	if i != len(dst) {
+		return ErrInvalidHexLength
+	}
+
+	return nil
 }

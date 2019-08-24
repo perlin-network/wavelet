@@ -24,14 +24,14 @@ var (
 
 // ListTransactions calls the /tx endpoint of the API to list all transactions.
 // The arguments are optional, zero values would default them.
-func (c *Client) ListTransactions(senderID *[32]byte, creatorID *[32]byte, offset uint64, limit uint64) ([]Transaction, error) {
+func (c *Client) ListTransactions(senderID string, creatorID string, offset uint64, limit uint64) ([]Transaction, error) {
 	vals := url.Values{}
 
-	if senderID != nil {
+	if senderID != "" {
 		vals.Set("sender", string(senderID[:]))
 	}
 
-	if creatorID != nil {
+	if creatorID != "" {
 		vals.Set("creator", string(creatorID[:]))
 	}
 
@@ -55,7 +55,7 @@ func (c *Client) ListTransactions(senderID *[32]byte, creatorID *[32]byte, offse
 
 // GetTransaction calls the /tx endpoint to query a single transaction.
 func (c *Client) GetTransaction(txID [32]byte) (*Transaction, error) {
-	path := RouteTxList + "/" + string(txID[:])
+	path := RouteTxList + "/" + hex.EncodeToString(txID[:])
 
 	var res Transaction
 	if err := c.RequestJSON(path, ReqGet, nil, &res); err != nil {
@@ -78,10 +78,10 @@ func (c *Client) sendTransaction(tag byte, payload []byte) (*TxResponse, error) 
 	)
 
 	req := TxRequest{
-		Sender:    hex.EncodeToString(c.PublicKey[:]),
+		Sender:    c.PublicKey,
 		Tag:       tag,
-		Payload:   hex.EncodeToString(payload),
-		Signature: hex.EncodeToString(signature[:]),
+		Payload:   payload,
+		Signature: signature,
 	}
 
 	if err := c.RequestJSON(RouteTxSend, ReqPost, &req, &res); err != nil {
@@ -97,24 +97,19 @@ func (c *Client) sendTransfer(tag byte, transfer Marshalable) (*TxResponse, erro
 }
 
 type Transaction struct {
-	ID string `json:"id"`
+	ID      [32]byte `json:"id"`
+	Sender  [32]byte `json:"sender"`
+	Creator [32]byte `json:"creator"`
+	Status  string   `json:"status"`
+	Nonce   uint64   `json:"nonce"`
+	Depth   uint64   `json:"depth"`
+	Tag     byte     `json:"tag"`
+	Payload []byte   `json:"payload"`
 
-	Sender  string `json:"sender"`
-	Creator string `json:"creator"`
+	SenderSignature  [64]byte `json:"sender_signature"`
+	CreatorSignature [64]byte `json:"creator_signature"`
 
-	Parents []string `json:"parents"`
-
-	Timestamp uint64 `json:"timestamp"`
-
-	Tag     byte   `json:"tag"`
-	Payload []byte `json:"payload"`
-
-	AccountsMerkleRoot string `json:"accounts_root"`
-
-	SenderSignature  string `json:"sender_signature"`
-	CreatorSignature string `json:"creator_signature"`
-
-	Depth uint64 `json:"depth"`
+	Parents [][32]byte `json:"parents"`
 }
 
 func (t *Transaction) UnmarshalJSON(b []byte) error {
@@ -125,28 +120,46 @@ func (t *Transaction) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	t.ParseJSON(v)
-
-	return nil
+	return t.ParseJSON(v)
 }
 
-func (t *Transaction) ParseJSON(v *fastjson.Value) {
-	t.ID = string(v.GetStringBytes("id"))
-	t.Sender = string(v.GetStringBytes("sender"))
-	t.Creator = string(v.GetStringBytes("creator"))
-
-	parentsValue := v.GetArray("parents")
-	for _, parent := range parentsValue {
-		t.Parents = append(t.Parents, parent.String())
+func (t *Transaction) ParseJSON(v *fastjson.Value) error {
+	if err := jsonHex(v, t.ID[:], "id"); err != nil {
+		return err
 	}
 
-	t.Timestamp = v.GetUint64("timestamp")
+	if err := jsonHex(v, t.Sender[:], "sender"); err != nil {
+		return err
+	}
+
+	if err := jsonHex(v, t.Creator[:], "creator"); err != nil {
+		return err
+	}
+
+	t.Status = string(v.GetStringBytes("status"))
+	t.Nonce = v.GetUint64("nonce")
+	t.Depth = v.GetUint64("depth")
 	t.Tag = byte(v.GetUint("tag"))
 	t.Payload = v.GetStringBytes("payload")
-	t.AccountsMerkleRoot = string(v.GetStringBytes("accounts_root"))
-	t.SenderSignature = string(v.GetStringBytes("sender_signature"))
-	t.CreatorSignature = string(v.GetStringBytes("creator_signature"))
-	t.Depth = v.GetUint64("depth")
+
+	if err := jsonHex(v, t.SenderSignature[:], "sender_signature"); err != nil {
+		return err
+	}
+
+	if err := jsonHex(v, t.CreatorSignature[:], "creator_signature"); err != nil {
+		return err
+	}
+
+	parentsValue := v.GetArray("parents")
+	t.Parents = make([][32]byte, len(parentsValue))
+
+	for i, parent := range parentsValue {
+		if _, err := hex.Decode(t.Parents[i][:], parent.MarshalTo(nil)); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 type TransactionList []Transaction
@@ -179,28 +192,28 @@ func (t *TransactionList) UnmarshalJSON(b []byte) error {
 }
 
 type TxRequest struct {
-	Sender    string `json:"sender"`
-	Tag       byte   `json:"tag"`
-	Payload   string `json:"payload"`
-	Signature string `json:"signature"`
+	Sender    [32]byte `json:"sender"`
+	Tag       byte     `json:"tag"`
+	Payload   []byte   `json:"payload"`
+	Signature [64]byte `json:"signature"`
 }
 
 func (s *TxRequest) MarshalJSON() ([]byte, error) {
 	var arena fastjson.Arena
 	o := arena.NewObject()
 
-	o.Set("sender", arena.NewString(s.Sender))
+	o.Set("sender", arena.NewString(hex.EncodeToString(s.Sender[:])))
 	o.Set("tag", arena.NewNumberInt(int(s.Tag)))
-	o.Set("payload", arena.NewString(s.Payload))
-	o.Set("signature", arena.NewString(s.Signature))
+	o.Set("payload", arena.NewString(hex.EncodeToString(s.Payload)))
+	o.Set("signature", arena.NewString(hex.EncodeToString(s.Signature[:])))
 
 	return o.MarshalTo(nil), nil
 }
 
 type TxResponse struct {
-	ID       string   `json:"tx_id"`
-	Parents  []string `json:"parent_ids"`
-	Critical bool     `json:"is_critical"`
+	ID       [32]byte   `json:"tx_id"`
+	Parents  [][32]byte `json:"parent_ids"`
+	Critical bool       `json:"is_critical"`
 }
 
 func (s *TxResponse) UnmarshalJSON(b []byte) error {
@@ -211,11 +224,17 @@ func (s *TxResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	s.ID = string(v.GetStringBytes("tx_id"))
+	if err := jsonHex(v, s.ID[:], "id"); err != nil {
+		return err
+	}
 
-	parentsValue := v.GetArray("parent_ids")
-	for _, parent := range parentsValue {
-		s.Parents = append(s.Parents, parent.String())
+	parentsValue := v.GetArray("parents")
+	s.Parents = make([][32]byte, len(parentsValue))
+
+	for i, parent := range parentsValue {
+		if _, err := hex.Decode(s.Parents[i][:], parent.MarshalTo(nil)); err != nil {
+			return err
+		}
 	}
 
 	s.Critical = v.GetBool("is_critical")
