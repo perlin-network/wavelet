@@ -29,7 +29,46 @@ import (
 	"github.com/pkg/errors"
 )
 
-func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionResponse, error) {
+type floodFunc func(client *wctl.Client) ([]wctl.SendTransactionResponse, error)
+
+func floodBatchStake() floodFunc {
+	return flood(sys.TagBatch, func(i int) []byte {
+		n := 40
+		payload := wavelet.Batch{
+			Tags:     make([]uint8, 0, n),
+			Payloads: make([][]byte, 0, n),
+		}
+
+		stake := wavelet.Stake{Opcode: sys.PlaceStake, Amount: uint64(i + 1)}
+		for i := 0; i < 40; i++ {
+			if err := payload.AddStake(stake); err != nil {
+				// Shouldn't happen
+				panic(err)
+			}
+		}
+
+		return payload.Marshal()
+	})
+}
+
+func floodPayload(payload []byte) floodFunc {
+	return flood(sys.TagTransfer, func(i int) []byte {
+		return payload
+	})
+}
+
+func floodContracts(code []byte) floodFunc {
+	return flood(sys.TagContract, func(i int) []byte {
+		payload := wavelet.Contract{
+			GasLimit: 100000000,
+			Code:     code,
+		}
+
+		return payload.Marshal()
+	})
+}
+
+func flood(tag sys.Tag, getPayload func(i int) []byte) floodFunc {
 	return func(client *wctl.Client) ([]wctl.SendTransactionResponse, error) {
 		numWorkers := runtime.NumCPU()
 
@@ -40,7 +79,14 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 		chErr := make(chan error, numWorkers)
 
 		for i := 0; i < numWorkers; i++ {
-			go sendTransaction(i+1, client, &wg, chRes, chErr)
+			go func(i int) {
+				var res wctl.SendTransactionResponse
+				res, err := client.SendTransaction(byte(tag), getPayload(i))
+				chRes <- res
+				chErr <- err
+
+				wg.Done()
+			}(i)
 		}
 
 		wg.Wait()
@@ -62,39 +108,4 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 
 		return responses, err
 	}
-}
-
-func sendTransaction(
-	i int,
-	client *wctl.Client,
-	wg *sync.WaitGroup,
-	chRes chan<- wctl.SendTransactionResponse,
-	chErr chan<- error) {
-
-	defer wg.Done()
-
-	n := 40
-	payload := wavelet.Batch{
-		Tags:     make([]uint8, 0, n),
-		Payloads: make([][]byte, 0, n),
-	}
-
-	stake := wavelet.Stake{Opcode: sys.PlaceStake, Amount: uint64(i)}
-	for i := 0; i < 40; i++ {
-		if err := payload.AddStake(stake); err != nil {
-			// Shouldn't happen
-			panic(err)
-		}
-	}
-
-	var res wctl.SendTransactionResponse
-	res, err := client.SendTransaction(byte(sys.TagBatch), payload.Marshal())
-	if err != nil {
-		chRes <- res
-		chErr <- err
-		return
-	}
-
-	chRes <- res
-	chErr <- err
 }

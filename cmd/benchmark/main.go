@@ -20,6 +20,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/noise/edwards25519"
@@ -92,6 +93,22 @@ func main() {
 					Name:  "wallet",
 					Usage: "private key in hex format to connect to node HTTP API with",
 					Value: "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+				},
+				cli.BoolFlag{
+					Name:  "tx",
+					Usage: "flood the node with transactions.",
+				},
+				cli.StringFlag{
+					Name:  "payload",
+					Usage: "hex encoded payload that will be used to flood the node with custom transactions payload",
+				},
+				cli.StringFlag{
+					Name:  "poll",
+					Usage: "hex-encoded contract ID that will be polled and fetch memory pages for every consensus round.",
+				},
+				cli.StringFlag{
+					Name:  "contract",
+					Usage: "path to the contract that will be spawned into the node",
 				},
 			},
 			Action: commandRemote,
@@ -225,13 +242,68 @@ func commandRemote(c *cli.Context) error {
 		}
 	}()
 
-	flood := floodTransactions()
+	// Poll contract and fetch memory pages for every consensus round.
+	if contractID := c.String("poll"); len(contractID) > 0 {
+		if len(contractID) != 64 {
+			panic("invalid contract ID length.")
+		}
 
-	for {
-		if _, err := flood(client); err != nil {
-			continue
+		contractID := contractID[:64]
+
+		onRoundEnd := func() {
+			if errs := fetchMemoryPages(client, contractID); len(errs) > 0 {
+				log.Error().Errs("Errors", errs).Msg("FetchMemoryPages")
+			}
+		}
+
+		fmt.Println("Polling consensus and fetching memory pages for every consensus round")
+		go pollConsensus(client, onRoundEnd)
+	}
+
+	// Flood contracts
+	if path := c.String("contract"); len(path) > 0 {
+		code, err := ioutil.ReadFile(path)
+		if err != nil {
+			log.Fatal().Msgf("Failed to load the smart contract code from path %s: %v", path, err)
+			return nil
+		}
+
+		flood := floodContracts(code)
+
+		fmt.Println("Flooding contracts")
+		go func() {
+			for {
+				_, err := flood(client)
+				if err != nil {
+					continue
+				}
+			}
+		}()
+	}
+
+	if c.Bool("tx") || len(c.String("payload")) > 0 {
+		payload, err := hex.DecodeString(c.String("payload"))
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to decode payload.")
+		}
+
+		var flood floodFunc
+		if len(payload) != 0 {
+			fmt.Println("Flooding payload transactions")
+			flood = floodPayload(payload)
+		} else {
+			fmt.Println("Flooding batch stake transaction")
+			flood = floodBatchStake()
+		}
+
+		for {
+			if _, err := flood(client); err != nil {
+				continue
+			}
 		}
 	}
+
+	select {}
 }
 
 func commandLocal(c *cli.Context) error {
@@ -255,11 +327,71 @@ func commandLocal(c *cli.Context) error {
 
 	fmt.Println("Nodes are initialized!")
 
-	flood := floodTransactions()
+	payload, err := hex.DecodeString(c.String("payload"))
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to decode payload.")
+	}
+
+	var flood floodFunc
+	if len(payload) != 0 {
+		fmt.Println("Flooding payload transactions")
+		flood = floodPayload(payload)
+	} else {
+		fmt.Println("Flooding batch stake transaction")
+		flood = floodBatchStake()
+	}
 
 	for {
 		if _, err := flood(nodes[0].client); err != nil {
 			fmt.Println(err)
 		}
 	}
+}
+
+func pollConsensus(client *wctl.Client, onRoundEnd func()) {
+	events, err := client.PollLoggerSink(nil, wctl.RouteWSConsensus)
+	if err != nil {
+		panic(err)
+	}
+
+	evtRoundEnd := []byte("round_end")
+	var p fastjson.Parser
+	for evt := range events {
+		v, err := p.ParseBytes(evt)
+		if err != nil {
+			continue
+		}
+
+		if bytes.Equal(v.GetStringBytes("event"), evtRoundEnd) {
+			onRoundEnd()
+		}
+	}
+}
+
+// Calls GetContractPages concurrently for every page.
+// Returns an array of errors received by all of the API calls, both GetAccount and GetContractPages.
+func fetchMemoryPages(client *wctl.Client, contractID string) []error {
+	account, err := client.GetAccount(contractID)
+	if err != nil {
+		return []error{err}
+	}
+
+	chErr := make(chan error, account.NumPages)
+
+	for i := uint64(0); i < account.NumPages; i++ {
+		go func(i uint64) {
+			_, err := client.GetContractPages(account.PublicKey, &i)
+			chErr <- err
+		}(i)
+	}
+
+	var errs []error
+	for i := uint64(0); i < account.NumPages; i++ {
+		e := <-chErr
+		if e != nil {
+			errs = append(errs, e)
+		}
+	}
+
+	return errs
 }
