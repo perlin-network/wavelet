@@ -3,6 +3,7 @@ package wavelet
 import (
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"strconv"
 	"sync"
@@ -26,17 +27,19 @@ type TestNetwork struct {
 }
 
 func NewTestNetwork(t testing.TB) *TestNetwork {
-	return &TestNetwork{
-		faucet: NewTestFaucet(t),
+	n := &TestNetwork{
+		faucet: newTestFaucet(t),
 		nodes:  []*TestLedger{},
 	}
+
+	n.nodes = append(n.nodes, n.faucet)
+	return n
 }
 
 func (n *TestNetwork) Cleanup() {
 	for _, node := range n.nodes {
 		node.Cleanup()
 	}
-	n.faucet.Cleanup()
 }
 
 func (n *TestNetwork) Faucet() *TestLedger {
@@ -46,19 +49,38 @@ func (n *TestNetwork) Faucet() *TestLedger {
 func (n *TestNetwork) AddNode(t testing.TB) *TestLedger {
 	node := NewTestLedger(t, TestLedgerConfig{
 		Peers: []string{n.faucet.Addr()},
+		N:     len(n.nodes),
 	})
 	n.nodes = append(n.nodes, node)
 
 	return node
 }
 
+func (n *TestNetwork) Nodes() []*TestLedger {
+	return n.nodes
+}
+
 func (n *TestNetwork) WaitForConsensus(t testing.TB) {
+	t.Helper()
+
+	stop := make(chan struct{})
 	var wg sync.WaitGroup
-	for _, l := range append(n.nodes, n.faucet) {
+	for _, l := range n.nodes {
 		wg.Add(1)
 		go func(ledger *TestLedger) {
 			defer wg.Done()
-			assert.True(t, <-ledger.WaitForConsensus())
+
+			for {
+				select {
+				case c := <-ledger.WaitForConsensus():
+					if c {
+						return
+					}
+
+				case <-stop:
+					return
+				}
+			}
 		}(l)
 	}
 
@@ -68,19 +90,24 @@ func (n *TestNetwork) WaitForConsensus(t testing.TB) {
 		close(done)
 	}()
 
-	timer := time.NewTimer(5 * time.Second)
+	timer := time.NewTimer(10 * time.Second)
 	select {
 	case <-done:
+		close(stop)
 		return
 
 	case <-timer.C:
+		close(stop)
+		<-done
 		t.Fatal("consensus round took too long")
 	}
 }
 
 func (n *TestNetwork) WaitForSync(t testing.TB) {
+	t.Helper()
+
 	var wg sync.WaitGroup
-	for _, l := range append(n.nodes, n.faucet) {
+	for _, l := range n.nodes {
 		wg.Add(1)
 		go func(ledger *TestLedger) {
 			defer wg.Done()
@@ -116,16 +143,18 @@ type TestLedger struct {
 type TestLedgerConfig struct {
 	Wallet string
 	Peers  []string
+	N      int
 }
 
 func defaultConfig(t testing.TB) *TestLedgerConfig {
 	return &TestLedgerConfig{}
 }
 
-// NewTestFaucet returns an account with a lot of PERLs.
-func NewTestFaucet(t testing.TB) *TestLedger {
+// newTestFaucet returns an account with a lot of PERLs.
+func newTestFaucet(t testing.TB) *TestLedger {
 	return NewTestLedger(t, TestLedgerConfig{
 		Wallet: "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+		N:      0,
 	})
 }
 
@@ -140,7 +169,7 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 	client := skademlia.NewClient(addr, keys, skademlia.WithC1(sys.SKademliaC1), skademlia.WithC2(sys.SKademliaC2))
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
-	kv, cleanup := store.NewTestKV(t, "inmem", "db")
+	kv, cleanup := store.NewTestKV(t, "level", fmt.Sprintf("db_%d", cfg.N))
 	ledger := NewLedger(kv, client, WithoutGC())
 	server := client.Listen()
 	RegisterWaveletServer(server, ledger.Protocol())
@@ -172,10 +201,10 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 }
 
 func (l *TestLedger) Cleanup() {
-	l.server.GracefulStop()
+	l.server.Stop()
 	<-l.stopped
 
-	//l.kvCleanup()
+	l.kvCleanup()
 }
 
 func (l *TestLedger) Addr() string {
@@ -287,6 +316,63 @@ func (l *TestLedger) Pay(to *TestLedger, amount uint64) (Transaction, error) {
 	payload := Transfer{
 		Recipient: to.PublicKey(),
 		Amount:    amount,
+	}
+
+	keys := l.ledger.client.Keys()
+	tx := AttachSenderToTransaction(
+		keys,
+		NewTransaction(keys, sys.TagTransfer, payload.Marshal()),
+		l.ledger.Graph().FindEligibleParents()...)
+
+	err := l.ledger.AddTransaction(tx)
+	return tx, err
+}
+
+func (l *TestLedger) SpawnContract(contractPath string, gasLimit uint64, params []byte) (Transaction, error) {
+	code, err := ioutil.ReadFile(contractPath)
+	if err != nil {
+		return Transaction{}, err
+	}
+
+	payload := Contract{
+		GasLimit: gasLimit,
+		Code:     code,
+		Params:   params,
+	}
+
+	keys := l.ledger.client.Keys()
+	tx := AttachSenderToTransaction(
+		keys,
+		NewTransaction(keys, sys.TagContract, payload.Marshal()),
+		l.ledger.Graph().FindEligibleParents()...)
+
+	err = l.ledger.AddTransaction(tx)
+	return tx, err
+}
+
+func (l *TestLedger) DepositGas(id [32]byte, gasDeposit uint64) (Transaction, error) {
+	payload := Transfer{
+		Recipient:  id,
+		GasDeposit: gasDeposit,
+	}
+
+	keys := l.ledger.client.Keys()
+	tx := AttachSenderToTransaction(
+		keys,
+		NewTransaction(keys, sys.TagTransfer, payload.Marshal()),
+		l.ledger.Graph().FindEligibleParents()...)
+
+	err := l.ledger.AddTransaction(tx)
+	return tx, err
+}
+
+func (l *TestLedger) CallContract(id [32]byte, amount uint64, gasLimit uint64, funcName string, params []byte) (Transaction, error) {
+	payload := Transfer{
+		Recipient:  id,
+		Amount:     amount,
+		GasLimit:   gasLimit,
+		FuncName:   []byte(funcName),
+		FuncParams: params,
 	}
 
 	keys := l.ledger.client.Keys()

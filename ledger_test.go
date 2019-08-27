@@ -2,10 +2,11 @@ package wavelet
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 // TestLedger_BroadcastNop checks that:
@@ -131,36 +132,42 @@ func TestLedger_CallExpensiveContract(t *testing.T) {
 	testnet := NewTestNetwork(t)
 	defer testnet.Cleanup()
 
-	testnet.AddNode(t, 500000)
-	bob := testnet.AddNode(t, 100000000)
+	testnet.AddNode(t)
+	bob := testnet.AddNode(t)
 
-	testnet.WaitForLatestConsensus(t)
+	<-bob.WaitForSync()
+	_, err := testnet.Faucet().Pay(bob, 10000000)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	registry, err := testnet.faucet.SpawnContract("testdata/registry.wasm",
+	<-testnet.Faucet().WaitForSync()
+
+	registry, err := testnet.Faucet().SpawnContract("testdata/registry.wasm",
 		100000000, nil)
 	assert.NoError(t, err)
 
-	testnet.WaitForLatestConsensus(t)
+	testnet.WaitForConsensus(t)
 
-	contract, err := testnet.faucet.SpawnContract("testdata/registered_contract.wasm",
+	contract, err := testnet.Faucet().SpawnContract("testdata/registered_contract.wasm",
 		100000000, nil)
 	assert.NoError(t, err)
 
-	testnet.WaitForLatestConsensus(t)
+	testnet.WaitForConsensus(t)
 
 	// Deposit some gas to both smart contracts
-	_, err = testnet.faucet.DepositGas(registry.ID, 100000000)
+	_, err = testnet.Faucet().DepositGas(registry.ID, 100000000)
 	assert.NoError(t, err)
-	_, err = testnet.faucet.DepositGas(contract.ID, 100000000)
+
+	_, err = testnet.Faucet().DepositGas(contract.ID, 100000000)
 	assert.NoError(t, err)
-	testnet.WaitForLatestConsensus(t)
+
+	testnet.WaitForConsensus(t)
 
 	_, err = bob.CallContract(registry.ID, 0, 1, "track", contract.ID[:])
 	assert.NoError(t, err)
 
-	testnet.WaitForLatestConsensus(t)
-
-	fmt.Println(bob.Balance())
+	<-bob.WaitForConsensus()
 
 	// TODO: add test case for alice (500k PERL)
 }
