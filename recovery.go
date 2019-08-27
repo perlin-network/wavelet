@@ -8,6 +8,8 @@ import (
 	"runtime/pprof"
 	"sync"
 	"time"
+	"fmt"
+	"os"
 )
 
 type StallDetector struct {
@@ -113,6 +115,17 @@ LOOP:
 						logger := log.Node()
 						_ = pprof.Lookup("heap").WriteTo(logger, 2)
 						_ = pprof.Lookup("goroutine").WriteTo(logger, 2)
+
+						crashDir := "./crashes"
+						if err := os.MkdirAll(crashDir, 0700); err == nil {
+							crashTimestamp := time.Now().Format("2006-01-02-15-04")
+							crashFile := fmt.Sprintf("%s/heap-%s.pprof", crashDir, crashTimestamp)
+
+							if heapFile, err := os.Create(crashFile); err == nil {
+								defer heapFile.Close()
+								_ = pprof.Lookup("heap").WriteTo(heapFile, 0)
+							}
+						}
 
 						if err := d.tryRestart(); err != nil {
 							logger.Error().Err(err).Msg("Failed to restart process")
