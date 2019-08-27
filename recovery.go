@@ -5,6 +5,7 @@ import (
 	"github.com/perlin-network/wavelet/lru"
 	"github.com/pkg/errors"
 	"runtime"
+	"runtime/pprof"
 	"sync"
 	"time"
 )
@@ -85,6 +86,11 @@ func (d *StallDetector) Run() {
 				if memStats.Alloc > 1048576*d.config.MaxMemoryMB {
 					d.delegate.PrepareShutdown(errors.New("Memory usage exceeded maximum. Node is scheduled to shutdown now."))
 					restartErr := d.tryRestart()
+
+					errorLog := log.Node()
+					pprof.Lookup("heap").WriteTo(errorLog, 2)
+					pprof.Lookup("goroutine").WriteTo(errorLog, 2)
+
 					logger.Error().Err(restartErr).Msg("Failed to restart process")
 					d.mu.Unlock()
 					return
