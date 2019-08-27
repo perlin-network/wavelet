@@ -109,7 +109,6 @@ LOOP:
 					var memStats runtime.MemStats
 					runtime.ReadMemStats(&memStats)
 
-
 					if memStats.Alloc > 1048576*d.config.MaxMemoryMB {
 						d.delegate.prepareShutdown(d.mu, errors.New("Memory usage exceeded maximum. Node is scheduled to shutdown now."))
 
