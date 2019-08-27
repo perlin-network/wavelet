@@ -122,8 +122,8 @@ LOOP:
 							crashFile := fmt.Sprintf("%s/heap-%s.pprof", crashDir, crashTimestamp)
 
 							if heapFile, err := os.Create(crashFile); err == nil {
-								defer heapFile.Close()
 								_ = pprof.Lookup("heap").WriteTo(heapFile, 0)
+								heapFile.Close()
 							}
 						}
 
