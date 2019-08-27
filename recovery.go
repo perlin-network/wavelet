@@ -11,7 +11,7 @@ import (
 )
 
 type StallDetector struct {
-	mu       sync.Mutex
+	mu       *sync.Mutex
 	stop     <-chan struct{}
 	config   StallDetectorConfig
 	delegate StallDetectorDelegate
@@ -34,13 +34,13 @@ type StallDetectorDelegate struct {
 	PrepareShutdown func(error)
 }
 
-func (d StallDetectorDelegate) ping(mu sync.Mutex) {
+func (d StallDetectorDelegate) ping(mu *sync.Mutex) {
 	mu.Unlock()
 	d.Ping()
 	mu.Lock()
 }
 
-func (d StallDetectorDelegate) prepareShutdown(mu sync.Mutex, err error) {
+func (d StallDetectorDelegate) prepareShutdown(mu *sync.Mutex, err error) {
 	mu.Unlock()
 	d.PrepareShutdown(err)
 	mu.Lock()
@@ -48,6 +48,7 @@ func (d StallDetectorDelegate) prepareShutdown(mu sync.Mutex, err error) {
 
 func NewStallDetector(stop <-chan struct{}, config StallDetectorConfig, delegate StallDetectorDelegate) *StallDetector {
 	return &StallDetector{
+		mu:                      &sync.Mutex{},
 		stop:                    stop,
 		config:                  config,
 		delegate:                delegate,
