@@ -698,8 +698,6 @@ func (l *Ledger) finalize() {
 				l.metrics.queryLatency.Time(func() {
 					l.query(conn, voteChan, current, currentDifficulty)
 				})
-				l.stallDetector.ReportIncomingRound(round.ID)
-
 			}
 
 			workerWG.Done()
@@ -808,6 +806,8 @@ func (l *Ledger) finalize() {
 		Msg("Finalized consensus round, and initialized a new round.")
 
 	l.stallDetector.ReportFinalizedRound(preferred.ID)
+
+	//go ExportGraphDOT(finalized, l.graph)
 }
 
 func (l *Ledger) query(conn *grpc.ClientConn, voteChan chan<- vote, current *Round, currentDifficulty byte) {
@@ -899,6 +899,8 @@ func (l *Ledger) query(conn *grpc.ClientConn, voteChan chan<- vote, current *Rou
 		fmt.Printf("got merkle %x but expected %x\n", results.snapshot.Checksum(), round.Merkle)
 		return
 	}
+
+	l.stallDetector.ReportIncomingRound(round.ID)
 
 	voteChan <- vote{voter: voter, value: &round}
 }
