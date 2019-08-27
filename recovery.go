@@ -34,6 +34,18 @@ type StallDetectorDelegate struct {
 	PrepareShutdown func(error)
 }
 
+func (d StallDetectorDelegate) ping(mu sync.Mutex) {
+	mu.Unlock()
+	d.Ping()
+	mu.Lock()
+}
+
+func (d StallDetectorDelegate) prepareShutdown(mu sync.Mutex, err error) {
+	mu.Unlock()
+	d.PrepareShutdown(err)
+	mu.Lock()
+}
+
 func NewStallDetector(stop <-chan struct{}, config StallDetectorConfig, delegate StallDetectorDelegate) *StallDetector {
 	return &StallDetector{
 		stop:                    stop,
@@ -52,53 +64,65 @@ func (d *StallDetector) Run() {
 
 	logger := log.Node()
 
+LOOP:
 	for {
 		select {
 		case <-ticker.C:
-			d.mu.Lock()
 			currentTime := time.Now()
 
 			hasNetworkActivityRecently := false
 
-			if currentTime.After(d.lastNetworkActivityTime) {
-				if currentTime.Sub(d.lastNetworkActivityTime) > 120*time.Second {
-					d.delegate.PrepareShutdown(errors.New("We did not detect any network activity during the last 2 minutes, and our Ping requests have got no responses. Node is scheduled to shutdown now."))
-					restartErr := d.tryRestart()
-					logger.Error().Err(restartErr).Msg("Failed to restart process")
-					d.mu.Unlock()
-					return // restarting process is impossible. No longer run the stall detector.
-				} else if currentTime.Sub(d.lastNetworkActivityTime) > 60*time.Second {
-					d.delegate.Ping()
-				} else {
-					hasNetworkActivityRecently = true
+			func() {
+				d.mu.Lock()
+				defer d.mu.Unlock()
+
+				if currentTime.After(d.lastNetworkActivityTime) {
+					if currentTime.Sub(d.lastNetworkActivityTime) > 120*time.Second {
+						d.delegate.prepareShutdown(d.mu, errors.New("We did not detect any network activity during the last 2 minutes, and our Ping requests have got no responses. Node is scheduled to shutdown now."))
+
+						if err := d.tryRestart(); err != nil {
+							logger.Error().Err(err).Msg("Failed to restart process")
+						}
+
+						return // Restarting process is impossible. Stop running the stall detector.
+					} else if currentTime.Sub(d.lastNetworkActivityTime) > 60*time.Second {
+						d.delegate.ping(d.mu)
+					} else {
+						hasNetworkActivityRecently = true
+					}
 				}
-			}
-			if currentTime.After(d.lastFinalizationTime) && currentTime.After(d.lastRoundTime) && currentTime.Sub(d.lastRoundTime) > 180*time.Second && hasNetworkActivityRecently {
-				d.delegate.PrepareShutdown(errors.New("Seems that consensus has stalled. Node is scheduled to shutdown now."))
-				restartErr := d.tryRestart()
-				logger.Error().Err(restartErr).Msg("Failed to restart process")
-				d.mu.Unlock()
-				return
-			}
-			if d.config.MaxMemoryMB > 0 {
-				var memStats runtime.MemStats
-				runtime.ReadMemStats(&memStats)
-				if memStats.Alloc > 1048576*d.config.MaxMemoryMB {
-					d.delegate.PrepareShutdown(errors.New("Memory usage exceeded maximum. Node is scheduled to shutdown now."))
-					restartErr := d.tryRestart()
 
-					errorLog := log.Node()
-					pprof.Lookup("heap").WriteTo(errorLog, 2)
-					pprof.Lookup("goroutine").WriteTo(errorLog, 2)
+				if currentTime.After(d.lastFinalizationTime) && currentTime.After(d.lastRoundTime) && currentTime.Sub(d.lastRoundTime) > 180*time.Second && hasNetworkActivityRecently {
+					d.delegate.prepareShutdown(d.mu, errors.New("Seems that consensus has stalled. Node is scheduled to shutdown now."))
 
-					logger.Error().Err(restartErr).Msg("Failed to restart process")
-					d.mu.Unlock()
+					if err := d.tryRestart(); err != nil {
+						logger.Error().Err(err).Msg("Failed to restart process")
+					}
+
 					return
 				}
-			}
 
-			d.mu.Unlock()
+				if d.config.MaxMemoryMB > 0 {
+					var memStats runtime.MemStats
+					runtime.ReadMemStats(&memStats)
+
+					if memStats.Alloc > 1048576*d.config.MaxMemoryMB {
+						d.delegate.prepareShutdown(d.mu, errors.New("Memory usage exceeded maximum. Node is scheduled to shutdown now."))
+
+						logger := log.Node()
+						_ = pprof.Lookup("heap").WriteTo(logger, 2)
+						_ = pprof.Lookup("goroutine").WriteTo(logger, 2)
+
+						if err := d.tryRestart(); err != nil {
+							logger.Error().Err(err).Msg("Failed to restart process")
+						}
+
+						return
+					}
+				}
+			}()
 		case <-d.stop:
+			break LOOP
 		}
 	}
 }
