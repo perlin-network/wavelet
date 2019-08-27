@@ -116,16 +116,30 @@ LOOP:
 						_ = pprof.Lookup("heap").WriteTo(logger, 2)
 						_ = pprof.Lookup("goroutine").WriteTo(logger, 2)
 
-						crashDir := "./crashes"
-						if err := os.MkdirAll(crashDir, 0700); err == nil {
+						func() {
+							crashDir := "./crashes"
+							if err := os.MkdirAll(crashDir, 0700); err != nil {
+								logger.Error().Err(err).Msgf("Failed to create a directory to record crash logs in: %v", crashDir)
+
+								return
+							}
+
 							crashTimestamp := time.Now().Format("2006-01-02-15-04")
 							crashFile := fmt.Sprintf("%s/heap-%s.pprof", crashDir, crashTimestamp)
 
-							if heapFile, err := os.Create(crashFile); err == nil {
-								_ = pprof.Lookup("heap").WriteTo(heapFile, 0)
-								heapFile.Close()
+							heapFile, err := os.Create(crashFile)
+							if err != nil {
+								logger.Error().Err(err).Msgf("Failed to create pprof file: %v", crashFile)
+								return
 							}
-						}
+
+							defer heapFile.Close()
+
+							err = pprof.Lookup("heap").WriteTo(heapFile, 0)
+							if err != nil {
+								logger.Error().Err(err).Msgf("Failed to write pprof file: %v", crashFile)
+							}
+						}()
 
 						if err := d.tryRestart(); err != nil {
 							logger.Error().Err(err).Msg("Failed to restart process")
