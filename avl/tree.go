@@ -353,6 +353,10 @@ func (t *Tree) SetViewID(viewID uint64) {
 	t.viewID = viewID
 }
 
+func (t *Tree) GetViewID() uint64 {
+	return t.viewID
+}
+
 func (t *Tree) iterateDiff(prevViewID uint64, callback func(n *node) bool) {
 	var stack queue.Queue
 	stack.PushBack(t.root)
