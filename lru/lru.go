@@ -22,6 +22,7 @@ package lru
 import (
 	"container/list"
 	"sync"
+	"time"
 )
 
 type LRU struct {
@@ -31,11 +32,14 @@ type LRU struct {
 
 	elements map[interface{}]*list.Element
 	access   *list.List // *objectInfo
+
+	expiration time.Duration // 0 for no expiration check
 }
 
 type objectInfo struct {
-	key interface{}
-	obj interface{}
+	key        interface{}
+	obj        interface{}
+	updateTime time.Time
 }
 
 func NewLRU(size int) *LRU {
@@ -46,32 +50,67 @@ func NewLRU(size int) *LRU {
 	}
 }
 
+func (l *LRU) SetExpiration(d time.Duration) {
+	l.Lock()
+	l.expiration = d
+	l.Unlock()
+}
+
+func (l *LRU) cleanupExpiredItemsLocked() {
+	if l.expiration != 0 {
+		currentTime := time.Now()
+		it := l.access.Back()
+		for it != nil {
+			info := it.Value.(*objectInfo)
+			oldIt := it
+			it = it.Prev()
+
+			if currentTime.After(info.updateTime) && currentTime.Sub(info.updateTime) > l.expiration {
+				l.access.Remove(oldIt)
+				delete(l.elements, info.key)
+			} else {
+				break
+			}
+		}
+	}
+}
+
 func (l *LRU) Load(key interface{}) (interface{}, bool) {
 	l.Lock()
 	defer l.Unlock()
+
+	l.cleanupExpiredItemsLocked()
 
 	elem, ok := l.elements[key]
 	if !ok {
 		return nil, false
 	}
 
+	objInfo := elem.Value.(*objectInfo)
+	objInfo.updateTime = time.Now()
 	l.access.MoveToFront(elem)
-	return elem.Value.(*objectInfo).obj, ok
+
+	return objInfo.obj, ok
 }
 
 func (l *LRU) LoadOrPut(key interface{}, val interface{}) (interface{}, bool) {
 	l.Lock()
 	defer l.Unlock()
 
+	l.cleanupExpiredItemsLocked()
+
 	elem, ok := l.elements[key]
 
 	if ok {
-		val = elem.Value.(*objectInfo).obj
+		objInfo := elem.Value.(*objectInfo)
+		objInfo.updateTime = time.Now()
+		val = objInfo.obj
 		l.access.MoveToFront(elem)
 	} else {
 		l.elements[key] = l.access.PushFront(&objectInfo{
-			key: key,
-			obj: val,
+			key:        key,
+			obj:        val,
+			updateTime: time.Now(),
 		})
 		for len(l.elements) > l.size {
 			back := l.access.Back()
@@ -88,15 +127,20 @@ func (l *LRU) Put(key interface{}, val interface{}) {
 	l.Lock()
 	defer l.Unlock()
 
+	l.cleanupExpiredItemsLocked()
+
 	elem, ok := l.elements[key]
 
 	if ok {
-		elem.Value.(*objectInfo).obj = val
+		objInfo := elem.Value.(*objectInfo)
+		objInfo.updateTime = time.Now()
+		objInfo.obj = val
 		l.access.MoveToFront(elem)
 	} else {
 		l.elements[key] = l.access.PushFront(&objectInfo{
-			key: key,
-			obj: val,
+			key:        key,
+			obj:        val,
+			updateTime: time.Now(),
 		})
 		for len(l.elements) > l.size {
 			back := l.access.Back()
@@ -110,6 +154,8 @@ func (l *LRU) Put(key interface{}, val interface{}) {
 func (l *LRU) Remove(key interface{}) {
 	l.Lock()
 	defer l.Unlock()
+
+	l.cleanupExpiredItemsLocked()
 
 	elem, ok := l.elements[key]
 	if ok {

@@ -22,6 +22,7 @@ package lru
 import (
 	"github.com/stretchr/testify/assert"
 	"testing"
+	"time"
 )
 
 func TestLRU(t *testing.T) {
@@ -45,4 +46,15 @@ func TestLRU(t *testing.T) {
 	val, ok = lru.Load([32]byte{'c'})
 	assert.True(t, ok)
 	assert.Equal(t, 3, val.(int))
+}
+
+func TestLRUExpiration(t *testing.T) {
+	lru := NewLRU(2)
+	lru.SetExpiration(1 * time.Second)
+	lru.Put([32]byte{'a'}, 1)
+	_, ok := lru.Load([32]byte{'a'})
+	assert.True(t, ok)
+	time.Sleep(1*time.Second + 100*time.Millisecond)
+	_, ok = lru.Load([32]byte{'a'})
+	assert.False(t, ok)
 }
