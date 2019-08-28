@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/lru"
+	"golang.org/x/crypto/blake2b"
 	"io"
 
 	"github.com/buaazp/fasthttprouter"
@@ -134,6 +135,7 @@ func (g *Gateway) setup() {
 	r.GET("/accounts/:id", g.applyMiddleware(g.getAccount, ""))
 
 	// Contract endpoints.
+	r.GET("/contract/:id/page/:index/:view_id/:old_hash", g.applyMiddleware(g.getContractPages, "/contract/:id/page/:index/:view_id/:old_hash", g.contractScope))
 	r.GET("/contract/:id/page/:index/:view_id", g.applyMiddleware(g.getContractPages, "/contract/:id/page/:index/:view_id", g.contractScope))
 	r.GET("/contract/:id/page/:index", g.applyMiddleware(g.getContractPages, "/contract/:id/page/:index", g.contractScope))
 	r.GET("/contract/:id/page", g.applyMiddleware(g.getContractPages, "/contract/:id/page", g.contractScope))
@@ -480,6 +482,18 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	var oldHashFromRequest [blake2b.Size256]byte
+	var hasOldHash bool
+
+	if oldHash, ok := ctx.UserValue("old_hash").(string); ok {
+		if oldHash, err := hex.DecodeString(oldHash); err == nil {
+			if len(oldHash) == blake2b.Size256 {
+				copy(oldHashFromRequest[:], oldHash)
+				hasOldHash = true
+			}
+		}
+	}
+
 	id, ok := ctx.UserValue("contract_id").(wavelet.TransactionID)
 	if !ok {
 		g.renderError(ctx, ErrBadRequest(errors.New("id must be a TransactionID")))
@@ -517,6 +531,14 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 	}
 
 	page, available := wavelet.ReadAccountContractPage(snapshot, id, idx)
+	pageHash := blake2b.Sum256(page)
+	ctx.Response.Header.Add("Page-Hash", hex.EncodeToString(pageHash[:]))
+
+	if hasOldHash && pageHash == oldHashFromRequest {
+		ctx.Response.Header.Add("Page-Not-Modified", "1")
+		_, _ = ctx.Write([]byte{})
+		return
+	}
 
 	if len(page) == 0 || !available {
 		_, _ = ctx.Write([]byte{})
