@@ -24,6 +24,9 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/lru"
+	"io"
 
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
@@ -36,7 +39,6 @@ import (
 	"github.com/valyala/fasthttp/pprofhandler"
 	"github.com/valyala/fastjson"
 
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -59,14 +61,20 @@ type Gateway struct {
 
 	parserPool *fastjson.ParserPool
 	arenaPool  *fastjson.ArenaPool
+
+	stateSnapshots *lru.LRU // uint64 -> *avl.Tree
 }
 
 func New() *Gateway {
+	stateSnapshots := lru.NewLRU(16)
+	stateSnapshots.SetExpiration(2 * time.Minute) // client must finish using a snapshot in 2 minutes.
+
 	return &Gateway{
-		sinks:       make(map[string]*sink),
-		parserPool:  new(fastjson.ParserPool),
-		arenaPool:   new(fastjson.ArenaPool),
-		rateLimiter: newRateLimiter(1000),
+		sinks:          make(map[string]*sink),
+		parserPool:     new(fastjson.ParserPool),
+		arenaPool:      new(fastjson.ArenaPool),
+		rateLimiter:    newRateLimiter(1000),
+		stateSnapshots: stateSnapshots,
 	}
 }
 
@@ -120,11 +128,13 @@ func (g *Gateway) setup() {
 
 	// Ledger endpoint.
 	r.GET("/ledger", g.applyMiddleware(g.ledgerStatus, "/ledger"))
+	r.GET("/ledger/pin", g.applyMiddleware(g.pinState, "/ledger/pin"))
 
 	// Account endpoints.
 	r.GET("/accounts/:id", g.applyMiddleware(g.getAccount, ""))
 
 	// Contract endpoints.
+	r.GET("/contract/:id/page/:index/:view_id", g.applyMiddleware(g.getContractPages, "/contract/:id/page/:index/:view_id", g.contractScope))
 	r.GET("/contract/:id/page/:index", g.applyMiddleware(g.getContractPages, "/contract/:id/page/:index", g.contractScope))
 	r.GET("/contract/:id/page", g.applyMiddleware(g.getContractPages, "/contract/:id/page", g.contractScope))
 	r.GET("/contract/:id", g.applyMiddleware(g.getContractCode, "/contract/:id", g.contractScope))
@@ -407,14 +417,50 @@ func (g *Gateway) contractScope(next fasthttp.RequestHandler) fasthttp.RequestHa
 	})
 }
 
+func (g *Gateway) pinState(ctx *fasthttp.RequestCtx) {
+	snapshot := g.ledger.Snapshot()
+	g.stateSnapshots.Put(snapshot.Checksum(), snapshot)
+	_, _ = ctx.Write([]byte(fmt.Sprintf("%x", snapshot.Checksum())))
+}
+
+func (g *Gateway) internalGetSnapshotFromInput(ctx *fasthttp.RequestCtx) (*avl.Tree, bool) {
+	var snapshot *avl.Tree
+
+	if viewID, ok := ctx.UserValue("view_id").(string); ok {
+		if viewID, err := hex.DecodeString(viewID); err == nil {
+			if len(viewID) == avl.MerkleHashSize {
+				var viewIDArray [avl.MerkleHashSize]byte
+				copy(viewIDArray[:], viewID)
+				if v, ok := g.stateSnapshots.Load(viewIDArray); ok {
+					snapshot = v.(*avl.Tree)
+				}
+			}
+
+		}
+		if snapshot == nil {
+			g.renderError(ctx, ErrBadRequest(errors.New("view id is not in state cache")))
+			return nil, false
+		}
+	} else {
+		snapshot = g.ledger.Snapshot()
+	}
+
+	return snapshot, true
+}
+
 func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {
+	snapshot, ok := g.internalGetSnapshotFromInput(ctx)
+	if !ok {
+		return
+	}
+
 	id, ok := ctx.UserValue("contract_id").(wavelet.TransactionID)
 	if !ok {
 		g.renderError(ctx, ErrBadRequest(errors.New("id must be a TransactionID")))
 		return
 	}
 
-	code, available := wavelet.ReadAccountContractCode(g.ledger.Snapshot(), id)
+	code, available := wavelet.ReadAccountContractCode(snapshot, id)
 
 	if len(code) == 0 || !available {
 		g.renderError(ctx, ErrNotFound(errors.Errorf("could not find contract with ID %x", id)))
@@ -429,6 +475,11 @@ func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {
 }
 
 func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
+	snapshot, ok := g.internalGetSnapshotFromInput(ctx)
+	if !ok {
+		return
+	}
+
 	id, ok := ctx.UserValue("contract_id").(wavelet.TransactionID)
 	if !ok {
 		g.renderError(ctx, ErrBadRequest(errors.New("id must be a TransactionID")))
@@ -452,8 +503,6 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 			return
 		}
 	}
-
-	snapshot := g.ledger.Snapshot()
 
 	numPages, available := wavelet.ReadAccountContractNumPages(snapshot, id)
 
