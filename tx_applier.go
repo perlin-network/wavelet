@@ -21,7 +21,6 @@ package wavelet
 
 import (
 	"encoding/hex"
-
 	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
@@ -36,8 +35,44 @@ type contractExecutorState struct {
 	ApplyCtx      *ApplyContext
 }
 
+type state struct {
+	contractID AccountID
+	vm         *VMState
+}
+
 type ApplyContext struct {
-	Contracts map[AccountID]*VMState
+	m map[AccountID]*VMState
+	l []AccountID
+}
+
+func NewApplyContext() *ApplyContext {
+	return &ApplyContext{
+		m: make(map[AccountID]*VMState),
+	}
+}
+
+func (ac *ApplyContext) AddState(contractID AccountID, state *VMState) {
+	if _, ok := ac.m[contractID]; !ok {
+		ac.m[contractID] = state
+		ac.l = append(ac.l, contractID)
+	}
+}
+
+func (ac *ApplyContext) GetState(contractID AccountID) (*VMState, bool) {
+	vm, exists := ac.m[contractID]
+	return vm, exists
+}
+
+func (ac *ApplyContext) States() []*state {
+	states := make([]*state, 0, len(ac.l))
+	for _, id := range ac.l {
+		states = append(states, &state{
+			contractID: id,
+			vm:         ac.m[id],
+		})
+	}
+
+	return states
 }
 
 func ApplyTransaction(round *Round, state *avl.Tree, tx *Transaction, applyCtx *ApplyContext) error {
@@ -307,7 +342,7 @@ func executeContractInTransactionContext(
 	var vmStateLoaded bool
 
 	if state.ApplyCtx != nil {
-		vmState, vmStateLoaded = state.ApplyCtx.Contracts[contractID]
+		vmState, vmStateLoaded = state.ApplyCtx.GetState(contractID)
 		if !vmStateLoaded {
 			vmState = &VMState{}
 		}
@@ -349,7 +384,7 @@ func executeContractInTransactionContext(
 	} else {
 		// Contract invocation succeeded. VM state can be safely saved now.
 		if vmState != nil {
-			state.ApplyCtx.Contracts[contractID] = vmState
+			state.ApplyCtx.AddState(contractID, vmState)
 		}
 
 		if executor.Gas > contractGasBalance {
