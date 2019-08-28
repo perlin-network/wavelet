@@ -262,7 +262,7 @@ func (s *TxResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	if err := jsonHex(v, s.ID[:], "id"); err != nil {
+	if err := jsonHex(v, s.ID[:], "tx_id"); err != nil {
 		return err
 	}
 

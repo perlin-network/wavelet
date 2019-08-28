@@ -16,12 +16,18 @@ import (
 // RequestJSON will make a request to a given path, with a given body and
 // return the JSON bytes result into `out` to unmarshal.
 func (c *Client) RequestJSON(path string, method string, body MarshalableJSON, out UnmarshalableJSON) error {
-	raw, err := body.MarshalJSON()
-	if err != nil {
-		return err
+	var bytes []byte
+
+	if body != nil {
+		raw, err := body.MarshalJSON()
+		if err != nil {
+			return err
+		}
+
+		bytes = raw
 	}
 
-	resBody, err := c.Request(path, method, raw)
+	resBody, err := c.Request(path, method, bytes)
 	if err != nil {
 		return err
 	}

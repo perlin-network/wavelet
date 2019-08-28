@@ -30,14 +30,18 @@ import (
 
 func (cli *CLI) getCompleter() *readline.PrefixCompleter {
 	return readline.PcItemDynamic(func(line string) []string {
-		f := strings.Split(line, " ")
-		if len(f) < 2 {
-			return nil
-		}
+		return nil
 
-		text := f[len(f)-1]
+		/*
+			f := strings.Split(line, " ")
+			if len(f) < 2 {
+				return nil
+			}
 
-		return cli.ledger.Find(text, 10)
+			text := f[len(f)-1]
+
+			return cli.ledger.Find(text, 10)
+		*/
 	})
 }
 
