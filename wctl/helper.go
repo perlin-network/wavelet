@@ -94,7 +94,7 @@ func (c *Client) EstablishWS(path string, query url.Values) (*websocket.Conn, er
 		Path:   path,
 	}
 
-	if query != nil {
+	if query != nil && len(query) > 0 {
 		uri.RawQuery = query.Encode()
 	}
 
@@ -106,41 +106,36 @@ func (c *Client) EstablishWS(path string, query url.Values) (*websocket.Conn, er
 	return conn, err
 }
 
-func (c *Client) pollWS(stop <-chan struct{}, ev chan []byte, path string, query url.Values) error {
-	if stop == nil {
-		stop = make(chan struct{})
-	}
-
+// callback is spawned in a goroutine
+func (c *Client) pollWS(callback func([]byte), path string, query url.Values) (func(), error) {
 	ws, err := c.EstablishWS(path, query)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	evChan := make(chan []byte)
-
 	go func() {
-		defer close(evChan)
-
 		for {
 			_, message, err := ws.ReadMessage()
 			if err != nil {
 				return
 			}
 
-			select {
-			case <-stop:
-				return
-			case evChan <- message:
-			}
+			go callback(message)
 		}
 	}()
 
-	return nil
+	return func() {
+		// Also kills the for loop above
+		ws.Close()
+	}, nil
 }
 
 var ErrInvalidHexLength = errors.New("Invalid hex bytes length")
 
 func jsonHex(v *fastjson.Value, dst []byte, keys ...string) error {
+	//_, fn, line, _ := runtime.Caller(1)
+	//fmt.Println(fn, line)
+
 	i, err := hex.Decode(dst, v.GetStringBytes(keys...))
 	if err != nil {
 		return err

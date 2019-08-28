@@ -24,7 +24,6 @@ import (
 	"encoding/base64"
 	"fmt"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/perlin-network/noise/edwards25519"
@@ -93,9 +92,8 @@ func NewClient(config Config) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan []byte, error) {
-	evChan := make(chan []byte)
-
+/*
+func (c *Client) PollLoggerSink(sinkRoute string) (<-chan []byte, error) {
 	if err := c.pollWS(stop, evChan, sinkRoute, nil); err != nil {
 		return nil, err
 	}
@@ -103,7 +101,8 @@ func (c *Client) PollLoggerSink(stop <-chan struct{}, sinkRoute string) (<-chan 
 	return evChan, nil
 }
 
-func (c *Client) PollAccounts(stop <-chan struct{}, accountID string) (<-chan []byte, error) {
+// PollAccounts queries
+func (c *Client) PollAccounts(accountID string) (<-chan []byte, error) {
 	v := url.Values{}
 	if accountID != "" {
 		v.Set("id", accountID)
@@ -132,6 +131,7 @@ func (c *Client) PollContracts(stop <-chan struct{}, contractID string) (<-chan 
 
 	return evChan, nil
 }
+*/
 
 func (c *Client) GetContractCode(contractID string) (string, error) {
 	path := fmt.Sprintf("%s/%s", RouteContract, contractID)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/valyala/fastjson"
@@ -22,6 +23,35 @@ var (
 	// ErrInsufficientPerls is returned when you don't have enough PERLs.
 	ErrInsufficientPerls = errors.New("Insufficient PERLs")
 )
+
+type TransactionEvent struct {
+	Event   string    `json:"event"`
+	ID      [32]byte  `json:"tx_id"`
+	Sender  [32]byte  `json:"sender_id"`
+	Creator [32]byte  `json:"creator_id"`
+	Depth   uint64    `json:"depth"`
+	Tag     byte      `json:"tag"`
+	Time    time.Time `json:"time"`
+}
+
+type Transaction struct {
+	ID      [32]byte `json:"id"`
+	Sender  [32]byte `json:"sender"`
+	Creator [32]byte `json:"creator"`
+	Status  string   `json:"status"`
+	Nonce   uint64   `json:"nonce"`
+	Depth   uint64   `json:"depth"`
+	Tag     byte     `json:"tag"`
+	Payload []byte   `json:"payload"`
+
+	Seed    [32]byte `json:"seed"`
+	SeedLen uint8    `json"seed_len"`
+
+	SenderSignature  [64]byte `json:"sender_signature"`
+	CreatorSignature [64]byte `json:"creator_signature"`
+
+	Parents [][32]byte `json:"parents"`
+}
 
 // ListTransactions calls the /tx endpoint of the API to list all transactions.
 // The arguments are optional, zero values would default them.
@@ -97,7 +127,10 @@ func (c *Client) sendTransfer(tag byte, transfer Marshalable) (*TxResponse, erro
 	return c.sendTransaction(tag, transfer.Marshal())
 }
 
-func (c *Client) PollTransactions(stop <-chan struct{}, txID string, senderID string, creatorID string, tag *byte) (<-chan []byte, error) {
+// PollTransactions calls the callback for each WS event received.
+func (c *Client) PollTransactions(callback func(txs []TransactionEvent),
+	txID string, senderID string, creatorID string, tag *byte) (func(), error) {
+
 	v := url.Values{}
 
 	if txID != "" {
@@ -116,32 +149,51 @@ func (c *Client) PollTransactions(stop <-chan struct{}, txID string, senderID st
 		v.Set("tag", fmt.Sprintf("%x", *tag))
 	}
 
-	evChan := make(chan []byte)
+	return c.pollWS(func(b []byte) {
+		var parser fastjson.Parser
+		v, err := parser.ParseBytes(b)
+		if err != nil {
+			return
+		}
 
-	if err := c.pollWS(stop, evChan, RouteWSTransactions, v); err != nil {
-		return nil, err
-	}
+		a := v.GetArray()
+		txs := make([]TransactionEvent, 0, len(a))
 
-	return evChan, nil
-}
+		for _, o := range a {
+			var t TransactionEvent
 
-type Transaction struct {
-	ID      [32]byte `json:"id"`
-	Sender  [32]byte `json:"sender"`
-	Creator [32]byte `json:"creator"`
-	Status  string   `json:"status"`
-	Nonce   uint64   `json:"nonce"`
-	Depth   uint64   `json:"depth"`
-	Tag     byte     `json:"tag"`
-	Payload []byte   `json:"payload"`
+			if err := jsonHex(o, t.ID[:], "tx_id"); err != nil {
+				continue
+			}
 
-	Seed    [32]byte `json:"seed"`
-	SeedLen uint8    `json"seed_len"`
+			if err := jsonHex(o, t.Sender[:], "sender_id"); err != nil {
+				continue
+			}
 
-	SenderSignature  [64]byte `json:"sender_signature"`
-	CreatorSignature [64]byte `json:"creator_signature"`
+			if err := jsonHex(o, t.Creator[:], "creator_id"); err != nil {
+				fmt.Println("err in tx.go", err)
+				continue
+			}
 
-	Parents [][32]byte `json:"parents"`
+			t.Event = string(o.GetStringBytes("event"))
+			t.Depth = o.GetUint64("depth")
+			t.Tag = byte(o.GetUint("tag"))
+
+			Time, err := time.Parse(
+				time.RFC3339, string(o.GetStringBytes("time")),
+			)
+
+			if err != nil {
+				continue
+			}
+
+			t.Time = Time
+
+			txs = append(txs, t)
+		}
+
+		callback(txs)
+	}, RouteWSTransactions, v)
 }
 
 func (t *Transaction) UnmarshalJSON(b []byte) error {

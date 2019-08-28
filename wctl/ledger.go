@@ -89,15 +89,15 @@ func (l *LedgerStatusResponse) UnmarshalJSON(b []byte) error {
 	l.PreferredVotes = v.GetInt("preferred_votes")
 	l.PreferredID = string(v.GetStringBytes("preferred_id"))
 
-	if err := jsonHex(v, l.Round.MerkleRoot[:], "merkle_root"); err != nil {
+	if err := jsonHex(v, l.Round.MerkleRoot[:], "round", "merkle_root"); err != nil {
 		return err
 	}
 
-	if err := jsonHex(v, l.Round.StartID[:], "start_id"); err != nil {
+	if err := jsonHex(v, l.Round.StartID[:], "round", "start_id"); err != nil {
 		return err
 	}
 
-	if err := jsonHex(v, l.Round.EndID[:], "end_id"); err != nil {
+	if err := jsonHex(v, l.Round.EndID[:], "round", "end_id"); err != nil {
 		return err
 	}
 
