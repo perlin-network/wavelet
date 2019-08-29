@@ -25,6 +25,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/perlin-network/wavelet/avl"
+	"golang.org/x/crypto/blake2b"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -213,7 +215,7 @@ func TestGetTransaction(t *testing.T) {
 
 			if tc.wantResponse != nil {
 				r, err := tc.wantResponse.marshalJSON(new(fastjson.ArenaPool).Get())
-				assert.Nil(t, err)
+				assert.NoError(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
 		})
@@ -247,7 +249,7 @@ func TestSendTransaction(t *testing.T) {
 			assert.NotNil(t, w)
 
 			_, err = ioutil.ReadAll(w.Body)
-			assert.Nil(t, err)
+			assert.NoError(t, err)
 
 			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 		})
@@ -345,10 +347,6 @@ func TestGetAccount(t *testing.T) {
 	var id32 wavelet.AccountID
 	copy(id32[:], idBytes)
 
-	wavelet.WriteAccountBalance(gateway.ledger.Snapshot(), id32, 10)
-	wavelet.WriteAccountStake(gateway.ledger.Snapshot(), id32, 11)
-	wavelet.WriteAccountContractNumPages(gateway.ledger.Snapshot(), id32, 12)
-
 	var id wavelet.AccountID
 	copy(id[:], idBytes)
 
@@ -396,7 +394,7 @@ func TestGetAccount(t *testing.T) {
 
 			if tc.wantResponse != nil {
 				r, err := tc.wantResponse.marshalJSON(new(fastjson.ArenaPool).Get())
-				assert.Nil(t, err)
+				assert.NoError(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
 		})
@@ -414,14 +412,16 @@ func TestGetContractCode(t *testing.T) {
 	var id32 wavelet.AccountID
 	copy(id32[:], idBytes)
 
-	s := gateway.ledger.Snapshot()
-	wavelet.WriteAccountContractCode(s, id32, []byte("contract code"))
+	snapshot := gateway.ledger.Snapshot()
+	wavelet.WriteAccountContractCode(snapshot, id32, []byte("contract code"))
+	checksum := snapshot.Checksum()
 
 	tests := []struct {
 		name      string
 		url       string
 		wantCode  int
 		wantError marshalableJSON
+		before    func()
 	}{
 		{
 			name:     "missing id",
@@ -432,11 +432,19 @@ func TestGetContractCode(t *testing.T) {
 			name:     "id not hex",
 			url:      "/contract/-----",
 			wantCode: http.StatusBadRequest,
+			wantError: testErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  "contract ID must be presented as valid hex: encoding/hex: invalid byte: U+002D '-'",
+			},
 		},
 		{
 			name:     "invalid id length",
 			url:      "/contract/1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d",
 			wantCode: http.StatusBadRequest,
+			wantError: testErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  fmt.Sprintf("contract ID must be %d bytes long", wavelet.SizeTransactionID),
+			},
 		},
 		{
 			name:     "id not exist",
@@ -447,10 +455,49 @@ func TestGetContractCode(t *testing.T) {
 				ErrorText:  fmt.Sprintf("could not find contract with ID %s", "3132333435363738393031323334353637383930313233343536373839303132"),
 			},
 		},
+		{
+			name:     "view id not hex",
+			url:      "/contract/" + idHex + "/code/-----",
+			wantCode: http.StatusBadRequest,
+			wantError: testErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  "view ID must be presented as valid hex: encoding/hex: invalid byte: U+002D '-'",
+			},
+		},
+		{
+			name:     "invalid view id length",
+			url:      "/contract/" + idHex + "/code/1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d",
+			wantCode: http.StatusBadRequest,
+			wantError: testErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  fmt.Sprintf("view ID must be %d bytes long", avl.MerkleHashSize),
+			},
+		},
+		{
+			name:     "view id does not exist",
+			url:      "/contract/" + idHex + "/code/" + hex.EncodeToString(checksum[:]),
+			wantCode: http.StatusBadRequest,
+			wantError: testErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  "view id is not in state cache",
+			},
+		},
+		{
+			name:     "view id exist in cache",
+			url:      "/contract/" + idHex + "/code/" + hex.EncodeToString(checksum[:]),
+			wantCode: http.StatusOK,
+			before: func() {
+				gateway.stateSnapshots.Put(checksum, snapshot)
+			},
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.before != nil {
+				tc.before()
+			}
+
 			request := httptest.NewRequest("GET", "http://localhost"+tc.url, nil)
 
 			w, err := serve(gateway.router, request)
@@ -464,7 +511,7 @@ func TestGetContractCode(t *testing.T) {
 
 			if tc.wantError != nil {
 				r, err := tc.wantError.marshalJSON(new(fastjson.ArenaPool).Get())
-				assert.Nil(t, err)
+				assert.NoError(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
 		})
@@ -475,18 +522,32 @@ func TestGetContractPages(t *testing.T) {
 	gateway := getGateway(t)
 	gateway.setup()
 
-	// string: u1mf2g3b2477y5btco22txqxuc41cav6
-	var id = "75316d66326733623234373779356274636f3232747871787563343163617636"
+	idHex := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
+	idBytes, err := hex.DecodeString(idHex)
+	assert.NoError(t, err)
+
+	var id32 wavelet.AccountID
+	copy(id32[:], idBytes)
+
+	page := []byte("contract page")
+	snapshot := gateway.ledger.Snapshot()
+	pageHash := blake2b.Sum256(page)
+
+	wavelet.WriteAccountContractPage(snapshot, id32, 0, page)
+	wavelet.WriteAccountContractNumPages(snapshot, id32, 1)
+	checksum := snapshot.Checksum()
 
 	tests := []struct {
-		name      string
-		url       string
-		wantCode  int
-		wantError marshalableJSON
+		name          string
+		url           string
+		wantCode      int
+		wantError     marshalableJSON
+		before        func()                                    // will be called before the request is sent
+		checkResponse func(w *http.Response, body []byte) error // return error if the response is not valid.
 	}{
 		{
 			name:     "page not uint",
-			url:      "/contract/" + id + "/page/-1",
+			url:      "/contract/" + idHex + "/page/-1",
 			wantCode: http.StatusBadRequest,
 			wantError: testErrResponse{
 				StatusText: "Bad request.",
@@ -502,10 +563,69 @@ func TestGetContractPages(t *testing.T) {
 				ErrorText:  fmt.Sprintf("could not find any pages for contract with ID %s", "3132333435363738393031323334353637383930313233343536373839303132"),
 			},
 		},
+		{
+			name:     "view id not hex",
+			url:      "/contract/" + idHex + "/page/1/-----",
+			wantCode: http.StatusBadRequest,
+			wantError: testErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  "view ID must be presented as valid hex: encoding/hex: invalid byte: U+002D '-'",
+			},
+		},
+		{
+			name:     "invalid view id length",
+			url:      "/contract/" + idHex + "/page/1/1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d",
+			wantCode: http.StatusBadRequest,
+			wantError: testErrResponse{
+				StatusText: "Bad request.",
+				ErrorText:  fmt.Sprintf("view ID must be %d bytes long", avl.MerkleHashSize),
+			},
+		},
+		{
+			name:     "old hash is not hex",
+			url:      "/contract/" + idHex + "/page/1/" + hex.EncodeToString(checksum[:]) + "/-----",
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:     "invalid old hash length",
+			url:      "/contract/" + idHex + "/page/1/" + hex.EncodeToString(checksum[:]) + "/1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d",
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:     "view id exist in cache",
+			url:      "/contract/" + idHex + "/page/0/" + hex.EncodeToString(checksum[:]),
+			wantCode: http.StatusOK,
+			before: func() {
+				gateway.stateSnapshots.Put(checksum, snapshot)
+			},
+		},
+		{
+			name:     "page hash not modified",
+			url:      "/contract/" + idHex + "/page/0/" + hex.EncodeToString(checksum[:]) + "/" + hex.EncodeToString(pageHash[:]),
+			wantCode: http.StatusOK,
+			before: func() {
+				gateway.stateSnapshots.Put(checksum, snapshot)
+			},
+			checkResponse: func(w *http.Response, body []byte) error {
+				if len(body) != 0 {
+					return errors.New("expected empty body")
+				}
+
+				if w.Header.Get("Page-Not-Modified") != "1" {
+					return errors.New("expected header 'Page-Not-Modified: 1'")
+				}
+
+				return nil
+			},
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.before != nil {
+				tc.before()
+			}
+
 			request := httptest.NewRequest("GET", "http://localhost"+tc.url, nil)
 
 			w, err := serve(gateway.router, request)
@@ -519,8 +639,12 @@ func TestGetContractPages(t *testing.T) {
 
 			if tc.wantError != nil {
 				r, err := tc.wantError.marshalJSON(new(fastjson.ArenaPool).Get())
-				assert.Nil(t, err)
+				assert.NoError(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
+			}
+
+			if tc.checkResponse != nil {
+				assert.NoError(t, tc.checkResponse(w, response))
 			}
 		})
 	}
@@ -622,12 +746,27 @@ func TestEndpointsRateLimit(t *testing.T) {
 			isRateLimited: false,
 		},
 		{
+			url:           "/contract/1/page/1/1/1",
+			method:        "GET",
+			isRateLimited: true,
+		},
+		{
+			url:           "/contract/1/page/1/1",
+			method:        "GET",
+			isRateLimited: true,
+		},
+		{
 			url:           "/contract/1/page/1",
 			method:        "GET",
 			isRateLimited: true,
 		},
 		{
 			url:           "/contract/1/page",
+			method:        "GET",
+			isRateLimited: true,
+		},
+		{
+			url:           "/contract/1/code/1",
 			method:        "GET",
 			isRateLimited: true,
 		},
