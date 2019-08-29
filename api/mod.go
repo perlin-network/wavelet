@@ -134,12 +134,33 @@ func (g *Gateway) setup() {
 	// Account endpoints.
 	r.GET("/accounts/:id", g.applyMiddleware(g.getAccount, ""))
 
-	// Contract endpoints.
-	r.GET("/contract/:id/page/:index/:view_id/:old_hash", g.applyMiddleware(g.getContractPages, "/contract/:id/page/:index/:view_id/:old_hash", g.contractScope))
-	r.GET("/contract/:id/page/:index/:view_id", g.applyMiddleware(g.getContractPages, "/contract/:id/page/:index/:view_id", g.contractScope))
-	r.GET("/contract/:id/page/:index", g.applyMiddleware(g.getContractPages, "/contract/:id/page/:index", g.contractScope))
-	r.GET("/contract/:id/page", g.applyMiddleware(g.getContractPages, "/contract/:id/page", g.contractScope))
-	r.GET("/contract/:id", g.applyMiddleware(g.getContractCode, "/contract/:id", g.contractScope))
+	// Contract page endpoints.
+	r.GET("/contract/:id/page/:index/:view_id/:old_hash", g.applyMiddleware(g.getContractPages,
+		"/contract/:id/page/:index/:view_id/:old_hash",
+		g.contractScope, g.contractSnapshot, g.contractOldPageHash),
+	)
+	r.GET("/contract/:id/page/:index/:view_id", g.applyMiddleware(g.getContractPages,
+		"/contract/:id/page/:index/:view_id",
+		g.contractScope, g.contractSnapshot),
+	)
+	r.GET("/contract/:id/page/:index", g.applyMiddleware(g.getContractPages,
+		"/contract/:id/page/:index",
+		g.contractScope),
+	)
+	r.GET("/contract/:id/page", g.applyMiddleware(g.getContractPages,
+		"/contract/:id/page",
+		g.contractScope),
+	)
+
+	// Contract code endpoints.
+	r.GET("/contract/:id/code/:view_id", g.applyMiddleware(g.getContractCode,
+		"/contract/:id/code/:view_id",
+		g.contractScope, g.contractSnapshot),
+	)
+	r.GET("/contract/:id", g.applyMiddleware(g.getContractCode,
+		"/contract/:id",
+		g.contractScope),
+	)
 
 	// Transaction endpoints.
 	r.POST("/tx/send", g.applyMiddleware(g.sendTransaction, ""))
@@ -419,47 +440,89 @@ func (g *Gateway) contractScope(next fasthttp.RequestHandler) fasthttp.RequestHa
 	})
 }
 
+func (g *Gateway) contractSnapshot(next fasthttp.RequestHandler) fasthttp.RequestHandler {
+	return fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) {
+		param, ok := ctx.UserValue("view_id").(string)
+		if !ok {
+			g.renderError(ctx, ErrBadRequest(errors.New("could not cast view_id into string")))
+			return
+		}
+
+		slice, err := hex.DecodeString(param)
+		if err != nil {
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "view ID must be presented as valid hex")))
+			return
+		}
+
+		if len(slice) == avl.MerkleHashSize {
+			g.renderError(ctx, ErrBadRequest(errors.Errorf("view ID must be %d bytes long", avl.MerkleHashSize)))
+			return
+		}
+
+		var viewID [avl.MerkleHashSize]byte
+		copy(viewID[:], slice)
+
+		var snapshot *avl.Tree
+
+		if v, ok := g.stateSnapshots.Load(viewID); ok {
+			snapshot = v.(*avl.Tree)
+		}
+
+		if snapshot == nil {
+			g.renderError(ctx, ErrBadRequest(errors.New("view id is not in state cache")))
+			return
+		}
+
+		ctx.SetUserValue("snapshot", snapshot)
+		next(ctx)
+	})
+}
+
+func (g *Gateway) contractOldPageHash(next fasthttp.RequestHandler) fasthttp.RequestHandler {
+	return fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) {
+		// old_hash is optional
+		param, ok := ctx.UserValue("old_hash").(string)
+		if !ok || len(param) == 0 {
+			next(ctx)
+			return
+		}
+
+		slice, err := hex.DecodeString(param)
+		if err != nil {
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "old_hash must be presented as valid hex")))
+			return
+		}
+
+		if len(slice) != blake2b.Size256 {
+			g.renderError(ctx, ErrBadRequest(errors.Errorf("old_hash must be %d bytes long", blake2b.Size256)))
+			return
+		}
+
+		var oldHash [blake2b.Size256]byte
+		copy(oldHash[:], slice)
+
+		ctx.SetUserValue("old_page_hash", oldHash)
+
+		next(ctx)
+	})
+}
+
 func (g *Gateway) pinState(ctx *fasthttp.RequestCtx) {
 	snapshot := g.ledger.Snapshot()
 	g.stateSnapshots.Put(snapshot.Checksum(), snapshot)
 	_, _ = ctx.Write([]byte(fmt.Sprintf("%x", snapshot.Checksum())))
 }
 
-func (g *Gateway) internalGetSnapshotFromInput(ctx *fasthttp.RequestCtx) (*avl.Tree, bool) {
-	var snapshot *avl.Tree
-
-	if viewID, ok := ctx.UserValue("view_id").(string); ok {
-		if viewID, err := hex.DecodeString(viewID); err == nil {
-			if len(viewID) == avl.MerkleHashSize {
-				var viewIDArray [avl.MerkleHashSize]byte
-				copy(viewIDArray[:], viewID)
-				if v, ok := g.stateSnapshots.Load(viewIDArray); ok {
-					snapshot = v.(*avl.Tree)
-				}
-			}
-
-		}
-		if snapshot == nil {
-			g.renderError(ctx, ErrBadRequest(errors.New("view id is not in state cache")))
-			return nil, false
-		}
-	} else {
-		snapshot = g.ledger.Snapshot()
-	}
-
-	return snapshot, true
-}
-
 func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {
-	snapshot, ok := g.internalGetSnapshotFromInput(ctx)
-	if !ok {
-		return
-	}
-
 	id, ok := ctx.UserValue("contract_id").(wavelet.TransactionID)
 	if !ok {
 		g.renderError(ctx, ErrBadRequest(errors.New("id must be a TransactionID")))
 		return
+	}
+
+	snapshot, hasSnapshot := ctx.UserValue("snapshot").(*avl.Tree)
+	if !hasSnapshot {
+		snapshot = g.ledger.Snapshot()
 	}
 
 	code, available := wavelet.ReadAccountContractCode(snapshot, id)
@@ -477,23 +540,6 @@ func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {
 }
 
 func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
-	snapshot, ok := g.internalGetSnapshotFromInput(ctx)
-	if !ok {
-		return
-	}
-
-	var oldHashFromRequest [blake2b.Size256]byte
-	var hasOldHash bool
-
-	if oldHash, ok := ctx.UserValue("old_hash").(string); ok {
-		if oldHash, err := hex.DecodeString(oldHash); err == nil {
-			if len(oldHash) == blake2b.Size256 {
-				copy(oldHashFromRequest[:], oldHash)
-				hasOldHash = true
-			}
-		}
-	}
-
 	id, ok := ctx.UserValue("contract_id").(wavelet.TransactionID)
 	if !ok {
 		g.renderError(ctx, ErrBadRequest(errors.New("id must be a TransactionID")))
@@ -518,6 +564,11 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 		}
 	}
 
+	snapshot, hasSnapshot := ctx.UserValue("snapshot").(*avl.Tree)
+	if !hasSnapshot {
+		snapshot = g.ledger.Snapshot()
+	}
+
 	numPages, available := wavelet.ReadAccountContractNumPages(snapshot, id)
 
 	if !available {
@@ -530,11 +581,13 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
+	oldPageHash, hasOldPageHash := ctx.UserValue("old_page_hash").([blake2b.Size256]byte)
+
 	page, available := wavelet.ReadAccountContractPage(snapshot, id, idx)
 	pageHash := blake2b.Sum256(page)
 	ctx.Response.Header.Add("Page-Hash", hex.EncodeToString(pageHash[:]))
 
-	if hasOldHash && pageHash == oldHashFromRequest {
+	if hasOldPageHash && pageHash == oldPageHash {
 		ctx.Response.Header.Add("Page-Not-Modified", "1")
 		_, _ = ctx.Write([]byte{})
 		return
