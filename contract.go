@@ -30,7 +30,6 @@ import (
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/lru"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
@@ -106,11 +105,8 @@ func SnapshotVMState(vm *exec.VirtualMachine) VMState {
 	}
 }
 
-var vmCache *lru.LRU = lru.NewLRU(32) // AccountID -> *exec.VirtualMachine
-
 func (e *ContractExecutor) GetCost(key string) int64 {
-	// FIXME(kenta): Remove for testnet.
-	return 1
+	return 1 // FIXME(kenta): Remove for testnet.
 	//cost, ok := sys.GasTable[key]
 	//if !ok {
 	//	return 1
@@ -262,13 +258,12 @@ func (e *ContractExecutor) ResolveGlobal(module, field string) int64 {
 }
 
 // If this function returns no error and `contractState` is not nil, new state of the contract MUST be written into `contractState`.
-func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Round, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte, contractState *VMState, contractStateLoaded bool) error {
+func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Round, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte, ctx *CollapseContext, contractState *VMState, contractStateLoaded bool) error {
 	var vm *exec.VirtualMachine
 	var err error
 
-	if _cachedVM, ok := vmCache.Load(id); ok {
-		cachedVM := _cachedVM.(*exec.VirtualMachine)
-		vm, err = CloneVM(cachedVM, e, e)
+	if cached, ok := ctx.VMCache.Load(id); ok {
+		vm, err = CloneVM(cached.(*exec.VirtualMachine), e, e)
 		if err != nil {
 			return errors.Wrap(err, "cannot clone vm")
 		}
@@ -285,15 +280,18 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 			MaxCallStackDepth: sys.ContractMaxCallStackDepth,
 			GasLimit:          gasLimit,
 		}
+
 		vm, err = exec.NewVirtualMachine(code, config, e, e)
 		if err != nil {
 			return errors.Wrap(err, "cannot initialize vm")
 		}
-		cachedVM, err := CloneVM(vm, nil, nil)
+
+		cloned, err := CloneVM(vm, nil, nil)
 		if err != nil {
 			return errors.Wrap(err, "cannot clone vm")
 		}
-		vmCache.Put(id, cachedVM)
+
+		ctx.VMCache.Put(id, cloned)
 	}
 
 	// We can safely initialize the VM first before checking this because the size of the global slice

@@ -195,12 +195,9 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	stallDetector = NewStallDetector(stop, StallDetectorConfig{
 		MaxMemoryMB: cfg.MaxMemoryMB,
 	}, StallDetectorDelegate{
-		Ping: func() {
-			stallDetector.ReportNetworkActivity() // TODO: Real pings.
-		},
 		PrepareShutdown: func(err error) {
 			logger := log.Node()
-			logger.Error().Err(err).Msg("PrepareShutdown")
+			logger.Error().Err(err).Msg("Shutting down node...")
 		},
 	})
 	go stallDetector.Run()
@@ -781,8 +778,6 @@ FINALIZE_ROUNDS:
 							return
 						}
 
-						l.stallDetector.ReportIncomingRound(round.ID)
-
 						voteChan <- vote{voter: voter, value: &round}
 					}
 
@@ -893,8 +888,6 @@ FINALIZE_ROUNDS:
 			Hex("old_merkle_root", current.Merkle[:]).
 			Uint64("round_depth", preferred.End.Depth-preferred.Start.Depth).
 			Msg("Finalized consensus round, and initialized a new round.")
-
-		l.stallDetector.ReportFinalizedRound(preferred.ID)
 
 		//go ExportGraphDOT(finalized, contractIDs.graph)
 	}

@@ -47,7 +47,7 @@ var (
 	// Snowball consensus protocol parameters.
 	SnowballK     = 2
 	SnowballAlpha = 0.8
-	SnowballBeta  = 150
+	SnowballBeta  = 50
 
 	// Timeout for querying a transaction to K peers.
 	QueryTimeout = 1 * time.Second
@@ -277,7 +277,7 @@ var (
 	}
 
 	ContractDefaultMemoryPages = 4
-	ContractMaxMemoryPages     = 32
+	ContractMaxMemoryPages     = 4096
 	ContractTableSize          = 4096
 	ContractMaxValueSlots      = 8192
 	ContractMaxCallStackDepth  = 256
