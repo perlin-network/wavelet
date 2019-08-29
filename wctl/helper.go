@@ -5,10 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"time"
 
-	"github.com/fasthttp/websocket"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 )
@@ -78,56 +76,6 @@ func (c *Client) Request(path string, method string, body []byte) ([]byte, error
 	}
 
 	return res.Body(), nil
-}
-
-// EstablishWS will create a websocket connection.
-func (c *Client) EstablishWS(path string, query url.Values) (*websocket.Conn, error) {
-	prot := "ws"
-	if c.UseHTTPS {
-		prot = "wss"
-	}
-
-	host := fmt.Sprintf("%s:%d", c.APIHost, c.APIPort)
-	uri := url.URL{
-		Scheme: prot,
-		Host:   host,
-		Path:   path,
-	}
-
-	if query != nil && len(query) > 0 {
-		uri.RawQuery = query.Encode()
-	}
-
-	dialer := &websocket.Dialer{
-		HandshakeTimeout: c.Config.Timeout,
-	}
-
-	conn, _, err := dialer.Dial(uri.String(), nil)
-	return conn, err
-}
-
-// callback is spawned in a goroutine
-func (c *Client) pollWS(callback func([]byte), path string, query url.Values) (func(), error) {
-	ws, err := c.EstablishWS(path, query)
-	if err != nil {
-		return nil, err
-	}
-
-	go func() {
-		for {
-			_, message, err := ws.ReadMessage()
-			if err != nil {
-				return
-			}
-
-			go callback(message)
-		}
-	}()
-
-	return func() {
-		// Also kills the for loop above
-		ws.Close()
-	}, nil
 }
 
 var ErrInvalidHexLength = errors.New("Invalid hex bytes length")

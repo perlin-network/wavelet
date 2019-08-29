@@ -13,30 +13,27 @@ require (
 	github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1 // indirect
 	github.com/diamondburned/tcell v1.1.8 // indirect
 	github.com/fasthttp/websocket v1.4.0
-	github.com/fatih/color v1.7.0 // indirect
 	github.com/gogo/protobuf v1.2.1
 	github.com/golang/snappy v0.0.1
 	github.com/google/btree v1.0.0
 	github.com/gorilla/websocket v1.4.0
 	github.com/hashrocket/ws v0.2.1 // indirect
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
-	github.com/mattn/go-colorable v0.1.2 // indirect
-	github.com/mattn/go-isatty v0.0.9 // indirect
 	github.com/perlin-network/life v0.0.0-20190723115110-3091ed0c1be8
 	github.com/perlin-network/noise v0.0.0-20190527211417-79abfb78fdba
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
 	github.com/pkg/errors v0.8.1
 	github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a
 	github.com/rs/zerolog v1.14.3
+	github.com/schollz/croc/v6 v6.1.2 // indirect
 	github.com/spf13/cobra v0.0.5 // indirect
-	github.com/stretchr/testify v1.3.0
+	github.com/stretchr/testify v1.4.0
 	github.com/syndtr/goleveldb v1.0.0
 	github.com/urfave/cli v1.21.0
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/valyala/fasthttp v1.3.0
 	github.com/valyala/fastjson v1.4.1
-	golang.org/x/crypto v0.0.0-20190513172903-22d7a77e9e5f
-	golang.org/x/net v0.0.0-20190522155817-f3200d17e092 // indirect
+	golang.org/x/crypto v0.0.0-20190820162420-60c769a6c586
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
 	google.golang.org/grpc v1.20.1
 	gopkg.in/urfave/cli.v1 v1.20.0

@@ -3,7 +3,6 @@ package wctl
 import (
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"net/url"
 	"strconv"
 	"time"
@@ -125,75 +124,6 @@ func (c *Client) sendTransaction(tag byte, payload []byte) (*TxResponse, error) 
 // SendTransfer sends a wavelet.Transfer instead of a Payload.
 func (c *Client) sendTransfer(tag byte, transfer Marshalable) (*TxResponse, error) {
 	return c.sendTransaction(tag, transfer.Marshal())
-}
-
-// PollTransactions calls the callback for each WS event received.
-func (c *Client) PollTransactions(callback func(txs []TransactionEvent),
-	txID string, senderID string, creatorID string, tag *byte) (func(), error) {
-
-	v := url.Values{}
-
-	if txID != "" {
-		v.Set("tx_id", txID)
-	}
-
-	if senderID != "" {
-		v.Set("sender", senderID)
-	}
-
-	if creatorID != "" {
-		v.Set("creator", creatorID)
-	}
-
-	if tag != nil {
-		v.Set("tag", fmt.Sprintf("%x", *tag))
-	}
-
-	return c.pollWS(func(b []byte) {
-		var parser fastjson.Parser
-		v, err := parser.ParseBytes(b)
-		if err != nil {
-			return
-		}
-
-		a := v.GetArray()
-		txs := make([]TransactionEvent, 0, len(a))
-
-		for _, o := range a {
-			var t TransactionEvent
-
-			if err := jsonHex(o, t.ID[:], "tx_id"); err != nil {
-				continue
-			}
-
-			if err := jsonHex(o, t.Sender[:], "sender_id"); err != nil {
-				continue
-			}
-
-			if err := jsonHex(o, t.Creator[:], "creator_id"); err != nil {
-				fmt.Println("err in tx.go", err)
-				continue
-			}
-
-			t.Event = string(o.GetStringBytes("event"))
-			t.Depth = o.GetUint64("depth")
-			t.Tag = byte(o.GetUint("tag"))
-
-			Time, err := time.Parse(
-				time.RFC3339, string(o.GetStringBytes("time")),
-			)
-
-			if err != nil {
-				continue
-			}
-
-			t.Time = Time
-
-			txs = append(txs, t)
-		}
-
-		callback(txs)
-	}, RouteWSTransactions, v)
 }
 
 func (t *Transaction) UnmarshalJSON(b []byte) error {
