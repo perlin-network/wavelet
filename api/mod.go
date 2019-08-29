@@ -454,7 +454,7 @@ func (g *Gateway) contractSnapshot(next fasthttp.RequestHandler) fasthttp.Reques
 			return
 		}
 
-		if len(slice) == avl.MerkleHashSize {
+		if len(slice) != avl.MerkleHashSize {
 			g.renderError(ctx, ErrBadRequest(errors.Errorf("view ID must be %d bytes long", avl.MerkleHashSize)))
 			return
 		}

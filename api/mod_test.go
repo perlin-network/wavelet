@@ -22,7 +22,6 @@ package api
 import (
 	"bufio"
 	"bytes"
-	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -48,19 +47,8 @@ import (
 )
 
 func TestListTransaction(t *testing.T) {
-	gateway := New()
+	gateway := getGateway(t)
 	gateway.setup()
-
-	gateway.ledger = createLedger(t)
-
-	// Create a transaction
-	keys, err := skademlia.NewKeys(1, 1)
-	assert.NoError(t, err)
-	var buf [200]byte
-	_, err = rand.Read(buf[:])
-	assert.NoError(t, err)
-	_ = wavelet.NewTransaction(keys, sys.TagTransfer, buf[:])
-	assert.NoError(t, err)
 
 	// Build an expected response
 	var expectedResponse transactionList
@@ -169,19 +157,8 @@ func TestListTransaction(t *testing.T) {
 }
 
 func TestGetTransaction(t *testing.T) {
-	gateway := New()
+	gateway := getGateway(t)
 	gateway.setup()
-
-	gateway.ledger = createLedger(t)
-
-	// Create a transaction
-	keys, err := skademlia.NewKeys(1, 1)
-	assert.NoError(t, err)
-	var buf [200]byte
-	_, err = rand.Read(buf[:])
-	assert.NoError(t, err)
-	_ = wavelet.NewTransaction(keys, sys.TagTransfer, buf[:])
-	assert.NoError(t, err)
 
 	var txId wavelet.TransactionID
 	for _, tx := range gateway.ledger.Graph().ListTransactions(0, 0, wavelet.AccountID{}, wavelet.AccountID{}) {
@@ -358,10 +335,8 @@ func TestPostPayloadRandom(t *testing.T) {
 }
 
 func TestGetAccount(t *testing.T) {
-	gateway := New()
+	gateway := getGateway(t)
 	gateway.setup()
-
-	gateway.ledger = createLedger(t)
 
 	idHex := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
 	idBytes, err := hex.DecodeString(idHex)
@@ -429,10 +404,8 @@ func TestGetAccount(t *testing.T) {
 }
 
 func TestGetContractCode(t *testing.T) {
-	gateway := New()
+	gateway := getGateway(t)
 	gateway.setup()
-
-	gateway.ledger = createLedger(t)
 
 	idHex := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
 	idBytes, err := hex.DecodeString(idHex)
@@ -499,10 +472,8 @@ func TestGetContractCode(t *testing.T) {
 }
 
 func TestGetContractPages(t *testing.T) {
-	gateway := New()
+	gateway := getGateway(t)
 	gateway.setup()
-
-	gateway.ledger = createLedger(t)
 
 	// string: u1mf2g3b2477y5btco22txqxuc41cav6
 	var id = "75316d66326733623234373779356274636f3232747871787563343163617636"
@@ -556,29 +527,8 @@ func TestGetContractPages(t *testing.T) {
 }
 
 func TestGetLedger(t *testing.T) {
-	gateway := New()
+	gateway := getGateway(t)
 	gateway.setup()
-
-	gateway.ledger = createLedger(t)
-
-	keys, err := skademlia.NewKeys(1, 1)
-	assert.NoError(t, err)
-	gateway.keys = keys
-
-	listener, err := net.Listen("tcp", ":0")
-	assert.NoError(t, err)
-	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
-
-	gateway.client = skademlia.NewClient(addr, keys,
-		skademlia.WithC1(sys.SKademliaC1),
-		skademlia.WithC2(sys.SKademliaC2),
-	)
-
-	//n, err := xnoise.ListenTCP(0)
-	//assert.NoError(t, err)
-	//gateway.node = n
-
-	//gateway.network = skademlia.New(net.JoinHostPort("127.0.0.1", strconv.Itoa(n.Addr().(*net.TCPAddr).Port)), keys, xnoise.DialTCP)
 
 	request := httptest.NewRequest("GET", "http://localhost/ledger", nil)
 
@@ -591,12 +541,12 @@ func TestGetLedger(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.StatusCode)
 
-	publicKey := keys.PublicKey()
+	publicKey := gateway.keys.PublicKey()
 
 	expectedJSON := fmt.Sprintf(
-		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"round":{"merkle_root":"cd3b0df841268ab6c987a594de29ad19","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc","applied":0,"depth":0,"difficulty":8},"peers":null}`,
+		`{"public_key":"%s","address":"%s","num_accounts":3,"round":{"merkle_root":"cd3b0df841268ab6c987a594de29ad19","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc","applied":0,"depth":0,"difficulty":8},"peers":null}`,
 		hex.EncodeToString(publicKey[:]),
-		listener.Addr().(*net.TCPAddr).Port,
+		gateway.client.ID().Address(),
 	)
 
 	assert.NoError(t, compareJson([]byte(expectedJSON), response))
@@ -604,11 +554,9 @@ func TestGetLedger(t *testing.T) {
 
 // Test the rate limit on all endpoints
 func TestEndpointsRateLimit(t *testing.T) {
-	gateway := New()
+	gateway := getGateway(t)
 	gateway.rateLimiter = newRateLimiter(10)
 	gateway.setup()
-
-	gateway.ledger = createLedger(t)
 
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
@@ -733,6 +681,33 @@ func TestEndpointsRateLimit(t *testing.T) {
 	}
 }
 
+func TestPinState(t *testing.T) {
+	gateway := getGateway(t)
+	gateway.stateSnapshots.SetExpiration(400 * time.Millisecond)
+	gateway.setup()
+
+	checksum := gateway.ledger.Snapshot().Checksum()
+
+	// Before pin
+	_, ok := gateway.stateSnapshots.Load(checksum)
+	assert.False(t, ok)
+
+	request := httptest.NewRequest("GET", "http://localhost/ledger/pin", nil)
+	w, err := serve(gateway.router, request)
+	assert.NoError(t, err)
+	assert.NotNil(t, w)
+
+	// After pin
+	_, ok = gateway.stateSnapshots.Load(checksum)
+	assert.True(t, ok)
+
+	time.Sleep(400 * time.Millisecond)
+
+	// After expired
+	_, ok = gateway.stateSnapshots.Load(checksum)
+	assert.False(t, ok)
+}
+
 func compareJson(expected []byte, response []byte) error {
 	if bytes.Equal(bytes.TrimSpace(response), expected) {
 		return nil
@@ -741,12 +716,25 @@ func compareJson(expected []byte, response []byte) error {
 	return errors.Errorf("expected response `%s`, found `%s`", string(expected), string(response))
 }
 
-func createLedger(t *testing.T) *wavelet.Ledger {
+func getGateway(t *testing.T) *Gateway {
+	gateway := New()
+
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
+	gateway.keys = keys
 
-	ledger := wavelet.NewLedger(store.NewInmem(), skademlia.NewClient(":0", keys))
-	return ledger
+	listener, err := net.Listen("tcp", ":0")
+	assert.NoError(t, err)
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
+
+	gateway.client = skademlia.NewClient(addr, keys,
+		skademlia.WithC1(sys.SKademliaC1),
+		skademlia.WithC2(sys.SKademliaC2),
+	)
+
+	gateway.ledger = wavelet.NewLedger(store.NewInmem(), gateway.client)
+
+	return gateway
 }
 
 type testErrResponse struct {
