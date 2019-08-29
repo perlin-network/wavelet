@@ -3,6 +3,7 @@ package wavelet
 import (
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"strconv"
 	"sync"
@@ -328,6 +329,28 @@ func (l *TestLedger) WithdrawStake(amount uint64) (Transaction, error) {
 		l.ledger.Graph().FindEligibleParents()...)
 
 	err := l.ledger.AddTransaction(tx)
+	return tx, err
+}
+
+func (l *TestLedger) SpawnContract(contractPath string, gasLimit uint64, params []byte) (Transaction, error) {
+	code, err := ioutil.ReadFile(contractPath)
+	if err != nil {
+		return Transaction{}, err
+	}
+
+	payload := Contract{
+		GasLimit: gasLimit,
+		Code:     code,
+		Params:   params,
+	}
+
+	keys := l.ledger.client.Keys()
+	tx := AttachSenderToTransaction(
+		keys,
+		NewTransaction(keys, sys.TagContract, payload.Marshal()),
+		l.ledger.Graph().FindEligibleParents()...)
+
+	err = l.ledger.AddTransaction(tx)
 	return tx, err
 }
 

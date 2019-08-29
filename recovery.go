@@ -1,15 +1,15 @@
 package wavelet
 
 import (
+	"fmt"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/lru"
 	"github.com/pkg/errors"
+	"os"
 	"runtime"
 	"runtime/pprof"
 	"sync"
 	"time"
-	"fmt"
-	"os"
 )
 
 type StallDetector struct {

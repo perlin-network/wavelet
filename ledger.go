@@ -896,7 +896,7 @@ FINALIZE_ROUNDS:
 
 		l.stallDetector.ReportFinalizedRound(preferred.ID)
 
-		//go ExportGraphDOT(finalized, l.graph)
+		//go ExportGraphDOT(finalized, contractIDs.graph)
 	}
 }
 
