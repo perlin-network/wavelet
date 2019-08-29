@@ -176,7 +176,7 @@ func (l *TestLedger) Cleanup() {
 	l.server.GracefulStop()
 	<-l.stopped
 
-	//contractIDs.kvCleanup()
+	//l.kvCleanup()
 }
 
 func (l *TestLedger) Addr() string {
