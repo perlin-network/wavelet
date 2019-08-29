@@ -57,21 +57,22 @@ func (l *LRU) SetExpiration(d time.Duration) {
 }
 
 func (l *LRU) cleanupExpiredItemsLocked() {
-	if l.expiration != 0 {
-		currentTime := time.Now()
-		it := l.access.Back()
-		for it != nil {
-			info := it.Value.(*objectInfo)
-			oldIt := it
-			it = it.Prev()
+	if l.expiration == 0 {
+		return
+	}
 
-			if currentTime.After(info.updateTime) && currentTime.Sub(info.updateTime) > l.expiration {
-				l.access.Remove(oldIt)
-				delete(l.elements, info.key)
-			} else {
-				break
-			}
+	currentTime := time.Now()
+	for it := l.access.Back(); it != nil; {
+		info := it.Value.(*objectInfo)
+		oldIt := it
+		it = it.Prev()
+
+		if currentTime.Sub(info.updateTime) < l.expiration {
+			break
 		}
+
+		l.access.Remove(oldIt)
+		delete(l.elements, info.key)
 	}
 }
 
