@@ -41,34 +41,34 @@ type state struct {
 }
 
 type ApplyContext struct {
-	m map[AccountID]*VMState
-	l []AccountID
+	contractVMStates map[AccountID]*VMState
+	contractIDs      []AccountID // contract ids to preserve order of state insertions
 }
 
 func NewApplyContext() *ApplyContext {
 	return &ApplyContext{
-		m: make(map[AccountID]*VMState),
+		contractVMStates: make(map[AccountID]*VMState),
 	}
 }
 
 func (ac *ApplyContext) AddState(contractID AccountID, state *VMState) {
-	if _, ok := ac.m[contractID]; !ok {
-		ac.m[contractID] = state
-		ac.l = append(ac.l, contractID)
+	if _, ok := ac.contractVMStates[contractID]; !ok {
+		ac.contractVMStates[contractID] = state
+		ac.contractIDs = append(ac.contractIDs, contractID)
 	}
 }
 
 func (ac *ApplyContext) GetState(contractID AccountID) (*VMState, bool) {
-	vm, exists := ac.m[contractID]
+	vm, exists := ac.contractVMStates[contractID]
 	return vm, exists
 }
 
 func (ac *ApplyContext) States() []*state {
-	states := make([]*state, 0, len(ac.l))
-	for _, id := range ac.l {
+	states := make([]*state, 0, len(ac.contractIDs))
+	for _, id := range ac.contractIDs {
 		states = append(states, &state{
 			contractID: id,
-			vm:         ac.m[id],
+			vm:         ac.contractVMStates[id],
 		})
 	}
 
