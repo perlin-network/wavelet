@@ -43,14 +43,14 @@ type CollapseContext struct {
 	VMCache *lru.LRU
 }
 
-func NewApplyContext() *CollapseContext {
+func NewCollapseContext() *CollapseContext {
 	return &CollapseContext{
 		ContractVMs: make(map[AccountID]*VMState),
 		VMCache:     lru.NewLRU(4),
 	}
 }
 
-func (ac *CollapseContext) AddState(contractID AccountID, state *VMState) {
+func (ac *CollapseContext) SetContractState(contractID AccountID, state *VMState) {
 	if _, ok := ac.ContractVMs[contractID]; !ok {
 		ac.ContractVMs[contractID] = state
 		ac.ContractIDs = append(ac.ContractIDs, contractID)
@@ -60,6 +60,14 @@ func (ac *CollapseContext) AddState(contractID AccountID, state *VMState) {
 func (ac *CollapseContext) GetContractState(contractID AccountID) (*VMState, bool) {
 	vm, exists := ac.ContractVMs[contractID]
 	return vm, exists
+}
+
+func (ac *CollapseContext) Flush(snapshot *avl.Tree) {
+	for _, id := range ac.ContractIDs {
+		vm := ac.ContractVMs[id]
+		SaveContractMemorySnapshot(snapshot, id, vm.Memory)
+		SaveContractGlobals(snapshot, id, vm.Globals)
+	}
 }
 
 func ApplyTransaction(round *Round, state *avl.Tree, tx *Transaction, ctx *CollapseContext) error {
@@ -370,7 +378,7 @@ func executeContractInTransactionContext(
 		}
 	} else {
 		if vmState != nil { // Contract invocation succeeded. VM state can be safely saved now.
-			state.Context.AddState(contractID, vmState)
+			state.Context.SetContractState(contractID, vmState)
 		}
 
 		if executor.Gas > contractGasBalance {

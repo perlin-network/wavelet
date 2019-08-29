@@ -217,7 +217,7 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 	res.rejected = make([]*Transaction, 0, order.Len())
 	res.rejectedErrors = make([]error, 0, order.Len())
 
-	ctx := NewApplyContext()
+	ctx := NewCollapseContext()
 
 	// Apply transactions in reverse order from the end of the round
 	// all the way down to the beginning of the round.
@@ -272,12 +272,7 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 		processRewardWithdrawals(round, res.snapshot)
 	}
 
-	for _, id := range ctx.ContractIDs {
-		vm := ctx.ContractVMs[id]
-
-		SaveContractMemorySnapshot(res.snapshot, id, vm.Memory)
-		SaveContractGlobals(res.snapshot, id, vm.Globals)
-	}
+	ctx.Flush(res.snapshot)
 
 	return res, nil
 }
