@@ -362,7 +362,7 @@ export default {
     getTodos() {
       var raw = this.$contract.test('get_todos', BigInt(0));
       this.todos = raw.logs[0].split('\n').reverse().map((a, aidx) => {
-        var matched = a.split(' ');
+        var matched = a.split('> ');
         return {
           id: aidx,
           content: matched[0].replace(/[\<\>]/g, ''),
@@ -377,6 +377,7 @@ export default {
         'add_todo', 
         BigInt(0), 
         BigInt(250000),
+        BigInt(0),
         {type: "string", value: target.value},
       ).then(resp => {
         target.value = '';
@@ -390,6 +391,7 @@ export default {
         'remove_todo', 
         BigInt(0), 
         BigInt(250000),
+        BigInt(0),
         {type: "uint32", value: id},
       ).then(resp => {
         self.log.push(resp.tx_id);
@@ -402,6 +404,7 @@ export default {
         'toggle_todo', 
         BigInt(0), 
         BigInt(250000),
+        BigInt(0),
         {type: "uint32", value: id},
       ).then(resp => {
         self.log.push(resp.tx_id);
