@@ -21,6 +21,7 @@ package wavelet
 
 import (
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -29,7 +30,13 @@ import (
 func TestNewSnowball(t *testing.T) {
 	t.Parallel()
 
-	snowball := NewSnowball(WithBeta(10))
+	defaultBeta := conf.GetSnowballBeta()
+	conf.UpdateConfig(conf.WithSnowballBeta(10))
+	defer func() {
+		conf.UpdateConfig(conf.WithSnowballBeta(defaultBeta))
+	}()
+
+	snowball := NewSnowball()
 
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)

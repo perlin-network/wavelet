@@ -4,8 +4,8 @@ import (
 	"crypto/rand"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/store"
-	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/blake2b"
 	"sync"
@@ -24,7 +24,8 @@ func TestCollectVotes(t *testing.T) {
 	kv := store.NewInmem()
 	accounts := NewAccounts(kv)
 	snowballB := 5
-	s := NewSnowball(WithName("test"), WithBeta(snowballB))
+	conf.UpdateConfig(conf.WithSnowballBeta(snowballB))
+	s := NewSnowball(WithName("test"))
 
 	pubKey := edwards25519.PublicKey{}
 	nonce := [blake2b.Size256]byte{}
@@ -36,9 +37,9 @@ func TestCollectVotes(t *testing.T) {
 		wg := new(sync.WaitGroup)
 
 		wg.Add(1)
-		go CollectVotes(accounts, s, voteC, wg, sys.SnowballK)
+		go CollectVotes(accounts, s, voteC, wg, conf.GetSnowballK())
 
-		peersNum := sys.SnowballK
+		peersNum := conf.GetSnowballK()
 		preferred := "a"
 		for j := 0; j < snowballB+2; j++ { // +2 because snowball count starts with zero and needs to be greater than B
 			for i := 0; i < peersNum; i++ {
@@ -131,9 +132,9 @@ func TestCollectVotes(t *testing.T) {
 		wg := new(sync.WaitGroup)
 
 		wg.Add(1)
-		go CollectVotes(accounts, s, voteC, wg, sys.SnowballK)
+		go CollectVotes(accounts, s, voteC, wg, conf.GetSnowballK())
 
-		peersNum := sys.SnowballK - 1
+		peersNum := conf.GetSnowballK() - 1
 		preferred := "a"
 		for j := 0; j < snowballB+2; j++ {
 			for i := 0; i < peersNum; i++ {

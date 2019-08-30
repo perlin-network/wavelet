@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/perlin-network/wavelet/conf"
 	"io"
 	"io/ioutil"
 	"net"
@@ -137,14 +138,14 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Usage:  "Maximum memory in MB allowed to be used by wavelet.",
 			EnvVar: "WAVELET_MEMORY_MAX",
 		}),
-		altsrc.NewIntFlag(cli.IntFlag{
+		altsrc.NewDurationFlag(cli.DurationFlag{
 			Name:  "sys.query_timeout",
-			Value: int(sys.QueryTimeout.Seconds()),
+			Value: conf.GetQueryTimeout(),
 			Usage: "Timeout in seconds for querying a transaction to K peers.",
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.max_depth_diff",
-			Value: sys.MaxDepthDiff,
+			Value: conf.GetMaxDepthDiff(),
 			Usage: "Max graph depth difference to search for eligible transaction parents from for our node.",
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
@@ -158,19 +159,19 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "sys.snowball.k",
-			Value:  sys.SnowballK,
+			Value:  conf.GetSnowballK(),
 			Usage:  "Snowball consensus protocol parameter k",
 			EnvVar: "WAVELET_SNOWBALL_K",
 		}),
 		altsrc.NewFloat64Flag(cli.Float64Flag{
 			Name:   "sys.snowball.alpha",
-			Value:  sys.SnowballAlpha,
+			Value:  conf.GetSnowballAlpha(),
 			Usage:  "Snowball consensus protocol parameter alpha",
 			EnvVar: "WAVELET_SNOWBALL_ALPHA",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "sys.snowball.beta",
-			Value:  sys.SnowballBeta,
+			Value:  conf.GetSnowballBeta(),
 			Usage:  "Snowball consensus protocol parameter beta",
 			EnvVar: "WAVELET_SNOWBALL_BETA",
 		}),
@@ -226,12 +227,15 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			config.Genesis = &genesis
 		}
 
+		conf.UpdateConfig(
+			conf.WithSnowballK(c.Int("sys.snowball.k")),
+			conf.WithSnowballAlpha(c.Float64("sys.snowball.alpha")),
+			conf.WithSnowballBeta(c.Int("sys.snowball.beta")),
+			conf.WithQueryTimeout(c.Duration("sys.query_timeout")),
+			conf.WithMaxDepthDiff(c.Uint64("sys.max_depth_diff")),
+		)
+
 		// set the the sys variables
-		sys.SnowballK = c.Int("sys.snowball.k")
-		sys.SnowballAlpha = c.Float64("sys.snowball.alpha")
-		sys.SnowballBeta = c.Int("sys.snowball.beta")
-		sys.QueryTimeout = time.Duration(c.Int("sys.query_timeout")) * time.Second
-		sys.MaxDepthDiff = c.Uint64("sys.max_depth_diff")
 		sys.MinDifficulty = byte(c.Int("sys.difficulty.min"))
 		sys.DifficultyScaleFactor = c.Float64("sys.difficulty.scale")
 		sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")

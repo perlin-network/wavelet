@@ -22,6 +22,7 @@ package main
 import (
 	"encoding/csv"
 	"fmt"
+	"github.com/perlin-network/wavelet/conf"
 	"io"
 	"strings"
 	"text/tabwriter"
@@ -141,6 +142,62 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 			Aliases: []string{"quit", ":q"},
 			Action:  a(c.exit),
 		},
+		{
+			Name:   "update-parameters",
+			Action: a(c.updateParameters),
+			Flags: []cli.Flag{
+				cli.IntFlag{
+					Name:  "snowballK",
+					Value: conf.GetSnowballK(),
+					Usage: "snowball K consensus parameter",
+				},
+				cli.Float64Flag{
+					Name:  "snowballAlpha",
+					Value: conf.GetSnowballAlpha(),
+					Usage: "snowball Alpha consensus parameter",
+				},
+				cli.IntFlag{
+					Name:  "snowballBeta",
+					Value: conf.GetSnowballBeta(),
+					Usage: "snowball Alpha consensus parameter",
+				},
+				cli.DurationFlag{
+					Name:  "queryTimeout",
+					Value: conf.GetQueryTimeout(),
+					Usage: "snowball Alpha consensus parameter",
+				},
+				cli.DurationFlag{
+					Name:  "gossipTimeout",
+					Value: conf.GetGossipTimeout(),
+					Usage: "snowball Alpha consensus parameter",
+				},
+				cli.IntFlag{
+					Name:  "syncChunkSize",
+					Value: conf.GetSyncChunkSize(),
+					Usage: "snowball Alpha consensus parameter",
+				},
+				cli.Uint64Flag{
+					Name:  "syncIfRoundsDifferBy",
+					Value: conf.GetSyncIfRoundsDifferBy(),
+					Usage: "snowball Alpha consensus parameter",
+				},
+				cli.Uint64Flag{
+					Name:  "maxDownloadDepthDiff",
+					Value: conf.GetMaxDownloadDepthDiff(),
+					Usage: "snowball Alpha consensus parameter",
+				},
+				cli.Uint64Flag{
+					Name:  "maxDepthDiff",
+					Value: conf.GetMaxDepthDiff(),
+					Usage: "snowball Alpha consensus parameter",
+				},
+				cli.Uint64Flag{
+					Name:  "pruningLimit",
+					Value: uint64(conf.GetPruningLimit()),
+					Usage: "snowball Alpha consensus parameter",
+				},
+			},
+		},
 	}
 
 	// Generate the help message
@@ -149,14 +206,20 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 	w := tabwriter.NewWriter(&s, 0, 0, 1, ' ', 0)
 
 	for _, c := range c.app.VisibleCommands() {
-		fmt.Fprintf(w,
+		_, err := fmt.Fprintf(w,
 			"    %s (%s) %s\t%s\n",
 			c.Name, strings.Join(c.Aliases, ", "), c.Usage,
 			c.Description,
 		)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		return nil, err
+	}
+
 	c.app.CustomAppHelpTemplate = s.String()
 
 	// Add in autocompletion
@@ -243,11 +306,11 @@ ReadLoop:
 		}
 	}
 
-	cli.rl.Close()
+	_ = cli.rl.Close()
 }
 
 func (cli *CLI) exit(ctx *cli.Context) {
-	cli.rl.Close()
+	_ = cli.rl.Close()
 }
 
 func a(f func(*cli.Context)) func(*cli.Context) error {

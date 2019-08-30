@@ -24,14 +24,14 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
-	"strconv"
-
 	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
+	"io/ioutil"
+	"strconv"
 )
 
 func (cli *CLI) status(ctx *cli.Context) {
@@ -607,6 +607,23 @@ func (cli *CLI) disconnect(ctx *cli.Context) {
 	}
 
 	cli.logger.Info().Str("address", cmd[0]).Msg("Successfully disconnected peer.")
+}
+
+func (cli *CLI) updateParameters(ctx *cli.Context) {
+	conf.UpdateConfig(
+		conf.WithSnowballK(ctx.Int("snowballK")),
+		conf.WithSnowballAlpha(ctx.Float64("snowballAlpha")),
+		conf.WithSnowballBeta(ctx.Int("snowballBeta")),
+		conf.WithQueryTimeout(ctx.Duration("queryTimeout")),
+		conf.WithGossipTimeout(ctx.Duration("gossipTimeout")),
+		conf.WithSyncChunkSize(ctx.Int("syncChunkSize")),
+		conf.WithSyncIfRoundsDifferBy(ctx.Uint64("syncIfRoundsDifferBy")),
+		conf.WithMaxDownloadDepthDiff(ctx.Uint64("maxDownloadDepthDiff")),
+		conf.WithMaxDepthDiff(ctx.Uint64("maxDepthDiff")),
+		conf.WithPruningLimit(uint8(ctx.Uint64("pruningLimit"))),
+	)
+
+	cli.logger.Info().Str("conf", conf.Stringify()).Msg("Current configuration values")
 }
 
 func (cli *CLI) sendTransaction(tx wavelet.Transaction) (wavelet.Transaction, error) {
