@@ -1,0 +1,341 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge"/><title>Turning Existing WebAssembly Applications Into Distributed Programs · Wavelet</title><meta name="viewport" content="width=device-width"/><meta name="generator" content="Docusaurus"/><meta name="description" content="**Or, how to make an eternal Game of Life Simulator.**"/><meta name="docsearch:language" content="en"/><meta property="og:title" content="Turning Existing WebAssembly Applications Into Distributed Programs · Wavelet"/><meta property="og:type" content="website"/><meta property="og:url" content="https://wavelet.perlin.net/"/><meta property="og:description" content="**Or, how to make an eternal Game of Life Simulator.**"/><meta property="og:image" content="https://wavelet.perlin.net/img/undraw_online.svg"/><meta name="twitter:card" content="summary"/><meta name="twitter:image" content="https://wavelet.perlin.net/img/undraw_tweetstorm.svg"/><link rel="shortcut icon" href="/img/favicon.ico"/><link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/monokai.min.css"/><script>
+              (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+              (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+              m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+              })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+              ga('create', 'UA-142724552-1', 'auto');
+              ga('send', 'pageview');
+            </script><script type="text/javascript" src="https://buttons.github.io/buttons.js"></script><script src="/js/scrollSpy.js"></script><link rel="stylesheet" href="/css/main.css"/><script src="/js/codetabs.js"></script></head><body class="sideNavVisible separateOnPageNav"><div class="fixedHeaderContainer"><div class="headerWrapper wrapper"><header><a href="/"><img class="logo" src="/img/favicon.ico" alt="Wavelet"/><h2 class="headerTitleWithLogo">Wavelet</h2></a><div class="navigationWrapper navigationSlider"><nav class="slidingNav"><ul class="nav-site nav-site-internal"><li class="siteNavGroupActive"><a href="/docs/setup" target="_self">Docs</a></li><li class=""><a href="/help" target="_self">Help</a></li><li class=""><a target="_self"></a></li></ul></nav></div></header></div></div><div class="navPusher"><div class="docMainWrapper wrapper"><div class="docsNavContainer" id="docsNav"><nav class="toc"><div class="toggleNav"><section class="navWrapper wrapper"><div class="navBreadcrumb wrapper"><div class="navToggle" id="navToggler"><div class="hamburger-menu"><div class="line1"></div><div class="line2"></div><div class="line3"></div></div></div><h2><i>›</i><span>Tutorials</span></h2><div class="tocToggler" id="tocToggler"><i class="icon-toc"></i></div></div><div class="navGroups"><div class="navGroup"><h3 class="navGroupCategoryTitle">Documentation</h3><ul class=""><li class="navListItem"><a class="navItem" href="/docs/setup">Quickstart</a></li><li class="navListItem"><a class="navItem" href="/docs/transactions">Transactions</a></li><li class="navListItem"><a class="navItem" href="/docs/smart-contracts">Smart Contracts</a></li><li class="navListItem"><a class="navItem" href="/docs/governance">Governance</a></li></ul></div><div class="navGroup"><h3 class="navGroupCategoryTitle">Tutorials</h3><ul class=""><li class="navListItem"><a class="navItem" href="/docs/examples/decentralized-chat-app">Build A Decentralized Chat Application with Javascript &amp; Rust (WebAssembly)</a></li><li class="navListItem"><a class="navItem" href="/docs/examples/decentralized-todo-app">Build A Decentralized Todo App using VueJS &amp; Rust (WebAssembly)</a></li><li class="navListItem navListItemActive"><a class="navItem" href="/docs/examples/wasm-to-decentralized-program">Turning Existing WebAssembly Applications Into Distributed Programs</a></li></ul></div></div></section></div><script>
+            var coll = document.getElementsByClassName('collapsible');
+            var checkActiveCategory = true;
+            for (var i = 0; i < coll.length; i++) {
+              var links = coll[i].nextElementSibling.getElementsByTagName('*');
+              if (checkActiveCategory){
+                for (var j = 0; j < links.length; j++) {
+                  if (links[j].classList.contains('navListItemActive')){
+                    coll[i].nextElementSibling.classList.toggle('hide');
+                    coll[i].childNodes[1].classList.toggle('rotate');
+                    checkActiveCategory = false;
+                    break;
+                  }
+                }
+              }
+
+              coll[i].addEventListener('click', function() {
+                var arrow = this.childNodes[1];
+                arrow.classList.toggle('rotate');
+                var content = this.nextElementSibling;
+                content.classList.toggle('hide');
+              });
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+              createToggler('#navToggler', '#docsNav', 'docsSliderActive');
+              createToggler('#tocToggler', 'body', 'tocActive');
+
+              var headings = document.querySelector('.toc-headings');
+              headings && headings.addEventListener('click', function(event) {
+                var el = event.target;
+                while(el !== headings){
+                  if (el.tagName === 'A') {
+                    document.body.classList.remove('tocActive');
+                    break;
+                  } else{
+                    el = el.parentNode;
+                  }
+                }
+              }, false);
+
+              function createToggler(togglerSelector, targetSelector, className) {
+                var toggler = document.querySelector(togglerSelector);
+                var target = document.querySelector(targetSelector);
+
+                if (!toggler) {
+                  return;
+                }
+
+                toggler.onclick = function(event) {
+                  event.preventDefault();
+
+                  target.classList.toggle(className);
+                };
+              }
+            });
+        </script></nav></div><div class="container mainContainer"><div class="wrapper"><div class="post"><header class="postHeader"><a class="edit-page-link button" href="https://github.com/perlin-network/wavelet/edit/master/site/docs/examples/wasm-to-distributed-program.md" target="_blank" rel="noreferrer noopener">Edit</a><h1 class="postHeaderTitle">Turning Existing WebAssembly Applications Into Distributed Programs</h1></header><article><div><span><p><strong>Or, how to make an eternal Game of Life Simulator.</strong></p>
+<p><img src="https://miro.medium.com/max/1510/1*AXw36HaBjYVQeuERis-U6A.png" alt="alt text" title="Decentralized Game of Life built on Wavelet"></p>
+<p>One of the benefits of WebAssembly that we keep going on about is the ability to re-use existing code.</p>
+<p>There have been a couple of articles demonstrating how easy it is to build WebAssembly applications that run on the decentralized virtual machine/smart contract platform Wavelet, but it hasn’t been shown how easy it is to port existing applications yet.</p>
+<p>In this article, we’ll take the great <strong><a href="https://rustwasm.github.io/docs/book/">Rust and WebAssembly Book</a></strong>’s Game of Life implementation, and run through the things you have to change in order to have it run on Wavelet, and end up with your own eternal cellular automata universe.</p>
+<p>You can see a deployed version of what we’ll be building <strong><a href="https://ryanswart.github.io/decentralized-game-of-life">here</a></strong> and the final source code <strong><a href="https://github.com/ryanswart/decentralized-game-of-life">here</a></strong>.</p>
+<h2><a class="anchor" aria-hidden="true" id="setup"></a><a href="#setup" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Setup</h2>
+<p>We can use the exact same setup process as described in the Rust Wasm tutorial <strong><a href="https://rustwasm.github.io/docs/book/game-of-life/setup.html">setup</a></strong> and <strong><a href="https://rustwasm.github.io/docs/book/game-of-life/hello-world.html">hello world</a></strong> stages, with the minor difference of adding 2 dependencies to <code>Cargo.toml</code>, namely:</p>
+<pre><code class="hljs css language-toml"><span class="hljs-attr">smart-contract</span> = <span class="hljs-string">"0.2.0"</span>
+<span class="hljs-attr">smart-contract-macros</span> = <span class="hljs-string">"0.2.0"</span>
+</code></pre>
+<p>We don’t need all of the things the setup includes, but we aim to stay as close as possible, so we will keep them in place.</p>
+<h2><a class="anchor" aria-hidden="true" id="interfacing-with-javascript"></a><a href="#interfacing-with-javascript" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Interfacing with Javascript</h2>
+<p>The first WebAssembly implementation detail the Rust Wasm tutorial goes into, detailed <strong><a href="https://rustwasm.github.io/docs/book/game-of-life/implementing.html#interfacing-rust-and-javascript">here</a></strong>, covers how JavaScript interfaces with WebAssembly and vice versa — this is different in Wavelet apps, and significantly changes how you write the frontend.</p>
+<ul>
+<li><p>Rust Wasm uses the <code>#[wasm_bindgen]</code> macro to export references in a way that can be called from JavaScript, and prefers direct memory access to the WebAssembly VM for high-performance updates.</p></li>
+<li><p>Wavelet uses the <code>#[smart_contract]</code> macro to make functions in a single struct accessible to the wavelet-client library. Direct memory access is not recommended, as the bottleneck for wavelet application performance is not at the serialization/deserialization level, but at the Wavelet consensus level.</p></li>
+</ul>
+<h2><a class="anchor" aria-hidden="true" id="interfacing-with-game-of-life"></a><a href="#interfacing-with-game-of-life" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Interfacing with Game of Life</h2>
+<p>The Book’s implementation uses a <a href="https://rustwasm.github.io/docs/book/game-of-life/implementing.html#interfacing-rust-and-javascript-in-our-game-of-life">single array</a> to store the universe in WebAssembly linear memory — we will do the same. We will also use the same string format to render the game. Direct memory access is also possible, but not explicitly supported, so we do not get the same easily importable bindings that we see in the Rust Wasm tutorial and it is slightly trickier to access.</p>
+<h2><a class="anchor" aria-hidden="true" id="rust-implementation"></a><a href="#rust-implementation" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Rust implementation</h2>
+<p>This is the cool bit — we can copy all of the code directly! We only need to make two minor modifications — removing the <code>#[wasm-bindgen]</code> macros and adding a smart contract struct that will expose the Universe functions to wavelet:</p>
+<pre><code class="hljs css language-rs"><span class="hljs-keyword">use</span> smart_contract::log;
+<span class="hljs-keyword">use</span> smart_contract_macros::smart_contract;
+<span class="hljs-keyword">use</span> smart_contract::payload::Parameters;
+
+<span class="hljs-comment">// The contract will store an instance of the same Universe struct implemented in the tutorial</span>
+<span class="hljs-comment">// we also have a "stepped" construct that checks whether someone has already stepped the contract in a given consensus round</span>
+<span class="hljs-class"><span class="hljs-keyword">struct</span> <span class="hljs-title">Contract</span></span> {
+    universe: Universe,
+    stepped: [<span class="hljs-built_in">u8</span>; <span class="hljs-number">32</span>],
+}
+
+<span class="hljs-meta">#[smart_contract]</span>
+<span class="hljs-keyword">impl</span> Contract {
+    <span class="hljs-keyword">pub</span> <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">init</span></span>(_params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-keyword">Self</span> {
+        <span class="hljs-keyword">Self</span> {
+            universe: Universe::new(),
+            stepped: [<span class="hljs-number">0</span>; <span class="hljs-number">32</span>],
+        }
+    }
+
+    <span class="hljs-keyword">pub</span> <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">step</span></span>(&amp;<span class="hljs-keyword">mut</span> <span class="hljs-keyword">self</span>, params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-built_in">Result</span>&lt;(), <span class="hljs-built_in">String</span>&gt; {
+        <span class="hljs-comment">// only step once per round</span>
+        <span class="hljs-keyword">if</span> <span class="hljs-keyword">self</span>.stepped == params.round_id {
+            <span class="hljs-keyword">return</span> <span class="hljs-literal">Ok</span>(())
+        }
+        <span class="hljs-keyword">self</span>.stepped = params.round_id;
+        <span class="hljs-keyword">self</span>.universe.tick();
+        <span class="hljs-literal">Ok</span>(())
+    }
+
+    <span class="hljs-keyword">pub</span> <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">render</span></span>(&amp;<span class="hljs-keyword">mut</span> <span class="hljs-keyword">self</span>, _params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-built_in">Result</span>&lt;(), <span class="hljs-built_in">String</span>&gt; {
+        log(&amp;<span class="hljs-keyword">self</span>.universe.render());
+        <span class="hljs-literal">Ok</span>(())
+    }
+}
+
+<span class="hljs-comment">// ... the rest of the code in the Rust Wasm tutorial https://rustwasm.github.io/docs/book/game-of-life/implementing.html#rust-implementation</span>
+</code></pre>
+<h2><a class="anchor" aria-hidden="true" id="rendering-with-javascript"></a><a href="#rendering-with-javascript" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Rendering with JavaScript</h2>
+<p>At this point, the implementation diverges significantly. In the Rust Wasm tutorial, they utilize wasm-pack’s bindings to directly import the compiled rust code into their HTML + JavaScript frontend; we need to go through a few more steps; first to upload our compiled wasm to the distributed VM, and then writing the connector code that will instantiate the VM locally and synchronize it with the global state.</p>
+<p>We will try and stay close to their implementation, and highlight the core differences.</p>
+<p>First, we need to upload the contract so that we can access it in the frontend. We can follow the same steps as detailed in the <strong><a href="https://medium.com/perlin-network/build-a-decentralized-chat-using-javascript-rust-webassembly-c775f8484b52">decentralized-chat tutorial</a></strong>, just use the <code>wasm-pack build</code> command to generate your <code>.wasm file</code>, and use the <code>wasm_game_of_life_bg.wasm</code> file in the <code>pkg</code> folder in the root of your project.</p>
+<p>To interact with the uploaded program in JavaScript, we need to add the <code>wavelet-client</code> &amp; <code>jsbi</code> dependencies with <code>npm i -s wavelet-client jsbi</code> or <code>yarn add wavelet-client</code>. With these dependencies, we are good to start coding.</p>
+<p>Our implementation is pretty simple, at only 40 lines of JavaScript and HTML.</p>
+<p>The HTML stays pretty much the same, except that we import the <code>index.js</code> file instead of the <code>bootstrap.js</code> file:</p>
+<pre><code class="hljs css language-html"><span class="hljs-meta">&lt;!DOCTYPE html&gt;</span>
+<span class="hljs-tag">&lt;<span class="hljs-name">html</span>&gt;</span>
+  <span class="hljs-tag">&lt;<span class="hljs-name">head</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">meta</span> <span class="hljs-attr">charset</span>=<span class="hljs-string">"utf-8"</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">title</span>&gt;</span>Game of Life<span class="hljs-tag">&lt;/<span class="hljs-name">title</span>&gt;</span>
+    <span class="hljs-tag">&lt;<span class="hljs-name">style</span>&gt;</span><span class="css">
+     <span class="hljs-selector-tag">body</span> {
+         <span class="hljs-attribute">position</span>: absolute;
+         <span class="hljs-attribute">top</span>: <span class="hljs-number">0</span>;
+         <span class="hljs-attribute">left</span>: <span class="hljs-number">0</span>;
+         <span class="hljs-attribute">width</span>: <span class="hljs-number">100%</span>;
+         <span class="hljs-attribute">height</span>: <span class="hljs-number">100%</span>;
+         <span class="hljs-attribute">display</span>: flex;
+         <span class="hljs-attribute">flex-direction</span>: column;
+         <span class="hljs-attribute">align-items</span>: center;
+         <span class="hljs-attribute">justify-content</span>: center;
+     }
+    </span><span class="hljs-tag">&lt;/<span class="hljs-name">style</span>&gt;</span>
+  <span class="hljs-tag">&lt;/<span class="hljs-name">head</span>&gt;</span>
+  <span class="hljs-tag">&lt;<span class="hljs-name">body</span>&gt;</span>
+      <span class="hljs-tag">&lt;<span class="hljs-name">pre</span> <span class="hljs-attr">id</span>=<span class="hljs-string">"game-of-life-canvas"</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">pre</span>&gt;</span>
+      <span class="hljs-tag">&lt;<span class="hljs-name">script</span> <span class="hljs-attr">src</span>=<span class="hljs-string">'./index.js'</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">script</span>&gt;</span>
+  <span class="hljs-tag">&lt;/<span class="hljs-name">body</span>&gt;</span>
+<span class="hljs-tag">&lt;/<span class="hljs-name">html</span>&gt;</span>
+</code></pre>
+<p>The JavaScript code is a bit more verbose, compared to the 9 lines of code in the Rust Wasm implementation.</p>
+<p>In the <code>index.js</code> file, we first import the <code>wavelet-client</code> and <code>jsbi</code> dependencies.</p>
+<pre><code class="hljs css language-javascript"><span class="hljs-keyword">import</span> { Contract, Wavelet } <span class="hljs-keyword">from</span> <span class="hljs-string">'wavelet-client'</span>;
+<span class="hljs-keyword">import</span> { BigInt } <span class="hljs-keyword">from</span> <span class="hljs-string">"jsbi"</span>;
+</code></pre>
+<p>We then initialize the Wavelet client, load a wallet from a private key that will be used to sign the transactions that progress the state of the simulation, and configure the contract object that will allow us to interact with the deployed code.</p>
+<pre><code class="hljs css language-javascript"><span class="hljs-keyword">const</span> host = <span class="hljs-string">'https://testnet.wavelet.net'</span>;
+<span class="hljs-keyword">const</span> contractAddress = <span class="hljs-comment">/* address of your deployed contract */</span>;
+<span class="hljs-keyword">const</span> wallet = Wavelet.loadWalletFromPrivateKey(<span class="hljs-comment">/* private key of a wallet containing at least 10 million PERLs - join our Discord and we will provide you with the neccessary funds*/</span>)
+
+<span class="hljs-keyword">const</span> client = <span class="hljs-keyword">new</span> Wavelet(host);
+
+<span class="hljs-keyword">const</span> contract = <span class="hljs-keyword">new</span> Contract(client, contractAddress);
+</code></pre>
+<p>We will render the resulting string to a simple preformatted code DOM element, so let's get a reference for future updates.</p>
+<pre><code class="hljs css language-javascript"><span class="hljs-keyword">const</span> pre = <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"game-of-life-canvas"</span>);
+</code></pre>
+<p>We need to initialize the contract, which will fetch its memory state from the distributed VM.</p>
+<pre><code class="hljs css language-javascript">contract.init().then(<span class="hljs-function"><span class="hljs-params">r</span> =&gt;</span> {
+</code></pre>
+<p>Once it is finalised, we can interact with it in two ways, either by <code>call</code>ing functions or <code>test</code>ing them.</p>
+<p>Calling functions execute them on the distributed VM, and changes the global state, and requires transaction and processing fees. As you can run a Wavelet network locally pretty easily, or get testnet PERLs for free, this will not cost you anything, but still incentivizes you to write efficient code.</p>
+<p>We recommend 10 million testnet PERLs at this point, as Wavelet hasn’t set its decimal precision yet — in reality this algorithm will require a tiny fraction of a mainnet PERL to run, resulting in a cost comparable to an AWS Lambda function execution.</p>
+<p>Testing functions execute them on the local VM, using the VM’s current memory. It is free but does not result in any persistent changes in VM’s state.</p>
+<p>We use <code>test</code> to call the <code>render</code> smart contract function, which will return a string in the resulting logs. All serialization/deserialization happens through this log interface, similar to CLI applications:</p>
+<pre><code class="hljs css language-javascript"><span class="hljs-keyword">const</span> results = contract.test(wallet, <span class="hljs-string">"render"</span>, BigInt(<span class="hljs-number">0</span>)).logs[<span class="hljs-number">0</span>];
+</code></pre>
+<p>We then set the textContent of the pre tag to be the resulting value, which will give us a visual representation of the Game of Life universe</p>
+<pre><code class="hljs css language-javascript">pre.textContent = results;
+});
+</code></pre>
+<p>Up until this point, we only get a single, static snapshot of the universe. We need to register to changes in state in order to get a dynamic world — changes in state in the distributed VM is known as “consensus rounds” — where a subset of nodes agree that a given set of transactions are legitimate.</p>
+<p>We register to consensus events and synchronize the contract’s memory on each round. We then render the current state as before, and finally <code>call</code> the <code>step</code> function, which will advance the state of the universe by one tick.</p>
+<pre><code class="hljs css language-javascript">client.pollConsensus({
+    <span class="hljs-attr">onRoundEnded</span>: <span class="hljs-function"><span class="hljs-params">_</span> =&gt;</span> {
+        contract.fetchAndPopulateMemoryPages().then(<span class="hljs-function"><span class="hljs-params">_</span> =&gt;</span> {
+            <span class="hljs-keyword">const</span> results = contract.test(wallet, <span class="hljs-string">"render"</span>, BigInt(<span class="hljs-number">0</span>)).logs[<span class="hljs-number">0</span>];
+            pre.textContent = results;
+            contract.call(wallet, <span class="hljs-string">'step'</span>, BigInt(<span class="hljs-number">0</span>), BigInt(<span class="hljs-number">1e7</span>), BigInt(<span class="hljs-number">0</span>));
+        });
+    }
+});
+</code></pre>
+<p>That’s it! A working Game of Life simulation that can evolve for as long as there are nodes connected to the distributed VM.</p>
+<p><img src="https://miro.medium.com/max/1140/1*h3nna4jW2WRzQGvs9I8rrg.gif" alt="alt text" title="Working Game of Life simulation"></p>
+<p>Of course, it's not a lot of fun yet, as it isn't interactive - the Rust Wasm tutorial first showed how to implement canvas based renderer before detailing how to toggling cell states - lets tackle that next.</p>
+<h2><a class="anchor" aria-hidden="true" id="adding-interactivity"></a><a href="#adding-interactivity" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Adding interactivity</h2>
+<p>In order to achieve this, we need to change both the Rust code and the HTML + JavaScript frontend.</p>
+<p>Following the tutorial, we will first add a button to run and pause the simulation.</p>
+<p>We add a button, just before the <code>&lt;pre&gt;</code> element in <code>index.html</code>:</p>
+<pre><code class="hljs css language-html"><span class="hljs-tag">&lt;<span class="hljs-name">button</span> <span class="hljs-attr">id</span>=<span class="hljs-string">"play-pause"</span>&gt;</span><span class="hljs-tag">&lt;/<span class="hljs-name">button</span>&gt;</span>
+</code></pre>
+<p>We then add a variable in <code>index.js</code> to track whether the game should be running, and some logic to change the variable and check it when trying to advance the universe:</p>
+<pre><code class="hljs css language-javascript"><span class="hljs-keyword">const</span> playPauseButton = <span class="hljs-built_in">document</span>.getElementById(<span class="hljs-string">"play-pause"</span>);
+<span class="hljs-keyword">let</span> running = <span class="hljs-literal">false</span>;
+
+<span class="hljs-keyword">const</span> play = <span class="hljs-function"><span class="hljs-params">()</span> =&gt;</span> {
+  playPauseButton.textContent = <span class="hljs-string">"⏸"</span>;
+  <span class="hljs-comment">// calling the step function will trigger consensus, and therefor the render loop</span>
+  contract.call(wallet, <span class="hljs-string">'step'</span>, BigInt(<span class="hljs-number">0</span>), BigInt(<span class="hljs-number">1e7</span>), BigInt(<span class="hljs-number">0</span>));
+  running = <span class="hljs-literal">true</span>;
+};
+
+<span class="hljs-keyword">const</span> pause = <span class="hljs-function"><span class="hljs-params">()</span> =&gt;</span> {
+  playPauseButton.textContent = <span class="hljs-string">"▶"</span>;
+  running = <span class="hljs-literal">false</span>;
+};
+
+playPauseButton.addEventListener(<span class="hljs-string">"click"</span>, event =&gt; {
+  <span class="hljs-keyword">if</span> (running) {
+    pause();
+  } <span class="hljs-keyword">else</span> {
+    play();
+  }
+});
+
+<span class="hljs-comment">// replace the old client.pollConsensus call with</span>
+client.pollConsensus({
+    <span class="hljs-attr">onRoundEnded</span>: <span class="hljs-function"><span class="hljs-params">_</span> =&gt;</span> {
+        contract.fetchAndPopulateMemoryPages().then(<span class="hljs-function"><span class="hljs-params">_</span> =&gt;</span> {
+            <span class="hljs-keyword">if</span>(running) {
+                <span class="hljs-keyword">const</span> results = contract.test(wallet, <span class="hljs-string">"render"</span>, BigInt(<span class="hljs-number">0</span>)).logs[<span class="hljs-number">0</span>];
+                pre.textContent = results;
+                contract.call(wallet, <span class="hljs-string">'step'</span>, BigInt(<span class="hljs-number">0</span>), BigInt(<span class="hljs-number">1e7</span>), BigInt(<span class="hljs-number">0</span>));
+            }
+        });
+    }
+});
+
+<span class="hljs-comment">// kick start by calling play()</span>
+play()
+</code></pre>
+<p>This should allow us to start/pause the simulation. One interesting aspect is if someone else is busy simulating the universe, the state will still update, so pressing play may show you a significantly different world on the next render.</p>
+<p>You can choose to change the behaviour by moving the rendering code that is in the consensus callback out of the if statement.</p>
+<h2><a class="anchor" aria-hidden="true" id="toggling-cells"></a><a href="#toggling-cells" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Toggling cells</h2>
+<p>This requires new functionality in the rust code; we can implement it in the same way as described in the tutorial but need to expose the functionality via our contract.</p>
+<pre><code class="hljs css language-rs"><span class="hljs-comment">// inside "impl Contract"</span>
+    <span class="hljs-keyword">pub</span> <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">toggle</span></span>(&amp;<span class="hljs-keyword">mut</span> <span class="hljs-keyword">self</span>, params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-built_in">Result</span>&lt;(), <span class="hljs-built_in">String</span>&gt; {
+        <span class="hljs-keyword">self</span>.universe.toggle_cell(params.read(), params.read());
+        <span class="hljs-literal">Ok</span>(())
+    }
+</code></pre>
+<p>Once we have made the changes, we need to re-deploy the contract and update the JavaScript code with the new contract address.</p>
+<p>Our frontend implementation is pretty similar to the Rust Wasm tutorial implementation, except that we still use the <code>&lt;pre&gt;</code> tag implementation, and call the Wavelet contract instead of the imported Wasm code</p>
+<pre><code class="hljs css language-javascript"> pre.addEventListener(<span class="hljs-string">"click"</span>, event =&gt; {
+    <span class="hljs-keyword">const</span> boundingRect = pre.getBoundingClientRect();
+
+    <span class="hljs-keyword">const</span> scaleX = <span class="hljs-number">64</span> / boundingRect.width;
+    <span class="hljs-keyword">const</span> scaleY = <span class="hljs-number">64</span> / boundingRect.height;
+
+    <span class="hljs-keyword">const</span> canvasLeft = (event.clientX - boundingRect.left) * scaleX;
+    <span class="hljs-keyword">const</span> canvasTop = (event.clientY - boundingRect.top) * scaleY;
+
+    <span class="hljs-keyword">const</span> row = <span class="hljs-built_in">Math</span>.min(<span class="hljs-built_in">Math</span>.floor(canvasTop), <span class="hljs-number">64</span> - <span class="hljs-number">1</span>);
+    <span class="hljs-keyword">const</span> col = <span class="hljs-built_in">Math</span>.min(<span class="hljs-built_in">Math</span>.floor(canvasLeft), <span class="hljs-number">64</span> - <span class="hljs-number">1</span>);
+
+    contract.call(
+      wallet,
+      <span class="hljs-string">"toggle"</span>,
+      BigInt(<span class="hljs-number">0</span>),
+      BigInt(<span class="hljs-number">1e7</span>),
+      BigInt(<span class="hljs-number">0</span>),
+      {
+        <span class="hljs-attr">type</span>: <span class="hljs-string">"uint32"</span>,
+        <span class="hljs-attr">value</span>: row
+      },
+      {
+        <span class="hljs-attr">type</span>: <span class="hljs-string">"uint32"</span>,
+        <span class="hljs-attr">value</span>: col
+      }
+    );
+  });
+</code></pre>
+<p>And that's it, now you are the omnipotent ruler of the universe, able to kill and create cells wherever you want!</p>
+<h2><a class="anchor" aria-hidden="true" id="final-steps"></a><a href="#final-steps" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Final steps</h2>
+<p>The final parts of the rust-wasm book cover <strong><a href="https://rustwasm.github.io/docs/book/game-of-life/time-profiling.html">time profiling</a></strong>, <strong><a href="https://rustwasm.github.io/docs/book/game-of-life/code-size.html">shrinking the .wasm file size</a></strong>, and <strong><a href="https://rustwasm.github.io/docs/book/game-of-life/publishing-to-npm.html">publishing to npm</a></strong>. These steps are all relevant to Wavelet apps as well.</p>
+<h3><a class="anchor" aria-hidden="true" id="time-profiling"></a><a href="#time-profiling" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Time profiling</h3>
+<p>You may have noticed that it costs a lot of testnet PERLs to simulate the universe, around 2 million per step! We can apply the same optimization detailed in the Rust Wasm tutorial to cut that down to around 700k PERLs.</p>
+<h3><a class="anchor" aria-hidden="true" id="shrinking-wasm-size-"></a><a href="#shrinking-wasm-size-" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Shrinking .wasm size</h3>
+<p>File size optimization also reduces the cost to deploy contracts, as well as improve load speeds for users, as they still have to download the binaries, so this is also valuable reading.</p>
+<h3><a class="anchor" aria-hidden="true" id="publishing-to-npm"></a><a href="#publishing-to-npm" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Publishing to npm</h3>
+<p>As we have already deployed our contract, there is no need to publish it to the npm registry, as anyone can access it given the deployment address. That being said, we aim to provide a contract registry, and possibly similar wrapper functions that will make it easier to find and use contracts in the future, so stay tuned!</p>
+<h2><a class="anchor" aria-hidden="true" id="wavelet-considerations"></a><a href="#wavelet-considerations" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Wavelet Considerations</h2>
+<p>As we have already deployed our contract, there is no need to publish it to the npm registry, as anyone can access it given the deployment address. That being said, we aim to provide a contract registry, and possibly similar wrapper functions that will make it easier to find and use contracts in the future, so stay tuned!</p>
+<p>We currently hard-code the private key to a wallet in our app — this is bad practice as once we publish the code, anyone can access the wallet and drain its funds. As this is testnet, there won’t be a financial loss, but any published version will stop working once if the hard-coded wallet runs out of PERLs.</p>
+<p>In order to avoid this, we need to make the wallet dynamic — there are a few ways to do this, namely:</p>
+<ol>
+<li>Randomly generate a wallet, and automatically fund it from a faucet.</li>
+<li>Have the users enter a private key to a wallet that they have funded themselves.</li>
+<li>Use a browser extension that provides a private key/wallet functionality.</li>
+</ol>
+<p>Wavelet does not yet have a browser extension — so we cannot use option 3. Option 2 would be the easiest to implement but would make our user’s lives more difficult. That leaves Option 1 — let’s see how we would go about doing so.</p>
+<p>To generate a random wallet, we can call the handy <code>generateNewWallet</code> function.</p>
+<pre><code class="hljs css language-javascript"><span class="hljs-comment">// replace</span>
+<span class="hljs-keyword">const</span> wallet = Wavelet.loadWalletFromPrivateKey(<span class="hljs-comment">/* private key of a wallet containing at least 10 million PERLs*/</span>)
+<span class="hljs-comment">// with</span>
+<span class="hljs-keyword">const</span> wallet = Wavelet.generateNewWallet()
+</code></pre>
+<p>This will give us a wallet that will be able to render the universe, but not simulate it or modify it.</p>
+<p>In order to fill the wallets with testnet tokens, we can use our free faucet REST API to fill up the wallet.</p>
+<pre><code class="hljs css language-javascript"><span class="hljs-keyword">const</span> publicKey = Buffer.from(wallet.publicKey, <span class="hljs-string">"binary"</span>).toString(<span class="hljs-string">"hex"</span>);
+
+fetch(<span class="hljs-string">"https://faucet.perlin.net"</span>, {
+  <span class="hljs-attr">method</span>: <span class="hljs-string">"POST"</span>,
+  <span class="hljs-attr">body</span>: <span class="hljs-built_in">JSON</span>.stringify({
+    <span class="hljs-attr">address</span>: publicKey
+  })
+});
+</code></pre>
+<p>The faucet provides 500k PERLs per request — which means we have to hit the faucet twice to simulate a single step. This isn’t ideal, because the faucet will rate limit us to one call every 10 seconds, and the Game of Life isn’t going to be much fun if we can only update it three times a minute!</p>
+<p>Fortunately, Wavelet allows us to deposit gas into a smart contract, meaning that users don’t have to pay gas fees — only the much lower transaction fees of 2 PERLs. We can deposit a few billion PERLs for gas into the contract (join our discord and we’ll happily send you some), which will allow any user to advance the simulation 250k times.</p>
+<p>You can deposit gas either through Lens, (the webapp used to upload the contract), or via the JavaScript client by calling a function with a deposit value set:</p>
+<pre><code class="hljs css language-javascript"><span class="hljs-comment">// run this once - don't leave it in your code!</span>
+    contract.call(
+      wallet,
+      <span class="hljs-string">"render"</span>,
+      BigInt(<span class="hljs-number">0</span>),
+      BigInt(<span class="hljs-number">1e5</span>),
+      BigInt(<span class="hljs-number">1e10</span>),
+    );
+</code></pre>
+<p>We also have to make sure that we decrease the gas values currently specified in the existing <code>contract.call</code> options - they are currently <code>1e7</code> to allow for enough gas to execute the expensive calls - we can reduce this to 1 PERL.</p>
+<p>Now that we no longer store sensitive information in the code, and have a contract with a healthy amount of deposited gas, we are ready to launch the app to the public!</p>
+<p>You can see our instance of the universe running <strong><a href="https://ryanswart.github.io/decentralized-game-of-life">here</a></strong> and the final code we have implemented <strong><a href="https://github.com/ryanswart/decentralized-game-of-life">here</a></strong>.</p>
+</span></div></article></div><div class="docLastUpdate"><em>Last updated on 2019-8-31</em></div><div class="docs-prevnext"><a class="docs-prev button" href="/docs/examples/decentralized-todo-app"><span class="arrow-prev">← </span><span class="function-name-prevnext">Build A Decentralized Todo App using VueJS &amp; Rust (WebAssembly)</span></a></div></div></div><nav class="onPageNav"><ul class="toc-headings"><li><a href="#setup">Setup</a></li><li><a href="#interfacing-with-javascript">Interfacing with Javascript</a></li><li><a href="#interfacing-with-game-of-life">Interfacing with Game of Life</a></li><li><a href="#rust-implementation">Rust implementation</a></li><li><a href="#rendering-with-javascript">Rendering with JavaScript</a></li><li><a href="#adding-interactivity">Adding interactivity</a></li><li><a href="#toggling-cells">Toggling cells</a></li><li><a href="#final-steps">Final steps</a><ul class="toc-headings"><li><a href="#time-profiling">Time profiling</a></li><li><a href="#shrinking-wasm-size-">Shrinking .wasm size</a></li><li><a href="#publishing-to-npm">Publishing to npm</a></li></ul></li><li><a href="#wavelet-considerations">Wavelet Considerations</a></li></ul></nav></div><footer class="nav-footer" id="footer"><section class="sitemap"><a href="/" class="nav-home"><img src="/img/favicon.ico" alt="Wavelet" width="56" height="44"/></a><div><h5>Docs</h5><a href="/docs/en/setup">Getting Started</a></div><div><h5>Community</h5><a href="https://discord.gg/dMYfDPM" target="_blank" rel="noreferrer noopener">Discord</a><a href="https://twitter.com/PerlinNetwork" target="_blank" rel="noreferrer noopener">Twitter</a></div><div><h5>More</h5><a href="https://github.com/perlin-network/wavelet">GitHub</a><a class="github-button" href="https://github.com/perlin-network/wavelet" data-icon="octicon-star" data-count-href="/perlin-network/wavelet/stargazers" data-show-count="true" data-count-aria-label="# stargazers on GitHub" aria-label="Star this project on GitHub">Star</a></div></section><a href="https://perlin.net" target="_blank" rel="noreferrer noopener" class="fbOpenSource"><img src="/img/perlin-logo.svg" alt="Perlin Open Source" width="170" height="60"/></a><section class="copyright">Copyright © 2019 Perlin</section></footer></div><script>window.twttr=(function(d,s, id){var js,fjs=d.getElementsByTagName(s)[0],t=window.twttr||{};if(d.getElementById(id))return t;js=d.createElement(s);js.id=id;js.src='https://platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js, fjs);t._e = [];t.ready = function(f) {t._e.push(f);};return t;}(document, 'script', 'twitter-wjs'));</script></body></html>
