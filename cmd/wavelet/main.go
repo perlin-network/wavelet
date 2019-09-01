@@ -30,6 +30,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/perlin-network/noise"
@@ -353,21 +354,47 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 		}
 	}()
 
-	for _, addr := range cfg.Peers {
-		if _, err := client.Dial(addr); err != nil {
-			fmt.Printf("Error dialing %s: %v\n", addr, err)
+	// Start connecting to peers in the background
+	go func() {
+		wg := sync.WaitGroup{}
+		wg.Add(len(cfg.Peers))
+
+		// Loop over the peers
+		for _, addr := range cfg.Peers {
+			// Attempt to connect to them in the background
+			go func(addr string) {
+				defer wg.Done()
+
+				// 5 attempts
+				for i := 0; i < 5; i++ {
+					if _, err := client.Dial(addr); err != nil {
+						logger.Error().Err(err).
+							Str("addr", addr).
+							Int("attempt (max 5)", i).
+							Msg("Failed to dial to another peer")
+
+						// Retry after 1 second
+						time.Sleep(5 * time.Second)
+					} else {
+						// Exit
+						return
+					}
+				}
+			}(addr)
 		}
-	}
 
-	if peers := client.Bootstrap(); len(peers) > 0 {
-		var ids []string
+		wg.Wait()
 
-		for _, id := range peers {
-			ids = append(ids, id.String())
+		if peers := client.Bootstrap(); len(peers) > 0 {
+			var ids []string
+
+			for _, id := range peers {
+				ids = append(ids, id.String())
+			}
+
+			logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
 		}
-
-		logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
-	}
+	}()
 
 	if cfg.APIPort > 0 {
 		go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
