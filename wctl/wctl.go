@@ -48,14 +48,6 @@ const (
 	ReqGet  = "GET"
 )
 
-type UnmarshalableJSON interface {
-	UnmarshalJSON([]byte) error
-}
-
-type MarshalableJSON interface {
-	MarshalJSON() ([]byte, error)
-}
-
 type Marshalable interface {
 	Marshal() []byte
 }

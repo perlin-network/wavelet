@@ -19,6 +19,7 @@ require (
 	github.com/gorilla/websocket v1.4.0
 	github.com/hashrocket/ws v0.2.1 // indirect
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
+	github.com/json-iterator/go v1.1.7 // indirect
 	github.com/perlin-network/life v0.0.0-20190723115110-3091ed0c1be8
 	github.com/perlin-network/noise v0.0.0-20190527211417-79abfb78fdba
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
