@@ -20,6 +20,8 @@
 package wavelet
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	wasm "github.com/perlin-network/life/wasm-validation"
@@ -353,6 +355,163 @@ func loadContractPages(tree *avl.Tree, id TransactionID, pages [][]byte) error {
 	}
 
 	WriteAccountContractNumPages(tree, id, uint64(len(pages)))
+
+	return nil
+}
+
+func DumpLedgerStates(tree *avl.Tree, dir string, dumpContract bool) error {
+	type account struct {
+		balance *uint64
+		stake   *uint64
+		reward  *uint64
+	}
+
+	type contract struct {
+		pages    [][]byte
+		numPages uint64
+		code     []byte
+	}
+
+	contracts := make(map[AccountID]*contract)
+	accounts := make(map[AccountID]*account)
+
+	handleContract := func(id AccountID) {
+		con, exist := contracts[id]
+		if exist {
+			return
+		}
+
+		code, _ := ReadAccountContractCode(tree, id)
+
+		con = &contract{
+			code: code,
+		}
+		contracts[id] = con
+
+		numPages, ok := ReadAccountContractNumPages(tree, id)
+		if ok {
+			con.numPages = numPages
+		}
+
+		if con.numPages > 0 {
+			for i := uint64(0); i < con.numPages; i++ {
+				page, _ := ReadAccountContractPage(tree, id, i)
+				con.pages = append(con.pages, page)
+			}
+		}
+	}
+
+	tree.IteratePrefix(keyAccounts[:], func(key, value []byte) {
+		// Remove global prefix
+		key = bytes.TrimPrefix(key, keyAccounts[:])
+		// Get account prefix
+		prefix := [...]byte{key[0]}
+		// Remove account prefix
+		key = bytes.TrimPrefix(key, prefix[:])
+
+		var id AccountID
+		copy(id[:], key[:])
+
+		// Handle contracts
+		if prefix == keyAccountContractCode {
+			if dumpContract {
+				handleContract(id)
+			}
+			return
+		}
+
+		// Handle wallets
+
+		// Filter by prefixes relevant to wallet
+		if prefix != keyAccountBalance &&
+			prefix != keyAccountStake &&
+			prefix != keyAccountReward {
+			return
+		}
+
+		acc := accounts[id]
+		if acc == nil {
+			acc = &account{}
+			accounts[id] = acc
+		}
+
+		if prefix == keyAccountBalance {
+			if len(value) == 0 {
+				return
+			}
+
+			balance := binary.LittleEndian.Uint64(value)
+			acc.balance = &balance
+		} else if prefix == keyAccountStake {
+			if len(value) == 0 {
+				return
+			}
+
+			stake := binary.LittleEndian.Uint64(value)
+			acc.stake = &stake
+		} else if prefix == keyAccountReward {
+			if len(value) == 0 {
+				return
+			}
+
+			reward := binary.LittleEndian.Uint64(value)
+			acc.reward = &reward
+		}
+	})
+
+	// Make sure the directory exists
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return errors.Wrapf(err, "failed to create directory %s", dir)
+	}
+
+	// Write wallets into files
+
+	arena := &fastjson.Arena{}
+	for k, v := range accounts {
+		o := arena.NewObject()
+
+		if v.balance != nil {
+			o.Set("balance", arena.NewNumberString(strconv.FormatUint(*v.balance, 10)))
+		}
+		if v.stake != nil {
+			o.Set("stake", arena.NewNumberString(strconv.FormatUint(*v.stake, 10)))
+		}
+		if v.reward != nil {
+			o.Set("reward", arena.NewNumberString(strconv.FormatUint(*v.reward, 10)))
+		}
+
+		data := o.MarshalTo(nil)
+		filename := fmt.Sprintf("%x.json", k)
+
+		err := ioutil.WriteFile(filepath.Join(dir, filename), data, 0644)
+		if err != nil {
+			return errors.Wrapf(err, "failed to write %s", filename)
+		}
+
+		arena.Reset()
+	}
+
+	// Write contract code and files into files
+
+	if dumpContract {
+		for k, v := range contracts {
+			wasmFilename := fmt.Sprintf("%x.wasm", k)
+
+			err := ioutil.WriteFile(filepath.Join(dir, wasmFilename), v.code, 0644)
+			if err != nil {
+				return errors.Wrapf(err, "failed to write wasm %s", wasmFilename)
+			}
+
+			for i, page := range v.pages {
+				pageFilename := fmt.Sprintf("%x.%d.dmp", k, i)
+
+				err := ioutil.WriteFile(filepath.Join(dir, pageFilename), page, 0644)
+				if err != nil {
+					return errors.Wrapf(err, "failed to write dmp %s", pageFilename)
+				}
+			}
+		}
+	}
 
 	return nil
 }
