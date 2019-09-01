@@ -123,7 +123,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "genesis",
-			Usage:  "Genesis JSON file contents representing initial fields of some set of accounts at round 0.",
+			Usage:  "Directory path containing genesis files representing initial fields of some set of accounts at round 0.",
 			EnvVar: "WAVELET_GENESIS",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
