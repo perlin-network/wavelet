@@ -20,6 +20,7 @@
 package wavelet
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/binary"
@@ -38,7 +39,6 @@ import (
 )
 
 var (
-	ErrNotSmartContract         = errors.New("contract: specified account ID is not a smart contract")
 	ErrContractFunctionNotFound = errors.New("contract: smart contract func not found")
 
 	_ exec.ImportResolver = (*ContractExecutor)(nil)
@@ -445,39 +445,29 @@ func SaveContractMemorySnapshot(snapshot *avl.Tree, id AccountID, mem []byte) {
 
 	WriteAccountContractNumPages(snapshot, id, numPages)
 
+	var (
+		identical, allZero bool
+		pageStart          uint64
+	)
+
 	for pageIdx := uint64(0); pageIdx < numPages; pageIdx++ {
 		old, _ := ReadAccountContractPage(snapshot, id, pageIdx)
+		identical, allZero = true, false
+		pageStart = pageIdx * PageSize
 
-		identical := true
-
-		for idx := uint64(0); idx < PageSize; idx++ {
-			if len(old) == 0 && mem[pageIdx*PageSize+idx] != 0 {
-				identical = false
-				break
-			}
-
-			if len(old) != 0 && mem[pageIdx*PageSize+idx] != old[idx] {
-				identical = false
-				break
-			}
+		if len(old) == 0 {
+			allZero = bytes.Equal(ZeroPage, mem[pageStart:pageStart+PageSize])
+			identical = allZero
+		} else {
+			identical = bytes.Equal(old, mem[pageStart:pageStart+PageSize])
 		}
 
 		if !identical {
-			allZero := true
-
-			for idx := uint64(0); idx < PageSize; idx++ {
-				if mem[pageIdx*PageSize+idx] != 0 {
-					allZero = false
-					break
-				}
-			}
-
 			// If the page is empty, save an empty byte array. Otherwise, save the pages content.
-
 			if allZero {
 				WriteAccountContractPage(snapshot, id, pageIdx, []byte{})
 			} else {
-				WriteAccountContractPage(snapshot, id, pageIdx, mem[pageIdx*PageSize:(pageIdx+1)*PageSize])
+				WriteAccountContractPage(snapshot, id, pageIdx, mem[pageStart:pageStart+PageSize])
 			}
 		}
 	}

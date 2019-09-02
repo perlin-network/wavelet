@@ -50,4 +50,6 @@ var (
 	ZeroSignature     Signature
 
 	ZeroRoundPtr = &Round{}
+
+	ZeroPage = make([]byte, PageSize)
 )
