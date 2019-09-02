@@ -114,7 +114,8 @@ it receives.</p>
         Transfer {
             destination: params.sender,
             amount: (params.amount + <span class="hljs-number">1</span>) / <span class="hljs-number">2</span>,
-            invocation: <span class="hljs-literal">None</span>,
+            func_name: <span class="hljs-built_in">vec!</span>[],
+            func_params: <span class="hljs-built_in">vec!</span>[],
         }
         .send_transaction();
 
