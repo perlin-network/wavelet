@@ -78,8 +78,7 @@ impl Contract {
         Transfer {
             destination: params.sender,
             amount: (params.amount + 1) / 2,
-            func_name: vec![],
-            func_params: vec![],
+            invocation: None,
         }
         .send_transaction();
 
