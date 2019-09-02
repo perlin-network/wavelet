@@ -253,7 +253,7 @@ func (l *TestLedger) WaitForConsensus() <-chan bool {
 func (l *TestLedger) WaitForSync() <-chan bool {
 	ch := make(chan bool)
 	go func() {
-		timeout := time.NewTimer(time.Second * 3)
+		timeout := time.NewTimer(time.Second * 5)
 		ticker := time.NewTicker(time.Millisecond * 50)
 		for {
 			select {

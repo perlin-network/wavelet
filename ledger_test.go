@@ -144,7 +144,7 @@ func TestLedger_SubContractInvocation(t *testing.T) {
 
 	testnet.WaitForConsensus(t)
 
-	dummy, err := testnet.faucet.SpawnContract("testdata/dummy.wasm",
+	dummy, err := testnet.faucet.SpawnContract("testdata/hello_world.wasm",
 		gasDeposit, nil)
 	assert.NoError(t, err)
 
