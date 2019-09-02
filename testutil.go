@@ -183,6 +183,10 @@ func (l *TestLedger) Addr() string {
 	return l.addr
 }
 
+func (l *TestLedger) Ledger() *Ledger {
+	return l.ledger
+}
+
 func (l *TestLedger) PublicKey() AccountID {
 	keys := l.ledger.client.Keys()
 	return keys.PublicKey()

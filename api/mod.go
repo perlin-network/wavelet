@@ -134,6 +134,10 @@ func (g *Gateway) setup() {
 	r.GET("/tx/:id", g.applyMiddleware(g.getTransaction, ""))
 	r.GET("/tx", g.applyMiddleware(g.listTransactions, "/tx"))
 
+	// Connect/disconnect endpoints
+	r.POST("/node/connect", g.applyMiddleware(g.connect, "/node/connect"))
+	r.POST("/node/disconnect", g.applyMiddleware(g.disconnect, "/node/disconnect"))
+
 	g.router = r
 }
 
@@ -475,6 +479,58 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 	}
 
 	_, _ = ctx.Write(page)
+}
+
+func (g *Gateway) connect(ctx *fasthttp.RequestCtx) {
+	parser := g.parserPool.Get()
+	v, err := parser.ParseBytes(ctx.PostBody())
+	if err != nil {
+		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error parsing request body")))
+		return
+	}
+
+	addressVal := v.Get("address")
+	if addressVal == nil {
+		g.renderError(ctx, ErrBadRequest(errors.New("address is missing")))
+		return
+	}
+
+	address, err := addressVal.StringBytes()
+	if err != nil {
+		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error extracting address from payload")))
+		return
+	}
+
+	if _, err := g.client.Dial(string(address)); err != nil {
+		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error connecting to peer")))
+		return
+	}
+}
+
+func (g *Gateway) disconnect(ctx *fasthttp.RequestCtx) {
+	parser := g.parserPool.Get()
+	v, err := parser.ParseBytes(ctx.PostBody())
+	if err != nil {
+		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error parsing request body")))
+		return
+	}
+
+	addressVal := v.Get("address")
+	if addressVal == nil {
+		g.renderError(ctx, ErrBadRequest(errors.New("address is missing")))
+		return
+	}
+
+	address, err := addressVal.StringBytes()
+	if err != nil {
+		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error extracting address from payload")))
+		return
+	}
+
+	if err := g.client.DisconnectByAddress(string(address)); err != nil {
+		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error disconnecting from peer")))
+		return
+	}
 }
 
 func (g *Gateway) notFound() func(ctx *fasthttp.RequestCtx) {
