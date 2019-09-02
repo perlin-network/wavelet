@@ -24,7 +24,7 @@ func TestCollectVotes(t *testing.T) {
 	kv := store.NewInmem()
 	accounts := NewAccounts(kv)
 	snowballB := 5
-	conf.UpdateConfig(conf.WithSnowballBeta(snowballB))
+	conf.Update(conf.WithSnowballBeta(snowballB))
 	s := NewSnowball(WithName("test"))
 
 	pubKey := edwards25519.PublicKey{}

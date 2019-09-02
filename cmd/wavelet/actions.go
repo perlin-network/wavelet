@@ -610,17 +610,17 @@ func (cli *CLI) disconnect(ctx *cli.Context) {
 }
 
 func (cli *CLI) updateParameters(ctx *cli.Context) {
-	conf.UpdateConfig(
-		conf.WithSnowballK(ctx.Int("snowballK")),
-		conf.WithSnowballAlpha(ctx.Float64("snowballAlpha")),
-		conf.WithSnowballBeta(ctx.Int("snowballBeta")),
-		conf.WithQueryTimeout(ctx.Duration("queryTimeout")),
-		conf.WithGossipTimeout(ctx.Duration("gossipTimeout")),
-		conf.WithSyncChunkSize(ctx.Int("syncChunkSize")),
-		conf.WithSyncIfRoundsDifferBy(ctx.Uint64("syncIfRoundsDifferBy")),
-		conf.WithMaxDownloadDepthDiff(ctx.Uint64("maxDownloadDepthDiff")),
-		conf.WithMaxDepthDiff(ctx.Uint64("maxDepthDiff")),
-		conf.WithPruningLimit(uint8(ctx.Uint64("pruningLimit"))),
+	conf.Update(
+		conf.WithSnowballK(ctx.Int("snowball.k")),
+		conf.WithSnowballAlpha(ctx.Float64("snowball.alpha")),
+		conf.WithSnowballBeta(ctx.Int("snowball.beta")),
+		conf.WithQueryTimeout(ctx.Duration("query.timeout")),
+		conf.WithGossipTimeout(ctx.Duration("gossip.timeout")),
+		conf.WithSyncChunkSize(ctx.Int("sync.chunk.size")),
+		conf.WithSyncIfRoundsDifferBy(ctx.Uint64("sync.if.rounds.differ.by")),
+		conf.WithMaxDownloadDepthDiff(ctx.Uint64("max.download.depth.diff")),
+		conf.WithMaxDepthDiff(ctx.Uint64("max.depth.diff")),
+		conf.WithPruningLimit(uint8(ctx.Uint64("pruning.limit"))),
 	)
 
 	cli.logger.Info().Str("conf", conf.Stringify()).Msg("Current configuration values")

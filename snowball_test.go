@@ -31,9 +31,9 @@ func TestNewSnowball(t *testing.T) {
 	t.Parallel()
 
 	defaultBeta := conf.GetSnowballBeta()
-	conf.UpdateConfig(conf.WithSnowballBeta(10))
+	conf.Update(conf.WithSnowballBeta(10))
 	defer func() {
-		conf.UpdateConfig(conf.WithSnowballBeta(defaultBeta))
+		conf.Update(conf.WithSnowballBeta(defaultBeta))
 	}()
 
 	snowball := NewSnowball()

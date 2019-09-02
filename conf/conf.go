@@ -50,63 +50,63 @@ var (
 	l = sync.RWMutex{}
 )
 
-type ConfigOption func(*config)
+type Option func(*config)
 
-func WithSnowballK(sk int) ConfigOption {
+func WithSnowballK(sk int) Option {
 	return func(c *config) {
 		c.snowballK = sk
 	}
 }
 
-func WithSnowballAlpha(sa float64) ConfigOption {
+func WithSnowballAlpha(sa float64) Option {
 	return func(c *config) {
 		c.snowballAlpha = sa
 	}
 }
 
-func WithSnowballBeta(sb int) ConfigOption {
+func WithSnowballBeta(sb int) Option {
 	return func(c *config) {
 		c.snowballBeta = sb
 	}
 }
 
-func WithQueryTimeout(qt time.Duration) ConfigOption {
+func WithQueryTimeout(qt time.Duration) Option {
 	return func(c *config) {
 		c.queryTimeout = qt
 	}
 }
 
-func WithGossipTimeout(gt time.Duration) ConfigOption {
+func WithGossipTimeout(gt time.Duration) Option {
 	return func(c *config) {
 		c.gossipTimeout = gt
 	}
 }
 
-func WithSyncChunkSize(cs int) ConfigOption {
+func WithSyncChunkSize(cs int) Option {
 	return func(c *config) {
 		c.syncChunkSize = cs
 	}
 }
 
-func WithSyncIfRoundsDifferBy(rdb uint64) ConfigOption {
+func WithSyncIfRoundsDifferBy(rdb uint64) Option {
 	return func(c *config) {
 		c.syncIfRoundsDifferBy = rdb
 	}
 }
 
-func WithMaxDownloadDepthDiff(ddd uint64) ConfigOption {
+func WithMaxDownloadDepthDiff(ddd uint64) Option {
 	return func(c *config) {
 		c.maxDownloadDepthDiff = ddd
 	}
 }
 
-func WithMaxDepthDiff(dd uint64) ConfigOption {
+func WithMaxDepthDiff(dd uint64) Option {
 	return func(c *config) {
 		c.maxDepthDiff = dd
 	}
 }
 
-func WithPruningLimit(pl uint8) ConfigOption {
+func WithPruningLimit(pl uint8) Option {
 	return func(c *config) {
 		c.pruningLimit = pl
 	}
@@ -192,7 +192,7 @@ func GetPruningLimit() uint8 {
 	return t
 }
 
-func UpdateConfig(options ...ConfigOption) {
+func Update(options ...Option) {
 	l.Lock()
 	for _, option := range options {
 		option(&c)

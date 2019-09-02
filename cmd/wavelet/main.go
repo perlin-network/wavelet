@@ -227,7 +227,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			config.Genesis = &genesis
 		}
 
-		conf.UpdateConfig(
+		conf.Update(
 			conf.WithSnowballK(c.Int("sys.snowball.k")),
 			conf.WithSnowballAlpha(c.Float64("sys.snowball.alpha")),
 			conf.WithSnowballBeta(c.Int("sys.snowball.beta")),
