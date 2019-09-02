@@ -175,7 +175,9 @@ Database (MySQL, Postgres, MongoDB etc.) =&gt; Wavelet (blockchain)</p>
 <li>Toggling the ‘done’ status for each Todo</li>
 </ol>
 <p>Here we have the full smart contract written out as the following:</p>
-<pre><code class="hljs css language-rust"><span class="hljs-keyword">use</span> smart_contract_macros::smart_contract;
+<pre><code class="hljs css language-rust"><span class="hljs-keyword">use</span> std::error::Error;
+
+<span class="hljs-keyword">use</span> smart_contract_macros::smart_contract;
 
 <span class="hljs-keyword">use</span> smart_contract::log;
 <span class="hljs-keyword">use</span> smart_contract::payload::Parameters;
@@ -205,7 +207,7 @@ Database (MySQL, Postgres, MongoDB etc.) =&gt; Wavelet (blockchain)</p>
         <span class="hljs-keyword">Self</span> { logs: VecDeque::new() }
     }
 
-    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">add_todo</span></span>(&amp;<span class="hljs-keyword">mut</span> <span class="hljs-keyword">self</span>, params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-built_in">Result</span>&lt;(), <span class="hljs-built_in">String</span>&gt; {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">add_todo</span></span>(&amp;<span class="hljs-keyword">mut</span> <span class="hljs-keyword">self</span>, params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-built_in">Result</span>&lt;(), <span class="hljs-built_in">Box</span>&lt;<span class="hljs-keyword">dyn</span> Error&gt;&gt; {
         <span class="hljs-keyword">let</span> todo = Todo { content: params.read(), done: <span class="hljs-literal">false</span> };
 
         <span class="hljs-comment">// Ensure that todo contents are not empty.</span>
@@ -227,7 +229,7 @@ Database (MySQL, Postgres, MongoDB etc.) =&gt; Wavelet (blockchain)</p>
         <span class="hljs-literal">Ok</span>(())
     }
 
-    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">remove_todo</span></span>(&amp;<span class="hljs-keyword">mut</span> <span class="hljs-keyword">self</span>, params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-built_in">Result</span>&lt;(), <span class="hljs-built_in">String</span>&gt; {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">remove_todo</span></span>(&amp;<span class="hljs-keyword">mut</span> <span class="hljs-keyword">self</span>, params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-built_in">Result</span>&lt;(), <span class="hljs-built_in">Box</span>&lt;<span class="hljs-keyword">dyn</span> Error&gt;&gt; {
         <span class="hljs-keyword">let</span> target:<span class="hljs-built_in">usize</span> = params.read();
         <span class="hljs-keyword">if</span> target &lt; <span class="hljs-keyword">self</span>.logs.len() {
             <span class="hljs-keyword">self</span>.logs.remove(target);
@@ -238,7 +240,7 @@ Database (MySQL, Postgres, MongoDB etc.) =&gt; Wavelet (blockchain)</p>
         <span class="hljs-literal">Ok</span>(())
     }
 
-    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">toggle_todo</span></span>(&amp;<span class="hljs-keyword">mut</span> <span class="hljs-keyword">self</span>, params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-built_in">Result</span>&lt;(), <span class="hljs-built_in">String</span>&gt; {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">toggle_todo</span></span>(&amp;<span class="hljs-keyword">mut</span> <span class="hljs-keyword">self</span>, params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-built_in">Result</span>&lt;(), <span class="hljs-built_in">Box</span>&lt;<span class="hljs-keyword">dyn</span> Error&gt;&gt; {
         <span class="hljs-keyword">let</span> target:<span class="hljs-built_in">usize</span> = params.read();
         <span class="hljs-keyword">if</span> target &lt; <span class="hljs-keyword">self</span>.logs.len() {
             <span class="hljs-keyword">let</span> target_ref = &amp;<span class="hljs-keyword">mut</span> <span class="hljs-keyword">self</span>.logs[target];
@@ -250,7 +252,7 @@ Database (MySQL, Postgres, MongoDB etc.) =&gt; Wavelet (blockchain)</p>
         <span class="hljs-literal">Ok</span>(())
     }
 
-    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">get_todos</span></span>(&amp;<span class="hljs-keyword">mut</span> <span class="hljs-keyword">self</span>, _params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-built_in">Result</span>&lt;(), <span class="hljs-built_in">String</span>&gt; {
+    <span class="hljs-function"><span class="hljs-keyword">fn</span> <span class="hljs-title">get_todos</span></span>(&amp;<span class="hljs-keyword">mut</span> <span class="hljs-keyword">self</span>, _params: &amp;<span class="hljs-keyword">mut</span> Parameters) -&gt; <span class="hljs-built_in">Result</span>&lt;(), <span class="hljs-built_in">Box</span>&lt;<span class="hljs-keyword">dyn</span> Error&gt;&gt; {
         <span class="hljs-keyword">let</span> <span class="hljs-keyword">mut</span> todos = <span class="hljs-built_in">Vec</span>::new();
 
         <span class="hljs-keyword">for</span> todo <span class="hljs-keyword">in</span> &amp;<span class="hljs-keyword">self</span>.logs {
@@ -370,7 +372,7 @@ Vue.use({
     getTodos() {
       <span class="hljs-keyword">var</span> raw = <span class="hljs-keyword">this</span>.$contract.test(<span class="hljs-string">'get_todos'</span>, BigInt(<span class="hljs-number">0</span>));
       <span class="hljs-keyword">this</span>.todos = raw.logs[<span class="hljs-number">0</span>].split(<span class="hljs-string">'\n'</span>).reverse().map(<span class="hljs-function">(<span class="hljs-params">a, aidx</span>) =&gt;</span> {
-        <span class="hljs-keyword">var</span> matched = a.split(<span class="hljs-string">'&gt; '</span>);
+        <span class="hljs-keyword">var</span> matched = a.split(<span class="hljs-string">' '</span>);
         <span class="hljs-keyword">return</span> {
           <span class="hljs-attr">id</span>: aidx,
           <span class="hljs-attr">content</span>: matched[<span class="hljs-number">0</span>].replace(<span class="hljs-regexp">/[\&lt;\&gt;]/g</span>, <span class="hljs-string">''</span>),
@@ -385,7 +387,6 @@ Vue.use({
         <span class="hljs-string">'add_todo'</span>, 
         BigInt(<span class="hljs-number">0</span>), 
         BigInt(<span class="hljs-number">250000</span>),
-        BigInt(<span class="hljs-number">0</span>),
         {<span class="hljs-attr">type</span>: <span class="hljs-string">"string"</span>, <span class="hljs-attr">value</span>: target.value},
       ).then(<span class="hljs-function"><span class="hljs-params">resp</span> =&gt;</span> {
         target.value = <span class="hljs-string">''</span>;
@@ -399,7 +400,6 @@ Vue.use({
         <span class="hljs-string">'remove_todo'</span>, 
         BigInt(<span class="hljs-number">0</span>), 
         BigInt(<span class="hljs-number">250000</span>),
-        BigInt(<span class="hljs-number">0</span>),
         {<span class="hljs-attr">type</span>: <span class="hljs-string">"uint32"</span>, <span class="hljs-attr">value</span>: id},
       ).then(<span class="hljs-function"><span class="hljs-params">resp</span> =&gt;</span> {
         self.log.push(resp.tx_id);
@@ -412,7 +412,6 @@ Vue.use({
         <span class="hljs-string">'toggle_todo'</span>, 
         BigInt(<span class="hljs-number">0</span>), 
         BigInt(<span class="hljs-number">250000</span>),
-        BigInt(<span class="hljs-number">0</span>),
         {<span class="hljs-attr">type</span>: <span class="hljs-string">"uint32"</span>, <span class="hljs-attr">value</span>: id},
       ).then(<span class="hljs-function"><span class="hljs-params">resp</span> =&gt;</span> {
         self.log.push(resp.tx_id);
@@ -482,4 +481,4 @@ Vue.use({
 <p>Congratulations, you just made your very first, scalable, secure Wavelet Dapp!</p>
 <p>There is a lot more to explore, such as a plethora of additional functionalities provided by the Wavelet JS client, alongside the extensive set of documentation for Wavelet located on this site.</p>
 <p>Source code for the full tutorial is available here: <a href="https://github.com/johnhorsema/wavelet-todo">https://github.com/johnhorsema/wavelet-todo</a></p>
-</span></div></article></div><div class="docLastUpdate"><em>Last updated on 2019-8-22</em></div><div class="docs-prevnext"><a class="docs-prev button" href="/docs/examples/decentralized-chat-app"><span class="arrow-prev">← </span><span class="function-name-prevnext">Build A Decentralized Chat Application with Javascript &amp; Rust (WebAssembly)</span></a></div></div></div><nav class="onPageNav"><ul class="toc-headings"><li><a href="#why-dapps">Why Dapps?</a></li><li><a href="#the-frontend">The Frontend</a></li><li><a href="#the-backend">The Backend</a><ul class="toc-headings"><li><a href="#getting-some-perls">Getting some PERLs</a></li><li><a href="#preparing-to-write-the-contract">Preparing to Write the Contract</a></li><li><a href="#writing-the-contract">Writing the Contract</a></li><li><a href="#deploying-the-contract">Deploying the contract</a></li></ul></li><li><a href="#linking-up-the-frontend-and-backend-via-wavelet-js-client">Linking up the Frontend and Backend via Wavelet JS Client</a></li><li><a href="#conclusion">Conclusion</a></li></ul></nav></div><footer class="nav-footer" id="footer"><section class="sitemap"><a href="/" class="nav-home"><img src="/img/favicon.ico" alt="Wavelet" width="56" height="44"/></a><div><h5>Docs</h5><a href="/docs/en/setup">Getting Started</a></div><div><h5>Community</h5><a href="https://discord.gg/dMYfDPM" target="_blank" rel="noreferrer noopener">Discord</a><a href="https://twitter.com/PerlinNetwork" target="_blank" rel="noreferrer noopener">Twitter</a></div><div><h5>More</h5><a href="https://github.com/perlin-network/wavelet">GitHub</a><a class="github-button" href="https://github.com/perlin-network/wavelet" data-icon="octicon-star" data-count-href="/perlin-network/wavelet/stargazers" data-show-count="true" data-count-aria-label="# stargazers on GitHub" aria-label="Star this project on GitHub">Star</a></div></section><a href="https://perlin.net" target="_blank" rel="noreferrer noopener" class="fbOpenSource"><img src="/img/perlin-logo.svg" alt="Perlin Open Source" width="170" height="60"/></a><section class="copyright">Copyright © 2019 Perlin</section></footer></div><script>window.twttr=(function(d,s, id){var js,fjs=d.getElementsByTagName(s)[0],t=window.twttr||{};if(d.getElementById(id))return t;js=d.createElement(s);js.id=id;js.src='https://platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js, fjs);t._e = [];t.ready = function(f) {t._e.push(f);};return t;}(document, 'script', 'twitter-wjs'));</script></body></html>
+</span></div></article></div><div class="docLastUpdate"><em>Last updated on 2019-9-2</em></div><div class="docs-prevnext"><a class="docs-prev button" href="/docs/examples/decentralized-chat-app"><span class="arrow-prev">← </span><span class="function-name-prevnext">Build A Decentralized Chat Application with Javascript &amp; Rust (WebAssembly)</span></a></div></div></div><nav class="onPageNav"><ul class="toc-headings"><li><a href="#why-dapps">Why Dapps?</a></li><li><a href="#the-frontend">The Frontend</a></li><li><a href="#the-backend">The Backend</a><ul class="toc-headings"><li><a href="#getting-some-perls">Getting some PERLs</a></li><li><a href="#preparing-to-write-the-contract">Preparing to Write the Contract</a></li><li><a href="#writing-the-contract">Writing the Contract</a></li><li><a href="#deploying-the-contract">Deploying the contract</a></li></ul></li><li><a href="#linking-up-the-frontend-and-backend-via-wavelet-js-client">Linking up the Frontend and Backend via Wavelet JS Client</a></li><li><a href="#conclusion">Conclusion</a></li></ul></nav></div><footer class="nav-footer" id="footer"><section class="sitemap"><a href="/" class="nav-home"><img src="/img/favicon.ico" alt="Wavelet" width="56" height="44"/></a><div><h5>Docs</h5><a href="/docs/en/setup">Getting Started</a></div><div><h5>Community</h5><a href="https://discord.gg/dMYfDPM" target="_blank" rel="noreferrer noopener">Discord</a><a href="https://twitter.com/PerlinNetwork" target="_blank" rel="noreferrer noopener">Twitter</a></div><div><h5>More</h5><a href="https://github.com/perlin-network/wavelet">GitHub</a><a class="github-button" href="https://github.com/perlin-network/wavelet" data-icon="octicon-star" data-count-href="/perlin-network/wavelet/stargazers" data-show-count="true" data-count-aria-label="# stargazers on GitHub" aria-label="Star this project on GitHub">Star</a></div></section><a href="https://perlin.net" target="_blank" rel="noreferrer noopener" class="fbOpenSource"><img src="/img/perlin-logo.svg" alt="Perlin Open Source" width="170" height="60"/></a><section class="copyright">Copyright © 2019 Perlin</section></footer></div><script>window.twttr=(function(d,s, id){var js,fjs=d.getElementsByTagName(s)[0],t=window.twttr||{};if(d.getElementById(id))return t;js=d.createElement(s);js.id=id;js.src='https://platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js, fjs);t._e = [];t.ready = function(f) {t._e.push(f);};return t;}(document, 'script', 'twitter-wjs'));</script></body></html>
