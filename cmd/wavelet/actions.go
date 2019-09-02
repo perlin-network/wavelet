@@ -573,6 +573,42 @@ func (cli *CLI) withdrawReward(ctx *cli.Context) {
 		Msgf("Success! Your reward withdrawal transaction ID: %x", tx.ID)
 }
 
+func (cli *CLI) connect(ctx *cli.Context) {
+	var cmd = ctx.Args()
+
+	if len(cmd) != 1 {
+		cli.logger.Error().Msg("Invalid usage: connect <address:port>")
+		return
+	}
+
+	_, err := cli.client.Dial(cmd[0])
+
+	if err != nil {
+		cli.logger.Error().Err(err).Msg("Failed to connect to peer.")
+		return
+	}
+
+	cli.logger.Info().Str("address", cmd[0]).Msg("Successfully connected to peer.")
+}
+
+func (cli *CLI) disconnect(ctx *cli.Context) {
+	var cmd = ctx.Args()
+
+	if len(cmd) != 1 {
+		cli.logger.Error().Msg("Invalid usage: disconnect <address:port>")
+		return
+	}
+
+	err := cli.client.DisconnectByAddress(cmd[0])
+
+	if err != nil {
+		cli.logger.Error().Err(err).Msg("Failed to disconnect peer.")
+		return
+	}
+
+	cli.logger.Info().Str("address", cmd[0]).Msg("Successfully disconnected peer.")
+}
+
 func (cli *CLI) sendTransaction(tx wavelet.Transaction) (wavelet.Transaction, error) {
 	tx = wavelet.AttachSenderToTransaction(
 		cli.keys, tx, cli.ledger.Graph().FindEligibleParents()...,

@@ -166,3 +166,29 @@ func TestLedger_SubContractInvocation(t *testing.T) {
 
 	fmt.Println(alice.Balance())
 }
+
+func TestLedger_SpamContracts(t *testing.T) {
+	testnet := NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	alice := testnet.AddNode(t)
+	testnet.AddNode(t)
+
+	assert.True(t, <-alice.WaitForSync())
+
+	_, err := testnet.faucet.Pay(alice, 100000)
+	assert.NoError(t, err)
+
+	testnet.WaitForConsensus(t)
+
+	// spamming spawn transactions should cause no problem for consensus
+	// this is possible if they applied in different order on different nodes
+	for i := 0; i < 5; i++ {
+		_, err := alice.SpawnContract("testdata/transfer_back.wasm", 10000, nil)
+		if !assert.NoError(t, err) {
+			return
+		}
+	}
+
+	assert.True(t, <-alice.WaitForConsensus())
+}

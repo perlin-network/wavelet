@@ -52,14 +52,15 @@ import (
 )
 
 type Config struct {
-	NAT      bool
-	Host     string
-	Port     uint
-	Wallet   string
-	Genesis  *string
-	APIPort  uint
-	Peers    []string
-	Database string
+	NAT         bool
+	Host        string
+	Port        uint
+	Wallet      string
+	Genesis     *string
+	APIPort     uint
+	Peers       []string
+	Database    string
+	MaxMemoryMB uint64
 
 	// Only for testing
 	WithoutGC bool
@@ -129,6 +130,12 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Name:   "db",
 			Usage:  "Directory path to the database. If empty, a temporary in-memory database will be used instead.",
 			EnvVar: "WAVELET_DB_PATH",
+		}),
+		altsrc.NewIntFlag(cli.IntFlag{
+			Name:   "memory.max",
+			Value:  0,
+			Usage:  "Maximum memory in MB allowed to be used by wavelet.",
+			EnvVar: "WAVELET_MEMORY_MAX",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:  "sys.query_timeout",
@@ -205,13 +212,14 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 	app.Action = func(c *cli.Context) error {
 		c.String("config")
 		config := &Config{
-			Host:      c.String("host"),
-			Port:      c.Uint("port"),
-			Wallet:    c.String("wallet"),
-			APIPort:   c.Uint("api.port"),
-			Peers:     c.Args(),
-			Database:  c.String("db"),
-			WithoutGC: withoutGC,
+			Host:        c.String("host"),
+			Port:        c.Uint("port"),
+			Wallet:      c.String("wallet"),
+			APIPort:     c.Uint("api.port"),
+			Peers:       c.Args(),
+			Database:    c.String("db"),
+			MaxMemoryMB: c.Uint64("memory.max"),
+			WithoutGC:   withoutGC,
 		}
 
 		if genesis := c.String("genesis"); len(genesis) > 0 {
@@ -328,6 +336,9 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	opts := []wavelet.Option{wavelet.WithGenesis(cfg.Genesis)}
 	if cfg.WithoutGC {
 		opts = append(opts, wavelet.WithoutGC())
+	}
+	if cfg.MaxMemoryMB > 0 {
+		opts = append(opts, wavelet.WithMaxMemoryMB(cfg.MaxMemoryMB))
 	}
 
 	ledger := wavelet.NewLedger(kv, client, opts...)

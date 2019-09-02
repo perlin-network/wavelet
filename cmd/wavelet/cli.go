@@ -125,6 +125,18 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 			Description: "withdraw rewards into PERLs",
 		},
 		{
+			Name:        "connect",
+			Aliases:     []string{"cc"},
+			Action:      a(c.connect),
+			Description: "connect to a peer",
+		},
+		{
+			Name:        "disconnect",
+			Aliases:     []string{"dc"},
+			Action:      a(c.disconnect),
+			Description: "disconnect a peer",
+		},
+		{
 			Name:    "exit",
 			Aliases: []string{"quit", ":q"},
 			Action:  a(c.exit),
