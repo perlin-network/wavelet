@@ -296,11 +296,14 @@ func commandRemote(c *cli.Context) error {
 			flood = floodBatchStake()
 		}
 
-		for {
-			if _, err := flood(client); err != nil {
-				continue
+		go func() {
+			for {
+				if _, err := flood(client); err != nil {
+					continue
+				}
 			}
-		}
+		}()
+
 	}
 
 	select {}
