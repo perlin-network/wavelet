@@ -370,7 +370,7 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	}
 
 	if cfg.APIPort > 0 {
-		go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
+		go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys, kv)
 	}
 
 	shell, err := NewCLI(client, ledger, keys, stdin, stdout, kv)

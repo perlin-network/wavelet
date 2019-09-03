@@ -627,7 +627,7 @@ func (cli *CLI) restart(ctx *cli.Context) {
 		dbDir := cli.kv.Dir()
 		if len(dbDir) != 0 {
 			if err := os.RemoveAll(dbDir); err != nil {
-				cli.logger.Error().Err(err).Msg("Error deleting database.")
+				cli.logger.Error().Err(err).Msg("Error deleting storage content.")
 				return
 			}
 		}

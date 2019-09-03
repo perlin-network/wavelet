@@ -749,9 +749,12 @@ func TestConnectDisconnect(t *testing.T) {
 	assert.NoError(t, err)
 	gateway.keys = keys
 
-	listener, err := net.Listen("tcp", ":0")
-	assert.NoError(t, err)
-	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
+	l, err := net.Listen("tcp", ":0")
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(l.Addr().(*net.TCPAddr).Port))
 
 	gateway.client = skademlia.NewClient(addr, keys,
 		skademlia.WithC1(sys.SKademliaC1),
@@ -776,7 +779,7 @@ func TestConnectDisconnect(t *testing.T) {
 
 	resp, err := ioutil.ReadAll(w.Body)
 	assert.NoError(t, err)
-	assert.Equal(t, "", string(resp))
+	assert.Equal(t, fmt.Sprintf(`{"msg":"Successfully connected to %s"}`, node.Addr()), string(resp))
 
 	request = httptest.NewRequest(http.MethodPost, "http://localhost/node/disconnect", strings.NewReader(body))
 	w, err = serve(gateway.router, request)
@@ -788,7 +791,7 @@ func TestConnectDisconnect(t *testing.T) {
 
 	resp, err = ioutil.ReadAll(w.Body)
 	assert.NoError(t, err)
-	assert.Equal(t, "", string(resp))
+	assert.Equal(t, fmt.Sprintf(`{"msg":"Successfully disconnected from %s"}`, node.Addr()), string(resp))
 }
 
 func TestConnectDisconnectErrors(t *testing.T) {
@@ -801,9 +804,12 @@ func TestConnectDisconnectErrors(t *testing.T) {
 	assert.NoError(t, err)
 	gateway.keys = keys
 
-	listener, err := net.Listen("tcp", ":0")
-	assert.NoError(t, err)
-	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
+	l, err := net.Listen("tcp", ":0")
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(l.Addr().(*net.TCPAddr).Port))
 
 	gateway.client = skademlia.NewClient(addr, keys,
 		skademlia.WithC1(sys.SKademliaC1),

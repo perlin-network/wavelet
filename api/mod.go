@@ -24,6 +24,8 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"github.com/perlin-network/wavelet/store"
+	"os"
 
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
@@ -46,6 +48,7 @@ import (
 type Gateway struct {
 	client *skademlia.Client
 	ledger *wavelet.Ledger
+	kv     store.KV
 
 	network *skademlia.Protocol
 	keys    *skademlia.Keypair
@@ -134,9 +137,10 @@ func (g *Gateway) setup() {
 	r.GET("/tx/:id", g.applyMiddleware(g.getTransaction, ""))
 	r.GET("/tx", g.applyMiddleware(g.listTransactions, "/tx"))
 
-	// Connect/disconnect endpoints
+	// Connectivity endpoints
 	r.POST("/node/connect", g.applyMiddleware(g.connect, "/node/connect"))
 	r.POST("/node/disconnect", g.applyMiddleware(g.disconnect, "/node/disconnect"))
+	r.POST("/node/restart", g.applyMiddleware(g.restart, "/node/restart"))
 
 	g.router = r
 }
@@ -174,13 +178,15 @@ func (g *Gateway) applyMiddleware(f fasthttp.RequestHandler, rateLimiterKey stri
 	return chain(f, list)
 }
 
-func (g *Gateway) StartHTTP(port int, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair) {
+func (g *Gateway) StartHTTP(
+	port int, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair, kv store.KV,
+) {
 	stop := g.rateLimiter.cleanup(10 * time.Minute)
 	defer stop()
 
 	g.client = c
 	g.ledger = l
-
+	g.kv = kv
 	g.keys = k
 
 	g.enableTimeout = false
@@ -505,6 +511,8 @@ func (g *Gateway) connect(ctx *fasthttp.RequestCtx) {
 		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error connecting to peer")))
 		return
 	}
+
+	g.render(ctx, &msgResponse{msg: fmt.Sprintf("Successfully connected to %s", address)})
 }
 
 func (g *Gateway) disconnect(ctx *fasthttp.RequestCtx) {
@@ -529,6 +537,40 @@ func (g *Gateway) disconnect(ctx *fasthttp.RequestCtx) {
 
 	if err := g.client.DisconnectByAddress(string(address)); err != nil {
 		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error disconnecting from peer")))
+		return
+	}
+
+	g.render(ctx, &msgResponse{msg: fmt.Sprintf("Successfully disconnected from %s", address)})
+}
+
+func (g *Gateway) restart(ctx *fasthttp.RequestCtx) {
+	if err := g.kv.Close(); err != nil {
+		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error closing storage")))
+		return
+	}
+
+	body := ctx.PostBody()
+	if len(body) != 0 {
+		parser := g.parserPool.Get()
+		v, err := parser.ParseBytes(body)
+		if err != nil {
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error parsing request body")))
+			return
+		}
+
+		if v.GetBool("hard") {
+			dbDir := g.kv.Dir()
+			if len(dbDir) != 0 {
+				if err := os.RemoveAll(dbDir); err != nil {
+					g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error deleting storage content")))
+					return
+				}
+			}
+		}
+	}
+
+	if err := g.ledger.Restart(); err != nil {
+		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error restarting node")))
 		return
 	}
 }
