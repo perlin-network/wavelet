@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-var testGenesisDir = "test_genesis"
+var testGenesisDir = "testdata/testgenesis"
 
 func TestPerformInception(t *testing.T) {
 	strp := func(v string) *string {
