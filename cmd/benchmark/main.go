@@ -39,6 +39,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -94,13 +95,23 @@ func main() {
 					Usage: "private key in hex format to connect to node HTTP API with",
 					Value: "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
 				},
-				cli.BoolFlag{
+				cli.BoolTFlag{
 					Name:  "tx",
-					Usage: "flood the node with transactions.",
+					Usage: "spam transactions into the node. you can use -payload and -flags to customize the transaction",
 				},
 				cli.StringFlag{
 					Name:  "payload",
-					Usage: "hex encoded payload that will be used to flood the node with custom transactions payload",
+					Usage: "hex encoded transaction payload that will be used as the transaction payload",
+				},
+				cli.UintFlag{
+					Name:  "tag",
+					Usage: "transaction tag, default to 1 (TagTransfer)",
+					Value: uint(sys.TagTransfer),
+				},
+				cli.UintFlag{
+					Name:  "limit",
+					Usage: "the limit of transactions per seconds to flood the node. the limit is also applied to the contract transaction. 0 means there's no limit.",
+					Value: 0,
 				},
 				cli.StringFlag{
 					Name:  "poll",
@@ -108,7 +119,7 @@ func main() {
 				},
 				cli.StringFlag{
 					Name:  "contract",
-					Usage: "path to the contract that will be spawned into the node",
+					Usage: "path to the contract that will be spawned into the node. can also be limited using the -limit flag.",
 				},
 			},
 			Action: commandRemote,
@@ -256,9 +267,30 @@ func commandRemote(c *cli.Context) error {
 			}
 		}
 
+		var lastEventMu sync.RWMutex
+		var lastEvent = time.Now()
+
+		onEvent := func() {
+			lastEventMu.Lock()
+			lastEvent = time.Now()
+			lastEventMu.Unlock()
+		}
+
 		fmt.Println("Polling consensus and fetching memory pages for every consensus round")
-		go pollConsensus(client, onRoundEnd)
+		go pollConsensus(client, onEvent, onRoundEnd)
+
+		go func() {
+			ticker := time.NewTicker(1 * time.Second)
+			for {
+				<-ticker.C
+				lastEventMu.RLock()
+				fmt.Printf("Last time consensus event: %d seconds\n", uint64(time.Now().Sub(lastEvent).Seconds()))
+				lastEventMu.RUnlock()
+			}
+		}()
 	}
+
+	var limit = c.Uint("limit")
 
 	// Flood contracts
 	if path := c.String("contract"); len(path) > 0 {
@@ -270,18 +302,21 @@ func commandRemote(c *cli.Context) error {
 
 		flood := floodContracts(code)
 
-		fmt.Println("Flooding contracts")
+		if limit > 0 {
+			flood = floodFuncLimited(limit, flood)
+		}
+
 		go func() {
 			for {
-				_, err := flood(client)
-				if err != nil {
+				if _, err = flood(client); err != nil {
 					continue
 				}
 			}
 		}()
 	}
 
-	if c.Bool("tx") || len(c.String("payload")) > 0 {
+	// Flood transactions
+	if c.BoolT("tx") {
 		payload, err := hex.DecodeString(c.String("payload"))
 		if err != nil {
 			log.Fatal().Err(err).Msg("Failed to decode payload.")
@@ -289,21 +324,29 @@ func commandRemote(c *cli.Context) error {
 
 		var flood floodFunc
 		if len(payload) != 0 {
-			fmt.Println("Flooding payload transactions")
-			flood = floodPayload(payload)
+			tag := sys.Tag(c.Uint("tag"))
+			if tag > sys.TagBatch {
+				log.Fatal().Err(err).Msg("Unknown transaction tag specified")
+			}
+
+			fmt.Printf("Flooding custom payload transactions with tag %d\n", tag)
+			flood = floodPayload(tag, payload)
 		} else {
 			fmt.Println("Flooding batch stake transaction")
 			flood = floodBatchStake()
 		}
 
+		if limit > 0 {
+			flood = floodFuncLimited(limit, flood)
+		}
+
 		go func() {
 			for {
-				if _, err := flood(client); err != nil {
+				if _, err = flood(client); err != nil {
 					continue
 				}
 			}
 		}()
-
 	}
 
 	select {}
@@ -338,7 +381,7 @@ func commandLocal(c *cli.Context) error {
 	var flood floodFunc
 	if len(payload) != 0 {
 		fmt.Println("Flooding payload transactions")
-		flood = floodPayload(payload)
+		flood = floodPayload(sys.TagTransfer, payload)
 	} else {
 		fmt.Println("Flooding batch stake transaction")
 		flood = floodBatchStake()
@@ -351,7 +394,7 @@ func commandLocal(c *cli.Context) error {
 	}
 }
 
-func pollConsensus(client *wctl.Client, onRoundEnd func()) {
+func pollConsensus(client *wctl.Client, onEvent func(), onRoundEnd func()) {
 	events, err := client.PollLoggerSink(nil, wctl.RouteWSConsensus)
 	if err != nil {
 		panic(err)
@@ -363,6 +406,10 @@ func pollConsensus(client *wctl.Client, onRoundEnd func()) {
 		v, err := p.ParseBytes(evt)
 		if err != nil {
 			continue
+		}
+
+		if onEvent != nil {
+			onEvent()
 		}
 
 		if bytes.Equal(v.GetStringBytes("event"), evtRoundEnd) {

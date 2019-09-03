@@ -22,6 +22,7 @@ package main
 import (
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
@@ -30,6 +31,22 @@ import (
 )
 
 type floodFunc func(client *wctl.Client) ([]wctl.SendTransactionResponse, error)
+
+func floodFuncLimited(limitPerSec uint, floodFunc floodFunc) floodFunc {
+	var ticker = time.NewTicker(1 * time.Second)
+	var countPerSec uint
+
+	return func(client *wctl.Client) (responses []wctl.SendTransactionResponse, e error) {
+		if countPerSec >= limitPerSec {
+			countPerSec = 0
+			<-ticker.C
+		}
+
+		countPerSec++
+
+		return floodFunc(client)
+	}
+}
 
 func floodBatchStake() floodFunc {
 	return flood(sys.TagBatch, func(i int) []byte {
@@ -51,7 +68,7 @@ func floodBatchStake() floodFunc {
 	})
 }
 
-func floodPayload(payload []byte) floodFunc {
+func floodPayload(tag sys.Tag, payload []byte, ) floodFunc {
 	return flood(sys.TagTransfer, func(i int) []byte {
 		return payload
 	})
