@@ -219,10 +219,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(tx Transaction) error {
-	//if l.isOutOfSync() && tx.Sender == l.client.Keys().PublicKey() {
-	//	return ErrOutOfSync
-	//}
-
 	err := l.graph.AddTransaction(tx)
 
 	if err != nil && errors.Cause(err) != ErrAlreadyExists {
