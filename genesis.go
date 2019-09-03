@@ -20,15 +20,17 @@
 package wavelet
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fastjson"
+	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -139,11 +141,37 @@ func loadGenesisFromDir(tree *avl.Tree, dir string) error {
 		return errors.Wrapf(err, "directory %s does not exist", dir)
 	}
 
-	accounts := make(map[AccountID]*fastjson.Value)
-	contracts := make(map[TransactionID][]byte)
-	contractPages := make(map[TransactionID][][]byte)
+	accounts := make(map[AccountID]struct{})
+	contracts := make(map[TransactionID]struct{}) // TODO not required ?
+	contractPageFiles := make(map[TransactionID][]string)
 
+	globalsBuf := make([]byte, 0, sys.ContractMaxGlobals)
+
+	loadGlobals := func(id TransactionID, path string) error {
+		f, err := os.Open(path)
+		if err != nil {
+			return errors.Wrapf(err, "failed to open contract globals file %s", path)
+		}
+
+		n, err := f.Read(globalsBuf)
+		if err != nil && err != io.EOF {
+			return errors.Wrapf(err, "failed to read contract globals %s", path)
+		}
+		if err == nil && n == cap(globalsBuf) {
+			return errors.Wrapf(err, "failed to read contract globals %s, buffer is not enough", path)
+		}
+
+		// This assumes WriteAccountContractGlobals will make a copy of the bytes.
+		WriteAccountContractGlobals(tree, id, globalsBuf)
+
+		globalsBuf = globalsBuf[:]
+
+		return nil
+	}
+
+	pool := &bytebufferpool.Pool{}
 	var p fastjson.Parser
+	var walletBuf [512]byte
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if info.IsDir() {
@@ -153,7 +181,6 @@ func loadGenesisFromDir(tree *avl.Tree, dir string) error {
 
 		ext := filepath.Ext(path)
 		filename := strings.TrimSuffix(filepath.Base(path), ext)
-
 		if ext == ".json" {
 			var id AccountID
 			// filename is the id
@@ -168,21 +195,27 @@ func loadGenesisFromDir(tree *avl.Tree, dir string) error {
 			if _, exist := accounts[id]; exist {
 				return nil
 			}
+			accounts[id] = struct{}{}
 
-			b, err := ioutil.ReadFile(path)
+			f, err := os.Open(path)
 			if err != nil {
-				return errors.Wrapf(err, "failed to read file %s", path)
+				return errors.Wrapf(err, "failed to open file %s", path)
 			}
 
-			val, err := p.ParseBytes(b)
+			n, err := f.Read(walletBuf[:])
+			if err != nil && err != io.EOF {
+				return errors.Wrapf(err, "failed to read wallet %s", path)
+			}
+			if err == nil && n == cap(walletBuf) {
+				return errors.Wrapf(err, "failed to read wallet %s, buffer is not enough", path)
+			}
+
+			val, err := p.ParseBytes(walletBuf[:n])
 			if err != nil {
 				return errors.Wrapf(err, "failed to parse file %s", path)
 			}
 
-			accounts[id] = val
-
-			return nil
-
+			return loadAccounts(tree, id, val)
 		} else if ext == ".wasm" {
 			var id TransactionID
 			// filename is the id
@@ -197,27 +230,52 @@ func loadGenesisFromDir(tree *avl.Tree, dir string) error {
 			if _, exist := contracts[id]; exist {
 				return nil
 			}
+			contracts[id] = struct{}{}
 
-			code, err := ioutil.ReadFile(path)
+			f, err := os.Open(path)
 			if err != nil {
-				return errors.Wrapf(err, "failed to read file %s", path)
+				return errors.Wrapf(err, "failed to open file %s", path)
 			}
 
-			if err := wasm.GetValidator().ValidateWasm(code); err != nil {
+			buf := pool.Get()
+			defer pool.Put(buf)
+
+			_, err = buf.ReadFrom(f)
+			if err != nil {
+				return errors.Wrapf(err, "failed to open file %s", path)
+			}
+
+			if err := wasm.GetValidator().ValidateWasm(buf.Bytes()); err != nil {
 				return errors.Wrapf(err, "file %s has invalid wasm", path)
 			}
 
-			contracts[id] = code
-
+			WriteAccountContractCode(tree, id, buf.Bytes())
 		} else if ext == ".dmp" {
-			idxExt := filepath.Ext(filename)
+			secondExt := filepath.Ext(filename)
+
+			var id TransactionID
+			// filename is the id
+			if n, err := hex.Decode(id[:], []byte(strings.TrimSuffix(filename, secondExt))); n != cap(id) || err != nil {
+				if err != nil {
+					return errors.Wrapf(err, "filename of %s has invalid contract ID", path)
+				}
+				return errors.Errorf("filename of %s has invalid contract ID", path)
+			}
+
+			// Load contract globals.
+			if secondExt == ".globals" {
+				return loadGlobals(id, path)
+			}
+
+			// For contract pages, get all the contract pages first and group them by contract ID.
+			// This is to make sure, for each contract the pages are complete and there are no missing pages.
 
 			// Must at least contain a character. e.g. .1
-			if len(idxExt) < 2 {
+			if len(secondExt) < 2 {
 				return errors.Errorf("filename of %s has invalid name, expected index after contract address", path)
 			}
 
-			idx, err := strconv.Atoi(idxExt[1:])
+			idx, err := strconv.Atoi(secondExt[1:])
 			if err != nil {
 				return errors.Wrapf(err, "filename of %s has invalid index, expected an unsigned integer", path)
 			}
@@ -225,43 +283,24 @@ func loadGenesisFromDir(tree *avl.Tree, dir string) error {
 				return errors.Errorf("filename of %s has invalid index, expected an unsigned integer", path)
 			}
 
-			var id TransactionID
-			// filename is the id
-			if n, err := hex.Decode(id[:], []byte(strings.TrimSuffix(filename, idxExt))); n != cap(id) || err != nil {
-				if err != nil {
-					return errors.Wrapf(err, "filename of %s has invalid contract ID", path)
-				}
-				return errors.Errorf("filename of %s has invalid contract ID", path)
-			}
-
-			b, err := ioutil.ReadFile(path)
-			if err != nil {
-				return errors.Wrapf(err, "failed to read file %s", path)
-			}
-
-			// Check page size
-			if size := len(b); size != 0 && size != PageSize {
-				return errors.Errorf("contract page file %s has invalid page size %d. must be 0 or %d", path, size, PageSize)
-			}
-
-			pages := contractPages[id]
+			files := contractPageFiles[id]
 
 			// Grow the slice according to the page idx
 			// The key of the slice is the page idx.
-			if i := idx - cap(pages) + 1; i > 0 {
-				newPages := make([][]byte, len(pages)+i)
-				copy(newPages, pages)
+			if i := idx - cap(files) + 1; i > 0 {
+				newFiles := make([]string, len(files)+i)
+				copy(newFiles, files)
 
-				contractPages[id] = newPages
-				pages = newPages
+				contractPageFiles[id] = newFiles
+				files = newFiles
 			}
 
 			// Check if the page already exist
-			if pages[idx] != nil {
+			if len(files[idx]) > 0 {
 				return nil
 			}
 
-			pages[idx] = b
+			files[idx] = path
 		}
 
 		return nil
@@ -271,19 +310,26 @@ func loadGenesisFromDir(tree *avl.Tree, dir string) error {
 		return err
 	}
 
-	for id, account := range accounts {
-		_ = loadAccounts(tree, id, account)
+	// Each contract must have Gas Balance, Code, Globals, and Page files.
+	for id := range contracts {
+		if _, exist := ReadAccountContractGasBalance(tree, id); !exist {
+			return errors.Errorf("contract %x is missing gas balance", id)
+		}
+
+		if _, exist := ReadAccountContractCode(tree, id); !exist {
+			return errors.Errorf("contract %x is missing code", id)
+		}
+
+		if _, exist := ReadAccountContractGlobals(tree, id); !exist {
+			return errors.Errorf("contract %x is missing globals", id)
+		}
+
+		if _, exist := contractPageFiles[id]; !exist {
+			return errors.Errorf("contract %x is missing pages", id)
+		}
 	}
 
-	for id, contract := range contracts {
-		WriteAccountContractCode(tree, id, contract)
-	}
-
-	for id, pages := range contractPages {
-		_ = loadContractPages(tree, id, pages)
-	}
-
-	return nil
+	return loadContractPages(tree, contractPageFiles)
 }
 
 func loadAccounts(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
@@ -292,13 +338,9 @@ func loadAccounts(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 		return err
 	}
 
-	var balance, stake, reward uint64
+	var balance, stake, reward, gasBalance uint64
 
 	fields.Visit(func(key []byte, v *fastjson.Value) {
-		if err != nil {
-			return
-		}
-
 		switch string(key) {
 		case "balance":
 			balance, err = v.Uint64()
@@ -310,7 +352,6 @@ func loadAccounts(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 			WriteAccountBalance(tree, id, balance)
 		case "stake":
 			stake, err = v.Uint64()
-
 			if err != nil {
 				err = errors.Wrapf(err, "failed to cast type for key %q", key)
 				return
@@ -319,13 +360,20 @@ func loadAccounts(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 			WriteAccountStake(tree, id, uint64(stake))
 		case "reward":
 			reward, err = v.Uint64()
-
 			if err != nil {
 				err = errors.Wrapf(err, "failed to cast type for key %q", key)
 				return
 			}
 
 			WriteAccountReward(tree, id, uint64(reward))
+		case "gas_balance":
+			gasBalance, err = v.Uint64()
+			if err != nil {
+				err = errors.Wrapf(err, "failed to cast type for key %q", key)
+				return
+			}
+
+			WriteAccountContractGasBalance(tree, id, uint64(gasBalance))
 		}
 	})
 
@@ -337,101 +385,192 @@ func loadAccounts(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 	return err
 }
 
-func loadContractPages(tree *avl.Tree, id TransactionID, pages [][]byte) error {
-	// Verify all of the pages have the correct size and not nil.
-	// If even one of the page has invalid size or nil, we consider the pages to be invalid and return an error.
-	for i := range pages {
-		if pages[i] == nil {
-			return fmt.Errorf("contract %x is missing page index %d", id, i)
+// For each contract, read all the pages into buffers first, and check for following conditions:
+// 1. the file is successfully read into buffer,
+// 2. the file size is either 0 or 65536,
+//
+// Load only if all the conditions are true, otherwise returns an error.
+func loadContractPages(tree *avl.Tree, contractPageFiles map[TransactionID][]string) error {
+	pool := bytebufferpool.Pool{}
+	var pagesBuf []*bytebufferpool.ByteBuffer
+	for id := range contractPageFiles {
+		files := contractPageFiles[id]
+		for i := range files {
+			file := files[i]
+
+			if len(file) == 0 {
+				return errors.Errorf("contract %x is missing page index %d", id, i)
+			}
+
+			buf := pool.Get()
+
+			f, err := os.Open(file)
+			if err != nil {
+				return errors.Wrapf(err, "failed to open contract page file %s", file)
+			}
+
+			n, err := buf.ReadFrom(f)
+			if err != nil {
+				return errors.Wrapf(err, "failed to read contract page file %s", file)
+			}
+
+			// Check page size
+			if n != 0 && n != PageSize {
+				return errors.Errorf("contract page file %s has invalid page size %d. must be 0 or %d", file, n, PageSize)
+			}
+
+			pagesBuf = append(pagesBuf, buf)
 		}
 
-		if s := len(pages[i]); s != 0 && s != PageSize {
-			return fmt.Errorf("contract %x page index %d has invalid size %d, expected page size 0 or %d", id, i, s, PageSize)
+		if len(pagesBuf) == 0 {
+			return errors.Errorf("failed to load contract %x, missing contract pages", id)
 		}
-	}
 
-	for i := range pages {
-		WriteAccountContractPage(tree, id, uint64(i), pages[i])
-	}
+		WriteAccountContractNumPages(tree, id, uint64(len(pagesBuf)))
 
-	WriteAccountContractNumPages(tree, id, uint64(len(pages)))
+		// Write the contract pages from buffers
+		for i, buf := range pagesBuf {
+			// This assumes WriteAccountContractPage will make a copy of the bytes.
+			WriteAccountContractPage(tree, id, uint64(i), buf.Bytes())
+
+			pool.Put(buf)
+		}
+
+		pagesBuf = pagesBuf[:0]
+	}
 
 	return nil
 }
 
-func DumpLedgerStates(tree *avl.Tree, dir string, dumpContract bool) error {
+// Dump the ledger states from the tree into a directory.
+// Existing files will be truncate.
+//
+// dir is the directory path which will be used to dump the states.
+//
+// isDumpContract is a flag which if true, the dump will include all the contracts
+//
+// useContractFolder is a flag which if true, each contract dump has it's own folder.
+// The folder name will be hex-encoded of the contract ID.
+func DumpLedgerStates(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder bool) error {
+	// Make sure the directory exists
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return errors.Wrapf(err, "failed to create directory %s", dir)
+	}
+
 	type account struct {
 		balance *uint64
 		stake   *uint64
 		reward  *uint64
+
+		isContract bool
+		gasBalance *uint64
 	}
 
-	type contract struct {
-		pages    [][]byte
-		numPages uint64
-		code     []byte
+	var filePerm os.FileMode = 0644
+
+	dumpContract := func(id AccountID) error {
+		var folder = dir
+
+		if useContractFolder {
+			folder = filepath.Join(dir, fmt.Sprintf("%x", id))
+
+			// Make sure the folder exists
+			if err := os.MkdirAll(folder, 0700); err != nil {
+				return errors.Wrapf(err, "failed to create directory %s", dir)
+			}
+		}
+
+		// Write contract globals.
+		if globals, ok := ReadAccountContractGlobals(tree, id); ok {
+			globalsFilename := fmt.Sprintf("%x.globals.dmp", id)
+
+			err := ioutil.WriteFile(filepath.Join(folder, globalsFilename), globals, filePerm)
+			if err != nil {
+				return errors.Wrapf(err, "failed to write globals %s", globalsFilename)
+			}
+		}
+
+		// Write contract code.
+		if code, ok := ReadAccountContractCode(tree, id); ok {
+			wasmFilename := fmt.Sprintf("%x.wasm", id)
+
+			err := ioutil.WriteFile(filepath.Join(folder, wasmFilename), code, filePerm)
+			if err != nil {
+				return errors.Wrapf(err, "failed to write wasm %s", wasmFilename)
+			}
+		}
+
+		// Write contract pages.
+		if numPages, ok := ReadAccountContractNumPages(tree, id); ok && numPages > 0 {
+			for i := uint64(0); i < numPages; i++ {
+				pageFilename := fmt.Sprintf("%x.%d.dmp", id, i)
+
+				page, _ := ReadAccountContractPage(tree, id, i)
+
+				err := ioutil.WriteFile(filepath.Join(folder, pageFilename), page, filePerm)
+				if err != nil {
+					return errors.Wrapf(err, "failed to write page %s", pageFilename)
+				}
+			}
+		}
+
+		return nil
 	}
 
-	contracts := make(map[AccountID]*contract)
+	var err error
 	accounts := make(map[AccountID]*account)
 
-	handleContract := func(id AccountID) {
-		con, exist := contracts[id]
-		if exist {
-			return
-		}
-
-		code, _ := ReadAccountContractCode(tree, id)
-
-		con = &contract{
-			code: code,
-		}
-		contracts[id] = con
-
-		numPages, ok := ReadAccountContractNumPages(tree, id)
-		if ok {
-			con.numPages = numPages
-		}
-
-		if con.numPages > 0 {
-			for i := uint64(0); i < con.numPages; i++ {
-				page, _ := ReadAccountContractPage(tree, id, i)
-				con.pages = append(con.pages, page)
-			}
-		}
-	}
-
 	tree.IteratePrefix(keyAccounts[:], func(key, value []byte) {
-		// Remove global prefix
-		key = bytes.TrimPrefix(key, keyAccounts[:])
-		// Get account prefix
-		prefix := [...]byte{key[0]}
-		// Remove account prefix
-		key = bytes.TrimPrefix(key, prefix[:])
+		var prefix [1]byte
+		copy(prefix[:], key[1:])
 
 		var id AccountID
-		copy(id[:], key[:])
+		copy(id[:], key[2:])
 
-		// Handle contracts
-		if prefix == keyAccountContractCode {
-			if dumpContract {
-				handleContract(id)
-			}
-			return
-		}
-
-		// Handle wallets
-
-		// Filter by prefixes relevant to wallet
+		// Filter by prefixes relevant to wallet and contract code.
 		if prefix != keyAccountBalance &&
 			prefix != keyAccountStake &&
-			prefix != keyAccountReward {
+			prefix != keyAccountReward &&
+			prefix != keyAccountContractCode {
 			return
 		}
+
+		// Handle contracts
+
+		// For contracts, we do all the work using only the current iteration.
+		if prefix == keyAccountContractCode {
+			if !isDumpContract {
+				return
+			}
+
+			// Contract already exists, ignore.
+			if _, exist := accounts[id]; exist {
+				return
+			}
+
+			// TODO Further optimization. in case of contract account we can write the account into file straightaway.
+
+			acc := &account{
+				isContract: true,
+			}
+			accounts[id] = acc
+
+			if gasBalance, exist := ReadAccountContractGasBalance(tree, id); exist {
+				acc.gasBalance = &gasBalance
+			}
+
+			err = dumpContract(id)
+
+			return
+		}
+
+		// Handle wallets.
 
 		acc := accounts[id]
 		if acc == nil {
-			acc = &account{}
+			acc = &account{
+				isContract: false,
+			}
 			accounts[id] = acc
 		}
 
@@ -459,58 +598,49 @@ func DumpLedgerStates(tree *avl.Tree, dir string, dumpContract bool) error {
 		}
 	})
 
-	// Make sure the directory exists
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return errors.Wrapf(err, "failed to create directory %s", dir)
+	if err != nil {
+		return err
 	}
 
-	// Write wallets into files
+	// Write accounts into files.
 
 	arena := &fastjson.Arena{}
+	data := make([]byte, 0, 512)
+
 	for k, v := range accounts {
 		o := arena.NewObject()
 
-		if v.balance != nil {
-			o.Set("balance", arena.NewNumberString(strconv.FormatUint(*v.balance, 10)))
-		}
-		if v.stake != nil {
-			o.Set("stake", arena.NewNumberString(strconv.FormatUint(*v.stake, 10)))
-		}
-		if v.reward != nil {
-			o.Set("reward", arena.NewNumberString(strconv.FormatUint(*v.reward, 10)))
+		if v.isContract {
+			o.Set("is_contract", arena.NewTrue())
+
+			if v.gasBalance != nil {
+				o.Set("gas_balance", arena.NewNumberString(strconv.FormatUint(*v.gasBalance, 10)))
+			}
+		} else {
+			o.Set("is_contract", arena.NewFalse())
+
+			if v.balance != nil {
+				o.Set("balance", arena.NewNumberString(strconv.FormatUint(*v.balance, 10)))
+			}
+			if v.stake != nil {
+				o.Set("stake", arena.NewNumberString(strconv.FormatUint(*v.stake, 10)))
+			}
+			if v.reward != nil {
+				o.Set("reward", arena.NewNumberString(strconv.FormatUint(*v.reward, 10)))
+			}
 		}
 
-		data := o.MarshalTo(nil)
+		data = o.MarshalTo(data[:])
 		filename := fmt.Sprintf("%x.json", k)
 
-		err := ioutil.WriteFile(filepath.Join(dir, filename), data, 0644)
+		err := ioutil.WriteFile(filepath.Join(dir, filename), data, filePerm)
 		if err != nil {
 			return errors.Wrapf(err, "failed to write %s", filename)
 		}
 
+		data = data[:0]
+
 		arena.Reset()
-	}
-
-	// Write contract code and files into files
-
-	if dumpContract {
-		for k, v := range contracts {
-			wasmFilename := fmt.Sprintf("%x.wasm", k)
-
-			err := ioutil.WriteFile(filepath.Join(dir, wasmFilename), v.code, 0644)
-			if err != nil {
-				return errors.Wrapf(err, "failed to write wasm %s", wasmFilename)
-			}
-
-			for i, page := range v.pages {
-				pageFilename := fmt.Sprintf("%x.%d.dmp", k, i)
-
-				err := ioutil.WriteFile(filepath.Join(dir, pageFilename), page, 0644)
-				if err != nil {
-					return errors.Wrapf(err, "failed to write dmp %s", pageFilename)
-				}
-			}
-		}
 	}
 
 	return nil

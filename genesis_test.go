@@ -9,12 +9,14 @@ import (
 	"testing"
 )
 
+var testGenesisDir = "test_genesis"
+
 func TestPerformInception(t *testing.T) {
 	strp := func(v string) *string {
 		return &v
 	}
 	tree := avl.New(store.NewInmem())
-	round := performInception(tree, strp("testdata/genesis"))
+	round := performInception(tree, strp(testGenesisDir))
 
 	assert.Equal(t, uint64(0), round.Index)
 	assert.Equal(t, uint64(0), round.Applied)
@@ -25,12 +27,13 @@ func TestPerformInception(t *testing.T) {
 	assert.Equal(t, tx, round.End)
 
 	checkAccounts(t, tree)
+
 	checkContract(t, tree)
 }
 
 func TestLoadGenesis(t *testing.T) {
 	tree := avl.New(store.NewInmem())
-	if err := loadGenesisFromDir(tree, "testdata/genesis"); err != nil {
+	if err := loadGenesisFromDir(tree, testGenesisDir); err != nil {
 		t.Fatalf("failed to load genesis: %v", err)
 	}
 
@@ -45,7 +48,7 @@ func TestLoadGenesis(t *testing.T) {
 	_, err := rand.Read(randomFilename)
 	assert.NoError(t, err)
 	tree = avl.New(store.NewInmem())
-	assert.Error(t, loadGenesisFromDir(tree, "testdata/"+hex.EncodeToString(randomFilename)))
+	assert.Error(t, loadGenesisFromDir(tree, hex.EncodeToString(randomFilename)))
 }
 
 func checkAccounts(t *testing.T, tree *avl.Tree) {
@@ -64,10 +67,10 @@ func checkAccounts(t *testing.T, tree *avl.Tree) {
 	}
 
 	checkAccount(t, tree, id("400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"),
-		uint64p(10000000000000000000), uint64p(5000000), nil)
+		uint64p(9999999999999997557), uint64p(5000000), nil)
 
 	checkAccount(t, tree, id("696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a"),
-		uint64p(10000000000000000000), nil, nil)
+		uint64p(10000000000000000100), nil, nil)
 
 	checkAccount(t, tree, id("f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467"),
 		uint64p(10000000000000000000), nil, nil)
@@ -84,7 +87,7 @@ func checkContract(t *testing.T, tree *avl.Tree) {
 		return contractID
 	}
 
-	contractID := id("9dccbb0e5c40c175ec512b9ca4802f3683c6d55f2c5e6418d6e94ffa64baf3cf")
+	contractID := id("ca0e12024ed83dfd66fb48648d3853c68a31259b2df720dc709fb046e5de2b6e")
 
 	code, exist := ReadAccountContractCode(tree, contractID)
 	assert.True(t, exist)
@@ -92,19 +95,20 @@ func checkContract(t *testing.T, tree *avl.Tree) {
 
 	numPages, exist := ReadAccountContractNumPages(tree, contractID)
 	assert.True(t, exist)
-	assert.Equal(t, uint64(3), numPages)
+	assert.Equal(t, uint64(18), numPages)
 
-	page1, exist := ReadAccountContractPage(tree, contractID, 0)
+	page0, exist := ReadAccountContractPage(tree, contractID, 0)
+	assert.True(t, exist)
+	assert.Empty(t, page0)
+
+	page1, exist := ReadAccountContractPage(tree, contractID, 1)
 	assert.True(t, exist)
 	assert.Empty(t, page1)
 
-	page2, exist := ReadAccountContractPage(tree, contractID, 1)
+	page16, exist := ReadAccountContractPage(tree, contractID, 16)
 	assert.True(t, exist)
-	assert.Len(t, page2, PageSize)
-
-	page3, exist := ReadAccountContractPage(tree, contractID, 2)
-	assert.True(t, exist)
-	assert.Empty(t, page3)
+	assert.NotEmpty(t, page16)
+	assert.Len(t, page16, PageSize)
 }
 
 func checkAccount(t *testing.T, tree *avl.Tree, accountID AccountID, expectedBalance, expectedReward, expectedStake *uint64) {
