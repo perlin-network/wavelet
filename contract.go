@@ -30,7 +30,6 @@ import (
 	"github.com/perlin-network/life/utils"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/avl"
-	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
@@ -131,6 +130,8 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				payloadPtr := int(uint32(frame.Locals[1]))
 				payloadLen := int(uint32(frame.Locals[2]))
 
+				fmt.Println("send transaction called!")
+
 				payloadRef := vm.Memory[payloadPtr : payloadPtr+payloadLen]
 				payload := make([]byte, len(payloadRef))
 				copy(payload, payloadRef)
@@ -168,14 +169,14 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 			}
 		case "_log":
 			return func(vm *exec.VirtualMachine) int64 {
-				frame := vm.GetCurrentFrame()
-				dataPtr := int(uint32(frame.Locals[0]))
-				dataLen := int(uint32(frame.Locals[1]))
+				//frame := vm.GetCurrentFrame()
+				//dataPtr := int(uint32(frame.Locals[0]))
+				//dataLen := int(uint32(frame.Locals[1]))
 
-				logger := log.Contracts("log")
-				logger.Debug().
-					Hex("contract_id", e.ID[:]).
-					Msg(string(vm.Memory[dataPtr : dataPtr+dataLen]))
+				//logger := log.Contracts("log")
+				//logger.Debug().
+				//	Hex("contract_id", e.ID[:]).
+				//	Msg(string(vm.Memory[dataPtr : dataPtr+dataLen]))
 
 				return 0
 			}
