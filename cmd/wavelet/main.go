@@ -373,7 +373,7 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 		go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
 	}
 
-	shell, err := NewCLI(client, ledger, keys, stdin, stdout)
+	shell, err := NewCLI(client, ledger, keys, stdin, stdout, kv)
 	if err != nil {
 		panic(err)
 	}

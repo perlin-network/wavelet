@@ -25,6 +25,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"strconv"
 
 	wasm "github.com/perlin-network/life/wasm-validation"
@@ -88,7 +89,7 @@ func (cli *CLI) status(ctx *cli.Context) {
 }
 
 func (cli *CLI) pay(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 2 {
 		cli.logger.Error().
@@ -154,7 +155,7 @@ func (cli *CLI) pay(ctx *cli.Context) {
 }
 
 func (cli *CLI) call(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 4 {
 		cli.logger.Error().
@@ -283,7 +284,7 @@ func (cli *CLI) call(ctx *cli.Context) {
 }
 
 func (cli *CLI) find(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
 		cli.logger.Error().
@@ -361,7 +362,7 @@ func (cli *CLI) find(ctx *cli.Context) {
 }
 
 func (cli *CLI) spawn(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
 		cli.logger.Error().
@@ -400,7 +401,7 @@ func (cli *CLI) spawn(ctx *cli.Context) {
 }
 
 func (cli *CLI) depositGas(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 2 {
 		cli.logger.Error().
@@ -472,7 +473,7 @@ func (cli *CLI) depositGas(ctx *cli.Context) {
 }
 
 func (cli *CLI) placeStake(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
 		cli.logger.Error().
@@ -505,7 +506,7 @@ func (cli *CLI) placeStake(ctx *cli.Context) {
 }
 
 func (cli *CLI) withdrawStake(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
 		cli.logger.Error().
@@ -541,7 +542,7 @@ func (cli *CLI) withdrawStake(ctx *cli.Context) {
 }
 
 func (cli *CLI) withdrawReward(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
 		cli.logger.Error().
@@ -574,7 +575,7 @@ func (cli *CLI) withdrawReward(ctx *cli.Context) {
 }
 
 func (cli *CLI) connect(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) != 1 {
 		cli.logger.Error().Msg("Invalid usage: connect <address:port>")
@@ -592,7 +593,7 @@ func (cli *CLI) connect(ctx *cli.Context) {
 }
 
 func (cli *CLI) disconnect(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) != 1 {
 		cli.logger.Error().Msg("Invalid usage: disconnect <address:port>")
@@ -607,6 +608,36 @@ func (cli *CLI) disconnect(ctx *cli.Context) {
 	}
 
 	cli.logger.Info().Str("address", cmd[0]).Msg("Successfully disconnected peer.")
+}
+
+func (cli *CLI) restart(ctx *cli.Context) {
+	cmd := ctx.Args()
+	if len(cmd) != 0 {
+		cli.logger.Error().Msg("Invalid usage: restart [--hard]")
+		return
+	}
+
+	if err := cli.kv.Close(); err != nil {
+		cli.logger.Error().Err(err).Msg("Failed to close storage.")
+		return
+	}
+
+	hard := ctx.Bool("hard")
+	if hard {
+		dbDir := cli.kv.Dir()
+		if len(dbDir) != 0 {
+			if err := os.RemoveAll(dbDir); err != nil {
+				cli.logger.Error().Err(err).Msg("Error deleting database.")
+				return
+			}
+		}
+	}
+
+	if err := cli.ledger.Restart(); err != nil {
+		cli.logger.Error().Err(err).Msg("Error restarting node.")
+	}
+
+	cli.logger.Info().Msg("Node is restarting...")
 }
 
 func (cli *CLI) sendTransaction(tx wavelet.Transaction) (wavelet.Transaction, error) {

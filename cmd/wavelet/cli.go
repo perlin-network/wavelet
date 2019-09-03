@@ -22,6 +22,7 @@ package main
 import (
 	"encoding/csv"
 	"fmt"
+	"github.com/perlin-network/wavelet/store"
 	"io"
 	"strings"
 	"text/tabwriter"
@@ -47,17 +48,26 @@ type CLI struct {
 	ledger *wavelet.Ledger
 	logger zerolog.Logger
 	keys   *skademlia.Keypair
+	kv     store.KV
 
 	completion []string
 }
 
-func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Keypair, stdin io.ReadCloser, stdout io.Writer) (*CLI, error) {
+func NewCLI(
+	client *skademlia.Client,
+	ledger *wavelet.Ledger,
+	keys *skademlia.Keypair,
+	stdin io.ReadCloser,
+	stdout io.Writer,
+	kv store.KV,
+) (*CLI, error) {
 	c := &CLI{
 		client: client,
 		ledger: ledger,
 		logger: log.Node(),
 		keys:   keys,
 		app:    cli.NewApp(),
+		kv:     kv,
 	}
 
 	c.app.Name = "wavelet"
@@ -141,6 +151,18 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 			Aliases: []string{"quit", ":q"},
 			Action:  a(c.exit),
 		},
+		{
+			Name:        "restart",
+			Aliases:     []string{"r"},
+			Action:      a(c.restart),
+			Description: "restart node",
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:  "hard",
+					Usage: "database will be erased if provided",
+				},
+			},
+		},
 	}
 
 	// Generate the help message
@@ -149,14 +171,14 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 	w := tabwriter.NewWriter(&s, 0, 0, 1, ' ', 0)
 
 	for _, c := range c.app.VisibleCommands() {
-		fmt.Fprintf(w,
+		_, _ = fmt.Fprintf(w,
 			"    %s (%s) %s\t%s\n",
 			c.Name, strings.Join(c.Aliases, ", "), c.Usage,
 			c.Description,
 		)
 	}
 
-	w.Flush()
+	_ = w.Flush()
 	c.app.CustomAppHelpTemplate = s.String()
 
 	// Add in autocompletion
@@ -243,11 +265,11 @@ ReadLoop:
 		}
 	}
 
-	cli.rl.Close()
+	_ = cli.rl.Close()
 }
 
 func (cli *CLI) exit(ctx *cli.Context) {
-	cli.rl.Close()
+	_ = cli.rl.Close()
 }
 
 func a(f func(*cli.Context)) func(*cli.Context) error {
