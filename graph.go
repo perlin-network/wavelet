@@ -35,10 +35,6 @@ type GraphOption func(*Graph)
 
 func WithRoot(root Transaction) GraphOption {
 	return func(graph *Graph) {
-		if graph.indexer != nil {
-			graph.indexer.Index(hex.EncodeToString(root.ID[:]))
-		}
-
 		graph.UpdateRoot(root)
 	}
 }
@@ -147,6 +143,11 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 	ptr := &tx
 
 	g.transactions[tx.ID] = ptr
+
+	if g.indexer != nil {
+		g.indexer.Index(hex.EncodeToString(tx.ID[:]))
+	}
+
 	delete(g.missing, tx.ID)
 
 	parentsMissing := false
@@ -206,6 +207,10 @@ func (g *Graph) UpdateRoot(root Transaction) {
 
 	g.transactions[root.ID] = ptr
 
+	if g.indexer != nil {
+		g.indexer.Index(hex.EncodeToString(root.ID[:]))
+	}
+
 	g.height = root.Depth + 1
 
 	g.Unlock()
@@ -229,6 +234,10 @@ func (g *Graph) UpdateRootDepth(rootDepth uint64) {
 		if rootDepth > sys.MaxDepthDiff+depth {
 			delete(g.missing, id)
 
+			if g.indexer != nil {
+				g.indexer.Remove(hex.EncodeToString(id[:]))
+			}
+
 			g.resolveChildren(id)
 
 			delete(g.children, id)
@@ -239,6 +248,10 @@ func (g *Graph) UpdateRootDepth(rootDepth uint64) {
 		if rootDepth > sys.MaxDepthDiff+depth {
 			delete(g.incomplete, id)
 			delete(g.transactions, id)
+
+			if g.indexer != nil {
+				g.indexer.Remove(hex.EncodeToString(id[:]))
+			}
 
 			g.resolveChildren(id)
 
@@ -300,7 +313,7 @@ func (g *Graph) PruneBelowDepth(targetDepth uint64) int {
 			g.seedIndex.Delete((*sortBySeedTX)(tx))
 
 			if g.indexer != nil {
-				g.indexer.Index(hex.EncodeToString(tx.ID[:]))
+				g.indexer.Remove(hex.EncodeToString(tx.ID[:]))
 			}
 		}
 
@@ -599,10 +612,6 @@ func (g *Graph) resolveChildren(parentID TransactionID) {
 		if complete {
 			delete(g.incomplete, childID)
 
-			if g.indexer != nil {
-				g.indexer.Remove(hex.EncodeToString(parentID[:]))
-			}
-
 			if err := g.updateGraph(child); err != nil {
 				continue
 			}
@@ -638,6 +647,10 @@ func (g *Graph) deleteProgeny(id TransactionID) {
 
 	delete(g.missing, id)
 	delete(g.incomplete, id)
+
+	if g.indexer != nil {
+		g.indexer.Remove(hex.EncodeToString(id[:]))
+	}
 
 	for _, childID := range children {
 		g.deleteProgeny(childID)

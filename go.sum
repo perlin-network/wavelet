@@ -60,6 +60,8 @@ github.com/perlin-network/noise v0.0.0-20190527211417-79abfb78fdba h1:SZX6pHLS2v
 github.com/perlin-network/noise v0.0.0-20190527211417-79abfb78fdba/go.mod h1:1Ca3rEoDZseet9F06+H47KpsOr+ZgpbbJO7Dg9WC4lM=
 github.com/perlin-network/noise v0.0.0-20190827085946-cc5fa32dddd8 h1:YiJup067+U7Jf1bRaaK3HV2Xhxg7JMXaonv5qnYGlX4=
 github.com/perlin-network/noise v0.0.0-20190827085946-cc5fa32dddd8/go.mod h1:gtq69gqAZNXmk+lXhx7frAEbYBzPlrfaqscOoMSIFWE=
+github.com/perlin-network/noise v0.0.0-20190902070508-03547777f86e h1:o2Pe84at6ovdc9MWH+mDF+kG4YJej9G6c/4SBP+bWhM=
+github.com/perlin-network/noise v0.0.0-20190902070508-03547777f86e/go.mod h1:gtq69gqAZNXmk+lXhx7frAEbYBzPlrfaqscOoMSIFWE=
 github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39 h1:CYHXy6CWxxL7ugjvCbTELOm2j5iRLEWGPl3AQYvretw=
 github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39/go.mod h1:zHOMvbitcZek8oshsMO5VpyBjWjV9X8cn8WTZwdebpM=
 github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2 h1:JhzVVoYvbOACxoUmOs6V/G4D5nPVUW73rKvXxP4XUJc=

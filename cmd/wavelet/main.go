@@ -354,7 +354,7 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	}()
 
 	for _, addr := range cfg.Peers {
-		if _, err := client.Dial(addr); err != nil {
+		if _, err := client.Dial(addr, skademlia.WithTimeout(10*time.Second)); err != nil {
 			fmt.Printf("Error dialing %s: %v\n", addr, err)
 		}
 	}

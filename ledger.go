@@ -195,12 +195,9 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	stallDetector = NewStallDetector(stop, StallDetectorConfig{
 		MaxMemoryMB: cfg.MaxMemoryMB,
 	}, StallDetectorDelegate{
-		Ping: func() {
-			stallDetector.ReportNetworkActivity() // TODO: Real pings.
-		},
 		PrepareShutdown: func(err error) {
 			logger := log.Node()
-			logger.Error().Err(err).Msg("PrepareShutdown")
+			logger.Error().Err(err).Msg("Shutting down node...")
 		},
 	})
 	go stallDetector.Run()
@@ -805,9 +802,7 @@ func (l *Ledger) finalize() {
 		Uint64("round_depth", preferred.End.Depth-preferred.Start.Depth).
 		Msg("Finalized consensus round, and initialized a new round.")
 
-	l.stallDetector.ReportFinalizedRound(preferred.ID)
-
-	//go ExportGraphDOT(finalized, l.graph)
+	//go ExportGraphDOT(finalized, contractIDs.graph)
 }
 
 func (l *Ledger) query(conn *grpc.ClientConn, voteChan chan<- vote, current *Round, currentDifficulty byte) {
@@ -899,8 +894,6 @@ func (l *Ledger) query(conn *grpc.ClientConn, voteChan chan<- vote, current *Rou
 		fmt.Printf("got merkle %x but expected %x\n", results.snapshot.Checksum(), round.Merkle)
 		return
 	}
-
-	l.stallDetector.ReportIncomingRound(round.ID)
 
 	voteChan <- vote{voter: voter, value: &round}
 }
