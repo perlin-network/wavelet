@@ -339,6 +339,7 @@ func loadAccounts(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 	}
 
 	var balance, stake, reward, gasBalance uint64
+	var isContract bool
 
 	fields.Visit(func(key []byte, v *fastjson.Value) {
 		switch string(key) {
@@ -374,10 +375,16 @@ func loadAccounts(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 			}
 
 			WriteAccountContractGasBalance(tree, id, uint64(gasBalance))
+		case "is_contract":
+			isContract, err = v.Bool()
+			if err != nil {
+				err = errors.Wrapf(err, "failed to cast type for key %q", key)
+				return
+			}
 		}
 	})
 
-	if err == nil {
+	if err == nil && !isContract {
 		WriteAccountsLen(tree, ReadAccountsLen(tree)+1)
 		WriteAccountNonce(tree, id, 1)
 	}
