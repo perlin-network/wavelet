@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-func TestDumpLedgerStates(t *testing.T) {
+func TestDumps(t *testing.T) {
 	dumpDir := "testdata/testdump"
 
 	testnet := NewTestNetwork(t)
@@ -62,9 +62,9 @@ func TestDumpLedgerStates(t *testing.T) {
 
 	expected := alice.ledger.Snapshot()
 
-	assert.NoError(t, DumpLedgerStates(expected, dumpDir, true, false))
+	assert.NoError(t, Dump(expected, dumpDir, true, false))
 
-	// Load the dump into a tree and then perform various checks.
+	// Restore from the dump and then perform various checks.
 
 	actual := avl.New(store.NewInmem())
 	_ = performInception(actual, &dumpDir)
@@ -75,12 +75,14 @@ func TestDumpLedgerStates(t *testing.T) {
 	// Make sure the actual tree does not contain keys/values that does not exist on the expected tree.
 	compareTree(t, actual, expected)
 
-	checkLoadedDefaults(t, actual)
+	checkRestoredDefaults(t, actual)
 }
 
+// For each key in the expected tree, we compare it's existence and value against the actual tree.
+// Note that not all keys are dumped and restored.
 func compareTree(t *testing.T, expected *avl.Tree, actual *avl.Tree) {
 	expected.Iterate(func(key, value []byte) {
-		// Not all keys are dumped and loaded.
+		// Not all keys are dumped and restored.
 		// So, we indicate if the key should be checked.
 		var check = false
 
@@ -94,7 +96,7 @@ func compareTree(t *testing.T, expected *avl.Tree, actual *avl.Tree) {
 			var id AccountID
 			copy(id[:], key[2:])
 
-			// Explicitly list of the account prefixes that are dumped and loaded.
+			// Explicitly list of the account prefixes that are dumped and restored.
 
 			check = accountPrefix == keyAccountBalance ||
 				accountPrefix == keyAccountStake ||
@@ -105,7 +107,7 @@ func compareTree(t *testing.T, expected *avl.Tree, actual *avl.Tree) {
 				accountPrefix == keyAccountContractGasBalance ||
 				accountPrefix == keyAccountContractGlobals
 		} else {
-			// In the global prefixes, only keyAccountsLen is dumped and loaded.
+			// In the global prefixes, only keyAccountsLen is dumped and restored.
 			check = globalPrefix == keyAccountsLen
 		}
 
@@ -170,9 +172,11 @@ func TestPerformInception(t *testing.T) {
 
 	assert.Equal(t, uint64(3), ReadAccountsLen(tree))
 
-	checkLoadedDefaults(t, tree)
+	checkRestoredDefaults(t, tree)
 }
 
+// Check the expected values of a contract against the contract's values in the tree.
+// Also, compare the contract's code in the tree against the actual contract code file.
 func checkContract(t *testing.T, tree *avl.Tree, id TransactionID, codeFilePath string, expectedPageNum uint64, expectedEmptyMemPages []int, expectedNotEmptyMemPages []int) {
 	code, exist := ReadAccountContractCode(tree, id)
 	assert.True(t, exist, "contract ID: %x", id)
@@ -200,6 +204,8 @@ func checkContract(t *testing.T, tree *avl.Tree, id TransactionID, codeFilePath 
 	}
 }
 
+// Check the expected values of a account against the account's values in the tree.
+// If an expected value is nil, we check that it must not exists in the tree.
 func checkAccount(t *testing.T, tree *avl.Tree, id AccountID, expectedBalance, expectedReward, expectedStake *uint64) {
 	var balance, reward, stake uint64
 	var exist bool
@@ -222,15 +228,12 @@ func checkAccount(t *testing.T, tree *avl.Tree, id AccountID, expectedBalance, e
 	if expectedStake != nil {
 		assert.Equal(t, stake, *expectedStake, "account ID: %x", id)
 	}
-
-	nonce, exist := ReadAccountNonce(tree, id)
-	assert.True(t, exist, "account ID: %x", id)
-	assert.Equal(t, uint64(1), nonce, "account ID: %x", id)
 }
 
-// Check the keys that must not exist or have default values.
-func checkLoadedDefaults(t *testing.T, tree *avl.Tree) {
-	// Check for keys that must not exist.
+// Used to check the restored tree to make sure some of the global prefixes must not exist.
+// Also, check all the accounts' nonce have value 1.
+func checkRestoredDefaults(t *testing.T, tree *avl.Tree) {
+	// Check for global prefixes that must not exists.
 
 	var val []byte
 	var exist bool

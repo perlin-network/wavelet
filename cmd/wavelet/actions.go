@@ -627,7 +627,7 @@ func (cli *CLI) dump(ctx *cli.Context) {
 		cli.logger.Info().Msg("Writing into existing directory.")
 	}
 
-	err := wavelet.DumpLedgerStates(cli.ledger.Snapshot(), dir, dumpContract, false)
+	err := wavelet.Dump(cli.ledger.Snapshot(), dir, dumpContract, false)
 	if err != nil {
 		cli.logger.Error().Err(err).Msg("Failed to dump states.")
 		return

@@ -53,13 +53,13 @@ const defaultGenesis = `
 }
 `
 
-// performInception loads genesis data from the a directory expected to exist at the birth of any node in this ledgers network.
+// performInception restore genesis data from the a directory expected to exist at the birth of any node in this ledgers network.
 //
 // An account state may be specified within the genesis directory in the form of a [account address].json file with key-value pairs.
 //
 // A smart contract may be specified within the genesis directory in the form of a [contract address].wasm file with accompanying [contract address].[page index].dmp files representing the contracts memory pages.
 //
-// If the directory is nil, it'll load the hardcoded default genesis.
+// If the directory is nil, restore from the hardcoded default genesis.
 func performInception(tree *avl.Tree, dir *string) Round {
 	logger := log.Node()
 
@@ -72,10 +72,10 @@ func performInception(tree *avl.Tree, dir *string) Round {
 			logger.Fatal().Err(err).Msgf("failed to determine absolute path of genesis directory %s", *dir)
 		}
 
-		err = loadGenesisFromDir(tree, absDir)
+		err = restoreFromDir(tree, absDir)
 
 	} else {
-		err = loadGenesisFromJSON(tree, []byte(defaultGenesis))
+		err = restoreFromJSON(tree, []byte(defaultGenesis))
 	}
 
 	if err != nil {
@@ -88,7 +88,7 @@ func performInception(tree *avl.Tree, dir *string) Round {
 	return NewRound(0, tree.Checksum(), 0, Transaction{}, tx)
 }
 
-func loadGenesisFromJSON(tree *avl.Tree, json []byte) error {
+func restoreFromJSON(tree *avl.Tree, json []byte) error {
 	var p fastjson.Parser
 
 	parsed, err := p.ParseBytes(json)
@@ -130,13 +130,13 @@ func loadGenesisFromJSON(tree *avl.Tree, json []byte) error {
 
 		set[id] = struct{}{}
 
-		err = loadAccount(tree, id, val)
+		err = restoreAccount(tree, id, val)
 	})
 
 	return nil
 }
 
-func loadGenesisFromDir(tree *avl.Tree, dir string) error {
+func restoreFromDir(tree *avl.Tree, dir string) error {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return errors.Wrapf(err, "directory %s does not exist", dir)
 	}
@@ -147,7 +147,7 @@ func loadGenesisFromDir(tree *avl.Tree, dir string) error {
 
 	globalsBuf := make([]byte, sys.ContractMaxGlobals)
 
-	loadGlobals := func(id TransactionID, path string) error {
+	restoreGlobals := func(id TransactionID, path string) error {
 		f, err := os.Open(path)
 		if err != nil {
 			return errors.Wrapf(err, "failed to open contract globals file %s", path)
@@ -214,7 +214,7 @@ func loadGenesisFromDir(tree *avl.Tree, dir string) error {
 				return errors.Wrapf(err, "failed to parse file %s", path)
 			}
 
-			return loadAccount(tree, id, val)
+			return restoreAccount(tree, id, val)
 		} else if ext == ".wasm" {
 			var id TransactionID
 			// filename is the id
@@ -261,9 +261,9 @@ func loadGenesisFromDir(tree *avl.Tree, dir string) error {
 				return errors.Errorf("filename of %s has invalid contract ID", path)
 			}
 
-			// Load contract globals.
+			// Restore contract globals.
 			if secondExt == ".globals" {
-				return loadGlobals(id, path)
+				return restoreGlobals(id, path)
 			}
 
 			// For contract pages, get all the contract pages first and group them by contract ID.
@@ -328,10 +328,10 @@ func loadGenesisFromDir(tree *avl.Tree, dir string) error {
 		}
 	}
 
-	return loadContractPages(tree, contractPageFiles)
+	return restoreContractPages(tree, contractPageFiles)
 }
 
-func loadAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
+func restoreAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 	fields, err := val.Object()
 	if err != nil {
 		return err
@@ -383,20 +383,24 @@ func loadAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 		}
 	})
 
-	if err == nil && !isContract {
+	if err != nil {
+		return err
+	}
+
+	if !isContract {
 		WriteAccountsLen(tree, ReadAccountsLen(tree)+1)
 		WriteAccountNonce(tree, id, 1)
 	}
 
-	return err
+	return nil
 }
 
 // For each contract, read all the pages into buffers first, and check for following conditions:
 // 1. the file is successfully read into buffer,
 // 2. the file size is either 0 or 65536,
 //
-// Load only if all the conditions are true, otherwise returns an error.
-func loadContractPages(tree *avl.Tree, contractPageFiles map[TransactionID][]string) error {
+// Considered success only if all the conditions are true, otherwise returns an error.
+func restoreContractPages(tree *avl.Tree, contractPageFiles map[TransactionID][]string) error {
 	pool := bytebufferpool.Pool{}
 	var pagesBuf []*bytebufferpool.ByteBuffer
 	for id := range contractPageFiles {
@@ -429,7 +433,7 @@ func loadContractPages(tree *avl.Tree, contractPageFiles map[TransactionID][]str
 		}
 
 		if len(pagesBuf) == 0 {
-			return errors.Errorf("failed to load contract %x, missing contract pages", id)
+			return errors.Errorf("failed to restore contract %x, missing contract pages", id)
 		}
 
 		WriteAccountContractNumPages(tree, id, uint64(len(pagesBuf)))
@@ -462,7 +466,7 @@ func loadContractPages(tree *avl.Tree, contractPageFiles map[TransactionID][]str
 //
 // useContractFolder is a flag which if true, each contract dump has it's own folder.
 // The folder name will be hex-encoded of the contract ID.
-func DumpLedgerStates(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder bool) error {
+func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder bool) error {
 	// Make sure the directory exists
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return errors.Wrapf(err, "failed to create directory %s", dir)
