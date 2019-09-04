@@ -145,7 +145,7 @@ func loadGenesisFromDir(tree *avl.Tree, dir string) error {
 	contracts := make(map[TransactionID]struct{}) // TODO not required ?
 	contractPageFiles := make(map[TransactionID][]string)
 
-	globalsBuf := make([]byte, 0, sys.ContractMaxGlobals)
+	globalsBuf := make([]byte, sys.ContractMaxGlobals)
 
 	loadGlobals := func(id TransactionID, path string) error {
 		f, err := os.Open(path)
@@ -162,9 +162,7 @@ func loadGenesisFromDir(tree *avl.Tree, dir string) error {
 		}
 
 		// This assumes WriteAccountContractGlobals will make a copy of the bytes.
-		WriteAccountContractGlobals(tree, id, globalsBuf)
-
-		globalsBuf = globalsBuf[:]
+		WriteAccountContractGlobals(tree, id, globalsBuf[:n])
 
 		return nil
 	}
