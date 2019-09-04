@@ -130,7 +130,7 @@ func loadGenesisFromJSON(tree *avl.Tree, json []byte) error {
 
 		set[id] = struct{}{}
 
-		err = loadAccounts(tree, id, val)
+		err = loadAccount(tree, id, val)
 	})
 
 	return nil
@@ -142,7 +142,7 @@ func loadGenesisFromDir(tree *avl.Tree, dir string) error {
 	}
 
 	accounts := make(map[AccountID]struct{})
-	contracts := make(map[TransactionID]struct{}) // TODO not required ?
+	contracts := make(map[TransactionID]struct{})
 	contractPageFiles := make(map[TransactionID][]string)
 
 	globalsBuf := make([]byte, sys.ContractMaxGlobals)
@@ -179,6 +179,7 @@ func loadGenesisFromDir(tree *avl.Tree, dir string) error {
 
 		ext := filepath.Ext(path)
 		filename := strings.TrimSuffix(filepath.Base(path), ext)
+
 		if ext == ".json" {
 			var id AccountID
 			// filename is the id
@@ -213,7 +214,7 @@ func loadGenesisFromDir(tree *avl.Tree, dir string) error {
 				return errors.Wrapf(err, "failed to parse file %s", path)
 			}
 
-			return loadAccounts(tree, id, val)
+			return loadAccount(tree, id, val)
 		} else if ext == ".wasm" {
 			var id TransactionID
 			// filename is the id
@@ -330,7 +331,7 @@ func loadGenesisFromDir(tree *avl.Tree, dir string) error {
 	return loadContractPages(tree, contractPageFiles)
 }
 
-func loadAccounts(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
+func loadAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 	fields, err := val.Object()
 	if err != nil {
 		return err
@@ -435,6 +436,11 @@ func loadContractPages(tree *avl.Tree, contractPageFiles map[TransactionID][]str
 
 		// Write the contract pages from buffers
 		for i, buf := range pagesBuf {
+			// If the page is empty, don't save.
+			if buf.Len() == 0 {
+				continue
+			}
+
 			// This assumes WriteAccountContractPage will make a copy of the bytes.
 			WriteAccountContractPage(tree, id, uint64(i), buf.Bytes())
 
@@ -473,55 +479,6 @@ func DumpLedgerStates(tree *avl.Tree, dir string, isDumpContract bool, useContra
 
 	var filePerm os.FileMode = 0644
 
-	dumpContract := func(id AccountID) error {
-		var folder = dir
-
-		if useContractFolder {
-			folder = filepath.Join(dir, fmt.Sprintf("%x", id))
-
-			// Make sure the folder exists
-			if err := os.MkdirAll(folder, 0700); err != nil {
-				return errors.Wrapf(err, "failed to create directory %s", dir)
-			}
-		}
-
-		// Write contract globals.
-		if globals, ok := ReadAccountContractGlobals(tree, id); ok {
-			globalsFilename := fmt.Sprintf("%x.globals.dmp", id)
-
-			err := ioutil.WriteFile(filepath.Join(folder, globalsFilename), globals, filePerm)
-			if err != nil {
-				return errors.Wrapf(err, "failed to write globals %s", globalsFilename)
-			}
-		}
-
-		// Write contract code.
-		if code, ok := ReadAccountContractCode(tree, id); ok {
-			wasmFilename := fmt.Sprintf("%x.wasm", id)
-
-			err := ioutil.WriteFile(filepath.Join(folder, wasmFilename), code, filePerm)
-			if err != nil {
-				return errors.Wrapf(err, "failed to write wasm %s", wasmFilename)
-			}
-		}
-
-		// Write contract pages.
-		if numPages, ok := ReadAccountContractNumPages(tree, id); ok && numPages > 0 {
-			for i := uint64(0); i < numPages; i++ {
-				pageFilename := fmt.Sprintf("%x.%d.dmp", id, i)
-
-				page, _ := ReadAccountContractPage(tree, id, i)
-
-				err := ioutil.WriteFile(filepath.Join(folder, pageFilename), page, filePerm)
-				if err != nil {
-					return errors.Wrapf(err, "failed to write page %s", pageFilename)
-				}
-			}
-		}
-
-		return nil
-	}
-
 	var err error
 	accounts := make(map[AccountID]*account)
 
@@ -553,8 +510,6 @@ func DumpLedgerStates(tree *avl.Tree, dir string, isDumpContract bool, useContra
 				return
 			}
 
-			// TODO Further optimization. in case of contract account we can write the account into file straightaway.
-
 			acc := &account{
 				isContract: true,
 			}
@@ -564,7 +519,19 @@ func DumpLedgerStates(tree *avl.Tree, dir string, isDumpContract bool, useContra
 				acc.gasBalance = &gasBalance
 			}
 
-			err = dumpContract(id)
+			var folder = dir
+
+			if useContractFolder {
+				folder = filepath.Join(dir, fmt.Sprintf("%x", id))
+
+				// Make sure the folder exists
+				if err := os.MkdirAll(folder, 0700); err != nil {
+					err = errors.Wrapf(err, "failed to create directory %s", dir)
+					return
+				}
+			}
+
+			err = dumpContract(tree, id, folder)
 
 			return
 		}
@@ -646,6 +613,44 @@ func DumpLedgerStates(tree *avl.Tree, dir string, isDumpContract bool, useContra
 		data = data[:0]
 
 		arena.Reset()
+	}
+
+	return nil
+}
+
+func dumpContract(tree *avl.Tree, id AccountID, dir string) error {
+	// Write contract globals.
+	if globals, ok := ReadAccountContractGlobals(tree, id); ok {
+		globalsFilename := fmt.Sprintf("%x.globals.dmp", id)
+
+		err := ioutil.WriteFile(filepath.Join(dir, globalsFilename), globals, 0644)
+		if err != nil {
+			return errors.Wrapf(err, "failed to write globals %s", globalsFilename)
+		}
+	}
+
+	// Write contract code.
+	if code, ok := ReadAccountContractCode(tree, id); ok {
+		wasmFilename := fmt.Sprintf("%x.wasm", id)
+
+		err := ioutil.WriteFile(filepath.Join(dir, wasmFilename), code, 0644)
+		if err != nil {
+			return errors.Wrapf(err, "failed to write wasm %s", wasmFilename)
+		}
+	}
+
+	// Write contract pages.
+	if numPages, ok := ReadAccountContractNumPages(tree, id); ok && numPages > 0 {
+		for i := uint64(0); i < numPages; i++ {
+			pageFilename := fmt.Sprintf("%x.%d.dmp", id, i)
+
+			page, _ := ReadAccountContractPage(tree, id, i)
+
+			err := ioutil.WriteFile(filepath.Join(dir, pageFilename), page, 0644)
+			if err != nil {
+				return errors.Wrapf(err, "failed to write page %s", pageFilename)
+			}
+		}
 	}
 
 	return nil
