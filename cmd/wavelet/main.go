@@ -105,13 +105,13 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Usage:  "Listen for peers on host address.",
 			EnvVar: "WAVELET_NODE_HOST",
 		}),
-		altsrc.NewIntFlag(cli.IntFlag{
+		altsrc.NewUintFlag(cli.UintFlag{
 			Name:   "port",
 			Value:  3000,
 			Usage:  "Listen for peers on port.",
 			EnvVar: "WAVELET_NODE_PORT",
 		}),
-		altsrc.NewIntFlag(cli.IntFlag{
+		altsrc.NewUintFlag(cli.UintFlag{
 			Name:   "api.port",
 			Value:  0,
 			Usage:  "Host a local HTTP API at port.",
