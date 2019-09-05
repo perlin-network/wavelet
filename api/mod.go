@@ -32,6 +32,7 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpadaptor"
 	"github.com/valyala/fasthttp/pprofhandler"
 	"github.com/valyala/fastjson"
 	"golang.org/x/crypto/acme/autocert"
@@ -210,9 +211,13 @@ func (g *Gateway) StartHTTPS(httpPort int, c *skademlia.Client, l *wavelet.Ledge
 	// Let autocert handle Let's Encrypt auth callbacks over HTTP. All other URLs will pass into the fallback handler.
 	certHandler := certManager.HTTPHandler(http.HandlerFunc(fallback))
 
+	httpServer := &fasthttp.Server{
+		Handler: fasthttpadaptor.NewFastHTTPHandler(certHandler),
+	}
+
 	// Start HTTP server to handle Let's Encrypt auth callbacks over HTTP and to redirect HTTP into HTTPS.
 	go func() {
-		if err := http.ListenAndServe(":"+strconv.Itoa(httpPort), certHandler); err != nil {
+		if err := httpServer.ListenAndServe(":" + strconv.Itoa(httpPort)); err != nil {
 			logger.Fatal().Err(err).Msg("Failed to start HTTP server.")
 		}
 	}()
