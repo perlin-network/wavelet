@@ -24,7 +24,6 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
@@ -33,8 +32,11 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
+	"github.com/valyala/fasthttp/fasthttpadaptor"
 	"github.com/valyala/fasthttp/pprofhandler"
 	"github.com/valyala/fastjson"
+	"golang.org/x/crypto/acme/autocert"
+	"net"
 
 	"io"
 	"net/http"
@@ -171,6 +173,65 @@ func (g *Gateway) applyMiddleware(f fasthttp.RequestHandler, rateLimiterKey stri
 }
 
 func (g *Gateway) StartHTTP(port int, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair) {
+	logger := log.Node()
+
+	ln, err := net.Listen("tcp4", ":"+strconv.Itoa(port))
+	if err != nil {
+		logger.Fatal().Err(err).Msgf("Failed to listen to port %d.", port)
+	}
+
+	logger.Info().Int("port", port).Msg("Started HTTP API server.")
+
+	g.start(ln, c, l, k)
+}
+
+func (g *Gateway) StartHTTPS(httpPort int, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair, allowedHost, certCacheDir string) {
+	logger := log.Node()
+
+	if len(allowedHost) == 0 {
+		logger.Fatal().Msg("allowedHost is empty.")
+	}
+
+	if len(certCacheDir) == 0 {
+		logger.Fatal().Msg("certCacheDir is empty.")
+	}
+
+	certManager := autocert.Manager{
+		Prompt:     autocert.AcceptTOS,
+		Cache:      autocert.DirCache(certCacheDir),
+		HostPolicy: autocert.HostWhitelist(allowedHost),
+	}
+
+	// Redirect into HTTPS.
+	fallback := func(w http.ResponseWriter, r *http.Request) {
+		newURI := "https://" + r.Host + r.URL.String()
+		http.Redirect(w, r, newURI, http.StatusFound)
+	}
+
+	// Let autocert handle Let's Encrypt auth callbacks over HTTP. All other URLs will pass into the fallback handler.
+	certHandler := certManager.HTTPHandler(http.HandlerFunc(fallback))
+
+	httpServer := &fasthttp.Server{
+		Handler: fasthttpadaptor.NewFastHTTPHandler(certHandler),
+	}
+
+	// Start HTTP server to handle Let's Encrypt auth callbacks over HTTP and to redirect HTTP into HTTPS.
+	go func() {
+		if err := httpServer.ListenAndServe(":" + strconv.Itoa(httpPort)); err != nil {
+			logger.Fatal().Err(err).Msg("Failed to start HTTP server.")
+		}
+	}()
+
+	// Start the HTTPS server
+
+	ln := certManager.Listener()
+
+	logger.Info().Int("port", 443).Msg("Started secure HTTP API server.")
+
+	g.start(ln, c, l, k)
+}
+
+func (g *Gateway) start(ln net.Listener, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair) {
 	stop := g.rateLimiter.cleanup(10 * time.Minute)
 	defer stop()
 
@@ -182,14 +243,13 @@ func (g *Gateway) StartHTTP(port int, c *skademlia.Client, l *wavelet.Ledger, k 
 	g.enableTimeout = false
 	g.setup()
 
-	logger := log.Node()
-	logger.Info().Int("port", port).Msg("Started HTTP API server.")
-
 	g.server = &fasthttp.Server{
 		Handler: g.router.Handler,
 	}
 
-	if err := g.server.ListenAndServe(":" + strconv.Itoa(port)); err != nil {
+	logger := log.Node()
+
+	if err := g.server.Serve(ln); err != nil {
 		logger.Fatal().Err(err).Msg("Failed to start HTTP server.")
 	}
 }

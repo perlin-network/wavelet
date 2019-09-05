@@ -58,6 +58,7 @@ type Config struct {
 	Wallet      string
 	Genesis     *string
 	APIPort     uint
+	APIHost     *string
 	Peers       []string
 	Database    string
 	MaxMemoryMB uint64
@@ -115,6 +116,11 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Value:  0,
 			Usage:  "Host a local HTTP API at port.",
 			EnvVar: "WAVELET_API_PORT",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "api.host",
+			Usage:  "Host for the API HTTPS server. Using this flag, api.port must be passed.",
+			EnvVar: "WAVELET_API_HOST",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "wallet",
@@ -224,6 +230,14 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 
 		if genesis := c.String("genesis"); len(genesis) > 0 {
 			config.Genesis = &genesis
+		}
+
+		if apiHost := c.String("api.host"); len(apiHost) > 0 {
+			config.APIHost = &apiHost
+
+			if config.APIPort == 0 {
+				return errors.New("api.port cannot be zero if api.host is passed")
+			}
 		}
 
 		// set the the sys variables
@@ -369,8 +383,17 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 		logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
 	}
 
-	if cfg.APIPort > 0 {
-		go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
+	if cfg.APIHost != nil {
+		if cfg.APIPort == 0 {
+			logger.Fatal().Msg("port is zero")
+		}
+
+		go api.New().StartHTTPS(int(cfg.APIPort), client, ledger, keys, *cfg.APIHost, "certs")
+	} else {
+		if cfg.APIPort > 0 {
+			go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
+
+		}
 	}
 
 	shell, err := NewCLI(client, ledger, keys, stdin, stdout)
