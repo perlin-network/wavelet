@@ -216,7 +216,6 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 	}
 
 	app.Action = func(c *cli.Context) error {
-		c.String("config")
 		config := &Config{
 			Host:        c.String("host"),
 			Port:        c.Uint("port"),
