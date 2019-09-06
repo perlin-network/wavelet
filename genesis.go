@@ -20,7 +20,6 @@
 package wavelet
 
 import (
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	wasm "github.com/perlin-network/life/wasm-validation"
@@ -58,6 +57,8 @@ const defaultGenesis = `
 // An account state may be specified within the genesis directory in the form of a [account address].json file with key-value pairs.
 //
 // A smart contract may be specified within the genesis directory in the form of a [contract address].wasm file with accompanying [contract address].[page index].dmp files representing the contracts memory pages.
+//
+// The AccountsLen in the restored tree may not match with the original tree.
 //
 // If the directory is nil, restore from the hardcoded default genesis.
 func performInception(tree *avl.Tree, dir *string) Round {
@@ -142,8 +143,11 @@ func restoreFromDir(tree *avl.Tree, dir string) error {
 	}
 
 	accounts := make(map[AccountID]struct{})
-	contracts := make(map[TransactionID]struct{})
 	contractPageFiles := make(map[TransactionID][]string)
+
+	// This is should only used to check for duplicates.
+	contractsExist := make(map[TransactionID]struct{})
+	var contracts []TransactionID
 
 	globalsBuf := make([]byte, sys.ContractMaxGlobals)
 
@@ -226,10 +230,11 @@ func restoreFromDir(tree *avl.Tree, dir string) error {
 			}
 
 			// Check for duplicate
-			if _, exist := contracts[id]; exist {
+			if _, exist := contractsExist[id]; exist {
 				return nil
 			}
-			contracts[id] = struct{}{}
+			contractsExist[id] = struct{}{}
+			contracts = append(contracts, id)
 
 			f, err := os.Open(path)
 			if err != nil {
@@ -310,7 +315,7 @@ func restoreFromDir(tree *avl.Tree, dir string) error {
 	}
 
 	// Each contract must have Gas Balance, Code, Globals, and Page files.
-	for id := range contracts {
+	for _, id := range contracts {
 		if _, exist := ReadAccountContractGasBalance(tree, id); !exist {
 			return errors.Errorf("contract %x is missing gas balance", id)
 		}
@@ -328,7 +333,7 @@ func restoreFromDir(tree *avl.Tree, dir string) error {
 		}
 	}
 
-	return restoreContractPages(tree, contractPageFiles)
+	return restoreContractPages(tree, contracts, contractPageFiles)
 }
 
 func restoreAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
@@ -357,7 +362,7 @@ func restoreAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 				return
 			}
 
-			WriteAccountStake(tree, id, uint64(stake))
+			WriteAccountStake(tree, id, stake)
 		case "reward":
 			reward, err = v.Uint64()
 			if err != nil {
@@ -365,7 +370,7 @@ func restoreAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 				return
 			}
 
-			WriteAccountReward(tree, id, uint64(reward))
+			WriteAccountReward(tree, id, reward)
 		case "gas_balance":
 			gasBalance, err = v.Uint64()
 			if err != nil {
@@ -373,7 +378,7 @@ func restoreAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 				return
 			}
 
-			WriteAccountContractGasBalance(tree, id, uint64(gasBalance))
+			WriteAccountContractGasBalance(tree, id, gasBalance)
 		case "is_contract":
 			isContract, err = v.Bool()
 			if err != nil {
@@ -400,10 +405,10 @@ func restoreAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 // 2. the file size is either 0 or 65536,
 //
 // Considered success only if all the conditions are true, otherwise returns an error.
-func restoreContractPages(tree *avl.Tree, contractPageFiles map[TransactionID][]string) error {
+func restoreContractPages(tree *avl.Tree, contracts []TransactionID, contractPageFiles map[TransactionID][]string) error {
 	pool := bytebufferpool.Pool{}
 	var pagesBuf []*bytebufferpool.ByteBuffer
-	for id := range contractPageFiles {
+	for _, id := range contracts {
 		files := contractPageFiles[id]
 		for i := range files {
 			file := files[i]
@@ -440,7 +445,7 @@ func restoreContractPages(tree *avl.Tree, contractPageFiles map[TransactionID][]
 
 		// Write the contract pages from buffers
 		for i, buf := range pagesBuf {
-			// If the page is empty, don't save.
+			// If the page is empty, don't restore the page.
 			if buf.Len() == 0 {
 				continue
 			}
@@ -473,6 +478,8 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 	}
 
 	type account struct {
+		id AccountID
+
 		balance *uint64
 		stake   *uint64
 		reward  *uint64
@@ -484,14 +491,12 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 	var filePerm os.FileMode = 0644
 
 	var err error
-	accounts := make(map[AccountID]*account)
+	hasIterated := make(map[AccountID]struct{})
+	accounts := make([]*account, 0, ReadAccountsLen(tree))
 
 	tree.IteratePrefix(keyAccounts[:], func(key, value []byte) {
 		var prefix [1]byte
 		copy(prefix[:], key[1:])
-
-		var id AccountID
-		copy(id[:], key[2:])
 
 		// Filter by prefixes relevant to wallet and contract code.
 		if prefix != keyAccountBalance &&
@@ -501,23 +506,24 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 			return
 		}
 
-		// Handle contracts
+		var id AccountID
+		copy(id[:], key[2:])
 
-		// For contracts, we do all the work using only the current iteration.
-		if prefix == keyAccountContractCode {
+		if _, exist := hasIterated[id]; exist {
+			return
+		}
+		hasIterated[id] = struct{}{}
+		acc := &account{
+			id: id,
+		}
+
+		if _, isContract := ReadAccountContractCode(tree, id); isContract {
 			if !isDumpContract {
 				return
 			}
 
-			// Contract already exists, ignore.
-			if _, exist := accounts[id]; exist {
-				return
-			}
-
-			acc := &account{
-				isContract: true,
-			}
-			accounts[id] = acc
+			acc.isContract = true
+			accounts = append(accounts, acc)
 
 			if gasBalance, exist := ReadAccountContractGasBalance(tree, id); exist {
 				acc.gasBalance = &gasBalance
@@ -540,36 +546,18 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 			return
 		}
 
-		// Handle wallets.
+		acc.isContract = false
+		accounts = append(accounts, acc)
 
-		acc := accounts[id]
-		if acc == nil {
-			acc = &account{
-				isContract: false,
-			}
-			accounts[id] = acc
+		if balance, exist := ReadAccountBalance(tree, id); exist {
+			acc.balance = &balance
 		}
 
-		if prefix == keyAccountBalance {
-			if len(value) == 0 {
-				return
-			}
-
-			balance := binary.LittleEndian.Uint64(value)
-			acc.balance = &balance
-		} else if prefix == keyAccountStake {
-			if len(value) == 0 {
-				return
-			}
-
-			stake := binary.LittleEndian.Uint64(value)
+		if stake, exist := ReadAccountStake(tree, id); exist {
 			acc.stake = &stake
-		} else if prefix == keyAccountReward {
-			if len(value) == 0 {
-				return
-			}
+		}
 
-			reward := binary.LittleEndian.Uint64(value)
+		if reward, exist := ReadAccountReward(tree, id); exist {
 			acc.reward = &reward
 		}
 	})
@@ -583,7 +571,7 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 	arena := &fastjson.Arena{}
 	data := make([]byte, 0, 512)
 
-	for k, v := range accounts {
+	for _, v := range accounts {
 		o := arena.NewObject()
 
 		if v.isContract {
@@ -607,7 +595,7 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 		}
 
 		data = o.MarshalTo(data[:])
-		filename := fmt.Sprintf("%x.json", k)
+		filename := fmt.Sprintf("%x.json", v.id)
 
 		err := ioutil.WriteFile(filepath.Join(dir, filename), data, filePerm)
 		if err != nil {

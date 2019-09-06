@@ -13,14 +13,18 @@ import (
 	"testing"
 )
 
-func TestDumps(t *testing.T) {
-	dumpDir := "testdata/testdump"
+var testDumpDir = "testdata/testdump"
+var testRestoreDir = "testdata/testgenesis"
 
-	testnet := NewTestNetwork(t)
-	defer testnet.Cleanup()
-	defer os.RemoveAll(dumpDir)
+func getGenesisTestNetwork(t testing.TB) (testnet *TestNetwork, alice *TestLedger, cleanup func()) {
+	testnet = NewTestNetwork(t)
 
-	alice := testnet.AddNode(t)
+	cleanup = func() {
+		os.RemoveAll(testDumpDir)
+		testnet.Cleanup()
+	}
+
+	alice = testnet.AddNode(t)
 	bob := testnet.AddNode(t)
 
 	assert.True(t, <-alice.WaitForSync())
@@ -28,7 +32,7 @@ func TestDumps(t *testing.T) {
 
 	var err error
 
-	_, err = testnet.faucet.Pay(alice, 1000000000)
+	_, err = testnet.faucet.Pay(alice, 10000000000)
 	assert.NoError(t, err)
 	for <-alice.WaitForConsensus() {
 		if alice.Balance() > 0 {
@@ -36,7 +40,7 @@ func TestDumps(t *testing.T) {
 		}
 	}
 
-	_, err = testnet.faucet.Pay(bob, 1000000000)
+	_, err = testnet.faucet.Pay(bob, 10000000000)
 	assert.NoError(t, err)
 	for <-bob.WaitForConsensus() {
 		if bob.Balance() > 0 {
@@ -44,93 +48,140 @@ func TestDumps(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < 2; i++ {
+	_, err = alice.PlaceStake(100)
+	assert.True(t, <-alice.WaitForConsensus())
+
+	_, err = bob.PlaceStake(100)
+	assert.True(t, <-bob.WaitForConsensus())
+
+	for i := 0; i < 10; i++ {
 		_, err := alice.SpawnContract("testdata/transfer_back.wasm", 10000, nil)
 		if !assert.NoError(t, err) {
-			return
+			return nil, nil, cleanup
 		}
 	}
+	assert.True(t, <-alice.WaitForConsensus())
 
-	_, err = bob.Nop()
-	assert.NoError(t, err)
-
-	assert.True(t, <-bob.WaitForConsensus())
-	assert.True(t, <-alice.WaitForSync())
-
-	// Delete the dir in case it already exists
-	assert.NoError(t, os.RemoveAll(dumpDir))
-
-	expected := alice.ledger.Snapshot()
-
-	assert.NoError(t, Dump(expected, dumpDir, true, false))
-
-	// Restore from the dump and then perform various checks.
-
-	actual := avl.New(store.NewInmem())
-	_ = performInception(actual, &dumpDir)
-
-	// Check the keys/values in the actual tree against the expected tree.
-	compareTree(t, expected, actual)
-
-	// Make sure the actual tree does not contain keys/values that does not exist on the expected tree.
-	compareTree(t, actual, expected)
-
-	checkRestoredDefaults(t, actual)
+	return testnet, alice, cleanup
 }
 
-// For each key in the expected tree, we compare it's existence and value against the actual tree.
-// Note that not all keys are dumped and restored.
-func compareTree(t *testing.T, expected *avl.Tree, actual *avl.Tree) {
-	expected.Iterate(func(key, value []byte) {
-		// Not all keys are dumped and restored.
-		// So, we indicate if the key should be checked.
-		var check = false
+func TestDumpIncludingContract(t *testing.T) {
+	testnet, target, cleanup := getGenesisTestNetwork(t)
+	defer cleanup()
+	if testnet == nil {
+		assert.FailNow(t, "failed to get test network.")
+	}
 
-		var globalPrefix [1]byte
-		copy(globalPrefix[:], key[:])
+	// Delete the dir in case it already exists
+	assert.NoError(t, os.RemoveAll(testDumpDir))
 
-		if globalPrefix == keyAccounts {
-			var accountPrefix [1]byte
-			copy(accountPrefix[:], key[1:])
+	expected := target.ledger.Snapshot()
+	assert.NoError(t, Dump(expected, testDumpDir, true, false))
 
-			var id AccountID
-			copy(id[:], key[2:])
+	actual := avl.New(store.NewInmem())
+	_ = performInception(actual, &testDumpDir)
 
-			// Explicitly list of the account prefixes that are dumped and restored.
+	compareTree(t, expected, actual, true)
 
-			check = accountPrefix == keyAccountBalance ||
-				accountPrefix == keyAccountStake ||
-				accountPrefix == keyAccountReward ||
-				accountPrefix == keyAccountContractCode ||
-				accountPrefix == keyAccountContractNumPages ||
-				accountPrefix == keyAccountContractPages ||
-				accountPrefix == keyAccountContractGasBalance ||
-				accountPrefix == keyAccountContractGlobals
-		} else {
-			// In the global prefixes, only keyAccountsLen is dumped and restored.
-			check = globalPrefix == keyAccountsLen
-		}
+	checkRestoredDefaults(t, actual)
 
-		if !check {
-			return
-		}
+	// Repeatedly restore the dump and check it's checksum to make sure there's no randomness in the order of the restoration.
+	var checksum = actual.Checksum()
+	for i := 0; i < 100; i++ {
+		tree := avl.New(store.NewInmem())
+		_ = performInception(tree, &testDumpDir)
 
-		actualValue, actualExist := actual.Lookup(key)
-		if !actualExist {
-			t.Errorf("key %x, missing value", key)
-		}
+		assert.Equal(t, checksum, tree.Checksum())
+	}
+}
 
-		if !bytes.Equal(value, actualValue) {
-			t.Errorf("key %x, expected: %x, actual: %x", key, value, actualValue)
-		}
-	})
+func TestDumpWithoutContract(t *testing.T) {
+	testnet, target, cleanup := getGenesisTestNetwork(t)
+	defer cleanup()
+	if testnet == nil || target == nil {
+		assert.FailNow(t, "failed setup test network.")
+	}
+
+	// Delete the dir in case it already exists
+	assert.NoError(t, os.RemoveAll(testDumpDir))
+
+	expected := target.ledger.Snapshot()
+	assert.NoError(t, Dump(expected, testDumpDir, false, false))
+
+	actual := avl.New(store.NewInmem())
+	_ = performInception(actual, &testDumpDir)
+
+	compareTree(t, expected, actual, false)
+
+	checkRestoredDefaults(t, actual)
+
+	// Repeatedly restore the dump and check it's checksum to make sure there's no randomness in the order of the restoration.
+	var checksum = actual.Checksum()
+	for i := 0; i < 100; i++ {
+		tree := avl.New(store.NewInmem())
+		_ = performInception(tree, &testDumpDir)
+
+		assert.Equal(t, checksum, tree.Checksum())
+	}
+}
+
+func compareTree(t *testing.T, expected *avl.Tree, actual *avl.Tree, checkContract bool) {
+	f := func(tree1 *avl.Tree, tree2 *avl.Tree, tag string) {
+		tree1.Iterate(func(key, value []byte) {
+			// Not all keys are dumped and restored.
+			// So, we indicate if the key should be checked.
+			var check = false
+
+			var globalPrefix [1]byte
+			copy(globalPrefix[:], key[:])
+
+			if globalPrefix == keyAccounts {
+				var accountPrefix [1]byte
+				copy(accountPrefix[:], key[1:])
+
+				var id AccountID
+				copy(id[:], key[2:])
+
+				// Explicitly list of the account prefixes that are dumped and restored.
+
+				check = accountPrefix == keyAccountBalance ||
+					accountPrefix == keyAccountStake ||
+					accountPrefix == keyAccountReward
+
+				if checkContract {
+					check = accountPrefix == keyAccountContractCode ||
+						accountPrefix == keyAccountContractNumPages ||
+						accountPrefix == keyAccountContractPages ||
+						accountPrefix == keyAccountContractGasBalance ||
+						accountPrefix == keyAccountContractGlobals
+				}
+			}
+
+			if !check {
+				return
+			}
+
+			val, exist := tree2.Lookup(key)
+			if !exist {
+				t.Errorf("%skey %x, missing value", tag, key)
+			}
+
+			if !bytes.Equal(value, val) {
+				t.Errorf("%skey %x, expected: %x, actual: %x", tag, key, value, val)
+			}
+		})
+	}
+
+	// Compare the expected tree against actual tree
+	f(expected, actual, "")
+
+	// Reverse
+	f(actual, expected, "[reverse] ")
 }
 
 func TestPerformInception(t *testing.T) {
-	var testGenesisDir = "testdata/testgenesis"
-
 	tree := avl.New(store.NewInmem())
-	round := performInception(tree, &testGenesisDir)
+	round := performInception(tree, &testRestoreDir)
 
 	assert.Equal(t, uint64(0), round.Index)
 	assert.Equal(t, uint64(0), round.Applied)
@@ -166,7 +217,7 @@ func TestPerformInception(t *testing.T) {
 	contractID := id("ca0e12024ed83dfd66fb48648d3853c68a31259b2df720dc709fb046e5de2b6e")
 
 	checkContract(t, tree, contractID,
-		filepath.Join(testGenesisDir, fmt.Sprintf("%x.wasm", contractID)),
+		filepath.Join(testRestoreDir, fmt.Sprintf("%x.wasm", contractID)),
 		18, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16},
 	)
 
@@ -272,4 +323,37 @@ func checkRestoredDefaults(t *testing.T, tree *avl.Tree) {
 		assert.True(t, exist, "account %x is missing nonce", id)
 		assert.Equal(t, uint64(1), nonce, "account %x, expected nonce is 1", id)
 	})
+}
+
+func BenchmarkDump(b *testing.B) {
+	testnet, target, cleanup := getGenesisTestNetwork(b)
+	defer cleanup()
+	if testnet == nil || target == nil {
+		assert.FailNow(b, "failed setup test network.")
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		b.StopTimer()
+
+		assert.NoError(b, os.RemoveAll(testDumpDir))
+
+		b.StartTimer()
+		assert.NoError(b, Dump(target.ledger.Snapshot(), testDumpDir, true, false))
+	}
+}
+
+func BenchmarkPerformInception(b *testing.B) {
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		b.StopTimer()
+		tree := avl.New(store.NewInmem())
+
+		b.StartTimer()
+		performInception(tree, &testRestoreDir)
+	}
 }
