@@ -22,6 +22,7 @@ package wavelet
 import (
 	"context"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/debounce"
 	"github.com/perlin-network/wavelet/log"
 	"sync"
@@ -73,7 +74,7 @@ func (g *Gossiper) Gossip(transactions [][]byte) {
 	for _, p := range peers {
 		client := NewWaveletClient(p)
 
-		ctx, _ := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		ctx, _ := context.WithTimeout(context.Background(), conf.GetGossipTimeout())
 		stream, err := client.Gossip(ctx)
 		if err != nil {
 			continue
