@@ -119,7 +119,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "api.host",
-			Usage:  "Host for the API HTTPS server. Using this flag, api.port must be passed.",
+			Usage:  "Host for the API HTTPS server.",
 			EnvVar: "WAVELET_API_HOST",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
@@ -233,10 +233,6 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 
 		if apiHost := c.String("api.host"); len(apiHost) > 0 {
 			config.APIHost = &apiHost
-
-			if config.APIPort == 0 {
-				return errors.New("api.port cannot be zero if api.host is passed")
-			}
 		}
 
 		// set the the sys variables
@@ -383,11 +379,7 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	}
 
 	if cfg.APIHost != nil {
-		if cfg.APIPort == 0 {
-			logger.Fatal().Msg("port is zero")
-		}
-
-		go api.New().StartHTTPS(int(cfg.APIPort), client, ledger, keys, *cfg.APIHost, "certs")
+		go api.New().StartHTTPS(client, ledger, keys, *cfg.APIHost, "certs")
 	} else {
 		if cfg.APIPort > 0 {
 			go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
