@@ -1,85 +1,111 @@
 package wctl
 
 import (
-	"fmt"
-	"net/url"
-	"time"
-
 	"github.com/valyala/fastjson"
 )
 
 // PollTransactions calls the callback for each WS event received. On error, the
 // callback may be called twice.
-func (c *Client) PollTransactions(callback func([]TransactionEvent, error),
-	txID string, senderID string, creatorID string, tag *byte) (func(), error) {
-
-	v := url.Values{}
-
-	if txID != "" {
-		v.Set("tx_id", txID)
-	}
-
-	if senderID != "" {
-		v.Set("sender", senderID)
-	}
-
-	if creatorID != "" {
-		v.Set("creator", creatorID)
-	}
-
-	if tag != nil {
-		v.Set("tag", fmt.Sprintf("%x", *tag))
-	}
-
-	return c.pollWS(RouteWSTransactions, v, func(b []byte) {
+func (c *Client) PollTransactions() (func(), error) {
+	return c.pollWS(RouteWSTransactions, func(b []byte) {
 		var parser fastjson.Parser
 		v, err := parser.ParseBytes(b)
 		if err != nil {
-			callback(nil, err)
+			c.OnError(err)
 			return
 		}
 
-		a := v.GetArray()
-		txs := make([]TransactionEvent, 0, len(a))
+		if string(v.GetStringBytes("mod")) != "tx" {
+			c.OnError(errMismatchMod(v, "tx"))
+		}
 
-		for _, o := range a {
-			var t TransactionEvent
+		for _, o := range v.GetArray() {
+			var err error
 
-			if err := jsonHex(o, t.ID[:], "tx_id"); err != nil {
-				callback(nil, errUnmarshallingFail(b, "tx_id", err))
-				continue
+			switch ev := jsonString(o, "event"); {
+			case ev == "applied":
+				err = parseTxApplied(c, o)
+			case ev == "gossip" && jsonString(o, "level") == "error":
+				err = parseTxGossipError(c, o)
+			case ev == "failed":
+				err = parseTxFailed(c, o)
 			}
-
-			if err := jsonHex(o, t.Sender[:], "sender_id"); err != nil {
-				callback(nil, errUnmarshallingFail(b, "sender_id", err))
-				continue
-			}
-
-			if err := jsonHex(o, t.Creator[:], "creator_id"); err != nil {
-				callback(nil, errUnmarshallingFail(b, "creator_id", err))
-				continue
-			}
-
-			t.Event = string(o.GetStringBytes("event"))
-			t.Depth = o.GetUint64("depth")
-			t.Tag = byte(o.GetUint("tag"))
-
-			Time, err := time.Parse(
-				time.RFC3339, string(o.GetStringBytes("time")),
-			)
 
 			if err != nil {
-				callback(nil, errUnmarshallingFail(b, "time", err))
-				continue
+				c.OnError(err)
 			}
-
-			t.Time = Time
-
-			txs = append(txs, t)
-		}
-
-		if len(txs) > 0 {
-			callback(txs, nil)
 		}
 	})
+}
+
+// parse<mod><event>
+
+func parseTxApplied(c *Client, v *fastjson.Value) error {
+	var t TxApplied
+
+	if err := jsonHex(v, t.TxID[:], "tx_id"); err != nil {
+		return errUnmarshallingFail(v, "tx_id", err)
+	}
+
+	if err := jsonHex(v, t.SenderID[:], "sender_id"); err != nil {
+		return errUnmarshallingFail(v, "sender_id", err)
+	}
+
+	if err := jsonHex(v, t.CreatorID[:], "creator_id"); err != nil {
+		return errUnmarshallingFail(v, "creator_id", err)
+	}
+
+	t.Depth = v.GetUint64("depth")
+	t.Tag = byte(v.GetUint("tag"))
+
+	if err := jsonTime(v, &t.Time, "time"); err != nil {
+		return errUnmarshallingFail(v, "time", err)
+	}
+
+	c.OnTxApplied(t)
+
+	return nil
+}
+
+func parseTxGossipError(c *Client, v *fastjson.Value) error {
+	var t TxGossipError
+
+	if err := jsonTime(v, &t.Time, "time"); err != nil {
+		return errUnmarshallingFail(v, "time", err)
+	}
+
+	t.Error = jsonString(v, "error")
+	t.Message = jsonString(v, "message")
+
+	c.OnTxGossipError(t)
+
+	return nil
+}
+
+func parseTxFailed(c *Client, v *fastjson.Value) error {
+	var t TxFailed
+
+	if err := jsonHex(v, t.TxID[:], "tx_id"); err != nil {
+		return errUnmarshallingFail(v, "tx_id", err)
+	}
+
+	if err := jsonHex(v, t.SenderID[:], "sender_id"); err != nil {
+		return errUnmarshallingFail(v, "sender_id", err)
+	}
+
+	if err := jsonHex(v, t.CreatorID[:], "creator_id"); err != nil {
+		return errUnmarshallingFail(v, "creator_id", err)
+	}
+
+	t.Depth = v.GetUint64("depth")
+	t.Tag = byte(v.GetUint("tag"))
+	t.Error = jsonString(v, "error")
+
+	if err := jsonTime(v, &t.Time, "time"); err != nil {
+		return errUnmarshallingFail(v, "time", err)
+	}
+
+	c.OnTxFailed(t)
+
+	return nil
 }

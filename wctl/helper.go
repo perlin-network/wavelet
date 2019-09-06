@@ -96,6 +96,20 @@ func jsonHex(v *fastjson.Value, dst []byte, keys ...string) error {
 	return nil
 }
 
+func jsonTime(v *fastjson.Value, t *time.Time, keys ...string) error {
+	Time, err := time.Parse(time.RFC3339, string(v.GetStringBytes(keys...)))
+	if err != nil {
+		return err
+	}
+
+	*t = Time
+	return nil
+}
+
+func jsonString(v *fastjson.Value, keys ...string) string {
+	return string(v.GetStringBytes(keys...))
+}
+
 func StringIDs(ids [][32]byte) []string {
 	s := make([]string, len(ids))
 	for i := range ids {

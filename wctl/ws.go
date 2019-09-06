@@ -5,10 +5,11 @@ import (
 	"net/url"
 
 	"github.com/gorilla/websocket"
+	"github.com/valyala/fastjson"
 )
 
 // EstablishWS will create a websocket connection.
-func (c *Client) EstablishWS(path string, query url.Values) (*websocket.Conn, error) {
+func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 	prot := "ws"
 	if c.UseHTTPS {
 		prot = "wss"
@@ -21,10 +22,6 @@ func (c *Client) EstablishWS(path string, query url.Values) (*websocket.Conn, er
 		Path:   path,
 	}
 
-	if query != nil && len(query) > 0 {
-		uri.RawQuery = query.Encode()
-	}
-
 	dialer := &websocket.Dialer{
 		HandshakeTimeout: c.Config.Timeout,
 	}
@@ -34,8 +31,8 @@ func (c *Client) EstablishWS(path string, query url.Values) (*websocket.Conn, er
 }
 
 // callback is spawned in a goroutine
-func (c *Client) pollWS(path string, query url.Values, callback func([]byte)) (func(), error) {
-	ws, err := c.EstablishWS(path, query)
+func (c *Client) pollWS(path string, callback func([]byte)) (func(), error) {
+	ws, err := c.EstablishWS(path)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +55,28 @@ func (c *Client) pollWS(path string, query url.Values, callback func([]byte)) (f
 }
 
 type ErrInvalidPayload struct {
-	FullJSON []byte
+	JSONValue string
+}
+
+type ErrMismatchMod struct {
+	ErrInvalidPayload
+	WantedMod string
+	GotMod    string
+}
+
+func errMismatchMod(v *fastjson.Value, wantedMod string) *ErrMismatchMod {
+	return &ErrMismatchMod{
+		ErrInvalidPayload: ErrInvalidPayload{
+			JSONValue: v.String(),
+		},
+		WantedMod: wantedMod,
+		GotMod:    string(v.GetStringBytes("mod")),
+	}
+}
+
+func (err *ErrMismatchMod) Error() string {
+	return "Mismatched \"mod\" field in JSON: expected " + err.WantedMod +
+		", got " + err.GotMod
 }
 
 type ErrInvalidEvent struct {
@@ -66,10 +84,10 @@ type ErrInvalidEvent struct {
 	Event string
 }
 
-func errInvalidEvent(json []byte, event string) *ErrInvalidEvent {
+func errInvalidEvent(v *fastjson.Value, event string) *ErrInvalidEvent {
 	return &ErrInvalidEvent{
 		ErrInvalidPayload: ErrInvalidPayload{
-			FullJSON: json,
+			JSONValue: v.String(),
 		},
 		Event: event,
 	}
@@ -85,10 +103,10 @@ type ErrUnmarshallingFail struct {
 	Underlying error
 }
 
-func errUnmarshallingFail(json []byte, key string, err error) *ErrUnmarshallingFail {
+func errUnmarshallingFail(v *fastjson.Value, key string, err error) *ErrUnmarshallingFail {
 	return &ErrUnmarshallingFail{
 		ErrInvalidPayload: ErrInvalidPayload{
-			FullJSON: json,
+			JSONValue: v.String(),
 		},
 		Key:        key,
 		Underlying: err,

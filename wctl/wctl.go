@@ -23,6 +23,7 @@ package wctl
 import (
 	"encoding/base64"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -67,6 +68,38 @@ type Client struct {
 
 	edwards25519.PrivateKey
 	edwards25519.PublicKey
+
+	// TODO: metrics, stake, consensus, network
+
+	// These callbacks are only called when the function that calls them is
+	// started. The function's name is written above each block.
+	// These functions would also return a callback to stop polling.
+
+	// Websocket callbacks
+	OnError
+
+	OnBalanceUpdated
+	OnNumPagesUpdated
+	OnStakeUpdated
+	OnRewardUpdated
+
+	OnPeerJoin
+	OnPeerLeave
+
+	OnRoundEnd
+	OnPrune
+
+	OnStake
+
+	OnContractGas
+	OnContractLog
+
+	// PollTransactions
+	OnTxApplied
+	OnTxGossipError
+	OnTxFailed
+
+	OnMetrics
 }
 
 func NewClient(config Config) (*Client, error) {
@@ -74,14 +107,23 @@ func NewClient(config Config) (*Client, error) {
 		config.Timeout = 5 * time.Second
 	}
 
-	return &Client{
+	c := &Client{
 		Config:     config,
 		PrivateKey: config.PrivateKey,
 		PublicKey:  config.PrivateKey.Public(),
 		stdClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
-	}, nil
+		OnError: func(err error) {
+			log.Println("WCTL_ERR:", err)
+		},
+	}
+
+	if config.PollTransactions {
+
+	}
+
+	return c, nil
 }
 
 /*

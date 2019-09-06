@@ -145,8 +145,8 @@ type (
 		CreatorID [32]byte  `json:"creator_id"`
 		Depth     uint64    `json:"depth"`
 		Tag       byte      `json:"tag"`
-		Error     time.Time `json:"error"`
-		Time      string    `json:"time"`
+		Error     string    `json:"error"`
+		Time      time.Time `json:"time"`
 	}
 	OnTxFailed = func(TxFailed)
 )
