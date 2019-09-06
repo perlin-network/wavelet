@@ -84,7 +84,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?sender=1",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "sender ID must be presented as valid hex: encoding/hex: odd length hex string",
 			},
 		},
@@ -93,7 +93,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?sender=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "sender ID must be 32 bytes long",
 			},
 		},
@@ -102,7 +102,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?creator=1",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "creator ID must be presented as valid hex: encoding/hex: odd length hex string",
 			},
 		},
@@ -111,7 +111,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?creator=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "creator ID must be 32 bytes long",
 			},
 		},
@@ -120,7 +120,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?creator=1",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "creator ID must be presented as valid hex: encoding/hex: odd length hex string",
 			},
 		},
@@ -208,7 +208,7 @@ func TestGetTransaction(t *testing.T) {
 			id:       "1c331c1d",
 			wantCode: http.StatusBadRequest,
 			wantResponse: &testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  fmt.Sprintf("transaction ID must be %d bytes long", wavelet.SizeTransactionID),
 			},
 		},
@@ -470,7 +470,7 @@ func TestGetContractCode(t *testing.T) {
 			url:      "/contract/" + "3132333435363738393031323334353637383930313233343536373839303132",
 			wantCode: http.StatusNotFound,
 			wantError: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Not Found",
 				ErrorText:  fmt.Sprintf("could not find contract with ID %s", "3132333435363738393031323334353637383930313233343536373839303132"),
 			},
 		},
@@ -518,7 +518,7 @@ func TestGetContractPages(t *testing.T) {
 			url:      "/contract/" + id + "/page/-1",
 			wantCode: http.StatusBadRequest,
 			wantError: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "could not parse page index",
 			},
 		},
@@ -527,7 +527,7 @@ func TestGetContractPages(t *testing.T) {
 			url:      "/contract/3132333435363738393031323334353637383930313233343536373839303132/page/1",
 			wantCode: http.StatusNotFound,
 			wantError: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Not Found",
 				ErrorText:  fmt.Sprintf("could not find any pages for contract with ID %s", "3132333435363738393031323334353637383930313233343536373839303132"),
 			},
 		},
