@@ -364,7 +364,7 @@ type errResponse struct {
 func (e *errResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 
-	o.Set("status", arena.NewString("Bad request."))
+	o.Set("status", arena.NewString(http.StatusText(e.HTTPStatusCode)))
 
 	if e.Err != nil {
 		o.Set("error", arena.NewString(e.Err.Error()))

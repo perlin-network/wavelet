@@ -22,6 +22,7 @@ package wavelet
 import (
 	"bytes"
 	"fmt"
+	"github.com/perlin-network/wavelet/conf"
 	"math/rand"
 	"testing"
 
@@ -352,7 +353,7 @@ func TestGraphUpdateRoot(t *testing.T) {
 	// Assert that updating the root removes missing transactions and
 	// their children below a certain depth.
 
-	depthLimit := graph.height - 1 - sys.MaxDepthDiff
+	depthLimit := graph.height - 1 - conf.GetMaxDepthDiff()
 
 	for depth := depthLimit - 30; depth < depthLimit+30; depth++ {
 		var id TransactionID
@@ -372,7 +373,7 @@ func TestGraphUpdateRoot(t *testing.T) {
 	assert.Len(t, graph.children, numChildren)
 
 	// Create a transaction that is at an ineligible depth exceeding DEPTH_DIFF.
-	tx = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.depthIndex[(graph.height-1)-(sys.MaxDepthDiff+2)][0])
+	tx = AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.depthIndex[(graph.height-1)-(conf.GetMaxDepthDiff()+2)][0])
 
 	// An error should occur.
 	assert.Error(t, graph.AddTransaction(tx))
@@ -421,7 +422,7 @@ func TestGraphUpdateRootDepth(t *testing.T) {
 	assert.Equal(t, num, len(graph.incomplete))
 
 	// ensure updating root will delete missing transactions after some threshold and complete it's descendants
-	graph.UpdateRootDepth(missingParent.Depth + sys.MaxDepthDiff + 1)
+	graph.UpdateRootDepth(missingParent.Depth + conf.GetMaxDepthDiff() + 1)
 
 	assert.Equal(t, num+1, len(graph.transactions))
 	assert.Equal(t, 0, len(graph.missing))
@@ -454,7 +455,7 @@ func TestGraphValidateTransactionParents(t *testing.T) {
 		}
 	}
 
-	tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.depthIndex[(graph.height-1)-(sys.MaxDepthDiff+2)][0])
+	tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.depthIndex[(graph.height-1)-(conf.GetMaxDepthDiff()+2)][0])
 	assert.NoError(t, graph.validateTransactionParents(&tx))
 
 	assert.Equal(t, len(tx.ParentIDs), len(tx.ParentSeeds))
@@ -464,7 +465,7 @@ func TestGraphValidateTransactionParents(t *testing.T) {
 	assert.Error(t, graph.validateTransactionParents(&tx))
 	tx.ParentSeeds[0] = parentSeed
 
-	tx.Depth += sys.MaxDepthDiff
+	tx.Depth += conf.GetMaxDepthDiff()
 	assert.True(t, errors.Cause(graph.validateTransactionParents(&tx)) == ErrDepthLimitExceeded)
 
 	tx.Depth--
