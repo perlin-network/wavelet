@@ -21,26 +21,17 @@ package wavelet
 
 import (
 	"fmt"
+	"github.com/perlin-network/wavelet/conf"
 	"sync"
 )
 
 type SnowballOption func(*Snowball)
-
-func WithBeta(beta int) SnowballOption {
-	return func(snowball *Snowball) {
-		snowball.beta = beta
-	}
-}
 
 func WithName(name string) SnowballOption {
 	return func(snowball *Snowball) {
 		snowball.name = name
 	}
 }
-
-const (
-	SnowballDefaultBeta = 150
-)
 
 type Identifiable interface {
 	GetID() string
@@ -61,7 +52,6 @@ type Snowball struct {
 
 func NewSnowball(opts ...SnowballOption) *Snowball {
 	s := &Snowball{
-		beta:       SnowballDefaultBeta,
 		candidates: make(map[string]Identifiable),
 		counts:     make(map[string]int),
 		name:       "default",
@@ -125,7 +115,7 @@ func (s *Snowball) Tick(v Identifiable) {
 	} else {
 		s.count++
 
-		if s.count > s.beta {
+		if s.count > conf.GetSnowballBeta() {
 			s.decided = true
 		}
 	}

@@ -170,7 +170,7 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				//frame := vm.GetCurrentFrame()
 				//dataPtr := int(uint32(frame.Locals[0]))
 				//dataLen := int(uint32(frame.Locals[1]))
-
+				//
 				//logger := log.Contracts("log")
 				//logger.Debug().
 				//	Hex("contract_id", e.ID[:]).
