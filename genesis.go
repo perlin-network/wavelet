@@ -478,8 +478,6 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 	}
 
 	type account struct {
-		id AccountID
-
 		balance *uint64
 		stake   *uint64
 		reward  *uint64
@@ -491,8 +489,7 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 	var filePerm os.FileMode = 0644
 
 	var err error
-	hasIterated := make(map[AccountID]struct{})
-	accounts := make([]*account, 0, ReadAccountsLen(tree))
+	accounts := make(map[AccountID]*account)
 
 	tree.IteratePrefix(keyAccounts[:], func(key, value []byte) {
 		var prefix [1]byte
@@ -509,45 +506,19 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 		var id AccountID
 		copy(id[:], key[2:])
 
-		if _, exist := hasIterated[id]; exist {
+		if _, exist := accounts[id]; exist {
 			return
 		}
-		hasIterated[id] = struct{}{}
+		_, isContract := ReadAccountContractCode(tree, id)
+
 		acc := &account{
-			id: id,
+			isContract: isContract,
 		}
+		accounts[id] = acc
 
-		if _, isContract := ReadAccountContractCode(tree, id); isContract {
-			if !isDumpContract {
-				return
-			}
-
-			acc.isContract = true
-			accounts = append(accounts, acc)
-
-			if gasBalance, exist := ReadAccountContractGasBalance(tree, id); exist {
-				acc.gasBalance = &gasBalance
-			}
-
-			var folder = dir
-
-			if useContractFolder {
-				folder = filepath.Join(dir, fmt.Sprintf("%x", id))
-
-				// Make sure the folder exists
-				if err := os.MkdirAll(folder, 0700); err != nil {
-					err = errors.Wrapf(err, "failed to create directory %s", dir)
-					return
-				}
-			}
-
-			err = dumpContract(tree, id, folder)
-
+		if !isDumpContract && acc.isContract {
 			return
 		}
-
-		acc.isContract = false
-		accounts = append(accounts, acc)
 
 		if balance, exist := ReadAccountBalance(tree, id); exist {
 			acc.balance = &balance
@@ -560,42 +531,61 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 		if reward, exist := ReadAccountReward(tree, id); exist {
 			acc.reward = &reward
 		}
+
+		if gasBalance, exist := ReadAccountContractGasBalance(tree, id); exist {
+			acc.gasBalance = &gasBalance
+		}
+
+		var folder = dir
+
+		if useContractFolder {
+			folder = filepath.Join(dir, fmt.Sprintf("%x", id))
+
+			// Make sure the folder exists
+			if err := os.MkdirAll(folder, 0700); err != nil {
+				err = errors.Wrapf(err, "failed to create directory %s", dir)
+				return
+			}
+		}
+
+		err = dumpContract(tree, id, folder)
 	})
 
 	if err != nil {
 		return err
 	}
 
-	// Write accounts into files.
-
 	arena := &fastjson.Arena{}
 	data := make([]byte, 0, 512)
 
-	for _, v := range accounts {
+	for id, v := range accounts {
+		if !isDumpContract && v.isContract {
+			continue
+		}
+
 		o := arena.NewObject()
 
 		if v.isContract {
 			o.Set("is_contract", arena.NewTrue())
-
-			if v.gasBalance != nil {
-				o.Set("gas_balance", arena.NewNumberString(strconv.FormatUint(*v.gasBalance, 10)))
-			}
 		} else {
 			o.Set("is_contract", arena.NewFalse())
+		}
 
-			if v.balance != nil {
-				o.Set("balance", arena.NewNumberString(strconv.FormatUint(*v.balance, 10)))
-			}
-			if v.stake != nil {
-				o.Set("stake", arena.NewNumberString(strconv.FormatUint(*v.stake, 10)))
-			}
-			if v.reward != nil {
-				o.Set("reward", arena.NewNumberString(strconv.FormatUint(*v.reward, 10)))
-			}
+		if v.gasBalance != nil {
+			o.Set("gas_balance", arena.NewNumberString(strconv.FormatUint(*v.gasBalance, 10)))
+		}
+		if v.balance != nil {
+			o.Set("balance", arena.NewNumberString(strconv.FormatUint(*v.balance, 10)))
+		}
+		if v.stake != nil {
+			o.Set("stake", arena.NewNumberString(strconv.FormatUint(*v.stake, 10)))
+		}
+		if v.reward != nil {
+			o.Set("reward", arena.NewNumberString(strconv.FormatUint(*v.reward, 10)))
 		}
 
 		data = o.MarshalTo(data[:])
-		filename := fmt.Sprintf("%x.json", v.id)
+		filename := fmt.Sprintf("%x.json", id)
 
 		err := ioutil.WriteFile(filepath.Join(dir, filename), data, filePerm)
 		if err != nil {
