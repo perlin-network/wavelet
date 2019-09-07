@@ -29,8 +29,8 @@ docker_aws:
 
 docker_hub:
 	docker build -t wavelet .
-	docker tag wavelet:latest repo.treescale.com/perlin/wavelet
-	docker push repo.treescale.com/perlin/wavelet
+	docker tag wavelet:latest perlin/wavelet
+	docker push perlin/wavelet
 
 clean:
 	rm -rf $(BINOUT)

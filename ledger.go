@@ -185,7 +185,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		syncVotes: make(chan vote, sys.SnowballK),
 
 		cacheCollapse: lru.NewLRU(16),
-		cacheChunks:   lru.NewLRU(1024), // In total, it will take up 1024 * 4MB.
+		cacheChunks:   lru.NewLRU(2048), // In total, it will take up 1024 * 4MB.
 
 		sendQuota: make(chan struct{}, 2000),
 	}
