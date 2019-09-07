@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/perlin-network/noise/edwards25519"
+	"github.com/valyala/fastjson"
 )
 
 const (
@@ -68,6 +69,8 @@ type Client struct {
 
 	edwards25519.PrivateKey
 	edwards25519.PublicKey
+
+	jsonPool fastjson.ParserPool
 
 	// TODO: metrics, stake, consensus, network
 
@@ -117,10 +120,6 @@ func NewClient(config Config) (*Client, error) {
 		OnError: func(err error) {
 			log.Println("WCTL_ERR:", err)
 		},
-	}
-
-	if config.PollTransactions {
-
 	}
 
 	return c, nil

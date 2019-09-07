@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/valyala/fasthttp"
@@ -86,11 +87,12 @@ func jsonHex(v *fastjson.Value, dst []byte, keys ...string) error {
 
 	i, err := hex.Decode(dst, v.GetStringBytes(keys...))
 	if err != nil {
-		return err
+		return errUnmarshallingFail(v, strings.Join(keys, "."), err)
 	}
 
 	if i != len(dst) {
-		return ErrInvalidHexLength
+		return errUnmarshallingFail(v, strings.Join(keys, "."),
+			ErrInvalidHexLength)
 	}
 
 	return nil
@@ -99,7 +101,7 @@ func jsonHex(v *fastjson.Value, dst []byte, keys ...string) error {
 func jsonTime(v *fastjson.Value, t *time.Time, keys ...string) error {
 	Time, err := time.Parse(time.RFC3339, string(v.GetStringBytes(keys...)))
 	if err != nil {
-		return err
+		return errUnmarshallingFail(v, strings.Join(keys, "."), err)
 	}
 
 	*t = Time

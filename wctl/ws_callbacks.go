@@ -105,8 +105,8 @@ type (
 	ContractGas struct {
 		SenderID   [32]byte  `json:"sender_id"`
 		ContractID [32]byte  `json:"contract_id"`
-		Gas        int       `json:"gas"`
-		GasLimit   int64     `json:"gas_limit"`
+		Gas        uint64    `json:"gas"`
+		GasLimit   uint64    `json:"gas_limit"`
 		Time       time.Time `json:"time"`
 		Message    string    `json:"message"`
 	}

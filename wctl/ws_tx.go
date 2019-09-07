@@ -7,20 +7,14 @@ import (
 // PollTransactions calls the callback for each WS event received. On error, the
 // callback may be called twice.
 func (c *Client) PollTransactions() (func(), error) {
-	return c.pollWS(RouteWSTransactions, func(b []byte) {
-		var parser fastjson.Parser
-		v, err := parser.ParseBytes(b)
-		if err != nil {
-			c.OnError(err)
-			return
-		}
-
-		if string(v.GetStringBytes("mod")) != "tx" {
-			c.OnError(errMismatchMod(v, "tx"))
-		}
+	return c.pollWS(RouteWSTransactions, func(v *fastjson.Value) {
+		var err error
 
 		for _, o := range v.GetArray() {
-			var err error
+			if err := checkMod(o, "tx"); err != nil {
+				c.OnError(err)
+				continue
+			}
 
 			switch ev := jsonString(o, "event"); {
 			case ev == "applied":
@@ -29,6 +23,8 @@ func (c *Client) PollTransactions() (func(), error) {
 				err = parseTxGossipError(c, o)
 			case ev == "failed":
 				err = parseTxFailed(c, o)
+			default:
+				err = errInvalidEvent(o, ev)
 			}
 
 			if err != nil {
@@ -44,22 +40,22 @@ func parseTxApplied(c *Client, v *fastjson.Value) error {
 	var t TxApplied
 
 	if err := jsonHex(v, t.TxID[:], "tx_id"); err != nil {
-		return errUnmarshallingFail(v, "tx_id", err)
+		return err
 	}
 
 	if err := jsonHex(v, t.SenderID[:], "sender_id"); err != nil {
-		return errUnmarshallingFail(v, "sender_id", err)
+		return err
 	}
 
 	if err := jsonHex(v, t.CreatorID[:], "creator_id"); err != nil {
-		return errUnmarshallingFail(v, "creator_id", err)
+		return err
 	}
 
 	t.Depth = v.GetUint64("depth")
 	t.Tag = byte(v.GetUint("tag"))
 
 	if err := jsonTime(v, &t.Time, "time"); err != nil {
-		return errUnmarshallingFail(v, "time", err)
+		return err
 	}
 
 	c.OnTxApplied(t)
@@ -71,7 +67,7 @@ func parseTxGossipError(c *Client, v *fastjson.Value) error {
 	var t TxGossipError
 
 	if err := jsonTime(v, &t.Time, "time"); err != nil {
-		return errUnmarshallingFail(v, "time", err)
+		return err
 	}
 
 	t.Error = jsonString(v, "error")
@@ -86,15 +82,15 @@ func parseTxFailed(c *Client, v *fastjson.Value) error {
 	var t TxFailed
 
 	if err := jsonHex(v, t.TxID[:], "tx_id"); err != nil {
-		return errUnmarshallingFail(v, "tx_id", err)
+		return err
 	}
 
 	if err := jsonHex(v, t.SenderID[:], "sender_id"); err != nil {
-		return errUnmarshallingFail(v, "sender_id", err)
+		return err
 	}
 
 	if err := jsonHex(v, t.CreatorID[:], "creator_id"); err != nil {
-		return errUnmarshallingFail(v, "creator_id", err)
+		return err
 	}
 
 	t.Depth = v.GetUint64("depth")
@@ -102,7 +98,7 @@ func parseTxFailed(c *Client, v *fastjson.Value) error {
 	t.Error = jsonString(v, "error")
 
 	if err := jsonTime(v, &t.Time, "time"); err != nil {
-		return errUnmarshallingFail(v, "time", err)
+		return err
 	}
 
 	c.OnTxFailed(t)

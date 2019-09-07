@@ -31,7 +31,7 @@ func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 }
 
 // callback is spawned in a goroutine
-func (c *Client) pollWS(path string, callback func([]byte)) (func(), error) {
+func (c *Client) pollWS(path string, callback func(*fastjson.Value)) (func(), error) {
 	ws, err := c.EstablishWS(path)
 	if err != nil {
 		return nil, err
@@ -44,7 +44,19 @@ func (c *Client) pollWS(path string, callback func([]byte)) (func(), error) {
 				return
 			}
 
-			go callback(message)
+			go func(message []byte) {
+				p := c.jsonPool.Get()
+
+				o, err := p.ParseBytes(message)
+				if err != nil {
+					c.OnError(err)
+					return
+				}
+
+				callback(o)
+
+				c.jsonPool.Put(p)
+			}(message)
 		}
 	}()
 
@@ -62,6 +74,14 @@ type ErrMismatchMod struct {
 	ErrInvalidPayload
 	WantedMod string
 	GotMod    string
+}
+
+func checkMod(v *fastjson.Value, mod string) error {
+	if string(v.GetStringBytes("mod")) != mod {
+		return errMismatchMod(v, mod)
+	}
+
+	return nil
 }
 
 func errMismatchMod(v *fastjson.Value, wantedMod string) *ErrMismatchMod {
