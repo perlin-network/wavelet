@@ -20,7 +20,6 @@ func getGenesisTestNetwork(t testing.TB) (testnet *TestNetwork, alice *TestLedge
 	testnet = NewTestNetwork(t)
 
 	cleanup = func() {
-		os.RemoveAll(testDumpDir)
 		testnet.Cleanup()
 	}
 
@@ -54,13 +53,20 @@ func getGenesisTestNetwork(t testing.TB) (testnet *TestNetwork, alice *TestLedge
 	_, err = bob.PlaceStake(100)
 	assert.True(t, <-bob.WaitForConsensus())
 
-	for i := 0; i < 10; i++ {
-		_, err := alice.SpawnContract("testdata/transfer_back.wasm", 10000, nil)
+	for i := 0; i < 5; i++ {
+		tx, err := alice.SpawnContract("testdata/transfer_back.wasm", 10000, nil)
 		if !assert.NoError(t, err) {
 			return nil, nil, cleanup
 		}
+		assert.True(t, <-alice.WaitForConsensus())
+
+		tx, err = alice.DepositGas(tx.ID, (uint64(i)+1)*100)
+		if !assert.NoError(t, err) {
+			return nil, nil, cleanup
+		}
+		assert.True(t, <-alice.WaitForConsensus())
+
 	}
-	assert.True(t, <-alice.WaitForConsensus())
 
 	return testnet, alice, cleanup
 }
@@ -68,9 +74,10 @@ func getGenesisTestNetwork(t testing.TB) (testnet *TestNetwork, alice *TestLedge
 func TestDumpIncludingContract(t *testing.T) {
 	testnet, target, cleanup := getGenesisTestNetwork(t)
 	defer cleanup()
-	if testnet == nil {
+	if testnet == nil || target == nil {
 		assert.FailNow(t, "failed to get test network.")
 	}
+	defer os.RemoveAll(testDumpDir)
 
 	// Delete the dir in case it already exists
 	assert.NoError(t, os.RemoveAll(testDumpDir))
@@ -78,21 +85,7 @@ func TestDumpIncludingContract(t *testing.T) {
 	expected := target.ledger.Snapshot()
 	assert.NoError(t, Dump(expected, testDumpDir, true, false))
 
-	actual := avl.New(store.NewInmem())
-	_ = performInception(actual, &testDumpDir)
-
-	compareTree(t, expected, actual, true)
-
-	checkRestoredDefaults(t, actual)
-
-	// Repeatedly restore the dump and check it's checksum to make sure there's no randomness in the order of the restoration.
-	var checksum = actual.Checksum()
-	for i := 0; i < 100; i++ {
-		tree := avl.New(store.NewInmem())
-		_ = performInception(tree, &testDumpDir)
-
-		assert.Equal(t, checksum, tree.Checksum())
-	}
+	testDump(t, testDumpDir, expected, true)
 }
 
 func TestDumpWithoutContract(t *testing.T) {
@@ -101,6 +94,7 @@ func TestDumpWithoutContract(t *testing.T) {
 	if testnet == nil || target == nil {
 		assert.FailNow(t, "failed setup test network.")
 	}
+	defer os.RemoveAll(testDumpDir)
 
 	// Delete the dir in case it already exists
 	assert.NoError(t, os.RemoveAll(testDumpDir))
@@ -108,10 +102,18 @@ func TestDumpWithoutContract(t *testing.T) {
 	expected := target.ledger.Snapshot()
 	assert.NoError(t, Dump(expected, testDumpDir, false, false))
 
-	actual := avl.New(store.NewInmem())
-	_ = performInception(actual, &testDumpDir)
+	testDump(t, testDumpDir, expected, false)
+}
 
-	compareTree(t, expected, actual, false)
+// Restore the dump into a tree and compare the tree against the provided expected tree.
+func testDump(t *testing.T, dumpDir string, expected *avl.Tree, checkContract bool) {
+	actual := avl.New(store.NewInmem())
+	_ = performInception(actual, &dumpDir)
+
+	// Compare the expected tree against actual tree
+	compareTree(t, expected, actual, checkContract)
+	// Reverse compare, to check actual tree for keys/values that don't exist in the expected tree.
+	compareTree(t, actual, expected, checkContract)
 
 	checkRestoredDefaults(t, actual)
 
@@ -126,57 +128,55 @@ func TestDumpWithoutContract(t *testing.T) {
 }
 
 func compareTree(t *testing.T, expected *avl.Tree, actual *avl.Tree, checkContract bool) {
-	f := func(tree1 *avl.Tree, tree2 *avl.Tree, tag string) {
-		tree1.Iterate(func(key, value []byte) {
-			// Not all keys are dumped and restored.
-			// So, we indicate if the key should be checked.
-			var check = false
+	expected.Iterate(func(key, value []byte) {
+		var globalPrefix [1]byte
+		copy(globalPrefix[:], key[:])
 
-			var globalPrefix [1]byte
-			copy(globalPrefix[:], key[:])
+		if globalPrefix != keyAccounts {
+			return
+		}
 
-			if globalPrefix == keyAccounts {
-				var accountPrefix [1]byte
-				copy(accountPrefix[:], key[1:])
+		var accountPrefix [1]byte
+		copy(accountPrefix[:], key[1:])
 
-				var id AccountID
-				copy(id[:], key[2:])
+		// Since contract can also have balance, we ignore contract account balance if we don't dump contracts.
+		// This is because, in case of we don't contracts, the restored tree does not contain the contract account balance, but the original tree does.
+		if !checkContract && accountPrefix == keyAccountBalance {
+			var id AccountID
+			copy(id[:], key[2:])
 
-				// Explicitly list of the account prefixes that are dumped and restored.
-
-				check = accountPrefix == keyAccountBalance ||
-					accountPrefix == keyAccountStake ||
-					accountPrefix == keyAccountReward
-
-				if checkContract {
-					check = accountPrefix == keyAccountContractCode ||
-						accountPrefix == keyAccountContractNumPages ||
-						accountPrefix == keyAccountContractPages ||
-						accountPrefix == keyAccountContractGasBalance ||
-						accountPrefix == keyAccountContractGlobals
-				}
-			}
-
-			if !check {
+			if _, isContract := ReadAccountContractCode(expected, id); isContract {
 				return
 			}
+		}
 
-			val, exist := tree2.Lookup(key)
-			if !exist {
-				t.Errorf("%skey %x, missing value", tag, key)
-			}
+		var cond1, cond2 bool
 
-			if !bytes.Equal(value, val) {
-				t.Errorf("%skey %x, expected: %x, actual: %x", tag, key, value, val)
-			}
-		})
-	}
+		cond1 = accountPrefix == keyAccountBalance ||
+			accountPrefix == keyAccountStake ||
+			accountPrefix == keyAccountReward
 
-	// Compare the expected tree against actual tree
-	f(expected, actual, "")
+		if checkContract {
+			cond2 = accountPrefix == keyAccountContractCode ||
+				accountPrefix == keyAccountContractNumPages ||
+				accountPrefix == keyAccountContractPages ||
+				accountPrefix == keyAccountContractGasBalance ||
+				accountPrefix == keyAccountContractGlobals
+		}
 
-	// Reverse
-	f(actual, expected, "[reverse] ")
+		if !(cond1 || cond2) {
+			return
+		}
+
+		val, exist := actual.Lookup(key)
+		if !exist {
+			assert.Failf(t, "missing value", "key %x", key)
+		}
+
+		if !bytes.Equal(value, val) {
+			assert.Failf(t, "value mismatch", "key %x, expected: %x, actual: %x", key, value, val)
+		}
+	})
 }
 
 func TestPerformInception(t *testing.T) {
@@ -206,32 +206,67 @@ func TestPerformInception(t *testing.T) {
 	}
 
 	checkAccount(t, tree, id("400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"),
-		uint64p(9999999999999997557), uint64p(5000000), nil)
+		uint64p(9999999979999996632), uint64p(5000000), nil)
 
 	checkAccount(t, tree, id("696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a"),
-		uint64p(10000000000000000100), nil, nil)
+		uint64p(10000000000000000000), nil, nil)
 
 	checkAccount(t, tree, id("f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467"),
 		uint64p(10000000000000000000), nil, nil)
 
-	contractID := id("ca0e12024ed83dfd66fb48648d3853c68a31259b2df720dc709fb046e5de2b6e")
+	checkAccount(t, tree, id("d1798fa00253482cd66e9c45009db573650664604f38f2cc232fe4ddc08e2a19"),
+		uint64p(9999964893), nil, uint64p(100))
 
+	checkAccount(t, tree, id("b71038be4f2e09a5199bfb6fb99c1fca663997db851cb88fb5f5a2340790da2c"),
+		uint64p(9999999572), nil, uint64p(100))
+
+	var contractID TransactionID
+
+	contractID = id("294b4ee8614d4a2c914154b2f112e2c8d899ffcf2a890202d2cbc224db87c64e")
 	checkContract(t, tree, contractID,
-		filepath.Join(testRestoreDir, fmt.Sprintf("%x.wasm", contractID)),
-		18, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16},
+		filepath.Join(testRestoreDir, fmt.Sprintf("%x.wasm", contractID)), 100,
+		18, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16, 17},
 	)
 
-	assert.Equal(t, uint64(3), ReadAccountsLen(tree))
+	contractID = id("4cd1808ad6c62dc96fc22c21dc9ba97a149642651b76a65c5a1ad789b5fb7d0a")
+	checkContract(t, tree, contractID,
+		filepath.Join(testRestoreDir, fmt.Sprintf("%x.wasm", contractID)), 300,
+		18, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16, 17},
+	)
+
+	contractID = id("b11581647113dc928c02cb148ff8a4030b7c3468fc1d27f4b4ea89c9caec300d")
+	checkContract(t, tree, contractID,
+		filepath.Join(testRestoreDir, fmt.Sprintf("%x.wasm", contractID)), 500,
+		18, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16, 17},
+	)
+
+	contractID = id("c1ae186b7a079dfb6a7db8ffdae487a39dbcd11e8d5da8dfeb7208a2e463a111")
+	checkContract(t, tree, contractID,
+		filepath.Join(testRestoreDir, fmt.Sprintf("%x.wasm", contractID)), 400,
+		18, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16, 17},
+	)
+
+	contractID = id("c8f1bbfb4ed2952adea735e95327e144e5660b9de066110996ae1db34206a36f")
+	checkContract(t, tree, contractID,
+		filepath.Join(testRestoreDir, fmt.Sprintf("%x.wasm", contractID)), 200,
+		18, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16, 17},
+	)
+
+	assert.Equal(t, uint64(5), ReadAccountsLen(tree))
 
 	checkRestoredDefaults(t, tree)
 }
 
 // Check the expected values of a contract against the contract's values in the tree.
 // Also, compare the contract's code in the tree against the actual contract code file.
-func checkContract(t *testing.T, tree *avl.Tree, id TransactionID, codeFilePath string, expectedPageNum uint64, expectedEmptyMemPages []int, expectedNotEmptyMemPages []int) {
+func checkContract(t *testing.T, tree *avl.Tree, id TransactionID, codeFilePath string, expectedGasBalance uint64, expectedPageNum uint64, expectedEmptyMemPages []int, expectedNotEmptyMemPages []int) {
 	code, exist := ReadAccountContractCode(tree, id)
 	assert.True(t, exist, "contract ID: %x", id)
 	assert.NotEmpty(t, code, "contract ID: %x", id)
+
+	gasBalance, exist := ReadAccountContractGasBalance(tree, id)
+	assert.True(t, exist, "contract ID: %x", id)
+	assert.Equal(t, expectedGasBalance, gasBalance, "contract ID: %x", id)
 
 	expectedCode, err := ioutil.ReadFile(codeFilePath)
 	assert.NoError(t, err)
@@ -331,6 +366,7 @@ func BenchmarkDump(b *testing.B) {
 	if testnet == nil || target == nil {
 		assert.FailNow(b, "failed setup test network.")
 	}
+	defer os.RemoveAll(testDumpDir)
 
 	b.ResetTimer()
 	b.ReportAllocs()
