@@ -52,16 +52,17 @@ import (
 )
 
 type Config struct {
-	NAT         bool
-	Host        string
-	Port        uint
-	Wallet      string
-	Genesis     *string
-	APIPort     uint
-	APIHost     *string
-	Peers       []string
-	Database    string
-	MaxMemoryMB uint64
+	NAT           bool
+	Host          string
+	Port          uint
+	Wallet        string
+	Genesis       *string
+	APIPort       uint
+	APIHost       *string
+	APICertsCache *string
+	Peers         []string
+	Database      string
+	MaxMemoryMB   uint64
 
 	// Only for testing
 	WithoutGC bool
@@ -121,6 +122,11 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Name:   "api.host",
 			Usage:  "Host for the API HTTPS server.",
 			EnvVar: "WAVELET_API_HOST",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "api.certs",
+			Usage:  "Directory path to cache HTTPS certificates.",
+			EnvVar: "WAVELET_CERTS_CACHE_DIR",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "wallet",
@@ -233,6 +239,12 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 
 		if apiHost := c.String("api.host"); len(apiHost) > 0 {
 			config.APIHost = &apiHost
+
+			if certsCache := c.String("api.certs"); len(certsCache) > 0 {
+				config.APICertsCache = &certsCache
+			} else {
+				return errors.New("missing api.certs flag")
+			}
 		}
 
 		// set the the sys variables
@@ -379,7 +391,7 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	}
 
 	if cfg.APIHost != nil {
-		go api.New().StartHTTPS(int(cfg.APIPort), client, ledger, keys, *cfg.APIHost, "certs")
+		go api.New().StartHTTPS(int(cfg.APIPort), client, ledger, keys, *cfg.APIHost, *cfg.APICertsCache)
 	} else {
 		if cfg.APIPort > 0 {
 			go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
