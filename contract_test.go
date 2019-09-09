@@ -59,7 +59,7 @@ func BenchmarkContractInGraph(b *testing.B) {
 			err = accountState.Commit(results.snapshot)
 			assert.NoError(b, err)
 			state = results.snapshot
-			round = NewRound(viewID+1, state.Checksum(), uint64(results.appliedCount), round.End, tx)
+			round = NewRound(viewID+1, state.Checksum(), uint32(results.appliedCount+results.rejectedCount), round.End, tx)
 			viewID += 1
 			criticalCount += 1
 		}

@@ -1,11 +1,11 @@
 package wavelet
 
 import (
+	"github.com/perlin-network/wavelet/conf"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -311,7 +311,7 @@ func TestLedger_Sync(t *testing.T) {
 	testnet.WaitForSync(t)
 
 	// Advance the network by a few rounds larger than sys.SyncIfRoundsDifferBy
-	for i := 0; i < int(sys.SyncIfRoundsDifferBy)+5; i++ {
+	for i := 0; i < int(conf.GetSyncIfRoundsDifferBy())+5; i++ {
 		<-alice.WaitForSync()
 		_, err := alice.PlaceStake(10)
 		if err != nil {
