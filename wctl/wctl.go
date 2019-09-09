@@ -45,6 +45,7 @@ const (
 	RouteWSContracts    = "/poll/contract"
 	RouteWSTransactions = "/poll/tx"
 	RouteWSMetrics      = "/poll/metrics"
+	RouteWSNetwork      = "/poll/network"
 
 	ReqPost = "POST"
 	ReqGet  = "GET"

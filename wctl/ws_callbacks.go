@@ -42,7 +42,7 @@ type (
 type (
 	PeerUpdate struct {
 		AccountID [32]byte  `json:"public_key"`
-		Address   string    `json:"string"` // IP:port
+		Address   string    `json:"address"` // IP:port
 		Time      time.Time `json:"time"`
 		Message   string    `json:"message"`
 	}
