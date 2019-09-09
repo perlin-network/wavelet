@@ -130,8 +130,6 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				payloadPtr := int(uint32(frame.Locals[1]))
 				payloadLen := int(uint32(frame.Locals[2]))
 
-				fmt.Println("send transaction called!")
-
 				payloadRef := vm.Memory[payloadPtr : payloadPtr+payloadLen]
 				payload := make([]byte, len(payloadRef))
 				copy(payload, payloadRef)
@@ -172,7 +170,7 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				//frame := vm.GetCurrentFrame()
 				//dataPtr := int(uint32(frame.Locals[0]))
 				//dataLen := int(uint32(frame.Locals[1]))
-
+				//
 				//logger := log.Contracts("log")
 				//logger.Debug().
 				//	Hex("contract_id", e.ID[:]).

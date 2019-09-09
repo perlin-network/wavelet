@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	queue2 "github.com/phf/go-queue/queue"
@@ -93,7 +94,7 @@ func rewardValidators(g *Graph, snapshot *avl.Tree, tx *Transaction, logging boo
 		// If we exceed the max eligible depth we search for candidate
 		// validators to reward from, stop traversing.
 
-		if depthCounter >= sys.MaxDepthDiff {
+		if depthCounter >= conf.GetMaxDepthDiff() {
 			break
 		}
 

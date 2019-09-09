@@ -293,7 +293,7 @@ func (l *TestLedger) WaitForConsensus() <-chan bool {
 	go func() {
 		start := l.ledger.Rounds().Latest()
 		timeout := time.NewTimer(time.Second * 3)
-		ticker := time.NewTicker(time.Millisecond * 10)
+		ticker := time.NewTicker(time.Millisecond * 5)
 
 		for {
 			select {

@@ -219,7 +219,7 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 	r.Set("merkle_root", arena.NewString(hex.EncodeToString(round.Merkle[:])))
 	r.Set("start_id", arena.NewString(hex.EncodeToString(round.Start.ID[:])))
 	r.Set("end_id", arena.NewString(hex.EncodeToString(round.End.ID[:])))
-	r.Set("applied", arena.NewNumberString(strconv.FormatUint(round.Applied, 10)))
+	r.Set("transactions", arena.NewNumberString(strconv.FormatUint(uint64(round.Transactions), 10)))
 	r.Set("depth", arena.NewNumberString(strconv.FormatUint(round.End.Depth-round.Start.Depth, 10)))
 	r.Set("difficulty", arena.NewNumberString(strconv.FormatUint(uint64(round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)), 10)))
 
@@ -364,7 +364,7 @@ type errResponse struct {
 func (e *errResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 
-	o.Set("status", arena.NewString("Bad request."))
+	o.Set("status", arena.NewString(http.StatusText(e.HTTPStatusCode)))
 
 	if e.Err != nil {
 		o.Set("error", arena.NewString(e.Err.Error()))

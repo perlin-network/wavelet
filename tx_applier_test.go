@@ -176,7 +176,7 @@ func TestApplyTransaction_Collapse(t *testing.T) {
 			err = accountState.Commit(results.snapshot)
 			assert.NoError(t, err)
 			state = results.snapshot
-			round = NewRound(viewID+1, state.Checksum(), uint64(results.appliedCount), round.End, tx)
+			round = NewRound(viewID+1, state.Checksum(), uint32(results.appliedCount+results.rejectedCount), round.End, tx)
 			viewID += 1
 
 			for id, account := range accounts {
