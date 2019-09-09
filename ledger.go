@@ -661,7 +661,7 @@ FINALIZE_ROUNDS:
 				continue
 			}
 
-			candidate := NewRound(current.Index+1, results.snapshot.Checksum(), uint64(results.appliedCount), current.End, *eligible)
+			candidate := NewRound(current.Index+1, results.snapshot.Checksum(), uint32(results.appliedCount+results.rejectedCount), current.End, *eligible)
 			l.finalizer.Prefer(&candidate)
 
 			continue FINALIZE_ROUNDS
@@ -761,8 +761,8 @@ FINALIZE_ROUNDS:
 							return
 						}
 
-						if uint64(results.appliedCount) != round.Applied {
-							fmt.Printf("applied %d but expected %d, rejected = %d, ignored = %d\n", results.appliedCount, round.Applied, results.rejectedCount, results.ignoredCount)
+						if uint32(results.appliedCount+results.rejectedCount) != round.Transactions {
+							fmt.Printf("applied %d but expected %d, rejected = %d, ignored = %d\n", results.appliedCount, round.Transactions, results.rejectedCount, results.ignoredCount)
 							return
 						}
 
@@ -828,8 +828,8 @@ FINALIZE_ROUNDS:
 			continue
 		}
 
-		if uint64(results.appliedCount) != preferred.Applied {
-			fmt.Printf("Expected to have applied %d transactions finalizing a round, but only applied %d transactions instead.\n", preferred.Applied, results.appliedCount)
+		if uint32(results.appliedCount+results.rejectedCount) != preferred.Transactions {
+			fmt.Printf("Expected to have applied %d transactions finalizing a round, but only applied %d transactions instead.\n", preferred.Transactions, results.appliedCount)
 			continue
 		}
 
