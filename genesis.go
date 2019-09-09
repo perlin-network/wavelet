@@ -407,9 +407,11 @@ func restoreAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 // Considered success only if all the conditions are true, otherwise returns an error.
 func restoreContractPages(tree *avl.Tree, contracts []TransactionID, contractPageFiles map[TransactionID][]string) error {
 	pool := bytebufferpool.Pool{}
-	var pagesBuf []*bytebufferpool.ByteBuffer
 	for _, id := range contracts {
 		files := contractPageFiles[id]
+
+		WriteAccountContractNumPages(tree, id, uint64(len(files)))
+
 		for i := range files {
 			file := files[i]
 
@@ -434,18 +436,6 @@ func restoreContractPages(tree *avl.Tree, contracts []TransactionID, contractPag
 				return errors.Errorf("contract page file %s has invalid page size %d. must be 0 or %d", file, n, PageSize)
 			}
 
-			pagesBuf = append(pagesBuf, buf)
-		}
-
-		if len(pagesBuf) == 0 {
-			return errors.Errorf("failed to restore contract %x, missing contract pages", id)
-		}
-
-		WriteAccountContractNumPages(tree, id, uint64(len(pagesBuf)))
-
-		// Write the contract pages from buffers
-		for i, buf := range pagesBuf {
-			// If the page is empty, don't restore the page.
 			if buf.Len() == 0 {
 				continue
 			}
@@ -455,8 +445,6 @@ func restoreContractPages(tree *avl.Tree, contracts []TransactionID, contractPag
 
 			pool.Put(buf)
 		}
-
-		pagesBuf = pagesBuf[:0]
 	}
 
 	return nil
