@@ -301,27 +301,6 @@ func start(cfg *Config) {
 		addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol(),
 	))
 
-	client.OnPeerJoin(func(conn *grpc.ClientConn, id *skademlia.ID) {
-		publicKey := id.PublicKey()
-
-		logger := log.Network("joined")
-		logger.Info().
-			Hex("public_key", publicKey[:]).
-			Str("address", id.Address()).
-			Msg("Peer has joined.")
-
-	})
-
-	client.OnPeerLeave(func(conn *grpc.ClientConn, id *skademlia.ID) {
-		publicKey := id.PublicKey()
-
-		logger := log.Network("left")
-		logger.Info().
-			Hex("public_key", publicKey[:]).
-			Str("address", id.Address()).
-			Msg("Peer has left.")
-	})
-
 	kv, err := store.NewLevelDB(cfg.Database)
 	if err != nil {
 		logger.Fatal().Err(err).Msgf("Failed to create/open database located at %q.", cfg.Database)
@@ -373,6 +352,12 @@ func start(cfg *Config) {
 		logger.Fatal().Err(err).
 			Uint("port", cfg.APIPort).
 			Msg("Failed to connect to API")
+	}
+
+	// Set CLI callbacks, mainly loggers
+	if err := setEvents(c); err != nil {
+		logger.Fatal().Err(err).
+			Msg("Failed to start websockets to the server")
 	}
 
 	shell, err := NewCLI(c)
