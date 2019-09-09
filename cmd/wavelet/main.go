@@ -53,15 +53,17 @@ import (
 )
 
 type Config struct {
-	NAT         bool
-	Host        string
-	Port        uint
-	Wallet      string
-	Genesis     *string
-	APIPort     uint
-	Peers       []string
-	Database    string
-	MaxMemoryMB uint64
+	NAT           bool
+	Host          string
+	Port          uint
+	Wallet        string
+	Genesis       *string
+	APIPort       uint
+	APIHost       *string
+	APICertsCache *string
+	Peers         []string
+	Database      string
+	MaxMemoryMB   uint64
 
 	// Only for testing
 	WithoutGC bool
@@ -105,17 +107,27 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Usage:  "Listen for peers on host address.",
 			EnvVar: "WAVELET_NODE_HOST",
 		}),
-		altsrc.NewIntFlag(cli.IntFlag{
+		altsrc.NewUintFlag(cli.UintFlag{
 			Name:   "port",
 			Value:  3000,
 			Usage:  "Listen for peers on port.",
 			EnvVar: "WAVELET_NODE_PORT",
 		}),
-		altsrc.NewIntFlag(cli.IntFlag{
+		altsrc.NewUintFlag(cli.UintFlag{
 			Name:   "api.port",
 			Value:  0,
 			Usage:  "Host a local HTTP API at port.",
 			EnvVar: "WAVELET_API_PORT",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "api.host",
+			Usage:  "Host for the API HTTPS server.",
+			EnvVar: "WAVELET_API_HOST",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "api.certs",
+			Usage:  "Directory path to cache HTTPS certificates.",
+			EnvVar: "WAVELET_CERTS_CACHE_DIR",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "wallet",
@@ -211,7 +223,6 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 	}
 
 	app.Action = func(c *cli.Context) error {
-		c.String("config")
 		config := &Config{
 			Host:        c.String("host"),
 			Port:        c.Uint("port"),
@@ -225,6 +236,16 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 
 		if genesis := c.String("genesis"); len(genesis) > 0 {
 			config.Genesis = &genesis
+		}
+
+		if apiHost := c.String("api.host"); len(apiHost) > 0 {
+			config.APIHost = &apiHost
+
+			if certsCache := c.String("api.certs"); len(certsCache) > 0 {
+				config.APICertsCache = &certsCache
+			} else {
+				return errors.New("missing api.certs flag")
+			}
 		}
 
 		conf.Update(
@@ -373,8 +394,13 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 		logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
 	}
 
-	if cfg.APIPort > 0 {
-		go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
+	if cfg.APIHost != nil {
+		go api.New().StartHTTPS(int(cfg.APIPort), client, ledger, keys, *cfg.APIHost, *cfg.APICertsCache)
+	} else {
+		if cfg.APIPort > 0 {
+			go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
+
+		}
 	}
 
 	shell, err := NewCLI(client, ledger, keys, stdin, stdout)
