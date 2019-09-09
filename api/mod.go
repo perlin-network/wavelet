@@ -35,6 +35,7 @@ import (
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/pprofhandler"
 	"github.com/valyala/fastjson"
+	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
 	"net"
 
@@ -209,7 +210,16 @@ func (g *Gateway) StartHTTPS(httpPort int, c *skademlia.Client, l *wavelet.Ledge
 	if err != nil {
 		logger.Fatal().Err(err).Msgf("Failed to listen to port %d.", 443)
 	}
-	tlsLn := tls.NewListener(inner, certManager.TLSConfig())
+
+	// Copied from autocert.Manager.TLSConfig(), with "h2" removed in NextProtos.
+	tlsConfig := &tls.Config{
+		GetCertificate: certManager.GetCertificate,
+		NextProtos: []string{
+			"http/1.1",
+			acme.ALPNProto,
+		},
+	}
+	tlsLn := tls.NewListener(inner, tlsConfig)
 
 	// Setup normal listener
 	ln, err := net.Listen("tcp4", ":"+strconv.Itoa(httpPort))
