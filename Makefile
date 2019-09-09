@@ -1,5 +1,8 @@
 BINOUT = $(shell pwd)/build
 
+R = localhost:5000
+T = latest
+
 protoc:
 	protoc --gogofaster_out=plugins=grpc:. -I=. rpc.proto
 
@@ -17,20 +20,18 @@ upload:
 	rsync -avz cmd/graph/main root@104.248.44.250:/root
 
 docker:
-	docker build -t wavelet .
-	docker tag wavelet:latest localhost:5000/wavelet
-	docker push localhost:5000/wavelet
+	docker build -t wavelet:$(T) .
+ifneq ($(R),)
+	docker tag wavelet:$(T) $(R)/wavelet:$(T)
+	docker push $(R)/wavelet:$(T)
+endif
 
 docker_aws:
 	$(shell aws ecr get-login --no-include-email)
-	docker build -t wavelet .
-	docker tag wavelet:latest 010313437810.dkr.ecr.us-east-2.amazonaws.com/perlin/wavelet
-	docker push 010313437810.dkr.ecr.us-east-2.amazonaws.com/perlin/wavelet
+	$(MAKE) docker 'R=010313437810.dkr.ecr.us-east-2.amazonaws.com/perlin' 'T=$(T)'
 
 docker_hub:
-	docker build -t wavelet .
-	docker tag wavelet:latest perlin/wavelet
-	docker push perlin/wavelet
+	$(MAKE) docker 'R=perlin' 'T=$(T)'
 
 clean:
 	rm -rf $(BINOUT)
@@ -55,3 +56,5 @@ linux-arm64:
 
 license:
 	addlicense -l mit -c Perlin $(PWD)
+
+.PHONY: protoc-docker test bench upload docker docker_aws docker_hub clean build-all release linux windows darwin linux-arm64 license
