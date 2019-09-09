@@ -184,7 +184,7 @@ func TestPerformInception(t *testing.T) {
 	round := performInception(tree, &testRestoreDir)
 
 	assert.Equal(t, uint64(0), round.Index)
-	assert.Equal(t, uint64(0), round.Applied)
+	assert.Equal(t, uint32(0), round.Transactions)
 	assert.Equal(t, Transaction{}, round.Start)
 
 	tx := Transaction{}
