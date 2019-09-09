@@ -21,6 +21,7 @@ package wavelet
 
 import (
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
 	"sync"
 )
@@ -74,7 +75,7 @@ func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, 
 
 			var majority Identifiable
 			for _, vote := range votes {
-				if counts[vote.value.GetID()]/totalCount >= sys.SnowballAlpha {
+				if counts[vote.value.GetID()]/totalCount >= conf.GetSnowballAlpha() {
 					majority = vote.value
 					break
 				}
