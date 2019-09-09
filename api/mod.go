@@ -22,6 +22,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"github.com/buaazp/fasthttprouter"
@@ -51,8 +52,9 @@ type Gateway struct {
 	network *skademlia.Protocol
 	keys    *skademlia.Keypair
 
-	router        *fasthttprouter.Router
-	server        *fasthttp.Server
+	router  *fasthttprouter.Router
+	servers []  *fasthttp.Server
+
 	sinks         map[string]*sink
 	enableTimeout bool
 
@@ -181,11 +183,11 @@ func (g *Gateway) StartHTTP(port int, c *skademlia.Client, l *wavelet.Ledger, k 
 
 	logger.Info().Int("port", port).Msg("Started HTTP API server.")
 
-	g.start(ln, c, l, k)
+	g.start(ln, nil, c, l, k)
 }
 
 // Only support tls-alpn-01.
-func (g *Gateway) StartHTTPS(c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair, allowedHost, certCacheDir string) {
+func (g *Gateway) StartHTTPS(httpPort int, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair, allowedHost, certCacheDir string) {
 	logger := log.Node()
 
 	if len(allowedHost) == 0 {
@@ -202,16 +204,26 @@ func (g *Gateway) StartHTTPS(c *skademlia.Client, l *wavelet.Ledger, k *skademli
 		HostPolicy: autocert.HostWhitelist(allowedHost),
 	}
 
-	// Start the HTTPS server
+	// Setup TLS listener
+	inner, err := net.Listen("tcp", ":443")
+	if err != nil {
+		logger.Fatal().Err(err).Msgf("Failed to listen to port %d.", 443)
+	}
+	tlsLn := tls.NewListener(inner, certManager.TLSConfig())
 
-	ln := certManager.Listener()
+	// Setup normal listener
+	ln, err := net.Listen("tcp4", ":"+strconv.Itoa(httpPort))
+	if err != nil {
+		logger.Fatal().Err(err).Msgf("Failed to listen to port %d.", httpPort)
+	}
 
-	logger.Info().Int("port", 443).Msg("Started secure HTTP API server.")
+	logger.Info().Int("port", 443).Msg("Started HTTPS API server.")
+	logger.Info().Int("port", httpPort).Msg("Started HTTP API server.")
 
-	g.start(ln, c, l, k)
+	g.start(tlsLn, ln, c, l, k)
 }
 
-func (g *Gateway) start(ln net.Listener, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair) {
+func (g *Gateway) start(ln net.Listener, ln2 net.Listener, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair) {
 	stop := g.rateLimiter.cleanup(10 * time.Minute)
 	defer stop()
 
@@ -223,22 +235,35 @@ func (g *Gateway) start(ln net.Listener, c *skademlia.Client, l *wavelet.Ledger,
 	g.enableTimeout = false
 	g.setup()
 
-	g.server = &fasthttp.Server{
-		Handler: g.router.Handler,
-	}
-
 	logger := log.Node()
 
-	if err := g.server.Serve(ln); err != nil {
+	if ln2 != nil {
+		s := &fasthttp.Server{
+			Handler: g.router.Handler,
+		}
+		g.servers = append(g.servers, s)
+
+		go func() {
+			if err := s.Serve(ln2); err != nil {
+				logger.Fatal().Int("port", ln2.Addr().(*net.TCPAddr).Port).Err(err).Msg("Failed to start HTTP server on the second listener.")
+			}
+		}()
+	}
+
+	s := &fasthttp.Server{
+		Handler: g.router.Handler,
+	}
+	g.servers = append(g.servers, s)
+
+	if err := s.Serve(ln); err != nil {
 		logger.Fatal().Err(err).Msg("Failed to start HTTP server.")
 	}
 }
 
 func (g *Gateway) Shutdown() {
-	if g.server == nil {
-		return
+	for _, s := range g.servers {
+		_ = s.Shutdown()
 	}
-	_ = g.server.Shutdown()
 }
 
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {

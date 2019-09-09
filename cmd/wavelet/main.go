@@ -379,7 +379,7 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	}
 
 	if cfg.APIHost != nil {
-		go api.New().StartHTTPS(client, ledger, keys, *cfg.APIHost, "certs")
+		go api.New().StartHTTPS(int(cfg.APIPort), client, ledger, keys, *cfg.APIHost, "certs")
 	} else {
 		if cfg.APIPort > 0 {
 			go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
