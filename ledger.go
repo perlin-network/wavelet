@@ -682,8 +682,8 @@ FINALIZE_ROUNDS:
 		workerWG.Add(cap(workerChan))
 
 		snowballK := conf.GetSnowballK()
-		voteChan := make(chan vote, snowballK)
-		go CollectVotes(l.accounts, l.finalizer, voteChan, &workerWG, snowballK)
+		voteChan := make(chan finalizationVote, snowballK)
+		go CollectVotesForFinalization(l.accounts, l.finalizer, voteChan, &workerWG, snowballK)
 
 		req := &QueryRequest{RoundIndex: current.Index + 1}
 
@@ -720,12 +720,12 @@ FINALIZE_ROUNDS:
 
 						round, err := UnmarshalRound(bytes.NewReader(res.Round))
 						if err != nil {
-							voteChan <- vote{voter: voter, value: ZeroRoundPtr}
+							voteChan <- finalizationVote{voter: voter, round: ZeroRoundPtr}
 							return
 						}
 
 						if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
-							voteChan <- vote{voter: voter, value: ZeroRoundPtr}
+							voteChan <- finalizationVote{voter: voter, round: ZeroRoundPtr}
 							return
 						}
 
@@ -771,7 +771,10 @@ FINALIZE_ROUNDS:
 							return
 						}
 
-						voteChan <- vote{voter: voter, value: &round}
+						voteChan <- finalizationVote{
+							voter: voter,
+							round: &round,
+						}
 					}
 
 					l.metrics.queryLatency.Time(f)
@@ -898,9 +901,9 @@ func (l *Ledger) SyncToLatestRound() {
 	voteWG := new(sync.WaitGroup)
 
 	snowballK := conf.GetSnowballK()
-	syncVotes := make(chan vote, snowballK)
+	syncVotes := make(chan syncVote, snowballK)
 
-	go CollectVotes(l.accounts, l.syncer, syncVotes, voteWG, snowballK)
+	go CollectVotesForSync(l.accounts, l.syncer, syncVotes, voteWG, snowballK)
 
 	syncTimeoutMultiplier := 0
 	for {
@@ -953,7 +956,7 @@ func (l *Ledger) SyncToLatestRound() {
 						return
 					}
 
-					syncVotes <- vote{voter: voter, value: &outOfSyncVote{outOfSync: res.OutOfSync}}
+					syncVotes <- syncVote{voter: voter, outOfSync: res.OutOfSync}
 
 					wg.Done()
 				}()
@@ -1002,8 +1005,8 @@ func (l *Ledger) SyncToLatestRound() {
 
 		restart := func() { // Respawn all previously stopped workers.
 			snowballK := conf.GetSnowballK()
-			syncVotes := make(chan vote, snowballK)
-			go CollectVotes(l.accounts, l.syncer, syncVotes, voteWG, snowballK)
+			syncVotes = make(chan syncVote, snowballK)
+			go CollectVotesForSync(l.accounts, l.syncer, syncVotes, voteWG, snowballK)
 
 			l.sync = make(chan struct{})
 			l.PerformConsensus()
