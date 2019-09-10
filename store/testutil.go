@@ -30,6 +30,34 @@ func NewTestKV(t testing.TB, kv string, path string) (KV, func()) {
 			_ = os.RemoveAll(path)
 		}
 
+	case "badger":
+		// Remove existing db
+		_ = os.RemoveAll(path)
+
+		badger, err := NewBadger(path)
+		if err != nil {
+			t.Fatalf("failed to create Badger: %s", err)
+		}
+
+		return badger, func() {
+			_ = badger.Close()
+			_ = os.RemoveAll(path)
+		}
+
+	case "bbolt":
+		// Remove existing db
+		_ = os.RemoveAll(path)
+
+		bbolt, err := NewBbolt(path)
+		if err != nil {
+			t.Fatalf("failed to create Bbolt: %s", err)
+		}
+
+		return bbolt, func() {
+			_ = bbolt.Close()
+			_ = os.RemoveAll(path)
+		}
+
 	default:
 		panic("unknown kv " + kv)
 	}
