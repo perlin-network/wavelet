@@ -58,14 +58,13 @@ func getGenesisTestNetwork(t testing.TB) (testnet *TestNetwork, alice *TestLedge
 		if !assert.NoError(t, err) {
 			return nil, nil, cleanup
 		}
-		assert.True(t, <-alice.WaitForConsensus())
+		testnet.WaitForConsensus(t)
 
 		tx, err = alice.DepositGas(tx.ID, (uint64(i)+1)*100)
 		if !assert.NoError(t, err) {
 			return nil, nil, cleanup
 		}
-		assert.True(t, <-alice.WaitForConsensus())
-
+		testnet.WaitForConsensus(t)
 	}
 
 	return testnet, alice, cleanup
