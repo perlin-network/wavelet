@@ -1005,6 +1005,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 		restart := func() { // Respawn all previously stopped workers.
 			snowballK := conf.GetSnowballK()
+
 			syncVotes = make(chan syncVote, snowballK)
 			go CollectVotesForSync(l.accounts, l.syncer, syncVotes, voteWG, snowballK)
 
