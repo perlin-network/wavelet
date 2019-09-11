@@ -23,7 +23,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/perlin-network/wavelet/conf"
 	"io"
 	"io/ioutil"
 	"net"
@@ -32,6 +31,8 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/perlin-network/wavelet/conf"
 
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher"
@@ -353,7 +354,7 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 			Msg("Peer has left.")
 	})
 
-	kv, err := store.NewLevelDB(cfg.Database)
+	kv, err := store.NewBadger(cfg.Database)
 	if err != nil {
 		logger.Fatal().Err(err).Msgf("Failed to create/open database located at %q.", cfg.Database)
 	}
