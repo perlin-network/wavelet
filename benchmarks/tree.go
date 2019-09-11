@@ -40,17 +40,14 @@ func runTreeBenchmark() {
 }
 
 func benchmarkTreeCommit(size int, db string, dir string) func(b *testing.B) {
-	code := make([]byte, 1024)
+	code := make([]byte, 1024*size)
 	if _, err := rand.Read(code); err != nil {
 		panic(err)
 	}
 
-	keys := make([][32]byte, size)
-	for i := 0; i < size; i++ {
-		// Use random keys to speed up generation
-		if _, err := rand.Read(keys[i][:]); err != nil {
-			panic(err)
-		}
+	var key [32]byte
+	if _, err := rand.Read(key[:]); err != nil {
+		panic(err)
 	}
 
 	return func(b *testing.B) {
@@ -60,9 +57,7 @@ func benchmarkTreeCommit(size int, db string, dir string) func(b *testing.B) {
 				defer cleanup()
 
 				tree := avl.New(kv)
-				for _, key := range keys {
-					wavelet.WriteAccountContractCode(tree, key, code)
-				}
+				wavelet.WriteAccountContractCode(tree, key, code)
 
 				if err := tree.Commit(); err != nil {
 					b.Fatal(err)
