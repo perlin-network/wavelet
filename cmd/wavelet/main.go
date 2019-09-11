@@ -24,27 +24,15 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"net"
-	"net/http"
 	"os"
 	"sort"
-	"strconv"
 	"time"
 
-	"github.com/perlin-network/noise"
-	"github.com/perlin-network/noise/cipher"
 	"github.com/perlin-network/noise/edwards25519"
-	"github.com/perlin-network/noise/handshake"
-	"github.com/perlin-network/noise/nat"
 	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/api"
-	"github.com/perlin-network/wavelet/internal/snappy"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
-	"google.golang.org/grpc"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
 
@@ -52,14 +40,7 @@ import (
 )
 
 type Config struct {
-	NAT      bool
-	Host     string
-	Port     uint
-	Wallet   string
-	Genesis  *string
-	APIPort  uint
-	Peers    []string
-	Database string
+	ServerAddr string // empty == start new server
 }
 
 func main() {
@@ -198,7 +179,7 @@ func main() {
 
 	app.Action = func(c *cli.Context) error {
 		c.String("config")
-		config := &Config{
+		config := &wctl.Config{
 			Host:     c.String("host"),
 			Port:     c.Uint("port"),
 			Wallet:   c.String("wallet"),
@@ -237,110 +218,6 @@ func main() {
 }
 
 func start(cfg *Config) {
-	logger := log.Node()
-
-	// TODO(diamond): change all panics to useful logger.Fatals
-
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
-	if err != nil {
-		panic(err)
-	}
-
-	addr := net.JoinHostPort(
-		cfg.Host, strconv.Itoa(listener.Addr().(*net.TCPAddr).Port),
-	)
-
-	if cfg.NAT {
-		if len(cfg.Peers) > 1 {
-			resolver := nat.NewPMP()
-
-			if err := resolver.AddMapping("tcp",
-				uint16(listener.Addr().(*net.TCPAddr).Port),
-				uint16(listener.Addr().(*net.TCPAddr).Port),
-				30*time.Minute,
-			); err != nil {
-				panic(err)
-			}
-		}
-
-		resp, err := http.Get("http://myexternalip.com/raw")
-		if err != nil {
-			panic(err)
-		}
-
-		ip, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			panic(err)
-		}
-
-		if err := resp.Body.Close(); err != nil {
-			panic(err)
-		}
-
-		addr = net.JoinHostPort(
-			string(ip), strconv.Itoa(listener.Addr().(*net.TCPAddr).Port),
-		)
-	}
-
-	logger.Info().Str("addr", addr).Msg("Listening for peers.")
-
-	keys, err := keys(cfg.Wallet)
-	if err != nil {
-		panic(err)
-	}
-
-	client := skademlia.NewClient(
-		addr, keys,
-		skademlia.WithC1(sys.SKademliaC1),
-		skademlia.WithC2(sys.SKademliaC2),
-		skademlia.WithDialOptions(grpc.WithDefaultCallOptions(
-			grpc.UseCompressor(snappy.Name))),
-	)
-
-	client.SetCredentials(noise.NewCredentials(
-		addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol(),
-	))
-
-	kv, err := store.NewLevelDB(cfg.Database)
-	if err != nil {
-		logger.Fatal().Err(err).Msgf("Failed to create/open database located at %q.", cfg.Database)
-	}
-
-	ledger := wavelet.NewLedger(kv, client, wavelet.WithGenesis(cfg.Genesis))
-
-	go func() {
-		server := client.Listen()
-
-		wavelet.RegisterWaveletServer(server, ledger.Protocol())
-
-		if err := server.Serve(listener); err != nil {
-			panic(err)
-		}
-	}()
-
-	for _, addr := range cfg.Peers {
-		if _, err := client.Dial(addr); err != nil {
-			logger.Warn().Err(err).
-				Str("addr", addr).
-				Msg("Error dialing")
-		}
-	}
-
-	if peers := client.Bootstrap(); len(peers) > 0 {
-		var ids []string
-
-		for _, id := range peers {
-			ids = append(ids, id.String())
-		}
-
-		logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
-	}
-
-	if cfg.APIPort == 0 {
-		cfg.APIPort = 9000
-	}
-
-	go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
 
 	c, err := wctl.NewClient(wctl.Config{
 		APIHost:    "localhost",

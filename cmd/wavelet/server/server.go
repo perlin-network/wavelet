@@ -48,9 +48,15 @@ var DefaultConfig = Config{
 }
 
 type Wavelet struct {
-	Client *wctl.Client
-	Logger zerolog.Logger
-	Keys   *skademlia.Keypair
+	Client    *wctl.Client
+	SKademlia *skademlia.Client
+	Keypair   *skademlia.Keypair
+	Ledger    *wavelet.Ledger
+	Keys      *skademlia.Keypair
+
+	config   *Config
+	logger   zerolog.Logger
+	listener net.Listener
 }
 
 func New(cfg *Config) (*Wavelet, error) {
@@ -58,11 +64,13 @@ func New(cfg *Config) (*Wavelet, error) {
 		cfg = &DefaultConfig
 	}
 
-	w := Wavelet{}
+	w := Wavelet{
+		config: cfg,
+	}
 
 	// Make a logger
 	logger := log.Node()
-	w.Logger = logger
+	w.logger = logger
 
 	// TODO(diamond): change all panics to useful logger.Fatals
 
@@ -70,6 +78,8 @@ func New(cfg *Config) (*Wavelet, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Failed to open port %d: %v", cfg.Port, err)
 	}
+
+	w.listener = listener
 
 	addr := net.JoinHostPort(
 		cfg.Host, strconv.Itoa(listener.Addr().(*net.TCPAddr).Port),
@@ -105,7 +115,7 @@ func New(cfg *Config) (*Wavelet, error) {
 		)
 	}
 
-	w.Logger.Info().Str("addr", addr).
+	logger.Info().Str("addr", addr).
 		Msg("Listening for peers.")
 
 	// Load keys
@@ -126,6 +136,8 @@ func New(cfg *Config) (*Wavelet, error) {
 		return nil, fmt.Errorf("The wallet specified is invalid: %v", err)
 	}
 
+	w.Keypair = keys
+
 	client := skademlia.NewClient(
 		addr, keys,
 		skademlia.WithC1(sys.SKademliaC1),
@@ -138,6 +150,8 @@ func New(cfg *Config) (*Wavelet, error) {
 		addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol(),
 	))
 
+	w.SKademlia = client
+
 	kv, err := store.NewLevelDB(cfg.Database)
 	if err != nil {
 		return nil, fmt.Errorf(
@@ -145,6 +159,7 @@ func New(cfg *Config) (*Wavelet, error) {
 	}
 
 	ledger := wavelet.NewLedger(kv, client, wavelet.WithGenesis(cfg.Genesis))
+	w.Ledger = ledger
 
 	c, err := wctl.NewClient(wctl.Config{
 		APIHost:    "localhost",
@@ -163,38 +178,38 @@ func New(cfg *Config) (*Wavelet, error) {
 	return &w, nil
 }
 
-func (w *Wavelet) Start() error {
+func (w *Wavelet) Start() {
 	go func() {
-		server := client.Listen()
-
-		wavelet.RegisterWaveletServer(server, ledger.Protocol())
-
-		if err := server.Serve(listener); err != nil {
-			panic(err)
+		server := w.SKademlia.Listen()
+		wavelet.RegisterWaveletServer(server, w.Ledger.Protocol())
+		if err := server.Serve(w.listener); err != nil {
+			w.logger.Fatal().Err(err).
+				Msg("S/Kademlia failed to listen")
 		}
 	}()
 
-	for _, addr := range cfg.Peers {
-		if _, err := client.Dial(addr); err != nil {
-			logger.Warn().Err(err).
+	for _, addr := range w.config.Peers {
+		if _, err := w.SKademlia.Dial(addr); err != nil {
+			w.logger.Warn().Err(err).
 				Str("addr", addr).
 				Msg("Error dialing")
 		}
 	}
 
-	if peers := client.Bootstrap(); len(peers) > 0 {
+	if peers := w.SKademlia.Bootstrap(); len(peers) > 0 {
 		var ids []string
 
 		for _, id := range peers {
 			ids = append(ids, id.String())
 		}
 
-		logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
+		w.logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
 	}
 
-	if cfg.APIPort == 0 {
-		cfg.APIPort = 9000
+	if w.config.APIPort == 0 {
+		w.config.APIPort = 9000
 	}
 
-	go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
+	go api.New().StartHTTP(
+		int(w.config.Port), w.SKademlia, w.Ledger, w.Keypair)
 }
