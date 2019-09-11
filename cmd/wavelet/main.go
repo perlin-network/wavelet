@@ -26,10 +26,12 @@ import (
 	"io/ioutil"
 	"os"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/cmd/wavelet/server"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
@@ -37,6 +39,7 @@ import (
 	"gopkg.in/urfave/cli.v1/altsrc"
 
 	_ "net/http/pprof"
+	"net/url"
 )
 
 type Config struct {
@@ -66,6 +69,12 @@ func main() {
 	app.Usage = "a bleeding fast ledger with a powerful compute layer"
 
 	app.Flags = []cli.Flag{
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "server",
+			Value:  "",
+			Usage:  "Connect to a Wavelet server instead of hosting a new one if not blank.",
+			EnvVar: "WAVELET_SERVER",
+		}),
 		altsrc.NewBoolFlag(cli.BoolFlag{
 			Name:   "nat",
 			Usage:  "Enable port forwarding: only required for personal PCs.",
@@ -85,7 +94,7 @@ func main() {
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "api.port",
-			Value:  0,
+			Value:  9000,
 			Usage:  "Host a local HTTP API at port.",
 			EnvVar: "WAVELET_API_PORT",
 		}),
@@ -177,36 +186,7 @@ func main() {
 		fmt.Printf("Built:      %s\n", c.App.Compiled.Format(time.ANSIC))
 	}
 
-	app.Action = func(c *cli.Context) error {
-		c.String("config")
-		config := &wctl.Config{
-			Host:     c.String("host"),
-			Port:     c.Uint("port"),
-			Wallet:   c.String("wallet"),
-			APIPort:  c.Uint("api.port"),
-			Peers:    c.Args(),
-			Database: c.String("db"),
-		}
-
-		if genesis := c.String("genesis"); len(genesis) > 0 {
-			config.Genesis = &genesis
-		}
-
-		// set the the sys variables
-		sys.SnowballK = c.Int("sys.snowball.k")
-		sys.SnowballAlpha = c.Float64("sys.snowball.alpha")
-		sys.SnowballBeta = c.Int("sys.snowball.beta")
-		sys.QueryTimeout = time.Duration(c.Int("sys.query_timeout")) * time.Second
-		sys.MaxDepthDiff = c.Uint64("sys.max_depth_diff")
-		sys.MinDifficulty = byte(c.Int("sys.difficulty.min"))
-		sys.DifficultyScaleFactor = c.Float64("sys.difficulty.scale")
-		sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
-		sys.MinimumStake = c.Uint64("sys.min_stake")
-
-		start(config)
-
-		return nil
-	}
+	app.Action = start
 
 	sort.Sort(cli.FlagsByName(app.Flags))
 	sort.Sort(cli.CommandsByName(app.Commands))
@@ -217,8 +197,91 @@ func main() {
 	}
 }
 
-func start(cfg *Config) {
+func start(c *cli.Context) error {
+	config := Config{
+		ServerAddr: c.String("server"),
+	}
 
+	// set the the sys variables
+	sys.SnowballK = c.Int("sys.snowball.k")
+	sys.SnowballAlpha = c.Float64("sys.snowball.alpha")
+	sys.SnowballBeta = c.Int("sys.snowball.beta")
+	sys.QueryTimeout = time.Duration(c.Int("sys.query_timeout")) * time.Second
+	sys.MaxDepthDiff = c.Uint64("sys.max_depth_diff")
+	sys.MinDifficulty = byte(c.Int("sys.difficulty.min"))
+	sys.DifficultyScaleFactor = c.Float64("sys.difficulty.scale")
+	sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
+	sys.MinimumStake = c.Uint64("sys.min_stake")
+
+	w, err := wallet(c.String("wallet"))
+	if err != nil {
+		return err
+	}
+
+	var wctlCfg wctl.Config
+
+	if config.ServerAddr == "" {
+		srvCfg := server.Config{
+			Host:     c.String("host"),
+			Port:     c.Uint("port"),
+			Wallet:   w,
+			APIPort:  c.Uint("api.port"),
+			Peers:    c.Args(),
+			Database: c.String("db"),
+		}
+
+		if genesis := c.String("genesis"); len(genesis) > 0 {
+			srvCfg.Genesis = &genesis
+		}
+
+		srv, err := server.New(&srvCfg)
+		if err != nil {
+			return err
+		}
+
+		// Start the server
+		// TODO: Add Close()
+		srv.Start()
+
+		wctlCfg.APIPort = uint16(c.Uint("api.port"))
+		wctlCfg.APIHost = c.String("api.host")
+		wctlCfg.PrivateKey = srv.Keys.PrivateKey()
+		wctlCfg.UseHTTPS = false // TODO
+	} else {
+		u, err := url.Parse(config.ServerAddr)
+		if err != nil {
+			return fmt.Errorf("Invalid address: %v", err)
+		}
+
+		port, _ := strconv.ParseUint(u.Port(), 10, 16)
+
+		wctlCfg.APIPort = uint16(port)
+		wctlCfg.APIHost = u.Host
+		//PrivateKey = nil // TODO?
+		wctlCfg.UseHTTPS = u.Scheme == "https"
+	}
+
+	cli, err := wctl.NewClient(wctlCfg)
+	if err != nil {
+		return err
+	}
+
+	// Set CLI callbacks, mainly loggers
+	if err := setEvents(cli); err != nil {
+		return fmt.Errorf("Failed to start websockets to the server: %v", err)
+	}
+
+	shell, err := NewCLI(cli)
+	if err != nil {
+		return fmt.Errorf("Failed to spawn the CLI: %v", err)
+	}
+
+	shell.Start()
+	return nil
+}
+
+/*
+func start(cfg *Config) {
 	c, err := wctl.NewClient(wctl.Config{
 		APIHost:    "localhost",
 		APIPort:    uint16(cfg.APIPort),
@@ -245,85 +308,42 @@ func start(cfg *Config) {
 
 	shell.Start()
 }
+*/
 
-func keys(wallet string) (*skademlia.Keypair, error) {
+func wallet(wallet string) (string, error) {
 	var keys *skademlia.Keypair
 
 	logger := log.Node()
 
 	privateKeyBuf, err := ioutil.ReadFile(wallet)
 
+	// File exists
 	if err == nil {
-		var privateKey edwards25519.PrivateKey
-
-		n, err := hex.Decode(privateKey[:], privateKeyBuf)
-		if err != nil {
-			return nil, fmt.Errorf("failed to decode your private key from %q", wallet)
+		// If the file content is the actual private key
+		if hex.DecodedLen(len(privateKeyBuf)) == edwards25519.SizePrivateKey {
+			return string(privateKeyBuf), nil
 		}
-
-		if n != edwards25519.SizePrivateKey {
-			return nil, fmt.Errorf("private key located in %q is not of the right length", wallet)
-		}
-
-		keys, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
-		if err != nil {
-			return nil, fmt.Errorf("the private key specified in %q is invalid", wallet)
-		}
-
-		publicKey := keys.PublicKey()
-
-		logger.Info().
-			Hex("privateKey", privateKey[:]).
-			Hex("publicKey", publicKey[:]).
-			Msg("Wallet loaded.")
-
-		return keys, nil
 	}
 
 	if os.IsNotExist(err) {
-		// If a private key is specified instead of a path to a wallet, then simply use the provided private key instead.
+		// If a private key is specified, simply use the provided private key instead.
 		if len(wallet) == hex.EncodedLen(edwards25519.SizePrivateKey) {
-			var privateKey edwards25519.PrivateKey
-
-			n, err := hex.Decode(privateKey[:], []byte(wallet))
-			if err != nil {
-				return nil, fmt.Errorf("failed to decode the private key specified: %s", wallet)
-			}
-
-			if n != edwards25519.SizePrivateKey {
-				return nil, fmt.Errorf("private key %s is not of the right length", wallet)
-			}
-
-			keys, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
-			if err != nil {
-				return nil, fmt.Errorf("the private key specified is invalid: %s", wallet)
-			}
-
-			publicKey := keys.PublicKey()
-
-			logger.Info().
-				Hex("privateKey", privateKey[:]).
-				Hex("publicKey", publicKey[:]).
-				Msg("A private key was provided instead of a wallet file.")
-
-			return keys, nil
+			return wallet, nil
 		}
-
-		keys, err = skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
-		if err != nil {
-			return nil, errors.New("failed to generate a new wallet")
-		}
-
-		privateKey := keys.PrivateKey()
-		publicKey := keys.PublicKey()
-
-		logger.Info().
-			Hex("privateKey", privateKey[:]).
-			Hex("publicKey", publicKey[:]).
-			Msg("Existing wallet not found: generated a new one.")
-
-		return keys, nil
 	}
 
-	return keys, err
+	keys, err = skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
+	if err != nil {
+		return "", errors.New("failed to generate a new wallet")
+	}
+
+	privateKey := keys.PrivateKey()
+	publicKey := keys.PublicKey()
+
+	logger.Info().
+		Hex("privateKey", privateKey[:]).
+		Hex("publicKey", publicKey[:]).
+		Msg("Existing wallet not found: generated a new one.")
+
+	return hex.EncodeToString(privateKey[:]), nil
 }

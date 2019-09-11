@@ -21,7 +21,6 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
-	"github.com/perlin-network/wavelet/wctl"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 )
@@ -48,7 +47,6 @@ var DefaultConfig = Config{
 }
 
 type Wavelet struct {
-	Client    *wctl.Client
 	SKademlia *skademlia.Client
 	Keypair   *skademlia.Keypair
 	Ledger    *wavelet.Ledger
@@ -160,20 +158,6 @@ func New(cfg *Config) (*Wavelet, error) {
 
 	ledger := wavelet.NewLedger(kv, client, wavelet.WithGenesis(cfg.Genesis))
 	w.Ledger = ledger
-
-	c, err := wctl.NewClient(wctl.Config{
-		APIHost:    "localhost",
-		APIPort:    uint16(cfg.APIPort),
-		PrivateKey: keys.PrivateKey(),
-	})
-
-	if err != nil {
-		logger.Fatal().Err(err).
-			Uint("port", cfg.APIPort).
-			Msg("Failed to connect to API")
-	}
-
-	w.Client = c
 
 	return &w, nil
 }
