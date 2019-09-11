@@ -21,8 +21,6 @@ package wavelet
 
 import (
 	"bytes"
-	"fmt"
-	"math/rand"
 	"testing"
 	"testing/quick"
 
@@ -51,88 +49,4 @@ func TestSmartContract(t *testing.T) {
 	}
 
 	assert.NoError(t, quick.Check(fn, nil))
-}
-
-func BenchmarkAccountsCommit(b *testing.B) {
-	dbs := []string{"badger", "bbolt", "level"}
-
-	sizes := []int{}
-	for i := 0; i < 10; i++ {
-		sizes = append(sizes, (i+1)*100)
-	}
-
-	for _, size := range sizes {
-		for _, db := range dbs {
-			// Stop at 500MB for leveldb
-			if db == "level" && size > 500 {
-				continue
-			}
-
-			b.Run(fmt.Sprintf("%s/%dMB", db, size), func(b *testing.B) {
-				benchmarkAccountsCommit(b, size, db)
-			})
-		}
-	}
-}
-
-type account struct {
-	PublicKey [32]byte
-	Balance   uint64
-	Stake     uint64
-	Reward    uint64
-}
-
-func benchmarkAccountsCommit(b *testing.B, size int, db string) {
-	var code [1024 * 1024]byte
-	if _, err := rand.Read(code[:]); err != nil {
-		b.Fatal(err)
-	}
-
-	// Generate accounts
-	gen := make([]account, size)
-	for i := 0; i < len(gen); i++ {
-		// Use random keys to speed up generation
-		var key [32]byte
-		if _, err := rand.Read(key[:]); err != nil {
-			b.Fatal(err)
-		}
-
-		gen[i] = account{
-			PublicKey: key,
-			Balance:   rand.Uint64(),
-			Stake:     rand.Uint64(),
-			Reward:    rand.Uint64(),
-		}
-	}
-
-	for n := 0; n < b.N; n++ {
-		func() {
-			kv, cleanup := store.NewTestKV(b, db, "db_"+randString(10))
-			defer cleanup()
-
-			accounts := NewAccounts(kv)
-			snapshot := accounts.Snapshot()
-
-			for _, acc := range gen {
-				WriteAccountBalance(snapshot, acc.PublicKey, acc.Balance)
-				WriteAccountStake(snapshot, acc.PublicKey, acc.Stake)
-				WriteAccountReward(snapshot, acc.PublicKey, acc.Reward)
-				WriteAccountContractCode(snapshot, acc.PublicKey, code[:])
-			}
-
-			if err := accounts.Commit(snapshot); err != nil {
-				b.Fatal(err)
-			}
-		}()
-	}
-}
-
-var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-func randString(n int) string {
-	b := make([]rune, n)
-	for i := range b {
-		b[i] = letterRunes[rand.Intn(len(letterRunes))]
-	}
-	return string(b)
 }
