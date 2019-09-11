@@ -10,7 +10,7 @@ import (
 	"github.com/perlin-network/wavelet/store"
 )
 
-func main() {
+func runTreeBenchmark() {
 	dbs := []string{"badger", "bbolt", "level"}
 
 	sizes := []int{
