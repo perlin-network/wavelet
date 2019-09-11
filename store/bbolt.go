@@ -20,7 +20,9 @@ type bboltWriteBatch struct {
 }
 
 func (b *bboltWriteBatch) Put(key, value []byte) {
-	b.puts = append(b.puts, bboltPut{key, value})
+	k := append([]byte{}, key...)
+	v := append([]byte{}, value...)
+	b.puts = append(b.puts, bboltPut{k, v})
 }
 
 func (b *bboltWriteBatch) Clear() {

@@ -6,12 +6,13 @@ import (
 )
 
 type badgerWriteBatch struct {
-	db    *badgerKV
 	batch *badger.WriteBatch
 }
 
 func (b *badgerWriteBatch) Put(key, value []byte) {
-	err := b.batch.Set(key, value)
+	k := append([]byte{}, key...)
+	v := append([]byte{}, value...)
+	err := b.batch.Set(k, v)
 	if err != nil {
 		panic(err)
 	}
