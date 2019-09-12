@@ -138,9 +138,9 @@ func (g *Gateway) setup() {
 	r.GET("/tx", g.applyMiddleware(g.listTransactions, "/tx"))
 
 	// Connectivity endpoints
-	r.POST("/node/connect", g.applyMiddleware(g.connect, "/node/connect"))
-	r.POST("/node/disconnect", g.applyMiddleware(g.disconnect, "/node/disconnect"))
-	r.POST("/node/restart", g.applyMiddleware(g.restart, "/node/restart"))
+	r.POST("/node/connect", g.applyMiddleware(g.connect, "/node/connect", g.auth))
+	r.POST("/node/disconnect", g.applyMiddleware(g.disconnect, "/node/disconnect", g.auth))
+	r.POST("/node/restart", g.applyMiddleware(g.restart, "/node/restart", g.auth))
 
 	g.router = r
 }
@@ -193,6 +193,7 @@ func (g *Gateway) StartHTTP(
 	g.setup()
 
 	logger := log.Node()
+
 	logger.Info().Int("port", port).Msg("Started HTTP API server.")
 
 	g.server = &fasthttp.Server{
@@ -387,34 +388,6 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 	copy(id[:], slice)
 
 	g.render(ctx, &account{ledger: g.ledger, id: id})
-}
-
-func (g *Gateway) contractScope(next fasthttp.RequestHandler) fasthttp.RequestHandler {
-	return fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) {
-		param, ok := ctx.UserValue("id").(string)
-		if !ok {
-			g.renderError(ctx, ErrBadRequest(errors.New("could not cast id into string")))
-			return
-		}
-
-		slice, err := hex.DecodeString(param)
-		if err != nil {
-			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "contract ID must be presented as valid hex")))
-			return
-		}
-
-		if len(slice) != wavelet.SizeTransactionID {
-			g.renderError(ctx, ErrBadRequest(errors.Errorf("contract ID must be %d bytes long", wavelet.SizeTransactionID)))
-			return
-		}
-
-		var contractID wavelet.TransactionID
-		copy(contractID[:], slice)
-
-		ctx.SetUserValue("contract_id", contractID)
-
-		next(ctx)
-	})
 }
 
 func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {

@@ -770,6 +770,7 @@ func TestConnectDisconnect(t *testing.T) {
 	body := fmt.Sprintf(`{"address": "%s"}`, node.Addr())
 
 	request := httptest.NewRequest(http.MethodPost, "http://localhost/node/connect", strings.NewReader(body))
+	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", sys.Secret))
 	w, err := serve(gateway.router, request)
 	assert.NoError(t, err)
 
@@ -782,6 +783,7 @@ func TestConnectDisconnect(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf(`{"msg":"Successfully connected to %s"}`, node.Addr()), string(resp))
 
 	request = httptest.NewRequest(http.MethodPost, "http://localhost/node/disconnect", strings.NewReader(body))
+	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", sys.Secret))
 	w, err = serve(gateway.router, request)
 	assert.NoError(t, err)
 
@@ -819,54 +821,62 @@ func TestConnectDisconnectErrors(t *testing.T) {
 		noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), gateway.client.Protocol()),
 	)
 
+	authHeader := fmt.Sprintf("Bearer %s", sys.Secret)
+
 	testCases := []struct {
-		name     string
-		uri      string
-		body     string
-		errorStr string
-		code     int
+		name       string
+		uri        string
+		body       string
+		authHeader string
+		errorStr   string
+		code       int
 	}{
 		{
 			name:     "error: connect address is missing",
 			uri:      "/node/connect",
 			body:     "{}",
-			errorStr: `{"status":"Bad request.","error":"address is missing"}`,
-			code:     http.StatusBadRequest,
+			errorStr: `Unauthorized`,
+			code:     http.StatusUnauthorized,
 		},
 		{
-			name:     "error: disconnect address is missing",
-			uri:      "/node/disconnect",
-			body:     "{}",
-			errorStr: `{"status":"Bad request.","error":"address is missing"}`,
-			code:     http.StatusBadRequest,
+			name:       "error: disconnect address is missing",
+			uri:        "/node/disconnect",
+			authHeader: authHeader,
+			body:       "{}",
+			errorStr:   `{"status":"Bad request.","error":"address is missing"}`,
+			code:       http.StatusBadRequest,
 		},
 		{
-			name:     "error: connect address is malformed",
-			uri:      "/node/connect",
-			body:     `{"address":"aaa"}`,
-			errorStr: `{"status":"Bad request.","error":"error connecting to peer: failed to dial peer: connection error: desc = \"transport: error while dialing: dial tcp: address aaa: missing port in address\""}`,
-			code:     http.StatusInternalServerError,
+			name:       "error: connect address is malformed",
+			uri:        "/node/connect",
+			authHeader: authHeader,
+			body:       `{"address":"aaa"}`,
+			errorStr:   `{"status":"Bad request.","error":"error connecting to peer: failed to dial peer: connection error: desc = \"transport: error while dialing: dial tcp: address aaa: missing port in address\""}`,
+			code:       http.StatusInternalServerError,
 		},
 		{
-			name:     "error: disconnect address is malformed",
-			uri:      "/node/disconnect",
-			body:     `{"address":"aaa"}`,
-			errorStr: `{"status":"Bad request.","error":"error disconnecting from peer: could not disconnect peer: peer with address aaa not found"}`,
-			code:     http.StatusInternalServerError,
+			name:       "error: disconnect address is malformed",
+			uri:        "/node/disconnect",
+			authHeader: authHeader,
+			body:       `{"address":"aaa"}`,
+			errorStr:   `{"status":"Bad request.","error":"error disconnecting from peer: could not disconnect peer: peer with address aaa not found"}`,
+			code:       http.StatusInternalServerError,
 		},
 		{
-			name:     "error: connect address is missing",
-			uri:      "/node/connect",
-			body:     `{"address":"127.0.0.1:1234"}`,
-			errorStr: `{"status":"Bad request.","error":"error connecting to peer: failed to dial peer: connection error: desc = \"transport: error while dialing: dial tcp 127.0.0.1:1234: connect: connection refused\""}`,
-			code:     http.StatusInternalServerError,
+			name:       "error: connect address is missing",
+			uri:        "/node/connect",
+			authHeader: authHeader,
+			body:       `{"address":"127.0.0.1:1234"}`,
+			errorStr:   `{"status":"Bad request.","error":"error connecting to peer: failed to dial peer: connection error: desc = \"transport: error while dialing: dial tcp 127.0.0.1:1234: connect: connection refused\""}`,
+			code:       http.StatusInternalServerError,
 		},
 		{
-			name:     "error: disconnect address is missing",
-			uri:      "/node/disconnect",
-			body:     `{"address":"127.0.0.1:1234"}`,
-			errorStr: `{"status":"Bad request.","error":"error disconnecting from peer: could not disconnect peer: peer with address 127.0.0.1:1234 not found"}`,
-			code:     http.StatusInternalServerError,
+			name:       "error: disconnect address is missing",
+			uri:        "/node/disconnect",
+			authHeader: authHeader,
+			body:       `{"address":"127.0.0.1:1234"}`,
+			errorStr:   `{"status":"Bad request.","error":"error disconnecting from peer: could not disconnect peer: peer with address 127.0.0.1:1234 not found"}`,
+			code:       http.StatusInternalServerError,
 		},
 	}
 
@@ -874,6 +884,11 @@ func TestConnectDisconnectErrors(t *testing.T) {
 		tc := testCase
 		t.Run(testCase.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "http://localhost"+tc.uri, strings.NewReader(tc.body))
+
+			if len(testCase.authHeader) > 0 {
+				request.Header.Set("Authorization", testCase.authHeader)
+			}
+
 			w, err := serve(gateway.router, request)
 			assert.NoError(t, err)
 
