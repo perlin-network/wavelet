@@ -23,8 +23,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 )
@@ -86,8 +86,9 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 	diff := p.ledger.accounts.Snapshot().DumpDiff(req.GetRoundId())
 	header := &SyncInfo{LatestRound: p.ledger.rounds.Latest().Marshal()}
 
-	for i := 0; i < len(diff); i += sys.SyncChunkSize {
-		end := i + sys.SyncChunkSize
+	syncChunkSize := conf.GetSyncChunkSize()
+	for i := 0; i < len(diff); i += syncChunkSize {
+		end := i + syncChunkSize
 
 		if end > len(diff) {
 			end = len(diff)
@@ -138,7 +139,7 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 
 func (p *Protocol) CheckOutOfSync(ctx context.Context, req *OutOfSyncRequest) (*OutOfSyncResponse, error) {
 	return &OutOfSyncResponse{
-		OutOfSync: p.ledger.rounds.Latest().Index >= sys.SyncIfRoundsDifferBy+req.RoundIndex,
+		OutOfSync: p.ledger.rounds.Latest().Index >= conf.GetSyncIfRoundsDifferBy()+req.RoundIndex,
 	}, nil
 }
 
@@ -158,8 +159,8 @@ func (p *Protocol) DownloadMissingTx(ctx context.Context, req *DownloadMissingTx
 }
 
 func (p *Protocol) DownloadTx(ctx context.Context, req *DownloadTxRequest) (*DownloadTxResponse, error) {
-	lowLimit := req.Depth - sys.MaxDepthDiff
-	highLimit := req.Depth + sys.MaxDownloadDepthDiff
+	lowLimit := req.Depth - conf.GetMaxDepthDiff()
+	highLimit := req.Depth + conf.GetMaxDownloadDepthDiff()
 
 	receivedIDs := make(map[TransactionID]struct{}, len(req.SkipIds))
 	for _, buf := range req.SkipIds {

@@ -25,6 +25,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/lru"
 	"math/rand"
 	"strings"
@@ -77,8 +78,7 @@ type Ledger struct {
 	broadcastNopsDelay    time.Time
 	broadcastNopsLock     sync.Mutex
 
-	sync      chan struct{}
-	syncVotes chan vote
+	sync chan struct{}
 
 	syncStatus     bitset
 	syncStatusLock sync.RWMutex
@@ -135,7 +135,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		go accounts.GC(context.Background())
 	}
 
-	rounds, err := NewRounds(kv, sys.PruningLimit)
+	rounds, err := NewRounds(kv, conf.GetPruningLimit())
 
 	var round *Round
 
@@ -163,8 +163,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	graph := NewGraph(WithMetrics(metrics), WithIndexer(indexer), WithRoot(round.End), VerifySignatures())
 
 	gossiper := NewGossiper(context.TODO(), client, metrics)
-	finalizer := NewSnowball(WithName("finalizer"), WithBeta(sys.SnowballBeta))
-	syncer := NewSnowball(WithName("syncer"), WithBeta(sys.SnowballBeta))
+	finalizer := NewSnowball(WithName("finalizer"))
+	syncer := NewSnowball(WithName("syncer"))
 
 	ledger := &Ledger{
 		client:  client,
@@ -181,11 +181,10 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 		syncStatus: finalized, // we start node as out of sync, but finalized
 
-		sync:      make(chan struct{}),
-		syncVotes: make(chan vote, sys.SnowballK),
+		sync: make(chan struct{}),
 
 		cacheCollapse: lru.NewLRU(16),
-		cacheChunks:   lru.NewLRU(1024), // In total, it will take up 1024 * 4MB.
+		cacheChunks:   lru.NewLRU(2048), // In total, it will take up 1024 * 4MB.
 
 		sendQuota: make(chan struct{}, 2000),
 	}
@@ -446,8 +445,8 @@ func (l *Ledger) SyncTransactions() {
 		})
 		now := time.Now()
 		currentDepth := l.graph.RootDepth()
-		lowLimit := currentDepth - sys.MaxDepthDiff
-		highLimit := currentDepth + sys.MaxDownloadDepthDiff
+		lowLimit := currentDepth - conf.GetMaxDepthDiff()
+		highLimit := currentDepth + conf.GetMaxDownloadDepthDiff()
 		txs := l.Graph().GetTransactionsByDepth(&lowLimit, &highLimit)
 
 		ids := make([][]byte, len(txs))
@@ -617,7 +616,7 @@ FINALIZE_ROUNDS:
 		default:
 		}
 
-		if len(l.client.ClosestPeers()) < sys.SnowballK {
+		if len(l.client.ClosestPeers()) < conf.GetSnowballK() {
 			select {
 			case <-l.sync:
 				return
@@ -663,7 +662,7 @@ FINALIZE_ROUNDS:
 				continue
 			}
 
-			candidate := NewRound(current.Index+1, results.snapshot.Checksum(), uint64(results.appliedCount), current.End, *eligible)
+			candidate := NewRound(current.Index+1, results.snapshot.Checksum(), uint32(results.appliedCount+results.rejectedCount), current.End, *eligible)
 			l.finalizer.Prefer(&candidate)
 
 			continue FINALIZE_ROUNDS
@@ -683,8 +682,9 @@ FINALIZE_ROUNDS:
 		var workerWG sync.WaitGroup
 		workerWG.Add(cap(workerChan))
 
-		voteChan := make(chan vote, sys.SnowballK)
-		go CollectVotes(l.accounts, l.finalizer, voteChan, &workerWG, sys.SnowballK)
+		snowballK := conf.GetSnowballK()
+		voteChan := make(chan vote, snowballK)
+		go CollectVotes(l.accounts, l.finalizer, voteChan, &workerWG, snowballK)
 
 		req := &QueryRequest{RoundIndex: current.Index + 1}
 
@@ -694,7 +694,7 @@ FINALIZE_ROUNDS:
 					f := func() {
 						client := NewWaveletClient(conn)
 
-						ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+						ctx, cancel := context.WithTimeout(context.Background(), conf.GetQueryTimeout())
 
 						p := &peer.Peer{}
 
@@ -735,13 +735,6 @@ FINALIZE_ROUNDS:
 						}
 
 						if round.Index != current.Index+1 {
-							if round.Index > sys.SyncIfRoundsDifferBy+current.Index {
-								select {
-								case l.syncVotes <- vote{voter: voter, value: &round}:
-								default:
-								}
-							}
-
 							return
 						}
 
@@ -769,8 +762,8 @@ FINALIZE_ROUNDS:
 							return
 						}
 
-						if uint64(results.appliedCount) != round.Applied {
-							fmt.Printf("applied %d but expected %d, rejected = %d, ignored = %d\n", results.appliedCount, round.Applied, results.rejectedCount, results.ignoredCount)
+						if uint32(results.appliedCount+results.rejectedCount) != round.Transactions {
+							fmt.Printf("applied %d but expected %d, rejected = %d, ignored = %d\n", results.appliedCount, round.Transactions, results.rejectedCount, results.ignoredCount)
 							return
 						}
 
@@ -803,7 +796,7 @@ FINALIZE_ROUNDS:
 			}
 
 			// Randomly sample a peer to query
-			peers, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
+			peers, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
 			if err != nil {
 				close(workerChan)
 				workerWG.Wait()
@@ -836,8 +829,8 @@ FINALIZE_ROUNDS:
 			continue
 		}
 
-		if uint64(results.appliedCount) != preferred.Applied {
-			fmt.Printf("Expected to have applied %d transactions finalizing a round, but only applied %d transactions instead.\n", preferred.Applied, results.appliedCount)
+		if uint32(results.appliedCount+results.rejectedCount) != preferred.Transactions {
+			fmt.Printf("Expected to have applied %d transactions finalizing a round, but only applied %d transactions instead.\n", preferred.Transactions, results.appliedCount)
 			continue
 		}
 
@@ -905,12 +898,15 @@ func (o *outOfSyncVote) GetID() string {
 func (l *Ledger) SyncToLatestRound() {
 	voteWG := new(sync.WaitGroup)
 
-	go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG, sys.SnowballK)
+	snowballK := conf.GetSnowballK()
+	syncVotes := make(chan vote, snowballK)
+
+	go CollectVotes(l.accounts, l.syncer, syncVotes, voteWG, snowballK)
 
 	syncTimeoutMultiplier := 0
 	for {
 		for {
-			conns, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
+			conns, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
 			if err != nil {
 				select {
 				case <-time.After(1 * time.Second):
@@ -958,7 +954,7 @@ func (l *Ledger) SyncToLatestRound() {
 						return
 					}
 
-					l.syncVotes <- vote{voter: voter, value: &outOfSyncVote{outOfSync: res.OutOfSync}}
+					syncVotes <- vote{voter: voter, value: &outOfSyncVote{outOfSync: res.OutOfSync}}
 
 					wg.Done()
 				}()
@@ -998,7 +994,7 @@ func (l *Ledger) SyncToLatestRound() {
 			l.consensus.Wait() // Wait for all consensus-related workers to shutdown.
 
 			voteWG.Add(1)
-			close(l.syncVotes)
+			close(syncVotes)
 			voteWG.Wait() // Wait for the vote processor worker to shutdown.
 
 			l.finalizer.Reset() // Reset consensus Snowball sampler.
@@ -1006,8 +1002,9 @@ func (l *Ledger) SyncToLatestRound() {
 		}
 
 		restart := func() { // Respawn all previously stopped workers.
-			l.syncVotes = make(chan vote, sys.SnowballK)
-			go CollectVotes(l.accounts, l.syncer, l.syncVotes, voteWG, sys.SnowballK)
+			snowballK := conf.GetSnowballK()
+			syncVotes = make(chan vote, snowballK)
+			go CollectVotes(l.accounts, l.syncer, syncVotes, voteWG, snowballK)
 
 			l.sync = make(chan struct{})
 			l.PerformConsensus()
@@ -1022,7 +1019,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 	SYNC:
 
-		conns, err := SelectPeers(l.client.ClosestPeers(), sys.SnowballK)
+		conns, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
 		if err != nil {
 			logger.Warn().Msg("It looks like there are no peers for us to sync with. Retrying...")
 
@@ -1236,7 +1233,7 @@ func (l *Ledger) SyncToLatestRound() {
 							continue
 						}
 
-						if len(chunk) > sys.SyncChunkSize {
+						if len(chunk) > conf.GetSyncChunkSize() {
 							continue
 						}
 

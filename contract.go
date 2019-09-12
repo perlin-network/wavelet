@@ -20,6 +20,7 @@
 package wavelet
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/binary"
@@ -29,7 +30,6 @@ import (
 	"github.com/perlin-network/life/utils"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/avl"
-	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
@@ -38,7 +38,6 @@ import (
 )
 
 var (
-	ErrNotSmartContract         = errors.New("contract: specified account ID is not a smart contract")
 	ErrContractFunctionNotFound = errors.New("contract: smart contract func not found")
 
 	_ exec.ImportResolver = (*ContractExecutor)(nil)
@@ -168,14 +167,14 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 			}
 		case "_log":
 			return func(vm *exec.VirtualMachine) int64 {
-				frame := vm.GetCurrentFrame()
-				dataPtr := int(uint32(frame.Locals[0]))
-				dataLen := int(uint32(frame.Locals[1]))
-
-				logger := log.Contracts("log")
-				logger.Debug().
-					Hex("contract_id", e.ID[:]).
-					Msg(string(vm.Memory[dataPtr : dataPtr+dataLen]))
+				//frame := vm.GetCurrentFrame()
+				//dataPtr := int(uint32(frame.Locals[0]))
+				//dataLen := int(uint32(frame.Locals[1]))
+				//
+				//logger := log.Contracts("log")
+				//logger.Debug().
+				//	Hex("contract_id", e.ID[:]).
+				//	Msg(string(vm.Memory[dataPtr : dataPtr+dataLen]))
 
 				return 0
 			}
@@ -445,39 +444,29 @@ func SaveContractMemorySnapshot(snapshot *avl.Tree, id AccountID, mem []byte) {
 
 	WriteAccountContractNumPages(snapshot, id, numPages)
 
+	var (
+		identical, allZero bool
+		pageStart          uint64
+	)
+
 	for pageIdx := uint64(0); pageIdx < numPages; pageIdx++ {
 		old, _ := ReadAccountContractPage(snapshot, id, pageIdx)
+		identical, allZero = true, false
+		pageStart = pageIdx * PageSize
 
-		identical := true
-
-		for idx := uint64(0); idx < PageSize; idx++ {
-			if len(old) == 0 && mem[pageIdx*PageSize+idx] != 0 {
-				identical = false
-				break
-			}
-
-			if len(old) != 0 && mem[pageIdx*PageSize+idx] != old[idx] {
-				identical = false
-				break
-			}
+		if len(old) == 0 {
+			allZero = bytes.Equal(ZeroPage, mem[pageStart:pageStart+PageSize])
+			identical = allZero
+		} else {
+			identical = bytes.Equal(old, mem[pageStart:pageStart+PageSize])
 		}
 
 		if !identical {
-			allZero := true
-
-			for idx := uint64(0); idx < PageSize; idx++ {
-				if mem[pageIdx*PageSize+idx] != 0 {
-					allZero = false
-					break
-				}
-			}
-
 			// If the page is empty, save an empty byte array. Otherwise, save the pages content.
-
 			if allZero {
 				WriteAccountContractPage(snapshot, id, pageIdx, []byte{})
 			} else {
-				WriteAccountContractPage(snapshot, id, pageIdx, mem[pageIdx*PageSize:(pageIdx+1)*PageSize])
+				WriteAccountContractPage(snapshot, id, pageIdx, mem[pageStart:pageStart+PageSize])
 			}
 		}
 	}

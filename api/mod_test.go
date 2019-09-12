@@ -88,7 +88,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?sender=1",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "sender ID must be presented as valid hex: encoding/hex: odd length hex string",
 			},
 		},
@@ -97,7 +97,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?sender=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "sender ID must be 32 bytes long",
 			},
 		},
@@ -106,7 +106,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?creator=1",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "creator ID must be presented as valid hex: encoding/hex: odd length hex string",
 			},
 		},
@@ -115,7 +115,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?creator=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "creator ID must be 32 bytes long",
 			},
 		},
@@ -124,7 +124,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?creator=1",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "creator ID must be presented as valid hex: encoding/hex: odd length hex string",
 			},
 		},
@@ -212,7 +212,7 @@ func TestGetTransaction(t *testing.T) {
 			id:       "1c331c1d",
 			wantCode: http.StatusBadRequest,
 			wantResponse: &testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  fmt.Sprintf("transaction ID must be %d bytes long", wavelet.SizeTransactionID),
 			},
 		},
@@ -474,7 +474,7 @@ func TestGetContractCode(t *testing.T) {
 			url:      "/contract/" + "3132333435363738393031323334353637383930313233343536373839303132",
 			wantCode: http.StatusNotFound,
 			wantError: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Not Found",
 				ErrorText:  fmt.Sprintf("could not find contract with ID %s", "3132333435363738393031323334353637383930313233343536373839303132"),
 			},
 		},
@@ -522,7 +522,7 @@ func TestGetContractPages(t *testing.T) {
 			url:      "/contract/" + id + "/page/-1",
 			wantCode: http.StatusBadRequest,
 			wantError: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "could not parse page index",
 			},
 		},
@@ -531,7 +531,7 @@ func TestGetContractPages(t *testing.T) {
 			url:      "/contract/3132333435363738393031323334353637383930313233343536373839303132/page/1",
 			wantCode: http.StatusNotFound,
 			wantError: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Not Found",
 				ErrorText:  fmt.Sprintf("could not find any pages for contract with ID %s", "3132333435363738393031323334353637383930313233343536373839303132"),
 			},
 		},
@@ -843,7 +843,7 @@ func TestConnectDisconnectErrors(t *testing.T) {
 			uri:        "/node/disconnect",
 			authHeader: authHeader,
 			body:       "{}",
-			errorStr:   `{"status":"Bad request.","error":"address is missing"}`,
+			errorStr:   `{"status":"Bad Request","error":"address is missing"}`,
 			code:       http.StatusBadRequest,
 		},
 		{
@@ -851,7 +851,7 @@ func TestConnectDisconnectErrors(t *testing.T) {
 			uri:        "/node/connect",
 			authHeader: authHeader,
 			body:       `{"address":"aaa"}`,
-			errorStr:   `{"status":"Bad request.","error":"error connecting to peer: failed to dial peer: connection error: desc = \"transport: error while dialing: dial tcp: address aaa: missing port in address\""}`,
+			errorStr:   `{"status":"Internal Server Error","error":"error connecting to peer: failed to dial peer: connection error: desc = \"transport: error while dialing: dial tcp: address aaa: missing port in address\""}`,
 			code:       http.StatusInternalServerError,
 		},
 		{
@@ -859,7 +859,7 @@ func TestConnectDisconnectErrors(t *testing.T) {
 			uri:        "/node/disconnect",
 			authHeader: authHeader,
 			body:       `{"address":"aaa"}`,
-			errorStr:   `{"status":"Bad request.","error":"error disconnecting from peer: could not disconnect peer: peer with address aaa not found"}`,
+			errorStr:   `{"status":"Internal Server Error","error":"error disconnecting from peer: could not disconnect peer: peer with address aaa not found"}`,
 			code:       http.StatusInternalServerError,
 		},
 		{
@@ -867,7 +867,7 @@ func TestConnectDisconnectErrors(t *testing.T) {
 			uri:        "/node/connect",
 			authHeader: authHeader,
 			body:       `{"address":"127.0.0.1:1234"}`,
-			errorStr:   `{"status":"Bad request.","error":"error connecting to peer: failed to dial peer: connection error: desc = \"transport: error while dialing: dial tcp 127.0.0.1:1234: connect: connection refused\""}`,
+			errorStr:   `{"status":"Internal Server Error","error":"error connecting to peer: failed to dial peer: connection error: desc = \"transport: error while dialing: dial tcp 127.0.0.1:1234: connect: connection refused\""}`,
 			code:       http.StatusInternalServerError,
 		},
 		{
@@ -875,7 +875,7 @@ func TestConnectDisconnectErrors(t *testing.T) {
 			uri:        "/node/disconnect",
 			authHeader: authHeader,
 			body:       `{"address":"127.0.0.1:1234"}`,
-			errorStr:   `{"status":"Bad request.","error":"error disconnecting from peer: could not disconnect peer: peer with address 127.0.0.1:1234 not found"}`,
+			errorStr:   `{"status":"Internal Server Error","error":"error disconnecting from peer: could not disconnect peer: peer with address 127.0.0.1:1234 not found"}`,
 			code:       http.StatusInternalServerError,
 		},
 	}

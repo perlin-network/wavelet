@@ -22,6 +22,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/wavelet/store"
@@ -37,6 +38,9 @@ import (
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/pprofhandler"
 	"github.com/valyala/fastjson"
+	"golang.org/x/crypto/acme"
+	"golang.org/x/crypto/acme/autocert"
+	"net"
 
 	"io"
 	"net/http"
@@ -53,8 +57,9 @@ type Gateway struct {
 	network *skademlia.Protocol
 	keys    *skademlia.Keypair
 
-	router        *fasthttprouter.Router
-	server        *fasthttp.Server
+	router  *fasthttprouter.Router
+	servers []  *fasthttp.Server
+
 	sinks         map[string]*sink
 	enableTimeout bool
 
@@ -181,6 +186,71 @@ func (g *Gateway) applyMiddleware(f fasthttp.RequestHandler, rateLimiterKey stri
 func (g *Gateway) StartHTTP(
 	port int, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair, kv store.KV,
 ) {
+	logger := log.Node()
+
+	ln, err := net.Listen("tcp4", ":"+strconv.Itoa(port))
+	if err != nil {
+		logger.Fatal().Err(err).Msgf("Failed to listen to port %d.", port)
+	}
+
+	logger.Info().Int("port", port).Msg("Started HTTP API server.")
+
+	g.start(ln, nil, c, l, k, kv)
+}
+
+// Only support tls-alpn-01.
+func (g *Gateway) StartHTTPS(
+	httpPort int, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair,
+	kv store.KV,
+	allowedHost, certCacheDir string,
+) {
+	logger := log.Node()
+
+	if len(allowedHost) == 0 {
+		logger.Fatal().Msg("allowedHost is empty.")
+	}
+
+	if len(certCacheDir) == 0 {
+		logger.Fatal().Msg("certCacheDir is empty.")
+	}
+
+	certManager := autocert.Manager{
+		Prompt:     autocert.AcceptTOS,
+		Cache:      autocert.DirCache(certCacheDir),
+		HostPolicy: autocert.HostWhitelist(allowedHost),
+	}
+
+	// Setup TLS listener
+	inner, err := net.Listen("tcp", ":443")
+	if err != nil {
+		logger.Fatal().Err(err).Msgf("Failed to listen to port %d.", 443)
+	}
+
+	// Copied from autocert.Manager.TLSConfig(), with "h2" removed in NextProtos.
+	tlsConfig := &tls.Config{
+		GetCertificate: certManager.GetCertificate,
+		NextProtos: []string{
+			"http/1.1",
+			acme.ALPNProto,
+		},
+	}
+	tlsLn := tls.NewListener(inner, tlsConfig)
+
+	// Setup normal listener
+	ln, err := net.Listen("tcp4", ":"+strconv.Itoa(httpPort))
+	if err != nil {
+		logger.Fatal().Err(err).Msgf("Failed to listen to port %d.", httpPort)
+	}
+
+	logger.Info().Int("port", 443).Msg("Started HTTPS API server.")
+	logger.Info().Int("port", httpPort).Msg("Started HTTP API server.")
+
+	g.start(tlsLn, ln, c, l, k, kv)
+}
+
+func (g *Gateway) start(
+	ln net.Listener, ln2 net.Listener, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair, kv store.KV,
+) {
 	stop := g.rateLimiter.cleanup(10 * time.Minute)
 	defer stop()
 
@@ -194,22 +264,33 @@ func (g *Gateway) StartHTTP(
 
 	logger := log.Node()
 
-	logger.Info().Int("port", port).Msg("Started HTTP API server.")
+	if ln2 != nil {
+		s := &fasthttp.Server{
+			Handler: g.router.Handler,
+		}
+		g.servers = append(g.servers, s)
 
-	g.server = &fasthttp.Server{
-		Handler: g.router.Handler,
+		go func() {
+			if err := s.Serve(ln2); err != nil {
+				logger.Fatal().Int("port", ln2.Addr().(*net.TCPAddr).Port).Err(err).Msg("Failed to start HTTP server on the second listener.")
+			}
+		}()
 	}
 
-	if err := g.server.ListenAndServe(":" + strconv.Itoa(port)); err != nil {
+	s := &fasthttp.Server{
+		Handler: g.router.Handler,
+	}
+	g.servers = append(g.servers, s)
+
+	if err := s.Serve(ln); err != nil {
 		logger.Fatal().Err(err).Msg("Failed to start HTTP server.")
 	}
 }
 
 func (g *Gateway) Shutdown() {
-	if g.server == nil {
-		return
+	for _, s := range g.servers {
+		_ = s.Shutdown()
 	}
-	_ = g.server.Shutdown()
 }
 
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
