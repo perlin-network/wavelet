@@ -27,8 +27,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/perlin-network/wavelet/lru"
-
 	"github.com/perlin-network/wavelet/store"
 	"github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
@@ -52,13 +50,13 @@ type Tree struct {
 
 	root *node
 
-	cache *lru.LRU
+	cache *NodeLRU
 
 	viewID uint64
 }
 
 func New(kv store.KV) *Tree {
-	t := &Tree{kv: kv, cache: lru.NewLRU(DefaultCacheSize), maxWriteBatchSize: MaxWriteBatchSize}
+	t := &Tree{kv: kv, cache: NewNodeLRU(DefaultCacheSize), maxWriteBatchSize: MaxWriteBatchSize}
 
 	// Load root node if it already exists.
 	if buf, err := t.kv.Get(RootKey); err == nil && len(buf) == MerkleHashSize {
@@ -76,7 +74,7 @@ func (t *Tree) WithLRUCache(size *int) *Tree {
 	if size == nil {
 		t.cache = nil
 	} else {
-		t.cache = lru.NewLRU(*size)
+		t.cache = NewNodeLRU(*size)
 	}
 
 	return t
@@ -293,7 +291,7 @@ func (t *Tree) Checksum() [MerkleHashSize]byte {
 
 func (t *Tree) loadNode(id [MerkleHashSize]byte) (*node, error) {
 	if n, ok := t.cache.Load(id); ok {
-		return n.(*node), nil
+		return n, nil
 	}
 
 	buf, err := t.kv.Get(append(NodeKeyPrefix, id[:]...))

@@ -28,7 +28,7 @@ import (
 )
 
 func TestLRU_PutLoad(t *testing.T) {
-	lru := NewLRU(2)
+	lru := NewNameTypeLRU(2)
 
 	lru.Put([32]byte{'a'}, 1)
 	lru.Put([32]byte{'b'}, 2)
@@ -53,7 +53,7 @@ func TestLRU_PutLoad(t *testing.T) {
 }
 
 func TestLRU_LoadOrPut(t *testing.T) {
-	lru := NewLRU(2)
+	lru := NewNameTypeLRU(2)
 
 	val, ok := lru.LoadOrPut([32]byte{'a'}, 1)
 	assert.False(t, ok)
@@ -88,7 +88,7 @@ func TestLRU_LoadOrPut(t *testing.T) {
 }
 
 func TestLRU_Remove(t *testing.T) {
-	lru := NewLRU(2)
+	lru := NewNameTypeLRU(2)
 
 	lru.Put([32]byte{'a'}, 1)
 	lru.Put([32]byte{'b'}, 2)
