@@ -23,7 +23,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/sys"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
 	"net/http"
@@ -113,12 +113,12 @@ func oAuth2(ctx *fasthttp.RequestCtx) string {
 
 func (g *Gateway) auth(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
-		if len(sys.Secret) == 0 {
+		if len(conf.GetSecret()) == 0 {
 			next(ctx)
 			return
 		}
 
-		if oAuth2(ctx) == sys.Secret {
+		if oAuth2(ctx) == conf.GetSecret() {
 			next(ctx)
 			return
 		}

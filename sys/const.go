@@ -63,8 +63,6 @@ var (
 
 	FaucetAddress = "0f569c84d434fb0ca682c733176f7c0c2d853fce04d95ae131d2f9b4124d93d8"
 
-	Secret = "secret"
-
 	GasTable = map[string]uint64{
 		"nop":                     1,
 		"unreachable":             1,

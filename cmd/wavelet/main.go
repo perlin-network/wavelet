@@ -201,6 +201,11 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Name:  "config, c",
 			Usage: "Path to TOML config file, will override the arguments.",
 		},
+		cli.StringFlag{
+			Name:  "secret",
+			Value: conf.GetSecret(),
+			Usage: "Shared secret to restrict access to some api",
+		},
 	}
 
 	// apply the toml before processing the flags
@@ -254,6 +259,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			conf.WithSnowballBeta(c.Int("sys.snowball.beta")),
 			conf.WithQueryTimeout(c.Duration("sys.query_timeout")),
 			conf.WithMaxDepthDiff(c.Uint64("sys.max_depth_diff")),
+			conf.WithSecret(c.String("secret")),
 		)
 
 		// set the the sys variables
@@ -393,7 +399,6 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 
 		logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
 	}
-
 
 	if cfg.APIHost != nil {
 		go api.New().StartHTTPS(int(cfg.APIPort), client, ledger, keys, kv, *cfg.APIHost, *cfg.APICertsCache)

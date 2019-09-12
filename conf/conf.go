@@ -31,6 +31,9 @@ type config struct {
 
 	// Number of rounds after which transactions will be pruned from the graph
 	pruningLimit uint8
+
+	// shared secret for http api authorization
+	secret string
 }
 
 var (
@@ -45,6 +48,7 @@ var (
 		maxDownloadDepthDiff: 1500,
 		maxDepthDiff:         10,
 		pruningLimit:         30,
+		secret:               "secret",
 	}
 
 	l = sync.RWMutex{}
@@ -109,6 +113,12 @@ func WithMaxDepthDiff(dd uint64) Option {
 func WithPruningLimit(pl uint8) Option {
 	return func(c *config) {
 		c.pruningLimit = pl
+	}
+}
+
+func WithSecret(s string) Option {
+	return func(c *config) {
+		c.secret = s
 	}
 }
 
@@ -187,6 +197,14 @@ func GetMaxDepthDiff() uint64 {
 func GetPruningLimit() uint8 {
 	l.RLock()
 	t := c.pruningLimit
+	l.RUnlock()
+
+	return t
+}
+
+func GetSecret() string {
+	l.RLock()
+	t := c.secret
 	l.RUnlock()
 
 	return t

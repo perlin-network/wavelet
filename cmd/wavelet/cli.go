@@ -22,8 +22,8 @@ package main
 import (
 	"encoding/csv"
 	"fmt"
-	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/conf"
+	"github.com/perlin-network/wavelet/store"
 	"io"
 	"strings"
 	"text/tabwriter"
@@ -163,7 +163,7 @@ func NewCLI(
 					Usage: "database will be erased if provided",
 				},
 			},
-		},{
+		}, {
 			Name:      "update-params",
 			UsageText: "Updates parameters, if no value provided, default one will be used.",
 			Aliases:   []string{"up"},

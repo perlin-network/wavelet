@@ -58,7 +58,7 @@ type Gateway struct {
 	keys    *skademlia.Keypair
 
 	router  *fasthttprouter.Router
-	servers []  *fasthttp.Server
+	servers []*fasthttp.Server
 
 	sinks         map[string]*sink
 	enableTimeout bool

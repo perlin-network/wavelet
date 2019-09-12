@@ -29,6 +29,7 @@ import (
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher"
 	"github.com/perlin-network/noise/handshake"
+	"github.com/perlin-network/wavelet/conf"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -598,7 +599,7 @@ func TestGetLedger(t *testing.T) {
 	publicKey := keys.PublicKey()
 
 	expectedJSON := fmt.Sprintf(
-		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"round":{"merkle_root":"cd3b0df841268ab6c987a594de29ad19","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc","applied":0,"depth":0,"difficulty":8},"peers":null}`,
+		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"round":{"merkle_root":"cd3b0df841268ab6c987a594de29ad19","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc","transactions":0,"depth":0,"difficulty":8},"peers":null}`,
 		hex.EncodeToString(publicKey[:]),
 		listener.Addr().(*net.TCPAddr).Port,
 	)
@@ -770,7 +771,7 @@ func TestConnectDisconnect(t *testing.T) {
 	body := fmt.Sprintf(`{"address": "%s"}`, node.Addr())
 
 	request := httptest.NewRequest(http.MethodPost, "http://localhost/node/connect", strings.NewReader(body))
-	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", sys.Secret))
+	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", conf.GetSecret()))
 	w, err := serve(gateway.router, request)
 	assert.NoError(t, err)
 
@@ -783,7 +784,7 @@ func TestConnectDisconnect(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf(`{"msg":"Successfully connected to %s"}`, node.Addr()), string(resp))
 
 	request = httptest.NewRequest(http.MethodPost, "http://localhost/node/disconnect", strings.NewReader(body))
-	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", sys.Secret))
+	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", conf.GetSecret()))
 	w, err = serve(gateway.router, request)
 	assert.NoError(t, err)
 
@@ -821,7 +822,7 @@ func TestConnectDisconnectErrors(t *testing.T) {
 		noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), gateway.client.Protocol()),
 	)
 
-	authHeader := fmt.Sprintf("Bearer %s", sys.Secret)
+	authHeader := fmt.Sprintf("Bearer %s", conf.GetSecret())
 
 	testCases := []struct {
 		name       string
