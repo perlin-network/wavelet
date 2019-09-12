@@ -219,6 +219,11 @@ func NewCLI(
 					Value: uint64(conf.GetPruningLimit()),
 					Usage: "number of rounds after which pruning of transactions will happen",
 				},
+				cli.StringFlag{
+					Name:  "api.secret",
+					Value: conf.GetSecret(),
+					Usage: "shared secret for http api authorization",
+				},
 			},
 		},
 	}

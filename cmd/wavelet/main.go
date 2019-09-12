@@ -129,6 +129,12 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Usage:  "Directory path to cache HTTPS certificates.",
 			EnvVar: "WAVELET_CERTS_CACHE_DIR",
 		}),
+		cli.StringFlag{
+			Name:   "api.secret",
+			Value:  conf.GetSecret(),
+			Usage:  "Shared secret to restrict access to some api",
+			EnvVar: "WAVELET_API_SECRET",
+		},
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "wallet",
 			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded private key to a wallet may also be specified.",
@@ -201,11 +207,6 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Name:  "config, c",
 			Usage: "Path to TOML config file, will override the arguments.",
 		},
-		cli.StringFlag{
-			Name:  "secret",
-			Value: conf.GetSecret(),
-			Usage: "Shared secret to restrict access to some api",
-		},
 	}
 
 	// apply the toml before processing the flags
@@ -259,7 +260,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			conf.WithSnowballBeta(c.Int("sys.snowball.beta")),
 			conf.WithQueryTimeout(c.Duration("sys.query_timeout")),
 			conf.WithMaxDepthDiff(c.Uint64("sys.max_depth_diff")),
-			conf.WithSecret(c.String("secret")),
+			conf.WithSecret(c.String("api.secret")),
 		)
 
 		// set the the sys variables

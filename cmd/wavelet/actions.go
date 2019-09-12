@@ -653,6 +653,7 @@ func (cli *CLI) updateParameters(ctx *cli.Context) {
 		conf.WithMaxDownloadDepthDiff(ctx.Uint64("max.download.depth.diff")),
 		conf.WithMaxDepthDiff(ctx.Uint64("max.depth.diff")),
 		conf.WithPruningLimit(uint8(ctx.Uint64("pruning.limit"))),
+		conf.WithSecret(ctx.String("api.secret")),
 	)
 
 	cli.logger.Info().Str("conf", conf.Stringify()).Msg("Current configuration values")
