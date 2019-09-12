@@ -63,6 +63,10 @@ func (b *badgerKV) Get(key []byte) ([]byte, error) {
 		return err
 	})
 
+	if value == nil {
+		value = []byte{}
+	}
+
 	return value, err
 }
 
@@ -108,17 +112,9 @@ func (b *badgerKV) CommitWriteBatch(batch WriteBatch) error {
 	return wb.batch.Flush()
 }
 
-type nullLog struct {
-}
+type nullLog struct{}
 
-func (l nullLog) Errorf(f string, v ...interface{}) {
-}
-
-func (l nullLog) Warningf(f string, v ...interface{}) {
-}
-
-func (l nullLog) Infof(f string, v ...interface{}) {
-}
-
-func (l nullLog) Debugf(f string, v ...interface{}) {
-}
+func (l nullLog) Errorf(f string, v ...interface{})   {}
+func (l nullLog) Warningf(f string, v ...interface{}) {}
+func (l nullLog) Infof(f string, v ...interface{})    {}
+func (l nullLog) Debugf(f string, v ...interface{})   {}
