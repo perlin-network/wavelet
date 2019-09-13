@@ -6,6 +6,7 @@ import (
 )
 
 func setEvents(c *wctl.Client) error {
+	c.OnError = onError
 	c.OnPeerJoin = onPeerJoin
 	c.OnPeerLeave = onPeerLeave
 	if _, err := c.PollNetwork(); err != nil {
@@ -13,6 +14,11 @@ func setEvents(c *wctl.Client) error {
 	}
 
 	return nil
+}
+
+func onError(err error) {
+	logger := log.Node()
+	logger.Err(err).Msg("WS Error occured.")
 }
 
 func onPeerJoin(u wctl.PeerJoin) {

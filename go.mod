@@ -11,6 +11,7 @@ require (
 	github.com/chzyer/logex v1.1.10 // indirect
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e // indirect
 	github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1 // indirect
+	github.com/davecgh/go-spew v1.1.1
 	github.com/diamondburned/tcell v1.1.8 // indirect
 	github.com/fasthttp/websocket v1.4.0
 	github.com/gogo/protobuf v1.2.1

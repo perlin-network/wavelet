@@ -50,7 +50,6 @@ type Wavelet struct {
 	SKademlia *skademlia.Client
 	Keypair   *skademlia.Keypair
 	Ledger    *wavelet.Ledger
-	Keys      *skademlia.Keypair
 
 	config   *Config
 	logger   zerolog.Logger
@@ -195,5 +194,5 @@ func (w *Wavelet) Start() {
 	}
 
 	go api.New().StartHTTP(
-		int(w.config.Port), w.SKademlia, w.Ledger, w.Keypair)
+		int(w.config.APIPort), w.SKademlia, w.Ledger, w.Keypair)
 }

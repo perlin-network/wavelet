@@ -12,6 +12,14 @@ import (
 	"github.com/valyala/fastjson"
 )
 
+type MarshalableJSON interface {
+	MarshalJSON() ([]byte, error)
+}
+
+type UnmarshalableJSON interface {
+	UnmarshalJSON([]byte) error
+}
+
 // RequestJSON will make a request to a given path, with a given body and
 // return the JSON bytes result into `out` to unmarshal.
 func (c *Client) RequestJSON(path string, method string, body MarshalableJSON, out UnmarshalableJSON) error {
@@ -41,18 +49,11 @@ func (c *Client) RequestJSON(path string, method string, body MarshalableJSON, o
 // Request will make a request to a given path, with a given body and return
 // the result in raw bytes.
 func (c *Client) Request(path string, method string, body []byte) ([]byte, error) {
-	protocol := "http"
-	if c.UseHTTPS {
-		protocol = "https"
-	}
-
 	req := fasthttp.AcquireRequest()
 	defer fasthttp.ReleaseRequest(req)
 
-	addr := fmt.Sprintf(
-		"%s://%s:%d%s",
-		protocol, c.APIHost, c.APIPort, path,
-	)
+	addr := c.url + path
+	println(addr)
 
 	req.URI().Update(addr)
 	req.Header.SetMethod(method)

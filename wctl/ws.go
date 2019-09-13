@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/gorilla/websocket"
 	"github.com/valyala/fastjson"
 )
@@ -39,10 +40,14 @@ func (c *Client) pollWS(path string, callback func(*fastjson.Value)) (func(), er
 
 	go func() {
 		for {
+			println("iterred", path)
 			_, message, err := ws.ReadMessage()
 			if err != nil {
+				c.OnError(err)
 				return
 			}
+
+			spew.Dump(message)
 
 			go func(message []byte) {
 				p := c.jsonPool.Get()

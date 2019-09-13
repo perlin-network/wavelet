@@ -92,6 +92,12 @@ func main() {
 			Usage:  "Listen for peers on port.",
 			EnvVar: "WAVELET_NODE_PORT",
 		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "api.host",
+			Value:  "127.0.0.1",
+			Usage:  "Host a local HTTP API at host address.",
+			EnvVar: "WAVELET_API_HOST",
+		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "api.port",
 			Value:  9000,
@@ -222,6 +228,7 @@ func start(c *cli.Context) error {
 
 	if config.ServerAddr == "" {
 		srvCfg := server.Config{
+			NAT:      c.Bool("nat"),
 			Host:     c.String("host"),
 			Port:     c.Uint("port"),
 			Wallet:   w,
@@ -243,9 +250,12 @@ func start(c *cli.Context) error {
 		// TODO: Add Close()
 		srv.Start()
 
+		// Debugging sleep
+		time.Sleep(time.Second)
+
 		wctlCfg.APIPort = uint16(c.Uint("api.port"))
 		wctlCfg.APIHost = c.String("api.host")
-		wctlCfg.PrivateKey = srv.Keys.PrivateKey()
+		wctlCfg.PrivateKey = srv.Keypair.PrivateKey()
 		wctlCfg.UseHTTPS = false // TODO
 	} else {
 		u, err := url.Parse(config.ServerAddr)

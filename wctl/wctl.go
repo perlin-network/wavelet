@@ -22,9 +22,11 @@ package wctl
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/perlin-network/noise/edwards25519"
@@ -51,6 +53,8 @@ const (
 	ReqGet  = "GET"
 )
 
+var ErrNoHost = errors.New("No host provided")
+
 type Marshalable interface {
 	Marshal() []byte
 }
@@ -72,6 +76,7 @@ type Client struct {
 	edwards25519.PublicKey
 
 	jsonPool fastjson.ParserPool
+	url      string
 
 	// TODO: metrics, stake, consensus, network
 
@@ -111,10 +116,23 @@ func NewClient(config Config) (*Client, error) {
 		config.Timeout = 5 * time.Second
 	}
 
+	if config.APIHost == "" {
+		return nil, ErrNoHost
+	}
+
+	protocol := "http"
+	if config.UseHTTPS {
+		protocol = "https"
+	}
+
 	c := &Client{
 		Config:     config,
 		PrivateKey: config.PrivateKey,
 		PublicKey:  config.PrivateKey.Public(),
+		url: (&url.URL{
+			Scheme: protocol,
+			Host:   fmt.Sprintf("%s:%d", config.APIHost, config.APIPort),
+		}).String(),
 		stdClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
