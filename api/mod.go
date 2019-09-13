@@ -544,6 +544,8 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 func (g *Gateway) connect(ctx *fasthttp.RequestCtx) {
 	parser := g.parserPool.Get()
 	v, err := parser.ParseBytes(ctx.PostBody())
+	g.parserPool.Put(parser)
+
 	if err != nil {
 		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error parsing request body")))
 		return
@@ -572,6 +574,8 @@ func (g *Gateway) connect(ctx *fasthttp.RequestCtx) {
 func (g *Gateway) disconnect(ctx *fasthttp.RequestCtx) {
 	parser := g.parserPool.Get()
 	v, err := parser.ParseBytes(ctx.PostBody())
+	g.parserPool.Put(parser)
+
 	if err != nil {
 		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error parsing request body")))
 		return
@@ -607,6 +611,8 @@ func (g *Gateway) restart(ctx *fasthttp.RequestCtx) {
 	if len(body) != 0 {
 		parser := g.parserPool.Get()
 		v, err := parser.ParseBytes(body)
+		g.parserPool.Put(parser)
+
 		if err != nil {
 			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error parsing request body")))
 			return
