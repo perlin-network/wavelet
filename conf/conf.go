@@ -48,7 +48,6 @@ var (
 		maxDownloadDepthDiff: 1500,
 		maxDepthDiff:         10,
 		pruningLimit:         30,
-		secret:               "secret",
 	}
 
 	l = sync.RWMutex{}

@@ -113,12 +113,7 @@ func oAuth2(ctx *fasthttp.RequestCtx) string {
 
 func (g *Gateway) auth(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return func(ctx *fasthttp.RequestCtx) {
-		if len(conf.GetSecret()) == 0 {
-			next(ctx)
-			return
-		}
-
-		if oAuth2(ctx) == conf.GetSecret() {
+		if len(conf.GetSecret()) > 0 && oAuth2(ctx) == conf.GetSecret() {
 			next(ctx)
 			return
 		}

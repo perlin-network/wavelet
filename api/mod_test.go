@@ -768,10 +768,14 @@ func TestConnectDisconnect(t *testing.T) {
 	node := network.AddNode(t)
 	defer node.Cleanup()
 
+	currentSecret := conf.GetSecret()
+	defer conf.Update(conf.WithSecret(currentSecret))
+	conf.Update(conf.WithSecret("secret"))
+
 	body := fmt.Sprintf(`{"address": "%s"}`, node.Addr())
 
 	request := httptest.NewRequest(http.MethodPost, "http://localhost/node/connect", strings.NewReader(body))
-	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", conf.GetSecret()))
+	request.Header.Set("Authorization", "Bearer secret")
 	w, err := serve(gateway.router, request)
 	assert.NoError(t, err)
 
@@ -784,7 +788,7 @@ func TestConnectDisconnect(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf(`{"msg":"Successfully connected to %s"}`, node.Addr()), string(resp))
 
 	request = httptest.NewRequest(http.MethodPost, "http://localhost/node/disconnect", strings.NewReader(body))
-	request.Header.Set("Authorization", fmt.Sprintf("Bearer %s", conf.GetSecret()))
+	request.Header.Set("Authorization", "Bearer secret")
 	w, err = serve(gateway.router, request)
 	assert.NoError(t, err)
 
@@ -822,7 +826,11 @@ func TestConnectDisconnectErrors(t *testing.T) {
 		noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), gateway.client.Protocol()),
 	)
 
-	authHeader := fmt.Sprintf("Bearer %s", conf.GetSecret())
+	currentSecret := conf.GetSecret()
+	defer conf.Update(conf.WithSecret(currentSecret))
+	conf.Update(conf.WithSecret("secret"))
+
+	authHeader := "Bearer secret"
 
 	testCases := []struct {
 		name       string
