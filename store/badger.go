@@ -20,7 +20,7 @@
 package store
 
 import (
-	badger "github.com/dgraph-io/badger"
+	"github.com/dgraph-io/badger"
 	"github.com/pkg/errors"
 )
 
