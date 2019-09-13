@@ -13,14 +13,6 @@ import (
 	"testing"
 )
 
-type testVote struct {
-	v string
-}
-
-func (tv *testVote) GetID() string {
-	return tv.v
-}
-
 func TestCollectVotesForSync(t *testing.T) {
 	kv := store.NewInmem()
 	accounts := NewAccounts(kv)
@@ -156,6 +148,10 @@ func TestCollectVotesForFinalization(t *testing.T) {
 	kv := store.NewInmem()
 	accounts := NewAccounts(kv)
 	snowballB := 5
+
+	defaultSnowballB := conf.GetSnowballBeta()
+	defer conf.Update(conf.WithSnowballBeta(defaultSnowballB))
+
 	conf.Update(conf.WithSnowballBeta(snowballB))
 	s := NewSnowball(WithName("test"))
 

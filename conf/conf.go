@@ -47,8 +47,8 @@ var (
 		syncVoteThreshold:             0.8,
 		finalizationVoteThreshold:     0.8,
 		stakeMajorityWeight:           1,
-		transactionsNumMajorityWeight: 1,
-		roundDepthMajorityWeight:      1,
+		transactionsNumMajorityWeight: 0.3,
+		roundDepthMajorityWeight:      0.3,
 
 		queryTimeout:  500 * time.Millisecond,
 		gossipTimeout: 500 * time.Millisecond,
