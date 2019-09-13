@@ -31,24 +31,23 @@ import (
 	"path/filepath"
 )
 
-const GenPath = "config"
-
 func main() {
 	flagN := flag.Uint("n", 1, "Number of wallets to create.")
 	flagC1 := flag.Uint("c1", 16, "S/Kademlia C1 protocol parameter.")
 	flagC2 := flag.Uint("c2", 16, "S/Kademlia C2 protocol parameter.")
+	flagDir := flag.String("dir", ".", "Path to store generated wallets in.")
 	flag.Parse()
 
-	if err := os.Mkdir(GenPath, 0600); err != nil && !os.IsExist(err) {
+	if err := os.Mkdir(*flagDir, 0600); err != nil && !os.IsExist(err) {
 		if os.IsPermission(err) {
-			log.Fatal().Err(err).Msgf("Failed to get permission to create directory %q to store wallets in.", GenPath)
+			log.Fatal().Err(err).Msgf("Failed to get permission to create directory %q to store wallets in.", *flagDir)
 		}
 
-		log.Fatal().Err(err).Msgf("An unknown error occured creating directory %q.", GenPath)
+		log.Fatal().Err(err).Msgf("An unknown error occured creating directory %q.", *flagDir)
 	}
 
 	for i := uint(1); i <= *flagN; i++ {
-		walletFilePath := filepath.Join(GenPath, fmt.Sprintf("wallet%d.txt", i))
+		walletFilePath := filepath.Join(*flagDir, fmt.Sprintf("wallet%d.txt", i))
 
 		if buf, err := ioutil.ReadFile(walletFilePath); err == nil && len(buf) == hex.EncodedLen(edwards25519.SizePrivateKey) {
 			continue

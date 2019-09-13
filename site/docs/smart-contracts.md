@@ -17,7 +17,12 @@ In this tutorial, we will look first-hand on how a simple WebAssembly (Rust) sma
 
 ## Setup
 
-As a prerequisite, make sure [you have Rust installed](https://www.rust-lang.org/tools/install) with the WebAssembly compiler backend target installed on the Nightly channel.
+As a prerequisite, make sure [you have Rust installed](https://www.rust-lang.org/tools/install) with the WebAssembly compiler backend target installed on the Nightly channel. To set the Nightly channel as the default channel:
+
+```shell
+❯ rustup install nightly
+❯ rustup default nightly
+```
 
 To install the WebAssembly compiler backend target after installing Rust, execute the following command below and wait until it completes:
 
@@ -45,8 +50,8 @@ lto = true
 crate-type = ["cdylib"]
 
 [dependencies]
-smart-contract = "0.1.0"
-smart-contract-macros = "0.1.0"
+smart-contract = "0.2.0"
+smart-contract-macros = "0.2.0"
 ```
 
 Open up `src/lib.rs` and paste the code below. What our first smart contract will do is that whenever the
@@ -73,8 +78,7 @@ impl Contract {
         Transfer {
             destination: params.sender,
             amount: (params.amount + 1) / 2,
-            func_name: vec![],
-            func_params: vec![],
+            invocation: None,
         }
         .send_transaction();
 

@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -26,14 +27,22 @@ import (
 )
 
 type Config struct {
-	NAT      bool
-	Host     string
-	Port     uint
-	Wallet   string // hex encoded
-	Genesis  *string
-	APIPort  uint
-	Peers    []string
-	Database string
+	NAT         bool
+	Host        string
+	Port        uint
+	Wallet      string // hex encoded
+	Genesis     *string
+	APIPort     uint
+	Peers       []string
+	Database    string
+	MaxMemoryMB uint64
+
+	// HTTPS
+	APIHost       string
+	APICertsCache string
+
+	// Only for testing
+	NoGC bool
 }
 
 var DefaultConfig = Config{
@@ -45,6 +54,10 @@ var DefaultConfig = Config{
 	Peers:    []string{},
 	Database: "",
 }
+
+var (
+	ErrHTTPSMissingCerts = errors.New("Missing API certs in config.APICertsCache")
+)
 
 type Wavelet struct {
 	SKademlia *skademlia.Client
@@ -59,6 +72,10 @@ type Wavelet struct {
 func New(cfg *Config) (*Wavelet, error) {
 	if cfg == nil {
 		cfg = &DefaultConfig
+	}
+
+	if cfg.APIHost != "" && cfg.APICertsCache == "" {
+		return nil, ErrHTTPSMissingCerts
 	}
 
 	w := Wavelet{
@@ -155,7 +172,19 @@ func New(cfg *Config) (*Wavelet, error) {
 			"Failed to create/open database located at %s", cfg.Database)
 	}
 
-	ledger := wavelet.NewLedger(kv, client, wavelet.WithGenesis(cfg.Genesis))
+	opts := []wavelet.Option{
+		wavelet.WithGenesis(cfg.Genesis),
+	}
+
+	if cfg.NoGC {
+		opts = append(opts, wavelet.WithoutGC())
+	}
+
+	if cfg.MaxMemoryMB > 0 {
+		opts = append(opts, wavelet.WithMaxMemoryMB(cfg.MaxMemoryMB))
+	}
+
+	ledger := wavelet.NewLedger(kv, client, opts...)
 	w.Ledger = ledger
 
 	return &w, nil
@@ -172,7 +201,9 @@ func (w *Wavelet) Start() {
 	}()
 
 	for _, addr := range w.config.Peers {
-		if _, err := w.SKademlia.Dial(addr); err != nil {
+		if _, err := w.SKademlia.Dial(addr,
+			skademlia.WithTimeout(10*time.Second)); err != nil {
+
 			w.logger.Warn().Err(err).
 				Str("addr", addr).
 				Msg("Error dialing")
@@ -193,6 +224,17 @@ func (w *Wavelet) Start() {
 		w.config.APIPort = 9000
 	}
 
-	go api.New().StartHTTP(
-		int(w.config.APIPort), w.SKademlia, w.Ledger, w.Keypair)
+	if w.config.APIHost != "" {
+		go api.New().StartHTTPS(
+			int(w.config.APIPort),
+			w.SKademlia, w.Ledger, w.Keypair,
+			w.config.APIHost,
+			w.config.APICertsCache, // guaranteed not empty in New
+		)
+	} else {
+		go api.New().StartHTTP(
+			int(w.config.APIPort),
+			w.SKademlia, w.Ledger, w.Keypair,
+		)
+	}
 }

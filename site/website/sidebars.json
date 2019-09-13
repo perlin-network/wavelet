@@ -5,6 +5,10 @@
       "transactions",
       "smart-contracts",
       "governance"
+    ],
+    "Tutorials": [
+      "examples/decentralized-chat-app",
+      "examples/decentralized-todo-app"
     ]
   }
 }

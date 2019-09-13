@@ -83,7 +83,7 @@ Get Account Information
 
 * **URL**
 
-    `/account/:id`
+    `/accounts/:id`
 
 * **Method:**
 

@@ -45,6 +45,7 @@ type LedgerStatusResponse struct {
 	HostAddress    string   `json:"address"`
 	NumAccounts    int      `json:"num_accounts"`
 	PreferredVotes int      `json:"preferred_votes"`
+	SyncStatus     string   `json:"sync_status"`
 	PreferredID    string   `json:"preferred_id"` // optional
 
 	Round struct {
@@ -58,10 +59,12 @@ type LedgerStatusResponse struct {
 	} `json:"round"`
 
 	Graph struct {
-		Tx        uint64 `json:"num_tx"`
-		MissingTx uint64 `json:"num_missing_tx"`
-		TxInStore uint64 `json:"num_tx_in_store"`
-		Height    uint64 `json:"height"`
+		// TODO: make these int?
+		Tx           uint64 `json:"num_tx"`
+		MissingTx    uint64 `json:"num_missing_tx"`
+		TxInStore    uint64 `json:"num_tx_in_store"`
+		IncompleteTx uint64 `json:"num_incomplete_tx"`
+		Height       uint64 `json:"height"`
 	} `json:"graph"`
 
 	Peers []Peer `json:"peers"`
@@ -87,6 +90,7 @@ func (l *LedgerStatusResponse) UnmarshalJSON(b []byte) error {
 	l.HostAddress = string(v.GetStringBytes("address"))
 	l.NumAccounts = v.GetInt("num_accounts")
 	l.PreferredVotes = v.GetInt("preferred_votes")
+	l.SyncStatus = string(v.GetStringBytes("sync_status"))
 	l.PreferredID = string(v.GetStringBytes("preferred_id"))
 
 	if err := jsonHex(v, l.Round.MerkleRoot[:], "round", "merkle_root"); err != nil {
@@ -108,6 +112,7 @@ func (l *LedgerStatusResponse) UnmarshalJSON(b []byte) error {
 	l.Graph.Tx = v.GetUint64("graph", "num_tx")
 	l.Graph.MissingTx = v.GetUint64("graph", "num_missing_tx")
 	l.Graph.TxInStore = v.GetUint64("graph", "num_tx_in_store")
+	l.Graph.IncompleteTx = v.GetUint64("graph", "num_incomplete_tx")
 	l.Graph.Height = v.GetUint64("graph", "height")
 
 	peerValue := v.GetArray("peers")

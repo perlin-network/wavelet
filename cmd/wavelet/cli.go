@@ -24,9 +24,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"text/tabwriter"
+
+	"github.com/perlin-network/wavelet/conf"
 
 	"github.com/benpye/readline"
 	"github.com/perlin-network/wavelet/log"
@@ -125,10 +128,82 @@ func NewCLI(client *wctl.Client) (*CLI, error) {
 			Action:      a(c.withdrawReward),
 			Description: "withdraw rewards into PERLs",
 		},
+		/*
+			{
+				Name:        "connect",
+				Aliases:     []string{"cc"},
+				Action:      a(c.connect),
+				Description: "connect to a peer",
+			},
+			{
+				Name:        "disconnect",
+				Aliases:     []string{"dc"},
+				Action:      a(c.disconnect),
+				Description: "disconnect a peer",
+			},
+		*/
 		{
 			Name:    "exit",
 			Aliases: []string{"quit", ":q"},
 			Action:  a(c.exit),
+		},
+		{
+			Name:      "update-params",
+			UsageText: "Updates parameters, if no value provided, default one will be used.",
+			Aliases:   []string{"up"},
+			Action:    a(c.updateParameters),
+			Flags: []cli.Flag{
+				cli.IntFlag{
+					Name:  "snowball.k",
+					Value: conf.GetSnowballK(),
+					Usage: "snowball K consensus parameter",
+				},
+				cli.Float64Flag{
+					Name:  "snowball.alpha",
+					Value: conf.GetSnowballAlpha(),
+					Usage: "snowball Alpha consensus parameter",
+				},
+				cli.IntFlag{
+					Name:  "snowball.beta",
+					Value: conf.GetSnowballBeta(),
+					Usage: "snowball Beta consensus parameter",
+				},
+				cli.DurationFlag{
+					Name:  "query.timeout",
+					Value: conf.GetQueryTimeout(),
+					Usage: "timeout for query request",
+				},
+				cli.DurationFlag{
+					Name:  "gossip.timeout",
+					Value: conf.GetGossipTimeout(),
+					Usage: "timeout for gossip request",
+				},
+				cli.IntFlag{
+					Name:  "sync.chunk.size",
+					Value: conf.GetSyncChunkSize(),
+					Usage: "chunk size for state syncing",
+				},
+				cli.Uint64Flag{
+					Name:  "sync.if.rounds.differ.by",
+					Value: conf.GetSyncIfRoundsDifferBy(),
+					Usage: "difference in rounds between nodes which initiates state syncing",
+				},
+				cli.Uint64Flag{
+					Name:  "max.download.depth.diff",
+					Value: conf.GetMaxDownloadDepthDiff(),
+					Usage: "maximum depth for transactions which need to be downloaded",
+				},
+				cli.Uint64Flag{
+					Name:  "max.depth.diff",
+					Value: conf.GetMaxDepthDiff(),
+					Usage: "maximum depth difference for transactions to be added to the graph",
+				},
+				cli.Uint64Flag{
+					Name:  "pruning.limit",
+					Value: uint64(conf.GetPruningLimit()),
+					Usage: "number of rounds after which pruning of transactions will happen",
+				},
+			},
 		},
 	}
 
@@ -138,14 +213,20 @@ func NewCLI(client *wctl.Client) (*CLI, error) {
 	w := tabwriter.NewWriter(&s, 0, 0, 1, ' ', 0)
 
 	for _, c := range c.app.VisibleCommands() {
-		fmt.Fprintf(w,
+		_, err := fmt.Fprintf(w,
 			"    %s (%s) %s\t%s\n",
 			c.Name, strings.Join(c.Aliases, ", "), c.Usage,
 			c.Description,
 		)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		return nil, err
+	}
+
 	c.app.CustomAppHelpTemplate = s.String()
 
 	// Add in autocompletion
@@ -175,6 +256,8 @@ func NewCLI(client *wctl.Client) (*CLI, error) {
 		InterruptPrompt:   "^C",
 		EOFPrompt:         "exit",
 		HistorySearchFold: true,
+		Stdin:             os.Stdin,
+		Stdout:            os.Stdout,
 	})
 
 	if err != nil {
@@ -230,11 +313,11 @@ ReadLoop:
 		}
 	}
 
-	cli.rl.Close()
+	_ = cli.rl.Close()
 }
 
 func (cli *CLI) exit(ctx *cli.Context) {
-	cli.rl.Close()
+	_ = cli.rl.Close()
 }
 
 func a(f func(*cli.Context)) func(*cli.Context) error {

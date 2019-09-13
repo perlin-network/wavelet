@@ -84,7 +84,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?sender=1",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "sender ID must be presented as valid hex: encoding/hex: odd length hex string",
 			},
 		},
@@ -93,7 +93,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?sender=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "sender ID must be 32 bytes long",
 			},
 		},
@@ -102,7 +102,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?creator=1",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "creator ID must be presented as valid hex: encoding/hex: odd length hex string",
 			},
 		},
@@ -111,7 +111,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?creator=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "creator ID must be 32 bytes long",
 			},
 		},
@@ -120,7 +120,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?creator=1",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "creator ID must be presented as valid hex: encoding/hex: odd length hex string",
 			},
 		},
@@ -208,7 +208,7 @@ func TestGetTransaction(t *testing.T) {
 			id:       "1c331c1d",
 			wantCode: http.StatusBadRequest,
 			wantResponse: &testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  fmt.Sprintf("transaction ID must be %d bytes long", wavelet.SizeTransactionID),
 			},
 		},
@@ -470,7 +470,7 @@ func TestGetContractCode(t *testing.T) {
 			url:      "/contract/" + "3132333435363738393031323334353637383930313233343536373839303132",
 			wantCode: http.StatusNotFound,
 			wantError: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Not Found",
 				ErrorText:  fmt.Sprintf("could not find contract with ID %s", "3132333435363738393031323334353637383930313233343536373839303132"),
 			},
 		},
@@ -518,7 +518,7 @@ func TestGetContractPages(t *testing.T) {
 			url:      "/contract/" + id + "/page/-1",
 			wantCode: http.StatusBadRequest,
 			wantError: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "could not parse page index",
 			},
 		},
@@ -527,7 +527,7 @@ func TestGetContractPages(t *testing.T) {
 			url:      "/contract/3132333435363738393031323334353637383930313233343536373839303132/page/1",
 			wantCode: http.StatusNotFound,
 			wantError: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Not Found",
 				ErrorText:  fmt.Sprintf("could not find any pages for contract with ID %s", "3132333435363738393031323334353637383930313233343536373839303132"),
 			},
 		},
@@ -594,7 +594,7 @@ func TestGetLedger(t *testing.T) {
 	publicKey := keys.PublicKey()
 
 	expectedJSON := fmt.Sprintf(
-		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"round":{"merkle_root":"613f573f0ed5d8b60d9659a3fc04ada1","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc","applied":0,"depth":0,"difficulty":8},"peers":null}`,
+		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"round":{"merkle_root":"cd3b0df841268ab6c987a594de29ad19","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc","transactions":0,"depth":0,"difficulty":8},"peers":null}`,
 		hex.EncodeToString(publicKey[:]),
 		listener.Addr().(*net.TCPAddr).Port,
 	)

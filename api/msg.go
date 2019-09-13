@@ -219,10 +219,12 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 		arena.NewNumberString(strconv.FormatUint(accountsLen, 10)))
 	o.Set("preferred_votes",
 		arena.NewNumberInt(s.ledger.Finalizer().Progress()))
+	o.Set("sync_status",
+		arena.NewString(s.ledger.SyncStatus()))
 
 	var prefID string
 	if preferred := s.ledger.Finalizer().Preferred(); preferred != nil {
-		prefID = hex.EncodeToString(preferred.ID[:])
+		prefID = preferred.GetID()
 	}
 
 	o.Set("preferred_id",
@@ -237,8 +239,6 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 		arena.NewString(hex.EncodeToString(round.End.ID[:])))
 	r.Set("index",
 		arena.NewNumberString(strconv.FormatUint(round.Index, 10)))
-	r.Set("applied",
-		arena.NewNumberString(strconv.FormatUint(round.Applied, 10)))
 	r.Set("depth",
 		arena.NewNumberString(strconv.FormatUint(round.End.Depth-round.Start.Depth, 10)))
 	r.Set("difficulty",
@@ -259,6 +259,8 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 		arena.NewNumberInt(graph.MissingLen()))
 	g.Set("num_tx_in_store",
 		arena.NewNumberInt(graph.Len()))
+	g.Set("num_incomplete_tx",
+		arena.NewNumberInt(graph.IncompleteLen()))
 	g.Set("height",
 		arena.NewNumberString(strconv.FormatUint(graph.Height(), 10)))
 
@@ -405,7 +407,7 @@ type errResponse struct {
 func (e *errResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 
-	o.Set("status", arena.NewString("Bad request."))
+	o.Set("status", arena.NewString(http.StatusText(e.HTTPStatusCode)))
 
 	if e.Err != nil {
 		o.Set("error", arena.NewString(e.Err.Error()))

@@ -22,6 +22,7 @@ package wavelet
 import (
 	"bytes"
 	"encoding/hex"
+	"github.com/perlin-network/wavelet/conf"
 	"sort"
 	"sync"
 
@@ -35,10 +36,6 @@ type GraphOption func(*Graph)
 
 func WithRoot(root Transaction) GraphOption {
 	return func(graph *Graph) {
-		if graph.indexer != nil {
-			graph.indexer.Index(hex.EncodeToString(root.ID[:]))
-		}
-
 		graph.UpdateRoot(root)
 	}
 }
@@ -92,8 +89,8 @@ type Graph struct {
 	transactions map[TransactionID]*Transaction    // All transactions. Includes incomplete transactions.
 	children     map[TransactionID][]TransactionID // Children of transactions. Includes incomplete/missing transactions.
 
-	missing    map[TransactionID]uint64   // Transactions that we are missing. Maps to depth of child of missing transaction.
-	incomplete map[TransactionID]struct{} // Transactions that don't have all parents available.
+	missing    map[TransactionID]uint64 // Transactions that we are missing. Maps to depth of child of missing transaction.
+	incomplete map[TransactionID]uint64 // Transactions that don't have all parents available.
 
 	eligibleIndex *btree.BTree              // Transactions that are eligible to be parent transactions.
 	seedIndex     *btree.BTree              // Indexes transactions by the number of zero bits prefixed of BLAKE2b(Sender || ParentIDs).
@@ -111,7 +108,7 @@ func NewGraph(opts ...GraphOption) *Graph {
 		children:     make(map[TransactionID][]TransactionID),
 
 		missing:    make(map[TransactionID]uint64),
-		incomplete: make(map[TransactionID]struct{}),
+		incomplete: make(map[TransactionID]uint64),
 
 		eligibleIndex: btree.New(32),
 		seedIndex:     btree.New(32),
@@ -136,7 +133,7 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 		return ErrAlreadyExists
 	}
 
-	if g.rootDepth > sys.MaxDepthDiff+tx.Depth {
+	if g.rootDepth > conf.GetMaxDepthDiff()+tx.Depth {
 		return errors.Errorf("transactions depth is too low compared to root: root depth is %d, but tx depth is %d", g.rootDepth, tx.Depth)
 	}
 
@@ -147,6 +144,11 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 	ptr := &tx
 
 	g.transactions[tx.ID] = ptr
+
+	if g.indexer != nil {
+		g.indexer.Index(hex.EncodeToString(tx.ID[:]))
+	}
+
 	delete(g.missing, tx.ID)
 
 	parentsMissing := false
@@ -154,13 +156,13 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 	// Do not consider transactions below root.depth by exactly DEPTH_DIFF to be incomplete
 	// at all. Permit them to have incomplete parent histories.
 
-	if g.rootDepth != uint64(sys.MaxDepthDiff)+tx.Depth {
+	if g.rootDepth != conf.GetMaxDepthDiff()+tx.Depth {
 		for _, parentID := range tx.ParentIDs {
 			if _, stored := g.transactions[parentID]; !stored {
 				parentsMissing = true
 
 				if _, recorded := g.missing[parentID]; !recorded {
-					g.missing[parentID] = tx.Depth
+					g.missing[parentID] = tx.Depth - 1
 				}
 			}
 
@@ -173,7 +175,7 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 	}
 
 	if parentsMissing {
-		g.incomplete[tx.ID] = struct{}{}
+		g.incomplete[tx.ID] = tx.Depth
 
 		return ErrMissingParents
 	}
@@ -185,8 +187,11 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 // missing.
 func (g *Graph) MarkTransactionAsMissing(id TransactionID, depth uint64) {
 	g.Lock()
-	if g.rootDepth <= sys.MaxDepthDiff+depth {
+	if g.rootDepth <= conf.GetMaxDepthDiff()+depth {
 		g.missing[id] = depth
+	}
+	for _, childID := range g.children[id] {
+		g.incomplete[childID] = depth
 	}
 	g.Unlock()
 }
@@ -202,6 +207,10 @@ func (g *Graph) UpdateRoot(root Transaction) {
 	g.eligibleIndex.ReplaceOrInsert((*sortByDepthTX)(ptr))
 
 	g.transactions[root.ID] = ptr
+
+	if g.indexer != nil {
+		g.indexer.Index(hex.EncodeToString(root.ID[:]))
+	}
 
 	g.height = root.Depth + 1
 
@@ -223,12 +232,33 @@ func (g *Graph) UpdateRootDepth(rootDepth uint64) {
 	g.rootDepth = rootDepth
 
 	for id, depth := range g.missing {
-		if rootDepth <= sys.MaxDepthDiff+depth {
-			continue
+		if rootDepth > conf.GetMaxDepthDiff()+depth {
+			delete(g.missing, id)
+
+			if g.indexer != nil {
+				g.indexer.Remove(hex.EncodeToString(id[:]))
+			}
+
+			g.resolveChildren(id)
+
+			delete(g.children, id)
+		}
+	}
+
+	for id, depth := range g.incomplete {
+		if rootDepth > conf.GetMaxDepthDiff()+depth {
+			delete(g.incomplete, id)
+			delete(g.transactions, id)
+
+			if g.indexer != nil {
+				g.indexer.Remove(hex.EncodeToString(id[:]))
+			}
+
+			g.resolveChildren(id)
+
+			delete(g.children, id)
 		}
 
-		delete(g.children, id)
-		delete(g.missing, id)
 	}
 
 	g.eligibleIndex.Ascend(func(i btree.Item) bool {
@@ -269,25 +299,22 @@ func (g *Graph) PruneBelowDepth(targetDepth uint64) int {
 
 	g.Lock()
 
-	for depth := range g.depthIndex {
+	for depth, transactions := range g.depthIndex {
 		if depth > targetDepth {
 			continue
 		}
 
-		for _, tx := range g.depthIndex[depth] {
+		for _, tx := range transactions {
 			count += tx.LogicalUnits()
 
 			delete(g.transactions, tx.ID)
 			delete(g.children, tx.ID)
 
-			delete(g.missing, tx.ID)
-			delete(g.incomplete, tx.ID)
-
 			g.eligibleIndex.Delete((*sortByDepthTX)(tx))
 			g.seedIndex.Delete((*sortBySeedTX)(tx))
 
 			if g.indexer != nil {
-				g.indexer.Index(hex.EncodeToString(tx.ID[:]))
+				g.indexer.Remove(hex.EncodeToString(tx.ID[:]))
 			}
 		}
 
@@ -295,12 +322,18 @@ func (g *Graph) PruneBelowDepth(targetDepth uint64) int {
 	}
 
 	for id, depth := range g.missing {
-		if depth > targetDepth {
-			continue
+		if depth <= targetDepth {
+			delete(g.missing, id)
+			count++
+			delete(g.children, id)
 		}
+	}
 
-		delete(g.children, id)
-		delete(g.missing, id)
+	for id, depth := range g.incomplete {
+		if depth <= targetDepth {
+			delete(g.incomplete, id)
+			count++
+		}
 	}
 
 	g.Unlock()
@@ -321,7 +354,7 @@ func (g *Graph) FindEligibleParents() []*Transaction {
 	g.eligibleIndex.Descend(func(i btree.Item) bool {
 		eligibleParent := i.(*sortByDepthTX)
 
-		if g.height-1 >= sys.MaxDepthDiff+eligibleParent.Depth {
+		if g.height-1 >= conf.GetMaxDepthDiff()+eligibleParent.Depth {
 			pending = append(pending, eligibleParent)
 			return true
 		}
@@ -493,6 +526,14 @@ func (g *Graph) MissingLen() int {
 	return num
 }
 
+func (g *Graph) IncompleteLen() int {
+	g.RLock()
+	num := len(g.incomplete)
+	g.RUnlock()
+
+	return num
+}
+
 // GetTransactionsByDepth returns the number of transactions in graph whose depth is
 // between [start, end].
 func (g *Graph) DepthLen(start *uint64, end *uint64) int {
@@ -539,11 +580,13 @@ func (g *Graph) updateGraph(tx *Transaction) error {
 		g.metrics.receivedTX.Mark(int64(tx.LogicalUnits()))
 	}
 
-	if g.indexer != nil {
-		g.indexer.Index(hex.EncodeToString(tx.ID[:]))
-	}
+	g.resolveChildren(tx.ID)
 
-	for _, childID := range g.children[tx.ID] {
+	return nil
+}
+
+func (g *Graph) resolveChildren(parentID TransactionID) {
+	for _, childID := range g.children[parentID] {
 		if _, incomplete := g.incomplete[childID]; !incomplete {
 			continue
 		}
@@ -561,7 +604,7 @@ func (g *Graph) updateGraph(tx *Transaction) error {
 				break
 			}
 
-			if _, exists := g.transactions[parentID]; !exists {
+			if _, missing := g.missing[parentID]; missing {
 				complete = false
 				break
 			}
@@ -570,17 +613,11 @@ func (g *Graph) updateGraph(tx *Transaction) error {
 		if complete {
 			delete(g.incomplete, childID)
 
-			if g.indexer != nil {
-				g.indexer.Remove(hex.EncodeToString(tx.ID[:]))
-			}
-
 			if err := g.updateGraph(child); err != nil {
 				continue
 			}
 		}
 	}
-
-	return nil
 }
 
 func (g *Graph) deleteProgeny(id TransactionID) {
@@ -611,6 +648,10 @@ func (g *Graph) deleteProgeny(id TransactionID) {
 
 	delete(g.missing, id)
 	delete(g.incomplete, id)
+
+	if g.indexer != nil {
+		g.indexer.Remove(hex.EncodeToString(id[:]))
+	}
 
 	for _, childID := range children {
 		g.deleteProgeny(childID)
@@ -693,7 +734,7 @@ func (g *Graph) validateTransactionParents(tx *Transaction) error {
 	// Do not consider transactions below root.depth by exactly DEPTH_DIFF to be incomplete
 	// at all. Permit them to have incomplete parent histories.
 
-	if g.rootDepth == uint64(sys.MaxDepthDiff)+tx.Depth {
+	if g.rootDepth == conf.GetMaxDepthDiff()+tx.Depth {
 		return nil
 	}
 
@@ -706,7 +747,7 @@ func (g *Graph) validateTransactionParents(tx *Transaction) error {
 			return errors.New("parent not stored in graph")
 		}
 
-		if tx.Depth > sys.MaxDepthDiff+parent.Depth { // Check if the depth of each parents is acceptable.
+		if tx.Depth > conf.GetMaxDepthDiff()+parent.Depth { // Check if the depth of each parents is acceptable.
 			return errors.Wrapf(ErrDepthLimitExceeded, "tx parent has ineligible depth: parents depth is %d, but tx depth is %d", parent.Depth, tx.Depth)
 		}
 

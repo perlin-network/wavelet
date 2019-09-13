@@ -21,18 +21,19 @@ package wavelet
 
 import (
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
 	"sync"
 )
 
 type vote struct {
-	voter     *skademlia.ID
-	preferred *Round
+	voter *skademlia.ID
+	value Identifiable
 }
 
-func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, wg *sync.WaitGroup) {
-	votes := make([]vote, 0, sys.SnowballK)
-	voters := make(map[AccountID]struct{}, sys.SnowballK)
+func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, wg *sync.WaitGroup, snowballK int) {
+	votes := make([]vote, 0, snowballK)
+	voters := make(map[AccountID]struct{}, snowballK)
 
 	for vote := range voteChan {
 		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
@@ -48,12 +49,9 @@ func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, 
 			stakes := make(map[AccountID]float64, len(votes))
 			maxStake := float64(0)
 
-			for i, vote := range votes {
-				if vote.preferred == nil {
-					votes[i].preferred = ZeroRoundPtr
-				}
-
+			for _, vote := range votes {
 				s, _ := ReadAccountStake(snapshot, vote.voter.PublicKey())
+
 				if s < sys.MinimumStake {
 					s = sys.MinimumStake
 				}
@@ -66,27 +64,26 @@ func CollectVotes(accounts *Accounts, snowball *Snowball, voteChan <-chan vote, 
 				}
 			}
 
-			counts := make(map[RoundID]float64, len(votes))
+			counts := make(map[string]float64, len(votes))
 			totalCount := float64(0)
 
 			for _, vote := range votes {
 				count := stakes[vote.voter.PublicKey()] / maxStake
-				counts[vote.preferred.ID] += count
+				counts[vote.value.GetID()] += count
 				totalCount += count
 			}
 
-			var majority *Round
-
+			var majority Identifiable
 			for _, vote := range votes {
-				if counts[vote.preferred.ID]/totalCount >= sys.SnowballAlpha {
-					majority = vote.preferred
+				if counts[vote.value.GetID()]/totalCount >= conf.GetSnowballAlpha() {
+					majority = vote.value
 					break
 				}
 			}
 
 			snowball.Tick(majority)
 
-			voters = make(map[AccountID]struct{}, sys.SnowballK)
+			voters = make(map[AccountID]struct{}, snowballK)
 			votes = votes[:0]
 		}
 	}

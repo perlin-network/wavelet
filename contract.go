@@ -20,6 +20,7 @@
 package wavelet
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/binary"
@@ -29,7 +30,6 @@ import (
 	"github.com/perlin-network/life/utils"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/avl"
-	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
@@ -38,7 +38,6 @@ import (
 )
 
 var (
-	ErrNotSmartContract         = errors.New("contract: specified account ID is not a smart contract")
 	ErrContractFunctionNotFound = errors.New("contract: smart contract func not found")
 
 	_ exec.ImportResolver = (*ContractExecutor)(nil)
@@ -62,9 +61,51 @@ type ContractExecutor struct {
 	Queue []*Transaction
 }
 
+type VMState struct {
+	Globals []int64
+	Memory  []byte
+}
+
+func (state VMState) Apply(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver, move bool) (*exec.VirtualMachine, error) {
+	if len(vm.Globals) != len(state.Globals) {
+		return nil, errors.New("global count mismatch")
+	}
+
+	// safe as `state` is passed by value
+	if !move {
+		state.Globals = append([]int64{}, state.Globals...)
+		state.Memory = append([]byte{}, state.Memory...)
+	}
+
+	return &exec.VirtualMachine{
+		Config:          vm.Config,
+		Module:          vm.Module,
+		FunctionCode:    vm.FunctionCode,
+		FunctionImports: vm.FunctionImports,
+		CallStack:       make([]exec.Frame, exec.DefaultCallStackSize),
+		CurrentFrame:    -1,
+		Table:           vm.Table,
+		Globals:         state.Globals,
+		Memory:          state.Memory,
+		Exited:          true,
+		GasPolicy:       gasPolicy,
+		ImportResolver:  importResolver,
+	}, nil
+}
+
+func CloneVM(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver) (*exec.VirtualMachine, error) {
+	return SnapshotVMState(vm).Apply(vm, gasPolicy, importResolver, false)
+}
+
+func SnapshotVMState(vm *exec.VirtualMachine) VMState {
+	return VMState{
+		Globals: vm.Globals,
+		Memory:  vm.Memory,
+	}
+}
+
 func (e *ContractExecutor) GetCost(key string) int64 {
-	// FIXME(kenta): Remove for testnet.
-	return 1
+	return 1 // FIXME(kenta): Remove for testnet.
 	//cost, ok := sys.GasTable[key]
 	//if !ok {
 	//	return 1
@@ -126,14 +167,14 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 			}
 		case "_log":
 			return func(vm *exec.VirtualMachine) int64 {
-				frame := vm.GetCurrentFrame()
-				dataPtr := int(uint32(frame.Locals[0]))
-				dataLen := int(uint32(frame.Locals[1]))
-
-				logger := log.Contracts("log")
-				logger.Debug().
-					Hex("contract_id", e.ID[:]).
-					Msg(string(vm.Memory[dataPtr : dataPtr+dataLen]))
+				//frame := vm.GetCurrentFrame()
+				//dataPtr := int(uint32(frame.Locals[0]))
+				//dataLen := int(uint32(frame.Locals[1]))
+				//
+				//logger := log.Contracts("log")
+				//logger.Debug().
+				//	Hex("contract_id", e.ID[:]).
+				//	Msg(string(vm.Memory[dataPtr : dataPtr+dataLen]))
 
 				return 0
 			}
@@ -215,22 +256,41 @@ func (e *ContractExecutor) ResolveGlobal(module, field string) int64 {
 	panic("global variables are disallowed in smart contracts")
 }
 
-func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Round, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte) error {
-	config := exec.VMConfig{
-		DefaultMemoryPages: sys.ContractDefaultMemoryPages,
-		MaxMemoryPages:     sys.ContractMaxMemoryPages,
+// If this function returns no error and `contractState` is not nil, new state of the contract MUST be written into `contractState`.
+func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Round, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte, ctx *CollapseContext, contractState *VMState, contractStateLoaded bool) error {
+	var vm *exec.VirtualMachine
+	var err error
 
-		DefaultTableSize: sys.ContractTableSize,
-		MaxTableSize:     sys.ContractTableSize,
+	if cached, ok := ctx.VMCache.Load(id); ok {
+		vm, err = CloneVM(cached.(*exec.VirtualMachine), e, e)
+		if err != nil {
+			return errors.Wrap(err, "cannot clone vm")
+		}
+		vm.Config.GasLimit = gasLimit
+	} else {
+		config := exec.VMConfig{
+			DefaultMemoryPages: sys.ContractDefaultMemoryPages,
+			MaxMemoryPages:     sys.ContractMaxMemoryPages,
 
-		MaxValueSlots:     sys.ContractMaxValueSlots,
-		MaxCallStackDepth: sys.ContractMaxCallStackDepth,
-		GasLimit:          gasLimit,
-	}
+			DefaultTableSize: sys.ContractTableSize,
+			MaxTableSize:     sys.ContractTableSize,
 
-	vm, err := exec.NewVirtualMachine(code, config, e, e)
-	if err != nil {
-		return errors.Wrap(err, "could not init vm")
+			MaxValueSlots:     sys.ContractMaxValueSlots,
+			MaxCallStackDepth: sys.ContractMaxCallStackDepth,
+			GasLimit:          gasLimit,
+		}
+
+		vm, err = exec.NewVirtualMachine(code, config, e, e)
+		if err != nil {
+			return errors.Wrap(err, "cannot initialize vm")
+		}
+
+		cloned, err := CloneVM(vm, nil, nil)
+		if err != nil {
+			return errors.Wrap(err, "cannot clone vm")
+		}
+
+		ctx.VMCache.Put(id, cloned)
 	}
 
 	// We can safely initialize the VM first before checking this because the size of the global slice
@@ -241,7 +301,13 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 
 	var firstRun bool
 
-	if mem := LoadContractMemorySnapshot(snapshot, id); mem != nil {
+	// If state cache is enabled and we have a valid state previously.
+	if contractState != nil && contractStateLoaded {
+		vm, err = contractState.Apply(vm, e, e, true)
+		if err != nil {
+			return errors.New("unable to apply state")
+		}
+	} else if mem := LoadContractMemorySnapshot(snapshot, id); mem != nil {
 		vm.Memory = mem
 		if globals, exists := LoadContractGlobals(snapshot, id); exists {
 			if len(globals) == len(vm.Globals) {
@@ -301,9 +367,13 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 		vm.PrintStackTrace()
 	}
 
-	if vm.ExitError == nil && len(e.Error) == 0 {
-		SaveContractMemorySnapshot(snapshot, id, vm.Memory)
-		SaveContractGlobals(snapshot, id, vm.Globals)
+	if vm.ExitError == nil {
+		if contractState != nil {
+			*contractState = SnapshotVMState(vm)
+		} else {
+			SaveContractMemorySnapshot(snapshot, id, vm.Memory)
+			SaveContractGlobals(snapshot, id, vm.Globals)
+		}
 	}
 
 	if vm.ExitError != nil && utils.UnifyError(vm.ExitError).Error() == "gas limit exceeded" {
@@ -374,39 +444,29 @@ func SaveContractMemorySnapshot(snapshot *avl.Tree, id AccountID, mem []byte) {
 
 	WriteAccountContractNumPages(snapshot, id, numPages)
 
+	var (
+		identical, allZero bool
+		pageStart          uint64
+	)
+
 	for pageIdx := uint64(0); pageIdx < numPages; pageIdx++ {
 		old, _ := ReadAccountContractPage(snapshot, id, pageIdx)
+		identical, allZero = true, false
+		pageStart = pageIdx * PageSize
 
-		identical := true
-
-		for idx := uint64(0); idx < PageSize; idx++ {
-			if len(old) == 0 && mem[pageIdx*PageSize+idx] != 0 {
-				identical = false
-				break
-			}
-
-			if len(old) != 0 && mem[pageIdx*PageSize+idx] != old[idx] {
-				identical = false
-				break
-			}
+		if len(old) == 0 {
+			allZero = bytes.Equal(ZeroPage, mem[pageStart:pageStart+PageSize])
+			identical = allZero
+		} else {
+			identical = bytes.Equal(old, mem[pageStart:pageStart+PageSize])
 		}
 
 		if !identical {
-			allZero := true
-
-			for idx := uint64(0); idx < PageSize; idx++ {
-				if mem[pageIdx*PageSize+idx] != 0 {
-					allZero = false
-					break
-				}
-			}
-
 			// If the page is empty, save an empty byte array. Otherwise, save the pages content.
-
 			if allZero {
 				WriteAccountContractPage(snapshot, id, pageIdx, []byte{})
 			} else {
-				WriteAccountContractPage(snapshot, id, pageIdx, mem[pageIdx*PageSize:(pageIdx+1)*PageSize])
+				WriteAccountContractPage(snapshot, id, pageIdx, mem[pageStart:pageStart+PageSize])
 			}
 		}
 	}

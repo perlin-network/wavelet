@@ -23,11 +23,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"os"
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/perlin-network/wavelet/conf"
 
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
@@ -42,14 +45,21 @@ import (
 	"net/url"
 )
 
+// default false, used for testing
+var disableGC bool
+
 type Config struct {
 	ServerAddr string // empty == start new server
 }
 
 func main() {
+	Run(os.Args, os.Stdin, os.Stdout, false)
+}
+
+func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 	log.SetWriter(
 		log.LoggerWavelet,
-		log.NewConsoleWriter(nil, log.FilterFor(
+		log.NewConsoleWriter(stdout, log.FilterFor(
 			log.ModuleNode,
 			log.ModuleNetwork,
 			log.ModuleSync,
@@ -86,27 +96,30 @@ func main() {
 			Usage:  "Listen for peers on host address.",
 			EnvVar: "WAVELET_NODE_HOST",
 		}),
-		altsrc.NewIntFlag(cli.IntFlag{
+		altsrc.NewUintFlag(cli.UintFlag{
 			Name:   "port",
 			Value:  3000,
 			Usage:  "Listen for peers on port.",
 			EnvVar: "WAVELET_NODE_PORT",
 		}),
-		altsrc.NewStringFlag(cli.StringFlag{
-			Name:   "api.host",
-			Value:  "127.0.0.1",
-			Usage:  "Host a local HTTP API at host address.",
-			EnvVar: "WAVELET_API_HOST",
-		}),
-		altsrc.NewIntFlag(cli.IntFlag{
+		altsrc.NewUintFlag(cli.UintFlag{
 			Name:   "api.port",
 			Value:  9000,
 			Usage:  "Host a local HTTP API at port.",
 			EnvVar: "WAVELET_API_PORT",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "api.host",
+			Usage:  "Host for the API HTTPS server.",
+			EnvVar: "WAVELET_API_HOST",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "api.certs",
+			Usage:  "Directory path to cache HTTPS certificates.",
+			EnvVar: "WAVELET_CERTS_CACHE_DIR",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "wallet",
-			Value:  "config/wallet.txt",
 			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded private key to a wallet may also be specified.",
 			EnvVar: "WAVELET_WALLET",
 		}),
@@ -121,13 +134,19 @@ func main() {
 			EnvVar: "WAVELET_DB_PATH",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
+			Name:   "memory.max",
+			Value:  0,
+			Usage:  "Maximum memory in MB allowed to be used by wavelet.",
+			EnvVar: "WAVELET_MEMORY_MAX",
+		}),
+		altsrc.NewDurationFlag(cli.DurationFlag{
 			Name:  "sys.query_timeout",
-			Value: int(sys.QueryTimeout.Seconds()),
+			Value: conf.GetQueryTimeout(),
 			Usage: "Timeout in seconds for querying a transaction to K peers.",
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.max_depth_diff",
-			Value: sys.MaxDepthDiff,
+			Value: conf.GetMaxDepthDiff(),
 			Usage: "Max graph depth difference to search for eligible transaction parents from for our node.",
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
@@ -141,19 +160,19 @@ func main() {
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "sys.snowball.k",
-			Value:  sys.SnowballK,
+			Value:  conf.GetSnowballK(),
 			Usage:  "Snowball consensus protocol parameter k",
 			EnvVar: "WAVELET_SNOWBALL_K",
 		}),
 		altsrc.NewFloat64Flag(cli.Float64Flag{
 			Name:   "sys.snowball.alpha",
-			Value:  sys.SnowballAlpha,
+			Value:  conf.GetSnowballAlpha(),
 			Usage:  "Snowball consensus protocol parameter alpha",
 			EnvVar: "WAVELET_SNOWBALL_ALPHA",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "sys.snowball.beta",
-			Value:  sys.SnowballBeta,
+			Value:  conf.GetSnowballBeta(),
 			Usage:  "Snowball consensus protocol parameter beta",
 			EnvVar: "WAVELET_SNOWBALL_BETA",
 		}),
@@ -197,7 +216,7 @@ func main() {
 	sort.Sort(cli.FlagsByName(app.Flags))
 	sort.Sort(cli.CommandsByName(app.Commands))
 
-	if err := app.Run(os.Args); err != nil {
+	if err := app.Run(args); err != nil {
 		logger.Fatal().Err(err).
 			Msg("Failed to parse configuration/command-line arguments.")
 	}
@@ -208,12 +227,15 @@ func start(c *cli.Context) error {
 		ServerAddr: c.String("server"),
 	}
 
+	conf.Update(
+		conf.WithSnowballK(c.Int("sys.snowball.k")),
+		conf.WithSnowballAlpha(c.Float64("sys.snowball.alpha")),
+		conf.WithSnowballBeta(c.Int("sys.snowball.beta")),
+		conf.WithQueryTimeout(c.Duration("sys.query_timeout")),
+		conf.WithMaxDepthDiff(c.Uint64("sys.max_depth_diff")),
+	)
+
 	// set the the sys variables
-	sys.SnowballK = c.Int("sys.snowball.k")
-	sys.SnowballAlpha = c.Float64("sys.snowball.alpha")
-	sys.SnowballBeta = c.Int("sys.snowball.beta")
-	sys.QueryTimeout = time.Duration(c.Int("sys.query_timeout")) * time.Second
-	sys.MaxDepthDiff = c.Uint64("sys.max_depth_diff")
 	sys.MinDifficulty = byte(c.Int("sys.difficulty.min"))
 	sys.DifficultyScaleFactor = c.Float64("sys.difficulty.scale")
 	sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
@@ -228,13 +250,19 @@ func start(c *cli.Context) error {
 
 	if config.ServerAddr == "" {
 		srvCfg := server.Config{
-			NAT:      c.Bool("nat"),
-			Host:     c.String("host"),
-			Port:     c.Uint("port"),
-			Wallet:   w,
-			APIPort:  c.Uint("api.port"),
-			Peers:    c.Args(),
-			Database: c.String("db"),
+			NAT:         c.Bool("nat"),
+			Host:        c.String("host"),
+			Port:        c.Uint("port"),
+			Wallet:      w,
+			APIPort:     c.Uint("api.port"),
+			Peers:       c.Args(),
+			Database:    c.String("db"),
+			MaxMemoryMB: c.Uint64("memory.max"),
+			// HTTPS
+			APIHost:       c.String("api.host"),
+			APICertsCache: c.String("api.certs"),
+			// Debugging only
+			NoGC: disableGC,
 		}
 
 		if genesis := c.String("genesis"); len(genesis) > 0 {
@@ -254,9 +282,14 @@ func start(c *cli.Context) error {
 		time.Sleep(time.Second)
 
 		wctlCfg.APIPort = uint16(c.Uint("api.port"))
-		wctlCfg.APIHost = c.String("api.host")
 		wctlCfg.PrivateKey = srv.Keypair.PrivateKey()
-		wctlCfg.UseHTTPS = false // TODO
+
+		wctlCfg.APIHost = c.String("api.host")
+		if wctlCfg.APIHost == "" {
+			wctlCfg.APIHost = "127.0.0.1"
+		} else {
+			wctlCfg.UseHTTPS = true
+		}
 	} else {
 		u, err := url.Parse(config.ServerAddr)
 		if err != nil {
@@ -304,6 +337,7 @@ func start(cfg *Config) {
 			Msg("Failed to connect to API")
 	}
 
+<<<<<<< HEAD
 	// Set CLI callbacks, mainly loggers
 	if err := setEvents(c); err != nil {
 		logger.Fatal().Err(err).
@@ -311,6 +345,18 @@ func start(cfg *Config) {
 	}
 
 	shell, err := NewCLI(c)
+=======
+	if cfg.APIHost != nil {
+		go api.New().StartHTTPS(int(cfg.APIPort), client, ledger, keys, *cfg.APIHost, *cfg.APICertsCache)
+	} else {
+		if cfg.APIPort > 0 {
+			go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
+
+		}
+	}
+
+	shell, err := NewCLI(client, ledger, keys, stdin, stdout)
+>>>>>>> b6ce347218f0db9c9312b63f5c33708b848f2ef2
 	if err != nil {
 		logger.Fatal().Err(err).
 			Msg("Failed to spawn the CLI")

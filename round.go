@@ -22,6 +22,7 @@ package wavelet
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"io"
@@ -38,24 +39,32 @@ type Round struct {
 	Index  uint64
 	Merkle MerkleNodeID
 
-	Applied uint64
+	Transactions uint32
 
 	Start Transaction
 	End   Transaction
 }
 
-func NewRound(index uint64, merkle MerkleNodeID, applied uint64, start, end Transaction) Round {
+func NewRound(index uint64, merkle MerkleNodeID, transactions uint32, start, end Transaction) Round {
 	r := Round{
-		Index:   index,
-		Merkle:  merkle,
-		Applied: applied,
-		Start:   start,
-		End:     end,
+		Index:        index,
+		Merkle:       merkle,
+		Transactions: transactions,
+		Start:        start,
+		End:          end,
 	}
 
 	r.ID = blake2b.Sum256(r.Marshal())
 
 	return r
+}
+
+func (r *Round) GetID() string {
+	if r == nil || r.ID == ZeroRoundID {
+		return ""
+	}
+
+	return fmt.Sprintf("%x", r.ID)
 }
 
 func (r Round) Marshal() []byte {
@@ -68,7 +77,7 @@ func (r Round) Marshal() []byte {
 
 	w.Write(r.Merkle[:])
 
-	binary.BigEndian.PutUint64(buf[:], r.Applied)
+	binary.BigEndian.PutUint32(buf[:], r.Transactions)
 	w.Write(buf[:8])
 
 	w.Write(r.Start.Marshal())
@@ -78,11 +87,11 @@ func (r Round) Marshal() []byte {
 }
 
 func (r Round) ExpectedDifficulty(min byte, scale float64) byte {
-	if r.End.Depth == 0 || r.Applied == 0 {
+	if r.End.Depth == 0 || r.Transactions == 0 {
 		return min
 	}
 
-	maxs := r.Applied
+	maxs := uint64(r.Transactions)
 	mins := r.End.Depth - r.Start.Depth
 
 	if mins > maxs {
@@ -112,7 +121,7 @@ func UnmarshalRound(r io.Reader) (round Round, err error) {
 		return
 	}
 
-	round.Applied = binary.BigEndian.Uint64(buf[:8])
+	round.Transactions = binary.BigEndian.Uint32(buf[:8])
 
 	if round.Start, err = UnmarshalTransaction(r); err != nil {
 		err = errors.Wrap(err, "failed to decode round start transaction")

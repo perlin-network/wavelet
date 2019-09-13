@@ -19,8 +19,6 @@
 
 package sys
 
-import "time"
-
 // Tag is a wrapper for a transaction tag.
 type Tag byte
 
@@ -44,24 +42,6 @@ var (
 	SKademliaC1 = 1
 	SKademliaC2 = 1
 
-	// Snowball consensus protocol parameters.
-	SnowballK     = 2
-	SnowballAlpha = 0.8
-	SnowballBeta  = 150
-
-	// Timeout for querying a transaction to K peers.
-	QueryTimeout = 1 * time.Second
-
-	// Number of rounds we should be behind before we start syncing.
-	SyncIfRoundsDifferBy uint64 = 2
-
-	// Size of individual chunks sent for a syncing peer.
-	SyncChunkSize = 16384
-
-	// Max graph depth difference to search for eligible transaction
-	// parents from for our node.
-	MaxDepthDiff uint64 = 10
-
 	// Max number of parents referencable by a transaction.
 	MaxParentsPerTransaction = 32
 
@@ -80,8 +60,6 @@ var (
 	MinimumRewardWithdraw = MinimumStake
 
 	RewardWithdrawalsRoundLimit = 50
-
-	PruningLimit = uint8(30)
 
 	FaucetAddress = "0f569c84d434fb0ca682c733176f7c0c2d853fce04d95ae131d2f9b4124d93d8"
 
@@ -274,7 +252,7 @@ var (
 	}
 
 	ContractDefaultMemoryPages = 4
-	ContractMaxMemoryPages     = 32
+	ContractMaxMemoryPages     = 4096
 	ContractTableSize          = 4096
 	ContractMaxValueSlots      = 8192
 	ContractMaxCallStackDepth  = 256

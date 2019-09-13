@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io/ioutil"
 
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/urfave/cli"
 )
@@ -62,8 +63,10 @@ func (cli *CLI) status(ctx *cli.Context) {
 		Uint64("num_tx", l.Graph.Tx).
 		Uint64("num_missing_tx", l.Graph.MissingTx).
 		Uint64("num_tx_in_store", l.Graph.TxInStore).
+		Uint64("num_incomplete_tx", l.Graph.IncompleteTx).
 		Int("num_accounts_in_store", l.NumAccounts).
 		Str("preferred_id", l.PreferredID).
+		Str("sync_status", l.SyncStatus).
 		Int("preferred_votes", l.PreferredVotes).
 		Msg("Here is the current status of your node.")
 }
@@ -381,4 +384,59 @@ func (cli *CLI) withdrawReward(ctx *cli.Context) {
 	cli.logger.Info().
 		Hex("tx_id", tx.ID[:]).
 		Msgf("Reward withdrew.")
+}
+
+/*
+func (cli *CLI) connect(ctx *cli.Context) {
+	var cmd = ctx.Args()
+
+	if len(cmd) != 1 {
+		cli.logger.Error().Msg("Invalid usage: connect <address:port>")
+		return
+	}
+
+	_, err := cli.client.Dial(cmd[0])
+
+	if err != nil {
+		cli.logger.Error().Err(err).Msg("Failed to connect to peer.")
+		return
+	}
+
+	cli.logger.Info().Str("address", cmd[0]).Msg("Successfully connected to peer.")
+}
+
+func (cli *CLI) disconnect(ctx *cli.Context) {
+	var cmd = ctx.Args()
+
+	if len(cmd) != 1 {
+		cli.logger.Error().Msg("Invalid usage: disconnect <address:port>")
+		return
+	}
+
+	err := cli.client.DisconnectByAddress(cmd[0])
+
+	if err != nil {
+		cli.logger.Error().Err(err).Msg("Failed to disconnect peer.")
+		return
+	}
+
+	cli.logger.Info().Str("address", cmd[0]).Msg("Successfully disconnected peer.")
+}
+*/
+
+func (cli *CLI) updateParameters(ctx *cli.Context) {
+	conf.Update(
+		conf.WithSnowballK(ctx.Int("snowball.k")),
+		conf.WithSnowballAlpha(ctx.Float64("snowball.alpha")),
+		conf.WithSnowballBeta(ctx.Int("snowball.beta")),
+		conf.WithQueryTimeout(ctx.Duration("query.timeout")),
+		conf.WithGossipTimeout(ctx.Duration("gossip.timeout")),
+		conf.WithSyncChunkSize(ctx.Int("sync.chunk.size")),
+		conf.WithSyncIfRoundsDifferBy(ctx.Uint64("sync.if.rounds.differ.by")),
+		conf.WithMaxDownloadDepthDiff(ctx.Uint64("max.download.depth.diff")),
+		conf.WithMaxDepthDiff(ctx.Uint64("max.depth.diff")),
+		conf.WithPruningLimit(uint8(ctx.Uint64("pruning.limit"))),
+	)
+
+	cli.logger.Info().Str("conf", conf.Stringify()).Msg("Current configuration values")
 }

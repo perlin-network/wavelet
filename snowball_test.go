@@ -21,6 +21,7 @@ package wavelet
 
 import (
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 	"testing"
@@ -29,7 +30,13 @@ import (
 func TestNewSnowball(t *testing.T) {
 	t.Parallel()
 
-	snowball := NewSnowball(WithBeta(10))
+	defaultBeta := conf.GetSnowballBeta()
+	conf.Update(conf.WithSnowballBeta(10))
+	defer func() {
+		conf.Update(conf.WithSnowballBeta(defaultBeta))
+	}()
+
+	snowball := NewSnowball()
 
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
@@ -46,14 +53,18 @@ func TestNewSnowball(t *testing.T) {
 
 	assert.Nil(t, snowball.Preferred())
 
+	var preferred *Round
 	for i := 0; i < 12; i++ {
 		assert.False(t, snowball.Decided())
 		snowball.Tick(&a)
-		assert.Equal(t, *snowball.Preferred(), a)
+		preferred = snowball.Preferred().(*Round)
+		assert.Equal(t, *preferred, a)
 	}
 
 	assert.True(t, snowball.Decided())
-	assert.Equal(t, *snowball.Preferred(), a)
+
+	preferred = snowball.Preferred().(*Round)
+	assert.Equal(t, *preferred, a)
 
 	assert.Equal(t, snowball.count, 11)
 	assert.Len(t, snowball.counts, 1)
@@ -80,16 +91,20 @@ func TestNewSnowball(t *testing.T) {
 	// first initially to check for off-by-one errors.
 
 	snowball.Prefer(&a)
-	assert.Equal(t, *snowball.Preferred(), a)
+
+	preferred = snowball.Preferred().(*Round)
+	assert.Equal(t, *preferred, a)
 
 	for i := 0; i < 12; i++ {
 		assert.False(t, snowball.Decided())
 		snowball.Tick(&a)
-		assert.Equal(t, *snowball.Preferred(), a)
+		preferred = snowball.Preferred().(*Round)
+		assert.Equal(t, *preferred, a)
 	}
 
 	assert.True(t, snowball.Decided())
-	assert.Equal(t, *snowball.Preferred(), a)
+	preferred = snowball.Preferred().(*Round)
+	assert.Equal(t, *preferred, a)
 
 	assert.Equal(t, snowball.count, 11)
 	assert.Len(t, snowball.counts, 1)
@@ -113,7 +128,8 @@ func TestNewSnowball(t *testing.T) {
 	for i := 0; i < 11; i++ {
 		assert.False(t, snowball.Decided())
 		snowball.Tick(&a)
-		assert.Equal(t, *snowball.Preferred(), a)
+		preferred = snowball.Preferred().(*Round)
+		assert.Equal(t, *preferred, a)
 	}
 
 	assert.False(t, snowball.Decided())
@@ -121,19 +137,21 @@ func TestNewSnowball(t *testing.T) {
 	for i := 0; i < 12; i++ {
 		assert.False(t, snowball.Decided())
 		snowball.Tick(&b)
-
+		preferred = snowball.Preferred().(*Round)
 		if i == 11 {
-			assert.Equal(t, *snowball.Preferred(), b)
+			assert.Equal(t, *preferred, b)
 		} else {
-			assert.Equal(t, *snowball.Preferred(), a)
+			assert.Equal(t, *preferred, a)
 		}
 	}
 
-	assert.Equal(t, snowball.counts[a.ID], 11)
-	assert.Equal(t, snowball.counts[b.ID], 12)
+	assert.Equal(t, snowball.counts[a.GetID()], 11)
+	assert.Equal(t, snowball.counts[b.GetID()], 12)
 
 	assert.True(t, snowball.Decided())
-	assert.Equal(t, *snowball.Preferred(), b)
+
+	preferred = snowball.Preferred().(*Round)
+	assert.Equal(t, *preferred, b)
 	assert.Equal(t, snowball.count, 11)
 	assert.Len(t, snowball.counts, 2)
 	assert.Len(t, snowball.candidates, 2)
@@ -145,11 +163,13 @@ func TestNewSnowball(t *testing.T) {
 	snowball.Tick(nil)
 	snowball.Tick(empty)
 
-	assert.Equal(t, snowball.counts[a.ID], 11)
-	assert.Equal(t, snowball.counts[b.ID], 12)
+	assert.Equal(t, snowball.counts[a.GetID()], 11)
+	assert.Equal(t, snowball.counts[b.GetID()], 12)
 
 	assert.True(t, snowball.Decided())
-	assert.Equal(t, b, *snowball.Preferred())
+
+	preferred = snowball.Preferred().(*Round)
+	assert.Equal(t, b, *preferred)
 	assert.Equal(t, 11, snowball.count)
 	assert.Len(t, snowball.counts, 2)
 	assert.Len(t, snowball.candidates, 2)
@@ -161,13 +181,13 @@ func TestNewSnowball(t *testing.T) {
 	snowball.Tick(&a)
 	snowball.Tick(&a)
 
-	assert.Equal(t, a.ID, snowball.lastID)
+	assert.Equal(t, a.GetID(), snowball.lastID)
 	assert.Equal(t, 1, snowball.Progress())
 	assert.Len(t, snowball.counts, 1)
 
 	snowball.Tick(nil)
 
-	assert.Equal(t, ZeroRoundID, snowball.lastID)
+	assert.Equal(t, "", snowball.lastID)
 	assert.Equal(t, 0, snowball.Progress())
 	assert.Len(t, snowball.counts, 1)
 }
