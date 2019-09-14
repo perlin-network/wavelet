@@ -6,24 +6,22 @@ func (c *Client) PollNetwork() (func(), error) {
 	return c.pollWS(RouteWSNetwork, func(v *fastjson.Value) {
 		var err error
 
-		for _, o := range v.GetArray() {
-			if err := checkMod(o, "network"); err != nil {
-				c.OnError(err)
-				continue
-			}
+		if err := checkMod(v, "network"); err != nil {
+			c.OnError(err)
+			return
+		}
 
-			switch ev := jsonString(o, "event"); ev {
-			case "joined":
-				err = parsePeerJoin(c, o)
-			case "left":
-				err = parsePeerLeave(c, o)
-			default:
-				err = errInvalidEvent(o, ev)
-			}
+		switch ev := jsonString(v, "event"); ev {
+		case "joined":
+			err = parsePeerJoin(c, v)
+		case "left":
+			err = parsePeerLeave(c, v)
+		default:
+			err = errInvalidEvent(v, ev)
+		}
 
-			if err != nil {
-				c.OnError(err)
-			}
+		if err != nil {
+			c.OnError(err)
 		}
 	})
 }

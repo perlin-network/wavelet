@@ -98,7 +98,7 @@ type Client struct {
 	OnRoundEnd
 	OnPrune
 
-	OnStake
+	OnStakeRewardValidator
 
 	OnContractGas
 	OnContractLog

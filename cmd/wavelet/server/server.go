@@ -225,14 +225,14 @@ func (w *Wavelet) Start() {
 	}
 
 	if w.config.APIHost != "" {
-		go api.New().StartHTTPS(
+		api.New().StartHTTPS(
 			int(w.config.APIPort),
 			w.SKademlia, w.Ledger, w.Keypair,
 			w.config.APIHost,
 			w.config.APICertsCache, // guaranteed not empty in New
 		)
 	} else {
-		go api.New().StartHTTP(
+		api.New().StartHTTP(
 			int(w.config.APIPort),
 			w.SKademlia, w.Ledger, w.Keypair,
 		)

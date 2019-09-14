@@ -53,7 +53,6 @@ func (c *Client) Request(path string, method string, body []byte) ([]byte, error
 	defer fasthttp.ReleaseRequest(req)
 
 	addr := c.url + path
-	println(addr)
 
 	req.URI().Update(addr)
 	req.Header.SetMethod(method)

@@ -48,6 +48,8 @@ import (
 // default false, used for testing
 var disableGC bool
 
+var logger = log.Node()
+
 type Config struct {
 	ServerAddr string // empty == start new server
 }
@@ -57,18 +59,8 @@ func main() {
 }
 
 func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
-	log.SetWriter(
-		log.LoggerWavelet,
-		log.NewConsoleWriter(stdout, log.FilterFor(
-			log.ModuleNode,
-			log.ModuleNetwork,
-			log.ModuleSync,
-			log.ModuleConsensus,
-			log.ModuleContract,
-		)),
-	)
-
-	logger := log.Node()
+	log.SetWriter(log.LoggerWavelet, log.NewConsoleWriter(
+		stdout, log.FilterFor(log.ModuleNode)))
 
 	app := cli.NewApp()
 
@@ -277,9 +269,6 @@ func start(c *cli.Context) error {
 		// Start the server
 		// TODO: Add Close()
 		srv.Start()
-
-		// Debugging sleep
-		time.Sleep(time.Second)
 
 		wctlCfg.APIPort = uint16(c.Uint("api.port"))
 		wctlCfg.PrivateKey = srv.Keypair.PrivateKey()

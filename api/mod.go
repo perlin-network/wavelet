@@ -25,6 +25,8 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"fmt"
+	"net"
+
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
@@ -37,7 +39,7 @@ import (
 	"github.com/valyala/fastjson"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
-	"net"
+	"google.golang.org/grpc"
 
 	"io"
 	"net/http"
@@ -54,7 +56,7 @@ type Gateway struct {
 	keys    *skademlia.Keypair
 
 	router  *fasthttprouter.Router
-	servers []  *fasthttp.Server
+	servers []*fasthttp.Server
 
 	sinks         map[string]*sink
 	enableTimeout bool
@@ -175,6 +177,26 @@ func (g *Gateway) applyMiddleware(f fasthttp.RequestHandler, rateLimiterKey stri
 }
 
 func (g *Gateway) StartHTTP(port int, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair) {
+	c.OnPeerJoin(func(conn *grpc.ClientConn, id *skademlia.ID) {
+		publicKey := id.PublicKey()
+
+		logger := log.Network("joined")
+		logger.Info().
+			Hex("public_key", publicKey[:]).
+			Str("address", id.Address()).
+			Msg("Peer has joined.")
+	})
+
+	c.OnPeerLeave(func(conn *grpc.ClientConn, id *skademlia.ID) {
+		publicKey := id.PublicKey()
+
+		logger := log.Network("left")
+		logger.Info().
+			Hex("public_key", publicKey[:]).
+			Str("address", id.Address()).
+			Msg("Peer has left.")
+	})
+
 	logger := log.Node()
 
 	ln, err := net.Listen("tcp4", ":"+strconv.Itoa(port))
@@ -184,7 +206,7 @@ func (g *Gateway) StartHTTP(port int, c *skademlia.Client, l *wavelet.Ledger, k 
 
 	logger.Info().Int("port", port).Msg("Started HTTP API server.")
 
-	g.start(ln, nil, c, l, k)
+	go g.start(ln, nil, c, l, k)
 }
 
 // Only support tls-alpn-01.
@@ -230,7 +252,7 @@ func (g *Gateway) StartHTTPS(httpPort int, c *skademlia.Client, l *wavelet.Ledge
 	logger.Info().Int("port", 443).Msg("Started HTTPS API server.")
 	logger.Info().Int("port", httpPort).Msg("Started HTTP API server.")
 
-	g.start(tlsLn, ln, c, l, k)
+	go g.start(tlsLn, ln, c, l, k)
 }
 
 func (g *Gateway) start(ln net.Listener, ln2 net.Listener, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair) {

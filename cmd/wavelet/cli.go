@@ -266,21 +266,15 @@ func NewCLI(client *wctl.Client) (*CLI, error) {
 
 	c.rl = rl
 
-	log.SetWriter(
-		log.LoggerWavelet,
-		log.NewConsoleWriter(rl.Stdout(), log.FilterFor(
-			log.ModuleNode,
-			log.ModuleNetwork,
-			log.ModuleSync,
-			log.ModuleConsensus,
-			log.ModuleContract,
-		)),
-	)
+	log.SetWriter(log.LoggerWavelet, log.NewConsoleWriter(
+		rl.Stdout(), log.FilterFor(log.ModuleNode)))
 
 	return c, nil
 }
 
 func (cli *CLI) Start() {
+	defer cleanUp()
+
 ReadLoop:
 	for {
 		line, err := cli.rl.Readline()

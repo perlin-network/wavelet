@@ -86,18 +86,18 @@ type (
 
 // Mod: stake
 type (
-	Stake struct {
+	StakeRewardValidator struct {
 		Creator      [32]byte  `json:"creator"`
 		Recipient    [32]byte  `json:"recipient"`
 		CreatorTxID  [32]byte  `json:"creator_tx_id"`
 		RewardeeTxID [32]byte  `json:"rewardee_tx_id"`
 		Entropy      [32]byte  `json:"entropy"`
-		Acc          float64   `json:"acc"`
+		Accuracy     float64   `json:"acc"`
 		Threshold    float64   `json:"threshold"`
 		Time         time.Time `json:"time"`
 		Message      string    `json:"message"`
 	}
-	OnStake = func(Stake)
+	OnStakeRewardValidator = func(StakeRewardValidator)
 )
 
 // Mod: contract
