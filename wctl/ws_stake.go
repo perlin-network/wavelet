@@ -8,7 +8,9 @@ func (c *Client) PollStake() (func(), error) {
 
 		for _, o := range v.GetArray() {
 			if err := checkMod(o, "stake"); err != nil {
-				c.OnError(err)
+				if c.OnError != nil {
+					c.OnError(err)
+				}
 				continue
 			}
 
@@ -20,7 +22,9 @@ func (c *Client) PollStake() (func(), error) {
 			}
 
 			if err != nil {
-				c.OnError(err)
+				if c.OnError != nil {
+					c.OnError(err)
+				}
 			}
 		}
 	})
@@ -53,6 +57,8 @@ func parseRewardValidator(c *Client, v *fastjson.Value) error {
 	r.Threshold = v.GetFloat64("threshold")
 	r.Message = string(v.GetStringBytes("message"))
 
-	c.OnStakeRewardValidator(r)
+	if c.OnStakeRewardValidator != nil {
+		c.OnStakeRewardValidator(r)
+	}
 	return nil
 }

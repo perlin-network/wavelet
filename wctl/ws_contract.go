@@ -8,7 +8,9 @@ func (c *Client) PollContracts() (func(), error) {
 
 		for _, o := range v.GetArray() {
 			if err := checkMod(o, "contract"); err != nil {
-				c.OnError(err)
+				if c.OnError != nil {
+					c.OnError(err)
+				}
 				continue
 			}
 
@@ -22,7 +24,9 @@ func (c *Client) PollContracts() (func(), error) {
 			}
 
 			if err != nil {
-				c.OnError(err)
+				if c.OnError != nil {
+					c.OnError(err)
+				}
 			}
 		}
 	})
@@ -47,7 +51,9 @@ func parseContractGas(c *Client, v *fastjson.Value) error {
 	g.GasLimit = v.GetUint64("gas_limit")
 	g.Message = string(v.GetStringBytes("message"))
 
-	c.OnContractGas(g)
+	if c.OnContractGas != nil {
+		c.OnContractGas(g)
+	}
 	return nil
 }
 
@@ -64,6 +70,8 @@ func parseContractLog(c *Client, v *fastjson.Value) error {
 
 	l.Message = string(v.GetStringBytes("message"))
 
-	c.OnContractLog(l)
+	if c.OnContractLog != nil {
+		c.OnContractLog(l)
+	}
 	return nil
 }

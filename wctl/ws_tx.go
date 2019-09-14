@@ -12,7 +12,9 @@ func (c *Client) PollTransactions() (func(), error) {
 
 		for _, o := range v.GetArray() {
 			if err := checkMod(o, "tx"); err != nil {
-				c.OnError(err)
+				if c.OnError != nil {
+					c.OnError(err)
+				}
 				continue
 			}
 
@@ -28,7 +30,9 @@ func (c *Client) PollTransactions() (func(), error) {
 			}
 
 			if err != nil {
-				c.OnError(err)
+				if c.OnError != nil {
+					c.OnError(err)
+				}
 			}
 		}
 	})
@@ -58,7 +62,9 @@ func parseTxApplied(c *Client, v *fastjson.Value) error {
 		return err
 	}
 
-	c.OnTxApplied(t)
+	if c.OnTxApplied != nil {
+		c.OnTxApplied(t)
+	}
 
 	return nil
 }
@@ -73,7 +79,9 @@ func parseTxGossipError(c *Client, v *fastjson.Value) error {
 	t.Error = jsonString(v, "error")
 	t.Message = jsonString(v, "message")
 
-	c.OnTxGossipError(t)
+	if c.OnTxGossipError != nil {
+		c.OnTxGossipError(t)
+	}
 
 	return nil
 }
@@ -101,7 +109,9 @@ func parseTxFailed(c *Client, v *fastjson.Value) error {
 		return err
 	}
 
-	c.OnTxFailed(t)
+	if c.OnTxFailed != nil {
+		c.OnTxFailed(t)
+	}
 
 	return nil
 }

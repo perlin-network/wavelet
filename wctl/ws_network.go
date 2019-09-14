@@ -7,7 +7,9 @@ func (c *Client) PollNetwork() (func(), error) {
 		var err error
 
 		if err := checkMod(v, "network"); err != nil {
-			c.OnError(err)
+			if c.OnError != nil {
+				c.OnError(err)
+			}
 			return
 		}
 
@@ -21,7 +23,9 @@ func (c *Client) PollNetwork() (func(), error) {
 		}
 
 		if err != nil {
-			c.OnError(err)
+			if c.OnError != nil {
+				c.OnError(err)
+			}
 		}
 	})
 }
@@ -47,7 +51,9 @@ func parsePeerJoin(c *Client, v *fastjson.Value) error {
 		return err
 	}
 
-	c.OnPeerJoin(PeerJoin{u})
+	if c.OnPeerJoin != nil {
+		c.OnPeerJoin(PeerJoin{u})
+	}
 	return nil
 }
 
@@ -57,6 +63,8 @@ func parsePeerLeave(c *Client, v *fastjson.Value) error {
 		return err
 	}
 
-	c.OnPeerLeave(PeerLeave{u})
+	if c.OnPeerLeave != nil {
+		c.OnPeerLeave(PeerLeave{u})
+	}
 	return nil
 }

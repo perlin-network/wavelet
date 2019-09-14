@@ -8,6 +8,11 @@ import (
 
 var _ UnmarshalableJSON = (*Account)(nil)
 
+// GetSelf gets the current account.
+func (c *Client) GetSelf() (*Account, error) {
+	return c.GetAccount(c.PublicKey)
+}
+
 // GetAccount calls the /accounts endpoint of the API.
 func (c *Client) GetAccount(account [32]byte) (*Account, error) {
 	path := RouteAccount + "/" + hex.EncodeToString(account[:])
@@ -18,6 +23,16 @@ func (c *Client) GetAccount(account [32]byte) (*Account, error) {
 	}
 
 	return &res, nil
+}
+
+// Convenient function for a.IsContract
+func (c *Client) RecipientIsContract(recipient [32]byte) bool {
+	a, err := c.GetAccount(recipient)
+	if err != nil {
+		return false
+	}
+
+	return a.IsContract
 }
 
 type Account struct {
@@ -47,6 +62,7 @@ func (a *Account) UnmarshalJSON(b []byte) error {
 	a.GasBalance = v.GetUint64("gas_balance")
 	a.Stake = v.GetUint64("stake")
 	a.Reward = v.GetUint64("reward")
+	a.Nonce = v.GetUint64("nonce")
 	a.IsContract = v.GetBool("is_contract")
 	a.NumPages = v.GetUint64("num_mem_pages")
 

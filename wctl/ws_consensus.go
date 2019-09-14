@@ -1,27 +1,31 @@
 package wctl
 
-import "github.com/valyala/fastjson"
+import (
+	"github.com/valyala/fastjson"
+)
 
 func (c *Client) PollConsensus() (func(), error) {
 	return c.pollWS(RouteWSConsensus, func(v *fastjson.Value) {
 		var err error
 
-		for _, o := range v.GetArray() {
-			if err := checkMod(o, "consensus"); err != nil {
+		if err := checkMod(v, "consensus"); err != nil {
+			if c.OnError != nil {
 				c.OnError(err)
-				continue
 			}
+			return
+		}
 
-			switch ev := jsonString(o, "event"); ev {
-			case "round_end":
-				err = parseAccountsBalanceUpdated(c, o)
-			case "prune":
-				err = parseAccountNumPagesUpdated(c, o)
-			default:
-				err = errInvalidEvent(o, ev)
-			}
+		switch ev := jsonString(v, "event"); ev {
+		case "round_end":
+			err = parseConsensusRoundEnd(c, v)
+		case "prune":
+			err = parseConsensusPrune(c, v)
+		default:
+			err = errInvalidEvent(v, ev)
+		}
 
-			if err != nil {
+		if err != nil {
+			if c.OnError != nil {
 				c.OnError(err)
 			}
 		}
@@ -61,7 +65,9 @@ func parseConsensusRoundEnd(c *Client, v *fastjson.Value) error {
 	r.RoundDepth = v.GetInt64("round_depth")
 	r.Message = string(v.GetStringBytes("message"))
 
-	c.OnRoundEnd(r)
+	if c.OnRoundEnd != nil {
+		c.OnRoundEnd(r)
+	}
 	return nil
 }
 
@@ -83,6 +89,8 @@ func parseConsensusPrune(c *Client, v *fastjson.Value) error {
 	p.NumTx = v.GetUint64("num_tx")
 	p.Message = string(v.GetStringBytes("message"))
 
-	c.OnPrune(p)
+	if c.OnPrune != nil {
+		c.OnPrune(p)
+	}
 	return nil
 }

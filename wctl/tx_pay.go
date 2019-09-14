@@ -6,7 +6,7 @@ import (
 )
 
 func (c *Client) Pay(recipient [32]byte, amount uint64) (*TxResponse, error) {
-	a, err := c.GetAccount(recipient)
+	a, err := c.GetSelf()
 	if err != nil {
 		return nil, err
 	}

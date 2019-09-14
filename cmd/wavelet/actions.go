@@ -20,7 +20,6 @@
 package main
 
 import (
-	"encoding/binary"
 	"fmt"
 	"io/ioutil"
 
@@ -58,7 +57,7 @@ func (cli *CLI) status(ctx *cli.Context) {
 		Uint64("balance", a.Balance).
 		Uint64("stake", a.Stake).
 		Uint64("reward", a.Reward).
-		Uint64("nonce", a.Nonce).
+		//Uint64("nonce", a.Nonce).
 		Strs("peers", peers).
 		Uint64("num_tx", l.Graph.Tx).
 		Uint64("num_missing_tx", l.Graph.MissingTx).
@@ -98,7 +97,8 @@ func (cli *CLI) pay(ctx *cli.Context) {
 	}
 
 	cli.logger.Info().
-		Msgf("Success! Your payment transaction ID: %x", tx.ID)
+		Hex("tx_id", tx.ID[:]).
+		Msgf("Paid to recipient.")
 }
 
 func (cli *CLI) call(ctx *cli.Context) {
@@ -131,7 +131,6 @@ func (cli *CLI) call(ctx *cli.Context) {
 		GasLimit: gasLimit,
 	}
 
-	var intBuf [8]byte
 	for i := 4; i < len(cmd); i++ {
 		arg := cmd[i]
 
@@ -152,14 +151,11 @@ func (cli *CLI) call(ctx *cli.Context) {
 			case '1':
 				fn.AddParams(wctl.EncodeByte(byte(val)))
 			case '2':
-				binary.LittleEndian.PutUint16(intBuf[:2], uint16(val))
-				fn.AddParams(wctl.EncodeBytes(intBuf[:2]))
+				fn.AddParams(wctl.EncodeUint16(uint16(val)))
 			case '4':
-				binary.LittleEndian.PutUint32(intBuf[:4], uint32(val))
-				fn.AddParams(wctl.EncodeBytes(intBuf[:4]))
+				fn.AddParams(wctl.EncodeUint32(uint32(val)))
 			case '8':
-				binary.LittleEndian.PutUint64(intBuf[:8], uint64(val))
-				fn.AddParams(wctl.EncodeBytes(intBuf[:8]))
+				fn.AddParams(wctl.EncodeUint64(val))
 			}
 		case 'H':
 			buf, err := wctl.DecodeHex(arg[1:])
@@ -215,10 +211,11 @@ func (cli *CLI) find(ctx *cli.Context) {
 	switch {
 	case account != nil:
 		cli.logger.Info().
+			Hex("public_key", account.PublicKey[:]).
 			Uint64("balance", account.Balance).
 			Uint64("gas_balance", account.GasBalance).
 			Uint64("stake", account.Stake).
-			Uint64("nonce", account.Nonce).
+			//Uint64("nonce", account.Nonce).
 			Uint64("reward", account.Reward).
 			Bool("is_contract", account.IsContract).
 			Uint64("num_pages", account.NumPages).

@@ -55,10 +55,10 @@ type Config struct {
 }
 
 func main() {
-	Run(os.Args, os.Stdin, os.Stdout, false)
+	Run(os.Args, os.Stdin, os.Stdout)
 }
 
-func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
+func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 	log.SetWriter(log.LoggerWavelet, log.NewConsoleWriter(
 		stdout, log.FilterFor(log.ModuleNode)))
 
@@ -203,7 +203,9 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 		fmt.Printf("Built:      %s\n", c.App.Compiled.Format(time.ANSIC))
 	}
 
-	app.Action = start
+	app.Action = func(c *cli.Context) {
+		start(c, stdin, stdout)
+	}
 
 	sort.Sort(cli.FlagsByName(app.Flags))
 	sort.Sort(cli.CommandsByName(app.Commands))
@@ -214,7 +216,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 	}
 }
 
-func start(c *cli.Context) error {
+func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 	config := Config{
 		ServerAddr: c.String("server"),
 	}
@@ -303,7 +305,7 @@ func start(c *cli.Context) error {
 		return fmt.Errorf("Failed to start websockets to the server: %v", err)
 	}
 
-	shell, err := NewCLI(cli)
+	shell, err := NewCLI(cli, CLIWithStdin(stdin), CLIWithStdout(stdout))
 	if err != nil {
 		return fmt.Errorf("Failed to spawn the CLI: %v", err)
 	}

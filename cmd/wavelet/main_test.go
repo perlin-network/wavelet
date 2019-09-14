@@ -93,7 +93,7 @@ func TestMain_Pay(t *testing.T) {
 	recipient := bob.PublicKey()
 	alice.Stdin <- fmt.Sprintf("p %s 99999", hex.EncodeToString(recipient[:]))
 
-	txID := extractTxID(t, alice.Stdout.Search(t, "Success! Your payment transaction ID:"))
+	txID := extractTxID(t, alice.Stdout.Search(t, "Paid to recipient."))
 	tx := alice.WaitForTransaction(t, txID)
 
 	assert.EqualValues(t, txID, tx.ID)
@@ -116,7 +116,7 @@ func TestMain_Spawn(t *testing.T) {
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
-	txID := extractTxID(t, w.Stdout.Search(t, "Success! Your smart contracts ID:"))
+	txID := extractTxID(t, w.Stdout.Search(t, "Smart contract spawned."))
 	tx := w.WaitForTransaction(t, txID)
 
 	assert.EqualValues(t, txID, tx.ID)
@@ -136,13 +136,13 @@ func TestMain_Call(t *testing.T) {
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
-	txID := extractTxID(t, w.Stdout.Search(t, "Success! Your smart contracts ID:"))
+	txID := extractTxID(t, w.Stdout.Search(t, "Smart contract spawned."))
 
 	w.WaitForConsensus(t)
 
 	tx := w.WaitForTransaction(t, txID)
 	w.Stdin <- fmt.Sprintf("call %s 1000 100000 on_money_received", tx.ID)
-	w.Stdout.Search(t, "Your smart contract invocation transaction ID:")
+	w.Stdout.Search(t, "Smart contract function called.")
 }
 
 func TestMain_CallWithParams(t *testing.T) {
@@ -157,7 +157,7 @@ func TestMain_CallWithParams(t *testing.T) {
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
-	txID := extractTxID(t, w.Stdout.Search(t, "Success! Your smart contracts ID:"))
+	txID := extractTxID(t, w.Stdout.Search(t, "Smart contract spawned."))
 	w.WaitForConsensus(t)
 	tx := w.WaitForTransaction(t, txID)
 
@@ -165,7 +165,7 @@ func TestMain_CallWithParams(t *testing.T) {
 
 	w.Stdin <- fmt.Sprintf("call %s 1000 100000 on_money_received %s", tx.ID, params)
 
-	txID = extractTxID(t, w.Stdout.Search(t, "Your smart contract invocation transaction ID:"))
+	txID = extractTxID(t, w.Stdout.Search(t, "Smart contract function called."))
 	tx = w.WaitForTransaction(t, txID)
 
 	encodedParams, err := base64.StdEncoding.DecodeString(tx.Payload)
@@ -228,13 +228,13 @@ func TestMain_DepositGas(t *testing.T) {
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
-	txID := extractTxID(t, w.Stdout.Search(t, "Success! Your smart contracts ID:"))
+	txID := extractTxID(t, w.Stdout.Search(t, "Smart contract spawned."))
 
 	w.WaitForConsensus(t)
 
 	tx := w.WaitForTransaction(t, txID)
 	w.Stdin <- fmt.Sprintf("deposit-gas %s 99999", tx.ID)
-	w.Stdout.Search(t, "Your gas deposit transaction ID:")
+	w.Stdout.Search(t, "Gas deposited.")
 }
 
 func TestMain_Find(t *testing.T) {
@@ -248,7 +248,7 @@ func TestMain_Find(t *testing.T) {
 	recipient := bob.PublicKey()
 	alice.Stdin <- fmt.Sprintf("p %s 99999", hex.EncodeToString(recipient[:]))
 
-	txID := extractTxID(t, alice.Stdout.Search(t, "Success! Your payment transaction ID:"))
+	txID := extractTxID(t, alice.Stdout.Search(t, "Paid to recipient."))
 	alice.WaitForTransaction(t, txID)
 
 	alice.Stdin <- fmt.Sprintf("find %s", txID)
@@ -265,7 +265,7 @@ func TestMain_PlaceStake(t *testing.T) {
 
 	alice.Stdin <- "ps 1000"
 
-	txID := extractTxID(t, alice.Stdout.Search(t, "Success! Your stake placement transaction ID:"))
+	txID := extractTxID(t, alice.Stdout.Search(t, "Stake placed."))
 	tx := alice.WaitForTransaction(t, txID)
 
 	assert.EqualValues(t, txID, tx.ID)
@@ -286,14 +286,14 @@ func TestMain_WithdrawStake(t *testing.T) {
 
 	alice.Stdin <- "ps 1000"
 
-	txID := extractTxID(t, alice.Stdout.Search(t, "Success! Your stake placement transaction ID:"))
+	txID := extractTxID(t, alice.Stdout.Search(t, "Stake placed."))
 	alice.WaitForTransaction(t, txID)
 
 	alice.WaitForConsensus(t)
 
 	alice.Stdin <- "ws 500"
 
-	txID = extractTxID(t, alice.Stdout.Search(t, "Success! Your stake withdrawal transaction ID:"))
+	txID = extractTxID(t, alice.Stdout.Search(t, "Stake withdrew."))
 	tx := alice.WaitForTransaction(t, txID)
 
 	assert.EqualValues(t, txID, tx.ID)
@@ -316,7 +316,7 @@ func TestMain_WithdrawReward(t *testing.T) {
 
 	w.Stdin <- "wr 1000"
 
-	txID := extractTxID(t, w.Stdout.Search(t, "Success! Your reward withdrawal transaction ID:"))
+	txID := extractTxID(t, w.Stdout.Search(t, "Stake withdrew."))
 	tx := w.WaitForTransaction(t, txID)
 
 	assert.EqualValues(t, txID, tx.ID)
@@ -428,7 +428,7 @@ func (s *mockStdout) Write(p []byte) (n int, err error) {
 func (s *mockStdout) Search(t *testing.T, sub string) string {
 	t.Helper()
 
-	timeout := time.NewTimer(time.Second * 5)
+	timeout := time.NewTimer(time.Second * 10)
 	for {
 		select {
 		case line := <-s.Lines:
@@ -509,8 +509,9 @@ func NewTestWavelet(t *testing.T, cfg *TestWaveletConfig) *TestWavelet {
 
 	stdin := mockStdin(make(chan string))
 	stdout := newMockStdout()
+	disableGC = true
 
-	go Run(args, stdin, stdout, true)
+	go Run(args, stdin, stdout)
 	waitForAPI(t, apiPort)
 
 	w := &TestWavelet{
@@ -520,6 +521,7 @@ func NewTestWavelet(t *testing.T, cfg *TestWaveletConfig) *TestWavelet {
 		Stdin:   stdin,
 		Stdout:  stdout,
 	}
+
 	w.PublicKey = w.GetLedgerStatus(t).PublicKey
 
 	return w

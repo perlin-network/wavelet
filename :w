@@ -13,12 +13,14 @@ var ErrNotContract = errors.New("Address is not smart contract")
 
 // Call calls a smart contract function
 func (c *Client) Call(recipient [32]byte, fn FunctionCall) (*TxResponse, error) {
-	a, err := c.GetSelf()
+	a, err := c.GetAccount(recipient)
 	if err != nil {
 		return nil, err
 	}
 
-	if !c.RecipientIsContract(recipient) {
+	spew.Dump(a)
+
+	if !a.IsContract {
 		return nil, ErrNotContract
 	}
 

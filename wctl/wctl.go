@@ -88,6 +88,7 @@ type Client struct {
 	OnError
 
 	OnBalanceUpdated
+	OnGasBalanceUpdated
 	OnNumPagesUpdated
 	OnStakeUpdated
 	OnRewardUpdated

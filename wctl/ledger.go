@@ -71,8 +71,8 @@ type LedgerStatusResponse struct {
 }
 
 type Peer struct {
-	Address   string `json:"address"`
-	PublicKey string `json:"public_key"`
+	Address   string   `json:"address"`
+	PublicKey [32]byte `json:"public_key"`
 }
 
 func (l *LedgerStatusResponse) UnmarshalJSON(b []byte) error {
@@ -120,7 +120,9 @@ func (l *LedgerStatusResponse) UnmarshalJSON(b []byte) error {
 
 	for i, peer := range peerValue {
 		l.Peers[i].Address = string(peer.GetStringBytes("address"))
-		l.Peers[i].PublicKey = string(peer.GetStringBytes("public_key"))
+		if err := jsonHex(peer, l.Peers[i].PublicKey[:], "public_key"); err != nil {
+			return err
+		}
 	}
 
 	return nil

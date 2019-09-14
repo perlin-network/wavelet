@@ -6,12 +6,12 @@ import (
 )
 
 func (c *Client) DepositGas(recipient [32]byte, gasAmount uint64) (*TxResponse, error) {
-	a, err := c.GetAccount(recipient)
+	a, err := c.GetSelf()
 	if err != nil {
 		return nil, err
 	}
 
-	if !a.IsContract {
+	if !c.RecipientIsContract(recipient) {
 		return nil, ErrNotContract
 	}
 

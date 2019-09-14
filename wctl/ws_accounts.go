@@ -8,13 +8,17 @@ func (c *Client) PollAccounts() (func(), error) {
 
 		for _, o := range v.GetArray() {
 			if err := checkMod(o, "accounts"); err != nil {
-				c.OnError(err)
+				if c.OnError != nil {
+					c.OnError(err)
+				}
 				continue
 			}
 
 			switch ev := jsonString(o, "event"); ev {
 			case "balance_updated":
 				err = parseAccountsBalanceUpdated(c, o)
+			case "gas_balance_updated":
+				err = parseAccountsGasBalanceUpdated(c, o)
 			case "num_pages_updated":
 				err = parseAccountNumPagesUpdated(c, o)
 			case "stake_updated":
@@ -26,7 +30,9 @@ func (c *Client) PollAccounts() (func(), error) {
 			}
 
 			if err != nil {
-				c.OnError(err)
+				if c.OnError != nil {
+					c.OnError(err)
+				}
 			}
 		}
 	})
@@ -45,7 +51,28 @@ func parseAccountsBalanceUpdated(c *Client, v *fastjson.Value) error {
 
 	a.Balance = v.GetUint64("balance")
 
-	c.OnBalanceUpdated(a)
+	if c.OnBalanceUpdated != nil {
+		c.OnBalanceUpdated(a)
+	}
+	return nil
+}
+
+func parseAccountsGasBalanceUpdated(c *Client, v *fastjson.Value) error {
+	var a GasBalanceUpdate
+
+	if err := jsonHex(v, a.AccountID[:], "account_id"); err != nil {
+		return err
+	}
+
+	if err := jsonTime(v, &a.Time, "time"); err != nil {
+		return err
+	}
+
+	a.GasBalance = v.GetUint64("gas_balance")
+
+	if c.OnGasBalanceUpdated != nil {
+		c.OnGasBalanceUpdated(a)
+	}
 	return nil
 }
 
@@ -62,7 +89,9 @@ func parseAccountNumPagesUpdated(c *Client, v *fastjson.Value) error {
 
 	a.NumPages = v.GetUint64("num_pages_updated")
 
-	c.OnNumPagesUpdated(a)
+	if c.OnNumPagesUpdated != nil {
+		c.OnNumPagesUpdated(a)
+	}
 	return nil
 }
 
@@ -79,7 +108,9 @@ func parseAccountStakeUpdated(c *Client, v *fastjson.Value) error {
 
 	a.Stake = v.GetUint64("stake")
 
-	c.OnStakeUpdated(a)
+	if c.OnStakeUpdated != nil {
+		c.OnStakeUpdated(a)
+	}
 	return nil
 }
 
@@ -96,6 +127,8 @@ func parseAccountRewardUpdated(c *Client, v *fastjson.Value) error {
 
 	a.Reward = v.GetUint64("reward")
 
-	c.OnRewardUpdated(a)
+	if c.OnRewardUpdated != nil {
+		c.OnRewardUpdated(a)
+	}
 	return nil
 }

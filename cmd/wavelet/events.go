@@ -33,6 +33,7 @@ func setEvents(c *wctl.Client) error {
 	}
 
 	c.OnBalanceUpdated = onBalanceUpdate
+	c.OnGasBalanceUpdated = onGasBalanceUpdated
 	c.OnStakeUpdated = onStakeUpdated
 	c.OnRewardUpdated = onRewardUpdate
 	if err := addToCloser(c.PollAccounts()); err != nil {
@@ -67,6 +68,10 @@ func setEvents(c *wctl.Client) error {
 }
 
 func onError(err error) {
+	if disableGC {
+		return // testing
+	}
+
 	logger := log.Node()
 	logger.Err(err).Msg("WS Error occured.")
 }
@@ -139,7 +144,7 @@ func onRoundEnd(u wctl.RoundEnd) {
 		Hex("new_merkle_root", u.NewMerkleRoot[:]).
 		Hex("old_merkle_root", u.OldMerkleRoot[:]).
 		Int64("round_depth", u.RoundDepth).
-		Msg("Round ended: " + u.Message)
+		Msg(u.Message)
 }
 
 func onPrune(u wctl.Prune) {
@@ -148,6 +153,13 @@ func onPrune(u wctl.Prune) {
 		Hex("current_round_id", u.CurrentRoundID[:]).
 		Hex("pruned_round_id", u.PrunedRoundID[:]).
 		Msg("Pruned: " + u.Message)
+}
+
+func onGasBalanceUpdated(u wctl.GasBalanceUpdate) {
+	logger.Info().
+		Hex("public_key", u.AccountID[:]).
+		Uint64("gas_amount", u.GasBalance).
+		Msg("Gas balance updated.")
 }
 
 func onBalanceUpdate(u wctl.BalanceUpdate) {

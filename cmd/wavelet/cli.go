@@ -54,14 +54,35 @@ type CLI struct {
 
 	*wctl.Client
 
+	stdin  io.ReadCloser
+	stdout io.Writer
+
 	completion []string
 }
 
-func NewCLI(client *wctl.Client) (*CLI, error) {
+func CLIWithStdin(stdin io.ReadCloser) func(cli *CLI) {
+	return func(cli *CLI) {
+		cli.stdin = stdin
+	}
+}
+
+func CLIWithStdout(stdout io.Writer) func(cli *CLI) {
+	return func(cli *CLI) {
+		cli.stdout = stdout
+	}
+}
+
+func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 	c := &CLI{
 		Client: client,
 		logger: log.Node(),
 		app:    cli.NewApp(),
+		stdin:  os.Stdin,
+		stdout: os.Stdout,
+	}
+
+	for _, o := range opts {
+		o(c)
 	}
 
 	c.app.Name = "wavelet"
@@ -256,8 +277,8 @@ func NewCLI(client *wctl.Client) (*CLI, error) {
 		InterruptPrompt:   "^C",
 		EOFPrompt:         "exit",
 		HistorySearchFold: true,
-		Stdin:             os.Stdin,
-		Stdout:            os.Stdout,
+		Stdin:             c.stdin,
+		Stdout:            c.stdout,
 	})
 
 	if err != nil {

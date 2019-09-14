@@ -16,6 +16,13 @@ type (
 	}
 	OnBalanceUpdated = func(BalanceUpdate)
 
+	GasBalanceUpdate struct {
+		AccountID  [32]byte  `json:"account_id"`
+		GasBalance uint64    `json:"gas_balance"`
+		Time       time.Time `json:"time"`
+	}
+	OnGasBalanceUpdated = func(GasBalanceUpdate)
+
 	NumPagesUpdated struct {
 		AccountID [32]byte  `json:"account_id"`
 		NumPages  uint64    `json:"num_pages_updated"`
