@@ -478,7 +478,32 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 	var id wavelet.AccountID
 	copy(id[:], slice)
 
-	g.render(ctx, &account{ledger: g.ledger, id: id})
+	snapshot := g.ledger.Snapshot()
+
+	balance, _ := wavelet.ReadAccountBalance(snapshot, id)
+	gasBalance, _ := wavelet.ReadAccountContractGasBalance(snapshot, id)
+	stake, _ := wavelet.ReadAccountStake(snapshot, id)
+	reward, _ := wavelet.ReadAccountReward(snapshot, id)
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, id)
+	_, isContract := wavelet.ReadAccountContractCode(snapshot, id)
+	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, id)
+
+	if !(balance > 0 || stake > 0 || nonce > 0 || isContract || numPages > 0) {
+		g.renderError(ctx, ErrNotFound(errors.Errorf("could not find account with ID %x", id)))
+		return
+	}
+
+	g.render(ctx, &account{
+		ledger:     g.ledger,
+		id:         id,
+		balance:    balance,
+		gasBalance: gasBalance,
+		stake:      stake,
+		reward:     reward,
+		nonce:      nonce,
+		isContract: isContract,
+		numPages:   numPages,
+	})
 }
 
 func (g *Gateway) contractScope(next fasthttp.RequestHandler) fasthttp.RequestHandler {

@@ -356,6 +356,14 @@ type account struct {
 	// Internal fields.
 	id     wavelet.AccountID
 	ledger *wavelet.Ledger
+
+	balance    uint64
+	gasBalance uint64
+	stake      uint64
+	reward     uint64
+	nonce      uint64
+	isContract bool
+	numPages   uint64
 }
 
 func (s *account) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
@@ -363,37 +371,23 @@ func (s *account) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 		return nil, errors.New("insufficient fields specified")
 	}
 
-	snapshot := s.ledger.Snapshot()
-
 	o := arena.NewObject()
 
 	o.Set("public_key", arena.NewString(hex.EncodeToString(s.id[:])))
+	o.Set("balance", arena.NewNumberString(strconv.FormatUint(s.balance, 10)))
+	o.Set("gas_balance", arena.NewNumberString(strconv.FormatUint(s.gasBalance, 10)))
+	o.Set("stake", arena.NewNumberString(strconv.FormatUint(s.stake, 10)))
+	o.Set("reward", arena.NewNumberString(strconv.FormatUint(s.reward, 10)))
+	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(s.nonce, 10)))
 
-	balance, _ := wavelet.ReadAccountBalance(snapshot, s.id)
-	o.Set("balance", arena.NewNumberString(strconv.FormatUint(balance, 10)))
-
-	gasBalance, _ := wavelet.ReadAccountContractGasBalance(snapshot, s.id)
-	o.Set("gas_balance", arena.NewNumberString(strconv.FormatUint(gasBalance, 10)))
-
-	stake, _ := wavelet.ReadAccountStake(snapshot, s.id)
-	o.Set("stake", arena.NewNumberString(strconv.FormatUint(stake, 10)))
-
-	reward, _ := wavelet.ReadAccountReward(snapshot, s.id)
-	o.Set("reward", arena.NewNumberString(strconv.FormatUint(reward, 10)))
-
-	nonce, _ := wavelet.ReadAccountNonce(snapshot, s.id)
-	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(nonce, 10)))
-
-	_, isContract := wavelet.ReadAccountContractCode(snapshot, s.id)
-	if isContract {
+	if s.isContract {
 		o.Set("is_contract", arena.NewTrue())
 	} else {
 		o.Set("is_contract", arena.NewFalse())
 	}
 
-	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, s.id)
-	if numPages != 0 {
-		o.Set("num_mem_pages", arena.NewNumberString(strconv.FormatUint(numPages, 10)))
+	if s.numPages != 0 {
+		o.Set("num_mem_pages", arena.NewNumberString(strconv.FormatUint(s.numPages, 10)))
 	}
 
 	return o.MarshalTo(nil), nil
