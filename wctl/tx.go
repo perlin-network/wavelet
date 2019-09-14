@@ -174,7 +174,7 @@ func (t *Transaction) ParseJSON(v *fastjson.Value) error {
 	t.Parents = make([][32]byte, len(parentsValue))
 
 	for i, parent := range parentsValue {
-		if _, err := hex.Decode(t.Parents[i][:], parent.MarshalTo(nil)); err != nil {
+		if _, err := hex.Decode(t.Parents[i][:], parent.GetStringBytes()); err != nil {
 			return err
 		}
 	}
