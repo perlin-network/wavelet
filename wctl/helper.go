@@ -3,7 +3,6 @@ package wctl
 import (
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -70,10 +69,15 @@ func (c *Client) Request(path string, method string, body []byte) ([]byte, error
 	}
 
 	if res.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf(
-			"unexpected status code for query sent to %q: %d. request body: %q, response body: %q",
-			addr, res.StatusCode(), req.Body(), res.Body(),
-		)
+		if err := ParseRequestError(res.Body()); err != nil {
+			return nil, err
+		}
+
+		return nil, &RequestError{
+			RequestBody:  req.Body(),
+			ResponseBody: res.Body(),
+			StatusCode:   res.StatusCode(),
+		}
 	}
 
 	return res.Body(), nil
