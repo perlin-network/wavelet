@@ -214,10 +214,12 @@ func WriteAccountContractGlobals(tree *avl.Tree, id TransactionID, globals []byt
 }
 
 func ReadAccountContractPage(tree *avl.Tree, id TransactionID, idx uint64) ([]byte, bool) {
-	var idxBuf [8]byte
-	binary.LittleEndian.PutUint64(idxBuf[:], idx)
+	k := make([]byte, len(keyAccountContractPages)+8)
+	copy(k, keyAccountContractPages[:])
 
-	buf, exists := readUnderAccounts(tree, id, append(keyAccountContractPages[:], idxBuf[:]...))
+	binary.LittleEndian.PutUint64(k[len(keyAccountContractPages):], idx)
+
+	buf, exists := readUnderAccounts(tree, id, k)
 	if !exists || len(buf) == 0 {
 		return nil, false
 	}
@@ -231,12 +233,14 @@ func ReadAccountContractPage(tree *avl.Tree, id TransactionID, idx uint64) ([]by
 }
 
 func WriteAccountContractPage(tree *avl.Tree, id TransactionID, idx uint64, page []byte) {
-	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], idx)
+	k := make([]byte, len(keyAccountContractPages)+8)
+	copy(k, keyAccountContractPages[:])
+
+	binary.LittleEndian.PutUint64(k[len(keyAccountContractPages):], idx)
 
 	encoded := snappy.Encode(nil, page)
 
-	writeUnderAccounts(tree, id, append(keyAccountContractPages[:], buf[:]...), encoded)
+	writeUnderAccounts(tree, id, k, encoded)
 }
 
 func ReadAccountContractGasBalance(tree *avl.Tree, id TransactionID) (uint64, bool) {
@@ -255,8 +259,12 @@ func WriteAccountContractGasBalance(tree *avl.Tree, id TransactionID, gasBalance
 }
 
 func readUnderAccounts(tree *avl.Tree, id AccountID, key []byte) ([]byte, bool) {
-	buf, exists := tree.Lookup(append(keyAccounts[:], append(key, id[:]...)...))
+	k := make([]byte, 0, len(keyAccounts)+len(key)+len(id))
+	k = append(k, keyAccounts[:]...)
+	k = append(k, key...)
+	k = append(k, id[:]...)
 
+	buf, exists := tree.Lookup(k)
 	if !exists {
 		return nil, false
 	}
@@ -265,7 +273,12 @@ func readUnderAccounts(tree *avl.Tree, id AccountID, key []byte) ([]byte, bool) 
 }
 
 func writeUnderAccounts(tree *avl.Tree, id AccountID, key, value []byte) {
-	tree.Insert(append(keyAccounts[:], append(key, id[:]...)...), value[:])
+	k := make([]byte, 0, len(keyAccounts)+len(key)+len(id))
+	k = append(k, keyAccounts[:]...)
+	k = append(k, key...)
+	k = append(k, id[:]...)
+
+	tree.Insert(k, value)
 }
 
 func ReadAccountsLen(tree *avl.Tree) uint64 {
