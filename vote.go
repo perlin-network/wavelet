@@ -20,7 +20,6 @@
 package wavelet
 
 import (
-	"fmt"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
@@ -187,7 +186,6 @@ func CollectVotesForFinalization(
 				}
 
 				if stake+transactions+depth >= conf.GetFinalizationVoteThreshold() {
-					fmt.Printf(">>> tr: %.2f, depth: %.2f, stake: %.2f\n", transactions, depth, stake)
 					majority = vote.round
 					break
 				}

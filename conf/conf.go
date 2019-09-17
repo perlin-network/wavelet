@@ -66,6 +66,14 @@ var (
 
 type Option func(*config)
 
+// updateWeights update transaction number and round depth weights for consensus vote counting
+// weights values are calculated as such, that it should be just enough to reach majority
+// in case of same stakes
+func updateWeights() {
+	c.transactionsNumMajorityWeight = c.finalizationVoteThreshold - (1 / float64(c.snowballK))
+	c.roundDepthMajorityWeight = c.finalizationVoteThreshold - (1 / float64(c.snowballK))
+}
+
 func WithSnowballK(sk int) Option {
 	return func(c *config) {
 		c.snowballK = sk
@@ -264,9 +272,13 @@ func GetPruningLimit() uint8 {
 
 func Update(options ...Option) {
 	l.Lock()
+
 	for _, option := range options {
 		option(&c)
 	}
+
+	updateWeights()
+
 	l.Unlock()
 }
 
