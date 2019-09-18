@@ -485,3 +485,29 @@ func BenchmarkCollapseTransactionsContractTransfer100000(b *testing.B) {
 		assert.Equal(b, 100001, results.appliedCount)
 	}
 }
+
+func BenchmarkCollapseTransactionsMixed(b *testing.B) {
+	code, err := ioutil.ReadFile("testdata/transfer_back.wasm")
+	assert.NoError(b, err)
+
+	graph := newBenchmarkCollapse(b, 3)
+
+	contract, err := graph.applyContract(b, code)
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	graph.addContractTransferTxs(b, 30000, contract.Sender, contract.ID, []byte("on_money_received"), 200, 500000, 0)
+	graph.addTransferTxs(b, 30000)
+	graph.addStakeTxs(b, 30000)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		results, err := graph.collapseTransactionsNewState(b)
+		if err != nil {
+			b.Fatal(err)
+		}
+		assert.Equal(b, 1+30000+30000+30000, results.appliedCount)
+	}
+}
