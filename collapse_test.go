@@ -430,19 +430,6 @@ func BenchmarkCollapseTransactionsContractTransfer1000(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		b.StopTimer()
-
-		graph := newBenchmarkCollapse(b, 3)
-
-		contract, err := graph.applyContract(b, code)
-		if err != nil {
-			b.Fatal(err)
-		}
-
-		graph.addContractTransferTxs(b, 1000, contract.Sender, contract.ID, []byte("on_money_received"), 200, 500000, 0)
-
-		b.StartTimer()
-
 		results, err := graph.collapseTransactionsNewState(b)
 		if err != nil {
 			b.Fatal(err)
@@ -467,19 +454,6 @@ func BenchmarkCollapseTransactionsContractTransfer10000(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		b.StopTimer()
-
-		graph := newBenchmarkCollapse(b, 3)
-
-		contract, err := graph.applyContract(b, code)
-		if err != nil {
-			b.Fatal(err)
-		}
-
-		graph.addContractTransferTxs(b, 10000, contract.Sender, contract.ID, []byte("on_money_received"), 200, 500000, 0)
-
-		b.StartTimer()
-
 		results, err := graph.collapseTransactionsNewState(b)
 		if err != nil {
 			b.Fatal(err)
@@ -504,19 +478,6 @@ func BenchmarkCollapseTransactionsContractTransfer100000(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		b.StopTimer()
-
-		graph := newBenchmarkCollapse(b, 3)
-
-		contract, err := graph.applyContract(b, code)
-		if err != nil {
-			b.Fatal(err)
-		}
-
-		graph.addContractTransferTxs(b, 100000, contract.Sender, contract.ID, []byte("on_money_received"), 200, 500000, 0)
-
-		b.StartTimer()
-
 		results, err := graph.collapseTransactionsNewState(b)
 		if err != nil {
 			b.Fatal(err)
