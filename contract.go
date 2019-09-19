@@ -20,6 +20,7 @@
 package wavelet
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/binary"
@@ -29,8 +30,6 @@ import (
 	"github.com/perlin-network/life/utils"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/avl"
-	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/lru"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
@@ -39,7 +38,6 @@ import (
 )
 
 var (
-	ErrNotSmartContract         = errors.New("contract: specified account ID is not a smart contract")
 	ErrContractFunctionNotFound = errors.New("contract: smart contract func not found")
 
 	_ exec.ImportResolver = (*ContractExecutor)(nil)
@@ -106,11 +104,8 @@ func SnapshotVMState(vm *exec.VirtualMachine) VMState {
 	}
 }
 
-var vmCache *lru.LRU = lru.NewLRU(32) // AccountID -> *exec.VirtualMachine
-
 func (e *ContractExecutor) GetCost(key string) int64 {
-	// FIXME(kenta): Remove for testnet.
-	return 1
+	return 1 // FIXME(kenta): Remove for testnet.
 	//cost, ok := sys.GasTable[key]
 	//if !ok {
 	//	return 1
@@ -172,14 +167,14 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 			}
 		case "_log":
 			return func(vm *exec.VirtualMachine) int64 {
-				frame := vm.GetCurrentFrame()
-				dataPtr := int(uint32(frame.Locals[0]))
-				dataLen := int(uint32(frame.Locals[1]))
-
-				logger := log.Contracts("log")
-				logger.Debug().
-					Hex("contract_id", e.ID[:]).
-					Msg(string(vm.Memory[dataPtr : dataPtr+dataLen]))
+				//frame := vm.GetCurrentFrame()
+				//dataPtr := int(uint32(frame.Locals[0]))
+				//dataLen := int(uint32(frame.Locals[1]))
+				//
+				//logger := log.Contracts("log")
+				//logger.Debug().
+				//	Hex("contract_id", e.ID[:]).
+				//	Msg(string(vm.Memory[dataPtr : dataPtr+dataLen]))
 
 				return 0
 			}
@@ -262,13 +257,12 @@ func (e *ContractExecutor) ResolveGlobal(module, field string) int64 {
 }
 
 // If this function returns no error and `contractState` is not nil, new state of the contract MUST be written into `contractState`.
-func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Round, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte, contractState *VMState, contractStateLoaded bool) error {
+func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Round, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte, ctx *CollapseContext, contractState *VMState, contractStateLoaded bool) error {
 	var vm *exec.VirtualMachine
 	var err error
 
-	if _cachedVM, ok := vmCache.Load(id); ok {
-		cachedVM := _cachedVM.(*exec.VirtualMachine)
-		vm, err = CloneVM(cachedVM, e, e)
+	if cached, ok := ctx.VMCache.Load(id); ok {
+		vm, err = CloneVM(cached.(*exec.VirtualMachine), e, e)
 		if err != nil {
 			return errors.Wrap(err, "cannot clone vm")
 		}
@@ -285,15 +279,18 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 			MaxCallStackDepth: sys.ContractMaxCallStackDepth,
 			GasLimit:          gasLimit,
 		}
+
 		vm, err = exec.NewVirtualMachine(code, config, e, e)
 		if err != nil {
 			return errors.Wrap(err, "cannot initialize vm")
 		}
-		cachedVM, err := CloneVM(vm, nil, nil)
+
+		cloned, err := CloneVM(vm, nil, nil)
 		if err != nil {
 			return errors.Wrap(err, "cannot clone vm")
 		}
-		vmCache.Put(id, cachedVM)
+
+		ctx.VMCache.Put(id, cloned)
 	}
 
 	// We can safely initialize the VM first before checking this because the size of the global slice
@@ -447,39 +444,29 @@ func SaveContractMemorySnapshot(snapshot *avl.Tree, id AccountID, mem []byte) {
 
 	WriteAccountContractNumPages(snapshot, id, numPages)
 
+	var (
+		identical, allZero bool
+		pageStart          uint64
+	)
+
 	for pageIdx := uint64(0); pageIdx < numPages; pageIdx++ {
 		old, _ := ReadAccountContractPage(snapshot, id, pageIdx)
+		identical, allZero = true, false
+		pageStart = pageIdx * PageSize
 
-		identical := true
-
-		for idx := uint64(0); idx < PageSize; idx++ {
-			if len(old) == 0 && mem[pageIdx*PageSize+idx] != 0 {
-				identical = false
-				break
-			}
-
-			if len(old) != 0 && mem[pageIdx*PageSize+idx] != old[idx] {
-				identical = false
-				break
-			}
+		if len(old) == 0 {
+			allZero = bytes.Equal(ZeroPage, mem[pageStart:pageStart+PageSize])
+			identical = allZero
+		} else {
+			identical = bytes.Equal(old, mem[pageStart:pageStart+PageSize])
 		}
 
 		if !identical {
-			allZero := true
-
-			for idx := uint64(0); idx < PageSize; idx++ {
-				if mem[pageIdx*PageSize+idx] != 0 {
-					allZero = false
-					break
-				}
-			}
-
 			// If the page is empty, save an empty byte array. Otherwise, save the pages content.
-
 			if allZero {
 				WriteAccountContractPage(snapshot, id, pageIdx, []byte{})
 			} else {
-				WriteAccountContractPage(snapshot, id, pageIdx, mem[pageIdx*PageSize:(pageIdx+1)*PageSize])
+				WriteAccountContractPage(snapshot, id, pageIdx, mem[pageStart:pageStart+PageSize])
 			}
 		}
 	}

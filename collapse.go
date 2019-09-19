@@ -24,6 +24,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	queue2 "github.com/phf/go-queue/queue"
@@ -93,7 +94,7 @@ func rewardValidators(g *Graph, snapshot *avl.Tree, tx *Transaction, logging boo
 		// If we exceed the max eligible depth we search for candidate
 		// validators to reward from, stop traversing.
 
-		if depthCounter >= sys.MaxDepthDiff {
+		if depthCounter >= conf.GetMaxDepthDiff() {
 			break
 		}
 
@@ -217,9 +218,7 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 	res.rejected = make([]*Transaction, 0, order.Len())
 	res.rejectedErrors = make([]error, 0, order.Len())
 
-	applyCtx := &ApplyContext{
-		Contracts: make(map[AccountID]*VMState),
-	}
+	ctx := NewCollapseContext()
 
 	// Apply transactions in reverse order from the end of the round
 	// all the way down to the beginning of the round.
@@ -246,7 +245,7 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 			}
 		}
 
-		if err := ApplyTransaction(current, res.snapshot, popped, applyCtx); err != nil {
+		if err := ApplyTransaction(current, res.snapshot, popped, ctx); err != nil {
 			res.rejected = append(res.rejected, popped)
 			res.rejectedErrors = append(res.rejectedErrors, err)
 			res.rejectedCount += popped.LogicalUnits()
@@ -274,10 +273,7 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 		processRewardWithdrawals(round, res.snapshot)
 	}
 
-	for id, state := range applyCtx.Contracts {
-		SaveContractMemorySnapshot(res.snapshot, id, state.Memory)
-		SaveContractGlobals(res.snapshot, id, state.Globals)
-	}
+	ctx.Flush(res.snapshot)
 
 	return res, nil
 }

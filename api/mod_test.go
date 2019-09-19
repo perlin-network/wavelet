@@ -26,12 +26,17 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/perlin-network/noise"
+	"github.com/perlin-network/noise/cipher"
+	"github.com/perlin-network/noise/handshake"
+	"github.com/perlin-network/wavelet/conf"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
 	"strconv"
+	"strings"
 	"testing"
 	"testing/quick"
 	"time"
@@ -84,7 +89,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?sender=1",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "sender ID must be presented as valid hex: encoding/hex: odd length hex string",
 			},
 		},
@@ -93,7 +98,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?sender=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "sender ID must be 32 bytes long",
 			},
 		},
@@ -102,7 +107,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?creator=1",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "creator ID must be presented as valid hex: encoding/hex: odd length hex string",
 			},
 		},
@@ -111,7 +116,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?creator=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "creator ID must be 32 bytes long",
 			},
 		},
@@ -120,7 +125,7 @@ func TestListTransaction(t *testing.T) {
 			url:      "/tx?creator=1",
 			wantCode: http.StatusBadRequest,
 			wantResponse: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "creator ID must be presented as valid hex: encoding/hex: odd length hex string",
 			},
 		},
@@ -208,7 +213,7 @@ func TestGetTransaction(t *testing.T) {
 			id:       "1c331c1d",
 			wantCode: http.StatusBadRequest,
 			wantResponse: &testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  fmt.Sprintf("transaction ID must be %d bytes long", wavelet.SizeTransactionID),
 			},
 		},
@@ -470,7 +475,7 @@ func TestGetContractCode(t *testing.T) {
 			url:      "/contract/" + "3132333435363738393031323334353637383930313233343536373839303132",
 			wantCode: http.StatusNotFound,
 			wantError: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Not Found",
 				ErrorText:  fmt.Sprintf("could not find contract with ID %s", "3132333435363738393031323334353637383930313233343536373839303132"),
 			},
 		},
@@ -518,7 +523,7 @@ func TestGetContractPages(t *testing.T) {
 			url:      "/contract/" + id + "/page/-1",
 			wantCode: http.StatusBadRequest,
 			wantError: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Bad Request",
 				ErrorText:  "could not parse page index",
 			},
 		},
@@ -527,7 +532,7 @@ func TestGetContractPages(t *testing.T) {
 			url:      "/contract/3132333435363738393031323334353637383930313233343536373839303132/page/1",
 			wantCode: http.StatusNotFound,
 			wantError: testErrResponse{
-				StatusText: "Bad request.",
+				StatusText: "Not Found",
 				ErrorText:  fmt.Sprintf("could not find any pages for contract with ID %s", "3132333435363738393031323334353637383930313233343536373839303132"),
 			},
 		},
@@ -594,7 +599,7 @@ func TestGetLedger(t *testing.T) {
 	publicKey := keys.PublicKey()
 
 	expectedJSON := fmt.Sprintf(
-		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"round":{"merkle_root":"cd3b0df841268ab6c987a594de29ad19","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc","applied":0,"depth":0,"difficulty":8},"peers":null}`,
+		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"round":{"merkle_root":"cd3b0df841268ab6c987a594de29ad19","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc","transactions":0,"depth":0,"difficulty":8},"peers":null}`,
 		hex.EncodeToString(publicKey[:]),
 		listener.Addr().(*net.TCPAddr).Port,
 	)
@@ -729,6 +734,184 @@ func TestEndpointsRateLimit(t *testing.T) {
 					assert.NotEqual(t, http.StatusTooManyRequests, w.StatusCode)
 				}
 			}
+		})
+	}
+}
+
+func TestConnectDisconnect(t *testing.T) {
+	network := wavelet.NewTestNetwork(t)
+	defer network.Cleanup()
+
+	gateway := New()
+	gateway.setup()
+	gateway.ledger = network.Faucet().Ledger()
+
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+	gateway.keys = keys
+
+	l, err := net.Listen("tcp", ":0")
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(l.Addr().(*net.TCPAddr).Port))
+
+	gateway.client = skademlia.NewClient(addr, keys,
+		skademlia.WithC1(sys.SKademliaC1),
+		skademlia.WithC2(sys.SKademliaC2),
+	)
+	gateway.client.SetCredentials(
+		noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), gateway.client.Protocol()),
+	)
+
+	node := network.AddNode(t)
+	defer node.Cleanup()
+
+	currentSecret := conf.GetSecret()
+	defer conf.Update(conf.WithSecret(currentSecret))
+	conf.Update(conf.WithSecret("secret"))
+
+	body := fmt.Sprintf(`{"address": "%s"}`, node.Addr())
+
+	request := httptest.NewRequest(http.MethodPost, "http://localhost/node/connect", strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer secret")
+	w, err := serve(gateway.router, request)
+	assert.NoError(t, err)
+
+	assert.NotNil(t, w)
+
+	assert.Equal(t, http.StatusOK, w.StatusCode)
+
+	resp, err := ioutil.ReadAll(w.Body)
+	assert.NoError(t, err)
+	assert.Equal(t, fmt.Sprintf(`{"msg":"Successfully connected to %s"}`, node.Addr()), string(resp))
+
+	request = httptest.NewRequest(http.MethodPost, "http://localhost/node/disconnect", strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer secret")
+	w, err = serve(gateway.router, request)
+	assert.NoError(t, err)
+
+	assert.NotNil(t, w)
+
+	assert.Equal(t, http.StatusOK, w.StatusCode)
+
+	resp, err = ioutil.ReadAll(w.Body)
+	assert.NoError(t, err)
+	assert.Equal(t, fmt.Sprintf(`{"msg":"Successfully disconnected from %s"}`, node.Addr()), string(resp))
+}
+
+func TestConnectDisconnectErrors(t *testing.T) {
+	gateway := New()
+	gateway.setup()
+
+	gateway.ledger = createLedger(t)
+
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+	gateway.keys = keys
+
+	l, err := net.Listen("tcp", ":0")
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(l.Addr().(*net.TCPAddr).Port))
+
+	gateway.client = skademlia.NewClient(addr, keys,
+		skademlia.WithC1(sys.SKademliaC1),
+		skademlia.WithC2(sys.SKademliaC2),
+	)
+	gateway.client.SetCredentials(
+		noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), gateway.client.Protocol()),
+	)
+
+	currentSecret := conf.GetSecret()
+	defer conf.Update(conf.WithSecret(currentSecret))
+	conf.Update(conf.WithSecret("secret"))
+
+	authHeader := "Bearer secret"
+
+	testCases := []struct {
+		name       string
+		uri        string
+		body       string
+		authHeader string
+		errorStr   string
+		code       int
+	}{
+		{
+			name:     "error: connect address is missing",
+			uri:      "/node/connect",
+			body:     "{}",
+			errorStr: `Unauthorized`,
+			code:     http.StatusUnauthorized,
+		},
+		{
+			name:       "error: disconnect address is missing",
+			uri:        "/node/disconnect",
+			authHeader: authHeader,
+			body:       "{}",
+			errorStr:   `{"status":"Bad Request","error":"address is missing"}`,
+			code:       http.StatusBadRequest,
+		},
+		{
+			name:       "error: connect address is malformed",
+			uri:        "/node/connect",
+			authHeader: authHeader,
+			body:       `{"address":"aaa"}`,
+			errorStr:   `{"status":"Internal Server Error","error":"error connecting to peer: failed to dial peer: connection error: desc = \"transport: error while dialing: dial tcp: address aaa: missing port in address\""}`,
+			code:       http.StatusInternalServerError,
+		},
+		{
+			name:       "error: disconnect address is malformed",
+			uri:        "/node/disconnect",
+			authHeader: authHeader,
+			body:       `{"address":"aaa"}`,
+			errorStr:   `{"status":"Internal Server Error","error":"error disconnecting from peer: could not disconnect peer: peer with address aaa not found"}`,
+			code:       http.StatusInternalServerError,
+		},
+		{
+			name:       "error: connect address is missing",
+			uri:        "/node/connect",
+			authHeader: authHeader,
+			body:       `{"address":"127.0.0.1:1234"}`,
+			errorStr:   `{"status":"Internal Server Error","error":"error connecting to peer: failed to dial peer: connection error: desc = \"transport: error while dialing: dial tcp 127.0.0.1:1234: connect: connection refused\""}`,
+			code:       http.StatusInternalServerError,
+		},
+		{
+			name:       "error: disconnect address is missing",
+			uri:        "/node/disconnect",
+			authHeader: authHeader,
+			body:       `{"address":"127.0.0.1:1234"}`,
+			errorStr:   `{"status":"Internal Server Error","error":"error disconnecting from peer: could not disconnect peer: peer with address 127.0.0.1:1234 not found"}`,
+			code:       http.StatusInternalServerError,
+		},
+	}
+
+	for _, testCase := range testCases {
+		tc := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "http://localhost"+tc.uri, strings.NewReader(tc.body))
+
+			if len(testCase.authHeader) > 0 {
+				request.Header.Set("Authorization", testCase.authHeader)
+			}
+
+			w, err := serve(gateway.router, request)
+			assert.NoError(t, err)
+
+			if !assert.NotNil(t, w) {
+				return
+			}
+
+			resp, err := ioutil.ReadAll(w.Body)
+			if !assert.NoError(t, err) {
+				return
+			}
+
+			assert.Equal(t, tc.code, w.StatusCode)
+			assert.Equal(t, tc.errorStr, string(resp))
 		})
 	}
 }

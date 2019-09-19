@@ -20,13 +20,20 @@
 package api
 
 import (
+	"encoding/hex"
 	"fmt"
+	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/conf"
+	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
 	"net/http"
 	"os"
 	"runtime/debug"
+	"strings"
 	"time"
 )
+
+const authPrefix = "Bearer "
 
 type middleware func(fasthttp.RequestHandler) fasthttp.RequestHandler
 
@@ -58,5 +65,60 @@ func recoverer(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 func timeout(timeout time.Duration, msg string) func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 		return fasthttp.TimeoutHandler(next, timeout, msg)
+	}
+}
+
+func (g *Gateway) contractScope(next fasthttp.RequestHandler) fasthttp.RequestHandler {
+	return func(ctx *fasthttp.RequestCtx) {
+		param, ok := ctx.UserValue("id").(string)
+		if !ok {
+			g.renderError(ctx, ErrBadRequest(errors.New("could not cast id into string")))
+			return
+		}
+
+		slice, err := hex.DecodeString(param)
+		if err != nil {
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "contract ID must be presented as valid hex")))
+			return
+		}
+
+		if len(slice) != wavelet.SizeTransactionID {
+			g.renderError(ctx, ErrBadRequest(errors.Errorf("contract ID must be %d bytes long", wavelet.SizeTransactionID)))
+			return
+		}
+
+		var contractID wavelet.TransactionID
+		copy(contractID[:], slice)
+
+		ctx.SetUserValue("contract_id", contractID)
+
+		next(ctx)
+	}
+}
+
+func parseBearerToken(auth string) string {
+	if !strings.HasPrefix(auth, authPrefix) {
+		return ""
+	}
+	return auth[len(authPrefix):]
+}
+
+func oAuth2(ctx *fasthttp.RequestCtx) string {
+	if auth := ctx.Request.Header.Peek("Authorization"); auth == nil {
+		return ""
+	} else {
+		return parseBearerToken(string(auth))
+	}
+}
+
+func (g *Gateway) auth(next fasthttp.RequestHandler) fasthttp.RequestHandler {
+	return func(ctx *fasthttp.RequestCtx) {
+		if len(conf.GetSecret()) > 0 && oAuth2(ctx) == conf.GetSecret() {
+			next(ctx)
+			return
+		}
+
+		ctx.Error(fasthttp.StatusMessage(fasthttp.StatusUnauthorized), fasthttp.StatusUnauthorized)
+		ctx.Response.Header.Set("WWW-Authenticate", "Bearer realm=Restricted")
 	}
 }

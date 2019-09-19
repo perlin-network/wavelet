@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/perlin-network/wavelet/conf"
 	"io"
 	"io/ioutil"
 	"net"
@@ -52,14 +53,17 @@ import (
 )
 
 type Config struct {
-	NAT      bool
-	Host     string
-	Port     uint
-	Wallet   string
-	Genesis  *string
-	APIPort  uint
-	Peers    []string
-	Database string
+	NAT           bool
+	Host          string
+	Port          uint
+	Wallet        string
+	Genesis       *string
+	APIPort       uint
+	APIHost       *string
+	APICertsCache *string
+	Peers         []string
+	Database      string
+	MaxMemoryMB   uint64
 
 	// Only for testing
 	WithoutGC bool
@@ -103,18 +107,34 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Usage:  "Listen for peers on host address.",
 			EnvVar: "WAVELET_NODE_HOST",
 		}),
-		altsrc.NewIntFlag(cli.IntFlag{
+		altsrc.NewUintFlag(cli.UintFlag{
 			Name:   "port",
 			Value:  3000,
 			Usage:  "Listen for peers on port.",
 			EnvVar: "WAVELET_NODE_PORT",
 		}),
-		altsrc.NewIntFlag(cli.IntFlag{
+		altsrc.NewUintFlag(cli.UintFlag{
 			Name:   "api.port",
 			Value:  0,
 			Usage:  "Host a local HTTP API at port.",
 			EnvVar: "WAVELET_API_PORT",
 		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "api.host",
+			Usage:  "Host for the API HTTPS server.",
+			EnvVar: "WAVELET_API_HOST",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "api.certs",
+			Usage:  "Directory path to cache HTTPS certificates.",
+			EnvVar: "WAVELET_CERTS_CACHE_DIR",
+		}),
+		cli.StringFlag{
+			Name:   "api.secret",
+			Value:  conf.GetSecret(),
+			Usage:  "Shared secret to restrict access to some api",
+			EnvVar: "WAVELET_API_SECRET",
+		},
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "wallet",
 			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded private key to a wallet may also be specified.",
@@ -131,13 +151,19 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			EnvVar: "WAVELET_DB_PATH",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
+			Name:   "memory.max",
+			Value:  0,
+			Usage:  "Maximum memory in MB allowed to be used by wavelet.",
+			EnvVar: "WAVELET_MEMORY_MAX",
+		}),
+		altsrc.NewDurationFlag(cli.DurationFlag{
 			Name:  "sys.query_timeout",
-			Value: int(sys.QueryTimeout.Seconds()),
+			Value: conf.GetQueryTimeout(),
 			Usage: "Timeout in seconds for querying a transaction to K peers.",
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.max_depth_diff",
-			Value: sys.MaxDepthDiff,
+			Value: conf.GetMaxDepthDiff(),
 			Usage: "Max graph depth difference to search for eligible transaction parents from for our node.",
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
@@ -151,19 +177,19 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "sys.snowball.k",
-			Value:  sys.SnowballK,
+			Value:  conf.GetSnowballK(),
 			Usage:  "Snowball consensus protocol parameter k",
 			EnvVar: "WAVELET_SNOWBALL_K",
 		}),
 		altsrc.NewFloat64Flag(cli.Float64Flag{
 			Name:   "sys.snowball.alpha",
-			Value:  sys.SnowballAlpha,
+			Value:  conf.GetSnowballAlpha(),
 			Usage:  "Snowball consensus protocol parameter alpha",
 			EnvVar: "WAVELET_SNOWBALL_ALPHA",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "sys.snowball.beta",
-			Value:  sys.SnowballBeta,
+			Value:  conf.GetSnowballBeta(),
 			Usage:  "Snowball consensus protocol parameter beta",
 			EnvVar: "WAVELET_SNOWBALL_BETA",
 		}),
@@ -203,27 +229,41 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 	}
 
 	app.Action = func(c *cli.Context) error {
-		c.String("config")
 		config := &Config{
-			Host:      c.String("host"),
-			Port:      c.Uint("port"),
-			Wallet:    c.String("wallet"),
-			APIPort:   c.Uint("api.port"),
-			Peers:     c.Args(),
-			Database:  c.String("db"),
-			WithoutGC: withoutGC,
+			Host:        c.String("host"),
+			Port:        c.Uint("port"),
+			Wallet:      c.String("wallet"),
+			APIPort:     c.Uint("api.port"),
+			Peers:       c.Args(),
+			Database:    c.String("db"),
+			MaxMemoryMB: c.Uint64("memory.max"),
+			WithoutGC:   withoutGC,
 		}
 
 		if genesis := c.String("genesis"); len(genesis) > 0 {
 			config.Genesis = &genesis
 		}
 
+		if apiHost := c.String("api.host"); len(apiHost) > 0 {
+			config.APIHost = &apiHost
+
+			if certsCache := c.String("api.certs"); len(certsCache) > 0 {
+				config.APICertsCache = &certsCache
+			} else {
+				return errors.New("missing api.certs flag")
+			}
+		}
+
+		conf.Update(
+			conf.WithSnowballK(c.Int("sys.snowball.k")),
+			conf.WithSnowballAlpha(c.Float64("sys.snowball.alpha")),
+			conf.WithSnowballBeta(c.Int("sys.snowball.beta")),
+			conf.WithQueryTimeout(c.Duration("sys.query_timeout")),
+			conf.WithMaxDepthDiff(c.Uint64("sys.max_depth_diff")),
+			conf.WithSecret(c.String("api.secret")),
+		)
+
 		// set the the sys variables
-		sys.SnowballK = c.Int("sys.snowball.k")
-		sys.SnowballAlpha = c.Float64("sys.snowball.alpha")
-		sys.SnowballBeta = c.Int("sys.snowball.beta")
-		sys.QueryTimeout = time.Duration(c.Int("sys.query_timeout")) * time.Second
-		sys.MaxDepthDiff = c.Uint64("sys.max_depth_diff")
 		sys.MinDifficulty = byte(c.Int("sys.difficulty.min"))
 		sys.DifficultyScaleFactor = c.Float64("sys.difficulty.scale")
 		sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
@@ -329,6 +369,9 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	if cfg.WithoutGC {
 		opts = append(opts, wavelet.WithoutGC())
 	}
+	if cfg.MaxMemoryMB > 0 {
+		opts = append(opts, wavelet.WithMaxMemoryMB(cfg.MaxMemoryMB))
+	}
 
 	ledger := wavelet.NewLedger(kv, client, opts...)
 
@@ -343,7 +386,7 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	}()
 
 	for _, addr := range cfg.Peers {
-		if _, err := client.Dial(addr); err != nil {
+		if _, err := client.Dial(addr, skademlia.WithTimeout(10*time.Second)); err != nil {
 			fmt.Printf("Error dialing %s: %v\n", addr, err)
 		}
 	}
@@ -358,11 +401,16 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 		logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
 	}
 
-	if cfg.APIPort > 0 {
-		go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
+	if cfg.APIHost != nil {
+		go api.New().StartHTTPS(int(cfg.APIPort), client, ledger, keys, kv, *cfg.APIHost, *cfg.APICertsCache)
+	} else {
+		if cfg.APIPort > 0 {
+			go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys, kv)
+
+		}
 	}
 
-	shell, err := NewCLI(client, ledger, keys, stdin, stdout)
+	shell, err := NewCLI(client, ledger, keys, stdin, stdout, kv)
 	if err != nil {
 		panic(err)
 	}

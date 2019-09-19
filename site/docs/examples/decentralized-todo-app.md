@@ -143,8 +143,6 @@ As we are writing a Todo Dapp, we have several additional functions implemented 
 Here we have the full smart contract written out as the following:
 
 ```rust
-use std::error::Error;
-
 use smart_contract_macros::smart_contract;
 
 use smart_contract::log;
@@ -175,7 +173,7 @@ impl TodoList {
         Self { logs: VecDeque::new() }
     }
 
-    fn add_todo(&mut self, params: &mut Parameters) -> Result<(), Box<dyn Error>> {
+    fn add_todo(&mut self, params: &mut Parameters) -> Result<(), String> {
         let todo = Todo { content: params.read(), done: false };
 
         // Ensure that todo contents are not empty.
@@ -197,7 +195,7 @@ impl TodoList {
         Ok(())
     }
 
-    fn remove_todo(&mut self, params: &mut Parameters) -> Result<(), Box<dyn Error>> {
+    fn remove_todo(&mut self, params: &mut Parameters) -> Result<(), String> {
         let target:usize = params.read();
         if target < self.logs.len() {
             self.logs.remove(target);
@@ -208,7 +206,7 @@ impl TodoList {
         Ok(())
     }
 
-    fn toggle_todo(&mut self, params: &mut Parameters) -> Result<(), Box<dyn Error>> {
+    fn toggle_todo(&mut self, params: &mut Parameters) -> Result<(), String> {
         let target:usize = params.read();
         if target < self.logs.len() {
             let target_ref = &mut self.logs[target];
@@ -220,7 +218,7 @@ impl TodoList {
         Ok(())
     }
 
-    fn get_todos(&mut self, _params: &mut Parameters) -> Result<(), Box<dyn Error>> {
+    fn get_todos(&mut self, _params: &mut Parameters) -> Result<(), String> {
         let mut todos = Vec::new();
 
         for todo in &self.logs {
@@ -364,7 +362,7 @@ export default {
     getTodos() {
       var raw = this.$contract.test('get_todos', BigInt(0));
       this.todos = raw.logs[0].split('\n').reverse().map((a, aidx) => {
-        var matched = a.split(' ');
+        var matched = a.split('> ');
         return {
           id: aidx,
           content: matched[0].replace(/[\<\>]/g, ''),
@@ -379,6 +377,7 @@ export default {
         'add_todo', 
         BigInt(0), 
         BigInt(250000),
+        BigInt(0),
         {type: "string", value: target.value},
       ).then(resp => {
         target.value = '';
@@ -392,6 +391,7 @@ export default {
         'remove_todo', 
         BigInt(0), 
         BigInt(250000),
+        BigInt(0),
         {type: "uint32", value: id},
       ).then(resp => {
         self.log.push(resp.tx_id);
@@ -404,6 +404,7 @@ export default {
         'toggle_todo', 
         BigInt(0), 
         BigInt(250000),
+        BigInt(0),
         {type: "uint32", value: id},
       ).then(resp => {
         self.log.push(resp.tx_id);

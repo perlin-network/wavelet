@@ -25,10 +25,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"strconv"
 
 	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/urfave/cli"
@@ -88,7 +90,7 @@ func (cli *CLI) status(ctx *cli.Context) {
 }
 
 func (cli *CLI) pay(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 2 {
 		cli.logger.Error().
@@ -154,7 +156,7 @@ func (cli *CLI) pay(ctx *cli.Context) {
 }
 
 func (cli *CLI) call(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 4 {
 		cli.logger.Error().
@@ -283,7 +285,7 @@ func (cli *CLI) call(ctx *cli.Context) {
 }
 
 func (cli *CLI) find(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
 		cli.logger.Error().
@@ -361,7 +363,7 @@ func (cli *CLI) find(ctx *cli.Context) {
 }
 
 func (cli *CLI) spawn(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
 		cli.logger.Error().
@@ -400,7 +402,7 @@ func (cli *CLI) spawn(ctx *cli.Context) {
 }
 
 func (cli *CLI) depositGas(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 2 {
 		cli.logger.Error().
@@ -472,7 +474,7 @@ func (cli *CLI) depositGas(ctx *cli.Context) {
 }
 
 func (cli *CLI) placeStake(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
 		cli.logger.Error().
@@ -505,7 +507,7 @@ func (cli *CLI) placeStake(ctx *cli.Context) {
 }
 
 func (cli *CLI) withdrawStake(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
 		cli.logger.Error().
@@ -541,7 +543,7 @@ func (cli *CLI) withdrawStake(ctx *cli.Context) {
 }
 
 func (cli *CLI) withdrawReward(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
 		cli.logger.Error().
@@ -571,6 +573,90 @@ func (cli *CLI) withdrawReward(ctx *cli.Context) {
 
 	cli.logger.Info().
 		Msgf("Success! Your reward withdrawal transaction ID: %x", tx.ID)
+}
+
+func (cli *CLI) connect(ctx *cli.Context) {
+	cmd := ctx.Args()
+
+	if len(cmd) != 1 {
+		cli.logger.Error().Msg("Invalid usage: connect <address:port>")
+		return
+	}
+
+	_, err := cli.client.Dial(cmd[0])
+
+	if err != nil {
+		cli.logger.Error().Err(err).Msg("Failed to connect to peer.")
+		return
+	}
+
+	cli.logger.Info().Str("address", cmd[0]).Msg("Successfully connected to peer.")
+}
+
+func (cli *CLI) disconnect(ctx *cli.Context) {
+	cmd := ctx.Args()
+
+	if len(cmd) != 1 {
+		cli.logger.Error().Msg("Invalid usage: disconnect <address:port>")
+		return
+	}
+
+	err := cli.client.DisconnectByAddress(cmd[0])
+
+	if err != nil {
+		cli.logger.Error().Err(err).Msg("Failed to disconnect peer.")
+		return
+	}
+
+	cli.logger.Info().Str("address", cmd[0]).Msg("Successfully disconnected peer.")
+}
+
+func (cli *CLI) restart(ctx *cli.Context) {
+	cmd := ctx.Args()
+	if len(cmd) != 0 {
+		cli.logger.Error().Msg("Invalid usage: restart [--hard]")
+		return
+	}
+
+	if err := cli.kv.Close(); err != nil {
+		cli.logger.Error().Err(err).Msg("Failed to close storage.")
+		return
+	}
+
+	hard := ctx.Bool("hard")
+	if hard {
+		dbDir := cli.kv.Dir()
+		if len(dbDir) != 0 {
+			if err := os.RemoveAll(dbDir); err != nil {
+				cli.logger.Error().Err(err).Msg("Error deleting storage content.")
+				return
+			}
+		}
+	}
+
+	if err := cli.ledger.Restart(); err != nil {
+		cli.logger.Error().Err(err).Msg("Error restarting node.")
+	}
+
+	cli.logger.Info().Msg("Node is restarting...")
+}
+
+func (cli *CLI) updateParameters(ctx *cli.Context) {
+	conf.Update(
+		conf.WithSnowballK(ctx.Int("snowball.k")),
+		conf.WithSnowballAlpha(ctx.Float64("snowball.alpha")),
+		conf.WithSnowballBeta(ctx.Int("snowball.beta")),
+		conf.WithQueryTimeout(ctx.Duration("query.timeout")),
+		conf.WithGossipTimeout(ctx.Duration("gossip.timeout")),
+		conf.WithSyncChunkSize(ctx.Int("sync.chunk.size")),
+		conf.WithSyncIfRoundsDifferBy(ctx.Uint64("sync.if.rounds.differ.by")),
+		conf.WithMaxDownloadDepthDiff(ctx.Uint64("max.download.depth.diff")),
+		conf.WithMaxDepthDiff(ctx.Uint64("max.depth.diff")),
+		conf.WithPruningLimit(uint8(ctx.Uint64("pruning.limit"))),
+		conf.WithSecret(ctx.String("api.secret")),
+	)
+
+	cli.logger.Info().Str("conf", conf.Stringify()).Msg("Current configuration values")
 }
 
 func (cli *CLI) sendTransaction(tx wavelet.Transaction) (wavelet.Transaction, error) {

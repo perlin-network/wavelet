@@ -21,10 +21,10 @@ package wavelet
 
 import (
 	"encoding/hex"
-
 	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/lru"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 )
@@ -33,27 +33,57 @@ type contractExecutorState struct {
 	GasPayer      AccountID
 	GasLimit      uint64
 	GasLimitIsSet bool
-	ApplyCtx      *ApplyContext
+	Context       *CollapseContext
 }
 
-type ApplyContext struct {
-	Contracts map[AccountID]*VMState
+type CollapseContext struct {
+	ContractVMs map[AccountID]*VMState
+	ContractIDs []AccountID // contract ids to preserve order of state insertions
+
+	VMCache *lru.LRU
 }
 
-func ApplyTransaction(round *Round, state *avl.Tree, tx *Transaction, applyCtx *ApplyContext) error {
+func NewCollapseContext() *CollapseContext {
+	return &CollapseContext{
+		ContractVMs: make(map[AccountID]*VMState),
+		VMCache:     lru.NewLRU(4),
+	}
+}
+
+func (ac *CollapseContext) SetContractState(contractID AccountID, state *VMState) {
+	if _, ok := ac.ContractVMs[contractID]; !ok {
+		ac.ContractVMs[contractID] = state
+		ac.ContractIDs = append(ac.ContractIDs, contractID)
+	}
+}
+
+func (ac *CollapseContext) GetContractState(contractID AccountID) (*VMState, bool) {
+	vm, exists := ac.ContractVMs[contractID]
+	return vm, exists
+}
+
+func (ac *CollapseContext) Flush(snapshot *avl.Tree) {
+	for _, id := range ac.ContractIDs {
+		vm := ac.ContractVMs[id]
+		SaveContractMemorySnapshot(snapshot, id, vm.Memory)
+		SaveContractGlobals(snapshot, id, vm.Globals)
+	}
+}
+
+func ApplyTransaction(round *Round, state *avl.Tree, tx *Transaction, ctx *CollapseContext) error {
 	return applyTransaction(round, state, tx, &contractExecutorState{
 		GasPayer: tx.Creator,
-		ApplyCtx: applyCtx,
+		Context:  ctx,
 	})
 }
 
-func applyTransaction(round *Round, state *avl.Tree, tx *Transaction, execState *contractExecutorState) error {
+func applyTransaction(round *Round, state *avl.Tree, tx *Transaction, executorState *contractExecutorState) error {
 	original := state.Snapshot()
 
 	switch tx.Tag {
 	case sys.TagNop:
 	case sys.TagTransfer:
-		if err := applyTransferTransaction(state, round, tx, execState); err != nil {
+		if err := applyTransferTransaction(state, round, tx, executorState); err != nil {
 			state.Revert(original)
 			return errors.Wrap(err, "could not apply transfer transaction")
 		}
@@ -63,12 +93,12 @@ func applyTransaction(round *Round, state *avl.Tree, tx *Transaction, execState 
 			return errors.Wrap(err, "could not apply stake transaction")
 		}
 	case sys.TagContract:
-		if err := applyContractTransaction(state, round, tx, execState); err != nil {
+		if err := applyContractTransaction(state, round, tx, executorState); err != nil {
 			state.Revert(original)
 			return errors.Wrap(err, "could not apply contract transaction")
 		}
 	case sys.TagBatch:
-		if err := applyBatchTransaction(state, round, tx, execState); err != nil {
+		if err := applyBatchTransaction(state, round, tx, executorState); err != nil {
 			state.Revert(original)
 			return errors.Wrap(err, "could not apply batch transaction")
 		}
@@ -306,14 +336,14 @@ func executeContractInTransactionContext(
 	var vmState *VMState
 	var vmStateLoaded bool
 
-	if state.ApplyCtx != nil {
-		vmState, vmStateLoaded = state.ApplyCtx.Contracts[contractID]
+	if state.Context != nil {
+		vmState, vmStateLoaded = state.Context.GetContractState(contractID)
 		if !vmStateLoaded {
 			vmState = &VMState{}
 		}
 	}
 
-	invocationErr := executor.Execute(snapshot, contractID, round, tx, amount, realGasLimit, string(funcName), funcParams, code, vmState, vmStateLoaded)
+	invocationErr := executor.Execute(snapshot, contractID, round, tx, amount, realGasLimit, string(funcName), funcParams, code, state.Context, vmState, vmStateLoaded)
 
 	// availableBalance >= realGasLimit >= executor.Gas && state.GasLimit >= realGasLimit must always hold.
 	if realGasLimit < executor.Gas {
@@ -347,9 +377,8 @@ func executeContractInTransactionContext(
 				Msg("Exceeded gas limit while invoking smart contract function.")
 		}
 	} else {
-		// Contract invocation succeeded. VM state can be safely saved now.
-		if vmState != nil {
-			state.ApplyCtx.Contracts[contractID] = vmState
+		if vmState != nil { // Contract invocation succeeded. VM state can be safely saved now.
+			state.Context.SetContractState(contractID, vmState)
 		}
 
 		if executor.Gas > contractGasBalance {
@@ -363,12 +392,12 @@ func executeContractInTransactionContext(
 		}
 		state.GasLimit -= executor.Gas
 
-		logger.Info().
-			Hex("sender_id", tx.Creator[:]).
-			Hex("contract_id", contractID[:]).
-			Uint64("gas", executor.Gas).
-			Uint64("gas_limit", realGasLimit).
-			Msg("Deducted PERLs for invoking smart contract function.")
+		//logger.Info().
+		//	Hex("sender_id", tx.Creator[:]).
+		//	Hex("contract_id", contractID[:]).
+		//	Uint64("gas", executor.Gas).
+		//	Uint64("gas_limit", realGasLimit).
+		//	Msg("Deducted PERLs for invoking smart contract function.")
 
 		for _, entry := range executor.Queue {
 			err := applyTransaction(round, snapshot, entry, state)
