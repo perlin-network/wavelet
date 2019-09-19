@@ -56,6 +56,16 @@ func TestMain_WithLogLevel(t *testing.T) {
 	}
 }
 
+func TestMain_WithInvalidLogLevel(t *testing.T) {
+	// Invalid loglevel will cause the ledger to use the default log level,
+	// which is debug
+	w := NewTestWavelet(t, &TestWaveletConfig{LogLevel: "foobar"})
+	defer w.Cleanup()
+
+	w.Stdin <- "status"
+	w.Stdout.Search(t, "Here is the current status of your node")
+}
+
 func TestMain_WithWalletString(t *testing.T) {
 	wallet := "b27b880e6e44e3b127186a08bc5698316e8dd99157cec56211560b62141f0851c72096021609681eb8cab244752945b2008e1b51d8bc2208b2b562f35485d5cc"
 	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet})
