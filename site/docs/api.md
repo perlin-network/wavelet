@@ -88,7 +88,7 @@ Get Account Information
 ```
  
 ### Error Response:
-    
+
 - **Reason:** Invalid Account ID size
 - **Code:** 400 BAD REQUEST 
 - **Content:**
@@ -195,8 +195,8 @@ This endpoint is rate limited.
 
 ### Error Response:
  
-    * **Code:** 429 TOO MANY REQUEST
-    * **Content:** `Too Many Requests`
+- **Code:** 429 TOO MANY REQUEST
+- **Content:** `Too Many Requests`
 
 ## Transaction Detail
 
