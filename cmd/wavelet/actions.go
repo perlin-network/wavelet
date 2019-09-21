@@ -36,11 +36,9 @@ func (cli *CLI) status(ctx *cli.Context) {
 		return
 	}
 
-	a, err := cli.GetAccount(l.PublicKey)
-	if err != nil {
-		cli.logger.Error().Err(err).
-			Msg("Failed to get the account status")
-		return
+	a, _ := cli.GetAccount(l.PublicKey)
+	if a == nil {
+		a = &wctl.Account{}
 	}
 
 	var peers = make([]string, 0, len(l.Peers))
@@ -57,7 +55,7 @@ func (cli *CLI) status(ctx *cli.Context) {
 		Uint64("balance", a.Balance).
 		Uint64("stake", a.Stake).
 		Uint64("reward", a.Reward).
-		//Uint64("nonce", a.Nonce).
+		Uint64("nonce", a.Nonce).
 		Strs("peers", peers).
 		Uint64("num_tx", l.Graph.Tx).
 		Uint64("num_missing_tx", l.Graph.MissingTx).

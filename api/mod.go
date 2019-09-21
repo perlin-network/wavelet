@@ -504,11 +504,6 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 	_, isContract := wavelet.ReadAccountContractCode(snapshot, id)
 	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, id)
 
-	if !(balance > 0 || stake > 0 || nonce > 0 || isContract || numPages > 0) {
-		g.renderError(ctx, ErrNotFound(errors.Errorf("could not find account with ID %x", id)))
-		return
-	}
-
 	g.render(ctx, &account{
 		ledger:     g.ledger,
 		id:         id,

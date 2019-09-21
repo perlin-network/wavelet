@@ -148,37 +148,36 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 			Action:      a(c.withdrawReward),
 			Description: "withdraw rewards into PERLs",
 		},
-		/*
-			{
-				Name:        "connect",
-				Aliases:     []string{"cc"},
-				Action:      a(c.connect),
-				Description: "connect to a peer",
-			},
-			{
-				Name:        "disconnect",
-				Aliases:     []string{"dc"},
-				Action:      a(c.disconnect),
-				Description: "disconnect a peer",
-			},
-		*/
 		{
-			Name:    "exit",
-			Aliases: []string{"quit", ":q"},
-			Action:  a(c.exit),
+			Name:        "connect",
+			Aliases:     []string{"cc"},
+			Action:      a(c.connect),
+			Description: "connect to a peer",
+		},
+		{
+			Name:        "disconnect",
+			Aliases:     []string{"dc"},
+			Action:      a(c.disconnect),
+			Description: "disconnect a peer",
 		},
 		{
 			Name:        "restart",
 			Aliases:     []string{"r"},
-			Action:      a(c.restart),
-			Description: "restart node",
+			Action:      a(c.disconnect),
+			Description: "disconnect a peer",
 			Flags: []cli.Flag{
 				cli.BoolFlag{
 					Name:  "hard",
 					Usage: "database will be erased if provided",
 				},
 			},
-		}, {
+		},
+		{
+			Name:    "exit",
+			Aliases: []string{"quit", ":q"},
+			Action:  a(c.exit),
+		},
+		{
 			Name:      "update-params",
 			UsageText: "Updates parameters, if no value provided, default one will be used.",
 			Aliases:   []string{"up"},

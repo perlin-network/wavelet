@@ -437,7 +437,7 @@ func (s *mockStdout) Search(t *testing.T, sub string) string {
 			}
 
 		case <-timeout.C:
-			t.Fatal("timed out searching for string in stdout")
+			t.Fatal("timed out searching for string in stdout\nstring: " + sub)
 		}
 	}
 }
