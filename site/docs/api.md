@@ -1,34 +1,33 @@
-#### REST API endpoints
+# REST API endpoints
 
-* Some of the endpoints are rate limited per IP Address to 1000 requests per second.
-If an IP Address exceeds the limit, the response would be an error with code `429` and message `Too Many Requests`.
+Some of the endpoints are rate limited per IP Address to 1000 requests per second. If an IP Address exceeds the limit, the response would be an error with code `429` and message `Too Many Requests`.
 
-* Some of the types have constant size in bytes, as specified below:
+Some of the types have constant size in bytes, as specified below:
 
-    |Type|Size in bytes|
-    |---|---|
-    |Account ID|32|
-    |Public Key|32|
-    |Signature|64|
-    |Transaction / Contract ID|32|
-    |Merkle ID|16|
-    |Round ID|32|
+| Type                      | Size in bytes |
+|---------------------------|---------------|
+| Account ID                | 32            |
+| Public Key                | 32            |
+| Signature                 | 64            |
+| Transaction / Contract ID | 32            |
+| Merkle ID                 | 16            |
+| Round ID                  | 32            |
 
 ## Ledger
-----
+
    Get ledger current status.
-   
+
    This endpoint is rate limited.
 
-* **URL**: `/ledger`
-* **Method**: `GET`
-* **URL Params**: None
-* **Data Params**: None
+- **URL**: `/ledger`
+- **Method**: `GET`
+- **URL Params**: None
+- **Data Params**: None
 
 ### Success Response:
 
-* **Code:** 200
-* **Content:**
+- **Code:** 200
+- **Content:**
 
 ```json
 {
@@ -59,23 +58,23 @@ If an IP Address exceeds the limit, the response would be an error with code `42
  
 ### Error Response:
 
-* **Code:** 429 TOO MANY REQUEST
-* **Content:** `Too Many Requests`
+- **Code:** 429 TOO MANY REQUEST
+- **Content:** `Too Many Requests`
 
 ## Account
-----
+
 Get Account Information
 
-* **URL**: `/accounts/:id`
-* **Method**: `GET`
-* **URL Params**: 
-	* `id=[string]` where `id` is the hex-encoded Account ID.
-* **Data Params**: None
+- **URL**: `/accounts/:id`
+- **Method**: `GET`
+- **URL Params**: 
+	- `id=[string]` where `id` is the hex-encoded Account ID.
+- **Data Params**: None
 
 ### Success Response:
 
-* **Code:** 200
-* **Content:**
+- **Code:** 200
+- **Content:**
 ```json
 {
   "public_key": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
@@ -90,9 +89,9 @@ Get Account Information
  
 ### Error Response:
     
-* **Reason:** Invalid Account ID size
-* **Code:** 400 BAD REQUEST 
-* **Content:**
+- **Reason:** Invalid Account ID size
+- **Code:** 400 BAD REQUEST 
+- **Content:**
 ```json
 {
   "status": "Bad request.",
@@ -100,8 +99,8 @@ Get Account Information
 }
 ```
 
-* **Code:** 400 BAD REQUEST 
-* **Content:**
+- **Code:** 400 BAD REQUEST 
+- **Content:**
 ```json
 {
   "status": "Bad request.",
@@ -109,14 +108,14 @@ Get Account Information
 }
 ```
  
- **Send Transaction**
- ----
-   Send Transaction
+## Send Transaction
+
+Send Transaction
  
-* **URL:** `/tx/send`
-* **Method:** `POST`
-* **URL Params:** None
-* **Data Params:** 
+- **URL:** `/tx/send`
+- **Method:** `POST`
+- **URL Params:** None
+- **Data Params:** 
 ```json
 {
   "sender": "[hex-encoded sender ID, must be 32 bytes long]",
@@ -128,8 +127,8 @@ Get Account Information
  
 ### Success Response:
  
-* **Code:** 200
-* **Content:**
+- **Code:** 200
+- **Content:**
 ```json
 {
   "tx_id": "facd9c4bddc8d1080bac6d08a35cbd98ff9ef3924624d1307eced3b40d3549a0",
@@ -142,8 +141,8 @@ Get Account Information
 
 ### Error Response:
  
-* **Code:** 400 BAD REQUEST
-* **Content:**
+- **Code:** 400 BAD REQUEST
+- **Content:**
 ```json
 {
   "status": "Bad request.",
@@ -152,27 +151,26 @@ Get Account Information
 ```
 
 ## Transaction List
- ----
+
+Get Transaction List
+
+This endpoint is rate limited.
  
-   Get Transaction List
+- **URL**: `/tx`
  
-   This endpoint is rate limited.
- 
-* **URL**: `/tx`
- 
-* **Method:**: `GET`
-* **URL Params:** (optional)
-	* `sender=[string]` where `sender` is the hex-encoded Sender ID. Used to filter by Sender ID.
-	* `creator=[string]` where `creator` is the hex-encoded Creator ID. Used to filter by Creator ID.
+- **Method:**: `GET`
+- **URL Params:** (optional)
+	- `sender=[string]` where `sender` is the hex-encoded Sender ID. Used to filter by Sender ID.
+	- `creator=[string]` where `creator` is the hex-encoded Creator ID. Used to filter by Creator ID.
     * `offset=[integer]` where `offset` is page offset. Default 0.
     * `limit=[integer]` where `limit` is page limit. If 0, it'll return all transactions.
 
-* **Data Params:** None
+- **Data Params:** None
  
 ### Success Response:
  
-* **Code:** 200
-* **Content:**
+- **Code:** 200
+- **Content:**
 ```json
 [
   {
@@ -201,19 +199,19 @@ Get Account Information
     * **Content:** `Too Many Requests`
 
 ## Transaction Detail
- ----
-   Get Transaction Details by ID
+
+Get Transaction Details by ID
  
-* **URL:** `/tx/:id`
-* **Method:** `GET`
-* **URL Params:**
-	* `id=[string]` where `id` is the hex-encoded Transaction ID.
-* **Data Params:** None
+- **URL:** `/tx/:id`
+- **Method:** `GET`
+- **URL Params:**
+	- `id=[string]` where `id` is the hex-encoded Transaction ID.
+- **Data Params:** None
  
 ### Success Response:
  
-* **Code:** 200
-* **Content:**
+- **Code:** 200
+- **Content:**
 ```json
 {
   "id": "a91d6df9f8b680ae5bb2aa387dc2ce0aaa9e12a92ffc145ff65332bcc41d5256",
@@ -235,10 +233,10 @@ Get Account Information
 ```
 
 ### Error Response:
-    
-* **Code:** 400 BAD REQUEST
-* **Desc:**  The Transaction ID is not a valid size. Its size must be 32 bytes<br />
-* **Content:**
+
+- **Code:** 400 BAD REQUEST
+- **Desc:**  The Transaction ID is not a valid size. Its size must be 32 bytes
+- **Content:**
 ```json
 {
   "status": "Bad request.",
@@ -246,9 +244,9 @@ Get Account Information
 }
 ```
 
-* **Code:** 400 BAD REQUEST
-* **Desc:** Transaction ID is not a valid hex<br />
-* **Content:**
+- **Code:** 400 BAD REQUEST
+- **Desc:** Transaction ID is not a valid hex
+- **Content:**
 ```json
 {
  "status": "Bad request.",
@@ -256,11 +254,9 @@ Get Account Information
 }
 ```
 
-<br />
-
-* **Code:** 404 NOT FOUND
-* **Desc:** Transaction ID does not exist<br />
-* **Content:**
+- **Code:** 404 NOT FOUND
+- **Desc:** Transaction ID does not exist
+- **Content:**
 ```json
 {
   "status": "Bad request.",
@@ -269,28 +265,28 @@ Get Account Information
 ```
 
 ## Contract Code
- ----
+
    Get Contract Code By ID.
-   
+
    This endpoint is rate limited.
  
-* **URL:** `/contract/:id`
-* **Method:** `GET`
-* **URL Params:**
-	* `id=[string]` where `id` is the hex-encoded Contract ID.
-* **Data Params:** None
+- **URL:** `/contract/:id`
+- **Method:** `GET`
+- **URL Params:**
+	- `id=[string]` where `id` is the hex-encoded Contract ID.
+- **Data Params:** None
 
 ### Success Response:
  
-* **Code:** 200
-* **Content:**
+- **Code:** 200
+- **Content:**
 The contract web assembly code.
 
 ### Error Response:
 
-* **Code:** 400 BAD REQUEST
-* **Desc:** The Contract ID is not a valid size. Its size must be 32 bytes<br />
-* **Content:**
+- **Code:** 400 BAD REQUEST
+- **Desc:** The Contract ID is not a valid size. Its size must be 32 bytes
+- **Content:**
 ```json
 {
   "status": "Bad request.",
@@ -298,9 +294,9 @@ The contract web assembly code.
 }
 ```
 
-* **Code:** 400 BAD REQUEST
-* **Desc:** The contract ID is not a valid hex<br />
-* **Content:**
+- **Code:** 400 BAD REQUEST
+- **Desc:** The contract ID is not a valid hex
+- **Content:**
 ```json
 {
  "status": "Bad request.",
@@ -308,9 +304,9 @@ The contract web assembly code.
 }
 ```
 
-* **Code:** 404 NOT FOUND
-* **Desc:** The Contract ID does not exist<br />
-* **Content:**
+- **Code:** 404 NOT FOUND
+- **Desc:** The Contract ID does not exist
+- **Content:**
 ```json
 {
   "status": "Bad request.",
@@ -318,34 +314,34 @@ The contract web assembly code.
 }
 ```
 
-* **Code:** 429 TOO MANY REQUEST
-* **Desc:** The request is rate limited<br />
-* **Content:** `Too Many Requests`
+- **Code:** 429 TOO MANY REQUEST
+- **Desc:** The request is rate limited
+- **Content:** `Too Many Requests`
 
 ## Contract Page
- ----
+
    Get Contract Page
-   
+
    This endpoint is rate limited.
  
-* **URL:** `/contract/:id/page/:index`
-* **Method:**: `GET`
-* **URL Params:**
-	* `id=[string]` where `id` is the hex-encoded Contract ID.
-	* `page=[integer]` where `id` is the page index.
-* **Data Params:** None
+- **URL:** `/contract/:id/page/:index`
+- **Method:**: `GET`
+- **URL Params:**
+	- `id=[string]` where `id` is the hex-encoded Contract ID.
+	- `page=[integer]` where `id` is the page index.
+- **Data Params:** None
  
 ### Success Response:
  
-* **Code:** 200
-* **Content:**
+- **Code:** 200
+- **Content:**
 The memory snapshot.
 
 ### Error Response:
-    
-* **Code:** 400 BAD REQUEST
-* **Desc:** The Contract ID is not a valid size. Its size must be 32 bytes<br />
-* **Content:**
+
+- **Code:** 400 BAD REQUEST
+- **Desc:** The Contract ID is not a valid size. Its size must be 32 bytes
+- **Content:**
 ```json
 {
   "status": "Bad request.",
@@ -353,9 +349,9 @@ The memory snapshot.
 }
 ```
 
-* **Code:** 400 BAD REQUEST
-* **Desc:** The contract ID is not a valid hex<br />
-* **Content:**
+- **Code:** 400 BAD REQUEST
+- **Desc:** The contract ID is not a valid hex
+- **Content:**
 ```json
 {
  "status": "Bad request.",
@@ -363,9 +359,9 @@ The memory snapshot.
 }
 ```
 
-* **Code:** 404 NOT FOUND
-* **Desc:** The contract does not have any page<br />
-* **Content:**
+- **Code:** 404 NOT FOUND
+- **Desc:** The contract does not have any page
+- **Content:**
 ```json
 {
   "status": "Bad request.",
@@ -373,9 +369,9 @@ The memory snapshot.
 }
 ```
 
-* **Code:** 400 BAD REQUEST
-* **Desc:** The page is either empty or does not exist
-* **Content:**
+- **Code:** 400 BAD REQUEST
+- **Desc:** The page is either empty or does not exist
+- **Content:**
 ```json
 {
   "status": "Bad request.",
@@ -383,9 +379,9 @@ The memory snapshot.
 }
 ```
 
-* **Code:** 400 BAD REQUEST
-* **Desc:** The index does not exist<br />
-* **Content:**
+- **Code:** 400 BAD REQUEST
+- **Desc:** The index does not exist
+- **Content:**
 ```json
 {
   "status": "Bad request.",
@@ -393,6 +389,6 @@ The memory snapshot.
 }
 ```
 
-* **Code:** 429 TOO MANY REQUEST
-* **Desc:** The request is rate limited<br />
-* **Content:** `Too Many Requests`
+- **Code:** 429 TOO MANY REQUEST
+- **Desc:** The request is rate limited
+- **Content:** `Too Many Requests`
