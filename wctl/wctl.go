@@ -40,15 +40,6 @@ const (
 	RouteTxList   = "/tx"
 	RouteTxSend   = "/tx/send"
 
-	RouteWSBroadcaster  = "/poll/broadcaster"
-	RouteWSConsensus    = "/poll/consensus"
-	RouteWSStake        = "/poll/stake"
-	RouteWSAccounts     = "/poll/accounts"
-	RouteWSContracts    = "/poll/contract"
-	RouteWSTransactions = "/poll/tx"
-	RouteWSMetrics      = "/poll/metrics"
-	RouteWSNetwork      = "/poll/network"
-
 	ReqPost = "POST"
 	ReqGet  = "GET"
 )

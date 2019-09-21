@@ -8,6 +8,17 @@ import (
 	"github.com/valyala/fastjson"
 )
 
+const (
+	RouteWSBroadcaster  = "/poll/broadcaster"
+	RouteWSConsensus    = "/poll/consensus"
+	RouteWSStake        = "/poll/stake"
+	RouteWSAccounts     = "/poll/accounts"
+	RouteWSContracts    = "/poll/contract"
+	RouteWSTransactions = "/poll/tx"
+	RouteWSMetrics      = "/poll/metrics"
+	RouteWSNetwork      = "/poll/network"
+)
+
 // EstablishWS will create a websocket connection.
 func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 	prot := "ws"

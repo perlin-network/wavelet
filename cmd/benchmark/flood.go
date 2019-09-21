@@ -29,14 +29,14 @@ import (
 	"github.com/pkg/errors"
 )
 
-func floodTransactions() func(client *wctl.Client) ([]*wctl.SendTransactionResponse, error) {
-	return func(client *wctl.Client) ([]*wctl.SendTransactionResponse, error) {
+func floodTransactions() func(client *wctl.Client) ([]*wctl.TxResponse, error) {
+	return func(client *wctl.Client) ([]*wctl.TxResponse, error) {
 		numWorkers := runtime.NumCPU()
 
 		var wg sync.WaitGroup
 		wg.Add(numWorkers)
 
-		chRes := make(chan *wctl.SendTransactionResponse, numWorkers)
+		chRes := make(chan *wctl.TxResponse, numWorkers)
 		chErr := make(chan error, numWorkers)
 
 		for i := 0; i < numWorkers; i++ {
@@ -45,7 +45,7 @@ func floodTransactions() func(client *wctl.Client) ([]*wctl.SendTransactionRespo
 
 		wg.Wait()
 
-		var responses []*wctl.SendTransactionResponse
+		var responses []*wctl.TxResponse
 		var err error
 
 		for i := 0; i < numWorkers; i++ {
@@ -68,7 +68,7 @@ func sendTransaction(
 	i int,
 	client *wctl.Client,
 	wg *sync.WaitGroup,
-	chRes chan<- *wctl.SendTransactionResponse,
+	chRes chan<- *wctl.TxResponse,
 	chErr chan<- error) {
 
 	defer wg.Done()
@@ -87,7 +87,7 @@ func sendTransaction(
 		}
 	}
 
-	res, err := client.SendTransaction(byte(sys.TagBatch), payload.Marshal())
+	res, err := client.SendBatch(payload)
 	if err != nil {
 		chRes <- res
 		chErr <- err

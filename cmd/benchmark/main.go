@@ -22,6 +22,14 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	logger "github.com/perlin-network/wavelet/log"
@@ -30,15 +38,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/valyala/fastjson"
 	"gopkg.in/urfave/cli.v1"
-	"io/ioutil"
-	"net/http"
-	"os"
-	"sort"
-	"strconv"
-	"strings"
-	"time"
 )
 
 func main() {
@@ -197,33 +197,24 @@ func commandRemote(c *cli.Context) error {
 
 	fmt.Println("You're now connected!")
 
-	go func() {
-		events, err := client.PollLoggerSink(nil, wctl.RouteWSMetrics)
-		if err != nil {
-			panic(err)
-		}
+	// Add the OnMetrics callback
+	client.OnMetrics = func(met wctl.Metrics) {
+		log.Info().
+			Float64("accepted_tps", met.TpsAccepted).
+			Float64("received_tps", met.TpsReceived).
+			Float64("gossiped_tps", met.TpsGossiped).
+			Float64("downloaded_tps", met.TpsDownloaded).
+			Float64("queried_rps", met.RpsQueried).
+			Float64("query_latency_max_ms", met.QueryLatencyMaxMS).
+			Float64("query_latency_min_ms", met.QueryLatencyMinMS).
+			Float64("query_latency_mean_ms", met.QueryLatencyMeanMS).
+			Str("message", met.Message).
+			Msg("Benchmarking...")
+	}
 
-		var p fastjson.Parser
-
-		for evt := range events {
-			v, err := p.ParseBytes(evt)
-
-			if err != nil {
-				continue
-			}
-
-			log.Info().
-				Float64("accepted_tps", v.GetFloat64("tps.accepted")).
-				Float64("received_tps", v.GetFloat64("tps.received")).
-				Float64("gossiped_tps", v.GetFloat64("tps.gossiped")).
-				Float64("downloaded_tps", v.GetFloat64("tps.downloaded")).
-				Float64("queried_rps", v.GetFloat64("rps.queried")).
-				Int64("query_latency_max_ms", v.GetInt64("query.latency.max.ms")).
-				Int64("query_latency_min_ms", v.GetInt64("query.latency.min.ms")).
-				Float64("query_latency_mean_ms", v.GetFloat64("query.latency.mean.ms")).
-				Msg("Benchmarking...")
-		}
-	}()
+	if _, err := client.PollMetrics(); err != nil {
+		panic(err)
+	}
 
 	flood := floodTransactions()
 

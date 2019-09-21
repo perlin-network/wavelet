@@ -161,21 +161,21 @@ type (
 // Mod: metrics
 type (
 	Metrics struct {
-		RoundQueried       uint64  `json:"round.queried"`
-		TxGossiped         uint64  `json:"tx.gossiped"`
-		TxReceived         uint64  `json:"tx.received"`
-		TxAccepted         uint64  `json:"tx.accepted"`
-		TxDownloaded       uint64  `json:"tx.downloaded"`
-		RpsQueried         float64 `json:"rps.queried"`
-		TpsGossiped        float64 `json:"tps.gossiped"`
-		TpsReceived        float64 `json:"tps.received"`
-		TpsAccepted        float64 `json:"tps.accepted"`
-		TpsDownloaded      uint64  `json:"tps.downloaded"`
-		QueryLatencyMaxMS  float64 `json:"query.latency.max.ms"`
-		QueryLatencyMinMS  float64 `json:"query.latency.min.ms"`
-		QueryLatencyMeanMS float64 `json:"query.latency.mean.ms"`
-		Time               string  `json:"time"`
-		Message            string  `json:"message"`
+		RoundQueried       uint64    `json:"round.queried"`
+		TxGossiped         uint64    `json:"tx.gossiped"`
+		TxReceived         uint64    `json:"tx.received"`
+		TxAccepted         uint64    `json:"tx.accepted"`
+		TxDownloaded       uint64    `json:"tx.downloaded"`
+		RpsQueried         float64   `json:"rps.queried"`
+		TpsGossiped        float64   `json:"tps.gossiped"`
+		TpsReceived        float64   `json:"tps.received"`
+		TpsAccepted        float64   `json:"tps.accepted"`
+		TpsDownloaded      float64   `json:"tps.downloaded"`
+		QueryLatencyMaxMS  float64   `json:"query.latency.max.ms"`
+		QueryLatencyMinMS  float64   `json:"query.latency.min.ms"`
+		QueryLatencyMeanMS float64   `json:"query.latency.mean.ms"`
+		Time               time.Time `json:"time"`
+		Message            string    `json:"message"`
 	}
 	OnMetrics = func(Metrics)
 )
