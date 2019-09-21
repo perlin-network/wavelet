@@ -21,7 +21,7 @@ type UnmarshalableJSON interface {
 
 // RequestJSON will make a request to a given path, with a given body and
 // return the JSON bytes result into `out` to unmarshal.
-func (c *Client) RequestJSON(path string, method string, body MarshalableJSON, out UnmarshalableJSON) error {
+func (c *Client) RequestJSON(path, method string, body MarshalableJSON, out UnmarshalableJSON) error {
 	var bytes []byte
 
 	if body != nil {
@@ -81,6 +81,12 @@ func (c *Client) Request(path string, method string, body []byte) ([]byte, error
 	}
 
 	return res.Body(), nil
+}
+
+type jsonRaw []byte
+
+func (j jsonRaw) MarshalJSON() ([]byte, error) {
+	return j, nil
 }
 
 var ErrInvalidHexLength = errors.New("Invalid hex bytes length")

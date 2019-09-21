@@ -29,9 +29,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/perlin-network/wavelet/conf"
-
 	"github.com/benpye/readline"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/rs/zerolog"
@@ -169,6 +168,17 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 			Action:  a(c.exit),
 		},
 		{
+			Name:        "restart",
+			Aliases:     []string{"r"},
+			Action:      a(c.restart),
+			Description: "restart node",
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:  "hard",
+					Usage: "database will be erased if provided",
+				},
+			},
+		}, {
 			Name:      "update-params",
 			UsageText: "Updates parameters, if no value provided, default one will be used.",
 			Aliases:   []string{"up"},
@@ -224,6 +234,11 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 					Value: uint64(conf.GetPruningLimit()),
 					Usage: "number of rounds after which pruning of transactions will happen",
 				},
+				cli.StringFlag{
+					Name:  "api.secret",
+					Value: conf.GetSecret(),
+					Usage: "shared secret for http api authorization",
+				},
 			},
 		},
 	}
@@ -248,6 +263,7 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 		return nil, err
 	}
 
+	_ = w.Flush()
 	c.app.CustomAppHelpTemplate = s.String()
 
 	// Add in autocompletion

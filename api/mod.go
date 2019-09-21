@@ -26,6 +26,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net"
+	"os"
+
+	"github.com/perlin-network/wavelet/store"
 
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
@@ -51,6 +54,7 @@ import (
 type Gateway struct {
 	client *skademlia.Client
 	ledger *wavelet.Ledger
+	kv     store.KV
 
 	network *skademlia.Protocol
 	keys    *skademlia.Keypair
@@ -140,6 +144,11 @@ func (g *Gateway) setup() {
 	r.GET("/tx/:id", g.applyMiddleware(g.getTransaction, ""))
 	r.GET("/tx", g.applyMiddleware(g.listTransactions, "/tx"))
 
+	// Connectivity endpoints
+	r.POST("/node/connect", g.applyMiddleware(g.connect, "/node/connect", g.auth))
+	r.POST("/node/disconnect", g.applyMiddleware(g.disconnect, "/node/disconnect", g.auth))
+	r.POST("/node/restart", g.applyMiddleware(g.restart, "/node/restart", g.auth))
+
 	g.router = r
 }
 
@@ -176,7 +185,9 @@ func (g *Gateway) applyMiddleware(f fasthttp.RequestHandler, rateLimiterKey stri
 	return chain(f, list)
 }
 
-func (g *Gateway) StartHTTP(port int, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair) {
+func (g *Gateway) StartHTTP(port int, c *skademlia.Client, l *wavelet.Ledger,
+	k *skademlia.Keypair, kv store.KV) {
+
 	c.OnPeerJoin(func(conn *grpc.ClientConn, id *skademlia.ID) {
 		publicKey := id.PublicKey()
 
@@ -206,11 +217,14 @@ func (g *Gateway) StartHTTP(port int, c *skademlia.Client, l *wavelet.Ledger, k 
 
 	logger.Info().Int("port", port).Msg("Started HTTP API server.")
 
-	go g.start(ln, nil, c, l, k)
+	go g.start(ln, nil, c, l, k, kv)
 }
 
 // Only support tls-alpn-01.
-func (g *Gateway) StartHTTPS(httpPort int, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair, allowedHost, certCacheDir string) {
+func (g *Gateway) StartHTTPS(
+	httpPort int, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair,
+	kv store.KV, allowedHost, certCacheDir string) {
+
 	logger := log.Node()
 
 	if len(allowedHost) == 0 {
@@ -252,16 +266,18 @@ func (g *Gateway) StartHTTPS(httpPort int, c *skademlia.Client, l *wavelet.Ledge
 	logger.Info().Int("port", 443).Msg("Started HTTPS API server.")
 	logger.Info().Int("port", httpPort).Msg("Started HTTP API server.")
 
-	go g.start(tlsLn, ln, c, l, k)
+	go g.start(tlsLn, ln, c, l, k, kv)
 }
 
-func (g *Gateway) start(ln net.Listener, ln2 net.Listener, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair) {
+func (g *Gateway) start(ln net.Listener, ln2 net.Listener, c *skademlia.Client,
+	l *wavelet.Ledger, k *skademlia.Keypair, kv store.KV) {
+
 	stop := g.rateLimiter.cleanup(10 * time.Minute)
 	defer stop()
 
 	g.client = c
 	g.ledger = l
-
+	g.kv = kv
 	g.keys = k
 
 	g.enableTimeout = false
@@ -506,34 +522,6 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 	})
 }
 
-func (g *Gateway) contractScope(next fasthttp.RequestHandler) fasthttp.RequestHandler {
-	return fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) {
-		param, ok := ctx.UserValue("id").(string)
-		if !ok {
-			g.renderError(ctx, ErrBadRequest(errors.New("could not cast id into string")))
-			return
-		}
-
-		slice, err := hex.DecodeString(param)
-		if err != nil {
-			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "contract ID must be presented as valid hex")))
-			return
-		}
-
-		if len(slice) != wavelet.SizeTransactionID {
-			g.renderError(ctx, ErrBadRequest(errors.Errorf("contract ID must be %d bytes long", wavelet.SizeTransactionID)))
-			return
-		}
-
-		var contractID wavelet.TransactionID
-		copy(contractID[:], slice)
-
-		ctx.SetUserValue("contract_id", contractID)
-
-		next(ctx)
-	})
-}
-
 func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {
 	id, ok := ctx.UserValue("contract_id").(wavelet.TransactionID)
 	if !ok {
@@ -602,6 +590,100 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 	}
 
 	_, _ = ctx.Write(page)
+}
+
+func (g *Gateway) connect(ctx *fasthttp.RequestCtx) {
+	parser := g.parserPool.Get()
+	v, err := parser.ParseBytes(ctx.PostBody())
+	g.parserPool.Put(parser)
+
+	if err != nil {
+		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error parsing request body")))
+		return
+	}
+
+	addressVal := v.Get("address")
+	if addressVal == nil {
+		g.renderError(ctx, ErrBadRequest(errors.New("address is missing")))
+		return
+	}
+
+	address, err := addressVal.StringBytes()
+	if err != nil {
+		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error extracting address from payload")))
+		return
+	}
+
+	if _, err := g.client.Dial(string(address)); err != nil {
+		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error connecting to peer")))
+		return
+	}
+
+	g.render(ctx, &msgResponse{msg: fmt.Sprintf("Successfully connected to %s", address)})
+}
+
+func (g *Gateway) disconnect(ctx *fasthttp.RequestCtx) {
+	parser := g.parserPool.Get()
+	v, err := parser.ParseBytes(ctx.PostBody())
+	g.parserPool.Put(parser)
+
+	if err != nil {
+		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error parsing request body")))
+		return
+	}
+
+	addressVal := v.Get("address")
+	if addressVal == nil {
+		g.renderError(ctx, ErrBadRequest(errors.New("address is missing")))
+		return
+	}
+
+	address, err := addressVal.StringBytes()
+	if err != nil {
+		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error extracting address from payload")))
+		return
+	}
+
+	if err := g.client.DisconnectByAddress(string(address)); err != nil {
+		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error disconnecting from peer")))
+		return
+	}
+
+	g.render(ctx, &msgResponse{msg: fmt.Sprintf("Successfully disconnected from %s", address)})
+}
+
+func (g *Gateway) restart(ctx *fasthttp.RequestCtx) {
+	if err := g.kv.Close(); err != nil {
+		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error closing storage")))
+		return
+	}
+
+	body := ctx.PostBody()
+	if len(body) != 0 {
+		parser := g.parserPool.Get()
+		v, err := parser.ParseBytes(body)
+		g.parserPool.Put(parser)
+
+		if err != nil {
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error parsing request body")))
+			return
+		}
+
+		if v.GetBool("hard") {
+			dbDir := g.kv.Dir()
+			if len(dbDir) != 0 {
+				if err := os.RemoveAll(dbDir); err != nil {
+					g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error deleting storage content")))
+					return
+				}
+			}
+		}
+	}
+
+	if err := g.ledger.Restart(); err != nil {
+		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error restarting node")))
+		return
+	}
 }
 
 func (g *Gateway) notFound() func(ctx *fasthttp.RequestCtx) {

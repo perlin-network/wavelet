@@ -40,6 +40,11 @@ const (
 	RouteTxList   = "/tx"
 	RouteTxSend   = "/tx/send"
 
+	RouteNode       = "/node"
+	RouteConnect    = RouteNode + "/connect"
+	RouteDisconnect = RouteNode + "/disconnect"
+	RouteRestart    = RouteNode + "/restart"
+
 	ReqPost = "POST"
 	ReqGet  = "GET"
 )

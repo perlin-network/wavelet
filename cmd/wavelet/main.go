@@ -110,6 +110,12 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 			Usage:  "Directory path to cache HTTPS certificates.",
 			EnvVar: "WAVELET_CERTS_CACHE_DIR",
 		}),
+		cli.StringFlag{
+			Name:   "api.secret",
+			Value:  conf.GetSecret(),
+			Usage:  "Shared secret to restrict access to some api",
+			EnvVar: "WAVELET_API_SECRET",
+		},
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "wallet",
 			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded private key to a wallet may also be specified.",
@@ -203,8 +209,8 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 		fmt.Printf("Built:      %s\n", c.App.Compiled.Format(time.ANSIC))
 	}
 
-	app.Action = func(c *cli.Context) {
-		start(c, stdin, stdout)
+	app.Action = func(c *cli.Context) error {
+		return start(c, stdin, stdout)
 	}
 
 	sort.Sort(cli.FlagsByName(app.Flags))
@@ -338,16 +344,20 @@ func start(cfg *Config) {
 	shell, err := NewCLI(c)
 =======
 	if cfg.APIHost != nil {
-		go api.New().StartHTTPS(int(cfg.APIPort), client, ledger, keys, *cfg.APIHost, *cfg.APICertsCache)
+		go api.New().StartHTTPS(int(cfg.APIPort), client, ledger, keys, kv, *cfg.APIHost, *cfg.APICertsCache)
 	} else {
 		if cfg.APIPort > 0 {
-			go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
+			go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys, kv)
 
 		}
 	}
 
+<<<<<<< HEAD
 	shell, err := NewCLI(client, ledger, keys, stdin, stdout)
 >>>>>>> b6ce347218f0db9c9312b63f5c33708b848f2ef2
+=======
+	shell, err := NewCLI(client, ledger, keys, stdin, stdout, kv)
+>>>>>>> 065586acb746a9b4f77fe6ce1a503418fb38af25
 	if err != nil {
 		logger.Fatal().Err(err).
 			Msg("Failed to spawn the CLI")

@@ -71,7 +71,7 @@ func (cli *CLI) status(ctx *cli.Context) {
 }
 
 func (cli *CLI) pay(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 2 {
 		cli.logger.Error().
@@ -102,7 +102,7 @@ func (cli *CLI) pay(ctx *cli.Context) {
 }
 
 func (cli *CLI) call(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 4 {
 		cli.logger.Error().
@@ -188,7 +188,7 @@ func (cli *CLI) call(ctx *cli.Context) {
 }
 
 func (cli *CLI) find(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
 		cli.logger.Error().
@@ -235,7 +235,7 @@ func (cli *CLI) find(ctx *cli.Context) {
 }
 
 func (cli *CLI) spawn(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
 		cli.logger.Error().
@@ -275,7 +275,7 @@ func (cli *CLI) spawn(ctx *cli.Context) {
 }
 
 func (cli *CLI) depositGas(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 2 {
 		cli.logger.Error().
@@ -306,7 +306,7 @@ func (cli *CLI) depositGas(ctx *cli.Context) {
 }
 
 func (cli *CLI) placeStake(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
 		cli.logger.Error().
@@ -332,7 +332,7 @@ func (cli *CLI) placeStake(ctx *cli.Context) {
 }
 
 func (cli *CLI) withdrawStake(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
 		cli.logger.Error().
@@ -358,7 +358,7 @@ func (cli *CLI) withdrawStake(ctx *cli.Context) {
 }
 
 func (cli *CLI) withdrawReward(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
 		cli.logger.Error().
@@ -383,43 +383,71 @@ func (cli *CLI) withdrawReward(ctx *cli.Context) {
 		Msgf("Reward withdrew.")
 }
 
-/*
 func (cli *CLI) connect(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) != 1 {
 		cli.logger.Error().Msg("Invalid usage: connect <address:port>")
 		return
 	}
 
-	_, err := cli.client.Dial(cmd[0])
-
-	if err != nil {
-		cli.logger.Error().Err(err).Msg("Failed to connect to peer.")
+	address, ok := cli.recipient(cmd[0])
+	if !ok {
 		return
 	}
 
-	cli.logger.Info().Str("address", cmd[0]).Msg("Successfully connected to peer.")
+	m, err := cli.Connect(address)
+	if err != nil {
+		cli.logger.Error().
+			Err(err).
+			Msg("Failed to connect to address.")
+		return
+	}
+
+	cli.logger.Info().Msg(m.Message)
 }
 
 func (cli *CLI) disconnect(ctx *cli.Context) {
-	var cmd = ctx.Args()
+	cmd := ctx.Args()
 
 	if len(cmd) != 1 {
 		cli.logger.Error().Msg("Invalid usage: disconnect <address:port>")
 		return
 	}
 
-	err := cli.client.DisconnectByAddress(cmd[0])
-
-	if err != nil {
-		cli.logger.Error().Err(err).Msg("Failed to disconnect peer.")
+	address, ok := cli.recipient(cmd[0])
+	if !ok {
 		return
 	}
 
-	cli.logger.Info().Str("address", cmd[0]).Msg("Successfully disconnected peer.")
+	m, err := cli.Disconnect(address)
+	if err != nil {
+		cli.logger.Error().
+			Err(err).
+			Msg("Failed to disconnect to address.")
+		return
+	}
+
+	cli.logger.Info().Msg(m.Message)
 }
-*/
+
+func (cli *CLI) restart(ctx *cli.Context) {
+	cmd := ctx.Args()
+	if len(cmd) != 0 {
+		cli.logger.Error().Msg("Invalid usage: restart [--hard]")
+		return
+	}
+
+	m, err := cli.Restart(ctx.Bool("hard"))
+	if err != nil {
+		cli.logger.Error().
+			Err(err).
+			Msg("Failed to restart node.")
+		return
+	}
+
+	cli.logger.Info().Msg(m.Message)
+}
 
 func (cli *CLI) updateParameters(ctx *cli.Context) {
 	conf.Update(
@@ -433,7 +461,9 @@ func (cli *CLI) updateParameters(ctx *cli.Context) {
 		conf.WithMaxDownloadDepthDiff(ctx.Uint64("max.download.depth.diff")),
 		conf.WithMaxDepthDiff(ctx.Uint64("max.depth.diff")),
 		conf.WithPruningLimit(uint8(ctx.Uint64("pruning.limit"))),
+		conf.WithSecret(ctx.String("api.secret")),
 	)
 
-	cli.logger.Info().Str("conf", conf.Stringify()).Msg("Current configuration values")
+	cli.logger.Info().Str("conf", conf.Stringify()).
+		Msg("Current configuration values")
 }

@@ -316,7 +316,7 @@ func TestMain_WithdrawReward(t *testing.T) {
 
 	w.Stdin <- "wr 1000"
 
-	txID := extractTxID(t, w.Stdout.Search(t, "Stake withdrew."))
+	txID := extractTxID(t, w.Stdout.Search(t, "Reward withdrew."))
 	tx := w.WaitForTransaction(t, txID)
 
 	assert.EqualValues(t, txID, tx.ID)

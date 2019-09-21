@@ -65,6 +65,7 @@ type Wavelet struct {
 	Ledger    *wavelet.Ledger
 
 	config   *Config
+	db       store.KV
 	logger   zerolog.Logger
 	listener net.Listener
 }
@@ -172,6 +173,8 @@ func New(cfg *Config) (*Wavelet, error) {
 			"Failed to create/open database located at %s", cfg.Database)
 	}
 
+	w.db = kv
+
 	opts := []wavelet.Option{
 		wavelet.WithGenesis(cfg.Genesis),
 	}
@@ -227,14 +230,14 @@ func (w *Wavelet) Start() {
 	if w.config.APIHost != "" {
 		api.New().StartHTTPS(
 			int(w.config.APIPort),
-			w.SKademlia, w.Ledger, w.Keypair,
+			w.SKademlia, w.Ledger, w.Keypair, w.db,
 			w.config.APIHost,
 			w.config.APICertsCache, // guaranteed not empty in New
 		)
 	} else {
 		api.New().StartHTTP(
 			int(w.config.APIPort),
-			w.SKademlia, w.Ledger, w.Keypair,
+			w.SKademlia, w.Ledger, w.Keypair, w.db,
 		)
 	}
 }
