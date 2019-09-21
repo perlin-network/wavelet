@@ -233,6 +233,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 		conf.WithSnowballBeta(c.Int("sys.snowball.beta")),
 		conf.WithQueryTimeout(c.Duration("sys.query_timeout")),
 		conf.WithMaxDepthDiff(c.Uint64("sys.max_depth_diff")),
+		conf.WithSecret(c.String("api.secret")),
 	)
 
 	// set the the sys variables

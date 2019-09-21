@@ -188,26 +188,6 @@ func (g *Gateway) applyMiddleware(f fasthttp.RequestHandler, rateLimiterKey stri
 func (g *Gateway) StartHTTP(port int, c *skademlia.Client, l *wavelet.Ledger,
 	k *skademlia.Keypair, kv store.KV) {
 
-	c.OnPeerJoin(func(conn *grpc.ClientConn, id *skademlia.ID) {
-		publicKey := id.PublicKey()
-
-		logger := log.Network("joined")
-		logger.Info().
-			Hex("public_key", publicKey[:]).
-			Str("address", id.Address()).
-			Msg("Peer has joined.")
-	})
-
-	c.OnPeerLeave(func(conn *grpc.ClientConn, id *skademlia.ID) {
-		publicKey := id.PublicKey()
-
-		logger := log.Network("left")
-		logger.Info().
-			Hex("public_key", publicKey[:]).
-			Str("address", id.Address()).
-			Msg("Peer has left.")
-	})
-
 	logger := log.Node()
 
 	ln, err := net.Listen("tcp4", ":"+strconv.Itoa(port))
@@ -271,6 +251,28 @@ func (g *Gateway) StartHTTPS(
 
 func (g *Gateway) start(ln net.Listener, ln2 net.Listener, c *skademlia.Client,
 	l *wavelet.Ledger, k *skademlia.Keypair, kv store.KV) {
+
+	if c != nil {
+		c.OnPeerJoin(func(conn *grpc.ClientConn, id *skademlia.ID) {
+			publicKey := id.PublicKey()
+
+			logger := log.Network("joined")
+			logger.Info().
+				Hex("public_key", publicKey[:]).
+				Str("address", id.Address()).
+				Msg("Peer has joined.")
+		})
+
+		c.OnPeerLeave(func(conn *grpc.ClientConn, id *skademlia.ID) {
+			publicKey := id.PublicKey()
+
+			logger := log.Network("left")
+			logger.Info().
+				Hex("public_key", publicKey[:]).
+				Str("address", id.Address()).
+				Msg("Peer has left.")
+		})
+	}
 
 	stop := g.rateLimiter.cleanup(10 * time.Minute)
 	defer stop()
