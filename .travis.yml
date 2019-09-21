@@ -29,6 +29,8 @@ matrix:
       go:
         - "1.12.5"
       install: true
+      env:
+        - GRPC_GO_LOG_VERBOSITY_LEVEL=2
       script:
         - GO111MODULE=on go test -coverprofile=coverage.txt -covermode=atomic -bench -race ./...
       after_success:
