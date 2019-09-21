@@ -1,0 +1,180 @@
+<!DOCTYPE html><html lang="en"><head><meta charSet="utf-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge"/><title>Graph · Wavelet</title><meta name="viewport" content="width=device-width"/><meta name="generator" content="Docusaurus"/><meta name="description" content="## General information"/><meta name="docsearch:language" content="en"/><meta property="og:title" content="Graph · Wavelet"/><meta property="og:type" content="website"/><meta property="og:url" content="https://wavelet.perlin.net/"/><meta property="og:description" content="## General information"/><meta property="og:image" content="https://wavelet.perlin.net/img/undraw_online.svg"/><meta name="twitter:card" content="summary"/><meta name="twitter:image" content="https://wavelet.perlin.net/img/undraw_tweetstorm.svg"/><link rel="shortcut icon" href="/img/favicon.ico"/><link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.12.0/styles/monokai.min.css"/><script>
+              (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+              (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+              m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+              })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+
+              ga('create', 'UA-142724552-1', 'auto');
+              ga('send', 'pageview');
+            </script><script type="text/javascript" src="https://buttons.github.io/buttons.js"></script><script src="/js/scrollSpy.js"></script><link rel="stylesheet" href="/css/main.css"/><script src="/js/codetabs.js"></script></head><body class="sideNavVisible separateOnPageNav"><div class="fixedHeaderContainer"><div class="headerWrapper wrapper"><header><a href="/"><img class="logo" src="/img/favicon.ico" alt="Wavelet"/><h2 class="headerTitleWithLogo">Wavelet</h2></a><div class="navigationWrapper navigationSlider"><nav class="slidingNav"><ul class="nav-site nav-site-internal"><li class="siteNavGroupActive"><a href="/docs/setup" target="_self">Docs</a></li><li class=""><a href="/help" target="_self">Help</a></li><li class=""><a target="_self"></a></li></ul></nav></div></header></div></div><div class="navPusher"><div class="docMainWrapper wrapper"><div class="docsNavContainer" id="docsNav"><nav class="toc"><div class="toggleNav"><section class="navWrapper wrapper"><div class="navBreadcrumb wrapper"><div class="navToggle" id="navToggler"><div class="hamburger-menu"><div class="line1"></div><div class="line2"></div><div class="line3"></div></div></div><h2><i>›</i><span>Technical Documentation</span></h2><div class="tocToggler" id="tocToggler"><i class="icon-toc"></i></div></div><div class="navGroups"><div class="navGroup"><h3 class="navGroupCategoryTitle">Documentation</h3><ul class=""><li class="navListItem"><a class="navItem" href="/docs/setup">Quickstart</a></li><li class="navListItem"><a class="navItem" href="/docs/transactions">Transactions</a></li><li class="navListItem"><a class="navItem" href="/docs/smart-contracts">Smart Contracts</a></li><li class="navListItem"><a class="navItem" href="/docs/governance">Governance</a></li></ul></div><div class="navGroup"><h3 class="navGroupCategoryTitle">Technical Documentation</h3><ul class=""><li class="navListItem navListItemActive"><a class="navItem" href="/docs/tech/graph">Graph</a></li></ul></div><div class="navGroup"><h3 class="navGroupCategoryTitle">Tutorials</h3><ul class=""><li class="navListItem"><a class="navItem" href="/docs/examples/decentralized-chat-app">Build A Decentralized Chat Application with Javascript &amp; Rust (WebAssembly)</a></li><li class="navListItem"><a class="navItem" href="/docs/examples/decentralized-todo-app">Build A Decentralized Todo App using VueJS &amp; Rust (WebAssembly)</a></li></ul></div></div></section></div><script>
+            var coll = document.getElementsByClassName('collapsible');
+            var checkActiveCategory = true;
+            for (var i = 0; i < coll.length; i++) {
+              var links = coll[i].nextElementSibling.getElementsByTagName('*');
+              if (checkActiveCategory){
+                for (var j = 0; j < links.length; j++) {
+                  if (links[j].classList.contains('navListItemActive')){
+                    coll[i].nextElementSibling.classList.toggle('hide');
+                    coll[i].childNodes[1].classList.toggle('rotate');
+                    checkActiveCategory = false;
+                    break;
+                  }
+                }
+              }
+
+              coll[i].addEventListener('click', function() {
+                var arrow = this.childNodes[1];
+                arrow.classList.toggle('rotate');
+                var content = this.nextElementSibling;
+                content.classList.toggle('hide');
+              });
+            }
+
+            document.addEventListener('DOMContentLoaded', function() {
+              createToggler('#navToggler', '#docsNav', 'docsSliderActive');
+              createToggler('#tocToggler', 'body', 'tocActive');
+
+              var headings = document.querySelector('.toc-headings');
+              headings && headings.addEventListener('click', function(event) {
+                var el = event.target;
+                while(el !== headings){
+                  if (el.tagName === 'A') {
+                    document.body.classList.remove('tocActive');
+                    break;
+                  } else{
+                    el = el.parentNode;
+                  }
+                }
+              }, false);
+
+              function createToggler(togglerSelector, targetSelector, className) {
+                var toggler = document.querySelector(togglerSelector);
+                var target = document.querySelector(targetSelector);
+
+                if (!toggler) {
+                  return;
+                }
+
+                toggler.onclick = function(event) {
+                  event.preventDefault();
+
+                  target.classList.toggle(className);
+                };
+              }
+            });
+        </script></nav></div><div class="container mainContainer"><div class="wrapper"><div class="post"><header class="postHeader"><a class="edit-page-link button" href="https://github.com/perlin-network/wavelet/edit/master/site/docs/tech/graph.md" target="_blank" rel="noreferrer noopener">Edit</a><h1 class="postHeaderTitle">Graph</h1></header><article><div><span><h2><a class="anchor" aria-hidden="true" id="general-information"></a><a href="#general-information" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>General information</h2>
+<p><strong><a href="https://github.com/perlin-network/wavelet/blob/master/graph.go">graph.go</a></strong> is the module which holds the <a href="https://en.wikipedia.org/wiki/Directed_acyclic_graph">DAG</a> implementation used in <strong>Wavelet</strong>.</p>
+<p><code>Graph</code> is the main structure which holds all DAG related information.
+All public/exported API is concurrently safe.</p>
+<p><code>Graph</code> stores transactions in a couple of different indices. Maps are utilised for quick access and balanced trees are used for quick searching (e.g. parents and critical transactions).</p>
+<h2><a class="anchor" aria-hidden="true" id="adding-transactions"></a><a href="#adding-transactions" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Adding transactions</h2>
+<p>There are 3 reasons why <strong>AddTransaction</strong> might return an error:</p>
+<ul>
+<li>the transaction already exists in the graph.</li>
+<li>the depth of the transaction is below a threshold (smaller than graph's root depth, by <a href="https://github.com/perlin-network/wavelet/blob/master/conf/conf.go"><code>maxDepthDiff</code></a>) meaning that the transaction is too old for current graph's state.</li>
+<li>the transaction is <a href="#transaction-validation">not valid</a>.</li>
+</ul>
+<p>If none of the above are true, then the transaction is added to one of the indices which will not affect graph structure. This is referred to as a temporary transaction. And deleted from <code>missing</code> transactions index. Transaction also added to CLI auto-completion indexer if such preset.</p>
+<p>In order for a transaction to be part of the graph it must be <strong>complete</strong>. This means that the graph should have all of the parents of the transaction and that they should be <strong>complete</strong> as well. This validation is performed for transactions which are at least one level above <code>maxDepthDiff</code> threshold. Which means that if transaction is exactly at this level it can be safely added to the graph without parents.</p>
+<p>Those with missing or incomplete parents will be stored as missing transactions. Those which are present in the graph, are  stored in the <code>children</code> index.</p>
+<p>If at least one of the ancestors is missing, the transaction will be stored in the <code>incomplete</code> index and an error will be returned.
+Otherwise, the transaction will be added to the graph.
+All missing parents will be stored in <code>missing</code> transactions index, assuming that parent transaction's depth is one below of it's child.</p>
+<h3><a class="anchor" aria-hidden="true" id="updating-graph-with-transaction"></a><a href="#updating-graph-with-transaction" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Updating graph with transaction</h3>
+<p>Firstly, all of the transaction parents are <a href="#transaction-parents-validation">validated</a>.</p>
+<p>If any are found to be invalid, the transaction and its children are deleted from all indices of the graph.
+The graph height may be updated if the new transaction's depth is bigger.</p>
+<p>After that, the transaction will be added to search indexes (b-trees for parent and critical transactions) and its children will be <a href="#resolving-children">resolved</a>.</p>
+<h3><a class="anchor" aria-hidden="true" id="resolving-children"></a><a href="#resolving-children" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Resolving Children</h3>
+<p><code>Resolving</code> transaction's children means that for all of it's existing and incomplete children, other parents will be checked for presence and completion. This is required because new transaction may be the only one thing which is preventing a child transaction from being completed.
+In such a case, a child transaction will be marked as completed and added to the graph as well.</p>
+<h3><a class="anchor" aria-hidden="true" id="algorithm"></a><a href="#algorithm" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Algorithm</h3>
+<ol>
+<li>Check if transaction already exists and return an error if this is the case</li>
+<li>Check if transaction depth is below the root depth by <code>maxDepthDiff</code> levels and return an error if this is the case</li>
+<li>Validate the transaction and return an error if invalid</li>
+<li>Store the transaction in one of the indices which holds information about the transaction without altering the actual graph</li>
+<li>If the transaction depth plus <code>maxDepthDiff</code> does not equal to root depth then check for all parents to be present and complete
+<ul>
+<li>if the parent is missing, save the it to the &quot;missing&quot; index assuming its depth one level less than it's child</li>
+<li>if the parent is present and complete - save both it and the transaction to the &quot;children&quot; index</li>
+<li>if at least one of the parents is missing or incomplete, save the transaction to the incomplete index and return respective error</li>
+</ul></li>
+<li>Validate transaction parents
+<ul>
+<li>if invalid, delete both the transaction and its parents from all indices and return an error</li>
+</ul></li>
+<li>Update the graph height if it is lower than the transaction depth + 1</li>
+<li>Save the transaction to other indices (parents, critical etc)</li>
+<li>Check if there are incomplete children and check their parents
+<ul>
+<li>delete them from the incomplete index and add them to the graph in case a new transaction was the last missing parent</li>
+</ul></li>
+</ol>
+<h2><a class="anchor" aria-hidden="true" id="transaction-validation"></a><a href="#transaction-validation" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Transaction validation</h2>
+<p>In <strong>validateTransaction</strong>, the following conditions need to be met. For each case, a respective error will be returned in the event the condition is not satisfied:</p>
+<ul>
+<li>it should not have zero/empty id (see transaction id)</li>
+<li>it should not have zero/empty sender and creator</li>
+<li>it should have at least one and at most <code>maxParentsPerTransaction</code> parents</li>
+<li>it should not include itself in the parents, parents should be lexicographically sorted and there should be no duplicated parents</li>
+<li>it should have a known tag - if it is a nop transaction it should have no payload, otherwise there should be a non-empty payload</li>
+<li>sender and creator, if they are not the same, should have correct signatures</li>
+</ul>
+<h3><a class="anchor" aria-hidden="true" id="transaction-parents-validation"></a><a href="#transaction-parents-validation" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Transaction parents validation</h3>
+<p>The following describes the behavior of <strong>validateTransactionParents</strong>.</p>
+<p>First of all, if a transaction's depth is below the root depth by <code>maxDepthDiff</code> levels we do not check its parents at all.</p>
+<p>If there is non existing parent, error returned.</p>
+<p>If there is a parent with a depth lower than the transaction's depth by <code>maxDepthDiff</code> levels, such parent is considered invalid and an error is returned.</p>
+<p>If transaction's depth is not larger than max depth of parents by exactly one then such parents are considered invalid.</p>
+<p>In the opposite case, the transaction is considered as the one which has valid parents.</p>
+<h2><a class="anchor" aria-hidden="true" id="parents-selection"></a><a href="#parents-selection" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Parents selection</h2>
+<p>As was mentioned earlier, potential parents for transactions are stored in balanced trees located at a separate index. Transactions are sorted by depth and, in the case of equal depth, by <a href="#transaction-seed">seed length</a>.</p>
+<p>The tree is traversed in descending order, i.e. higher depths are traversed first.</p>
+<p>First <code>maxParentsPerTransaction</code> number of eligible parents will be selected as parents for a new transaction. If a parent has depth lower than the graph by <code>maxDepthDiff + 1</code> levels or has children which are present in the graph and are &quot;complete&quot;, such parent will not be selected and instead will be removed from the parents index in the graph.</p>
+<p>In other words, &quot;leaf&quot; transactions are prioritised when selecting parents.</p>
+<h3><a class="anchor" aria-hidden="true" id="algorithm-1"></a><a href="#algorithm-1" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Algorithm</h3>
+<ol>
+<li>Descend eligible parents balanced tree
+<ul>
+<li>if there is a transaction found which has lower depth than the graph height by <code>maxDepthDiff</code> levels it should not be selected as a parent and is instead deleted from parents index</li>
+<li>if there is transaction found which has children and at least one of them is neither missing nor incomplete, such a transaction should not be selected as the parent and should be deleted from the parents index</li>
+</ul></li>
+<li>Add the transaction to selected parents</li>
+<li>If there are exactly <code>maxParentsPerTransaction</code> parents found then return those, otherwise continue to 1.</li>
+</ol>
+<h2><a class="anchor" aria-hidden="true" id="critical-transaction-selection"></a><a href="#critical-transaction-selection" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Critical transaction selection</h2>
+<p>Potential <a href="#transaction-criticality">critical transactions</a> are stored in a separate index in the form of a balanced tree. These are stored in the same way as eligible parent transactions, that is, sorted by depth first and seed length second.</p>
+<p>The tree is traversed in ascending order, i.e. lower depth and higher seed length are traversed first.</p>
+<p>First, critical transactions with a depth higher than the root's will be selected. If there are transactions found during this traversal which have a depth lower or equal to the root's or which aren't critical for given difficulty, they will be removed from this index.</p>
+<h3><a class="anchor" aria-hidden="true" id="algorithm-2"></a><a href="#algorithm-2" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Algorithm</h3>
+<ol>
+<li>Ascend eligible critical balanced tree
+<ul>
+<li>if transaction depth is lower or equal to the root depth, such a transaction cannot be selected as critical and should be deleted from the critical index</li>
+<li>if transaction is not critical for given difficulty, such a transaction cannot be selected as critical and should be deleted from the critical index</li>
+</ul></li>
+<li>Return found critical transaction or nil if it is not found</li>
+</ol>
+<h2><a class="anchor" aria-hidden="true" id="transaction-seed"></a><a href="#transaction-seed" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Transaction Seed</h2>
+<p>Transaction <a href="https://github.com/perlin-network/wavelet/blob/master/tx.go#L57">seed</a> is a value which is computed as a <a href="https://en.wikipedia.org/wiki/BLAKE_(hash_function)#BLAKE2">blake2b</a> 256 hash checksum using the transaction sender id and all parent transaction ids.</p>
+<p>Transaction <a href="https://github.com/perlin-network/wavelet/blob/master/tx.go#L58">seed length</a> is computed as the number of leading zero bits in a transaction seed.</p>
+<h2><a class="anchor" aria-hidden="true" id="transaction-criticality"></a><a href="#transaction-criticality" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Transaction Criticality</h2>
+<p>A transaction is considered <a href="https://github.com/perlin-network/wavelet/blob/master/tx.go#L290">critical</a> for a given difficulty if its seed length is greater or equal to the given difficulty.</p>
+<h2><a class="anchor" aria-hidden="true" id="pruning-transactions"></a><a href="#pruning-transactions" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Pruning Transactions</h2>
+<p><a href="https://github.com/perlin-network/wavelet/blob/master/graph.go">Pruning transactions</a> means to delete from all indices the transactions below the given depth.
+This is required in the case of a new state of the ledger (new round), either after syncing or after consensus has been achieved.</p>
+<p>For ease of deleting transactions from the graph by given depth, transaction ids are stored in a separate index by depth.
+Now, when needed, transaction ids are selected according to the given depth and deleted from all other indexes and depth index.
+Both missing and incomplete transactions are checked separately (since they aren't present in depth index) afterwards and removed as well.</p>
+<p>The Number of pruned transactions is then returned.</p>
+<h2><a class="anchor" aria-hidden="true" id="updating-graphs-root"></a><a href="#updating-graphs-root" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Updating Graph's Root</h2>
+<p>Updating graph's root happens after syncing and building new state of the ledger.
+New root will be added to all: depth, eligible parents' and main transactions indexes.
+Graph's height will be updated as height of new root + 1.
+After that root's depth will be updated.</p>
+<h3><a class="anchor" aria-hidden="true" id="updating-graph-roots-depth"></a><a href="#updating-graph-roots-depth" aria-hidden="true" class="hash-link"><svg class="hash-link-icon" aria-hidden="true" height="16" version="1.1" viewBox="0 0 16 16" width="16"><path fill-rule="evenodd" d="M4 9h1v1H4c-1.5 0-3-1.69-3-3.5S2.55 3 4 3h4c1.45 0 3 1.69 3 3.5 0 1.41-.91 2.72-2 3.25V8.59c.58-.45 1-1.27 1-2.09C10 5.22 8.98 4 8 4H4c-.98 0-2 1.22-2 2.5S3 9 4 9zm9-3h-1v1h1c1 0 2 1.22 2 2.5S13.98 12 13 12H9c-.98 0-2-1.22-2-2.5 0-.83.42-1.64 1-2.09V6.25c-1.09.53-2 1.84-2 3.25C6 11.31 7.55 13 9 13h4c1.45 0 3-1.69 3-3.5S14.5 6 13 6z"></path></svg></a>Updating Graph Root's Depth</h3>
+<p>This operation happens either within updating root operation (after syncing) or by itself after finalization.</p>
+<p>Updating root's depth includes traversing missing and incomplete transactions indexes and deleting all transactions with depth lower than root's by <code>maxDepthDiff</code> levels. For each deleted missing or incomplete transaction it's children will be <a href="#resolving-children">resolved</a>. This makes sense because if parent, previously missing or incomplete, is evicted from the graph because of it's depth and any of it's children is below new root's depth by exactly <code>maxDepthDiff</code> levels it now can be added to the graph, because it may have no parents (see adding transaction to the graph).</p>
+<p>Same traversal and deletion will be applied for eligible parents and critical transactions indexes.</p>
+</span></div></article></div><div class="docLastUpdate"><em>Last updated on 2019-9-21</em></div><div class="docs-prevnext"><a class="docs-prev button" href="/docs/governance"><span class="arrow-prev">← </span><span>Governance</span></a><a class="docs-next button" href="/docs/examples/decentralized-chat-app"><span class="function-name-prevnext">Build A Decentralized Chat Application with Javascript &amp; Rust (WebAssembly)</span><span class="arrow-next"> →</span></a></div></div></div><nav class="onPageNav"><ul class="toc-headings"><li><a href="#general-information">General information</a></li><li><a href="#adding-transactions">Adding transactions</a><ul class="toc-headings"><li><a href="#updating-graph-with-transaction">Updating graph with transaction</a></li><li><a href="#resolving-children">Resolving Children</a></li><li><a href="#algorithm">Algorithm</a></li></ul></li><li><a href="#transaction-validation">Transaction validation</a><ul class="toc-headings"><li><a href="#transaction-parents-validation">Transaction parents validation</a></li></ul></li><li><a href="#parents-selection">Parents selection</a><ul class="toc-headings"><li><a href="#algorithm-1">Algorithm</a></li></ul></li><li><a href="#critical-transaction-selection">Critical transaction selection</a><ul class="toc-headings"><li><a href="#algorithm-2">Algorithm</a></li></ul></li><li><a href="#transaction-seed">Transaction Seed</a></li><li><a href="#transaction-criticality">Transaction Criticality</a></li><li><a href="#pruning-transactions">Pruning Transactions</a></li><li><a href="#updating-graphs-root">Updating Graph's Root</a><ul class="toc-headings"><li><a href="#updating-graph-roots-depth">Updating Graph Root's Depth</a></li></ul></li></ul></nav></div><footer class="nav-footer" id="footer"><section class="sitemap"><a href="/" class="nav-home"><img src="/img/favicon.ico" alt="Wavelet" width="56" height="44"/></a><div><h5>Docs</h5><a href="/docs/en/setup">Getting Started</a></div><div><h5>Community</h5><a href="https://discord.gg/dMYfDPM" target="_blank" rel="noreferrer noopener">Discord</a><a href="https://twitter.com/PerlinNetwork" target="_blank" rel="noreferrer noopener">Twitter</a></div><div><h5>More</h5><a href="https://github.com/perlin-network/wavelet">GitHub</a><a class="github-button" href="https://github.com/perlin-network/wavelet" data-icon="octicon-star" data-count-href="/perlin-network/wavelet/stargazers" data-show-count="true" data-count-aria-label="# stargazers on GitHub" aria-label="Star this project on GitHub">Star</a></div></section><a href="https://perlin.net" target="_blank" rel="noreferrer noopener" class="fbOpenSource"><img src="/img/perlin-logo.svg" alt="Perlin Open Source" width="170" height="60"/></a><section class="copyright">Copyright © 2019 Perlin</section></footer></div><script>window.twttr=(function(d,s, id){var js,fjs=d.getElementsByTagName(s)[0],t=window.twttr||{};if(d.getElementById(id))return t;js=d.createElement(s);js.id=id;js.src='https://platform.twitter.com/widgets.js';fjs.parentNode.insertBefore(js, fjs);t._e = [];t.ready = function(f) {t._e.push(f);};return t;}(document, 'script', 'twitter-wjs'));</script></body></html>
