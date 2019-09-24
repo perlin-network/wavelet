@@ -30,6 +30,7 @@ import (
 	"github.com/perlin-network/life/utils"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/lru"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
@@ -49,8 +50,7 @@ const (
 )
 
 type ContractExecutor struct {
-	ID       AccountID
-	Snapshot *avl.Tree
+	ID AccountID
 
 	Gas              uint64
 	GasLimitExceeded bool
@@ -256,15 +256,19 @@ func (e *ContractExecutor) ResolveGlobal(module, field string) int64 {
 	panic("global variables are disallowed in smart contracts")
 }
 
-// If this function returns no error and `contractState` is not nil, new state of the contract MUST be written into `contractState`.
-func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Round, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte, ctx *CollapseContext, contractState *VMState, contractStateLoaded bool) error {
+// contractState is an optional parameter that is used to pass the VMState of the contract.
+// If you cache the VMState, you can pass it.
+// If it's nil, we'll try to load the state from the tree.
+//
+// This function MUST NOT write into the tree. The new or updated VM State must be returned.
+func (e *ContractExecutor) Execute(id AccountID, round *Round, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte, tree *avl.Tree, vmCache *lru.LRU, contractState *VMState) (*VMState, error) {
 	var vm *exec.VirtualMachine
 	var err error
 
-	if cached, ok := ctx.VMCache.Load(id); ok {
+	if cached, ok := vmCache.Load(id); ok {
 		vm, err = CloneVM(cached.(*exec.VirtualMachine), e, e)
 		if err != nil {
-			return errors.Wrap(err, "cannot clone vm")
+			return nil, errors.Wrap(err, "cannot clone vm")
 		}
 		vm.Config.GasLimit = gasLimit
 	} else {
@@ -282,34 +286,33 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 
 		vm, err = exec.NewVirtualMachine(code, config, e, e)
 		if err != nil {
-			return errors.Wrap(err, "cannot initialize vm")
+			return nil, errors.Wrap(err, "cannot initialize vm")
 		}
 
 		cloned, err := CloneVM(vm, nil, nil)
 		if err != nil {
-			return errors.Wrap(err, "cannot clone vm")
+			return nil, errors.Wrap(err, "cannot clone vm")
 		}
 
-		ctx.VMCache.Put(id, cloned)
+		vmCache.Put(id, cloned)
 	}
 
 	// We can safely initialize the VM first before checking this because the size of the global slice
 	// is proportional to the size of the contract's global section.
 	if len(vm.Globals) > sys.ContractMaxGlobals {
-		return errors.New("too many globals")
+		return nil, errors.New("too many globals")
 	}
 
 	var firstRun bool
 
-	// If state cache is enabled and we have a valid state previously.
-	if contractState != nil && contractStateLoaded {
+	if contractState != nil {
 		vm, err = contractState.Apply(vm, e, e, true)
 		if err != nil {
-			return errors.New("unable to apply state")
+			return nil, errors.New("unable to apply state")
 		}
-	} else if mem := LoadContractMemorySnapshot(snapshot, id); mem != nil {
+	} else if mem := LoadContractMemorySnapshot(tree, id); mem != nil {
 		vm.Memory = mem
-		if globals, exists := LoadContractGlobals(snapshot, id); exists {
+		if globals, exists := LoadContractGlobals(tree, id); exists {
 			if len(globals) == len(vm.Globals) {
 				vm.Globals = globals
 			}
@@ -319,17 +322,16 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 	}
 
 	e.ID = id
-	e.Snapshot = snapshot
 
 	e.Payload = buildContractPayload(round, tx, amount, params)
 
 	entry, exists := vm.GetFunctionExport("_contract_" + name)
 	if !exists {
-		return errors.Wrapf(ErrContractFunctionNotFound, `fn "_contract_%s" does not exist`, name)
+		return nil, errors.Wrapf(ErrContractFunctionNotFound, `fn "_contract_%s" does not exist`, name)
 	}
 
 	if vm.FunctionCode[entry].NumParams != 0 {
-		return errors.New("entry function must not have parameters")
+		return nil, errors.New("entry function must not have parameters")
 	}
 
 	if firstRun {
@@ -367,15 +369,6 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 		vm.PrintStackTrace()
 	}
 
-	if vm.ExitError == nil {
-		if contractState != nil {
-			*contractState = SnapshotVMState(vm)
-		} else {
-			SaveContractMemorySnapshot(snapshot, id, vm.Memory)
-			SaveContractGlobals(snapshot, id, vm.Globals)
-		}
-	}
-
 	if vm.ExitError != nil && utils.UnifyError(vm.ExitError).Error() == "gas limit exceeded" {
 		e.Gas = gasLimit
 		e.GasLimitExceeded = true
@@ -385,14 +378,15 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 	}
 
 	if vm.ExitError != nil {
-		return utils.UnifyError(vm.ExitError)
-	} else {
-		return nil
+		return nil, utils.UnifyError(vm.ExitError)
 	}
+
+	vmState := SnapshotVMState(vm)
+	return &vmState, nil
 }
 
-func LoadContractGlobals(snapshot *avl.Tree, id AccountID) ([]int64, bool) {
-	raw, exists := ReadAccountContractGlobals(snapshot, id)
+func LoadContractGlobals(tree *avl.Tree, id AccountID) ([]int64, bool) {
+	raw, exists := ReadAccountContractGlobals(tree, id)
 	if !exists {
 		return nil, false
 	}
@@ -409,7 +403,7 @@ func LoadContractGlobals(snapshot *avl.Tree, id AccountID) ([]int64, bool) {
 	return buf, true
 }
 
-func SaveContractGlobals(snapshot *avl.Tree, id AccountID, globals []int64) {
+func SaveContractGlobals(tree *avl.Tree, id AccountID, globals []int64) {
 	oldHeader := (*reflect.SliceHeader)(unsafe.Pointer(&globals))
 
 	header := reflect.SliceHeader{
@@ -417,11 +411,11 @@ func SaveContractGlobals(snapshot *avl.Tree, id AccountID, globals []int64) {
 		Len:  oldHeader.Len * 8,
 		Cap:  oldHeader.Len * 8, // prevent appending in place
 	}
-	WriteAccountContractGlobals(snapshot, id, *(*[]byte)(unsafe.Pointer(&header)))
+	WriteAccountContractGlobals(tree, id, *(*[]byte)(unsafe.Pointer(&header)))
 }
 
-func LoadContractMemorySnapshot(snapshot *avl.Tree, id AccountID) []byte {
-	numPages, exists := ReadAccountContractNumPages(snapshot, id)
+func LoadContractMemorySnapshot(tree *avl.Tree, id AccountID) []byte {
+	numPages, exists := ReadAccountContractNumPages(tree, id)
 	if !exists {
 		return nil
 	}
@@ -429,7 +423,7 @@ func LoadContractMemorySnapshot(snapshot *avl.Tree, id AccountID) []byte {
 	mem := make([]byte, PageSize*numPages)
 
 	for pageIdx := uint64(0); pageIdx < numPages; pageIdx++ {
-		page, _ := ReadAccountContractPage(snapshot, id, pageIdx)
+		page, _ := ReadAccountContractPage(tree, id, pageIdx)
 
 		if len(page) > 0 {
 			copy(mem[PageSize*pageIdx:PageSize*(pageIdx+1)], page)
@@ -439,10 +433,10 @@ func LoadContractMemorySnapshot(snapshot *avl.Tree, id AccountID) []byte {
 	return mem
 }
 
-func SaveContractMemorySnapshot(snapshot *avl.Tree, id AccountID, mem []byte) {
+func SaveContractMemorySnapshot(tree *avl.Tree, id AccountID, mem []byte) {
 	numPages := uint64(len(mem) / PageSize)
 
-	WriteAccountContractNumPages(snapshot, id, numPages)
+	WriteAccountContractNumPages(tree, id, numPages)
 
 	var (
 		identical, allZero bool
@@ -450,7 +444,7 @@ func SaveContractMemorySnapshot(snapshot *avl.Tree, id AccountID, mem []byte) {
 	)
 
 	for pageIdx := uint64(0); pageIdx < numPages; pageIdx++ {
-		old, _ := ReadAccountContractPage(snapshot, id, pageIdx)
+		old, _ := ReadAccountContractPage(tree, id, pageIdx)
 		identical, allZero = true, false
 		pageStart = pageIdx * PageSize
 
@@ -464,9 +458,9 @@ func SaveContractMemorySnapshot(snapshot *avl.Tree, id AccountID, mem []byte) {
 		if !identical {
 			// If the page is empty, save an empty byte array. Otherwise, save the pages content.
 			if allZero {
-				WriteAccountContractPage(snapshot, id, pageIdx, []byte{})
+				WriteAccountContractPage(tree, id, pageIdx, []byte{})
 			} else {
-				WriteAccountContractPage(snapshot, id, pageIdx, mem[pageStart:pageStart+PageSize])
+				WriteAccountContractPage(tree, id, pageIdx, mem[pageStart:pageStart+PageSize])
 			}
 		}
 	}
