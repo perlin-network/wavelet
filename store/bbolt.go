@@ -38,10 +38,11 @@ type bboltWriteBatch struct {
 	puts []bboltPut
 }
 
-func (b *bboltWriteBatch) Put(key, value []byte) {
+func (b *bboltWriteBatch) Put(key, value []byte) error {
 	k := append([]byte{}, key...)
 	v := append([]byte{}, value...)
 	b.puts = append(b.puts, bboltPut{k, v})
+	return nil
 }
 
 func (b *bboltWriteBatch) Clear() {

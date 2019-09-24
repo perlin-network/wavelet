@@ -28,13 +28,10 @@ type badgerWriteBatch struct {
 	batch *badger.WriteBatch
 }
 
-func (b *badgerWriteBatch) Put(key, value []byte) {
+func (b *badgerWriteBatch) Put(key, value []byte) error {
 	k := append([]byte{}, key...)
 	v := append([]byte{}, value...)
-	err := b.batch.Set(k, v)
-	if err != nil {
-		panic(err)
-	}
+	return b.batch.Set(k, v)
 }
 
 func (b *badgerWriteBatch) Clear() {

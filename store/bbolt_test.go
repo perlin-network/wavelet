@@ -20,6 +20,7 @@
 package store
 
 import (
+	"fmt"
 	"math/rand"
 	"os"
 	"testing"
@@ -60,7 +61,7 @@ func BenchmarkBbolt(b *testing.B) {
 	}
 }
 
-func TestBboltExistence(t *testing.T) {
+func TestBbolt_Existence(t *testing.T) {
 	path := "bbolt"
 	_ = os.RemoveAll(path)
 
@@ -116,4 +117,41 @@ func TestBbolt(t *testing.T) {
 
 	_, err = db2.Get([]byte("exist"))
 	assert.Error(t, err)
+}
+
+func TestBbolt_WriteBatch(t *testing.T) {
+	path := "bbolt"
+	_ = os.RemoveAll(path)
+
+	db, err := NewBbolt(path)
+	assert.NoError(t, err)
+	defer os.RemoveAll(path)
+
+	wb := db.NewWriteBatch()
+	for i := 0; i < 100000; i++ {
+		wb.Put([]byte(fmt.Sprintf("key_batch%d", i+1)), []byte(fmt.Sprintf("val_batch%d", i+1)))
+	}
+
+	assert.NoError(t, db.Close())
+
+	db2, err := NewBbolt(path)
+	assert.NoError(t, err)
+
+	_, err = db2.Get([]byte("key_batch100000"))
+	assert.EqualError(t, err, "key key_batch100000 does not exist")
+
+	wb = db2.NewWriteBatch()
+	for i := 0; i < 100000; i++ {
+		wb.Put([]byte(fmt.Sprintf("key_batch%d", i+1)), []byte(fmt.Sprintf("val_batch%d", i+1)))
+	}
+
+	assert.NoError(t, db2.CommitWriteBatch(wb))
+	assert.NoError(t, db2.Close())
+
+	db3, err := NewBbolt(path)
+	assert.NoError(t, err)
+
+	v, err := db3.Get([]byte("key_batch100000"))
+	assert.NoError(t, err)
+	assert.EqualValues(t, []byte("val_batch100000"), v)
 }
