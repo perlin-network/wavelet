@@ -55,7 +55,7 @@ func TestSmartContract(t *testing.T) {
 }
 
 func BenchmarkAccountsCommit(b *testing.B) {
-	dbs := []string{"level", "badger"}
+	dbs := []string{"level"}
 
 	sizes := []int{}
 	for i := 0; i < 10; i++ {
