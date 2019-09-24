@@ -301,13 +301,17 @@ func TestTree_Difference(t *testing.T) {
 	result, _ = tree.Lookup([]byte("k2"))
 	assert.Equal(t, []byte("2"), result)
 
-	len1 := len(dumpDiffAll(tree, 0))
-	len2 := len(dumpDiffAll(tree, 1))
-	len3 := len(dumpDiffAll(tree, 2))
+	len1 := dumpDiffLen(dumpDiffAll(tree, 0))
+	len2 := dumpDiffLen(dumpDiffAll(tree, 1))
+	len3 := dumpDiffLen(dumpDiffAll(tree, 2))
 
 	assert.Equal(t, len3, 0)
 	assert.True(t, len1 > len2)
 	assert.True(t, len2 > len3)
+}
+
+func dumpDiffLen(dump []byte) int {
+	return int(binary.LittleEndian.Uint64(dump[:8]))
 }
 
 func TestTree_IterateFrom(t *testing.T) {
