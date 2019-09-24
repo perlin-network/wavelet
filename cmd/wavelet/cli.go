@@ -23,6 +23,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"github.com/perlin-network/wavelet/conf"
+	"github.com/perlin-network/wavelet/store"
 	"io"
 	"strings"
 	"text/tabwriter"
@@ -48,17 +49,26 @@ type CLI struct {
 	ledger *wavelet.Ledger
 	logger zerolog.Logger
 	keys   *skademlia.Keypair
+	kv     store.KV
 
 	completion []string
 }
 
-func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Keypair, stdin io.ReadCloser, stdout io.Writer) (*CLI, error) {
+func NewCLI(
+	client *skademlia.Client,
+	ledger *wavelet.Ledger,
+	keys *skademlia.Keypair,
+	stdin io.ReadCloser,
+	stdout io.Writer,
+	kv store.KV,
+) (*CLI, error) {
 	c := &CLI{
 		client: client,
 		ledger: ledger,
 		logger: log.Node(),
 		keys:   keys,
 		app:    cli.NewApp(),
+		kv:     kv,
 	}
 
 	c.app.Name = "wavelet"
@@ -143,6 +153,17 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 			Action:  a(c.exit),
 		},
 		{
+			Name:        "restart",
+			Aliases:     []string{"r"},
+			Action:      a(c.restart),
+			Description: "restart node",
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:  "hard",
+					Usage: "database will be erased if provided",
+				},
+			},
+		}, {
 			Name:      "update-params",
 			UsageText: "Updates parameters, if no value provided, default one will be used.",
 			Aliases:   []string{"up"},
@@ -198,6 +219,11 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 					Value: uint64(conf.GetPruningLimit()),
 					Usage: "number of rounds after which pruning of transactions will happen",
 				},
+				cli.StringFlag{
+					Name:  "api.secret",
+					Value: conf.GetSecret(),
+					Usage: "shared secret for http api authorization",
+				},
 			},
 		},
 		{
@@ -233,6 +259,7 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 		return nil, err
 	}
 
+	_ = w.Flush()
 	c.app.CustomAppHelpTemplate = s.String()
 
 	// Add in autocompletion
@@ -274,13 +301,16 @@ func NewCLI(client *skademlia.Client, ledger *wavelet.Ledger, keys *skademlia.Ke
 
 	log.SetWriter(
 		log.LoggerWavelet,
-		log.NewConsoleWriter(rl.Stdout(), log.FilterFor(
-			log.ModuleNode,
-			log.ModuleNetwork,
-			log.ModuleSync,
-			log.ModuleConsensus,
-			log.ModuleContract,
-		)),
+		log.NewConsoleWriter(
+			rl.Stdout(),
+			log.FilterFor(
+				log.ModuleNode,
+				log.ModuleNetwork,
+				log.ModuleSync,
+				log.ModuleConsensus,
+				log.ModuleContract,
+			),
+		),
 	)
 
 	return c, nil

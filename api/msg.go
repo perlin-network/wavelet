@@ -45,7 +45,21 @@ var (
 	_ marshalableJSON = (*transaction)(nil)
 
 	_ marshalableJSON = (*account)(nil)
+
+	_ marshalableJSON = (*msgResponse)(nil)
 )
+
+type msgResponse struct {
+	msg string
+}
+
+func (s *msgResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
+	o := arena.NewObject()
+
+	o.Set("msg", arena.NewString(s.msg))
+
+	return o.MarshalTo(nil), nil
+}
 
 type sendTransactionRequest struct {
 	Sender    string `json:"sender"`

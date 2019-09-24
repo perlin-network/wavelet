@@ -79,6 +79,10 @@ func (l *leveldbKV) MultiGet(keys ...[]byte) ([][]byte, error) {
 	return bufs, nil
 }
 
+func (l *leveldbKV) Dir() string {
+	return l.dir
+}
+
 func (l *leveldbKV) Put(key, value []byte) error {
 	return l.db.Put(key, value, nil)
 }
