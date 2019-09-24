@@ -22,9 +22,10 @@ package wavelet
 import (
 	"bytes"
 	"encoding/hex"
-	"github.com/perlin-network/wavelet/conf"
 	"sort"
 	"sync"
+
+	"github.com/perlin-network/wavelet/conf"
 
 	"github.com/google/btree"
 	"github.com/perlin-network/noise/edwards25519"
@@ -448,7 +449,10 @@ func (g *Graph) Missing() []TransactionID {
 	g.RLock()
 	missing := make([]TransactionID, 0, len(g.missing))
 
-	for id := range g.missing {
+	for id, depth := range g.missing {
+		if g.rootDepth > conf.GetMaxDepthDiff()+depth {
+			continue
+		}
 		missing = append(missing, id)
 	}
 
