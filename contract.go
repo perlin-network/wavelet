@@ -30,6 +30,7 @@ import (
 	"github.com/perlin-network/life/utils"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/lru"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
@@ -256,15 +257,19 @@ func (e *ContractExecutor) ResolveGlobal(module, field string) int64 {
 	panic("global variables are disallowed in smart contracts")
 }
 
-// If this function returns no error and `contractState` is not nil, new state of the contract MUST be written into `contractState`.
-func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Round, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte, ctx *CollapseContext, contractState *VMState, contractStateLoaded bool) error {
+// contractState is an optional parameter that is used to pass the VMState of the contract.
+// If you cache the VMState, you can pass it.
+// If it's nil, we'll try to load the state from the tree.
+//
+// This function MUST NOT write into the tree. The new or updated VM State must be returned.
+func (e *ContractExecutor) Execute(id AccountID, round *Round, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte, tree *avl.Tree, vmCache *lru.LRU, contractState *VMState) (*VMState, error) {
 	var vm *exec.VirtualMachine
 	var err error
 
-	if cached, ok := ctx.VMCache.Load(id); ok {
+	if cached, ok := vmCache.Load(id); ok {
 		vm, err = CloneVM(cached.(*exec.VirtualMachine), e, e)
 		if err != nil {
-			return errors.Wrap(err, "cannot clone vm")
+			return nil, errors.Wrap(err, "cannot clone vm")
 		}
 		vm.Config.GasLimit = gasLimit
 	} else {
@@ -282,34 +287,33 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 
 		vm, err = exec.NewVirtualMachine(code, config, e, e)
 		if err != nil {
-			return errors.Wrap(err, "cannot initialize vm")
+			return nil, errors.Wrap(err, "cannot initialize vm")
 		}
 
 		cloned, err := CloneVM(vm, nil, nil)
 		if err != nil {
-			return errors.Wrap(err, "cannot clone vm")
+			return nil, errors.Wrap(err, "cannot clone vm")
 		}
 
-		ctx.VMCache.Put(id, cloned)
+		vmCache.Put(id, cloned)
 	}
 
 	// We can safely initialize the VM first before checking this because the size of the global slice
 	// is proportional to the size of the contract's global section.
 	if len(vm.Globals) > sys.ContractMaxGlobals {
-		return errors.New("too many globals")
+		return nil, errors.New("too many globals")
 	}
 
 	var firstRun bool
 
-	// If state cache is enabled and we have a valid state previously.
-	if contractState != nil && contractStateLoaded {
+	if contractState != nil {
 		vm, err = contractState.Apply(vm, e, e, true)
 		if err != nil {
-			return errors.New("unable to apply state")
+			return nil, errors.New("unable to apply state")
 		}
-	} else if mem := LoadContractMemorySnapshot(snapshot, id); mem != nil {
+	} else if mem := LoadContractMemorySnapshot(tree, id); mem != nil {
 		vm.Memory = mem
-		if globals, exists := LoadContractGlobals(snapshot, id); exists {
+		if globals, exists := LoadContractGlobals(tree, id); exists {
 			if len(globals) == len(vm.Globals) {
 				vm.Globals = globals
 			}
@@ -325,11 +329,11 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 
 	entry, exists := vm.GetFunctionExport("_contract_" + name)
 	if !exists {
-		return errors.Wrapf(ErrContractFunctionNotFound, `fn "_contract_%s" does not exist`, name)
+		return nil, errors.Wrapf(ErrContractFunctionNotFound, `fn "_contract_%s" does not exist`, name)
 	}
 
 	if vm.FunctionCode[entry].NumParams != 0 {
-		return errors.New("entry function must not have parameters")
+		return nil, errors.New("entry function must not have parameters")
 	}
 
 	if firstRun {
@@ -365,15 +369,6 @@ func (e *ContractExecutor) Execute(snapshot *avl.Tree, id AccountID, round *Roun
 	if vm.ExitError != nil {
 		fmt.Println("error: ", utils.UnifyError(vm.ExitError))
 		vm.PrintStackTrace()
-	}
-
-	if vm.ExitError == nil {
-		if contractState != nil {
-			*contractState = SnapshotVMState(vm)
-		} else {
-			SaveContractMemorySnapshot(snapshot, id, vm.Memory)
-			SaveContractGlobals(snapshot, id, vm.Globals)
-		}
 	}
 
 	if vm.ExitError != nil && utils.UnifyError(vm.ExitError).Error() == "gas limit exceeded" {

@@ -36,7 +36,9 @@ func BenchmarkContractInGraph(b *testing.B) {
 	assert.NoError(b, err)
 
 	tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagContract, buildContractSpawnPayload(100000, 0, code).Marshal()))
-	err = ApplyTransaction(&round, state, &tx, nil)
+
+	assert.NoError(b, ApplyTransaction(state, &round, &tx))
+
 	assert.NoError(b, err)
 
 	contractID := AccountID(tx.ID)
