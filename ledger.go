@@ -1360,16 +1360,11 @@ func (l *Ledger) SyncToLatestRound() {
 
 		l.graph.UpdateRoot(latest.End)
 
-		start := time.Now()
-
 		if err := l.accounts.Commit(snapshot); err != nil {
 			cleanup()
 			logger := log.Node()
 			logger.Fatal().Err(err).Msg("failed to commit collapsed state to our database")
 		}
-
-		elapsed := time.Now().Sub(start)
-		fmt.Println("accounts.Commit took", elapsed)
 
 		logger = log.Sync("apply")
 		logger.Info().
