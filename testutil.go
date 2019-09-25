@@ -324,6 +324,61 @@ func (l *TestLedger) WaitForConsensus() <-chan bool {
 	return ch
 }
 
+func (l *TestLedger) WaitUntilConsensus(t testing.TB) {
+	t.Helper()
+
+	timeout := time.NewTimer(time.Second * 30)
+	for {
+		select {
+		case c := <-l.WaitForConsensus():
+			if c {
+				return
+			}
+
+		case <-timeout.C:
+			t.Fatal("timed out waiting for consensus")
+		}
+	}
+}
+
+// WaitUntilBalance should be used to ensure that the ledger's balance
+// is of a specific value before continuing.
+func (l *TestLedger) WaitUntilBalance(t testing.TB, balance uint64) {
+	t.Helper()
+
+	ticker := time.NewTicker(time.Millisecond * 200)
+	timeout := time.NewTimer(time.Second * 30)
+	for {
+		select {
+		case <-ticker.C:
+			if l.Balance() == balance {
+				return
+			}
+
+		case <-timeout.C:
+			t.Fatal("timed out waiting for balance")
+		}
+	}
+}
+
+func (l *TestLedger) WaitUntilStake(t testing.TB, stake uint64) {
+	t.Helper()
+
+	ticker := time.NewTicker(time.Millisecond * 200)
+	timeout := time.NewTimer(time.Second * 30)
+	for {
+		select {
+		case <-ticker.C:
+			if l.Stake() == stake {
+				return
+			}
+
+		case <-timeout.C:
+			t.Fatal("timed out waiting for stake")
+		}
+	}
+}
+
 func (l *TestLedger) WaitForRound(index uint64) <-chan uint64 {
 	ch := make(chan uint64)
 	go func() {
@@ -544,14 +599,16 @@ func loadKeys(t testing.TB, wallet string) *skademlia.Keypair {
 	return keys
 }
 
-func waitFor(t testing.TB, err string, fn func() bool) {
-	timeout := time.NewTimer(time.Second * 10)
-	ticker := time.NewTicker(time.Millisecond * 500)
+func waitFor(t testing.TB, fn func() bool) {
+	t.Helper()
+
+	timeout := time.NewTimer(time.Second * 30)
+	ticker := time.NewTicker(time.Millisecond * 100)
 
 	for {
 		select {
 		case <-timeout.C:
-			t.Fatal(err)
+			t.Fatal("timed out waiting")
 
 		case <-ticker.C:
 			if fn() {
