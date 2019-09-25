@@ -332,14 +332,11 @@ func TestLedger_Sync(t *testing.T) {
 
 		default:
 			ri := <-charlie.WaitForRound(alice.RoundIndex())
-			if ri >= alice.RoundIndex() {
-				goto DONE
+			if ri >= alice.RoundIndex() && charlie.BalanceOfAccount(alice) == alice.Balance() {
+				return
 			}
 		}
 	}
-
-DONE:
-	assert.EqualValues(t, alice.Balance(), charlie.BalanceOfAccount(alice))
 }
 
 func TestLedger_SpamContracts(t *testing.T) {
