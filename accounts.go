@@ -34,14 +34,13 @@ import (
 type Accounts struct {
 	sync.RWMutex
 
-	kv   store.KV
 	tree *avl.Tree
 
 	profile *avl.GCProfile
 }
 
 func NewAccounts(kv store.KV) *Accounts {
-	return &Accounts{kv: kv, tree: avl.New(kv)}
+	return &Accounts{tree: avl.New(kv)}
 }
 
 // GC periodically garbage collects every 5 seconds. Only one

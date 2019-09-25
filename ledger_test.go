@@ -1,10 +1,11 @@
 package wavelet
 
 import (
-	"github.com/perlin-network/wavelet/conf"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/perlin-network/wavelet/conf"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -147,6 +148,8 @@ func TestLedger_Pay(t *testing.T) {
 	// Alice balance should be balance-txAmount-gas
 	aliceBalance := alice.Balance()
 	assert.True(t, aliceBalance < 1000000-1337)
+
+	testnet.WaitForRound(t, alice.RoundIndex())
 
 	// Everyone else should see the updated balance of Alice and Bob
 	for _, node := range testnet.Nodes() {

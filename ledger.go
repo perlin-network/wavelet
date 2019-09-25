@@ -218,10 +218,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(tx Transaction) error {
-	if l.isOutOfSync() && tx.Sender == l.client.Keys().PublicKey() {
-		return ErrOutOfSync
-	}
-
 	err := l.graph.AddTransaction(tx)
 
 	if err != nil && errors.Cause(err) != ErrAlreadyExists {
@@ -338,6 +334,11 @@ func (l *Ledger) Finalizer() *Snowball {
 // Rounds returns the round manager for the ledger.
 func (l *Ledger) Rounds() *Rounds {
 	return l.rounds
+}
+
+// Restart restart wavelet process by means of stall detector (approach is platform dependent)
+func (l *Ledger) Restart() error {
+	return l.stallDetector.tryRestart()
 }
 
 // PerformConsensus spawns workers related to performing consensus, such as pulling

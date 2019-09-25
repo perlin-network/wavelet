@@ -26,12 +26,17 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/perlin-network/noise"
+	"github.com/perlin-network/noise/cipher"
+	"github.com/perlin-network/noise/handshake"
+	"github.com/perlin-network/wavelet/conf"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
 	"strconv"
+	"strings"
 	"testing"
 	"testing/quick"
 	"time"
@@ -729,6 +734,184 @@ func TestEndpointsRateLimit(t *testing.T) {
 					assert.NotEqual(t, http.StatusTooManyRequests, w.StatusCode)
 				}
 			}
+		})
+	}
+}
+
+func TestConnectDisconnect(t *testing.T) {
+	network := wavelet.NewTestNetwork(t)
+	defer network.Cleanup()
+
+	gateway := New()
+	gateway.setup()
+	gateway.ledger = network.Faucet().Ledger()
+
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+	gateway.keys = keys
+
+	l, err := net.Listen("tcp", ":0")
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(l.Addr().(*net.TCPAddr).Port))
+
+	gateway.client = skademlia.NewClient(addr, keys,
+		skademlia.WithC1(sys.SKademliaC1),
+		skademlia.WithC2(sys.SKademliaC2),
+	)
+	gateway.client.SetCredentials(
+		noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), gateway.client.Protocol()),
+	)
+
+	node := network.AddNode(t)
+	defer node.Cleanup()
+
+	currentSecret := conf.GetSecret()
+	defer conf.Update(conf.WithSecret(currentSecret))
+	conf.Update(conf.WithSecret("secret"))
+
+	body := fmt.Sprintf(`{"address": "%s"}`, node.Addr())
+
+	request := httptest.NewRequest(http.MethodPost, "http://localhost/node/connect", strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer secret")
+	w, err := serve(gateway.router, request)
+	assert.NoError(t, err)
+
+	assert.NotNil(t, w)
+
+	assert.Equal(t, http.StatusOK, w.StatusCode)
+
+	resp, err := ioutil.ReadAll(w.Body)
+	assert.NoError(t, err)
+	assert.Equal(t, fmt.Sprintf(`{"msg":"Successfully connected to %s"}`, node.Addr()), string(resp))
+
+	request = httptest.NewRequest(http.MethodPost, "http://localhost/node/disconnect", strings.NewReader(body))
+	request.Header.Set("Authorization", "Bearer secret")
+	w, err = serve(gateway.router, request)
+	assert.NoError(t, err)
+
+	assert.NotNil(t, w)
+
+	assert.Equal(t, http.StatusOK, w.StatusCode)
+
+	resp, err = ioutil.ReadAll(w.Body)
+	assert.NoError(t, err)
+	assert.Equal(t, fmt.Sprintf(`{"msg":"Successfully disconnected from %s"}`, node.Addr()), string(resp))
+}
+
+func TestConnectDisconnectErrors(t *testing.T) {
+	gateway := New()
+	gateway.setup()
+
+	gateway.ledger = createLedger(t)
+
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+	gateway.keys = keys
+
+	l, err := net.Listen("tcp", ":0")
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(l.Addr().(*net.TCPAddr).Port))
+
+	gateway.client = skademlia.NewClient(addr, keys,
+		skademlia.WithC1(sys.SKademliaC1),
+		skademlia.WithC2(sys.SKademliaC2),
+	)
+	gateway.client.SetCredentials(
+		noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), gateway.client.Protocol()),
+	)
+
+	currentSecret := conf.GetSecret()
+	defer conf.Update(conf.WithSecret(currentSecret))
+	conf.Update(conf.WithSecret("secret"))
+
+	authHeader := "Bearer secret"
+
+	testCases := []struct {
+		name       string
+		uri        string
+		body       string
+		authHeader string
+		errorStr   string
+		code       int
+	}{
+		{
+			name:     "error: connect address is missing",
+			uri:      "/node/connect",
+			body:     "{}",
+			errorStr: `Unauthorized`,
+			code:     http.StatusUnauthorized,
+		},
+		{
+			name:       "error: disconnect address is missing",
+			uri:        "/node/disconnect",
+			authHeader: authHeader,
+			body:       "{}",
+			errorStr:   `{"status":"Bad Request","error":"address is missing"}`,
+			code:       http.StatusBadRequest,
+		},
+		{
+			name:       "error: connect address is malformed",
+			uri:        "/node/connect",
+			authHeader: authHeader,
+			body:       `{"address":"aaa"}`,
+			errorStr:   `{"status":"Internal Server Error","error":"error connecting to peer: failed to dial peer: connection error: desc = \"transport: error while dialing: dial tcp: address aaa: missing port in address\""}`,
+			code:       http.StatusInternalServerError,
+		},
+		{
+			name:       "error: disconnect address is malformed",
+			uri:        "/node/disconnect",
+			authHeader: authHeader,
+			body:       `{"address":"aaa"}`,
+			errorStr:   `{"status":"Internal Server Error","error":"error disconnecting from peer: could not disconnect peer: peer with address aaa not found"}`,
+			code:       http.StatusInternalServerError,
+		},
+		{
+			name:       "error: connect address is missing",
+			uri:        "/node/connect",
+			authHeader: authHeader,
+			body:       `{"address":"127.0.0.1:1234"}`,
+			errorStr:   `{"status":"Internal Server Error","error":"error connecting to peer: failed to dial peer: connection error: desc = \"transport: error while dialing: dial tcp 127.0.0.1:1234: connect: connection refused\""}`,
+			code:       http.StatusInternalServerError,
+		},
+		{
+			name:       "error: disconnect address is missing",
+			uri:        "/node/disconnect",
+			authHeader: authHeader,
+			body:       `{"address":"127.0.0.1:1234"}`,
+			errorStr:   `{"status":"Internal Server Error","error":"error disconnecting from peer: could not disconnect peer: peer with address 127.0.0.1:1234 not found"}`,
+			code:       http.StatusInternalServerError,
+		},
+	}
+
+	for _, testCase := range testCases {
+		tc := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "http://localhost"+tc.uri, strings.NewReader(tc.body))
+
+			if len(testCase.authHeader) > 0 {
+				request.Header.Set("Authorization", testCase.authHeader)
+			}
+
+			w, err := serve(gateway.router, request)
+			assert.NoError(t, err)
+
+			if !assert.NotNil(t, w) {
+				return
+			}
+
+			resp, err := ioutil.ReadAll(w.Body)
+			if !assert.NoError(t, err) {
+				return
+			}
+
+			assert.Equal(t, tc.code, w.StatusCode)
+			assert.Equal(t, tc.errorStr, string(resp))
 		})
 	}
 }
