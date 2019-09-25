@@ -136,13 +136,12 @@ func TestLedger_Pay(t *testing.T) {
 	bob.WaitUntilBalance(t, 1337)
 
 	// Alice balance should be balance-txAmount-gas
-	aliceBalance := alice.Balance()
-	waitFor(t, func() bool { return aliceBalance < 1000000-1337 })
+	waitFor(t, func() bool { return alice.Balance() < 1000000-1337 })
 
 	// Everyone else should see the updated balance of Alice and Bob
 	for _, node := range testnet.Nodes() {
 		waitFor(t, func() bool {
-			return node.BalanceOfAccount(alice) == aliceBalance &&
+			return node.BalanceOfAccount(alice) == alice.Balance() &&
 				node.BalanceOfAccount(bob) == 1337
 		})
 	}
@@ -203,8 +202,7 @@ func TestLedger_Stake(t *testing.T) {
 	alice.WaitUntilStake(t, 9001)
 
 	// Alice balance should be balance-stakeAmount-gas
-	aliceBalance := alice.Balance()
-	waitFor(t, func() bool { return aliceBalance < 1000000-9001 })
+	waitFor(t, func() bool { return alice.Balance() < 1000000-9001 })
 
 	// Everyone else should see the updated balance of Alice
 	for _, node := range testnet.Nodes() {
@@ -214,13 +212,13 @@ func TestLedger_Stake(t *testing.T) {
 		})
 	}
 
+	oldBalance := alice.Balance()
+
 	assert.NoError(t, txError(alice.WithdrawStake(5000)))
 	alice.WaitUntilStake(t, 4001)
 
 	// Withdrawn stake should be added to balance
-	oldBalance := aliceBalance
-	aliceBalance = alice.Balance()
-	waitFor(t, func() bool { return aliceBalance > oldBalance })
+	waitFor(t, func() bool { return alice.Balance() > oldBalance })
 
 	// Everyone else should see the updated balance of Alice
 	for _, node := range testnet.Nodes() {
