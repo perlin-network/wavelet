@@ -583,9 +583,7 @@ func (cli *CLI) connect(ctx *cli.Context) {
 		return
 	}
 
-	_, err := cli.client.Dial(cmd[0])
-
-	if err != nil {
+	if _, err := cli.client.Dial(cmd[0]); err != nil {
 		cli.logger.Error().Err(err).Msg("Failed to connect to peer.")
 		return
 	}
@@ -601,9 +599,7 @@ func (cli *CLI) disconnect(ctx *cli.Context) {
 		return
 	}
 
-	err := cli.client.DisconnectByAddress(cmd[0])
-
-	if err != nil {
+	if err := cli.client.DisconnectByAddress(cmd[0]); err != nil {
 		cli.logger.Error().Err(err).Msg("Failed to disconnect peer.")
 		return
 	}
