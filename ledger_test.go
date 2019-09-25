@@ -203,16 +203,18 @@ func TestLedger_Stake(t *testing.T) {
 	testnet.WaitForSync(t)
 
 	assert.NoError(t, txError(testnet.Faucet().Pay(alice, 1000000)))
-	testnet.WaitForConsensus(t)
+	alice.WaitUntilConsensus(t)
 
 	assert.NoError(t, txError(alice.PlaceStake(9001)))
-	testnet.WaitForConsensus(t)
+	alice.WaitUntilConsensus(t)
 
 	assert.EqualValues(t, 9001, alice.Stake())
 
 	// Alice balance should be balance-stakeAmount-gas
 	aliceBalance := alice.Balance()
 	assert.True(t, aliceBalance < 1000000-9001)
+
+	testnet.WaitForRound(t, alice.RoundIndex())
 
 	// Everyone else should see the updated balance of Alice
 	for _, node := range testnet.Nodes() {
@@ -221,7 +223,7 @@ func TestLedger_Stake(t *testing.T) {
 	}
 
 	assert.NoError(t, txError(alice.WithdrawStake(5000)))
-	testnet.WaitForConsensus(t)
+	alice.WaitUntilConsensus(t)
 
 	assert.EqualValues(t, 4001, alice.Stake())
 
@@ -229,6 +231,8 @@ func TestLedger_Stake(t *testing.T) {
 	oldBalance := aliceBalance
 	aliceBalance = alice.Balance()
 	assert.True(t, aliceBalance > oldBalance)
+
+	testnet.WaitForRound(t, alice.RoundIndex())
 
 	// Everyone else should see the updated balance of Alice
 	for _, node := range testnet.Nodes() {
@@ -250,13 +254,13 @@ func TestLedger_CallContract(t *testing.T) {
 	testnet.WaitForSync(t)
 
 	assert.NoError(t, txError(testnet.Faucet().Pay(alice, 1000000)))
-	testnet.WaitForConsensus(t)
+	alice.WaitUntilConsensus(t)
 
 	contract, err := alice.SpawnContract("testdata/transfer_back.wasm",
 		10000, nil)
 	assert.NoError(t, err)
 
-	testnet.WaitForConsensus(t)
+	alice.WaitUntilConsensus(t)
 
 	// Calling the contract should cause the contract to send back 250000 PERL back to alice
 	_, err = alice.CallContract(contract.ID, 500000, 100000, "on_money_received", contract.ID[:])
@@ -280,13 +284,13 @@ func TestLedger_DepositGas(t *testing.T) {
 	testnet.WaitForSync(t)
 
 	assert.NoError(t, txError(testnet.Faucet().Pay(alice, 1000000)))
-	testnet.WaitForConsensus(t)
+	alice.WaitUntilConsensus(t)
 
 	contract, err := alice.SpawnContract("testdata/transfer_back.wasm",
 		10000, nil)
 	assert.NoError(t, err)
 
-	testnet.WaitForConsensus(t)
+	alice.WaitUntilConsensus(t)
 
 	_, err = alice.DepositGas(contract.ID, 654321)
 	assert.NoError(t, err)
@@ -351,7 +355,7 @@ func TestLedger_SpamContracts(t *testing.T) {
 	_, err := testnet.faucet.Pay(alice, 100000)
 	assert.NoError(t, err)
 
-	testnet.WaitForConsensus(t)
+	alice.WaitUntilConsensus(t)
 
 	// spamming spawn transactions should cause no problem for consensus
 	// this is possible if they applied in different order on different nodes
