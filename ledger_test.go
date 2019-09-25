@@ -310,7 +310,6 @@ func TestLedger_Sync(t *testing.T) {
 
 	// Advance the network by a few rounds larger than sys.SyncIfRoundsDifferBy
 	for i := 0; i < int(conf.GetSyncIfRoundsDifferBy())+5; i++ {
-		<-alice.WaitForSync()
 		_, err := alice.PlaceStake(10)
 		if err != nil {
 			t.Fatal(err)
