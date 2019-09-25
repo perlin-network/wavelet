@@ -311,6 +311,15 @@ func (tx Transaction) String() string {
 	return fmt.Sprintf("Transaction{ID: %x}", tx.ID)
 }
 
+func (tx Transaction) Fee() uint64 {
+	fee := uint64(sys.TransactionFeeMultiplier * float64(len(tx.Payload)))
+	if fee < sys.DefaultTransactionFee {
+		return sys.DefaultTransactionFee
+	}
+
+	return fee
+}
+
 func prefixLen(buf []byte) int {
 	for i, b := range buf {
 		if b != 0 {

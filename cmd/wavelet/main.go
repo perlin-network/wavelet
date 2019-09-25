@@ -168,7 +168,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.transaction_fee_amount",
-			Value: sys.TransactionFeeAmount,
+			Value: sys.DefaultTransactionFee,
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.min_stake",
@@ -266,7 +266,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 		// set the the sys variables
 		sys.MinDifficulty = byte(c.Int("sys.difficulty.min"))
 		sys.DifficultyScaleFactor = c.Float64("sys.difficulty.scale")
-		sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
+		sys.DefaultTransactionFee = c.Uint64("sys.transaction_fee_amount")
 		sys.MinimumStake = c.Uint64("sys.min_stake")
 
 		start(config, stdin, stdout)

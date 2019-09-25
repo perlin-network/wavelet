@@ -12,7 +12,9 @@ import (
 	"testing"
 )
 
-type benchmarkCollapse struct {
+const initialBalance = 100 * 1000 * 1000 * 1000 * 1000
+
+type collapseTestContainer struct {
 	graph      *Graph
 	accounts   map[AccountID]*skademlia.Keypair
 	accountIDs []AccountID
@@ -24,12 +26,10 @@ type benchmarkCollapse struct {
 	round  Round
 }
 
-func newBenchmarkCollapse(b *testing.B, noOfAcc int) *benchmarkCollapse {
+func newCollapseContainer(t assert.TestingT, noOfAcc int) *collapseTestContainer {
 	if noOfAcc < 2 {
-		assert.FailNow(b, "noOfAcc must be at least 2")
+		assert.FailNow(t, "noOfAcc must be at least 2")
 	}
-
-	const InitialBalance = 100 * 1000 * 1000 * 1000 * 1000
 
 	stateStore := store.NewInmem()
 	state := avl.New(stateStore)
@@ -38,15 +38,13 @@ func newBenchmarkCollapse(b *testing.B, noOfAcc int) *benchmarkCollapse {
 	viewID := uint64(0)
 	state.SetViewID(viewID)
 
-	var graph *Graph
-
 	accounts := make(map[AccountID]*skademlia.Keypair)
 	accountIDs := make([]AccountID, 0)
 	for i := 0; i < noOfAcc; i++ {
 		keys, err := skademlia.NewKeys(1, 1)
-		assert.NoError(b, err)
+		assert.NoError(t, err)
 
-		WriteAccountBalance(state, keys.PublicKey(), InitialBalance)
+		WriteAccountBalance(state, keys.PublicKey(), initialBalance)
 
 		accounts[keys.PublicKey()] = keys
 		accountIDs = append(accountIDs, keys.PublicKey())
@@ -54,18 +52,14 @@ func newBenchmarkCollapse(b *testing.B, noOfAcc int) *benchmarkCollapse {
 
 	firstAccount := accounts[accountIDs[0]]
 	initialRoot = AttachSenderToTransaction(firstAccount, NewTransaction(firstAccount, sys.TagNop, nil))
-	graph = NewGraph(WithRoot(initialRoot))
-
-	if graph == nil {
-		assert.FailNow(b, "graph is nil")
-	}
+	graph := NewGraph(WithRoot(initialRoot))
 
 	accountState := NewAccounts(stateStore)
-	assert.NoError(b, accountState.Commit(state))
+	assert.NoError(t, accountState.Commit(state))
 
 	round := NewRound(viewID, state.Checksum(), 0, Transaction{}, initialRoot)
 
-	testGraph := &benchmarkCollapse{
+	testGraph := &collapseTestContainer{
 		graph:        graph,
 		accounts:     accounts,
 		accountIDs:   accountIDs,
@@ -78,14 +72,14 @@ func newBenchmarkCollapse(b *testing.B, noOfAcc int) *benchmarkCollapse {
 	return testGraph
 }
 
-func (g *benchmarkCollapse) applyContract(b *testing.B, code []byte) (Transaction, error) {
+func (g *collapseTestContainer) applyContract(b *testing.B, code []byte) (Transaction, error) {
 	rng := rand.New(rand.NewSource(42))
 
 	// Choose a random
 	var sender = g.accounts[g.accountIDs[rng.Intn(len(g.accountIDs))]]
 
 	tx := AttachSenderToTransaction(sender,
-		NewTransaction(sender, sys.TagContract, buildContractSpawnPayload(100000, 0, code).Marshal()), g.graph.FindEligibleParents()...
+		NewTransaction(sender, sys.TagContract, buildContractSpawnPayload(100000, 0, code).Marshal()), g.graph.FindEligibleParents()...,
 	)
 
 	if err := g.graph.AddTransaction(tx); err != nil {
@@ -98,11 +92,11 @@ func (g *benchmarkCollapse) applyContract(b *testing.B, code []byte) (Transactio
 	return tx, nil
 }
 
-func (g *benchmarkCollapse) collapseTransactions(b *testing.B) (*collapseResults, error) {
+func (g *collapseTestContainer) collapseTransactions(b *testing.B) (*collapseResults, error) {
 	if g.end == nil {
 		return nil, errors.New("end transaction is nil")
 	}
-	g.viewID = + 1
+	g.viewID = +1
 
 	results, err := collapseTransactions(g.graph, g.accountState, g.viewID, &g.round, g.round.End, *g.end, false)
 	if err != nil {
@@ -121,7 +115,7 @@ func (g *benchmarkCollapse) collapseTransactions(b *testing.B) (*collapseResults
 
 // Call collapseTransactions with a copy of the account state.
 // Use this benchmark collapseTransactions.
-func (g *benchmarkCollapse) collapseTransactionsNewState(b *testing.B) (*collapseResults, error) {
+func (g *collapseTestContainer) collapseTransactionsNewState(b *testing.B) (*collapseResults, error) {
 	if g.end == nil {
 		return nil, errors.New("end transaction is nil")
 	}
@@ -144,7 +138,7 @@ func (g *benchmarkCollapse) collapseTransactionsNewState(b *testing.B) (*collaps
 	return results, err
 }
 
-func (g *benchmarkCollapse) addTxs(b *testing.B, noOfTx int, getTx func(sender *skademlia.Keypair) Transaction) {
+func (g *collapseTestContainer) addTxs(b *testing.B, noOfTx int, getTx func(sender *skademlia.Keypair) Transaction) {
 	rng := rand.New(rand.NewSource(42))
 
 	var tx Transaction
@@ -160,16 +154,16 @@ func (g *benchmarkCollapse) addTxs(b *testing.B, noOfTx int, getTx func(sender *
 	g.end = &tx
 }
 
-func (g *benchmarkCollapse) addStakeTxs(b *testing.B, noOfTx int) {
+func (g *collapseTestContainer) addStakeTxs(b *testing.B, noOfTx int) {
 	g.addTxs(b, noOfTx, func(sender *skademlia.Keypair) Transaction {
 		return AttachSenderToTransaction(sender,
 			NewTransaction(sender, sys.TagStake, buildPlaceStakePayload(1).Marshal()),
-			g.graph.FindEligibleParents()...
+			g.graph.FindEligibleParents()...,
 		)
 	})
 }
 
-func (g *benchmarkCollapse) addTransferTxs(b *testing.B, noOfTx int) {
+func (g *collapseTestContainer) addTransferTxs(b *testing.B, noOfTx int) {
 	rng := rand.New(rand.NewSource(42))
 
 	var recipient *skademlia.Keypair
@@ -185,12 +179,12 @@ func (g *benchmarkCollapse) addTransferTxs(b *testing.B, noOfTx int) {
 
 		return AttachSenderToTransaction(sender,
 			NewTransaction(sender, sys.TagTransfer, buildTransferPayload(recipient.PublicKey(), 1).Marshal()),
-			g.graph.FindEligibleParents()...
+			g.graph.FindEligibleParents()...,
 		)
 	})
 }
 
-func (g *benchmarkCollapse) addContractTransferTxs(b *testing.B, noOfTx int, sender, contractID AccountID, funcName []byte, amount, gasLimit, gasDeposit uint64) {
+func (g *collapseTestContainer) addContractTransferTxs(b *testing.B, noOfTx int, sender, contractID AccountID, funcName []byte, amount, gasLimit, gasDeposit uint64) {
 	g.addTxs(b, noOfTx, func(sender *skademlia.Keypair) Transaction {
 		tx := NewTransaction(
 			sender,
@@ -200,24 +194,24 @@ func (g *benchmarkCollapse) addContractTransferTxs(b *testing.B, noOfTx int, sen
 
 		tx = AttachSenderToTransaction(sender,
 			tx,
-			g.graph.FindEligibleParents()...
+			g.graph.FindEligibleParents()...,
 		)
 
 		return tx
 	})
 }
 
-func (g *benchmarkCollapse) addContractCreationTxs(b *testing.B, noOfTx int, code []byte) {
+func (g *collapseTestContainer) addContractCreationTxs(b *testing.B, noOfTx int, code []byte) {
 	g.addTxs(b, noOfTx, func(sender *skademlia.Keypair) Transaction {
 		return AttachSenderToTransaction(sender,
 			NewTransaction(sender, sys.TagContract, buildContractSpawnPayload(100000, 0, code).Marshal()),
-			g.graph.FindEligibleParents()...
+			g.graph.FindEligibleParents()...,
 		)
 	})
 }
 
 func BenchmarkCollapseTransactionsStake100(b *testing.B) {
-	graph := newBenchmarkCollapse(b, 3)
+	graph := newCollapseContainer(b, 3)
 	graph.addStakeTxs(b, 100)
 
 	b.ReportAllocs()
@@ -232,7 +226,7 @@ func BenchmarkCollapseTransactionsStake100(b *testing.B) {
 }
 
 func BenchmarkCollapseTransactionsStake1000(b *testing.B) {
-	graph := newBenchmarkCollapse(b, 3)
+	graph := newCollapseContainer(b, 3)
 	graph.addStakeTxs(b, 1000)
 
 	b.ReportAllocs()
@@ -247,7 +241,7 @@ func BenchmarkCollapseTransactionsStake1000(b *testing.B) {
 }
 
 func BenchmarkCollapseTransactionsStake10000(b *testing.B) {
-	graph := newBenchmarkCollapse(b, 3)
+	graph := newCollapseContainer(b, 3)
 	graph.addStakeTxs(b, 10000)
 
 	b.ReportAllocs()
@@ -262,7 +256,7 @@ func BenchmarkCollapseTransactionsStake10000(b *testing.B) {
 }
 
 func BenchmarkCollapseTransactionsStake100000(b *testing.B) {
-	graph := newBenchmarkCollapse(b, 3)
+	graph := newCollapseContainer(b, 3)
 	graph.addStakeTxs(b, 100000)
 
 	b.ReportAllocs()
@@ -277,7 +271,7 @@ func BenchmarkCollapseTransactionsStake100000(b *testing.B) {
 }
 
 func BenchmarkCollapseTransactionsTransfer100(b *testing.B) {
-	graph := newBenchmarkCollapse(b, 3)
+	graph := newCollapseContainer(b, 3)
 	graph.addTransferTxs(b, 100)
 
 	b.ReportAllocs()
@@ -292,7 +286,7 @@ func BenchmarkCollapseTransactionsTransfer100(b *testing.B) {
 }
 
 func BenchmarkCollapseTransactionsTransfer1000(b *testing.B) {
-	graph := newBenchmarkCollapse(b, 3)
+	graph := newCollapseContainer(b, 3)
 	graph.addTransferTxs(b, 1000)
 
 	b.ReportAllocs()
@@ -307,7 +301,7 @@ func BenchmarkCollapseTransactionsTransfer1000(b *testing.B) {
 }
 
 func BenchmarkCollapseTransactionsTransfer10000(b *testing.B) {
-	graph := newBenchmarkCollapse(b, 3)
+	graph := newCollapseContainer(b, 3)
 	graph.addTransferTxs(b, 10000)
 
 	b.ReportAllocs()
@@ -322,7 +316,7 @@ func BenchmarkCollapseTransactionsTransfer10000(b *testing.B) {
 }
 
 func BenchmarkCollapseTransactionsTransfer100000(b *testing.B) {
-	graph := newBenchmarkCollapse(b, 3)
+	graph := newCollapseContainer(b, 3)
 	graph.addTransferTxs(b, 100000)
 
 	b.ReportAllocs()
@@ -340,7 +334,7 @@ func BenchmarkCollapseTransactionsContractCreation100(b *testing.B) {
 	code, err := ioutil.ReadFile("testdata/transfer_back.wasm")
 	assert.NoError(b, err)
 
-	graph := newBenchmarkCollapse(b, 3)
+	graph := newCollapseContainer(b, 3)
 	graph.addContractCreationTxs(b, 100, code)
 
 	b.ReportAllocs()
@@ -358,7 +352,7 @@ func BenchmarkCollapseTransactionsContractCreation1000(b *testing.B) {
 	code, err := ioutil.ReadFile("testdata/transfer_back.wasm")
 	assert.NoError(b, err)
 
-	graph := newBenchmarkCollapse(b, 3)
+	graph := newCollapseContainer(b, 3)
 	graph.addContractCreationTxs(b, 1000, code)
 
 	b.ReportAllocs()
@@ -376,7 +370,7 @@ func BenchmarkCollapseTransactionsContractCreation10000(b *testing.B) {
 	code, err := ioutil.ReadFile("testdata/transfer_back.wasm")
 	assert.NoError(b, err)
 
-	graph := newBenchmarkCollapse(b, 3)
+	graph := newCollapseContainer(b, 3)
 	graph.addContractCreationTxs(b, 10000, code)
 
 	b.ReportAllocs()
@@ -394,7 +388,7 @@ func BenchmarkCollapseTransactionsContractTransfer100(b *testing.B) {
 	code, err := ioutil.ReadFile("testdata/transfer_back.wasm")
 	assert.NoError(b, err)
 
-	graph := newBenchmarkCollapse(b, 3)
+	graph := newCollapseContainer(b, 3)
 
 	contract, err := graph.applyContract(b, code)
 	if err != nil {
@@ -418,7 +412,7 @@ func BenchmarkCollapseTransactionsContractTransfer1000(b *testing.B) {
 	code, err := ioutil.ReadFile("testdata/transfer_back.wasm")
 	assert.NoError(b, err)
 
-	graph := newBenchmarkCollapse(b, 3)
+	graph := newCollapseContainer(b, 3)
 
 	contract, err := graph.applyContract(b, code)
 	if err != nil {
@@ -442,7 +436,7 @@ func BenchmarkCollapseTransactionsContractTransfer10000(b *testing.B) {
 	code, err := ioutil.ReadFile("testdata/transfer_back.wasm")
 	assert.NoError(b, err)
 
-	graph := newBenchmarkCollapse(b, 3)
+	graph := newCollapseContainer(b, 3)
 
 	contract, err := graph.applyContract(b, code)
 	if err != nil {
@@ -466,7 +460,7 @@ func BenchmarkCollapseTransactionsContractTransfer100000(b *testing.B) {
 	code, err := ioutil.ReadFile("testdata/transfer_back.wasm")
 	assert.NoError(b, err)
 
-	graph := newBenchmarkCollapse(b, 3)
+	graph := newCollapseContainer(b, 3)
 
 	contract, err := graph.applyContract(b, code)
 	if err != nil {
@@ -490,7 +484,7 @@ func BenchmarkCollapseTransactionsMixed(b *testing.B) {
 	code, err := ioutil.ReadFile("testdata/transfer_back.wasm")
 	assert.NoError(b, err)
 
-	graph := newBenchmarkCollapse(b, 3)
+	graph := newCollapseContainer(b, 3)
 
 	contract, err := graph.applyContract(b, code)
 	if err != nil {
@@ -511,3 +505,33 @@ func BenchmarkCollapseTransactionsMixed(b *testing.B) {
 		assert.Equal(b, 1+30000+30000+30000, results.appliedCount)
 	}
 }
+
+//func TestCollapseTransactions(t *testing.T) {
+//	stateStore := store.NewInmem()
+//	state := avl.New(stateStore)
+//
+//	viewID := uint64(0)
+//	state.SetViewID(viewID)
+//
+//	accounts := make(map[AccountID]*skademlia.Keypair)
+//	accountIDs := make([]AccountID, 0)
+//	for i := 0; i < noOfAcc; i++ {
+//		keys, err := skademlia.NewKeys(1, 1)
+//		assert.NoError(t, err)
+//
+//		WriteAccountBalance(state, keys.PublicKey(), initialBalance)
+//
+//		accounts[keys.PublicKey()] = keys
+//		accountIDs = append(accountIDs, keys.PublicKey())
+//	}
+//
+//	firstAccount := accounts[accountIDs[0]]
+//	initialRoot := AttachSenderToTransaction(firstAccount, NewTransaction(firstAccount, sys.TagNop, nil))
+//	graph := NewGraph(WithRoot(initialRoot))
+//
+//	accountState := NewAccounts(stateStore)
+//	assert.NoError(t, accountState.Commit(state))
+//
+//	round := NewRound(viewID, state.Checksum(), 0, Transaction{}, initialRoot)
+//
+//}

@@ -126,7 +126,7 @@ func (cli *CLI) pay(ctx *cli.Context) {
 	snapshot := cli.ledger.Snapshot()
 	balance, _ := wavelet.ReadAccountBalance(snapshot, cli.keys.PublicKey())
 
-	if balance < amount+sys.TransactionFeeAmount {
+	if balance < amount+sys.DefaultTransactionFee {
 		cli.logger.Error().
 			Uint64("your_balance", balance).
 			Uint64("amount_to_send", amount).
@@ -139,7 +139,7 @@ func (cli *CLI) pay(ctx *cli.Context) {
 	)
 	if codeAvailable {
 		// Set gas limit by default to the balance the user has.
-		payload.GasLimit = balance - amount - sys.TransactionFeeAmount
+		payload.GasLimit = balance - amount - sys.DefaultTransactionFee
 		payload.FuncName = []byte("on_money_received")
 	}
 
@@ -446,7 +446,7 @@ func (cli *CLI) depositGas(ctx *cli.Context) {
 	_, codeAvailable := wavelet.ReadAccountContractCode(snapshot, payload.Recipient)
 
 	// Check balance
-	if balance < amount+sys.TransactionFeeAmount {
+	if balance < amount+sys.DefaultTransactionFee {
 		cli.logger.Error().
 			Uint64("your_balance", balance).
 			Uint64("amount_to_send", amount).

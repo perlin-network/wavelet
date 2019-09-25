@@ -385,7 +385,7 @@ func (l *Ledger) BroadcastNop() *Transaction {
 	balance, _ := ReadAccountBalance(l.accounts.Snapshot(), publicKey)
 
 	// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
-	if balance < sys.TransactionFeeAmount && hex.EncodeToString(publicKey[:]) != sys.FaucetAddress {
+	if balance < sys.DefaultTransactionFee && hex.EncodeToString(publicKey[:]) != sys.FaucetAddress {
 		return nil
 	}
 
