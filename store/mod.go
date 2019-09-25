@@ -35,6 +35,8 @@ type KV interface {
 	CommitWriteBatch(batch WriteBatch) error
 
 	Delete(key []byte) error
+
+	Dir() string
 }
 
 // WriteBatch batches a collection of put operations in memory before

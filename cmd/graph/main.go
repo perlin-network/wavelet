@@ -113,7 +113,8 @@ func main() {
 
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
-	ledger := wavelet.NewLedger(store.NewInmem(), client)
+	kv := store.NewInmem()
+	ledger := wavelet.NewLedger(kv, client)
 
 	go func() {
 		server := client.Listen()
@@ -126,7 +127,7 @@ func main() {
 	}()
 
 	if *apiPortFlag > 0 {
-		go api.New().StartHTTP(*apiPortFlag, client, ledger, keys)
+		go api.New().StartHTTP(*apiPortFlag, client, ledger, keys, kv)
 	}
 
 	if len(flag.Args()) > 0 {

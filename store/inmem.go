@@ -149,6 +149,10 @@ func (s *inmemKV) Delete(key []byte) error {
 	return nil
 }
 
+func (s *inmemKV) Dir() string {
+	return ""
+}
+
 func NewInmem() *inmemKV {
 	var comparator skiplist.GreaterThanFunc = func(lhs, rhs interface{}) bool {
 		return bytes.Compare(lhs.([]byte), rhs.([]byte)) == 1

@@ -6,6 +6,9 @@
       "smart-contracts",
       "governance"
     ],
+    "Technical Documentation": [
+      "tech/graph"
+    ],
     "Tutorials": [
       "examples/decentralized-chat-app",
       "examples/decentralized-todo-app"

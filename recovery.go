@@ -85,7 +85,9 @@ LOOP:
 								return
 							}
 
-							defer heapFile.Close()
+							defer func() {
+								_ = heapFile.Close()
+							}()
 
 							err = pprof.Lookup("heap").WriteTo(heapFile, 0)
 							if err != nil {
@@ -100,7 +102,9 @@ LOOP:
 								return
 							}
 
-							defer stackFile.Close()
+							defer func() {
+								_ = stackFile.Close()
+							}()
 
 							err = pprof.Lookup("goroutine").WriteTo(stackFile, 0)
 							if err != nil {

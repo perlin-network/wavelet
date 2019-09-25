@@ -158,6 +158,7 @@ func (n *TestNetwork) WaitForSync(t testing.TB) {
 
 type TestLedger struct {
 	ledger    *Ledger
+	client    *skademlia.Client
 	server    *grpc.Server
 	addr      string
 	kv        store.KV
@@ -218,6 +219,7 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 
 	return &TestLedger{
 		ledger:    ledger,
+		client:    client,
 		server:    server,
 		addr:      addr,
 		kv:        kv,
@@ -235,6 +237,14 @@ func (l *TestLedger) Cleanup() {
 
 func (l *TestLedger) Addr() string {
 	return l.addr
+}
+
+func (l *TestLedger) Ledger() *Ledger {
+	return l.ledger
+}
+
+func (l *TestLedger) Client() *skademlia.Client {
+	return l.client
 }
 
 func (l *TestLedger) PublicKey() AccountID {

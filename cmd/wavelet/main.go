@@ -130,6 +130,12 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Usage:  "Directory path to cache HTTPS certificates.",
 			EnvVar: "WAVELET_CERTS_CACHE_DIR",
 		}),
+		cli.StringFlag{
+			Name:   "api.secret",
+			Value:  conf.GetSecret(),
+			Usage:  "Shared secret to restrict access to some api",
+			EnvVar: "WAVELET_API_SECRET",
+		},
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "wallet",
 			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded private key to a wallet may also be specified.",
@@ -255,6 +261,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			conf.WithSnowballBeta(c.Int("sys.snowball.beta")),
 			conf.WithQueryTimeout(c.Duration("sys.query_timeout")),
 			conf.WithMaxDepthDiff(c.Uint64("sys.max_depth_diff")),
+			conf.WithSecret(c.String("api.secret")),
 		)
 
 		// set the the sys variables
@@ -396,15 +403,15 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	}
 
 	if cfg.APIHost != nil {
-		go api.New().StartHTTPS(int(cfg.APIPort), client, ledger, keys, *cfg.APIHost, *cfg.APICertsCache)
+		go api.New().StartHTTPS(int(cfg.APIPort), client, ledger, keys, kv, *cfg.APIHost, *cfg.APICertsCache)
 	} else {
 		if cfg.APIPort > 0 {
-			go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys)
+			go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys, kv)
 
 		}
 	}
 
-	shell, err := NewCLI(client, ledger, keys, stdin, stdout)
+	shell, err := NewCLI(client, ledger, keys, stdin, stdout, kv)
 	if err != nil {
 		panic(err)
 	}
