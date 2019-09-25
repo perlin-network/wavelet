@@ -141,47 +141,6 @@ func NewClient(config Config) (*Client, error) {
 	return c, nil
 }
 
-/*
-func (c *Client) PollLoggerSink(sinkRoute string) (<-chan []byte, error) {
-	if err := c.pollWS(stop, evChan, sinkRoute, nil); err != nil {
-		return nil, err
-	}
-
-	return evChan, nil
-}
-
-// PollAccounts queries
-func (c *Client) PollAccounts(accountID string) (<-chan []byte, error) {
-	v := url.Values{}
-	if accountID != "" {
-		v.Set("id", accountID)
-	}
-
-	evChan := make(chan []byte)
-
-	if err := c.pollWS(stop, evChan, RouteWSAccounts, v); err != nil {
-		return nil, err
-	}
-
-	return evChan, nil
-}
-
-func (c *Client) PollContracts(stop <-chan struct{}, contractID string) (<-chan []byte, error) {
-	v := url.Values{}
-	if contractID != "" {
-		v.Set("id", contractID)
-	}
-
-	evChan := make(chan []byte)
-
-	if err := c.pollWS(stop, evChan, RouteWSContracts, v); err != nil {
-		return nil, err
-	}
-
-	return evChan, nil
-}
-*/
-
 func (c *Client) GetContractCode(contractID string) (string, error) {
 	path := fmt.Sprintf("%s/%s", RouteContract, contractID)
 
