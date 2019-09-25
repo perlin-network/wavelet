@@ -324,11 +324,6 @@ func TestLedger_Sync(t *testing.T) {
 	// sync (state and txs) with the other nodes
 	charlie := testnet.AddNode(t)
 
-	_, err := alice.Pay(charlie, 1337)
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	timeout := time.NewTimer(time.Second * 30)
 	for {
 		select {
@@ -345,7 +340,6 @@ func TestLedger_Sync(t *testing.T) {
 
 DONE:
 	assert.EqualValues(t, alice.Balance(), charlie.BalanceOfAccount(alice))
-	assert.EqualValues(t, 1337, charlie.Balance())
 }
 
 func TestLedger_SpamContracts(t *testing.T) {
