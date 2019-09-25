@@ -140,9 +140,10 @@ func TestLedger_Pay(t *testing.T) {
 	<-alice.WaitForConsensus()
 
 	assert.NoError(t, txError(alice.Pay(bob, 1337)))
-	testnet.WaitForConsensus(t)
+	<-alice.WaitForConsensus()
 
 	// Bob should receive the tx amount
+	<-bob.WaitForRound(alice.RoundIndex())
 	assert.EqualValues(t, 1337, bob.Balance())
 
 	// Alice balance should be balance-txAmount-gas
@@ -169,16 +170,13 @@ func TestLedger_PayInsufficientBalance(t *testing.T) {
 		testnet.AddNode(t)
 	}
 
-	testnet.WaitForSync(t)
-
 	assert.NoError(t, txError(testnet.Faucet().Pay(alice, 1000000)))
 	<-alice.WaitForConsensus()
 
 	// Alice attempt to pay Bob more than what
 	// she has in her wallet
 	assert.NoError(t, txError(alice.Pay(bob, 1000001)))
-
-	testnet.WaitForConsensus(t)
+	<-alice.WaitForConsensus()
 
 	// Bob should not receive the tx amount
 	assert.EqualValues(t, 0, bob.Balance())
@@ -187,6 +185,8 @@ func TestLedger_PayInsufficientBalance(t *testing.T) {
 	aliceBalance := alice.Balance()
 	assert.True(t, aliceBalance > 0)
 	assert.True(t, aliceBalance < 1000000)
+
+	testnet.WaitForRound(t, alice.RoundIndex())
 
 	// Everyone else should see the updated balance of Alice and Bob
 	for _, node := range testnet.Nodes() {
