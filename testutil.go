@@ -258,6 +258,12 @@ func (l *TestLedger) Balance() uint64 {
 	return balance
 }
 
+func (l *TestLedger) BalanceWithPublicKey(key AccountID) uint64 {
+	snapshot := l.ledger.Snapshot()
+	balance, _ := ReadAccountBalance(snapshot, key)
+	return balance
+}
+
 func (l *TestLedger) BalanceOfAccount(node *TestLedger) uint64 {
 	snapshot := l.ledger.Snapshot()
 	balance, _ := ReadAccountBalance(snapshot, node.PublicKey())
@@ -284,13 +290,19 @@ func (l *TestLedger) StakeWithPublicKey(key AccountID) uint64 {
 
 func (l *TestLedger) StakeOfAccount(node *TestLedger) uint64 {
 	snapshot := l.ledger.Snapshot()
-	balance, _ := ReadAccountStake(snapshot, node.PublicKey())
-	return balance
+	stake, _ := ReadAccountStake(snapshot, node.PublicKey())
+	return stake
 }
 
 func (l *TestLedger) Reward() uint64 {
 	snapshot := l.ledger.Snapshot()
 	reward, _ := ReadAccountReward(snapshot, l.PublicKey())
+	return reward
+}
+
+func (l *TestLedger) RewardWithPublicKey(key AccountID) uint64 {
+	snapshot := l.ledger.Snapshot()
+	reward, _ := ReadAccountReward(snapshot, key)
 	return reward
 }
 
