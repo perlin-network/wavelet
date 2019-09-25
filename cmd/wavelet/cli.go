@@ -357,23 +357,21 @@ func a(f func(*cli.Context)) func(*cli.Context) error {
 	}
 }
 
-func (cli *CLI) recipient(arg string) (r [32]byte, ok bool) {
+func (cli *CLI) recipient(arg string) ([32]byte, bool) {
 	recipient, err := hex.DecodeString(arg)
 	if err != nil {
 		cli.logger.Error().Err(err).
 			Msg("The ID you specified is invalid.")
-		return
+		return 0, false
 	}
 
 	if len(recipient) != 32 {
 		cli.logger.Error().Int("length", len(recipient)).
 			Msg("The ID you specified is invalid.")
-		return
+		return 0, false
 	}
 
-	ok = true
-	copy(r[:], recipient)
-	return
+	return recipient, true
 }
 
 func (cli *CLI) amount(arg string) (a uint64, ok bool) {
@@ -381,10 +379,8 @@ func (cli *CLI) amount(arg string) (a uint64, ok bool) {
 	if err != nil {
 		cli.logger.Error().Err(err).
 			Msg("Failed to convert payment amount to a uint64.")
-		return
+		return 0, false
 	}
 
-	ok = true
-	a = amount
-	return
+	return amount, true
 }
