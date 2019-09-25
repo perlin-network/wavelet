@@ -345,8 +345,6 @@ func TestLedger_Sync(t *testing.T) {
 
 DONE:
 	assert.EqualValues(t, alice.Balance(), charlie.BalanceOfAccount(alice))
-
-	charlie.WaitUntilConsensus(t)
 	assert.EqualValues(t, 1337, charlie.Balance())
 }
 
