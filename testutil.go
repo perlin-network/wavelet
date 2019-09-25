@@ -325,6 +325,8 @@ func (l *TestLedger) WaitForConsensus() <-chan bool {
 }
 
 func (l *TestLedger) WaitUntilConsensus(t testing.TB) {
+	t.Helper()
+
 	timeout := time.NewTimer(time.Second * 30)
 	for {
 		select {
