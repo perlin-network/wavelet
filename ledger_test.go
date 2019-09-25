@@ -30,12 +30,7 @@ func TestLedger_BroadcastNop(t *testing.T) {
 	_, err := testnet.faucet.Pay(alice, 1000000)
 	assert.NoError(t, err)
 
-	// Wait for balance to update
-	for range alice.WaitForConsensus() {
-		if alice.Balance() > 0 {
-			break
-		}
-	}
+	alice.WaitUntilConsensus(t)
 
 	// Add lots of transactions
 	var txsLock sync.Mutex
@@ -137,10 +132,10 @@ func TestLedger_Pay(t *testing.T) {
 	testnet.WaitForSync(t)
 
 	assert.NoError(t, txError(testnet.Faucet().Pay(alice, 1000000)))
-	<-alice.WaitForConsensus()
+	alice.WaitUntilConsensus(t)
 
 	assert.NoError(t, txError(alice.Pay(bob, 1337)))
-	<-alice.WaitForConsensus()
+	alice.WaitUntilConsensus(t)
 
 	// Bob should receive the tx amount
 	<-bob.WaitForRound(alice.RoundIndex())
@@ -171,12 +166,12 @@ func TestLedger_PayInsufficientBalance(t *testing.T) {
 	}
 
 	assert.NoError(t, txError(testnet.Faucet().Pay(alice, 1000000)))
-	<-alice.WaitForConsensus()
+	alice.WaitUntilConsensus(t)
 
 	// Alice attempt to pay Bob more than what
 	// she has in her wallet
 	assert.NoError(t, txError(alice.Pay(bob, 1000001)))
-	<-alice.WaitForConsensus()
+	alice.WaitUntilConsensus(t)
 
 	// Bob should not receive the tx amount
 	assert.EqualValues(t, 0, bob.Balance())
@@ -267,7 +262,7 @@ func TestLedger_CallContract(t *testing.T) {
 	_, err = alice.CallContract(contract.ID, 500000, 100000, "on_money_received", contract.ID[:])
 	assert.NoError(t, err)
 
-	<-alice.WaitForConsensus()
+	alice.WaitUntilConsensus(t)
 
 	assert.True(t, alice.Balance() > 700000)
 }
@@ -296,7 +291,7 @@ func TestLedger_DepositGas(t *testing.T) {
 	_, err = alice.DepositGas(contract.ID, 654321)
 	assert.NoError(t, err)
 
-	<-alice.WaitForConsensus()
+	alice.WaitUntilConsensus(t)
 
 	assert.EqualValues(t, 654321, alice.GasBalanceOfAddress(contract.ID))
 }
@@ -320,7 +315,8 @@ func TestLedger_Sync(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		<-alice.WaitForConsensus()
+
+		alice.WaitUntilConsensus(t)
 	}
 
 	testnet.WaitForRound(t, alice.RoundIndex())
@@ -351,7 +347,7 @@ func TestLedger_Sync(t *testing.T) {
 DONE:
 	assert.EqualValues(t, alice.Balance(), charlie.BalanceOfAccount(alice))
 
-	<-charlie.WaitForConsensus()
+	charlie.WaitUntilConsensus(t)
 	assert.EqualValues(t, 1337, charlie.Balance())
 }
 
@@ -378,7 +374,7 @@ func TestLedger_SpamContracts(t *testing.T) {
 		}
 	}
 
-	assert.True(t, <-alice.WaitForConsensus())
+	alice.WaitUntilConsensus(t)
 }
 
 func txError(tx Transaction, err error) error {

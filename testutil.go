@@ -324,6 +324,21 @@ func (l *TestLedger) WaitForConsensus() <-chan bool {
 	return ch
 }
 
+func (l *TestLedger) WaitUntilConsensus(t testing.TB) {
+	timeout := time.NewTimer(time.Second * 10)
+	for {
+		select {
+		case c := <-l.WaitForConsensus():
+			if c {
+				return
+			}
+
+		case <-timeout.C:
+			t.Fatal("timed out waiting for consensus")
+		}
+	}
+}
+
 func (l *TestLedger) WaitForRound(index uint64) <-chan uint64 {
 	ch := make(chan uint64)
 	go func() {
