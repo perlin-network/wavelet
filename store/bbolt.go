@@ -130,6 +130,10 @@ func (b *bboltKV) MultiGet(keys ...[]byte) ([][]byte, error) {
 	return bufs, nil
 }
 
+func (b *bboltKV) Dir() string {
+	return b.dir
+}
+
 func (b *bboltKV) Put(key, value []byte) error {
 	return b.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket(bucketName)

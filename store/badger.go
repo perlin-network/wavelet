@@ -101,6 +101,10 @@ func (b *badgerKV) MultiGet(keys ...[]byte) ([][]byte, error) {
 	return bufs, nil
 }
 
+func (b *badgerKV) Dir() string {
+	return b.dir
+}
+
 func (b *badgerKV) Put(key, value []byte) error {
 	return b.db.Update(func(txn *badger.Txn) error {
 		return txn.Set(key, value)
