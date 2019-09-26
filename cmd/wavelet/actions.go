@@ -77,12 +77,12 @@ func (cli *CLI) pay(ctx *cli.Context) {
 		return
 	}
 
-	recipient, ok := cli.recipient(cmd[0])
+	recipient, ok := cli.parseRecipient(cmd[0])
 	if !ok {
 		return
 	}
 
-	amount, ok := cli.amount(cmd[1])
+	amount, ok := cli.parseAmount(cmd[1])
 	if !ok {
 		return
 	}
@@ -108,17 +108,17 @@ func (cli *CLI) call(ctx *cli.Context) {
 		return
 	}
 
-	recipient, ok := cli.recipient(cmd[0])
+	recipient, ok := cli.parseRecipient(cmd[0])
 	if !ok {
 		return
 	}
 
-	amount, ok := cli.amount(cmd[1])
+	amount, ok := cli.parseAmount(cmd[1])
 	if !ok {
 		return
 	}
 
-	gasLimit, ok := cli.amount(cmd[2])
+	gasLimit, ok := cli.parseAmount(cmd[2])
 	if !ok {
 		return
 	}
@@ -194,7 +194,7 @@ func (cli *CLI) find(ctx *cli.Context) {
 		return
 	}
 
-	address, ok := cli.recipient(cmd[0])
+	address, ok := cli.parseRecipient(cmd[0])
 	if !ok {
 		return
 	}
@@ -281,12 +281,12 @@ func (cli *CLI) depositGas(ctx *cli.Context) {
 		return
 	}
 
-	recipient, ok := cli.recipient(cmd[0])
+	recipient, ok := cli.parseRecipient(cmd[0])
 	if !ok {
 		return
 	}
 
-	amount, ok := cli.amount(cmd[1])
+	amount, ok := cli.parseAmount(cmd[1])
 	if !ok {
 		return
 	}
@@ -312,7 +312,7 @@ func (cli *CLI) placeStake(ctx *cli.Context) {
 		return
 	}
 
-	amount, ok := cli.amount(cmd[0])
+	amount, ok := cli.parseAmount(cmd[0])
 	if !ok {
 		return
 	}
@@ -338,7 +338,7 @@ func (cli *CLI) withdrawStake(ctx *cli.Context) {
 		return
 	}
 
-	amount, ok := cli.amount(cmd[0])
+	amount, ok := cli.parseAmount(cmd[0])
 	if !ok {
 		return
 	}
@@ -364,7 +364,7 @@ func (cli *CLI) withdrawReward(ctx *cli.Context) {
 		return
 	}
 
-	amount, ok := cli.amount(cmd[0])
+	amount, ok := cli.parseAmount(cmd[0])
 	if !ok {
 		return
 	}
@@ -389,7 +389,7 @@ func (cli *CLI) connect(ctx *cli.Context) {
 		return
 	}
 
-	address, ok := cli.recipient(cmd[0])
+	address, ok := cli.parseRecipient(cmd[0])
 	if !ok {
 		return
 	}
@@ -413,7 +413,7 @@ func (cli *CLI) disconnect(ctx *cli.Context) {
 		return
 	}
 
-	address, ok := cli.recipient(cmd[0])
+	address, ok := cli.parseRecipient(cmd[0])
 	if !ok {
 		return
 	}

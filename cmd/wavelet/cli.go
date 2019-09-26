@@ -357,24 +357,26 @@ func a(f func(*cli.Context)) func(*cli.Context) error {
 	}
 }
 
-func (cli *CLI) recipient(arg string) ([32]byte, bool) {
-	recipient, err := hex.DecodeString(arg)
+func (cli *CLI) parseRecipient(arg string) ([32]byte, bool) {
+	var recipient [32]byte
+
+	i, err := hex.Decode(recipient[:], []byte(arg))
 	if err != nil {
 		cli.logger.Error().Err(err).
 			Msg("The ID you specified is invalid.")
-		return 0, false
+		return recipient, false
 	}
 
-	if len(recipient) != 32 {
+	if i != 32 {
 		cli.logger.Error().Int("length", len(recipient)).
 			Msg("The ID you specified is invalid.")
-		return 0, false
+		return recipient, false
 	}
 
 	return recipient, true
 }
 
-func (cli *CLI) amount(arg string) (a uint64, ok bool) {
+func (cli *CLI) parseAmount(arg string) (a uint64, ok bool) {
 	amount, err := strconv.ParseUint(arg, 10, 64)
 	if err != nil {
 		cli.logger.Error().Err(err).
