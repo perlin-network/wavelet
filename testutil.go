@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"os"
 	"strconv"
 	"sync"
 	"testing"
@@ -21,18 +22,52 @@ import (
 	"google.golang.org/grpc"
 )
 
+var (
+	FaucetWallet = "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"
+)
+
 type TestNetwork struct {
 	faucet *TestLedger
 	nodes  []*TestLedger
 }
 
-func NewTestNetwork(t testing.TB) *TestNetwork {
-	n := &TestNetwork{
-		faucet: newTestFaucet(t),
-		nodes:  []*TestLedger{},
+type TestNetworkConfig struct {
+	AddFaucet bool
+}
+
+func defaultTestNetworkConfig() TestNetworkConfig {
+	return TestNetworkConfig{
+		AddFaucet: true,
+	}
+}
+
+type TestNetworkOption func(cfg *TestNetworkConfig)
+
+func WithoutFaucet() TestNetworkOption {
+	return func(cfg *TestNetworkConfig) {
+		cfg.AddFaucet = false
+	}
+}
+
+func NewTestNetwork(t testing.TB, opts ...TestNetworkOption) *TestNetwork {
+	// Remove existing db
+	for i := 0; i < 20; i++ {
+		_ = os.RemoveAll(fmt.Sprintf("db_%d", i))
 	}
 
-	n.nodes = append(n.nodes, n.faucet)
+	n := &TestNetwork{
+		nodes: []*TestLedger{},
+	}
+
+	cfg := defaultTestNetworkConfig()
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	if cfg.AddFaucet {
+		n.faucet = n.AddNode(t, WithWallet(FaucetWallet))
+	}
+
 	return n
 }
 
@@ -46,17 +81,40 @@ func (n *TestNetwork) Faucet() *TestLedger {
 	return n.faucet
 }
 
+func (n *TestNetwork) SetFaucet(node *TestLedger) {
+	n.faucet = node
+}
+
 type TestLedgerOption func(cfg *TestLedgerConfig)
 
-func TestWithWallet(wallet string) TestLedgerOption {
+func WithWallet(wallet string) TestLedgerOption {
 	return func(cfg *TestLedgerConfig) {
 		cfg.Wallet = wallet
 	}
 }
 
+func WithKeepExistingDB() TestLedgerOption {
+	return func(cfg *TestLedgerConfig) {
+		cfg.RemoveExistingDB = false
+	}
+}
+
+func WithPeers(peers ...string) TestLedgerOption {
+	return func(cfg *TestLedgerConfig) {
+		for _, peer := range peers {
+			cfg.Peers = append(cfg.Peers, peer)
+		}
+	}
+}
+
 func (n *TestNetwork) AddNode(t testing.TB, opts ...TestLedgerOption) *TestLedger {
+	peers := []string{}
+	if n.faucet != nil {
+		peers = append(peers, n.faucet.Addr())
+	}
+
 	cfg := TestLedgerConfig{
-		Peers: []string{n.faucet.Addr()},
+		Peers: peers,
 		N:     len(n.nodes),
 	}
 
@@ -182,21 +240,16 @@ type TestLedger struct {
 }
 
 type TestLedgerConfig struct {
-	Wallet string
-	Peers  []string
-	N      int
+	Wallet           string
+	Peers            []string
+	N                int
+	RemoveExistingDB bool
 }
 
 func defaultConfig(t testing.TB) *TestLedgerConfig {
-	return &TestLedgerConfig{}
-}
-
-// newTestFaucet returns an account with a lot of PERLs.
-func newTestFaucet(t testing.TB) *TestLedger {
-	return NewTestLedger(t, TestLedgerConfig{
-		Wallet: "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
-		N:      0,
-	})
+	return &TestLedgerConfig{
+		RemoveExistingDB: true,
+	}
 }
 
 func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
@@ -210,7 +263,12 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 	client := skademlia.NewClient(addr, keys, skademlia.WithC1(sys.SKademliaC1), skademlia.WithC2(sys.SKademliaC2))
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
-	kv, cleanup := store.NewTestKV(t, "level", fmt.Sprintf("db_%d", cfg.N))
+	kvOpts := []store.TestKVOption{}
+	if !cfg.RemoveExistingDB {
+		kvOpts = append(kvOpts, store.WithKeepExisting())
+	}
+
+	kv, cleanup := store.NewTestKV(t, "level", fmt.Sprintf("db_%d", cfg.N), kvOpts...)
 	ledger := NewLedger(kv, client, WithoutGC())
 	server := client.Listen()
 	RegisterWaveletServer(server, ledger.Protocol())
@@ -548,9 +606,9 @@ func (l *TestLedger) CallContract(id [32]byte, amount uint64, gasLimit uint64, f
 	return tx, err
 }
 
-func (l *TestLedger) Benchmark() (Transaction, error) {
+func (l *TestLedger) Benchmark(batchSize int) (Transaction, error) {
 	payload := Batch{}
-	for i := 0; i < 40; i++ {
+	for i := 0; i < batchSize; i++ {
 		payload.AddStake(Stake{
 			Opcode: sys.PlaceStake,
 			Amount: 1,

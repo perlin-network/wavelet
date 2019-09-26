@@ -3,13 +3,11 @@ package wavelet
 import (
 	"encoding/hex"
 	"fmt"
-	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/perlin-network/wavelet/conf"
-	"github.com/perlin-network/wavelet/log"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -360,18 +358,26 @@ func TestLedger_SpamContracts(t *testing.T) {
 func TestLedger_DownloadMissingTx2(t *testing.T) {
 	conf.Update(conf.WithSyncIfRoundsDifferBy(2))
 
-	testnet := NewTestNetwork(t)
+	testnet := NewTestNetwork(t, WithoutFaucet())
 	defer testnet.Cleanup()
 
 	nodes := 4
 	initialRounds := 70
 	// postLeaveRounds := 10
 
-	for i := 0; i < nodes-1; i++ {
-		testnet.AddNode(t)
-	}
+	var alice *TestLedger
+	for i := 0; i < nodes; i++ {
+		switch i {
+		case 0:
+			alice = testnet.AddNode(t,
+				WithKeepExistingDB(),
+				WithWallet(FaucetWallet))
+			testnet.SetFaucet(alice)
 
-	alice := testnet.Faucet()
+		default:
+			testnet.AddNode(t)
+		}
+	}
 
 	startBenchmark := func(n *TestLedger) chan struct{} {
 		stop := make(chan struct{})
@@ -382,7 +388,7 @@ func TestLedger_DownloadMissingTx2(t *testing.T) {
 					return
 
 				default:
-					assert.NoError(t, txError(n.Benchmark()))
+					assert.NoError(t, txError(n.Benchmark(5)))
 				}
 			}
 		}()
@@ -390,6 +396,13 @@ func TestLedger_DownloadMissingTx2(t *testing.T) {
 	}
 
 	stops := make([]chan struct{}, len(testnet.Nodes()))
+	for i, node := range testnet.Nodes() {
+		if i > 0 {
+			assert.NoError(t, txError(alice.Pay(node, 100000000)))
+			node.WaitUntilConsensus(t)
+		}
+	}
+
 	for i, node := range testnet.Nodes() {
 		stops[i] = startBenchmark(node)
 	}
@@ -409,20 +422,20 @@ func TestLedger_DownloadMissingTx2(t *testing.T) {
 
 	fmt.Println("bob left")
 
-	// close(stops[nodes-1])
+	close(stops[nodes-1])
 	bob.Cleanup()
 	testnet.nodes = testnet.nodes[:nodes-1]
 
-	// time.Sleep(time.Second * 5)
+	time.Sleep(time.Second * 5)
 
-	bob = testnet.AddNode(t, TestWithWallet(hex.EncodeToString(bobKey[:])))
+	bob = testnet.AddNode(t,
+		WithKeepExistingDB(),
+		WithWallet(hex.EncodeToString(bobKey[:])))
 
 	fmt.Printf("bob rejoined, index=%d, missing=%d, incomplete=%d\n",
 		bob.RoundIndex(), bob.ledger.Graph().MissingLen(), bob.ledger.Graph().IncompleteLen())
 
-	time.Sleep(time.Second * 10)
-
-	// log.SetWriter(log.ModuleNode, os.Stdout)
+	time.Sleep(time.Second * 5)
 
 	// Wait for no more missing txs
 	waitForDuration(t, func() bool {
@@ -433,17 +446,24 @@ func TestLedger_DownloadMissingTx2(t *testing.T) {
 }
 
 func TestLedger_DownloadMissingTx(t *testing.T) {
-	testnet := NewTestNetwork(t)
+	testnet := NewTestNetwork(t, WithoutFaucet())
 	defer testnet.Cleanup()
 
-	// Start with 4 nodes
-	for i := 0; i < 3; i++ {
-		testnet.AddNode(t)
-	}
+	var alice, bob *TestLedger
+	for i := 0; i < 4; i++ {
+		switch i {
+		case 0:
+			alice = testnet.AddNode(t,
+				WithWallet(FaucetWallet))
+			testnet.SetFaucet(alice)
 
-	nodes := testnet.Nodes()
-	alice := nodes[0]
-	bob := nodes[1]
+		case 1:
+			bob = testnet.AddNode(t)
+
+		default:
+			testnet.AddNode(t)
+		}
+	}
 
 	assert.NoError(t, txError(alice.Pay(bob, 100)))
 	bob.WaitUntilBalance(t, 100)
@@ -451,7 +471,6 @@ func TestLedger_DownloadMissingTx(t *testing.T) {
 
 	// End of round 1
 
-	log.SetWriter(log.ModuleNode, os.Stdout)
 	charlie := testnet.AddNode(t)
 	<-charlie.WaitForSync()
 	fmt.Println(charlie.RoundIndex())

@@ -1,12 +1,36 @@
 package store
 
 import (
+	"os"
 	"testing"
 )
 
+type TestKVConfig struct {
+	RemoveExisting bool
+}
+
+func defaultKVConfig() TestKVConfig {
+	return TestKVConfig{
+		RemoveExisting: true,
+	}
+}
+
+type TestKVOption func(cfg *TestKVConfig)
+
+func WithKeepExisting() TestKVOption {
+	return func(cfg *TestKVConfig) {
+		cfg.RemoveExisting = false
+	}
+}
+
 // NewTestKV returns a KV store for testing purposes.
-func NewTestKV(t testing.TB, kv string, path string) (KV, func()) {
+func NewTestKV(t testing.TB, kv string, path string, opts ...TestKVOption) (KV, func()) {
 	t.Helper()
+
+	cfg := defaultKVConfig()
+	for _, opt := range opts {
+		opt(&cfg)
+	}
 
 	switch kv {
 	case "inmem":
@@ -16,8 +40,9 @@ func NewTestKV(t testing.TB, kv string, path string) (KV, func()) {
 		}
 
 	case "level":
-		// Remove existing db
-		// _ = os.RemoveAll(path)
+		if cfg.RemoveExisting {
+			_ = os.RemoveAll(path)
+		}
 
 		leveldb, err := NewLevelDB(path)
 		if err != nil {
@@ -26,7 +51,9 @@ func NewTestKV(t testing.TB, kv string, path string) (KV, func()) {
 
 		return leveldb, func() {
 			_ = leveldb.Close()
-			// _ = os.RemoveAll(path)
+			if cfg.RemoveExisting {
+				_ = os.RemoveAll(path)
+			}
 		}
 
 	default:
