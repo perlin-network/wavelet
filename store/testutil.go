@@ -1,7 +1,6 @@
 package store
 
 import (
-	"os"
 	"testing"
 )
 
@@ -18,7 +17,7 @@ func NewTestKV(t testing.TB, kv string, path string) (KV, func()) {
 
 	case "level":
 		// Remove existing db
-		_ = os.RemoveAll(path)
+		// _ = os.RemoveAll(path)
 
 		leveldb, err := NewLevelDB(path)
 		if err != nil {
@@ -27,7 +26,7 @@ func NewTestKV(t testing.TB, kv string, path string) (KV, func()) {
 
 		return leveldb, func() {
 			_ = leveldb.Close()
-			_ = os.RemoveAll(path)
+			// _ = os.RemoveAll(path)
 		}
 
 	default:

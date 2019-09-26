@@ -46,11 +46,25 @@ func (n *TestNetwork) Faucet() *TestLedger {
 	return n.faucet
 }
 
-func (n *TestNetwork) AddNode(t testing.TB) *TestLedger {
-	node := NewTestLedger(t, TestLedgerConfig{
+type TestLedgerOption func(cfg *TestLedgerConfig)
+
+func TestWithWallet(wallet string) TestLedgerOption {
+	return func(cfg *TestLedgerConfig) {
+		cfg.Wallet = wallet
+	}
+}
+
+func (n *TestNetwork) AddNode(t testing.TB, opts ...TestLedgerOption) *TestLedger {
+	cfg := TestLedgerConfig{
 		Peers: []string{n.faucet.Addr()},
 		N:     len(n.nodes),
-	})
+	}
+
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	node := NewTestLedger(t, cfg)
 	n.nodes = append(n.nodes, node)
 
 	return node
@@ -232,6 +246,7 @@ func (l *TestLedger) Cleanup() {
 	l.server.Stop()
 	<-l.stopped
 
+	l.ledger.Close()
 	l.kvCleanup()
 }
 
@@ -245,6 +260,11 @@ func (l *TestLedger) Ledger() *Ledger {
 
 func (l *TestLedger) Client() *skademlia.Client {
 	return l.client
+}
+
+func (l *TestLedger) PrivateKey() edwards25519.PrivateKey {
+	keys := l.ledger.client.Keys()
+	return keys.PrivateKey()
 }
 
 func (l *TestLedger) PublicKey() AccountID {
@@ -528,6 +548,25 @@ func (l *TestLedger) CallContract(id [32]byte, amount uint64, gasLimit uint64, f
 	return tx, err
 }
 
+func (l *TestLedger) Benchmark() (Transaction, error) {
+	payload := Batch{}
+	for i := 0; i < 40; i++ {
+		payload.AddStake(Stake{
+			Opcode: sys.PlaceStake,
+			Amount: 1,
+		})
+	}
+
+	keys := l.ledger.client.Keys()
+	tx := AttachSenderToTransaction(
+		keys,
+		NewTransaction(keys, sys.TagBatch, payload.Marshal()),
+		l.ledger.Graph().FindEligibleParents()...)
+
+	err := l.ledger.AddTransaction(tx)
+	return tx, err
+}
+
 func (l *TestLedger) PlaceStake(amount uint64) (Transaction, error) {
 	payload := Stake{
 		Opcode: sys.PlaceStake,
@@ -620,6 +659,25 @@ func waitFor(t testing.TB, fn func() bool) {
 	t.Helper()
 
 	timeout := time.NewTimer(time.Second * 30)
+	ticker := time.NewTicker(time.Millisecond * 100)
+
+	for {
+		select {
+		case <-timeout.C:
+			t.Fatal("timed out waiting")
+
+		case <-ticker.C:
+			if fn() {
+				return
+			}
+		}
+	}
+}
+
+func waitForDuration(t testing.TB, fn func() bool, d time.Duration) {
+	t.Helper()
+
+	timeout := time.NewTimer(d)
 	ticker := time.NewTicker(time.Millisecond * 100)
 
 	for {
