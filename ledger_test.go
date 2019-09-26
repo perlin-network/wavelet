@@ -1,11 +1,14 @@
 package wavelet
 
 import (
+	"fmt"
+	"os"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/perlin-network/wavelet/conf"
+	"github.com/perlin-network/wavelet/log"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -351,6 +354,136 @@ func TestLedger_SpamContracts(t *testing.T) {
 	}
 
 	alice.WaitUntilConsensus(t)
+}
+
+// func TestLedger_DownloadMissingTx(t *testing.T) {
+// 	testnet := NewTestNetwork(t)
+// 	defer testnet.Cleanup()
+//
+// 	nodes := 3
+// 	initialRounds := 70
+// 	// postLeaveRounds := 10
+//
+// 	for i := 0; i < nodes-1; i++ {
+// 		testnet.AddNode(t)
+// 	}
+//
+// 	alice := testnet.Faucet()
+// 	stop := make(chan struct{})
+// 	go func() {
+// 		for {
+// 			select {
+// 			case <-stop:
+// 				return
+//
+// 			default:
+// 				assert.NoError(t, txError(alice.Benchmark()))
+// 			}
+// 		}
+// 	}()
+//
+// 	var info *FinalizeRoundResult
+//
+// 	for {
+// 		alice.WaitUntilConsensus(t)
+//
+// 		waitFor(t, func() bool {
+// 			info = alice.ledger.FinalizeRoundInfo(alice.RoundIndex())
+// 			return info != nil
+// 		})
+//
+// 		fmt.Printf("consensus round, index=%d, applied=%d, ignored=%d, rejected=%d, missing=%d, incomplete=%d\n",
+// 			alice.RoundIndex(), info.AppliedTxCount, info.IgnoredTxCount, info.RejectedTxCount,
+// 			alice.ledger.Graph().MissingLen(), alice.ledger.Graph().IncompleteLen())
+//
+// 		if alice.RoundIndex() >= uint64(initialRounds) {
+// 			break
+// 		}
+// 	}
+//
+// 	time.Sleep(time.Second * 1)
+//
+// 	bob := testnet.Nodes()[nodes-1]
+// 	bobKey := bob.PrivateKey()
+//
+// 	fmt.Println("bob left")
+//
+// 	bob.Cleanup()
+// 	testnet.nodes = testnet.nodes[:nodes-1]
+//
+// 	time.Sleep(time.Second * 1)
+//
+// 	// for {
+// 	// 	alice.WaitUntilConsensus(t)
+//
+// 	// 	waitFor(t, func() bool {
+// 	// 		info = alice.ledger.FinalizeRoundInfo(alice.RoundIndex())
+// 	// 		return info != nil
+// 	// 	})
+//
+// 	// 	fmt.Printf("consensus round, index=%d, applied=%d, ignored=%d, rejected=%d, missing=%d, incomplete=%d\n",
+// 	// 		alice.RoundIndex(), info.AppliedTxCount, info.IgnoredTxCount, info.RejectedTxCount,
+// 	// 		alice.ledger.Graph().MissingLen(), alice.ledger.Graph().IncompleteLen())
+//
+// 	// 	if alice.RoundIndex() >= uint64(initialRounds+postLeaveRounds) {
+// 	// 		break
+// 	// 	}
+// 	// }
+//
+// 	time.Sleep(time.Second * 5)
+//
+// 	fmt.Println("benchmark stopped")
+// 	close(stop)
+//
+// 	bob = testnet.AddNode(t, TestWithWallet(hex.EncodeToString(bobKey[:])))
+//
+// 	fmt.Printf("bob rejoined, index=%d, missing=%d, incomplete=%d\n",
+// 		bob.RoundIndex(), bob.ledger.Graph().MissingLen(), bob.ledger.Graph().IncompleteLen())
+//
+// 	time.Sleep(time.Second * 10)
+//
+// 	// log.SetWriter(log.ModuleNode, os.Stdout)
+//
+// 	// Wait for no more missing txs
+// 	waitForDuration(t, func() bool {
+// 		fmt.Printf("bob status, index=%d, missing=%d, incomplete=%d\n",
+// 			bob.RoundIndex(), bob.ledger.Graph().MissingLen(), bob.ledger.Graph().IncompleteLen())
+// 		return bob.ledger.Graph().MissingLen() == 0
+// 	}, time.Minute*5)
+// }
+
+func TestLedger_DownloadMissingTx(t *testing.T) {
+	testnet := NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	// Start with 4 nodes
+	for i := 0; i < 3; i++ {
+		testnet.AddNode(t)
+	}
+
+	nodes := testnet.Nodes()
+	alice := nodes[0]
+	bob := nodes[1]
+
+	assert.NoError(t, txError(alice.Pay(bob, 100)))
+	bob.WaitUntilBalance(t, 100)
+	fmt.Println("alice round:", alice.RoundIndex())
+
+	// End of round 1
+
+	log.SetWriter(log.ModuleNode, os.Stdout)
+	charlie := testnet.AddNode(t)
+	<-charlie.WaitForSync()
+	fmt.Println(charlie.RoundIndex())
+	fmt.Println(charlie.ledger.SyncStatus())
+
+	assert.NoError(t, txError(alice.Pay(bob, 100)))
+
+	bob.WaitUntilBalance(t, 200)
+	fmt.Println("alice round:", alice.RoundIndex())
+
+	charlie.WaitUntilRound(t, 2)
+	fmt.Println("charlie round:", charlie.RoundIndex())
 }
 
 func txError(tx Transaction, err error) error {

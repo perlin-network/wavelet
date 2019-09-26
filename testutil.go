@@ -404,6 +404,23 @@ func (l *TestLedger) WaitForRound(index uint64) <-chan uint64 {
 	return ch
 }
 
+func (l *TestLedger) WaitUntilRound(t testing.TB, round uint64) {
+	t.Helper()
+
+	timeout := time.NewTimer(time.Second * 30)
+	for {
+		select {
+		case ri := <-l.WaitForRound(round):
+			if ri >= round {
+				return
+			}
+
+		case <-timeout.C:
+			t.Fatal("timed out waiting for round")
+		}
+	}
+}
+
 func (l *TestLedger) WaitForSync() <-chan bool {
 	ch := make(chan bool)
 	go func() {

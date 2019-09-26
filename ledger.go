@@ -25,12 +25,13 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/perlin-network/wavelet/conf"
-	"github.com/perlin-network/wavelet/lru"
 	"math/rand"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/perlin-network/wavelet/conf"
+	"github.com/perlin-network/wavelet/lru"
 
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
