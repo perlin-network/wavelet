@@ -30,13 +30,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/perlin-network/wavelet/conf"
-	"github.com/perlin-network/wavelet/lru"
-
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/lru"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -465,7 +464,7 @@ func (l *Ledger) SyncTransactions() {
 		conn := peers[0]
 		client := NewWaveletClient(conn)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
 		batch, err := client.DownloadTx(ctx, req)
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to download missing transactions")
@@ -577,7 +576,7 @@ func (l *Ledger) PullMissingTransactions() {
 
 		logger := log.Consensus("pull-missing-transactions")
 
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
 		batch, err := client.DownloadMissingTx(ctx, req)
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to download missing transactions")
@@ -985,7 +984,7 @@ func (l *Ledger) SyncToLatestRound() {
 				client := NewWaveletClient(conn)
 
 				go func() {
-					ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+					ctx, cancel := context.WithTimeout(context.Background(), conf.GetCheckOutOfSyncTimeout())
 
 					p := &peer.Peer{}
 
