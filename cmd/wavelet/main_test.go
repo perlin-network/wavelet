@@ -133,8 +133,7 @@ func TestMain_Pay(t *testing.T) {
 	assert.EqualValues(t, alice.PublicKey, tx.Sender)
 	assert.EqualValues(t, alice.PublicKey, tx.Creator)
 
-	<-bob.WaitForConsensus()
-	assert.EqualValues(t, 99999, bob.Balance())
+	bob.WaitUntilBalance(t, 99999)
 }
 
 func TestMain_Spawn(t *testing.T) {
@@ -594,10 +593,10 @@ type TestWavelet struct {
 }
 
 func (w *TestWavelet) Cleanup() {
+	w.Testnet.Cleanup()
+
 	close(w.Stdin)
 	w.StopWG.Wait()
-
-	w.Testnet.Cleanup()
 }
 
 type TestWaveletConfig struct {
@@ -723,7 +722,14 @@ func getTransaction(apiPort string, id string) (*TestTransaction, error) {
 
 	req = req.WithContext(ctx)
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{
+		Timeout: time.Second * 1,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
