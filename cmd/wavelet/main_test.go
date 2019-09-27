@@ -358,6 +358,43 @@ func TestMain_WithdrawReward(t *testing.T) {
 	// TODO: check if reward is actually withdrawn
 }
 
+func TestMain_UpdateParams(t *testing.T) {
+	w := NewTestWavelet(t, nil)
+	defer w.Cleanup()
+
+	w.Stdin <- "up"
+	w.Stdout.Search(t, "Current configuration values")
+
+	tests := []struct {
+		Config string
+		Type   string
+		Var    string
+		Value  string
+	}{
+		{"download.tx.timeout", "duration", "downloadTxTimeout", "3s"},
+		{"check.out.of.sync.timeout", "duration", "checkOutOfSyncTimeout", "7s"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.Config, func(t *testing.T) {
+			w.Stdin <- fmt.Sprintf("up --%s %s", tt.Config, tt.Value)
+
+			searchVal := tt.Value
+			switch tt.Type {
+			case "duration":
+				d, err := time.ParseDuration(tt.Value)
+				if err != nil {
+					t.Fatal(err)
+				}
+
+				searchVal = strconv.FormatUint(uint64(d), 10)
+			}
+
+			w.Stdout.Search(t, fmt.Sprintf("%s:%s", tt.Var, searchVal))
+		})
+	}
+}
+
 func nextPort(t *testing.T) string {
 	port, err := freeport.GetFreePort()
 	if err != nil {
