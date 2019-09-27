@@ -89,6 +89,8 @@ type Ledger struct {
 	sendQuota chan struct{}
 
 	stallDetector *StallDetector
+	stop          chan struct{}
+	cancelGC      context.CancelFunc
 }
 
 type config struct {
@@ -131,8 +133,12 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 	accounts := NewAccounts(kv)
 
+	var cancelGC context.CancelFunc
 	if !cfg.GCDisabled {
-		go accounts.GC(context.Background())
+		ctx, cancel := context.WithCancel(context.Background())
+		go accounts.GC(ctx)
+
+		cancelGC = cancel
 	}
 
 	rounds, err := NewRounds(kv, conf.GetPruningLimit())
@@ -187,6 +193,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		cacheChunks:   lru.NewLRU(2048), // In total, it will take up 1024 * 4MB.
 
 		sendQuota: make(chan struct{}, 2000),
+		cancelGC:  cancelGC,
 	}
 
 	stop := make(chan struct{}) // TODO: Real graceful stop.
@@ -202,6 +209,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	go stallDetector.Run()
 
 	ledger.stallDetector = stallDetector
+	ledger.stop = stop
 
 	ledger.PerformConsensus()
 
@@ -209,6 +217,15 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	go ledger.PushSendQuota()
 
 	return ledger
+}
+
+// Close stops all goroutines and waits for them to complete.
+func (l *Ledger) Close() {
+	close(l.sync)
+	l.consensus.Wait()
+
+	close(l.stop)
+	l.cancelGC()
 }
 
 // AddTransaction adds a transaction to the ledger. If the transaction has

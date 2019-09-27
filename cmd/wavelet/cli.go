@@ -369,6 +369,7 @@ ReadLoop:
 	}
 
 	_ = cli.rl.Close()
+	cli.ledger.Close()
 }
 
 func (cli *CLI) exit(ctx *cli.Context) {
