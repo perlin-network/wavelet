@@ -423,15 +423,16 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 		logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
 	}
 
+	gateway := api.New()
 	if cfg.APIHost != nil {
-		go api.New().StartHTTPS(int(cfg.APIPort), client, ledger, keys, kv, *cfg.APIHost, *cfg.APICertsCache)
+		go gateway.StartHTTPS(int(cfg.APIPort), client, ledger, keys, kv, *cfg.APIHost, *cfg.APICertsCache)
 	} else {
 		if cfg.APIPort > 0 {
-			go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys, kv)
+			go gateway.StartHTTP(int(cfg.APIPort), client, ledger, keys, kv)
 		}
 	}
 
-	shell, err := NewCLI(client, server, ledger, keys, stdin, stdout, kv)
+	shell, err := NewCLI(client, server, gateway, ledger, keys, stdin, stdout, kv)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to create CLI.")
 	}
