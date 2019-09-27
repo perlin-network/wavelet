@@ -397,10 +397,9 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	}
 
 	ledger := wavelet.NewLedger(kv, client, opts...)
+	server := client.Listen()
 
 	go func() {
-		server := client.Listen()
-
 		wavelet.RegisterWaveletServer(server, ledger.Protocol())
 
 		if err := server.Serve(listener); err != nil {
@@ -429,11 +428,10 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	} else {
 		if cfg.APIPort > 0 {
 			go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys, kv)
-
 		}
 	}
 
-	shell, err := NewCLI(client, ledger, keys, stdin, stdout, kv)
+	shell, err := NewCLI(client, server, ledger, keys, stdin, stdout, kv)
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Failed to create CLI.")
 	}

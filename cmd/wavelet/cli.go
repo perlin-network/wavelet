@@ -34,6 +34,7 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -46,6 +47,7 @@ type CLI struct {
 	app    *cli.App
 	rl     *readline.Instance
 	client *skademlia.Client
+	server *grpc.Server
 	ledger *wavelet.Ledger
 	logger zerolog.Logger
 	keys   *skademlia.Keypair
@@ -56,6 +58,7 @@ type CLI struct {
 
 func NewCLI(
 	client *skademlia.Client,
+	server *grpc.Server,
 	ledger *wavelet.Ledger,
 	keys *skademlia.Keypair,
 	stdin io.ReadCloser,
@@ -64,6 +67,7 @@ func NewCLI(
 ) (*CLI, error) {
 	c := &CLI{
 		client: client,
+		server: server,
 		ledger: ledger,
 		logger: log.Node(),
 		keys:   keys,
@@ -369,7 +373,10 @@ ReadLoop:
 	}
 
 	_ = cli.rl.Close()
+
+	cli.server.GracefulStop()
 	cli.ledger.Close()
+	cli.kv.Close()
 }
 
 func (cli *CLI) exit(ctx *cli.Context) {
