@@ -29,10 +29,8 @@ matrix:
       go:
         - "1.12.5"
       install: true
-      script: |
-          GO111MODULE=on go test -coverprofile=coverage.txt -covermode=atomic -bench -race ./...
-          # Remove generated code and test utilities from test coverage
-          cat coverage.txt | grep -v "rpc.pb.go" | grep -v "testutil.go" > coverage.txt
+      script:
+        - GO111MODULE=on go test -coverprofile=coverage.txt -covermode=atomic -bench -race ./...
       after_success:
         - bash <(curl -s https://codecov.io/bash)
 
