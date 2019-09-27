@@ -55,8 +55,6 @@ type CLI struct {
 
 	stdin  io.ReadCloser
 	stdout io.Writer
-
-	completion []string
 }
 
 func CLIWithStdin(stdin io.ReadCloser) func(cli *CLI) {

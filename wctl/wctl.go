@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/perlin-network/noise/edwards25519"
+	"github.com/perlin-network/wavelet/cmd/wavelet/server"
 	"github.com/valyala/fastjson"
 )
 
@@ -61,6 +62,9 @@ type Config struct {
 	PrivateKey edwards25519.PrivateKey
 	UseHTTPS   bool
 	Timeout    time.Duration
+
+	// Optional
+	Server *server.Wavelet
 }
 
 type Client struct {

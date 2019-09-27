@@ -29,19 +29,19 @@ import (
 )
 
 func (cli *CLI) getCompleter() *readline.PrefixCompleter {
-	return readline.PcItemDynamic(func(line string) []string {
+	if cli.Server == nil {
 		return nil
+	}
 
-		/*
-			f := strings.Split(line, " ")
-			if len(f) < 2 {
-				return nil
-			}
+	return readline.PcItemDynamic(func(line string) []string {
+		f := strings.Split(line, " ")
+		if len(f) < 2 {
+			return nil
+		}
 
-			text := f[len(f)-1]
+		text := f[len(f)-1]
 
-			return cli.ledger.Find(text, 10)
-		*/
+		return cli.Server.Ledger.Find(text, 10)
 	})
 }
 

@@ -279,6 +279,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 		// TODO: Add Close()
 		srv.Start()
 
+		wctlCfg.Server = srv
 		wctlCfg.APIPort = uint16(c.Uint("api.port"))
 		wctlCfg.PrivateKey = srv.Keypair.PrivateKey()
 
