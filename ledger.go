@@ -89,8 +89,10 @@ type Ledger struct {
 	sendQuota chan struct{}
 
 	stallDetector *StallDetector
-	stop          chan struct{}
-	cancelGC      context.CancelFunc
+
+	stop     chan struct{}
+	stopWG   sync.WaitGroup
+	cancelGC context.CancelFunc
 }
 
 type config struct {
@@ -132,15 +134,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	indexer := NewIndexer()
 
 	accounts := NewAccounts(kv)
-
-	var cancelGC context.CancelFunc
-	if !cfg.GCDisabled {
-		ctx, cancel := context.WithCancel(context.Background())
-		go accounts.GC(ctx)
-
-		cancelGC = cancel
-	}
-
 	rounds, err := NewRounds(kv, conf.GetPruningLimit())
 
 	var round *Round
@@ -193,7 +186,13 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		cacheChunks:   lru.NewLRU(2048), // In total, it will take up 1024 * 4MB.
 
 		sendQuota: make(chan struct{}, 2000),
-		cancelGC:  cancelGC,
+	}
+
+	if !cfg.GCDisabled {
+		ctx, cancel := context.WithCancel(context.Background())
+		go accounts.GC(ctx, &ledger.stopWG)
+
+		ledger.cancelGC = cancel
 	}
 
 	stop := make(chan struct{}) // TODO: Real graceful stop.
@@ -206,7 +205,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 			logger.Error().Err(err).Msg("Shutting down node...")
 		},
 	})
-	go stallDetector.Run()
+	go stallDetector.Run(&ledger.stopWG)
 
 	ledger.stallDetector = stallDetector
 	ledger.stop = stop
@@ -229,6 +228,8 @@ func (l *Ledger) Close() {
 	if l.cancelGC != nil {
 		l.cancelGC()
 	}
+
+	l.stopWG.Wait()
 }
 
 // AddTransaction adds a transaction to the ledger. If the transaction has

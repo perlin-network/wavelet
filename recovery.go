@@ -2,13 +2,14 @@ package wavelet
 
 import (
 	"fmt"
-	"github.com/perlin-network/wavelet/log"
-	"github.com/pkg/errors"
 	"os"
 	"runtime"
 	"runtime/pprof"
 	"sync"
 	"time"
+
+	"github.com/perlin-network/wavelet/log"
+	"github.com/pkg/errors"
 )
 
 type StallDetector struct {
@@ -41,7 +42,10 @@ func NewStallDetector(stop <-chan struct{}, config StallDetectorConfig, delegate
 	}
 }
 
-func (d *StallDetector) Run() {
+func (d *StallDetector) Run(wg *sync.WaitGroup) {
+	wg.Add(1)
+	defer wg.Done()
+
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
