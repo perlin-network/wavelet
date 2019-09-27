@@ -290,18 +290,6 @@ func (c Contract) Marshal() []byte {
 	return buf.Bytes()
 }
 
-// AddNop adds a Nop payload into a batch.
-func (b *Batch) AddNop() error {
-	if b.Size == 255 {
-		return fmt.Errorf("batch cannot have more than 255 transactions")
-	}
-
-	b.Size++
-	b.Tags = append(b.Tags, uint8(sys.TagNop))
-	b.Payloads = append(b.Payloads, []byte{})
-	return nil
-}
-
 // AddTransfer adds a Transfer payload into a batch.
 func (b *Batch) AddTransfer(t Transfer) error {
 	if b.Size == 255 {
