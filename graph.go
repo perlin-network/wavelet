@@ -22,12 +22,12 @@ package wavelet
 import (
 	"bytes"
 	"encoding/hex"
-	"github.com/perlin-network/wavelet/conf"
 	"sort"
 	"sync"
 
 	"github.com/google/btree"
 	"github.com/perlin-network/noise/edwards25519"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 )
@@ -134,7 +134,7 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 	}
 
 	if g.rootDepth > conf.GetMaxDepthDiff()+tx.Depth {
-		return errors.Errorf("transactions depth is too low compared to root: root depth is %d, but tx depth is %d", g.rootDepth, tx.Depth)
+		return ErrAlreadyExists
 	}
 
 	if err := g.validateTransaction(tx); err != nil {

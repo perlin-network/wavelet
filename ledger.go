@@ -30,13 +30,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/perlin-network/wavelet/conf"
-	"github.com/perlin-network/wavelet/lru"
-
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/lru"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
