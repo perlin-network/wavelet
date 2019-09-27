@@ -161,8 +161,8 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 		{
 			Name:        "restart",
 			Aliases:     []string{"r"},
-			Action:      a(c.disconnect),
-			Description: "disconnect a peer",
+			Action:      a(c.restart),
+			Description: "restart node",
 			Flags: []cli.Flag{
 				cli.BoolFlag{
 					Name:  "hard",
