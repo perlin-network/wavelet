@@ -13,8 +13,10 @@ type config struct {
 	snowballBeta  int
 
 	// Timeout for outgoing requests
-	queryTimeout  time.Duration
-	gossipTimeout time.Duration
+	queryTimeout          time.Duration
+	gossipTimeout         time.Duration
+	downloadTxTimeout     time.Duration
+	checkOutOfSyncTimeout time.Duration
 
 	// Size of individual chunks sent for a syncing peer.
 	syncChunkSize int
@@ -38,16 +40,18 @@ type config struct {
 
 var (
 	c = config{
-		snowballK:            2,
-		snowballAlpha:        0.8,
-		snowballBeta:         50,
-		queryTimeout:         500 * time.Millisecond,
-		gossipTimeout:        500 * time.Millisecond,
-		syncChunkSize:        16384,
-		syncIfRoundsDifferBy: 2,
-		maxDownloadDepthDiff: 1500,
-		maxDepthDiff:         10,
-		pruningLimit:         30,
+		snowballK:             2,
+		snowballAlpha:         0.8,
+		snowballBeta:          50,
+		queryTimeout:          500 * time.Millisecond,
+		gossipTimeout:         500 * time.Millisecond,
+		downloadTxTimeout:     1 * time.Second,
+		checkOutOfSyncTimeout: 500 * time.Millisecond,
+		syncChunkSize:         16384,
+		syncIfRoundsDifferBy:  2,
+		maxDownloadDepthDiff:  1500,
+		maxDepthDiff:          10,
+		pruningLimit:          30,
 	}
 
 	l = sync.RWMutex{}
@@ -82,6 +86,18 @@ func WithQueryTimeout(qt time.Duration) Option {
 func WithGossipTimeout(gt time.Duration) Option {
 	return func(c *config) {
 		c.gossipTimeout = gt
+	}
+}
+
+func WithDownloadTxTimeout(dt time.Duration) Option {
+	return func(c *config) {
+		c.downloadTxTimeout = dt
+	}
+}
+
+func WithCheckOutOfSyncTimeout(ct time.Duration) Option {
+	return func(c *config) {
+		c.checkOutOfSyncTimeout = ct
 	}
 }
 
@@ -156,6 +172,22 @@ func GetQueryTimeout() time.Duration {
 func GetGossipTimeout() time.Duration {
 	l.RLock()
 	t := c.gossipTimeout
+	l.RUnlock()
+
+	return t
+}
+
+func GetDownloadTxTimeout() time.Duration {
+	l.RLock()
+	t := c.downloadTxTimeout
+	l.RUnlock()
+
+	return t
+}
+
+func GetCheckOutOfSyncTimeout() time.Duration {
+	l.RLock()
+	t := c.checkOutOfSyncTimeout
 	l.RUnlock()
 
 	return t
