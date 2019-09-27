@@ -431,6 +431,7 @@ func TestLedger_DownloadMissingTx(t *testing.T) {
 
 	// Make bob leave and stop the benchmark on his node
 	close(stops[bob.PublicKey()])
+	delete(stops, bob.PublicKey())
 	bob.Leave()
 
 	time.Sleep(time.Second * 1)
