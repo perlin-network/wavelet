@@ -25,12 +25,13 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/perlin-network/wavelet/conf"
-	"github.com/perlin-network/wavelet/lru"
 	"math/rand"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/perlin-network/wavelet/conf"
+	"github.com/perlin-network/wavelet/lru"
 
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
@@ -402,6 +403,8 @@ func (l *Ledger) SyncTransactions() {
 	l.consensus.Add(1)
 	defer l.consensus.Done()
 
+	logger := log.Consensus("transaction-sync")
+
 	pullingPeriod := 1 * time.Second
 	t := time.NewTimer(pullingPeriod)
 
@@ -465,7 +468,7 @@ func (l *Ledger) SyncTransactions() {
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		batch, err := client.DownloadTx(ctx, req)
 		if err != nil {
-			fmt.Println("failed to download missing transactions:", err)
+			logger.Error().Err(err).Msg("failed to download missing transactions")
 			cancel()
 			continue
 		}
@@ -475,12 +478,18 @@ func (l *Ledger) SyncTransactions() {
 		for _, buf := range batch.Transactions {
 			tx, err := UnmarshalTransaction(bytes.NewReader(buf))
 			if err != nil {
-				fmt.Printf("error unmarshaling downloaded tx [%v]: %+v", err, tx)
+				logger.Error().
+					Err(err).
+					Hex("tx_id", tx.ID[:]).
+					Msg("failed to download missing transactions")
 				continue
 			}
 
 			if err := l.AddTransaction(tx); err != nil && errors.Cause(err) != ErrMissingParents {
-				fmt.Printf("error adding synced tx to graph [%v]: %+v\n", err, tx)
+				logger.Error().
+					Err(err).
+					Hex("tx_id", tx.ID[:]).
+					Msg("failed to download missing transactions")
 				continue
 			}
 
@@ -489,7 +498,6 @@ func (l *Ledger) SyncTransactions() {
 		}
 
 		if txCount > 0 {
-			logger := log.Consensus("transaction-sync")
 			logger.Debug().
 				Int("synced_tx", txCount).
 				Int("logical_tx", logicalCount).
@@ -567,10 +575,12 @@ func (l *Ledger) PullMissingTransactions() {
 		conn := peers[0]
 		client := NewWaveletClient(conn)
 
+		logger := log.Consensus("pull-missing-transactions")
+
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 		batch, err := client.DownloadMissingTx(ctx, req)
 		if err != nil {
-			fmt.Println("failed to download missing transactions:", err)
+			logger.Error().Err(err).Msg("failed to download missing transactions")
 			cancel()
 			continue
 		}
@@ -581,12 +591,18 @@ func (l *Ledger) PullMissingTransactions() {
 		for _, buf := range batch.Transactions {
 			tx, err := UnmarshalTransaction(bytes.NewReader(buf))
 			if err != nil {
-				fmt.Printf("error unmarshaling downloaded tx [%v]: %+v\n", err, tx)
+				logger.Error().
+					Err(err).
+					Hex("tx_id", tx.ID[:]).
+					Msg("error unmarshaling downloaded tx")
 				continue
 			}
 
 			if err := l.AddTransaction(tx); err != nil && errors.Cause(err) != ErrMissingParents {
-				fmt.Printf("error adding downloaded tx to graph [%v]: %+v\n", err, tx)
+				logger.Error().
+					Err(err).
+					Hex("tx_id", tx.ID[:]).
+					Msg("error adding downloaded tx to graph")
 				continue
 			}
 
@@ -658,7 +674,10 @@ FINALIZE_ROUNDS:
 
 			results, err := l.collapseTransactions(current.Index+1, current.End, *eligible, false)
 			if err != nil {
-				fmt.Println("error collapsing transactions during finalization", err)
+				logger := log.Node()
+				logger.Error().
+					Err(err).
+					Msg("error collapsing transactions during finalization")
 				continue
 			}
 
@@ -700,8 +719,12 @@ FINALIZE_ROUNDS:
 
 						res, err := client.Query(ctx, req, grpc.Peer(p))
 						if err != nil {
+							logger := log.Node()
+							logger.Error().
+								Err(err).
+								Msg("error while querying peer")
+
 							cancel()
-							fmt.Println("error while querying peer: ", err)
 							return
 						}
 
@@ -757,18 +780,34 @@ FINALIZE_ROUNDS:
 						results, err := l.collapseTransactions(round.Index, round.Start, round.End, false)
 						if err != nil {
 							if !strings.Contains(err.Error(), "missing ancestor") {
-								fmt.Println("error collapsing transactions:", err)
+								logger := log.Node()
+								logger.Error().
+									Err(err).
+									Msg("error collapsing transactions")
 							}
 							return
 						}
 
 						if uint32(results.appliedCount+results.rejectedCount) != round.Transactions {
-							fmt.Printf("applied %d but expected %d, rejected = %d, ignored = %d\n", results.appliedCount, round.Transactions, results.rejectedCount, results.ignoredCount)
+							logger := log.Node()
+							logger.Error().
+								Err(err).
+								Uint32("expected", round.Transactions).
+								Int("actual", results.appliedCount).
+								Int("rejected", results.rejectedCount).
+								Int("ignored", results.ignoredCount).
+								Msg("Number of applied transactions does not match")
 							return
 						}
 
 						if results.snapshot.Checksum() != round.Merkle {
-							fmt.Printf("got merkle %x but expected %x\n", results.snapshot.Checksum(), round.Merkle)
+							actualMerkle := results.snapshot.Checksum()
+							logger := log.Node()
+							logger.Error().
+								Err(err).
+								Hex("expected", round.Merkle[:]).
+								Hex("actual", actualMerkle[:]).
+								Msg("Unexpected round merkle root")
 							return
 						}
 
@@ -824,24 +863,41 @@ FINALIZE_ROUNDS:
 		results, err := l.collapseTransactions(preferred.Index, preferred.Start, preferred.End, true)
 		if err != nil {
 			if !strings.Contains(err.Error(), "missing ancestor") {
-				fmt.Println("error collapsing transactions during finalization:", err)
+				logger := log.Node()
+				logger.Error().
+					Err(err).
+					Msg("error collapsing transactions during finalization")
 			}
 			continue
 		}
 
 		if uint32(results.appliedCount+results.rejectedCount) != preferred.Transactions {
-			fmt.Printf("Expected to have applied %d transactions finalizing a round, but only applied %d transactions instead.\n", preferred.Transactions, results.appliedCount)
+			logger := log.Node()
+			logger.Error().
+				Err(err).
+				Uint32("expected", preferred.Transactions).
+				Int("actual", results.appliedCount).
+				Msg("Number of applied transactions does not match")
 			continue
 		}
 
 		if results.snapshot.Checksum() != preferred.Merkle {
-			fmt.Printf("Expected preferred round's merkle root to be %x, but got %x.\n", preferred.Merkle, results.snapshot.Checksum())
+			logger := log.Node()
+			actualMerkle := results.snapshot.Checksum()
+			logger.Error().
+				Err(err).
+				Hex("expected", preferred.Merkle[:]).
+				Hex("actual", actualMerkle[:]).
+				Msg("Unexpected round merkle root")
 			continue
 		}
 
 		pruned, err := l.rounds.Save(preferred)
 		if err != nil {
-			fmt.Printf("Failed to save preferred round to our database: %v\n", err)
+			logger := log.Node()
+			logger.Error().
+				Err(err).
+				Msg("Failed to save preferred round to our database")
 		}
 
 		if pruned != nil {
@@ -858,7 +914,10 @@ FINALIZE_ROUNDS:
 		l.graph.UpdateRootDepth(preferred.End.Depth)
 
 		if err = l.accounts.Commit(results.snapshot); err != nil {
-			fmt.Printf("Failed to commit collaped state to our database: %v\n", err)
+			logger := log.Node()
+			logger.Error().
+				Err(err).
+				Msg("Failed to commit collaped state to our database")
 		}
 
 		l.metrics.acceptedTX.Mark(int64(results.appliedCount))
@@ -901,6 +960,8 @@ func (l *Ledger) SyncToLatestRound() {
 	snowballK := conf.GetSnowballK()
 	syncVotes := make(chan vote, snowballK)
 
+	logger := log.Sync("sync")
+
 	go CollectVotes(l.accounts, l.syncer, syncVotes, voteWG, snowballK)
 
 	syncTimeoutMultiplier := 0
@@ -934,7 +995,10 @@ func (l *Ledger) SyncToLatestRound() {
 						grpc.Peer(p),
 					)
 					if err != nil {
-						fmt.Println("error while checking out of sync", err)
+						logger.Error().
+							Err(err).
+							Msg("error while checking out of sync")
+
 						cancel()
 						wg.Done()
 						return
@@ -1012,7 +1076,6 @@ func (l *Ledger) SyncToLatestRound() {
 
 		shutdown() // Shutdown all consensus-related workers.
 
-		logger := log.Sync("syncing")
 		logger.Info().
 			Uint64("current_round", current.Index).
 			Msg("Noticed that we are out of sync; downloading latest state Snapshot from our peer(s).")
@@ -1311,7 +1374,9 @@ func (l *Ledger) SyncToLatestRound() {
 
 		pruned, err := l.rounds.Save(latest)
 		if err != nil {
-			fmt.Printf("Failed to save finalized round to our database: %v\n", err)
+			logger.Error().
+				Err(err).
+				Msg("Failed to save finalized round to our database")
 			goto SYNC
 		}
 

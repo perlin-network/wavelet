@@ -23,7 +23,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/perlin-network/wavelet/conf"
 	"io"
 	"io/ioutil"
 	"net"
@@ -32,6 +31,8 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/perlin-network/wavelet/conf"
 
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher"
@@ -58,6 +59,7 @@ type Config struct {
 	Port          uint
 	Wallet        string
 	Genesis       *string
+	LogLevel      string
 	APIPort       uint
 	APIHost       *string
 	APICertsCache *string
@@ -84,8 +86,6 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			log.ModuleContract,
 		)),
 	)
-
-	logger := log.Node()
 
 	app := cli.NewApp()
 
@@ -149,6 +149,12 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Name:   "db",
 			Usage:  "Directory path to the database. If empty, a temporary in-memory database will be used instead.",
 			EnvVar: "WAVELET_DB_PATH",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "loglevel",
+			Value:  "debug",
+			Usage:  "Minimum log level to output. Possible values: debug, info, warn, error, fatal, panic.",
+			EnvVar: "WAVELET_LOGLEVEL",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "memory.max",
@@ -238,6 +244,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Database:    c.String("db"),
 			MaxMemoryMB: c.Uint64("memory.max"),
 			WithoutGC:   withoutGC,
+			LogLevel:    c.String("loglevel"),
 		}
 
 		if genesis := c.String("genesis"); len(genesis) > 0 {
@@ -278,12 +285,14 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	if err := app.Run(args); err != nil {
+		logger := log.Node()
 		logger.Fatal().Err(err).
 			Msg("Failed to parse configuration/command-line arguments.")
 	}
 }
 
 func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
+	log.SetLevel(cfg.LogLevel)
 	logger := log.Node()
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
@@ -365,7 +374,10 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 		logger.Fatal().Err(err).Msgf("Failed to create/open database located at %q.", cfg.Database)
 	}
 
-	opts := []wavelet.Option{wavelet.WithGenesis(cfg.Genesis)}
+	opts := []wavelet.Option{
+		wavelet.WithGenesis(cfg.Genesis),
+	}
+
 	if cfg.WithoutGC {
 		opts = append(opts, wavelet.WithoutGC())
 	}
