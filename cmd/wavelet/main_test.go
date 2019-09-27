@@ -367,32 +367,76 @@ func TestMain_UpdateParams(t *testing.T) {
 
 	tests := []struct {
 		Config string
-		Type   string
 		Var    string
-		Value  string
+		Value  interface{}
 	}{
-		{"download.tx.timeout", "duration", "downloadTxTimeout", "3s"},
-		{"check.out.of.sync.timeout", "duration", "checkOutOfSyncTimeout", "7s"},
+		{"snowball.k", "snowballK", int(123)},
+		{"snowball.alpha", "snowballAlpha", float64(456)},
+		{"snowball.beta", "snowballBeta", int(789)},
+		{"query.timeout", "queryTimeout", time.Second * 9},
+		{"gossip.timeout", "gossipTimeout", time.Second * 4},
+		{"download.tx.timeout", "downloadTxTimeout", time.Second * 3},
+		{"check.out.of.sync.timeout", "checkOutOfSyncTimeout", time.Second * 7},
+		{"sync.chunk.size", "syncChunkSize", int(1337)},
+		{"sync.if.rounds.differ.by", "syncIfRoundsDifferBy", uint64(42)},
+		{"max.download.depth.diff", "maxDownloadDepthDiff", uint64(69)},
+		{"max.depth.diff", "maxDepthDiff", uint64(9001)},
+		{"pruning.limit", "pruningLimit", uint64(255)},
+		{"api.secret", "secret", "shambles"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.Config, func(t *testing.T) {
-			w.Stdin <- fmt.Sprintf("up --%s %s", tt.Config, tt.Value)
+			var inputVal string
+			switch v := tt.Value.(type) {
+			case time.Duration:
+				inputVal = v.String()
+			case int:
+				inputVal = strconv.Itoa(v)
+			case uint64:
+				inputVal = strconv.FormatUint(v, 10)
+			case float64:
+				inputVal = strconv.FormatFloat(v, 'f', -1, 64)
+			case string:
+				inputVal = v
+			}
+
+			w.Stdin <- fmt.Sprintf("up --%s %s", tt.Config, inputVal)
 
 			searchVal := tt.Value
-			switch tt.Type {
-			case "duration":
-				d, err := time.ParseDuration(tt.Value)
-				if err != nil {
-					t.Fatal(err)
-				}
-
-				searchVal = strconv.FormatUint(uint64(d), 10)
+			switch v := tt.Value.(type) {
+			case time.Duration:
+				searchVal = strconv.FormatUint(uint64(v), 10)
+			case int:
+				searchVal = strconv.Itoa(v)
+			case uint64:
+				searchVal = strconv.FormatUint(v, 10)
+			case float64:
+				searchVal = strconv.FormatFloat(v, 'f', -1, 64)
+			case string:
+				searchVal = v
 			}
 
 			w.Stdout.Search(t, fmt.Sprintf("%s:%s", tt.Var, searchVal))
 		})
 	}
+}
+
+func TestMain_ConnectDisconnect(t *testing.T) {
+	w := NewTestWavelet(t, nil)
+	defer w.Cleanup()
+
+	testnet := wavelet.NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	peer := testnet.AddNode(t)
+	<-peer.WaitForSync()
+
+	w.Stdin <- fmt.Sprintf("connect %s", peer.Addr())
+	w.Stdout.Search(t, "Successfully connected to peer")
+
+	w.Stdin <- fmt.Sprintf("disconnect %s", peer.Addr())
+	w.Stdout.Search(t, "Successfully disconnected peer")
 }
 
 func nextPort(t *testing.T) string {
