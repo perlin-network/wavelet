@@ -28,7 +28,7 @@ var (
 
 type TestNetwork struct {
 	faucet *TestLedger
-	nodes  []*TestLedger
+	nodes  map[AccountID]*TestLedger
 }
 
 type TestNetworkConfig struct {
@@ -56,7 +56,7 @@ func NewTestNetwork(t testing.TB, opts ...TestNetworkOption) *TestNetwork {
 	}
 
 	n := &TestNetwork{
-		nodes: []*TestLedger{},
+		nodes: map[AccountID]*TestLedger{},
 	}
 
 	cfg := defaultTestNetworkConfig()
@@ -107,6 +107,12 @@ func WithPeers(peers ...string) TestLedgerOption {
 	}
 }
 
+func WithDBPath(path string) TestLedgerOption {
+	return func(cfg *TestLedgerConfig) {
+		cfg.DBPath = path
+	}
+}
+
 func (n *TestNetwork) AddNode(t testing.TB, opts ...TestLedgerOption) *TestLedger {
 	peers := []string{}
 	if n.faucet != nil {
@@ -123,13 +129,18 @@ func (n *TestNetwork) AddNode(t testing.TB, opts ...TestLedgerOption) *TestLedge
 	}
 
 	node := NewTestLedger(t, cfg)
-	n.nodes = append(n.nodes, node)
+	node.network = n
+	n.nodes[node.PublicKey()] = node
 
 	return node
 }
 
 func (n *TestNetwork) Nodes() []*TestLedger {
-	return n.nodes
+	nodes := []*TestLedger{}
+	for _, n := range n.nodes {
+		nodes = append(nodes, n)
+	}
+	return nodes
 }
 
 // WaitForRound waits for all the nodes in the network to
@@ -229,10 +240,12 @@ func (n *TestNetwork) WaitForSync(t testing.TB) {
 }
 
 type TestLedger struct {
+	network   *TestNetwork
 	ledger    *Ledger
 	client    *skademlia.Client
 	server    *grpc.Server
 	addr      string
+	dbPath    string
 	kv        store.KV
 	kvCleanup func()
 	finalized chan struct{}
@@ -244,6 +257,7 @@ type TestLedgerConfig struct {
 	Peers            []string
 	N                int
 	RemoveExistingDB bool
+	DBPath           string
 }
 
 func defaultConfig(t testing.TB) *TestLedgerConfig {
@@ -253,6 +267,8 @@ func defaultConfig(t testing.TB) *TestLedgerConfig {
 }
 
 func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
+	t.Helper()
+
 	keys := loadKeys(t, cfg.Wallet)
 
 	ln, err := net.Listen("tcp", ":0")
@@ -268,7 +284,12 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 		kvOpts = append(kvOpts, store.WithKeepExisting())
 	}
 
-	kv, cleanup := store.NewTestKV(t, "level", fmt.Sprintf("db_%d", cfg.N), kvOpts...)
+	path := fmt.Sprintf("db_%d", cfg.N)
+	if cfg.DBPath != "" {
+		path = cfg.DBPath
+	}
+
+	kv, cleanup := store.NewTestKV(t, "level", path, kvOpts...)
 	ledger := NewLedger(kv, client, WithoutGC())
 	server := client.Listen()
 	RegisterWaveletServer(server, ledger.Protocol())
@@ -294,10 +315,16 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 		client:    client,
 		server:    server,
 		addr:      addr,
+		dbPath:    path,
 		kv:        kv,
 		kvCleanup: cleanup,
 		stopped:   stopped,
 	}
+}
+
+func (l *TestLedger) Leave() {
+	l.Cleanup()
+	delete(l.network.nodes, l.PublicKey())
 }
 
 func (l *TestLedger) Cleanup() {
@@ -328,6 +355,10 @@ func (l *TestLedger) PrivateKey() edwards25519.PrivateKey {
 func (l *TestLedger) PublicKey() AccountID {
 	keys := l.ledger.client.Keys()
 	return keys.PublicKey()
+}
+
+func (l *TestLedger) DBPath() string {
+	return l.dbPath
 }
 
 func (l *TestLedger) Balance() uint64 {

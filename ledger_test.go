@@ -355,7 +355,7 @@ func TestLedger_SpamContracts(t *testing.T) {
 	alice.WaitUntilConsensus(t)
 }
 
-func TestLedger_DownloadMissingTx2(t *testing.T) {
+func TestLedger_DownloadMissingTx(t *testing.T) {
 	conf.Update(conf.WithSyncIfRoundsDifferBy(2))
 
 	testnet := NewTestNetwork(t, WithoutFaucet())
@@ -365,17 +365,27 @@ func TestLedger_DownloadMissingTx2(t *testing.T) {
 	initialRounds := 70
 	// postLeaveRounds := 10
 
-	var alice *TestLedger
+	var alice, bob *TestLedger
 	for i := 0; i < nodes; i++ {
 		switch i {
 		case 0:
 			alice = testnet.AddNode(t,
-				WithKeepExistingDB(),
 				WithWallet(FaucetWallet))
 			testnet.SetFaucet(alice)
 
+		case 1:
+			bob = testnet.AddNode(t, WithKeepExistingDB())
+
 		default:
 			testnet.AddNode(t)
+		}
+	}
+
+	// Give each node enough PERL to run benchmark
+	for _, node := range testnet.Nodes() {
+		if node.PublicKey() != alice.PublicKey() {
+			assert.NoError(t, txError(alice.Pay(node, 100000000)))
+			node.WaitUntilConsensus(t)
 		}
 	}
 
@@ -395,16 +405,10 @@ func TestLedger_DownloadMissingTx2(t *testing.T) {
 		return stop
 	}
 
-	stops := make([]chan struct{}, len(testnet.Nodes()))
-	for i, node := range testnet.Nodes() {
-		if i > 0 {
-			assert.NoError(t, txError(alice.Pay(node, 100000000)))
-			node.WaitUntilConsensus(t)
-		}
-	}
-
-	for i, node := range testnet.Nodes() {
-		stops[i] = startBenchmark(node)
+	// Run benchmark on all nodes
+	stops := map[AccountID]chan struct{}{}
+	for _, node := range testnet.Nodes() {
+		stops[node.PublicKey()] = startBenchmark(node)
 	}
 
 	for {
@@ -417,25 +421,22 @@ func TestLedger_DownloadMissingTx2(t *testing.T) {
 
 	time.Sleep(time.Second * 1)
 
-	bob := testnet.Nodes()[nodes-1]
+	fmt.Println("bob left:", bob.DBPath())
+
+	// Make bob leave and stop the benchmark on his node
+	close(stops[bob.PublicKey()])
+	bob.Leave()
+
+	time.Sleep(time.Second * 1)
+
 	bobKey := bob.PrivateKey()
-
-	fmt.Println("bob left")
-
-	close(stops[nodes-1])
-	bob.Cleanup()
-	testnet.nodes = testnet.nodes[:nodes-1]
-
-	time.Sleep(time.Second * 5)
-
 	bob = testnet.AddNode(t,
 		WithKeepExistingDB(),
+		WithDBPath(bob.DBPath()),
 		WithWallet(hex.EncodeToString(bobKey[:])))
 
-	fmt.Printf("bob rejoined, index=%d, missing=%d, incomplete=%d\n",
-		bob.RoundIndex(), bob.ledger.Graph().MissingLen(), bob.ledger.Graph().IncompleteLen())
-
-	time.Sleep(time.Second * 5)
+	fmt.Printf("bob rejoined, db=%s, index=%d, missing=%d, incomplete=%d\n",
+		bob.DBPath(), bob.RoundIndex(), bob.ledger.Graph().MissingLen(), bob.ledger.Graph().IncompleteLen())
 
 	// Wait for no more missing txs
 	waitForDuration(t, func() bool {
@@ -445,7 +446,7 @@ func TestLedger_DownloadMissingTx2(t *testing.T) {
 	}, time.Minute*5)
 }
 
-func TestLedger_DownloadMissingTx(t *testing.T) {
+func TestLedger_MinimalSync(t *testing.T) {
 	testnet := NewTestNetwork(t, WithoutFaucet())
 	defer testnet.Cleanup()
 
