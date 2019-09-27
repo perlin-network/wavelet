@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,18 +26,6 @@ import (
 var wallet1 = "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"
 var wallet2 = "85e7450f7cf0d9cd1d1d7bf4169c2f364eea4ba833a7280e0f931a1d92fd92c2696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a"
 
-func TestMain_WithInvalidLogLevel(t *testing.T) {
-	// Invalid loglevel will cause the ledger to use the default log level,
-	// which is debug
-	config := defaultConfig()
-	config.LogLevel = "foobar"
-	w := NewTestWavelet(t, config)
-	defer w.Cleanup()
-
-	w.Stdin <- "status"
-	w.Stdout.Search(t, "Here is the current status of your node")
-}
-
 func TestMain(t *testing.T) {
 	w := NewTestWavelet(t, nil)
 	defer w.Cleanup()
@@ -47,9 +36,7 @@ func TestMain(t *testing.T) {
 }
 
 func TestMain_WithLogLevel(t *testing.T) {
-	config := defaultConfig()
-	config.LogLevel = "warn"
-	w := NewTestWavelet(t, config)
+	w := NewTestWavelet(t, &TestWaveletConfig{LogLevel: "warn"})
 	defer w.Cleanup()
 
 	w.Stdin <- "status"
@@ -70,14 +57,23 @@ func TestMain_WithLogLevel(t *testing.T) {
 	}
 }
 
+func TestMain_WithInvalidLogLevel(t *testing.T) {
+	// Invalid loglevel will cause the ledger to use the default log level,
+	// which is debug
+	w := NewTestWavelet(t, &TestWaveletConfig{LogLevel: "foobar"})
+	defer w.Cleanup()
+
+	w.Stdin <- "status"
+	w.Stdout.Search(t, "Here is the current status of your node")
+}
+
 func TestMain_WithWalletString(t *testing.T) {
-	config := defaultConfig()
-	config.Wallet = "b27b880e6e44e3b127186a08bc5698316e8dd99157cec56211560b62141f0851c72096021609681eb8cab244752945b2008e1b51d8bc2208b2b562f35485d5cc"
-	w := NewTestWavelet(t, config)
+	wallet := "b27b880e6e44e3b127186a08bc5698316e8dd99157cec56211560b62141f0851c72096021609681eb8cab244752945b2008e1b51d8bc2208b2b562f35485d5cc"
+	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet})
 	defer w.Cleanup()
 
 	ledger := w.GetLedgerStatus(t)
-	assert.EqualValues(t, config.Wallet[64:], ledger.PublicKey)
+	assert.EqualValues(t, wallet[64:], ledger.PublicKey)
 }
 
 func TestMain_WithWalletFile(t *testing.T) {
@@ -95,9 +91,7 @@ func TestMain_WithWalletFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	config := defaultConfig()
-	config.Wallet = walletPath
-	w := NewTestWavelet(t, config)
+	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: walletPath})
 	defer w.Cleanup()
 
 	ledger := w.GetLedgerStatus(t)
@@ -105,9 +99,8 @@ func TestMain_WithWalletFile(t *testing.T) {
 }
 
 func TestMain_WithInvalidWallet(t *testing.T) {
-	config := defaultConfig()
-	config.Wallet = "foobar"
-	w := NewTestWavelet(t, config)
+	wallet := "foobar"
+	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet})
 	defer w.Cleanup()
 
 	ledger := w.GetLedgerStatus(t)
@@ -123,9 +116,7 @@ func TestMain_Status(t *testing.T) {
 }
 
 func TestMain_Pay(t *testing.T) {
-	config := defaultConfig()
-	config.Wallet = wallet2
-	alice := NewTestWavelet(t, config)
+	alice := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
 	defer alice.Cleanup()
 
 	bob := alice.Testnet.AddNode(t)
@@ -147,9 +138,7 @@ func TestMain_Pay(t *testing.T) {
 }
 
 func TestMain_Spawn(t *testing.T) {
-	config := defaultConfig()
-	config.Wallet = wallet2
-	w := NewTestWavelet(t, config)
+	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
 	defer w.Cleanup()
 
 	for i := 0; i < 3; i++ {
@@ -169,9 +158,7 @@ func TestMain_Spawn(t *testing.T) {
 }
 
 func TestMain_Call(t *testing.T) {
-	config := defaultConfig()
-	config.Wallet = wallet2
-	w := NewTestWavelet(t, config)
+	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
 	defer w.Cleanup()
 
 	for i := 0; i < 3; i++ {
@@ -192,9 +179,7 @@ func TestMain_Call(t *testing.T) {
 }
 
 func TestMain_CallWithParams(t *testing.T) {
-	config := defaultConfig()
-	config.Wallet = wallet2
-	w := NewTestWavelet(t, config)
+	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
 	defer w.Cleanup()
 
 	for i := 0; i < 3; i++ {
@@ -265,9 +250,7 @@ func TestMain_CallWithParams(t *testing.T) {
 }
 
 func TestMain_DepositGas(t *testing.T) {
-	config := defaultConfig()
-	config.Wallet = wallet2
-	w := NewTestWavelet(t, config)
+	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
 	defer w.Cleanup()
 
 	for i := 0; i < 3; i++ {
@@ -288,9 +271,7 @@ func TestMain_DepositGas(t *testing.T) {
 }
 
 func TestMain_Find(t *testing.T) {
-	config := defaultConfig()
-	config.Wallet = wallet2
-	alice := NewTestWavelet(t, config)
+	alice := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
 	defer alice.Cleanup()
 
 	bob := alice.Testnet.AddNode(t)
@@ -308,9 +289,7 @@ func TestMain_Find(t *testing.T) {
 }
 
 func TestMain_PlaceStake(t *testing.T) {
-	config := defaultConfig()
-	config.Wallet = wallet2
-	alice := NewTestWavelet(t, config)
+	alice := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
 	defer alice.Cleanup()
 
 	bob := alice.Testnet.AddNode(t)
@@ -331,9 +310,7 @@ func TestMain_PlaceStake(t *testing.T) {
 }
 
 func TestMain_WithdrawStake(t *testing.T) {
-	config := defaultConfig()
-	config.Wallet = wallet2
-	alice := NewTestWavelet(t, config)
+	alice := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
 	defer alice.Cleanup()
 
 	bob := alice.Testnet.AddNode(t)
@@ -361,9 +338,7 @@ func TestMain_WithdrawStake(t *testing.T) {
 }
 
 func TestMain_WithdrawReward(t *testing.T) {
-	config := defaultConfig()
-	config.Wallet = wallet2
-	w := NewTestWavelet(t, config)
+	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
 	defer w.Cleanup()
 
 	for i := 0; i < 3; i++ {
@@ -385,9 +360,7 @@ func TestMain_WithdrawReward(t *testing.T) {
 }
 
 func TestMain_UpdateParams(t *testing.T) {
-	config := defaultConfig()
-	config.Wallet = wallet2
-	w := NewTestWavelet(t, config)
+	w := NewTestWavelet(t, nil)
 	defer w.Cleanup()
 
 	w.Stdin <- "up"
@@ -399,6 +372,7 @@ func TestMain_UpdateParams(t *testing.T) {
 		Value  interface{}
 	}{
 		{"snowball.k", "snowballK", int(123)},
+		{"snowball.alpha", "snowballAlpha", float64(456)},
 		{"snowball.beta", "snowballBeta", int(789)},
 		{"query.timeout", "queryTimeout", time.Second * 9},
 		{"gossip.timeout", "gossipTimeout", time.Second * 4},
@@ -450,15 +424,10 @@ func TestMain_UpdateParams(t *testing.T) {
 }
 
 func TestMain_ConnectDisconnect(t *testing.T) {
-	config := defaultConfig()
-	config.Wallet = wallet2
-	w := NewTestWavelet(t, config)
+	w := NewTestWavelet(t, nil)
 	defer w.Cleanup()
 
-	testnet := wavelet.NewTestNetwork(t)
-	defer testnet.Cleanup()
-
-	peer := testnet.AddNode(t)
+	peer := w.Testnet.AddNode(t)
 	<-peer.WaitForSync()
 
 	w.Stdin <- fmt.Sprintf("connect %s", peer.Addr())
@@ -621,25 +590,19 @@ type TestWavelet struct {
 	PublicKey string
 	Stdin     mockStdin
 	Stdout    *mockStdout
+	StopWG    sync.WaitGroup
 }
 
 func (w *TestWavelet) Cleanup() {
 	close(w.Stdin)
-	w.Testnet.Cleanup()
+	w.StopWG.Wait()
 
-	// Since Ledger doesn't have a proper cleanup method yet, just sleep
-	time.Sleep(time.Millisecond * 500)
+	w.Testnet.Cleanup()
 }
 
 type TestWaveletConfig struct {
 	Wallet   string
 	LogLevel string
-}
-
-func defaultConfig() *TestWaveletConfig {
-	return &TestWaveletConfig{
-		LogLevel: "info",
-	}
 }
 
 func NewTestWavelet(t *testing.T, cfg *TestWaveletConfig) *TestWavelet {
@@ -664,9 +627,6 @@ func NewTestWavelet(t *testing.T, cfg *TestWaveletConfig) *TestWavelet {
 	stdin := mockStdin(make(chan string))
 	stdout := newMockStdout()
 
-	go Run(args, stdin, stdout, true)
-	waitForAPI(t, apiPort)
-
 	w := &TestWavelet{
 		Testnet: testnet,
 		Port:    port,
@@ -674,6 +634,14 @@ func NewTestWavelet(t *testing.T, cfg *TestWaveletConfig) *TestWavelet {
 		Stdin:   stdin,
 		Stdout:  stdout,
 	}
+
+	w.StopWG.Add(1)
+	go func() {
+		defer w.StopWG.Done()
+		Run(args, stdin, stdout, true)
+	}()
+	waitForAPI(t, apiPort)
+
 	w.PublicKey = w.GetLedgerStatus(t).PublicKey
 
 	return w
@@ -698,7 +666,14 @@ func getLedgerStatus(apiPort string) (*TestLedgerStatus, error) {
 
 	req = req.WithContext(ctx)
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{
+		Timeout: time.Second * 1,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
