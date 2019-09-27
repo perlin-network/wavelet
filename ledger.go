@@ -225,7 +225,10 @@ func (l *Ledger) Close() {
 	l.consensus.Wait()
 
 	close(l.stop)
-	l.cancelGC()
+
+	if l.cancelGC != nil {
+		l.cancelGC()
+	}
 }
 
 // AddTransaction adds a transaction to the ledger. If the transaction has
