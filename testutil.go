@@ -75,6 +75,11 @@ func (n *TestNetwork) Cleanup() {
 	for _, node := range n.nodes {
 		node.Cleanup()
 	}
+
+	// Remove db
+	for i := 0; i < 20; i++ {
+		_ = os.RemoveAll(fmt.Sprintf("db_%d", i))
+	}
 }
 
 func (n *TestNetwork) Faucet() *TestLedger {
