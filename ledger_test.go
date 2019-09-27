@@ -411,6 +411,12 @@ func TestLedger_DownloadMissingTx(t *testing.T) {
 		stops[node.PublicKey()] = startBenchmark(node)
 	}
 
+	defer func() {
+		for _, stop := range stops {
+			close(stop)
+		}
+	}()
+
 	for {
 		alice.WaitUntilConsensus(t)
 		fmt.Println("consensus round", alice.RoundIndex())
