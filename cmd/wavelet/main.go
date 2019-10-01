@@ -74,6 +74,9 @@ type Config struct {
 
 func main() {
 	switchToUpdatedVersion()
+
+	wavelet.SetGenesisByNetwork(sys.VersionMeta)
+
 	Run(os.Args, os.Stdin, os.Stdout, false)
 }
 
@@ -296,8 +299,6 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	log.SetLevel(cfg.LogLevel)
 	logger := log.Node()
-
-	wavelet.SetGenesisByNetwork(sys.VersionMeta)
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil {
