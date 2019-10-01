@@ -224,6 +224,10 @@ func checkForUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte,
 }
 
 func periodicUpdateRoutine(updateURL string) {
+	if updateURL == "" {
+		return
+	}
+
 	/*
 	 * Public key(s) which may sign updates;  For now this is
 	 * a single key.
