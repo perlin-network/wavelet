@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
-	"time"
 	"github.com/perlin-network/wavelet/sys"
+	"time"
 )
 
 import (
 	"crypto"
-	"crypto/sha256"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/pem"
@@ -17,13 +17,13 @@ import (
 )
 
 import (
-	"net/http"
-	"io/ioutil"
-	"strings"
-	"strconv"
-	"os"
 	"io"
+	"io/ioutil"
+	"net/http"
+	"os"
 	"path"
+	"strconv"
+	"strings"
 )
 
 var updateDirectory = func() string {
@@ -63,9 +63,9 @@ func validateSignature(publicKeyPEM []byte, signatureHex string, hash []byte) er
 	}
 
 	switch publicKey := publicKey.(type) {
-		case *rsa.PublicKey:
-			err = rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hash[:], signature)
-			return err
+	case *rsa.PublicKey:
+		err = rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hash[:], signature)
+		return err
 	}
 
 	return errors.New("Unable to validate signature")
@@ -131,7 +131,7 @@ func downloadUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte)
 	 */
 	binaryFileName := path.Join(updateDirectory, "wavelet")
 	binaryTempFileName := path.Join(updateDirectory, "wavelet.new")
-	binaryTempFile, err := os.OpenFile(binaryTempFileName, os.O_CREATE | os.O_TRUNC | os.O_RDWR, 0600)
+	binaryTempFile, err := os.OpenFile(binaryTempFileName, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0600)
 	if err != nil {
 		return fmt.Errorf("Unable to create temporary file: %+v", err)
 	}
@@ -218,7 +218,7 @@ func checkForUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte,
 	}
 
 	/* Use the new binary */
-	switchToUpdatedVersion();
+	switchToUpdatedVersion()
 
 	return
 }
