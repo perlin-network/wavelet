@@ -30,7 +30,7 @@ import (
 	"time"
 
 	"github.com/perlin-network/noise/edwards25519"
-	"github.com/perlin-network/wavelet/cmd/wavelet/server"
+	"github.com/perlin-network/wavelet/cmd/wavelet/node"
 	"github.com/valyala/fastjson"
 )
 
@@ -64,7 +64,7 @@ type Config struct {
 	Timeout    time.Duration
 
 	// Optional
-	Server *server.Wavelet
+	Server *node.Wavelet
 }
 
 type Client struct {

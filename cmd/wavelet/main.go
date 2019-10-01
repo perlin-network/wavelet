@@ -34,7 +34,7 @@ import (
 
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/wavelet/cmd/wavelet/server"
+	"github.com/perlin-network/wavelet/cmd/wavelet/node"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
@@ -102,7 +102,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "api.host",
-			Usage:  "Host for the API HTTPS server.",
+			Usage:  "Host for the API HTTPS node.",
 			EnvVar: "WAVELET_API_HOST",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
@@ -250,7 +250,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 	var wctlCfg wctl.Config
 
 	if config.ServerAddr == "" {
-		srvCfg := server.Config{
+		srvCfg := node.Config{
 			NAT:         c.Bool("nat"),
 			Host:        c.String("host"),
 			Port:        c.Uint("port"),
@@ -270,7 +270,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 			srvCfg.Genesis = &genesis
 		}
 
-		srv, err := server.New(&srvCfg)
+		srv, err := node.New(&srvCfg)
 		if err != nil {
 			return err
 		}
