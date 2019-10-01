@@ -20,8 +20,9 @@
 package log
 
 import (
-	"github.com/rs/zerolog"
 	"io"
+
+	"github.com/rs/zerolog"
 )
 
 var (
@@ -73,6 +74,20 @@ func setupChildLoggers() {
 	stake = logger.With().Str(KeyModule, ModuleStake).Logger()
 	tx = logger.With().Str(KeyModule, ModuleTX).Logger()
 	metrics = logger.With().Str(KeyModule, ModuleMetrics).Logger()
+}
+
+func SetLevel(level string) {
+	if l, err := zerolog.ParseLevel(level); err == nil {
+		node = node.Level(l)
+		network = network.Level(l)
+		accounts = accounts.Level(l)
+		consensus = consensus.Level(l)
+		contract = contract.Level(l)
+		syncer = syncer.Level(l)
+		stake = stake.Level(l)
+		tx = tx.Level(l)
+		metrics = metrics.Level(l)
+	}
 }
 
 func SetWriter(key string, writer io.Writer) {
