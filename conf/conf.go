@@ -19,8 +19,10 @@ type config struct {
 	roundDepthMajorityWeight      float64
 
 	// Timeout for outgoing requests
-	queryTimeout  time.Duration
-	gossipTimeout time.Duration
+	queryTimeout          time.Duration
+	gossipTimeout         time.Duration
+	downloadTxTimeout     time.Duration
+	checkOutOfSyncTimeout time.Duration
 
 	// Size of individual chunks sent for a syncing peer.
 	syncChunkSize int
@@ -53,8 +55,10 @@ var (
 		transactionsNumMajorityWeight: 0.3,
 		roundDepthMajorityWeight:      0.3,
 
-		queryTimeout:  500 * time.Millisecond,
-		gossipTimeout: 500 * time.Millisecond,
+		queryTimeout:          500 * time.Millisecond,
+		gossipTimeout:         500 * time.Millisecond,
+		downloadTxTimeout:     1 * time.Second,
+		checkOutOfSyncTimeout: 500 * time.Millisecond,
 
 		syncChunkSize:        16384,
 		syncIfRoundsDifferBy: 2,
@@ -128,6 +132,18 @@ func WithQueryTimeout(qt time.Duration) Option {
 func WithGossipTimeout(gt time.Duration) Option {
 	return func(c *config) {
 		c.gossipTimeout = gt
+	}
+}
+
+func WithDownloadTxTimeout(dt time.Duration) Option {
+	return func(c *config) {
+		c.downloadTxTimeout = dt
+	}
+}
+
+func WithCheckOutOfSyncTimeout(ct time.Duration) Option {
+	return func(c *config) {
+		c.checkOutOfSyncTimeout = ct
 	}
 }
 
@@ -234,6 +250,22 @@ func GetQueryTimeout() time.Duration {
 func GetGossipTimeout() time.Duration {
 	l.RLock()
 	t := c.gossipTimeout
+	l.RUnlock()
+
+	return t
+}
+
+func GetDownloadTxTimeout() time.Duration {
+	l.RLock()
+	t := c.downloadTxTimeout
+	l.RUnlock()
+
+	return t
+}
+
+func GetCheckOutOfSyncTimeout() time.Duration {
+	l.RLock()
+	t := c.checkOutOfSyncTimeout
 	l.RUnlock()
 
 	return t

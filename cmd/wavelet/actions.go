@@ -648,6 +648,8 @@ func (cli *CLI) updateParameters(ctx *cli.Context) {
 		conf.WithRoundDepthMajorityWeight(ctx.Float64("vote.finalization.depth.weight")),
 		conf.WithQueryTimeout(ctx.Duration("query.timeout")),
 		conf.WithGossipTimeout(ctx.Duration("gossip.timeout")),
+		conf.WithDownloadTxTimeout(ctx.Duration("download.tx.timeout")),
+		conf.WithCheckOutOfSyncTimeout(ctx.Duration("check.out.of.sync.timeout")),
 		conf.WithSyncChunkSize(ctx.Int("sync.chunk.size")),
 		conf.WithSyncIfRoundsDifferBy(ctx.Uint64("sync.if.rounds.differ.by")),
 		conf.WithMaxDownloadDepthDiff(ctx.Uint64("max.download.depth.diff")),

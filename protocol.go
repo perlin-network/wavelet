@@ -22,7 +22,7 @@ package wavelet
 import (
 	"bytes"
 	"context"
-	"fmt"
+
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
@@ -51,7 +51,11 @@ func (p *Protocol) Gossip(stream Wavelet_GossipServer) error {
 			}
 
 			if err := p.ledger.AddTransaction(tx); err != nil && errors.Cause(err) != ErrMissingParents {
-				fmt.Printf("error adding incoming tx to graph [%v]: %+v\n", err, tx)
+				logger := log.TX("gossip")
+				logger.Error().
+					Err(err).
+					Hex("tx_id", tx.ID[:]).
+					Msg("error adding incoming tx to graph")
 			}
 		}
 	}

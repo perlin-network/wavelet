@@ -22,8 +22,6 @@ package main
 import (
 	"encoding/csv"
 	"fmt"
-	"github.com/perlin-network/wavelet/conf"
-	"github.com/perlin-network/wavelet/store"
 	"io"
 	"strings"
 	"text/tabwriter"
@@ -31,7 +29,9 @@ import (
 	"github.com/benpye/readline"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli"
 )
@@ -213,6 +213,16 @@ func NewCLI(
 					Name:  "gossip.timeout",
 					Value: conf.GetGossipTimeout(),
 					Usage: "timeout for gossip request",
+				},
+				cli.DurationFlag{
+					Name:  "download.tx.timeout",
+					Value: conf.GetDownloadTxTimeout(),
+					Usage: "timeout for download tx request",
+				},
+				cli.DurationFlag{
+					Name:  "check.out.of.sync.timeout",
+					Value: conf.GetCheckOutOfSyncTimeout(),
+					Usage: "timeout for check out of sync request",
 				},
 				cli.IntFlag{
 					Name:  "sync.chunk.size",
