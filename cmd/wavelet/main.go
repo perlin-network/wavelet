@@ -343,7 +343,11 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 		addr, keys,
 		skademlia.WithC1(sys.SKademliaC1),
 		skademlia.WithC2(sys.SKademliaC2),
-		skademlia.WithDialOptions(grpc.WithDefaultCallOptions(grpc.UseCompressor(snappy.Name))),
+		skademlia.WithDialOptions(grpc.WithDefaultCallOptions(
+			grpc.UseCompressor(snappy.Name),
+			grpc.MaxCallRecvMsgSize(9 * 1024 * 1024),
+			grpc.MaxCallSendMsgSize(3 * 1024 * 1024),
+		)),
 	)
 
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
