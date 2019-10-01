@@ -55,10 +55,10 @@ var (
 		transactionsNumMajorityWeight: 0.3,
 		roundDepthMajorityWeight:      0.3,
 
-		queryTimeout:          500 * time.Millisecond,
-		gossipTimeout:         500 * time.Millisecond,
+		queryTimeout:          5000 * time.Millisecond,
+		gossipTimeout:         5000 * time.Millisecond,
 		downloadTxTimeout:     1 * time.Second,
-		checkOutOfSyncTimeout: 500 * time.Millisecond,
+		checkOutOfSyncTimeout: 5000 * time.Millisecond,
 
 		syncChunkSize:        16384,
 		syncIfRoundsDifferBy: 2,
