@@ -195,12 +195,6 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Usage:  "Snowball consensus protocol parameter k",
 			EnvVar: "WAVELET_SNOWBALL_K",
 		}),
-		altsrc.NewFloat64Flag(cli.Float64Flag{
-			Name:   "sys.snowball.alpha",
-			Value:  conf.GetSnowballAlpha(),
-			Usage:  "Snowball consensus protocol parameter alpha",
-			EnvVar: "WAVELET_SNOWBALL_ALPHA",
-		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "sys.snowball.beta",
 			Value:  conf.GetSnowballBeta(),
@@ -272,7 +266,6 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 
 		conf.Update(
 			conf.WithSnowballK(c.Int("sys.snowball.k")),
-			conf.WithSnowballAlpha(c.Float64("sys.snowball.alpha")),
 			conf.WithSnowballBeta(c.Int("sys.snowball.beta")),
 			conf.WithQueryTimeout(c.Duration("sys.query_timeout")),
 			conf.WithMaxDepthDiff(c.Uint64("sys.max_depth_diff")),
@@ -303,6 +296,8 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	log.SetLevel(cfg.LogLevel)
 	logger := log.Node()
+
+	wavelet.SetGenesisByNetwork(sys.VersionMeta)
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil {

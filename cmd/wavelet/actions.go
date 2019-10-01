@@ -640,8 +640,12 @@ func (cli *CLI) restart(ctx *cli.Context) {
 func (cli *CLI) updateParameters(ctx *cli.Context) {
 	conf.Update(
 		conf.WithSnowballK(ctx.Int("snowball.k")),
-		conf.WithSnowballAlpha(ctx.Float64("snowball.alpha")),
 		conf.WithSnowballBeta(ctx.Int("snowball.beta")),
+		conf.WithSyncVoteThreshold(ctx.Float64("vote.sync.threshold")),
+		conf.WithFinalizationVoteThreshold(ctx.Float64("vote.finalization.threshold")),
+		conf.WithStakeMajorityWeight(ctx.Float64("vote.finalization.stake.weight")),
+		conf.WithTransactionsNumMajorityWeight(ctx.Float64("vote.finalization.transactions.weight")),
+		conf.WithRoundDepthMajorityWeight(ctx.Float64("vote.finalization.depth.weight")),
 		conf.WithQueryTimeout(ctx.Duration("query.timeout")),
 		conf.WithGossipTimeout(ctx.Duration("gossip.timeout")),
 		conf.WithDownloadTxTimeout(ctx.Duration("download.tx.timeout")),

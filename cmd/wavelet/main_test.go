@@ -371,7 +371,6 @@ func TestMain_UpdateParams(t *testing.T) {
 		Value  interface{}
 	}{
 		{"snowball.k", "snowballK", int(123)},
-		{"snowball.alpha", "snowballAlpha", float64(456)},
 		{"snowball.beta", "snowballBeta", int(789)},
 		{"query.timeout", "queryTimeout", time.Second * 9},
 		{"gossip.timeout", "gossipTimeout", time.Second * 4},

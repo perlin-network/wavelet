@@ -174,15 +174,35 @@ func NewCLI(
 					Value: conf.GetSnowballK(),
 					Usage: "snowball K consensus parameter",
 				},
-				cli.Float64Flag{
-					Name:  "snowball.alpha",
-					Value: conf.GetSnowballAlpha(),
-					Usage: "snowball Alpha consensus parameter",
-				},
 				cli.IntFlag{
 					Name:  "snowball.beta",
 					Value: conf.GetSnowballBeta(),
 					Usage: "snowball Beta consensus parameter",
+				},
+				cli.Float64Flag{
+					Name:  "vote.sync.threshold",
+					Value: conf.GetSyncVoteThreshold(),
+					Usage: "threshold used to determine majority for sync vote counting",
+				},
+				cli.Float64Flag{
+					Name:  "vote.finalization.threshold",
+					Value: conf.GetFinalizationVoteThreshold(),
+					Usage: "threshold used to determine majority for finalization vote counting",
+				},
+				cli.Float64Flag{
+					Name:  "vote.finalization.stake.weight",
+					Value: conf.GetStakeMajorityWeight(),
+					Usage: "weight for stake percentage used in finalization majority calculation ",
+				},
+				cli.Float64Flag{
+					Name:  "vote.finalization.transactions.weight",
+					Value: conf.GetTransactionsNumMajorityWeight(),
+					Usage: "weight for percentage of max transactions number used in finalization majority calculation",
+				},
+				cli.Float64Flag{
+					Name:  "vote.finalization.depth.weight",
+					Value: conf.GetRoundDepthMajorityWeight(),
+					Usage: "weight for percentage of min depth number used in finalization majority calculation",
 				},
 				cli.DurationFlag{
 					Name:  "query.timeout",
