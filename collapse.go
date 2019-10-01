@@ -127,10 +127,12 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 
 			if _, ok := stakes[popped.Sender]; !ok {
 				stakes[popped.Sender] = stake
-				totalStake += stake
+			} else {
+				stakes[popped.Sender] += stake
 			}
 
 			totalFee += fee
+			totalStake += stake
 		}
 
 		if err := ApplyTransaction(current, res.snapshot, popped, ctx); err != nil {
