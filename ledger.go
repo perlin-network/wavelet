@@ -220,7 +220,12 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 func (l *Ledger) AddTransaction(tx Transaction) error {
 	err := l.graph.AddTransaction(tx)
 
-	if err != nil && errors.Cause(err) != ErrAlreadyExists {
+	// Ignore error if transaction already exists,
+	// or transaction's depth is too low due to pruning
+	if err != nil &&
+		errors.Cause(err) != ErrAlreadyExists &&
+		errors.Cause(err) != ErrDepthTooLow {
+
 		return err
 	}
 
@@ -413,6 +418,7 @@ func (l *Ledger) SyncTransactions() {
 		select {
 		case <-l.sync:
 			return
+
 		case <-t.C:
 		}
 
@@ -520,6 +526,7 @@ func (l *Ledger) PullMissingTransactions() {
 		select {
 		case <-l.sync:
 			return
+
 		default:
 		}
 
@@ -628,6 +635,7 @@ FINALIZE_ROUNDS:
 		select {
 		case <-l.sync:
 			return
+
 		default:
 		}
 
@@ -1080,7 +1088,6 @@ func (l *Ledger) SyncToLatestRound() {
 			Msg("Noticed that we are out of sync; downloading latest state Snapshot from our peer(s).")
 
 	SYNC:
-
 		conns, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
 		if err != nil {
 			logger.Warn().Msg("It looks like there are no peers for us to sync with. Retrying...")
