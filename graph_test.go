@@ -22,12 +22,12 @@ package wavelet
 import (
 	"bytes"
 	"fmt"
-	"github.com/perlin-network/wavelet/conf"
 	"math/rand"
 	"testing"
 
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
@@ -60,6 +60,27 @@ func TestNewGraph(t *testing.T) {
 	assert.NotEqual(t, tx, *eligible[0])
 
 	assert.Equal(t, graph.Height(), uint64(2))
+}
+
+func TestGraphAddTransaction(t *testing.T) {
+	t.Parallel()
+
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	root := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	graph := NewGraph(WithRoot(root))
+
+	txs := []Transaction{root}
+	for i := uint64(0); i < conf.GetMaxDepthDiff()+1; i++ {
+		eligible := graph.FindEligibleParents()
+		tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), eligible...)
+		assert.NoError(t, graph.AddTransaction(tx))
+		txs = append(txs, tx)
+	}
+
+	graph2 := NewGraph(WithRoot(txs[len(txs)-1]))
+	assert.EqualError(t, graph2.AddTransaction(txs[0]), ErrDepthTooLow.Error())
 }
 
 func TestGraphValidateTransaction(t *testing.T) {
@@ -466,10 +487,10 @@ func TestGraphValidateTransactionParents(t *testing.T) {
 	tx.ParentSeeds[0] = parentSeed
 
 	tx.Depth += conf.GetMaxDepthDiff()
-	assert.True(t, errors.Cause(graph.validateTransactionParents(&tx)) == ErrDepthLimitExceeded)
+	assert.True(t, errors.Cause(graph.validateTransactionParents(&tx)) == ErrParentDepthLimitExceeded)
 
 	tx.Depth--
-	assert.True(t, errors.Cause(graph.validateTransactionParents(&tx)) != ErrDepthLimitExceeded)
+	assert.True(t, errors.Cause(graph.validateTransactionParents(&tx)) != ErrParentDepthLimitExceeded)
 }
 
 func TestGraphFindEligibleCritical(t *testing.T) {

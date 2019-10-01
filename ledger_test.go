@@ -105,7 +105,8 @@ func TestLedger_AddTransaction(t *testing.T) {
 	assert.True(t, <-alice.WaitForSync())
 
 	// Add just 1 transaction
-	assert.NoError(t, txError(testnet.Faucet().PlaceStake(100)))
+	tx, err := testnet.Faucet().PlaceStake(100)
+	assert.NoError(t, err)
 
 	// Try to wait for 2 rounds of consensus.
 	// The second call should result in timeout, because
@@ -115,6 +116,20 @@ func TestLedger_AddTransaction(t *testing.T) {
 
 	current := alice.ledger.Rounds().Latest().Index
 	assert.Equal(t, current-start, uint64(1), "expected only 1 round to be finalized")
+
+	// Adding existing transaction returns no error as the error is ignored
+	assert.NoError(t, alice.ledger.AddTransaction(tx))
+
+	for i := uint64(0); i < conf.GetMaxDepthDiff()+1; i++ {
+		assert.NoError(t, txError(testnet.Faucet().PlaceStake(1)))
+		alice.WaitUntilConsensus(t)
+	}
+
+	// Force ledger to prune graph
+	alice.ledger.Graph().PruneBelowDepth(alice.ledger.Graph().RootDepth())
+
+	// Adding a tx with depth that is too low returns no error as the error is ignored
+	assert.NoError(t, alice.ledger.AddTransaction(tx))
 }
 
 func TestLedger_Pay(t *testing.T) {

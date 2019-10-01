@@ -230,7 +230,12 @@ func (l *Ledger) Close() {
 func (l *Ledger) AddTransaction(tx Transaction) error {
 	err := l.graph.AddTransaction(tx)
 
-	if err != nil && errors.Cause(err) != ErrAlreadyExists {
+	// Ignore error if transaction already exists,
+	// or transaction's depth is too low due to pruning
+	if err != nil &&
+		errors.Cause(err) != ErrAlreadyExists &&
+		errors.Cause(err) != ErrDepthTooLow {
+
 		return err
 	}
 
