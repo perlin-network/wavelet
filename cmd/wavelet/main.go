@@ -21,8 +21,8 @@ package main
 
 import (
 	"encoding/hex"
-	"errors"
 	"fmt"
+	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
 	"net"
@@ -442,16 +442,16 @@ func keys(wallet string) (*skademlia.Keypair, error) {
 
 		n, err := hex.Decode(privateKey[:], privateKeyBuf)
 		if err != nil {
-			return nil, fmt.Errorf("failed to decode your private key from %q", wallet)
+			return nil, errors.Wrapf(err, "failed to decode your private key from %q", wallet)
 		}
 
 		if n != edwards25519.SizePrivateKey {
-			return nil, fmt.Errorf("private key located in %q is not of the right length", wallet)
+			return nil, errors.Errorf("private key located in %q is not of the right length", wallet)
 		}
 
 		keys, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
 		if err != nil {
-			return nil, fmt.Errorf("the private key specified in %q is invalid", wallet)
+			return nil, errors.Wrapf(err, "the private key specified in %q is invalid", wallet)
 		}
 
 		publicKey := keys.PublicKey()
@@ -471,16 +471,16 @@ func keys(wallet string) (*skademlia.Keypair, error) {
 
 			n, err := hex.Decode(privateKey[:], []byte(wallet))
 			if err != nil {
-				return nil, fmt.Errorf("failed to decode the private key specified: %s", wallet)
+				return nil, errors.Wrapf(err, "failed to decode the private key specified: %s", wallet)
 			}
 
 			if n != edwards25519.SizePrivateKey {
-				return nil, fmt.Errorf("private key %s is not of the right length", wallet)
+				return nil, errors.Errorf("private key %s is not of the right length", wallet)
 			}
 
 			keys, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
 			if err != nil {
-				return nil, fmt.Errorf("the private key specified is invalid: %s", wallet)
+				return nil, errors.Wrapf(err, "the private key specified is invalid: %s", wallet)
 			}
 
 			publicKey := keys.PublicKey()
@@ -495,7 +495,7 @@ func keys(wallet string) (*skademlia.Keypair, error) {
 
 		keys, err = skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
 		if err != nil {
-			return nil, errors.New("failed to generate a new wallet")
+			return nil, errors.Wrapf(err, "failed to generate a new wallet")
 		}
 
 		privateKey := keys.PrivateKey()
