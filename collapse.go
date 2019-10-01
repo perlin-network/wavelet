@@ -126,16 +126,14 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 				stake = s
 			}
 
-			if stake < sys.MinimumStake {
-				continue
+			if stake >= sys.MinimumStake {
+				if _, ok := stakes[popped.Sender]; !ok {
+					stakes[popped.Sender] = stake
+				} else {
+					stakes[popped.Sender] += stake
+				}
+				totalStake += stake
 			}
-
-			if _, ok := stakes[popped.Sender]; !ok {
-				stakes[popped.Sender] = stake
-			} else {
-				stakes[popped.Sender] += stake
-			}
-			totalStake += stake
 		}
 
 		if err := ApplyTransaction(current, res.snapshot, popped, ctx); err != nil {
