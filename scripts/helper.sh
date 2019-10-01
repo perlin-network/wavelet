@@ -32,6 +32,7 @@ GIT_COMMIT=$(git rev-parse --short HEAD)
 GO_VERSION=$(go version | awk '{print $3}')
 
 # loop through each architecture and build to an output
+set -e
 for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
     OS=$(echo "${os_arch}" | cut -d- -f1)
     ARCH=$(echo "${os_arch}" | cut -d- -f2)
@@ -52,31 +53,40 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
         BINARY_POSTFIX=".exe"
     fi
 
-    CGO_ENABLED=0 go build \
-        -a \
-        -o ${BUILD_BIN}/${OS}-${ARCH}/wavelet${BINARY_POSTFIX} \
-        -ldflags "-s -w \
-            -X ${PROJ_DIR}/sys.GitCommit=${GIT_COMMIT} \
-            -X ${PROJ_DIR}/sys.GoVersion=${GO_VERSION} \
-            -X ${PROJ_DIR}/sys.OSArch=${os_arch}" \
-        cmd/wavelet/*.go
+    (
+        cd cmd/wavelet || exit 1
+        CGO_ENABLED=0 go build \
+            -a \
+            -o ${BUILD_BIN}/${OS}-${ARCH}/wavelet${BINARY_POSTFIX} \
+            -ldflags "\
+                -X ${PROJ_DIR}/sys.GitCommit=${GIT_COMMIT} \
+                -X ${PROJ_DIR}/sys.GoVersion=${GO_VERSION} \
+                -X ${PROJ_DIR}/sys.OSArch=${os_arch}" \
+            .
+    )
 
-    CGO_ENABLED=0 go build \
-        -a \
-        -o ${BUILD_BIN}/${OS}-${ARCH}/wctl${BINARY_POSTFIX} \
-        -ldflags "-s -w \
-            -X ${PROJ_DIR}/sys.GitCommit=${GIT_COMMIT} \
-            -X ${PROJ_DIR}/sys.GoVersion=${GO_VERSION} \
-            -X ${PROJ_DIR}/sys.OSArch=${os_arch}" \
-        cmd/wctl/main.go
+    (
+        cd cmd/wctl || exit 1
+        CGO_ENABLED=0 go build \
+            -a \
+            -o ${BUILD_BIN}/${OS}-${ARCH}/wctl${BINARY_POSTFIX} \
+            -ldflags " \
+                -X ${PROJ_DIR}/sys.GitCommit=${GIT_COMMIT} \
+                -X ${PROJ_DIR}/sys.GoVersion=${GO_VERSION} \
+                -X ${PROJ_DIR}/sys.OSArch=${os_arch}" \
+            .
+    )
 
-    CGO_ENABLED=0 go build \
-        -a \
-        -o ${BUILD_BIN}/${OS}-${ARCH}/benchmark${BINARY_POSTFIX} \
-        -ldflags "-s -w \
-            -X ${PROJ_DIR}/sys.GitCommit=${GIT_COMMIT} \
-            -X ${PROJ_DIR}/sys.GoVersion=${GO_VERSION} \
-            -X ${PROJ_DIR}/sys.OSArch=${os_arch}" \
-        cmd/benchmark/*.go
+    (
+        cd cmd/benchmark || exit 1
+        CGO_ENABLED=0 go build \
+            -a \
+            -o ${BUILD_BIN}/${OS}-${ARCH}/benchmark${BINARY_POSTFIX} \
+            -ldflags "\
+                -X ${PROJ_DIR}/sys.GitCommit=${GIT_COMMIT} \
+                -X ${PROJ_DIR}/sys.GoVersion=${GO_VERSION} \
+                -X ${PROJ_DIR}/sys.OSArch=${os_arch}" \
+            .
+    )
 
 done
