@@ -22,12 +22,12 @@ package wavelet
 import (
 	"bytes"
 	"encoding/hex"
-	"github.com/perlin-network/wavelet/conf"
 	"sort"
 	"sync"
 
 	"github.com/google/btree"
 	"github.com/perlin-network/noise/edwards25519"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 )
@@ -75,9 +75,10 @@ func (a *sortBySeedTX) Less(b btree.Item) bool {
 }
 
 var (
-	ErrMissingParents     = errors.New("parents for transaction are not in graph")
-	ErrAlreadyExists      = errors.New("transaction already exists in the graph")
-	ErrDepthLimitExceeded = errors.New("transactions parents exceed depth limit")
+	ErrMissingParents           = errors.New("parents for transaction are not in graph")
+	ErrAlreadyExists            = errors.New("transaction already exists in the graph")
+	ErrDepthTooLow              = errors.New("transaction depth is too low")
+	ErrParentDepthLimitExceeded = errors.New("transactions parents exceed depth limit")
 )
 
 type Graph struct {
@@ -134,7 +135,7 @@ func (g *Graph) AddTransaction(tx Transaction) error {
 	}
 
 	if g.rootDepth > conf.GetMaxDepthDiff()+tx.Depth {
-		return errors.Errorf("transactions depth is too low compared to root: root depth is %d, but tx depth is %d", g.rootDepth, tx.Depth)
+		return ErrDepthTooLow
 	}
 
 	if err := g.validateTransaction(tx); err != nil {
@@ -748,7 +749,7 @@ func (g *Graph) validateTransactionParents(tx *Transaction) error {
 		}
 
 		if tx.Depth > conf.GetMaxDepthDiff()+parent.Depth { // Check if the depth of each parents is acceptable.
-			return errors.Wrapf(ErrDepthLimitExceeded, "tx parent has ineligible depth: parents depth is %d, but tx depth is %d", parent.Depth, tx.Depth)
+			return errors.Wrapf(ErrParentDepthLimitExceeded, "tx parent has ineligible depth: parents depth is %d, but tx depth is %d", parent.Depth, tx.Depth)
 		}
 
 		if maxDepth < parent.Depth { // Update max depth witnessed from parents.

@@ -23,7 +23,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/perlin-network/wavelet/conf"
 	"io"
 	"io/ioutil"
 	"net"
@@ -32,6 +31,8 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/perlin-network/wavelet/conf"
 
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher"
@@ -55,9 +56,11 @@ import (
 type Config struct {
 	NAT           bool
 	Host          string
+	UpdateURL     string
 	Port          uint
 	Wallet        string
 	Genesis       *string
+	LogLevel      string
 	APIPort       uint
 	APIHost       *string
 	APICertsCache *string
@@ -70,6 +73,7 @@ type Config struct {
 }
 
 func main() {
+	switchToUpdatedVersion()
 	Run(os.Args, os.Stdin, os.Stdout, false)
 }
 
@@ -85,8 +89,6 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 		)),
 	)
 
-	logger := log.Node()
-
 	app := cli.NewApp()
 
 	app.Name = "wavelet"
@@ -100,6 +102,12 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Name:   "nat",
 			Usage:  "Enable port forwarding: only required for personal PCs.",
 			EnvVar: "WAVELET_NAT",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "update-url",
+			Value:  "https://updates.perlin.net/wavelet",
+			Usage:  "URL for updating Wavelet node.",
+			EnvVar: "WAVELET_UPDATE_URL",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "host",
@@ -149,6 +157,12 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Name:   "db",
 			Usage:  "Directory path to the database. If empty, a temporary in-memory database will be used instead.",
 			EnvVar: "WAVELET_DB_PATH",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "loglevel",
+			Value:  "debug",
+			Usage:  "Minimum log level to output. Possible values: debug, info, warn, error, fatal, panic.",
+			EnvVar: "WAVELET_LOGLEVEL",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "memory.max",
@@ -231,6 +245,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 	app.Action = func(c *cli.Context) error {
 		config := &Config{
 			Host:        c.String("host"),
+			UpdateURL:   c.String("update-url"),
 			Port:        c.Uint("port"),
 			Wallet:      c.String("wallet"),
 			APIPort:     c.Uint("api.port"),
@@ -238,6 +253,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Database:    c.String("db"),
 			MaxMemoryMB: c.Uint64("memory.max"),
 			WithoutGC:   withoutGC,
+			LogLevel:    c.String("loglevel"),
 		}
 
 		if genesis := c.String("genesis"); len(genesis) > 0 {
@@ -278,18 +294,22 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	if err := app.Run(args); err != nil {
+		logger := log.Node()
 		logger.Fatal().Err(err).
 			Msg("Failed to parse configuration/command-line arguments.")
 	}
 }
 
 func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
+	log.SetLevel(cfg.LogLevel)
 	logger := log.Node()
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil {
 		panic(err)
 	}
+
+	go periodicUpdateRoutine(cfg.UpdateURL)
 
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
 
@@ -334,7 +354,11 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 		addr, keys,
 		skademlia.WithC1(sys.SKademliaC1),
 		skademlia.WithC2(sys.SKademliaC2),
-		skademlia.WithDialOptions(grpc.WithDefaultCallOptions(grpc.UseCompressor(snappy.Name))),
+		skademlia.WithDialOptions(grpc.WithDefaultCallOptions(
+			grpc.UseCompressor(snappy.Name),
+			grpc.MaxCallRecvMsgSize(9 * 1024 * 1024),
+			grpc.MaxCallSendMsgSize(3 * 1024 * 1024),
+		)),
 	)
 
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
@@ -365,7 +389,10 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 		logger.Fatal().Err(err).Msgf("Failed to create/open database located at %q.", cfg.Database)
 	}
 
-	opts := []wavelet.Option{wavelet.WithGenesis(cfg.Genesis)}
+	opts := []wavelet.Option{
+		wavelet.WithGenesis(cfg.Genesis),
+	}
+
 	if cfg.WithoutGC {
 		opts = append(opts, wavelet.WithoutGC())
 	}
