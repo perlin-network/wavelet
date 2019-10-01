@@ -1,14 +1,11 @@
 package wavelet
 
 import (
-	"encoding/hex"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/perlin-network/wavelet/conf"
-
 	"github.com/stretchr/testify/assert"
 )
 
@@ -370,104 +367,6 @@ func TestLedger_SpamContracts(t *testing.T) {
 	alice.WaitUntilConsensus(t)
 }
 
-func TestLedger_DownloadMissingTx(t *testing.T) {
-	conf.Update(conf.WithSyncIfRoundsDifferBy(2))
-
-	testnet := NewTestNetwork(t, WithoutFaucet())
-	defer testnet.Cleanup()
-
-	nodes := 4
-	initialRounds := 70
-	// postLeaveRounds := 10
-
-	var alice, bob *TestLedger
-	for i := 0; i < nodes; i++ {
-		switch i {
-		case 0:
-			alice = testnet.AddNode(t,
-				WithWallet(FaucetWallet))
-			testnet.SetFaucet(alice)
-
-		case 1:
-			bob = testnet.AddNode(t, WithKeepExistingDB())
-
-		default:
-			testnet.AddNode(t)
-		}
-	}
-
-	// Give each node enough PERL to run benchmark
-	for _, node := range testnet.Nodes() {
-		if node.PublicKey() != alice.PublicKey() {
-			assert.NoError(t, txError(alice.Pay(node, 100000000)))
-			node.WaitUntilConsensus(t)
-		}
-	}
-
-	startBenchmark := func(n *TestLedger) chan struct{} {
-		stop := make(chan struct{})
-		go func() {
-			for {
-				select {
-				case <-stop:
-					return
-
-				default:
-					assert.NoError(t, txError(n.Benchmark(5)))
-				}
-			}
-		}()
-		return stop
-	}
-
-	// Run benchmark on all nodes
-	stops := map[AccountID]chan struct{}{}
-	for _, node := range testnet.Nodes() {
-		stops[node.PublicKey()] = startBenchmark(node)
-	}
-
-	defer func() {
-		for _, stop := range stops {
-			close(stop)
-		}
-	}()
-
-	for {
-		alice.WaitUntilConsensus(t)
-		fmt.Println("consensus round", alice.RoundIndex())
-		if alice.RoundIndex() >= uint64(initialRounds) {
-			break
-		}
-	}
-
-	time.Sleep(time.Second * 1)
-
-	fmt.Println("bob left:", bob.DBPath())
-
-	// Make bob leave and stop the benchmark on his node
-	close(stops[bob.PublicKey()])
-	delete(stops, bob.PublicKey())
-	bob.Leave()
-
-	time.Sleep(time.Second * 1)
-
-	bobKey := bob.PrivateKey()
-	bob = testnet.AddNode(t,
-		WithKeepExistingDB(),
-		WithDBPath(bob.DBPath()),
-		WithWallet(hex.EncodeToString(bobKey[:])))
-
-	fmt.Printf("bob rejoined, db=%s, index=%d, missing=%d, incomplete=%d\n",
-		bob.DBPath(), bob.RoundIndex(), bob.ledger.Graph().MissingLen(), bob.ledger.Graph().IncompleteLen())
-
-	// Wait for no more missing txs
-	waitForDuration(t, func() bool {
-		fmt.Printf("bob status, index=%d, missing=%d, incomplete=%d\n",
-			bob.RoundIndex(), bob.ledger.Graph().MissingLen(), bob.ledger.Graph().IncompleteLen())
-		return bob.ledger.Graph().MissingLen() == 0
-	}, time.Minute*5)
-}
-
 func TestLedger_MinimalSync(t *testing.T) {
 	testnet := NewTestNetwork(t, WithoutFaucet())
 	defer testnet.Cleanup()
@@ -490,22 +389,16 @@ func TestLedger_MinimalSync(t *testing.T) {
 
 	assert.NoError(t, txError(alice.Pay(bob, 100)))
 	bob.WaitUntilBalance(t, 100)
-	fmt.Println("alice round:", alice.RoundIndex())
 
 	// End of round 1
 
 	charlie := testnet.AddNode(t)
 	<-charlie.WaitForSync()
-	fmt.Println(charlie.RoundIndex())
-	fmt.Println(charlie.ledger.SyncStatus())
 
 	assert.NoError(t, txError(alice.Pay(bob, 100)))
 
 	bob.WaitUntilBalance(t, 200)
-	fmt.Println("alice round:", alice.RoundIndex())
-
 	charlie.WaitUntilRound(t, 2)
-	fmt.Println("charlie round:", charlie.RoundIndex())
 }
 
 func txError(tx Transaction, err error) error {
