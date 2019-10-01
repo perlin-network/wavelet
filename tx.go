@@ -135,6 +135,11 @@ func (tx *Transaction) rehash() {
 	tx.SeedLen = byte(prefixLen(seed))
 }
 
+func (tx Transaction) ComputeSize() int {
+	// TODO: optimize this
+	return len(tx.Marshal())
+}
+
 func (tx Transaction) Marshal() []byte {
 	w := bytes.NewBuffer(make([]byte, 0, 222+(SizeTransactionID*len(tx.ParentIDs))+SizeTransactionSeed*len(tx.ParentSeeds)+len(tx.Payload)))
 
@@ -309,6 +314,15 @@ func (tx Transaction) LogicalUnits() int {
 
 func (tx Transaction) String() string {
 	return fmt.Sprintf("Transaction{ID: %x}", tx.ID)
+}
+
+func (tx Transaction) Fee() uint64 {
+	fee := uint64(sys.TransactionFeeMultiplier * float64(tx.ComputeSize()))
+	if fee < sys.DefaultTransactionFee {
+		return sys.DefaultTransactionFee
+	}
+
+	return fee
 }
 
 func prefixLen(buf []byte) int {
