@@ -105,7 +105,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "update-url",
-			Value:  "https://wavelet.perlin.net/update",
+			Value:  "https://updates.perlin.net/wavelet",
 			Usage:  "URL for updating Wavelet node.",
 			EnvVar: "WAVELET_UPDATE_URL",
 		}),
