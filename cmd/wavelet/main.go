@@ -56,6 +56,7 @@ import (
 type Config struct {
 	NAT           bool
 	Host          string
+	UpdateURL     string
 	Port          uint
 	Wallet        string
 	Genesis       *string
@@ -72,6 +73,7 @@ type Config struct {
 }
 
 func main() {
+	switchToUpdatedVersion()
 	Run(os.Args, os.Stdin, os.Stdout, false)
 }
 
@@ -100,6 +102,12 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Name:   "nat",
 			Usage:  "Enable port forwarding: only required for personal PCs.",
 			EnvVar: "WAVELET_NAT",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "update-url",
+			Value:  "https://updates.perlin.net/wavelet",
+			Usage:  "URL for updating Wavelet node.",
+			EnvVar: "WAVELET_UPDATE_URL",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "host",
@@ -237,6 +245,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 	app.Action = func(c *cli.Context) error {
 		config := &Config{
 			Host:        c.String("host"),
+			UpdateURL:   c.String("update-url"),
 			Port:        c.Uint("port"),
 			Wallet:      c.String("wallet"),
 			APIPort:     c.Uint("api.port"),
@@ -299,6 +308,8 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	if err != nil {
 		panic(err)
 	}
+
+	go periodicUpdateRoutine(cfg.UpdateURL)
 
 	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
 
