@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 
 	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	queue2 "github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
