@@ -295,6 +295,8 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 	log.SetLevel(cfg.LogLevel)
 	logger := log.Node()
 
+	wavelet.SetGenesisByNetwork(sys.VersionMeta)
+
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil {
 		panic(err)
