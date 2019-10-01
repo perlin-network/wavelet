@@ -121,7 +121,7 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 			WriteAccountBalance(res.snapshot, popped.Creator, creatorBalance-fee)
 			totalFee += fee
 
-			stake := 0
+			stake := uint64(0)
 			if s, _ := ReadAccountStake(res.snapshot, popped.Sender); s > sys.MinimumStake {
 				stake = s
 			}
