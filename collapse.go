@@ -119,10 +119,15 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 			}
 
 			WriteAccountBalance(res.snapshot, popped.Creator, creatorBalance-fee)
+			totalFee += fee
 
-			stake := sys.MinimumStake
+			stake := 0
 			if s, _ := ReadAccountStake(res.snapshot, popped.Sender); s > sys.MinimumStake {
 				stake = s
+			}
+
+			if stake < sys.MinimumStake {
+				continue
 			}
 
 			if _, ok := stakes[popped.Sender]; !ok {
@@ -130,8 +135,6 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 			} else {
 				stakes[popped.Sender] += stake
 			}
-
-			totalFee += fee
 			totalStake += stake
 		}
 
@@ -152,12 +155,14 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 		res.appliedCount += popped.LogicalUnits()
 	}
 
-	for sender, stake := range stakes {
-		rewardeeBalance, _ := ReadAccountReward(res.snapshot, sender)
+	if totalStake > 0 {
+		for sender, stake := range stakes {
+			rewardeeBalance, _ := ReadAccountReward(res.snapshot, sender)
 
-		reward := float64(totalFee) * (float64(stake) / float64(totalStake))
+			reward := float64(totalFee) * (float64(stake) / float64(totalStake))
 
-		WriteAccountReward(res.snapshot, sender, rewardeeBalance+uint64(reward))
+			WriteAccountReward(res.snapshot, sender, rewardeeBalance+uint64(reward))
+		}
 	}
 
 	startDepth, endDepth := start.Depth+1, end.Depth
