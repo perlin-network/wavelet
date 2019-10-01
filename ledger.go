@@ -89,9 +89,6 @@ type Ledger struct {
 	sendQuota chan struct{}
 
 	stallDetector *StallDetector
-	stop          chan struct{}
-
-	finalizeRoundInfo *lru.LRU
 }
 
 type config struct {
@@ -190,8 +187,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		cacheChunks:   lru.NewLRU(2048), // In total, it will take up 1024 * 4MB.
 
 		sendQuota: make(chan struct{}, 2000),
-
-		finalizeRoundInfo: lru.NewLRU(16),
 	}
 
 	stop := make(chan struct{}) // TODO: Real graceful stop.
@@ -207,7 +202,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	go stallDetector.Run()
 
 	ledger.stallDetector = stallDetector
-	ledger.stop = stop
 
 	ledger.PerformConsensus()
 
@@ -215,10 +209,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	go ledger.PushSendQuota()
 
 	return ledger
-}
-
-func (l *Ledger) Close() {
-	close(l.stop)
 }
 
 // AddTransaction adds a transaction to the ledger. If the transaction has
@@ -309,9 +299,6 @@ func (l *Ledger) Find(query string, max int) (results []string) {
 func (l *Ledger) PushSendQuota() {
 	for range time.Tick(1 * time.Millisecond) {
 		select {
-		case <-l.stop:
-			return
-
 		case l.sendQuota <- struct{}{}:
 		default:
 		}
@@ -352,16 +339,6 @@ func (l *Ledger) Finalizer() *Snowball {
 // Rounds returns the round manager for the ledger.
 func (l *Ledger) Rounds() *Rounds {
 	return l.rounds
-}
-
-func (l *Ledger) FinalizeRoundInfo(index uint64) *FinalizeRoundResult {
-	o, ok := l.finalizeRoundInfo.Load(index)
-	if !ok {
-		return nil
-	}
-
-	info := o.(FinalizeRoundResult)
-	return &info
 }
 
 // Restart restart wavelet process by means of stall detector (approach is platform dependent)
@@ -438,9 +415,6 @@ func (l *Ledger) SyncTransactions() {
 
 		select {
 		case <-l.sync:
-			return
-
-		case <-l.stop:
 			return
 
 		case <-t.C:
@@ -545,8 +519,6 @@ func (l *Ledger) PullMissingTransactions() {
 		select {
 		case <-l.sync:
 			return
-		case <-l.stop:
-			return
 
 		default:
 		}
@@ -647,8 +619,6 @@ FINALIZE_ROUNDS:
 	for {
 		select {
 		case <-l.sync:
-			return
-		case <-l.stop:
 			return
 
 		default:
@@ -905,21 +875,6 @@ FINALIZE_ROUNDS:
 
 		l.applySync(finalized)
 
-		l.finalizeRoundInfo.Put(preferred.Index, FinalizeRoundResult{
-			AppliedTxCount:  results.appliedCount,
-			RejectedTxCount: results.rejectedCount,
-			IgnoredTxCount:  results.ignoredCount,
-			PrevRoundIndex:  current.Index,
-			RoundIndex:      preferred.Index,
-			PrevDifficulty:  current.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor),
-			Difficulty:      preferred.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor),
-			PrevRootID:      current.End.ID,
-			RootID:          preferred.End.ID,
-			PrevMerkleRoot:  current.Merkle,
-			MerkleRoot:      preferred.Merkle,
-			RoundDepth:      preferred.End.Depth - preferred.Start.Depth,
-		})
-
 		logger := log.Consensus("round_end")
 		logger.Info().
 			Int("num_applied_tx", results.appliedCount).
@@ -938,21 +893,6 @@ FINALIZE_ROUNDS:
 
 		//go ExportGraphDOT(finalized, contractIDs.graph)
 	}
-}
-
-type FinalizeRoundResult struct {
-	AppliedTxCount  int
-	RejectedTxCount int
-	IgnoredTxCount  int
-	PrevRoundIndex  uint64
-	RoundIndex      uint64
-	PrevDifficulty  byte
-	Difficulty      byte
-	PrevRootID      TransactionID
-	RootID          TransactionID
-	PrevMerkleRoot  MerkleNodeID
-	MerkleRoot      MerkleNodeID
-	RoundDepth      uint64
 }
 
 type outOfSyncVote struct {
@@ -974,13 +914,6 @@ func (l *Ledger) SyncToLatestRound() {
 	syncTimeoutMultiplier := 0
 	for {
 		for {
-			select {
-			case <-l.stop:
-				return
-
-			default:
-			}
-
 			conns, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
 			if err != nil {
 				select {
@@ -1093,13 +1026,6 @@ func (l *Ledger) SyncToLatestRound() {
 			Msg("Noticed that we are out of sync; downloading latest state Snapshot from our peer(s).")
 
 	SYNC:
-		select {
-		case <-l.stop:
-			return
-
-		default:
-		}
-
 		conns, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
 		if err != nil {
 			logger.Warn().Msg("It looks like there are no peers for us to sync with. Retrying...")
