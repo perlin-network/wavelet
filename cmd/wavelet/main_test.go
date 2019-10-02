@@ -540,7 +540,7 @@ type mockStdout struct {
 
 func newMockStdout() *mockStdout {
 	return &mockStdout{
-		Lines: make(chan string, 256),
+		Lines: make(chan string, 256*1024),
 		buf:   make([]byte, 0),
 	}
 }
@@ -548,20 +548,24 @@ func newMockStdout() *mockStdout {
 func (s *mockStdout) Write(p []byte) (n int, err error) {
 	s.buf = append(s.buf, p...)
 
-	ni := bytes.Index(p, []byte{'\n'})
+	ni := bytes.Index(s.buf, []byte{'\n'})
 	if ni < 0 {
 		return len(p), nil
 	}
 
-	buf := make([]byte, len(p))
-	copy(buf, p)
 	for ni >= 0 {
 		str := string(s.buf[:ni])
 		s.Lines <- str
 
-		s.buf = s.buf[ni+1:]
-		buf = buf[ni+1:]
-		ni = bytes.Index(buf, []byte{'\n'})
+		if len(s.buf) > ni {
+			// Try to find the next newline.
+			s.buf = s.buf[ni+1:]
+			ni = bytes.Index(s.buf, []byte{'\n'})
+		} else {
+			// The buffer is empty
+			s.buf = s.buf[0:]
+			break
+		}
 	}
 
 	return len(p), nil
