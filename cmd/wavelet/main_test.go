@@ -540,7 +540,7 @@ type mockStdout struct {
 
 func newMockStdout() *mockStdout {
 	return &mockStdout{
-		Lines: make(chan string, 256),
+		Lines: make(chan string, 16384),
 		buf:   make([]byte, 0),
 	}
 }
