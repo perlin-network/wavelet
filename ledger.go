@@ -673,7 +673,7 @@ FINALIZE_ROUNDS:
 				select {
 				case <-l.sync:
 					return
-				case <-time.After(1 * time.Millisecond):
+				case <-time.After(100 * time.Millisecond):
 				}
 
 				continue FINALIZE_ROUNDS
@@ -977,6 +977,8 @@ func (l *Ledger) SyncToLatestRound() {
 	syncTimeoutMultiplier := 0
 	for {
 		for {
+			time.Sleep(5 * time.Millisecond)
+
 			conns, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
 			if err != nil {
 				select {
