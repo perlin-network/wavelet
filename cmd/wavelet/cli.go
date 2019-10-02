@@ -22,8 +22,6 @@ package main
 import (
 	"encoding/csv"
 	"fmt"
-	"github.com/perlin-network/wavelet/conf"
-	"github.com/perlin-network/wavelet/store"
 	"io"
 	"strings"
 	"text/tabwriter"
@@ -31,7 +29,9 @@ import (
 	"github.com/benpye/readline"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli"
 )
@@ -174,15 +174,35 @@ func NewCLI(
 					Value: conf.GetSnowballK(),
 					Usage: "snowball K consensus parameter",
 				},
-				cli.Float64Flag{
-					Name:  "snowball.alpha",
-					Value: conf.GetSnowballAlpha(),
-					Usage: "snowball Alpha consensus parameter",
-				},
 				cli.IntFlag{
 					Name:  "snowball.beta",
 					Value: conf.GetSnowballBeta(),
 					Usage: "snowball Beta consensus parameter",
+				},
+				cli.Float64Flag{
+					Name:  "vote.sync.threshold",
+					Value: conf.GetSyncVoteThreshold(),
+					Usage: "threshold used to determine majority for sync vote counting",
+				},
+				cli.Float64Flag{
+					Name:  "vote.finalization.threshold",
+					Value: conf.GetFinalizationVoteThreshold(),
+					Usage: "threshold used to determine majority for finalization vote counting",
+				},
+				cli.Float64Flag{
+					Name:  "vote.finalization.stake.weight",
+					Value: conf.GetStakeMajorityWeight(),
+					Usage: "weight for stake percentage used in finalization majority calculation ",
+				},
+				cli.Float64Flag{
+					Name:  "vote.finalization.transactions.weight",
+					Value: conf.GetTransactionsNumMajorityWeight(),
+					Usage: "weight for percentage of max transactions number used in finalization majority calculation",
+				},
+				cli.Float64Flag{
+					Name:  "vote.finalization.depth.weight",
+					Value: conf.GetRoundDepthMajorityWeight(),
+					Usage: "weight for percentage of min depth number used in finalization majority calculation",
 				},
 				cli.DurationFlag{
 					Name:  "query.timeout",
@@ -193,6 +213,16 @@ func NewCLI(
 					Name:  "gossip.timeout",
 					Value: conf.GetGossipTimeout(),
 					Usage: "timeout for gossip request",
+				},
+				cli.DurationFlag{
+					Name:  "download.tx.timeout",
+					Value: conf.GetDownloadTxTimeout(),
+					Usage: "timeout for download tx request",
+				},
+				cli.DurationFlag{
+					Name:  "check.out.of.sync.timeout",
+					Value: conf.GetCheckOutOfSyncTimeout(),
+					Usage: "timeout for check out of sync request",
 				},
 				cli.IntFlag{
 					Name:  "sync.chunk.size",

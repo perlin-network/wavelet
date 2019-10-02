@@ -79,8 +79,11 @@ var (
 	// Factor to scale a transactions confidence down by to compute the difficulty needed to define a critical transaction.
 	DifficultyScaleFactor = 0.5
 
-	// Fee amount paid by a node per transaction.
-	TransactionFeeAmount uint64 = 2
+	// Default fee amount paid by a node per transaction.
+	DefaultTransactionFee uint64 = 2
+
+	// Multiplier for size of transaction payload to calculate it's fee
+	TransactionFeeMultiplier = 0.05
 
 	// Minimum amount of stake to start being able to reap validator rewards.
 	MinimumStake uint64 = 100

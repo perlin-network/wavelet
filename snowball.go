@@ -20,9 +20,10 @@
 package wavelet
 
 import (
-	"fmt"
-	"github.com/perlin-network/wavelet/conf"
 	"sync"
+
+	"github.com/perlin-network/wavelet/conf"
+	"github.com/perlin-network/wavelet/log"
 )
 
 type SnowballOption func(*Snowball)
@@ -107,7 +108,13 @@ func (s *Snowball) Tick(v Identifiable) {
 
 	if s.lastID != id { // Handle termination case.
 		if s.lastID != "" {
-			fmt.Printf("Snowball (%s) liveness fault: Last ID is %s with count %d, and new ID is %s.\n", s.name, s.lastID, s.count, id)
+			logger := log.Node()
+			logger.Warn().
+				Str("name", s.name).
+				Str("last_id", s.lastID).
+				Int("count", s.count).
+				Str("new_id", id).
+				Msg("Snowball liveness fault")
 		}
 
 		s.lastID = id

@@ -43,3 +43,11 @@ var (
 var Version = func() string {
 	return fmt.Sprintf("v%d.%d.%d-%s", VersionMajor, VersionMinor, VersionPatch, VersionMeta)
 }()
+
+var VersionCode = func() uint32 {
+	var versionCode uint32
+
+	versionCode = (VersionMajor << 24) | (VersionMinor << 16) | VersionPatch
+
+	return versionCode
+}()

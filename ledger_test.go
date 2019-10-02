@@ -104,7 +104,8 @@ func TestLedger_AddTransaction(t *testing.T) {
 	assert.True(t, <-alice.WaitForSync())
 
 	// Add just 1 transaction
-	assert.NoError(t, txError(testnet.Faucet().PlaceStake(100)))
+	tx, err := testnet.Faucet().PlaceStake(100)
+	assert.NoError(t, err)
 
 	// Try to wait for 2 rounds of consensus.
 	// The second call should result in timeout, because
@@ -114,6 +115,20 @@ func TestLedger_AddTransaction(t *testing.T) {
 
 	current := alice.ledger.Rounds().Latest().Index
 	assert.Equal(t, current-start, uint64(1), "expected only 1 round to be finalized")
+
+	// Adding existing transaction returns no error as the error is ignored
+	assert.NoError(t, alice.ledger.AddTransaction(tx))
+
+	for i := uint64(0); i < conf.GetMaxDepthDiff()+1; i++ {
+		assert.NoError(t, txError(testnet.Faucet().PlaceStake(1)))
+		alice.WaitUntilConsensus(t)
+	}
+
+	// Force ledger to prune graph
+	alice.ledger.Graph().PruneBelowDepth(alice.ledger.Graph().RootDepth())
+
+	// Adding a tx with depth that is too low returns no error as the error is ignored
+	assert.NoError(t, alice.ledger.AddTransaction(tx))
 }
 
 func TestLedger_Pay(t *testing.T) {
@@ -408,6 +423,40 @@ func TestLedger_SpamContracts(t *testing.T) {
 	}
 
 	alice.WaitUntilConsensus(t)
+}
+
+func TestLedger_MinimalSync(t *testing.T) {
+	testnet := NewTestNetwork(t, WithoutFaucet())
+	defer testnet.Cleanup()
+
+	var alice, bob *TestLedger
+	for i := 0; i < 4; i++ {
+		switch i {
+		case 0:
+			alice = testnet.AddNode(t,
+				WithWallet(FaucetWallet))
+			testnet.SetFaucet(alice)
+
+		case 1:
+			bob = testnet.AddNode(t)
+
+		default:
+			testnet.AddNode(t)
+		}
+	}
+
+	assert.NoError(t, txError(alice.Pay(bob, 100)))
+	bob.WaitUntilBalance(t, 100)
+
+	// End of round 1
+
+	charlie := testnet.AddNode(t)
+	<-charlie.WaitForSync()
+
+	assert.NoError(t, txError(alice.Pay(bob, 100)))
+
+	bob.WaitUntilBalance(t, 200)
+	charlie.WaitUntilRound(t, 2)
 }
 
 func txError(tx Transaction, err error) error {

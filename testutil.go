@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net"
+	"os"
 	"strconv"
 	"sync"
 	"testing"
@@ -21,18 +22,52 @@ import (
 	"google.golang.org/grpc"
 )
 
+var (
+	FaucetWallet = "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"
+)
+
 type TestNetwork struct {
 	faucet *TestLedger
-	nodes  []*TestLedger
+	nodes  map[AccountID]*TestLedger
 }
 
-func NewTestNetwork(t testing.TB) *TestNetwork {
-	n := &TestNetwork{
-		faucet: newTestFaucet(t),
-		nodes:  []*TestLedger{},
+type TestNetworkConfig struct {
+	AddFaucet bool
+}
+
+func defaultTestNetworkConfig() TestNetworkConfig {
+	return TestNetworkConfig{
+		AddFaucet: true,
+	}
+}
+
+type TestNetworkOption func(cfg *TestNetworkConfig)
+
+func WithoutFaucet() TestNetworkOption {
+	return func(cfg *TestNetworkConfig) {
+		cfg.AddFaucet = false
+	}
+}
+
+func NewTestNetwork(t testing.TB, opts ...TestNetworkOption) *TestNetwork {
+	// Remove existing db
+	for i := 0; i < 20; i++ {
+		_ = os.RemoveAll(fmt.Sprintf("db_%d", i))
 	}
 
-	n.nodes = append(n.nodes, n.faucet)
+	n := &TestNetwork{
+		nodes: map[AccountID]*TestLedger{},
+	}
+
+	cfg := defaultTestNetworkConfig()
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	if cfg.AddFaucet {
+		n.faucet = n.AddNode(t, WithWallet(FaucetWallet))
+	}
+
 	return n
 }
 
@@ -40,24 +75,77 @@ func (n *TestNetwork) Cleanup() {
 	for _, node := range n.nodes {
 		node.Cleanup()
 	}
+
+	// Remove db
+	for i := 0; i < 20; i++ {
+		_ = os.RemoveAll(fmt.Sprintf("db_%d", i))
+	}
 }
 
 func (n *TestNetwork) Faucet() *TestLedger {
 	return n.faucet
 }
 
-func (n *TestNetwork) AddNode(t testing.TB) *TestLedger {
-	node := NewTestLedger(t, TestLedgerConfig{
-		Peers: []string{n.faucet.Addr()},
+func (n *TestNetwork) SetFaucet(node *TestLedger) {
+	n.faucet = node
+}
+
+type TestLedgerOption func(cfg *TestLedgerConfig)
+
+func WithWallet(wallet string) TestLedgerOption {
+	return func(cfg *TestLedgerConfig) {
+		cfg.Wallet = wallet
+	}
+}
+
+func WithKeepExistingDB() TestLedgerOption {
+	return func(cfg *TestLedgerConfig) {
+		cfg.RemoveExistingDB = false
+	}
+}
+
+func WithPeers(peers ...string) TestLedgerOption {
+	return func(cfg *TestLedgerConfig) {
+		for _, peer := range peers {
+			cfg.Peers = append(cfg.Peers, peer)
+		}
+	}
+}
+
+func WithDBPath(path string) TestLedgerOption {
+	return func(cfg *TestLedgerConfig) {
+		cfg.DBPath = path
+	}
+}
+
+func (n *TestNetwork) AddNode(t testing.TB, opts ...TestLedgerOption) *TestLedger {
+	peers := []string{}
+	if n.faucet != nil {
+		peers = append(peers, n.faucet.Addr())
+	}
+
+	cfg := TestLedgerConfig{
+		Peers: peers,
 		N:     len(n.nodes),
-	})
-	n.nodes = append(n.nodes, node)
+	}
+
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	node := NewTestLedger(t, cfg)
+	node.network = n
+	n.nodes[node.PublicKey()] = node
 
 	return node
 }
 
 func (n *TestNetwork) Nodes() []*TestLedger {
-	return n.nodes
+	nodes := []*TestLedger{}
+	for _, n := range n.nodes {
+		nodes = append(nodes, n)
+	}
+	return nodes
 }
 
 // WaitForRound waits for all the nodes in the network to
@@ -157,10 +245,12 @@ func (n *TestNetwork) WaitForSync(t testing.TB) {
 }
 
 type TestLedger struct {
+	network   *TestNetwork
 	ledger    *Ledger
 	client    *skademlia.Client
 	server    *grpc.Server
 	addr      string
+	dbPath    string
 	kv        store.KV
 	kvCleanup func()
 	finalized chan struct{}
@@ -168,24 +258,22 @@ type TestLedger struct {
 }
 
 type TestLedgerConfig struct {
-	Wallet string
-	Peers  []string
-	N      int
+	Wallet           string
+	Peers            []string
+	N                int
+	RemoveExistingDB bool
+	DBPath           string
 }
 
 func defaultConfig(t testing.TB) *TestLedgerConfig {
-	return &TestLedgerConfig{}
-}
-
-// newTestFaucet returns an account with a lot of PERLs.
-func newTestFaucet(t testing.TB) *TestLedger {
-	return NewTestLedger(t, TestLedgerConfig{
-		Wallet: "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
-		N:      0,
-	})
+	return &TestLedgerConfig{
+		RemoveExistingDB: true,
+	}
 }
 
 func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
+	t.Helper()
+
 	keys := loadKeys(t, cfg.Wallet)
 
 	ln, err := net.Listen("tcp", ":0")
@@ -196,7 +284,17 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 	client := skademlia.NewClient(addr, keys, skademlia.WithC1(sys.SKademliaC1), skademlia.WithC2(sys.SKademliaC2))
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
-	kv, cleanup := store.NewTestKV(t, "level", fmt.Sprintf("db_%d", cfg.N))
+	kvOpts := []store.TestKVOption{}
+	if !cfg.RemoveExistingDB {
+		kvOpts = append(kvOpts, store.WithKeepExisting())
+	}
+
+	path := fmt.Sprintf("db_%d", cfg.N)
+	if cfg.DBPath != "" {
+		path = cfg.DBPath
+	}
+
+	kv, cleanup := store.NewTestKV(t, "level", path, kvOpts...)
 	ledger := NewLedger(kv, client, WithoutGC())
 	server := client.Listen()
 	RegisterWaveletServer(server, ledger.Protocol())
@@ -222,10 +320,16 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 		client:    client,
 		server:    server,
 		addr:      addr,
+		dbPath:    path,
 		kv:        kv,
 		kvCleanup: cleanup,
 		stopped:   stopped,
 	}
+}
+
+func (l *TestLedger) Leave() {
+	l.Cleanup()
+	delete(l.network.nodes, l.PublicKey())
 }
 
 func (l *TestLedger) Cleanup() {
@@ -247,9 +351,18 @@ func (l *TestLedger) Client() *skademlia.Client {
 	return l.client
 }
 
+func (l *TestLedger) PrivateKey() edwards25519.PrivateKey {
+	keys := l.ledger.client.Keys()
+	return keys.PrivateKey()
+}
+
 func (l *TestLedger) PublicKey() AccountID {
 	keys := l.ledger.client.Keys()
 	return keys.PublicKey()
+}
+
+func (l *TestLedger) DBPath() string {
+	return l.dbPath
 }
 
 func (l *TestLedger) Balance() uint64 {
@@ -416,6 +529,23 @@ func (l *TestLedger) WaitForRound(index uint64) <-chan uint64 {
 	return ch
 }
 
+func (l *TestLedger) WaitUntilRound(t testing.TB, round uint64) {
+	t.Helper()
+
+	timeout := time.NewTimer(time.Second * 30)
+	for {
+		select {
+		case ri := <-l.WaitForRound(round):
+			if ri >= round {
+				return
+			}
+
+		case <-timeout.C:
+			t.Fatal("timed out waiting for round")
+		}
+	}
+}
+
 func (l *TestLedger) WaitForSync() <-chan bool {
 	ch := make(chan bool)
 	go func() {
@@ -523,6 +653,25 @@ func (l *TestLedger) CallContract(id [32]byte, amount uint64, gasLimit uint64, f
 	return tx, err
 }
 
+func (l *TestLedger) Benchmark(batchSize int) (Transaction, error) {
+	payload := Batch{}
+	for i := 0; i < batchSize; i++ {
+		payload.AddStake(Stake{
+			Opcode: sys.PlaceStake,
+			Amount: 1,
+		})
+	}
+
+	keys := l.ledger.client.Keys()
+	tx := AttachSenderToTransaction(
+		keys,
+		NewTransaction(keys, sys.TagBatch, payload.Marshal()),
+		l.ledger.Graph().FindEligibleParents()...)
+
+	err := l.ledger.AddTransaction(tx)
+	return tx, err
+}
+
 func (l *TestLedger) PlaceStake(amount uint64) (Transaction, error) {
 	payload := Stake{
 		Opcode: sys.PlaceStake,
@@ -615,6 +764,25 @@ func waitFor(t testing.TB, fn func() bool) {
 	t.Helper()
 
 	timeout := time.NewTimer(time.Second * 30)
+	ticker := time.NewTicker(time.Millisecond * 100)
+
+	for {
+		select {
+		case <-timeout.C:
+			t.Fatal("timed out waiting")
+
+		case <-ticker.C:
+			if fn() {
+				return
+			}
+		}
+	}
+}
+
+func waitForDuration(t testing.TB, fn func() bool, d time.Duration) {
+	t.Helper()
+
+	timeout := time.NewTimer(d)
 	ticker := time.NewTicker(time.Millisecond * 100)
 
 	for {

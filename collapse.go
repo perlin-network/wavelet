@@ -20,16 +20,13 @@
 package wavelet
 
 import (
-	"encoding/binary"
 	"encoding/hex"
-	"fmt"
+
 	"github.com/perlin-network/wavelet/avl"
-	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	queue2 "github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
-	"golang.org/x/crypto/blake2b"
 )
 
 func processRewardWithdrawals(round uint64, snapshot *avl.Tree) {
@@ -41,139 +38,6 @@ func processRewardWithdrawals(round uint64, snapshot *avl.Tree) {
 
 		snapshot.Delete(rw.Key())
 	}
-}
-
-// rewardValidators deducts a transaction fee from a transactions creator, and transfers the fee
-// to a rewardee which is determined by a validator reward scheme given the selected ancestry
-// of the transaction.
-//
-// If no rewardee is selected, then the transaction fee is simply burned. A reference to
-// a transaction is expected when calling this function to prevent any additional requirements
-// of looking up said transaction within the graph.
-func rewardValidators(g *Graph, snapshot *avl.Tree, tx *Transaction, logging bool) error {
-	fee := sys.TransactionFeeAmount
-
-	creatorBalance, _ := ReadAccountBalance(snapshot, tx.Creator)
-
-	if creatorBalance < fee {
-		return errors.Errorf("stake: creator %x does not have enough PERLs to pay transaction fees (comprised of %d PERLs)", tx.Creator, fee)
-	}
-
-	WriteAccountBalance(snapshot, tx.Creator, creatorBalance-fee)
-
-	var candidates []*Transaction
-	var stakes []uint64
-	var totalStake uint64
-
-	visited := make(map[TransactionID]struct{})
-
-	queue := AcquireQueue()
-	defer ReleaseQueue(queue)
-
-	for _, parentID := range tx.ParentIDs {
-		if parent := g.FindTransaction(parentID); parent != nil {
-			queue.PushBack(parent)
-		}
-
-		visited[parentID] = struct{}{}
-	}
-
-	hasher, _ := blake2b.New256(nil)
-
-	var depthCounter uint64
-	var lastDepth = tx.Depth
-
-	for queue.Len() > 0 {
-		popped := queue.PopFront().(*Transaction)
-
-		if popped.Depth != lastDepth {
-			lastDepth = popped.Depth
-			depthCounter++
-		}
-
-		// If we exceed the max eligible depth we search for candidate
-		// validators to reward from, stop traversing.
-
-		if depthCounter >= conf.GetMaxDepthDiff() {
-			break
-		}
-
-		// Filter for all ancestral transactions not from the same sender,
-		// and within the desired graph depth.
-
-		if popped.Sender != tx.Sender {
-			stake, _ := ReadAccountStake(snapshot, popped.Sender)
-
-			if stake > sys.MinimumStake {
-				candidates = append(candidates, popped)
-				stakes = append(stakes, stake)
-
-				totalStake += stake
-
-				// Record entropy source.
-				if _, err := hasher.Write(popped.ID[:]); err != nil {
-					return errors.Wrap(err, "stake: failed to hash transaction ID for entropy source")
-				}
-			}
-		}
-
-		for _, parentID := range popped.ParentIDs {
-			if _, seen := visited[parentID]; !seen {
-				if parent := g.FindTransaction(parentID); parent != nil {
-					queue.PushBack(parent)
-				}
-
-				visited[parentID] = struct{}{}
-			}
-		}
-	}
-
-	// If there are no eligible rewardee candidates, do not reward anyone.
-
-	if len(candidates) == 0 || len(stakes) == 0 || totalStake == 0 {
-		return nil
-	}
-
-	entropy := hasher.Sum(nil)
-	acc, threshold := float64(0), float64(binary.LittleEndian.Uint64(entropy)%uint64(0xffff))/float64(0xffff)
-
-	var rewardee *Transaction
-
-	// Model a weighted uniform distribution by a random variable X, and select
-	// whichever validator has a weight X ≥ X' as a reward recipient.
-
-	for i, tx := range candidates {
-		acc += float64(stakes[i]) / float64(totalStake)
-
-		if acc >= threshold {
-			rewardee = tx
-			break
-		}
-	}
-
-	// If there is no selected transaction that deserves a reward, give the
-	// reward to the last reward candidate.
-
-	if rewardee == nil {
-		rewardee = candidates[len(candidates)-1]
-	}
-
-	rewardeeBalance, _ := ReadAccountReward(snapshot, rewardee.Sender)
-	WriteAccountReward(snapshot, rewardee.Sender, rewardeeBalance+fee)
-
-	if logging {
-		logger := log.Stake("reward_validator")
-		logger.Info().
-			Hex("creator", tx.Creator[:]).
-			Hex("recipient", rewardee.Sender[:]).
-			Hex("creator_tx_id", tx.ID[:]).
-			Hex("rewardee_tx_id", rewardee.ID[:]).
-			Hex("entropy", entropy).
-			Float64("acc", acc).
-			Float64("threshold", threshold).Msg("Rewarded validator.")
-	}
-
-	return nil
 }
 
 func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *Round, start, end Transaction, logging bool) (*collapseResults, error) {
@@ -220,9 +84,15 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 
 	ctx := NewCollapseContext()
 
+	var (
+		totalStake uint64
+		totalFee   uint64
+	)
+
+	stakes := make(map[AccountID]uint64)
+
 	// Apply transactions in reverse order from the end of the round
 	// all the way down to the beginning of the round.
-
 	for order.Len() > 0 {
 		popped := order.PopBack().(*Transaction)
 
@@ -234,14 +104,35 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 		}
 		WriteAccountNonce(res.snapshot, popped.Creator, nonce+1)
 
-		// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
 		if hex.EncodeToString(popped.Creator[:]) != sys.FaucetAddress {
-			if err := rewardValidators(g, res.snapshot, popped, logging); err != nil {
+			fee := popped.Fee()
+			creatorBalance, _ := ReadAccountBalance(res.snapshot, popped.Creator)
+			if creatorBalance < fee {
 				res.rejected = append(res.rejected, popped)
-				res.rejectedErrors = append(res.rejectedErrors, err)
+				res.rejectedErrors = append(
+					res.rejectedErrors,
+					errors.Errorf("stake: creator %x does not have enough PERLs to pay transaction fees (comprised of %d PERLs)", popped.Creator, fee),
+				)
 				res.rejectedCount += popped.LogicalUnits()
 
 				continue
+			}
+
+			WriteAccountBalance(res.snapshot, popped.Creator, creatorBalance-fee)
+			totalFee += fee
+
+			stake := uint64(0)
+			if s, _ := ReadAccountStake(res.snapshot, popped.Sender); s > sys.MinimumStake {
+				stake = s
+			}
+
+			if stake >= sys.MinimumStake {
+				if _, ok := stakes[popped.Sender]; !ok {
+					stakes[popped.Sender] = stake
+				} else {
+					stakes[popped.Sender] += stake
+				}
+				totalStake += stake
 			}
 		}
 
@@ -250,7 +141,8 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 			res.rejectedErrors = append(res.rejectedErrors, err)
 			res.rejectedCount += popped.LogicalUnits()
 
-			fmt.Println("error applying transaction", err)
+			logger := log.Node()
+			logger.Error().Err(err).Msg("error applying transaction")
 
 			continue
 		}
@@ -259,6 +151,16 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 
 		res.applied = append(res.applied, popped)
 		res.appliedCount += popped.LogicalUnits()
+	}
+
+	if totalStake > 0 {
+		for sender, stake := range stakes {
+			rewardeeBalance, _ := ReadAccountReward(res.snapshot, sender)
+
+			reward := float64(totalFee) * (float64(stake) / float64(totalStake))
+
+			WriteAccountReward(res.snapshot, sender, rewardeeBalance+uint64(reward))
+		}
 	}
 
 	startDepth, endDepth := start.Depth+1, end.Depth

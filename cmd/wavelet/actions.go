@@ -126,7 +126,7 @@ func (cli *CLI) pay(ctx *cli.Context) {
 	snapshot := cli.ledger.Snapshot()
 	balance, _ := wavelet.ReadAccountBalance(snapshot, cli.keys.PublicKey())
 
-	if balance < amount+sys.TransactionFeeAmount {
+	if balance < amount+sys.DefaultTransactionFee {
 		cli.logger.Error().
 			Uint64("your_balance", balance).
 			Uint64("amount_to_send", amount).
@@ -139,7 +139,7 @@ func (cli *CLI) pay(ctx *cli.Context) {
 	)
 	if codeAvailable {
 		// Set gas limit by default to the balance the user has.
-		payload.GasLimit = balance - amount - sys.TransactionFeeAmount
+		payload.GasLimit = balance - amount - sys.DefaultTransactionFee
 		payload.FuncName = []byte("on_money_received")
 	}
 
@@ -446,7 +446,7 @@ func (cli *CLI) depositGas(ctx *cli.Context) {
 	_, codeAvailable := wavelet.ReadAccountContractCode(snapshot, payload.Recipient)
 
 	// Check balance
-	if balance < amount+sys.TransactionFeeAmount {
+	if balance < amount+sys.DefaultTransactionFee {
 		cli.logger.Error().
 			Uint64("your_balance", balance).
 			Uint64("amount_to_send", amount).
@@ -640,10 +640,16 @@ func (cli *CLI) restart(ctx *cli.Context) {
 func (cli *CLI) updateParameters(ctx *cli.Context) {
 	conf.Update(
 		conf.WithSnowballK(ctx.Int("snowball.k")),
-		conf.WithSnowballAlpha(ctx.Float64("snowball.alpha")),
 		conf.WithSnowballBeta(ctx.Int("snowball.beta")),
+		conf.WithSyncVoteThreshold(ctx.Float64("vote.sync.threshold")),
+		conf.WithFinalizationVoteThreshold(ctx.Float64("vote.finalization.threshold")),
+		conf.WithStakeMajorityWeight(ctx.Float64("vote.finalization.stake.weight")),
+		conf.WithTransactionsNumMajorityWeight(ctx.Float64("vote.finalization.transactions.weight")),
+		conf.WithRoundDepthMajorityWeight(ctx.Float64("vote.finalization.depth.weight")),
 		conf.WithQueryTimeout(ctx.Duration("query.timeout")),
 		conf.WithGossipTimeout(ctx.Duration("gossip.timeout")),
+		conf.WithDownloadTxTimeout(ctx.Duration("download.tx.timeout")),
+		conf.WithCheckOutOfSyncTimeout(ctx.Duration("check.out.of.sync.timeout")),
 		conf.WithSyncChunkSize(ctx.Int("sync.chunk.size")),
 		conf.WithSyncIfRoundsDifferBy(ctx.Uint64("sync.if.rounds.differ.by")),
 		conf.WithMaxDownloadDepthDiff(ctx.Uint64("max.download.depth.diff")),
