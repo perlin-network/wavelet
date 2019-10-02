@@ -1007,7 +1007,7 @@ func (l *Ledger) SyncToLatestRound() {
 					if err != nil {
 						logger.Error().
 							Err(err).
-							Msg("error while checking out of sync")
+							Msgf("error while checking out of sync with %v", p.Addr)
 
 						cancel()
 						wg.Done()
@@ -1054,6 +1054,9 @@ func (l *Ledger) SyncToLatestRound() {
 			if syncTimeoutMultiplier < 60 {
 				syncTimeoutMultiplier++
 			}
+
+			logger.Debug().Msgf("Not out of sync, sleeping %d seconds", syncTimeoutMultiplier)
+
 			time.Sleep(time.Duration(syncTimeoutMultiplier) * time.Second)
 
 			continue
