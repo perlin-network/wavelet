@@ -994,9 +994,11 @@ func (l *Ledger) SyncToLatestRound() {
 			wg.Add(len(conns))
 
 			for _, conn := range conns {
-				client := NewWaveletClient(conn)
+				go func(conn *grpc.ClientConn) {
+					logger.Debug().Msgf("Dialing %v for Sync Check", conn.Target())
 
-				go func() {
+					client := NewWaveletClient(conn)
+
 					ctx, cancel := context.WithTimeout(context.Background(), conf.GetCheckOutOfSyncTimeout())
 
 					p := &peer.Peer{}
@@ -1009,7 +1011,7 @@ func (l *Ledger) SyncToLatestRound() {
 					if err != nil {
 						logger.Error().
 							Err(err).
-							Msg("error while checking out of sync")
+							Msgf("error while checking out of sync with %v", p.Addr)
 
 						cancel()
 						wg.Done()
@@ -1033,7 +1035,7 @@ func (l *Ledger) SyncToLatestRound() {
 					syncVotes <- syncVote{voter: voter, outOfSync: res.OutOfSync}
 
 					wg.Done()
-				}()
+				}(conn)
 			}
 
 			wg.Wait()
@@ -1056,6 +1058,9 @@ func (l *Ledger) SyncToLatestRound() {
 			if syncTimeoutMultiplier < 60 {
 				syncTimeoutMultiplier++
 			}
+
+			logger.Debug().Msgf("Not out of sync, sleeping %d seconds", syncTimeoutMultiplier)
+
 			time.Sleep(time.Duration(syncTimeoutMultiplier) * time.Second)
 
 			continue
