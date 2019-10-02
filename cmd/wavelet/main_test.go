@@ -27,7 +27,7 @@ var wallet1 = "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb4
 var wallet2 = "85e7450f7cf0d9cd1d1d7bf4169c2f364eea4ba833a7280e0f931a1d92fd92c2696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a"
 
 func TestMain(t *testing.T) {
-	w := NewTestWavelet(t, nil)
+	w := NewTestWavelet(t, defaultConfig())
 	defer w.Cleanup()
 
 	ledger := w.GetLedgerStatus(t)
@@ -36,7 +36,9 @@ func TestMain(t *testing.T) {
 }
 
 func TestMain_WithLogLevel(t *testing.T) {
-	w := NewTestWavelet(t, &TestWaveletConfig{LogLevel: "warn"})
+	config := defaultConfig()
+	config.LogLevel = "warn"
+	w := NewTestWavelet(t, config)
 	defer w.Cleanup()
 
 	w.Stdin <- "status"
@@ -60,7 +62,9 @@ func TestMain_WithLogLevel(t *testing.T) {
 func TestMain_WithInvalidLogLevel(t *testing.T) {
 	// Invalid loglevel will cause the ledger to use the default log level,
 	// which is debug
-	w := NewTestWavelet(t, &TestWaveletConfig{LogLevel: "foobar"})
+	config := defaultConfig()
+	config.LogLevel = "foobar"
+	w := NewTestWavelet(t, config)
 	defer w.Cleanup()
 
 	w.Stdin <- "status"
@@ -68,12 +72,13 @@ func TestMain_WithInvalidLogLevel(t *testing.T) {
 }
 
 func TestMain_WithWalletString(t *testing.T) {
-	wallet := "b27b880e6e44e3b127186a08bc5698316e8dd99157cec56211560b62141f0851c72096021609681eb8cab244752945b2008e1b51d8bc2208b2b562f35485d5cc"
-	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet})
+	config := defaultConfig()
+	config.Wallet = "b27b880e6e44e3b127186a08bc5698316e8dd99157cec56211560b62141f0851c72096021609681eb8cab244752945b2008e1b51d8bc2208b2b562f35485d5cc"
+	w := NewTestWavelet(t, config)
 	defer w.Cleanup()
 
 	ledger := w.GetLedgerStatus(t)
-	assert.EqualValues(t, wallet[64:], ledger.PublicKey)
+	assert.EqualValues(t, config.Wallet[64:], ledger.PublicKey)
 }
 
 func TestMain_WithWalletFile(t *testing.T) {
@@ -91,7 +96,9 @@ func TestMain_WithWalletFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: walletPath})
+	config := defaultConfig()
+	config.Wallet = walletPath
+	w := NewTestWavelet(t, config)
 	defer w.Cleanup()
 
 	ledger := w.GetLedgerStatus(t)
@@ -99,8 +106,9 @@ func TestMain_WithWalletFile(t *testing.T) {
 }
 
 func TestMain_WithInvalidWallet(t *testing.T) {
-	wallet := "foobar"
-	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet})
+	config := defaultConfig()
+	config.Wallet = "foobar"
+	w := NewTestWavelet(t, config)
 	defer w.Cleanup()
 
 	ledger := w.GetLedgerStatus(t)
@@ -108,7 +116,7 @@ func TestMain_WithInvalidWallet(t *testing.T) {
 }
 
 func TestMain_Status(t *testing.T) {
-	w := NewTestWavelet(t, nil)
+	w := NewTestWavelet(t, defaultConfig())
 	defer w.Cleanup()
 
 	w.Stdin <- "status"
@@ -116,7 +124,9 @@ func TestMain_Status(t *testing.T) {
 }
 
 func TestMain_Pay(t *testing.T) {
-	alice := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
+	config := defaultConfig()
+	config.Wallet = wallet2
+	alice := NewTestWavelet(t, config)
 	defer alice.Cleanup()
 
 	bob := alice.Testnet.AddNode(t)
@@ -137,7 +147,9 @@ func TestMain_Pay(t *testing.T) {
 }
 
 func TestMain_Spawn(t *testing.T) {
-	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
+	config := defaultConfig()
+	config.Wallet = wallet2
+	w := NewTestWavelet(t, config)
 	defer w.Cleanup()
 
 	for i := 0; i < 3; i++ {
@@ -157,7 +169,9 @@ func TestMain_Spawn(t *testing.T) {
 }
 
 func TestMain_Call(t *testing.T) {
-	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
+	config := defaultConfig()
+	config.Wallet = wallet2
+	w := NewTestWavelet(t, config)
 	defer w.Cleanup()
 
 	for i := 0; i < 3; i++ {
@@ -178,7 +192,9 @@ func TestMain_Call(t *testing.T) {
 }
 
 func TestMain_CallWithParams(t *testing.T) {
-	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
+	config := defaultConfig()
+	config.Wallet = wallet2
+	w := NewTestWavelet(t, config)
 	defer w.Cleanup()
 
 	for i := 0; i < 3; i++ {
@@ -249,7 +265,9 @@ func TestMain_CallWithParams(t *testing.T) {
 }
 
 func TestMain_DepositGas(t *testing.T) {
-	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
+	config := defaultConfig()
+	config.Wallet = wallet2
+	w := NewTestWavelet(t, config)
 	defer w.Cleanup()
 
 	for i := 0; i < 3; i++ {
@@ -270,7 +288,9 @@ func TestMain_DepositGas(t *testing.T) {
 }
 
 func TestMain_Find(t *testing.T) {
-	alice := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
+	config := defaultConfig()
+	config.Wallet = wallet2
+	alice := NewTestWavelet(t, config)
 	defer alice.Cleanup()
 
 	bob := alice.Testnet.AddNode(t)
@@ -288,7 +308,9 @@ func TestMain_Find(t *testing.T) {
 }
 
 func TestMain_PlaceStake(t *testing.T) {
-	alice := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
+	config := defaultConfig()
+	config.Wallet = wallet2
+	alice := NewTestWavelet(t, config)
 	defer alice.Cleanup()
 
 	bob := alice.Testnet.AddNode(t)
@@ -309,7 +331,9 @@ func TestMain_PlaceStake(t *testing.T) {
 }
 
 func TestMain_WithdrawStake(t *testing.T) {
-	alice := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
+	config := defaultConfig()
+	config.Wallet = wallet2
+	alice := NewTestWavelet(t, config)
 	defer alice.Cleanup()
 
 	bob := alice.Testnet.AddNode(t)
@@ -337,7 +361,9 @@ func TestMain_WithdrawStake(t *testing.T) {
 }
 
 func TestMain_WithdrawReward(t *testing.T) {
-	w := NewTestWavelet(t, &TestWaveletConfig{Wallet: wallet2})
+	config := defaultConfig()
+	config.Wallet = wallet2
+	w := NewTestWavelet(t, config)
 	defer w.Cleanup()
 
 	for i := 0; i < 3; i++ {
@@ -359,7 +385,7 @@ func TestMain_WithdrawReward(t *testing.T) {
 }
 
 func TestMain_UpdateParams(t *testing.T) {
-	w := NewTestWavelet(t, nil)
+	w := NewTestWavelet(t, defaultConfig())
 	defer w.Cleanup()
 
 	w.Stdin <- "up"
@@ -371,7 +397,6 @@ func TestMain_UpdateParams(t *testing.T) {
 		Value  interface{}
 	}{
 		{"snowball.k", "snowballK", int(123)},
-		{"snowball.alpha", "snowballAlpha", float64(456)},
 		{"snowball.beta", "snowballBeta", int(789)},
 		{"query.timeout", "queryTimeout", time.Second * 9},
 		{"gossip.timeout", "gossipTimeout", time.Second * 4},
@@ -423,7 +448,7 @@ func TestMain_UpdateParams(t *testing.T) {
 }
 
 func TestMain_ConnectDisconnect(t *testing.T) {
-	w := NewTestWavelet(t, nil)
+	w := NewTestWavelet(t, defaultConfig())
 	defer w.Cleanup()
 
 	peer := w.Testnet.AddNode(t)
@@ -602,6 +627,12 @@ func (w *TestWavelet) Cleanup() {
 type TestWaveletConfig struct {
 	Wallet   string
 	LogLevel string
+}
+
+func defaultConfig() *TestWaveletConfig {
+	return &TestWaveletConfig{
+		LogLevel: "info",
+	}
 }
 
 func NewTestWavelet(t *testing.T, cfg *TestWaveletConfig) *TestWavelet {
