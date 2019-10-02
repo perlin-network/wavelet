@@ -639,7 +639,7 @@ FINALIZE_ROUNDS:
 		default:
 		}
 
-		if len(l.client.ClosestPeers()) < conf.GetSnowballK() {
+		if len(l.client.ClosestPeerIDs()) < conf.GetSnowballK() {
 			select {
 			case <-l.sync:
 				return
