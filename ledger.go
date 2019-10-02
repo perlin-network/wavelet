@@ -717,9 +717,7 @@ FINALIZE_ROUNDS:
 		for i := 0; i < cap(workerChan); i++ {
 			go func() {
 				for conn := range workerChan {
-					connVal := *conn
 					f := func() {
-						conn = &connVal
 						client := NewWaveletClient(conn)
 
 						ctx, cancel := context.WithTimeout(context.Background(), conf.GetQueryTimeout())
