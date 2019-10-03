@@ -29,11 +29,13 @@ import (
 	"github.com/benpye/readline"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli"
+	"google.golang.org/grpc"
 )
 
 const (
@@ -43,19 +45,23 @@ const (
 )
 
 type CLI struct {
-	app    *cli.App
-	rl     *readline.Instance
-	client *skademlia.Client
-	ledger *wavelet.Ledger
-	logger zerolog.Logger
-	keys   *skademlia.Keypair
-	kv     store.KV
+	app     *cli.App
+	rl      *readline.Instance
+	client  *skademlia.Client
+	server  *grpc.Server
+	gateway *api.Gateway
+	ledger  *wavelet.Ledger
+	logger  zerolog.Logger
+	keys    *skademlia.Keypair
+	kv      store.KV
 
 	completion []string
 }
 
 func NewCLI(
 	client *skademlia.Client,
+	server *grpc.Server,
+	gateway *api.Gateway,
 	ledger *wavelet.Ledger,
 	keys *skademlia.Keypair,
 	stdin io.ReadCloser,
@@ -63,12 +69,14 @@ func NewCLI(
 	kv store.KV,
 ) (*CLI, error) {
 	c := &CLI{
-		client: client,
-		ledger: ledger,
-		logger: log.Node(),
-		keys:   keys,
-		app:    cli.NewApp(),
-		kv:     kv,
+		client:  client,
+		server:  server,
+		gateway: gateway,
+		ledger:  ledger,
+		logger:  log.Node(),
+		keys:    keys,
+		app:     cli.NewApp(),
+		kv:      kv,
 	}
 
 	c.app.Name = "wavelet"
@@ -369,6 +377,11 @@ ReadLoop:
 	}
 
 	_ = cli.rl.Close()
+
+	cli.gateway.Shutdown()
+	cli.server.GracefulStop()
+	cli.ledger.Close()
+	cli.kv.Close()
 }
 
 func (cli *CLI) exit(ctx *cli.Context) {

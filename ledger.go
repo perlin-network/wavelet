@@ -89,6 +89,10 @@ type Ledger struct {
 	sendQuota chan struct{}
 
 	stallDetector *StallDetector
+
+	stop     chan struct{}
+	stopWG   sync.WaitGroup
+	cancelGC context.CancelFunc
 }
 
 type config struct {
@@ -130,11 +134,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	indexer := NewIndexer()
 
 	accounts := NewAccounts(kv)
-
-	if !cfg.GCDisabled {
-		go accounts.GC(context.Background())
-	}
-
 	rounds, err := NewRounds(kv, conf.GetPruningLimit())
 
 	var round *Round
@@ -189,6 +188,13 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		sendQuota: make(chan struct{}, 2000),
 	}
 
+	if !cfg.GCDisabled {
+		ctx, cancel := context.WithCancel(context.Background())
+		go accounts.GC(ctx, &ledger.stopWG)
+
+		ledger.cancelGC = cancel
+	}
+
 	stop := make(chan struct{}) // TODO: Real graceful stop.
 	var stallDetector *StallDetector
 	stallDetector = NewStallDetector(stop, StallDetectorConfig{
@@ -199,9 +205,10 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 			logger.Error().Err(err).Msg("Shutting down node...")
 		},
 	})
-	go stallDetector.Run()
+	go stallDetector.Run(&ledger.stopWG)
 
 	ledger.stallDetector = stallDetector
+	ledger.stop = stop
 
 	ledger.PerformConsensus()
 
@@ -209,6 +216,20 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	go ledger.PushSendQuota()
 
 	return ledger
+}
+
+// Close stops all goroutines and waits for them to complete.
+func (l *Ledger) Close() {
+	close(l.sync)
+	l.consensus.Wait()
+
+	close(l.stop)
+
+	if l.cancelGC != nil {
+		l.cancelGC()
+	}
+
+	l.stopWG.Wait()
 }
 
 // AddTransaction adds a transaction to the ledger. If the transaction has
@@ -951,8 +972,6 @@ FINALIZE_ROUNDS:
 			Hex("old_merkle_root", current.Merkle[:]).
 			Uint64("round_depth", preferred.End.Depth-preferred.Start.Depth).
 			Msg("Finalized consensus round, and initialized a new round.")
-
-		//go ExportGraphDOT(finalized, contractIDs.graph)
 	}
 }
 
@@ -1057,7 +1076,7 @@ func (l *Ledger) SyncToLatestRound() {
 				syncTimeoutMultiplier++
 			}
 
-			logger.Debug().Msgf("Not out of sync, sleeping %d seconds", syncTimeoutMultiplier)
+			//logger.Debug().Msgf("Not out of sync, sleeping %d seconds", syncTimeoutMultiplier)
 
 			time.Sleep(time.Duration(syncTimeoutMultiplier) * time.Second)
 

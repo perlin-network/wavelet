@@ -20,11 +20,12 @@
 package lru
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func TestLRU(t *testing.T) {
+func TestLRU_PutLoad(t *testing.T) {
 	lru := NewLRU(2)
 
 	lru.Put([32]byte{'a'}, 1)
@@ -34,15 +35,69 @@ func TestLRU(t *testing.T) {
 	_, ok = lru.Load([32]byte{'a'})
 	assert.True(t, ok)
 
+	lru.Put([32]byte{'b'}, 9)
+
 	lru.Put([32]byte{'c'}, 3)
-	_, ok = lru.Load([32]byte{'b'})
+	_, ok = lru.Load([32]byte{'a'})
 	assert.False(t, ok)
+
+	val, ok := lru.Load([32]byte{'b'})
+	assert.True(t, ok)
+	assert.Equal(t, 9, val.(int))
+
+	val, ok = lru.Load([32]byte{'c'})
+	assert.True(t, ok)
+	assert.Equal(t, 3, val.(int))
+}
+
+func TestLRU_LoadOrPut(t *testing.T) {
+	lru := NewLRU(2)
+
+	val, ok := lru.LoadOrPut([32]byte{'a'}, 1)
+	assert.False(t, ok)
+	assert.EqualValues(t, 1, val.(int))
+
+	val, ok = lru.LoadOrPut([32]byte{'b'}, 2)
+	assert.False(t, ok)
+	assert.EqualValues(t, 2, val.(int))
+
+	_, ok = lru.Load([32]byte{'b'})
+	assert.True(t, ok)
+	_, ok = lru.Load([32]byte{'a'})
+	assert.True(t, ok)
+
+	// LoadOrPut does not update value if key exists
+	lru.LoadOrPut([32]byte{'b'}, 9)
+
+	val, ok = lru.LoadOrPut([32]byte{'c'}, 3)
+	assert.False(t, ok)
+	assert.EqualValues(t, 3, val.(int))
+
+	_, ok = lru.Load([32]byte{'a'})
+	assert.False(t, ok)
+
+	val, ok = lru.Load([32]byte{'b'})
+	assert.True(t, ok)
+	assert.Equal(t, 2, val.(int))
+
+	val, ok = lru.Load([32]byte{'c'})
+	assert.True(t, ok)
+	assert.Equal(t, 3, val.(int))
+}
+
+func TestLRU_Remove(t *testing.T) {
+	lru := NewLRU(2)
+
+	lru.Put([32]byte{'a'}, 1)
+	lru.Put([32]byte{'b'}, 2)
+
+	lru.Remove([32]byte{'c'})
+	lru.Remove([32]byte{'b'})
 
 	val, ok := lru.Load([32]byte{'a'})
 	assert.True(t, ok)
 	assert.Equal(t, 1, val.(int))
 
-	val, ok = lru.Load([32]byte{'c'})
-	assert.True(t, ok)
-	assert.Equal(t, 3, val.(int))
+	_, ok = lru.Load([32]byte{'b'})
+	assert.False(t, ok)
 }

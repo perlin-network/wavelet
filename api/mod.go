@@ -25,14 +25,20 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"fmt"
-	"github.com/perlin-network/wavelet/store"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
+	"strconv"
+	"time"
 
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/debounce"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
@@ -40,13 +46,6 @@ import (
 	"github.com/valyala/fastjson"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
-	"net"
-
-	"io"
-	"net/http"
-	"net/url"
-	"strconv"
-	"time"
 )
 
 type Gateway struct {
