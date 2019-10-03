@@ -24,7 +24,6 @@ import (
 	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/lru"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 )
@@ -36,70 +35,33 @@ type contractExecutorState struct {
 	Context       *CollapseContext
 }
 
-type CollapseContext struct {
-	ContractVMs map[AccountID]*VMState
-	ContractIDs []AccountID // contract ids to preserve order of state insertions
-
-	VMCache *lru.LRU
-}
-
-func NewCollapseContext() *CollapseContext {
-	return &CollapseContext{
-		ContractVMs: make(map[AccountID]*VMState),
-		VMCache:     lru.NewLRU(4),
+// Apply the transaction and immediately write the states into the tree.
+// If you have many transactions to apply, consider using CollapseContext.
+func ApplyTransaction(tree *avl.Tree, round *Round, tx *Transaction) error {
+	ctx := NewCollapseContext(tree)
+	if err := ctx.ApplyTransaction(round, tx); err != nil {
+		return err
 	}
+	return ctx.Flush()
 }
 
-func (ac *CollapseContext) SetContractState(contractID AccountID, state *VMState) {
-	if _, ok := ac.ContractVMs[contractID]; !ok {
-		ac.ContractVMs[contractID] = state
-		ac.ContractIDs = append(ac.ContractIDs, contractID)
-	}
-}
-
-func (ac *CollapseContext) GetContractState(contractID AccountID) (*VMState, bool) {
-	vm, exists := ac.ContractVMs[contractID]
-	return vm, exists
-}
-
-func (ac *CollapseContext) Flush(snapshot *avl.Tree) {
-	for _, id := range ac.ContractIDs {
-		vm := ac.ContractVMs[id]
-		SaveContractMemorySnapshot(snapshot, id, vm.Memory)
-		SaveContractGlobals(snapshot, id, vm.Globals)
-	}
-}
-
-func ApplyTransaction(round *Round, state *avl.Tree, tx *Transaction, ctx *CollapseContext) error {
-	return applyTransaction(round, state, tx, &contractExecutorState{
-		GasPayer: tx.Creator,
-		Context:  ctx,
-	})
-}
-
-func applyTransaction(round *Round, state *avl.Tree, tx *Transaction, executorState *contractExecutorState) error {
-	original := state.Snapshot()
-
+func applyTransaction(round *Round, ctx *CollapseContext, tx *Transaction, executorState *contractExecutorState) error {
 	switch tx.Tag {
 	case sys.TagNop:
 	case sys.TagTransfer:
-		if err := applyTransferTransaction(state, round, tx, executorState); err != nil {
-			state.Revert(original)
+		if err := applyTransferTransaction(ctx, round, tx, executorState); err != nil {
 			return errors.Wrap(err, "could not apply transfer transaction")
 		}
 	case sys.TagStake:
-		if err := applyStakeTransaction(state, round, tx); err != nil {
-			state.Revert(original)
+		if err := applyStakeTransaction(ctx, round, tx); err != nil {
 			return errors.Wrap(err, "could not apply stake transaction")
 		}
 	case sys.TagContract:
-		if err := applyContractTransaction(state, round, tx, executorState); err != nil {
-			state.Revert(original)
+		if err := applyContractTransaction(ctx, round, tx, executorState); err != nil {
 			return errors.Wrap(err, "could not apply contract transaction")
 		}
 	case sys.TagBatch:
-		if err := applyBatchTransaction(state, round, tx, executorState); err != nil {
-			state.Revert(original)
+		if err := applyBatchTransaction(ctx, round, tx, executorState); err != nil {
 			return errors.Wrap(err, "could not apply batch transaction")
 		}
 	}
@@ -107,13 +69,13 @@ func applyTransaction(round *Round, state *avl.Tree, tx *Transaction, executorSt
 	return nil
 }
 
-func applyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction, state *contractExecutorState) error {
+func applyTransferTransaction(ctx *CollapseContext, round *Round, tx *Transaction, state *contractExecutorState) error {
 	payload, err := ParseTransfer(tx.Payload)
 	if err != nil {
 		return err
 	}
 
-	code, codeAvailable := ReadAccountContractCode(snapshot, payload.Recipient)
+	code, codeAvailable := ctx.ReadAccountContractCode(payload.Recipient)
 
 	if !codeAvailable && (payload.GasLimit > 0 || len(payload.FuncName) > 0 || len(payload.FuncParams) > 0) {
 		return errors.New("transfer: transactions to non-contract accounts should not specify gas limit or function names or params")
@@ -121,19 +83,18 @@ func applyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 
 	// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
 	if hex.EncodeToString(tx.Creator[:]) == sys.FaucetAddress {
-		recipientBalance, _ := ReadAccountBalance(snapshot, payload.Recipient)
-		WriteAccountBalance(snapshot, payload.Recipient, recipientBalance+payload.Amount)
+		recipientBalance, _ := ctx.ReadAccountBalance(payload.Recipient)
+		ctx.WriteAccountBalance(payload.Recipient, recipientBalance+payload.Amount)
 
 		return nil
 	}
 
 	err = transferValue(
 		"PERL",
-		snapshot,
 		tx.Creator, payload.Recipient,
 		payload.Amount,
-		ReadAccountBalance, WriteAccountBalance,
-		ReadAccountBalance, WriteAccountBalance,
+		ctx.ReadAccountBalance, ctx.WriteAccountBalance,
+		ctx.ReadAccountBalance, ctx.WriteAccountBalance,
 	)
 	if err != nil {
 		return errors.Wrap(err, "failed to execute transferValue on balance")
@@ -146,11 +107,10 @@ func applyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 	if payload.GasDeposit != 0 {
 		err = transferValue(
 			"PERL (Gas Deposit)",
-			snapshot,
 			tx.Creator, payload.Recipient,
 			payload.GasDeposit,
-			ReadAccountBalance, WriteAccountBalance,
-			ReadAccountContractGasBalance, WriteAccountContractGasBalance,
+			ctx.ReadAccountBalance, ctx.WriteAccountBalance,
+			ctx.ReadAccountContractGasBalance, ctx.WriteAccountContractGasBalance,
 		)
 		if err != nil {
 			return errors.Wrap(err, "failed to execute transferValue on gas deposit")
@@ -161,18 +121,18 @@ func applyTransferTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 		return nil
 	}
 
-	return executeContractInTransactionContext(tx, payload.Recipient, code, snapshot, round, payload.Amount, payload.GasLimit, payload.FuncName, payload.FuncParams, state)
+	return executeContractInTransactionContext(tx, payload.Recipient, code, ctx, round, payload.Amount, payload.GasLimit, payload.FuncName, payload.FuncParams, state)
 }
 
-func applyStakeTransaction(snapshot *avl.Tree, round *Round, tx *Transaction) error {
+func applyStakeTransaction(ctx *CollapseContext, round *Round, tx *Transaction) error {
 	payload, err := ParseStake(tx.Payload)
 	if err != nil {
 		return err
 	}
 
-	balance, _ := ReadAccountBalance(snapshot, tx.Creator)
-	stake, _ := ReadAccountStake(snapshot, tx.Creator)
-	reward, _ := ReadAccountReward(snapshot, tx.Creator)
+	balance, _ := ctx.ReadAccountBalance(tx.Creator)
+	stake, _ := ctx.ReadAccountStake(tx.Creator)
+	reward, _ := ctx.ReadAccountReward(tx.Creator)
 
 	switch payload.Opcode {
 	case sys.PlaceStake:
@@ -180,15 +140,15 @@ func applyStakeTransaction(snapshot *avl.Tree, round *Round, tx *Transaction) er
 			return errors.Errorf("stake: %x attempt to place a stake of %d PERLs, but only has %d PERLs", tx.Creator, payload.Amount, balance)
 		}
 
-		WriteAccountBalance(snapshot, tx.Creator, balance-payload.Amount)
-		WriteAccountStake(snapshot, tx.Creator, stake+payload.Amount)
+		ctx.WriteAccountBalance(tx.Creator, balance-payload.Amount)
+		ctx.WriteAccountStake(tx.Creator, stake+payload.Amount)
 	case sys.WithdrawStake:
 		if stake < payload.Amount {
 			return errors.Errorf("stake: %x attempt to withdraw a stake of %d PERLs, but only has staked %d PERLs", tx.Creator, payload.Amount, payload)
 		}
 
-		WriteAccountBalance(snapshot, tx.Creator, balance+payload.Amount)
-		WriteAccountStake(snapshot, tx.Creator, stake-payload.Amount)
+		ctx.WriteAccountBalance(tx.Creator, balance+payload.Amount)
+		ctx.WriteAccountStake(tx.Creator, stake-payload.Amount)
 	case sys.WithdrawReward:
 		if payload.Amount < sys.MinimumRewardWithdraw {
 			return errors.Errorf("stake: %x attempt to withdraw rewards amounting to %d PERLs, but system requires the minimum amount to withdraw to be %d PERLs", tx.Creator, payload.Amount, sys.MinimumRewardWithdraw)
@@ -198,8 +158,8 @@ func applyStakeTransaction(snapshot *avl.Tree, round *Round, tx *Transaction) er
 			return errors.Errorf("stake: %x attempt to withdraw rewards amounting to %d PERLs, but only has rewards amounting to %d PERLs", tx.Creator, payload.Amount, reward)
 		}
 
-		WriteAccountReward(snapshot, tx.Creator, reward-payload.Amount)
-		StoreRewardWithdrawalRequest(snapshot, RewardWithdrawalRequest{
+		ctx.WriteAccountReward(tx.Creator, reward-payload.Amount)
+		ctx.StoreRewardWithdrawalRequest(RewardWithdrawalRequest{
 			account: tx.Creator,
 			amount:  payload.Amount,
 			round:   round.Index,
@@ -209,13 +169,13 @@ func applyStakeTransaction(snapshot *avl.Tree, round *Round, tx *Transaction) er
 	return nil
 }
 
-func applyContractTransaction(snapshot *avl.Tree, round *Round, tx *Transaction, state *contractExecutorState) error {
+func applyContractTransaction(ctx *CollapseContext, round *Round, tx *Transaction, state *contractExecutorState) error {
 	payload, err := ParseContract(tx.Payload)
 	if err != nil {
 		return err
 	}
 
-	if _, exists := ReadAccountContractCode(snapshot, tx.ID); exists {
+	if _, exists := ctx.ReadAccountContractCode(tx.ID); exists {
 		return errors.New("contract: already exists")
 	}
 
@@ -224,26 +184,25 @@ func applyContractTransaction(snapshot *avl.Tree, round *Round, tx *Transaction,
 		return errors.Wrap(err, "invalid wasm")
 	}
 
-	WriteAccountContractCode(snapshot, tx.ID, payload.Code)
+	ctx.WriteAccountContractCode(tx.ID, payload.Code)
 
 	if payload.GasDeposit != 0 {
 		err = transferValue(
 			"PERL (Gas Deposit)",
-			snapshot,
 			tx.Creator, AccountID(tx.ID),
 			payload.GasDeposit,
-			ReadAccountBalance, WriteAccountBalance,
-			ReadAccountContractGasBalance, WriteAccountContractGasBalance,
+			ctx.ReadAccountBalance, ctx.WriteAccountBalance,
+			ctx.ReadAccountContractGasBalance, ctx.WriteAccountContractGasBalance,
 		)
 		if err != nil {
 			return errors.Wrap(err, "failed to execute transferValue on gas deposit")
 		}
 	}
 
-	return executeContractInTransactionContext(tx, AccountID(tx.ID), payload.Code, snapshot, round, 0, payload.GasLimit, []byte("init"), payload.Params, state)
+	return executeContractInTransactionContext(tx, AccountID(tx.ID), payload.Code, ctx, round, 0, payload.GasLimit, []byte("init"), payload.Params, state)
 }
 
-func applyBatchTransaction(snapshot *avl.Tree, round *Round, tx *Transaction, state *contractExecutorState) error {
+func applyBatchTransaction(ctx *CollapseContext, round *Round, tx *Transaction, state *contractExecutorState) error {
 	payload, err := ParseBatch(tx.Payload)
 	if err != nil {
 		return err
@@ -258,7 +217,7 @@ func applyBatchTransaction(snapshot *avl.Tree, round *Round, tx *Transaction, st
 			Tag:     sys.Tag(payload.Tags[i]),
 			Payload: payload.Payloads[i],
 		}
-		if err := applyTransaction(round, snapshot, entry, state); err != nil {
+		if err := applyTransaction(round, ctx, entry, state); err != nil {
 			return errors.Wrapf(err, "Error while processing %d/%d transaction in a batch.", i+1, payload.Size)
 		}
 	}
@@ -269,13 +228,12 @@ func applyBatchTransaction(snapshot *avl.Tree, round *Round, tx *Transaction, st
 // Transfers value of any form (balance, gasDeposit/gasBalance).
 func transferValue(
 	unitName string,
-	snapshot *avl.Tree,
 	from, to AccountID,
 	amount uint64,
-	srcRead func(*avl.Tree, AccountID) (uint64, bool), srcWrite func(*avl.Tree, AccountID, uint64),
-	dstRead func(*avl.Tree, AccountID) (uint64, bool), dstWrite func(*avl.Tree, AccountID, uint64),
+	srcRead func(AccountID) (uint64, bool), srcWrite func(AccountID, uint64),
+	dstRead func(AccountID) (uint64, bool), dstWrite func(AccountID, uint64),
 ) error {
-	senderValue, _ := srcRead(snapshot, from)
+	senderValue, _ := srcRead(from)
 
 	if senderValue < amount {
 		return errors.Errorf("transfer_value: %x tried send %d %s to %x, but only has %d %s",
@@ -283,11 +241,11 @@ func transferValue(
 	}
 
 	senderValue -= amount
-	srcWrite(snapshot, from, senderValue)
+	srcWrite(from, senderValue)
 
-	recipientValue, _ := dstRead(snapshot, to)
+	recipientValue, _ := dstRead(to)
 	recipientValue += amount
-	dstWrite(snapshot, to, recipientValue)
+	dstWrite(to, recipientValue)
 
 	return nil
 }
@@ -296,7 +254,7 @@ func executeContractInTransactionContext(
 	tx *Transaction,
 	contractID AccountID,
 	code []byte,
-	snapshot *avl.Tree,
+	ctx *CollapseContext,
 	round *Round,
 	amount uint64,
 	requestedGasLimit uint64,
@@ -306,8 +264,8 @@ func executeContractInTransactionContext(
 ) error {
 	logger := log.Contracts("execute")
 
-	gasPayerBalance, _ := ReadAccountBalance(snapshot, state.GasPayer)
-	contractGasBalance, _ := ReadAccountContractGasBalance(snapshot, contractID)
+	gasPayerBalance, _ := ctx.ReadAccountBalance(state.GasPayer)
+	contractGasBalance, _ := ctx.ReadAccountContractGasBalance(contractID)
 	availableBalance := gasPayerBalance + contractGasBalance
 
 	if !state.GasLimitIsSet {
@@ -331,19 +289,11 @@ func executeContractInTransactionContext(
 	}
 
 	executor := &ContractExecutor{}
-	snapshotBeforeExec := snapshot.Snapshot()
 
-	var vmState *VMState
-	var vmStateLoaded bool
+	var contractState *VMState
+	contractState, _ = ctx.GetContractState(contractID)
 
-	if state.Context != nil {
-		vmState, vmStateLoaded = state.Context.GetContractState(contractID)
-		if !vmStateLoaded {
-			vmState = &VMState{}
-		}
-	}
-
-	invocationErr := executor.Execute(snapshot, contractID, round, tx, amount, realGasLimit, string(funcName), funcParams, code, state.Context, vmState, vmStateLoaded)
+	newContractState, invocationErr := executor.Execute(contractID, round, tx, amount, realGasLimit, string(funcName), funcParams, code, ctx.tree, ctx.VMCache, contractState)
 
 	// availableBalance >= realGasLimit >= executor.Gas && state.GasLimit >= realGasLimit must always hold.
 	if realGasLimit < executor.Gas {
@@ -353,42 +303,41 @@ func executeContractInTransactionContext(
 		logger.Fatal().Msg("BUG: state.GasLimit < realGasLimit")
 	}
 
-	if executor.GasLimitExceeded || invocationErr != nil { // Revert changes and have the gas payer pay gas fees.
-		snapshot.Revert(snapshotBeforeExec)
+	if invocationErr != nil { // Revert changes and have the gas payer pay gas fees.
 		if executor.Gas > contractGasBalance {
-			WriteAccountContractGasBalance(snapshot, contractID, 0)
+			ctx.WriteAccountContractGasBalance(contractID, 0)
 			if gasPayerBalance < (executor.Gas - contractGasBalance) {
 				logger.Fatal().Msg("BUG: gasPayerBalance < (executor.Gas - contractGasBalance)")
 			}
-			WriteAccountBalance(snapshot, state.GasPayer, gasPayerBalance-(executor.Gas-contractGasBalance))
+			ctx.WriteAccountBalance(state.GasPayer, gasPayerBalance-(executor.Gas-contractGasBalance))
 		} else {
-			WriteAccountContractGasBalance(snapshot, contractID, contractGasBalance-executor.Gas)
+			ctx.WriteAccountContractGasBalance(contractID, contractGasBalance-executor.Gas)
 		}
 		state.GasLimit -= executor.Gas
 
-		if invocationErr != nil {
-			logger.Info().Err(invocationErr).Msg("failed to invoke smart contract")
-		} else {
+		if executor.GasLimitExceeded {
 			logger.Info().
 				Hex("sender_id", tx.Creator[:]).
 				Hex("contract_id", contractID[:]).
 				Uint64("gas", executor.Gas).
 				Uint64("gas_limit", realGasLimit).
 				Msg("Exceeded gas limit while invoking smart contract function.")
+
+		} else {
+			logger.Info().Err(invocationErr).Msg("failed to invoke smart contract")
 		}
 	} else {
-		if vmState != nil { // Contract invocation succeeded. VM state can be safely saved now.
-			state.Context.SetContractState(contractID, vmState)
-		}
+		// Contract invocation succeeded. VM state can be safely saved now.
+		ctx.SetContractState(contractID, newContractState)
 
 		if executor.Gas > contractGasBalance {
-			WriteAccountContractGasBalance(snapshot, contractID, 0)
+			ctx.WriteAccountContractGasBalance(contractID, 0)
 			if gasPayerBalance < (executor.Gas - contractGasBalance) {
 				logger.Fatal().Msg("BUG: gasPayerBalance < (executor.Gas - contractGasBalance)")
 			}
-			WriteAccountBalance(snapshot, state.GasPayer, gasPayerBalance-(executor.Gas-contractGasBalance))
+			ctx.WriteAccountBalance(state.GasPayer, gasPayerBalance-(executor.Gas-contractGasBalance))
 		} else {
-			WriteAccountContractGasBalance(snapshot, contractID, contractGasBalance-executor.Gas)
+			ctx.WriteAccountContractGasBalance(contractID, contractGasBalance-executor.Gas)
 		}
 		state.GasLimit -= executor.Gas
 
@@ -400,7 +349,7 @@ func executeContractInTransactionContext(
 		//	Msg("Deducted PERLs for invoking smart contract function.")
 
 		for _, entry := range executor.Queue {
-			err := applyTransaction(round, snapshot, entry, state)
+			err := applyTransaction(round, ctx, entry, state)
 			if err != nil {
 				logger.Info().Err(err).Msg("failed to process sub-transaction")
 			}

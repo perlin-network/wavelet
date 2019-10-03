@@ -352,8 +352,8 @@ func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
 		skademlia.WithC2(sys.SKademliaC2),
 		skademlia.WithDialOptions(grpc.WithDefaultCallOptions(
 			grpc.UseCompressor(snappy.Name),
-			grpc.MaxCallRecvMsgSize(9 * 1024 * 1024),
-			grpc.MaxCallSendMsgSize(3 * 1024 * 1024),
+			grpc.MaxCallRecvMsgSize(9*1024*1024),
+			grpc.MaxCallSendMsgSize(3*1024*1024),
 		)),
 	)
 
