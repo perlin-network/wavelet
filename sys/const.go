@@ -290,6 +290,13 @@ var (
 	ContractMaxGlobals         = 64
 )
 
+func init() {
+	switch sys.VersionMeta {
+		case "testnet":
+			sys.MinimumStake = 10000
+	}
+}
+
 // String converts a given tag to a string.
 func (tag Tag) String() string {
 	if tag < 0 || tag > 4 { // Check out of bounds

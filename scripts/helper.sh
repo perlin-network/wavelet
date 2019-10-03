@@ -30,6 +30,7 @@ set -eu
 # common variables
 GIT_COMMIT=$(git rev-parse --short HEAD)
 GO_VERSION=$(go version | awk '{print $3}')
+BUILD_NETWORK="${BUILD_NETWORK:-testnet}"
 
 # loop through each architecture and build to an output
 set -e
@@ -61,7 +62,8 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
             -ldflags "\
                 -X ${PROJ_DIR}/sys.GitCommit=${GIT_COMMIT} \
                 -X ${PROJ_DIR}/sys.GoVersion=${GO_VERSION} \
-                -X ${PROJ_DIR}/sys.OSArch=${os_arch}" \
+                -X ${PROJ_DIR}/sys.OSArch=${os_arch} \
+                -X ${PROJ_DIR}/sys.VersionMeta=${BUILD_NETWORK}" \
             .
     )
 
@@ -73,7 +75,8 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
             -ldflags " \
                 -X ${PROJ_DIR}/sys.GitCommit=${GIT_COMMIT} \
                 -X ${PROJ_DIR}/sys.GoVersion=${GO_VERSION} \
-                -X ${PROJ_DIR}/sys.OSArch=${os_arch}" \
+                -X ${PROJ_DIR}/sys.OSArch=${os_arch} \
+                -X ${PROJ_DIR}/sys.VersionMeta=${BUILD_NETWORK}" \
             .
     )
 
@@ -85,7 +88,8 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
             -ldflags "\
                 -X ${PROJ_DIR}/sys.GitCommit=${GIT_COMMIT} \
                 -X ${PROJ_DIR}/sys.GoVersion=${GO_VERSION} \
-                -X ${PROJ_DIR}/sys.OSArch=${os_arch}" \
+                -X ${PROJ_DIR}/sys.OSArch=${os_arch} \
+                -X ${PROJ_DIR}/sys.VersionMeta=${BUILD_NETWORK}" \
             .
     )
 
