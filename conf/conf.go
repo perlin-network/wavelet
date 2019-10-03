@@ -44,8 +44,16 @@ type config struct {
 	secret string
 }
 
-var (
-	c = config{
+var c config
+var l sync.RWMutex
+
+func init() {
+	c = defaultConfig()
+	l = sync.RWMutex{}
+}
+
+func defaultConfig() config {
+	return config{
 		snowballK:    2,
 		snowballBeta: 50,
 
@@ -59,17 +67,14 @@ var (
 		gossipTimeout:         5000 * time.Millisecond,
 		downloadTxTimeout:     1 * time.Second,
 		checkOutOfSyncTimeout: 5000 * time.Millisecond,
-
-		syncChunkSize:        16384,
-		syncIfRoundsDifferBy: 2,
+		syncChunkSize:         16384,
+		syncIfRoundsDifferBy:  2,
 
 		maxDownloadDepthDiff: 1500,
 		maxDepthDiff:         10,
 		pruningLimit:         30,
 	}
-
-	l = sync.RWMutex{}
-)
+}
 
 type Option func(*config)
 
