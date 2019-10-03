@@ -291,9 +291,9 @@ var (
 )
 
 func init() {
-	switch sys.VersionMeta {
+	switch VersionMeta {
 		case "testnet":
-			sys.MinimumStake = 10000
+			MinimumStake = 10000
 	}
 }
 
