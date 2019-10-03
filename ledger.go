@@ -220,7 +220,16 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 // Close stops all goroutines and waits for them to complete.
 func (l *Ledger) Close() {
-	close(l.sync)
+	syncOpen := true
+	select {
+	case _, syncOpen = <-l.sync:
+	default:
+	}
+
+	if syncOpen {
+		close(l.sync)
+	}
+
 	l.consensus.Wait()
 
 	close(l.stop)
