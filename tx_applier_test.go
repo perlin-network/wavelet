@@ -308,9 +308,7 @@ func TestApplyContractTransaction(t *testing.T) {
 	WriteAccountBalance(state, accountID, 1000000000)
 	tx = AttachSenderToTransaction(account, NewTransaction(account, sys.TagTransfer, buildTransferWithInvocationPayload(contractID, 0, 0, nil, nil, 1337).Marshal()))
 
-	assert.NoError(t, ApplyTransaction(&round, state, &tx, ctx))
-
-	ctx.Flush(state)
+	assert.NoError(t, ApplyTransaction(state, &round, &tx))
 
 	gasDeposit, _ := ReadAccountContractGasBalance(state, contractID)
 	assert.EqualValues(t, 1337, gasDeposit)
