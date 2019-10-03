@@ -995,7 +995,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 			for _, conn := range conns {
 				go func(conn *grpc.ClientConn) {
-					logger.Debug().Msgf("Dialing %v for Sync Check", conn.Target())
+					//logger.Debug().Msgf("Dialing %v for Sync Check", conn.Target())
 
 					client := NewWaveletClient(conn)
 
@@ -1059,7 +1059,7 @@ func (l *Ledger) SyncToLatestRound() {
 				syncTimeoutMultiplier++
 			}
 
-			logger.Debug().Msgf("Not out of sync, sleeping %d seconds", syncTimeoutMultiplier)
+			//logger.Debug().Msgf("Not out of sync, sleeping %d seconds", syncTimeoutMultiplier)
 
 			time.Sleep(time.Duration(syncTimeoutMultiplier) * time.Second)
 
