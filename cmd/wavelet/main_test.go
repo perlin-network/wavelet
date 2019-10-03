@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -25,20 +26,8 @@ import (
 var wallet1 = "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"
 var wallet2 = "85e7450f7cf0d9cd1d1d7bf4169c2f364eea4ba833a7280e0f931a1d92fd92c2696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a"
 
-func TestMain_WithInvalidLogLevel(t *testing.T) {
-	// Invalid loglevel will cause the ledger to use the default log level,
-	// which is debug
-	config := defaultConfig()
-	config.LogLevel = "foobar"
-	w := NewTestWavelet(t, config)
-	defer w.Cleanup()
-
-	w.Stdin <- "status"
-	w.Stdout.Search(t, "Here is the current status of your node")
-}
-
 func TestMain(t *testing.T) {
-	w := NewTestWavelet(t, nil)
+	w := NewTestWavelet(t, defaultConfig())
 	defer w.Cleanup()
 
 	ledger := w.GetLedgerStatus(t)
@@ -68,6 +57,18 @@ func TestMain_WithLogLevel(t *testing.T) {
 			return
 		}
 	}
+}
+
+func TestMain_WithInvalidLogLevel(t *testing.T) {
+	// Invalid loglevel will cause the ledger to use the default log level,
+	// which is debug
+	config := defaultConfig()
+	config.LogLevel = "foobar"
+	w := NewTestWavelet(t, config)
+	defer w.Cleanup()
+
+	w.Stdin <- "status"
+	w.Stdout.Search(t, "Here is the current status of your node")
 }
 
 func TestMain_WithWalletString(t *testing.T) {
@@ -115,7 +116,7 @@ func TestMain_WithInvalidWallet(t *testing.T) {
 }
 
 func TestMain_Status(t *testing.T) {
-	w := NewTestWavelet(t, nil)
+	w := NewTestWavelet(t, defaultConfig())
 	defer w.Cleanup()
 
 	w.Stdin <- "status"
@@ -142,8 +143,7 @@ func TestMain_Pay(t *testing.T) {
 	assert.EqualValues(t, alice.PublicKey, tx.Sender)
 	assert.EqualValues(t, alice.PublicKey, tx.Creator)
 
-	<-bob.WaitForConsensus()
-	assert.EqualValues(t, 99999, bob.Balance())
+	bob.WaitUntilBalance(t, 99999)
 }
 
 func TestMain_Spawn(t *testing.T) {
@@ -385,9 +385,7 @@ func TestMain_WithdrawReward(t *testing.T) {
 }
 
 func TestMain_UpdateParams(t *testing.T) {
-	config := defaultConfig()
-	config.Wallet = wallet2
-	w := NewTestWavelet(t, config)
+	w := NewTestWavelet(t, defaultConfig())
 	defer w.Cleanup()
 
 	w.Stdin <- "up"
@@ -450,15 +448,10 @@ func TestMain_UpdateParams(t *testing.T) {
 }
 
 func TestMain_ConnectDisconnect(t *testing.T) {
-	config := defaultConfig()
-	config.Wallet = wallet2
-	w := NewTestWavelet(t, config)
+	w := NewTestWavelet(t, defaultConfig())
 	defer w.Cleanup()
 
-	testnet := wavelet.NewTestNetwork(t)
-	defer testnet.Cleanup()
-
-	peer := testnet.AddNode(t)
+	peer := w.Testnet.AddNode(t)
 	<-peer.WaitForSync()
 
 	w.Stdin <- fmt.Sprintf("connect %s", peer.Addr())
@@ -625,14 +618,14 @@ type TestWavelet struct {
 	PublicKey string
 	Stdin     mockStdin
 	Stdout    *mockStdout
+	StopWG    sync.WaitGroup
 }
 
 func (w *TestWavelet) Cleanup() {
-	close(w.Stdin)
 	w.Testnet.Cleanup()
 
-	// Since Ledger doesn't have a proper cleanup method yet, just sleep
-	time.Sleep(time.Millisecond * 500)
+	close(w.Stdin)
+	w.StopWG.Wait()
 }
 
 type TestWaveletConfig struct {
@@ -668,9 +661,6 @@ func NewTestWavelet(t *testing.T, cfg *TestWaveletConfig) *TestWavelet {
 	stdin := mockStdin(make(chan string))
 	stdout := newMockStdout()
 
-	go Run(args, stdin, stdout, true)
-	waitForAPI(t, apiPort)
-
 	w := &TestWavelet{
 		Testnet: testnet,
 		Port:    port,
@@ -678,6 +668,14 @@ func NewTestWavelet(t *testing.T, cfg *TestWaveletConfig) *TestWavelet {
 		Stdin:   stdin,
 		Stdout:  stdout,
 	}
+
+	w.StopWG.Add(1)
+	go func() {
+		defer w.StopWG.Done()
+		Run(args, stdin, stdout, true)
+	}()
+	waitForAPI(t, apiPort)
+
 	w.PublicKey = w.GetLedgerStatus(t).PublicKey
 
 	return w
@@ -702,7 +700,14 @@ func getLedgerStatus(apiPort string) (*TestLedgerStatus, error) {
 
 	req = req.WithContext(ctx)
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{
+		Timeout: time.Second * 1,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -752,7 +757,14 @@ func getTransaction(apiPort string, id string) (*TestTransaction, error) {
 
 	req = req.WithContext(ctx)
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{
+		Timeout: time.Second * 1,
+		Transport: &http.Transport{
+			DisableKeepAlives: true,
+		},
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
