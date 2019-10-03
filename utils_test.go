@@ -90,7 +90,7 @@ func newNode(t *testing.T) (*skademlia.Client, string, func()) {
 	client := skademlia.NewClient(addr, keys, skademlia.WithC1(sys.SKademliaC1), skademlia.WithC2(sys.SKademliaC2))
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
-	kv, cleanup := store.NewTestKV(t, "inmem", "db")
+	kv, cleanup := store.NewTestKV(t, "level", "db")
 	ledger := NewLedger(kv, client, WithoutGC())
 	server := client.Listen()
 	RegisterWaveletServer(server, ledger.Protocol())

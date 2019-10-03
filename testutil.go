@@ -336,6 +336,7 @@ func (l *TestLedger) Cleanup() {
 	l.server.Stop()
 	<-l.stopped
 
+	l.ledger.Close()
 	l.kvCleanup()
 }
 

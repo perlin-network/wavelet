@@ -331,11 +331,13 @@ func (n *node) rehash() {
 
 func (n *node) rehashNoWrite() [MerkleHashSize]byte {
 	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
 	n.serialize(buf)
-	data := buf.Bytes()
 
-	return highwayhash.Sum128(data, hashKey)
+	hash := highwayhash.Sum128(buf.Bytes(), hashKey)
+
+	bytebufferpool.Put(buf)
+
+	return hash
 }
 
 func (n *node) clone() *node {

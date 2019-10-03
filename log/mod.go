@@ -76,18 +76,21 @@ func setupChildLoggers() {
 	metrics = logger.With().Str(KeyModule, ModuleMetrics).Logger()
 }
 
-func SetLevel(level string) {
-	if l, err := zerolog.ParseLevel(level); err == nil {
-		node = node.Level(l)
-		network = network.Level(l)
-		accounts = accounts.Level(l)
-		consensus = consensus.Level(l)
-		contract = contract.Level(l)
-		syncer = syncer.Level(l)
-		stake = stake.Level(l)
-		tx = tx.Level(l)
-		metrics = metrics.Level(l)
+func SetLevel(ls string) {
+	level, err := zerolog.ParseLevel(ls)
+	if err != nil {
+		level = zerolog.DebugLevel
 	}
+
+	node = node.Level(level)
+	network = network.Level(level)
+	accounts = accounts.Level(level)
+	consensus = consensus.Level(level)
+	contract = contract.Level(level)
+	syncer = syncer.Level(level)
+	stake = stake.Level(level)
+	tx = tx.Level(level)
+	metrics = metrics.Level(level)
 }
 
 func SetWriter(key string, writer io.Writer) {
