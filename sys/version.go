@@ -29,7 +29,7 @@ const (
 	// VersionPatch is patch version component of the current release
 	VersionPatch = 1
 	// VersionMeta is append to the version string
-	VersionMeta = "testnet"
+	VersionMeta = "testing"
 )
 
 // variables set via linker flags
