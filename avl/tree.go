@@ -25,6 +25,8 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
+
 	"github.com/perlin-network/wavelet/lru"
 
 	"github.com/perlin-network/wavelet/store"
@@ -38,6 +40,7 @@ var GCAliveMarkPrefix = []byte("@2:")
 var OldRootsPrefix = []byte("@3:")
 var RootKey = []byte(".root")
 var NextOldRootIndexKey = []byte(".next_old_root")
+var DiffsKeyPrefix = []byte("diffs:")
 
 const DefaultCacheSize = 2048
 const MaxWriteBatchSize = 1024
@@ -376,14 +379,40 @@ func (t *Tree) iterateDiff(prevViewID uint64, callback func(n *node) bool) {
 	}
 }
 
-func (t *Tree) DumpDiff(prevViewID uint64) []byte {
-	buf := bytebufferpool.Get()
-	defer bytebufferpool.Put(buf)
+// DumpDiff writes the AVL tree difference into a io.Writer.
+func (t *Tree) DumpDiff(prevViewID uint64, wr io.Writer) error {
+	var lastErr error
+
+	nodeIDs := make([][MerkleHashSize]byte, 0)
 	t.iterateDiff(prevViewID, func(n *node) bool {
-		n.serializeForDifference(buf)
+		nodeIDs = append(nodeIDs, n.id)
 		return true
 	})
-	return buf.Bytes()
+
+	if lastErr != nil {
+		return lastErr
+	}
+
+	// Diff header
+	if err := binary.Write(wr, binary.LittleEndian, uint64(len(nodeIDs))); err != nil {
+		return err
+	}
+
+	for _, id := range nodeIDs {
+		if _, err := wr.Write(id[:]); err != nil {
+			return err
+		}
+	}
+
+	t.iterateDiff(prevViewID, func(n *node) bool {
+		if err := n.serializeForDifference(wr); err != nil {
+			lastErr = err
+			return false
+		}
+		return true
+	})
+
+	return nil
 }
 
 func (t *Tree) IterateLeafDiff(prevViewID uint64, callback func(key, value []byte) bool) {
@@ -396,38 +425,53 @@ func (t *Tree) IterateLeafDiff(prevViewID uint64, callback func(key, value []byt
 	})
 }
 
-func (t *Tree) ApplyDiffWithUpdateNotifier(diff []byte, updateNotifier func(key, value []byte)) error {
-	reader := bytes.NewReader(diff)
+func (t *Tree) ApplyDiffWithUpdateNotifier(diff io.Reader, updateNotifier func(key, value []byte)) error {
 
-	var root *node
-	unresolved := make(map[[MerkleHashSize]byte]struct{})
-	preloaded := make(map[[MerkleHashSize]byte]*node)
+	// Deserialize header
+	var nodeCount uint64
+	if err := binary.Read(diff, binary.LittleEndian, &nodeCount); err != nil {
+		return err
+	}
 
-	for reader.Len() > 0 {
-		n, err := DeserializeFromDifference(reader, t.viewID)
-		if err != nil {
+	if nodeCount == 0 {
+		return nil
+	}
+
+	var rootID [MerkleHashSize]byte
+	preloaded := newDiffQueue(t.kv, DiffsKeyPrefix, t.viewID)
+
+	var id [MerkleHashSize]byte
+	for i := uint64(0); i < nodeCount; i++ {
+		if _, err := diff.Read(id[:]); err != nil {
 			return err
 		}
-		preloaded[n.id] = n
-		if root == nil {
-			root = n
-		} else {
+
+		preloaded.AddID(id)
+
+		if i == 0 {
+			rootID = id
+		}
+	}
+
+	preloaded.Reader = diff
+
+	unresolved := make(map[[MerkleHashSize]byte]struct{})
+	preloaded.OnDequeue = func(n *node) error {
+		if n.id != rootID {
 			if _, ok := unresolved[n.id]; !ok {
 				return errors.Errorf("unexpected node")
 			}
 			delete(unresolved, n.id)
 		}
+
 		if n.kind == NodeNonLeaf {
 			unresolved[n.left] = struct{}{}
 			unresolved[n.right] = struct{}{}
 		}
-	}
-
-	if root == nil {
 		return nil
 	}
 
-	_, err := populateDiffs(t, root.id, preloaded, make(map[[MerkleHashSize]byte]struct{}), updateNotifier)
+	root, err := populateDiffs(t, rootID, preloaded, make(map[[MerkleHashSize]byte]struct{}), updateNotifier)
 	if err != nil {
 		return errors.Wrap(err, "invalid difference")
 	}
@@ -438,7 +482,7 @@ func (t *Tree) ApplyDiffWithUpdateNotifier(diff []byte, updateNotifier func(key,
 	return nil
 }
 
-func (t *Tree) ApplyDiff(diff []byte) error {
+func (t *Tree) ApplyDiff(diff io.Reader) error {
 	return t.ApplyDiffWithUpdateNotifier(diff, nil)
 }
 

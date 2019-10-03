@@ -175,7 +175,7 @@ func TestTree_Diff_Randomized(t *testing.T) {
 				return false
 			}
 
-			assert.NoError(t, a.ApplyDiff(b.DumpDiff(a.viewID)))
+			assert.NoError(t, applyDiffFromBytes(a, dumpDiffAll(b, a.viewID)))
 		}
 
 		a.SetViewID(uint64(i))
@@ -187,9 +187,9 @@ func TestTree_Diff_Randomized(t *testing.T) {
 
 	assert.NoError(t, quick.Check(fn, &quick.Config{MaxCount: 10000}))
 
-	assert.NoError(t, tree1.ApplyDiff(tree2.DumpDiff(tree1.viewID)))
+	assert.NoError(t, applyDiffFromBytes(tree1, dumpDiffAll(tree2, tree1.viewID)))
 	assert.NoError(t, tree1.Commit())
-	assert.NoError(t, tree2.ApplyDiff(tree1.DumpDiff(tree2.viewID)))
+	assert.NoError(t, applyDiffFromBytes(tree2, dumpDiffAll(tree1, tree2.viewID)))
 	assert.NoError(t, tree2.Commit())
 	assert.Equal(t, tree1.root.id, tree2.root.id)
 }
@@ -223,7 +223,7 @@ func TestTree_Diff_UpdateNotifier(t *testing.T) {
 
 	diffMap := make(map[string]string)
 	iterCount := 0
-	assert.NoError(t, tree2.ApplyDiffWithUpdateNotifier(tree1.DumpDiff(tree2.viewID), func(k, v []byte) {
+	assert.NoError(t, applyDiffFromBytesWithUpdateNotifier(tree2, dumpDiffAll(tree1, tree2.viewID), func(k, v []byte) {
 		diffMap[string(k)] = string(v)
 		iterCount++
 	}))
@@ -262,7 +262,7 @@ func TestTree_ApplyEmptyDiff(t *testing.T) {
 	tree1.Commit()
 	tree2.Commit()
 
-	assert.NoError(t, tree2.ApplyDiff(tree1.DumpDiff(tree2.viewID)))
+	assert.NoError(t, applyDiffFromBytes(tree2, dumpDiffAll(tree1, tree2.viewID)))
 
 	assert.Equal(t, tree1.root.id, tree2.root.id)
 }
@@ -283,7 +283,7 @@ func TestTree_Difference(t *testing.T) {
 
 	tree2.Commit()
 
-	assert.NoError(t, tree2.ApplyDiff(tree.DumpDiff(0)))
+	assert.NoError(t, applyDiffFromBytes(tree2, dumpDiffAll(tree, 0)))
 	assert.Equal(t, tree2.viewID, uint64(1))
 	tree2.SetViewID(2)
 	tree2.Insert([]byte("k2"), []byte("2"))
@@ -295,19 +295,23 @@ func TestTree_Difference(t *testing.T) {
 	assert.Equal(t, []byte("2"), result)
 
 	tree.Commit()
-	assert.NoError(t, tree.ApplyDiff(tree2.DumpDiff(1)))
+	assert.NoError(t, applyDiffFromBytes(tree, dumpDiffAll(tree2, 1)))
 	assert.Equal(t, tree.viewID, uint64(2))
 
 	result, _ = tree.Lookup([]byte("k2"))
 	assert.Equal(t, []byte("2"), result)
 
-	len1 := len(tree.DumpDiff(0))
-	len2 := len(tree.DumpDiff(1))
-	len3 := len(tree.DumpDiff(2))
+	len1 := dumpDiffLen(dumpDiffAll(tree, 0))
+	len2 := dumpDiffLen(dumpDiffAll(tree, 1))
+	len3 := dumpDiffLen(dumpDiffAll(tree, 2))
 
 	assert.Equal(t, len3, 0)
 	assert.True(t, len1 > len2)
 	assert.True(t, len2 > len3)
+}
+
+func dumpDiffLen(dump []byte) int {
+	return int(binary.LittleEndian.Uint64(dump[:8]))
 }
 
 func TestTree_IterateFrom(t *testing.T) {
@@ -428,4 +432,20 @@ func BenchmarkAVL(b *testing.B) {
 
 		cleanup()
 	}
+}
+
+func dumpDiffAll(t *Tree, previewID uint64) []byte {
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
+
+	_ = t.DumpDiff(previewID, buf)
+	return buf.Bytes()
+}
+
+func applyDiffFromBytes(t *Tree, diff []byte) error {
+	return t.ApplyDiff(bytes.NewReader(diff))
+}
+
+func applyDiffFromBytesWithUpdateNotifier(t *Tree, diff []byte, fn func(key, value []byte)) error {
+	return t.ApplyDiffWithUpdateNotifier(bytes.NewReader(diff), fn)
 }

@@ -24,8 +24,10 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/minio/highwayhash"
+	"io"
 	"math"
+
+	"github.com/minio/highwayhash"
 
 	"github.com/pkg/errors"
 	"github.com/valyala/bytebufferpool"
@@ -367,8 +369,11 @@ func (n *node) getString() string {
 	}
 }
 
-func (n *node) serializeForDifference(buf *bytebufferpool.ByteBuffer) {
+func (n *node) serializeForDifference(wr io.Writer) error {
 	var buf64 [8]byte
+
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
 
 	buf.Write(n.id[:])
 	binary.LittleEndian.PutUint64(buf64[:], n.viewID)
@@ -395,6 +400,9 @@ func (n *node) serializeForDifference(buf *bytebufferpool.ByteBuffer) {
 		buf.Write(n.left[:])
 		buf.Write(n.right[:])
 	}
+
+	_, err := buf.WriteTo(wr)
+	return err
 }
 
 func (n *node) dfs(t *Tree, allowMissingNodes bool, cb func(*node) (bool, error)) error {
@@ -436,7 +444,7 @@ func (n *node) dfs(t *Tree, allowMissingNodes bool, cb func(*node) (bool, error)
 	return nil
 }
 
-func DeserializeFromDifference(r *bytes.Reader, localViewID uint64) (*node, error) {
+func DeserializeFromDifference(r io.Reader, localViewID uint64) (*node, error) {
 	var buf64 [8]byte
 
 	var id [MerkleHashSize]byte
@@ -454,11 +462,11 @@ func DeserializeFromDifference(r *bytes.Reader, localViewID uint64) (*node, erro
 		return nil, errors.New("got view id < local view id")
 	}
 
-	_kind, err := r.ReadByte()
+	_, err = r.Read(buf64[:1])
 	if err != nil {
 		return nil, err
 	}
-	kind := nodeType(_kind)
+	kind := nodeType(buf64[0])
 
 	if kind == NodeLeafValue {
 		_, err = r.Read(buf64[:4])
@@ -634,7 +642,7 @@ func mustDeserialize(r *bytes.Reader) *node {
 }
 
 // populateDiffs constructs a valid AVL tree from the incoming preloaded tree difference.
-func populateDiffs(t *Tree, id [MerkleHashSize]byte, preloaded map[[MerkleHashSize]byte]*node, visited map[[MerkleHashSize]byte]struct{}, updateNotifier func(key, value []byte)) (*node, error) {
+func populateDiffs(t *Tree, id [MerkleHashSize]byte, preloaded *diffQueue, visited map[[MerkleHashSize]byte]struct{}, updateNotifier func(key, value []byte)) (*node, error) {
 	if t.root != nil && !t.root.wroteBack {
 		return nil, errors.New("cannot call populateDiffs() on a dirty tree")
 	}
@@ -644,18 +652,27 @@ func populateDiffs(t *Tree, id [MerkleHashSize]byte, preloaded map[[MerkleHashSi
 	}
 	visited[id] = struct{}{}
 
-	var err error
-	n := preloaded[id]
-	if n == nil {
-		n, err = t.loadNode(id)
+	// Node is not a preloaded diff
+	if !preloaded.Has(id) {
+		n, err := t.loadNode(id)
 		if err != nil {
 			return nil, err
 		}
+
 		return n, nil
+	}
+
+	n, err := preloaded.Dequeue()
+	if err != nil {
+		return nil, err
 	}
 
 	if n.size != 0 || n.depth != 0 {
 		panic("BUG: Size != 0 || Depth != 0, possible inconsistency")
+	}
+
+	if n.id != id {
+		return nil, errors.New("invalid diff order")
 	}
 
 	if n.kind == NodeLeafValue {
