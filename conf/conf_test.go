@@ -19,7 +19,7 @@ func TestGet(t *testing.T) {
 
 	assert.EqualValues(t, 5000*time.Millisecond, GetQueryTimeout())
 	assert.EqualValues(t, 5000*time.Millisecond, GetGossipTimeout())
-	assert.EqualValues(t, 1*time.Second, GetDownloadTxTimeout())
+	assert.EqualValues(t, 30*time.Second, GetDownloadTxTimeout())
 	assert.EqualValues(t, 5000*time.Millisecond, GetCheckOutOfSyncTimeout())
 
 	assert.EqualValues(t, 16384, GetSyncChunkSize())

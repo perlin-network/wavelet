@@ -66,7 +66,7 @@ func defaultConfig() config {
 
 		queryTimeout:          5000 * time.Millisecond,
 		gossipTimeout:         5000 * time.Millisecond,
-		downloadTxTimeout:     1 * time.Second,
+		downloadTxTimeout:     30 * time.Second,
 		checkOutOfSyncTimeout: 5000 * time.Millisecond,
 		syncChunkSize:         16384,
 		syncIfRoundsDifferBy:  2,
