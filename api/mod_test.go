@@ -845,7 +845,7 @@ func TestConnectDisconnectErrors(t *testing.T) {
 			uri:        "/node/connect",
 			authHeader: authHeader,
 			body:       `{"address":"aaa"}`,
-			errorStr:   `{"status":"Internal Server Error","error":"error connecting to peer: failed to dial peer: connection error: desc = \"transport: error while dialing: dial tcp: address aaa: missing port in address\""}`,
+			errorStr:   `{"status":"Internal Server Error","error":"error connecting to peer: connection could not be identified: failed to ping peer: rpc error: code = Unavailable desc = all SubConns are in TransientFailure, latest connection error: connection error: desc = \"transport: error while dialing: dial tcp: address aaa: missing port in address\""}`,
 			code:       http.StatusInternalServerError,
 		},
 		{
@@ -861,7 +861,7 @@ func TestConnectDisconnectErrors(t *testing.T) {
 			uri:        "/node/connect",
 			authHeader: authHeader,
 			body:       `{"address":"127.0.0.1:1234"}`,
-			errorStr:   `{"status":"Internal Server Error","error":"error connecting to peer: failed to dial peer: connection error: desc = \"transport: error while dialing: dial tcp 127.0.0.1:1234: connect: connection refused\""}`,
+			errorStr:   `{"status":"Internal Server Error","error":"error connecting to peer: connection could not be identified: failed to ping peer: rpc error: code = Unavailable desc = all SubConns are in TransientFailure, latest connection error: connection error: desc = \"transport: error while dialing: dial tcp 127.0.0.1:1234: connect: connection refused\""}`,
 			code:       http.StatusInternalServerError,
 		},
 		{
