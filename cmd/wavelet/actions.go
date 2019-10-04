@@ -389,12 +389,7 @@ func (cli *CLI) connect(ctx *cli.Context) {
 		return
 	}
 
-	address, ok := cli.parseRecipient(cmd[0])
-	if !ok {
-		return
-	}
-
-	m, err := cli.Connect(address)
+	m, err := cli.Connect(cmd[0])
 	if err != nil {
 		cli.logger.Error().
 			Err(err).
@@ -413,12 +408,7 @@ func (cli *CLI) disconnect(ctx *cli.Context) {
 		return
 	}
 
-	address, ok := cli.parseRecipient(cmd[0])
-	if !ok {
-		return
-	}
-
-	m, err := cli.Disconnect(address)
+	m, err := cli.Disconnect(cmd[0])
 	if err != nil {
 		cli.logger.Error().
 			Err(err).
@@ -450,10 +440,16 @@ func (cli *CLI) restart(ctx *cli.Context) {
 func (cli *CLI) updateParameters(ctx *cli.Context) {
 	conf.Update(
 		conf.WithSnowballK(ctx.Int("snowball.k")),
-		conf.WithSnowballAlpha(ctx.Float64("snowball.alpha")),
 		conf.WithSnowballBeta(ctx.Int("snowball.beta")),
+		conf.WithSyncVoteThreshold(ctx.Float64("vote.sync.threshold")),
+		conf.WithFinalizationVoteThreshold(ctx.Float64("vote.finalization.threshold")),
+		conf.WithStakeMajorityWeight(ctx.Float64("vote.finalization.stake.weight")),
+		conf.WithTransactionsNumMajorityWeight(ctx.Float64("vote.finalization.transactions.weight")),
+		conf.WithRoundDepthMajorityWeight(ctx.Float64("vote.finalization.depth.weight")),
 		conf.WithQueryTimeout(ctx.Duration("query.timeout")),
 		conf.WithGossipTimeout(ctx.Duration("gossip.timeout")),
+		conf.WithDownloadTxTimeout(ctx.Duration("download.tx.timeout")),
+		conf.WithCheckOutOfSyncTimeout(ctx.Duration("check.out.of.sync.timeout")),
 		conf.WithSyncChunkSize(ctx.Int("sync.chunk.size")),
 		conf.WithSyncIfRoundsDifferBy(ctx.Uint64("sync.if.rounds.differ.by")),
 		conf.WithMaxDownloadDepthDiff(ctx.Uint64("max.download.depth.diff")),

@@ -107,6 +107,33 @@ func (l *LRU) Put(key interface{}, val interface{}) {
 	}
 }
 
+func (l *LRU) PutWithEvictCallback(key interface{}, val interface{}, onEvict func(key interface{}, val interface{})) {
+	l.Lock()
+	defer l.Unlock()
+
+	elem, ok := l.elements[key]
+
+	if ok {
+		elem.Value.(*objectInfo).obj = val
+		l.access.MoveToFront(elem)
+	} else {
+		l.elements[key] = l.access.PushFront(&objectInfo{
+			key: key,
+			obj: val,
+		})
+		for len(l.elements) > l.size {
+			back := l.access.Back()
+			info := back.Value.(*objectInfo)
+			delete(l.elements, info.key)
+			l.access.Remove(back)
+
+			if onEvict != nil {
+				onEvict(info.key, info.obj)
+			}
+		}
+	}
+}
+
 func (l *LRU) Remove(key interface{}) {
 	l.Lock()
 	defer l.Unlock()

@@ -22,13 +22,14 @@ package wavelet
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/pkg/errors"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
 	"io/ioutil"
 	"math/rand"
 	"strconv"
 	"strings"
+
+	"github.com/pkg/errors"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/connectivity"
 )
 
 func SelectPeers(peers []*grpc.ClientConn, amount int) ([]*grpc.ClientConn, error) {

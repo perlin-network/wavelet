@@ -15,7 +15,7 @@ func (c *Client) DepositGas(recipient [32]byte, gasAmount uint64) (*TxResponse, 
 		return nil, ErrNotContract
 	}
 
-	if a.Balance < gasAmount+sys.TransactionFeeAmount {
+	if a.Balance < gasAmount+4*1024*1024 {
 		return nil, ErrInsufficientPerls
 	}
 

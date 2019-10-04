@@ -45,7 +45,10 @@ func NewAccounts(kv store.KV) *Accounts {
 
 // GC periodically garbage collects every 5 seconds. Only one
 // instance of GC worker can run at any time.
-func (a *Accounts) GC(ctx context.Context) {
+func (a *Accounts) GC(ctx context.Context, wg *sync.WaitGroup) {
+	wg.Add(1)
+	defer wg.Done()
+
 	timer := time.NewTicker(5 * time.Second)
 	defer timer.Stop()
 

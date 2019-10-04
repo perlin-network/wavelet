@@ -59,6 +59,7 @@ type Marshalable interface {
 type Config struct {
 	APIHost    string
 	APIPort    uint16
+	APISecret  string
 	PrivateKey edwards25519.PrivateKey
 	UseHTTPS   bool
 	Timeout    time.Duration

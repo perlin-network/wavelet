@@ -63,6 +63,8 @@ type Wavelet struct {
 	SKademlia *skademlia.Client
 	Keypair   *skademlia.Keypair
 	Ledger    *wavelet.Ledger
+	Gateway   *api.Gateway
+	Server    *grpc.Server
 
 	config   *Config
 	db       store.KV
@@ -80,7 +82,8 @@ func New(cfg *Config) (*Wavelet, error) {
 	}
 
 	w := Wavelet{
-		config: cfg,
+		config:  cfg,
+		Gateway: api.New(),
 	}
 
 	// Make a logger
@@ -194,10 +197,11 @@ func New(cfg *Config) (*Wavelet, error) {
 }
 
 func (w *Wavelet) Start() {
+	w.Server = w.SKademlia.Listen()
+
 	go func() {
-		server := w.SKademlia.Listen()
-		wavelet.RegisterWaveletServer(server, w.Ledger.Protocol())
-		if err := server.Serve(w.listener); err != nil {
+		wavelet.RegisterWaveletServer(w.Server, w.Ledger.Protocol())
+		if err := w.Server.Serve(w.listener); err != nil {
 			w.logger.Fatal().Err(err).
 				Msg("S/Kademlia failed to listen")
 		}
@@ -228,16 +232,23 @@ func (w *Wavelet) Start() {
 	}
 
 	if w.config.APIHost != "" {
-		api.New().StartHTTPS(
+		w.Gateway.StartHTTPS(
 			int(w.config.APIPort),
 			w.SKademlia, w.Ledger, w.Keypair, w.db,
 			w.config.APIHost,
 			w.config.APICertsCache, // guaranteed not empty in New
 		)
 	} else {
-		api.New().StartHTTP(
+		w.Gateway.StartHTTP(
 			int(w.config.APIPort),
 			w.SKademlia, w.Ledger, w.Keypair, w.db,
 		)
 	}
+}
+
+func (w *Wavelet) Close() error {
+	w.Gateway.Shutdown()
+	w.Server.GracefulStop()
+	w.Ledger.Close()
+	return w.db.Close()
 }

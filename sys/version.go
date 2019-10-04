@@ -29,7 +29,7 @@ const (
 	// VersionPatch is patch version component of the current release
 	VersionPatch = 1
 	// VersionMeta is append to the version string
-	VersionMeta = "testnet"
+	VersionMeta = "testing"
 )
 
 // variables set via linker flags
@@ -42,4 +42,12 @@ var (
 // Version holds the textual version string.
 var Version = func() string {
 	return fmt.Sprintf("v%d.%d.%d-%s", VersionMajor, VersionMinor, VersionPatch, VersionMeta)
+}()
+
+var VersionCode = func() uint32 {
+	var versionCode uint32
+
+	versionCode = (VersionMajor << 24) | (VersionMinor << 16) | VersionPatch
+
+	return versionCode
 }()

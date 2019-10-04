@@ -19,13 +19,13 @@ func (c *Client) Pay(recipient [32]byte, amount uint64) (*TxResponse, error) {
 	// Set the amount
 	t.Amount = amount
 
-	if a.Balance < amount+sys.TransactionFeeAmount {
+	if a.Balance < amount+4*1024*1024 {
 		return nil, ErrInsufficientPerls
 	}
 
 	if a.IsContract {
 		// Set the contract parameters
-		t.GasLimit = a.Balance - amount - sys.TransactionFeeAmount
+		t.GasLimit = a.Balance - amount - 4*1024*1024
 		t.FuncName = []byte("on_money_received")
 	}
 

@@ -56,6 +56,7 @@ func (c *Client) Request(path string, method string, body []byte) ([]byte, error
 	req.URI().Update(addr)
 	req.Header.SetMethod(method)
 	req.Header.SetContentType("application/json")
+	req.Header.Set("Authorization", "Bearer "+c.APISecret)
 
 	if body != nil {
 		req.SetBody(body)

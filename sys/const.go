@@ -19,6 +19,8 @@
 
 package sys
 
+import "time"
+
 // Tag is a wrapper for a transaction tag.
 type Tag byte
 
@@ -37,10 +39,36 @@ const (
 	WithdrawReward
 )
 
+const (
+	// Size of individual chunks sent for a syncing peer.
+	SyncChunkSize = 16 * 1024 // 64KB
+
+	// Size of file size used for streaming file to disk during syncing.
+	SyncPooledFileSize = 100 * 1024 * 1024 // 100MB
+)
+
 var (
 	// S/Kademlia overlay network parameters.
 	SKademliaC1 = 1
 	SKademliaC2 = 1
+
+	// Snowball consensus protocol parameters.
+	SnowballK     = 2
+	SnowballAlpha = 0.8
+	SnowballBeta  = 50
+
+	// Timeout for querying a transaction to K peers.
+	QueryTimeout = 1 * time.Second
+
+	// Number of rounds we should be behind before we start syncing.
+	SyncIfRoundsDifferBy uint64 = 2
+
+	// Max graph depth difference to search for eligible transaction
+	// parents from for our node.
+	MaxDepthDiff uint64 = 10
+
+	//
+	MaxDownloadDepthDiff uint64 = 1500
 
 	// Max number of parents referencable by a transaction.
 	MaxParentsPerTransaction = 32
@@ -51,8 +79,11 @@ var (
 	// Factor to scale a transactions confidence down by to compute the difficulty needed to define a critical transaction.
 	DifficultyScaleFactor = 0.5
 
-	// Fee amount paid by a node per transaction.
-	TransactionFeeAmount uint64 = 2
+	// Default fee amount paid by a node per transaction.
+	DefaultTransactionFee uint64 = 2
+
+	// Multiplier for size of transaction payload to calculate it's fee
+	TransactionFeeMultiplier = 0.05
 
 	// Minimum amount of stake to start being able to reap validator rewards.
 	MinimumStake uint64 = 100

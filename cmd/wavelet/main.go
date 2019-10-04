@@ -20,8 +20,9 @@
 package main
 
 import (
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -30,6 +31,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/pkg/errors"
+
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/conf"
 
 	"github.com/perlin-network/noise/edwards25519"
@@ -52,9 +56,13 @@ var logger = log.Node()
 
 type Config struct {
 	ServerAddr string // empty == start new server
+	UpdateURL  string
 }
 
 func main() {
+	switchToUpdatedVersion()
+	wavelet.SetGenesisByNetwork(sys.VersionMeta)
+
 	Run(os.Args, os.Stdin, os.Stdout)
 }
 
@@ -81,6 +89,12 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 			Name:   "nat",
 			Usage:  "Enable port forwarding: only required for personal PCs.",
 			EnvVar: "WAVELET_NAT",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "update-url",
+			Value:  "https://updates.perlin.net/wavelet",
+			Usage:  "URL for updating Wavelet node.",
+			EnvVar: "WAVELET_UPDATE_URL",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "host",
@@ -131,6 +145,12 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 			Usage:  "Directory path to the database. If empty, a temporary in-memory database will be used instead.",
 			EnvVar: "WAVELET_DB_PATH",
 		}),
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "loglevel",
+			Value:  "debug",
+			Usage:  "Minimum log level to output. Possible values: debug, info, warn, error, fatal, panic.",
+			EnvVar: "WAVELET_LOGLEVEL",
+		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "memory.max",
 			Value:  0,
@@ -149,7 +169,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.transaction_fee_amount",
-			Value: sys.TransactionFeeAmount,
+			Value: sys.DefaultTransactionFee,
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.min_stake",
@@ -161,12 +181,6 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 			Value:  conf.GetSnowballK(),
 			Usage:  "Snowball consensus protocol parameter k",
 			EnvVar: "WAVELET_SNOWBALL_K",
-		}),
-		altsrc.NewFloat64Flag(cli.Float64Flag{
-			Name:   "sys.snowball.alpha",
-			Value:  conf.GetSnowballAlpha(),
-			Usage:  "Snowball consensus protocol parameter alpha",
-			EnvVar: "WAVELET_SNOWBALL_ALPHA",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "sys.snowball.beta",
@@ -217,6 +231,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	if err := app.Run(args); err != nil {
+		logger := log.Node()
 		logger.Fatal().Err(err).
 			Msg("Failed to parse configuration/command-line arguments.")
 	}
@@ -225,29 +240,50 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 	config := Config{
 		ServerAddr: c.String("server"),
+		UpdateURL:  c.String("update-url"),
 	}
 
-	conf.Update(
-		conf.WithSnowballK(c.Int("sys.snowball.k")),
-		conf.WithSnowballAlpha(c.Float64("sys.snowball.alpha")),
-		conf.WithSnowballBeta(c.Int("sys.snowball.beta")),
-		conf.WithQueryTimeout(c.Duration("sys.query_timeout")),
-		conf.WithMaxDepthDiff(c.Uint64("sys.max_depth_diff")),
-		conf.WithSecret(c.String("api.secret")),
-	)
+	// Set the log level
+	log.SetLevel(c.String("loglevel"))
 
-	// set the the sys variables
-	sys.MinDifficulty = byte(c.Int("sys.difficulty.min"))
-	sys.DifficultyScaleFactor = c.Float64("sys.difficulty.scale")
-	sys.TransactionFeeAmount = c.Uint64("sys.transaction_fee_amount")
-	sys.MinimumStake = c.Uint64("sys.min_stake")
+	// Start the background updater
+	go periodicUpdateRoutine(c.String("update-url"))
 
 	w, err := wallet(c.String("wallet"))
 	if err != nil {
 		return err
 	}
 
+	// Grab the secret
+	secret := c.String("api.secret")
+	if secret == "" {
+		// If the secret is empty, derive the secret from the base64-hashed
+		// sha224-hashed private key.
+		h, err := hex.DecodeString(secret)
+		if err != nil {
+			return errors.Wrap(err, "Can't decode wallet")
+		}
+
+		sha := sha512.Sum512_224(h)
+		secret = base64.StdEncoding.EncodeToString(sha[:])
+	}
+
+	conf.Update(
+		conf.WithSnowballK(c.Int("sys.snowball.k")),
+		conf.WithSnowballBeta(c.Int("sys.snowball.beta")),
+		conf.WithQueryTimeout(c.Duration("sys.query_timeout")),
+		conf.WithMaxDepthDiff(c.Uint64("sys.max_depth_diff")),
+		conf.WithSecret(secret),
+	)
+
+	// set the the sys variables
+	sys.MinDifficulty = byte(c.Int("sys.difficulty.min"))
+	sys.DifficultyScaleFactor = c.Float64("sys.difficulty.scale")
+	sys.DefaultTransactionFee = c.Uint64("sys.transaction_fee_amount")
+	sys.MinimumStake = c.Uint64("sys.min_stake")
+
 	var wctlCfg wctl.Config
+	wctlCfg.APISecret = conf.GetSecret()
 
 	if config.ServerAddr == "" {
 		srvCfg := node.Config{
@@ -276,8 +312,8 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 		}
 
 		// Start the server
-		// TODO: Add Close()
 		srv.Start()
+		defer srv.Close()
 
 		wctlCfg.Server = srv
 		wctlCfg.APIPort = uint16(c.Uint("api.port"))
@@ -321,53 +357,6 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 	shell.Start()
 	return nil
 }
-
-/*
-func start(cfg *Config) {
-	c, err := wctl.NewClient(wctl.Config{
-		APIHost:    "localhost",
-		APIPort:    uint16(cfg.APIPort),
-		PrivateKey: keys.PrivateKey(),
-	})
-
-	if err != nil {
-		logger.Fatal().Err(err).
-			Uint("port", cfg.APIPort).
-			Msg("Failed to connect to API")
-	}
-
-<<<<<<< HEAD
-	// Set CLI callbacks, mainly loggers
-	if err := setEvents(c); err != nil {
-		logger.Fatal().Err(err).
-			Msg("Failed to start websockets to the server")
-	}
-
-	shell, err := NewCLI(c)
-=======
-	if cfg.APIHost != nil {
-		go api.New().StartHTTPS(int(cfg.APIPort), client, ledger, keys, kv, *cfg.APIHost, *cfg.APICertsCache)
-	} else {
-		if cfg.APIPort > 0 {
-			go api.New().StartHTTP(int(cfg.APIPort), client, ledger, keys, kv)
-
-		}
-	}
-
-<<<<<<< HEAD
-	shell, err := NewCLI(client, ledger, keys, stdin, stdout)
->>>>>>> b6ce347218f0db9c9312b63f5c33708b848f2ef2
-=======
-	shell, err := NewCLI(client, ledger, keys, stdin, stdout, kv)
->>>>>>> 065586acb746a9b4f77fe6ce1a503418fb38af25
-	if err != nil {
-		logger.Fatal().Err(err).
-			Msg("Failed to spawn the CLI")
-	}
-
-	shell.Start()
-}
-*/
 
 func wallet(wallet string) (string, error) {
 	var keys *skademlia.Keypair
