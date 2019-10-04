@@ -213,7 +213,7 @@ func (cli *CLI) find(ctx *cli.Context) {
 			Uint64("balance", account.Balance).
 			Uint64("gas_balance", account.GasBalance).
 			Uint64("stake", account.Stake).
-			//Uint64("nonce", account.Nonce).
+			Uint64("nonce", account.Nonce).
 			Uint64("reward", account.Reward).
 			Bool("is_contract", account.IsContract).
 			Uint64("num_pages", account.NumPages).
@@ -249,16 +249,6 @@ func (cli *CLI) spawn(ctx *cli.Context) {
 			Msg("Failed to find/load the smart contract code from the given path.")
 		return
 	}
-
-	/*
-		if err := wasm.GetValidator().ValidateWasm(code); err != nil {
-			cli.logger.Error().
-				Err(err).
-				Str("path", cmd[0]).
-				Msg("Invalid wasm")
-			return
-		}
-	*/
 
 	tx, err := cli.Spawn(code, 100000000)
 	if err != nil {

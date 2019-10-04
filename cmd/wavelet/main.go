@@ -33,12 +33,11 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/conf"
-
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/cmd/wavelet/node"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
@@ -358,6 +357,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 	return nil
 }
 
+// returns hex-encoded
 func wallet(wallet string) (string, error) {
 	var keys *skademlia.Keypair
 

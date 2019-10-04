@@ -660,7 +660,6 @@ func NewTestWavelet(t *testing.T, cfg *TestWaveletConfig) *TestWavelet {
 
 	stdin := mockStdin(make(chan string))
 	stdout := newMockStdout()
-	disableGC = true
 
 	w := &TestWavelet{
 		Testnet: testnet,

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/perlin-network/wavelet/sys"
 )
 
 type config struct {
@@ -53,7 +55,7 @@ func init() {
 }
 
 func defaultConfig() config {
-	return config{
+	defConf := config{
 		snowballK:    2,
 		snowballBeta: 50,
 
@@ -74,6 +76,13 @@ func defaultConfig() config {
 		maxDepthDiff:         10,
 		pruningLimit:         30,
 	}
+
+	switch sys.VersionMeta {
+	case "testnet":
+		defConf.snowballK = 10
+	}
+
+	return defConf
 }
 
 type Option func(*config)
