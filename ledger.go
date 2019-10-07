@@ -26,7 +26,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"math/rand"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -85,6 +87,7 @@ type Ledger struct {
 	syncStatusLock sync.RWMutex
 
 	cacheCollapse *lru.LRU
+	diffFile      *os.File
 	fileBuffers   *fileBufferPool
 
 	sendQuota chan struct{}
@@ -166,6 +169,11 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	finalizer := NewSnowball(WithName("finalizer"))
 	syncer := NewSnowball(WithName("syncer"))
 
+	diffFile, err := ioutil.TempFile("", "wavelet-diffdump")
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Could not create diff dump file")
+	}
+
 	ledger := &Ledger{
 		client:  client,
 		metrics: metrics,
@@ -185,6 +193,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 		cacheCollapse: lru.NewLRU(16),
 		fileBuffers:   newFileBufferPool(sys.SyncPooledFileSize, ""),
+		diffFile:      diffFile,
 
 		sendQuota: make(chan struct{}, 2000),
 	}
@@ -240,6 +249,7 @@ func (l *Ledger) Close() {
 	}
 
 	l.stopWG.Wait()
+	l.diffFile.Close()
 }
 
 // AddTransaction adds a transaction to the ledger. If the transaction has
@@ -1307,11 +1317,8 @@ func (l *Ledger) SyncToLatestRound() {
 			goto SYNC
 		}
 
-		diffBuffer := l.fileBuffers.GetUnbounded()
-
 		cleanup := func() {
 			l.fileBuffers.Put(chunksBuffer)
-			l.fileBuffers.Put(diffBuffer)
 		}
 
 		for i := 0; i < cap(workers); i++ {
@@ -1408,7 +1415,17 @@ func (l *Ledger) SyncToLatestRound() {
 			diffSize += int64(src.size)
 		}
 
-		if _, err := io.CopyN(diffBuffer, chunksBuffer, diffSize); err != nil {
+		if err := l.diffFile.Truncate(0); err != nil {
+			logger.Error().
+				Uint64("target_round", latest.Index).
+				Err(err).
+				Msg("Failed to truncate diff dump file. Restarting sync...")
+
+			cleanup()
+			goto SYNC
+		}
+
+		if _, err := io.CopyN(l.diffFile, chunksBuffer, diffSize); err != nil {
 			logger.Error().
 				Uint64("target_round", latest.Index).
 				Err(err).
@@ -1423,8 +1440,18 @@ func (l *Ledger) SyncToLatestRound() {
 			Uint64("target_round", latest.Index).
 			Msg("All chunks have been successfully verified and re-assembled into a diff. Applying diff...")
 
+		if _, err := l.diffFile.Seek(0, os.SEEK_SET); err != nil {
+			logger.Error().
+				Uint64("target_round", latest.Index).
+				Err(err).
+				Msg("Failed to seek to start of diff dump file. Restarting sync...")
+
+			cleanup()
+			goto SYNC
+		}
+
 		snapshot := l.accounts.Snapshot()
-		if err := snapshot.ApplyDiff(diffBuffer); err != nil {
+		if err := snapshot.ApplyDiff(l.diffFile); err != nil {
 			logger.Error().
 				Uint64("target_round", latest.Index).
 				Err(err).
