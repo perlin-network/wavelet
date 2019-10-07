@@ -25,7 +25,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"math/rand"
 	"os"
@@ -1310,15 +1309,11 @@ func (l *Ledger) SyncToLatestRound() {
 			Int("num_workers", cap(workers)).
 			Msg("Starting up workers to downloaded all chunks of data needed to sync to the latest round...")
 
-		chunksBuffer, err := l.fileBuffers.GetBounded(int64(len(sources)) * sys.SyncChunkSize)
-		if err != nil {
+		if err := l.diffFile.Truncate(0); err != nil {
 			logger.Error().
-				Msg("Could not create paged buffer! Retrying...")
+				Err(err).
+				Msg("Failed to truncate diff dump file. Retrying...")
 			goto SYNC
-		}
-
-		cleanup := func() {
-			l.fileBuffers.Put(chunksBuffer)
 		}
 
 		for i := 0; i < cap(workers); i++ {
@@ -1368,7 +1363,7 @@ func (l *Ledger) SyncToLatestRound() {
 						}
 
 						// We found the chunk! Store the chunks contents.
-						if _, err := chunksBuffer.WriteAt(chunk, int64(src.idx)*sys.SyncChunkSize); err != nil {
+						if _, err := l.diffFile.WriteAt(chunk, int64(src.idx)*sys.SyncChunkSize); err != nil {
 							continue
 						}
 
@@ -1400,7 +1395,6 @@ func (l *Ledger) SyncToLatestRound() {
 		dispose() // Shutdown all streams as we no longer need them.
 
 		// Check all chunks has been received
-		var diffSize int64
 		for i, src := range sources {
 			if src.size == 0 {
 				logger.Error().
@@ -1408,31 +1402,8 @@ func (l *Ledger) SyncToLatestRound() {
 					Hex("chunk_checksum", sources[i].checksum[:]).
 					Msg("Could not download one of the chunks necessary to sync to the latest round! Retrying...")
 
-				cleanup()
 				goto SYNC
 			}
-
-			diffSize += int64(src.size)
-		}
-
-		if err := l.diffFile.Truncate(0); err != nil {
-			logger.Error().
-				Uint64("target_round", latest.Index).
-				Err(err).
-				Msg("Failed to truncate diff dump file. Restarting sync...")
-
-			cleanup()
-			goto SYNC
-		}
-
-		if _, err := io.CopyN(l.diffFile, chunksBuffer, diffSize); err != nil {
-			logger.Error().
-				Uint64("target_round", latest.Index).
-				Err(err).
-				Msg("Failed to write chunks to bounded memory buffer. Restarting sync...")
-
-			cleanup()
-			goto SYNC
 		}
 
 		logger.Info().
@@ -1446,7 +1417,6 @@ func (l *Ledger) SyncToLatestRound() {
 				Err(err).
 				Msg("Failed to seek to start of diff dump file. Restarting sync...")
 
-			cleanup()
 			goto SYNC
 		}
 
@@ -1457,7 +1427,6 @@ func (l *Ledger) SyncToLatestRound() {
 				Err(err).
 				Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
 
-			cleanup()
 			goto SYNC
 		}
 
@@ -1468,7 +1437,6 @@ func (l *Ledger) SyncToLatestRound() {
 				Hex("yielded_merkle_root", checksum[:]).
 				Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
 
-			cleanup()
 			goto SYNC
 		}
 
@@ -1478,7 +1446,6 @@ func (l *Ledger) SyncToLatestRound() {
 				Err(err).
 				Msg("Failed to save finalized round to our database")
 
-			cleanup()
 			goto SYNC
 		}
 
@@ -1496,7 +1463,6 @@ func (l *Ledger) SyncToLatestRound() {
 		l.graph.UpdateRoot(latest.End)
 
 		if err := l.accounts.Commit(snapshot); err != nil {
-			cleanup()
 			logger := log.Node()
 			logger.Fatal().Err(err).Msg("failed to commit collapsed state to our database")
 		}
@@ -1514,7 +1480,6 @@ func (l *Ledger) SyncToLatestRound() {
 			Hex("old_merkle_root", current.Merkle[:]).
 			Msg("Successfully built a new state Snapshot out of chunk(s) we have received from peers.")
 
-		cleanup()
 		restart()
 	}
 }
