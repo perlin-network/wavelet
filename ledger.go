@@ -1303,6 +1303,7 @@ func (l *Ledger) SyncToLatestRound() {
 		chunksBuffer, err := l.fileBuffers.GetBounded(int64(len(sources)) * sys.SyncChunkSize)
 		if err != nil {
 			logger.Error().
+				Err(err).
 				Msg("Could not create paged buffer! Retrying...")
 			goto SYNC
 		}
