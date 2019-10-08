@@ -11,8 +11,11 @@ require (
 	github.com/chzyer/logex v1.1.10 // indirect
 	github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/diamondburned/tcell v1.1.8
+	github.com/diamondburned/tview/v2 v2.3.1
 	github.com/djherbis/buffer v1.1.0
 	github.com/fasthttp/websocket v1.4.0
+	github.com/gdamore/tcell v1.1.2
 	github.com/gogo/protobuf v1.3.0
 	github.com/golang/snappy v0.0.1
 	github.com/google/btree v1.0.0
@@ -26,7 +29,9 @@ require (
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
 	github.com/pkg/errors v0.8.1
 	github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a
+	github.com/rivo/tview v0.0.0-20190711103727-f63eca142cd2
 	github.com/rs/zerolog v1.14.3
+	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.4.0
 	github.com/syndtr/goleveldb v1.0.0
 	github.com/urfave/cli v1.21.0
