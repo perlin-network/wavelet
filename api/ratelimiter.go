@@ -20,12 +20,13 @@
 package api
 
 import (
-	"github.com/valyala/fasthttp"
-	"golang.org/x/time/rate"
 	"math"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/valyala/fasthttp"
+	"golang.org/x/time/rate"
 )
 
 type limiter struct {
@@ -114,10 +115,10 @@ func (r *rateLimiter) cleanup(interval time.Duration) (stop func()) {
 // Apply rate limiting by key and IP
 func (r *rateLimiter) limit(key string) func(fasthttp.RequestHandler) fasthttp.RequestHandler {
 	return func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
-		fn := func(ctx *fasthttp.RequestCtx) {
+		return fasthttp.RequestHandler(func(ctx *fasthttp.RequestCtx) {
 			addr := ctx.RemoteAddr().String()
 
-			l := r.getLimiter(key + addr)
+			l := r.getLimiter(addr + key)
 
 			if !l.limiter.Allow() {
 				ctx.Error(http.StatusText(http.StatusTooManyRequests), http.StatusTooManyRequests)
@@ -125,7 +126,6 @@ func (r *rateLimiter) limit(key string) func(fasthttp.RequestHandler) fasthttp.R
 			}
 
 			next(ctx)
-		}
-		return fasthttp.RequestHandler(fn)
+		})
 	}
 }

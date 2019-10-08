@@ -54,23 +54,24 @@ import (
 )
 
 func TestListTransaction(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
-
 	// Create a transaction
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
 	var buf [200]byte
-	_, err := rand.Read(buf[:])
+	_, err = rand.Read(buf[:])
 	assert.NoError(t, err)
-	_ = wavelet.NewTransaction(sys.TagTransfer, buf[:])
+	_ = wavelet.NewTransaction(keys, sys.TagTransfer, buf[:])
 	assert.NoError(t, err)
+
+	gateway := New(&Config{
+		Ledger: createLedger(t),
+		Keys:   keys,
+	})
 
 	// Build an expected response
 	var expectedResponse transactionList
-	for _, tx := range gateway.ledger.Graph().ListTransactions(0, 0, wavelet.AccountID{}) {
-		txRes := &transaction{tx: tx}
-		txRes.status = "applied"
+	for _, tx := range gateway.Ledger.Graph().ListTransactions(0, 0, wavelet.AccountID{}, wavelet.AccountID{}) {
+		txRes := &transaction{tx: tx, status: "applied"}
 
 		//_, err := txRes.marshal()
 		//assert.NoError(t, err)
@@ -99,6 +100,33 @@ func TestListTransaction(t *testing.T) {
 			wantResponse: testErrResponse{
 				StatusText: "Bad Request",
 				ErrorText:  "sender ID must be 32 bytes long",
+			},
+		},
+		{
+			name:     "creator not hex",
+			url:      "/tx?creator=1",
+			wantCode: http.StatusBadRequest,
+			wantResponse: testErrResponse{
+				StatusText: "Bad Request",
+				ErrorText:  "creator ID must be presented as valid hex: encoding/hex: odd length hex string",
+			},
+		},
+		{
+			name:     "creator invalid length",
+			url:      "/tx?creator=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
+			wantCode: http.StatusBadRequest,
+			wantResponse: testErrResponse{
+				StatusText: "Bad Request",
+				ErrorText:  "creator ID must be 32 bytes long",
+			},
+		},
+		{
+			name:     "creator not hex",
+			url:      "/tx?creator=1",
+			wantCode: http.StatusBadRequest,
+			wantResponse: testErrResponse{
+				StatusText: "Bad Request",
+				ErrorText:  "creator ID must be presented as valid hex: encoding/hex: odd length hex string",
 			},
 		},
 		{
@@ -146,24 +174,27 @@ func TestListTransaction(t *testing.T) {
 }
 
 func TestGetTransaction(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
-
+	// Create a transaction
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
 	var buf [200]byte
-	_, err := rand.Read(buf[:])
+	_, err = rand.Read(buf[:])
 	assert.NoError(t, err)
-	_ = wavelet.NewTransaction(sys.TagTransfer, buf[:])
+	_ = wavelet.NewTransaction(keys, sys.TagTransfer, buf[:])
 	assert.NoError(t, err)
+
+	gateway := New(&Config{
+		Ledger: createLedger(t),
+		Keys:   keys,
+	})
 
 	var txId wavelet.TransactionID
-	for _, tx := range gateway.ledger.Graph().ListTransactions(0, 0, wavelet.AccountID{}) {
+	for _, tx := range gateway.Ledger.Graph().ListTransactions(0, 0, wavelet.AccountID{}, wavelet.AccountID{}) {
 		txId = tx.ID
 		break
 	}
 
-	tx := gateway.ledger.Graph().FindTransaction(txId)
+	tx := gateway.Ledger.Graph().FindTransaction(txId)
 	if tx == nil {
 		t.Fatal("not found")
 	}
@@ -218,8 +249,7 @@ func TestGetTransaction(t *testing.T) {
 }
 
 func TestSendTransaction(t *testing.T) {
-	gateway := New()
-	gateway.setup()
+	gateway := New(&Config{})
 
 	tests := []struct {
 		name     string
@@ -252,8 +282,7 @@ func TestSendTransaction(t *testing.T) {
 }
 
 func TestSendTransactionRandom(t *testing.T) {
-	gateway := New()
-	gateway.setup()
+	gateway := New(&Config{})
 
 	type request struct {
 		Sender    string `json:"sender"`
@@ -286,8 +315,7 @@ func TestSendTransactionRandom(t *testing.T) {
 
 // Test POST APIs with completely random payload
 func TestPostPayloadRandom(t *testing.T) {
-	gateway := New()
-	gateway.setup()
+	gateway := New(&Config{})
 
 	tests := []struct {
 		url string
@@ -332,10 +360,9 @@ func TestPostPayloadRandom(t *testing.T) {
 }
 
 func TestGetAccount(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
+	gateway := New(&Config{
+		Ledger: createLedger(t),
+	})
 
 	idHex := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
 	idBytes, err := hex.DecodeString(idHex)
@@ -344,9 +371,9 @@ func TestGetAccount(t *testing.T) {
 	var id32 wavelet.AccountID
 	copy(id32[:], idBytes)
 
-	wavelet.WriteAccountBalance(gateway.ledger.Snapshot(), id32, 10)
-	wavelet.WriteAccountStake(gateway.ledger.Snapshot(), id32, 11)
-	wavelet.WriteAccountContractNumPages(gateway.ledger.Snapshot(), id32, 12)
+	wavelet.WriteAccountBalance(gateway.Ledger.Snapshot(), id32, 10)
+	wavelet.WriteAccountStake(gateway.Ledger.Snapshot(), id32, 11)
+	wavelet.WriteAccountContractNumPages(gateway.Ledger.Snapshot(), id32, 12)
 
 	var id wavelet.AccountID
 	copy(id[:], idBytes)
@@ -376,7 +403,7 @@ func TestGetAccount(t *testing.T) {
 			name:         "valid id",
 			url:          "/accounts/" + idHex,
 			wantCode:     http.StatusOK,
-			wantResponse: &account{ledger: gateway.ledger, id: id},
+			wantResponse: &account{ledger: gateway.Ledger, id: id},
 		},
 	}
 
@@ -403,10 +430,9 @@ func TestGetAccount(t *testing.T) {
 }
 
 func TestGetContractCode(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
+	gateway := New(&Config{
+		Ledger: createLedger(t),
+	})
 
 	idHex := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
 	idBytes, err := hex.DecodeString(idHex)
@@ -415,7 +441,7 @@ func TestGetContractCode(t *testing.T) {
 	var id32 wavelet.AccountID
 	copy(id32[:], idBytes)
 
-	s := gateway.ledger.Snapshot()
+	s := gateway.Ledger.Snapshot()
 	wavelet.WriteAccountContractCode(s, id32, []byte("contract code"))
 
 	tests := []struct {
@@ -473,10 +499,9 @@ func TestGetContractCode(t *testing.T) {
 }
 
 func TestGetContractPages(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
+	gateway := New(&Config{
+		Ledger: createLedger(t),
+	})
 
 	// string: u1mf2g3b2477y5btco22txqxuc41cav6
 	var id = "75316d66326733623234373779356274636f3232747871787563343163617636"
@@ -530,23 +555,21 @@ func TestGetContractPages(t *testing.T) {
 }
 
 func TestGetLedger(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
-
-	keys, err := skademlia.NewKeys(1, 1)
-	assert.NoError(t, err)
-	gateway.keys = keys
-
 	listener, err := net.Listen("tcp", ":0")
 	assert.NoError(t, err)
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
 
-	gateway.client = skademlia.NewClient(addr, keys,
-		skademlia.WithC1(sys.SKademliaC1),
-		skademlia.WithC2(sys.SKademliaC2),
-	)
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	gateway := New(&Config{
+		Ledger: createLedger(t),
+		Keys:   keys,
+		Client: skademlia.NewClient(addr, keys,
+			skademlia.WithC1(sys.SKademliaC1),
+			skademlia.WithC2(sys.SKademliaC2),
+		),
+	})
 
 	//n, err := xnoise.ListenTCP(0)
 	//assert.NoError(t, err)
@@ -578,24 +601,24 @@ func TestGetLedger(t *testing.T) {
 
 // Test the rate limit on all endpoints
 func TestEndpointsRateLimit(t *testing.T) {
-	gateway := New()
-	gateway.rateLimiter = newRateLimiter(10)
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
-
-	keys, err := skademlia.NewKeys(1, 1)
-	assert.NoError(t, err)
-	gateway.keys = keys
-
 	listener, err := net.Listen("tcp", ":0")
 	assert.NoError(t, err)
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
 
-	gateway.client = skademlia.NewClient(addr, keys,
-		skademlia.WithC1(sys.SKademliaC1),
-		skademlia.WithC2(sys.SKademliaC2),
-	)
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	gateway := New(&Config{
+		Ledger: createLedger(t),
+		Keys:   keys,
+		Client: skademlia.NewClient(addr, keys,
+			skademlia.WithC1(sys.SKademliaC1),
+			skademlia.WithC2(sys.SKademliaC2),
+		),
+		RequestsPerSecond: 10,
+	})
+
+	rps := int(gateway.RequestsPerSecond)
 
 	tests := []struct {
 		url           string
@@ -679,12 +702,10 @@ func TestEndpointsRateLimit(t *testing.T) {
 		},
 	}
 
-	maxPerSecond := 10
-
 	for _, tc := range tests {
 		t.Run(tc.url, func(t *testing.T) {
 			// We assume the loop will complete in less than 1 second.
-			for i := 0; i < maxPerSecond*2; i++ {
+			for i := 0; i < (rps * 2); i++ {
 				request := httptest.NewRequest(tc.method, "http://localhost"+tc.url, nil)
 				w, err := serve(gateway.router, request)
 				assert.NoError(t, err)
@@ -694,7 +715,7 @@ func TestEndpointsRateLimit(t *testing.T) {
 				assert.NoError(t, err)
 
 				if tc.isRateLimited {
-					if i < maxPerSecond {
+					if i < rps {
 						assert.NotEqual(t, http.StatusTooManyRequests, w.StatusCode)
 					} else {
 						assert.Equal(t, http.StatusTooManyRequests, w.StatusCode)
@@ -711,10 +732,10 @@ func TestConnectDisconnect(t *testing.T) {
 	network := wavelet.NewTestNetwork(t)
 	defer network.Cleanup()
 
-	gateway := New()
-	gateway.setup()
-	gateway.ledger = network.Faucet().Ledger()
-	gateway.client = network.Faucet().Client()
+	gateway := New(&Config{
+		Ledger: network.Faucet().Ledger(),
+		Client: network.Faucet().Client(),
+	})
 
 	network.AddNode(t)
 
@@ -756,29 +777,26 @@ func TestConnectDisconnect(t *testing.T) {
 }
 
 func TestConnectDisconnectErrors(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
+	listener, err := net.Listen("tcp", ":0")
+	assert.NoError(t, err)
+	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
 
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
-	gateway.keys = keys
 
-	l, err := net.Listen("tcp", ":0")
-	if !assert.NoError(t, err) {
-		return
-	}
+	gateway := New(&Config{
+		Ledger: createLedger(t),
+		Keys:   keys,
+		Client: skademlia.NewClient(addr, keys,
+			skademlia.WithC1(sys.SKademliaC1),
+			skademlia.WithC2(sys.SKademliaC2),
+		),
+	})
 
-	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(l.Addr().(*net.TCPAddr).Port))
-
-	gateway.client = skademlia.NewClient(addr, keys,
-		skademlia.WithC1(sys.SKademliaC1),
-		skademlia.WithC2(sys.SKademliaC2),
-	)
-	gateway.client.SetCredentials(
-		noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), gateway.client.Protocol()),
-	)
+	gateway.Client.SetCredentials(noise.NewCredentials(
+		addr, handshake.NewECDH(),
+		cipher.NewAEAD(), gateway.Client.Protocol(),
+	))
 
 	currentSecret := conf.GetSecret()
 	defer conf.Update(conf.WithSecret(currentSecret))

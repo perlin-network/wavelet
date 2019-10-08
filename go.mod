@@ -10,6 +10,7 @@ require (
 	github.com/buaazp/fasthttprouter v0.1.1
 	github.com/chzyer/logex v1.1.10 // indirect
 	github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1 // indirect
+	github.com/davecgh/go-spew v1.1.1
 	github.com/djherbis/buffer v1.1.0
 	github.com/fasthttp/websocket v1.4.0
 	github.com/gogo/protobuf v1.3.0
@@ -20,23 +21,18 @@ require (
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/minio/highwayhash v1.0.0
 	github.com/perlin-network/life v0.0.0-20190723115110-3091ed0c1be8
-	github.com/perlin-network/noise v1.1.1-0.20191023080233-724c7cf9f251
+	github.com/perlin-network/noise v0.0.0-20191003191839-5029dac118ac
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
 	github.com/pkg/errors v0.8.1
 	github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a
 	github.com/rs/zerolog v1.14.3
-	github.com/spaolacci/murmur3 v1.1.0 // indirect
-	github.com/stretchr/objx v0.2.0 // indirect
 	github.com/stretchr/testify v1.4.0
 	github.com/syndtr/goleveldb v1.0.0
 	github.com/urfave/cli v1.21.0
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/valyala/fasthttp v1.3.0
 	github.com/valyala/fastjson v1.4.1
-	github.com/willf/bitset v1.1.10 // indirect
-	github.com/willf/bloom v2.0.3+incompatible
-	go.opencensus.io v0.22.1 // indirect
 	golang.org/x/crypto v0.0.0-20190911031432-227b76d455e7
 	golang.org/x/net v0.0.0-20190918130420-a8b05e9114ab
 	golang.org/x/sys v0.0.0-20190919044723-0c1ff786ef13 // indirect
