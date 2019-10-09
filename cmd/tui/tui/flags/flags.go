@@ -1,28 +1,30 @@
 package flags
 
 import (
-	"github.com/diamondburned/tcell"
 	"github.com/diamondburned/tview/v2"
-	"github.com/urfave/cli"
+	"github.com/spf13/pflag"
 )
 
 type Flags struct {
-	Fields []Field
+	*tview.Form
+	Flags []*Flag
 }
 
-type Field interface {
-	GetFormField() tview.FormItem
-	GetFlag() cli.Flag
-}
+func New(fs *pflag.FlagSet) *Flags {
+	flags := Flags{}
+	form := tview.NewForm()
 
-type Noop struct {
-	Changed func(string)
-	Done    func(tcell.Key)
-}
+	fs.VisitAll(func(f *pflag.Flag) {
+		flag := NewFlag(f)
+		form.AddFormItem(flag)
 
-func (n *Noop) SetChangedFunc(f func(string)) {
-	n.Changed = f
-}
-func (n *Noop) SetDoneFunc(f func(tcell.Key)) {
-	n.Done = f
+		flags.Flags = append(flags.Flags, NewFlag(f))
+	})
+
+	form.AddButton("Ok", func() {
+		tview.Stop()
+	})
+
+	flags.Form = form
+	return &flags
 }

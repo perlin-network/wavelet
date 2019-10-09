@@ -19,11 +19,17 @@ github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/diamondburned/go-colorful v1.0.4-0.20190608162041-238d3721526c h1:nVf2B6F6VgafN4k9oNWrwEVQkleSfKQGQ9TO1LPDDU4=
 github.com/diamondburned/go-colorful v1.0.4-0.20190608162041-238d3721526c/go.mod h1:GAQaIG597tkkMuOQUE66Apq+TMEsnPPl/HQM+v7LcSc=
+github.com/diamondburned/tcell v1.1.6/go.mod h1:Q49Y5+5hLvqARodOKBj/7iiuUrG8kRIuUNgdc1f4AWE=
 github.com/diamondburned/tcell v1.1.8 h1:AM/UWEsuD2k3oRXXWt/YsTMYgl0snDs6N7s877b5Apw=
 github.com/diamondburned/tcell v1.1.8/go.mod h1:vrRB1P6Q3fA6cSeKjGthb9DJBHb475+cHKvm5Q3GRsQ=
 github.com/diamondburned/tview v1.2.1 h1:ketR02T2EO1HWAxM9NgqqfIAMd5ZODF+oFYhNw4z3r8=
+github.com/diamondburned/tview v1.2.1/go.mod h1:Tqv4hTWU43p8D99JRd7yWaASwxZEphl08B+MwvIbsto=
 github.com/diamondburned/tview/v2 v2.3.1 h1:LzqFDwHohxVXXaBUdJv0lvLorgAKPWcqH23AnDfzk4I=
 github.com/diamondburned/tview/v2 v2.3.1/go.mod h1:wUVnRqrqhHX/4IshS0xCOhsYg8etez3BZudJDBj+JLM=
+github.com/diamondburned/tview/v2 v2.3.2-0.20191009041311-6037c38aec64 h1:0PeUr0s+T5cOhIovDMrrBxIbQtDaSmVAW5LN2+wsTmo=
+github.com/diamondburned/tview/v2 v2.3.2-0.20191009041311-6037c38aec64/go.mod h1:wUVnRqrqhHX/4IshS0xCOhsYg8etez3BZudJDBj+JLM=
+github.com/diamondburned/tview/v2 v2.3.3 h1:llsl+4q1yRp9LExfdbgwVlITUwaifqucXlI3F8pFrds=
+github.com/diamondburned/tview/v2 v2.3.3/go.mod h1:wUVnRqrqhHX/4IshS0xCOhsYg8etez3BZudJDBj+JLM=
 github.com/djherbis/buffer v1.1.0 h1:uGQ+DZDAMlfC2z3khbBtLcAHC0wyoNrX9lpOml3g3fg=
 github.com/djherbis/buffer v1.1.0/go.mod h1:VwN8VdFkMY0DCALdY8o00d3IZ6Amz/UNVMWcSaJT44o=
 github.com/fasthttp/websocket v1.4.0 h1:hWw+gsVLA82cQFDF/vzydHjOedj1Oo00T/uKk+J5kcs=
@@ -32,6 +38,7 @@ github.com/fsnotify/fsnotify v1.4.7 h1:IXs+QLmnXW2CcXuY+8Mzv/fWEsPGWxqefPtCP5CnV
 github.com/fsnotify/fsnotify v1.4.7/go.mod h1:jwhsz4b93w/PPRr/qN1Yymfu8t87LnFCMoQvtojpjFo=
 github.com/gdamore/encoding v1.0.0 h1:+7OoQ1Bc6eTm5niUzBa0Ctsh6JbMW6Ra+YNuAtDBdko=
 github.com/gdamore/encoding v1.0.0/go.mod h1:alR0ol34c49FCSBLjhosxzcPHQbf2trDkoo5dl+VrEg=
+github.com/gdamore/tcell v1.1.1/go.mod h1:K1udHkiR3cOtlpKG5tZPD5XxrF7v2y7lDq7Whcj+xkQ=
 github.com/gdamore/tcell v1.1.2 h1:Afe8cU6SECC06UmvaJ55Jr3Eh0tz/ywLjqWYqjGZp3s=
 github.com/gdamore/tcell v1.1.2/go.mod h1:h3kq4HO9l2On+V9ed8w8ewqQEmGCSSHOgQ+2h8uzurE=
 github.com/gogo/protobuf v1.2.1/go.mod h1:hp+jE20tsWTFYpLwKvXlhS1hjn+gTNwPg2I6zVXpSg4=
@@ -73,6 +80,7 @@ github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORN
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0 h1:45sCR5RtlFHMR4UwH9sdQ5TC8v0qDQCHnXt+kaKSTVE=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
+github.com/lucasb-eyer/go-colorful v0.0.0-20181028223441-12d3b2882a08/go.mod h1:NXg0ArsFk0Y01623LgUqoqcouGDB+PwCCQlrwrG6xJ4=
 github.com/lucasb-eyer/go-colorful v1.0.2 h1:mCMFu6PgSozg9tDNMMK3g18oJBX7oYGrC09mS6CXfO4=
 github.com/lucasb-eyer/go-colorful v1.0.2/go.mod h1:0MS4r+7BZKSJ5mw4/S5MPN+qHFF1fYclkSPilDOKW0s=
 github.com/mattn/go-runewidth v0.0.4 h1:2BvfKmzob6Bmd4YsL0zygOqfdFnK7GR4QL06Do4/p7Y=
@@ -187,6 +195,7 @@ google.golang.org/grpc v1.19.0/go.mod h1:mqu4LbDTu4XGKhr4mRzUsmM4RtVoemTSY81AxZi
 google.golang.org/grpc v1.23.0/go.mod h1:Y5yQAOtifL1yxbo5wqy6BxZv8vAUGQwXBOALyacEbxg=
 google.golang.org/grpc v1.23.1 h1:q4XQuHFC6I28BKZpo6IYyb3mNO+l7lSOxRuYTCiDfXk=
 google.golang.org/grpc v1.23.1/go.mod h1:Y5yQAOtifL1yxbo5wqy6BxZv8vAUGQwXBOALyacEbxg=
+gopkg.in/DATA-DOG/go-sqlmock.v1 v1.3.0/go.mod h1:OdE7CF6DbADk7lN8LIKRzRJTTZXIjtWgA5THM5lhBAw=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
 gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 h1:YR8cESwS4TdDjEe65xsg0ogRM/Nc3DYOhEAlW+xobZo=
 gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
