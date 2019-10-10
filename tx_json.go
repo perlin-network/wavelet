@@ -286,7 +286,7 @@ func parseStake(data []byte) ([]byte, error) {
 	case 0:
 		operation = sys.WithdrawStake // Set operation
 	case 1:
-		operation = sys.WithdrawReward // Set operation
+		operation = sys.PlaceStake // Set operation
 	case 2:
 		operation = sys.WithdrawReward // Set operation
 	}
