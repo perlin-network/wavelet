@@ -136,7 +136,6 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 
 				e.Queue = append(e.Queue, &Transaction{
 					Sender:  e.ID,
-					Creator: e.ID,
 					Tag:     sys.Tag(tag),
 					Payload: payload,
 				})
@@ -489,7 +488,7 @@ func buildContractPayload(round *Round, tx *Transaction, amount uint64, params [
 
 	if tx != nil {
 		p = append(p, tx.ID[:]...)
-		p = append(p, tx.Creator[:]...)
+		p = append(p, tx.Sender[:]...)
 	} else {
 		p = append(p, nilTransactionID[:]...)
 		p = append(p, nilAccountID[:]...)

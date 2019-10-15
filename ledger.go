@@ -418,7 +418,7 @@ func (l *Ledger) BroadcastNop() *Transaction {
 		return nil
 	}
 
-	nop := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), l.graph.FindEligibleParents()...)
+	nop := AttachSenderToTransaction(keys, NewTransaction(sys.TagNop, nil), l.graph.FindEligibleParents()...)
 
 	if err := l.AddTransaction(nop); err != nil {
 		return nil

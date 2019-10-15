@@ -107,14 +107,6 @@ func TestGraphValidateTransaction(t *testing.T) {
 		},
 		{
 			func() Transaction {
-				tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
-				tx.Creator = ZeroAccountID
-				return tx
-			},
-			"tx must have a creator associated to it",
-		},
-		{
-			func() Transaction {
 				k, _ := skademlia.NewKeys(1, 1)
 				return AttachSenderToTransaction(k, NewTransaction(k, sys.TagNop, nil), []*Transaction{}...)
 			},
@@ -193,15 +185,6 @@ func TestGraphValidateTransaction(t *testing.T) {
 				return AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, payload.Bytes()), graph.FindEligibleParents()...)
 			},
 			"tx must have no payload if is a nop transaction",
-		},
-		{
-			func() Transaction {
-				k, _ := skademlia.NewKeys(1, 1)
-				tx := AttachSenderToTransaction(keys, NewTransaction(k, sys.TagNop, nil), graph.FindEligibleParents()...)
-				tx.CreatorSignature[0] = '0'
-				return tx
-			},
-			"tx has invalid creator signature",
 		},
 		{
 			func() Transaction {

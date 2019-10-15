@@ -230,16 +230,13 @@ func (c *Client) PollContracts(stop <-chan struct{}, contractID *string) (<-chan
 	return evChan, nil
 }
 
-func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *string, creatorID *string, tag *byte) (<-chan []byte, error) {
+func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *string, tag *byte) (<-chan []byte, error) {
 	v := url.Values{}
 	if txID != nil {
 		v.Set("tx_id", *txID)
 	}
 	if senderID != nil {
 		v.Set("sender", *senderID)
-	}
-	if creatorID != nil {
-		v.Set("creator", *creatorID)
 	}
 	if tag != nil {
 		v.Set("tag", fmt.Sprintf("%x", *tag))
@@ -276,13 +273,10 @@ func (c *Client) PollTransactions(stop <-chan struct{}, txID *string, senderID *
 	return evChan, nil
 }
 
-func (c *Client) GetLedgerStatus(senderID *string, creatorID *string, offset *uint64, limit *uint64) (LedgerStatusResponse, error) {
+func (c *Client) GetLedgerStatus(senderID *string, offset *uint64, limit *uint64) (LedgerStatusResponse, error) {
 	path := fmt.Sprintf("%s?", RouteLedger)
 	if senderID != nil {
 		path = fmt.Sprintf("%ssender=%s&", path, *senderID)
-	}
-	if creatorID != nil {
-		path = fmt.Sprintf("%screator=%s&", path, *creatorID)
 	}
 	if offset != nil {
 		path = fmt.Sprintf("%soffset=%d&", path, *offset)
@@ -321,13 +315,10 @@ func (c *Client) GetContractPages(contractID string, index *uint64) (string, err
 	return base64.StdEncoding.EncodeToString(res), err
 }
 
-func (c *Client) ListTransactions(senderID *string, creatorID *string, offset *uint64, limit *uint64) ([]Transaction, error) {
+func (c *Client) ListTransactions(senderID *string, offset *uint64, limit *uint64) ([]Transaction, error) {
 	path := fmt.Sprintf("%s?", RouteTxList)
 	if senderID != nil {
 		path = fmt.Sprintf("%ssender=%s&", path, *senderID)
-	}
-	if creatorID != nil {
-		path = fmt.Sprintf("%screator=%s&", path, *creatorID)
 	}
 	if offset != nil {
 		path = fmt.Sprintf("%soffset=%d&", path, *offset)

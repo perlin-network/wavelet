@@ -88,28 +88,28 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 
 		// Update nonce.
 
-		nonce, exists := ctx.ReadAccountNonce(popped.Creator)
+		nonce, exists := ctx.ReadAccountNonce(popped.Sender)
 		if !exists {
 			ctx.WriteAccountsLen(ctx.ReadAccountsLen() + 1)
 		}
-		ctx.WriteAccountNonce(popped.Creator, nonce+1)
+		ctx.WriteAccountNonce(popped.Sender, nonce+1)
 
-		if hex.EncodeToString(popped.Creator[:]) != sys.FaucetAddress {
+		if hex.EncodeToString(popped.Sender[:]) != sys.FaucetAddress {
 			fee := popped.Fee()
 
-			creatorBalance, _ := ctx.ReadAccountBalance(popped.Creator)
-			if creatorBalance < fee {
+			senderBalance, _ := ctx.ReadAccountBalance(popped.Sender)
+			if senderBalance < fee {
 				res.rejected = append(res.rejected, popped)
 				res.rejectedErrors = append(
 					res.rejectedErrors,
-					errors.Errorf("stake: creator %x does not have enough PERLs to pay transaction fees (comprised of %d PERLs)", popped.Creator, fee),
+					errors.Errorf("stake: sender %x does not have enough PERLs to pay transaction fees (comprised of %d PERLs)", popped.Sender, fee),
 				)
 				res.rejectedCount += popped.LogicalUnits()
 
 				continue
 			}
 
-			ctx.WriteAccountBalance(popped.Creator, creatorBalance-fee)
+			ctx.WriteAccountBalance(popped.Sender, senderBalance-fee)
 			totalFee += fee
 
 			stake := uint64(0)
@@ -430,7 +430,7 @@ func (c *CollapseContext) Flush() error {
 // After you've finished, you MUST call CollapseContext.Flush() to actually write the states into the tree.
 func (c *CollapseContext) ApplyTransaction(round *Round, tx *Transaction) error {
 	if err := applyTransaction(round, c, tx, &contractExecutorState{
-		GasPayer: tx.Creator,
+		GasPayer: tx.Sender,
 	}); err != nil {
 		return err
 	}

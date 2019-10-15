@@ -67,10 +67,7 @@ type sendTransactionRequest struct {
 	Payload   string `json:"payload"`
 	Signature string `json:"signature"`
 
-	// Internal fields.
-	creator   wavelet.AccountID
-	signature wavelet.Signature
-	payload   []byte
+	payload []byte
 }
 
 func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) error {
@@ -162,9 +159,6 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if len(signatureBuf) != wavelet.SizeSignature {
 		return errors.Errorf("sender signature must be size %d", wavelet.SizeSignature)
 	}
-
-	copy(s.creator[:], senderBuf)
-	copy(s.signature[:], signatureBuf)
 
 	return nil
 }
@@ -284,14 +278,12 @@ func (s *transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 
 	o.Set("id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
 	o.Set("sender", arena.NewString(hex.EncodeToString(s.tx.Sender[:])))
-	o.Set("creator", arena.NewString(hex.EncodeToString(s.tx.Creator[:])))
 	o.Set("status", arena.NewString(s.status))
 	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(s.tx.Nonce, 10)))
 	o.Set("depth", arena.NewNumberString(strconv.FormatUint(s.tx.Depth, 10)))
 	o.Set("tag", arena.NewNumberInt(int(s.tx.Tag)))
 	o.Set("payload", arena.NewString(base64.StdEncoding.EncodeToString(s.tx.Payload)))
 	o.Set("sender_signature", arena.NewString(hex.EncodeToString(s.tx.SenderSignature[:])))
-	o.Set("creator_signature", arena.NewString(hex.EncodeToString(s.tx.CreatorSignature[:])))
 
 	if s.tx.ParentIDs != nil {
 		parents := arena.NewArray()

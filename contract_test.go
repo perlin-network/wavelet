@@ -22,7 +22,7 @@ func BenchmarkContractInGraph(b *testing.B) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(b, err)
 
-	initialRoot := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil))
+	initialRoot := AttachSenderToTransaction(keys, NewTransaction(sys.TagNop, nil))
 	graph := NewGraph(WithRoot(initialRoot))
 
 	WriteAccountBalance(state, keys.PublicKey(), 1000000000000)
@@ -35,7 +35,7 @@ func BenchmarkContractInGraph(b *testing.B) {
 	code, err := ioutil.ReadFile("testdata/transfer_back.wasm")
 	assert.NoError(b, err)
 
-	tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagContract, buildContractSpawnPayload(100000, 0, code).Marshal()))
+	tx := AttachSenderToTransaction(keys, NewTransaction(sys.TagContract, buildContractSpawnPayload(100000, 0, code).Marshal()))
 	err = ApplyTransaction(state, &round, &tx)
 	assert.NoError(b, err)
 
@@ -47,7 +47,6 @@ func BenchmarkContractInGraph(b *testing.B) {
 		tx := AttachSenderToTransaction(
 			keys,
 			NewTransaction(
-				keys,
 				sys.TagTransfer,
 				buildTransferWithInvocationPayload(contractID, 200, 500000, []byte("on_money_received"), nil, 0).Marshal(),
 			), graph.FindEligibleParents()...)

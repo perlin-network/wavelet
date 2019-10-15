@@ -221,10 +221,6 @@ func main() {
 						Usage: "sender id of transactions to list (default: all)",
 					},
 					cli.StringFlag{
-						Name:  "creator_id",
-						Usage: "creator id of transactions to list (default: all)",
-					},
-					cli.StringFlag{
 						Name:  "tag",
 						Usage: "tag of transactions to list (default: all)",
 					},
@@ -238,10 +234,9 @@ func main() {
 
 				// get these optional variables
 				var (
-					txID      *string
-					senderID  *string
-					creatorID *string
-					tag       *byte
+					txID     *string
+					senderID *string
+					tag      *byte
 				)
 
 				if len(c.String("tx_id")) > 0 {
@@ -252,17 +247,13 @@ func main() {
 					tmp := c.String("sender_id")
 					senderID = &tmp
 				}
-				if len(c.String("creator_id")) > 0 {
-					tmp := c.String("creator_id")
-					creatorID = &tmp
-				}
 				if len(c.String("tag")) > 0 {
 					tmp := c.String("tag")
 					t := byte(sys.TagLabels[tmp])
 					tag = &t
 				}
 
-				evChan, err := client.PollTransactions(nil, txID, senderID, creatorID, tag)
+				evChan, err := client.PollTransactions(nil, txID, senderID, tag)
 				if err != nil {
 					return err
 				}
@@ -282,10 +273,6 @@ func main() {
 						Name:  "sender_id",
 						Usage: "sender id of transactions to list (default: all)",
 					},
-					cli.StringFlag{
-						Name:  "creator_id",
-						Usage: "creator id of transactions to list (default: all)",
-					},
 					cli.IntFlag{
 						Name:  "offset",
 						Usage: "an offset of the number of transactions to list",
@@ -304,16 +291,11 @@ func main() {
 
 				// get these optional variables
 				var senderID *string
-				var creatorID *string
 				var offset *uint64
 				var limit *uint64
 				if len(c.String("sender_id")) > 0 {
 					tmp := c.String("sender_id")
 					senderID = &tmp
-				}
-				if len(c.String("creator_id")) > 0 {
-					tmp := c.String("creator_id")
-					creatorID = &tmp
 				}
 				if c.Uint("offset") > 0 {
 					tmp := uint64(c.Uint("offset"))
@@ -324,7 +306,7 @@ func main() {
 					limit = &tmp
 				}
 
-				res, err := client.GetLedgerStatus(senderID, creatorID, offset, limit)
+				res, err := client.GetLedgerStatus(senderID, offset, limit)
 				if err != nil {
 					return err
 				}
@@ -514,10 +496,6 @@ func main() {
 						Name:  "sender_id",
 						Usage: "sender id of transactions to list (default: all)",
 					},
-					cli.StringFlag{
-						Name:  "creator_id",
-						Usage: "creator id of transactions to list (default: all)",
-					},
 					cli.IntFlag{
 						Name:  "offset",
 						Usage: "an offset of the number of transactions to list",
@@ -536,16 +514,11 @@ func main() {
 
 				// get these optional variables
 				var senderID *string
-				var creatorID *string
 				var offset *uint64
 				var limit *uint64
 				if len(c.String("sender_id")) > 0 {
 					tmp := c.String("sender_id")
 					senderID = &tmp
-				}
-				if len(c.String("creator_id")) > 0 {
-					tmp := c.String("creator_id")
-					creatorID = &tmp
 				}
 				if c.Uint("offset") > 0 {
 					tmp := uint64(c.Uint("offset"))
@@ -556,7 +529,7 @@ func main() {
 					limit = &tmp
 				}
 
-				res, err := client.ListTransactions(senderID, creatorID, offset, limit)
+				res, err := client.ListTransactions(senderID, offset, limit)
 				if err != nil {
 					return err
 				}

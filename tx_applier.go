@@ -82,7 +82,7 @@ func applyTransferTransaction(ctx *CollapseContext, round *Round, tx *Transactio
 	}
 
 	// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
-	if hex.EncodeToString(tx.Creator[:]) == sys.FaucetAddress {
+	if hex.EncodeToString(tx.Sender[:]) == sys.FaucetAddress {
 		recipientBalance, _ := ctx.ReadAccountBalance(payload.Recipient)
 		ctx.WriteAccountBalance(payload.Recipient, recipientBalance+payload.Amount)
 
@@ -91,7 +91,7 @@ func applyTransferTransaction(ctx *CollapseContext, round *Round, tx *Transactio
 
 	err = transferValue(
 		"PERL",
-		tx.Creator, payload.Recipient,
+		tx.Sender, payload.Recipient,
 		payload.Amount,
 		ctx.ReadAccountBalance, ctx.WriteAccountBalance,
 		ctx.ReadAccountBalance, ctx.WriteAccountBalance,
@@ -107,7 +107,7 @@ func applyTransferTransaction(ctx *CollapseContext, round *Round, tx *Transactio
 	if payload.GasDeposit != 0 {
 		err = transferValue(
 			"PERL (Gas Deposit)",
-			tx.Creator, payload.Recipient,
+			tx.Sender, payload.Recipient,
 			payload.GasDeposit,
 			ctx.ReadAccountBalance, ctx.WriteAccountBalance,
 			ctx.ReadAccountContractGasBalance, ctx.WriteAccountContractGasBalance,
@@ -130,37 +130,37 @@ func applyStakeTransaction(ctx *CollapseContext, round *Round, tx *Transaction) 
 		return err
 	}
 
-	balance, _ := ctx.ReadAccountBalance(tx.Creator)
-	stake, _ := ctx.ReadAccountStake(tx.Creator)
-	reward, _ := ctx.ReadAccountReward(tx.Creator)
+	balance, _ := ctx.ReadAccountBalance(tx.Sender)
+	stake, _ := ctx.ReadAccountStake(tx.Sender)
+	reward, _ := ctx.ReadAccountReward(tx.Sender)
 
 	switch payload.Opcode {
 	case sys.PlaceStake:
 		if balance < payload.Amount {
-			return errors.Errorf("stake: %x attempt to place a stake of %d PERLs, but only has %d PERLs", tx.Creator, payload.Amount, balance)
+			return errors.Errorf("stake: %x attempt to place a stake of %d PERLs, but only has %d PERLs", tx.Sender, payload.Amount, balance)
 		}
 
-		ctx.WriteAccountBalance(tx.Creator, balance-payload.Amount)
-		ctx.WriteAccountStake(tx.Creator, stake+payload.Amount)
+		ctx.WriteAccountBalance(tx.Sender, balance-payload.Amount)
+		ctx.WriteAccountStake(tx.Sender, stake+payload.Amount)
 	case sys.WithdrawStake:
 		if stake < payload.Amount {
-			return errors.Errorf("stake: %x attempt to withdraw a stake of %d PERLs, but only has staked %d PERLs", tx.Creator, payload.Amount, payload)
+			return errors.Errorf("stake: %x attempt to withdraw a stake of %d PERLs, but only has staked %d PERLs", tx.Sender, payload.Amount, payload)
 		}
 
-		ctx.WriteAccountBalance(tx.Creator, balance+payload.Amount)
-		ctx.WriteAccountStake(tx.Creator, stake-payload.Amount)
+		ctx.WriteAccountBalance(tx.Sender, balance+payload.Amount)
+		ctx.WriteAccountStake(tx.Sender, stake-payload.Amount)
 	case sys.WithdrawReward:
 		if payload.Amount < sys.MinimumRewardWithdraw {
-			return errors.Errorf("stake: %x attempt to withdraw rewards amounting to %d PERLs, but system requires the minimum amount to withdraw to be %d PERLs", tx.Creator, payload.Amount, sys.MinimumRewardWithdraw)
+			return errors.Errorf("stake: %x attempt to withdraw rewards amounting to %d PERLs, but system requires the minimum amount to withdraw to be %d PERLs", tx.Sender, payload.Amount, sys.MinimumRewardWithdraw)
 		}
 
 		if reward < payload.Amount {
-			return errors.Errorf("stake: %x attempt to withdraw rewards amounting to %d PERLs, but only has rewards amounting to %d PERLs", tx.Creator, payload.Amount, reward)
+			return errors.Errorf("stake: %x attempt to withdraw rewards amounting to %d PERLs, but only has rewards amounting to %d PERLs", tx.Sender, payload.Amount, reward)
 		}
 
-		ctx.WriteAccountReward(tx.Creator, reward-payload.Amount)
+		ctx.WriteAccountReward(tx.Sender, reward-payload.Amount)
 		ctx.StoreRewardWithdrawalRequest(RewardWithdrawalRequest{
-			account: tx.Creator,
+			account: tx.Sender,
 			amount:  payload.Amount,
 			round:   round.Index,
 		})
@@ -189,7 +189,7 @@ func applyContractTransaction(ctx *CollapseContext, round *Round, tx *Transactio
 	if payload.GasDeposit != 0 {
 		err = transferValue(
 			"PERL (Gas Deposit)",
-			tx.Creator, AccountID(tx.ID),
+			tx.Sender, AccountID(tx.ID),
 			payload.GasDeposit,
 			ctx.ReadAccountBalance, ctx.WriteAccountBalance,
 			ctx.ReadAccountContractGasBalance, ctx.WriteAccountContractGasBalance,
@@ -212,7 +212,6 @@ func applyBatchTransaction(ctx *CollapseContext, round *Round, tx *Transaction, 
 		entry := &Transaction{
 			ID:      tx.ID,
 			Sender:  tx.Sender,
-			Creator: tx.Creator,
 			Nonce:   tx.Nonce,
 			Tag:     sys.Tag(payload.Tags[i]),
 			Payload: payload.Payloads[i],
@@ -317,7 +316,7 @@ func executeContractInTransactionContext(
 
 		if executor.GasLimitExceeded {
 			logger.Info().
-				Hex("sender_id", tx.Creator[:]).
+				Hex("sender_id", tx.Sender[:]).
 				Hex("contract_id", contractID[:]).
 				Uint64("gas", executor.Gas).
 				Uint64("gas_limit", realGasLimit).
@@ -343,7 +342,6 @@ func executeContractInTransactionContext(
 
 		//logger.Info().
 		//	Hex("sender_id", tx.Creator[:]).
-		//	Hex("contract_id", contractID[:]).
 		//	Uint64("gas", executor.Gas).
 		//	Uint64("gas_limit", realGasLimit).
 		//	Msg("Deducted PERLs for invoking smart contract function.")

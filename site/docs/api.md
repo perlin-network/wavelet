@@ -200,9 +200,7 @@ Get Account Information
     * **Optional Query:**
         
         `sender=[string]` where `sender` is the hex-encoded Sender ID. Used to filter by Sender ID.
-        
-        `creator=[string]` where `creator` is the hex-encoded Creator ID. Used to filter by Creator ID.
-        
+                
         `offset=[integer]` where `offset` is page offset. Default 0.
         
         `limit=[integer]` where `limit` is page limit. If 0, it'll return all transactions.
@@ -220,14 +218,12 @@ Get Account Information
       {
         "id": "e6d9aab2d62522073daa0a30c629516fb7beb11d6a327f53eb6f6768dc6dbe09",
         "sender": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
-        "creator": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
         "status": "applied",
         "nonce": 0,
         "depth": 1172,
         "tag": 0,
         "payload": "",
         "sender_signature": "cc86583a84ca27b5860e3c3f6e75994b91ae4bd2ef8e4751b38141a098518ea84e9a8c0a374730ee5a75913117169ada1162fb9e569183b985bedbcf3d7c260b",
-        "creator_signature": "fbd433221d4a9a6345dc184aad39b118266376a538c5e3cdba28a6ea5435bb6c776b31aa95eda803881df39cdda164294c61b9475a2e9dcdcfbc7f5efd1b3404",
         "parents": [
           "eb148b6831275941c2b840dd21549a203335263cabce6a1de86a243704388ed4"
         ]
@@ -268,14 +264,12 @@ Get Account Information
     {
       "id": "e6d9aab2d62522073daa0a30c629516fb7beb11d6a327f53eb6f6768dc6dbe09",
       "sender": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
-      "creator": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
       "status": "applied",
       "nonce": 0,
       "depth": 1172,
       "tag": 0,
       "payload": "",
       "sender_signature": "cc86583a84ca27b5860e3c3f6e75994b91ae4bd2ef8e4751b38141a098518ea84e9a8c0a374730ee5a75913117169ada1162fb9e569183b985bedbcf3d7c260b",
-      "creator_signature": "fbd433221d4a9a6345dc184aad39b118266376a538c5e3cdba28a6ea5435bb6c776b31aa95eda803881df39cdda164294c61b9475a2e9dcdcfbc7f5efd1b3404",
       "parents": [
         "eb148b6831275941c2b840dd21549a203335263cabce6a1de86a243704388ed4"
       ]

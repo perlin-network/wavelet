@@ -574,7 +574,7 @@ func (l *TestLedger) Nop() (Transaction, error) {
 	keys := l.ledger.client.Keys()
 	tx := AttachSenderToTransaction(
 		keys,
-		NewTransaction(keys, sys.TagNop, nil),
+		NewTransaction(sys.TagNop, nil),
 		l.ledger.Graph().FindEligibleParents()...)
 
 	err := l.ledger.AddTransaction(tx)
@@ -590,7 +590,7 @@ func (l *TestLedger) Pay(to *TestLedger, amount uint64) (Transaction, error) {
 	keys := l.ledger.client.Keys()
 	tx := AttachSenderToTransaction(
 		keys,
-		NewTransaction(keys, sys.TagTransfer, payload.Marshal()),
+		NewTransaction(sys.TagTransfer, payload.Marshal()),
 		l.ledger.Graph().FindEligibleParents()...)
 
 	err := l.ledger.AddTransaction(tx)
@@ -612,7 +612,7 @@ func (l *TestLedger) SpawnContract(contractPath string, gasLimit uint64, params 
 	keys := l.ledger.client.Keys()
 	tx := AttachSenderToTransaction(
 		keys,
-		NewTransaction(keys, sys.TagContract, payload.Marshal()),
+		NewTransaction(sys.TagContract, payload.Marshal()),
 		l.ledger.Graph().FindEligibleParents()...)
 
 	err = l.ledger.AddTransaction(tx)
@@ -628,7 +628,7 @@ func (l *TestLedger) DepositGas(id [32]byte, gasDeposit uint64) (Transaction, er
 	keys := l.ledger.client.Keys()
 	tx := AttachSenderToTransaction(
 		keys,
-		NewTransaction(keys, sys.TagTransfer, payload.Marshal()),
+		NewTransaction(sys.TagTransfer, payload.Marshal()),
 		l.ledger.Graph().FindEligibleParents()...)
 
 	err := l.ledger.AddTransaction(tx)
@@ -647,7 +647,7 @@ func (l *TestLedger) CallContract(id [32]byte, amount uint64, gasLimit uint64, f
 	keys := l.ledger.client.Keys()
 	tx := AttachSenderToTransaction(
 		keys,
-		NewTransaction(keys, sys.TagTransfer, payload.Marshal()),
+		NewTransaction(sys.TagTransfer, payload.Marshal()),
 		l.ledger.Graph().FindEligibleParents()...)
 
 	err := l.ledger.AddTransaction(tx)
@@ -666,7 +666,7 @@ func (l *TestLedger) Benchmark(batchSize int) (Transaction, error) {
 	keys := l.ledger.client.Keys()
 	tx := AttachSenderToTransaction(
 		keys,
-		NewTransaction(keys, sys.TagBatch, payload.Marshal()),
+		NewTransaction(sys.TagBatch, payload.Marshal()),
 		l.ledger.Graph().FindEligibleParents()...)
 
 	err := l.ledger.AddTransaction(tx)
@@ -682,7 +682,7 @@ func (l *TestLedger) PlaceStake(amount uint64) (Transaction, error) {
 	keys := l.ledger.client.Keys()
 	tx := AttachSenderToTransaction(
 		keys,
-		NewTransaction(keys, sys.TagStake, payload.Marshal()),
+		NewTransaction(sys.TagStake, payload.Marshal()),
 		l.ledger.Graph().FindEligibleParents()...)
 
 	err := l.ledger.AddTransaction(tx)
@@ -698,7 +698,7 @@ func (l *TestLedger) WithdrawStake(amount uint64) (Transaction, error) {
 	keys := l.ledger.client.Keys()
 	tx := AttachSenderToTransaction(
 		keys,
-		NewTransaction(keys, sys.TagStake, payload.Marshal()),
+		NewTransaction(sys.TagStake, payload.Marshal()),
 		l.ledger.Graph().FindEligibleParents()...)
 
 	err := l.ledger.AddTransaction(tx)
@@ -714,7 +714,7 @@ func (l *TestLedger) WithdrawReward(amount uint64) (Transaction, error) {
 	keys := l.ledger.client.Keys()
 	tx := AttachSenderToTransaction(
 		keys,
-		NewTransaction(keys, sys.TagStake, payload.Marshal()),
+		NewTransaction(sys.TagStake, payload.Marshal()),
 		l.ledger.Graph().FindEligibleParents()...)
 
 	err := l.ledger.AddTransaction(tx)
