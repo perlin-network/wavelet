@@ -13,8 +13,7 @@ require (
 	github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1 // indirect
 	github.com/djherbis/buffer v1.1.0
 	github.com/fasthttp/websocket v1.4.0
-	github.com/gogo/protobuf v1.3.1
-	github.com/golang/protobuf v1.3.2
+	github.com/gogo/protobuf v1.3.0
 	github.com/golang/snappy v0.0.1
 	github.com/google/btree v1.0.0
 	github.com/google/go-cmp v0.3.1 // indirect
