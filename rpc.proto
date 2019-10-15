@@ -77,7 +77,6 @@ message Empty {
 }
 
 service Wavelet {
-    rpc Gossip (stream Transactions) returns (Empty) {}
     rpc Query (QueryRequest) returns (QueryResponse) {}
 
     rpc CheckOutOfSync (OutOfSyncRequest) returns (OutOfSyncResponse) {}

@@ -20,47 +20,17 @@
 package wavelet
 
 import (
-	"bytes"
 	"context"
 	"io"
 
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
-	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 )
 
 type Protocol struct {
 	ledger *Ledger
-}
-
-func (p *Protocol) Gossip(stream Wavelet_GossipServer) error {
-	for {
-		batch, err := stream.Recv()
-
-		if err != nil {
-			return err
-		}
-
-		for _, buf := range batch.Transactions {
-			tx, err := UnmarshalTransaction(bytes.NewReader(buf))
-
-			if err != nil {
-				logger := log.TX("gossip")
-				logger.Err(err).Msg("Failed to unmarshal transaction")
-				continue
-			}
-
-			if err := p.ledger.AddTransaction(tx); err != nil && errors.Cause(err) != ErrMissingParents {
-				logger := log.TX("gossip")
-				logger.Error().
-					Err(err).
-					Hex("tx_id", tx.ID[:]).
-					Msg("error adding incoming tx to graph")
-			}
-		}
-	}
 }
 
 func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse, error) {
