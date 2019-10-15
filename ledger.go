@@ -68,7 +68,6 @@ type Ledger struct {
 	rounds   *Rounds
 	graph    *Graph
 
-	gossiper  *Gossiper
 	finalizer *Snowball
 	syncer    *Snowball
 
@@ -162,7 +161,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 	graph := NewGraph(WithMetrics(metrics), WithIndexer(indexer), WithRoot(round.End), VerifySignatures())
 
-	gossiper := NewGossiper(context.TODO(), client, metrics)
 	finalizer := NewSnowball(WithName("finalizer"))
 	syncer := NewSnowball(WithName("syncer"))
 
@@ -175,7 +173,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		rounds:   rounds,
 		graph:    graph,
 
-		gossiper:  gossiper,
 		finalizer: finalizer,
 		syncer:    syncer,
 
@@ -242,9 +239,7 @@ func (l *Ledger) Close() {
 	l.stopWG.Wait()
 }
 
-// AddTransaction adds a transaction to the ledger. If the transaction has
-// never been added in the ledgers graph before, it is pushed to the gossip
-// mechanism to then be gossiped to this nodes peers. If the transaction is
+// AddTransaction adds a transaction to the ledger. If the transaction is
 // invalid or fails any validation checks, an error is returned. No error
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
@@ -262,8 +257,6 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 
 	if err == nil {
 		l.TakeSendQuota()
-
-		l.gossiper.Push(tx)
 
 		l.broadcastNopsLock.Lock()
 		if tx.Tag != sys.TagNop && tx.Sender == l.client.Keys().PublicKey() {
