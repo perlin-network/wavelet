@@ -3,6 +3,7 @@ package wavelet
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"io"
@@ -20,6 +21,14 @@ func NewBlock(index uint64, transactions ...[blake2b.Size256]byte) Block {
 	b.ID = blake2b.Sum256(b.Marshal())
 
 	return b
+}
+
+func (b *Block) GetID() string {
+	if b == nil || b.ID == ZeroBlockID {
+		return ""
+	}
+
+	return fmt.Sprintf("%x", b.ID)
 }
 
 func (b Block) Marshal() []byte {
