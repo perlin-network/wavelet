@@ -67,12 +67,9 @@ type Ledger struct {
 	indexer *Indexer
 
 	accounts *Accounts
-	rounds   *Rounds
+	blocks   *Blocks
 
 	mempool *Mempool
-
-	Blocks     []Block
-	BlocksLock sync.RWMutex
 
 	finalizer *Snowball
 	syncer    *Snowball
@@ -140,11 +137,11 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	indexer := NewIndexer()
 
 	accounts := NewAccounts(kv)
-	rounds, err := NewRounds(kv, conf.GetPruningLimit())
+	blocks, err := NewBlocks(kv, conf.GetPruningLimit())
 
-	var round *Round
+	var block *Block
 
-	if rounds != nil && err != nil {
+	if blocks != nil && err != nil {
 		genesis := performInception(accounts.tree, cfg.Genesis)
 		if err := accounts.Commit(nil); err != nil {
 			logger.Fatal().Err(err).Msg("BUG: accounts.Commit")
@@ -152,16 +149,16 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 		ptr := &genesis
 
-		if _, err := rounds.Save(ptr); err != nil {
-			logger.Fatal().Err(err).Msg("BUG: rounds.Save")
+		if _, err := blocks.Save(ptr); err != nil {
+			logger.Fatal().Err(err).Msg("BUG: blocks..Save")
 		}
 
-		round = ptr
-	} else if rounds != nil {
-		round = rounds.Latest()
+		block = ptr
+	} else if blocks != nil {
+		block = blocks.Latest()
 	}
 
-	if round == nil {
+	if block == nil {
 		logger.Fatal().Err(err).Msg("BUG: COULD NOT FIND GENESIS, OR STORAGE IS CORRUPTED.")
 	}
 
@@ -174,7 +171,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		indexer: indexer,
 
 		accounts: accounts,
-		rounds:   rounds,
+		blocks:   blocks,
 
 		mempool: NewMempool(),
 
@@ -361,8 +358,8 @@ func (l *Ledger) Finalizer() *Snowball {
 }
 
 // Rounds returns the round manager for the ledger.
-func (l *Ledger) Rounds() *Rounds {
-	return l.rounds
+func (l *Ledger) Blocks() *Blocks {
+	return l.blocks
 }
 
 // Restart restart wavelet process by means of stall detector (approach is platform dependent)
