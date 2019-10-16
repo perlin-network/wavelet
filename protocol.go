@@ -36,15 +36,15 @@ type Protocol struct {
 func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse, error) {
 	res := &QueryResponse{}
 
-	round, err := p.ledger.rounds.GetByIndex(req.RoundIndex)
+	block, err := p.ledger.blocks.GetByIndex(req.BlockIndex)
 	if err == nil {
-		res.Round = round.Marshal()
+		res.Block = block.Marshal()
 		return res, nil
 	}
 
 	preferred := p.ledger.finalizer.Preferred()
 	if preferred != nil {
-		res.Round = preferred.(*Round).Marshal()
+		res.Block = preferred.(*Block).Marshal()
 		return res, nil
 	}
 

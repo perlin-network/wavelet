@@ -22,11 +22,11 @@ syntax = "proto3";
 package wavelet;
 
 message QueryRequest {
-    uint64 round_index = 1;
+    uint64 block_index = 1;
 }
 
 message QueryResponse {
-    bytes round = 1;
+    bytes block = 1;
 }
 
 message OutOfSyncRequest {

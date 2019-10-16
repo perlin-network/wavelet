@@ -23,7 +23,6 @@ import (
 	"sync"
 
 	"github.com/perlin-network/wavelet/conf"
-	"github.com/perlin-network/wavelet/log"
 )
 
 type SnowballOption func(*Snowball)
@@ -80,50 +79,46 @@ func (s *Snowball) Reset() {
 	s.Unlock()
 }
 
-func (s *Snowball) Tick(v Identifiable) {
+func (s *Snowball) Tick(tallies map[Identifiable]float64) {
 	s.Lock()
 	defer s.Unlock()
 
-	if s.decided { // Do not allow any further ticks until Reset() gets called.
+	if s.decided {
 		return
 	}
 
-	if v == nil || v.GetID() == "" { // Have nil responses reset Snowball.
-		s.lastID = ""
-		s.count = 0
+	var majority Identifiable = nil
+	var majorityTally float64 = 0
 
-		return
-	}
-
-	id := v.GetID()
-	if _, exists := s.candidates[id]; !exists {
-		s.candidates[id] = v
-	}
-
-	s.counts[id]++ // Handle decision case.
-
-	if s.counts[id] > s.counts[s.preferredID] {
-		s.preferredID = id
-	}
-
-	if s.lastID != id { // Handle termination case.
-		if s.lastID != "" {
-			logger := log.Node()
-			logger.Warn().
-				Str("name", s.name).
-				Str("last_id", s.lastID).
-				Int("count", s.count).
-				Str("new_id", id).
-				Msg("Snowball liveness fault")
+	for id, tally := range tallies {
+		if tally > majorityTally {
+			majority, majorityTally = id, tally
 		}
+	}
 
-		s.lastID = id
+	denom := float64(len(tallies))
+
+	if denom < 2 {
+		denom = 2
+	}
+
+	if majority == nil || majorityTally < conf.GetSnowballAlpha()*2/denom {
 		s.count = 0
 	} else {
-		s.count++
+		s.counts[majority.GetID()] += 1
 
-		if s.count > conf.GetSnowballBeta() {
-			s.decided = true
+		if s.counts[majority.GetID()] > s.counts[s.preferredID] {
+			s.preferredID = majority.GetID()
+		}
+
+		if s.lastID == "" || majority.GetID() != s.lastID {
+			s.lastID, s.count = majority.GetID(), 1
+		} else {
+			s.count += 1
+
+			if s.count > conf.GetSnowballBeta() {
+				s.decided = true
+			}
 		}
 	}
 }

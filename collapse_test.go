@@ -201,7 +201,7 @@ func newCollapseContainer(t assert.TestingT, noOfAcc int) *collapseTestContainer
 	}
 
 	firstAccount := accounts[accountIDs[0]]
-	initialRoot = AttachSenderToTransaction(firstAccount, NewTransaction(firstAccount, sys.TagNop, nil))
+	initialRoot = AttachSenderToTransaction(firstAccount, NewTransaction(sys.TagNop, nil))
 	graph := NewGraph(WithRoot(initialRoot))
 
 	accountState := NewAccounts(stateStore)
@@ -229,7 +229,7 @@ func (g *collapseTestContainer) applyContract(b *testing.B, code []byte) (Transa
 	var sender = g.accounts[g.accountIDs[rng.Intn(len(g.accountIDs))]]
 
 	tx := AttachSenderToTransaction(sender,
-		NewTransaction(sender, sys.TagContract, buildContractSpawnPayload(100000, 0, code).Marshal()), g.graph.FindEligibleParents()...,
+		NewTransaction(sys.TagContract, buildContractSpawnPayload(100000, 0, code).Marshal()), g.graph.FindEligibleParents()...,
 	)
 
 	if err := g.graph.AddTransaction(tx); err != nil {
@@ -307,7 +307,7 @@ func (g *collapseTestContainer) addTxs(b *testing.B, noOfTx int, getTx func(send
 func (g *collapseTestContainer) addStakeTxs(b *testing.B, noOfTx int) {
 	g.addTxs(b, noOfTx, func(sender *skademlia.Keypair) Transaction {
 		return AttachSenderToTransaction(sender,
-			NewTransaction(sender, sys.TagStake, buildPlaceStakePayload(1).Marshal()),
+			NewTransaction(sys.TagStake, buildPlaceStakePayload(1).Marshal()),
 			g.graph.FindEligibleParents()...,
 		)
 	})
@@ -328,7 +328,7 @@ func (g *collapseTestContainer) addTransferTxs(b *testing.B, noOfTx int) {
 		}
 
 		return AttachSenderToTransaction(sender,
-			NewTransaction(sender, sys.TagTransfer, buildTransferPayload(recipient.PublicKey(), 1).Marshal()),
+			NewTransaction(sys.TagTransfer, buildTransferPayload(recipient.PublicKey(), 1).Marshal()),
 			g.graph.FindEligibleParents()...,
 		)
 	})
@@ -337,7 +337,6 @@ func (g *collapseTestContainer) addTransferTxs(b *testing.B, noOfTx int) {
 func (g *collapseTestContainer) addContractTransferTxs(b *testing.B, noOfTx int, sender, contractID AccountID, funcName []byte, amount, gasLimit, gasDeposit uint64) {
 	g.addTxs(b, noOfTx, func(sender *skademlia.Keypair) Transaction {
 		tx := NewTransaction(
-			sender,
 			sys.TagTransfer,
 			buildTransferWithInvocationPayload(contractID, 200, 500000, []byte("on_money_received"), nil, 0).Marshal(),
 		)
@@ -354,7 +353,7 @@ func (g *collapseTestContainer) addContractTransferTxs(b *testing.B, noOfTx int,
 func (g *collapseTestContainer) addContractCreationTxs(b *testing.B, noOfTx int, code []byte) {
 	g.addTxs(b, noOfTx, func(sender *skademlia.Keypair) Transaction {
 		return AttachSenderToTransaction(sender,
-			NewTransaction(sender, sys.TagContract, buildContractSpawnPayload(100000, 0, code).Marshal()),
+			NewTransaction(sys.TagContract, buildContractSpawnPayload(100000, 0, code).Marshal()),
 			g.graph.FindEligibleParents()...,
 		)
 	})

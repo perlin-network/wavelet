@@ -24,6 +24,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math/big"
 	"math/bits"
 	"sort"
 
@@ -36,8 +37,7 @@ import (
 )
 
 type Transaction struct {
-	Sender  AccountID // Transaction sender.
-	Creator AccountID // Transaction creator.
+	Sender AccountID // Transaction sender.
 
 	Nonce uint64
 
@@ -49,8 +49,7 @@ type Transaction struct {
 	Tag     sys.Tag
 	Payload []byte
 
-	SenderSignature  Signature
-	CreatorSignature Signature
+	Signature Signature
 
 	ID TransactionID // BLAKE2b(*).
 
@@ -58,15 +57,10 @@ type Transaction struct {
 	SeedLen byte            // Number of prefixed zeroes of BLAKE2b(Sender || ParentIDs).
 }
 
-func NewTransaction(creator *skademlia.Keypair, tag sys.Tag, payload []byte) Transaction {
-	tx := Transaction{Tag: tag, Payload: payload}
+func NewTransaction(tag sys.Tag, payload []byte) Transaction {
+	// var nonce [8]byte // TODO(kenta): nonce
 
-	var nonce [8]byte // TODO(kenta): nonce
-
-	tx.Creator = creator.PublicKey()
-	tx.CreatorSignature = edwards25519.Sign(creator.PrivateKey(), append(nonce[:], append([]byte{byte(tx.Tag)}, tx.Payload...)...))
-
-	return tx
+	return Transaction{Tag: tag, Payload: payload}
 }
 
 // AttachSenderToTransaction immutably attaches sender to a transaction without modifying it in-place.
@@ -92,7 +86,7 @@ func AttachSenderToTransaction(sender *skademlia.Keypair, tx Transaction, parent
 	}
 
 	tx.Sender = sender.PublicKey()
-	tx.SenderSignature = edwards25519.Sign(sender.PrivateKey(), tx.Marshal())
+	tx.Signature = edwards25519.Sign(sender.PrivateKey(), tx.Marshal())
 
 	tx.rehash()
 
@@ -141,16 +135,9 @@ func (tx Transaction) ComputeSize() int {
 }
 
 func (tx Transaction) Marshal() []byte {
-	w := bytes.NewBuffer(make([]byte, 0, 222+(SizeTransactionID*len(tx.ParentIDs))+SizeTransactionSeed*len(tx.ParentSeeds)+len(tx.Payload)))
+	w := bytes.NewBuffer(make([]byte, 0, 126+(SizeTransactionID*len(tx.ParentIDs))+SizeTransactionSeed*len(tx.ParentSeeds)+len(tx.Payload)))
 
 	w.Write(tx.Sender[:])
-
-	if tx.Creator != tx.Sender {
-		w.WriteByte(1)
-		w.Write(tx.Creator[:])
-	} else {
-		w.WriteByte(0)
-	}
 
 	var buf [8]byte
 
@@ -174,11 +161,7 @@ func (tx Transaction) Marshal() []byte {
 	w.Write(buf[:4])
 	w.Write(tx.Payload)
 
-	w.Write(tx.SenderSignature[:])
-
-	if tx.Creator != tx.Sender {
-		w.Write(tx.CreatorSignature[:])
-	}
+	w.Write(tx.Signature[:])
 
 	return w.Bytes()
 }
@@ -190,27 +173,6 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 	}
 
 	var buf [8]byte
-
-	if _, err = io.ReadFull(r, buf[:1]); err != nil {
-		err = errors.Wrap(err, "failed to decode flag to see if transaction creator is recorded")
-		return
-	}
-
-	if buf[0] != 0 && buf[0] != 1 {
-		err = errors.Errorf("flag must be zero or one, but is %d instead", buf[0])
-		return
-	}
-
-	creatorRecorded := buf[0] == 1
-
-	if !creatorRecorded {
-		t.Creator = t.Sender
-	} else {
-		if _, err = io.ReadFull(r, t.Creator[:]); err != nil {
-			err = errors.Wrap(err, "failed to decode transaction creator")
-			return
-		}
-	}
 
 	if _, err = io.ReadFull(r, buf[:8]); err != nil {
 		err = errors.Wrap(err, "failed to read nonce")
@@ -273,18 +235,9 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 		return
 	}
 
-	if _, err = io.ReadFull(r, t.SenderSignature[:]); err != nil {
+	if _, err = io.ReadFull(r, t.Signature[:]); err != nil {
 		err = errors.Wrap(err, "failed to decode signature")
 		return
-	}
-
-	if !creatorRecorded {
-		t.CreatorSignature = t.SenderSignature
-	} else {
-		if _, err = io.ReadFull(r, t.CreatorSignature[:]); err != nil {
-			err = errors.Wrap(err, "failed to decode creator signature")
-			return
-		}
 	}
 
 	t.rehash()
@@ -323,6 +276,13 @@ func (tx Transaction) Fee() uint64 {
 	}
 
 	return fee
+}
+
+func (tx Transaction) ComputeIndex(blockID [blake2b.Size256]byte) *big.Int {
+	buf := blake2b.Sum256(append(tx.ID[:], blockID[:]...))
+	index := (&big.Int{}).SetBytes(buf[:])
+
+	return index
 }
 
 func prefixLen(buf []byte) int {

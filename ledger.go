@@ -57,6 +57,8 @@ const (
 
 var (
 	ErrOutOfSync = errors.New("Node is currently ouf of sync. Please try again later.")
+
+	EmptyBlockID [blake2b.Size256]byte
 )
 
 type Ledger struct {
@@ -65,8 +67,9 @@ type Ledger struct {
 	indexer *Indexer
 
 	accounts *Accounts
-	rounds   *Rounds
-	graph    *Graph
+	blocks   *Blocks
+
+	mempool *Mempool
 
 	finalizer *Snowball
 	syncer    *Snowball
@@ -134,11 +137,11 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	indexer := NewIndexer()
 
 	accounts := NewAccounts(kv)
-	rounds, err := NewRounds(kv, conf.GetPruningLimit())
+	blocks, err := NewBlocks(kv, conf.GetPruningLimit())
 
-	var round *Round
+	var block *Block
 
-	if rounds != nil && err != nil {
+	if blocks != nil && err != nil {
 		genesis := performInception(accounts.tree, cfg.Genesis)
 		if err := accounts.Commit(nil); err != nil {
 			logger.Fatal().Err(err).Msg("BUG: accounts.Commit")
@@ -146,20 +149,18 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 		ptr := &genesis
 
-		if _, err := rounds.Save(ptr); err != nil {
-			logger.Fatal().Err(err).Msg("BUG: rounds.Save")
+		if _, err := blocks.Save(ptr); err != nil {
+			logger.Fatal().Err(err).Msg("BUG: blocks..Save")
 		}
 
-		round = ptr
-	} else if rounds != nil {
-		round = rounds.Latest()
+		block = ptr
+	} else if blocks != nil {
+		block = blocks.Latest()
 	}
 
-	if round == nil {
+	if block == nil {
 		logger.Fatal().Err(err).Msg("BUG: COULD NOT FIND GENESIS, OR STORAGE IS CORRUPTED.")
 	}
-
-	graph := NewGraph(WithMetrics(metrics), WithIndexer(indexer), WithRoot(round.End), VerifySignatures())
 
 	finalizer := NewSnowball(WithName("finalizer"))
 	syncer := NewSnowball(WithName("syncer"))
@@ -170,8 +171,9 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		indexer: indexer,
 
 		accounts: accounts,
-		rounds:   rounds,
-		graph:    graph,
+		blocks:   blocks,
+
+		mempool: NewMempool(),
 
 		finalizer: finalizer,
 		syncer:    syncer,
@@ -244,7 +246,8 @@ func (l *Ledger) Close() {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(tx Transaction) error {
-	err := l.graph.AddTransaction(tx)
+
+	err := l.mempool.Add(tx, l.LastBlockID())
 
 	// Ignore error if transaction already exists,
 	// or transaction's depth is too low due to pruning
@@ -348,12 +351,6 @@ func (l *Ledger) Protocol() *Protocol {
 	return &Protocol{ledger: l}
 }
 
-// Graph returns the directed-acyclic-graph of transactions accompanying
-// the ledger.
-func (l *Ledger) Graph() *Graph {
-	return l.graph
-}
-
 // Finalizer returns the Snowball finalizer which finalizes the contents of individual
 // consensus rounds.
 func (l *Ledger) Finalizer() *Snowball {
@@ -361,8 +358,8 @@ func (l *Ledger) Finalizer() *Snowball {
 }
 
 // Rounds returns the round manager for the ledger.
-func (l *Ledger) Rounds() *Rounds {
-	return l.rounds
+func (l *Ledger) Blocks() *Blocks {
+	return l.blocks
 }
 
 // Restart restart wavelet process by means of stall detector (approach is platform dependent)
@@ -418,7 +415,7 @@ func (l *Ledger) BroadcastNop() *Transaction {
 		return nil
 	}
 
-	nop := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), l.graph.FindEligibleParents()...)
+	nop := AttachSenderToTransaction(keys, NewTransaction(sys.TagNop, nil), l.graph.FindEligibleParents()...)
 
 	if err := l.AddTransaction(nop); err != nil {
 		return nil
@@ -642,6 +639,204 @@ func (l *Ledger) PullMissingTransactions() {
 		l.metrics.downloadedTX.Mark(count)
 		l.metrics.receivedTX.Mark(count)
 	}
+}
+
+func (l *Ledger) FinalizeBlocks() {
+	for {
+		preferred := l.finalizer.Preferred().(*Block)
+		decided := l.finalizer.Decided()
+
+		if preferred == nil {
+			// TODO propose a block
+		} else {
+			if decided {
+				l.finalize(*preferred)
+			} else {
+				l.query()
+			}
+		}
+
+	}
+}
+
+func (l *Ledger) finalize(newBlock Block) {
+	// TODO delete transactions, shuffle mempool, collapse transactions, reset snowbal
+}
+
+func (l *Ledger) query() {
+	// TODO check there's enough peers
+
+	current := l.blocks.Latest()
+
+	workerChan := make(chan *grpc.ClientConn, 16)
+
+	var workerWG sync.WaitGroup
+	workerWG.Add(cap(workerChan))
+
+	snowballK := conf.GetSnowballK()
+	voteChan := make(chan finalizationVote, snowballK)
+
+	req := &QueryRequest{BlockIndex: current.Index + 1}
+
+	for i := 0; i < cap(workerChan); i++ {
+		go func() {
+			for conn := range workerChan {
+				f := func() {
+					client := NewWaveletClient(conn)
+
+					ctx, cancel := context.WithTimeout(context.Background(), conf.GetQueryTimeout())
+
+					p := &peer.Peer{}
+
+					res, err := client.Query(ctx, req, grpc.Peer(p))
+					if err != nil {
+						logger := log.Node()
+						logger.Error().
+							Err(err).
+							Msg("error while querying peer")
+
+						cancel()
+						return
+					}
+
+					cancel()
+
+					l.metrics.queried.Mark(1)
+
+					info := noise.InfoFromPeer(p)
+					if info == nil {
+						return
+					}
+
+					voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
+					if !ok {
+						return
+					}
+
+					block, err := UnmarshalBlock(bytes.NewReader(res.Block))
+					if err != nil {
+						voteChan <- finalizationVote{voter: voter, block: nil}
+						return
+					}
+
+					if block.ID == ZeroRoundID {
+						voteChan <- finalizationVote{voter: voter, block: nil}
+						return
+					}
+
+					voteChan <- finalizationVote{
+						voter: voter,
+						block: &block,
+					}
+				}
+				l.metrics.queryLatency.Time(f)
+			}
+			workerWG.Done()
+		}()
+	}
+
+	cleanupWorker := func() {
+		close(workerChan)
+		workerWG.Wait()
+	}
+
+	peers, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
+	if err != nil {
+		cleanupWorker()
+		return
+	}
+
+	for _, p := range peers {
+		workerChan <- p
+	}
+
+	votes := make([]finalizationVote, 0, snowballK)
+	voters := make(map[AccountID]struct{}, snowballK)
+
+	for response := range voteChan {
+		if _, recorded := voters[response.voter.PublicKey()]; recorded {
+			continue // To make sure the sampling process is fair, only allow one vote per peer.
+		}
+
+		voters[response.voter.PublicKey()] = struct{}{}
+		votes = append(votes, response)
+
+		if len(votes) == cap(votes) {
+			break
+		}
+	}
+
+	cleanupWorker()
+
+	if len(votes) != cap(votes) {
+		// TODO not enough vote, what to do ?
+		return
+	}
+
+	// Filter away all query responses whose blocks comprise of transactions our node is not aware of.
+	l.mempool.ReadLock(func(transactions map[[32]byte]*Transaction) {
+		for _, vote := range votes {
+			if vote.block == nil {
+				continue
+			}
+
+			if vote.block.ID == ZeroBlockID {
+				continue
+			}
+
+			if vote.block.Index != l.LastBlockIndex() {
+				vote.block.ID = ZeroBlockID
+				continue
+			}
+
+			for _, id := range vote.block.Transactions {
+				if _, stored := transactions[id]; !stored {
+					vote.block.ID = ZeroBlockID
+					break
+				}
+			}
+		}
+	})
+
+	tallies := make(map[[blake2b.Size256]byte]float64)
+	blocks := make(map[[blake2b.Size256]byte]*Block)
+
+	for _, vote := range votes {
+		if vote.block == nil {
+			continue
+		}
+
+		if _, exists := blocks[vote.block.ID]; !exists {
+			blocks[vote.block.ID] = vote.block
+		}
+
+		tallies[vote.block.ID] += 1.0 / float64(len(votes))
+	}
+
+	for block, weight := range Normalize(ComputeProfitWeights(votes)) {
+		tallies[block] *= weight
+	}
+
+	stakeWeights := Normalize(ComputeStakeWeights(l.accounts, votes))
+	for block, weight := range stakeWeights {
+		tallies[block] *= weight
+	}
+
+	totalTally := float64(0)
+	for _, tally := range tallies {
+		totalTally += tally
+	}
+
+	for block := range tallies {
+		tallies[block] /= totalTally
+	}
+
+	snowballTallies := make(map[Identifiable]float64, len(blocks))
+	for _, block := range blocks {
+		snowballTallies[block] = tallies[block.ID]
+	}
+
+	l.finalizer.Tick(snowballTallies)
 }
 
 // FinalizeRounds periodically attempts to find an eligible critical transaction suited for the
@@ -1521,12 +1716,12 @@ type CollapseState struct {
 // It is important to note that transactions that are inspected over are specifically transactions
 // that are within the depth interval (start, end] where start is the interval starting point depth,
 // and end is the interval ending point depth.
-func (l *Ledger) collapseTransactions(round uint64, start, end Transaction, logging bool) (*collapseResults, error) {
-	_collapseState, _ := l.cacheCollapse.LoadOrPut(end.ID, &CollapseState{})
+func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResults, error) {
+	_collapseState, _ := l.cacheCollapse.LoadOrPut(block.ID, &CollapseState{})
 	collapseState := _collapseState.(*CollapseState)
 
 	collapseState.once.Do(func() {
-		collapseState.results, collapseState.err = collapseTransactions(l.graph, l.accounts, round, l.Rounds().Latest(), start, end, logging)
+		collapseState.results, collapseState.err = collapseTransactions(l.mempool, block, l.accounts, logging)
 	})
 
 	if logging {
@@ -1638,4 +1833,14 @@ func (l *Ledger) setSync(flag bitset) {
 	l.syncStatusLock.Lock()
 	l.syncStatus = flag
 	l.syncStatusLock.Unlock()
+}
+
+func (l *Ledger) LastBlockID() [blake2b.Size256]byte {
+	// TODO implement this
+	return EmptyBlockID
+}
+
+func (l *Ledger) LastBlockIndex() uint64 {
+	// TODO implement this
+	return 0
 }

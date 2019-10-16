@@ -462,12 +462,12 @@ func (g *Graph) Missing() []TransactionID {
 	return missing
 }
 
-func (g *Graph) ListTransactions(offset, limit uint64, sender, creator AccountID) (transactions []*Transaction) {
+func (g *Graph) ListTransactions(offset, limit uint64, sender AccountID) (transactions []*Transaction) {
 	g.RLock()
 	defer g.RUnlock()
 
 	for _, tx := range g.transactions {
-		if (sender == ZeroAccountID && creator == ZeroAccountID) || (sender != ZeroAccountID && tx.Sender == sender) || (creator != ZeroAccountID && tx.Creator == creator) {
+		if sender == ZeroAccountID || (sender != ZeroAccountID && tx.Sender == sender) {
 			transactions = append(transactions, tx)
 		}
 	}
@@ -668,10 +668,6 @@ func (g *Graph) validateTransaction(tx Transaction) error {
 		return errors.New("tx must have sender associated to it")
 	}
 
-	if tx.Creator == ZeroAccountID {
-		return errors.New("tx must have a creator associated to it")
-	}
-
 	if len(tx.ParentIDs) == 0 {
 		return errors.New("transaction has no parents")
 	}
@@ -712,19 +708,13 @@ func (g *Graph) validateTransaction(tx Transaction) error {
 	}
 
 	if g.verifySignatures {
-		var nonce [8]byte // TODO(kenta): nonce
-
-		if tx.Sender != tx.Creator {
-			if !edwards25519.Verify(tx.Creator, append(nonce[:], append([]byte{byte(tx.Tag)}, tx.Payload...)...), tx.CreatorSignature) {
-				return errors.New("tx has invalid creator signature")
-			}
-		}
+		// var nonce [8]byte // TODO(kenta): nonce
 
 		cpy := tx
-		cpy.SenderSignature = ZeroSignature
+		cpy.Signature = ZeroSignature
 
-		if !edwards25519.Verify(tx.Sender, cpy.Marshal(), tx.SenderSignature) {
-			return errors.New("tx has invalid sender signature")
+		if !edwards25519.Verify(tx.Sender, cpy.Marshal(), tx.Signature) {
+			return errors.New("tx has invalid signature")
 		}
 	}
 

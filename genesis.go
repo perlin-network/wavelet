@@ -26,6 +26,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
 	"github.com/valyala/fastjson"
+	"golang.org/x/crypto/blake2b"
 )
 
 const testingGenesis = `
@@ -68,7 +69,7 @@ func SetGenesisByNetwork(name string) error {
 
 // performInception loads data expected to exist at the birth of any node in this ledgers network.
 // The data is fed in as .json.
-func performInception(tree *avl.Tree, genesis *string) Round {
+func performInception(tree *avl.Tree, genesis *string) Block {
 	logger := log.Node()
 
 	var buf []byte
@@ -179,5 +180,5 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 	tx := Transaction{}
 	tx.rehash()
 
-	return NewRound(0, tree.Checksum(), 0, Transaction{}, tx)
+	return NewBlock(0, [][blake2b.Size256]byte{}...)
 }

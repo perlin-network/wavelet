@@ -23,6 +23,7 @@ import (
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
+	"golang.org/x/crypto/blake2b"
 	"sync"
 )
 
@@ -33,7 +34,7 @@ type syncVote struct {
 
 type finalizationVote struct {
 	voter *skademlia.ID
-	round *Round
+	block *Block
 }
 
 func CollectVotesForSync(
@@ -104,6 +105,105 @@ func CollectVotesForSync(
 	}
 }
 
+//func CollectVotesForFinalization(
+//	accounts *Accounts,
+//	snowball *Snowball,
+//	voteChan <-chan finalizationVote,
+//	wg *sync.WaitGroup,
+//	snowballK int,
+//) {
+//	votes := make([]finalizationVote, 0, snowballK)
+//	voters := make(map[AccountID]struct{}, snowballK)
+//
+//	for vote := range voteChan {
+//		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
+//			continue // To make sure the sampling process is fair, only allow one vote per peer.
+//		}
+//
+//		voters[vote.voter.PublicKey()] = struct{}{}
+//		votes = append(votes, vote)
+//
+//		if len(votes) == cap(votes) {
+//			snapshot := accounts.Snapshot()
+//
+//			stakes := make(map[AccountID]float64, len(votes))
+//			maxStake := float64(0)
+//
+//			for _, vote := range votes {
+//				s, _ := ReadAccountStake(snapshot, vote.voter.PublicKey())
+//
+//				if s < sys.MinimumStake {
+//					s = sys.MinimumStake
+//				}
+//
+//				stake := float64(s)
+//				stakes[vote.voter.PublicKey()] = stake
+//
+//				if maxStake < stake {
+//					maxStake = stake
+//				}
+//			}
+//
+//			votesStakesPercentages := make(map[AccountID]float64, len(votes))
+//			var totalStakePercentages float64
+//
+//			votesTransactionsNums := make(map[AccountID]uint32, len(votes))
+//			var maxTransactionsNum uint32
+//
+//			votesEndDepths := make(map[AccountID]uint64, len(votes))
+//			var minEndDepth uint64
+//			minEndDepth-- // to have default value for minimal variable as max possible
+//
+//			for _, vote := range votes {
+//				percent := stakes[vote.voter.PublicKey()] / maxStake
+//
+//				votesStakesPercentages[vote.round.ID] += percent
+//				totalStakePercentages += percent
+//
+//				votesTransactionsNums[vote.round.ID] = vote.round.Transactions
+//				if vote.round.Transactions > maxTransactionsNum {
+//					maxTransactionsNum = vote.round.Transactions
+//				}
+//
+//				depth := vote.round.End.Depth - vote.round.Start.Depth
+//				votesEndDepths[vote.round.ID] = depth
+//				if depth < minEndDepth {
+//					minEndDepth = depth
+//				}
+//			}
+//
+//			var majority *Round
+//			for _, vote := range votes {
+//				stake := (votesStakesPercentages[vote.round.ID] / totalStakePercentages) * conf.GetStakeMajorityWeight()
+//
+//				var transactions float64
+//				if maxTransactionsNum > 0 {
+//					transactions = float64(votesTransactionsNums[vote.round.ID]/maxTransactionsNum) * conf.GetTransactionsNumMajorityWeight()
+//				}
+//
+//				var depth float64
+//				if votesEndDepths[vote.round.ID] > 0 {
+//					depth = float64(minEndDepth/votesEndDepths[vote.round.ID]) * conf.GetRoundDepthMajorityWeight()
+//				}
+//
+//				if stake+transactions+depth >= conf.GetFinalizationVoteThreshold() {
+//					majority = vote.round
+//					break
+//				}
+//			}
+//
+//			snowball.Tick(majority)
+//
+//			voters = make(map[AccountID]struct{}, snowballK)
+//			votes = votes[:0]
+//		}
+//	}
+//
+//	if wg != nil {
+//		wg.Done()
+//	}
+//}
+
 func CollectVotesForFinalization(
 	accounts *Accounts,
 	snowball *Snowball,
@@ -123,82 +223,137 @@ func CollectVotesForFinalization(
 		votes = append(votes, vote)
 
 		if len(votes) == cap(votes) {
-			snapshot := accounts.Snapshot()
-
-			stakes := make(map[AccountID]float64, len(votes))
-			maxStake := float64(0)
+			tallies := make(map[[blake2b.Size256]byte]float64)
+			blocks := make(map[[blake2b.Size256]byte]*Block)
 
 			for _, vote := range votes {
-				s, _ := ReadAccountStake(snapshot, vote.voter.PublicKey())
-
-				if s < sys.MinimumStake {
-					s = sys.MinimumStake
+				if vote.block == nil {
+					continue
 				}
 
-				stake := float64(s)
-				stakes[vote.voter.PublicKey()] = stake
-
-				if maxStake < stake {
-					maxStake = stake
+				if _, exists := blocks[vote.block.ID]; !exists {
+					blocks[vote.block.ID] = vote.block
 				}
+
+				tallies[vote.block.ID] += 1.0 / float64(len(votes))
 			}
 
-			votesStakesPercentages := make(map[AccountID]float64, len(votes))
-			var totalStakePercentages float64
-
-			votesTransactionsNums := make(map[AccountID]uint32, len(votes))
-			var maxTransactionsNum uint32
-
-			votesEndDepths := make(map[AccountID]uint64, len(votes))
-			var minEndDepth uint64
-			minEndDepth-- // to have default value for minimal variable as max possible
-
-			for _, vote := range votes {
-				percent := stakes[vote.voter.PublicKey()] / maxStake
-
-				votesStakesPercentages[vote.round.ID] += percent
-				totalStakePercentages += percent
-
-				votesTransactionsNums[vote.round.ID] = vote.round.Transactions
-				if vote.round.Transactions > maxTransactionsNum {
-					maxTransactionsNum = vote.round.Transactions
-				}
-
-				depth := vote.round.End.Depth - vote.round.Start.Depth
-				votesEndDepths[vote.round.ID] = depth
-				if depth < minEndDepth {
-					minEndDepth = depth
-				}
+			for block, weight := range Normalize(ComputeProfitWeights(votes)) {
+				tallies[block] *= weight
 			}
 
-			var majority *Round
-			for _, vote := range votes {
-				stake := (votesStakesPercentages[vote.round.ID] / totalStakePercentages) * conf.GetStakeMajorityWeight()
-
-				var transactions float64
-				if maxTransactionsNum > 0 {
-					transactions = float64(votesTransactionsNums[vote.round.ID]/maxTransactionsNum) * conf.GetTransactionsNumMajorityWeight()
-				}
-
-				var depth float64
-				if votesEndDepths[vote.round.ID] > 0 {
-					depth = float64(minEndDepth/votesEndDepths[vote.round.ID]) * conf.GetRoundDepthMajorityWeight()
-				}
-
-				if stake+transactions+depth >= conf.GetFinalizationVoteThreshold() {
-					majority = vote.round
-					break
-				}
+			stakeWeights := Normalize(ComputeStakeWeights(accounts, votes))
+			for block, weight := range stakeWeights {
+				tallies[block] *= weight
 			}
 
-			snowball.Tick(majority)
+			totalTally := float64(0)
+			for _, tally := range tallies {
+				totalTally += tally
+			}
 
-			voters = make(map[AccountID]struct{}, snowballK)
-			votes = votes[:0]
+			for block := range tallies {
+				tallies[block] /= totalTally
+			}
+
+			votes := make(map[Identifiable]float64, len(blocks))
+			for _, block := range blocks {
+				votes[block] = tallies[block.ID]
+			}
+
+			snowball.Tick(votes)
 		}
 	}
 
 	if wg != nil {
 		wg.Done()
 	}
+}
+
+func ComputeProfitWeights(responses []finalizationVote) map[[blake2b.Size256]byte]float64 {
+	weights := make(map[[blake2b.Size256]byte]float64)
+
+	var max float64
+
+	for _, res := range responses {
+		if res.block == nil {
+			continue
+		}
+
+		weights[res.block.ID] += float64(len(res.block.Transactions))
+
+		if weights[res.block.ID] > max {
+			max = weights[res.block.ID]
+		}
+	}
+
+	for id := range weights {
+		weights[id] /= max
+	}
+
+	return weights
+}
+
+func ComputeStakeWeights(accounts *Accounts, responses []finalizationVote) map[[blake2b.Size256]byte]float64 {
+	weights := make(map[[blake2b.Size256]byte]float64)
+
+	var max float64
+
+	snapshot := accounts.Snapshot()
+
+	for _, res := range responses {
+		if res.block == nil {
+			continue
+		}
+
+		stake, _ := ReadAccountStake(snapshot, res.voter.PublicKey())
+
+		if stake < sys.MinimumStake {
+			weights[res.block.ID] += float64(sys.MinimumStake)
+		} else {
+			weights[res.block.ID] += float64(stake)
+		}
+
+		if weights[res.block.ID] > max {
+			max = weights[res.block.ID]
+		}
+	}
+
+	for id := range weights {
+		weights[id] /= max
+	}
+
+	return weights
+}
+
+func Normalize(weights map[[blake2b.Size256]byte]float64) map[[blake2b.Size256]byte]float64 {
+	normalized := make(map[[blake2b.Size256]byte]float64, len(weights))
+	min, max := float64(1), float64(0)
+
+	// Find minimum weight.
+	for _, weight := range weights {
+		if min > weight {
+			min = weight
+		}
+	}
+
+	// Subtract minimum and find maximum normalized weight.
+	for block, weight := range weights {
+		normalized[block] = weight - min
+
+		if normalized[block] > max {
+			max = normalized[block]
+		}
+	}
+
+	// Normalize weight using maximum normalized weight into range [0, 1].
+	for block := range weights {
+		if max == 0 {
+			normalized[block] = 1
+		} else {
+			normalized[block] /= max
+		}
+	}
+
+	return normalized
 }

@@ -35,10 +35,10 @@ var (
 	// Global prefixes.
 	keyAccounts          = [...]byte{0x1}
 	keyAccountsLen       = [...]byte{0x2}
-	keyRounds            = [...]byte{0x3}
-	keyRoundLatestIx     = [...]byte{0x4}
-	keyRoundOldestIx     = [...]byte{0x5}
-	keyRoundStoredCount  = [...]byte{0x6}
+	keyBlocks            = [...]byte{0x3}
+	keyBlockLatestIx     = [...]byte{0x4}
+	keyBlockOldestIx     = [...]byte{0x5}
+	keyBlockStoredCount  = [...]byte{0x6}
 	keyRewardWithdrawals = [...]byte{0x7}
 
 	// Account-local prefixes.
@@ -297,68 +297,68 @@ func WriteAccountsLen(tree *avl.Tree, size uint64) {
 	tree.Insert(keyAccountsLen[:], buf[:])
 }
 
-func StoreRound(kv store.KV, round Round, currentIx, oldestIx uint32, storedCount uint8) error {
-	if err := kv.Put(keyRoundStoredCount[:], []byte{byte(storedCount)}); err != nil {
-		return errors.Wrap(err, "error storing stored rounds count")
+func StoreBlock(kv store.KV, block Block, currentIx, oldestIx uint32, storedCount uint8) error {
+	if err := kv.Put(keyBlockStoredCount[:], []byte{byte(storedCount)}); err != nil {
+		return errors.Wrap(err, "error storing stored block count")
 	}
 
 	var oldestIxBuf [4]byte
 	binary.BigEndian.PutUint32(oldestIxBuf[:], oldestIx)
-	if err := kv.Put(keyRoundOldestIx[:], oldestIxBuf[:]); err != nil {
-		return errors.Wrap(err, "error storing oldest round index")
+	if err := kv.Put(keyBlockOldestIx[:], oldestIxBuf[:]); err != nil {
+		return errors.Wrap(err, "error storing oldest block index")
 	}
 
 	var currentIxBuf [4]byte
 	binary.BigEndian.PutUint32(currentIxBuf[:], currentIx)
-	if err := kv.Put(keyRoundLatestIx[:], currentIxBuf[:]); err != nil {
-		return errors.Wrap(err, "error storing latest round index")
+	if err := kv.Put(keyBlockLatestIx[:], currentIxBuf[:]); err != nil {
+		return errors.Wrap(err, "error storing latest block index")
 	}
 
-	if err := kv.Put(append(keyRounds[:], strconv.Itoa(int(currentIx))...), round.Marshal()); err != nil {
-		return errors.Wrap(err, "error storing round")
+	if err := kv.Put(append(keyBlocks[:], strconv.Itoa(int(currentIx))...), block.Marshal()); err != nil {
+		return errors.Wrap(err, "error storing block")
 	}
 
 	return nil
 }
 
-func LoadRounds(kv store.KV) ([]*Round, uint32, uint32, error) {
+func LoadBlocks(kv store.KV) ([]*Block, uint32, uint32, error) {
 	var b []byte
 	var err error
 
-	b, err = kv.Get(keyRoundLatestIx[:])
+	b, err = kv.Get(keyBlockLatestIx[:])
 	if err != nil {
-		return nil, 0, 0, errors.Wrap(err, "error loading latest round index")
+		return nil, 0, 0, errors.Wrap(err, "error loading latest block index")
 	}
 	latestIx := binary.BigEndian.Uint32(b[:4])
 
-	b, err = kv.Get(keyRoundOldestIx[:])
+	b, err = kv.Get(keyBlockOldestIx[:])
 	if err != nil {
-		return nil, 0, 0, errors.Wrap(err, "error loading oldest round index")
+		return nil, 0, 0, errors.Wrap(err, "error loading oldest block index")
 	}
 	oldestIx := binary.BigEndian.Uint32(b[:4])
 
-	b, err = kv.Get(keyRoundStoredCount[:])
+	b, err = kv.Get(keyBlockStoredCount[:])
 	if err != nil {
-		return nil, 0, 0, errors.Wrap(err, "error loading oldest round index")
+		return nil, 0, 0, errors.Wrap(err, "error loading block count")
 	}
-	storedCount := int(b[0])
+	storedBlock := int(b[0])
 
-	rounds := make([]*Round, storedCount)
-	for i := 0; i < storedCount; i++ {
-		b, err = kv.Get(append(keyRounds[:], strconv.Itoa(i)...))
+	blocks := make([]*Block, storedBlock)
+	for i := 0; i < storedBlock; i++ {
+		b, err = kv.Get(append(keyBlocks[:], strconv.Itoa(i)...))
 		if err != nil {
-			return nil, 0, 0, errors.Wrap(err, fmt.Sprintf("error loading round - %d", i))
+			return nil, 0, 0, errors.Wrap(err, fmt.Sprintf("error loading block - %d", i))
 		}
 
-		round, err := UnmarshalRound(bytes.NewReader(b))
+		block, err := UnmarshalBlock(bytes.NewReader(b))
 		if err != nil {
-			return nil, 0, 0, errors.Wrap(err, "error unmarshaling round")
+			return nil, 0, 0, errors.Wrap(err, "error unmarshaling block")
 		}
 
-		rounds[i] = &round
+		blocks[i] = &block
 	}
 
-	return rounds, latestIx, oldestIx, nil
+	return blocks, latestIx, oldestIx, nil
 }
 
 func GetRewardWithdrawalRequests(tree *avl.Tree, roundLimit uint64) []RewardWithdrawalRequest {

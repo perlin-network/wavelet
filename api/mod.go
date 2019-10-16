@@ -94,7 +94,7 @@ func (g *Gateway) setup() {
 			debounce.WithKeys("contract_id"),
 		),
 	)
-	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id&tag=tag",
+	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&tag=tag",
 		debounce.NewFactory(debounce.TypeLimiter,
 			debounce.WithPeriod(2200*time.Millisecond),
 			debounce.WithBufferLimit(1638400),
@@ -311,7 +311,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 
 	tx := wavelet.AttachSenderToTransaction(
 		g.keys,
-		wavelet.Transaction{Tag: sys.Tag(req.Tag), Payload: req.payload, Creator: req.creator, CreatorSignature: req.signature},
+		wavelet.Transaction{Tag: sys.Tag(req.Tag), Payload: req.payload},
 		g.ledger.Graph().FindEligibleParents()...,
 	)
 
@@ -331,7 +331,6 @@ func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 	var sender wavelet.AccountID
-	var creator wavelet.AccountID
 	var offset, limit uint64
 	var err error
 
@@ -349,21 +348,6 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 		}
 
 		copy(sender[:], slice)
-	}
-
-	if raw := string(queryArgs.Peek("creator")); len(raw) > 0 {
-		slice, err := hex.DecodeString(raw)
-		if err != nil {
-			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "creator ID must be presented as valid hex")))
-			return
-		}
-
-		if len(slice) != wavelet.SizeAccountID {
-			g.renderError(ctx, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", wavelet.SizeAccountID)))
-			return
-		}
-
-		copy(creator[:], slice)
 	}
 
 	if raw := string(queryArgs.Peek("offset")); len(raw) > 0 {
@@ -392,7 +376,7 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 
 	var transactions transactionList
 
-	for _, tx := range g.ledger.Graph().ListTransactions(offset, limit, sender, creator) {
+	for _, tx := range g.ledger.Graph().ListTransactions(offset, limit, sender) {
 		status := "received"
 
 		if tx.Depth <= rootDepth {
