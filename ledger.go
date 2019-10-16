@@ -165,6 +165,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		logger.Fatal().Err(err).Msg("BUG: COULD NOT FIND GENESIS, OR STORAGE IS CORRUPTED.")
 	}
 
+	transactionIDs := bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK())
+
 	finalizer := NewSnowball(WithName("finalizer"))
 	syncer := NewSnowball(WithName("syncer"))
 
@@ -190,7 +192,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 		sendQuota: make(chan struct{}, 2000),
 
-		transactionIDs: bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK()),
+		transactionIDs: transactionIDs,
 	}
 
 	if !cfg.GCDisabled {
