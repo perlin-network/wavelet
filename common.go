@@ -53,6 +53,7 @@ var (
 	ZeroSignature     Signature
 
 	ZeroRoundPtr = &Round{}
+	ZeroBlockPtr = &Block{}
 
 	ZeroPage = make([]byte, PageSize)
 )

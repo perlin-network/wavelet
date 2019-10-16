@@ -52,7 +52,7 @@ func (m *Mempool) Add(tx Transaction, blockID [blake2b.Size256]byte) error {
 	return nil
 }
 
-func (m *Mempool) Get(txIDs []TransactionID) []*Transaction {
+func (m *Mempool) Resolve(txIDs []TransactionID) []*Transaction {
 	var txs = make([]*Transaction, 0, len(txIDs))
 
 	m.lock.RLock()
@@ -68,4 +68,13 @@ func (m *Mempool) Get(txIDs []TransactionID) []*Transaction {
 	m.lock.RUnlock()
 
 	return txs
+}
+
+// TODO find a better name or a better way to implement this ?
+func (m *Mempool) ReadLock(f func(transactions map[[blake2b.Size256]byte]*Transaction)) {
+	m.lock.RLock()
+
+	f(m.transactions)
+
+	m.lock.RUnlock()
 }

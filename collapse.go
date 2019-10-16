@@ -33,7 +33,7 @@ func collapseTransactions(mempool *Mempool, block *Block, accounts *Accounts, lo
 	res := &collapseResults{snapshot: accounts.Snapshot()}
 	res.snapshot.SetViewID(block.Index)
 
-	txs := mempool.Get(block.Transactions)
+	txs := mempool.Resolve(block.Transactions)
 
 	res.applied = make([]*Transaction, 0, len(txs))
 	res.rejected = make([]*Transaction, 0, len(txs))

@@ -2,15 +2,16 @@ package conf
 
 import (
 	"fmt"
+	"github.com/perlin-network/wavelet/sys"
 	"sync"
 	"time"
-	"github.com/perlin-network/wavelet/sys"
 )
 
 type config struct {
 	// Snowball consensus protocol parameters.
-	snowballK    int
-	snowballBeta int
+	snowballK     int
+	snowballBeta  int
+	SnowballAlpha float64
 
 	// votes counting and majority calculation related parameters
 	syncVoteThreshold             float64
@@ -55,8 +56,9 @@ func init() {
 
 func defaultConfig() config {
 	defConf := config{
-		snowballK:    2,
-		snowballBeta: 50,
+		snowballK:     2,
+		snowballBeta:  50,
+		SnowballAlpha: 0.8,
 
 		syncVoteThreshold:             0.8,
 		finalizationVoteThreshold:     0.8,
@@ -77,8 +79,8 @@ func defaultConfig() config {
 	}
 
 	switch sys.VersionMeta {
-		case "testnet":
-			defConf.snowballK = 10
+	case "testnet":
+		defConf.snowballK = 10
 	}
 
 	return defConf
@@ -247,6 +249,14 @@ func GetRoundDepthMajorityWeight() float64 {
 func GetSnowballBeta() int {
 	l.RLock()
 	t := c.snowballBeta
+	l.RUnlock()
+
+	return t
+}
+
+func GetSnowballAlpha() float64 {
+	l.RLock()
+	t := c.SnowballAlpha
 	l.RUnlock()
 
 	return t
