@@ -447,7 +447,7 @@ func (l *Ledger) PullTransactions() {
 		case <-l.sync:
 			return
 
-		default:
+		case <-time.After(1 * time.Second):
 		}
 
 		closestPeers := l.client.ClosestPeers()
