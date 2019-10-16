@@ -82,6 +82,5 @@ service Wavelet {
     rpc CheckOutOfSync (OutOfSyncRequest) returns (OutOfSyncResponse) {}
     rpc Sync (stream SyncRequest) returns (stream SyncResponse) {}
 
-    rpc DownloadTx (DownloadTxRequest) returns (DownloadTxResponse) {}
     rpc DownloadMissingTx (DownloadMissingTxRequest) returns (DownloadTxResponse) {}
 }

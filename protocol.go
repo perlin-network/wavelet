@@ -170,26 +170,3 @@ func (p *Protocol) DownloadMissingTx(ctx context.Context, req *DownloadMissingTx
 
 	return res, nil
 }
-
-func (p *Protocol) DownloadTx(ctx context.Context, req *DownloadTxRequest) (*DownloadTxResponse, error) {
-	lowLimit := req.Depth - conf.GetMaxDepthDiff()
-	highLimit := req.Depth + conf.GetMaxDownloadDepthDiff()
-
-	receivedIDs := make(map[TransactionID]struct{}, len(req.SkipIds))
-	for _, buf := range req.SkipIds {
-		var id TransactionID
-		copy(id[:], buf)
-
-		receivedIDs[id] = struct{}{}
-	}
-
-	var txs [][]byte
-	hostTXs := p.ledger.Graph().GetTransactionsByDepth(&lowLimit, &highLimit)
-	for _, tx := range hostTXs {
-		if _, ok := receivedIDs[tx.ID]; !ok {
-			txs = append(txs, tx.Marshal())
-		}
-	}
-
-	return &DownloadTxResponse{Transactions: txs}, nil
-}

@@ -371,8 +371,7 @@ func (l *Ledger) Restart() error {
 // missing transactions and incrementally finalizing intervals of transactions in
 // the ledgers graph.
 func (l *Ledger) PerformConsensus() {
-	go l.PullMissingTransactions()
-	go l.SyncTransactions()
+	go l.PullTransactions()
 	go l.FinalizeRounds()
 }
 
@@ -424,122 +423,13 @@ func (l *Ledger) BroadcastNop() *Transaction {
 	return l.graph.FindTransaction(nop.ID)
 }
 
-func (l *Ledger) SyncTransactions() {
-	l.consensus.Add(1)
-	defer l.consensus.Done()
-
-	logger := log.Consensus("transaction-sync")
-
-	pullingPeriod := 1 * time.Second
-	t := time.NewTimer(pullingPeriod)
-
-	for {
-		t.Reset(pullingPeriod)
-
-		select {
-		case <-l.sync:
-			return
-
-		case <-t.C:
-		}
-
-		l.syncStatusLock.RLock()
-		status := l.syncStatus
-		l.syncStatusLock.RUnlock()
-		if status != synced {
-			continue
-		}
-
-		closestPeers := l.client.ClosestPeers()
-
-		peers := make([]*grpc.ClientConn, 0, len(closestPeers))
-		for _, p := range closestPeers {
-			if p.GetState() == connectivity.Ready {
-				peers = append(peers, p)
-			}
-		}
-
-		if len(peers) == 0 {
-			select {
-			case <-l.sync:
-				return
-			default:
-			}
-
-			continue
-		}
-
-		rand.Shuffle(len(peers), func(i, j int) {
-			peers[i], peers[j] = peers[j], peers[i]
-		})
-		now := time.Now()
-		currentDepth := l.graph.RootDepth()
-		lowLimit := currentDepth - conf.GetMaxDepthDiff()
-		highLimit := currentDepth + conf.GetMaxDownloadDepthDiff()
-		txs := l.Graph().GetTransactionsByDepth(&lowLimit, &highLimit)
-
-		ids := make([][]byte, len(txs))
-		for i, tx := range txs {
-			ids[i] = tx.ID[:]
-		}
-
-		req := &DownloadTxRequest{
-			Depth:   currentDepth,
-			SkipIds: ids,
-		}
-
-		conn := peers[0]
-		client := NewWaveletClient(conn)
-
-		ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
-		batch, err := client.DownloadTx(ctx, req)
-		if err != nil {
-			logger.Error().Err(err).Msg("failed to download missing transactions")
-			cancel()
-			continue
-		}
-		cancel()
-
-		txCount, logicalCount := 0, 0
-		for _, buf := range batch.Transactions {
-			tx, err := UnmarshalTransaction(bytes.NewReader(buf))
-			if err != nil {
-				logger.Error().
-					Err(err).
-					Hex("tx_id", tx.ID[:]).
-					Msg("failed to download missing transactions")
-				continue
-			}
-
-			if err := l.AddTransaction(tx); err != nil && errors.Cause(err) != ErrMissingParents {
-				logger.Error().
-					Err(err).
-					Hex("tx_id", tx.ID[:]).
-					Msg("failed to download missing transactions")
-				continue
-			}
-
-			logicalCount += tx.LogicalUnits()
-			txCount++
-		}
-
-		if txCount > 0 {
-			logger.Debug().
-				Int("synced_tx", txCount).
-				Int("logical_tx", logicalCount).
-				Dur("duration", time.Now().Sub(now)).
-				Msg("Transaction downloaded")
-		}
-	}
-}
-
-// PullMissingTransactions is an infinite loop continually sending RPC requests
+// PullTransactions is an infinite loop continually sending RPC requests
 // to pull any transactions identified to be missing by the ledger. It periodically
 // samples a random peer from the network, and requests the peer for the contents
 // of all missing transactions by their respective IDs. When the ledger is in amidst
 // synchronizing/teleporting ahead to a new round, the infinite loop will be cleaned
-// up. It is intended to call PullMissingTransactions() in a new goroutine.
-func (l *Ledger) PullMissingTransactions() {
+// up. It is intended to call PullTransactions() in a new goroutine.
+func (l *Ledger) PullTransactions() {
 	l.consensus.Add(1)
 	defer l.consensus.Done()
 
