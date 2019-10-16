@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
-	"strings"
 
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/cmd/tui/tui/forms"
@@ -11,18 +10,22 @@ import (
 )
 
 func srvCompletion(text string) []inputcomplete.Completion {
-	completions := make([]inputcomplete.Completion, 0, len(srv.History.Store))
+	/*
+		completions := make([]inputcomplete.Completion, 0, len(srv.History.Store))
 
-	for _, e := range srv.History.Store {
-		if text == "" || strings.Contains(e.ID, text) {
-			completions = append(completions, inputcomplete.Completion{
-				Visual:  e.String(),
-				Replace: e.ID,
-			})
+		for _, e := range srv.History.Store {
+			if text == "" || strings.Contains(e.ID, text) {
+				completions = append(completions, inputcomplete.Completion{
+					Visual:  e.String(),
+					Replace: e.ID,
+				})
+			}
 		}
-	}
 
-	return completions
+		return completions
+	*/
+
+	return nil
 }
 
 func getRecipientFormPair(recipient [wavelet.SizeAccountID]byte) forms.Pair {

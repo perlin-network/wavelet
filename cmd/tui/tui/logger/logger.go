@@ -1,6 +1,8 @@
 package logger
 
 import (
+	"sync"
+
 	"github.com/diamondburned/tcell"
 	"github.com/diamondburned/tview/v2"
 )
@@ -9,10 +11,12 @@ var _ tview.Primitive = (*Logger)(nil)
 
 type Logger struct {
 	list *tview.List
-	lvls []Level
+	evs  []*Event
 
-	tv        *tview.TextView
-	activeLvl Level // nil for list
+	tv       *tview.TextView
+	activeEv *Event // nil for list
+
+	evMutex sync.Mutex
 
 	focus bool
 }
@@ -23,9 +27,10 @@ func NewLogger() *Logger {
 	l.list = tview.NewList()
 	l.list.SetMainTextColor(-1)
 	l.list.SetSecondaryTextColor(-1)
-	l.list.SetSelectedFunc(l.callLevel)
+	l.list.SetSelectedFunc(l.callEvent)
 	l.list.SetHighlightFullLine(true)
-	l.list.SetSelectedTextColor(tcell.ColorBlack)
+	l.list.SetSelectedBackgroundColor(tcell.ColorGray)
+	l.list.SetSelectedTextColor(tcell.ColorWhite)
 
 	l.tv = tview.NewTextView()
 	l.tv.SetDynamicColors(true)
@@ -36,9 +41,9 @@ func NewLogger() *Logger {
 
 		switch {
 		case key == tcell.KeyEscape:
-			if l.activeLvl != nil {
+			if l.activeEv != nil {
 				// Currently in the TextView buffer, gotta bail
-				l.activeLvl = nil
+				l.activeEv = nil
 			}
 
 		case key == tcell.KeyLeft, key == tcell.KeyRight,
@@ -60,7 +65,7 @@ func NewLogger() *Logger {
 			}
 
 			l.list.SetCurrentItem(i)
-			l.activeLvl = l.lvls[i]
+			l.activeEv = l.evs[i]
 
 			return nil
 		}
@@ -97,55 +102,29 @@ func (l *Logger) GetFocusable() tview.Focusable {
 }
 
 func (l *Logger) Blur() {
-	l.activeLvl = nil
+	l.activeEv = nil
 }
 
 func (l *Logger) Draw(s tcell.Screen) {
-	if l.activeLvl == nil {
+	if l.activeEv == nil {
 		// Nothing selected, do active entry
 		l.list.Draw(s)
 	} else {
 		// Something selected, draw the whole thing
-		l.tv.SetText(l.activeLvl.Full())
+		l.tv.SetText(l.activeEv.Full())
 		l.tv.Draw(s)
 	}
 }
 
-func (l *Logger) Level(lvl Level) *Logger {
-	// Add the level to the state list
-	l.lvls = append(l.lvls, lvl)
-
-	// Add the level to the list as well
-	m, s := lvl.Short()
-	l.list.AddItem(m, "          "+s, 0, nil)
-
-	// Get the information to estimate scroll
-	i := l.list.GetCurrentItem()
-	c := l.list.GetItemCount()
-
-	if i > c-3 && l.activeLvl == nil || !l.focus {
-		// The Logger is not focused, or the cursor is around the list and we're
-		// still on the list, just scroll to bottom.
-		l.list.SetCurrentItem(c - 1)
-	}
+func (l *Logger) callEvent(i int, m, s string, r rune) {
+	l.activeEv = l.evs[i]
 
 	// Draw the application
 	tview.Draw()
-
-	return l
-}
-
-func (l *Logger) callLevel(i int, m, s string, r rune) {
-	l.activeLvl = l.lvls[i]
-
-	// Draw the application
-	tview.ExecApplication(func(app *tview.Application) bool {
-		return true
-	})
 }
 
 func (l *Logger) getPrimitive() tview.Primitive {
-	if l.activeLvl == nil {
+	if l.activeEv == nil {
 		return l.list
 	}
 

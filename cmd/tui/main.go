@@ -30,6 +30,7 @@ import (
 )
 
 var logger *tuilogger.Logger
+var client *wctl.Client
 
 func fatalln(v ...interface{}) {
 	fmt.Fprintln(os.Stderr, v...)
@@ -220,7 +221,10 @@ func main() {
 	cli, err := wctl.NewClient(wctlCfg)
 	if err != nil {
 		fatalln("Failed to start the wctl client:", err)
+
 	}
+
+	client = cli
 
 	/*
 		// Assign stuff to parse the config file if provided one

@@ -34,6 +34,14 @@ var DefaultSettings = &DialogSettings{
 	ClearBackground:  true,
 }
 
+func WrapErrDialog(err error, str string) {
+	CallDialog(str+": "+err.Error(), nil)
+}
+
+func ErrDialog(err error) {
+	CallDialog(err.Error(), nil)
+}
+
 // CallDialogF calls the dialog with a Sprintf.
 func CallDialogF(f string, i ...interface{}) {
 	CallDialog(fmt.Sprintf(f, i...), nil)

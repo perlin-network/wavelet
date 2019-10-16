@@ -1,6 +1,7 @@
 package forms
 
 import (
+	"reflect"
 	"strconv"
 
 	"github.com/perlin-network/wavelet/cmd/tui/tui/inputcomplete"
@@ -49,6 +50,34 @@ func IntPair(name string, value *int) Pair {
 		}
 
 		*value = i
+		return nil
+	}, "0", nil, nil}
+}
+
+func NumberPair(name string, value interface{}) Pair {
+	v := reflect.ValueOf(value)
+
+	return Pair{name, func(output string) error {
+		i, err := strconv.ParseInt(output, 10, 64)
+		if err != nil {
+			return err
+		}
+
+		v.SetInt(i)
+		return nil
+	}, "0", nil, nil}
+}
+
+func UnsignedNumberPair(name string, value interface{}) Pair {
+	v := reflect.ValueOf(value)
+
+	return Pair{name, func(output string) error {
+		u, err := strconv.ParseUint(output, 10, 64)
+		if err != nil {
+			return err
+		}
+
+		v.SetUint(u)
 		return nil
 	}, "0", nil, nil}
 }

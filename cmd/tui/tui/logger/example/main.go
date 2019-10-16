@@ -33,27 +33,27 @@ func main() {
 
 		switch rand.Intn(4) {
 		case 0:
-			l.Level(Ftorespect(logger.WithInfo("Hello, 世界"), now))
+			l.Level(logger.Info, "Hello, 世界")
 		case 1:
-			l.Level(Ftorespect(logger.WithSuccess("Ayy, something worked").
-				F("mood", "%s", "pretty nice"), now))
+			l.Level(logger.Success, "Ayy, something worked",
+				Ftorespect(now, logger.F("mood", "%s", "pretty nice"))...)
 		case 2:
-			l.Level(Ftorespect(logger.WithWarning("oh no something crapped out").
-				F("mood", "%s", "what do"), now))
+			l.Level(logger.Warning, "oh no something crapped out",
+				logger.F("mood", "%s", "what do"))
 		case 3:
-			l.Level(Ftorespect(logger.WithError(errors.New("crash and burn")).
-				F("mood", "%s", "panic"), now))
+			l.Error(errors.New("crash and burn"),
+				logger.F("mood", "%s", "panic"))
 		}
 	}
 }
 
-func Ftorespect(lvl logger.Level, now time.Time) logger.Level {
-	lvl.F("rand_int", "%d", rand.Int()).
-		F("rand_int", "%d", rand.Int()).
-		F("time", "%s", now.Format(time.RFC3339Nano)).
-		F("unix", "%s", now.UnixNano()).
-		F("some strings", "[red]kinda weird").
-		F("smol struct", "%#v", struct{ d int }{13})
-
-	return lvl
+func Ftorespect(now time.Time, F ...[2]string) [][2]string {
+	return append(F,
+		logger.F("rand_int", "%d", rand.Int()),
+		logger.F("rand_int", "%d", rand.Int()),
+		logger.F("time", "%s", now.Format(time.RFC3339Nano)),
+		logger.F("unix", "%d", now.UnixNano()),
+		logger.F("some strings", "[red]kinda weird"),
+		logger.F("smol struct", "%#v", struct{ d int }{13}),
+	)
 }

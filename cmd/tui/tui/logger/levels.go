@@ -1,154 +1,171 @@
 package logger
 
+import (
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/diamondburned/tview/v2"
+)
+
 // Level provides a logging level interface. An example for using Error:
 //
 //    l.Level(logger.WithError(err).Wrap("An error has occured").
 //        F("id", "%d", id))
 //
+/*
 type Level interface {
 	Full() string
 	Short() (string, string)
 	F(key, format string, values ...interface{}) Level
 }
+*/
 
-// To save you from reading this file just has
-// - WithError
-// - WithWarning
-// - WithInfo
-// - WithSuccess
+type Level string
 
-// Error is red
-type Error struct {
-	*generic
+const (
+	Error   Level = "ERROR"
+	Warning Level = "WARNING"
+	Info    Level = "INFO"
+	Success Level = "SUCCESS"
+)
 
-	wrap string
-	err  error
+var Colors = map[Level]string{
+	Error:   "red",
+	Warning: "yellow",
+	Info:    "teal",
+	Success: "lime",
 }
 
-var _ Level = (*Error)(nil)
+type Event struct {
+	Fields [][2]string
+	Level  Level
+	Msg    string
+	Time   time.Time
 
-func WithError(err error) *Error {
-	return &Error{
-		generic: newGeneric("red"),
-		err:     err,
+	// Only used when Level is Error, msg will be used to wrap
+	Err error
+}
+
+func (ev *Event) Full() string {
+	var s strings.Builder
+	s.WriteString(ev.Time.Format(time.Stamp) + " - [" + Colors[ev.Level] + "]")
+
+	switch ev.Level {
+	case Error:
+		s.WriteString(string(ev.Level) + ": ")
+		if ev.Msg != "" {
+			s.WriteString(ev.Msg + ": ")
+		}
+		s.WriteString(ev.Err.Error() + "\n")
+	default:
+		s.WriteString(string(ev.Level) + ": " + ev.Msg + "\n")
+	}
+
+	for _, f := range ev.Fields {
+		s.WriteString("[-]" + "\t" + f[0] + " = " + f[1] + "\n")
+	}
+
+	s.WriteString("[-]")
+	return s.String()
+}
+
+func (ev *Event) Short() (title, desc string) {
+	// Set the title, something like "4:00AM - "
+	title = ev.Time.Format(time.Kitchen) + " - [" + Colors[ev.Level] + "]"
+	title += string(ev.Level) + ": "
+
+	switch ev.Level {
+	case Error:
+		if ev.Msg != "" {
+			title += ev.Msg + ": "
+		}
+
+		title += ev.Err.Error()
+	default:
+		title += ev.Msg
+	}
+
+	if len(ev.Fields) > 0 {
+		for _, f := range ev.Fields {
+			var val = f[1]
+			if len(val) > 8 {
+				val = val[:8] + "…"
+			}
+
+			desc += "[-]" + f[0] + "=" + val + ", "
+		}
+
+		// len - 2 removes the trailing comma
+		desc = "        " + desc[:len(desc)-2] + "[-]"
+	}
+
+	return
+}
+
+func F(key, format string, v ...interface{}) [2]string {
+	return [2]string{
+		tview.Escape(key),
+		tview.Escape(fmt.Sprintf(format, v...)),
 	}
 }
 
-// Wrap wraps the error with "wrap: error"
-func (err *Error) Wrap(wrap string) *Error {
-	err.wrap = wrap
-	return err
-}
-
-func (err *Error) F(key, format string, values ...interface{}) Level {
-	err.f(key, format, values...)
-	return err
-}
-
-func (err *Error) Error() string {
-	if err.wrap != "" {
-		return err.wrap + ": " + err.err.Error()
-	}
-
-	return err.err.Error()
-}
-
-// Short fits into a list
-func (err *Error) Short() (string, string) {
-	return err.wrapShort(err.Error()), err.shortkeys()
-}
-
-// Full fits into a full textview
-func (err *Error) Full() string {
-	return err.wrapFull("ERROR: "+err.Error()) + "\n" + err.fullkeys()
-}
-
-// Warning is yellow
-type Warning struct {
-	*generic
-	warn string
-}
-
-var _ Level = (*Warning)(nil)
-
-func WithWarning(warn string) *Warning {
-	return &Warning{
-		generic: newGeneric("yellow"),
-		warn:    warn,
+func Ln(key string, v ...interface{}) [2]string {
+	return [2]string{
+		tview.Escape(key),
+		tview.Escape(fmt.Sprint(v...)),
 	}
 }
 
-func (w *Warning) F(key, format string, values ...interface{}) Level {
-	w.f(key, format, values...)
-	return w
+func (l *Logger) Error(err error, fields ...[2]string) {
+	l.SendEv(&Event{
+		Level:  Error,
+		Fields: fields,
+		Err:    err,
+		Time:   time.Now(),
+	})
 }
 
-// Short fits into a list
-func (w *Warning) Short() (string, string) {
-	return w.wrapShort(w.warn), w.shortkeys()
+func (l *Logger) Wrap(err error, msg string, fields ...[2]string) {
+	l.SendEv(&Event{
+		Level:  Error,
+		Fields: fields,
+		Msg:    msg,
+		Err:    err,
+		Time:   time.Now(),
+	})
 }
 
-// Full fits into a full textview
-func (w *Warning) Full() string {
-	return w.wrapFull("WARNING: "+w.warn) + "\n" + w.fullkeys()
+func (l *Logger) Level(level Level, msg string, fields ...[2]string) {
+	l.SendEv(&Event{
+		Level:  level,
+		Msg:    msg,
+		Fields: fields,
+		Time:   time.Now(),
+	})
 }
 
-// Info is blue/cyanish
-type Info struct {
-	*generic
-	info string
-}
+func (l *Logger) SendEv(ev *Event) {
+	l.evMutex.Lock()
+	defer l.evMutex.Unlock()
 
-var _ Level = (*Info)(nil)
+	// Add the event to the state list
+	l.evs = append(l.evs, ev)
 
-func WithInfo(info string) *Info {
-	return &Info{
-		generic: newGeneric("teal"),
-		info:    info,
+	// Add the event to the UI list as well
+	m, s := ev.Short()
+	l.list.AddItem(m, s, 0, nil)
+
+	// Get the information to estimate scroll
+	i := l.list.GetCurrentItem()
+	c := l.list.GetItemCount()
+
+	if (i > c-3) && l.activeEv == nil || !l.focus {
+		// The Logger is not focused, or the cursor is around the list and we're
+		// still on the list, just scroll to bottom.
+		l.list.SetCurrentItem(c - 1)
 	}
-}
 
-func (i *Info) F(key, format string, values ...interface{}) Level {
-	i.f(key, format, values...)
-	return i
-}
-
-// Short fits into a list
-func (i *Info) Short() (string, string) {
-	return i.wrapShort(i.info), i.shortkeys()
-}
-
-// Full fits into a full textview
-func (i *Info) Full() string {
-	return i.wrapFull("INFO: "+i.info) + "\n" + i.fullkeys()
-}
-
-// Success is green/limeish
-type Success struct {
-	*generic
-	success string
-}
-
-var _ Level = (*Success)(nil)
-
-func WithSuccess(success string) *Success {
-	return &Success{
-		generic: newGeneric("lime"),
-		success: success,
-	}
-}
-
-func (s *Success) F(key, format string, values ...interface{}) Level {
-	s.f(key, format, values...)
-	return s
-}
-
-// Short fits into a list
-func (s *Success) Short() (string, string) {
-	return s.wrapShort(s.success), s.shortkeys()
-}
-
-// Full fits into a full textview
-func (s *Success) Full() string {
-	return s.wrapFull("SUCCESS: "+s.success) + "\n" + s.fullkeys()
+	// Draw the application
+	tview.Draw()
 }

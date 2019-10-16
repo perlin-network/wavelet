@@ -10,27 +10,29 @@ import (
 // this file (ab)uses global states from main.go
 
 func keyStatus() {
-	srv.Status()
+	// TODO
+	// srv.Status()
 }
 
 func keyPay() {
 	var (
-		recipient       [wavelet.SizeAccountID]byte
-		amount          int
-		gasLimit        int
-		additionalBytes string
+		recipient [wavelet.SizeAccountID]byte
+		amount    int
 	)
 
 	form := forms.New()
 	form.Add(
 		getRecipientFormPair(recipient),
-		forms.IntPair("Amount", &amount),
-		forms.IntPair("Gas Limit", &gasLimit),
-		forms.StringPair("Additional Bytes", &additionalBytes),
+		forms.UnsignedNumberPair("Amount", &amount),
 	)
 
 	if !form.Spawn() {
 		return
+	}
+
+	tx, err := client.Pay(recipient, amount)
+	if err != nil {
+		errdialog.ErrDialog(err)
 	}
 
 	if _, err := srv.Pay(
