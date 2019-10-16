@@ -24,6 +24,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"math/big"
 	"math/bits"
 	"sort"
 
@@ -275,6 +276,13 @@ func (tx Transaction) Fee() uint64 {
 	}
 
 	return fee
+}
+
+func (tx Transaction) ComputeIndex(blockID [blake2b.Size256]byte) *big.Int {
+	buf := blake2b.Sum256(append(tx.ID[:], blockID[:]...))
+	index := (&big.Int{}).SetBytes(buf[:])
+
+	return index
 }
 
 func prefixLen(buf []byte) int {

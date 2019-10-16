@@ -26,51 +26,18 @@ import (
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
-	queue2 "github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 )
 
-func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *Round, start, end Transaction, logging bool) (*collapseResults, error) {
+func collapseTransactions(mempool *Mempool, block *Block, accounts *Accounts, logging bool) (*collapseResults, error) {
 	res := &collapseResults{snapshot: accounts.Snapshot()}
-	res.snapshot.SetViewID(round)
+	res.snapshot.SetViewID(block.Index)
 
-	visited := map[TransactionID]struct{}{start.ID: {}}
+	txs := mempool.Get(block.Transactions)
 
-	queue := queue2.New()
-	queue.PushBack(&end)
-
-	order := queue2.New()
-
-	for queue.Len() > 0 {
-		popped := queue.PopFront().(*Transaction)
-
-		if popped.Depth <= start.Depth {
-			continue
-		}
-
-		order.PushBack(popped)
-
-		for _, parentID := range popped.ParentIDs {
-			if _, seen := visited[parentID]; seen {
-				continue
-			}
-
-			visited[parentID] = struct{}{}
-
-			parent := g.FindTransaction(parentID)
-
-			if parent == nil {
-				g.MarkTransactionAsMissing(parentID, popped.Depth)
-				return nil, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, end.ID)
-			}
-
-			queue.PushBack(parent)
-		}
-	}
-
-	res.applied = make([]*Transaction, 0, order.Len())
-	res.rejected = make([]*Transaction, 0, order.Len())
-	res.rejectedErrors = make([]error, 0, order.Len())
+	res.applied = make([]*Transaction, 0, len(txs))
+	res.rejected = make([]*Transaction, 0, len(txs))
+	res.rejectedErrors = make([]error, 0, len(txs))
 
 	ctx := NewCollapseContext(res.snapshot)
 
@@ -83,9 +50,7 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 
 	// Apply transactions in reverse order from the end of the round
 	// all the way down to the beginning of the round.
-	for order.Len() > 0 {
-		popped := order.PopBack().(*Transaction)
-
+	for _, popped := range txs {
 		// Update nonce.
 
 		nonce, exists := ctx.ReadAccountNonce(popped.Sender)
@@ -127,7 +92,7 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 			}
 		}
 
-		if err := ctx.ApplyTransaction(current, popped); err != nil {
+		if err := ctx.ApplyTransaction(block, popped); err != nil {
 			res.rejected = append(res.rejected, popped)
 			res.rejectedErrors = append(res.rejectedErrors, err)
 			res.rejectedCount += popped.LogicalUnits()
@@ -153,15 +118,9 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 		}
 	}
 
-	startDepth, endDepth := start.Depth+1, end.Depth
-
-	for _, tx := range g.GetTransactionsByDepth(&startDepth, &endDepth) {
-		res.ignoredCount += tx.LogicalUnits()
-	}
-
 	res.ignoredCount -= res.appliedCount + res.rejectedCount
 
-	ctx.processRewardWithdrawals(round)
+	ctx.processRewardWithdrawals(block.Index)
 
 	if err := ctx.Flush(); err != nil {
 		return res, err
@@ -428,8 +387,8 @@ func (c *CollapseContext) Flush() error {
 
 // Apply a transaction by writing the states into memory.
 // After you've finished, you MUST call CollapseContext.Flush() to actually write the states into the tree.
-func (c *CollapseContext) ApplyTransaction(round *Round, tx *Transaction) error {
-	if err := applyTransaction(round, c, tx, &contractExecutorState{
+func (c *CollapseContext) ApplyTransaction(block *Block, tx *Transaction) error {
+	if err := applyTransaction(block, c, tx, &contractExecutorState{
 		GasPayer: tx.Sender,
 	}); err != nil {
 		return err

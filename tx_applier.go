@@ -37,31 +37,31 @@ type contractExecutorState struct {
 
 // Apply the transaction and immediately write the states into the tree.
 // If you have many transactions to apply, consider using CollapseContext.
-func ApplyTransaction(tree *avl.Tree, round *Round, tx *Transaction) error {
+func ApplyTransaction(tree *avl.Tree, block *Block, tx *Transaction) error {
 	ctx := NewCollapseContext(tree)
-	if err := ctx.ApplyTransaction(round, tx); err != nil {
+	if err := ctx.ApplyTransaction(block, tx); err != nil {
 		return err
 	}
 	return ctx.Flush()
 }
 
-func applyTransaction(round *Round, ctx *CollapseContext, tx *Transaction, executorState *contractExecutorState) error {
+func applyTransaction(block *Block, ctx *CollapseContext, tx *Transaction, executorState *contractExecutorState) error {
 	switch tx.Tag {
 	case sys.TagNop:
 	case sys.TagTransfer:
-		if err := applyTransferTransaction(ctx, round, tx, executorState); err != nil {
+		if err := applyTransferTransaction(ctx, block, tx, executorState); err != nil {
 			return errors.Wrap(err, "could not apply transfer transaction")
 		}
 	case sys.TagStake:
-		if err := applyStakeTransaction(ctx, round, tx); err != nil {
+		if err := applyStakeTransaction(ctx, block, tx); err != nil {
 			return errors.Wrap(err, "could not apply stake transaction")
 		}
 	case sys.TagContract:
-		if err := applyContractTransaction(ctx, round, tx, executorState); err != nil {
+		if err := applyContractTransaction(ctx, block, tx, executorState); err != nil {
 			return errors.Wrap(err, "could not apply contract transaction")
 		}
 	case sys.TagBatch:
-		if err := applyBatchTransaction(ctx, round, tx, executorState); err != nil {
+		if err := applyBatchTransaction(ctx, block, tx, executorState); err != nil {
 			return errors.Wrap(err, "could not apply batch transaction")
 		}
 	}
@@ -69,7 +69,7 @@ func applyTransaction(round *Round, ctx *CollapseContext, tx *Transaction, execu
 	return nil
 }
 
-func applyTransferTransaction(ctx *CollapseContext, round *Round, tx *Transaction, state *contractExecutorState) error {
+func applyTransferTransaction(ctx *CollapseContext, block *Block, tx *Transaction, state *contractExecutorState) error {
 	payload, err := ParseTransfer(tx.Payload)
 	if err != nil {
 		return err
@@ -121,10 +121,10 @@ func applyTransferTransaction(ctx *CollapseContext, round *Round, tx *Transactio
 		return nil
 	}
 
-	return executeContractInTransactionContext(tx, payload.Recipient, code, ctx, round, payload.Amount, payload.GasLimit, payload.FuncName, payload.FuncParams, state)
+	return executeContractInTransactionContext(tx, payload.Recipient, code, ctx, block, payload.Amount, payload.GasLimit, payload.FuncName, payload.FuncParams, state)
 }
 
-func applyStakeTransaction(ctx *CollapseContext, round *Round, tx *Transaction) error {
+func applyStakeTransaction(ctx *CollapseContext, block *Block, tx *Transaction) error {
 	payload, err := ParseStake(tx.Payload)
 	if err != nil {
 		return err
@@ -162,14 +162,14 @@ func applyStakeTransaction(ctx *CollapseContext, round *Round, tx *Transaction) 
 		ctx.StoreRewardWithdrawalRequest(RewardWithdrawalRequest{
 			account: tx.Sender,
 			amount:  payload.Amount,
-			round:   round.Index,
+			round:   block.Index,
 		})
 	}
 
 	return nil
 }
 
-func applyContractTransaction(ctx *CollapseContext, round *Round, tx *Transaction, state *contractExecutorState) error {
+func applyContractTransaction(ctx *CollapseContext, block *Block, tx *Transaction, state *contractExecutorState) error {
 	payload, err := ParseContract(tx.Payload)
 	if err != nil {
 		return err
@@ -199,10 +199,10 @@ func applyContractTransaction(ctx *CollapseContext, round *Round, tx *Transactio
 		}
 	}
 
-	return executeContractInTransactionContext(tx, AccountID(tx.ID), payload.Code, ctx, round, 0, payload.GasLimit, []byte("init"), payload.Params, state)
+	return executeContractInTransactionContext(tx, AccountID(tx.ID), payload.Code, ctx, block, 0, payload.GasLimit, []byte("init"), payload.Params, state)
 }
 
-func applyBatchTransaction(ctx *CollapseContext, round *Round, tx *Transaction, state *contractExecutorState) error {
+func applyBatchTransaction(ctx *CollapseContext, block *Block, tx *Transaction, state *contractExecutorState) error {
 	payload, err := ParseBatch(tx.Payload)
 	if err != nil {
 		return err
@@ -216,7 +216,7 @@ func applyBatchTransaction(ctx *CollapseContext, round *Round, tx *Transaction, 
 			Tag:     sys.Tag(payload.Tags[i]),
 			Payload: payload.Payloads[i],
 		}
-		if err := applyTransaction(round, ctx, entry, state); err != nil {
+		if err := applyTransaction(block, ctx, entry, state); err != nil {
 			return errors.Wrapf(err, "Error while processing %d/%d transaction in a batch.", i+1, payload.Size)
 		}
 	}
@@ -254,7 +254,7 @@ func executeContractInTransactionContext(
 	contractID AccountID,
 	code []byte,
 	ctx *CollapseContext,
-	round *Round,
+	block *Block,
 	amount uint64,
 	requestedGasLimit uint64,
 	funcName []byte,
@@ -292,7 +292,7 @@ func executeContractInTransactionContext(
 	var contractState *VMState
 	contractState, _ = ctx.GetContractState(contractID)
 
-	newContractState, invocationErr := executor.Execute(contractID, round, tx, amount, realGasLimit, string(funcName), funcParams, code, ctx.tree, ctx.VMCache, contractState)
+	newContractState, invocationErr := executor.Execute(contractID, block, tx, amount, realGasLimit, string(funcName), funcParams, code, ctx.tree, ctx.VMCache, contractState)
 
 	// availableBalance >= realGasLimit >= executor.Gas && state.GasLimit >= realGasLimit must always hold.
 	if realGasLimit < executor.Gas {
@@ -347,7 +347,7 @@ func executeContractInTransactionContext(
 		//	Msg("Deducted PERLs for invoking smart contract function.")
 
 		for _, entry := range executor.Queue {
-			err := applyTransaction(round, ctx, entry, state)
+			err := applyTransaction(block, ctx, entry, state)
 			if err != nil {
 				logger.Info().Err(err).Msg("failed to process sub-transaction")
 			}

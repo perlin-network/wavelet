@@ -260,7 +260,7 @@ func (e *ContractExecutor) ResolveGlobal(module, field string) int64 {
 // If it's nil, we'll try to load the state from the tree.
 //
 // This function MUST NOT write into the tree. The new or updated VM State must be returned.
-func (e *ContractExecutor) Execute(id AccountID, round *Round, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte, tree *avl.Tree, vmCache *lru.LRU, contractState *VMState) (*VMState, error) {
+func (e *ContractExecutor) Execute(id AccountID, block *Block, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte, tree *avl.Tree, vmCache *lru.LRU, contractState *VMState) (*VMState, error) {
 	var vm *exec.VirtualMachine
 	var err error
 
@@ -323,7 +323,7 @@ func (e *ContractExecutor) Execute(id AccountID, round *Round, tx *Transaction, 
 
 	e.ID = id
 
-	e.Payload = buildContractPayload(round, tx, amount, params)
+	e.Payload = buildContractPayload(block, tx, amount, params)
 
 	entry, exists := vm.GetFunctionExport("_contract_" + name)
 	if !exists {
@@ -466,22 +466,22 @@ func SaveContractMemorySnapshot(snapshot *avl.Tree, id AccountID, mem []byte) {
 	}
 }
 
-func buildContractPayload(round *Round, tx *Transaction, amount uint64, params []byte) []byte {
+func buildContractPayload(block *Block, tx *Transaction, amount uint64, params []byte) []byte {
 	p := make([]byte, 0)
 	b := make([]byte, 8)
 
 	var nilAccountID AccountID
 	var nilTransactionID TransactionID
 
-	if round != nil {
-		binary.LittleEndian.PutUint64(b[:], uint64(round.Index))
+	if block != nil {
+		binary.LittleEndian.PutUint64(b[:], uint64(block.Index))
 	} else {
 		binary.LittleEndian.PutUint64(b[:], 0)
 	}
 	p = append(p, b...)
 
-	if round != nil {
-		p = append(p, round.ID[:]...)
+	if block != nil {
+		p = append(p, block.ID[:]...)
 	} else {
 		p = append(p, nilAccountID[:]...)
 	}

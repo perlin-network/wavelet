@@ -57,6 +57,8 @@ const (
 
 var (
 	ErrOutOfSync = errors.New("Node is currently ouf of sync. Please try again later.")
+
+	EmptyBlockID [blake2b.Size256]byte
 )
 
 type Ledger struct {
@@ -66,7 +68,11 @@ type Ledger struct {
 
 	accounts *Accounts
 	rounds   *Rounds
-	graph    *Graph
+
+	mempool *Mempool
+
+	Blocks     []Block
+	BlocksLock sync.RWMutex
 
 	finalizer *Snowball
 	syncer    *Snowball
@@ -159,8 +165,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		logger.Fatal().Err(err).Msg("BUG: COULD NOT FIND GENESIS, OR STORAGE IS CORRUPTED.")
 	}
 
-	graph := NewGraph(WithMetrics(metrics), WithIndexer(indexer), WithRoot(round.End), VerifySignatures())
-
 	finalizer := NewSnowball(WithName("finalizer"))
 	syncer := NewSnowball(WithName("syncer"))
 
@@ -171,7 +175,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 		accounts: accounts,
 		rounds:   rounds,
-		graph:    graph,
+
+		mempool: NewMempool(),
 
 		finalizer: finalizer,
 		syncer:    syncer,
@@ -244,7 +249,8 @@ func (l *Ledger) Close() {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(tx Transaction) error {
-	err := l.graph.AddTransaction(tx)
+
+	err := l.mempool.Add(tx, l.LastBlockID())
 
 	// Ignore error if transaction already exists,
 	// or transaction's depth is too low due to pruning
@@ -346,12 +352,6 @@ func (l *Ledger) TakeSendQuota() bool {
 // intended to be used with gRPC and Noise.
 func (l *Ledger) Protocol() *Protocol {
 	return &Protocol{ledger: l}
-}
-
-// Graph returns the directed-acyclic-graph of transactions accompanying
-// the ledger.
-func (l *Ledger) Graph() *Graph {
-	return l.graph
 }
 
 // Finalizer returns the Snowball finalizer which finalizes the contents of individual
@@ -1521,12 +1521,12 @@ type CollapseState struct {
 // It is important to note that transactions that are inspected over are specifically transactions
 // that are within the depth interval (start, end] where start is the interval starting point depth,
 // and end is the interval ending point depth.
-func (l *Ledger) collapseTransactions(round uint64, start, end Transaction, logging bool) (*collapseResults, error) {
-	_collapseState, _ := l.cacheCollapse.LoadOrPut(end.ID, &CollapseState{})
+func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResults, error) {
+	_collapseState, _ := l.cacheCollapse.LoadOrPut(block.ID, &CollapseState{})
 	collapseState := _collapseState.(*CollapseState)
 
 	collapseState.once.Do(func() {
-		collapseState.results, collapseState.err = collapseTransactions(l.graph, l.accounts, round, l.Rounds().Latest(), start, end, logging)
+		collapseState.results, collapseState.err = collapseTransactions(l.mempool, block, l.accounts, logging)
 	})
 
 	if logging {
@@ -1638,4 +1638,14 @@ func (l *Ledger) setSync(flag bitset) {
 	l.syncStatusLock.Lock()
 	l.syncStatus = flag
 	l.syncStatusLock.Unlock()
+}
+
+func (l *Ledger) LastBlockID() [blake2b.Size256]byte {
+	// TODO implement this
+	return EmptyBlockID
+}
+
+func (l *Ledger) LastBlockIndex() uint64 {
+	// TODO implement this
+	return 0
 }
