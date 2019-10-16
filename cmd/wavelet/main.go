@@ -258,7 +258,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 	if secret == "" {
 		// If the secret is empty, derive the secret from the base64-hashed
 		// sha224-hashed private key.
-		h, err := hex.DecodeString(secret)
+		h, err := hex.DecodeString(w)
 		if err != nil {
 			return errors.Wrap(err, "Can't decode wallet")
 		}

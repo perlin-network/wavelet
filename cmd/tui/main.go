@@ -1,29 +1,39 @@
 package main
 
 import (
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
+	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/diamondburned/tcell"
 	"github.com/diamondburned/tview/v2"
-	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/cmd/tui/server"
+	"github.com/perlin-network/noise/edwards25519"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/cmd/tui/tui/forms"
 	"github.com/perlin-network/wavelet/cmd/tui/tui/helpkeyer"
-	"github.com/perlin-network/wavelet/cmd/tui/tui/logger"
+	"github.com/perlin-network/wavelet/cmd/wavelet/node"
+	"github.com/perlin-network/wavelet/conf"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
-	flag "github.com/spf13/pflag"
+	"github.com/perlin-network/wavelet/wctl"
+	"github.com/pkg/errors"
+	"github.com/spf13/pflag"
 
 	_ "github.com/perlin-network/wavelet/cmd/tui/tui/clearbg"
+	tuilogger "github.com/perlin-network/wavelet/cmd/tui/tui/logger"
 )
 
-var log *logger.Logger
-var cfg *server.Config
-var srv *server.Server
+var logger *tuilogger.Logger
 
-var debug bool
+func fatalln(v ...interface{}) {
+	fmt.Fprintln(os.Stderr, v...)
+}
 
 func main() {
 	/*
@@ -33,69 +43,184 @@ func main() {
 			"Path to TOML config file, overrides command line arguments.")
 	*/
 
+	flag := pflag.NewFlagSet("wavelet-tui", pflag.ExitOnError)
+
 	// promptConfigDialog when true starts the TUI with a dialog to change
 	// parameters
 	var promptConfigDialog bool
 	flag.BoolVarP(&promptConfigDialog, "prompt-config", "p", true,
 		"Start the TUI with a dialog to change parameters.")
 
-	// Debug bool
-	flag.BoolVar(&debug, "debug", false, "Dump stack trace on error")
+	var logLevel string
+	flag.StringVar(&logLevel, "loglevel", "debug",
+		"Minimum log level to output. Possible values: debug, info, warn, "+
+			"error, fatal, panic.")
+
+	// Application-specific flag
+	var serverAddr, updateURL string
+	flag.StringVar(&serverAddr, "server", "",
+		"Connect to a Wavelet server instead of hosting a new one if not blank.")
+	flag.StringVar(&updateURL, "update-url", "https://updates.perlin.net/wavelet",
+		"URL for updating Wavelet node.")
 
 	// Add the server config flags
-	cfg = &server.Config{}
+	wctlCfg := wctl.Config{}
+	srvCfg := node.Config{}
 
-	flag.StringVar(&cfg.Host, "host", "127.0.0.1",
-		"Listen for peers on host address.")
-	flag.BoolVar(&cfg.NAT, "nat", false,
+	// Server config
+	flag.BoolVar(&srvCfg.NAT, "nat", false,
 		"Enable port forwarding, only required for PCs.")
-	flag.UintVar(&cfg.Port, "port", 3000,
+	flag.StringVar(&srvCfg.Host, "host", "127.0.0.1",
+		"Listen for peers on host address.")
+	flag.UintVar(&srvCfg.Port, "port", 3000,
 		"Listen for peers on port.")
-	flag.UintVar(&cfg.APIPort, "api.port", 0,
-		"Start a local API HTTP server at this port.")
-	flag.StringVar(&cfg.Wallet, "wallet", "config/wallet.txt",
+	flag.StringVar(&srvCfg.Wallet, "wallet", "config/wallet.txt",
 		"Path to file containing hex-encoded private key. If "+
 			"the path specified is invalid, no file exists at the "+
 			"specified path, or the string given is not a proper "+
 			"hex-encoded private key, a random wallet will be generated. "+
 			"Optionally, a 128-length hex-encoded private key to a "+
 			"wallet may also be specified.")
-	flag.StringVar(&cfg.Genesis, "genesis", "",
-		"Genesis JSON file contents representing initial fields of some set "+
-			"of accounts at round 0.")
-	flag.StringVar(&cfg.Database, "db", "",
+	flag.UintVar(&srvCfg.APIPort, "api.port", 0,
+		"Start a local API HTTP server at this port.")
+	flag.StringVar(&srvCfg.Database, "db", "",
 		"Directory path to the database. If empty, a temporary in-memory "+
 			"database will be used instead.")
+	flag.Uint64Var(&srvCfg.MaxMemoryMB, "memory-max", 0,
+		"Maximum memory in MB allowed to be used by wavelet.")
+	flag.StringVar(&srvCfg.APIHost, "api.host", "",
+		"Host for the API HTTPS node.")
+	flag.StringVar(&srvCfg.APICertsCache, "api.certs", "",
+		"Directory path to cache HTTPS certificates.")
+
+	var genesis string // outlier
+	flag.StringVar(&genesis, "genesis", "",
+		"Genesis JSON file contents representing initial fields of some set "+
+			"of accounts at round 0.")
+
+	var secret string
+	flag.StringVar(&secret, "api.secret", "",
+		"Shared secret to restrict access to some API endpoints.")
 
 	// Add the flags for the sys package
-	flag.DurationVar(&sys.QueryTimeout, "sys.query_timeout", sys.QueryTimeout,
-		"Timeout in seconds for querying a transaction to K peers.")
-	flag.Uint64Var(&sys.MaxDepthDiff, "sys.max_depth_diff", sys.MaxDepthDiff,
-		"Max graph depth difference to search for eligible transaction "+
-			"parents from for our node.")
-	flag.Uint64Var(&sys.TransactionFeeAmount, "sys.transaction_fee_amount",
-		sys.TransactionFeeAmount,
-		"Amount of transaction fee.")
-	flag.Uint64Var(&sys.MinimumStake, "sys.min_stake", sys.MinimumStake,
-		"Minimum stake to garner validator rewards and have importance in "+
-			"consensus.")
-	flag.IntVar(&sys.SnowballK, "sys.snowball.k", sys.SnowballK,
-		"Snowball consensus protocol parameter K.")
-	flag.Float64Var(&sys.SnowballAlpha, "sys.snowball.alpha", sys.SnowballAlpha,
-		"Snowball consensus protocol parameter Alpha.")
-	flag.IntVar(&sys.SnowballBeta, "sys.snowball.beta", sys.SnowballBeta,
-		"Snowball consensus protocol parameter Beta.")
+
+	// Flags that can be set directly
+	flag.Uint8Var(&sys.MinDifficulty, "sys.difficulty.min", sys.MinDifficulty,
+		"Minimum difficulty to define a critical transaction.")
 	flag.Float64Var(&sys.DifficultyScaleFactor, "sys.difficulty.scale",
 		sys.DifficultyScaleFactor,
 		"Factor to scale a transactions confidence down by to "+
 			"compute the difficulty needed to define a critical transaction")
+	flag.Uint64Var(&sys.DefaultTransactionFee, "sys.transaction_fee_amount",
+		sys.DefaultTransactionFee, "")
+	flag.Uint64Var(&sys.MinimumStake, "sys.min_stake", sys.MinimumStake,
+		"Minimum stake to garner validator rewards and have importance in "+
+			"consensus.")
 
-	// Oddballs
-	difficulty := flag.Int("sys.min.difficulty", int(sys.MinDifficulty),
-		"Minimum difficulty to define a critical transaction.")
+	// Flags that need to be updated
+	var (
+		snowballK    int
+		snowballBeta int
+		queryTimeout time.Duration
+		maxDepthDiff uint64
+	)
+
+	flag.IntVar(&snowballK, "sys.snowball.k", conf.GetSnowballK(),
+		"Snowball consensus protocol parameter K.")
+	flag.IntVar(&snowballBeta, "sys.snowball.beta", conf.GetSnowballBeta(),
+		"Snowball consensus protocol parameter Beta.")
+	flag.DurationVar(&queryTimeout, "sys.query_timeout", conf.GetQueryTimeout(),
+		"Timeout in seconds for querying a transaction to K peers.")
+	flag.Uint64Var(&maxDepthDiff, "sys.max_depth_diff", conf.GetMaxDepthDiff(),
+		"Snowball consensus protocol parameter Beta.")
+
+	flag.Float64Var(&sys.DifficultyScaleFactor, "sys.difficulty.scale", sys.DifficultyScaleFactor,
+		"Factor to scale a transactions confidence down by to "+
+			"compute the difficulty needed to define a critical transaction")
 
 	// Parse the flags
-	flag.Parse()
+	flag.Parse(os.Args)
+
+	// Start the auto-updater
+	// go periodicUpdateRoutine(updateURL)
+
+	// Set the log level
+	log.SetLevel(logLevel)
+
+	// Generate the wallet
+	w, err := wallet(srvCfg.Wallet)
+	if err != nil {
+		fatalln(err)
+	}
+
+	// Generate secret if empty
+	if secret == "" {
+		// If the secret is empty, derive the secret from the base64-hashed
+		// sha224-hashed private key.
+		h, err := hex.DecodeString(w)
+		if err != nil {
+			fatalln("Can't decode wallet:", err)
+		}
+
+		sha := sha512.Sum512_224(h)
+		secret = base64.StdEncoding.EncodeToString(sha[:])
+	}
+
+	// Update sys variables
+	conf.Update(
+		conf.WithSnowballK(snowballK),
+		conf.WithSnowballBeta(snowballBeta),
+		conf.WithQueryTimeout(queryTimeout),
+		conf.WithMaxDepthDiff(maxDepthDiff),
+		conf.WithSecret(secret),
+	)
+
+	// Set the CLI settings
+	wctlCfg.APISecret = secret
+
+	if serverAddr == "" { // start a server
+		// Set the server's config
+		srvCfg.Wallet = w
+		srvCfg.Peers = flag.Args()
+
+		if genesis != "" {
+			srvCfg.Genesis = &genesis
+		}
+
+		srv, err := node.New(&srvCfg)
+		if err != nil {
+			fatalln("Failed to host the node server:", err)
+		}
+
+		srv.Start()
+		defer srv.Close()
+
+		wctlCfg.Server = srv
+		wctlCfg.APIPort = uint16(srvCfg.APIPort)
+		wctlCfg.PrivateKey = srv.Keypair.PrivateKey()
+		wctlCfg.APIHost = "127.0.0.1"
+
+		if srvCfg.APIHost != "" {
+			wctlCfg.APIHost = srvCfg.APIHost
+			wctlCfg.UseHTTPS = true
+		}
+	} else {
+		u, err := url.Parse(serverAddr)
+		if err != nil {
+			fatalln("Invalid address", serverAddr+":", err)
+		}
+
+		port, _ := strconv.ParseUint(u.Port(), 10, 16)
+
+		wctlCfg.APIPort = uint16(port)
+		wctlCfg.APIHost = u.Host
+		wctlCfg.UseHTTPS = u.Scheme == "https"
+	}
+
+	cli, err := wctl.NewClient(wctlCfg)
+	if err != nil {
+		fatalln("Failed to start the wctl client:", err)
+	}
 
 	/*
 		// Assign stuff to parse the config file if provided one
@@ -112,13 +237,6 @@ func main() {
 		}
 	*/
 
-	// Set the oddballs
-	sys.MinDifficulty = byte(*difficulty)
-	cfg.Peers = flag.Args()
-
-	// Make a new global logger
-	log = logger.NewLogger()
-
 	tview.Initialize().MouseSupport = false
 	tview.Styles.PrimaryTextColor = -1
 	tview.Styles.SecondaryTextColor = -1
@@ -129,7 +247,7 @@ func main() {
 			tview.SetRoot(configUI())
 		} else {*/
 
-	ui := mainUI()
+	ui := mainUI(cli)
 
 	tview.SetRoot(ui, true)
 	tview.SetFocus(ui)
@@ -156,17 +274,10 @@ func configUI() tview.Primitive {
 }
 */
 
-func mainUI() tview.Primitive {
-	s, err := server.New(*cfg, log)
-	if err != nil {
-		fatal("Failed to start server", err)
-	}
-
-	srv = s
-
-	go srv.Start()
-
+func mainUI(cli *wctl.Client) tview.Primitive {
+	// Initialize
 	forms.DefaultWidth = 120
+	logger = tuilogger.NewLogger()
 
 	// TODO(diamond): Add Tab key to cycle focus
 	// TODO(diamond): Indicative borders?
@@ -175,31 +286,16 @@ func mainUI() tview.Primitive {
 	flex.SetDirection(tview.FlexRow)
 
 	// Add the logger
-	flex.AddItem(log, 0, 1, false)
+	flex.AddItem(logger, 0, 1, false)
 
 	// Make a statusbar
 	stat := tview.NewTextView()
 	stat.SetBackgroundColor(tcell.ColorGreen)
 	stat.SetTextColor(tcell.ColorWhite)
-	// Doesn't seem very bright, but this is updating the status bar 15
-	// times every second
-	go func() {
-		pub := s.Keys.PublicKey()
-		key := hex.EncodeToString(pub[:])
-
-		// 15 redraws/sec == 15fps minimum
-		for range time.NewTicker(time.Second / 15).C {
-			snap := s.Ledger.Snapshot()
-			bal, _ := wavelet.ReadAccountBalance(snap, pub)
-
-			stat.SetText(fmt.Sprintf(
-				"⣿ wavelet: %s - %d PERLs", key[:8], bal,
-			))
-
-			tview.Draw()
-		}
-	}()
-
+	// TODO: add an event callback
+	stat.SetText(fmt.Sprintf(
+		"⣿ wavelet: %s - %d PERLs", "add a callback here", 0,
+	))
 	flex.AddItem(stat, 1, 1, false)
 
 	// TODO(diamond): Dialog API to actually make this easier, or at least
@@ -211,7 +307,7 @@ func mainUI() tview.Primitive {
 	hk := helpkeyer.New()
 	hk.Blocking = false
 	hk.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
-		log.InputHandler()(ev, nil)
+		logger.InputHandler()(ev, nil)
 		return ev
 	})
 
@@ -226,6 +322,45 @@ func mainUI() tview.Primitive {
 	flex.AddItem(hk, 2, 1, true)
 
 	return flex
+}
+
+// returns hex-encoded
+func wallet(wallet string) (string, error) {
+	var keys *skademlia.Keypair
+
+	logger := log.Node()
+
+	privateKeyBuf, err := ioutil.ReadFile(wallet)
+
+	// File exists
+	if err == nil {
+		// If the file content is the actual private key
+		if hex.DecodedLen(len(privateKeyBuf)) == edwards25519.SizePrivateKey {
+			return string(privateKeyBuf), nil
+		}
+	}
+
+	if os.IsNotExist(err) {
+		// If a private key is specified, simply use the provided private key instead.
+		if len(wallet) == hex.EncodedLen(edwards25519.SizePrivateKey) {
+			return wallet, nil
+		}
+	}
+
+	keys, err = skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
+	if err != nil {
+		return "", errors.New("failed to generate a new wallet")
+	}
+
+	privateKey := keys.PrivateKey()
+	publicKey := keys.PublicKey()
+
+	logger.Info().
+		Hex("privateKey", privateKey[:]).
+		Hex("publicKey", publicKey[:]).
+		Msg("Existing wallet not found: generated a new one.")
+
+	return hex.EncodeToString(privateKey[:]), nil
 }
 
 /*

@@ -14,6 +14,7 @@ require (
 	github.com/diamondburned/tcell v1.1.8
 	github.com/diamondburned/tview/v2 v2.3.3
 	github.com/djherbis/buffer v1.1.0
+	github.com/emersion/go-imap v1.0.0
 	github.com/fasthttp/websocket v1.4.0
 	github.com/gdamore/tcell v1.1.2
 	github.com/gogo/protobuf v1.3.0
