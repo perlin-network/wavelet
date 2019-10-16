@@ -62,14 +62,10 @@ message DownloadTxRequest {
 }
 
 message DownloadMissingTxRequest {
-    repeated bytes ids = 1;
+    bytes transaction_ids = 1;
 }
 
-message DownloadTxResponse {
-    repeated bytes transactions = 1;
-}
-
-message Transactions {
+message DownloadMissingTxResponse {
     repeated bytes transactions = 1;
 }
 
@@ -82,5 +78,5 @@ service Wavelet {
     rpc CheckOutOfSync (OutOfSyncRequest) returns (OutOfSyncResponse) {}
     rpc Sync (stream SyncRequest) returns (stream SyncResponse) {}
 
-    rpc DownloadMissingTx (DownloadMissingTxRequest) returns (DownloadTxResponse) {}
+    rpc DownloadMissingTx (DownloadMissingTxRequest) returns (DownloadMissingTxResponse) {}
 }

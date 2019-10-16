@@ -40,6 +40,7 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"github.com/willf/bloom"
 	"golang.org/x/crypto/blake2b"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
@@ -96,6 +97,8 @@ type Ledger struct {
 	stop     chan struct{}
 	stopWG   sync.WaitGroup
 	cancelGC context.CancelFunc
+
+	transactionIDs *bloom.BloomFilter
 }
 
 type config struct {
@@ -186,6 +189,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		fileBuffers:   newFileBufferPool(sys.SyncPooledFileSize, ""),
 
 		sendQuota: make(chan struct{}, 2000),
+
+		transactionIDs: bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK()),
 	}
 
 	if !cfg.GCDisabled {
@@ -259,6 +264,8 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 	}
 
 	if err == nil {
+		l.transactionIDs.Add(tx.ID[:])
+
 		l.TakeSendQuota()
 
 		l.broadcastNopsLock.Lock()
@@ -423,12 +430,14 @@ func (l *Ledger) BroadcastNop() *Transaction {
 	return l.graph.FindTransaction(nop.ID)
 }
 
-// PullTransactions is an infinite loop continually sending RPC requests
-// to pull any transactions identified to be missing by the ledger. It periodically
-// samples a random peer from the network, and requests the peer for the contents
-// of all missing transactions by their respective IDs. When the ledger is in amidst
-// synchronizing/teleporting ahead to a new round, the infinite loop will be cleaned
-// up. It is intended to call PullTransactions() in a new goroutine.
+// PullTransactions is a goroutine which continuously pulls missing transactions
+// from randomly sampled peers in the network. It does so by sending a list of
+// transaction IDs it has, and the peer will respond with a list of transactions
+// which the peer has but the sender node doesn't.
+//
+// The transaction IDs are stored inside a bloom filter to keep the space constant
+// with increasing transactions, and also because bloom filter has no false negative
+// (the peer will only use it to check if a transaction is not in the set).
 func (l *Ledger) PullTransactions() {
 	l.consensus.Add(1)
 	defer l.consensus.Done()
@@ -439,18 +448,6 @@ func (l *Ledger) PullTransactions() {
 			return
 
 		default:
-		}
-
-		missing := l.graph.Missing()
-
-		if len(missing) == 0 {
-			select {
-			case <-l.sync:
-				return
-			case <-time.After(100 * time.Millisecond):
-			}
-
-			continue
 		}
 
 		closestPeers := l.client.ClosestPeers()
@@ -476,23 +473,19 @@ func (l *Ledger) PullTransactions() {
 			peers[i], peers[j] = peers[j], peers[i]
 		})
 
-		rand.Shuffle(len(missing), func(i, j int) {
-			missing[i], missing[j] = missing[j], missing[i]
-		})
-		if len(missing) > 256 {
-			missing = missing[:256]
+		logger := log.Consensus("pull-transactions")
+
+		// Marshal the bloom filter
+		buf := new(bytes.Buffer)
+		if _, err := l.transactionIDs.WriteTo(buf); err != nil {
+			logger.Error().Err(err).Msg("failed to marshal bloom filter")
+			continue
 		}
 
-		req := &DownloadMissingTxRequest{Ids: make([][]byte, len(missing))}
-
-		for i, id := range missing {
-			req.Ids[i] = id[:]
-		}
+		req := &DownloadMissingTxRequest{TransactionIds: buf.Bytes()}
 
 		conn := peers[0]
 		client := NewWaveletClient(conn)
-
-		logger := log.Consensus("pull-missing-transactions")
 
 		ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
 		batch, err := client.DownloadMissingTx(ctx, req)
@@ -1021,6 +1014,7 @@ FINALIZE_ROUNDS:
 
 		if pruned != nil {
 			count := l.graph.PruneBelowDepth(pruned.End.Depth)
+			l.rebuildBloomFilter()
 
 			logger := log.Consensus("prune")
 			logger.Debug().
@@ -1060,6 +1054,18 @@ FINALIZE_ROUNDS:
 			Hex("old_merkle_root", current.Merkle[:]).
 			Uint64("round_depth", preferred.End.Depth-preferred.Start.Depth).
 			Msg("Finalized consensus round, and initialized a new round.")
+	}
+}
+
+// rebuildBloomFilter rebuilds the bloom filter which stores the set of
+// transactions in the graph. This method is called after transactions are
+// pruned, as it's not possible to remove items from a bloom filter.
+func (l *Ledger) rebuildBloomFilter() {
+	l.transactionIDs.ClearAll()
+
+	transactions := l.graph.GetTransactionsByDepth(nil, nil)
+	for _, tx := range transactions {
+		l.transactionIDs.Add(tx.ID[:])
 	}
 }
 
@@ -1536,6 +1542,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 		if pruned != nil {
 			count := l.graph.PruneBelowDepth(pruned.End.Depth)
+			l.rebuildBloomFilter()
 
 			logger := log.Consensus("prune")
 			logger.Debug().

@@ -20,12 +20,14 @@
 package wavelet
 
 import (
+	"bytes"
 	"context"
 	"io"
 
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
+	"github.com/willf/bloom"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -156,17 +158,33 @@ func (p *Protocol) CheckOutOfSync(ctx context.Context, req *OutOfSyncRequest) (*
 	}, nil
 }
 
-func (p *Protocol) DownloadMissingTx(ctx context.Context, req *DownloadMissingTxRequest) (*DownloadTxResponse, error) {
-	res := &DownloadTxResponse{Transactions: make([][]byte, 0, len(req.Ids))}
+func (p *Protocol) DownloadMissingTx(ctx context.Context, req *DownloadMissingTxRequest) (*DownloadMissingTxResponse, error) {
+	res := &DownloadMissingTxResponse{
+		Transactions: [][]byte{},
+	}
 
-	for _, buf := range req.Ids {
-		var id TransactionID
-		copy(id[:], buf)
+	existing := bloom.New(32, 2) // m and k values here will be replaced by ReadFrom
+	if _, err := existing.ReadFrom(bytes.NewReader(req.TransactionIds)); err != nil {
+		return nil, err
+	}
 
-		if tx := p.ledger.Graph().FindTransaction(id); tx != nil {
+	// TODO: replace with mempool
+	graph := p.ledger.Graph()
+
+	transactions := graph.GetTransactionsByDepth(nil, nil)
+	for _, tx := range transactions {
+		// TODO: limit no. of transactions per request
+
+		// Add tx not in the bloom filter
+		if !existing.Test(tx.ID[:]) {
 			res.Transactions = append(res.Transactions, tx.Marshal())
 		}
 	}
+
+	logger := log.Sync("pull_tx")
+	logger.Info().
+		Int("missing_txs", len(res.Transactions)).
+		Msg("Responded to download missing tx request.")
 
 	return res, nil
 }
