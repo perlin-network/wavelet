@@ -153,11 +153,11 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 
 	signatureBuf, err := hex.DecodeString(s.Signature)
 	if err != nil {
-		return errors.Wrap(err, "sender signature provided is not hex-formatted")
+		return errors.Wrap(err, "signature provided is not hex-formatted")
 	}
 
 	if len(signatureBuf) != wavelet.SizeSignature {
-		return errors.Errorf("sender signature must be size %d", wavelet.SizeSignature)
+		return errors.Errorf("signature must be size %d", wavelet.SizeSignature)
 	}
 
 	return nil
@@ -283,7 +283,7 @@ func (s *transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 	o.Set("depth", arena.NewNumberString(strconv.FormatUint(s.tx.Depth, 10)))
 	o.Set("tag", arena.NewNumberInt(int(s.tx.Tag)))
 	o.Set("payload", arena.NewString(base64.StdEncoding.EncodeToString(s.tx.Payload)))
-	o.Set("sender_signature", arena.NewString(hex.EncodeToString(s.tx.SenderSignature[:])))
+	o.Set("signature", arena.NewString(hex.EncodeToString(s.tx.Signature[:])))
 
 	if s.tx.ParentIDs != nil {
 		parents := arena.NewArray()

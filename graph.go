@@ -711,10 +711,10 @@ func (g *Graph) validateTransaction(tx Transaction) error {
 		// var nonce [8]byte // TODO(kenta): nonce
 
 		cpy := tx
-		cpy.SenderSignature = ZeroSignature
+		cpy.Signature = ZeroSignature
 
-		if !edwards25519.Verify(tx.Sender, cpy.Marshal(), tx.SenderSignature) {
-			return errors.New("tx has invalid sender signature")
+		if !edwards25519.Verify(tx.Sender, cpy.Marshal(), tx.Signature) {
+			return errors.New("tx has invalid signature")
 		}
 	}
 

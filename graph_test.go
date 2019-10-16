@@ -131,7 +131,7 @@ func TestGraphValidateTransaction(t *testing.T) {
 				tx := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), graph.FindEligibleParents()...)
 				tx.ParentIDs = append(tx.ParentIDs, tx.ID)
 				tx.ParentSeeds = append(tx.ParentSeeds, tx.Seed)
-				tx.SenderSignature = edwards25519.Sign(keys.PrivateKey(), tx.Marshal())
+				tx.Signature = edwards25519.Sign(keys.PrivateKey(), tx.Marshal())
 				return tx
 			},
 			"tx must not include itself in its parents",
@@ -152,7 +152,7 @@ func TestGraphValidateTransaction(t *testing.T) {
 				tx := AttachSenderToTransaction(keys, NewTransaction(k, sys.TagNop, nil), parents...)
 				tx.ParentIDs[0], tx.ParentIDs[1] = tx.ParentIDs[1], tx.ParentIDs[0]
 				tx.ParentSeeds[0], tx.ParentSeeds[1] = tx.ParentSeeds[1], tx.ParentSeeds[0]
-				tx.SenderSignature = edwards25519.Sign(keys.PrivateKey(), tx.Marshal())
+				tx.Signature = edwards25519.Sign(keys.PrivateKey(), tx.Marshal())
 				tx.rehash()
 				return tx
 			},
@@ -190,7 +190,7 @@ func TestGraphValidateTransaction(t *testing.T) {
 			func() Transaction {
 				k, _ := skademlia.NewKeys(1, 1)
 				tx := AttachSenderToTransaction(keys, NewTransaction(k, sys.TagNop, nil), graph.FindEligibleParents()...)
-				tx.SenderSignature[0] = '0'
+				tx.Signature[0] = '0'
 				return tx
 			},
 			"tx has invalid sender signature",

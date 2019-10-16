@@ -48,7 +48,7 @@ type Transaction struct {
 	Tag     sys.Tag
 	Payload []byte
 
-	SenderSignature Signature
+	Signature Signature
 
 	ID TransactionID // BLAKE2b(*).
 
@@ -85,7 +85,7 @@ func AttachSenderToTransaction(sender *skademlia.Keypair, tx Transaction, parent
 	}
 
 	tx.Sender = sender.PublicKey()
-	tx.SenderSignature = edwards25519.Sign(sender.PrivateKey(), tx.Marshal())
+	tx.Signature = edwards25519.Sign(sender.PrivateKey(), tx.Marshal())
 
 	tx.rehash()
 
@@ -160,7 +160,7 @@ func (tx Transaction) Marshal() []byte {
 	w.Write(buf[:4])
 	w.Write(tx.Payload)
 
-	w.Write(tx.SenderSignature[:])
+	w.Write(tx.Signature[:])
 
 	return w.Bytes()
 }
@@ -234,7 +234,7 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 		return
 	}
 
-	if _, err = io.ReadFull(r, t.SenderSignature[:]); err != nil {
+	if _, err = io.ReadFull(r, t.Signature[:]); err != nil {
 		err = errors.Wrap(err, "failed to decode signature")
 		return
 	}

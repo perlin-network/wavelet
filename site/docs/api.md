@@ -223,7 +223,7 @@ Get Account Information
         "depth": 1172,
         "tag": 0,
         "payload": "",
-        "sender_signature": "cc86583a84ca27b5860e3c3f6e75994b91ae4bd2ef8e4751b38141a098518ea84e9a8c0a374730ee5a75913117169ada1162fb9e569183b985bedbcf3d7c260b",
+        "signature": "cc86583a84ca27b5860e3c3f6e75994b91ae4bd2ef8e4751b38141a098518ea84e9a8c0a374730ee5a75913117169ada1162fb9e569183b985bedbcf3d7c260b",
         "parents": [
           "eb148b6831275941c2b840dd21549a203335263cabce6a1de86a243704388ed4"
         ]
@@ -269,7 +269,7 @@ Get Account Information
       "depth": 1172,
       "tag": 0,
       "payload": "",
-      "sender_signature": "cc86583a84ca27b5860e3c3f6e75994b91ae4bd2ef8e4751b38141a098518ea84e9a8c0a374730ee5a75913117169ada1162fb9e569183b985bedbcf3d7c260b",
+      "signature": "cc86583a84ca27b5860e3c3f6e75994b91ae4bd2ef8e4751b38141a098518ea84e9a8c0a374730ee5a75913117169ada1162fb9e569183b985bedbcf3d7c260b",
       "parents": [
         "eb148b6831275941c2b840dd21549a203335263cabce6a1de86a243704388ed4"
       ]

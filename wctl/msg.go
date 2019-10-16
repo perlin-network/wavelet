@@ -152,7 +152,7 @@ type Transaction struct {
 
 	AccountsMerkleRoot string `json:"accounts_root"`
 
-	SenderSignature string `json:"sender_signature"`
+	Signature string `json:"signature"`
 
 	Depth uint64 `json:"depth"`
 }
@@ -183,7 +183,7 @@ func (t *Transaction) ParseJSON(v *fastjson.Value) {
 	t.Tag = byte(v.GetUint("tag"))
 	t.Payload = v.GetStringBytes("payload")
 	t.AccountsMerkleRoot = string(v.GetStringBytes("accounts_root"))
-	t.SenderSignature = string(v.GetStringBytes("sender_signature"))
+	t.Signature = string(v.GetStringBytes("signature"))
 	t.Depth = v.GetUint64("depth")
 }
 
