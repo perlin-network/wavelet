@@ -643,14 +643,14 @@ func (l *Ledger) PullMissingTransactions() {
 
 func (l *Ledger) FinalizeBlocks() {
 	for {
-		preferred := l.finalizer.Preferred().(*Block)
+		preferred := l.finalizer.Preferred()
 		decided := l.finalizer.Decided()
 
 		if preferred == nil {
 			// TODO propose a block
 		} else {
 			if decided {
-				l.finalize(*preferred)
+				l.finalize(*preferred.(*Block))
 			} else {
 				l.query()
 			}
