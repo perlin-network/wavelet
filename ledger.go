@@ -253,8 +253,8 @@ func (l *Ledger) Close() {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(tx Transaction) error {
-
 	err := l.mempool.Add(tx, l.LastBlockID())
+	l.transactionIDs.Add(tx.ID[:])
 
 	// Ignore error if transaction already exists,
 	// or transaction's depth is too low due to pruning
@@ -266,8 +266,6 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 	}
 
 	if err == nil {
-		l.transactionIDs.Add(tx.ID[:])
-
 		l.TakeSendQuota()
 
 		l.broadcastNopsLock.Lock()
