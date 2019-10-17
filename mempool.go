@@ -71,6 +71,14 @@ func (m *Mempool) Resolve(txIDs []TransactionID) []*Transaction {
 	return txs
 }
 
+func (m *Mempool) Ascend(iter func(txID TransactionID) bool) {
+	m.lock.RLock()
+	m.mempool.Ascend(func(i btree.Item) bool {
+		return iter(i.(MempoolItem).id)
+	})
+	m.lock.RUnlock()
+}
+
 func (m *Mempool) AscendLessThan(maxIndex *big.Int, iter func(txID TransactionID) bool) {
 	m.lock.RLock()
 	m.mempool.AscendLessThan(MempoolItem{index: maxIndex}, func(i btree.Item) bool {

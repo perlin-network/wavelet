@@ -685,10 +685,10 @@ func (l *Ledger) query() {
 func (l *Ledger) rebuildBloomFilter() {
 	l.transactionIDs.ClearAll()
 
-	transactions := l.graph.GetTransactionsByDepth(nil, nil)
-	for _, tx := range transactions {
-		l.transactionIDs.Add(tx.ID[:])
-	}
+	l.mempool.Ascend(func(txID TransactionID) bool {
+		l.transactionIDs.Add(txID[:])
+		return true
+	})
 }
 
 type outOfSyncVote struct {
