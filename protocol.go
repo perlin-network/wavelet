@@ -60,7 +60,7 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 	}
 
 	res := &SyncResponse{}
-	header := &SyncInfo{LatestRound: p.ledger.rounds.Latest().Marshal()}
+	header := &SyncInfo{LatestRound: p.ledger.blocks.Latest().Marshal()}
 
 	diffBuffer := p.ledger.fileBuffers.GetUnbounded()
 	defer p.ledger.fileBuffers.Put(diffBuffer)
