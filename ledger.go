@@ -487,7 +487,7 @@ func (l *Ledger) proposeBlock() *Block {
 	// TODO(kenta): derive the merkle root after applying all transactions to be proposed in the block, and incorporate
 	//	the merkle root into NewBlock()
 
-	proposed := NewBlock(l.blocks.Latest().Index+1, proposing...)
+	proposed := NewBlock(l.blocks.Latest().Index+1, l.accounts.tree.Checksum(), proposing)
 	return &proposed
 }
 
