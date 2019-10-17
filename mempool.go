@@ -1,12 +1,13 @@
 package wavelet
 
 import (
-	"github.com/google/btree"
-	"github.com/perlin-network/wavelet/conf"
-	"github.com/willf/bloom"
 	"io"
 	"math/big"
 	"sync"
+
+	"github.com/google/btree"
+	"github.com/perlin-network/wavelet/conf"
+	"github.com/willf/bloom"
 )
 
 var _ btree.Item = (*MempoolItem)(nil)
