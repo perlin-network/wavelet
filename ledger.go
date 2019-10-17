@@ -722,7 +722,7 @@ func (l *Ledger) SyncToLatestBlock() {
 
 					res, err := client.CheckOutOfSync(
 						ctx,
-						&OutOfSyncRequest{RoundIndex: current.Index},
+						&OutOfSyncRequest{BlockIndex: current.Index},
 						grpc.Peer(p),
 					)
 					if err != nil {
