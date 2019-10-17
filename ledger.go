@@ -454,9 +454,7 @@ func (l *Ledger) FinalizeBlocks() {
 		decided := l.finalizer.Decided()
 
 		if preferred == nil {
-			l.finalizer.Lock()
 			l.finalizer.Prefer(l.proposeBlock())
-			l.finalizer.Unlock()
 		} else {
 			if decided {
 				l.finalize(*preferred.(*Block))
