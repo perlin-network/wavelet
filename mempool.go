@@ -90,15 +90,6 @@ func (m *Mempool) Add(blockID BlockID, txs ...Transaction) {
 	m.lock.Unlock()
 }
 
-// TODO find a better name or a better way to implement this ?
-func (m *Mempool) ReadLock(f func(transactions map[TransactionID]*Transaction)) {
-	m.lock.RLock()
-
-	f(m.transactions)
-
-	m.lock.RUnlock()
-}
-
 // WriteTransactionIDs writes the marshaled bloom filter onto
 // the specified io.Writer.
 func (m *Mempool) WriteTransactionIDs(w io.Writer) (int64, error) {
@@ -106,6 +97,16 @@ func (m *Mempool) WriteTransactionIDs(w io.Writer) (int64, error) {
 	defer m.lock.RUnlock()
 
 	return m.filter.WriteTo(w)
+}
+
+// Transaction returns the transaction inside the mempool based on
+// the given id. If no transaction with the given id exists, nil is returned.
+func (m *Mempool) Transaction(txID TransactionID) *Transaction {
+	m.lock.RLock()
+	tx := m.transactions[txID]
+	m.lock.RUnlock()
+
+	return tx
 }
 
 // Ascend iterates through the mempool in ascending order.

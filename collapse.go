@@ -21,10 +21,10 @@ package wavelet
 
 import (
 	"encoding/hex"
-	"github.com/perlin-network/wavelet/lru"
 
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/lru"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 )
@@ -36,18 +36,15 @@ func collapseTransactions(mempool *Mempool, block *Block, accounts *Accounts, lo
 	var txs []*Transaction
 	var err error
 
-	mempool.ReadLock(func(transactions map[TransactionID]*Transaction) {
-		var txs = make([]*Transaction, 0, len(transactions))
-
-		for _, id := range block.Transactions {
-			tx, exist := transactions[id]
-			if exist {
-				txs = append(txs, tx)
-			} else {
-				err = ErrMissingTx
-			}
+	for _, id := range block.Transactions {
+		tx := mempool.Transaction(id)
+		if tx == nil {
+			err = ErrMissingTx
+			break
 		}
-	})
+
+		txs = append(txs, tx)
+	}
 
 	if err != nil {
 		return nil, err

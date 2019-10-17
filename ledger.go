@@ -609,25 +609,27 @@ func (l *Ledger) query() {
 	}
 
 	// Filter away all query responses whose blocks comprise of transactions our node is not aware of.
-	l.mempool.ReadLock(func(transactions map[TransactionID]*Transaction) {
-		for _, vote := range votes {
-			if vote.block == nil {
-				continue
-			}
+	for _, vote := range votes {
+		if vote.block == nil {
+			continue
+		}
 
-			if vote.block.Index != l.blocks.Latest().Index {
-				vote.block = nil
-				continue
-			}
+		if vote.block.Index != l.blocks.Latest().Index {
+			vote.block = nil
+			continue
+		}
 
-			for _, id := range vote.block.Transactions {
-				if _, stored := transactions[id]; !stored {
-					vote.block = nil
-					break
-				}
+		if vote.block.ID == ZeroBlockID {
+			continue
+		}
+
+		for _, id := range vote.block.Transactions {
+			if tx := l.mempool.Transaction(id); tx == nil {
+				vote.block.ID = ZeroBlockID
+				break
 			}
 		}
-	})
+	}
 
 	TickForFinalization(l.accounts, l.finalizer, votes)
 }
