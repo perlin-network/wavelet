@@ -398,10 +398,10 @@ func (l *Ledger) PullTransactions() {
 
 		logger := log.Consensus("pull-transactions")
 
-		// Marshal the bloom filter
+		// Marshal the transaction ids
 		buf := new(bytes.Buffer)
-		if _, err := l.mempool.WriteBloomFilter(buf); err != nil {
-			logger.Error().Err(err).Msg("failed to marshal bloom filter")
+		if _, err := l.mempool.WriteTransactionIDs(buf); err != nil {
+			logger.Error().Err(err).Msg("failed to marshal transaction ids")
 			continue
 		}
 
