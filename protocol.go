@@ -161,7 +161,7 @@ func (p *Protocol) CheckOutOfSync(ctx context.Context, req *OutOfSyncRequest) (*
 func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullRequest) (*TransactionPullResponse, error) {
 	res := &TransactionPullResponse{Transactions: [][]byte{}}
 
-	filter := bloom.New(32, 2) // m and k values here will be replaced by ReadFrom
+	filter := &bloom.BloomFilter{}
 	if _, err := filter.ReadFrom(bytes.NewReader(req.Filter)); err != nil {
 		return nil, err
 	}
@@ -177,8 +177,8 @@ func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullReq
 
 	logger := log.Sync("pull_tx")
 	logger.Info().
-		Int("missing_txs", len(res.Transactions)).
-		Msg("Responded to download missing tx request.")
+		Int("num_transactions", len(res.Transactions)).
+		Msg("Pulled new transactions.")
 
 	return res, nil
 }
