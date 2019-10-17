@@ -46,7 +46,7 @@ func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse
 
 	preferred := p.ledger.finalizer.Preferred()
 	if preferred != nil {
-		res.Block = preferred.Marshal()
+		res.Block = preferred.val.(*Block).Marshal()
 		return res, nil
 	}
 

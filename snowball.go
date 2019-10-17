@@ -25,61 +25,40 @@ import (
 	"github.com/perlin-network/wavelet/conf"
 )
 
-type SnowballOption func(*Snowball)
-
-func WithName(name string) SnowballOption {
-	return func(snowball *Snowball) {
-		snowball.name = name
-	}
-}
-
-type Identifiable interface {
-	GetID() string
-}
-
 type Snowball struct {
 	sync.RWMutex
-	beta int
+	beta  int
+	alpha int
 
-	candidates          map[string]Identifiable
-	preferredID, lastID string
+	count  int
+	counts map[BlockID]uint16
 
-	counts  map[string]int
-	count   int
+	preferred *snowballVote
+	last      *snowballVote
+
 	decided bool
-	name    string
 }
 
-func NewSnowball(opts ...SnowballOption) *Snowball {
-	s := &Snowball{
-		candidates: make(map[string]Identifiable),
-		counts:     make(map[string]int),
-		name:       "default",
+func NewSnowball() *Snowball {
+	return &Snowball{
+		counts: make(map[BlockID]uint16),
 	}
-
-	for _, opt := range opts {
-		opt(s)
-	}
-
-	return s
 }
 
 func (s *Snowball) Reset() {
 	s.Lock()
 
-	s.preferredID = ""
-	s.lastID = ""
+	s.preferred = nil
+	s.last = nil
 
-	s.candidates = make(map[string]Identifiable)
-	s.counts = make(map[string]int)
+	s.counts = make(map[BlockID]uint16)
 	s.count = 0
 
 	s.decided = false
-
 	s.Unlock()
 }
 
-func (s *Snowball) Tick(tallies map[Identifiable]float64) {
+func (s *Snowball) Tick(tallies map[VoteID]float64, votes map[VoteID]*snowballVote) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -87,16 +66,16 @@ func (s *Snowball) Tick(tallies map[Identifiable]float64) {
 		return
 	}
 
-	var majority Identifiable = nil
+	var majority *snowballVote
 	var majorityTally float64 = 0
 
 	for id, tally := range tallies {
 		if tally > majorityTally {
-			majority, majorityTally = id, tally
+			majority, majorityTally = votes[id], tally
 		}
 	}
 
-	denom := float64(len(tallies))
+	denom := float64(len(votes))
 
 	if denom < 2 {
 		denom = 2
@@ -105,14 +84,14 @@ func (s *Snowball) Tick(tallies map[Identifiable]float64) {
 	if majority == nil || majorityTally < conf.GetSnowballAlpha()*2/denom {
 		s.count = 0
 	} else {
-		s.counts[majority.GetID()] += 1
+		s.counts[majority.id] += 1
 
-		if s.counts[majority.GetID()] > s.counts[s.preferredID] {
-			s.preferredID = majority.GetID()
+		if s.counts[majority.id] > s.counts[s.preferred.id] {
+			s.preferred = majority
 		}
 
-		if s.lastID == "" || majority.GetID() != s.lastID {
-			s.lastID, s.count = majority.GetID(), 1
+		if s.last == nil || majority.id != s.last.id {
+			s.last, s.count = majority, 1
 		} else {
 			s.count += 1
 
@@ -123,19 +102,15 @@ func (s *Snowball) Tick(tallies map[Identifiable]float64) {
 	}
 }
 
-func (s *Snowball) Prefer(v Identifiable) {
+func (s *Snowball) Prefer(b *snowballVote) {
 	s.Lock()
-	id := v.GetID()
-	if _, exists := s.candidates[id]; !exists {
-		s.candidates[id] = v
-	}
-	s.preferredID = id
+	s.preferred = b
 	s.Unlock()
 }
 
-func (s *Snowball) Preferred() Identifiable {
+func (s *Snowball) Preferred() *snowballVote {
 	s.RLock()
-	preferred := s.candidates[s.preferredID]
+	preferred := s.preferred
 	s.RUnlock()
 
 	return preferred
