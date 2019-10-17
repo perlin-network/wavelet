@@ -336,17 +336,17 @@ func (c *CollapseContext) StoreRewardWithdrawalRequest(rw RewardWithdrawalReques
 	c.rewardWithdrawalRequests = append(c.rewardWithdrawalRequests, rw)
 }
 
-func (c *CollapseContext) processRewardWithdrawals(round uint64) {
-	if round < uint64(sys.RewardWithdrawalsBlockLimit) {
+func (c *CollapseContext) processRewardWithdrawals(blockIndex uint64) {
+	if blockIndex < uint64(sys.RewardWithdrawalsBlockLimit) {
 		return
 	}
 
-	roundLimit := round - uint64(sys.RewardWithdrawalsBlockLimit)
+	blockLimit := blockIndex - uint64(sys.RewardWithdrawalsBlockLimit)
 
 	var leftovers []RewardWithdrawalRequest
 
 	for i, rw := range c.rewardWithdrawalRequests {
-		if c.rewardWithdrawalRequests[i].round > roundLimit {
+		if c.rewardWithdrawalRequests[i].round > blockLimit {
 			leftovers = append(leftovers, rw)
 			continue
 		}

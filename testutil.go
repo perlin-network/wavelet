@@ -552,7 +552,7 @@ package wavelet
 // 	keys := l.ledger.client.Keys()
 // 	tx := AttachSenderToTransaction(
 // 		keys,
-// 		NewTransaction(sys.TagNop, nil),
+// 		NewTransaction(sys.TagTransfer, nil),
 // 		l.ledger.Graph().FindEligibleParents()...)
 //
 // 	err := l.ledger.AddTransaction(tx)

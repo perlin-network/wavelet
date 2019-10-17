@@ -42,7 +42,7 @@ type Metrics struct {
 func NewMetrics(ctx context.Context) *Metrics {
 	registry := metrics.NewRegistry()
 
-	queried := metrics.NewRegisteredMeter("round.queried", registry)
+	queried := metrics.NewRegisteredMeter("blocks.queried", registry)
 
 	gossipedTX := metrics.NewRegisteredMeter("tx.gossiped", registry)
 	receivedTX := metrics.NewRegisteredMeter("tx.received", registry)
@@ -58,12 +58,12 @@ func NewMetrics(ctx context.Context) *Metrics {
 			select {
 			case <-time.After(1 * time.Second):
 				logger.Info().
-					Int64("round.queried", queried.Count()).
+					Int64("blocks.queried", queried.Count()).
 					Int64("tx.gossiped", gossipedTX.Count()).
 					Int64("tx.received", receivedTX.Count()).
 					Int64("tx.accepted", acceptedTX.Count()).
 					Int64("tx.downloaded", downloadedTX.Count()).
-					Float64("rps.queried", queried.RateMean()).
+					Float64("bps.queried", queried.RateMean()).
 					Float64("tps.gossiped", gossipedTX.RateMean()).
 					Float64("tps.received", receivedTX.RateMean()).
 					Float64("tps.accepted", acceptedTX.RateMean()).

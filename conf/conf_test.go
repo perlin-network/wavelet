@@ -49,7 +49,7 @@ func TestUpdate(t *testing.T) {
 		WithCheckOutOfSyncTimeout(time.Second*11),
 
 		WithSyncChunkSize(666),
-		WithSyncIfRoundsDifferBy(7),
+		WithSyncIfBlockIndicesDifferBy(7),
 		WithMaxDownloadDepthDiff(42),
 		WithMaxDepthDiff(4),
 		WithPruningLimit(13),

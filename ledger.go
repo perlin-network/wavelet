@@ -786,7 +786,7 @@ func (l *Ledger) SyncToLatestBlock() {
 			goto SYNC
 		}
 
-		req := &SyncRequest{Data: &SyncRequest_RoundId{RoundId: current.Index}}
+		req := &SyncRequest{Data: &SyncRequest_BlockId{BlockId: current.Index}}
 
 		type response struct {
 			header *SyncInfo
@@ -817,7 +817,7 @@ func (l *Ledger) SyncToLatestBlock() {
 				continue
 			}
 
-			latest, err := UnmarshalBlock(bytes.NewReader(header.LatestRound))
+			latest, err := UnmarshalBlock(bytes.NewReader(header.Block))
 			if err != nil {
 				continue
 			}

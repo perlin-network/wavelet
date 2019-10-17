@@ -149,8 +149,8 @@ Get Account Information
     ```json
     {
       "sender": "[hex-encoded sender ID, must be 32 bytes long]",
-      "tag": "[possible values: 0 = nop, 1 = transfer, 2 = contract, 3 = stake, 4 = batch",
-      "payload": "[hex-encoded payload, empty for nop]",
+      "tag": "[possible values: 0 = transfer, 1 = contract, 2 = stake, 3 = batch",
+      "payload": "[hex-encoded payload]",
       "signature": "[hex-encoded edwards25519 signature, which consists of private key, nonce, tag, and payload]"
     }
     ```

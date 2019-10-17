@@ -136,7 +136,7 @@ func (cli *CLI) pay(ctx *cli.Context) {
 	}
 
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		sys.TagTransfer, payload.Marshal(),
+		cli.keys, sys.TagTransfer, payload.Marshal(),
 	))
 
 	if err != nil {
@@ -265,7 +265,7 @@ func (cli *CLI) call(ctx *cli.Context) {
 	payload.FuncParams = params.Bytes()
 
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		sys.TagTransfer, payload.Marshal(),
+		cli.keys, sys.TagTransfer, payload.Marshal(),
 	))
 
 	if err != nil {
@@ -375,7 +375,7 @@ func (cli *CLI) spawn(ctx *cli.Context) {
 		Code:     code,
 	}
 
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(sys.TagContract, payload.Marshal()))
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagContract, payload.Marshal()))
 	if err != nil {
 		return
 	}
@@ -444,7 +444,7 @@ func (cli *CLI) depositGas(ctx *cli.Context) {
 	}
 
 	tx, err := cli.sendTransaction(
-		wavelet.NewTransaction(sys.TagTransfer, payload.Marshal()),
+		wavelet.NewTransaction(cli.keys, sys.TagTransfer, payload.Marshal()),
 	)
 
 	if err != nil {
@@ -477,7 +477,7 @@ func (cli *CLI) placeStake(ctx *cli.Context) {
 	}
 
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		sys.TagStake, payload.Marshal(),
+		cli.keys, sys.TagStake, payload.Marshal(),
 	))
 
 	if err != nil {
@@ -511,7 +511,7 @@ func (cli *CLI) withdrawStake(ctx *cli.Context) {
 	payload.Write(intBuf[:8])
 
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		sys.TagStake, payload.Bytes(),
+		cli.keys, sys.TagStake, payload.Bytes(),
 	))
 
 	if err != nil {
@@ -546,7 +546,7 @@ func (cli *CLI) withdrawReward(ctx *cli.Context) {
 	}
 
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		sys.TagStake, payload.Marshal(),
+		cli.keys, sys.TagStake, payload.Marshal(),
 	))
 
 	if err != nil {
@@ -627,15 +627,12 @@ func (cli *CLI) updateParameters(ctx *cli.Context) {
 		conf.WithFinalizationVoteThreshold(ctx.Float64("vote.finalization.threshold")),
 		conf.WithStakeMajorityWeight(ctx.Float64("vote.finalization.stake.weight")),
 		conf.WithTransactionsNumMajorityWeight(ctx.Float64("vote.finalization.transactions.weight")),
-		conf.WithRoundDepthMajorityWeight(ctx.Float64("vote.finalization.depth.weight")),
 		conf.WithQueryTimeout(ctx.Duration("query.timeout")),
 		conf.WithGossipTimeout(ctx.Duration("gossip.timeout")),
 		conf.WithDownloadTxTimeout(ctx.Duration("download.tx.timeout")),
 		conf.WithCheckOutOfSyncTimeout(ctx.Duration("check.out.of.sync.timeout")),
 		conf.WithSyncChunkSize(ctx.Int("sync.chunk.size")),
-		conf.WithSyncIfRoundsDifferBy(ctx.Uint64("sync.if.rounds.differ.by")),
-		conf.WithMaxDownloadDepthDiff(ctx.Uint64("max.download.depth.diff")),
-		conf.WithMaxDepthDiff(ctx.Uint64("max.depth.diff")),
+		conf.WithSyncIfBlockIndicesDifferBy(ctx.Uint64("sync.if.rounds.differ.by")),
 		conf.WithPruningLimit(uint8(ctx.Uint64("pruning.limit"))),
 		conf.WithSecret(ctx.String("api.secret")),
 	)
@@ -644,8 +641,6 @@ func (cli *CLI) updateParameters(ctx *cli.Context) {
 }
 
 func (cli *CLI) sendTransaction(tx wavelet.Transaction) (wavelet.Transaction, error) {
-	tx = wavelet.AttachSenderToTransaction(cli.keys, tx)
-
 	if err := cli.ledger.AddTransaction(tx); err != nil {
 		cli.logger.
 			Err(err).

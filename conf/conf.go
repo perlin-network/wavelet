@@ -158,7 +158,7 @@ func WithSyncChunkSize(cs int) Option {
 	}
 }
 
-func WithSyncIfRoundsDifferBy(rdb uint64) Option {
+func WithSyncIfBlockIndicesDifferBy(rdb uint64) Option {
 	return func(c *config) {
 		c.syncIfBlockIndicesDifferBy = rdb
 	}
