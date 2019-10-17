@@ -32,7 +32,6 @@ import (
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
-	"github.com/pkg/errors"
 	"github.com/urfave/cli"
 )
 
@@ -40,7 +39,7 @@ func (cli *CLI) status(ctx *cli.Context) {
 	preferredID := "N/A"
 
 	if preferred := cli.ledger.Finalizer().Preferred(); preferred != nil {
-		preferredID = hex.EncodeToString(preferred.(*wavelet.Round).ID[:])
+		preferredID = hex.EncodeToString(preferred.(*wavelet.Block).ID[:])
 	}
 
 	count := cli.ledger.Finalizer().Progress()
@@ -55,8 +54,7 @@ func (cli *CLI) status(ctx *cli.Context) {
 	reward, _ := wavelet.ReadAccountReward(snapshot, publicKey)
 	nonce, _ := wavelet.ReadAccountNonce(snapshot, publicKey)
 
-	round := cli.ledger.Rounds().Latest()
-	rootDepth := cli.ledger.Graph().RootDepth()
+	round := cli.ledger.Blocks().Latest()
 
 	peers := cli.client.ClosestPeerIDs()
 	peerIDs := make([]string, 0, len(peers))
@@ -66,22 +64,16 @@ func (cli *CLI) status(ctx *cli.Context) {
 	}
 
 	cli.logger.Info().
-		Uint8("difficulty", round.ExpectedDifficulty(
-			sys.MinDifficulty, sys.DifficultyScaleFactor,
-		)).
-		Uint64("round", round.Index).
-		Hex("root_id", round.End.ID[:]).
-		Uint64("height", cli.ledger.Graph().Height()).
-		Str("id", hex.EncodeToString(publicKey[:])).
+		Uint64("block_index", round.Index).
+		Hex("block_id", round.ID[:]).
+		Str("user_id", hex.EncodeToString(publicKey[:])).
 		Uint64("balance", balance).
 		Uint64("stake", stake).
 		Uint64("reward", reward).
 		Uint64("nonce", nonce).
 		Strs("peers", peerIDs).
-		Int("num_tx", cli.ledger.Graph().DepthLen(&rootDepth, nil)).
-		Int("num_missing_tx", cli.ledger.Graph().MissingLen()).
-		Int("num_tx_in_store", cli.ledger.Graph().Len()).
-		Int("num_incomplete_tx", cli.ledger.Graph().IncompleteLen()).
+		Int("num_tx", cli.ledger.Mempool().PendingLen()).
+		Int("num_tx_in_store", cli.ledger.Mempool().Len()).
 		Uint64("num_accounts_in_store", accountsLen).
 		Str("preferred_id", preferredID).
 		Str("sync_status", cli.ledger.SyncStatus()).
@@ -339,22 +331,13 @@ func (cli *CLI) find(ctx *cli.Context) {
 	var txID wavelet.TransactionID
 	copy(txID[:], buf)
 
-	tx := cli.ledger.Graph().FindTransaction(txID)
+	tx := cli.ledger.Mempool().Find(txID)
 
 	if tx != nil {
-		var parents []string
-		for _, parentID := range tx.ParentIDs {
-			parents = append(parents, hex.EncodeToString(parentID[:]))
-		}
-
 		cli.logger.Info().
-			Strs("parents", parents).
 			Hex("sender", tx.Sender[:]).
 			Uint64("nonce", tx.Nonce).
 			Uint8("tag", byte(tx.Tag)).
-			Uint64("depth", tx.Depth).
-			Hex("seed", tx.Seed[:]).
-			Uint8("seed_zero_prefix_len", tx.SeedLen).
 			Msgf("Transaction: %s", cmd[0])
 
 		return
@@ -661,19 +644,15 @@ func (cli *CLI) updateParameters(ctx *cli.Context) {
 }
 
 func (cli *CLI) sendTransaction(tx wavelet.Transaction) (wavelet.Transaction, error) {
-	tx = wavelet.AttachSenderToTransaction(
-		cli.keys, tx, cli.ledger.Graph().FindEligibleParents()...,
-	)
+	tx = wavelet.AttachSenderToTransaction(cli.keys, tx)
 
 	if err := cli.ledger.AddTransaction(tx); err != nil {
-		if errors.Cause(err) != wavelet.ErrMissingParents {
-			cli.logger.
-				Err(err).
-				Hex("tx_id", tx.ID[:]).
-				Msg("Failed to create your transaction.")
+		cli.logger.
+			Err(err).
+			Hex("tx_id", tx.ID[:]).
+			Msg("Failed to create your transaction.")
 
-			return tx, err
-		}
+		return tx, err
 	}
 
 	return tx, nil

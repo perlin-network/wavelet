@@ -1295,9 +1295,13 @@ func (l *Ledger) setSync(flag bitset) {
 }
 
 func (l *Ledger) LastBlockID() BlockID {
-	return l.LastBlockID()
+	return l.Blocks().Latest().ID
 }
 
 func (l *Ledger) LastBlockIndex() uint64 {
-	return l.LastBlockIndex()
+	return l.Blocks().Latest().Index
+}
+
+func (l *Ledger) Mempool() *Mempool {
+	return l.mempool
 }
