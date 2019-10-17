@@ -480,6 +480,13 @@ func (l *Ledger) proposeBlock() *Block {
 		return true
 	})
 
+	if len(proposing) == 0 {
+		return nil
+	}
+
+	// TODO(kenta): derive the merkle root after applying all transactions to be proposed in the block, and incorporate
+	//	the merkle root into NewBlock()
+
 	proposed := NewBlock(l.blocks.Latest().Index+1, proposing...)
 	return &proposed
 }
@@ -544,7 +551,7 @@ func (l *Ledger) query() {
 						return
 					}
 
-					if block.ID == ZeroRoundID {
+					if block.ID == ZeroBlockID {
 						voteChan <- finalizationVote{voter: voter, block: nil}
 						return
 					}
@@ -696,7 +703,7 @@ func (l *Ledger) SyncToLatestRound() {
 				continue
 			}
 
-			current := l.rounds.Latest()
+			current := l.blocks.Latest()
 
 			var wg sync.WaitGroup
 			wg.Add(len(conns))
@@ -753,7 +760,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 		// Reset syncing Snowball sampler. Check if it is a false alarm such that we don't have to sync.
 
-		current := l.rounds.Latest()
+		current := l.blocks.Latest()
 		preferred := l.syncer.Preferred()
 
 		oos := preferred.(*outOfSyncVote).outOfSync
@@ -818,7 +825,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 		type response struct {
 			header *SyncInfo
-			latest Round
+			latest Block
 			stream Wavelet_SyncClient
 		}
 
@@ -845,7 +852,7 @@ func (l *Ledger) SyncToLatestRound() {
 				continue
 			}
 
-			latest, err := UnmarshalRound(bytes.NewReader(header.LatestRound))
+			latest, err := UnmarshalBlock(bytes.NewReader(header.LatestRound))
 			if err != nil {
 				continue
 			}
@@ -877,7 +884,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 		// Select a round to sync to which the majority of peers are on.
 
-		var latest *Round
+		var latest *Block
 		var majority []response
 
 		for _, votes := range set {
@@ -898,9 +905,9 @@ func (l *Ledger) SyncToLatestRound() {
 		}
 
 		logger.Debug().
-			Uint64("latest_round", latest.Index).
-			Hex("latest_round_root", latest.End.ID[:]).
-			Msg("Discovered the round which the majority of our peers are currently in.")
+			Uint64("block_id", latest.Index).
+			Hex("merkle_root", latest.Merkle[:]).
+			Msg("Discovered the latest block the majority of our peers ar eon.")
 
 		type source struct {
 			idx      int
@@ -1106,7 +1113,7 @@ func (l *Ledger) SyncToLatestRound() {
 		snapshot := l.accounts.Snapshot()
 		if err := snapshot.ApplyDiff(diffBuffer); err != nil {
 			logger.Error().
-				Uint64("target_round", latest.Index).
+				Uint64("target_block_id", latest.Index).
 				Err(err).
 				Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
 
@@ -1116,7 +1123,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 		if checksum := snapshot.Checksum(); checksum != latest.Merkle {
 			logger.Error().
-				Uint64("target_round", latest.Index).
+				Uint64("target_block_id", latest.Index).
 				Hex("expected_merkle_root", latest.Merkle[:]).
 				Hex("yielded_merkle_root", checksum[:]).
 				Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
@@ -1125,29 +1132,19 @@ func (l *Ledger) SyncToLatestRound() {
 			goto SYNC
 		}
 
-		pruned, err := l.rounds.Save(latest)
+		pruned, err := l.blocks.Save(latest)
 		if err != nil {
 			logger.Error().
 				Err(err).
-				Msg("Failed to save finalized round to our database")
+				Msg("Failed to save finalized block to our database")
 
 			cleanup()
 			goto SYNC
 		}
 
 		if pruned != nil {
-			count := l.graph.PruneBelowDepth(pruned.End.Depth)
-			l.mempool.Prune()
-
-			logger := log.Consensus("prune")
-			logger.Debug().
-				Int("num_tx", count).
-				Uint64("current_round_id", latest.Index).
-				Uint64("pruned_round_id", pruned.Index).
-				Msg("Pruned away round and transactions.")
+			// TODO(kenta): prune away mempool transactions that are too stale.
 		}
-
-		l.graph.UpdateRoot(latest.End)
 
 		if err := l.accounts.Commit(snapshot); err != nil {
 			cleanup()
@@ -1158,15 +1155,13 @@ func (l *Ledger) SyncToLatestRound() {
 		logger = log.Sync("apply")
 		logger.Info().
 			Int("num_chunks", len(sources)).
-			Uint64("old_round", current.Index).
-			Uint64("new_round", latest.Index).
-			Uint8("old_difficulty", current.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-			Uint8("new_difficulty", latest.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-			Hex("new_root", latest.End.ID[:]).
-			Hex("old_root", current.End.ID[:]).
+			Uint64("old_block_index", current.Index).
+			Uint64("new_block_index", latest.Index).
+			Hex("new_block_id", latest.ID[:]).
+			Hex("old_block_id", current.ID[:]).
 			Hex("new_merkle_root", latest.Merkle[:]).
 			Hex("old_merkle_root", current.Merkle[:]).
-			Msg("Successfully built a new state Snapshot out of chunk(s) we have received from peers.")
+			Msg("Successfully built a new state snapshot out of chunk(s) we have received from peers.")
 
 		cleanup()
 		restart()

@@ -11,13 +11,14 @@ import (
 
 type Block struct {
 	Index        uint64
+	Merkle       MerkleNodeID
 	Transactions []TransactionID
 
 	ID BlockID
 }
 
-func NewBlock(index uint64, transactions ...TransactionID) Block {
-	b := Block{Index: index, Transactions: transactions}
+func NewBlock(index uint64, merkle MerkleNodeID, transactions ...TransactionID) Block {
+	b := Block{Index: index, Merkle: merkle, Transactions: transactions}
 	b.ID = blake2b.Sum256(b.Marshal())
 
 	return b
@@ -32,12 +33,15 @@ func (b *Block) GetID() string {
 }
 
 func (b Block) Marshal() []byte {
-	buf := make([]byte, 8+4+len(b.Transactions)*SizeTransactionID)
+	buf := make([]byte, 8+SizeMerkleNodeID+4+len(b.Transactions)*SizeTransactionID)
 	binary.BigEndian.PutUint64(buf[:8], b.Index)
-	binary.BigEndian.PutUint32(buf[8:8+4], uint32(len(b.Transactions)))
+
+	copy(buf[8:8+SizeMerkleNodeID], b.Merkle[:])
+
+	binary.BigEndian.PutUint32(buf[8+SizeMerkleNodeID:8+SizeMerkleNodeID+4], uint32(len(b.Transactions)))
 
 	for i, id := range b.Transactions {
-		copy(buf[8+4+SizeTransactionID*i:8+4+SizeTransactionID*(i+1)], id[:])
+		copy(buf[8+SizeMerkleNodeID+4+SizeTransactionID*i:8+4+SizeTransactionID*(i+1)], id[:])
 	}
 
 	return buf
@@ -56,15 +60,19 @@ func UnmarshalBlock(r io.Reader) (block Block, err error) {
 	}
 	block.Index = binary.BigEndian.Uint64(buf[:8])
 
+	if _, err = io.ReadFull(r, block.Merkle[:]); err != nil {
+		err = errors.Wrap(err, "failed to decode block's merkle root")
+		return
+	}
+
 	if _, err = io.ReadFull(r, buf[:4]); err != nil {
 		err = errors.Wrap(err, "failed to decode block's transactions length")
 		return
 	}
-	txLen := binary.BigEndian.Uint32(buf[:4])
 
-	block.Transactions = make([]TransactionID, txLen)
+	block.Transactions = make([]TransactionID, binary.BigEndian.Uint32(buf[:4]))
 
-	for i := uint32(0); i < txLen; i++ {
+	for i := 0; i < len(block.Transactions); i++ {
 		if _, err = io.ReadFull(r, block.Transactions[i][:]); err != nil {
 			err = errors.Wrap(err, "failed to decode one of the transactions")
 			return

@@ -340,11 +340,11 @@ func (c *CollapseContext) StoreRewardWithdrawalRequest(rw RewardWithdrawalReques
 }
 
 func (c *CollapseContext) processRewardWithdrawals(round uint64) {
-	if round < uint64(sys.RewardWithdrawalsRoundLimit) {
+	if round < uint64(sys.RewardWithdrawalsBlockLimit) {
 		return
 	}
 
-	roundLimit := round - uint64(sys.RewardWithdrawalsRoundLimit)
+	roundLimit := round - uint64(sys.RewardWithdrawalsBlockLimit)
 
 	var leftovers []RewardWithdrawalRequest
 

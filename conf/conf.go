@@ -31,7 +31,7 @@ type config struct {
 	syncChunkSize int
 
 	// Number of rounds we should be behind before we start syncing.
-	syncIfRoundsDifferBy uint64
+	syncIfBlockIndicesDifferBy uint64
 
 	// Bloom filter parameters
 	bloomFilterM uint
@@ -71,12 +71,12 @@ func defaultConfig() config {
 		transactionsNumMajorityWeight: 0.3,
 		roundDepthMajorityWeight:      0.3,
 
-		queryTimeout:          5000 * time.Millisecond,
-		gossipTimeout:         5000 * time.Millisecond,
-		downloadTxTimeout:     30 * time.Second,
-		checkOutOfSyncTimeout: 5000 * time.Millisecond,
-		syncChunkSize:         16384,
-		syncIfRoundsDifferBy:  2,
+		queryTimeout:               5000 * time.Millisecond,
+		gossipTimeout:              5000 * time.Millisecond,
+		downloadTxTimeout:          30 * time.Second,
+		checkOutOfSyncTimeout:      5000 * time.Millisecond,
+		syncChunkSize:              16384,
+		syncIfBlockIndicesDifferBy: 2,
 
 		bloomFilterM: 1024,
 		bloomFilterK: 5,
@@ -178,7 +178,7 @@ func WithSyncChunkSize(cs int) Option {
 
 func WithSyncIfRoundsDifferBy(rdb uint64) Option {
 	return func(c *config) {
-		c.syncIfRoundsDifferBy = rdb
+		c.syncIfBlockIndicesDifferBy = rdb
 	}
 }
 
@@ -322,9 +322,9 @@ func GetSyncChunkSize() int {
 	return t
 }
 
-func GetSyncIfRoundsDifferBy() uint64 {
+func GetSyncIfBlockIndicesDifferBy() uint64 {
 	l.RLock()
-	t := c.syncIfRoundsDifferBy
+	t := c.syncIfBlockIndicesDifferBy
 	l.RUnlock()
 
 	return t

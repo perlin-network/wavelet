@@ -60,7 +60,7 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 	}
 
 	res := &SyncResponse{}
-	header := &SyncInfo{LatestRound: p.ledger.rounds.Latest().Marshal()}
+	header := &SyncInfo{LatestRound: p.ledger.blocks.Latest().Marshal()}
 
 	diffBuffer := p.ledger.fileBuffers.GetUnbounded()
 	defer p.ledger.fileBuffers.Put(diffBuffer)
@@ -154,7 +154,7 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 
 func (p *Protocol) CheckOutOfSync(ctx context.Context, req *OutOfSyncRequest) (*OutOfSyncResponse, error) {
 	return &OutOfSyncResponse{
-		OutOfSync: p.ledger.rounds.Latest().Index >= conf.GetSyncIfRoundsDifferBy()+req.RoundIndex,
+		OutOfSync: p.ledger.blocks.Latest().Index >= conf.GetSyncIfBlockIndicesDifferBy()+req.RoundIndex,
 	}, nil
 }
 
@@ -167,7 +167,7 @@ func (p *Protocol) DownloadMissingTx(ctx context.Context, req *DownloadMissingTx
 	if _, err := existing.ReadFrom(bytes.NewReader(req.TransactionIds)); err != nil {
 		return nil, err
 	}
-	
+
 	p.ledger.mempool.Ascend(func(tx Transaction) bool {
 		// Add tx not in the bloom filter
 		if !existing.Test(tx.ID[:]) {

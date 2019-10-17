@@ -13,11 +13,11 @@ func BenchmarkRehashNoWrite(b *testing.B) {
 
 	tree := New(kv)
 
-	var key [32] byte
+	var key [32]byte
 	_, err := rand.Read(key[:])
 	assert.NoError(b, err)
 
-	var val [64] byte
+	var val [64]byte
 	_, err = rand.Read(val[:])
 	assert.NoError(b, err)
 

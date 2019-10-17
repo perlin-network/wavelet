@@ -60,8 +60,8 @@ var (
 	// Timeout for querying a transaction to K peers.
 	QueryTimeout = 1 * time.Second
 
-	// Number of rounds we should be behind before we start syncing.
-	SyncIfRoundsDifferBy uint64 = 2
+	// Number of blocks we should be behind before we start syncing.
+	SyncIfBlockIndicesDifferBy uint64 = 2
 
 	// Max graph depth difference to search for eligible transaction
 	// parents from for our node.
@@ -90,7 +90,7 @@ var (
 
 	MinimumRewardWithdraw = MinimumStake
 
-	RewardWithdrawalsRoundLimit = 50
+	RewardWithdrawalsBlockLimit = 50
 
 	FaucetAddress = "0f569c84d434fb0ca682c733176f7c0c2d853fce04d95ae131d2f9b4124d93d8"
 
@@ -292,8 +292,8 @@ var (
 
 func init() {
 	switch VersionMeta {
-		case "testnet":
-			MinimumStake = 10000
+	case "testnet":
+		MinimumStake = 10000
 	}
 }
 

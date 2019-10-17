@@ -239,7 +239,7 @@ func NewCLI(
 				},
 				cli.Uint64Flag{
 					Name:  "sync.if.rounds.differ.by",
-					Value: conf.GetSyncIfRoundsDifferBy(),
+					Value: conf.GetSyncIfBlockIndicesDifferBy(),
 					Usage: "difference in rounds between nodes which initiates state syncing",
 				},
 				cli.Uint64Flag{

@@ -341,7 +341,7 @@ func TestLedger_Sync(t *testing.T) {
 	testnet.WaitForSync(t)
 
 	// Advance the network by a few rounds larger than sys.SyncIfRoundsDifferBy
-	for i := 0; i < int(conf.GetSyncIfRoundsDifferBy())+1; i++ {
+	for i := 0; i < int(conf.GetSyncIfBlockIndicesDifferBy())+1; i++ {
 		assert.NoError(t, txError(alice.PlaceStake(1)))
 		alice.WaitUntilConsensus(t)
 	}

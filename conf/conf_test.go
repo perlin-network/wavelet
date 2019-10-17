@@ -23,7 +23,7 @@ func TestGet(t *testing.T) {
 	assert.EqualValues(t, 5000*time.Millisecond, GetCheckOutOfSyncTimeout())
 
 	assert.EqualValues(t, 16384, GetSyncChunkSize())
-	assert.EqualValues(t, 2, GetSyncIfRoundsDifferBy())
+	assert.EqualValues(t, 2, GetSyncIfBlockIndicesDifferBy())
 	assert.EqualValues(t, 1500, GetMaxDownloadDepthDiff())
 	assert.EqualValues(t, 10, GetMaxDepthDiff())
 	assert.EqualValues(t, 30, GetPruningLimit())
@@ -71,7 +71,7 @@ func TestUpdate(t *testing.T) {
 	assert.EqualValues(t, 11*time.Second, GetCheckOutOfSyncTimeout())
 
 	assert.EqualValues(t, 666, GetSyncChunkSize())
-	assert.EqualValues(t, 7, GetSyncIfRoundsDifferBy())
+	assert.EqualValues(t, 7, GetSyncIfBlockIndicesDifferBy())
 	assert.EqualValues(t, 42, GetMaxDownloadDepthDiff())
 	assert.EqualValues(t, 4, GetMaxDepthDiff())
 	assert.EqualValues(t, 13, GetPruningLimit())
