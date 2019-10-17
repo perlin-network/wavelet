@@ -23,8 +23,6 @@ import (
 	"sync"
 
 	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/wavelet/conf"
-	"github.com/perlin-network/wavelet/sys"
 )
 
 type syncVote struct {
@@ -39,7 +37,7 @@ type finalizationVote struct {
 
 func CollectVotesForSync(
 	accounts *Accounts,
-	snowball *Snowball,
+	snowball *OutOfSyncSnowball,
 	voteChan <-chan syncVote,
 	wg *sync.WaitGroup,
 	snowballK int,
@@ -56,44 +54,35 @@ func CollectVotesForSync(
 		votes = append(votes, vote)
 
 		if len(votes) == cap(votes) {
-			snapshot := accounts.Snapshot()
 
-			stakes := make(map[AccountID]float64, len(votes))
-			maxStake := float64(0)
+			//snapshot := accounts.Snapshot()
 
-			for _, vote := range votes {
-				s, _ := ReadAccountStake(snapshot, vote.voter.PublicKey())
-
-				if s < sys.MinimumStake {
-					s = sys.MinimumStake
-				}
-
-				stake := float64(s)
-				stakes[vote.voter.PublicKey()] = stake
-
-				if maxStake < stake {
-					maxStake = stake
-				}
-			}
-
-			votesStakesPercentages := make(map[bool]float64, len(votes))
-			totalStakePercentages := float64(0)
+			tallies := make(map[bool]float64)
+			blocks := make(map[bool]*outOfSyncVote)
 
 			for _, vote := range votes {
-				percent := stakes[vote.voter.PublicKey()] / maxStake
-				votesStakesPercentages[vote.outOfSync] += percent
-				totalStakePercentages += percent
-			}
-
-			var majority Identifiable
-			for _, vote := range votes {
-				if votesStakesPercentages[vote.outOfSync]/totalStakePercentages >= conf.GetSyncVoteThreshold() {
-					majority = &outOfSyncVote{outOfSync: vote.outOfSync}
-					break
+				if _, exists := blocks[vote.outOfSync]; !exists {
+					blocks[vote.outOfSync] = &outOfSyncVote{outOfSync: vote.outOfSync}
 				}
+
+				tallies[vote.outOfSync] += 1.0 / float64(len(votes))
 			}
 
-			snowball.Tick(majority)
+			stakeWeights := snowball.Normalize(snowball.ComputeStakeWeights(accounts, votes))
+			for block, weight := range stakeWeights {
+				tallies[block] *= weight
+			}
+
+			totalTally := float64(0)
+			for _, tally := range tallies {
+				totalTally += tally
+			}
+
+			for block := range tallies {
+				tallies[block] /= totalTally
+			}
+
+			snowball.Tick(tallies, blocks)
 
 			voters = make(map[AccountID]struct{}, snowballK)
 			votes = votes[:0]
@@ -105,7 +94,7 @@ func CollectVotesForSync(
 	}
 }
 
-func TickForFinalization(accounts *Accounts, snowball *Snowball, votes []finalizationVote) {
+func TickForFinalization(accounts *Accounts, snowball *BlockSnowball, votes []finalizationVote) {
 	tallies := make(map[BlockID]float64)
 	blocks := make(map[BlockID]*Block)
 
@@ -121,11 +110,11 @@ func TickForFinalization(accounts *Accounts, snowball *Snowball, votes []finaliz
 		tallies[vote.block.ID] += 1.0 / float64(len(votes))
 	}
 
-	for block, weight := range Normalize(ComputeProfitWeights(votes)) {
+	for block, weight := range snowball.Normalize(snowball.ComputeProfitWeights(votes)) {
 		tallies[block] *= weight
 	}
 
-	stakeWeights := Normalize(ComputeStakeWeights(accounts, votes))
+	stakeWeights := snowball.Normalize(snowball.ComputeStakeWeights(accounts, votes))
 	for block, weight := range stakeWeights {
 		tallies[block] *= weight
 	}
@@ -139,98 +128,5 @@ func TickForFinalization(accounts *Accounts, snowball *Snowball, votes []finaliz
 		tallies[block] /= totalTally
 	}
 
-	snowballTallies := make(map[Identifiable]float64, len(blocks))
-	for _, block := range blocks {
-		snowballTallies[block] = tallies[block.ID]
-	}
-
-	snowball.Tick(snowballTallies)
-}
-
-func ComputeProfitWeights(responses []finalizationVote) map[BlockID]float64 {
-	weights := make(map[BlockID]float64)
-
-	var max float64
-
-	for _, res := range responses {
-		if res.block == nil {
-			continue
-		}
-
-		weights[res.block.ID] += float64(len(res.block.Transactions))
-
-		if weights[res.block.ID] > max {
-			max = weights[res.block.ID]
-		}
-	}
-
-	for id := range weights {
-		weights[id] /= max
-	}
-
-	return weights
-}
-
-func ComputeStakeWeights(accounts *Accounts, responses []finalizationVote) map[BlockID]float64 {
-	weights := make(map[BlockID]float64)
-
-	var max float64
-
-	snapshot := accounts.Snapshot()
-
-	for _, res := range responses {
-		if res.block == nil {
-			continue
-		}
-
-		stake, _ := ReadAccountStake(snapshot, res.voter.PublicKey())
-
-		if stake < sys.MinimumStake {
-			weights[res.block.ID] += float64(sys.MinimumStake)
-		} else {
-			weights[res.block.ID] += float64(stake)
-		}
-
-		if weights[res.block.ID] > max {
-			max = weights[res.block.ID]
-		}
-	}
-
-	for id := range weights {
-		weights[id] /= max
-	}
-
-	return weights
-}
-
-func Normalize(weights map[BlockID]float64) map[BlockID]float64 {
-	normalized := make(map[BlockID]float64, len(weights))
-	min, max := float64(1), float64(0)
-
-	// Find minimum weight.
-	for _, weight := range weights {
-		if min > weight {
-			min = weight
-		}
-	}
-
-	// Subtract minimum and find maximum normalized weight.
-	for block, weight := range weights {
-		normalized[block] = weight - min
-
-		if normalized[block] > max {
-			max = normalized[block]
-		}
-	}
-
-	// Normalize weight using maximum normalized weight into range [0, 1].
-	for block := range weights {
-		if max == 0 {
-			normalized[block] = 1
-		} else {
-			normalized[block] /= max
-		}
-	}
-
-	return normalized
+	snowball.Tick(tallies, blocks)
 }

@@ -73,8 +73,8 @@ type Ledger struct {
 
 	mempool *Mempool
 
-	finalizer *Snowball
-	syncer    *Snowball
+	finalizer *BlockSnowball
+	syncer    *OutOfSyncSnowball
 
 	consensus sync.WaitGroup
 
@@ -159,8 +159,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		logger.Fatal().Err(err).Msg("BUG: COULD NOT FIND GENESIS, OR STORAGE IS CORRUPTED.")
 	}
 
-	finalizer := NewSnowball(WithName("finalizer"))
-	syncer := NewSnowball(WithName("syncer"))
+	finalizer := NewBlockSnowball()
+	syncer := NewOutOfSyncSnowball()
 
 	ledger := &Ledger{
 		client:  client,
@@ -327,7 +327,7 @@ func (l *Ledger) Protocol() *Protocol {
 
 // Finalizer returns the Snowball finalizer which finalizes the contents of individual
 // blocks.
-func (l *Ledger) Finalizer() *Snowball {
+func (l *Ledger) Finalizer() *BlockSnowball {
 	return l.finalizer
 }
 
@@ -457,7 +457,7 @@ func (l *Ledger) FinalizeBlocks() {
 			l.finalizer.Prefer(l.proposeBlock())
 		} else {
 			if decided {
-				l.finalize(*preferred.(*Block))
+				l.finalize(*preferred)
 			} else {
 				l.query()
 			}
@@ -728,7 +728,7 @@ func (l *Ledger) SyncToLatestBlock() {
 		current := l.blocks.Latest()
 		preferred := l.syncer.Preferred()
 
-		oos := preferred.(*outOfSyncVote).outOfSync
+		oos := preferred.outOfSync
 		if !oos {
 			l.applySync(synced)
 			l.syncer.Reset()
