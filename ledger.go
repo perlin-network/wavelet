@@ -480,7 +480,7 @@ func (l *Ledger) proposeBlock() *Block {
 		return true
 	})
 
-	proposed := NewBlock(l.blocks.Latest().Index+1, proposing...)
+	proposed := NewBlock(l.blocks.Latest().Index+1, proposing)
 	return &proposed
 }
 

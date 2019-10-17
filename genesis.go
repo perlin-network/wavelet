@@ -179,5 +179,5 @@ func performInception(tree *avl.Tree, genesis *string) Block {
 	tx := Transaction{}
 	tx.rehash()
 
-	return NewBlock(0, []BlockID{}...)
+	return NewBlock(0, []BlockID{})
 }
