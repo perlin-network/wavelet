@@ -178,24 +178,6 @@ func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, er
 
 	o.Set("tx_id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
 
-	if s.tx.ParentIDs != nil {
-		parents := arena.NewArray()
-		for i, parentID := range s.tx.ParentIDs {
-			parents.SetArrayItem(i, arena.NewString(hex.EncodeToString(parentID[:])))
-		}
-		o.Set("parent_ids", parents)
-	} else {
-		o.Set("parent_ids", nil)
-	}
-
-	round := s.ledger.Rounds().Latest()
-
-	if s.tx.IsCritical(round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)) {
-		o.Set("is_critical", arena.NewTrue())
-	} else {
-		o.Set("is_critical", arena.NewFalse())
-	}
-
 	return o.MarshalTo(nil), nil
 }
 
@@ -213,7 +195,7 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 	}
 
 	snapshot := s.ledger.Snapshot()
-	round := s.ledger.Rounds().Latest()
+	block := s.ledger.Blocks().Latest()
 
 	accountsLen := wavelet.ReadAccountsLen(snapshot)
 
@@ -224,14 +206,11 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 	o.Set("num_accounts", arena.NewNumberString(strconv.FormatUint(accountsLen, 10)))
 
 	r := arena.NewObject()
-	r.Set("merkle_root", arena.NewString(hex.EncodeToString(round.Merkle[:])))
-	r.Set("start_id", arena.NewString(hex.EncodeToString(round.Start.ID[:])))
-	r.Set("end_id", arena.NewString(hex.EncodeToString(round.End.ID[:])))
-	r.Set("transactions", arena.NewNumberString(strconv.FormatUint(uint64(round.Transactions), 10)))
-	r.Set("depth", arena.NewNumberString(strconv.FormatUint(round.End.Depth-round.Start.Depth, 10)))
-	r.Set("difficulty", arena.NewNumberString(strconv.FormatUint(uint64(round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)), 10)))
+	r.Set("merkle_root", arena.NewString(hex.EncodeToString(block.Merkle[:])))
+	r.Set("block_id", arena.NewString(hex.EncodeToString(block.ID[:])))
+	r.Set("transactions", arena.NewNumberString(strconv.FormatUint(uint64(len(block.Transactions)), 10)))
 
-	o.Set("round", r)
+	o.Set("block", r)
 
 	peers := s.client.ClosestPeerIDs()
 	if len(peers) > 0 {
@@ -280,20 +259,9 @@ func (s *transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 	o.Set("sender", arena.NewString(hex.EncodeToString(s.tx.Sender[:])))
 	o.Set("status", arena.NewString(s.status))
 	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(s.tx.Nonce, 10)))
-	o.Set("depth", arena.NewNumberString(strconv.FormatUint(s.tx.Depth, 10)))
 	o.Set("tag", arena.NewNumberInt(int(s.tx.Tag)))
 	o.Set("payload", arena.NewString(base64.StdEncoding.EncodeToString(s.tx.Payload)))
 	o.Set("signature", arena.NewString(hex.EncodeToString(s.tx.Signature[:])))
-
-	if s.tx.ParentIDs != nil {
-		parents := arena.NewArray()
-		for i := range s.tx.ParentIDs {
-			parents.SetArrayItem(i, arena.NewString(hex.EncodeToString(s.tx.ParentIDs[i][:])))
-		}
-		o.Set("parents", parents)
-	} else {
-		o.Set("parents", nil)
-	}
 
 	return o, nil
 }
