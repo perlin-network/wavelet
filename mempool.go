@@ -10,15 +10,15 @@ import (
 	"github.com/willf/bloom"
 )
 
-var _ btree.Item = (*MempoolItem)(nil)
+var _ btree.Item = (*mempoolItem)(nil)
 
-type MempoolItem struct {
+type mempoolItem struct {
 	index *big.Int
 	id    TransactionID
 }
 
-func (m MempoolItem) Less(than btree.Item) bool {
-	return m.index.Cmp(than.(MempoolItem).index) < 0
+func (m mempoolItem) Less(than btree.Item) bool {
+	return m.index.Cmp(than.(mempoolItem).index) < 0
 }
 
 type Mempool struct {
@@ -80,7 +80,7 @@ func (m *Mempool) Add(blockID BlockID, txs ...Transaction) {
 		m.transactions[tx.ID] = &tx
 		m.filter.Add(tx.ID[:])
 
-		item := MempoolItem{
+		item := mempoolItem{
 			index: tx.ComputeIndex(blockID),
 			id:    tx.ID,
 		}
@@ -90,35 +90,33 @@ func (m *Mempool) Add(blockID BlockID, txs ...Transaction) {
 	m.lock.Unlock()
 }
 
-// TODO find a better name or a better way to implement this ?
-func (m *Mempool) ReadLock(f func(transactions map[TransactionID]*Transaction)) {
-	m.lock.RLock()
-
-	f(m.transactions)
-
-	m.lock.RUnlock()
-}
-
-func (m *Mempool) WriteBloomFilter(w io.Writer) (int64, error) {
+// WriteTransactionIDs writes the marshaled bloom filter onto
+// the specified io.Writer.
+func (m *Mempool) WriteTransactionIDs(w io.Writer) (int64, error) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 
 	return m.filter.WriteTo(w)
 }
 
+// Ascend iterates through the mempool in ascending order.
+// It stops iterating when the iterator function returns false.
 func (m *Mempool) Ascend(iter func(tx Transaction) bool) {
 	m.lock.RLock()
 	m.index.Ascend(func(i btree.Item) bool {
-		id := i.(MempoolItem).id
+		id := i.(mempoolItem).id
 		return iter(*m.transactions[id])
 	})
 	m.lock.RUnlock()
 }
 
+// Ascend iterates through the mempool in ascending order, starting from
+// index 0 up to maxIndex. It stops iterating when the iterator function
+// returns false.
 func (m *Mempool) AscendLessThan(maxIndex *big.Int, iter func(tx Transaction) bool) {
 	m.lock.RLock()
-	m.index.AscendLessThan(MempoolItem{index: maxIndex}, func(i btree.Item) bool {
-		id := i.(MempoolItem).id
+	m.index.AscendLessThan(mempoolItem{index: maxIndex}, func(i btree.Item) bool {
+		id := i.(mempoolItem).id
 		return iter(*m.transactions[id])
 	})
 	m.lock.RUnlock()
@@ -135,7 +133,7 @@ func (m *Mempool) Prune(block Block) int {
 	for _, txID := range block.Transactions {
 		if _, ok := m.transactions[txID]; ok {
 			delete(m.transactions, txID)
-			m.index.Delete(MempoolItem{id: txID})
+			m.index.Delete(mempoolItem{id: txID})
 			pruned++
 		}
 	}
