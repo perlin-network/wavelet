@@ -204,70 +204,50 @@ func CollectVotesForSync(
 //	}
 //}
 
-func CollectVotesForFinalization(
+func TickForFinalization(
 	accounts *Accounts,
 	snowball *Snowball,
-	voteChan <-chan finalizationVote,
-	wg *sync.WaitGroup,
-	snowballK int,
+	votes []finalizationVote,
 ) {
-	votes := make([]finalizationVote, 0, snowballK)
-	voters := make(map[AccountID]struct{}, snowballK)
+	tallies := make(map[BlockID]float64)
+	blocks := make(map[BlockID]*Block)
 
-	for vote := range voteChan {
-		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
-			continue // To make sure the sampling process is fair, only allow one vote per peer.
+	for _, vote := range votes {
+		if vote.block == nil {
+			continue
 		}
 
-		voters[vote.voter.PublicKey()] = struct{}{}
-		votes = append(votes, vote)
-
-		if len(votes) == cap(votes) {
-			tallies := make(map[BlockID]float64)
-			blocks := make(map[BlockID]*Block)
-
-			for _, vote := range votes {
-				if vote.block == nil {
-					continue
-				}
-
-				if _, exists := blocks[vote.block.ID]; !exists {
-					blocks[vote.block.ID] = vote.block
-				}
-
-				tallies[vote.block.ID] += 1.0 / float64(len(votes))
-			}
-
-			for block, weight := range Normalize(ComputeProfitWeights(votes)) {
-				tallies[block] *= weight
-			}
-
-			stakeWeights := Normalize(ComputeStakeWeights(accounts, votes))
-			for block, weight := range stakeWeights {
-				tallies[block] *= weight
-			}
-
-			totalTally := float64(0)
-			for _, tally := range tallies {
-				totalTally += tally
-			}
-
-			for block := range tallies {
-				tallies[block] /= totalTally
-			}
-
-			votes := make(map[Identifiable]float64, len(blocks))
-			for _, block := range blocks {
-				votes[block] = tallies[block.ID]
-			}
-
-			snowball.Tick(votes)
+		if _, exists := blocks[vote.block.ID]; !exists {
+			blocks[vote.block.ID] = vote.block
 		}
+
+		tallies[vote.block.ID] += 1.0 / float64(len(votes))
 	}
 
-	if wg != nil {
-		wg.Done()
+	for block, weight := range Normalize(ComputeProfitWeights(votes)) {
+		tallies[block] *= weight
 	}
+
+	stakeWeights := Normalize(ComputeStakeWeights(accounts, votes))
+	for block, weight := range stakeWeights {
+		tallies[block] *= weight
+	}
+
+	totalTally := float64(0)
+	for _, tally := range tallies {
+		totalTally += tally
+	}
+
+	for block := range tallies {
+		tallies[block] /= totalTally
+	}
+
+	snowballTallies := make(map[Identifiable]float64, len(blocks))
+	for _, block := range blocks {
+		snowballTallies[block] = tallies[block.ID]
+	}
+
+	snowball.Tick(snowballTallies)
 }
 
 func ComputeProfitWeights(responses []finalizationVote) map[BlockID]float64 {
