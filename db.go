@@ -54,9 +54,9 @@ var (
 )
 
 type RewardWithdrawalRequest struct {
-	account AccountID
-	amount  uint64
-	round   uint64
+	account    AccountID
+	amount     uint64
+	blockIndex uint64
 }
 
 func (rw RewardWithdrawalRequest) Key() []byte {
@@ -64,7 +64,7 @@ func (rw RewardWithdrawalRequest) Key() []byte {
 	w.Write(keyRewardWithdrawals[:])
 
 	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], rw.round)
+	binary.BigEndian.PutUint64(buf[:], rw.blockIndex)
 	w.Write(buf[:8])
 
 	w.Write(rw.account[:])
@@ -81,7 +81,7 @@ func (rw RewardWithdrawalRequest) Marshal() []byte {
 	binary.BigEndian.PutUint64(buf[:], rw.amount)
 	w.Write(buf[:8])
 
-	binary.BigEndian.PutUint64(buf[:], rw.round)
+	binary.BigEndian.PutUint64(buf[:], rw.blockIndex)
 	w.Write(buf[:8])
 
 	return w.Bytes()
@@ -104,11 +104,11 @@ func UnmarshalRewardWithdrawalRequest(r io.Reader) (RewardWithdrawalRequest, err
 	rw.amount = binary.BigEndian.Uint64(buf[:8])
 
 	if _, err := io.ReadFull(r, buf[:]); err != nil {
-		err = errors.Wrap(err, "failed to decode reward withdrawal round")
+		err = errors.Wrap(err, "failed to decode reward withdrawal block index")
 		return rw, err
 	}
 
-	rw.round = binary.BigEndian.Uint64(buf[:8])
+	rw.blockIndex = binary.BigEndian.Uint64(buf[:8])
 
 	return rw, nil
 }
@@ -361,7 +361,7 @@ func LoadBlocks(kv store.KV) ([]*Block, uint32, uint32, error) {
 	return blocks, latestIx, oldestIx, nil
 }
 
-func GetRewardWithdrawalRequests(tree *avl.Tree, roundLimit uint64) []RewardWithdrawalRequest {
+func GetRewardWithdrawalRequests(tree *avl.Tree, blockLimit uint64) []RewardWithdrawalRequest {
 	var rws []RewardWithdrawalRequest
 
 	cb := func(k, v []byte) {
@@ -370,7 +370,7 @@ func GetRewardWithdrawalRequests(tree *avl.Tree, roundLimit uint64) []RewardWith
 			return
 		}
 
-		if rw.round <= roundLimit {
+		if rw.blockIndex <= blockLimit {
 			rws = append(rws, rw)
 		}
 	}

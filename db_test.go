@@ -38,9 +38,9 @@ func TestRewardWithdrawals(t *testing.T) {
 		rand.Read(a[:])
 
 		rw := RewardWithdrawalRequest{
-			account: a,
-			round:   uint64(i + 1),
-			amount:  rand.Uint64(),
+			account:    a,
+			blockIndex: uint64(i + 1),
+			amount:     rand.Uint64(),
 		}
 
 		rws[i] = rw
@@ -55,7 +55,7 @@ func TestRewardWithdrawals(t *testing.T) {
 	rws = GetRewardWithdrawalRequests(tree, 7)
 
 	assert.Equal(t, 7, len(rws))
-	assert.True(t, sort.SliceIsSorted(rws, func(i, j int) bool { return rws[i].round < rws[j].round }))
+	assert.True(t, sort.SliceIsSorted(rws, func(i, j int) bool { return rws[i].blockIndex < rws[j].blockIndex }))
 }
 
 func TestReadUnderAccounts(t *testing.T) {

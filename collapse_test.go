@@ -24,16 +24,16 @@ func TestProcessRewardWithdrawals(t *testing.T) {
 
 	// First reward
 	ctx.StoreRewardWithdrawalRequest(RewardWithdrawalRequest{
-		account: keys.PublicKey(),
-		amount:  1,
-		round:   1,
+		account:    keys.PublicKey(),
+		amount:     1,
+		blockIndex: 1,
 	})
 
 	// Second reward
 	ctx.StoreRewardWithdrawalRequest(RewardWithdrawalRequest{
-		account: keys.PublicKey(),
-		amount:  2,
-		round:   2,
+		account:    keys.PublicKey(),
+		amount:     2,
+		blockIndex: 2,
 	})
 
 	// No reward is withdrew

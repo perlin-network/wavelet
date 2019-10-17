@@ -159,9 +159,9 @@ func applyStakeTransaction(ctx *CollapseContext, block *Block, tx *Transaction) 
 
 		ctx.WriteAccountReward(tx.Sender, reward-payload.Amount)
 		ctx.StoreRewardWithdrawalRequest(RewardWithdrawalRequest{
-			account: tx.Sender,
-			amount:  payload.Amount,
-			round:   block.Index,
+			account:    tx.Sender,
+			amount:     payload.Amount,
+			blockIndex: block.Index,
 		})
 	}
 

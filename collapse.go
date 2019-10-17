@@ -346,7 +346,7 @@ func (c *CollapseContext) processRewardWithdrawals(blockIndex uint64) {
 	var leftovers []RewardWithdrawalRequest
 
 	for i, rw := range c.rewardWithdrawalRequests {
-		if c.rewardWithdrawalRequests[i].round > blockLimit {
+		if c.rewardWithdrawalRequests[i].blockIndex > blockLimit {
 			leftovers = append(leftovers, rw)
 			continue
 		}

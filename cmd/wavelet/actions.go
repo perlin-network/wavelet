@@ -54,7 +54,7 @@ func (cli *CLI) status(ctx *cli.Context) {
 	reward, _ := wavelet.ReadAccountReward(snapshot, publicKey)
 	nonce, _ := wavelet.ReadAccountNonce(snapshot, publicKey)
 
-	round := cli.ledger.Blocks().Latest()
+	block := cli.ledger.Blocks().Latest()
 
 	peers := cli.client.ClosestPeerIDs()
 	peerIDs := make([]string, 0, len(peers))
@@ -64,8 +64,8 @@ func (cli *CLI) status(ctx *cli.Context) {
 	}
 
 	cli.logger.Info().
-		Uint64("block_index", round.Index).
-		Hex("block_id", round.ID[:]).
+		Uint64("block_index", block.Index).
+		Hex("block_id", block.ID[:]).
 		Str("user_id", hex.EncodeToString(publicKey[:])).
 		Uint64("balance", balance).
 		Uint64("stake", stake).
