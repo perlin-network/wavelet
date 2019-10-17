@@ -17,7 +17,7 @@ type Block struct {
 	ID BlockID
 }
 
-func NewBlock(index uint64, merkle MerkleNodeID, transactions ...TransactionID) Block {
+func NewBlock(index uint64, merkle MerkleNodeID, transactions []TransactionID) Block {
 	b := Block{Index: index, Merkle: merkle, Transactions: transactions}
 	b.ID = blake2b.Sum256(b.Marshal())
 

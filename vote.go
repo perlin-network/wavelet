@@ -105,169 +105,46 @@ func CollectVotesForSync(
 	}
 }
 
-//func CollectVotesForFinalization(
-//	accounts *Accounts,
-//	snowball *Snowball,
-//	voteChan <-chan finalizationVote,
-//	wg *sync.WaitGroup,
-//	snowballK int,
-//) {
-//	votes := make([]finalizationVote, 0, snowballK)
-//	voters := make(map[AccountID]struct{}, snowballK)
-//
-//	for vote := range voteChan {
-//		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
-//			continue // To make sure the sampling process is fair, only allow one vote per peer.
-//		}
-//
-//		voters[vote.voter.PublicKey()] = struct{}{}
-//		votes = append(votes, vote)
-//
-//		if len(votes) == cap(votes) {
-//			snapshot := accounts.Snapshot()
-//
-//			stakes := make(map[AccountID]float64, len(votes))
-//			maxStake := float64(0)
-//
-//			for _, vote := range votes {
-//				s, _ := ReadAccountStake(snapshot, vote.voter.PublicKey())
-//
-//				if s < sys.MinimumStake {
-//					s = sys.MinimumStake
-//				}
-//
-//				stake := float64(s)
-//				stakes[vote.voter.PublicKey()] = stake
-//
-//				if maxStake < stake {
-//					maxStake = stake
-//				}
-//			}
-//
-//			votesStakesPercentages := make(map[AccountID]float64, len(votes))
-//			var totalStakePercentages float64
-//
-//			votesTransactionsNums := make(map[AccountID]uint32, len(votes))
-//			var maxTransactionsNum uint32
-//
-//			votesEndDepths := make(map[AccountID]uint64, len(votes))
-//			var minEndDepth uint64
-//			minEndDepth-- // to have default value for minimal variable as max possible
-//
-//			for _, vote := range votes {
-//				percent := stakes[vote.voter.PublicKey()] / maxStake
-//
-//				votesStakesPercentages[vote.round.ID] += percent
-//				totalStakePercentages += percent
-//
-//				votesTransactionsNums[vote.round.ID] = vote.round.Transactions
-//				if vote.round.Transactions > maxTransactionsNum {
-//					maxTransactionsNum = vote.round.Transactions
-//				}
-//
-//				depth := vote.round.End.Depth - vote.round.Start.Depth
-//				votesEndDepths[vote.round.ID] = depth
-//				if depth < minEndDepth {
-//					minEndDepth = depth
-//				}
-//			}
-//
-//			var majority *Round
-//			for _, vote := range votes {
-//				stake := (votesStakesPercentages[vote.round.ID] / totalStakePercentages) * conf.GetStakeMajorityWeight()
-//
-//				var transactions float64
-//				if maxTransactionsNum > 0 {
-//					transactions = float64(votesTransactionsNums[vote.round.ID]/maxTransactionsNum) * conf.GetTransactionsNumMajorityWeight()
-//				}
-//
-//				var depth float64
-//				if votesEndDepths[vote.round.ID] > 0 {
-//					depth = float64(minEndDepth/votesEndDepths[vote.round.ID]) * conf.GetRoundDepthMajorityWeight()
-//				}
-//
-//				if stake+transactions+depth >= conf.GetFinalizationVoteThreshold() {
-//					majority = vote.round
-//					break
-//				}
-//			}
-//
-//			snowball.Tick(majority)
-//
-//			voters = make(map[AccountID]struct{}, snowballK)
-//			votes = votes[:0]
-//		}
-//	}
-//
-//	if wg != nil {
-//		wg.Done()
-//	}
-//}
+func TickForFinalization(accounts *Accounts, snowball *Snowball, votes []finalizationVote) {
+	tallies := make(map[BlockID]float64)
+	blocks := make(map[BlockID]*Block)
 
-func CollectVotesForFinalization(
-	accounts *Accounts,
-	snowball *Snowball,
-	voteChan <-chan finalizationVote,
-	wg *sync.WaitGroup,
-	snowballK int,
-) {
-	votes := make([]finalizationVote, 0, snowballK)
-	voters := make(map[AccountID]struct{}, snowballK)
-
-	for vote := range voteChan {
-		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
-			continue // To make sure the sampling process is fair, only allow one vote per peer.
+	for _, vote := range votes {
+		if vote.block == nil {
+			continue
 		}
 
-		voters[vote.voter.PublicKey()] = struct{}{}
-		votes = append(votes, vote)
-
-		if len(votes) == cap(votes) {
-			tallies := make(map[BlockID]float64)
-			blocks := make(map[BlockID]*Block)
-
-			for _, vote := range votes {
-				if vote.block == nil {
-					continue
-				}
-
-				if _, exists := blocks[vote.block.ID]; !exists {
-					blocks[vote.block.ID] = vote.block
-				}
-
-				tallies[vote.block.ID] += 1.0 / float64(len(votes))
-			}
-
-			for block, weight := range Normalize(ComputeProfitWeights(votes)) {
-				tallies[block] *= weight
-			}
-
-			stakeWeights := Normalize(ComputeStakeWeights(accounts, votes))
-			for block, weight := range stakeWeights {
-				tallies[block] *= weight
-			}
-
-			totalTally := float64(0)
-			for _, tally := range tallies {
-				totalTally += tally
-			}
-
-			for block := range tallies {
-				tallies[block] /= totalTally
-			}
-
-			votes := make(map[Identifiable]float64, len(blocks))
-			for _, block := range blocks {
-				votes[block] = tallies[block.ID]
-			}
-
-			snowball.Tick(votes)
+		if _, exists := blocks[vote.block.ID]; !exists {
+			blocks[vote.block.ID] = vote.block
 		}
+
+		tallies[vote.block.ID] += 1.0 / float64(len(votes))
 	}
 
-	if wg != nil {
-		wg.Done()
+	for block, weight := range Normalize(ComputeProfitWeights(votes)) {
+		tallies[block] *= weight
 	}
+
+	stakeWeights := Normalize(ComputeStakeWeights(accounts, votes))
+	for block, weight := range stakeWeights {
+		tallies[block] *= weight
+	}
+
+	totalTally := float64(0)
+	for _, tally := range tallies {
+		totalTally += tally
+	}
+
+	for block := range tallies {
+		tallies[block] /= totalTally
+	}
+
+	snowballTallies := make(map[Identifiable]float64, len(blocks))
+	for _, block := range blocks {
+		snowballTallies[block] = tallies[block.ID]
+	}
+
+	snowball.Tick(snowballTallies)
 }
 
 func ComputeProfitWeights(responses []finalizationVote) map[BlockID]float64 {

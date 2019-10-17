@@ -487,7 +487,7 @@ func (l *Ledger) proposeBlock() *Block {
 	// TODO(kenta): derive the merkle root after applying all transactions to be proposed in the block, and incorporate
 	//	the merkle root into NewBlock()
 
-	proposed := NewBlock(l.blocks.Latest().Index+1, proposing...)
+	proposed := NewBlock(l.blocks.Latest().Index+1, l.accounts.tree.Checksum(), proposing)
 	return &proposed
 }
 
@@ -496,7 +496,10 @@ func (l *Ledger) finalize(newBlock Block) {
 }
 
 func (l *Ledger) query() {
-	// TODO check there's enough peers
+	if len(l.client.ClosestPeerIDs()) < conf.GetSnowballK() {
+		// TODO not enough peers, what do to ?
+		return
+	}
 
 	current := l.blocks.Latest()
 
@@ -612,63 +615,21 @@ func (l *Ledger) query() {
 				continue
 			}
 
-			if vote.block.ID == ZeroBlockID {
-				continue
-			}
-
 			if vote.block.Index != l.LastBlockIndex() {
-				vote.block.ID = ZeroBlockID
+				vote.block = nil
 				continue
 			}
 
 			for _, id := range vote.block.Transactions {
 				if _, stored := transactions[id]; !stored {
-					vote.block.ID = ZeroBlockID
+					vote.block = nil
 					break
 				}
 			}
 		}
 	})
 
-	tallies := make(map[BlockID]float64)
-	blocks := make(map[BlockID]*Block)
-
-	for _, vote := range votes {
-		if vote.block == nil {
-			continue
-		}
-
-		if _, exists := blocks[vote.block.ID]; !exists {
-			blocks[vote.block.ID] = vote.block
-		}
-
-		tallies[vote.block.ID] += 1.0 / float64(len(votes))
-	}
-
-	for block, weight := range Normalize(ComputeProfitWeights(votes)) {
-		tallies[block] *= weight
-	}
-
-	stakeWeights := Normalize(ComputeStakeWeights(l.accounts, votes))
-	for block, weight := range stakeWeights {
-		tallies[block] *= weight
-	}
-
-	totalTally := float64(0)
-	for _, tally := range tallies {
-		totalTally += tally
-	}
-
-	for block := range tallies {
-		tallies[block] /= totalTally
-	}
-
-	snowballTallies := make(map[Identifiable]float64, len(blocks))
-	for _, block := range blocks {
-		snowballTallies[block] = tallies[block.ID]
-	}
-
-	l.finalizer.Tick(snowballTallies)
+	TickForFinalization(l.accounts, l.finalizer, votes)
 }
 
 type outOfSyncVote struct {
