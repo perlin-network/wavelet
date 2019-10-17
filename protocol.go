@@ -154,7 +154,7 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 
 func (p *Protocol) CheckOutOfSync(ctx context.Context, req *OutOfSyncRequest) (*OutOfSyncResponse, error) {
 	return &OutOfSyncResponse{
-		OutOfSync: p.ledger.blocks.Latest().Index >= conf.GetSyncIfBlockIndicesDifferBy()+req.RoundIndex,
+		OutOfSync: p.ledger.blocks.Latest().Index >= conf.GetSyncIfBlockIndicesDifferBy()+req.BlockIndex,
 	}, nil
 }
 
