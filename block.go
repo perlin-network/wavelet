@@ -11,12 +11,12 @@ import (
 
 type Block struct {
 	Index        uint64
-	Transactions [][blake2b.Size256]byte
+	Transactions []TransactionID
 
-	ID [blake2b.Size256]byte
+	ID BlockID
 }
 
-func NewBlock(index uint64, transactions ...[blake2b.Size256]byte) Block {
+func NewBlock(index uint64, transactions ...TransactionID) Block {
 	b := Block{Index: index, Transactions: transactions}
 	b.ID = blake2b.Sum256(b.Marshal())
 
@@ -32,12 +32,12 @@ func (b *Block) GetID() string {
 }
 
 func (b Block) Marshal() []byte {
-	buf := make([]byte, 8+4+len(b.Transactions)*blake2b.Size256)
+	buf := make([]byte, 8+4+len(b.Transactions)*SizeTransactionID)
 	binary.BigEndian.PutUint64(buf[:8], b.Index)
 	binary.BigEndian.PutUint32(buf[8:8+4], uint32(len(b.Transactions)))
 
 	for i, id := range b.Transactions {
-		copy(buf[8+4+blake2b.Size256*i:8+4+blake2b.Size256*(i+1)], id[:])
+		copy(buf[8+4+SizeTransactionID*i:8+4+SizeTransactionID*(i+1)], id[:])
 	}
 
 	return buf
@@ -62,7 +62,7 @@ func UnmarshalBlock(r io.Reader) (block Block, err error) {
 	}
 	txLen := binary.BigEndian.Uint32(buf[:4])
 
-	block.Transactions = make([][blake2b.Size256]byte, txLen)
+	block.Transactions = make([]TransactionID, txLen)
 
 	for i := uint32(0); i < txLen; i++ {
 		if _, err = io.ReadFull(r, block.Transactions[i][:]); err != nil {

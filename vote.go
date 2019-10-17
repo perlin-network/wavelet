@@ -223,8 +223,8 @@ func CollectVotesForFinalization(
 		votes = append(votes, vote)
 
 		if len(votes) == cap(votes) {
-			tallies := make(map[[blake2b.Size256]byte]float64)
-			blocks := make(map[[blake2b.Size256]byte]*Block)
+			tallies := make(map[BlockID]float64)
+			blocks := make(map[BlockID]*Block)
 
 			for _, vote := range votes {
 				if vote.block == nil {
@@ -270,8 +270,8 @@ func CollectVotesForFinalization(
 	}
 }
 
-func ComputeProfitWeights(responses []finalizationVote) map[[blake2b.Size256]byte]float64 {
-	weights := make(map[[blake2b.Size256]byte]float64)
+func ComputeProfitWeights(responses []finalizationVote) map[BlockID]float64 {
+	weights := make(map[BlockID]float64)
 
 	var max float64
 
@@ -294,8 +294,8 @@ func ComputeProfitWeights(responses []finalizationVote) map[[blake2b.Size256]byt
 	return weights
 }
 
-func ComputeStakeWeights(accounts *Accounts, responses []finalizationVote) map[[blake2b.Size256]byte]float64 {
-	weights := make(map[[blake2b.Size256]byte]float64)
+func ComputeStakeWeights(accounts *Accounts, responses []finalizationVote) map[BlockID]float64 {
+	weights := make(map[BlockID]float64)
 
 	var max float64
 
@@ -326,8 +326,8 @@ func ComputeStakeWeights(accounts *Accounts, responses []finalizationVote) map[[
 	return weights
 }
 
-func Normalize(weights map[[blake2b.Size256]byte]float64) map[[blake2b.Size256]byte]float64 {
-	normalized := make(map[[blake2b.Size256]byte]float64, len(weights))
+func Normalize(weights map[BlockID]float64) map[BlockID]float64 {
+	normalized := make(map[BlockID]float64, len(weights))
 	min, max := float64(1), float64(0)
 
 	// Find minimum weight.

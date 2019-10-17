@@ -60,7 +60,7 @@ var (
 	ErrAlreadyExists = errors.New("transaction already exists in the graph")
 	ErrMissingTx     = errors.New("missing transaction")
 
-	EmptyBlockID [blake2b.Size256]byte
+	EmptyBlockID BlockID
 )
 
 type Ledger struct {
@@ -623,8 +623,8 @@ func (l *Ledger) query() {
 		}
 	})
 
-	tallies := make(map[[blake2b.Size256]byte]float64)
-	blocks := make(map[[blake2b.Size256]byte]*Block)
+	tallies := make(map[BlockID]float64)
+	blocks := make(map[BlockID]*Block)
 
 	for _, vote := range votes {
 		if vote.block == nil {
@@ -1327,7 +1327,7 @@ func (l *Ledger) setSync(flag bitset) {
 	l.syncStatusLock.Unlock()
 }
 
-func (l *Ledger) LastBlockID() [blake2b.Size256]byte {
+func (l *Ledger) LastBlockID() BlockID {
 	return l.LastBlockID()
 }
 

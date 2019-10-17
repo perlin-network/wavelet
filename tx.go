@@ -278,7 +278,7 @@ func (tx Transaction) Fee() uint64 {
 	return fee
 }
 
-func (tx Transaction) ComputeIndex(blockID [blake2b.Size256]byte) *big.Int {
+func (tx Transaction) ComputeIndex(blockID BlockID) *big.Int {
 	buf := blake2b.Sum256(append(tx.ID[:], blockID[:]...))
 	index := (&big.Int{}).SetBytes(buf[:])
 

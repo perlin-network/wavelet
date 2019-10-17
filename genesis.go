@@ -26,7 +26,6 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
 	"github.com/valyala/fastjson"
-	"golang.org/x/crypto/blake2b"
 )
 
 const testingGenesis = `
@@ -180,5 +179,5 @@ func performInception(tree *avl.Tree, genesis *string) Block {
 	tx := Transaction{}
 	tx.rehash()
 
-	return NewBlock(0, [][blake2b.Size256]byte{}...)
+	return NewBlock(0, []BlockID{}...)
 }
