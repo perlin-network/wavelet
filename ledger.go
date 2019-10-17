@@ -1198,7 +1198,7 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 
 // LogChanges logs all changes made to an AVL tree state snapshot for the purposes
 // of logging out changes to account state to Wavelet's HTTP API.
-func (l *Ledger) LogChanges(snapshot *avl.Tree, lastRound uint64) {
+func (l *Ledger) LogChanges(snapshot *avl.Tree, lastBlockIndex uint64) {
 	balanceLogger := log.Accounts("balance_updated")
 	gasBalanceLogger := log.Accounts("gas_balance_updated")
 	stakeLogger := log.Accounts("stake_updated")
@@ -1213,7 +1213,7 @@ func (l *Ledger) LogChanges(snapshot *avl.Tree, lastRound uint64) {
 
 	var id AccountID
 
-	snapshot.IterateLeafDiff(lastRound, func(key, value []byte) bool {
+	snapshot.IterateLeafDiff(lastBlockIndex, func(key, value []byte) bool {
 		switch {
 		case bytes.HasPrefix(key, balanceKey):
 			copy(id[:], key[len(balanceKey):])
