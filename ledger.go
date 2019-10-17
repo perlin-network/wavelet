@@ -1128,9 +1128,7 @@ func (l *Ledger) SyncToLatestBlock() {
 		}
 
 		if pruned != nil {
-			// TODO: prune mempool
-			count := 0
-			l.mempool.Prune()
+			count := l.mempool.Prune(*pruned)
 
 			logger := log.Consensus("prune")
 			logger.Debug().

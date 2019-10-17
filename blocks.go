@@ -2,8 +2,9 @@ package wavelet
 
 import (
 	"fmt"
-	"github.com/perlin-network/wavelet/store"
 	"sync"
+
+	"github.com/perlin-network/wavelet/store"
 )
 
 type Blocks struct {
@@ -56,6 +57,8 @@ func (b *Blocks) Count() uint64 {
 	return b.Latest().Index
 }
 
+// Save stores the block on disk. It returns the oldest
+// block that should be pruned, if any.
 func (b *Blocks) Save(block *Block) (*Block, error) {
 	b.Lock()
 

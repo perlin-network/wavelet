@@ -22,17 +22,17 @@ func (m MempoolItem) Less(than btree.Item) bool {
 }
 
 type Mempool struct {
-	transactions map[TransactionID]*Transaction
-	mempool      *btree.BTree
-	lock         sync.RWMutex
-	bf           *bloom.BloomFilter
+	transactions   map[TransactionID]*Transaction
+	mempool        *btree.BTree
+	lock           sync.RWMutex
+	transactionIDs *bloom.BloomFilter
 }
 
 func NewMempool() *Mempool {
 	return &Mempool{
-		transactions: make(map[TransactionID]*Transaction),
-		mempool:      btree.New(32),
-		bf:           bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK()),
+		transactions:   make(map[TransactionID]*Transaction),
+		mempool:        btree.New(32),
+		transactionIDs: bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK()),
 	}
 }
 
@@ -46,7 +46,7 @@ func (m *Mempool) Add(blockID BlockID, txs ...Transaction) {
 		}
 
 		m.transactions[tx.ID] = &tx
-		m.bf.Add(tx.ID[:])
+		m.transactionIDs.Add(tx.ID[:])
 
 		item := MempoolItem{
 			index: tx.ComputeIndex(blockID),
@@ -71,7 +71,7 @@ func (m *Mempool) WriteBloomFilter(w io.Writer) (int64, error) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 
-	return m.bf.WriteTo(w)
+	return m.transactionIDs.WriteTo(w)
 }
 
 func (m *Mempool) Ascend(iter func(tx Transaction) bool) {
@@ -92,18 +92,30 @@ func (m *Mempool) AscendLessThan(maxIndex *big.Int, iter func(tx Transaction) bo
 	m.lock.RUnlock()
 }
 
-// TODO find a better name or a better way to implement this ?
-func (m *Mempool) Prune() {
-	m.lock.RLock()
+// Prune removes the transactions inside the specified block from the mempool.
+// It returns the number of transactions that are pruned.
+func (m *Mempool) Prune(block Block) int {
+	var pruned int
 
-	// rebuildBloomFilter rebuilds the bloom filter which stores the set of
-	// transactions in the graph. This method is called after transactions are
-	// pruned, as it's not possible to remove items from a bloom filter.
+	m.lock.Lock()
 
-	m.bf.ClearAll()
+	// Remove transactions from the mempool
+	for _, txID := range block.Transactions {
+		if _, ok := m.transactions[txID]; ok {
+			delete(m.transactions, txID)
+			m.mempool.Delete(MempoolItem{id: txID})
+			pruned++
+		}
+	}
+
+	// Rebuild transaction ids bloom filter
+	m.transactionIDs.ClearAll()
 
 	for id := range m.transactions {
-		m.bf.Add(id[:])
+		m.transactionIDs.Add(id[:])
 	}
-	m.lock.RUnlock()
+
+	m.lock.Unlock()
+
+	return pruned
 }
