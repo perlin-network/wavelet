@@ -26,6 +26,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math/big"
 	"math/rand"
 	"sync"
 	"time"
@@ -39,7 +40,6 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
-	"github.com/willf/bloom"
 	"golang.org/x/crypto/blake2b"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
@@ -93,8 +93,6 @@ type Ledger struct {
 	stop     chan struct{}
 	stopWG   sync.WaitGroup
 	cancelGC context.CancelFunc
-
-	transactionIDs *bloom.BloomFilter
 }
 
 type config struct {
@@ -161,8 +159,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		logger.Fatal().Err(err).Msg("BUG: COULD NOT FIND GENESIS, OR STORAGE IS CORRUPTED.")
 	}
 
-	transactionIDs := bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK())
-
 	finalizer := NewSnowball(WithName("finalizer"))
 	syncer := NewSnowball(WithName("syncer"))
 
@@ -187,8 +183,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		fileBuffers:   newFileBufferPool(sys.SyncPooledFileSize, ""),
 
 		sendQuota: make(chan struct{}, 2000),
-
-		transactionIDs: transactionIDs,
 	}
 
 	if !cfg.GCDisabled {
@@ -453,13 +447,16 @@ func (l *Ledger) PullTransactions() {
 	}
 }
 
+// FinalizeBlocks continuously attempts to finalize blocks.
 func (l *Ledger) FinalizeBlocks() {
 	for {
 		preferred := l.finalizer.Preferred()
 		decided := l.finalizer.Decided()
 
 		if preferred == nil {
-			// TODO propose a block
+			l.finalizer.Lock()
+			l.finalizer.Prefer(l.proposeBlock())
+			l.finalizer.Unlock()
 		} else {
 			if decided {
 				l.finalize(*preferred.(*Block))
@@ -467,8 +464,24 @@ func (l *Ledger) FinalizeBlocks() {
 				l.query()
 			}
 		}
-
 	}
+}
+
+// proposeBlock takes all transactions from the first quarter of the mempool
+// and creates a new block, which will be proposed to be finalized as the
+// next block in the chain.
+func (l *Ledger) proposeBlock() *Block {
+	maxIndex := (&big.Int{}).Exp(big.NewInt(2), big.NewInt(256), nil)
+	maxIndex = maxIndex.Div(maxIndex, big.NewInt(4))
+
+	proposing := make([]TransactionID, 0)
+	l.mempool.AscendLessThan(maxIndex, func(tx Transaction) bool {
+		proposing = append(proposing, tx.ID)
+		return true
+	})
+
+	proposed := NewBlock(l.blocks.Latest().Index+1, proposing...)
+	return &proposed
 }
 
 func (l *Ledger) finalize(newBlock Block) {

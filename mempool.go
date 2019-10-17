@@ -66,6 +66,15 @@ func (m *Mempool) ReadLock(f func(transactions map[TransactionID]*Transaction)) 
 	m.lock.RUnlock()
 }
 
+// TODO find a better name or a better way to implement this ?
+func (m *Mempool) GetTransactions(f func(transactions map[TransactionID]*Transaction)) {
+	m.lock.RLock()
+
+	f(m.transactions)
+
+	m.lock.RUnlock()
+}
+
 func (m *Mempool) WriteBloomFilter(w io.Writer) (int64, error) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
@@ -73,6 +82,25 @@ func (m *Mempool) WriteBloomFilter(w io.Writer) (int64, error) {
 	return m.bf.WriteTo(w)
 }
 
+func (m *Mempool) Ascend(iter func(tx Transaction) bool) {
+	m.lock.RLock()
+	m.mempool.Ascend(func(i btree.Item) bool {
+		id := i.(MempoolItem).id
+		return iter(*m.transactions[id])
+	})
+	m.lock.RUnlock()
+}
+
+func (m *Mempool) AscendLessThan(maxIndex *big.Int, iter func(tx Transaction) bool) {
+	m.lock.RLock()
+	m.mempool.AscendLessThan(MempoolItem{index: maxIndex}, func(i btree.Item) bool {
+		id := i.(MempoolItem).id
+		return iter(*m.transactions[id])
+	})
+	m.lock.RUnlock()
+}
+
+// TODO find a better name or a better way to implement this ?
 func (m *Mempool) Prune() {
 	m.lock.RLock()
 
