@@ -66,15 +66,6 @@ func (m *Mempool) ReadLock(f func(transactions map[TransactionID]*Transaction)) 
 	m.lock.RUnlock()
 }
 
-// TODO find a better name or a better way to implement this ?
-func (m *Mempool) GetTransactions(f func(transactions map[TransactionID]*Transaction)) {
-	m.lock.RLock()
-
-	f(m.transactions)
-
-	m.lock.RUnlock()
-}
-
 func (m *Mempool) WriteBloomFilter(w io.Writer) (int64, error) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()

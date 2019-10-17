@@ -36,7 +36,7 @@ func collapseTransactions(mempool *Mempool, block *Block, accounts *Accounts, lo
 	var txs []*Transaction
 	var err error
 
-	mempool.ReadLock(func(transactions map[[32]byte]*Transaction) {
+	mempool.ReadLock(func(transactions map[TransactionID]*Transaction) {
 		var txs = make([]*Transaction, 0, len(transactions))
 
 		for _, id := range block.Transactions {

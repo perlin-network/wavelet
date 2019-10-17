@@ -599,7 +599,7 @@ func (l *Ledger) query() {
 	}
 
 	// Filter away all query responses whose blocks comprise of transactions our node is not aware of.
-	l.mempool.ReadLock(func(transactions map[[32]byte]*Transaction) {
+	l.mempool.ReadLock(func(transactions map[TransactionID]*Transaction) {
 		for _, vote := range votes {
 			if vote.block == nil {
 				continue
