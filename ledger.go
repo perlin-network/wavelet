@@ -58,6 +58,7 @@ const (
 var (
 	ErrOutOfSync     = errors.New("Node is currently ouf of sync. Please try again later.")
 	ErrAlreadyExists = errors.New("transaction already exists in the graph")
+	ErrMissingTx     = errors.New("missing transaction")
 
 	EmptyBlockID [blake2b.Size256]byte
 )
@@ -247,19 +248,10 @@ func (l *Ledger) Close() {
 // invalid or fails any validation checks, an error is returned. No error
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
-func (l *Ledger) AddTransaction(tx Transaction) error {
-	err := l.mempool.Add(tx, l.LastBlockID())
-	l.transactionIDs.Add(tx.ID[:])
+func (l *Ledger) AddTransaction(txs ...Transaction) error {
+	l.mempool.Add(l.LastBlockID(), txs...)
 
-	// Ignore error if transaction already exists,
-	// or transaction's depth is too low due to pruning
-	if err != nil && errors.Cause(err) != ErrAlreadyExists {
-		return err
-	}
-
-	if err == nil {
-		l.TakeSendQuota()
-	}
+	l.TakeSendQuota()
 
 	return nil
 }
@@ -414,7 +406,7 @@ func (l *Ledger) PullTransactions() {
 
 		// Marshal the bloom filter
 		buf := new(bytes.Buffer)
-		if _, err := l.transactionIDs.WriteTo(buf); err != nil {
+		if _, err := l.mempool.WriteBloomFilter(buf); err != nil {
 			logger.Error().Err(err).Msg("failed to marshal bloom filter")
 			continue
 		}
@@ -657,18 +649,6 @@ func (l *Ledger) query() {
 	}
 
 	l.finalizer.Tick(snowballTallies)
-}
-
-// rebuildBloomFilter rebuilds the bloom filter which stores the set of
-// transactions in the graph. This method is called after transactions are
-// pruned, as it's not possible to remove items from a bloom filter.
-func (l *Ledger) rebuildBloomFilter() {
-	l.transactionIDs.ClearAll()
-
-	transactions := l.graph.GetTransactionsByDepth(nil, nil)
-	for _, tx := range transactions {
-		l.transactionIDs.Add(tx.ID[:])
-	}
 }
 
 type outOfSyncVote struct {
@@ -1144,7 +1124,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 		if pruned != nil {
 			count := l.graph.PruneBelowDepth(pruned.End.Depth)
-			l.rebuildBloomFilter()
+			l.mempool.Prune()
 
 			logger := log.Consensus("prune")
 			logger.Debug().

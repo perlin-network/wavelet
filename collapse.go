@@ -33,7 +33,25 @@ func collapseTransactions(mempool *Mempool, block *Block, accounts *Accounts, lo
 	res := &collapseResults{snapshot: accounts.Snapshot()}
 	res.snapshot.SetViewID(block.Index)
 
-	txs := mempool.Resolve(block.Transactions)
+	var txs []*Transaction
+	var err error
+
+	mempool.ReadLock(func(transactions map[[32]byte]*Transaction) {
+		var txs = make([]*Transaction, 0, len(transactions))
+
+		for _, id := range block.Transactions {
+			tx, exist := transactions[id]
+			if exist {
+				txs = append(txs, tx)
+			} else {
+				err = ErrMissingTx
+			}
+		}
+	})
+
+	if err != nil {
+		return nil, err
+	}
 
 	res.applied = make([]*Transaction, 0, len(txs))
 	res.rejected = make([]*Transaction, 0, len(txs))
