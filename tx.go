@@ -94,6 +94,11 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 
 	t.Tag = sys.Tag(buf[0])
 
+	if t.Tag < sys.TagTransfer || t.Tag > sys.TagBatch {
+		err = errors.Wrapf(err, "got an unknown tag %d", t.Tag)
+		return
+	}
+
 	if _, err = io.ReadFull(r, buf[:4]); err != nil {
 		err = errors.Wrap(err, "could not read transaction payload length")
 		return
