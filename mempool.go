@@ -90,6 +90,42 @@ func (m *Mempool) Add(blockID BlockID, txs ...Transaction) {
 	m.lock.Unlock()
 }
 
+// Reshuffle reshuffles the mempool for the incoming block.
+func (m *Mempool) Reshuffle(prevBlock Block, nextBlock Block) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	// Remove transactions contained in the previous block
+	for _, id := range prevBlock.Transactions {
+		tx := m.transactions[id]
+		if tx == nil {
+			continue
+		}
+
+		delete(m.transactions, id)
+		m.index.Delete(mempoolItem{index: tx.ComputeIndex(prevBlock.ID)})
+	}
+
+	// Reindex all transactions based on the new block
+	items := make([]mempoolItem, 0, m.index.Len())
+	m.index.Ascend(func(i btree.Item) bool {
+		item := i.(mempoolItem)
+		tx := m.transactions[item.id]
+
+		// TODO: prune old transactions
+
+		item.index = tx.ComputeIndex(nextBlock.ID)
+		items = append(items, item)
+		return true
+	})
+
+	m.index.Clear(false)
+
+	for _, item := range items {
+		m.index.ReplaceOrInsert(item)
+	}
+}
+
 // WriteTransactionIDs writes the marshaled bloom filter onto
 // the specified io.Writer.
 func (m *Mempool) WriteTransactionIDs(w io.Writer) (int64, error) {

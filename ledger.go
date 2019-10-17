@@ -489,8 +489,81 @@ func (l *Ledger) proposeBlock() *Block {
 	return &proposed
 }
 
-func (l *Ledger) finalize(newBlock Block) {
-	// TODO delete transactions, shuffle mempool, collapse transactions, reset snowbal
+func (l *Ledger) finalize(block Block) {
+	current := l.blocks.Latest()
+
+	l.mempool.Reshuffle(*current, block)
+
+	results, err := l.collapseTransactions(&block, false)
+	if err != nil {
+		logger := log.Node()
+		logger.Error().
+			Err(err).
+			Msg("error collapsing transactions during finalization")
+
+		return
+	}
+
+	if results.appliedCount+results.rejectedCount != len(block.Transactions) {
+		logger := log.Node()
+		logger.Error().
+			Err(err).
+			Int("expected", len(block.Transactions)).
+			Int("actual", results.appliedCount).
+			Msg("Number of applied transactions does not match")
+
+		return
+	}
+
+	pruned, err := l.blocks.Save(&block)
+	if err != nil {
+		logger := log.Node()
+		logger.Error().
+			Err(err).
+			Msg("Failed to save preferred block to database")
+
+		return
+	}
+
+	if pruned != nil {
+		count := l.mempool.Prune(*pruned)
+
+		logger := log.Consensus("prune")
+		logger.Debug().
+			Int("num_tx", count).
+			Uint64("current_block", block.Index).
+			Uint64("pruned_block", pruned.Index).
+			Msg("Pruned away block and transactions.")
+	}
+
+	if err = l.accounts.Commit(results.snapshot); err != nil {
+		logger := log.Node()
+		logger.Error().
+			Err(err).
+			Msg("Failed to commit collaped state to our database")
+
+		return
+	}
+
+	l.metrics.acceptedTX.Mark(int64(results.appliedCount))
+
+	l.LogChanges(results.snapshot, current.Index)
+
+	l.applySync(finalized)
+
+	// Reset snowball
+	l.finalizer.Lock()
+	l.finalizer.Reset()
+	l.finalizer.Unlock()
+
+	logger := log.Consensus("finalized")
+	logger.Info().
+		Int("num_applied_tx", results.appliedCount).
+		Int("num_rejected_tx", results.rejectedCount).
+		Int("num_ignored_tx", results.ignoredCount).
+		Uint64("old_block", current.Index).
+		Uint64("new_block", block.Index).
+		Msg("Finalized consensus block, and initialized a new block.")
 }
 
 func (l *Ledger) query() {
