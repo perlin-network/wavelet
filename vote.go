@@ -23,7 +23,6 @@ import (
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
-	"golang.org/x/crypto/blake2b"
 	"sync"
 )
 
