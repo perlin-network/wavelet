@@ -2,9 +2,10 @@ package conf
 
 import (
 	"fmt"
-	"github.com/perlin-network/wavelet/sys"
 	"sync"
 	"time"
+
+	"github.com/perlin-network/wavelet/sys"
 )
 
 type config struct {
@@ -31,6 +32,10 @@ type config struct {
 
 	// Number of rounds we should be behind before we start syncing.
 	syncIfRoundsDifferBy uint64
+
+	// Bloom filter parameters
+	bloomFilterM uint
+	bloomFilterK uint
 
 	// Depth diff according to which transactions are downloaded to sync
 	maxDownloadDepthDiff uint64
@@ -72,6 +77,9 @@ func defaultConfig() config {
 		checkOutOfSyncTimeout: 5000 * time.Millisecond,
 		syncChunkSize:         16384,
 		syncIfRoundsDifferBy:  2,
+
+		bloomFilterM: 1024,
+		bloomFilterK: 5,
 
 		maxDownloadDepthDiff: 1500,
 		maxDepthDiff:         10,
@@ -171,6 +179,18 @@ func WithSyncChunkSize(cs int) Option {
 func WithSyncIfRoundsDifferBy(rdb uint64) Option {
 	return func(c *config) {
 		c.syncIfRoundsDifferBy = rdb
+	}
+}
+
+func WithBloomFilterM(m uint) Option {
+	return func(c *config) {
+		c.bloomFilterM = m
+	}
+}
+
+func WithBloomFilterK(k uint) Option {
+	return func(c *config) {
+		c.bloomFilterK = k
 	}
 }
 
@@ -308,6 +328,22 @@ func GetSyncIfRoundsDifferBy() uint64 {
 	l.RUnlock()
 
 	return t
+}
+
+func GetBloomFilterM() uint {
+	l.RLock()
+	m := c.bloomFilterM
+	l.RUnlock()
+
+	return m
+}
+
+func GetBloomFilterK() uint {
+	l.RLock()
+	k := c.bloomFilterK
+	l.RUnlock()
+
+	return k
 }
 
 func GetMaxDownloadDepthDiff() uint64 {
