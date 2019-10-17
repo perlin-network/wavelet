@@ -71,7 +71,7 @@ func TestApplyTransaction_Single(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(42))
 
-	round := NewRound(viewID, state.Checksum(), 0, Transaction{}, initialRoot)
+	block := NewBlock(viewID, state.Checksum(), 0, Transaction{}, initialRoot)
 
 	for i := 0; i < 10000; i++ {
 		switch rng.Intn(2) {
@@ -151,7 +151,7 @@ func TestApplyTransaction_Collapse(t *testing.T) {
 	assert.NotNil(t, graph)
 
 	rng := rand.New(rand.NewSource(42))
-	round := NewRound(viewID, state.Checksum(), 0, Transaction{}, initialRoot)
+	block := NewBlock(viewID, state.Checksum(), 0, Transaction{}, initialRoot)
 
 	accountState := NewAccounts(stateStore)
 	assert.NoError(t, accountState.Commit(state))
@@ -188,7 +188,7 @@ func TestApplyTransferTransaction(t *testing.T) {
 	t.Parallel()
 
 	state := avl.New(store.NewInmem())
-	round := NewRound(0, state.Checksum(), 0, Transaction{}, Transaction{})
+	block := NewBlock(0, state.Checksum(), 0, Transaction{}, Transaction{})
 
 	alice, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
@@ -217,7 +217,7 @@ func TestApplyStakeTransaction(t *testing.T) {
 	t.Parallel()
 
 	state := avl.New(store.NewInmem())
-	round := NewRound(0, state.Checksum(), 0, Transaction{}, Transaction{})
+	block := NewBlock(0, state.Checksum(), 0, Transaction{}, Transaction{})
 
 	account, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
@@ -246,7 +246,7 @@ func TestApplyBatchTransaction(t *testing.T) {
 	t.Parallel()
 
 	state := avl.New(store.NewInmem())
-	round := NewRound(0, state.Checksum(), 0, Transaction{}, Transaction{})
+	block := NewBlock(0, state.Checksum(), 0, Transaction{}, Transaction{})
 
 	alice, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
@@ -279,7 +279,7 @@ func TestApplyContractTransaction(t *testing.T) {
 	t.Parallel()
 
 	state := avl.New(store.NewInmem())
-	round := NewRound(0, state.Checksum(), 0, Transaction{}, Transaction{})
+	block := NewBlock(0, state.Checksum(), 0, Transaction{}, Transaction{})
 
 	account, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)

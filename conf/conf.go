@@ -19,7 +19,6 @@ type config struct {
 	finalizationVoteThreshold     float64
 	stakeMajorityWeight           float64
 	transactionsNumMajorityWeight float64
-	roundDepthMajorityWeight      float64
 
 	// Timeout for outgoing requests
 	queryTimeout          time.Duration
@@ -30,19 +29,12 @@ type config struct {
 	// Size of individual chunks sent for a syncing peer.
 	syncChunkSize int
 
-	// Number of rounds we should be behind before we start syncing.
+	// Number of blocks we should be behind before we start syncing.
 	syncIfBlockIndicesDifferBy uint64
 
 	// Bloom filter parameters
 	bloomFilterM uint
 	bloomFilterK uint
-
-	// Depth diff according to which transactions are downloaded to sync
-	maxDownloadDepthDiff uint64
-
-	// Max graph depth difference to search for eligible transaction
-	// parents from for our node.
-	maxDepthDiff uint64
 
 	// Number of rounds after which transactions will be pruned from the graph
 	pruningLimit uint8
@@ -69,7 +61,6 @@ func defaultConfig() config {
 		finalizationVoteThreshold:     0.8,
 		stakeMajorityWeight:           1,
 		transactionsNumMajorityWeight: 0.3,
-		roundDepthMajorityWeight:      0.3,
 
 		queryTimeout:               5000 * time.Millisecond,
 		gossipTimeout:              5000 * time.Millisecond,
@@ -81,9 +72,7 @@ func defaultConfig() config {
 		bloomFilterM: 1024,
 		bloomFilterK: 5,
 
-		maxDownloadDepthDiff: 1500,
-		maxDepthDiff:         10,
-		pruningLimit:         30,
+		pruningLimit: 30,
 	}
 
 	switch sys.VersionMeta {
@@ -101,7 +90,6 @@ type Option func(*config)
 // in case of same stakes
 func updateWeights() {
 	c.transactionsNumMajorityWeight = c.finalizationVoteThreshold - (1 / float64(c.snowballK))
-	c.roundDepthMajorityWeight = c.finalizationVoteThreshold - (1 / float64(c.snowballK))
 }
 
 func WithSnowballK(sk int) Option {
@@ -131,12 +119,6 @@ func WithStakeMajorityWeight(sa float64) Option {
 func WithTransactionsNumMajorityWeight(sa float64) Option {
 	return func(c *config) {
 		c.transactionsNumMajorityWeight = sa
-	}
-}
-
-func WithRoundDepthMajorityWeight(sa float64) Option {
-	return func(c *config) {
-		c.roundDepthMajorityWeight = sa
 	}
 }
 
@@ -194,18 +176,6 @@ func WithBloomFilterK(k uint) Option {
 	}
 }
 
-func WithMaxDownloadDepthDiff(ddd uint64) Option {
-	return func(c *config) {
-		c.maxDownloadDepthDiff = ddd
-	}
-}
-
-func WithMaxDepthDiff(dd uint64) Option {
-	return func(c *config) {
-		c.maxDepthDiff = dd
-	}
-}
-
 func WithPruningLimit(pl uint8) Option {
 	return func(c *config) {
 		c.pruningLimit = pl
@@ -253,14 +223,6 @@ func GetStakeMajorityWeight() float64 {
 func GetTransactionsNumMajorityWeight() float64 {
 	l.RLock()
 	t := c.transactionsNumMajorityWeight
-	l.RUnlock()
-
-	return t
-}
-
-func GetRoundDepthMajorityWeight() float64 {
-	l.RLock()
-	t := c.roundDepthMajorityWeight
 	l.RUnlock()
 
 	return t
@@ -344,22 +306,6 @@ func GetBloomFilterK() uint {
 	l.RUnlock()
 
 	return k
-}
-
-func GetMaxDownloadDepthDiff() uint64 {
-	l.RLock()
-	t := c.maxDownloadDepthDiff
-	l.RUnlock()
-
-	return t
-}
-
-func GetMaxDepthDiff() uint64 {
-	l.RLock()
-	t := c.maxDepthDiff
-	l.RUnlock()
-
-	return t
 }
 
 func GetPruningLimit() uint8 {

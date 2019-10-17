@@ -47,7 +47,6 @@ func ApplyTransaction(tree *avl.Tree, block *Block, tx *Transaction) error {
 
 func applyTransaction(block *Block, ctx *CollapseContext, tx *Transaction, executorState *contractExecutorState) error {
 	switch tx.Tag {
-	case sys.TagNop:
 	case sys.TagTransfer:
 		if err := applyTransferTransaction(ctx, block, tx, executorState); err != nil {
 			return errors.Wrap(err, "could not apply transfer transaction")

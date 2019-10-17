@@ -45,29 +45,15 @@ type Transaction struct {
 	ID TransactionID // BLAKE2b(*).
 }
 
-func NewTransaction(tag sys.Tag, payload []byte) Transaction {
+func NewTransaction(sender *skademlia.Keypair, tag sys.Tag, payload []byte) Transaction {
 	// var nonce [8]byte // TODO(kenta): nonce
 
-	return Transaction{Tag: tag, Payload: payload}
-}
-
-// AttachSenderToTransaction immutably attaches sender to a transaction without modifying it in-place.
-func AttachSenderToTransaction(sender *skademlia.Keypair, tx Transaction) Transaction {
-	tx.Sender = sender.PublicKey()
+	tx := Transaction{Sender: sender.PublicKey(), Tag: tag, Payload: payload}
 	tx.Signature = edwards25519.Sign(sender.PrivateKey(), tx.Marshal())
 
-	tx.rehash()
+	tx.ID = blake2b.Sum256(tx.Marshal())
 
 	return tx
-}
-
-func (tx *Transaction) rehash() {
-	tx.ID = blake2b.Sum256(tx.Marshal())
-}
-
-func (tx Transaction) ComputeSize() int {
-	// TODO: optimize this
-	return len(tx.Marshal())
 }
 
 func (tx Transaction) Marshal() []byte {
@@ -106,16 +92,6 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 
 	t.Nonce = binary.BigEndian.Uint64(buf[:8])
 
-	if _, err = io.ReadFull(r, buf[:1]); err != nil {
-		err = errors.Wrap(err, "failed to read num parents")
-		return
-	}
-
-	if int(buf[0]) > sys.MaxParentsPerTransaction {
-		err = errors.Errorf("tx while decoding has %d parents, but may only have at most %d parents", buf[0], sys.MaxParentsPerTransaction)
-		return
-	}
-
 	t.Tag = sys.Tag(buf[0])
 
 	if _, err = io.ReadFull(r, buf[:4]); err != nil {
@@ -135,9 +111,25 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 		return
 	}
 
-	t.rehash()
+	t.ID = blake2b.Sum256(t.Marshal())
 
 	return t, nil
+}
+
+func (tx Transaction) ComputeIndex(id BlockID) *big.Int {
+	buf := blake2b.Sum256(append(tx.ID[:], id[:]...))
+	index := (&big.Int{}).SetBytes(buf[:])
+
+	return index
+}
+
+func (tx Transaction) Fee() uint64 {
+	fee := uint64(sys.TransactionFeeMultiplier * float64(len(tx.Payload)))
+	if fee < sys.DefaultTransactionFee {
+		return sys.DefaultTransactionFee
+	}
+
+	return fee
 }
 
 // LogicalUnits counts the total number of atomic logical units of changes
@@ -158,20 +150,4 @@ func (tx Transaction) LogicalUnits() int {
 
 func (tx Transaction) String() string {
 	return fmt.Sprintf("Transaction{ID: %x}", tx.ID)
-}
-
-func (tx Transaction) Fee() uint64 {
-	fee := uint64(sys.TransactionFeeMultiplier * float64(len(tx.Payload)))
-	if fee < sys.DefaultTransactionFee {
-		return sys.DefaultTransactionFee
-	}
-
-	return fee
-}
-
-func (tx Transaction) ComputeIndex(blockID BlockID) *big.Int {
-	buf := blake2b.Sum256(append(tx.ID[:], blockID[:]...))
-	index := (&big.Int{}).SetBytes(buf[:])
-
-	return index
 }

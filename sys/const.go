@@ -19,15 +19,12 @@
 
 package sys
 
-import "time"
-
 // Tag is a wrapper for a transaction tag.
 type Tag byte
 
 // Transaction tags.
 const (
-	TagNop Tag = iota // TODO remove this
-	TagTransfer
+	TagTransfer Tag = iota
 	TagContract
 	TagStake
 	TagBatch
@@ -51,33 +48,6 @@ var (
 	// S/Kademlia overlay network parameters.
 	SKademliaC1 = 1
 	SKademliaC2 = 1
-
-	// Snowball consensus protocol parameters.
-	SnowballK     = 2
-	SnowballAlpha = 0.8
-	SnowballBeta  = 50
-
-	// Timeout for querying a transaction to K peers.
-	QueryTimeout = 1 * time.Second
-
-	// Number of blocks we should be behind before we start syncing.
-	SyncIfBlockIndicesDifferBy uint64 = 2
-
-	// Max graph depth difference to search for eligible transaction
-	// parents from for our node.
-	MaxDepthDiff uint64 = 10
-
-	//
-	MaxDownloadDepthDiff uint64 = 1500
-
-	// Max number of parents referencable by a transaction.
-	MaxParentsPerTransaction = 32
-
-	// Minimum difficulty to define a critical transaction.
-	MinDifficulty byte = 8
-
-	// Factor to scale a transactions confidence down by to compute the difficulty needed to define a critical transaction.
-	DifficultyScaleFactor = 0.5
 
 	// Default fee amount paid by a node per transaction.
 	DefaultTransactionFee uint64 = 2
@@ -275,7 +245,6 @@ var (
 	}
 
 	TagLabels = map[string]Tag{
-		`nop`:      TagNop,
 		`transfer`: TagTransfer,
 		`contract`: TagContract,
 		`batch`:    TagBatch,
@@ -299,9 +268,9 @@ func init() {
 
 // String converts a given tag to a string.
 func (tag Tag) String() string {
-	if tag < 0 || tag > 4 { // Check out of bounds
+	if tag < 0 || tag > 3 { // Check out of bounds
 		return "" // Return invalid tag
 	}
 
-	return []string{"nop", "transfer", "contract", "stake", "batch"}[tag] // Return tag
+	return []string{"transfer", "contract", "stake", "batch"}[tag] // Return tag
 }

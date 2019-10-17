@@ -173,7 +173,7 @@ type collapseTestContainer struct {
 
 	end    *Transaction
 	viewID uint64
-	round  Round
+	block  Block
 }
 
 func newCollapseContainer(t assert.TestingT, noOfAcc int) *collapseTestContainer {
@@ -216,7 +216,7 @@ func newCollapseContainer(t assert.TestingT, noOfAcc int) *collapseTestContainer
 		accountState: accountState,
 		end:          &initialRoot,
 		viewID:       viewID,
-		round:        round,
+		block:        round,
 	}
 
 	return testGraph
@@ -248,14 +248,14 @@ func (g *collapseTestContainer) collapseTransactions(b *testing.B) (*collapseRes
 	}
 	g.viewID = +1
 
-	results, err := collapseTransactions(g.graph, g.accountState, g.viewID, &g.round, g.round.End, *g.end, false)
+	results, err := collapseTransactions(g.graph, g.accountState, g.viewID, &g.block, g.block.End, *g.end, false)
 	if err != nil {
 		return nil, err
 	}
 
 	b.StopTimer()
 
-	g.round = NewRound(g.viewID, results.snapshot.Checksum(), uint32(results.appliedCount+results.rejectedCount), g.round.End, *g.end)
+	g.block = NewRound(g.viewID, results.snapshot.Checksum(), uint32(results.appliedCount+results.rejectedCount), g.block.End, *g.end)
 	g.end = nil
 
 	b.StartTimer()
@@ -280,7 +280,7 @@ func (g *collapseTestContainer) collapseTransactionsNewState(b *testing.B) (*col
 
 	b.StartTimer()
 
-	results, err := collapseTransactions(g.graph, accountState, g.viewID+1, &g.round, g.round.End, *g.end, false)
+	results, err := collapseTransactions(g.graph, accountState, g.viewID+1, &g.block, g.block.End, *g.end, false)
 	if err != nil {
 		return nil, err
 	}

@@ -176,8 +176,5 @@ func performInception(tree *avl.Tree, genesis *string) Block {
 		logger.Fatal().Err(err).Msg("accounts.Visit")
 	}
 
-	tx := Transaction{}
-	tx.rehash()
-
-	return NewBlock(0, tree.Checksum(), []BlockID{})
+	return NewBlock(0, tree.Checksum())
 }
