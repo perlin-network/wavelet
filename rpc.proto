@@ -30,7 +30,7 @@ message QueryResponse {
 }
 
 message OutOfSyncRequest {
-    uint64 round_index = 1;
+    uint64 block_index = 1;
 }
 
 message OutOfSyncResponse {

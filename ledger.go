@@ -209,7 +209,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 	ledger.PerformConsensus()
 
-	go ledger.SyncToLatestRound()
+	go ledger.SyncToLatestBlock()
 	go ledger.PushSendQuota()
 
 	return ledger
@@ -326,12 +326,12 @@ func (l *Ledger) Protocol() *Protocol {
 }
 
 // Finalizer returns the Snowball finalizer which finalizes the contents of individual
-// consensus rounds.
+// blocks.
 func (l *Ledger) Finalizer() *Snowball {
 	return l.finalizer
 }
 
-// Rounds returns the round manager for the ledger.
+// Blocks returns the block manager for the ledger.
 func (l *Ledger) Blocks() *Blocks {
 	return l.blocks
 }
@@ -679,7 +679,11 @@ func (o *outOfSyncVote) GetID() string {
 	return fmt.Sprintf("%v", o.outOfSync)
 }
 
-func (l *Ledger) SyncToLatestRound() {
+// SyncToLatestBlock continuously checks if the node is out of sync from its peers.
+// If the majority of its peers responded that it is out of sync (decided using snowball),
+// the node will attempt to sync its state to the latest block by downloading the AVL tree
+// diff from its peers and applying the diff to its local AVL tree.
+func (l *Ledger) SyncToLatestBlock() {
 	voteWG := new(sync.WaitGroup)
 
 	snowballK := conf.GetSnowballK()
@@ -808,7 +812,7 @@ func (l *Ledger) SyncToLatestRound() {
 		shutdown() // Shutdown all consensus-related workers.
 
 		logger.Info().
-			Uint64("current_round", current.Index).
+			Uint64("current_block_index", current.Index).
 			Msg("Noticed that we are out of sync; downloading latest state Snapshot from our peer(s).")
 
 	SYNC:
@@ -882,7 +886,7 @@ func (l *Ledger) SyncToLatestRound() {
 			set[v.latest.Index] = append(set[v.latest.Index], v)
 		}
 
-		// Select a round to sync to which the majority of peers are on.
+		// Select a block to sync to which the majority of peers are on.
 
 		var latest *Block
 		var majority []response
@@ -898,7 +902,7 @@ func (l *Ledger) SyncToLatestRound() {
 		// If there is no majority or a tie, dispose all streams and try again.
 
 		if majority == nil {
-			logger.Warn().Msg("It looks like our peers could not decide on what the latest round currently is. Retrying...")
+			logger.Warn().Msg("It looks like our peers could not decide on what the latest block currently is. Retrying...")
 
 			dispose()
 			goto SYNC
@@ -984,7 +988,7 @@ func (l *Ledger) SyncToLatestRound() {
 		logger.Debug().
 			Int("num_chunks", len(sources)).
 			Int("num_workers", cap(workers)).
-			Msg("Starting up workers to downloaded all chunks of data needed to sync to the latest round...")
+			Msg("Starting up workers to downloaded all chunks of data needed to sync to the latest block...")
 
 		chunksBuffer, err := l.fileBuffers.GetBounded(int64(len(sources)) * sys.SyncChunkSize)
 		if err != nil {
@@ -1075,7 +1079,7 @@ func (l *Ledger) SyncToLatestRound() {
 		logger.Debug().
 			Int("num_chunks", len(sources)).
 			Int("num_workers", cap(workers)).
-			Msg("Downloaded whatever chunks were available to sync to the latest round, and shutted down all workers. Checking validity of chunks...")
+			Msg("Downloaded whatever chunks were available to sync to the latest block, and shutted down all workers. Checking validity of chunks...")
 
 		dispose() // Shutdown all streams as we no longer need them.
 
@@ -1084,9 +1088,9 @@ func (l *Ledger) SyncToLatestRound() {
 		for i, src := range sources {
 			if src.size == 0 {
 				logger.Error().
-					Uint64("target_round", latest.Index).
+					Uint64("target_block_id", latest.Index).
 					Hex("chunk_checksum", sources[i].checksum[:]).
-					Msg("Could not download one of the chunks necessary to sync to the latest round! Retrying...")
+					Msg("Could not download one of the chunks necessary to sync to the latest block! Retrying...")
 
 				cleanup()
 				goto SYNC
@@ -1097,7 +1101,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 		if _, err := io.CopyN(diffBuffer, chunksBuffer, diffSize); err != nil {
 			logger.Error().
-				Uint64("target_round", latest.Index).
+				Uint64("target_block_id", latest.Index).
 				Err(err).
 				Msg("Failed to write chunks to bounded memory buffer. Restarting sync...")
 
@@ -1107,7 +1111,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 		logger.Info().
 			Int("num_chunks", len(sources)).
-			Uint64("target_round", latest.Index).
+			Uint64("target_block", latest.Index).
 			Msg("All chunks have been successfully verified and re-assembled into a diff. Applying diff...")
 
 		snapshot := l.accounts.Snapshot()
@@ -1143,7 +1147,14 @@ func (l *Ledger) SyncToLatestRound() {
 		}
 
 		if pruned != nil {
-			// TODO(kenta): prune away mempool transactions that are too stale.
+			count := l.mempool.Prune(*pruned)
+
+			logger := log.Consensus("prune")
+			logger.Debug().
+				Int("num_tx", count).
+				Uint64("current_block", latest.Index).
+				Uint64("pruned_block", pruned.Index).
+				Msg("Pruned away block and transactions.")
 		}
 
 		if err := l.accounts.Commit(snapshot); err != nil {
