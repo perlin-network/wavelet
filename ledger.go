@@ -624,7 +624,7 @@ func (l *Ledger) query() {
 		}
 
 		for _, id := range vote.block.Transactions {
-			if tx := l.mempool.Transaction(id); tx == nil {
+			if tx := l.mempool.Find(id); tx == nil {
 				vote.block.ID = ZeroBlockID
 				break
 			}

@@ -99,16 +99,6 @@ func (m *Mempool) WriteTransactionIDs(w io.Writer) (int64, error) {
 	return m.filter.WriteTo(w)
 }
 
-// Transaction returns the transaction inside the mempool based on
-// the given id. If no transaction with the given id exists, nil is returned.
-func (m *Mempool) Transaction(txID TransactionID) *Transaction {
-	m.lock.RLock()
-	tx := m.transactions[txID]
-	m.lock.RUnlock()
-
-	return tx
-}
-
 // Ascend iterates through the mempool in ascending order.
 // It stops iterating when the iterator function returns false.
 func (m *Mempool) Ascend(iter func(tx Transaction) bool) {
