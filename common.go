@@ -21,10 +21,11 @@ package wavelet
 
 import (
 	"crypto/md5"
-	"golang.org/x/crypto/blake2b"
-)
 
-import _ "github.com/perlin-network/wavelet/internal/snappy"
+	"golang.org/x/crypto/blake2b"
+
+	_ "github.com/perlin-network/wavelet/internal/snappy"
+)
 
 const (
 	SizeTransactionID   = blake2b.Size256
@@ -52,7 +53,6 @@ var (
 	ZeroAccountID     AccountID
 	ZeroSignature     Signature
 
-	ZeroRoundPtr = &Round{}
 	ZeroBlockPtr = &Block{}
 
 	ZeroPage = make([]byte, PageSize)
