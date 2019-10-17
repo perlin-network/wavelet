@@ -243,7 +243,7 @@ func (l *Ledger) Close() {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(txs ...Transaction) error {
-	l.mempool.Add(l.LastBlockID(), txs...)
+	l.mempool.Add(l.blocks.Latest().ID, txs...)
 
 	l.TakeSendQuota()
 
@@ -615,7 +615,7 @@ func (l *Ledger) query() {
 				continue
 			}
 
-			if vote.block.Index != l.LastBlockIndex() {
+			if vote.block.Index != l.blocks.Latest().Index {
 				vote.block = nil
 				continue
 			}
@@ -1292,14 +1292,6 @@ func (l *Ledger) setSync(flag bitset) {
 	l.syncStatusLock.Lock()
 	l.syncStatus = flag
 	l.syncStatusLock.Unlock()
-}
-
-func (l *Ledger) LastBlockID() BlockID {
-	return l.Blocks().Latest().ID
-}
-
-func (l *Ledger) LastBlockIndex() uint64 {
-	return l.Blocks().Latest().Index
 }
 
 func (l *Ledger) Mempool() *Mempool {
