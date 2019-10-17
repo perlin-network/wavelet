@@ -132,8 +132,8 @@ If an IP Address exceeds the limit, the response would be an error with code <co
 <li><p><strong>Data Params</strong></p>
 <pre><code class="hljs css language-json">{
   <span class="hljs-attr">"sender"</span>: <span class="hljs-string">"[hex-encoded sender ID, must be 32 bytes long]"</span>,
-  <span class="hljs-attr">"tag"</span>: <span class="hljs-string">"[possible values: 0 = nop, 1 = transfer, 2 = contract, 3 = stake, 4 = batch"</span>,
-  <span class="hljs-attr">"payload"</span>: <span class="hljs-string">"[hex-encoded payload, empty for nop]"</span>,
+  <span class="hljs-attr">"tag"</span>: <span class="hljs-string">"[possible values: 0 = transfer, 1 = contract, 2 = stake, 3 = batch"</span>,
+  <span class="hljs-attr">"payload"</span>: <span class="hljs-string">"[hex-encoded payload]"</span>,
   <span class="hljs-attr">"signature"</span>: <span class="hljs-string">"[hex-encoded edwards25519 signature, which consists of private key, nonce, tag, and payload]"</span>
 }
 </code></pre></li>
