@@ -26,7 +26,7 @@ type Tag byte
 
 // Transaction tags.
 const (
-	TagNop Tag = iota
+	TagNop Tag = iota // TODO remove this
 	TagTransfer
 	TagContract
 	TagStake

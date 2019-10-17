@@ -58,6 +58,7 @@ const (
 
 var (
 	ErrOutOfSync = errors.New("Node is currently ouf of sync. Please try again later.")
+	ErrAlreadyExists            = errors.New("transaction already exists in the graph")
 
 	EmptyBlockID [blake2b.Size256]byte
 )
@@ -76,11 +77,6 @@ type Ledger struct {
 	syncer    *Snowball
 
 	consensus sync.WaitGroup
-
-	broadcastNops         bool
-	broadcastNopsMaxDepth uint64
-	broadcastNopsDelay    time.Time
-	broadcastNopsLock     sync.Mutex
 
 	sync chan struct{}
 
@@ -258,26 +254,13 @@ func (l *Ledger) AddTransaction(tx Transaction) error {
 
 	// Ignore error if transaction already exists,
 	// or transaction's depth is too low due to pruning
-	if err != nil &&
-		errors.Cause(err) != ErrAlreadyExists &&
-		errors.Cause(err) != ErrDepthTooLow {
+	if err != nil && errors.Cause(err) != ErrAlreadyExists
 
 		return err
 	}
 
 	if err == nil {
 		l.TakeSendQuota()
-
-		l.broadcastNopsLock.Lock()
-		if tx.Tag != sys.TagNop && tx.Sender == l.client.Keys().PublicKey() {
-			l.broadcastNops = true
-			l.broadcastNopsDelay = time.Now()
-
-			if tx.Depth > l.broadcastNopsMaxDepth {
-				l.broadcastNopsMaxDepth = tx.Depth
-			}
-		}
-		l.broadcastNopsLock.Unlock()
 	}
 
 	return nil
@@ -384,50 +367,6 @@ func (l *Ledger) PerformConsensus() {
 
 func (l *Ledger) Snapshot() *avl.Tree {
 	return l.accounts.Snapshot()
-}
-
-// BroadcastingNop returns true if the node is
-// supposed to broadcast nop transaction.
-func (l *Ledger) BroadcastingNop() bool {
-	l.broadcastNopsLock.Lock()
-	broadcastNops := l.broadcastNops
-	l.broadcastNopsLock.Unlock()
-
-	return broadcastNops
-}
-
-// BroadcastNop has the node send a nop transaction should they have sufficient
-// balance available. They are broadcasted if no other transaction that is not a nop transaction
-// is not broadcasted by the node after 500 milliseconds. These conditions only apply so long as
-// at least one transaction gets broadcasted by the node within the current round. Once a round
-// is tentatively being finalized, a node will stop broadcasting nops.
-func (l *Ledger) BroadcastNop() *Transaction {
-	l.broadcastNopsLock.Lock()
-	broadcastNops := l.broadcastNops
-	broadcastNopsDelay := l.broadcastNopsDelay
-	l.broadcastNopsLock.Unlock()
-
-	if !broadcastNops || time.Now().Sub(broadcastNopsDelay) < 100*time.Millisecond {
-		return nil
-	}
-
-	keys := l.client.Keys()
-	publicKey := keys.PublicKey()
-
-	balance, _ := ReadAccountBalance(l.accounts.Snapshot(), publicKey)
-
-	// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
-	if balance < sys.DefaultTransactionFee && hex.EncodeToString(publicKey[:]) != sys.FaucetAddress {
-		return nil
-	}
-
-	nop := AttachSenderToTransaction(keys, NewTransaction(sys.TagNop, nil), l.graph.FindEligibleParents()...)
-
-	if err := l.AddTransaction(nop); err != nil {
-		return nil
-	}
-
-	return l.graph.FindTransaction(nop.ID)
 }
 
 // PullTransactions is a goroutine which continuously pulls missing transactions
@@ -1733,11 +1672,9 @@ func (l *Ledger) setSync(flag bitset) {
 }
 
 func (l *Ledger) LastBlockID() [blake2b.Size256]byte {
-	// TODO implement this
-	return EmptyBlockID
+	return l.LastBlockID()
 }
 
 func (l *Ledger) LastBlockIndex() uint64 {
-	// TODO implement this
-	return 0
+	return l.LastBlockIndex()
 }
