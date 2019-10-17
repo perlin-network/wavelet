@@ -168,17 +168,20 @@ func (p *Protocol) DownloadMissingTx(ctx context.Context, req *DownloadMissingTx
 		return nil, err
 	}
 
-	// TODO: replace with mempool
-	graph := p.ledger.Graph()
-
-	transactions := graph.GetTransactionsByDepth(nil, nil)
-	for _, tx := range transactions {
+	missingIDs := make([]TransactionID, 0)
+	p.ledger.mempool.Ascend(func(txID TransactionID) bool {
 		// TODO: limit no. of transactions per request
-
 		// Add tx not in the bloom filter
-		if !existing.Test(tx.ID[:]) {
-			res.Transactions = append(res.Transactions, tx.Marshal())
+		if !existing.Test(txID[:]) {
+			missingIDs = append(missingIDs, txID)
 		}
+
+		return true
+	})
+
+	missingTxs := p.ledger.mempool.Resolve(missingIDs)
+	for _, tx := range missingTxs {
+		res.Transactions = append(res.Transactions, tx.Marshal())
 	}
 
 	logger := log.Sync("pull_tx")
