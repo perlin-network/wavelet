@@ -26,6 +26,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"math/big"
 	"math/rand"
 	"sync"
 	"time"
@@ -461,13 +462,16 @@ func (l *Ledger) PullTransactions() {
 	}
 }
 
+// FinalizeBlocks continuously attempts to finalize blocks.
 func (l *Ledger) FinalizeBlocks() {
 	for {
 		preferred := l.finalizer.Preferred()
 		decided := l.finalizer.Decided()
 
 		if preferred == nil {
-			// TODO propose a block
+			l.finalizer.Lock()
+			l.finalizer.Prefer(l.proposeBlock())
+			l.finalizer.Unlock()
 		} else {
 			if decided {
 				l.finalize(*preferred.(*Block))
@@ -475,8 +479,24 @@ func (l *Ledger) FinalizeBlocks() {
 				l.query()
 			}
 		}
-
 	}
+}
+
+// proposeBlock takes all transactions from the first quarter of the mempool
+// and creates a new block, which will be proposed to be finalized as the
+// next block in the chain.
+func (l *Ledger) proposeBlock() *Block {
+	maxIndex := (&big.Int{}).Exp(big.NewInt(2), big.NewInt(256), nil)
+	maxIndex = maxIndex.Div(maxIndex, big.NewInt(4))
+
+	proposing := make([]TransactionID, 0)
+	l.mempool.AscendLessThan(maxIndex, func(txID TransactionID) bool {
+		proposing = append(proposing, txID)
+		return true
+	})
+
+	proposed := NewBlock(l.blocks.Latest().Index+1, proposing...)
+	return &proposed
 }
 
 func (l *Ledger) finalize(newBlock Block) {

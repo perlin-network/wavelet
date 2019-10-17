@@ -1,10 +1,11 @@
 package wavelet
 
 import (
-	"github.com/google/btree"
-	"golang.org/x/crypto/blake2b"
 	"math/big"
 	"sync"
+
+	"github.com/google/btree"
+	"golang.org/x/crypto/blake2b"
 )
 
 var _ btree.Item = (*MempoolItem)(nil)
@@ -68,6 +69,14 @@ func (m *Mempool) Resolve(txIDs []TransactionID) []*Transaction {
 	m.lock.RUnlock()
 
 	return txs
+}
+
+func (m *Mempool) AscendLessThan(maxIndex *big.Int, iter func(txID TransactionID) bool) {
+	m.lock.RLock()
+	m.mempool.AscendLessThan(MempoolItem{index: maxIndex}, func(i btree.Item) bool {
+		return iter(i.(MempoolItem).id)
+	})
+	m.lock.RUnlock()
 }
 
 // TODO find a better name or a better way to implement this ?
