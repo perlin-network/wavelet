@@ -158,19 +158,17 @@ func (p *Protocol) CheckOutOfSync(ctx context.Context, req *OutOfSyncRequest) (*
 	}, nil
 }
 
-func (p *Protocol) DownloadMissingTx(ctx context.Context, req *DownloadMissingTxRequest) (*DownloadMissingTxResponse, error) {
-	res := &DownloadMissingTxResponse{
-		Transactions: [][]byte{},
-	}
+func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullRequest) (*TransactionPullResponse, error) {
+	res := &TransactionPullResponse{Transactions: [][]byte{}}
 
-	existing := bloom.New(32, 2) // m and k values here will be replaced by ReadFrom
-	if _, err := existing.ReadFrom(bytes.NewReader(req.TransactionIds)); err != nil {
+	filter := bloom.New(32, 2) // m and k values here will be replaced by ReadFrom
+	if _, err := filter.ReadFrom(bytes.NewReader(req.Filter)); err != nil {
 		return nil, err
 	}
 
 	p.ledger.mempool.Ascend(func(tx Transaction) bool {
-		// Add tx not in the bloom filter
-		if !existing.Test(tx.ID[:]) {
+		// Add transactions that do not pass the bloom filter test.
+		if !filter.Test(tx.ID[:]) {
 			res.Transactions = append(res.Transactions, tx.Marshal())
 		}
 

@@ -405,13 +405,13 @@ func (l *Ledger) PullTransactions() {
 			continue
 		}
 
-		req := &DownloadMissingTxRequest{TransactionIds: buf.Bytes()}
+		req := &TransactionPullRequest{Filter: buf.Bytes()}
 
 		conn := peers[0]
 		client := NewWaveletClient(conn)
 
 		ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
-		batch, err := client.DownloadMissingTx(ctx, req)
+		batch, err := client.PullTransactions(ctx, req)
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to download missing transactions")
 			cancel()
