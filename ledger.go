@@ -574,7 +574,6 @@ func (l *Ledger) finalize(block Block) {
 	logger.Info().
 		Int("num_applied_tx", results.appliedCount).
 		Int("num_rejected_tx", results.rejectedCount).
-		Int("num_ignored_tx", results.ignoredCount).
 		Uint64("old_block", current.Index).
 		Uint64("new_block", block.Index).
 		Msg("Finalized consensus block, and initialized a new block.")
@@ -1252,7 +1251,6 @@ type collapseResults struct {
 
 	appliedCount  int
 	rejectedCount int
-	ignoredCount  int
 
 	snapshot *avl.Tree
 }

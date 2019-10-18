@@ -133,8 +133,6 @@ func collapseTransactions(mempool *Mempool, block *Block, accounts *Accounts, lo
 		}
 	}
 
-	res.ignoredCount -= res.appliedCount + res.rejectedCount
-
 	ctx.processRewardWithdrawals(block.Index)
 
 	if err := ctx.Flush(); err != nil {
