@@ -136,7 +136,7 @@ func (cli *CLI) pay(ctx *cli.Context) {
 	}
 
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, sys.TagTransfer, payload.Marshal(),
+		cli.keys, cli.ledger.Blocks().Latest().Index+1, sys.TagTransfer, payload.Marshal(),
 	))
 
 	if err != nil {
@@ -265,7 +265,7 @@ func (cli *CLI) call(ctx *cli.Context) {
 	payload.FuncParams = params.Bytes()
 
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, sys.TagTransfer, payload.Marshal(),
+		cli.keys, cli.ledger.Blocks().Latest().Index+1, sys.TagTransfer, payload.Marshal(),
 	))
 
 	if err != nil {
@@ -375,7 +375,7 @@ func (cli *CLI) spawn(ctx *cli.Context) {
 		Code:     code,
 	}
 
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, sys.TagContract, payload.Marshal()))
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, cli.ledger.Blocks().Latest().Index+1, sys.TagContract, payload.Marshal()))
 	if err != nil {
 		return
 	}
@@ -444,7 +444,7 @@ func (cli *CLI) depositGas(ctx *cli.Context) {
 	}
 
 	tx, err := cli.sendTransaction(
-		wavelet.NewTransaction(cli.keys, sys.TagTransfer, payload.Marshal()),
+		wavelet.NewTransaction(cli.keys, cli.ledger.Blocks().Latest().Index+1, sys.TagTransfer, payload.Marshal()),
 	)
 
 	if err != nil {
@@ -477,7 +477,7 @@ func (cli *CLI) placeStake(ctx *cli.Context) {
 	}
 
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, sys.TagStake, payload.Marshal(),
+		cli.keys, cli.ledger.Blocks().Latest().Index+1, sys.TagStake, payload.Marshal(),
 	))
 
 	if err != nil {
@@ -511,7 +511,7 @@ func (cli *CLI) withdrawStake(ctx *cli.Context) {
 	payload.Write(intBuf[:8])
 
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, sys.TagStake, payload.Bytes(),
+		cli.keys, cli.ledger.Blocks().Latest().Index+1, sys.TagStake, payload.Bytes(),
 	))
 
 	if err != nil {
@@ -546,7 +546,7 @@ func (cli *CLI) withdrawReward(ctx *cli.Context) {
 	}
 
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, sys.TagStake, payload.Marshal(),
+		cli.keys, cli.ledger.Blocks().Latest().Index+1, sys.TagStake, payload.Marshal(),
 	))
 
 	if err != nil {

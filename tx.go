@@ -36,6 +36,7 @@ type Transaction struct {
 	Sender AccountID // Transaction sender.
 
 	Nonce uint64
+	Block uint64
 
 	Tag     sys.Tag
 	Payload []byte
@@ -45,10 +46,10 @@ type Transaction struct {
 	ID TransactionID // BLAKE2b(*).
 }
 
-func NewTransaction(sender *skademlia.Keypair, tag sys.Tag, payload []byte) Transaction {
+func NewTransaction(sender *skademlia.Keypair, block uint64, tag sys.Tag, payload []byte) Transaction {
 	// var nonce [8]byte // TODO(kenta): nonce
 
-	tx := Transaction{Sender: sender.PublicKey(), Tag: tag, Payload: payload}
+	tx := Transaction{Sender: sender.PublicKey(), Nonce: 0, Block: block, Tag: tag, Payload: payload}
 	tx.Signature = edwards25519.Sign(sender.PrivateKey(), tx.Marshal())
 
 	tx.ID = blake2b.Sum256(tx.Marshal())
@@ -63,6 +64,9 @@ func (tx Transaction) Marshal() []byte {
 
 	var buf [8]byte
 	binary.BigEndian.PutUint64(buf[:8], tx.Nonce)
+	w.Write(buf[:8])
+
+	binary.BigEndian.PutUint64(buf[:8], tx.Block)
 	w.Write(buf[:8])
 
 	w.WriteByte(byte(tx.Tag))
@@ -91,6 +95,13 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 	}
 
 	t.Nonce = binary.BigEndian.Uint64(buf[:8])
+
+	if _, err = io.ReadFull(r, buf[:8]); err != nil {
+		err = errors.Wrap(err, "failed to read block inde")
+		return
+	}
+
+	t.Block = binary.BigEndian.Uint64(buf[:8])
 
 	if _, err = io.ReadFull(r, buf[:1]); err != nil {
 		err = errors.Wrap(err, "failed to read tag")
