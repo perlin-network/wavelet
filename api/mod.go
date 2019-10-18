@@ -309,15 +309,10 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	tx := wavelet.AttachSenderToTransaction(
-		g.keys,
-		wavelet.Transaction{Tag: sys.Tag(req.Tag), Payload: req.payload},
-		g.ledger.Graph().FindEligibleParents()...,
-	)
-
+	tx := wavelet.NewTransaction(g.keys, sys.Tag(req.Tag), req.payload)
 	err = g.ledger.AddTransaction(tx)
 
-	if err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
+	if err != nil {
 		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error adding your transaction to graph")))
 		return
 	}
@@ -331,8 +326,8 @@ func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 	var sender wavelet.AccountID
-	var offset, limit uint64
-	var err error
+	// var offset, limit uint64
+	// var err error
 
 	queryArgs := ctx.QueryArgs()
 	if raw := string(queryArgs.Peek("sender")); len(raw) > 0 {
@@ -350,41 +345,39 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 		copy(sender[:], slice)
 	}
 
-	if raw := string(queryArgs.Peek("offset")); len(raw) > 0 {
-		offset, err = strconv.ParseUint(raw, 10, 64)
+	// if raw := string(queryArgs.Peek("offset")); len(raw) > 0 {
+	// 	offset, err = strconv.ParseUint(raw, 10, 64)
 
-		if err != nil {
-			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
-			return
-		}
-	}
+	// 	if err != nil {
+	// 		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
+	// 		return
+	// 	}
+	// }
 
-	if raw := string(queryArgs.Peek("limit")); len(raw) > 0 {
-		limit, err = strconv.ParseUint(raw, 10, 64)
+	// if raw := string(queryArgs.Peek("limit")); len(raw) > 0 {
+	// 	limit, err = strconv.ParseUint(raw, 10, 64)
 
-		if err != nil {
-			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
-			return
-		}
-	}
+	// 	if err != nil {
+	// 		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
+	// 		return
+	// 	}
+	// }
 
-	if limit > maxPaginationLimit {
-		limit = maxPaginationLimit
-	}
-
-	rootDepth := g.ledger.Graph().RootDepth()
+	// if limit > maxPaginationLimit {
+	// 	limit = maxPaginationLimit
+	// }
 
 	var transactions transactionList
 
-	for _, tx := range g.ledger.Graph().ListTransactions(offset, limit, sender) {
-		status := "received"
+	// for _, tx := range g.ledger.Graph().ListTransactions(offset, limit, sender) {
+	// 	status := "received"
 
-		if tx.Depth <= rootDepth {
-			status = "applied"
-		}
+	// 	if tx.Depth <= rootDepth {
+	// 		status = "applied"
+	// 	}
 
-		transactions = append(transactions, &transaction{tx: tx, status: status})
-	}
+	// 	transactions = append(transactions, &transaction{tx: tx, status: status})
+	// }
 
 	g.render(ctx, transactions)
 }
@@ -410,22 +403,22 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 	var id wavelet.TransactionID
 	copy(id[:], slice)
 
-	tx := g.ledger.Graph().FindTransaction(id)
+	tx := g.ledger.Mempool().Find(id)
 
 	if tx == nil {
 		g.renderError(ctx, ErrNotFound(errors.Errorf("could not find transaction with ID %x", id)))
 		return
 	}
 
-	rootDepth := g.ledger.Graph().RootDepth()
+	// block := g.ledger.Blocks().Latest()
 
 	res := &transaction{tx: tx}
 
-	if tx.Depth <= rootDepth {
-		res.status = "applied"
-	} else {
-		res.status = "received"
-	}
+	// if tx.Depth <= rootDepth {
+	// 	res.status = "applied"
+	// } else {
+	// 	res.status = "received"
+	// }
 
 	g.render(ctx, res)
 }

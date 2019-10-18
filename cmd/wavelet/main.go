@@ -22,7 +22,6 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
 	"net"
@@ -31,6 +30,8 @@ import (
 	"sort"
 	"strconv"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"github.com/perlin-network/wavelet/conf"
 
@@ -178,11 +179,11 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Value: conf.GetQueryTimeout(),
 			Usage: "Timeout in seconds for querying a transaction to K peers.",
 		}),
-		altsrc.NewUint64Flag(cli.Uint64Flag{
-			Name:  "sys.max_depth_diff",
-			Value: conf.GetMaxDepthDiff(),
-			Usage: "Max graph depth difference to search for eligible transaction parents from for our node.",
-		}),
+		// altsrc.NewUint64Flag(cli.Uint64Flag{
+		// 	Name:  "sys.max_depth_diff",
+		// 	Value: conf.GetMaxDepthDiff(),
+		// 	Usage: "Max graph depth difference to search for eligible transaction parents from for our node.",
+		// }),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.transaction_fee_amount",
 			Value: sys.DefaultTransactionFee,
@@ -203,16 +204,6 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Value:  conf.GetSnowballBeta(),
 			Usage:  "Snowball consensus protocol parameter beta",
 			EnvVar: "WAVELET_SNOWBALL_BETA",
-		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.difficulty.min",
-			Value: int(sys.MinDifficulty),
-			Usage: "Minimum difficulty to define a critical transaction",
-		}),
-		altsrc.NewFloat64Flag(cli.Float64Flag{
-			Name:  "sys.difficulty.scale",
-			Value: sys.DifficultyScaleFactor,
-			Usage: "Factor to scale a transactions confidence down by to compute the difficulty needed to define a critical transaction",
 		}),
 		cli.StringFlag{
 			Name:  "config, c",
@@ -271,13 +262,11 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			conf.WithSnowballK(c.Int("sys.snowball.k")),
 			conf.WithSnowballBeta(c.Int("sys.snowball.beta")),
 			conf.WithQueryTimeout(c.Duration("sys.query_timeout")),
-			conf.WithMaxDepthDiff(c.Uint64("sys.max_depth_diff")),
+			// conf.WithMaxDepthDiff(c.Uint64("sys.max_depth_diff")),
 			conf.WithSecret(c.String("api.secret")),
 		)
 
 		// set the the sys variables
-		sys.MinDifficulty = byte(c.Int("sys.difficulty.min"))
-		sys.DifficultyScaleFactor = c.Float64("sys.difficulty.scale")
 		sys.DefaultTransactionFee = c.Uint64("sys.transaction_fee_amount")
 		sys.MinimumStake = c.Uint64("sys.min_stake")
 

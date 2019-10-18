@@ -38,9 +38,9 @@ import (
 func (cli *CLI) status(ctx *cli.Context) {
 	preferredID := "N/A"
 
-	if preferred := cli.ledger.Finalizer().Preferred(); preferred != nil {
-		preferredID = hex.EncodeToString(preferred.(*wavelet.Block).ID[:])
-	}
+	// if preferred := cli.ledger.Finalizer().Preferred(); preferred != nil {
+	// 	preferredID = hex.EncodeToString(preferred.(*wavelet.Block).ID[:])
+	// }
 
 	count := cli.ledger.Finalizer().Progress()
 
