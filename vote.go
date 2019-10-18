@@ -41,26 +41,31 @@ type Vote interface {
 type syncVote struct {
 	voter     *skademlia.ID
 	outOfSync bool
-	voteID    *VoteID
+
+	// This acts as cache since ID() can be called many times.
+	// The value will be set when the ID() is called the first time.
+	voteID VoteID
 }
 
 func (s syncVote) ID() VoteID {
-	if s.voteID == nil {
+	if s.voteID == ZeroVoteID {
 		var voteID VoteID
 
+		// Use non-zero value to avoid conflict with ZeroVoteID.
 		var v uint16
+
 		if s.outOfSync {
 			v = 1
 		} else {
-			v = 0
+			v = 2
 		}
 
 		binary.BigEndian.PutUint16(voteID[:], v)
 
-		s.voteID = &voteID
+		s.voteID = voteID
 	}
 
-	return *s.voteID
+	return s.voteID
 }
 
 func (s syncVote) VoterID() AccountID {
@@ -68,6 +73,7 @@ func (s syncVote) VoterID() AccountID {
 }
 
 func (s syncVote) Length() float64 {
+	// Not applicable, so we return 0
 	return 0
 }
 
@@ -80,7 +86,7 @@ type finalizationVote struct {
 	block *Block
 }
 
-// If the block is empty, it will return ZeroVoteID
+// If the block is empty, it will return ZeroVoteID.
 func (f finalizationVote) ID() VoteID {
 	if f.block == nil {
 		return ZeroVoteID
@@ -92,7 +98,7 @@ func (f finalizationVote) VoterID() AccountID {
 	return f.voter.PublicKey()
 }
 
-// If the block is empty, it will return 0
+// If the block is empty, it will return 0.
 func (f finalizationVote) Length() float64 {
 	if f.block == nil {
 		return 0
@@ -100,7 +106,7 @@ func (f finalizationVote) Length() float64 {
 	return float64(len(f.block.Transactions))
 }
 
-// If the block is empty, it will return nil
+// If the block is empty, it will return nil.
 func (f finalizationVote) Value() interface{} {
 	return f.block
 }
