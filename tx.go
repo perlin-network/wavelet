@@ -92,6 +92,11 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 
 	t.Nonce = binary.BigEndian.Uint64(buf[:8])
 
+	if _, err = io.ReadFull(r, buf[:1]); err != nil {
+		err = errors.Wrap(err, "failed to read tag")
+		return
+	}
+
 	t.Tag = sys.Tag(buf[0])
 
 	if t.Tag < sys.TagTransfer || t.Tag > sys.TagBatch {

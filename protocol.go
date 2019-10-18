@@ -178,7 +178,7 @@ func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullReq
 	logger := log.Sync("pull_tx")
 	logger.Info().
 		Int("num_transactions", len(res.Transactions)).
-		Msg("Pulled new transactions.")
+		Msg("Provided transactions for a pull request.")
 
 	return res, nil
 }
