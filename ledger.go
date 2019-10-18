@@ -490,6 +490,18 @@ func (l *Ledger) proposeBlock() *Block {
 
 	proposed := NewBlock(l.blocks.Latest().Index+1, l.accounts.tree.Checksum(), proposing...)
 
+	results, err := l.collapseTransactions(&proposed, false)
+	if err != nil {
+		logger := log.Node()
+		logger.Error().
+			Err(err).
+			Msg("error collapsing transactions during block proposal")
+
+		return nil
+	}
+
+	proposed.Merkle = results.snapshot.Checksum()
+
 	return &proposed
 }
 
