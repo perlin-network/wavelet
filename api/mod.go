@@ -309,7 +309,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	tx := wavelet.NewTransaction(g.keys, sys.Tag(req.Tag), req.payload)
+	tx := wavelet.NewTransaction(g.keys, g.ledger.Blocks().Latest().Index+1, sys.Tag(req.Tag), req.payload)
 	err = g.ledger.AddTransaction(tx)
 
 	if err != nil {
