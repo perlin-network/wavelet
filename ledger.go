@@ -24,7 +24,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"math/big"
 	"math/rand"
@@ -621,7 +620,7 @@ func (l *Ledger) query() {
 	workerWG.Add(cap(workerChan))
 
 	snowballK := conf.GetSnowballK()
-	voteChan := make(chan finalizationVote, snowballK)
+	voteChan := make(chan *finalizationVote, snowballK)
 
 	req := &QueryRequest{BlockIndex: current.Index + 1}
 
@@ -662,16 +661,16 @@ func (l *Ledger) query() {
 
 					block, err := UnmarshalBlock(bytes.NewReader(res.Block))
 					if err != nil {
-						voteChan <- finalizationVote{voter: voter, block: nil}
+						voteChan <- &finalizationVote{voter: voter, block: nil}
 						return
 					}
 
 					if block.ID == ZeroBlockID {
-						voteChan <- finalizationVote{voter: voter, block: nil}
+						voteChan <- &finalizationVote{voter: voter, block: nil}
 						return
 					}
 
-					voteChan <- finalizationVote{
+					voteChan <- &finalizationVote{
 						voter: voter,
 						block: &block,
 					}
@@ -706,7 +705,7 @@ func (l *Ledger) query() {
 		}
 
 		voters[response.voter.PublicKey()] = struct{}{}
-		votes = append(votes, &response)
+		votes = append(votes, response)
 
 		if len(votes) == cap(votes) {
 			break
