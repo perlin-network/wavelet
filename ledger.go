@@ -488,7 +488,7 @@ func (l *Ledger) proposeBlock() *Block {
 		return nil
 	}
 
-	proposed := NewBlock(l.blocks.Latest().Index+1, l.accounts.tree.Checksum(), proposing...)
+	proposed := NewBlock(l.blocks.Latest().Index+1, l.accounts.tree.Checksum(), 0, proposing...)
 
 	results, err := l.collapseTransactions(&proposed, false)
 	if err != nil {
@@ -501,6 +501,7 @@ func (l *Ledger) proposeBlock() *Block {
 	}
 
 	proposed.Merkle = results.snapshot.Checksum()
+	proposed.TransactionCount = uint32(results.appliedCount + results.rejectedCount)
 
 	return &proposed
 }
@@ -520,13 +521,13 @@ func (l *Ledger) finalize(block Block) {
 
 	l.mempool.Reshuffle(*current, block)
 
-	if results.appliedCount+results.rejectedCount != len(block.Transactions) {
+	if uint32(results.appliedCount+results.rejectedCount) != block.TransactionCount {
 		logger := log.Node()
 		logger.Error().
 			Err(err).
-			Int("expected", len(block.Transactions)).
-			Int("actual", results.appliedCount).
-			Msg("Number of applied transactions does not match")
+			Uint32("expected", block.TransactionCount).
+			Uint32("actual", uint32(results.appliedCount+results.rejectedCount)).
+			Msg("Number of collapsed transactions does not match")
 
 		return
 	}

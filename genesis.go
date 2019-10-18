@@ -22,6 +22,7 @@ package wavelet
 import (
 	"encoding/hex"
 	"fmt"
+
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
@@ -176,5 +177,5 @@ func performInception(tree *avl.Tree, genesis *string) Block {
 		logger.Fatal().Err(err).Msg("accounts.Visit")
 	}
 
-	return NewBlock(0, tree.Checksum())
+	return NewBlock(0, tree.Checksum(), 0)
 }
