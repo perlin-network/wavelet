@@ -479,8 +479,8 @@ func (l *Ledger) proposeBlock() *Block {
 	maxIndex = maxIndex.Div(maxIndex, big.NewInt(4))
 
 	proposing := make([]TransactionID, 0)
-	l.mempool.AscendPendingLessThan(maxIndex, func(txID TransactionID) bool {
-		proposing = append(proposing, txID)
+	l.mempool.AscendPending(func(id TransactionID) bool {
+		proposing = append(proposing, id)
 		return true
 	})
 
@@ -507,7 +507,7 @@ func (l *Ledger) finalize(block Block) {
 	}
 
 	l.mempool.Reshuffle(*current, block)
-	
+
 	if results.appliedCount+results.rejectedCount != len(block.Transactions) {
 		logger := log.Node()
 		logger.Error().
