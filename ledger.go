@@ -486,10 +486,20 @@ func (l *Ledger) proposeBlock() *Block {
 		return nil
 	}
 
-	// TODO(kenta): derive the merkle root after applying all transactions to be proposed in the block, and incorporate
-	//	the merkle root into NewBlock()
-
 	proposed := NewBlock(l.blocks.Latest().Index+1, l.accounts.tree.Checksum(), proposing...)
+
+	results, err := l.collapseTransactions(&proposed, false)
+	if err != nil {
+		logger := log.Node()
+		logger.Error().
+			Err(err).
+			Msg("error collapsing transactions during finalization")
+
+		return nil
+	}
+
+	proposed.Merkle = results.snapshot.Checksum()
+
 	return &proposed
 }
 
@@ -629,6 +639,38 @@ func (l *Ledger) query() {
 
 					if block.ID == ZeroBlockID {
 						voteChan <- finalizationVote{voter: voter, block: nil}
+						return
+					}
+
+					results, err := l.collapseTransactions(&block, false)
+					if err != nil {
+						logger := log.Node()
+						logger.Error().
+							Err(err).
+							Msg("error collapsing transactions")
+						return
+					}
+
+					if results.appliedCount+results.rejectedCount != len(block.Transactions) {
+						logger := log.Node()
+						logger.Error().
+							Err(err).
+							Int("expected", len(block.Transactions)).
+							Int("actual", results.appliedCount).
+							Int("rejected", results.rejectedCount).
+							Int("ignored", results.ignoredCount).
+							Msg("Number of applied transactions does not match")
+						return
+					}
+
+					if results.snapshot.Checksum() != block.Merkle {
+						actualMerkle := results.snapshot.Checksum()
+						logger := log.Node()
+						logger.Error().
+							Err(err).
+							Hex("expected", block.Merkle[:]).
+							Hex("actual", actualMerkle[:]).
+							Msg("Unexpected block merkle root")
 						return
 					}
 
