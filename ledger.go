@@ -560,7 +560,7 @@ func (l *Ledger) finalize(block Block) {
 
 	l.mempool.Reshuffle(*current, block)
 
-	pruned, err := l.blocks.Save(&block)
+	_, err = l.blocks.Save(&block)
 	if err != nil {
 		logger := log.Node()
 		logger.Error().
@@ -570,16 +570,16 @@ func (l *Ledger) finalize(block Block) {
 		return
 	}
 
-	if pruned != nil {
-		count := l.mempool.Prune(*pruned)
+	// if pruned != nil {
+	// 	count := l.mempool.Prune(*pruned)
 
-		logger := log.Consensus("prune")
-		logger.Debug().
-			Int("num_tx", count).
-			Uint64("current_block", block.Index).
-			Uint64("pruned_block", pruned.Index).
-			Msg("Pruned away block and transactions.")
-	}
+	// 	logger := log.Consensus("prune")
+	// 	logger.Debug().
+	// 		Int("num_tx", count).
+	// 		Uint64("current_block", block.Index).
+	// 		Uint64("pruned_block", pruned.Index).
+	// 		Msg("Pruned away block and transactions.")
+	// }
 
 	if err = l.accounts.Commit(results.snapshot); err != nil {
 		logger := log.Node()
@@ -1262,7 +1262,7 @@ func (l *Ledger) SyncToLatestBlock() {
 			goto SYNC
 		}
 
-		pruned, err := l.blocks.Save(latest)
+		_, err = l.blocks.Save(latest)
 		if err != nil {
 			logger.Error().
 				Err(err).
@@ -1272,16 +1272,16 @@ func (l *Ledger) SyncToLatestBlock() {
 			goto SYNC
 		}
 
-		if pruned != nil {
-			count := l.mempool.Prune(*pruned)
+		// if pruned != nil {
+		// 	count := l.mempool.Prune(*pruned)
 
-			logger := log.Consensus("prune")
-			logger.Debug().
-				Int("num_tx", count).
-				Uint64("current_block", latest.Index).
-				Uint64("pruned_block", pruned.Index).
-				Msg("Pruned away block and transactions.")
-		}
+		// 	logger := log.Consensus("prune")
+		// 	logger.Debug().
+		// 		Int("num_tx", count).
+		// 		Uint64("current_block", latest.Index).
+		// 		Uint64("pruned_block", pruned.Index).
+		// 		Msg("Pruned away block and transactions.")
+		// }
 
 		if err := l.accounts.Commit(snapshot); err != nil {
 			cleanup()
