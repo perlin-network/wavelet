@@ -80,6 +80,7 @@ type finalizationVote struct {
 	block *Block
 }
 
+// If the block is empty, it will return ZeroVoteID
 func (f finalizationVote) ID() VoteID {
 	if f.block == nil {
 		return ZeroVoteID
@@ -91,6 +92,7 @@ func (f finalizationVote) VoterID() AccountID {
 	return f.voter.PublicKey()
 }
 
+// If the block is empty, it will return 0
 func (f finalizationVote) Length() float64 {
 	if f.block == nil {
 		return 0
@@ -98,6 +100,7 @@ func (f finalizationVote) Length() float64 {
 	return float64(len(f.block.Transactions))
 }
 
+// If the block is empty, it will return nil
 func (f finalizationVote) Value() interface{} {
 	return f.block
 }
