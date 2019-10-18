@@ -456,7 +456,9 @@ func (l *Ledger) FinalizeBlocks() {
 		if preferred == nil {
 			proposedBlock := l.proposeBlock()
 
-			l.finalizer.Prefer(newPreferredBlockVote(proposedBlock))
+			if proposedBlock != nil {
+				l.finalizer.Prefer(newPreferredBlockVote(proposedBlock))
+			}
 		} else {
 			if decided {
 				l.finalize(*preferred.val.(*Block))

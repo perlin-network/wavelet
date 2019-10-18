@@ -86,7 +86,7 @@ func (s *Snowball) Tick(tallies map[VoteID]float64, votes map[VoteID]*snowballVo
 	} else {
 		s.counts[majority.id] += 1
 
-		if s.counts[majority.id] > s.counts[s.preferred.id] {
+		if s.preferred == nil || s.counts[majority.id] > s.counts[s.preferred.id] {
 			s.preferred = majority
 		}
 
