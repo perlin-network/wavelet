@@ -31,17 +31,17 @@ type Snowball struct {
 	alpha int
 
 	count  int
-	counts map[BlockID]uint16
+	counts map[VoteID]uint16
 
-	preferred *snowballVote
-	last      *snowballVote
+	preferred Vote
+	last      Vote
 
 	decided bool
 }
 
 func NewSnowball() *Snowball {
 	return &Snowball{
-		counts: make(map[BlockID]uint16),
+		counts: make(map[VoteID]uint16),
 	}
 }
 
@@ -51,14 +51,14 @@ func (s *Snowball) Reset() {
 	s.preferred = nil
 	s.last = nil
 
-	s.counts = make(map[BlockID]uint16)
+	s.counts = make(map[VoteID]uint16)
 	s.count = 0
 
 	s.decided = false
 	s.Unlock()
 }
 
-func (s *Snowball) Tick(tallies map[VoteID]float64, votes map[VoteID]*snowballVote) {
+func (s *Snowball) Tick(tallies map[VoteID]float64, votes map[VoteID]Vote) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -66,7 +66,7 @@ func (s *Snowball) Tick(tallies map[VoteID]float64, votes map[VoteID]*snowballVo
 		return
 	}
 
-	var majority *snowballVote
+	var majority Vote
 	var majorityTally float64 = 0
 
 	for id, tally := range tallies {
@@ -84,13 +84,13 @@ func (s *Snowball) Tick(tallies map[VoteID]float64, votes map[VoteID]*snowballVo
 	if majority == nil || majorityTally < conf.GetSnowballAlpha()*2/denom {
 		s.count = 0
 	} else {
-		s.counts[majority.id] += 1
+		s.counts[majority.ID()] += 1
 
-		if s.preferred == nil || s.counts[majority.id] > s.counts[s.preferred.id] {
+		if s.preferred == nil || s.counts[majority.ID()] > s.counts[s.preferred.ID()] {
 			s.preferred = majority
 		}
 
-		if s.last == nil || majority.id != s.last.id {
+		if s.last == nil || majority.ID() != s.last.ID() {
 			s.last, s.count = majority, 1
 		} else {
 			s.count += 1
@@ -102,13 +102,13 @@ func (s *Snowball) Tick(tallies map[VoteID]float64, votes map[VoteID]*snowballVo
 	}
 }
 
-func (s *Snowball) Prefer(b *snowballVote) {
+func (s *Snowball) Prefer(b Vote) {
 	s.Lock()
 	s.preferred = b
 	s.Unlock()
 }
 
-func (s *Snowball) Preferred() *snowballVote {
+func (s *Snowball) Preferred() Vote {
 	s.RLock()
 	preferred := s.preferred
 	s.RUnlock()

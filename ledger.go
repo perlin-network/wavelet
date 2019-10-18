@@ -457,11 +457,13 @@ func (l *Ledger) FinalizeBlocks() {
 			proposedBlock := l.proposeBlock()
 
 			if proposedBlock != nil {
-				l.finalizer.Prefer(newPreferredBlockVote(proposedBlock))
+				l.finalizer.Prefer(finalizationVote{
+					block: proposedBlock,
+				})
 			}
 		} else {
 			if decided {
-				l.finalize(*preferred.val.(*Block))
+				l.finalize(*preferred.Value().(*Block))
 			} else {
 				l.query()
 			}
@@ -845,7 +847,7 @@ func (l *Ledger) SyncToLatestBlock() {
 		current := l.blocks.Latest()
 		preferred := l.syncer.Preferred()
 
-		oos := preferred.val.(*outOfSyncVote).outOfSync
+		oos := *preferred.Value().(*bool)
 		if !oos {
 			l.applySync(synced)
 			l.syncer.Reset()

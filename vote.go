@@ -27,9 +27,52 @@ import (
 	"github.com/perlin-network/noise/skademlia"
 )
 
+type VoteID BlockID
+
+var ZeroVoteID VoteID
+
+type Vote interface {
+	ID() VoteID
+	VoterID() AccountID
+	Length() float64
+	Value() interface{}
+}
+
 type syncVote struct {
 	voter     *skademlia.ID
 	outOfSync bool
+	voteID    *VoteID
+}
+
+func (s syncVote) ID() VoteID {
+	if s.voteID == nil {
+		var voteID VoteID
+
+		var v uint16
+		if s.outOfSync {
+			v = 1
+		} else {
+			v = 0
+		}
+
+		binary.BigEndian.PutUint16(voteID[:], v)
+
+		s.voteID = &voteID
+	}
+
+	return *s.voteID
+}
+
+func (s syncVote) VoterID() AccountID {
+	return s.voter.PublicKey()
+}
+
+func (s syncVote) Length() float64 {
+	return 0
+}
+
+func (s syncVote) Value() interface{} {
+	return &s.outOfSync
 }
 
 type finalizationVote struct {
@@ -37,44 +80,26 @@ type finalizationVote struct {
 	block *Block
 }
 
-// Represent a single vote for snowball.
-type snowballVote struct {
-	id    VoteID
-	voter *skademlia.ID
-	val   interface{}
-	// Used to calculate profit weight, can be 0 if it's not applicable.
-	length float64 // TODO find more suitable name ?
+func (f finalizationVote) ID() VoteID {
+	if f.block == nil {
+		return ZeroVoteID
+	}
+	return f.block.ID
 }
 
-func newPreferredBlockVote(block *Block) *snowballVote {
-	return &snowballVote{
-		id:  block.ID,
-		val: block,
-	}
+func (f finalizationVote) VoterID() AccountID {
+	return f.voter.PublicKey()
 }
 
-func newPreferredOutOfSyncVote(outOfSync bool) *snowballVote {
-	return &snowballVote{
-		id:  newBoolVoteID(outOfSync),
-		val: &outOfSyncVote{outOfSync: outOfSync},
+func (f finalizationVote) Length() float64 {
+	if f.block == nil {
+		return 0
 	}
+	return float64(len(f.block.Transactions))
 }
 
-type VoteID BlockID
-
-func newBoolVoteID(b bool) VoteID {
-	var voteID VoteID
-
-	var id uint16
-	if b {
-		id = 1
-	} else {
-		id = 0
-	}
-
-	binary.BigEndian.PutUint16(voteID[:], id)
-
-	return voteID
+func (f finalizationVote) Value() interface{} {
+	return f.block
 }
 
 func CollectVotesForSync(
@@ -88,7 +113,9 @@ func CollectVotesForSync(
 	voters := make(map[AccountID]struct{}, snowballK)
 
 	// TODO is this the best place to set the initial preferred
-	snowball.Prefer(newPreferredOutOfSyncVote(false))
+	snowball.Prefer(syncVote{
+		outOfSync: false,
+	})
 
 	for vote := range voteChan {
 		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
@@ -112,53 +139,39 @@ func CollectVotesForSync(
 }
 
 func TickForFinalization(accounts *Accounts, snowball *Snowball, votes []finalizationVote) {
-	snowballVotes := make([]*snowballVote, 0, len(votes))
+	snowballVotes := make([]Vote, 0, len(votes))
 
 	for _, vote := range votes {
-		sv := &snowballVote{
-			id:     vote.block.ID,
-			voter:  vote.voter,
-			length: float64(len(vote.block.Transactions)),
-			val:    vote.block,
-		}
-
-		snowballVotes = append(snowballVotes, sv)
+		snowballVotes = append(snowballVotes, vote)
 	}
 
 	tick(accounts, snowball, snowballVotes)
 }
 
 func TickForSync(accounts *Accounts, snowball *Snowball, votes []syncVote) {
-	snowballVotes := make([]*snowballVote, 0, len(votes))
+	snowballVotes := make([]Vote, 0, len(votes))
 
 	for _, vote := range votes {
-		sv := &snowballVote{
-			id:     newBoolVoteID(vote.outOfSync),
-			voter:  vote.voter,
-			length: 0,
-			val:    &outOfSyncVote{outOfSync: vote.outOfSync},
-		}
-
-		snowballVotes = append(snowballVotes, sv)
+		snowballVotes = append(snowballVotes, vote)
 	}
 
 	tick(accounts, snowball, snowballVotes)
 }
 
-func tick(accounts *Accounts, snowball *Snowball, votes []*snowballVote) {
-	tallies := make(map[VoteID]float64)
-	blocks := make(map[VoteID]*snowballVote)
+func tick(accounts *Accounts, snowball *Snowball, votes []Vote) {
+	tallies := make(map[VoteID]float64, len(votes))
+	blocks := make(map[VoteID]Vote, len(votes))
 
 	for _, vote := range votes {
-		if vote.val == nil {
+		if vote.ID() == ZeroVoteID {
 			continue
 		}
 
-		if _, exists := blocks[vote.id]; !exists {
-			blocks[vote.id] = vote
+		if _, exists := blocks[vote.ID()]; !exists {
+			blocks[vote.ID()] = vote
 		}
 
-		tallies[vote.id] += 1.0 / float64(len(votes))
+		tallies[vote.ID()] += 1.0 / float64(len(votes))
 	}
 
 	for block, weight := range Normalize(ComputeProfitWeights(votes)) {
@@ -182,20 +195,20 @@ func tick(accounts *Accounts, snowball *Snowball, votes []*snowballVote) {
 	snowball.Tick(tallies, blocks)
 }
 
-func ComputeProfitWeights(responses []*snowballVote) map[VoteID]float64 {
-	weights := make(map[VoteID]float64)
+func ComputeProfitWeights(votes []Vote) map[VoteID]float64 {
+	weights := make(map[VoteID]float64, len(votes))
 
 	var max float64
 
-	for _, res := range responses {
-		if res.val == nil {
+	for _, vote := range votes {
+		if vote.ID() == ZeroVoteID {
 			continue
 		}
 
-		weights[res.id] += res.length
+		weights[vote.ID()] += vote.Length()
 
-		if weights[res.id] > max {
-			max = weights[res.id]
+		if weights[vote.ID()] > max {
+			max = weights[vote.ID()]
 		}
 	}
 
@@ -206,28 +219,28 @@ func ComputeProfitWeights(responses []*snowballVote) map[VoteID]float64 {
 	return weights
 }
 
-func ComputeStakeWeights(accounts *Accounts, responses []*snowballVote) map[VoteID]float64 {
-	weights := make(map[VoteID]float64)
+func ComputeStakeWeights(accounts *Accounts, votes []Vote) map[VoteID]float64 {
+	weights := make(map[VoteID]float64, len(votes))
 
 	var max float64
 
 	snapshot := accounts.Snapshot()
 
-	for _, res := range responses {
-		if res.val == nil {
+	for _, vote := range votes {
+		if vote.ID() == ZeroVoteID {
 			continue
 		}
 
-		stake, _ := ReadAccountStake(snapshot, res.voter.PublicKey())
+		stake, _ := ReadAccountStake(snapshot, vote.VoterID())
 
 		if stake < sys.MinimumStake {
-			weights[res.id] += float64(sys.MinimumStake)
+			weights[vote.ID()] += float64(sys.MinimumStake)
 		} else {
-			weights[res.id] += float64(stake)
+			weights[vote.ID()] += float64(stake)
 		}
 
-		if weights[res.id] > max {
-			max = weights[res.id]
+		if weights[vote.ID()] > max {
+			max = weights[vote.ID()]
 		}
 	}
 

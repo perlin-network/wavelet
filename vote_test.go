@@ -86,7 +86,9 @@ func TestTickForFinalization(t *testing.T) {
 			}
 
 			if i == initialPreferredIdx {
-				snowball.Prefer(newPreferredBlockVote(&block))
+				snowball.Prefer(finalizationVote{
+					block: &block,
+				})
 			}
 
 			votes = append(votes, finalizationVote{
@@ -102,7 +104,7 @@ func TestTickForFinalization(t *testing.T) {
 
 		// At this point the preferred block should be equal to the expected finalized block, but not  decided yet.
 		//noinspection GoNilness
-		assert.Equal(t, expectedFinalizedBlock.ID, snowball.Preferred().val.(*Block).ID)
+		assert.Equal(t, expectedFinalizedBlock.ID, snowball.Preferred().Value().(*Block).ID)
 		assert.False(t, snowball.Decided())
 
 		// One more tick to finalize
@@ -112,7 +114,7 @@ func TestTickForFinalization(t *testing.T) {
 
 		assert.True(t, snowball.Decided())
 		//noinspection GoNilness
-		assert.Equal(t, expectedFinalizedBlock.ID, snowball.Preferred().val.(*Block).ID)
+		assert.Equal(t, expectedFinalizedBlock.ID, snowball.Preferred().Value().(*Block).ID)
 
 		snowball.Reset()
 
@@ -126,7 +128,7 @@ func TestTickForFinalization(t *testing.T) {
 
 }
 
-func TestCollectVotesForSynce(t *testing.T) {
+func TestCollectVotesForSync(t *testing.T) {
 	t.Parallel()
 
 	snowballK := 10
@@ -219,7 +221,7 @@ func TestCollectVotesForSynce(t *testing.T) {
 		wg.Wait()
 
 		// At this point the preferred should be equal to the expected, but not  decided yet.
-		assert.Equal(t, expectedOutOfSync, snowball.Preferred().val.(*outOfSyncVote).outOfSync)
+		assert.Equal(t, expectedOutOfSync, *snowball.Preferred().Value().(*bool))
 		assert.False(t, snowball.Decided())
 
 		// One more tick to finalize
@@ -235,7 +237,7 @@ func TestCollectVotesForSynce(t *testing.T) {
 		// At this point, the snowball should be finalized
 
 		assert.True(t, snowball.Decided())
-		assert.Equal(t, expectedOutOfSync, snowball.Preferred().val.(*outOfSyncVote).outOfSync)
+		assert.Equal(t, expectedOutOfSync, *snowball.Preferred().Value().(*bool))
 
 		snowball.Reset()
 
