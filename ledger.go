@@ -797,7 +797,7 @@ func (l *Ledger) SyncToLatestBlock() {
 	voteWG := new(sync.WaitGroup)
 
 	snowballK := conf.GetSnowballK()
-	syncVotes := make(chan syncVote, snowballK)
+	syncVotes := make(chan *syncVote, snowballK)
 
 	logger := log.Sync("sync")
 
@@ -859,7 +859,7 @@ func (l *Ledger) SyncToLatestBlock() {
 						return
 					}
 
-					syncVotes <- syncVote{voter: voter, outOfSync: res.OutOfSync}
+					syncVotes <- &syncVote{voter: voter, outOfSync: res.OutOfSync}
 
 					wg.Done()
 				}(conn)
@@ -912,7 +912,7 @@ func (l *Ledger) SyncToLatestBlock() {
 		restart := func() { // Respawn all previously stopped workers.
 			snowballK := conf.GetSnowballK()
 
-			syncVotes = make(chan syncVote, snowballK)
+			syncVotes = make(chan *syncVote, snowballK)
 			go CollectVotesForSync(l.accounts, l.syncer, syncVotes, voteWG, snowballK)
 
 			l.sync = make(chan struct{})

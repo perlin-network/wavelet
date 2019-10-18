@@ -47,7 +47,7 @@ type syncVote struct {
 	voteID VoteID
 }
 
-func (s syncVote) ID() VoteID {
+func (s *syncVote) ID() VoteID {
 	if s.voteID == ZeroVoteID {
 		var voteID VoteID
 
@@ -68,16 +68,16 @@ func (s syncVote) ID() VoteID {
 	return s.voteID
 }
 
-func (s syncVote) VoterID() AccountID {
+func (s *syncVote) VoterID() AccountID {
 	return s.voter.PublicKey()
 }
 
-func (s syncVote) Length() float64 {
+func (s *syncVote) Length() float64 {
 	// Not applicable, so we return 0
 	return 0
 }
 
-func (s syncVote) Value() interface{} {
+func (s *syncVote) Value() interface{} {
 	return &s.outOfSync
 }
 
@@ -114,15 +114,15 @@ func (f *finalizationVote) Value() interface{} {
 func CollectVotesForSync(
 	accounts *Accounts,
 	snowball *Snowball,
-	voteChan <-chan syncVote,
+	voteChan <-chan *syncVote,
 	wg *sync.WaitGroup,
 	snowballK int,
 ) {
-	votes := make([]syncVote, 0, snowballK)
+	votes := make([]*syncVote, 0, snowballK)
 	voters := make(map[AccountID]struct{}, snowballK)
 
 	// TODO is this the best place to set the initial preferred
-	snowball.Prefer(syncVote{
+	snowball.Prefer(&syncVote{
 		outOfSync: false,
 	})
 
@@ -157,7 +157,7 @@ func TickForFinalization(accounts *Accounts, snowball *Snowball, votes []*finali
 	tick(accounts, snowball, snowballVotes)
 }
 
-func TickForSync(accounts *Accounts, snowball *Snowball, votes []syncVote) {
+func TickForSync(accounts *Accounts, snowball *Snowball, votes []*syncVote) {
 	snowballVotes := make([]Vote, 0, len(votes))
 
 	for _, vote := range votes {
