@@ -49,7 +49,7 @@ func TestTickForFinalization(t *testing.T) {
 	}
 
 	for i := 0; i < 100; i++ {
-		votes := make([]finalizationVote, 0, snowballK)
+		votes := make([]*finalizationVote, 0, snowballK)
 
 		var expectedFinalizedBlock *Block
 
@@ -79,19 +79,19 @@ func TestTickForFinalization(t *testing.T) {
 				txIDs = append(txIDs, getTxID())
 			}
 
-			block := NewBlock(1, accounts.tree.Checksum(), txIDs...)
+			block := NewBlock(1, accounts.tree.Checksum(), uint32(len(txIDs)), txIDs...)
 
 			if i == expectedFinalizedIdx {
 				expectedFinalizedBlock = &block
 			}
 
 			if i == initialPreferredIdx {
-				snowball.Prefer(finalizationVote{
+				snowball.Prefer(&finalizationVote{
 					block: &block,
 				})
 			}
 
-			votes = append(votes, finalizationVote{
+			votes = append(votes, &finalizationVote{
 				voter: keys[i],
 				block: &block,
 			})
@@ -157,7 +157,7 @@ func TestCollectVotesForSync(t *testing.T) {
 	snowball := NewSnowball()
 
 	for i := 0; i < 100; i++ {
-		votes := make([]syncVote, 0, snowballK)
+		votes := make([]*syncVote, 0, snowballK)
 
 		expectedOutOfSync := rand.Intn(2) == 1
 		expectedOutOfSyncCount := 0
@@ -199,17 +199,17 @@ func TestCollectVotesForSync(t *testing.T) {
 				}
 			}
 
-			votes = append(votes, syncVote{
+			votes = append(votes, &syncVote{
 				voter:     keys[i],
 				outOfSync: outOfSyncVote,
 			})
 		}
 
-		var voteChan chan syncVote
+		var voteChan chan *syncVote
 		var wg sync.WaitGroup
 
 		// Call tick until the snowball requires one more tick to finalized.
-		voteChan = make(chan syncVote)
+		voteChan = make(chan *syncVote)
 		go CollectVotesForSync(accounts, snowball, voteChan, &wg, snowballK)
 		wg.Add(1)
 		for i := 0; i < conf.GetSnowballBeta(); i++ {
@@ -225,7 +225,7 @@ func TestCollectVotesForSync(t *testing.T) {
 		assert.False(t, snowball.Decided())
 
 		// One more tick to finalize
-		voteChan = make(chan syncVote)
+		voteChan = make(chan *syncVote)
 		go CollectVotesForSync(accounts, snowball, voteChan, &wg, snowballK)
 		wg.Add(1)
 		for _, vote := range votes {
