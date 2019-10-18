@@ -532,8 +532,6 @@ func (l *Ledger) finalize(block Block) {
 		return
 	}
 
-	l.mempool.Reshuffle(*current, block)
-
 	if uint32(results.appliedCount+results.rejectedCount) != block.TransactionCount {
 		logger := log.Node()
 		logger.Error().
@@ -544,6 +542,19 @@ func (l *Ledger) finalize(block Block) {
 
 		return
 	}
+
+	if checksum := results.snapshot.Checksum(); checksum != block.Merkle {
+		logger := log.Node()
+		logger.Error().
+			Uint64("target_block_id", block.Index).
+			Hex("expected_merkle_root", block.Merkle[:]).
+			Hex("yielded_merkle_root", checksum[:]).
+			Msg("Merkle root does not match")
+
+		return
+	}
+
+	l.mempool.Reshuffle(*current, block)
 
 	pruned, err := l.blocks.Save(&block)
 	if err != nil {
@@ -748,6 +759,17 @@ func (l *Ledger) query() {
 				Err(err).
 				Msg("error collapsing transactions during query")
 			continue
+		}
+
+		if uint32(results.appliedCount+results.rejectedCount) != vote.block.TransactionCount {
+			logger := log.Node()
+			logger.Error().
+				Err(err).
+				Uint32("expected", vote.block.TransactionCount).
+				Uint32("actual", uint32(results.appliedCount+results.rejectedCount)).
+				Msg("Number of collapsed transactions does not match")
+
+			return
 		}
 
 		if results.snapshot.Checksum() != vote.block.Merkle {
