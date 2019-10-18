@@ -38,16 +38,24 @@ type Protocol struct {
 func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse, error) {
 	res := &QueryResponse{}
 
-	block, err := p.ledger.blocks.GetByIndex(req.BlockIndex)
-	if err == nil {
-		res.Block = block.Marshal()
+	latestBlock := p.ledger.blocks.Latest()
+
+	// Return preferred block if peer is finalizing on the same block
+	if latestBlock.Index+1 == req.BlockIndex {
+		preferred := p.ledger.finalizer.Preferred()
+		if preferred != nil {
+			res.Block = preferred.Value().(*Block).Marshal()
+		}
+
 		return res, nil
 	}
 
-	preferred := p.ledger.finalizer.Preferred()
-	if preferred != nil {
-		res.Block = preferred.Value().(*Block).Marshal()
-		return res, nil
+	// Otherwise, return the finalized block
+	if latestBlock.Index+1 > req.BlockIndex {
+		block, err := p.ledger.blocks.GetByIndex(req.BlockIndex)
+		if err == nil {
+			res.Block = block.Marshal()
+		}
 	}
 
 	return res, nil
@@ -165,7 +173,7 @@ func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullReq
 	if _, err := filter.ReadFrom(bytes.NewReader(req.Filter)); err != nil {
 		return nil, err
 	}
-	
+
 	p.ledger.mempool.Iter(func(tx Transaction) bool {
 		if !filter.Test(tx.ID[:]) {
 			res.Transactions = append(res.Transactions, tx.Marshal())
