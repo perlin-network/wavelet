@@ -457,6 +457,12 @@ func (l *Ledger) FinalizeBlocks() {
 			proposedBlock := l.proposeBlock()
 
 			if proposedBlock != nil {
+				logger := log.Consensus("proposal")
+				logger.Debug().
+					Hex("block_id", proposedBlock.ID[:]).
+					Uint64("block_index", proposedBlock.Index).
+					Msg("Proposing block...")
+
 				l.finalizer.Prefer(finalizationVote{
 					block: proposedBlock,
 				})
@@ -502,12 +508,19 @@ func (l *Ledger) proposeBlock() *Block {
 
 	proposed.Merkle = results.snapshot.Checksum()
 	proposed.TransactionCount = uint32(results.appliedCount + results.rejectedCount)
+	proposed.ID = blake2b.Sum256(proposed.Marshal())
 
 	return &proposed
 }
 
 func (l *Ledger) finalize(block Block) {
 	current := l.blocks.Latest()
+
+	logger := log.Consensus("finalized")
+	logger.Debug().
+		Hex("block_id", block.ID[:]).
+		Uint64("block_index", block.Index).
+		Msg("Finalizing block...")
 
 	results, err := l.collapseTransactions(&block, false)
 	if err != nil {
@@ -571,7 +584,6 @@ func (l *Ledger) finalize(block Block) {
 	// Reset snowball
 	l.finalizer.Reset()
 
-	logger := log.Consensus("finalized")
 	logger.Info().
 		Int("num_applied_tx", results.appliedCount).
 		Int("num_rejected_tx", results.rejectedCount).
@@ -707,6 +719,12 @@ func (l *Ledger) query() {
 		for _, id := range vote.block.Transactions {
 			// TODO figure out a way to hold the lock for the entirety of the loop ?
 			if tx := l.mempool.Find(id); tx == nil {
+				logger.Debug().
+					Hex("block_id", vote.block.ID[:]).
+					Uint64("block_index", vote.block.Index).
+					Hex("tx_id", id[:]).
+					Msg("Block is missing transaction")
+
 				vote.block = nil
 				break
 			}
