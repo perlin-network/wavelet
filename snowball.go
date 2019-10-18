@@ -83,21 +83,22 @@ func (s *Snowball) Tick(tallies map[VoteID]float64, votes map[VoteID]Vote) {
 
 	if majority == nil || majorityTally < conf.GetSnowballAlpha()*2/denom {
 		s.count = 0
+		return
+	}
+
+	s.counts[majority.ID()] += 1
+
+	if s.counts[majority.ID()] > s.counts[s.preferred.ID()] {
+		s.preferred = majority
+	}
+
+	if s.last == nil || majority.ID() != s.last.ID() {
+		s.last, s.count = majority, 1
 	} else {
-		s.counts[majority.ID()] += 1
+		s.count += 1
 
-		if s.preferred == nil || s.counts[majority.ID()] > s.counts[s.preferred.ID()] {
-			s.preferred = majority
-		}
-
-		if s.last == nil || majority.ID() != s.last.ID() {
-			s.last, s.count = majority, 1
-		} else {
-			s.count += 1
-
-			if s.count > conf.GetSnowballBeta() {
-				s.decided = true
-			}
+		if s.count > conf.GetSnowballBeta() {
+			s.decided = true
 		}
 	}
 }
