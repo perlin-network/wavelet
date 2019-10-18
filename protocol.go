@@ -165,13 +165,11 @@ func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullReq
 	if _, err := filter.ReadFrom(bytes.NewReader(req.Filter)); err != nil {
 		return nil, err
 	}
-
-	p.ledger.mempool.Ascend(func(tx Transaction) bool {
-		// Add transactions that do not pass the bloom filter test.
+	
+	p.ledger.mempool.Iter(func(tx Transaction) bool {
 		if !filter.Test(tx.ID[:]) {
 			res.Transactions = append(res.Transactions, tx.Marshal())
 		}
-
 		return true
 	})
 

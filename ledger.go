@@ -479,8 +479,8 @@ func (l *Ledger) proposeBlock() *Block {
 	maxIndex = maxIndex.Div(maxIndex, big.NewInt(4))
 
 	proposing := make([]TransactionID, 0)
-	l.mempool.AscendLessThan(maxIndex, func(tx Transaction) bool {
-		proposing = append(proposing, tx.ID)
+	l.mempool.AscendLessThan(maxIndex, func(txID TransactionID) bool {
+		proposing = append(proposing, txID)
 		return true
 	})
 

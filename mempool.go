@@ -102,7 +102,6 @@ func (m *Mempool) Reshuffle(prevBlock Block, nextBlock Block) {
 			continue
 		}
 
-		delete(m.transactions, id)
 		m.index.Delete(mempoolItem{index: tx.ComputeIndex(prevBlock.ID)})
 	}
 
@@ -137,23 +136,32 @@ func (m *Mempool) WriteTransactionIDs(w io.Writer) (int64, error) {
 
 // Ascend iterates through the mempool in ascending order.
 // It stops iterating when the iterator function returns false.
-func (m *Mempool) Ascend(iter func(tx Transaction) bool) {
+func (m *Mempool) Ascend(iter func(txID TransactionID) bool) {
 	m.lock.RLock()
 	m.index.Ascend(func(i btree.Item) bool {
-		id := i.(mempoolItem).id
-		return iter(*m.transactions[id])
+		return iter(i.(mempoolItem).id)
 	})
+	m.lock.RUnlock()
+}
+
+// Iterate through the all the transactions in non deterministic order.
+func (m *Mempool) Iter(iter func(tx Transaction) bool) {
+	m.lock.RLock()
+	for _, tx := range m.transactions {
+		if !iter(*tx) {
+			break
+		}
+	}
 	m.lock.RUnlock()
 }
 
 // Ascend iterates through the mempool in ascending order, starting from
 // index 0 up to maxIndex. It stops iterating when the iterator function
 // returns false.
-func (m *Mempool) AscendLessThan(maxIndex *big.Int, iter func(tx Transaction) bool) {
+func (m *Mempool) AscendLessThan(maxIndex *big.Int, iter func(txID TransactionID) bool) {
 	m.lock.RLock()
 	m.index.AscendLessThan(mempoolItem{index: maxIndex}, func(i btree.Item) bool {
-		id := i.(mempoolItem).id
-		return iter(*m.transactions[id])
+		return iter(i.(mempoolItem).id)
 	})
 	m.lock.RUnlock()
 }
