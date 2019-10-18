@@ -39,7 +39,7 @@ func collapseTransactions(mempool *Mempool, block *Block, accounts *Accounts, lo
 	for _, id := range block.Transactions {
 		tx := mempool.Find(id)
 		if tx == nil {
-			err = ErrMissingTx
+			err = errors.Wrapf(ErrMissingTx, "missing tx %x", id)
 			break
 		}
 
