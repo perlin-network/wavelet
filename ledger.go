@@ -209,7 +209,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 	ledger.PerformConsensus()
 
-	go ledger.SyncToLatestBlock()
+	// go ledger.SyncToLatestBlock()
 	go ledger.PushSendQuota()
 
 	return ledger
