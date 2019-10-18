@@ -797,14 +797,6 @@ func (l *Ledger) query() {
 		Msg("snowball tick")
 }
 
-type outOfSyncVote struct {
-	outOfSync bool
-}
-
-func (o *outOfSyncVote) GetID() string {
-	return fmt.Sprintf("%v", o.outOfSync)
-}
-
 // SyncToLatestBlock continuously checks if the node is out of sync from its peers.
 // If the majority of its peers responded that it is out of sync (decided using snowball),
 // the node will attempt to sync its state to the latest block by downloading the AVL tree
