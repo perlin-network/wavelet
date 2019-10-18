@@ -1,12 +1,14 @@
 package wavelet
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io"
+
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
-	"io"
 )
 
 type Block struct {
@@ -33,18 +35,17 @@ func (b *Block) GetID() string {
 }
 
 func (b Block) Marshal() []byte {
-	buf := make([]byte, 8+SizeMerkleNodeID+4+len(b.Transactions)*SizeTransactionID)
-	binary.BigEndian.PutUint64(buf[:8], b.Index)
+	buf := new(bytes.Buffer)
 
-	copy(buf[8:8+SizeMerkleNodeID], b.Merkle[:])
+	binary.Write(buf, binary.BigEndian, b.Index)
+	buf.Write(b.Merkle[:])
+	binary.Write(buf, binary.BigEndian, uint32(len(b.Transactions)))
 
-	binary.BigEndian.PutUint32(buf[8+SizeMerkleNodeID:8+SizeMerkleNodeID+4], uint32(len(b.Transactions)))
-
-	for i, id := range b.Transactions {
-		copy(buf[8+SizeMerkleNodeID+4+SizeTransactionID*i:8+4+SizeTransactionID*(i+1)], id[:])
+	for _, id := range b.Transactions {
+		buf.Write(id[:])
 	}
 
-	return buf
+	return buf.Bytes()
 }
 
 func (b Block) String() string {
