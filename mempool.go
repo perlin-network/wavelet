@@ -136,7 +136,7 @@ func (m *Mempool) WriteTransactionIDs(w io.Writer) (int64, error) {
 
 // Ascend iterates through the mempool in ascending order.
 // It stops iterating when the iterator function returns false.
-func (m *Mempool) Ascend(iter func(txID TransactionID) bool) {
+func (m *Mempool) AscendPending(iter func(txID TransactionID) bool) {
 	m.lock.RLock()
 	m.index.Ascend(func(i btree.Item) bool {
 		return iter(i.(mempoolItem).id)
@@ -158,7 +158,7 @@ func (m *Mempool) Iter(iter func(tx Transaction) bool) {
 // Ascend iterates through the mempool in ascending order, starting from
 // index 0 up to maxIndex. It stops iterating when the iterator function
 // returns false.
-func (m *Mempool) AscendLessThan(maxIndex *big.Int, iter func(txID TransactionID) bool) {
+func (m *Mempool) AscendPendingLessThan(maxIndex *big.Int, iter func(txID TransactionID) bool) {
 	m.lock.RLock()
 	m.index.AscendLessThan(mempoolItem{index: maxIndex}, func(i btree.Item) bool {
 		return iter(i.(mempoolItem).id)
