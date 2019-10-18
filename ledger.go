@@ -704,16 +704,30 @@ func (l *Ledger) query() {
 			continue
 		}
 
-		if vote.block.Merkle != l.blocks.Latest().Merkle {
-			vote.block = nil
-		}
-
 		for _, id := range vote.block.Transactions {
 			// TODO figure out a way to hold the lock for the entirety of the loop ?
 			if tx := l.mempool.Find(id); tx == nil {
 				vote.block = nil
 				break
 			}
+		}
+
+		if vote.block == nil {
+			continue
+		}
+
+		results, err := l.collapseTransactions(vote.block, false)
+		if err != nil {
+			logger := log.Node()
+			logger.Error().
+				Err(err).
+				Msg("error collapsing transactions during query")
+			continue
+		}
+
+		if results.snapshot.Checksum() != vote.block.Merkle {
+			vote.block = nil
+			continue
 		}
 	}
 
