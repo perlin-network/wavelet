@@ -692,13 +692,14 @@ func (l *Ledger) query() {
 			continue
 		}
 
-		if vote.block.ID == ZeroBlockID {
-			continue
+		if vote.block.Merkle != l.blocks.Latest().Merkle {
+			vote.block = nil
 		}
 
 		for _, id := range vote.block.Transactions {
+			// TODO figure out a way to hold the lock for the entirety of the loop ?
 			if tx := l.mempool.Find(id); tx == nil {
-				vote.block.ID = ZeroBlockID
+				vote.block = nil
 				break
 			}
 		}
