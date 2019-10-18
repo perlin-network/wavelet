@@ -87,19 +87,19 @@ type finalizationVote struct {
 }
 
 // If the block is empty, it will return ZeroVoteID.
-func (f finalizationVote) ID() VoteID {
+func (f *finalizationVote) ID() VoteID {
 	if f.block == nil {
 		return ZeroVoteID
 	}
 	return f.block.ID
 }
 
-func (f finalizationVote) VoterID() AccountID {
+func (f *finalizationVote) VoterID() AccountID {
 	return f.voter.PublicKey()
 }
 
 // If the block is empty, it will return 0.
-func (f finalizationVote) Length() float64 {
+func (f *finalizationVote) Length() float64 {
 	if f.block == nil {
 		return 0
 	}
@@ -107,7 +107,7 @@ func (f finalizationVote) Length() float64 {
 }
 
 // If the block is empty, it will return nil.
-func (f finalizationVote) Value() interface{} {
+func (f *finalizationVote) Value() interface{} {
 	return f.block
 }
 
@@ -147,7 +147,7 @@ func CollectVotesForSync(
 	}
 }
 
-func TickForFinalization(accounts *Accounts, snowball *Snowball, votes []finalizationVote) {
+func TickForFinalization(accounts *Accounts, snowball *Snowball, votes []*finalizationVote) {
 	snowballVotes := make([]Vote, 0, len(votes))
 
 	for _, vote := range votes {

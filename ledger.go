@@ -463,7 +463,7 @@ func (l *Ledger) FinalizeBlocks() {
 					Uint64("block_index", proposedBlock.Index).
 					Msg("Proposing block...")
 
-				l.finalizer.Prefer(finalizationVote{
+				l.finalizer.Prefer(&finalizationVote{
 					block: proposedBlock,
 				})
 			}
@@ -693,7 +693,7 @@ func (l *Ledger) query() {
 		workerChan <- p
 	}
 
-	votes := make([]finalizationVote, 0, snowballK)
+	votes := make([]*finalizationVote, 0, snowballK)
 	voters := make(map[AccountID]struct{}, snowballK)
 
 	for response := range voteChan {
@@ -702,7 +702,7 @@ func (l *Ledger) query() {
 		}
 
 		voters[response.voter.PublicKey()] = struct{}{}
-		votes = append(votes, response)
+		votes = append(votes, &response)
 
 		if len(votes) == cap(votes) {
 			break
