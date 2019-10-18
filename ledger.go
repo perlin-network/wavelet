@@ -556,9 +556,7 @@ func (l *Ledger) finalize(block Block) {
 	l.applySync(finalized)
 
 	// Reset snowball
-	l.finalizer.Lock()
 	l.finalizer.Reset()
-	l.finalizer.Unlock()
 
 	logger := log.Consensus("finalized")
 	logger.Info().
