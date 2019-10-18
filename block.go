@@ -36,7 +36,7 @@ func (b *Block) GetID() string {
 }
 
 func (b Block) Marshal() []byte {
-	buf := bytes.NewBuffer(make([]byte, 0, 8+SizeMerkleNodeID+4+len(b.Transactions)*SizeTransactionID))
+	buf := bytes.NewBuffer(make([]byte, 0, 8+SizeMerkleNodeID+4+4+len(b.Transactions)*SizeTransactionID))
 
 	binary.Write(buf, binary.BigEndian, b.Index)
 	buf.Write(b.Merkle[:])
