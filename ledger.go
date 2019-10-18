@@ -707,11 +707,18 @@ func (l *Ledger) query() {
 
 	// Filter away all query responses whose blocks comprise of transactions our node is not aware of.
 	for _, vote := range votes {
+		logger := log.Node()
+
 		if vote.block == nil {
 			continue
 		}
 
-		if vote.block.Index != l.blocks.Latest().Index {
+		logger.Debug().
+			Hex("block_id", vote.block.ID[:]).
+			Uint64("block_index", vote.block.Index).
+			Msg("Queried block")
+
+		if vote.block.Index != l.blocks.Latest().Index+1 {
 			vote.block = nil
 			continue
 		}
