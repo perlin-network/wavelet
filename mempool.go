@@ -95,7 +95,7 @@ func (m *Mempool) Reshuffle(prevBlock Block, nextBlock Block) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	// Remove transactions contained in the previous block
+	// Remove transactions contained in the next block
 	for _, id := range nextBlock.Transactions {
 		tx := m.transactions[id]
 		if tx == nil {
