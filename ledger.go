@@ -439,6 +439,10 @@ func (l *Ledger) PullTransactions() {
 				continue
 			}
 
+			logger.Debug().
+				Hex("tx_id", tx.ID[:]).
+				Msg("Pulled transaction")
+
 			count += int64(tx.LogicalUnits())
 		}
 
@@ -779,6 +783,18 @@ func (l *Ledger) query() {
 	}
 
 	TickForFinalization(l.accounts, l.finalizer, votes)
+
+	var preferredID BlockID
+	if preferred := l.finalizer.Preferred(); preferred != nil {
+		preferredID = preferred.ID()
+	}
+
+	logger := log.Node()
+	logger.Debug().
+		Hex("preferred", preferredID[:]).
+		Int("count", l.finalizer.Progress()).
+		Int("beta", conf.GetSnowballBeta()).
+		Msg("snowball tick")
 }
 
 type outOfSyncVote struct {
