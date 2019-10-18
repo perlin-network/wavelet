@@ -181,10 +181,12 @@ func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullReq
 		return true
 	})
 
-	logger := log.Sync("pull_tx")
-	logger.Info().
-		Int("num_transactions", len(res.Transactions)).
-		Msg("Provided transactions for a pull request.")
+	if len(res.Transactions) > 0 {
+		logger := log.Sync("pull_tx")
+		logger.Info().
+			Int("num_transactions", len(res.Transactions)).
+			Msg("Provided transactions for a pull request.")
+	}
 
 	return res, nil
 }
