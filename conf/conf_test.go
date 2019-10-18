@@ -15,7 +15,6 @@ func TestGet(t *testing.T) {
 	assert.EqualValues(t, 0.8, GetFinalizationVoteThreshold())
 	assert.EqualValues(t, 1, GetStakeMajorityWeight())
 	assert.EqualValues(t, 0.3, GetTransactionsNumMajorityWeight())
-	assert.EqualValues(t, 0.3, GetRoundDepthMajorityWeight())
 
 	assert.EqualValues(t, 5000*time.Millisecond, GetQueryTimeout())
 	assert.EqualValues(t, 5000*time.Millisecond, GetGossipTimeout())
@@ -24,8 +23,6 @@ func TestGet(t *testing.T) {
 
 	assert.EqualValues(t, 16384, GetSyncChunkSize())
 	assert.EqualValues(t, 2, GetSyncIfBlockIndicesDifferBy())
-	assert.EqualValues(t, 1500, GetMaxDownloadDepthDiff())
-	assert.EqualValues(t, 10, GetMaxDepthDiff())
 	assert.EqualValues(t, 30, GetPruningLimit())
 	assert.EqualValues(t, "", GetSecret())
 }
@@ -41,7 +38,6 @@ func TestUpdate(t *testing.T) {
 		WithFinalizationVoteThreshold(2),
 		WithStakeMajorityWeight(3),
 		WithTransactionsNumMajorityWeight(4),
-		WithRoundDepthMajorityWeight(5),
 
 		WithQueryTimeout(time.Second*10),
 		WithGossipTimeout(time.Second*2),
@@ -50,8 +46,6 @@ func TestUpdate(t *testing.T) {
 
 		WithSyncChunkSize(666),
 		WithSyncIfBlockIndicesDifferBy(7),
-		WithMaxDownloadDepthDiff(42),
-		WithMaxDepthDiff(4),
 		WithPruningLimit(13),
 		WithSecret("shambles"),
 	)
@@ -63,7 +57,6 @@ func TestUpdate(t *testing.T) {
 	assert.EqualValues(t, 2, GetFinalizationVoteThreshold())
 	assert.EqualValues(t, 3, GetStakeMajorityWeight())
 	assert.EqualValues(t, 1.9, GetTransactionsNumMajorityWeight())
-	assert.EqualValues(t, 1.9, GetRoundDepthMajorityWeight())
 
 	assert.EqualValues(t, 10*time.Second, GetQueryTimeout())
 	assert.EqualValues(t, 2*time.Second, GetGossipTimeout())
@@ -72,8 +65,6 @@ func TestUpdate(t *testing.T) {
 
 	assert.EqualValues(t, 666, GetSyncChunkSize())
 	assert.EqualValues(t, 7, GetSyncIfBlockIndicesDifferBy())
-	assert.EqualValues(t, 42, GetMaxDownloadDepthDiff())
-	assert.EqualValues(t, 4, GetMaxDepthDiff())
 	assert.EqualValues(t, 13, GetPruningLimit())
 	assert.EqualValues(t, "shambles", GetSecret())
 }
