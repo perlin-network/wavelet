@@ -453,6 +453,13 @@ func (l *Ledger) PullTransactions() {
 // FinalizeBlocks continuously attempts to finalize blocks.
 func (l *Ledger) FinalizeBlocks() {
 	for {
+		select {
+		case <-l.sync:
+			return
+
+		default:
+		}
+
 		preferred := l.finalizer.Preferred()
 		decided := l.finalizer.Decided()
 
