@@ -36,7 +36,7 @@ type config struct {
 	bloomFilterM uint
 	bloomFilterK uint
 
-	// Number of rounds after which transactions will be pruned from the graph
+	// Number of blocks after which transactions will be pruned from the graph
 	pruningLimit uint8
 
 	// shared secret for http api authorization
@@ -69,8 +69,8 @@ func defaultConfig() config {
 		syncChunkSize:              16384,
 		syncIfBlockIndicesDifferBy: 2,
 
-		bloomFilterM: 1024,
-		bloomFilterK: 5,
+		bloomFilterM: 1024 * 1024,
+		bloomFilterK: 3,
 
 		pruningLimit: 30,
 	}

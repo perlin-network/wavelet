@@ -438,12 +438,12 @@ func (l *Ledger) PullTransactions() {
 				continue
 			}
 
-			logger.Debug().
-				Hex("tx_id", tx.ID[:]).
-				Msg("Pulled transaction")
-
 			count += int64(tx.LogicalUnits())
 		}
+
+		logger.Debug().
+			Int64("count", count).
+			Msg("Pulled transaction")
 
 		l.metrics.downloadedTX.Mark(count)
 		l.metrics.receivedTX.Mark(count)
@@ -459,8 +459,8 @@ func (l *Ledger) FinalizeBlocks() {
 		if preferred == nil {
 			proposedBlock := l.proposeBlock()
 
+			logger := log.Consensus("proposal")
 			if proposedBlock != nil {
-				logger := log.Consensus("proposal")
 				logger.Debug().
 					Hex("block_id", proposedBlock.ID[:]).
 					Uint64("block_index", proposedBlock.Index).
@@ -568,17 +568,6 @@ func (l *Ledger) finalize(block Block) {
 
 		return
 	}
-
-	// if pruned != nil {
-	// 	count := l.mempool.Prune(*pruned)
-
-	// 	logger := log.Consensus("prune")
-	// 	logger.Debug().
-	// 		Int("num_tx", count).
-	// 		Uint64("current_block", block.Index).
-	// 		Uint64("pruned_block", pruned.Index).
-	// 		Msg("Pruned away block and transactions.")
-	// }
 
 	if err = l.accounts.Commit(results.snapshot); err != nil {
 		logger := log.Node()
@@ -721,16 +710,9 @@ func (l *Ledger) query() {
 
 	// Filter away all query responses whose blocks comprise of transactions our node is not aware of.
 	for _, vote := range votes {
-		logger := log.Node()
-
 		if vote.block == nil {
 			continue
 		}
-
-		logger.Debug().
-			Hex("block_id", vote.block.ID[:]).
-			Uint64("block_index", vote.block.Index).
-			Msg("Queried block")
 
 		if vote.block.Index != l.blocks.Latest().Index+1 {
 			vote.block = nil
@@ -740,12 +722,6 @@ func (l *Ledger) query() {
 		for _, id := range vote.block.Transactions {
 			// TODO figure out a way to hold the lock for the entirety of the loop ?
 			if tx := l.mempool.Find(id); tx == nil {
-				logger.Debug().
-					Hex("block_id", vote.block.ID[:]).
-					Uint64("block_index", vote.block.Index).
-					Hex("tx_id", id[:]).
-					Msg("Block is missing transaction")
-
 				vote.block = nil
 				break
 			}
@@ -782,18 +758,6 @@ func (l *Ledger) query() {
 	}
 
 	TickForFinalization(l.accounts, l.finalizer, votes)
-
-	var preferredID BlockID
-	if preferred := l.finalizer.Preferred(); preferred != nil {
-		preferredID = preferred.ID()
-	}
-
-	logger := log.Node()
-	logger.Debug().
-		Hex("preferred", preferredID[:]).
-		Int("count", l.finalizer.Progress()).
-		Int("beta", conf.GetSnowballBeta()).
-		Msg("snowball tick")
 }
 
 // SyncToLatestBlock continuously checks if the node is out of sync from its peers.
@@ -1262,17 +1226,6 @@ func (l *Ledger) SyncToLatestBlock() {
 			cleanup()
 			goto SYNC
 		}
-
-		// if pruned != nil {
-		// 	count := l.mempool.Prune(*pruned)
-
-		// 	logger := log.Consensus("prune")
-		// 	logger.Debug().
-		// 		Int("num_tx", count).
-		// 		Uint64("current_block", latest.Index).
-		// 		Uint64("pruned_block", pruned.Index).
-		// 		Msg("Pruned away block and transactions.")
-		// }
 
 		if err := l.accounts.Commit(snapshot); err != nil {
 			cleanup()

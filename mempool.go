@@ -24,6 +24,7 @@ func (m mempoolItem) Less(than btree.Item) bool {
 type Mempool struct {
 	lock sync.RWMutex
 
+	// TODO: extract transactions and filter out of mempool
 	transactions map[TransactionID]*Transaction
 	index        *btree.BTree
 	filter       *bloom.BloomFilter
@@ -106,12 +107,19 @@ func (m *Mempool) Reshuffle(prevBlock Block, nextBlock Block) {
 	}
 
 	// Reindex all transactions based on the new block
+	var pruned uint64
+
 	items := make([]mempoolItem, 0, m.index.Len())
 	m.index.Ascend(func(i btree.Item) bool {
 		item := i.(mempoolItem)
 		tx := m.transactions[item.id]
 
-		// TODO: prune old transactions
+		// Prune old tx
+		if nextBlock.Index >= tx.Block+uint64(conf.GetPruningLimit()) {
+			delete(m.transactions, item.id)
+			pruned++
+			return true
+		}
 
 		item.index = tx.ComputeIndex(nextBlock.ID)
 		items = append(items, item)
@@ -122,6 +130,14 @@ func (m *Mempool) Reshuffle(prevBlock Block, nextBlock Block) {
 
 	for _, item := range items {
 		m.index.ReplaceOrInsert(item)
+	}
+
+	// Rebuild filter if there is at least 1 pruned tx
+	if pruned > 0 {
+		m.filter.ClearAll()
+		for id := range m.transactions {
+			m.filter.Add(id[:])
+		}
 	}
 }
 
@@ -164,32 +180,4 @@ func (m *Mempool) AscendPendingLessThan(maxIndex *big.Int, iter func(txID Transa
 		return iter(i.(mempoolItem).id)
 	})
 	m.lock.RUnlock()
-}
-
-// Prune removes the transactions inside the specified block from the mempool.
-// It returns the number of transactions that are pruned.
-func (m *Mempool) Prune(block Block) int {
-	var pruned int
-
-	m.lock.Lock()
-
-	// Remove transactions from the mempool
-	for _, txID := range block.Transactions {
-		if _, ok := m.transactions[txID]; ok {
-			delete(m.transactions, txID)
-			m.index.Delete(mempoolItem{id: txID})
-			pruned++
-		}
-	}
-
-	// Rebuild transaction ids bloom filter
-	m.filter.ClearAll()
-
-	for id := range m.transactions {
-		m.filter.Add(id[:])
-	}
-
-	m.lock.Unlock()
-
-	return pruned
 }
