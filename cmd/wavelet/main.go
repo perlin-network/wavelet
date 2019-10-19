@@ -179,11 +179,6 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			Value: conf.GetQueryTimeout(),
 			Usage: "Timeout in seconds for querying a transaction to K peers.",
 		}),
-		// altsrc.NewUint64Flag(cli.Uint64Flag{
-		// 	Name:  "sys.max_depth_diff",
-		// 	Value: conf.GetMaxDepthDiff(),
-		// 	Usage: "Max graph depth difference to search for eligible transaction parents from for our node.",
-		// }),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.transaction_fee_amount",
 			Value: sys.DefaultTransactionFee,
@@ -262,7 +257,6 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 			conf.WithSnowballK(c.Int("sys.snowball.k")),
 			conf.WithSnowballBeta(c.Int("sys.snowball.beta")),
 			conf.WithQueryTimeout(c.Duration("sys.query_timeout")),
-			// conf.WithMaxDepthDiff(c.Uint64("sys.max_depth_diff")),
 			conf.WithSecret(c.String("api.secret")),
 		)
 

@@ -21,9 +21,10 @@ package wavelet
 
 import (
 	"context"
+	"time"
+
 	"github.com/perlin-network/wavelet/log"
 	"github.com/rcrowley/go-metrics"
-	"time"
 )
 
 type Metrics struct {
@@ -35,6 +36,8 @@ type Metrics struct {
 	receivedTX   metrics.Meter
 	acceptedTX   metrics.Meter
 	downloadedTX metrics.Meter
+
+	finalizedBlocks metrics.Meter
 
 	queryLatency metrics.Timer
 }
@@ -48,6 +51,8 @@ func NewMetrics(ctx context.Context) *Metrics {
 	receivedTX := metrics.NewRegisteredMeter("tx.received", registry)
 	acceptedTX := metrics.NewRegisteredMeter("tx.accepted", registry)
 	downloadedTX := metrics.NewRegisteredMeter("tx.downloaded", registry)
+
+	finalizedBlocks := metrics.NewRegisteredMeter("block.finalized", registry)
 
 	queryLatency := metrics.NewRegisteredTimer("query.latency", registry)
 
@@ -68,6 +73,7 @@ func NewMetrics(ctx context.Context) *Metrics {
 					Float64("tps.received", receivedTX.RateMean()).
 					Float64("tps.accepted", acceptedTX.RateMean()).
 					Float64("tps.downloaded", downloadedTX.RateMean()).
+					Float64("block.finalized", finalizedBlocks.RateMean()).
 					Int64("query.latency.max.ms", queryLatency.Max()/(1.0e+7)).
 					Int64("query.latency.min.ms", queryLatency.Min()/(1.0e+7)).
 					Float64("query.latency.mean.ms", queryLatency.Mean()/(1.0e+7)).
@@ -88,6 +94,8 @@ func NewMetrics(ctx context.Context) *Metrics {
 		acceptedTX:   acceptedTX,
 		downloadedTX: downloadedTX,
 
+		finalizedBlocks: finalizedBlocks,
+
 		queryLatency: queryLatency,
 	}
 }
@@ -99,6 +107,8 @@ func (m *Metrics) Stop() {
 	m.receivedTX.Stop()
 	m.acceptedTX.Stop()
 	m.downloadedTX.Stop()
+
+	m.finalizedBlocks.Stop()
 
 	m.queryLatency.Stop()
 }

@@ -22,6 +22,14 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	logger "github.com/perlin-network/wavelet/log"
@@ -32,13 +40,6 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/valyala/fastjson"
 	"gopkg.in/urfave/cli.v1"
-	"io/ioutil"
-	"net/http"
-	"os"
-	"sort"
-	"strconv"
-	"strings"
-	"time"
 )
 
 func main() {
@@ -217,6 +218,7 @@ func commandRemote(c *cli.Context) error {
 				Float64("received_tps", v.GetFloat64("tps.received")).
 				Float64("gossiped_tps", v.GetFloat64("tps.gossiped")).
 				Float64("downloaded_tps", v.GetFloat64("tps.downloaded")).
+				Float64("finalized_bps", v.GetFloat64("block.finalized")).
 				Float64("queried_rps", v.GetFloat64("rps.queried")).
 				Int64("query_latency_max_ms", v.GetInt64("query.latency.max.ms")).
 				Int64("query_latency_min_ms", v.GetInt64("query.latency.min.ms")).

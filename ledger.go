@@ -579,6 +579,7 @@ func (l *Ledger) finalize(block Block) {
 	}
 
 	l.metrics.acceptedTX.Mark(int64(results.appliedCount))
+	l.metrics.finalizedBlocks.Mark(1)
 
 	l.LogChanges(results.snapshot, current.Index)
 
