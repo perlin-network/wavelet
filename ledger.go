@@ -41,7 +41,6 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/peer"
 )
 
@@ -368,20 +367,11 @@ func (l *Ledger) PullTransactions() {
 		select {
 		case <-l.sync:
 			return
-
 		case <-time.After(1 * time.Second):
 		}
 
-		closestPeers := l.client.ClosestPeers()
-
-		peers := make([]*grpc.ClientConn, 0, len(closestPeers))
-		for _, p := range closestPeers {
-			if p.GetState() == connectivity.Ready {
-				peers = append(peers, p)
-			}
-		}
-
-		if len(peers) == 0 {
+		peers, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
+		if err != nil {
 			select {
 			case <-l.sync:
 				return
@@ -390,10 +380,6 @@ func (l *Ledger) PullTransactions() {
 
 			continue
 		}
-
-		rand.Shuffle(len(peers), func(i, j int) {
-			peers[i], peers[j] = peers[j], peers[i]
-		})
 
 		logger := log.Consensus("pull-transactions")
 
@@ -405,9 +391,7 @@ func (l *Ledger) PullTransactions() {
 		}
 
 		req := &TransactionPullRequest{Filter: buf.Bytes()}
-
-		conn := peers[0]
-		client := NewWaveletClient(conn)
+		client := NewWaveletClient(peers[0])
 
 		ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
 		batch, err := client.PullTransactions(ctx, req)
@@ -443,7 +427,7 @@ func (l *Ledger) PullTransactions() {
 
 		logger.Debug().
 			Int64("count", count).
-			Msg("Pulled transaction")
+			Msg("Pulled transaction(s).")
 
 		l.metrics.downloadedTX.Mark(count)
 		l.metrics.receivedTX.Mark(count)
@@ -495,7 +479,7 @@ func (l *Ledger) FinalizeBlocks() {
 // next block in the chain.
 func (l *Ledger) proposeBlock() *Block {
 	maxIndex := (&big.Int{}).Exp(big.NewInt(2), big.NewInt(256), nil)
-	maxIndex = maxIndex.Div(maxIndex, big.NewInt(4))
+	maxIndex = maxIndex.Div(maxIndex, big.NewInt(3))
 
 	proposing := make([]TransactionID, 0)
 	l.mempool.AscendPendingLessThan(maxIndex, func(id TransactionID) bool {
