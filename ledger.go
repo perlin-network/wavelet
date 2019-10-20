@@ -486,7 +486,7 @@ func (l *Ledger) FinalizeBlocks() {
 // next block in the chain.
 func (l *Ledger) proposeBlock() *Block {
 	proposing := make([]TransactionID, 0)
-	l.mempool.AscendPending(func(id TransactionID) bool {
+	l.mempool.Ascend(func(id TransactionID) bool {
 		proposing = append(proposing, id)
 		return true
 	})

@@ -73,7 +73,7 @@ func (cli *CLI) status(ctx *cli.Context) {
 		Uint64("reward", reward).
 		Uint64("nonce", nonce).
 		Strs("peers", peerIDs).
-		Int("num_tx", cli.ledger.Mempool().PendingLen()).
+		Int("num_tx", cli.ledger.Mempool().Len()).
 		Int("num_tx_in_store", cli.ledger.TransactionsLen()).
 		Uint64("num_accounts_in_store", accountsLen).
 		Str("preferred_id", preferredID).
