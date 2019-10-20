@@ -92,10 +92,7 @@ func collapseTransactions(mempool *Mempool, block *Block, accounts *Accounts, lo
 			ctx.WriteAccountBalance(popped.Sender, senderBalance-fee)
 			totalFee += fee
 
-			stake := uint64(0)
-			if s, _ := ctx.ReadAccountStake(popped.Sender); s > sys.MinimumStake {
-				stake = s
-			}
+			stake, _ := ctx.ReadAccountStake(popped.Sender)
 
 			if stake >= sys.MinimumStake {
 				if _, ok := stakes[popped.Sender]; !ok {

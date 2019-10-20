@@ -12,16 +12,15 @@ import (
 )
 
 type Block struct {
-	Index            uint64
-	Merkle           MerkleNodeID
-	TransactionCount uint32
-	Transactions     []TransactionID
+	Index        uint64
+	Merkle       MerkleNodeID
+	Transactions []TransactionID
 
 	ID BlockID
 }
 
-func NewBlock(index uint64, merkle MerkleNodeID, transactionCount uint32, ids ...TransactionID) Block {
-	b := Block{Index: index, Merkle: merkle, TransactionCount: transactionCount, Transactions: ids}
+func NewBlock(index uint64, merkle MerkleNodeID, ids ...TransactionID) Block {
+	b := Block{Index: index, Merkle: merkle, Transactions: ids}
 	b.ID = blake2b.Sum256(b.Marshal())
 
 	return b
@@ -40,7 +39,6 @@ func (b Block) Marshal() []byte {
 
 	binary.Write(buf, binary.BigEndian, b.Index)
 	buf.Write(b.Merkle[:])
-	binary.Write(buf, binary.BigEndian, b.TransactionCount)
 	binary.Write(buf, binary.BigEndian, uint32(len(b.Transactions)))
 
 	for _, id := range b.Transactions {
@@ -67,13 +65,6 @@ func UnmarshalBlock(r io.Reader) (block Block, err error) {
 		err = errors.Wrap(err, "failed to decode block's merkle root")
 		return
 	}
-
-	if _, err = io.ReadFull(r, buf[:4]); err != nil {
-		err = errors.Wrap(err, "failed to decode block's transactions count")
-		return
-	}
-
-	block.TransactionCount = binary.BigEndian.Uint32(buf[:4])
 
 	if _, err = io.ReadFull(r, buf[:4]); err != nil {
 		err = errors.Wrap(err, "failed to decode block's transactions length")

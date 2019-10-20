@@ -135,6 +135,7 @@ func (m *Mempool) Reshuffle(prevBlock Block, nextBlock Block) {
 	// Rebuild filter if there is at least 1 pruned tx
 	if pruned > 0 {
 		m.filter.ClearAll()
+
 		for id := range m.transactions {
 			m.filter.Add(id[:])
 		}

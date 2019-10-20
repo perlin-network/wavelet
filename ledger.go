@@ -25,7 +25,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"io"
-	"math/big"
 	"math/rand"
 	"sync"
 	"time"
@@ -367,7 +366,7 @@ func (l *Ledger) PullTransactions() {
 		select {
 		case <-l.sync:
 			return
-		case <-time.After(1 * time.Second):
+		case <-time.After(100 * time.Millisecond):
 		}
 
 		peers, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
@@ -425,9 +424,11 @@ func (l *Ledger) PullTransactions() {
 			count += int64(tx.LogicalUnits())
 		}
 
-		logger.Debug().
-			Int64("count", count).
-			Msg("Pulled transaction(s).")
+		if count > 0 {
+			logger.Debug().
+				Int64("count", count).
+				Msg("Pulled transaction(s).")
+		}
 
 		l.metrics.downloadedTX.Mark(count)
 		l.metrics.receivedTX.Mark(count)
@@ -478,11 +479,8 @@ func (l *Ledger) FinalizeBlocks() {
 // and creates a new block, which will be proposed to be finalized as the
 // next block in the chain.
 func (l *Ledger) proposeBlock() *Block {
-	maxIndex := (&big.Int{}).Exp(big.NewInt(2), big.NewInt(256), nil)
-	maxIndex = maxIndex.Div(maxIndex, big.NewInt(3))
-
 	proposing := make([]TransactionID, 0)
-	l.mempool.AscendPendingLessThan(maxIndex, func(id TransactionID) bool {
+	l.mempool.AscendPending(func(id TransactionID) bool {
 		proposing = append(proposing, id)
 		return true
 	})
@@ -491,7 +489,7 @@ func (l *Ledger) proposeBlock() *Block {
 		return nil
 	}
 
-	proposed := NewBlock(l.blocks.Latest().Index+1, l.accounts.tree.Checksum(), 0, proposing...)
+	proposed := NewBlock(l.blocks.Latest().Index+1, l.accounts.tree.Checksum(), proposing...)
 
 	results, err := l.collapseTransactions(&proposed, false)
 	if err != nil {
@@ -504,7 +502,6 @@ func (l *Ledger) proposeBlock() *Block {
 	}
 
 	proposed.Merkle = results.snapshot.Checksum()
-	proposed.TransactionCount = uint32(results.appliedCount + results.rejectedCount)
 	proposed.ID = blake2b.Sum256(proposed.Marshal())
 
 	return &proposed
@@ -525,17 +522,6 @@ func (l *Ledger) finalize(block Block) {
 		logger.Error().
 			Err(err).
 			Msg("error collapsing transactions during finalization")
-
-		return
-	}
-
-	if uint32(results.appliedCount+results.rejectedCount) != block.TransactionCount {
-		logger := log.Node()
-		logger.Error().
-			Err(err).
-			Uint32("expected", block.TransactionCount).
-			Uint32("actual", uint32(results.appliedCount+results.rejectedCount)).
-			Msg("Number of collapsed transactions does not match")
 
 		return
 	}
@@ -733,17 +719,6 @@ func (l *Ledger) query() {
 				Err(err).
 				Msg("error collapsing transactions during query")
 			continue
-		}
-
-		if uint32(results.appliedCount+results.rejectedCount) != vote.block.TransactionCount {
-			logger := log.Node()
-			logger.Error().
-				Err(err).
-				Uint32("expected", vote.block.TransactionCount).
-				Uint32("actual", uint32(results.appliedCount+results.rejectedCount)).
-				Msg("Number of collapsed transactions does not match")
-
-			return
 		}
 
 		if results.snapshot.Checksum() != vote.block.Merkle {

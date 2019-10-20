@@ -177,5 +177,5 @@ func performInception(tree *avl.Tree, genesis *string) Block {
 		logger.Fatal().Err(err).Msg("accounts.Visit")
 	}
 
-	return NewBlock(0, tree.Checksum(), 0)
+	return NewBlock(0, tree.Checksum())
 }

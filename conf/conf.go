@@ -54,7 +54,7 @@ func init() {
 func defaultConfig() config {
 	defConf := config{
 		snowballK:     2,
-		snowballBeta:  50,
+		snowballBeta:  150,
 		SnowballAlpha: 0.8,
 
 		syncVoteThreshold:             0.8,
@@ -67,7 +67,7 @@ func defaultConfig() config {
 		downloadTxTimeout:          30 * time.Second,
 		checkOutOfSyncTimeout:      5000 * time.Millisecond,
 		syncChunkSize:              16384,
-		syncIfBlockIndicesDifferBy: 2,
+		syncIfBlockIndicesDifferBy: 5,
 
 		bloomFilterM: 1024 * 1024,
 		bloomFilterK: 3,
