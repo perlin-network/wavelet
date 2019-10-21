@@ -73,7 +73,7 @@ type Config struct {
 }
 
 func main() {
-	switchToUpdatedVersion()
+	switchToUpdatedVersion(true)
 
 	wavelet.SetGenesisByNetwork(sys.VersionMeta)
 

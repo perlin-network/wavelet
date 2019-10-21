@@ -63,7 +63,8 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
                 -X ${PROJ_DIR}/sys.GitCommit=${GIT_COMMIT} \
                 -X ${PROJ_DIR}/sys.GoVersion=${GO_VERSION} \
                 -X ${PROJ_DIR}/sys.OSArch=${os_arch} \
-                -X ${PROJ_DIR}/sys.VersionMeta=${BUILD_NETWORK}" \
+                -X ${PROJ_DIR}/sys.VersionMeta=${BUILD_NETWORK} \
+                -X ${PROJ_DIR}/sys.GoExe=${BINARY_POSTFIX}" \
             .
     )
 
@@ -76,7 +77,8 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
                 -X ${PROJ_DIR}/sys.GitCommit=${GIT_COMMIT} \
                 -X ${PROJ_DIR}/sys.GoVersion=${GO_VERSION} \
                 -X ${PROJ_DIR}/sys.OSArch=${os_arch} \
-                -X ${PROJ_DIR}/sys.VersionMeta=${BUILD_NETWORK}" \
+                -X ${PROJ_DIR}/sys.VersionMeta=${BUILD_NETWORK} \
+                -X ${PROJ_DIR}/sys.GoExe=${BINARY_POSTFIX}" \
             .
     )
 
@@ -89,7 +91,8 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
                 -X ${PROJ_DIR}/sys.GitCommit=${GIT_COMMIT} \
                 -X ${PROJ_DIR}/sys.GoVersion=${GO_VERSION} \
                 -X ${PROJ_DIR}/sys.OSArch=${os_arch} \
-                -X ${PROJ_DIR}/sys.VersionMeta=${BUILD_NETWORK}" \
+                -X ${PROJ_DIR}/sys.VersionMeta=${BUILD_NETWORK} \
+                -X ${PROJ_DIR}/sys.GoExe=${BINARY_POSTFIX}" \
             .
     )
 

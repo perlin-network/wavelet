@@ -35,6 +35,7 @@ var (
 	GitCommit = "unset"
 	GoVersion = "unset"
 	OSArch    = "unset"
+	GoExe     = ""
 
 	// VersionMeta is append to the version string
 	VersionMeta = "testing"
