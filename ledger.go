@@ -398,38 +398,70 @@ func (l *Ledger) PullTransactions() {
 		})
 		l.transactionsLock.RUnlock()
 
-		client := NewWaveletClient(peers[0])
+		workerChan := make(chan *grpc.ClientConn, 16)
+		var workerWG sync.WaitGroup
+		workerWG.Add(cap(workerChan))
+		responseChan := make(chan *TransactionPullResponse, snowballK)
+		for i := 0; i < cap(workerChan); i++ {
+			go func() {
+				for conn := range workerChan {
+					client := NewWaveletClient(conn)
 
-		ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
-		batch, err := client.PullTransactions(ctx, req)
-		if err != nil {
-			logger.Error().Err(err).Msg("failed to download missing transactions")
-			cancel()
-			continue
+					ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
+					batch, err := client.PullTransactions(ctx, req)
+					if err != nil {
+						logger.Error().Err(err).Msg("failed to download missing transactions")
+						cancel()
+
+						responseChan <- nil
+
+						return
+					}
+					cancel()
+
+					responseChan <- batch
+				}
+			}()
+			workerWG.Done()
 		}
-		cancel()
+
+		for _, p := range peers {
+			workerChan <- p
+		}
+
+		responses := make([]*TransactionPullResponse, 0, snowballK)
+		for i := 0; i < cap(responses); i++ {
+			response := <-responseChan
+
+			responses = append(responses, response)
+		}
+
+		close(workerChan)
+		workerWG.Wait()
 
 		count := int64(0)
 
-		for _, buf := range batch.Transactions {
-			tx, err := UnmarshalTransaction(bytes.NewReader(buf))
-			if err != nil {
-				logger.Error().
-					Err(err).
-					Hex("tx_id", tx.ID[:]).
-					Msg("error unmarshaling downloaded tx")
-				continue
-			}
+		for _, res := range responses {
+			for _, buf := range res.Transactions {
+				tx, err := UnmarshalTransaction(bytes.NewReader(buf))
+				if err != nil {
+					logger.Error().
+						Err(err).
+						Hex("tx_id", tx.ID[:]).
+						Msg("error unmarshaling downloaded tx")
+					continue
+				}
 
-			if err := l.AddTransaction(tx); err != nil {
-				logger.Error().
-					Err(err).
-					Hex("tx_id", tx.ID[:]).
-					Msg("error adding downloaded tx to graph")
-				continue
-			}
+				if err := l.AddTransaction(tx); err != nil {
+					logger.Error().
+						Err(err).
+						Hex("tx_id", tx.ID[:]).
+						Msg("error adding downloaded tx to graph")
+					continue
+				}
 
-			count += int64(tx.LogicalUnits())
+				count += int64(tx.LogicalUnits())
+			}
 		}
 
 		if count > 0 {
