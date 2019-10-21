@@ -375,7 +375,9 @@ func (l *Ledger) PullTransactions() {
 		case <-time.After(1 * time.Second):
 		}
 
-		peers, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
+		snowballK := conf.GetSnowballK()
+
+		peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
 		if err != nil {
 			select {
 			case <-l.sync:
@@ -586,7 +588,9 @@ func (l *Ledger) finalize(block Block) {
 }
 
 func (l *Ledger) query() {
-	if len(l.client.ClosestPeerIDs()) < conf.GetSnowballK() {
+	snowballK := conf.GetSnowballK()
+
+	if len(l.client.ClosestPeerIDs()) < snowballK {
 		// TODO not enough peers, what do to ?
 		return
 	}
@@ -598,7 +602,6 @@ func (l *Ledger) query() {
 	var workerWG sync.WaitGroup
 	workerWG.Add(cap(workerChan))
 
-	snowballK := conf.GetSnowballK()
 	voteChan := make(chan *finalizationVote, snowballK)
 
 	req := &QueryRequest{BlockIndex: current.Index + 1}
@@ -665,7 +668,7 @@ func (l *Ledger) query() {
 		workerWG.Wait()
 	}
 
-	peers, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
+	peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
 	if err != nil {
 		cleanupWorker()
 		return
@@ -752,7 +755,7 @@ func (l *Ledger) SyncToLatestBlock() {
 		for {
 			time.Sleep(5 * time.Millisecond)
 
-			conns, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
+			conns, err := SelectPeers(l.client.ClosestPeers(), snowballK)
 			if err != nil {
 				select {
 				case <-time.After(1 * time.Second):
@@ -854,7 +857,7 @@ func (l *Ledger) SyncToLatestBlock() {
 		}
 
 		restart := func() { // Respawn all previously stopped workers.
-			snowballK := conf.GetSnowballK()
+			snowballK = conf.GetSnowballK()
 
 			syncVotes = make(chan *syncVote, snowballK)
 			go CollectVotesForSync(l.accounts, l.syncer, syncVotes, voteWG, snowballK)
