@@ -131,6 +131,7 @@ func downloadUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte)
 	 */
 	binaryFileName := path.Join(updateDirectory, "wavelet")
 	binaryTempFileName := path.Join(updateDirectory, "wavelet.new")
+	binaryOldFileName  := path.Join(updateDirectory, "wavelet.old")
 	binaryTempFile, err := os.OpenFile(binaryTempFileName, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0600)
 	if err != nil {
 		return fmt.Errorf("Unable to create temporary file: %+v", err)
@@ -185,10 +186,31 @@ func downloadUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte)
 		return fmt.Errorf("Unable set mode on old file: %+v", err)
 	}
 
+	/*
+	 * Remove any spurious copy of the old binary and rename the
+	 * existing binary out of the way.  This is significant on
+	 * Windows because we cannot delete the running binary
+	 * while it is running.  We do not check for any errors here
+	 * since most error cases do not matter, the error cases that
+	 * do matter will be detected at a later step
+	 */
+	os.Remove(binaryOldFileName)
+	os.Rename(binaryFileName, binaryOldFileName)
+
 	err = os.Rename(binaryTempFileName, binaryFileName)
 	if err != nil {
+		/*
+		 * If there was an error renaming things into
+		 * their final location, attempt to put things
+		 * back to the way they were before we tried
+		 */
+		os.Remove(binaryFileName)
+		os.Rename(binaryOldFileName, binaryFileName)
+
 		return fmt.Errorf("Unable rename file into place: %+v", err)
 	}
+
+	os.Remove(binaryOldFileName)
 
 	return nil
 }
