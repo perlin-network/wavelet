@@ -174,12 +174,13 @@ func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullReq
 		return nil, err
 	}
 
-	p.ledger.mempool.Iter(func(tx Transaction) bool {
+	p.ledger.transactionsLock.RLock()
+	p.ledger.transactions.Iterate(func(tx *Transaction) {
 		if !filter.Test(tx.ID[:]) {
 			res.Transactions = append(res.Transactions, tx.Marshal())
 		}
-		return true
 	})
+	p.ledger.transactionsLock.RUnlock()
 
 	if len(res.Transactions) > 0 {
 		logger := log.Sync("pull_tx")

@@ -21,7 +21,6 @@ package wavelet
 
 import (
 	"encoding/hex"
-
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/lru"
@@ -29,26 +28,9 @@ import (
 	"github.com/pkg/errors"
 )
 
-func collapseTransactions(mempool *Mempool, block *Block, accounts *Accounts, logging bool) (*collapseResults, error) {
+func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) (*collapseResults, error) {
 	res := &collapseResults{snapshot: accounts.Snapshot()}
 	res.snapshot.SetViewID(block.Index)
-
-	var txs []*Transaction
-	var err error
-
-	for _, id := range block.Transactions {
-		tx := mempool.Find(id)
-		if tx == nil {
-			err = errors.Wrapf(ErrMissingTx, "missing tx %x", id)
-			break
-		}
-
-		txs = append(txs, tx)
-	}
-
-	if err != nil {
-		return nil, err
-	}
 
 	res.applied = make([]*Transaction, 0, len(txs))
 	res.rejected = make([]*Transaction, 0, len(txs))
@@ -65,49 +47,49 @@ func collapseTransactions(mempool *Mempool, block *Block, accounts *Accounts, lo
 
 	// Apply transactions in reverse order from the end of the round
 	// all the way down to the beginning of the round.
-	for _, popped := range txs {
+	for _, tx := range txs {
 		// Update nonce.
 
-		nonce, exists := ctx.ReadAccountNonce(popped.Sender)
+		nonce, exists := ctx.ReadAccountNonce(tx.Sender)
 		if !exists {
 			ctx.WriteAccountsLen(ctx.ReadAccountsLen() + 1)
 		}
-		ctx.WriteAccountNonce(popped.Sender, nonce+1)
+		ctx.WriteAccountNonce(tx.Sender, nonce+1)
 
-		if hex.EncodeToString(popped.Sender[:]) != sys.FaucetAddress {
-			fee := popped.Fee()
+		if hex.EncodeToString(tx.Sender[:]) != sys.FaucetAddress {
+			fee := tx.Fee()
 
-			senderBalance, _ := ctx.ReadAccountBalance(popped.Sender)
+			senderBalance, _ := ctx.ReadAccountBalance(tx.Sender)
 			if senderBalance < fee {
-				res.rejected = append(res.rejected, popped)
+				res.rejected = append(res.rejected, tx)
 				res.rejectedErrors = append(
 					res.rejectedErrors,
-					errors.Errorf("stake: sender %x does not have enough PERLs to pay transaction fees (comprised of %d PERLs)", popped.Sender, fee),
+					errors.Errorf("stake: sender %x does not have enough PERLs to pay transaction fees (comprised of %d PERLs)", tx.Sender, fee),
 				)
-				res.rejectedCount += popped.LogicalUnits()
+				res.rejectedCount += tx.LogicalUnits()
 
 				continue
 			}
 
-			ctx.WriteAccountBalance(popped.Sender, senderBalance-fee)
+			ctx.WriteAccountBalance(tx.Sender, senderBalance-fee)
 			totalFee += fee
 
-			stake, _ := ctx.ReadAccountStake(popped.Sender)
+			stake, _ := ctx.ReadAccountStake(tx.Sender)
 
 			if stake >= sys.MinimumStake {
-				if _, ok := stakes[popped.Sender]; !ok {
-					stakes[popped.Sender] = stake
+				if _, ok := stakes[tx.Sender]; !ok {
+					stakes[tx.Sender] = stake
 				} else {
-					stakes[popped.Sender] += stake
+					stakes[tx.Sender] += stake
 				}
 				totalStake += stake
 			}
 		}
 
-		if err := ctx.ApplyTransaction(block, popped); err != nil {
-			res.rejected = append(res.rejected, popped)
+		if err := ctx.ApplyTransaction(block, tx); err != nil {
+			res.rejected = append(res.rejected, tx)
 			res.rejectedErrors = append(res.rejectedErrors, err)
-			res.rejectedCount += popped.LogicalUnits()
+			res.rejectedCount += tx.LogicalUnits()
 
 			logger := log.Node()
 			logger.Error().Err(err).Msg("error applying transaction")
@@ -117,8 +99,8 @@ func collapseTransactions(mempool *Mempool, block *Block, accounts *Accounts, lo
 
 		// Update statistics.
 
-		res.applied = append(res.applied, popped)
-		res.appliedCount += popped.LogicalUnits()
+		res.applied = append(res.applied, tx)
+		res.appliedCount += tx.LogicalUnits()
 	}
 
 	if totalStake > 0 {
