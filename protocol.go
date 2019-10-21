@@ -169,16 +169,16 @@ func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullReq
 
 	// Build a lookup table from the list of transaction IDs
 	var id TransactionID
-	lookup := map[TransactionID]bool{}
+	lookup := map[TransactionID]struct{}{}
 	for _, i := range req.Transactions {
 		copy(id[:], i)
-		lookup[id] = true
+		lookup[id] = struct{}{}
 	}
 
 	// Find missing transactions
 	p.ledger.transactionsLock.RLock()
 	p.ledger.transactions.Iterate(func(tx *Transaction) {
-		if !lookup[tx.ID] {
+		if _, exists := lookup[tx.ID]; !exists {
 			res.Transactions = append(res.Transactions, tx.Marshal())
 		}
 	})
