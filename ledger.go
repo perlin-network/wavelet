@@ -390,11 +390,9 @@ func (l *Ledger) PullTransactions() {
 
 		// Build list of transaction IDs
 		l.transactionsLock.RLock()
-		req := &TransactionPullRequest{Transactions: make([][]byte, l.transactions.Len())}
-		var i int
+		req := &TransactionPullRequest{Transactions: make([][]byte, 0, l.transactions.Len())}
 		l.transactions.Iterate(func(tx *Transaction) {
-			req.Transactions[i] = tx.ID[:]
-			i++
+			req.Transactions = append(req.Transactions, tx.ID[:])
 		})
 		l.transactionsLock.RUnlock()
 
