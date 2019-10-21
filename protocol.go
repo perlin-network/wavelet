@@ -170,7 +170,7 @@ func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullReq
 	// Build a lookup table from the list of transaction IDs
 	var id TransactionID
 	lookup := map[TransactionID]struct{}{}
-	for _, i := range req.Transactions {
+	for _, i := range req.TransactionIds {
 		copy(id[:], i)
 		lookup[id] = struct{}{}
 	}
