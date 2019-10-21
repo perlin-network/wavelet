@@ -58,7 +58,7 @@ func NewTransaction(sender *skademlia.Keypair, block uint64, tag sys.Tag, payloa
 }
 
 func (tx Transaction) Marshal() []byte {
-	var w bytes.Buffer
+	w := bytes.NewBuffer(make([]byte, 0, 32+8+8+1+4+len(tx.Payload)+64))
 
 	w.Write(tx.Sender[:])
 

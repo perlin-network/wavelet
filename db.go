@@ -60,7 +60,7 @@ type RewardWithdrawalRequest struct {
 }
 
 func (rw RewardWithdrawalRequest) Key() []byte {
-	var w bytes.Buffer
+	w := bytes.NewBuffer(make([]byte, 0, 1+8+32))
 	w.Write(keyRewardWithdrawals[:])
 
 	var buf [8]byte
@@ -73,7 +73,7 @@ func (rw RewardWithdrawalRequest) Key() []byte {
 }
 
 func (rw RewardWithdrawalRequest) Marshal() []byte {
-	var w bytes.Buffer
+	w := bytes.NewBuffer(make([]byte, 0, 32+8+8))
 
 	w.Write(rw.account[:])
 
