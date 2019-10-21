@@ -8,8 +8,11 @@ import (
 	fmt "fmt"
 	proto "github.com/gogo/protobuf/proto"
 	grpc "google.golang.org/grpc"
+	codes "google.golang.org/grpc/codes"
+	status "google.golang.org/grpc/status"
 	io "io"
 	math "math"
+	math_bits "math/bits"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -21,7 +24,7 @@ var _ = math.Inf
 // is compatible with the proto package it is being compiled against.
 // A compilation error at this line likely means your copy of the
 // proto package needs to be updated.
-const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
+const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type QueryRequest struct {
 	BlockIndex uint64 `protobuf:"varint,1,opt,name=block_index,json=blockIndex,proto3" json:"block_index,omitempty"`
@@ -41,7 +44,7 @@ func (m *QueryRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return xxx_messageInfo_QueryRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -85,7 +88,7 @@ func (m *QueryResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error
 		return xxx_messageInfo_QueryResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -129,7 +132,7 @@ func (m *OutOfSyncRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, er
 		return xxx_messageInfo_OutOfSyncRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -173,7 +176,7 @@ func (m *OutOfSyncResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, e
 		return xxx_messageInfo_OutOfSyncResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -218,7 +221,7 @@ func (m *SyncInfo) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_SyncInfo.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -272,7 +275,7 @@ func (m *SyncRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) 
 		return xxx_messageInfo_SyncRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -298,10 +301,10 @@ type isSyncRequest_Data interface {
 }
 
 type SyncRequest_BlockId struct {
-	BlockId uint64 `protobuf:"varint,1,opt,name=block_id,json=blockId,proto3,oneof"`
+	BlockId uint64 `protobuf:"varint,1,opt,name=block_id,json=blockId,proto3,oneof" json:"block_id,omitempty"`
 }
 type SyncRequest_Checksum struct {
-	Checksum []byte `protobuf:"bytes,2,opt,name=checksum,proto3,oneof"`
+	Checksum []byte `protobuf:"bytes,2,opt,name=checksum,proto3,oneof" json:"checksum,omitempty"`
 }
 
 func (*SyncRequest_BlockId) isSyncRequest_Data()  {}
@@ -328,69 +331,12 @@ func (m *SyncRequest) GetChecksum() []byte {
 	return nil
 }
 
-// XXX_OneofFuncs is for the internal use of the proto package.
-func (*SyncRequest) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
-	return _SyncRequest_OneofMarshaler, _SyncRequest_OneofUnmarshaler, _SyncRequest_OneofSizer, []interface{}{
+// XXX_OneofWrappers is for the internal use of the proto package.
+func (*SyncRequest) XXX_OneofWrappers() []interface{} {
+	return []interface{}{
 		(*SyncRequest_BlockId)(nil),
 		(*SyncRequest_Checksum)(nil),
 	}
-}
-
-func _SyncRequest_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
-	m := msg.(*SyncRequest)
-	// Data
-	switch x := m.Data.(type) {
-	case *SyncRequest_BlockId:
-		_ = b.EncodeVarint(1<<3 | proto.WireVarint)
-		_ = b.EncodeVarint(uint64(x.BlockId))
-	case *SyncRequest_Checksum:
-		_ = b.EncodeVarint(2<<3 | proto.WireBytes)
-		_ = b.EncodeRawBytes(x.Checksum)
-	case nil:
-	default:
-		return fmt.Errorf("SyncRequest.Data has unexpected type %T", x)
-	}
-	return nil
-}
-
-func _SyncRequest_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
-	m := msg.(*SyncRequest)
-	switch tag {
-	case 1: // Data.block_id
-		if wire != proto.WireVarint {
-			return true, proto.ErrInternalBadWireType
-		}
-		x, err := b.DecodeVarint()
-		m.Data = &SyncRequest_BlockId{x}
-		return true, err
-	case 2: // Data.checksum
-		if wire != proto.WireBytes {
-			return true, proto.ErrInternalBadWireType
-		}
-		x, err := b.DecodeRawBytes(true)
-		m.Data = &SyncRequest_Checksum{x}
-		return true, err
-	default:
-		return false, nil
-	}
-}
-
-func _SyncRequest_OneofSizer(msg proto.Message) (n int) {
-	m := msg.(*SyncRequest)
-	// Data
-	switch x := m.Data.(type) {
-	case *SyncRequest_BlockId:
-		n += 1 // tag and wire
-		n += proto.SizeVarint(uint64(x.BlockId))
-	case *SyncRequest_Checksum:
-		n += 1 // tag and wire
-		n += proto.SizeVarint(uint64(len(x.Checksum)))
-		n += len(x.Checksum)
-	case nil:
-	default:
-		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
-	}
-	return n
 }
 
 type SyncResponse struct {
@@ -414,7 +360,7 @@ func (m *SyncResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return xxx_messageInfo_SyncResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -440,10 +386,10 @@ type isSyncResponse_Data interface {
 }
 
 type SyncResponse_Header struct {
-	Header *SyncInfo `protobuf:"bytes,1,opt,name=header,proto3,oneof"`
+	Header *SyncInfo `protobuf:"bytes,1,opt,name=header,proto3,oneof" json:"header,omitempty"`
 }
 type SyncResponse_Chunk struct {
-	Chunk []byte `protobuf:"bytes,2,opt,name=chunk,proto3,oneof"`
+	Chunk []byte `protobuf:"bytes,2,opt,name=chunk,proto3,oneof" json:"chunk,omitempty"`
 }
 
 func (*SyncResponse_Header) isSyncResponse_Data() {}
@@ -470,78 +416,16 @@ func (m *SyncResponse) GetChunk() []byte {
 	return nil
 }
 
-// XXX_OneofFuncs is for the internal use of the proto package.
-func (*SyncResponse) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
-	return _SyncResponse_OneofMarshaler, _SyncResponse_OneofUnmarshaler, _SyncResponse_OneofSizer, []interface{}{
+// XXX_OneofWrappers is for the internal use of the proto package.
+func (*SyncResponse) XXX_OneofWrappers() []interface{} {
+	return []interface{}{
 		(*SyncResponse_Header)(nil),
 		(*SyncResponse_Chunk)(nil),
 	}
 }
 
-func _SyncResponse_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
-	m := msg.(*SyncResponse)
-	// Data
-	switch x := m.Data.(type) {
-	case *SyncResponse_Header:
-		_ = b.EncodeVarint(1<<3 | proto.WireBytes)
-		if err := b.EncodeMessage(x.Header); err != nil {
-			return err
-		}
-	case *SyncResponse_Chunk:
-		_ = b.EncodeVarint(2<<3 | proto.WireBytes)
-		_ = b.EncodeRawBytes(x.Chunk)
-	case nil:
-	default:
-		return fmt.Errorf("SyncResponse.Data has unexpected type %T", x)
-	}
-	return nil
-}
-
-func _SyncResponse_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
-	m := msg.(*SyncResponse)
-	switch tag {
-	case 1: // Data.header
-		if wire != proto.WireBytes {
-			return true, proto.ErrInternalBadWireType
-		}
-		msg := new(SyncInfo)
-		err := b.DecodeMessage(msg)
-		m.Data = &SyncResponse_Header{msg}
-		return true, err
-	case 2: // Data.chunk
-		if wire != proto.WireBytes {
-			return true, proto.ErrInternalBadWireType
-		}
-		x, err := b.DecodeRawBytes(true)
-		m.Data = &SyncResponse_Chunk{x}
-		return true, err
-	default:
-		return false, nil
-	}
-}
-
-func _SyncResponse_OneofSizer(msg proto.Message) (n int) {
-	m := msg.(*SyncResponse)
-	// Data
-	switch x := m.Data.(type) {
-	case *SyncResponse_Header:
-		s := proto.Size(x.Header)
-		n += 1 // tag and wire
-		n += proto.SizeVarint(uint64(s))
-		n += s
-	case *SyncResponse_Chunk:
-		n += 1 // tag and wire
-		n += proto.SizeVarint(uint64(len(x.Chunk)))
-		n += len(x.Chunk)
-	case nil:
-	default:
-		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
-	}
-	return n
-}
-
 type TransactionPullRequest struct {
-	Filter []byte `protobuf:"bytes,1,opt,name=filter,proto3" json:"filter,omitempty"`
+	TransactionIds [][]byte `protobuf:"bytes,1,rep,name=transaction_ids,json=transactionIds,proto3" json:"transaction_ids,omitempty"`
 }
 
 func (m *TransactionPullRequest) Reset()         { *m = TransactionPullRequest{} }
@@ -558,7 +442,7 @@ func (m *TransactionPullRequest) XXX_Marshal(b []byte, deterministic bool) ([]by
 		return xxx_messageInfo_TransactionPullRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -577,9 +461,9 @@ func (m *TransactionPullRequest) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_TransactionPullRequest proto.InternalMessageInfo
 
-func (m *TransactionPullRequest) GetFilter() []byte {
+func (m *TransactionPullRequest) GetTransactionIds() [][]byte {
 	if m != nil {
-		return m.Filter
+		return m.TransactionIds
 	}
 	return nil
 }
@@ -602,7 +486,7 @@ func (m *TransactionPullResponse) XXX_Marshal(b []byte, deterministic bool) ([]b
 		return xxx_messageInfo_TransactionPullResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -645,7 +529,7 @@ func (m *Empty) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return xxx_messageInfo_Empty.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
-		n, err := m.MarshalTo(b)
+		n, err := m.MarshalToSizedBuffer(b)
 		if err != nil {
 			return nil, err
 		}
@@ -680,36 +564,36 @@ func init() {
 func init() { proto.RegisterFile("rpc.proto", fileDescriptor_77a6da22d6a3feb1) }
 
 var fileDescriptor_77a6da22d6a3feb1 = []byte{
-	// 460 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x53, 0x4d, 0x6f, 0xd3, 0x40,
-	0x10, 0xb5, 0x43, 0x3e, 0x27, 0x06, 0xb5, 0xab, 0x36, 0x98, 0x50, 0xb9, 0xd1, 0x4a, 0x48, 0x91,
-	0x90, 0x42, 0xd5, 0x5c, 0xe0, 0x00, 0x87, 0x02, 0x52, 0x72, 0x6a, 0x59, 0x90, 0x7a, 0xe0, 0x10,
-	0xb9, 0x9b, 0x8d, 0x12, 0xc5, 0xdd, 0x0d, 0xde, 0x35, 0x90, 0x7f, 0xc1, 0x6f, 0xe0, 0xd7, 0x70,
-	0xec, 0x91, 0x23, 0x4a, 0xfe, 0x08, 0xf2, 0x7a, 0xbd, 0x71, 0x42, 0x90, 0x7a, 0x8a, 0xe6, 0xcd,
-	0xbc, 0x37, 0x6f, 0x5f, 0xc6, 0xd0, 0x88, 0x17, 0xb4, 0xb7, 0x88, 0x85, 0x12, 0xa8, 0xf6, 0x2d,
-	0xfc, 0xca, 0x22, 0xa6, 0xf0, 0x0b, 0xf0, 0x3e, 0x24, 0x2c, 0x5e, 0x12, 0xf6, 0x25, 0x61, 0x52,
-	0xa1, 0x53, 0x68, 0xde, 0x44, 0x82, 0xce, 0x47, 0x33, 0x3e, 0x66, 0xdf, 0x7d, 0xb7, 0xe3, 0x76,
-	0xcb, 0x04, 0x34, 0x34, 0x4c, 0x11, 0xfc, 0x0c, 0x1e, 0x1a, 0x82, 0x5c, 0x08, 0x2e, 0x19, 0x3a,
-	0x82, 0x8a, 0x6e, 0xeb, 0x59, 0x8f, 0x64, 0x05, 0xee, 0xc3, 0xc1, 0x65, 0xa2, 0x2e, 0x27, 0x1f,
-	0x97, 0x9c, 0xde, 0x5b, 0xbb, 0x0f, 0x87, 0x05, 0x92, 0xd1, 0x0f, 0xa0, 0x29, 0x12, 0x35, 0x12,
-	0x93, 0x91, 0x5c, 0x72, 0xaa, 0x59, 0x75, 0xd2, 0x10, 0xf9, 0x1c, 0x7e, 0x03, 0xf5, 0xf4, 0x77,
-	0xc8, 0x27, 0x62, 0xbf, 0x17, 0x74, 0x02, 0x0d, 0x3a, 0x65, 0x74, 0x2e, 0x93, 0x5b, 0xe9, 0x97,
-	0x3a, 0x0f, 0xba, 0x1e, 0xd9, 0x00, 0xf8, 0x0a, 0x9a, 0x45, 0x93, 0x4f, 0xa1, 0x6e, 0x4c, 0x8e,
-	0x33, 0x87, 0x03, 0x87, 0xd4, 0x32, 0x8f, 0x63, 0x74, 0x02, 0xf5, 0x9c, 0xe8, 0x97, 0xd2, 0x15,
-	0x03, 0x87, 0x58, 0xe4, 0xa2, 0x0a, 0xe5, 0x77, 0xa1, 0x0a, 0xf1, 0x67, 0xf0, 0xb6, 0x5e, 0xf0,
-	0x1c, 0xaa, 0x53, 0x16, 0x8e, 0x59, 0xac, 0x05, 0x9b, 0xe7, 0x87, 0x3d, 0x93, 0x7e, 0x2f, 0x37,
-	0x3e, 0x70, 0x88, 0x19, 0x41, 0x2d, 0xa8, 0xd0, 0x69, 0xc2, 0xe7, 0x56, 0x3f, 0x2b, 0xad, 0xf8,
-	0x19, 0xb4, 0x3e, 0xc5, 0x21, 0x97, 0x21, 0x55, 0x33, 0xc1, 0xaf, 0x92, 0x28, 0xca, 0x9d, 0xb7,
-	0xa0, 0x3a, 0x99, 0x45, 0xca, 0xac, 0xf1, 0x88, 0xa9, 0xf0, 0x6b, 0x78, 0xfc, 0x0f, 0xc3, 0x38,
-	0xc3, 0xe0, 0xa9, 0x4d, 0x4b, 0xfa, 0xae, 0x0e, 0x67, 0x0b, 0xc3, 0x35, 0xa8, 0xbc, 0xbf, 0x5d,
-	0xa8, 0xe5, 0xf9, 0xcf, 0x12, 0xd4, 0xae, 0x33, 0xe3, 0xe8, 0x25, 0x54, 0xf4, 0x15, 0xa0, 0x63,
-	0xfb, 0x96, 0xe2, 0x19, 0xb5, 0x5b, 0xbb, 0x70, 0xb6, 0x10, 0x3b, 0x68, 0x08, 0x8f, 0xde, 0xa6,
-	0x81, 0xd9, 0x3f, 0x1a, 0x3d, 0xb1, 0xb3, 0xbb, 0x17, 0xd3, 0x6e, 0xef, 0x6b, 0x59, 0xa9, 0x57,
-	0x50, 0xd6, 0x02, 0x47, 0x5b, 0x79, 0xe6, 0xdc, 0xe3, 0x1d, 0x34, 0xa7, 0x75, 0xdd, 0x33, 0x17,
-	0x5d, 0xc3, 0x41, 0x1a, 0x44, 0x21, 0x17, 0x89, 0x4e, 0x2d, 0x61, 0x7f, 0xc0, 0xed, 0xce, 0xff,
-	0x07, 0x72, 0xf1, 0x0b, 0xff, 0xd7, 0x2a, 0x70, 0xef, 0x56, 0x81, 0xfb, 0x67, 0x15, 0xb8, 0x3f,
-	0xd6, 0x81, 0x73, 0xb7, 0x0e, 0x9c, 0xdf, 0xeb, 0xc0, 0xb9, 0xa9, 0xea, 0x2f, 0xaf, 0xff, 0x37,
-	0x00, 0x00, 0xff, 0xff, 0x0d, 0x4b, 0x0d, 0x71, 0x86, 0x03, 0x00, 0x00,
+	// 464 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x53, 0x4f, 0x6f, 0xd3, 0x30,
+	0x1c, 0x4d, 0x4a, 0xff, 0xfe, 0x1a, 0xc6, 0x66, 0x6d, 0x25, 0x94, 0x29, 0xab, 0x2c, 0x21, 0x2a,
+	0x21, 0x15, 0xb4, 0x5e, 0xe0, 0x00, 0x12, 0x03, 0xa4, 0xf6, 0xb4, 0x61, 0x90, 0x76, 0xe0, 0x50,
+	0x65, 0x8e, 0xab, 0x56, 0xed, 0xec, 0x12, 0x3b, 0x40, 0xbf, 0x05, 0x9f, 0x81, 0x4f, 0xc3, 0x71,
+	0x47, 0x8e, 0xa8, 0xfd, 0x22, 0x28, 0x4e, 0xec, 0xa5, 0xa5, 0x48, 0x9c, 0x2a, 0x3f, 0xbf, 0xf7,
+	0xfc, 0x7e, 0xaf, 0xbf, 0x40, 0x23, 0x5e, 0xd0, 0xde, 0x22, 0x16, 0x4a, 0xa0, 0xda, 0xd7, 0xf0,
+	0x0b, 0x9b, 0x33, 0x85, 0x9f, 0x82, 0xf7, 0x3e, 0x61, 0xf1, 0x92, 0xb0, 0xcf, 0x09, 0x93, 0x0a,
+	0x9d, 0x40, 0xf3, 0x6a, 0x2e, 0xe8, 0x6c, 0x34, 0xe5, 0x11, 0xfb, 0xe6, 0xbb, 0x1d, 0xb7, 0x5b,
+	0x26, 0xa0, 0xa1, 0x61, 0x8a, 0xe0, 0x47, 0x70, 0x37, 0x17, 0xc8, 0x85, 0xe0, 0x92, 0xa1, 0x43,
+	0xa8, 0xe8, 0x6b, 0xcd, 0xf5, 0x48, 0x76, 0xc0, 0x7d, 0xd8, 0x3f, 0x4f, 0xd4, 0xf9, 0xf8, 0xc3,
+	0x92, 0xd3, 0xff, 0xf6, 0xee, 0xc3, 0x41, 0x41, 0x94, 0xfb, 0x07, 0xd0, 0x14, 0x89, 0x1a, 0x89,
+	0xf1, 0x48, 0x2e, 0x39, 0xd5, 0xaa, 0x3a, 0x69, 0x08, 0xc3, 0xc3, 0xaf, 0xa0, 0x9e, 0xfe, 0x0e,
+	0xf9, 0x58, 0xec, 0xce, 0x82, 0x8e, 0xa1, 0x41, 0x27, 0x8c, 0xce, 0x64, 0x72, 0x2d, 0xfd, 0x52,
+	0xe7, 0x4e, 0xd7, 0x23, 0xb7, 0x00, 0xbe, 0x80, 0x66, 0x31, 0xe4, 0x43, 0xa8, 0xe7, 0x21, 0xa3,
+	0x2c, 0xe1, 0xc0, 0x21, 0xb5, 0x2c, 0x63, 0x84, 0x8e, 0xa1, 0x6e, 0x84, 0x7e, 0x29, 0x7d, 0x62,
+	0xe0, 0x10, 0x8b, 0x9c, 0x55, 0xa1, 0xfc, 0x36, 0x54, 0x21, 0xfe, 0x04, 0xde, 0xc6, 0x04, 0x4f,
+	0xa0, 0x3a, 0x61, 0x61, 0xc4, 0x62, 0x6d, 0xd8, 0x3c, 0x3d, 0xe8, 0xe5, 0xed, 0xf7, 0x4c, 0xf0,
+	0x81, 0x43, 0x72, 0x0a, 0x6a, 0x41, 0x85, 0x4e, 0x12, 0x3e, 0xb3, 0xfe, 0xd9, 0xd1, 0x9a, 0xbf,
+	0x86, 0xd6, 0xc7, 0x38, 0xe4, 0x32, 0xa4, 0x6a, 0x2a, 0xf8, 0x45, 0x32, 0x9f, 0x9b, 0xe4, 0x8f,
+	0xe1, 0x9e, 0xba, 0xbd, 0x19, 0x4d, 0x23, 0xe9, 0xbb, 0x7a, 0xd8, 0xbd, 0x02, 0x3c, 0x8c, 0x24,
+	0x7e, 0x09, 0xf7, 0xff, 0xb2, 0xc8, 0xa3, 0x62, 0xf0, 0x0a, 0x64, 0x63, 0xb0, 0x81, 0xe1, 0x1a,
+	0x54, 0xde, 0x5d, 0x2f, 0xd4, 0xf2, 0xf4, 0x47, 0x09, 0x6a, 0x97, 0xd9, 0x24, 0xe8, 0x39, 0x54,
+	0xf4, 0x5a, 0xa0, 0x23, 0x3b, 0x5c, 0x71, 0xaf, 0xda, 0xad, 0x6d, 0x38, 0x7b, 0x10, 0x3b, 0x68,
+	0x08, 0x7b, 0x6f, 0xd2, 0x06, 0xed, 0x3f, 0x8f, 0x1e, 0x58, 0xee, 0xf6, 0x0a, 0xb5, 0xdb, 0xbb,
+	0xae, 0xac, 0xd5, 0x0b, 0x28, 0x6b, 0x83, 0xc3, 0x8d, 0x82, 0x8d, 0xf6, 0x68, 0x0b, 0x35, 0xb2,
+	0xae, 0xfb, 0xcc, 0x45, 0x97, 0xb0, 0x9f, 0x16, 0x51, 0xe8, 0x45, 0xa2, 0x13, 0x2b, 0xd8, 0xdd,
+	0x78, 0xbb, 0xf3, 0x6f, 0x82, 0x31, 0x3f, 0xf3, 0x7f, 0xae, 0x02, 0xf7, 0x66, 0x15, 0xb8, 0xbf,
+	0x57, 0x81, 0xfb, 0x7d, 0x1d, 0x38, 0x37, 0xeb, 0xc0, 0xf9, 0xb5, 0x0e, 0x9c, 0xab, 0xaa, 0xfe,
+	0x14, 0xfb, 0x7f, 0x02, 0x00, 0x00, 0xff, 0xff, 0x1d, 0x52, 0x6e, 0xf1, 0x97, 0x03, 0x00, 0x00,
 }
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -802,6 +686,23 @@ type WaveletServer interface {
 	CheckOutOfSync(context.Context, *OutOfSyncRequest) (*OutOfSyncResponse, error)
 	Sync(Wavelet_SyncServer) error
 	PullTransactions(context.Context, *TransactionPullRequest) (*TransactionPullResponse, error)
+}
+
+// UnimplementedWaveletServer can be embedded to have forward compatible implementations.
+type UnimplementedWaveletServer struct {
+}
+
+func (*UnimplementedWaveletServer) Query(ctx context.Context, req *QueryRequest) (*QueryResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Query not implemented")
+}
+func (*UnimplementedWaveletServer) CheckOutOfSync(ctx context.Context, req *OutOfSyncRequest) (*OutOfSyncResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CheckOutOfSync not implemented")
+}
+func (*UnimplementedWaveletServer) Sync(srv Wavelet_SyncServer) error {
+	return status.Errorf(codes.Unimplemented, "method Sync not implemented")
+}
+func (*UnimplementedWaveletServer) PullTransactions(ctx context.Context, req *TransactionPullRequest) (*TransactionPullResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method PullTransactions not implemented")
 }
 
 func RegisterWaveletServer(s *grpc.Server, srv WaveletServer) {
@@ -919,7 +820,7 @@ var _Wavelet_serviceDesc = grpc.ServiceDesc{
 func (m *QueryRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -927,22 +828,27 @@ func (m *QueryRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *QueryRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *QueryRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if m.BlockIndex != 0 {
-		dAtA[i] = 0x8
-		i++
 		i = encodeVarintRpc(dAtA, i, uint64(m.BlockIndex))
+		i--
+		dAtA[i] = 0x8
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *QueryResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -950,23 +856,29 @@ func (m *QueryResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *QueryResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *QueryResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if len(m.Block) > 0 {
-		dAtA[i] = 0xa
-		i++
+		i -= len(m.Block)
+		copy(dAtA[i:], m.Block)
 		i = encodeVarintRpc(dAtA, i, uint64(len(m.Block)))
-		i += copy(dAtA[i:], m.Block)
+		i--
+		dAtA[i] = 0xa
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *OutOfSyncRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -974,22 +886,27 @@ func (m *OutOfSyncRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *OutOfSyncRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *OutOfSyncRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if m.BlockIndex != 0 {
-		dAtA[i] = 0x8
-		i++
 		i = encodeVarintRpc(dAtA, i, uint64(m.BlockIndex))
+		i--
+		dAtA[i] = 0x8
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *OutOfSyncResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -997,27 +914,32 @@ func (m *OutOfSyncResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *OutOfSyncResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *OutOfSyncResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if m.OutOfSync {
-		dAtA[i] = 0x8
-		i++
+		i--
 		if m.OutOfSync {
 			dAtA[i] = 1
 		} else {
 			dAtA[i] = 0
 		}
-		i++
+		i--
+		dAtA[i] = 0x8
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *SyncInfo) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1025,31 +947,38 @@ func (m *SyncInfo) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *SyncInfo) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SyncInfo) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Block) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintRpc(dAtA, i, uint64(len(m.Block)))
-		i += copy(dAtA[i:], m.Block)
-	}
 	if len(m.Checksums) > 0 {
-		for _, b := range m.Checksums {
+		for iNdEx := len(m.Checksums) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Checksums[iNdEx])
+			copy(dAtA[i:], m.Checksums[iNdEx])
+			i = encodeVarintRpc(dAtA, i, uint64(len(m.Checksums[iNdEx])))
+			i--
 			dAtA[i] = 0x12
-			i++
-			i = encodeVarintRpc(dAtA, i, uint64(len(b)))
-			i += copy(dAtA[i:], b)
 		}
 	}
-	return i, nil
+	if len(m.Block) > 0 {
+		i -= len(m.Block)
+		copy(dAtA[i:], m.Block)
+		i = encodeVarintRpc(dAtA, i, uint64(len(m.Block)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *SyncRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1057,41 +986,59 @@ func (m *SyncRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *SyncRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SyncRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if m.Data != nil {
-		nn1, err := m.Data.MarshalTo(dAtA[i:])
-		if err != nil {
-			return 0, err
+		{
+			size := m.Data.Size()
+			i -= size
+			if _, err := m.Data.MarshalTo(dAtA[i:]); err != nil {
+				return 0, err
+			}
 		}
-		i += nn1
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *SyncRequest_BlockId) MarshalTo(dAtA []byte) (int, error) {
-	i := 0
-	dAtA[i] = 0x8
-	i++
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SyncRequest_BlockId) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	i = encodeVarintRpc(dAtA, i, uint64(m.BlockId))
-	return i, nil
+	i--
+	dAtA[i] = 0x8
+	return len(dAtA) - i, nil
 }
 func (m *SyncRequest_Checksum) MarshalTo(dAtA []byte) (int, error) {
-	i := 0
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SyncRequest_Checksum) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	if m.Checksum != nil {
-		dAtA[i] = 0x12
-		i++
+		i -= len(m.Checksum)
+		copy(dAtA[i:], m.Checksum)
 		i = encodeVarintRpc(dAtA, i, uint64(len(m.Checksum)))
-		i += copy(dAtA[i:], m.Checksum)
+		i--
+		dAtA[i] = 0x12
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 func (m *SyncResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1099,48 +1046,68 @@ func (m *SyncResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *SyncResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SyncResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if m.Data != nil {
-		nn2, err := m.Data.MarshalTo(dAtA[i:])
-		if err != nil {
-			return 0, err
+		{
+			size := m.Data.Size()
+			i -= size
+			if _, err := m.Data.MarshalTo(dAtA[i:]); err != nil {
+				return 0, err
+			}
 		}
-		i += nn2
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *SyncResponse_Header) MarshalTo(dAtA []byte) (int, error) {
-	i := 0
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SyncResponse_Header) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	if m.Header != nil {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintRpc(dAtA, i, uint64(m.Header.Size()))
-		n3, err := m.Header.MarshalTo(dAtA[i:])
-		if err != nil {
-			return 0, err
+		{
+			size, err := m.Header.MarshalToSizedBuffer(dAtA[:i])
+			if err != nil {
+				return 0, err
+			}
+			i -= size
+			i = encodeVarintRpc(dAtA, i, uint64(size))
 		}
-		i += n3
+		i--
+		dAtA[i] = 0xa
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 func (m *SyncResponse_Chunk) MarshalTo(dAtA []byte) (int, error) {
-	i := 0
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *SyncResponse_Chunk) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	if m.Chunk != nil {
-		dAtA[i] = 0x12
-		i++
+		i -= len(m.Chunk)
+		copy(dAtA[i:], m.Chunk)
 		i = encodeVarintRpc(dAtA, i, uint64(len(m.Chunk)))
-		i += copy(dAtA[i:], m.Chunk)
+		i--
+		dAtA[i] = 0x12
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 func (m *TransactionPullRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1148,23 +1115,31 @@ func (m *TransactionPullRequest) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *TransactionPullRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *TransactionPullRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	if len(m.Filter) > 0 {
-		dAtA[i] = 0xa
-		i++
-		i = encodeVarintRpc(dAtA, i, uint64(len(m.Filter)))
-		i += copy(dAtA[i:], m.Filter)
+	if len(m.TransactionIds) > 0 {
+		for iNdEx := len(m.TransactionIds) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.TransactionIds[iNdEx])
+			copy(dAtA[i:], m.TransactionIds[iNdEx])
+			i = encodeVarintRpc(dAtA, i, uint64(len(m.TransactionIds[iNdEx])))
+			i--
+			dAtA[i] = 0xa
+		}
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *TransactionPullResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1172,25 +1147,31 @@ func (m *TransactionPullResponse) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *TransactionPullResponse) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *TransactionPullResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
 	if len(m.Transactions) > 0 {
-		for _, b := range m.Transactions {
+		for iNdEx := len(m.Transactions) - 1; iNdEx >= 0; iNdEx-- {
+			i -= len(m.Transactions[iNdEx])
+			copy(dAtA[i:], m.Transactions[iNdEx])
+			i = encodeVarintRpc(dAtA, i, uint64(len(m.Transactions[iNdEx])))
+			i--
 			dAtA[i] = 0xa
-			i++
-			i = encodeVarintRpc(dAtA, i, uint64(len(b)))
-			i += copy(dAtA[i:], b)
 		}
 	}
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func (m *Empty) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
 	if err != nil {
 		return nil, err
 	}
@@ -1198,21 +1179,28 @@ func (m *Empty) Marshal() (dAtA []byte, err error) {
 }
 
 func (m *Empty) MarshalTo(dAtA []byte) (int, error) {
-	var i int
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *Empty) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
 	_ = i
 	var l int
 	_ = l
-	return i, nil
+	return len(dAtA) - i, nil
 }
 
 func encodeVarintRpc(dAtA []byte, offset int, v uint64) int {
+	offset -= sovRpc(v)
+	base := offset
 	for v >= 1<<7 {
 		dAtA[offset] = uint8(v&0x7f | 0x80)
 		v >>= 7
 		offset++
 	}
 	dAtA[offset] = uint8(v)
-	return offset + 1
+	return base
 }
 func (m *QueryRequest) Size() (n int) {
 	if m == nil {
@@ -1357,9 +1345,11 @@ func (m *TransactionPullRequest) Size() (n int) {
 	}
 	var l int
 	_ = l
-	l = len(m.Filter)
-	if l > 0 {
-		n += 1 + l + sovRpc(uint64(l))
+	if len(m.TransactionIds) > 0 {
+		for _, b := range m.TransactionIds {
+			l = len(b)
+			n += 1 + l + sovRpc(uint64(l))
+		}
 	}
 	return n
 }
@@ -1389,14 +1379,7 @@ func (m *Empty) Size() (n int) {
 }
 
 func sovRpc(x uint64) (n int) {
-	for {
-		n++
-		x >>= 7
-		if x == 0 {
-			break
-		}
-	}
-	return n
+	return (math_bits.Len64(x|1) + 6) / 7
 }
 func sozRpc(x uint64) (n int) {
 	return sovRpc(uint64((x << 1) ^ uint64((int64(x) >> 63))))
@@ -2082,7 +2065,7 @@ func (m *TransactionPullRequest) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Filter", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field TransactionIds", wireType)
 			}
 			var byteLen int
 			for shift := uint(0); ; shift += 7 {
@@ -2109,10 +2092,8 @@ func (m *TransactionPullRequest) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Filter = append(m.Filter[:0], dAtA[iNdEx:postIndex]...)
-			if m.Filter == nil {
-				m.Filter = []byte{}
-			}
+			m.TransactionIds = append(m.TransactionIds, make([]byte, postIndex-iNdEx))
+			copy(m.TransactionIds[len(m.TransactionIds)-1], dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -2279,6 +2260,7 @@ func (m *Empty) Unmarshal(dAtA []byte) error {
 func skipRpc(dAtA []byte) (n int, err error) {
 	l := len(dAtA)
 	iNdEx := 0
+	depth := 0
 	for iNdEx < l {
 		var wire uint64
 		for shift := uint(0); ; shift += 7 {
@@ -2310,10 +2292,8 @@ func skipRpc(dAtA []byte) (n int, err error) {
 					break
 				}
 			}
-			return iNdEx, nil
 		case 1:
 			iNdEx += 8
-			return iNdEx, nil
 		case 2:
 			var length int
 			for shift := uint(0); ; shift += 7 {
@@ -2334,55 +2314,30 @@ func skipRpc(dAtA []byte) (n int, err error) {
 				return 0, ErrInvalidLengthRpc
 			}
 			iNdEx += length
-			if iNdEx < 0 {
-				return 0, ErrInvalidLengthRpc
-			}
-			return iNdEx, nil
 		case 3:
-			for {
-				var innerWire uint64
-				var start int = iNdEx
-				for shift := uint(0); ; shift += 7 {
-					if shift >= 64 {
-						return 0, ErrIntOverflowRpc
-					}
-					if iNdEx >= l {
-						return 0, io.ErrUnexpectedEOF
-					}
-					b := dAtA[iNdEx]
-					iNdEx++
-					innerWire |= (uint64(b) & 0x7F) << shift
-					if b < 0x80 {
-						break
-					}
-				}
-				innerWireType := int(innerWire & 0x7)
-				if innerWireType == 4 {
-					break
-				}
-				next, err := skipRpc(dAtA[start:])
-				if err != nil {
-					return 0, err
-				}
-				iNdEx = start + next
-				if iNdEx < 0 {
-					return 0, ErrInvalidLengthRpc
-				}
-			}
-			return iNdEx, nil
+			depth++
 		case 4:
-			return iNdEx, nil
+			if depth == 0 {
+				return 0, ErrUnexpectedEndOfGroupRpc
+			}
+			depth--
 		case 5:
 			iNdEx += 4
-			return iNdEx, nil
 		default:
 			return 0, fmt.Errorf("proto: illegal wireType %d", wireType)
 		}
+		if iNdEx < 0 {
+			return 0, ErrInvalidLengthRpc
+		}
+		if depth == 0 {
+			return iNdEx, nil
+		}
 	}
-	panic("unreachable")
+	return 0, io.ErrUnexpectedEOF
 }
 
 var (
-	ErrInvalidLengthRpc = fmt.Errorf("proto: negative length found during unmarshaling")
-	ErrIntOverflowRpc   = fmt.Errorf("proto: integer overflow")
+	ErrInvalidLengthRpc        = fmt.Errorf("proto: negative length found during unmarshaling")
+	ErrIntOverflowRpc          = fmt.Errorf("proto: integer overflow")
+	ErrUnexpectedEndOfGroupRpc = fmt.Errorf("proto: unexpected end of group")
 )

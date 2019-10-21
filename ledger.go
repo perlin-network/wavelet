@@ -388,14 +388,14 @@ func (l *Ledger) PullTransactions() {
 
 		logger := log.Consensus("pull-transactions")
 
-		// Marshal the transaction ids
-		buf := new(bytes.Buffer)
-		if _, err := l.mempool.WriteTransactionIDs(buf); err != nil {
-			logger.Error().Err(err).Msg("failed to marshal transaction ids")
-			continue
-		}
+		// Build list of transaction IDs
+		l.transactionsLock.RLock()
+		req := &TransactionPullRequest{TransactionIds: make([][]byte, 0, l.transactions.Len())}
+		l.transactions.Iterate(func(tx *Transaction) {
+			req.TransactionIds = append(req.TransactionIds, tx.ID[:])
+		})
+		l.transactionsLock.RUnlock()
 
-		req := &TransactionPullRequest{Filter: buf.Bytes()}
 		client := NewWaveletClient(peers[0])
 
 		ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())

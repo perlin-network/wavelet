@@ -56,7 +56,7 @@ func (m *Mempool) Add(transactions *Transactions, blockID BlockID, txs ...Transa
 		}
 
 		transactions.Add(&tx)
-		m.filter.Add(tx.ID[:])
+		// m.filter.Add(tx.ID[:])
 
 		item := mempoolItem{
 			index: tx.ComputeIndex(blockID),
@@ -110,13 +110,13 @@ func (m *Mempool) Reshuffle(transactions *Transactions, prevBlock Block, nextBlo
 	}
 
 	// Rebuild filter if there is at least 1 pruned tx
-	if pruned > 0 {
-		m.filter.ClearAll()
+	// if pruned > 0 {
+	// 	m.filter.ClearAll()
 
-		transactions.Iterate(func(tx *Transaction) {
-			m.filter.Add(tx.ID[:])
-		})
-	}
+	// 	transactions.Iterate(func(tx *Transaction) {
+	// 		m.filter.Add(tx.ID[:])
+	// 	})
+	// }
 }
 
 // WriteTransactionIDs writes the marshaled bloom filter onto
