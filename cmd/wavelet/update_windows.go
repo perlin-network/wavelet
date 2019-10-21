@@ -25,7 +25,6 @@ func switchToUpdatedBinary(newBinary string, atStartup bool) error {
 		return errors.New("Unable to switch to new upgraded binary except as at startup on Windows")
 	}
 
-
 	/*
 	 * Start the new child process, passing in the standard
 	 * file descriptors

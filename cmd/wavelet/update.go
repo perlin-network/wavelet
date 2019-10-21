@@ -129,9 +129,9 @@ func downloadUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte)
 	 * Download the new binary to a temporary
 	 * location while we validate the signature.
 	 */
-	binaryFileName := path.Join(updateDirectory, "wavelet" + sys.GoExe)
+	binaryFileName := path.Join(updateDirectory, "wavelet"+sys.GoExe)
 	binaryTempFileName := path.Join(updateDirectory, "wavelet.new")
-	binaryOldFileName  := path.Join(updateDirectory, "wavelet.old")
+	binaryOldFileName := path.Join(updateDirectory, "wavelet.old")
 	binaryTempFile, err := os.OpenFile(binaryTempFileName, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0600)
 	if err != nil {
 		return fmt.Errorf("Unable to create temporary file: %+v", err)
@@ -278,7 +278,7 @@ func switchToUpdatedVersion(atStartup bool) {
 	/*
 	 * Check for the new binary
 	 */
-	binaryFileName := path.Join(updateDirectory, "wavelet" + sys.GoExe)
+	binaryFileName := path.Join(updateDirectory, "wavelet"+sys.GoExe)
 	_, err := os.Stat(binaryFileName)
 	if err != nil {
 		return
