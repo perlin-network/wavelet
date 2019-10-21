@@ -678,25 +678,18 @@ func (l *Ledger) query() {
 	votes := make([]*finalizationVote, 0, snowballK)
 	voters := make(map[AccountID]struct{}, snowballK)
 
-	for response := range voteChan {
-		if _, recorded := voters[response.voter.PublicKey()]; recorded {
+	for i := 0; i < cap(votes); i++ {
+		vote := <-voteChan
+
+		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
 			continue // To make sure the sampling process is fair, only allow one vote per peer.
 		}
 
-		voters[response.voter.PublicKey()] = struct{}{}
-		votes = append(votes, response)
-
-		if len(votes) == cap(votes) {
-			break
-		}
+		voters[vote.voter.PublicKey()] = struct{}{}
+		votes = append(votes, vote)
 	}
 
 	cleanupWorker()
-
-	if len(votes) != cap(votes) {
-		// TODO not enough vote, what to do ?
-		return
-	}
 
 	// Filter away all query responses whose blocks comprise of transactions our node is not aware of.
 	for _, vote := range votes {
