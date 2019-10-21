@@ -20,14 +20,12 @@
 package wavelet
 
 import (
-	"bytes"
 	"context"
 	"io"
 
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
-	"github.com/willf/bloom"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -169,14 +167,18 @@ func (p *Protocol) CheckOutOfSync(ctx context.Context, req *OutOfSyncRequest) (*
 func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullRequest) (*TransactionPullResponse, error) {
 	res := &TransactionPullResponse{Transactions: [][]byte{}}
 
-	filter := &bloom.BloomFilter{}
-	if _, err := filter.ReadFrom(bytes.NewReader(req.Filter)); err != nil {
-		return nil, err
+	// Build a lookup table from the list of transaction IDs
+	var id TransactionID
+	lookup := map[TransactionID]bool{}
+	for _, i := range req.Transactions {
+		copy(id[:], i)
+		lookup[id] = true
 	}
 
+	// Find missing transactions
 	p.ledger.transactionsLock.RLock()
 	p.ledger.transactions.Iterate(func(tx *Transaction) {
-		if !filter.Test(tx.ID[:]) {
+		if !lookup[tx.ID] {
 			res.Transactions = append(res.Transactions, tx.Marshal())
 		}
 	})
