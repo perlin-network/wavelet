@@ -218,7 +218,7 @@ func checkForUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte,
 	}
 
 	/* Use the new binary */
-	switchToUpdatedVersion()
+	switchToUpdatedVersion(false)
 
 	return
 }
@@ -252,7 +252,7 @@ yQIDAQAB
 	}
 }
 
-func switchToUpdatedVersion() {
+func switchToUpdatedVersion(atStartup bool) {
 	/*
 	 * Check for the new binary
 	 */
@@ -265,7 +265,7 @@ func switchToUpdatedVersion() {
 	/*
 	 * Re-exec with the new binary
 	 */
-	switchToUpdatedBinary(binaryFileName)
+	switchToUpdatedBinary(binaryFileName, atStartup)
 
 	return
 }
