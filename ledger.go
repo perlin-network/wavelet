@@ -372,7 +372,7 @@ func (l *Ledger) PullTransactions() {
 		select {
 		case <-l.sync:
 			return
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(1 * time.Second):
 		}
 
 		peers, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
@@ -465,6 +465,7 @@ func (l *Ledger) FinalizeBlocks() {
 				logger.Debug().
 					Hex("block_id", proposedBlock.ID[:]).
 					Uint64("block_index", proposedBlock.Index).
+					Int("num_transactions", len(proposedBlock.Transactions)).
 					Msg("Proposing block...")
 
 				l.finalizer.Prefer(&finalizationVote{
