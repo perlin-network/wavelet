@@ -79,7 +79,7 @@ func TestTickForFinalization(t *testing.T) {
 				txIDs = append(txIDs, getTxID())
 			}
 
-			block := NewBlock(1, accounts.tree.Checksum(), uint32(len(txIDs)), txIDs...)
+			block := NewBlock(1, accounts.tree.Checksum(), txIDs...)
 
 			if i == expectedFinalizedIdx {
 				expectedFinalizedBlock = &block

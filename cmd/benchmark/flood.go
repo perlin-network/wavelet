@@ -73,14 +73,14 @@ func sendTransaction(
 
 	defer wg.Done()
 
-	n := 40
+	n := 1
 	payload := wavelet.Batch{
 		Tags:     make([]uint8, 0, n),
 		Payloads: make([][]byte, 0, n),
 	}
 
 	stake := wavelet.Stake{Opcode: sys.PlaceStake, Amount: uint64(i)}
-	for i := 0; i < 40; i++ {
+	for i := 0; i < n; i++ {
 		if err := payload.AddStake(stake); err != nil {
 			// Shouldn't happen
 			panic(err)

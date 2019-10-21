@@ -35,7 +35,7 @@ func BenchmarkNewTX(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		NewTransaction(keys, sys.TagTransfer, nil)
+		NewTransaction(keys, 0, sys.TagTransfer, nil)
 	}
 }
 
@@ -43,7 +43,7 @@ func BenchmarkMarshalUnmarshalTX(b *testing.B) {
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(b, err)
 
-	tx := NewTransaction(keys, sys.TagTransfer, nil)
+	tx := NewTransaction(keys, 0, sys.TagTransfer, nil)
 
 	b.ResetTimer()
 	b.ReportAllocs()
