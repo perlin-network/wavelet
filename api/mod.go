@@ -403,7 +403,7 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 	var id wavelet.TransactionID
 	copy(id[:], slice)
 
-	tx := g.ledger.FindTransaction(id)
+	tx := g.ledger.Transactions().Find(id)
 
 	if tx == nil {
 		g.renderError(ctx, ErrNotFound(errors.Errorf("could not find transaction with ID %x", id)))

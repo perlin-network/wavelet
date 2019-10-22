@@ -65,11 +65,8 @@ type Ledger struct {
 	metrics *Metrics
 	indexer *Indexer
 
-	accounts *Accounts
-	blocks   *Blocks
-
-	mempool *Mempool
-
+	accounts     *Accounts
+	blocks       *Blocks
 	transactions *Transactions
 
 	finalizer *Snowball
@@ -166,11 +163,9 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		metrics: metrics,
 		indexer: indexer,
 
-		accounts: accounts,
-		blocks:   blocks,
-
+		accounts:     accounts,
+		blocks:       blocks,
 		transactions: NewTransactions(),
-		mempool:      NewMempool(),
 
 		finalizer: finalizer,
 		syncer:    syncer,
@@ -243,7 +238,7 @@ func (l *Ledger) Close() {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(txs ...Transaction) error {
-	l.mempool.Add(l.transactions, l.blocks.Latest().ID, txs...)
+	l.transactions.BatchAdd(l.blocks.Latest().ID, txs...)
 
 	//l.TakeSendQuota()
 
@@ -334,6 +329,11 @@ func (l *Ledger) Finalizer() *Snowball {
 // Blocks returns the block manager for the ledger.
 func (l *Ledger) Blocks() *Blocks {
 	return l.blocks
+}
+
+// Transactions returns the transaction manager for the ledger.
+func (l *Ledger) Transactions() *Transactions {
+	return l.transactions
 }
 
 // Restart restart wavelet process by means of stall detector (approach is platform dependent)
@@ -519,11 +519,7 @@ func (l *Ledger) FinalizeBlocks() {
 // and creates a new block, which will be proposed to be finalized as the
 // next block in the chain.
 func (l *Ledger) proposeBlock() *Block {
-	proposing := make([]TransactionID, 0)
-	l.mempool.Ascend(func(id TransactionID) bool {
-		proposing = append(proposing, id)
-		return true
-	})
+	proposing := l.transactions.ProposableIDs()
 
 	if len(proposing) == 0 {
 		return nil
@@ -577,7 +573,7 @@ func (l *Ledger) finalize(block Block) {
 		return
 	}
 
-	l.mempool.Reshuffle(l.transactions, *current, block)
+	l.transactions.ReshufflePending(block)
 
 	_, err = l.blocks.Save(&block)
 	if err != nil {
@@ -1294,7 +1290,7 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 		txs := make([]*Transaction, 0, len(block.Transactions))
 
 		for _, id := range block.Transactions {
-			tx := l.transactions.Get(id)
+			tx := l.transactions.Find(id)
 			if tx == nil {
 				collapseState.err = errors.Wrapf(ErrMissingTx, "%x", id)
 				break
@@ -1419,22 +1415,4 @@ func (l *Ledger) setSync(flag bitset) {
 	l.syncStatusLock.Lock()
 	l.syncStatus = flag
 	l.syncStatusLock.Unlock()
-}
-
-func (l *Ledger) Mempool() *Mempool {
-	return l.mempool
-}
-
-// Len returns the total number of transactions the node is aware of.
-// It is safe to call this function concurrently.
-func (l *Ledger) TransactionsLen() int {
-	return l.transactions.Len()
-}
-
-// Find attempts to search for and return a transaction by its ID in the node, or
-// otherwise returns nil.
-//
-// It is safe to call this function concurrently.
-func (l *Ledger) FindTransaction(id TransactionID) *Transaction {
-	return l.transactions.Get(id)
 }

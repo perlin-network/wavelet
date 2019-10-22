@@ -73,8 +73,8 @@ func (cli *CLI) status(ctx *cli.Context) {
 		Uint64("reward", reward).
 		Uint64("nonce", nonce).
 		Strs("peers", peerIDs).
-		Int("num_tx", cli.ledger.Mempool().Len()).
-		Int("num_tx_in_store", cli.ledger.TransactionsLen()).
+		Int("num_tx", cli.ledger.Transactions().PendingLen()).
+		Int("num_tx_in_store", cli.ledger.Transactions().Len()).
 		Uint64("num_accounts_in_store", accountsLen).
 		Str("preferred_id", preferredID).
 		Str("sync_status", cli.ledger.SyncStatus()).
@@ -336,7 +336,7 @@ func (cli *CLI) find(ctx *cli.Context) {
 	var txID wavelet.TransactionID
 	copy(txID[:], buf)
 
-	tx := cli.ledger.FindTransaction(txID)
+	tx := cli.ledger.Transactions().Find(txID)
 
 	if tx != nil {
 		cli.logger.Info().
