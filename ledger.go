@@ -70,8 +70,7 @@ type Ledger struct {
 
 	mempool *Mempool
 
-	transactionsLock sync.RWMutex
-	transactions     *Transactions
+	transactions *Transactions
 
 	finalizer *Snowball
 	syncer    *Snowball
@@ -244,9 +243,7 @@ func (l *Ledger) Close() {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(txs ...Transaction) error {
-	l.transactionsLock.Lock()
 	l.mempool.Add(l.transactions, l.blocks.Latest().ID, txs...)
-	l.transactionsLock.Unlock()
 
 	//l.TakeSendQuota()
 
@@ -391,13 +388,13 @@ func (l *Ledger) PullTransactions() {
 		logger := log.Consensus("pull-transactions")
 
 		// Build list of transaction IDs
-		l.transactionsLock.RLock()
-		req := &TransactionPullRequest{TransactionIds: make([][]byte, 0, l.transactions.Len())}
+		req := &TransactionPullRequest{
+			TransactionIds: make([][]byte, 0, l.transactions.Len()),
+		}
 
 		l.transactions.Iterate(func(tx *Transaction) {
 			req.TransactionIds = append(req.TransactionIds, tx.ID[:])
 		})
-		l.transactionsLock.RUnlock()
 
 		workerChan := make(chan *grpc.ClientConn, 16)
 		var workerWG sync.WaitGroup
@@ -580,9 +577,7 @@ func (l *Ledger) finalize(block Block) {
 		return
 	}
 
-	l.transactionsLock.Lock()
 	l.mempool.Reshuffle(l.transactions, *current, block)
-	l.transactionsLock.Unlock()
 
 	_, err = l.blocks.Save(&block)
 	if err != nil {
@@ -739,14 +734,12 @@ func (l *Ledger) query() {
 			continue
 		}
 
-		l.transactionsLock.RLock()
 		for _, id := range vote.block.Transactions {
 			if !l.transactions.Has(id) {
 				vote.block = nil
 				break
 			}
 		}
-		l.transactionsLock.RUnlock()
 
 		if vote.block == nil {
 			continue
@@ -1300,7 +1293,6 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 	collapseState.once.Do(func() {
 		txs := make([]*Transaction, 0, len(block.Transactions))
 
-		l.transactionsLock.RLock()
 		for _, id := range block.Transactions {
 			tx := l.transactions.Get(id)
 			if tx == nil {
@@ -1310,7 +1302,6 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 
 			txs = append(txs, tx)
 		}
-		l.transactionsLock.RUnlock()
 
 		if collapseState.err != nil {
 			return
@@ -1437,11 +1428,7 @@ func (l *Ledger) Mempool() *Mempool {
 // Len returns the total number of transactions the node is aware of.
 // It is safe to call this function concurrently.
 func (l *Ledger) TransactionsLen() int {
-	l.transactionsLock.RLock()
-	txLen := l.transactions.Len()
-	l.transactionsLock.RUnlock()
-
-	return txLen
+	return l.transactions.Len()
 }
 
 // Find attempts to search for and return a transaction by its ID in the node, or
@@ -1449,8 +1436,5 @@ func (l *Ledger) TransactionsLen() int {
 //
 // It is safe to call this function concurrently.
 func (l *Ledger) FindTransaction(id TransactionID) *Transaction {
-	l.transactionsLock.RLock()
-	defer l.transactionsLock.RUnlock()
-
 	return l.transactions.Get(id)
 }
