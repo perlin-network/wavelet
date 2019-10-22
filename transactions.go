@@ -16,8 +16,9 @@ func NewTransactions() *Transactions {
 
 func (t *Transactions) Add(tx *Transaction) {
 	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	t.buffer[tx.ID] = tx
-	t.mu.Unlock()
 }
 
 // Will return nil if the transaction does not exist.
