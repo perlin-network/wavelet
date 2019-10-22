@@ -59,26 +59,6 @@ func (t *Transactions) add(block BlockID, tx Transaction) {
 	t.buffer[tx.ID] = &tx
 }
 
-func (t *Transactions) Delete(id TransactionID) {
-	t.Lock()
-	defer t.Unlock()
-
-	t.delete(id)
-}
-
-func (t *Transactions) BatchDelete(ids ...TransactionID) {
-	t.Lock()
-	defer t.Unlock()
-
-	for _, id := range ids {
-		t.delete(id)
-	}
-}
-
-func (t *Transactions) delete(id TransactionID) {
-	delete(t.buffer, id)
-}
-
 // ReshufflePending reshuffles all transactions that may be proposed into a new block by recomputing
 // the indices of all blocks given an updated block.
 //
