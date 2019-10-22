@@ -136,8 +136,10 @@ func (cli *CLI) pay(ctx *cli.Context) {
 		payload.FuncName = []byte("on_money_received")
 	}
 
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, cli.keys.PublicKey())
+
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, cli.ledger.Blocks().Latest().Index+1, sys.TagTransfer, payload.Marshal(),
+		cli.keys, nonce+1, cli.ledger.Blocks().Latest().Index+1, sys.TagTransfer, payload.Marshal(),
 	))
 
 	if err != nil {
@@ -265,8 +267,10 @@ func (cli *CLI) call(ctx *cli.Context) {
 
 	payload.FuncParams = params.Bytes()
 
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, cli.keys.PublicKey())
+
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, cli.ledger.Blocks().Latest().Index+1, sys.TagTransfer, payload.Marshal(),
+		cli.keys, nonce, cli.ledger.Blocks().Latest().Index+1, sys.TagTransfer, payload.Marshal(),
 	))
 
 	if err != nil {
@@ -376,7 +380,10 @@ func (cli *CLI) spawn(ctx *cli.Context) {
 		Code:     code,
 	}
 
-	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, cli.ledger.Blocks().Latest().Index+1, sys.TagContract, payload.Marshal()))
+	snapshot := cli.ledger.Snapshot()
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, cli.keys.PublicKey())
+
+	tx, err := cli.sendTransaction(wavelet.NewTransaction(cli.keys, nonce+1, cli.ledger.Blocks().Latest().Index+1, sys.TagContract, payload.Marshal()))
 	if err != nil {
 		return
 	}
@@ -444,8 +451,10 @@ func (cli *CLI) depositGas(ctx *cli.Context) {
 		return
 	}
 
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, cli.keys.PublicKey())
+
 	tx, err := cli.sendTransaction(
-		wavelet.NewTransaction(cli.keys, cli.ledger.Blocks().Latest().Index+1, sys.TagTransfer, payload.Marshal()),
+		wavelet.NewTransaction(cli.keys, nonce+1, cli.ledger.Blocks().Latest().Index+1, sys.TagTransfer, payload.Marshal()),
 	)
 
 	if err != nil {
@@ -477,8 +486,11 @@ func (cli *CLI) placeStake(ctx *cli.Context) {
 		Amount: amount,
 	}
 
+	snapshot := cli.ledger.Snapshot()
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, cli.keys.PublicKey())
+
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, cli.ledger.Blocks().Latest().Index+1, sys.TagStake, payload.Marshal(),
+		cli.keys, nonce+1, cli.ledger.Blocks().Latest().Index+1, sys.TagStake, payload.Marshal(),
 	))
 
 	if err != nil {
@@ -511,8 +523,11 @@ func (cli *CLI) withdrawStake(ctx *cli.Context) {
 	binary.LittleEndian.PutUint64(intBuf[:8], uint64(amount))
 	payload.Write(intBuf[:8])
 
+	snapshot := cli.ledger.Snapshot()
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, cli.keys.PublicKey())
+
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, cli.ledger.Blocks().Latest().Index+1, sys.TagStake, payload.Bytes(),
+		cli.keys, nonce+1, cli.ledger.Blocks().Latest().Index+1, sys.TagStake, payload.Bytes(),
 	))
 
 	if err != nil {
@@ -546,8 +561,11 @@ func (cli *CLI) withdrawReward(ctx *cli.Context) {
 		Amount: amount,
 	}
 
+	snapshot := cli.ledger.Snapshot()
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, cli.keys.PublicKey())
+
 	tx, err := cli.sendTransaction(wavelet.NewTransaction(
-		cli.keys, cli.ledger.Blocks().Latest().Index+1, sys.TagStake, payload.Marshal(),
+		cli.keys, nonce+1, cli.ledger.Blocks().Latest().Index+1, sys.TagStake, payload.Marshal(),
 	))
 
 	if err != nil {

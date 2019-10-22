@@ -21,6 +21,7 @@ package wctl
 
 import (
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"github.com/fasthttp/websocket"
@@ -331,7 +332,6 @@ func (c *Client) ListTransactions(senderID *string, offset *uint64, limit *uint6
 
 	err := c.RequestJSON(path, ReqGet, nil, &res)
 	return res, err
-
 }
 
 func (c *Client) GetTransaction(txID string) (Transaction, error) {
@@ -342,15 +342,21 @@ func (c *Client) GetTransaction(txID string) (Transaction, error) {
 	return res, err
 }
 
-func (c *Client) SendTransaction(tag byte, payload []byte) (SendTransactionResponse, error) {
+func (c *Client) SendTransaction(nonce, block uint64, tag byte, payload []byte) (SendTransactionResponse, error) {
 	var res SendTransactionResponse
 
-	var nonce [8]byte // TODO(kenta): nonce
+	var nonceBuf [8]byte
+	binary.BigEndian.PutUint64(nonceBuf[:], nonce)
 
-	signature := edwards25519.Sign(c.PrivateKey, append(nonce[:], append([]byte{tag}, payload...)...))
+	var blockBuf [8]byte
+	binary.BigEndian.PutUint64(blockBuf[:], block)
+
+	signature := edwards25519.Sign(c.PrivateKey, append(nonceBuf[:], append(blockBuf[:], append([]byte{tag}, payload...)...)...))
 
 	req := SendTransactionRequest{
 		Sender:    hex.EncodeToString(c.PublicKey[:]),
+		Nonce:     nonce,
+		Block:     block,
 		Tag:       tag,
 		Payload:   hex.EncodeToString(payload),
 		Signature: hex.EncodeToString(signature[:]),

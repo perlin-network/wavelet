@@ -176,13 +176,11 @@ func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullReq
 	}
 
 	// Find missing transactions
-	p.ledger.transactionsLock.RLock()
 	p.ledger.transactions.Iterate(func(tx *Transaction) {
 		if _, exists := lookup[tx.ID]; !exists {
 			res.Transactions = append(res.Transactions, tx.Marshal())
 		}
 	})
-	p.ledger.transactionsLock.RUnlock()
 
 	if len(res.Transactions) > 0 {
 		logger := log.Sync("pull_tx")
