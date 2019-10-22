@@ -88,9 +88,6 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if senderVal == nil {
 		return errors.New("missing sender")
 	}
-	if senderVal.Type() != fastjson.TypeString {
-		return errors.New("sender is not a string")
-	}
 	sender, err := senderVal.StringBytes()
 	if err != nil {
 		return errors.Wrap(err, "invalid sender")
@@ -99,9 +96,6 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	nonceVal := v.Get("nonce")
 	if nonceVal == nil {
 		return errors.New("missing nonce")
-	}
-	if nonceVal.Type() != fastjson.TypeNumber {
-		return errors.New("nonce is not a number")
 	}
 	nonce, err := nonceVal.Uint64()
 	if err != nil {
@@ -112,9 +106,6 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if blockVal == nil {
 		return errors.New("missing block height")
 	}
-	if blockVal.Type() != fastjson.TypeNumber {
-		return errors.New("block height is not a number")
-	}
 	block, err := blockVal.Uint64()
 	if err != nil {
 		return errors.Wrap(err, "invalid block height")
@@ -123,9 +114,6 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	tagVal := v.Get("tag")
 	if tagVal == nil {
 		return errors.New("missing tag")
-	}
-	if tagVal.Type() != fastjson.TypeNumber {
-		return errors.New("tag is not a number")
 	}
 	tag, err := tagVal.Uint()
 	if err != nil {
@@ -136,9 +124,6 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if payloadVal == nil {
 		return errors.New("missing payload")
 	}
-	if payloadVal.Type() != fastjson.TypeString {
-		return errors.New("payload is not a string")
-	}
 	payload, err := payloadVal.StringBytes()
 	if err != nil {
 		return errors.Wrap(err, "invalid payload")
@@ -147,9 +132,6 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	signatureVal := v.Get("signature")
 	if signatureVal == nil {
 		return errors.New("missing signature")
-	}
-	if signatureVal.Type() != fastjson.TypeString {
-		return errors.New("signature is not a string")
 	}
 	signature, err := signatureVal.StringBytes()
 	if err != nil {
