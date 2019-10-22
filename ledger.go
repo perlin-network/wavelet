@@ -433,6 +433,10 @@ func (l *Ledger) PullTransactions() {
 		for i := 0; i < cap(responses); i++ {
 			response := <-responseChan
 
+			if response == nil {
+				continue
+			}
+
 			responses = append(responses, response)
 		}
 
