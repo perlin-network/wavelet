@@ -69,18 +69,6 @@ func main() {
 
 	app.Commands = []cli.Command{
 		{
-			Name:  "local",
-			Usage: "spawn some number of nodes locally and spam transactions on all of them",
-			Flags: []cli.Flag{
-				cli.UintFlag{
-					Name:  "count",
-					Usage: "number of nodes to spawn",
-					Value: 2,
-				},
-			},
-			Action: commandLocal,
-		},
-		{
 			Name:  "remote",
 			Usage: "connect to an already-running node and spam transactions on it",
 			Flags: []cli.Flag{
