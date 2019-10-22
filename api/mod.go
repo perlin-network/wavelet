@@ -322,59 +322,62 @@ func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 }
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
-	var sender wavelet.AccountID
-	// var offset, limit uint64
-	// var err error
+	// TODO
 
-	queryArgs := ctx.QueryArgs()
-	if raw := string(queryArgs.Peek("sender")); len(raw) > 0 {
-		slice, err := hex.DecodeString(raw)
-		if err != nil {
-			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
-			return
-		}
+	//var sender wavelet.AccountID
+	//var offset, limit uint64
+	//var err error
 
-		if len(slice) != wavelet.SizeAccountID {
-			g.renderError(ctx, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", wavelet.SizeAccountID)))
-			return
-		}
+	//queryArgs := ctx.QueryArgs()
+	//if raw := string(queryArgs.Peek("sender")); len(raw) > 0 {
+	//slice, err := hex.DecodeString(raw)
+	//if err != nil {
+	//g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
+	//return
+	//}
 
-		copy(sender[:], slice)
-	}
+	//if len(slice) != wavelet.SizeAccountID {
+	//g.renderError(ctx, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", wavelet.SizeAccountID)))
+	//return
+	//}
 
-	// if raw := string(queryArgs.Peek("offset")); len(raw) > 0 {
-	// 	offset, err = strconv.ParseUint(raw, 10, 64)
+	//copy(sender[:], slice)
+	//}
 
-	// 	if err != nil {
-	// 		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
-	// 		return
-	// 	}
-	// }
+	//if raw := string(queryArgs.Peek("offset")); len(raw) > 0 {
+	//offset, err = strconv.ParseUint(raw, 10, 64)
 
-	// if raw := string(queryArgs.Peek("limit")); len(raw) > 0 {
-	// 	limit, err = strconv.ParseUint(raw, 10, 64)
+	//if err != nil {
+	//g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
+	//return
+	//}
+	//}
 
-	// 	if err != nil {
-	// 		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
-	// 		return
-	// 	}
-	// }
+	//if raw := string(queryArgs.Peek("limit")); len(raw) > 0 {
+	//limit, err = strconv.ParseUint(raw, 10, 64)
 
-	// if limit > maxPaginationLimit {
-	// 	limit = maxPaginationLimit
-	// }
+	//if err != nil {
+	//g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
+	//return
+	//}
+	//}
+
+	//if limit > maxPaginationLimit {
+	//limit = maxPaginationLimit
+	//}
 
 	var transactions transactionList
+	//var rootDepth = g.ledger.Graph().RootDepth()
 
-	// for _, tx := range g.ledger.Graph().ListTransactions(offset, limit, sender) {
-	// 	status := "received"
+	//for _, tx := range g.ledger.Graph().ListTransactions(offset, limit, sender) {
+	//status := "received"
 
-	// 	if tx.Depth <= rootDepth {
-	// 		status = "applied"
-	// 	}
+	//if tx.Depth <= rootDepth {
+	//status = "applied"
+	//}
 
-	// 	transactions = append(transactions, &transaction{tx: tx, status: status})
-	// }
+	//transactions = append(transactions, &transaction{tx: tx, status: status})
+	//}
 
 	g.render(ctx, transactions)
 }
