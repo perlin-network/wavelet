@@ -21,6 +21,7 @@ package wctl
 
 import (
 	"github.com/valyala/fastjson"
+	"strconv"
 )
 
 const (
@@ -62,6 +63,8 @@ type MarshalableJSON interface {
 
 type SendTransactionRequest struct {
 	Sender    string `json:"sender"`
+	Nonce     uint64 `json:"nonce"`
+	Block     uint64 `json:"block"`
 	Tag       byte   `json:"tag"`
 	Payload   string `json:"payload"`
 	Signature string `json:"signature"`
@@ -72,6 +75,8 @@ func (s *SendTransactionRequest) MarshalJSON() ([]byte, error) {
 	o := arena.NewObject()
 
 	o.Set("sender", arena.NewString(s.Sender))
+	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(s.Nonce, 10)))
+	o.Set("block", arena.NewNumberString(strconv.FormatUint(s.Block, 10)))
 	o.Set("tag", arena.NewNumberInt(int(s.Tag)))
 	o.Set("payload", arena.NewString(s.Payload))
 	o.Set("signature", arena.NewString(s.Signature))
@@ -80,9 +85,7 @@ func (s *SendTransactionRequest) MarshalJSON() ([]byte, error) {
 }
 
 type SendTransactionResponse struct {
-	ID       string   `json:"tx_id"`
-	Parents  []string `json:"parent_ids"`
-	Critical bool     `json:"is_critical"`
+	ID string `json:"id"`
 }
 
 func (s *SendTransactionResponse) UnmarshalJSON(b []byte) error {
@@ -93,26 +96,17 @@ func (s *SendTransactionResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	s.ID = string(v.GetStringBytes("tx_id"))
-
-	parentsValue := v.GetArray("parent_ids")
-	for _, parent := range parentsValue {
-		s.Parents = append(s.Parents, parent.String())
-	}
-
-	s.Critical = v.GetBool("is_critical")
+	s.ID = string(v.GetStringBytes("id"))
 
 	return nil
 }
 
 type LedgerStatusResponse struct {
-	PublicKey     string   `json:"public_key"`
-	HostAddress   string   `json:"address"`
-	PeerAddresses []string `json:"peers"`
+	PublicKey   string   `json:"public_key"`
+	HostAddress string   `json:"address"`
+	Peers       []string `json:"peers"`
 
-	RootID     string `json:"root_id"`
-	RoundID    uint64 `json:"round_id"`
-	Difficulty uint64 `json:"difficulty"`
+	BlockIndex uint64 `json:"block_index"`
 }
 
 func (l *LedgerStatusResponse) UnmarshalJSON(b []byte) error {
@@ -126,14 +120,11 @@ func (l *LedgerStatusResponse) UnmarshalJSON(b []byte) error {
 	l.PublicKey = string(v.GetStringBytes("public_key"))
 	l.HostAddress = string(v.GetStringBytes("address"))
 
-	peerValue := v.GetArray("peers")
-	for _, peer := range peerValue {
-		l.PeerAddresses = append(l.PeerAddresses, peer.String())
+	for _, peer := range v.GetArray("peers") {
+		l.Peers = append(l.Peers, peer.String())
 	}
 
-	l.RootID = string(v.GetStringBytes("root_id"))
-	l.RoundID = v.GetUint64("round_id")
-	l.Difficulty = v.GetUint64("difficulty")
+	l.BlockIndex = v.GetUint64("block_index")
 
 	return nil
 }
@@ -142,19 +133,14 @@ type Transaction struct {
 	ID string `json:"id"`
 
 	Sender string `json:"sender"`
+	Nonce  uint64 `json:"nonce"`
 
-	Parents []string `json:"parents"`
-
-	Timestamp uint64 `json:"timestamp"`
+	Block uint64 `json:"block"`
 
 	Tag     byte   `json:"tag"`
 	Payload []byte `json:"payload"`
 
-	AccountsMerkleRoot string `json:"accounts_root"`
-
 	Signature string `json:"signature"`
-
-	Depth uint64 `json:"depth"`
 }
 
 func (t *Transaction) UnmarshalJSON(b []byte) error {
@@ -172,19 +158,16 @@ func (t *Transaction) UnmarshalJSON(b []byte) error {
 
 func (t *Transaction) ParseJSON(v *fastjson.Value) {
 	t.ID = string(v.GetStringBytes("id"))
+
 	t.Sender = string(v.GetStringBytes("sender"))
+	t.Nonce = v.GetUint64("nonce")
 
-	parentsValue := v.GetArray("parents")
-	for _, parent := range parentsValue {
-		t.Parents = append(t.Parents, parent.String())
-	}
+	t.Block = v.GetUint64("block")
 
-	t.Timestamp = v.GetUint64("timestamp")
 	t.Tag = byte(v.GetUint("tag"))
 	t.Payload = v.GetStringBytes("payload")
-	t.AccountsMerkleRoot = string(v.GetStringBytes("accounts_root"))
+
 	t.Signature = string(v.GetStringBytes("signature"))
-	t.Depth = v.GetUint64("depth")
 }
 
 type TransactionList []Transaction

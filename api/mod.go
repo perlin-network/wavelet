@@ -293,26 +293,23 @@ func (g *Gateway) Shutdown() {
 }
 
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
-	req := new(sendTransactionRequest)
-
-	if g.ledger != nil && g.ledger.TakeSendQuota() == false {
-		g.renderError(ctx, ErrInternal(errors.New("rate limit")))
-		return
-	}
+	req := &sendTransactionRequest{}
 
 	parser := g.parserPool.Get()
+	defer g.parserPool.Put(parser)
+
 	err := req.bind(parser, ctx.PostBody())
-	g.parserPool.Put(parser)
 
 	if err != nil {
 		g.renderError(ctx, ErrBadRequest(err))
 		return
 	}
 
-	tx := wavelet.NewTransaction(g.keys, g.ledger.Blocks().Latest().Index+1, sys.Tag(req.Tag), req.payload)
-	err = g.ledger.AddTransaction(tx)
+	tx := wavelet.NewSignedTransaction(req.sender, req.Nonce, req.Block, sys.Tag(req.Tag), req.payload, req.signature)
 
-	if err != nil {
+	// TODO(kenta): check signature and nonce
+
+	if err = g.ledger.AddTransaction(tx); err != nil {
 		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error adding your transaction to graph")))
 		return
 	}

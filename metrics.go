@@ -73,7 +73,7 @@ func NewMetrics(ctx context.Context) *Metrics {
 					Float64("tps.received", receivedTX.RateMean()).
 					Float64("tps.accepted", acceptedTX.RateMean()).
 					Float64("tps.downloaded", downloadedTX.RateMean()).
-					Float64("block.finalized", finalizedBlocks.RateMean()).
+					Float64("blocks.finalized", finalizedBlocks.RateMean()).
 					Int64("query.latency.max.ms", queryLatency.Max()/(1.0e+7)).
 					Int64("query.latency.min.ms", queryLatency.Min()/(1.0e+7)).
 					Float64("query.latency.mean.ms", queryLatency.Mean()/(1.0e+7)).

@@ -63,11 +63,15 @@ func (s *msgResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 
 type sendTransactionRequest struct {
 	Sender    string `json:"sender"`
+	Nonce     uint64 `json:"nonce"`
+	Block     uint64 `json:"block"`
 	Tag       byte   `json:"tag"`
 	Payload   string `json:"payload"`
 	Signature string `json:"signature"`
 
-	payload []byte
+	sender    edwards25519.PublicKey
+	payload   []byte
+	signature edwards25519.Signature
 }
 
 func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) error {
@@ -87,33 +91,33 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if senderVal.Type() != fastjson.TypeString {
 		return errors.New("sender is not a string")
 	}
-	senderStr, err := senderVal.StringBytes()
+	sender, err := senderVal.StringBytes()
 	if err != nil {
 		return errors.Wrap(err, "invalid sender")
 	}
 
-	payloadVal := v.Get("payload")
-	if payloadVal == nil {
-		return errors.New("missing payload")
+	nonceVal := v.Get("nonce")
+	if nonceVal == nil {
+		return errors.New("missing nonce")
 	}
-	if payloadVal.Type() != fastjson.TypeString {
-		return errors.New("payload is not a string")
+	if nonceVal.Type() != fastjson.TypeNumber {
+		return errors.New("nonce is not a number")
 	}
-	payloadStr, err := payloadVal.StringBytes()
+	nonce, err := nonceVal.Uint64()
 	if err != nil {
-		return errors.Wrap(err, "invalid payload")
+		return errors.Wrap(err, "invalid nonce")
 	}
 
-	signatureVal := v.Get("signature")
-	if signatureVal == nil {
-		return errors.New("missing signature")
+	blockVal := v.Get("block")
+	if blockVal == nil {
+		return errors.New("missing block height")
 	}
-	if signatureVal.Type() != fastjson.TypeString {
-		return errors.New("signature is not a string")
+	if blockVal.Type() != fastjson.TypeNumber {
+		return errors.New("block height is not a number")
 	}
-	signatureStr, err := signatureVal.StringBytes()
+	block, err := blockVal.Uint64()
 	if err != nil {
-		return errors.Wrap(err, "invalid signature")
+		return errors.Wrap(err, "invalid block height")
 	}
 
 	tagVal := v.Get("tag")
@@ -128,10 +132,36 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 		return errors.Wrap(err, "invalid tag")
 	}
 
-	s.Sender = string(senderStr)
-	s.Payload = string(payloadStr)
-	s.Signature = string(signatureStr)
+	payloadVal := v.Get("payload")
+	if payloadVal == nil {
+		return errors.New("missing payload")
+	}
+	if payloadVal.Type() != fastjson.TypeString {
+		return errors.New("payload is not a string")
+	}
+	payload, err := payloadVal.StringBytes()
+	if err != nil {
+		return errors.Wrap(err, "invalid payload")
+	}
+
+	signatureVal := v.Get("signature")
+	if signatureVal == nil {
+		return errors.New("missing signature")
+	}
+	if signatureVal.Type() != fastjson.TypeString {
+		return errors.New("signature is not a string")
+	}
+	signature, err := signatureVal.StringBytes()
+	if err != nil {
+		return errors.Wrap(err, "invalid signature")
+	}
+
+	s.Sender = string(sender)
+	s.Nonce = nonce
+	s.Block = block
 	s.Tag = byte(tag)
+	s.Payload = string(payload)
+	s.Signature = string(signature)
 
 	senderBuf, err := hex.DecodeString(s.Sender)
 	if err != nil {
@@ -141,6 +171,8 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if len(senderBuf) != wavelet.SizeAccountID {
 		return errors.Errorf("sender public key must be size %d", wavelet.SizeAccountID)
 	}
+
+	copy(s.sender[:], senderBuf)
 
 	if sys.Tag(s.Tag) > sys.TagBatch {
 		return errors.New("unknown transaction tag specified")
@@ -160,6 +192,8 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 		return errors.Errorf("signature must be size %d", wavelet.SizeSignature)
 	}
 
+	copy(s.signature[:], signatureBuf)
+
 	return nil
 }
 
@@ -176,7 +210,7 @@ func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, er
 
 	o := arena.NewObject()
 
-	o.Set("tx_id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
+	o.Set("id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
 
 	return o.MarshalTo(nil), nil
 }

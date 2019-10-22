@@ -248,7 +248,7 @@ func (l *Ledger) AddTransaction(txs ...Transaction) error {
 	l.mempool.Add(l.transactions, l.blocks.Latest().ID, txs...)
 	l.transactionsLock.Unlock()
 
-	l.TakeSendQuota()
+	//l.TakeSendQuota()
 
 	return nil
 }
@@ -393,6 +393,7 @@ func (l *Ledger) PullTransactions() {
 		// Build list of transaction IDs
 		l.transactionsLock.RLock()
 		req := &TransactionPullRequest{TransactionIds: make([][]byte, 0, l.transactions.Len())}
+
 		l.transactions.Iterate(func(tx *Transaction) {
 			req.TransactionIds = append(req.TransactionIds, tx.ID[:])
 		})
@@ -445,6 +446,8 @@ func (l *Ledger) PullTransactions() {
 
 		count := int64(0)
 
+		var pulled []Transaction
+
 		for _, res := range responses {
 			for _, buf := range res.Transactions {
 				tx, err := UnmarshalTransaction(bytes.NewReader(buf))
@@ -456,17 +459,12 @@ func (l *Ledger) PullTransactions() {
 					continue
 				}
 
-				if err := l.AddTransaction(tx); err != nil {
-					logger.Error().
-						Err(err).
-						Hex("tx_id", tx.ID[:]).
-						Msg("error adding downloaded tx to graph")
-					continue
-				}
-
+				pulled = append(pulled, tx)
 				count += int64(tx.LogicalUnits())
 			}
 		}
+
+		l.AddTransaction(pulled...)
 
 		if count > 0 {
 			logger.Debug().

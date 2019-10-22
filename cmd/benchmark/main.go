@@ -218,8 +218,8 @@ func commandRemote(c *cli.Context) error {
 				Float64("received_tps", v.GetFloat64("tps.received")).
 				Float64("gossiped_tps", v.GetFloat64("tps.gossiped")).
 				Float64("downloaded_tps", v.GetFloat64("tps.downloaded")).
-				Float64("finalized_bps", v.GetFloat64("block.finalized")).
-				Float64("queried_rps", v.GetFloat64("rps.queried")).
+				Float64("finalized_bps", v.GetFloat64("blocks.finalized")).
+				Float64("queried_bps", v.GetFloat64("blocks.queried")).
 				Int64("query_latency_max_ms", v.GetInt64("query.latency.max.ms")).
 				Int64("query_latency_min_ms", v.GetInt64("query.latency.min.ms")).
 				Float64("query_latency_mean_ms", v.GetFloat64("query.latency.mean.ms")).
@@ -232,36 +232,6 @@ func commandRemote(c *cli.Context) error {
 	for {
 		if _, err := flood(client); err != nil {
 			continue
-		}
-	}
-}
-
-func commandLocal(c *cli.Context) error {
-	build()
-
-	count := c.Uint("count")
-
-	if count == 0 {
-		return errors.New("count must be > 0")
-	}
-
-	nodes := []*node{
-		spawn(nextAvailablePort(), nextAvailablePort(), false),
-	}
-
-	for i := uint(0); i < count-1; i++ {
-		nodes = append(nodes, spawn(nextAvailablePort(), nextAvailablePort(), true, fmt.Sprintf("127.0.0.1:%d", nodes[0].nodePort)))
-	}
-
-	wait(nodes...)
-
-	fmt.Println("Nodes are initialized!")
-
-	flood := floodTransactions()
-
-	for {
-		if _, err := flood(nodes[0].client); err != nil {
-			fmt.Println(err)
 		}
 	}
 }
