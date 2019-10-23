@@ -102,12 +102,14 @@ func (t *Transactions) ReshufflePending(next Block) int {
 	t.Lock()
 	defer t.Unlock()
 
-	// Delete transactions from the finalized block.
+	// Delete mempool entries for transactions in the finalized block.
 
 	pruned := len(next.Transactions)
 
+	lookup := make(map[TransactionID]struct{})
+
 	for _, id := range next.Transactions {
-		delete(t.buffer, id)
+		lookup[id] = struct{}{}
 	}
 
 	// Recompute indices of all items in the mempool.
@@ -117,11 +119,11 @@ func (t *Transactions) ReshufflePending(next Block) int {
 	t.index.Ascend(func(i btree.Item) bool {
 		item := i.(mempoolItem)
 
-		tx, exists := t.buffer[item.id]
-
-		if !exists {
+		if _, finalized := lookup[item.id]; finalized {
 			return true
 		}
+
+		tx := t.buffer[item.id]
 
 		if next.Index >= tx.Block+uint64(conf.GetPruningLimit()) {
 			delete(t.buffer, tx.ID)
