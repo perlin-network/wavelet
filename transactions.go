@@ -102,9 +102,9 @@ func (t *Transactions) ReshufflePending(next Block) int {
 	t.Lock()
 	defer t.Unlock()
 
-	pruned := 0
-
 	// Delete transactions from the finalized block.
+
+	pruned := len(next.Transactions)
 
 	for _, id := range next.Transactions {
 		delete(t.buffer, id)

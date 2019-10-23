@@ -6,6 +6,7 @@ import (
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
+	"math"
 	"math/rand"
 	"sort"
 	"testing"
@@ -357,6 +358,14 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) {
 		})
 
 		if !assert.Equal(t, toNotBePrunedIDs, manager.ProposableIDs()) {
+			return false
+		}
+
+		// Check that stale transactions cannot be added to the manager.
+
+		before := len(manager.buffer)
+		manager.Add(ZeroBlockID, NewTransaction(keys, math.MaxUint64, 0, sys.TagStake, nil))
+		if !assert.Len(t, manager.buffer, before) {
 			return false
 		}
 
