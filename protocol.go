@@ -176,10 +176,12 @@ func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullReq
 	}
 
 	// Find missing transactions
-	p.ledger.transactions.Iterate(func(tx *Transaction) {
+	p.ledger.transactions.Iterate(func(tx *Transaction) bool {
 		if _, exists := lookup[tx.ID]; !exists {
 			res.Transactions = append(res.Transactions, tx.Marshal())
 		}
+
+		return true
 	})
 
 	if len(res.Transactions) > 0 {
