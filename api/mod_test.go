@@ -26,10 +26,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/perlin-network/noise"
-	"github.com/perlin-network/noise/cipher"
-	"github.com/perlin-network/noise/handshake"
-	"github.com/perlin-network/wavelet/conf"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -40,6 +36,11 @@ import (
 	"testing"
 	"testing/quick"
 	"time"
+
+	"github.com/perlin-network/noise"
+	"github.com/perlin-network/noise/cipher"
+	"github.com/perlin-network/noise/handshake"
+	"github.com/perlin-network/wavelet/conf"
 
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
@@ -59,17 +60,15 @@ func TestListTransaction(t *testing.T) {
 	gateway.ledger = createLedger(t)
 
 	// Create a transaction
-	keys, err := skademlia.NewKeys(1, 1)
-	assert.NoError(t, err)
 	var buf [200]byte
-	_, err = rand.Read(buf[:])
+	_, err := rand.Read(buf[:])
 	assert.NoError(t, err)
-	_ = wavelet.NewTransaction(keys, sys.TagTransfer, buf[:])
+	_ = wavelet.NewTransaction(sys.TagTransfer, buf[:])
 	assert.NoError(t, err)
 
 	// Build an expected response
 	var expectedResponse transactionList
-	for _, tx := range gateway.ledger.Graph().ListTransactions(0, 0, wavelet.AccountID{}, wavelet.AccountID{}) {
+	for _, tx := range gateway.ledger.Graph().ListTransactions(0, 0, wavelet.AccountID{}) {
 		txRes := &transaction{tx: tx}
 		txRes.status = "applied"
 
@@ -100,33 +99,6 @@ func TestListTransaction(t *testing.T) {
 			wantResponse: testErrResponse{
 				StatusText: "Bad Request",
 				ErrorText:  "sender ID must be 32 bytes long",
-			},
-		},
-		{
-			name:     "creator not hex",
-			url:      "/tx?creator=1",
-			wantCode: http.StatusBadRequest,
-			wantResponse: testErrResponse{
-				StatusText: "Bad Request",
-				ErrorText:  "creator ID must be presented as valid hex: encoding/hex: odd length hex string",
-			},
-		},
-		{
-			name:     "creator invalid length",
-			url:      "/tx?creator=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
-			wantCode: http.StatusBadRequest,
-			wantResponse: testErrResponse{
-				StatusText: "Bad Request",
-				ErrorText:  "creator ID must be 32 bytes long",
-			},
-		},
-		{
-			name:     "creator not hex",
-			url:      "/tx?creator=1",
-			wantCode: http.StatusBadRequest,
-			wantResponse: testErrResponse{
-				StatusText: "Bad Request",
-				ErrorText:  "creator ID must be presented as valid hex: encoding/hex: odd length hex string",
 			},
 		},
 		{
@@ -179,17 +151,14 @@ func TestGetTransaction(t *testing.T) {
 
 	gateway.ledger = createLedger(t)
 
-	// Create a transaction
-	keys, err := skademlia.NewKeys(1, 1)
-	assert.NoError(t, err)
 	var buf [200]byte
-	_, err = rand.Read(buf[:])
+	_, err := rand.Read(buf[:])
 	assert.NoError(t, err)
-	_ = wavelet.NewTransaction(keys, sys.TagTransfer, buf[:])
+	_ = wavelet.NewTransaction(sys.TagTransfer, buf[:])
 	assert.NoError(t, err)
 
 	var txId wavelet.TransactionID
-	for _, tx := range gateway.ledger.Graph().ListTransactions(0, 0, wavelet.AccountID{}, wavelet.AccountID{}) {
+	for _, tx := range gateway.ledger.Graph().ListTransactions(0, 0, wavelet.AccountID{}) {
 		txId = tx.ID
 		break
 	}

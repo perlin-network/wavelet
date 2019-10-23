@@ -20,14 +20,12 @@
 package wavelet
 
 import (
-	"bytes"
 	"context"
 	"io"
 
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
-	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 )
 
@@ -35,47 +33,27 @@ type Protocol struct {
 	ledger *Ledger
 }
 
-func (p *Protocol) Gossip(stream Wavelet_GossipServer) error {
-	for {
-		batch, err := stream.Recv()
-
-		if err != nil {
-			return err
-		}
-
-		for _, buf := range batch.Transactions {
-			tx, err := UnmarshalTransaction(bytes.NewReader(buf))
-
-			if err != nil {
-				logger := log.TX("gossip")
-				logger.Err(err).Msg("Failed to unmarshal transaction")
-				continue
-			}
-
-			if err := p.ledger.AddTransaction(tx); err != nil && errors.Cause(err) != ErrMissingParents {
-				logger := log.TX("gossip")
-				logger.Error().
-					Err(err).
-					Hex("tx_id", tx.ID[:]).
-					Msg("error adding incoming tx to graph")
-			}
-		}
-	}
-}
-
 func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse, error) {
 	res := &QueryResponse{}
 
-	round, err := p.ledger.rounds.GetByIndex(req.RoundIndex)
-	if err == nil {
-		res.Round = round.Marshal()
+	latestBlock := p.ledger.blocks.Latest()
+
+	// Return preferred block if peer is finalizing on the same block
+	if latestBlock.Index+1 == req.BlockIndex {
+		preferred := p.ledger.finalizer.Preferred()
+		if preferred != nil {
+			res.Block = preferred.Value().(*Block).Marshal()
+		}
+
 		return res, nil
 	}
 
-	preferred := p.ledger.finalizer.Preferred()
-	if preferred != nil {
-		res.Round = preferred.(*Round).Marshal()
-		return res, nil
+	// Otherwise, return the finalized block
+	if latestBlock.Index+1 > req.BlockIndex {
+		block, err := p.ledger.blocks.GetByIndex(req.BlockIndex)
+		if err == nil {
+			res.Block = block.Marshal()
+		}
 	}
 
 	return res, nil
@@ -88,12 +66,12 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 	}
 
 	res := &SyncResponse{}
-	header := &SyncInfo{LatestRound: p.ledger.rounds.Latest().Marshal()}
+	header := &SyncInfo{Block: p.ledger.blocks.Latest().Marshal()}
 
 	diffBuffer := p.ledger.fileBuffers.GetUnbounded()
 	defer p.ledger.fileBuffers.Put(diffBuffer)
 
-	if err := p.ledger.accounts.Snapshot().DumpDiff(req.GetRoundId(), diffBuffer); err != nil {
+	if err := p.ledger.accounts.Snapshot().DumpDiff(req.GetBlockId(), diffBuffer); err != nil {
 		return err
 	}
 
@@ -182,44 +160,34 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 
 func (p *Protocol) CheckOutOfSync(ctx context.Context, req *OutOfSyncRequest) (*OutOfSyncResponse, error) {
 	return &OutOfSyncResponse{
-		OutOfSync: p.ledger.rounds.Latest().Index >= conf.GetSyncIfRoundsDifferBy()+req.RoundIndex,
+		OutOfSync: p.ledger.blocks.Latest().Index >= conf.GetSyncIfBlockIndicesDifferBy()+req.BlockIndex,
 	}, nil
 }
 
-func (p *Protocol) DownloadMissingTx(ctx context.Context, req *DownloadMissingTxRequest) (*DownloadTxResponse, error) {
-	res := &DownloadTxResponse{Transactions: make([][]byte, 0, len(req.Ids))}
+func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullRequest) (*TransactionPullResponse, error) {
+	res := &TransactionPullResponse{Transactions: [][]byte{}}
 
-	for _, buf := range req.Ids {
-		var id TransactionID
-		copy(id[:], buf)
+	// Build a lookup table from the list of transaction IDs
+	var id TransactionID
+	lookup := map[TransactionID]struct{}{}
+	for _, i := range req.TransactionIds {
+		copy(id[:], i)
+		lookup[id] = struct{}{}
+	}
 
-		if tx := p.ledger.Graph().FindTransaction(id); tx != nil {
+	// Find missing transactions
+	p.ledger.transactions.Iterate(func(tx *Transaction) {
+		if _, exists := lookup[tx.ID]; !exists {
 			res.Transactions = append(res.Transactions, tx.Marshal())
 		}
+	})
+
+	if len(res.Transactions) > 0 {
+		logger := log.Sync("pull_tx")
+		logger.Info().
+			Int("num_transactions", len(res.Transactions)).
+			Msg("Provided transactions for a pull request.")
 	}
 
 	return res, nil
-}
-
-func (p *Protocol) DownloadTx(ctx context.Context, req *DownloadTxRequest) (*DownloadTxResponse, error) {
-	lowLimit := req.Depth - conf.GetMaxDepthDiff()
-	highLimit := req.Depth + conf.GetMaxDownloadDepthDiff()
-
-	receivedIDs := make(map[TransactionID]struct{}, len(req.SkipIds))
-	for _, buf := range req.SkipIds {
-		var id TransactionID
-		copy(id[:], buf)
-
-		receivedIDs[id] = struct{}{}
-	}
-
-	var txs [][]byte
-	hostTXs := p.ledger.Graph().GetTransactionsByDepth(&lowLimit, &highLimit)
-	for _, tx := range hostTXs {
-		if _, ok := receivedIDs[tx.ID]; !ok {
-			txs = append(txs, tx.Marshal())
-		}
-	}
-
-	return &DownloadTxResponse{Transactions: txs}, nil
 }

@@ -10,15 +10,15 @@ import (
 
 type config struct {
 	// Snowball consensus protocol parameters.
-	snowballK    int
-	snowballBeta int
+	snowballK     int
+	snowballBeta  int
+	SnowballAlpha float64
 
 	// votes counting and majority calculation related parameters
 	syncVoteThreshold             float64
 	finalizationVoteThreshold     float64
 	stakeMajorityWeight           float64
 	transactionsNumMajorityWeight float64
-	roundDepthMajorityWeight      float64
 
 	// Timeout for outgoing requests
 	queryTimeout          time.Duration
@@ -29,17 +29,14 @@ type config struct {
 	// Size of individual chunks sent for a syncing peer.
 	syncChunkSize int
 
-	// Number of rounds we should be behind before we start syncing.
-	syncIfRoundsDifferBy uint64
+	// Number of blocks we should be behind before we start syncing.
+	syncIfBlockIndicesDifferBy uint64
 
-	// Depth diff according to which transactions are downloaded to sync
-	maxDownloadDepthDiff uint64
+	// Bloom filter parameters
+	bloomFilterM uint
+	bloomFilterK uint
 
-	// Max graph depth difference to search for eligible transaction
-	// parents from for our node.
-	maxDepthDiff uint64
-
-	// Number of rounds after which transactions will be pruned from the graph
+	// Number of blocks after which transactions will be pruned from the graph
 	pruningLimit uint8
 
 	// shared secret for http api authorization
@@ -56,25 +53,26 @@ func init() {
 
 func defaultConfig() config {
 	defConf := config{
-		snowballK:    2,
-		snowballBeta: 50,
+		snowballK:     2,
+		snowballBeta:  150,
+		SnowballAlpha: 0.8,
 
 		syncVoteThreshold:             0.8,
 		finalizationVoteThreshold:     0.8,
 		stakeMajorityWeight:           1,
 		transactionsNumMajorityWeight: 0.3,
-		roundDepthMajorityWeight:      0.3,
 
-		queryTimeout:          5000 * time.Millisecond,
-		gossipTimeout:         5000 * time.Millisecond,
-		downloadTxTimeout:     30 * time.Second,
-		checkOutOfSyncTimeout: 5000 * time.Millisecond,
-		syncChunkSize:         16384,
-		syncIfRoundsDifferBy:  2,
+		queryTimeout:               5000 * time.Millisecond,
+		gossipTimeout:              5000 * time.Millisecond,
+		downloadTxTimeout:          30 * time.Second,
+		checkOutOfSyncTimeout:      5000 * time.Millisecond,
+		syncChunkSize:              16384,
+		syncIfBlockIndicesDifferBy: 5,
 
-		maxDownloadDepthDiff: 1500,
-		maxDepthDiff:         10,
-		pruningLimit:         30,
+		bloomFilterM: 1024 * 1024,
+		bloomFilterK: 3,
+
+		pruningLimit: 30,
 	}
 
 	switch sys.VersionMeta {
@@ -92,7 +90,6 @@ type Option func(*config)
 // in case of same stakes
 func updateWeights() {
 	c.transactionsNumMajorityWeight = c.finalizationVoteThreshold - (1 / float64(c.snowballK))
-	c.roundDepthMajorityWeight = c.finalizationVoteThreshold - (1 / float64(c.snowballK))
 }
 
 func WithSnowballK(sk int) Option {
@@ -122,12 +119,6 @@ func WithStakeMajorityWeight(sa float64) Option {
 func WithTransactionsNumMajorityWeight(sa float64) Option {
 	return func(c *config) {
 		c.transactionsNumMajorityWeight = sa
-	}
-}
-
-func WithRoundDepthMajorityWeight(sa float64) Option {
-	return func(c *config) {
-		c.roundDepthMajorityWeight = sa
 	}
 }
 
@@ -167,21 +158,21 @@ func WithSyncChunkSize(cs int) Option {
 	}
 }
 
-func WithSyncIfRoundsDifferBy(rdb uint64) Option {
+func WithSyncIfBlockIndicesDifferBy(rdb uint64) Option {
 	return func(c *config) {
-		c.syncIfRoundsDifferBy = rdb
+		c.syncIfBlockIndicesDifferBy = rdb
 	}
 }
 
-func WithMaxDownloadDepthDiff(ddd uint64) Option {
+func WithBloomFilterM(m uint) Option {
 	return func(c *config) {
-		c.maxDownloadDepthDiff = ddd
+		c.bloomFilterM = m
 	}
 }
 
-func WithMaxDepthDiff(dd uint64) Option {
+func WithBloomFilterK(k uint) Option {
 	return func(c *config) {
-		c.maxDepthDiff = dd
+		c.bloomFilterK = k
 	}
 }
 
@@ -237,17 +228,17 @@ func GetTransactionsNumMajorityWeight() float64 {
 	return t
 }
 
-func GetRoundDepthMajorityWeight() float64 {
+func GetSnowballBeta() int {
 	l.RLock()
-	t := c.roundDepthMajorityWeight
+	t := c.snowballBeta
 	l.RUnlock()
 
 	return t
 }
 
-func GetSnowballBeta() int {
+func GetSnowballAlpha() float64 {
 	l.RLock()
-	t := c.snowballBeta
+	t := c.SnowballAlpha
 	l.RUnlock()
 
 	return t
@@ -293,28 +284,28 @@ func GetSyncChunkSize() int {
 	return t
 }
 
-func GetSyncIfRoundsDifferBy() uint64 {
+func GetSyncIfBlockIndicesDifferBy() uint64 {
 	l.RLock()
-	t := c.syncIfRoundsDifferBy
+	t := c.syncIfBlockIndicesDifferBy
 	l.RUnlock()
 
 	return t
 }
 
-func GetMaxDownloadDepthDiff() uint64 {
+func GetBloomFilterM() uint {
 	l.RLock()
-	t := c.maxDownloadDepthDiff
+	m := c.bloomFilterM
 	l.RUnlock()
 
-	return t
+	return m
 }
 
-func GetMaxDepthDiff() uint64 {
+func GetBloomFilterK() uint {
 	l.RLock()
-	t := c.maxDepthDiff
+	k := c.bloomFilterK
 	l.RUnlock()
 
-	return t
+	return k
 }
 
 func GetPruningLimit() uint8 {

@@ -152,12 +152,131 @@ Send Transaction
 
 ## Transaction List
 
+<<<<<<< HEAD
 Get Transaction List
 
 This endpoint is rate limited.
+=======
+    * **Code:** 200 <br />
+    **Content:**
+    ```json
+    {
+      "public_key": "f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467",
+      "balance": 9999999999999999901,
+      "stake": 100,
+      "reward": 0,
+      "nonce": 152,
+      "is_contract": false
+    }
+    ```
+ 
+* **Error Response:**
+    
+    * **Reason:** Invalid Account ID size <br />
+    **Code:** 400 BAD REQUEST <br />
+    **Content:**
+    ```json
+    {
+      "status": "Bad request.",
+      "error": "account ID must be 32 bytes long"
+    }
+    ```
+    <br />
+    
+    * **Code:** 400 BAD REQUEST <br />
+    **Content:**
+    ```json
+    {
+      "status": "Bad request.",
+      "error": "account ID must be presented as valid hex: [...]"
+    }
+    ```
+ 
+ **Send Transaction**
+ ----
+   Send Transaction
+ 
+* **URL**
+ 
+    `/tx/send`
+ 
+* **Method:**
+ 
+    `POST`
+   
+*  **URL Params**
+ 
+    None
+ 
+* **Data Params**
+ 
+    ```json
+    {
+      "sender": "[hex-encoded sender ID, must be 32 bytes long]",
+      "tag": "[possible values: 0 = transfer, 1 = contract, 2 = stake, 3 = batch",
+      "payload": "[hex-encoded payload]",
+      "signature": "[hex-encoded edwards25519 signature, which consists of private key, nonce, tag, and payload]"
+    }
+    ```
+ 
+* **Success Response:**
+ 
+    * **Code:** 200 <br />
+    **Content:**
+    ```json
+    {
+      "tx_id": "facd9c4bddc8d1080bac6d08a35cbd98ff9ef3924624d1307eced3b40d3549a0",
+      "parent_ids": [
+        "4a987f2371c27a23516ce8c93367826bd5a46bf815d0c19b765a5b10292e575b"
+      ],
+      "is_critical": false
+    }
+    ```
+  
+* **Error Response:**
+ 
+    * **Code:** 400 BAD REQUEST <br />
+    **Content:**
+    ```json
+    {
+      "status": "Bad request.",
+      "error": "error adding your transaction to graph: [...]"
+    }
+    ```
+
+**Transaction List**
+ ----
+ 
+   Get Transaction List
+ 
+   This endpoint is rate limited.
+ 
+* **URL**
+ 
+    `/tx`
+ 
+* **Method:**
+ 
+    `GET`
+   
+*  **URL Params**
+ 
+    * **Optional Query:**
+        
+        `sender=[string]` where `sender` is the hex-encoded Sender ID. Used to filter by Sender ID.
+                
+        `offset=[integer]` where `offset` is page offset. Default 0.
+        
+        `limit=[integer]` where `limit` is page limit. If 0, it'll return all transactions.
+        
+* **Data Params**
+ 
+    None
+>>>>>>> a51445561a46539e919c7b248dd9f2580c2374a1
  
 - **URL**: `/tx`
  
+<<<<<<< HEAD
 - **Method:**: `GET`
 - **URL Params:** (optional)
 	- `sender=[string]` where `sender` is the hex-encoded Sender ID. Used to filter by Sender ID.
@@ -188,6 +307,25 @@ This endpoint is rate limited.
     "creator_signature": "ebf1711c85def73965aeca5dc4fb071422b565dfbf19a886f57503feff7e124e2759ff435a2bd3407fd13421611e27280dfa43c5ac5788f11381775150b1dd09",
     "parents": [
       "403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc"
+=======
+    * **Code:** 200 <br />
+    **Content:**
+    ```json
+    [
+      {
+        "id": "e6d9aab2d62522073daa0a30c629516fb7beb11d6a327f53eb6f6768dc6dbe09",
+        "sender": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+        "status": "applied",
+        "nonce": 0,
+        "depth": 1172,
+        "tag": 0,
+        "payload": "",
+        "signature": "cc86583a84ca27b5860e3c3f6e75994b91ae4bd2ef8e4751b38141a098518ea84e9a8c0a374730ee5a75913117169ada1162fb9e569183b985bedbcf3d7c260b",
+        "parents": [
+          "eb148b6831275941c2b840dd21549a203335263cabce6a1de86a243704388ed4"
+        ]
+      }
+>>>>>>> a51445561a46539e919c7b248dd9f2580c2374a1
     ]
   }
 ]
@@ -195,6 +333,7 @@ This endpoint is rate limited.
 
 ### Error Response:
  
+<<<<<<< HEAD
 - **Code:** 429 TOO MANY REQUEST
 - **Content:** `Too Many Requests`
 
@@ -266,6 +405,64 @@ Get Transaction Details by ID
 
 ## Contract Code
 
+=======
+    * **Code:** 200 <br />
+    **Content:**
+    ```json
+    {
+      "id": "e6d9aab2d62522073daa0a30c629516fb7beb11d6a327f53eb6f6768dc6dbe09",
+      "sender": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+      "status": "applied",
+      "nonce": 0,
+      "depth": 1172,
+      "tag": 0,
+      "payload": "",
+      "signature": "cc86583a8œ4ca27b5860e3c3f6e75994b91ae4bd2ef8e4751b38141a098518ea84e9a8c0a374730ee5a75913117169ada1162fb9e569183b985bedbcf3d7c260b",
+      "parents": [
+        "eb148b6831275941c2b840dd21549a203335263cabce6a1de86a243704388ed4"
+      ]
+    }
+    ```
+  
+* **Error Response:**
+    
+    * **Code:** 400 BAD REQUEST <br />
+    **Desc:**  The Transaction ID is not a valid size. Its size must be 32 bytes<br />
+    **Content:**
+    ```json
+    {
+      "status": "Bad request.",
+      "error": "transaction ID must be 32 bytes long"
+    }
+    ```
+    
+    <br />
+  
+    * **Code:** 400 BAD REQUEST <br />
+    **Desc:** Transaction ID is not a valid hex<br />
+    **Content:**
+    ```json
+    {
+     "status": "Bad request.",
+    "error": "transaction ID must be presented as valid hex: [...]"
+    }
+    ```
+    
+    <br />
+  
+    * **Code:** 404 NOT FOUND <br />
+    **Desc:** Transaction ID does not exist<br />
+    **Content:**
+    ```json
+    {
+      "status": "Bad request.",
+      "error": "could not find transaction with ID [...]"
+    }
+    ```
+
+**Contract Code**
+ ----
+>>>>>>> a51445561a46539e919c7b248dd9f2580c2374a1
    Get Contract Code By ID.
 
    This endpoint is rate limited.

@@ -190,9 +190,7 @@ Below are conditions for each of the debounced endpoints :
       "level": "info",
       "mod": "stake",
       "event": "reward_validator",
-      "creator": "696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a",
       "recipient": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
-      "creator_tx_id": "92f8fbd9e9bcdd7cd5a09f31fbd2940a5e95e8f93c5332fcd1f3135353f3fd6f",
       "rewardee_tx_id": "22f3bd4b136c547eeed26032e5379d31d165c0b3cecc8eedce6f21152d259725",
       "entropy": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
       "acc": 8.0,
@@ -241,7 +239,6 @@ Below are conditions for each of the debounced endpoints :
       "level": "info",
       "mod": "contract",
       "event": "gas",
-      "creator_id": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
       "contract_id": "66e7872ba4e4b6e0c7c874f0591b0439a957546df9b71936eee44347633055fa",
       "gas": 3484936,
       "gas_limit": 100000000,
@@ -292,9 +289,7 @@ Below are conditions for each of the debounced endpoints :
     `id=[string]` where `id` is the hex-encoded Transaction ID.
 
     `sender=[string]` where `sender` is the hex-encoded Sender ID.
-        
-    `creator=[string]` where `creator` is the hex-encoded Creator ID.
-               
+                       
     `tag=[integer]` where `tag` is the tag.
  
 * **Message:**
@@ -308,7 +303,6 @@ Below are conditions for each of the debounced endpoints :
       "event": "applied",
       "tx_id": "9ba1e35eda41e67486ab12d0a6353aefb0dc8b8156aaecae357cf06cd49659b6",
       "sender_id": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
-      "creator_id": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
       "depth": 9747,
       "tag": 0,
       "time": "2019-06-28T20:48:17+08:00"
@@ -346,7 +340,6 @@ Below are conditions for each of the debounced endpoints :
       "event": "failed",
       "tx_id": "9ba1e35eda41e67486ab12d0a6353aefb0dc8b8156aaecae357cf06cd49659b6",
       "sender_id": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
-      "creator_id": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
       "depth": 9747,
       "tag": 0,
       "error": "[...]",

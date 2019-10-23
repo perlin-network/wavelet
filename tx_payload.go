@@ -253,7 +253,8 @@ func ParseBatch(payload []byte) (Batch, error) {
 }
 
 func (t Transfer) Marshal() []byte {
-	buf := new(bytes.Buffer)
+	buf := bytes.NewBuffer(make([]byte, 0, 32+8+8+8+4+4))
+
 	buf.Write(t.Recipient[:])
 	binary.Write(buf, binary.LittleEndian, t.Amount)
 
@@ -274,32 +275,22 @@ func (t Transfer) Marshal() []byte {
 }
 
 func (s Stake) Marshal() []byte {
-	buf := new(bytes.Buffer)
+	buf := bytes.NewBuffer(make([]byte, 0, 1+8))
+
 	buf.WriteByte(s.Opcode)
 	binary.Write(buf, binary.LittleEndian, s.Amount)
 	return buf.Bytes()
 }
 
 func (c Contract) Marshal() []byte {
-	buf := new(bytes.Buffer)
+	buf := bytes.NewBuffer(make([]byte, 0, 8+8+4+len(c.Params)+len(c.Code)))
+
 	binary.Write(buf, binary.LittleEndian, c.GasLimit)
 	binary.Write(buf, binary.LittleEndian, c.GasDeposit)
 	binary.Write(buf, binary.LittleEndian, uint32(len(c.Params)))
 	buf.Write(c.Params)
 	buf.Write(c.Code)
 	return buf.Bytes()
-}
-
-// AddNop adds a Nop payload into a batch.
-func (b *Batch) AddNop() error {
-	if b.Size == 255 {
-		return fmt.Errorf("batch cannot have more than 255 transactions")
-	}
-
-	b.Size++
-	b.Tags = append(b.Tags, uint8(sys.TagNop))
-	b.Payloads = append(b.Payloads, []byte{})
-	return nil
 }
 
 // AddTransfer adds a Transfer payload into a batch.
@@ -341,7 +332,8 @@ func (b *Batch) AddContract(c Contract) error {
 }
 
 func (b Batch) Marshal() []byte {
-	buf := new(bytes.Buffer)
+	buf := bytes.NewBuffer(make([]byte, 0, 1+(b.Size*(1+4))))
+
 	buf.WriteByte(byte(b.Size))
 
 	for i := uint8(0); i < b.Size; i++ {

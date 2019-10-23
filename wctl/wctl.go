@@ -79,6 +79,11 @@ type Client struct {
 	jsonPool fastjson.ParserPool
 	url      string
 
+	// Local state counters
+	// TODO
+	Nonce uint64
+	Block uint64
+
 	// TODO: metrics, stake, consensus, network
 
 	// These callbacks are only called when the function that calls them is
@@ -97,8 +102,8 @@ type Client struct {
 	OnPeerJoin
 	OnPeerLeave
 
-	OnRoundEnd
-	OnPrune
+	OnProposal
+	OnFinalized
 
 	OnStakeRewardValidator
 

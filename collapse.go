@@ -21,56 +21,20 @@ package wavelet
 
 import (
 	"encoding/hex"
-	"github.com/perlin-network/wavelet/lru"
-
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/lru"
 	"github.com/perlin-network/wavelet/sys"
-	queue2 "github.com/phf/go-queue/queue"
 	"github.com/pkg/errors"
 )
 
-func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *Round, start, end Transaction, logging bool) (*collapseResults, error) {
+func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) (*collapseResults, error) {
 	res := &collapseResults{snapshot: accounts.Snapshot()}
-	res.snapshot.SetViewID(round)
+	res.snapshot.SetViewID(block.Index)
 
-	visited := map[TransactionID]struct{}{start.ID: {}}
-
-	queue := queue2.New()
-	queue.PushBack(&end)
-
-	order := queue2.New()
-
-	for queue.Len() > 0 {
-		popped := queue.PopFront().(*Transaction)
-
-		if popped.Depth <= start.Depth {
-			continue
-		}
-
-		order.PushBack(popped)
-
-		for _, parentID := range popped.ParentIDs {
-			if _, seen := visited[parentID]; seen {
-				continue
-			}
-
-			visited[parentID] = struct{}{}
-
-			parent := g.FindTransaction(parentID)
-
-			if parent == nil {
-				g.MarkTransactionAsMissing(parentID, popped.Depth)
-				return nil, errors.Errorf("missing ancestor %x to correctly collapse down ledger state from critical transaction %x", parentID, end.ID)
-			}
-
-			queue.PushBack(parent)
-		}
-	}
-
-	res.applied = make([]*Transaction, 0, order.Len())
-	res.rejected = make([]*Transaction, 0, order.Len())
-	res.rejectedErrors = make([]error, 0, order.Len())
+	res.applied = make([]*Transaction, 0, len(txs))
+	res.rejected = make([]*Transaction, 0, len(txs))
+	res.rejectedErrors = make([]error, 0, len(txs))
 
 	ctx := NewCollapseContext(res.snapshot)
 
@@ -83,54 +47,49 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 
 	// Apply transactions in reverse order from the end of the round
 	// all the way down to the beginning of the round.
-	for order.Len() > 0 {
-		popped := order.PopBack().(*Transaction)
-
+	for _, tx := range txs {
 		// Update nonce.
 
-		nonce, exists := ctx.ReadAccountNonce(popped.Creator)
+		nonce, exists := ctx.ReadAccountNonce(tx.Sender)
 		if !exists {
 			ctx.WriteAccountsLen(ctx.ReadAccountsLen() + 1)
 		}
-		ctx.WriteAccountNonce(popped.Creator, nonce+1)
+		ctx.WriteAccountNonce(tx.Sender, nonce+1)
 
-		if hex.EncodeToString(popped.Creator[:]) != sys.FaucetAddress {
-			fee := popped.Fee()
+		if hex.EncodeToString(tx.Sender[:]) != sys.FaucetAddress {
+			fee := tx.Fee()
 
-			creatorBalance, _ := ctx.ReadAccountBalance(popped.Creator)
-			if creatorBalance < fee {
-				res.rejected = append(res.rejected, popped)
+			senderBalance, _ := ctx.ReadAccountBalance(tx.Sender)
+			if senderBalance < fee {
+				res.rejected = append(res.rejected, tx)
 				res.rejectedErrors = append(
 					res.rejectedErrors,
-					errors.Errorf("stake: creator %x does not have enough PERLs to pay transaction fees (comprised of %d PERLs)", popped.Creator, fee),
+					errors.Errorf("stake: sender %x does not have enough PERLs to pay transaction fees (comprised of %d PERLs)", tx.Sender, fee),
 				)
-				res.rejectedCount += popped.LogicalUnits()
+				res.rejectedCount += tx.LogicalUnits()
 
 				continue
 			}
 
-			ctx.WriteAccountBalance(popped.Creator, creatorBalance-fee)
+			ctx.WriteAccountBalance(tx.Sender, senderBalance-fee)
 			totalFee += fee
 
-			stake := uint64(0)
-			if s, _ := ctx.ReadAccountStake(popped.Sender); s > sys.MinimumStake {
-				stake = s
-			}
+			stake, _ := ctx.ReadAccountStake(tx.Sender)
 
 			if stake >= sys.MinimumStake {
-				if _, ok := stakes[popped.Sender]; !ok {
-					stakes[popped.Sender] = stake
+				if _, ok := stakes[tx.Sender]; !ok {
+					stakes[tx.Sender] = stake
 				} else {
-					stakes[popped.Sender] += stake
+					stakes[tx.Sender] += stake
 				}
 				totalStake += stake
 			}
 		}
 
-		if err := ctx.ApplyTransaction(current, popped); err != nil {
-			res.rejected = append(res.rejected, popped)
+		if err := ctx.ApplyTransaction(block, tx); err != nil {
+			res.rejected = append(res.rejected, tx)
 			res.rejectedErrors = append(res.rejectedErrors, err)
-			res.rejectedCount += popped.LogicalUnits()
+			res.rejectedCount += tx.LogicalUnits()
 
 			logger := log.Node()
 			logger.Error().Err(err).Msg("error applying transaction")
@@ -140,8 +99,8 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 
 		// Update statistics.
 
-		res.applied = append(res.applied, popped)
-		res.appliedCount += popped.LogicalUnits()
+		res.applied = append(res.applied, tx)
+		res.appliedCount += tx.LogicalUnits()
 	}
 
 	if totalStake > 0 {
@@ -153,15 +112,7 @@ func collapseTransactions(g *Graph, accounts *Accounts, round uint64, current *R
 		}
 	}
 
-	startDepth, endDepth := start.Depth+1, end.Depth
-
-	for _, tx := range g.GetTransactionsByDepth(&startDepth, &endDepth) {
-		res.ignoredCount += tx.LogicalUnits()
-	}
-
-	res.ignoredCount -= res.appliedCount + res.rejectedCount
-
-	ctx.processRewardWithdrawals(round)
+	ctx.processRewardWithdrawals(block.Index)
 
 	if err := ctx.Flush(); err != nil {
 		return res, err
@@ -362,17 +313,17 @@ func (c *CollapseContext) StoreRewardWithdrawalRequest(rw RewardWithdrawalReques
 	c.rewardWithdrawalRequests = append(c.rewardWithdrawalRequests, rw)
 }
 
-func (c *CollapseContext) processRewardWithdrawals(round uint64) {
-	if round < uint64(sys.RewardWithdrawalsRoundLimit) {
+func (c *CollapseContext) processRewardWithdrawals(blockIndex uint64) {
+	if blockIndex < uint64(sys.RewardWithdrawalsBlockLimit) {
 		return
 	}
 
-	roundLimit := round - uint64(sys.RewardWithdrawalsRoundLimit)
+	blockLimit := blockIndex - uint64(sys.RewardWithdrawalsBlockLimit)
 
 	var leftovers []RewardWithdrawalRequest
 
 	for i, rw := range c.rewardWithdrawalRequests {
-		if c.rewardWithdrawalRequests[i].round > roundLimit {
+		if c.rewardWithdrawalRequests[i].blockIndex > blockLimit {
 			leftovers = append(leftovers, rw)
 			continue
 		}
@@ -428,9 +379,9 @@ func (c *CollapseContext) Flush() error {
 
 // Apply a transaction by writing the states into memory.
 // After you've finished, you MUST call CollapseContext.Flush() to actually write the states into the tree.
-func (c *CollapseContext) ApplyTransaction(round *Round, tx *Transaction) error {
-	if err := applyTransaction(round, c, tx, &contractExecutorState{
-		GasPayer: tx.Creator,
+func (c *CollapseContext) ApplyTransaction(block *Block, tx *Transaction) error {
+	if err := applyTransaction(block, c, tx, &contractExecutorState{
+		GasPayer: tx.Sender,
 	}); err != nil {
 		return err
 	}

@@ -41,28 +41,34 @@ func (cli *CLI) status(ctx *cli.Context) {
 		a = &wctl.Account{}
 	}
 
+	/*
+		preferredID := "N/A"
+
+		if preferred := cli.ledger.Finalizer().Preferred(); preferred != nil {
+			id := preferred.ID()
+			preferredID = hex.EncodeToString(id[:])
+		}
+	*/
+
 	var peers = make([]string, 0, len(l.Peers))
 	for _, p := range l.Peers {
 		peers = append(peers, fmt.Sprintf("%s[%x]", p.Address, p.PublicKey))
 	}
 
 	cli.logger.Info().
-		Uint64("difficulty", l.Round.Difficulty).
-		Uint64("round", l.Round.Index).
-		Hex("root_id", l.Round.EndID[:]).
-		Uint64("height", l.Graph.Height).
-		Hex("id", l.PublicKey[:]).
+		Uint64("block_index", l.Block.Index).
+		Hex("block_id", l.Block.ID[:]).
+		Hex("user_id", l.PublicKey[:]).
 		Uint64("balance", a.Balance).
 		Uint64("stake", a.Stake).
 		Uint64("reward", a.Reward).
 		Uint64("nonce", a.Nonce).
 		Strs("peers", peers).
-		Uint64("num_tx", l.Graph.Tx).
-		Uint64("num_missing_tx", l.Graph.MissingTx).
-		Uint64("num_tx_in_store", l.Graph.TxInStore).
-		Uint64("num_incomplete_tx", l.Graph.IncompleteTx).
-		Int("num_accounts_in_store", l.NumAccounts).
-		Str("preferred_id", l.PreferredID).
+		Uint64("num_tx", l.NumTx).
+		Uint64("num_tx_in_store", l.NumTxInStore).
+		Uint64("num_accounts_in_store", l.AccountsLen).
+		Uint64("client_nonce", cli.Nonce).
+		Uint64("client_block", cli.Block).
 		Str("sync_status", l.SyncStatus).
 		Int("preferred_votes", l.PreferredVotes).
 		Msg("Here is the current status of your node.")
@@ -220,14 +226,9 @@ func (cli *CLI) find(ctx *cli.Context) {
 			Msgf("Account: %s", cmd[0])
 	case tx != nil:
 		cli.logger.Info().
-			Strs("parents", wctl.StringIDs(tx.Parents)).
 			Hex("sender", tx.Sender[:]).
-			Hex("creator", tx.Creator[:]).
 			Uint64("nonce", tx.Nonce).
 			Uint8("tag", byte(tx.Tag)).
-			Uint64("depth", tx.Depth).
-			Hex("seed", tx.Seed[:]).
-			Uint8("seed_zero_prefix_len", tx.SeedLen).
 			Msgf("Transaction: %s", cmd[0])
 	}
 }
@@ -435,15 +436,12 @@ func (cli *CLI) updateParameters(ctx *cli.Context) {
 		conf.WithFinalizationVoteThreshold(ctx.Float64("vote.finalization.threshold")),
 		conf.WithStakeMajorityWeight(ctx.Float64("vote.finalization.stake.weight")),
 		conf.WithTransactionsNumMajorityWeight(ctx.Float64("vote.finalization.transactions.weight")),
-		conf.WithRoundDepthMajorityWeight(ctx.Float64("vote.finalization.depth.weight")),
 		conf.WithQueryTimeout(ctx.Duration("query.timeout")),
 		conf.WithGossipTimeout(ctx.Duration("gossip.timeout")),
 		conf.WithDownloadTxTimeout(ctx.Duration("download.tx.timeout")),
 		conf.WithCheckOutOfSyncTimeout(ctx.Duration("check.out.of.sync.timeout")),
 		conf.WithSyncChunkSize(ctx.Int("sync.chunk.size")),
-		conf.WithSyncIfRoundsDifferBy(ctx.Uint64("sync.if.rounds.differ.by")),
-		conf.WithMaxDownloadDepthDiff(ctx.Uint64("max.download.depth.diff")),
-		conf.WithMaxDepthDiff(ctx.Uint64("max.depth.diff")),
+		conf.WithSyncIfBlockIndicesDifferBy(ctx.Uint64("sync.if.rounds.differ.by")),
 		conf.WithPruningLimit(uint8(ctx.Uint64("pruning.limit"))),
 		conf.WithSecret(ctx.String("api.secret")),
 	)

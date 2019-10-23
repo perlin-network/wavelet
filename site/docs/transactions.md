@@ -24,11 +24,10 @@ The following table below denotes all the available tags and their operations in
 
 | Tag | Binary | Description |
 | --- | --------------------- | ----------- |
-| `Nop` | 0x00 | No-op. `Nop` transactions must have an empty payload. |
-| `Transfer` | 0x01 | Send PERLs to an arbitrary account, or invoke a smart contract function with a specified gas limit and a binary payload. For information on how `Transfer` transaction payloads are constructed, [click here](#the-transfer-transaction). |
-| `Stake` | 0x02 | Place/withdraw stakes of virtual currency to become/withdraw from being a validator, or convert rewards into PERLs which were earned from participating in the network as a validator. For more information on how `Stake` transaction payloads are constructed, [click here](#the-stake-transaction). |
-| `Contract` | 0x03 | Spawn and initialize a new smart contract with a specified gas limit and a binary payload. For information on how `Contract` transaction payloads are constructed, [click here](#the-contract-transaction). |
-| `Batch` | 0x04 | Atomically apply a series of operations by specifying a list of tags and payloads. For information on how `Batch` transaction payloads are constructed, [click here](#the-batch-transaction). |
+| `Transfer` | 0x00 | Send PERLs to an arbitrary account, or invoke a smart contract function with a specified gas limit and a binary payload. For information on how `Transfer` transaction payloads are constructed, [click here](#the-transfer-transaction). |
+| `Stake` | 0x01 | Place/withdraw stakes of virtual currency to become/withdraw from being a validator, or convert rewards into PERLs which were earned from participating in the network as a validator. For more information on how `Stake` transaction payloads are constructed, [click here](#the-stake-transaction). |
+| `Contract` | 0x02 | Spawn and initialize a new smart contract with a specified gas limit and a binary payload. For information on how `Contract` transaction payloads are constructed, [click here](#the-contract-transaction). |
+| `Batch` | 0x03 | Atomically apply a series of operations by specifying a list of tags and payloads. For information on how `Batch` transaction payloads are constructed, [click here](#the-batch-transaction). |
 
 ## Identities and Signatures
 

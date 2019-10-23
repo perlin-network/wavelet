@@ -63,14 +63,15 @@ func (s *msgResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 
 type sendTransactionRequest struct {
 	Sender    string `json:"sender"`
+	Nonce     uint64 `json:"nonce"`
+	Block     uint64 `json:"block"`
 	Tag       byte   `json:"tag"`
 	Payload   string `json:"payload"`
 	Signature string `json:"signature"`
 
-	// Internal fields.
-	creator   wavelet.AccountID
-	signature wavelet.Signature
+	sender    edwards25519.PublicKey
 	payload   []byte
+	signature edwards25519.Signature
 }
 
 func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) error {
@@ -87,22 +88,43 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if senderVal == nil {
 		return errors.New("missing sender")
 	}
-	if senderVal.Type() != fastjson.TypeString {
-		return errors.New("sender is not a string")
-	}
-	senderStr, err := senderVal.StringBytes()
+	sender, err := senderVal.StringBytes()
 	if err != nil {
 		return errors.Wrap(err, "invalid sender")
+	}
+
+	nonceVal := v.Get("nonce")
+	if nonceVal == nil {
+		return errors.New("missing nonce")
+	}
+	nonce, err := nonceVal.Uint64()
+	if err != nil {
+		return errors.Wrap(err, "invalid nonce")
+	}
+
+	blockVal := v.Get("block")
+	if blockVal == nil {
+		return errors.New("missing block height")
+	}
+	block, err := blockVal.Uint64()
+	if err != nil {
+		return errors.Wrap(err, "invalid block height")
+	}
+
+	tagVal := v.Get("tag")
+	if tagVal == nil {
+		return errors.New("missing tag")
+	}
+	tag, err := tagVal.Uint()
+	if err != nil {
+		return errors.Wrap(err, "invalid tag")
 	}
 
 	payloadVal := v.Get("payload")
 	if payloadVal == nil {
 		return errors.New("missing payload")
 	}
-	if payloadVal.Type() != fastjson.TypeString {
-		return errors.New("payload is not a string")
-	}
-	payloadStr, err := payloadVal.StringBytes()
+	payload, err := payloadVal.StringBytes()
 	if err != nil {
 		return errors.Wrap(err, "invalid payload")
 	}
@@ -111,30 +133,17 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if signatureVal == nil {
 		return errors.New("missing signature")
 	}
-	if signatureVal.Type() != fastjson.TypeString {
-		return errors.New("signature is not a string")
-	}
-	signatureStr, err := signatureVal.StringBytes()
+	signature, err := signatureVal.StringBytes()
 	if err != nil {
 		return errors.Wrap(err, "invalid signature")
 	}
 
-	tagVal := v.Get("tag")
-	if tagVal == nil {
-		return errors.New("missing tag")
-	}
-	if tagVal.Type() != fastjson.TypeNumber {
-		return errors.New("tag is not a number")
-	}
-	tag, err := tagVal.Uint()
-	if err != nil {
-		return errors.Wrap(err, "invalid tag")
-	}
-
-	s.Sender = string(senderStr)
-	s.Payload = string(payloadStr)
-	s.Signature = string(signatureStr)
+	s.Sender = string(sender)
+	s.Nonce = nonce
+	s.Block = block
 	s.Tag = byte(tag)
+	s.Payload = string(payload)
+	s.Signature = string(signature)
 
 	senderBuf, err := hex.DecodeString(s.Sender)
 	if err != nil {
@@ -144,6 +153,8 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if len(senderBuf) != wavelet.SizeAccountID {
 		return errors.Errorf("sender public key must be size %d", wavelet.SizeAccountID)
 	}
+
+	copy(s.sender[:], senderBuf)
 
 	if sys.Tag(s.Tag) > sys.TagBatch {
 		return errors.New("unknown transaction tag specified")
@@ -156,14 +167,13 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 
 	signatureBuf, err := hex.DecodeString(s.Signature)
 	if err != nil {
-		return errors.Wrap(err, "sender signature provided is not hex-formatted")
+		return errors.Wrap(err, "signature provided is not hex-formatted")
 	}
 
 	if len(signatureBuf) != wavelet.SizeSignature {
-		return errors.Errorf("sender signature must be size %d", wavelet.SizeSignature)
+		return errors.Errorf("signature must be size %d", wavelet.SizeSignature)
 	}
 
-	copy(s.creator[:], senderBuf)
 	copy(s.signature[:], signatureBuf)
 
 	return nil
@@ -182,25 +192,7 @@ func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, er
 
 	o := arena.NewObject()
 
-	o.Set("tx_id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
-
-	if s.tx.ParentIDs != nil {
-		parents := arena.NewArray()
-		for i, parentID := range s.tx.ParentIDs {
-			parents.SetArrayItem(i, arena.NewString(hex.EncodeToString(parentID[:])))
-		}
-		o.Set("parent_ids", parents)
-	} else {
-		o.Set("parent_ids", nil)
-	}
-
-	round := s.ledger.Rounds().Latest()
-
-	if s.tx.IsCritical(round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)) {
-		o.Set("is_critical", arena.NewTrue())
-	} else {
-		o.Set("is_critical", arena.NewFalse())
-	}
+	o.Set("id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
 
 	return o.MarshalTo(nil), nil
 }
@@ -219,7 +211,7 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 	}
 
 	snapshot := s.ledger.Snapshot()
-	round := s.ledger.Rounds().Latest()
+	block := s.ledger.Blocks().Latest()
 
 	accountsLen := wavelet.ReadAccountsLen(snapshot)
 
@@ -236,49 +228,24 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 	o.Set("sync_status",
 		arena.NewString(s.ledger.SyncStatus()))
 
-	var prefID string
-	if preferred := s.ledger.Finalizer().Preferred(); preferred != nil {
-		prefID = preferred.GetID()
-	}
-
-	o.Set("preferred_id",
-		arena.NewString(prefID))
-
 	r := arena.NewObject()
 	r.Set("merkle_root",
-		arena.NewString(hex.EncodeToString(round.Merkle[:])))
-	r.Set("start_id",
-		arena.NewString(hex.EncodeToString(round.Start.ID[:])))
-	r.Set("end_id",
-		arena.NewString(hex.EncodeToString(round.End.ID[:])))
+		arena.NewString(hex.EncodeToString(block.Merkle[:])))
 	r.Set("index",
-		arena.NewNumberString(strconv.FormatUint(round.Index, 10)))
-	r.Set("depth",
-		arena.NewNumberString(strconv.FormatUint(round.End.Depth-round.Start.Depth, 10)))
-	r.Set("difficulty",
-		arena.NewNumberString(strconv.FormatUint(uint64(round.ExpectedDifficulty(
-			sys.MinDifficulty,
-			sys.DifficultyScaleFactor,
-		)), 10)))
+		arena.NewNumberString(strconv.FormatUint(block.Index, 10)))
+	r.Set("block_id",
+		arena.NewString(hex.EncodeToString(block.ID[:])))
+	r.Set("transactions",
+		arena.NewNumberInt(len(block.Transactions)))
 
-	o.Set("round", r)
+	o.Set("block", r)
 
-	graph := s.ledger.Graph()
-	rootDepth := graph.RootDepth()
-
-	g := arena.NewObject()
-	g.Set("num_tx",
-		arena.NewNumberInt(graph.DepthLen(&rootDepth, nil)))
-	g.Set("num_missing_tx",
-		arena.NewNumberInt(graph.MissingLen()))
-	g.Set("num_tx_in_store",
-		arena.NewNumberInt(graph.Len()))
-	g.Set("num_incomplete_tx",
-		arena.NewNumberInt(graph.IncompleteLen()))
-	g.Set("height",
-		arena.NewNumberString(strconv.FormatUint(graph.Height(), 10)))
-
-	o.Set("graph", g)
+	o.Set("num_tx",
+		arena.NewNumberInt(s.ledger.Transactions().Len()))
+	o.Set("num_tx_in_store",
+		arena.NewNumberInt(s.ledger.Transactions().PendingLen()))
+	o.Set("num_accounts_in_store",
+		arena.NewNumberString(strconv.FormatUint(accountsLen, 10)))
 
 	peers := s.client.ClosestPeerIDs()
 	if len(peers) > 0 {
@@ -325,26 +292,11 @@ func (s *transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 
 	o.Set("id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
 	o.Set("sender", arena.NewString(hex.EncodeToString(s.tx.Sender[:])))
-	o.Set("creator", arena.NewString(hex.EncodeToString(s.tx.Creator[:])))
 	o.Set("status", arena.NewString(s.status))
 	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(s.tx.Nonce, 10)))
-	o.Set("depth", arena.NewNumberString(strconv.FormatUint(s.tx.Depth, 10)))
 	o.Set("tag", arena.NewNumberInt(int(s.tx.Tag)))
 	o.Set("payload", arena.NewString(base64.StdEncoding.EncodeToString(s.tx.Payload)))
-	o.Set("seed", arena.NewString(hex.EncodeToString(s.tx.Seed[:])))
-	o.Set("seed_len", arena.NewNumberInt(int(s.tx.SeedLen)))
-	o.Set("sender_signature", arena.NewString(hex.EncodeToString(s.tx.SenderSignature[:])))
-	o.Set("creator_signature", arena.NewString(hex.EncodeToString(s.tx.CreatorSignature[:])))
-
-	if s.tx.ParentIDs != nil {
-		parents := arena.NewArray()
-		for i := range s.tx.ParentIDs {
-			parents.SetArrayItem(i, arena.NewString(hex.EncodeToString(s.tx.ParentIDs[i][:])))
-		}
-		o.Set("parents", parents)
-	} else {
-		o.Set("parents", nil)
-	}
+	o.Set("signature", arena.NewString(hex.EncodeToString(s.tx.Signature[:])))
 
 	return o, nil
 }

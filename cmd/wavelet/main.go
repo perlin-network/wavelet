@@ -31,8 +31,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/pkg/errors"
-
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
@@ -41,6 +39,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
+	"github.com/pkg/errors"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
 
@@ -59,7 +58,7 @@ type Config struct {
 }
 
 func main() {
-	switchToUpdatedVersion()
+	// switchToUpdatedVersion()
 	wavelet.SetGenesisByNetwork(sys.VersionMeta)
 
 	Run(os.Args, os.Stdin, os.Stdout)
@@ -136,7 +135,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "genesis",
-			Usage:  "Genesis JSON file contents representing initial fields of some set of accounts at round 0.",
+			Usage:  "Genesis JSON file contents representing initial fields of some set of accounts at block 0.",
 			EnvVar: "WAVELET_GENESIS",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
@@ -162,11 +161,6 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 			Usage: "Timeout in seconds for querying a transaction to K peers.",
 		}),
 		altsrc.NewUint64Flag(cli.Uint64Flag{
-			Name:  "sys.max_depth_diff",
-			Value: conf.GetMaxDepthDiff(),
-			Usage: "Max graph depth difference to search for eligible transaction parents from for our node.",
-		}),
-		altsrc.NewUint64Flag(cli.Uint64Flag{
 			Name:  "sys.transaction_fee_amount",
 			Value: sys.DefaultTransactionFee,
 		}),
@@ -186,16 +180,6 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 			Value:  conf.GetSnowballBeta(),
 			Usage:  "Snowball consensus protocol parameter beta",
 			EnvVar: "WAVELET_SNOWBALL_BETA",
-		}),
-		altsrc.NewIntFlag(cli.IntFlag{
-			Name:  "sys.difficulty.min",
-			Value: int(sys.MinDifficulty),
-			Usage: "Minimum difficulty to define a critical transaction",
-		}),
-		altsrc.NewFloat64Flag(cli.Float64Flag{
-			Name:  "sys.difficulty.scale",
-			Value: sys.DifficultyScaleFactor,
-			Usage: "Factor to scale a transactions confidence down by to compute the difficulty needed to define a critical transaction",
 		}),
 		cli.StringFlag{
 			Name:  "config, c",
@@ -246,7 +230,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 	log.SetLevel(c.String("loglevel"))
 
 	// Start the background updater
-	go periodicUpdateRoutine(c.String("update-url"))
+	// go periodicUpdateRoutine(c.String("update-url"))
 
 	w, err := wallet(c.String("wallet"))
 	if err != nil {
@@ -271,13 +255,10 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 		conf.WithSnowballK(c.Int("sys.snowball.k")),
 		conf.WithSnowballBeta(c.Int("sys.snowball.beta")),
 		conf.WithQueryTimeout(c.Duration("sys.query_timeout")),
-		conf.WithMaxDepthDiff(c.Uint64("sys.max_depth_diff")),
 		conf.WithSecret(secret),
 	)
 
 	// set the the sys variables
-	sys.MinDifficulty = byte(c.Int("sys.difficulty.min"))
-	sys.DifficultyScaleFactor = c.Float64("sys.difficulty.scale")
 	sys.DefaultTransactionFee = c.Uint64("sys.transaction_fee_amount")
 	sys.MinimumStake = c.Uint64("sys.min_stake")
 

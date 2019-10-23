@@ -93,8 +93,6 @@ func ParseJSON(data []byte, tag string) ([]byte, error) {
 	}
 
 	switch tag { // Handle different tag types
-	case "nop":
-		return nil, nil // Nothing to do!
 	case "transfer":
 		return parseTransfer(data) // Parse
 	case "stake":
@@ -286,7 +284,7 @@ func parseStake(data []byte) ([]byte, error) {
 	case 0:
 		operation = sys.WithdrawStake // Set operation
 	case 1:
-		operation = sys.WithdrawReward // Set operation
+		operation = sys.PlaceStake // Set operation
 	case 2:
 		operation = sys.WithdrawReward // Set operation
 	}

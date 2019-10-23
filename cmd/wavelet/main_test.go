@@ -141,7 +141,6 @@ func TestMain_Pay(t *testing.T) {
 
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, alice.PublicKey, tx.Sender)
-	assert.EqualValues(t, alice.PublicKey, tx.Creator)
 
 	bob.WaitUntilBalance(t, 99999)
 }
@@ -165,7 +164,6 @@ func TestMain_Spawn(t *testing.T) {
 
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, w.PublicKey, tx.Sender)
-	assert.EqualValues(t, w.PublicKey, tx.Creator)
 }
 
 func TestMain_Call(t *testing.T) {
@@ -324,7 +322,6 @@ func TestMain_PlaceStake(t *testing.T) {
 
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, alice.PublicKey, tx.Sender)
-	assert.EqualValues(t, alice.PublicKey, tx.Creator)
 
 	<-bob.WaitForConsensus()
 	assert.EqualValues(t, 1000, bob.StakeWithPublicKey(asAccountID(t, alice.PublicKey)))
@@ -354,7 +351,6 @@ func TestMain_WithdrawStake(t *testing.T) {
 
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, alice.PublicKey, tx.Sender)
-	assert.EqualValues(t, alice.PublicKey, tx.Creator)
 
 	<-bob.WaitForConsensus()
 	assert.EqualValues(t, 500, bob.StakeWithPublicKey(asAccountID(t, alice.PublicKey)))
@@ -379,7 +375,6 @@ func TestMain_WithdrawReward(t *testing.T) {
 
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, w.PublicKey, tx.Sender)
-	assert.EqualValues(t, w.PublicKey, tx.Creator)
 
 	// TODO: check if reward is actually withdrawn
 }
@@ -500,7 +495,6 @@ type TestPeer struct {
 type TestTransaction struct {
 	ID      string `json:"id"`
 	Sender  string `json:"sender"`
-	Creator string `json:"creator"`
 	Payload string `json:"payload"`
 }
 

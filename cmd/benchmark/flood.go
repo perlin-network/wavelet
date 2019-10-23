@@ -20,32 +20,38 @@
 package main
 
 import (
-	"runtime"
-	"sync"
-
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
+	"runtime"
 )
 
 func floodTransactions() func(client *wctl.Client) ([]*wctl.TxResponse, error) {
 	return func(client *wctl.Client) ([]*wctl.TxResponse, error) {
 		numWorkers := runtime.NumCPU()
 
+<<<<<<< HEAD
 		var wg sync.WaitGroup
 		wg.Add(numWorkers)
 
 		chRes := make(chan *wctl.TxResponse, numWorkers)
+=======
+		chRes := make(chan wctl.SendTransactionResponse, numWorkers)
+>>>>>>> a51445561a46539e919c7b248dd9f2580c2374a1
 		chErr := make(chan error, numWorkers)
 
 		for i := 0; i < numWorkers; i++ {
-			go sendTransaction(i+1, client, &wg, chRes, chErr)
+			go sendTransaction(i+1, client, chRes, chErr)
 		}
 
+<<<<<<< HEAD
 		wg.Wait()
 
 		var responses []*wctl.TxResponse
+=======
+		var responses []wctl.SendTransactionResponse
+>>>>>>> a51445561a46539e919c7b248dd9f2580c2374a1
 		var err error
 
 		for i := 0; i < numWorkers; i++ {
@@ -67,20 +73,22 @@ func floodTransactions() func(client *wctl.Client) ([]*wctl.TxResponse, error) {
 func sendTransaction(
 	i int,
 	client *wctl.Client,
+<<<<<<< HEAD
 	wg *sync.WaitGroup,
 	chRes chan<- *wctl.TxResponse,
+=======
+	chRes chan<- wctl.SendTransactionResponse,
+>>>>>>> a51445561a46539e919c7b248dd9f2580c2374a1
 	chErr chan<- error) {
 
-	defer wg.Done()
-
-	n := 40
+	n := 1
 	payload := wavelet.Batch{
 		Tags:     make([]uint8, 0, n),
 		Payloads: make([][]byte, 0, n),
 	}
 
 	stake := wavelet.Stake{Opcode: sys.PlaceStake, Amount: uint64(i)}
-	for i := 0; i < 40; i++ {
+	for i := 0; i < n; i++ {
 		if err := payload.AddStake(stake); err != nil {
 			// Shouldn't happen
 			panic(err)

@@ -22,6 +22,7 @@ package wavelet
 import (
 	"encoding/hex"
 	"fmt"
+
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
@@ -68,7 +69,7 @@ func SetGenesisByNetwork(name string) error {
 
 // performInception loads data expected to exist at the birth of any node in this ledgers network.
 // The data is fed in as .json.
-func performInception(tree *avl.Tree, genesis *string) Round {
+func performInception(tree *avl.Tree, genesis *string) Block {
 	logger := log.Node()
 
 	var buf []byte
@@ -176,8 +177,5 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 		logger.Fatal().Err(err).Msg("accounts.Visit")
 	}
 
-	tx := Transaction{}
-	tx.rehash()
-
-	return NewRound(0, tree.Checksum(), 0, Transaction{}, tx)
+	return NewBlock(0, tree.Checksum())
 }

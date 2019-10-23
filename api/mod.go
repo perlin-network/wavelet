@@ -95,7 +95,7 @@ func (g *Gateway) setup() {
 			debounce.WithKeys("contract_id"),
 		),
 	)
-	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id&tag=tag",
+	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&tag=tag",
 		debounce.NewFactory(debounce.TypeLimiter,
 			debounce.WithPeriod(2200*time.Millisecond),
 			debounce.WithBufferLimit(1638400),
@@ -315,22 +315,19 @@ func (g *Gateway) Shutdown() {
 }
 
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
-	req := new(sendTransactionRequest)
-
-	if g.ledger != nil && g.ledger.TakeSendQuota() == false {
-		g.renderError(ctx, ErrInternal(errors.New("rate limit")))
-		return
-	}
+	req := &sendTransactionRequest{}
 
 	parser := g.parserPool.Get()
+	defer g.parserPool.Put(parser)
+
 	err := req.bind(parser, ctx.PostBody())
-	g.parserPool.Put(parser)
 
 	if err != nil {
 		g.renderError(ctx, ErrBadRequest(err))
 		return
 	}
 
+<<<<<<< HEAD
 	tx := wavelet.AttachSenderToTransaction(
 		g.keys,
 		wavelet.Transaction{
@@ -341,10 +338,13 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		},
 		g.ledger.Graph().FindEligibleParents()...,
 	)
+=======
+	tx := wavelet.NewSignedTransaction(req.sender, req.Nonce, req.Block, sys.Tag(req.Tag), req.payload, req.signature)
+>>>>>>> a51445561a46539e919c7b248dd9f2580c2374a1
 
-	err = g.ledger.AddTransaction(tx)
+	// TODO(kenta): check signature and nonce
 
-	if err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
+	if err = g.ledger.AddTransaction(tx); err != nil {
 		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error adding your transaction to graph")))
 		return
 	}
@@ -357,77 +357,62 @@ func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 }
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
-	var sender wavelet.AccountID
-	var creator wavelet.AccountID
-	var offset, limit uint64
-	var err error
+	// TODO
 
-	queryArgs := ctx.QueryArgs()
-	if raw := string(queryArgs.Peek("sender")); len(raw) > 0 {
-		slice, err := hex.DecodeString(raw)
-		if err != nil {
-			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
-			return
-		}
+	//var sender wavelet.AccountID
+	//var offset, limit uint64
+	//var err error
 
-		if len(slice) != wavelet.SizeAccountID {
-			g.renderError(ctx, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", wavelet.SizeAccountID)))
-			return
-		}
+	//queryArgs := ctx.QueryArgs()
+	//if raw := string(queryArgs.Peek("sender")); len(raw) > 0 {
+	//slice, err := hex.DecodeString(raw)
+	//if err != nil {
+	//g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
+	//return
+	//}
 
-		copy(sender[:], slice)
-	}
+	//if len(slice) != wavelet.SizeAccountID {
+	//g.renderError(ctx, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", wavelet.SizeAccountID)))
+	//return
+	//}
 
-	if raw := string(queryArgs.Peek("creator")); len(raw) > 0 {
-		slice, err := hex.DecodeString(raw)
-		if err != nil {
-			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "creator ID must be presented as valid hex")))
-			return
-		}
+	//copy(sender[:], slice)
+	//}
 
-		if len(slice) != wavelet.SizeAccountID {
-			g.renderError(ctx, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", wavelet.SizeAccountID)))
-			return
-		}
+	//if raw := string(queryArgs.Peek("offset")); len(raw) > 0 {
+	//offset, err = strconv.ParseUint(raw, 10, 64)
 
-		copy(creator[:], slice)
-	}
+	//if err != nil {
+	//g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
+	//return
+	//}
+	//}
 
-	if raw := string(queryArgs.Peek("offset")); len(raw) > 0 {
-		offset, err = strconv.ParseUint(raw, 10, 64)
+	//if raw := string(queryArgs.Peek("limit")); len(raw) > 0 {
+	//limit, err = strconv.ParseUint(raw, 10, 64)
 
-		if err != nil {
-			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
-			return
-		}
-	}
+	//if err != nil {
+	//g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
+	//return
+	//}
+	//}
 
-	if raw := string(queryArgs.Peek("limit")); len(raw) > 0 {
-		limit, err = strconv.ParseUint(raw, 10, 64)
-
-		if err != nil {
-			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
-			return
-		}
-	}
-
-	if limit > maxPaginationLimit {
-		limit = maxPaginationLimit
-	}
-
-	rootDepth := g.ledger.Graph().RootDepth()
+	//if limit > maxPaginationLimit {
+	//limit = maxPaginationLimit
+	//}
 
 	var transactions transactionList
+	//var rootDepth = g.ledger.Graph().RootDepth()
 
-	for _, tx := range g.ledger.Graph().ListTransactions(offset, limit, sender, creator) {
-		status := "received"
+	//for _, tx := range g.ledger.Graph().ListTransactions(offset, limit, sender) {
+	//status := "received"
 
-		if tx.Depth <= rootDepth {
-			status = "applied"
-		}
+	//if tx.Depth <= rootDepth {
+	//status = "applied"
+	//}
 
-		transactions = append(transactions, &transaction{tx: tx, status: status})
-	}
+	//transactions = append(transactions, &transaction{tx: tx, status: status})
+	//}
 
 	g.render(ctx, transactions)
 }
@@ -453,22 +438,22 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 	var id wavelet.TransactionID
 	copy(id[:], slice)
 
-	tx := g.ledger.Graph().FindTransaction(id)
+	tx := g.ledger.Transactions().Find(id)
 
 	if tx == nil {
 		g.renderError(ctx, ErrNotFound(errors.Errorf("could not find transaction with ID %x", id)))
 		return
 	}
 
-	rootDepth := g.ledger.Graph().RootDepth()
+	// block := g.ledger.Blocks().Latest()
 
 	res := &transaction{tx: tx}
 
-	if tx.Depth <= rootDepth {
-		res.status = "applied"
-	} else {
-		res.status = "received"
-	}
+	// if tx.Depth <= rootDepth {
+	// 	res.status = "applied"
+	// } else {
+	// 	res.status = "received"
+	// }
 
 	g.render(ctx, res)
 }

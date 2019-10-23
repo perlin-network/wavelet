@@ -211,11 +211,6 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 					Value: conf.GetTransactionsNumMajorityWeight(),
 					Usage: "weight for percentage of max transactions number used in finalization majority calculation",
 				},
-				cli.Float64Flag{
-					Name:  "vote.finalization.depth.weight",
-					Value: conf.GetRoundDepthMajorityWeight(),
-					Usage: "weight for percentage of min depth number used in finalization majority calculation",
-				},
 				cli.DurationFlag{
 					Name:  "query.timeout",
 					Value: conf.GetQueryTimeout(),
@@ -242,24 +237,14 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 					Usage: "chunk size for state syncing",
 				},
 				cli.Uint64Flag{
-					Name:  "sync.if.rounds.differ.by",
-					Value: conf.GetSyncIfRoundsDifferBy(),
-					Usage: "difference in rounds between nodes which initiates state syncing",
-				},
-				cli.Uint64Flag{
-					Name:  "max.download.depth.diff",
-					Value: conf.GetMaxDownloadDepthDiff(),
-					Usage: "maximum depth for transactions which need to be downloaded",
-				},
-				cli.Uint64Flag{
-					Name:  "max.depth.diff",
-					Value: conf.GetMaxDepthDiff(),
-					Usage: "maximum depth difference for transactions to be added to the graph",
+					Name:  "sync.if.block.indices.differ.by",
+					Value: conf.GetSyncIfBlockIndicesDifferBy(),
+					Usage: "difference in blocks between nodes which initiates state syncing",
 				},
 				cli.Uint64Flag{
 					Name:  "pruning.limit",
 					Value: uint64(conf.GetPruningLimit()),
-					Usage: "number of rounds after which pruning of transactions will happen",
+					Usage: "number of blocks after which pruning of transactions will happen",
 				},
 				cli.StringFlag{
 					Name:  "api.secret",

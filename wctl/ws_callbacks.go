@@ -63,32 +63,20 @@ type (
 
 // Mod: consensus
 type (
-	RoundEnd struct {
-		NumAppliedTx  uint64    `json:"num_applied_tx"`
-		NumRejectedTx uint64    `json:"num_rejected_tx"`
-		NumIgnoredTx  uint64    `json:"num_ignored_tx"`
-		OldRound      uint64    `json:"old_round"`
-		NewRound      uint64    `json:"new_round"`
-		OldDifficulty uint64    `json:"old_difficulty"`
-		NewDifficulty uint64    `json:"new_difficulty"`
-		NewRoot       [32]byte  `json:"new_root"`
-		OldRoot       [32]byte  `json:"old_root"`
-		NewMerkleRoot [16]byte  `json:"new_merkle_root"`
-		OldMerkleRoot [16]byte  `json:"old_merkle_root"`
-		RoundDepth    int64     `json:"round_depth"`
-		Time          time.Time `json:"time"`
-		Message       string    `json:"message"`
+	Proposal struct {
+		BlockID    [32]byte `json:"block_id"`
+		BlockIndex uint64   `json:"block_index"`
+		NumTxs     uint64   `json:"num_transactions"`
+		Message    string   `json:"message"`
 	}
-	OnRoundEnd = func(RoundEnd)
+	OnProposal = func(Proposal)
 
-	Prune struct {
-		NumTx          uint64    `json:"num_tx"`
-		CurrentRoundID [32]byte  `json:"current_round_id"`
-		PrunedRoundID  [32]byte  `json:"pruned_round_id"`
-		Time           time.Time `json:"time"`
-		Message        string    `json:"message"`
+	Finalized struct {
+		BlockID    [32]byte `json:"block_id"`
+		BlockIndex uint64   `json:"block_index"`
+		Message    string   `json:"message"`
 	}
-	OnPrune = func(Prune)
+	OnFinalized = func(Finalized)
 )
 
 // Mod: stake

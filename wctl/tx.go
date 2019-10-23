@@ -24,32 +24,23 @@ var (
 )
 
 type TransactionEvent struct {
-	Event   string    `json:"event"`
-	ID      [32]byte  `json:"tx_id"`
-	Sender  [32]byte  `json:"sender_id"`
-	Creator [32]byte  `json:"creator_id"`
-	Depth   uint64    `json:"depth"`
-	Tag     byte      `json:"tag"`
-	Time    time.Time `json:"time"`
+	Event  string    `json:"event"`
+	ID     [32]byte  `json:"tx_id"`
+	Sender [32]byte  `json:"sender_id"`
+	Depth  uint64    `json:"depth"`
+	Tag    byte      `json:"tag"`
+	Time   time.Time `json:"time"`
 }
 
 type Transaction struct {
-	ID      [32]byte `json:"id"`
-	Sender  [32]byte `json:"sender"`
-	Creator [32]byte `json:"creator"`
-	Status  string   `json:"status"`
-	Nonce   uint64   `json:"nonce"`
-	Depth   uint64   `json:"depth"`
-	Tag     byte     `json:"tag"`
-	Payload []byte   `json:"payload"`
-
-	Seed    [32]byte `json:"seed"`
-	SeedLen uint8    `json"seed_len"`
-
-	SenderSignature  [64]byte `json:"sender_signature"`
-	CreatorSignature [64]byte `json:"creator_signature"`
-
-	Parents [][32]byte `json:"parents"`
+	ID        [32]byte `json:"id"`
+	Sender    [32]byte `json:"sender"`
+	Status    string   `json:"status"`
+	Nonce     uint64   `json:"nonce"`
+	Depth     uint64   `json:"depth"`
+	Tag       byte     `json:"tag"`
+	Payload   []byte   `json:"payload"`
+	Signature [64]byte `json:"signature"`
 }
 
 // ListTransactions calls the /tx endpoint of the API to list all transactions.
@@ -109,6 +100,8 @@ func (c *Client) sendTransaction(tag byte, payload []byte) (*TxResponse, error) 
 
 	req := TxRequest{
 		Sender:    c.PublicKey,
+		Nonce:     c.Nonce + 1,
+		Block:     c.Block + 1,
 		Tag:       tag,
 		Payload:   payload,
 		Signature: signature,
@@ -117,6 +110,9 @@ func (c *Client) sendTransaction(tag byte, payload []byte) (*TxResponse, error) 
 	if err := c.RequestJSON(RouteTxSend, ReqPost, &req, &res); err != nil {
 		return nil, err
 	}
+
+	c.Nonce++
+	c.Block++
 
 	return &res, nil
 }
@@ -146,37 +142,14 @@ func (t *Transaction) ParseJSON(v *fastjson.Value) error {
 		return err
 	}
 
-	if err := jsonHex(v, t.Creator[:], "creator"); err != nil {
-		return err
-	}
-
 	t.Status = string(v.GetStringBytes("status"))
 	t.Nonce = v.GetUint64("nonce")
 	t.Depth = v.GetUint64("depth")
 	t.Tag = byte(v.GetUint("tag"))
 	t.Payload = v.GetStringBytes("payload")
 
-	if err := jsonHex(v, t.Seed[:], "seed"); err != nil {
+	if err := jsonHex(v, t.Signature[:], "signature"); err != nil {
 		return err
-	}
-
-	t.SeedLen = uint8(v.GetUint("seed_len"))
-
-	if err := jsonHex(v, t.SenderSignature[:], "sender_signature"); err != nil {
-		return err
-	}
-
-	if err := jsonHex(v, t.CreatorSignature[:], "creator_signature"); err != nil {
-		return err
-	}
-
-	parentsValue := v.GetArray("parents")
-	t.Parents = make([][32]byte, len(parentsValue))
-
-	for i, parent := range parentsValue {
-		if _, err := hex.Decode(t.Parents[i][:], parent.GetStringBytes()); err != nil {
-			return err
-		}
 	}
 
 	return nil
@@ -213,6 +186,8 @@ func (t *TransactionList) UnmarshalJSON(b []byte) error {
 
 type TxRequest struct {
 	Sender    [32]byte `json:"sender"`
+	Nonce     uint64   `json:"nonce"`
+	Block     uint64   `json:"block"`
 	Tag       byte     `json:"tag"`
 	Payload   []byte   `json:"payload"`
 	Signature [64]byte `json:"signature"`
@@ -223,6 +198,8 @@ func (s *TxRequest) MarshalJSON() ([]byte, error) {
 	o := arena.NewObject()
 
 	o.Set("sender", arena.NewString(hex.EncodeToString(s.Sender[:])))
+	o.Set("nonce", arena.NewNumberInt(int(s.Nonce)))
+	o.Set("block", arena.NewNumberInt(int(s.Block)))
 	o.Set("tag", arena.NewNumberInt(int(s.Tag)))
 	o.Set("payload", arena.NewString(hex.EncodeToString(s.Payload)))
 	o.Set("signature", arena.NewString(hex.EncodeToString(s.Signature[:])))

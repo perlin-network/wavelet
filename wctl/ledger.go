@@ -46,26 +46,17 @@ type LedgerStatusResponse struct {
 	NumAccounts    int      `json:"num_accounts"`
 	PreferredVotes int      `json:"preferred_votes"`
 	SyncStatus     string   `json:"sync_status"`
-	PreferredID    string   `json:"preferred_id"` // optional
 
-	Round struct {
+	Block struct {
 		MerkleRoot [16]byte `json:"merkle_root"`
-		StartID    [32]byte `json:"start_id"`
-		EndID      [32]byte `json:"end_id"`
 		Index      uint64   `json:"index"`
-		Applied    uint64   `json:"applied"`
-		Depth      uint64   `json:"depth"`
-		Difficulty uint64   `json:"difficulty"`
-	} `json:"round"`
+		ID         [32]byte `json:"block_id"`
+		Txs        uint64   `json:"transactions"`
+	} `json:"block"`
 
-	Graph struct {
-		// TODO: make these int?
-		Tx           uint64 `json:"num_tx"`
-		MissingTx    uint64 `json:"num_missing_tx"`
-		TxInStore    uint64 `json:"num_tx_in_store"`
-		IncompleteTx uint64 `json:"num_incomplete_tx"`
-		Height       uint64 `json:"height"`
-	} `json:"graph"`
+	NumTx        uint64 `json:"num_tx"`
+	NumTxInStore uint64 `json:"num_tx_in_store"`
+	AccountsLen  uint64 `json:"num_accounts_in_store"`
 
 	Peers []Peer `json:"peers"`
 }
@@ -91,29 +82,19 @@ func (l *LedgerStatusResponse) UnmarshalJSON(b []byte) error {
 	l.NumAccounts = v.GetInt("num_accounts")
 	l.PreferredVotes = v.GetInt("preferred_votes")
 	l.SyncStatus = string(v.GetStringBytes("sync_status"))
-	l.PreferredID = string(v.GetStringBytes("preferred_id"))
 
-	if err := jsonHex(v, l.Round.MerkleRoot[:], "round", "merkle_root"); err != nil {
+	if err := jsonHex(v, l.Block.MerkleRoot[:], "block", "merkle_root"); err != nil {
 		return err
 	}
 
-	if err := jsonHex(v, l.Round.StartID[:], "round", "start_id"); err != nil {
+	if err := jsonHex(v, l.Block.ID[:], "block", "block_id"); err != nil {
 		return err
 	}
 
-	if err := jsonHex(v, l.Round.EndID[:], "round", "end_id"); err != nil {
-		return err
-	}
+	l.Block.Txs = v.GetUint64("block", "transactions")
 
-	l.Round.Applied = v.GetUint64("round", "applied")
-	l.Round.Depth = v.GetUint64("round", "depth")
-	l.Round.Difficulty = v.GetUint64("round", "difficulty")
-
-	l.Graph.Tx = v.GetUint64("graph", "num_tx")
-	l.Graph.MissingTx = v.GetUint64("graph", "num_missing_tx")
-	l.Graph.TxInStore = v.GetUint64("graph", "num_tx_in_store")
-	l.Graph.IncompleteTx = v.GetUint64("graph", "num_incomplete_tx")
-	l.Graph.Height = v.GetUint64("graph", "height")
+	l.NumTx = v.GetUint64("num_tx")
+	l.NumTxInStore = v.GetUint64("num_tx_in_store")
 
 	peerValue := v.GetArray("peers")
 	l.Peers = make([]Peer, len(peerValue))
