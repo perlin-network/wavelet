@@ -7,9 +7,6 @@ import (
 	"github.com/perlin-network/wavelet/wctl"
 )
 
-// list of functions to defer/close
-var toClose []func()
-
 // converts a normal (func to close, error) to only an error
 func addToCloser(toClose []func()) func(f func(), err error) error {
 	return func(f func(), err error) error {
