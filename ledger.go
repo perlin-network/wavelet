@@ -609,7 +609,7 @@ func (l *Ledger) finalize(block Block) {
 		Uint64("new_block_height", block.Index).
 		Hex("old_block_id", current.ID[:]).
 		Hex("new_block_id", block.ID[:]).
-		Msg("Finalized consensus block.")
+		Msg("Finalized block.")
 }
 
 func (l *Ledger) query() {
@@ -725,7 +725,7 @@ func (l *Ledger) query() {
 			continue
 		}
 
-		if vote.block.Index != l.blocks.Latest().Index+1 {
+		if vote.block.Index != current.Index+1 {
 			vote.block = nil
 			continue
 		}
