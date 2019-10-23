@@ -20,22 +20,24 @@
 package main
 
 import (
+	"runtime"
+	"sync/atomic"
+
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
-	"runtime"
 )
 
-func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionResponse, error) {
-	return func(client *wctl.Client) ([]wctl.SendTransactionResponse, error) {
+func floodTransactions() func(client *wctl.Client, nonce *uint64, block uint64) ([]wctl.SendTransactionResponse, error) {
+	return func(client *wctl.Client, nonce *uint64, block uint64) ([]wctl.SendTransactionResponse, error) {
 		numWorkers := runtime.NumCPU()
 
 		chRes := make(chan wctl.SendTransactionResponse, numWorkers)
 		chErr := make(chan error, numWorkers)
 
 		for i := 0; i < numWorkers; i++ {
-			go sendTransaction(i+1, client, chRes, chErr)
+			go sendTransaction(i+1, atomic.AddUint64(nonce, 1), block+1, client, chRes, chErr)
 		}
 
 		var responses []wctl.SendTransactionResponse
@@ -59,6 +61,8 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 
 func sendTransaction(
 	i int,
+	nonce uint64,
+	block uint64,
 	client *wctl.Client,
 	chRes chan<- wctl.SendTransactionResponse,
 	chErr chan<- error) {
@@ -78,7 +82,7 @@ func sendTransaction(
 	}
 
 	var res wctl.SendTransactionResponse
-	res, err := client.SendTransaction(byte(sys.TagBatch), payload.Marshal())
+	res, err := client.SendTransaction(nonce, block, byte(sys.TagBatch), payload.Marshal())
 	if err != nil {
 		chRes <- res
 		chErr <- err
