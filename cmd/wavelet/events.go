@@ -11,60 +11,62 @@ import (
 var toClose []func()
 
 // converts a normal (func to close, error) to only an error
-func addToCloser(f func(), err error) error {
-	toClose = append(toClose, f)
-	return err
-}
-
-// clean up all functions
-func cleanUp() {
-	for _, f := range toClose {
-		f()
+func addToCloser(toClose []func()) func(f func(), err error) error {
+	return func(f func(), err error) error {
+		toClose = append(toClose, f)
+		return err
 	}
 }
 
-func setEvents(c *wctl.Client) error {
+func setEvents(c *wctl.Client) (func(), error) {
+	toClose := []func(){}
+	cleanup := func() {
+		for _, f := range toClose {
+			f()
+		}
+	}
+
 	c.OnError = onError
 
 	c.OnPeerJoin = onPeerJoin
 	c.OnPeerLeave = onPeerLeave
-	if err := addToCloser(c.PollNetwork()); err != nil {
-		return err
+	if err := addToCloser(toClose)(c.PollNetwork()); err != nil {
+		return cleanup, err
 	}
 
 	c.OnBalanceUpdated = onBalanceUpdate
 	c.OnGasBalanceUpdated = onGasBalanceUpdated
 	c.OnStakeUpdated = onStakeUpdated
 	c.OnRewardUpdated = onRewardUpdate
-	if err := addToCloser(c.PollAccounts()); err != nil {
-		return err
+	if err := addToCloser(toClose)(c.PollAccounts()); err != nil {
+		return cleanup, err
 	}
 
 	c.OnProposal = onProposal
 	c.OnFinalized = onFinalized
-	if err := addToCloser(c.PollConsensus()); err != nil {
-		return err
+	if err := addToCloser(toClose)(c.PollConsensus()); err != nil {
+		return cleanup, err
 	}
 
 	c.OnContractGas = onContractGas
 	c.OnContractLog = onContractLog
-	if err := addToCloser(c.PollContracts()); err != nil {
-		return err
+	if err := addToCloser(toClose)(c.PollContracts()); err != nil {
+		return cleanup, err
 	}
 
 	c.OnTxApplied = onTxApplied
 	c.OnTxGossipError = onTxGossipError
 	c.OnTxFailed = onTxFailed
-	if err := addToCloser(c.PollTransactions()); err != nil {
-		return err
+	if err := addToCloser(toClose)(c.PollTransactions()); err != nil {
+		return cleanup, err
 	}
 
 	c.OnStakeRewardValidator = onStakeRewardValidator
-	if err := addToCloser(c.PollStake()); err != nil {
-		return err
+	if err := addToCloser(toClose)(c.PollStake()); err != nil {
+		return cleanup, err
 	}
 
-	return nil
+	return cleanup, nil
 }
 
 func onError(err error) {

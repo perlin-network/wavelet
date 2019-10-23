@@ -324,11 +324,6 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 		return err
 	}
 
-	// Set CLI callbacks, mainly loggers
-	if err := setEvents(cli); err != nil {
-		return fmt.Errorf("Failed to start websockets to the server: %v", err)
-	}
-
 	shell, err := NewCLI(cli, CLIWithStdin(stdin), CLIWithStdout(stdout))
 	if err != nil {
 		return fmt.Errorf("Failed to spawn the CLI: %v", err)

@@ -55,6 +55,8 @@ type CLI struct {
 
 	stdin  io.ReadCloser
 	stdout io.Writer
+
+	cleanup func()
 }
 
 func CLIWithStdin(stdin io.ReadCloser) func(cli *CLI) {
@@ -70,12 +72,20 @@ func CLIWithStdout(stdout io.Writer) func(cli *CLI) {
 }
 
 func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
+	// Set CLI callbacks, mainly loggers
+	cleanup, err := setEvents(client)
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("Failed to start websockets to the server: %v", err)
+	}
+
 	c := &CLI{
-		Client: client,
-		logger: log.Node(),
-		app:    cli.NewApp(),
-		stdin:  os.Stdin,
-		stdout: os.Stdout,
+		Client:  client,
+		logger:  log.Node(),
+		app:     cli.NewApp(),
+		stdin:   os.Stdin,
+		stdout:  os.Stdout,
+		cleanup: cleanup,
 	}
 
 	for _, o := range opts {
@@ -322,7 +332,7 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 }
 
 func (cli *CLI) Start() {
-	defer cleanUp()
+	defer cli.cleanup()
 
 ReadLoop:
 	for {
