@@ -209,24 +209,15 @@ func (t *Transactions) PendingLen() int {
 	return t.index.Len()
 }
 
-// IteratePending iterates through all transactions that may be proposed into a block.
-func (t *Transactions) IteratePending(fn func(*Transaction)) {
-	t.RLock()
-	defer t.RUnlock()
-
-	t.index.Ascend(func(i btree.Item) bool {
-		fn(t.buffer[i.(mempoolItem).id]) // It is guaranteed that the transaction must exist.
-		return true
-	})
-}
-
 // Iterate iterates through all transactions that the node has archived.
-func (t *Transactions) Iterate(fn func(*Transaction)) {
+func (t *Transactions) Iterate(fn func(*Transaction) bool) {
 	t.RLock()
 	defer t.RUnlock()
 
 	for _, tx := range t.buffer {
-		fn(tx)
+		if !fn(tx) {
+			return
+		}
 	}
 }
 

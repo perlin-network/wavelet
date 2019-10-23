@@ -56,8 +56,6 @@ var (
 	ErrOutOfSync     = errors.New("Node is currently ouf of sync. Please try again later.")
 	ErrAlreadyExists = errors.New("transaction already exists in the graph")
 	ErrMissingTx     = errors.New("missing transaction")
-
-	EmptyBlockID BlockID
 )
 
 type Ledger struct {
@@ -395,8 +393,9 @@ func (l *Ledger) PullTransactions() {
 			TransactionIds: make([][]byte, 0, l.transactions.Len()),
 		}
 
-		l.transactions.Iterate(func(tx *Transaction) {
+		l.transactions.Iterate(func(tx *Transaction) bool {
 			req.TransactionIds = append(req.TransactionIds, tx.ID[:])
+			return true
 		})
 
 		workerChan := make(chan *grpc.ClientConn, 16)
