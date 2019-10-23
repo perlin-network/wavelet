@@ -57,7 +57,7 @@ message SyncResponse {
 }
 
 message TransactionPullRequest {
-    repeated bytes transaction_ids = 1;
+    bytes filter = 1;
 }
 
 message TransactionPullResponse {

@@ -69,7 +69,7 @@ func defaultConfig() config {
 		syncChunkSize:              16384,
 		syncIfBlockIndicesDifferBy: 5,
 
-		bloomFilterM: 1024 * 1024,
+		bloomFilterM: 1 << 24,
 		bloomFilterK: 3,
 
 		pruningLimit: 30,

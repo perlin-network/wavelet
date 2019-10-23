@@ -24,6 +24,8 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
+	"github.com/willf/bloom"
 	"io"
 	"math/rand"
 	"sync"
@@ -87,6 +89,8 @@ type Ledger struct {
 	stop     chan struct{}
 	stopWG   sync.WaitGroup
 	cancelGC context.CancelFunc
+
+	transactionIDs *bloom.BloomFilter
 }
 
 type config struct {
@@ -179,6 +183,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		fileBuffers:   newFileBufferPool(sys.SyncPooledFileSize, ""),
 
 		sendQuota: make(chan struct{}, 2000),
+
+		transactionIDs: bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK()),
 	}
 
 	if !cfg.GCDisabled {
@@ -240,6 +246,10 @@ func (l *Ledger) Close() {
 // beforehand.
 func (l *Ledger) AddTransaction(txs ...Transaction) error {
 	l.transactions.BatchAdd(l.blocks.Latest().ID, txs...)
+
+	for _, tx := range txs {
+		l.transactionIDs.Add(tx.ID[:])
+	}
 
 	//l.TakeSendQuota()
 
@@ -380,7 +390,7 @@ func (l *Ledger) PullTransactions() {
 			select {
 			case <-l.sync:
 				return
-			case <-time.After(1 * time.Second):
+			default:
 			}
 
 			continue
@@ -388,15 +398,15 @@ func (l *Ledger) PullTransactions() {
 
 		logger := log.Consensus("pull-transactions")
 
-		// Build list of transaction IDs
-		req := &TransactionPullRequest{
-			TransactionIds: make([][]byte, 0, l.transactions.Len()),
+		buf := bytes.NewBuffer(nil)
+		if _, err := l.transactionIDs.WriteTo(buf); err != nil {
+			logger.Error().Err(err).Msg("failed to marshal bloom filter")
+			continue
 		}
 
-		l.transactions.Iterate(func(tx *Transaction) bool {
-			req.TransactionIds = append(req.TransactionIds, tx.ID[:])
-			return true
-		})
+		req := &TransactionPullRequest{
+			Filter: buf.Bytes(),
+		}
 
 		workerChan := make(chan *grpc.ClientConn, 16)
 		var workerWG sync.WaitGroup
@@ -466,9 +476,13 @@ func (l *Ledger) PullTransactions() {
 		l.AddTransaction(pulled...)
 
 		if count > 0 {
-			logger.Debug().
+			logger.Info().
 				Int64("count", count).
 				Msg("Pulled transaction(s).")
+		}
+
+		if len(l.transactions.MissingIDs()) > 0 {
+			fmt.Println("??????????", len(l.transactions.MissingIDs()))
 		}
 
 		l.metrics.downloadedTX.Mark(count)
@@ -510,6 +524,7 @@ func (l *Ledger) FinalizeBlocks() {
 		} else {
 			if decided {
 				l.finalize(*preferred.Value().(*Block))
+				l.rebuildBloomFilter()
 			} else {
 				l.query()
 			}
@@ -571,7 +586,7 @@ func (l *Ledger) finalize(block Block) {
 		return
 	}
 
-	l.transactions.ReshufflePending(block)
+	fmt.Println("!!!!!!!!!!!!!!!!!!", l.transactions.ReshufflePending(block))
 
 	_, err = l.blocks.Save(&block)
 	if err != nil {
@@ -1232,6 +1247,8 @@ func (l *Ledger) SyncToLatestBlock() {
 			logger.Fatal().Err(err).Msg("failed to commit collapsed state to our database")
 		}
 
+		l.rebuildBloomFilter()
+
 		logger = log.Sync("apply")
 		logger.Info().
 			Int("num_chunks", len(sources)).
@@ -1415,4 +1432,18 @@ func (l *Ledger) setSync(flag bitset) {
 	l.syncStatusLock.Lock()
 	l.syncStatus = flag
 	l.syncStatusLock.Unlock()
+}
+
+// rebuildBloomFilter rebuilds the bloom filter which stores the set of
+// transactions in the graph. This method is called after transactions are
+// pruned, as it's not possible to remove items from a bloom filter.
+func (l *Ledger) rebuildBloomFilter() {
+	l.transactionIDs.ClearAll()
+
+	fmt.Println(">>>>>>>>", l.transactions.Len(), l.transactionIDs.EstimateFalsePositiveRate(uint(l.transactions.Len())))
+
+	l.transactions.Iterate(func(tx *Transaction) bool {
+		l.transactionIDs.Add(tx.ID[:])
+		return true
+	})
 }

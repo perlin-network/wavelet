@@ -182,5 +182,5 @@ func onPeerLeave(u wctl.PeerLeave) {
 	logger.Info().
 		Hex("public_key", u.AccountID[:]).
 		Str("address", u.Address).
-		Msg("Peer has joined.")
+		Msg("Peer has left.")
 }

@@ -20,7 +20,9 @@
 package wavelet
 
 import (
+	"bytes"
 	"context"
+	"github.com/willf/bloom"
 	"io"
 
 	"github.com/perlin-network/wavelet/conf"
@@ -167,17 +169,14 @@ func (p *Protocol) CheckOutOfSync(ctx context.Context, req *OutOfSyncRequest) (*
 func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullRequest) (*TransactionPullResponse, error) {
 	res := &TransactionPullResponse{Transactions: [][]byte{}}
 
-	// Build a lookup table from the list of transaction IDs
-	var id TransactionID
-	lookup := map[TransactionID]struct{}{}
-	for _, i := range req.TransactionIds {
-		copy(id[:], i)
-		lookup[id] = struct{}{}
+	bf := &bloom.BloomFilter{}
+	if _, err := bf.ReadFrom(bytes.NewReader(req.Filter)); err != nil {
+		return nil, err
 	}
 
 	// Find missing transactions
 	p.ledger.transactions.Iterate(func(tx *Transaction) bool {
-		if _, exists := lookup[tx.ID]; !exists {
+		if exists := bf.Test(tx.ID[:]); !exists {
 			res.Transactions = append(res.Transactions, tx.Marshal())
 		}
 
