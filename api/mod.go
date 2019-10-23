@@ -46,6 +46,7 @@ import (
 	"github.com/valyala/fastjson"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
+	"google.golang.org/grpc"
 )
 
 type Gateway struct {
@@ -184,9 +185,9 @@ func (g *Gateway) applyMiddleware(f fasthttp.RequestHandler, rateLimiterKey stri
 	return chain(f, list)
 }
 
-func (g *Gateway) StartHTTP(
-	port int, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair, kv store.KV,
-) {
+func (g *Gateway) StartHTTP(port int, c *skademlia.Client, l *wavelet.Ledger,
+	k *skademlia.Keypair, kv store.KV) {
+
 	logger := log.Node()
 
 	ln, err := net.Listen("tcp4", ":"+strconv.Itoa(port))
@@ -196,15 +197,14 @@ func (g *Gateway) StartHTTP(
 
 	logger.Info().Int("port", port).Msg("Started HTTP API server.")
 
-	g.start(ln, nil, c, l, k, kv)
+	go g.start(ln, nil, c, l, k, kv)
 }
 
 // Only support tls-alpn-01.
 func (g *Gateway) StartHTTPS(
 	httpPort int, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair,
-	kv store.KV,
-	allowedHost, certCacheDir string,
-) {
+	kv store.KV, allowedHost, certCacheDir string) {
+
 	logger := log.Node()
 
 	if len(allowedHost) == 0 {
@@ -246,12 +246,34 @@ func (g *Gateway) StartHTTPS(
 	logger.Info().Int("port", 443).Msg("Started HTTPS API server.")
 	logger.Info().Int("port", httpPort).Msg("Started HTTP API server.")
 
-	g.start(tlsLn, ln, c, l, k, kv)
+	go g.start(tlsLn, ln, c, l, k, kv)
 }
 
-func (g *Gateway) start(
-	ln net.Listener, ln2 net.Listener, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair, kv store.KV,
-) {
+func (g *Gateway) start(ln net.Listener, ln2 net.Listener, c *skademlia.Client,
+	l *wavelet.Ledger, k *skademlia.Keypair, kv store.KV) {
+
+	if c != nil {
+		c.OnPeerJoin(func(conn *grpc.ClientConn, id *skademlia.ID) {
+			publicKey := id.PublicKey()
+
+			logger := log.Network("joined")
+			logger.Info().
+				Hex("public_key", publicKey[:]).
+				Str("address", id.Address()).
+				Msg("Peer has joined.")
+		})
+
+		c.OnPeerLeave(func(conn *grpc.ClientConn, id *skademlia.ID) {
+			publicKey := id.PublicKey()
+
+			logger := log.Network("left")
+			logger.Info().
+				Hex("public_key", publicKey[:]).
+				Str("address", id.Address()).
+				Msg("Peer has left.")
+		})
+	}
+
 	stop := g.rateLimiter.cleanup(10 * time.Minute)
 	defer stop()
 
@@ -307,7 +329,10 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	tx := wavelet.NewSignedTransaction(req.sender, req.Nonce, req.Block, sys.Tag(req.Tag), req.payload, req.signature)
+	tx := wavelet.NewSignedTransaction(
+		req.sender, req.Nonce, req.Block,
+		sys.Tag(req.Tag), req.payload, req.signature,
+	)
 
 	// TODO(kenta): check signature and nonce
 
@@ -446,7 +471,27 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 	var id wavelet.AccountID
 	copy(id[:], slice)
 
-	g.render(ctx, &account{ledger: g.ledger, id: id})
+	snapshot := g.ledger.Snapshot()
+
+	balance, _ := wavelet.ReadAccountBalance(snapshot, id)
+	gasBalance, _ := wavelet.ReadAccountContractGasBalance(snapshot, id)
+	stake, _ := wavelet.ReadAccountStake(snapshot, id)
+	reward, _ := wavelet.ReadAccountReward(snapshot, id)
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, id)
+	_, isContract := wavelet.ReadAccountContractCode(snapshot, id)
+	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, id)
+
+	g.render(ctx, &account{
+		ledger:     g.ledger,
+		id:         id,
+		balance:    balance,
+		gasBalance: gasBalance,
+		stake:      stake,
+		reward:     reward,
+		nonce:      nonce,
+		isContract: isContract,
+		numPages:   numPages,
+	})
 }
 
 func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {

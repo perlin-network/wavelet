@@ -550,10 +550,6 @@ func (l *Ledger) finalize(block Block) {
 	current := l.blocks.Latest()
 
 	logger := log.Consensus("finalized")
-	logger.Debug().
-		Hex("block_id", block.ID[:]).
-		Uint64("block_index", block.Index).
-		Msg("Finalizing block...")
 
 	results, err := l.collapseTransactions(&block, false)
 	if err != nil {
@@ -610,9 +606,11 @@ func (l *Ledger) finalize(block Block) {
 	logger.Info().
 		Int("num_applied_tx", results.appliedCount).
 		Int("num_rejected_tx", results.rejectedCount).
-		Uint64("old_block", current.Index).
-		Uint64("new_block", block.Index).
-		Msg("Finalized consensus block, and initialized a new block.")
+		Uint64("old_block_height", current.Index).
+		Uint64("new_block_height", block.Index).
+		Hex("old_block_id", current.ID[:]).
+		Hex("new_block_id", block.ID[:]).
+		Msg("Finalized consensus block.")
 }
 
 func (l *Ledger) query() {

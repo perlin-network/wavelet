@@ -21,21 +21,20 @@ package main
 
 import (
 	"encoding/csv"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/benpye/readline"
-	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/store"
+	"github.com/perlin-network/wavelet/wctl"
 	"github.com/rs/zerolog"
 	"github.com/urfave/cli"
-	"google.golang.org/grpc"
 )
 
 const (
@@ -45,38 +44,52 @@ const (
 )
 
 type CLI struct {
-	app     *cli.App
-	rl      *readline.Instance
-	client  *skademlia.Client
-	server  *grpc.Server
-	gateway *api.Gateway
-	ledger  *wavelet.Ledger
-	logger  zerolog.Logger
-	keys    *skademlia.Keypair
-	kv      store.KV
+	app *cli.App
+	rl  *readline.Instance
+	// client *skademlia.Client
+	// ledger *wavelet.Ledger
+	logger zerolog.Logger
+	// keys   *skademlia.Keypair
 
-	completion []string
+	client *wctl.Client
+
+	stdin  io.ReadCloser
+	stdout io.Writer
+
+	cleanup func()
 }
 
-func NewCLI(
-	client *skademlia.Client,
-	server *grpc.Server,
-	gateway *api.Gateway,
-	ledger *wavelet.Ledger,
-	keys *skademlia.Keypair,
-	stdin io.ReadCloser,
-	stdout io.Writer,
-	kv store.KV,
-) (*CLI, error) {
+func CLIWithStdin(stdin io.ReadCloser) func(cli *CLI) {
+	return func(cli *CLI) {
+		cli.stdin = stdin
+	}
+}
+
+func CLIWithStdout(stdout io.Writer) func(cli *CLI) {
+	return func(cli *CLI) {
+		cli.stdout = stdout
+	}
+}
+
+func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
+	// Set CLI callbacks, mainly loggers
+	cleanup, err := setEvents(client)
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("Failed to start websockets to the server: %v", err)
+	}
+
 	c := &CLI{
 		client:  client,
-		server:  server,
-		gateway: gateway,
-		ledger:  ledger,
 		logger:  log.Node(),
-		keys:    keys,
 		app:     cli.NewApp(),
-		kv:      kv,
+		stdin:   os.Stdin,
+		stdout:  os.Stdout,
+		cleanup: cleanup,
+	}
+
+	for _, o := range opts {
+		o(c)
 	}
 
 	c.app.Name = "wavelet"
@@ -156,11 +169,6 @@ func NewCLI(
 			Description: "disconnect a peer",
 		},
 		{
-			Name:    "exit",
-			Aliases: []string{"quit", ":q"},
-			Action:  a(c.exit),
-		},
-		{
 			Name:        "restart",
 			Aliases:     []string{"r"},
 			Action:      a(c.restart),
@@ -171,7 +179,13 @@ func NewCLI(
 					Usage: "database will be erased if provided",
 				},
 			},
-		}, {
+		},
+		{
+			Name:    "exit",
+			Aliases: []string{"quit", ":q"},
+			Action:  a(c.exit),
+		},
+		{
 			Name:      "update-params",
 			UsageText: "Updates parameters, if no value provided, default one will be used.",
 			Aliases:   []string{"up"},
@@ -301,8 +315,8 @@ func NewCLI(
 		InterruptPrompt:   "^C",
 		EOFPrompt:         "exit",
 		HistorySearchFold: true,
-		Stdin:             stdin,
-		Stdout:            stdout,
+		Stdin:             c.stdin,
+		Stdout:            c.stdout,
 	})
 
 	if err != nil {
@@ -311,24 +325,15 @@ func NewCLI(
 
 	c.rl = rl
 
-	log.SetWriter(
-		log.LoggerWavelet,
-		log.NewConsoleWriter(
-			rl.Stdout(),
-			log.FilterFor(
-				log.ModuleNode,
-				log.ModuleNetwork,
-				log.ModuleSync,
-				log.ModuleConsensus,
-				log.ModuleContract,
-			),
-		),
-	)
+	log.SetWriter(log.LoggerWavelet, log.NewConsoleWriter(
+		rl.Stdout(), log.FilterFor(log.ModuleNode)))
 
 	return c, nil
 }
 
 func (cli *CLI) Start() {
+	defer cli.cleanup()
+
 ReadLoop:
 	for {
 		line, err := cli.rl.Readline()
@@ -362,11 +367,6 @@ ReadLoop:
 	}
 
 	_ = cli.rl.Close()
-
-	cli.gateway.Shutdown()
-	cli.server.GracefulStop()
-	cli.ledger.Close()
-	cli.kv.Close()
 }
 
 func (cli *CLI) exit(ctx *cli.Context) {
@@ -378,4 +378,34 @@ func a(f func(*cli.Context)) func(*cli.Context) error {
 		f(ctx)
 		return nil
 	}
+}
+
+func (cli *CLI) parseRecipient(arg string) ([32]byte, bool) {
+	var recipient [32]byte
+
+	i, err := hex.Decode(recipient[:], []byte(arg))
+	if err != nil {
+		cli.logger.Error().Err(err).
+			Msg("The ID you specified is invalid.")
+		return recipient, false
+	}
+
+	if i != 32 {
+		cli.logger.Error().Int("length", len(recipient)).
+			Msg("The ID you specified is invalid.")
+		return recipient, false
+	}
+
+	return recipient, true
+}
+
+func (cli *CLI) parseAmount(arg string) (a uint64, ok bool) {
+	amount, err := strconv.ParseUint(arg, 10, 64)
+	if err != nil {
+		cli.logger.Error().Err(err).
+			Msg("Failed to convert payment amount to a uint64.")
+		return 0, false
+	}
+
+	return amount, true
 }

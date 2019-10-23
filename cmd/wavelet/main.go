@@ -20,78 +20,53 @@
 package main
 
 import (
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"net"
-	"net/http"
 	"os"
 	"sort"
 	"strconv"
 	"time"
 
-	"github.com/pkg/errors"
-
-	"github.com/perlin-network/wavelet/conf"
-
-	"github.com/perlin-network/noise"
-	"github.com/perlin-network/noise/cipher"
 	"github.com/perlin-network/noise/edwards25519"
-	"github.com/perlin-network/noise/handshake"
-	"github.com/perlin-network/noise/nat"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/api"
-	"github.com/perlin-network/wavelet/internal/snappy"
+	"github.com/perlin-network/wavelet/cmd/wavelet/node"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
-	"google.golang.org/grpc"
+	"github.com/perlin-network/wavelet/wctl"
+	"github.com/pkg/errors"
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
 
 	_ "net/http/pprof"
+	"net/url"
 )
 
-type Config struct {
-	NAT           bool
-	Host          string
-	UpdateURL     string
-	Port          uint
-	Wallet        string
-	Genesis       *string
-	LogLevel      string
-	APIPort       uint
-	APIHost       *string
-	APICertsCache *string
-	Peers         []string
-	Database      string
-	MaxMemoryMB   uint64
+// default false, used for testing
+var disableGC bool
 
-	// Only for testing
-	WithoutGC bool
+var logger = log.Node()
+
+type Config struct {
+	ServerAddr string // empty == start new server
+	UpdateURL  string
 }
 
 func main() {
-	switchToUpdatedVersion()
-
+	// switchToUpdatedVersion()
 	wavelet.SetGenesisByNetwork(sys.VersionMeta)
 
-	Run(os.Args, os.Stdin, os.Stdout, false)
+	Run(os.Args, os.Stdin, os.Stdout)
 }
 
-func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
-	log.SetWriter(
-		log.LoggerWavelet,
-		log.NewConsoleWriter(stdout, log.FilterFor(
-			log.ModuleNode,
-			log.ModuleNetwork,
-			log.ModuleSync,
-			log.ModuleConsensus,
-			log.ModuleContract,
-		)),
-	)
+func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
+	log.SetWriter(log.LoggerWavelet, log.NewConsoleWriter(
+		stdout, log.FilterFor(log.ModuleNode)))
 
 	app := cli.NewApp()
 
@@ -102,6 +77,12 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 	app.Usage = "a bleeding fast ledger with a powerful compute layer"
 
 	app.Flags = []cli.Flag{
+		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "server",
+			Value:  "",
+			Usage:  "Connect to a Wavelet server instead of hosting a new one if not blank.",
+			EnvVar: "WAVELET_SERVER",
+		}),
 		altsrc.NewBoolFlag(cli.BoolFlag{
 			Name:   "nat",
 			Usage:  "Enable port forwarding: only required for personal PCs.",
@@ -127,13 +108,13 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 		}),
 		altsrc.NewUintFlag(cli.UintFlag{
 			Name:   "api.port",
-			Value:  0,
+			Value:  9000,
 			Usage:  "Host a local HTTP API at port.",
 			EnvVar: "WAVELET_API_PORT",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "api.host",
-			Usage:  "Host for the API HTTPS server.",
+			Usage:  "Host for the API HTTPS node.",
 			EnvVar: "WAVELET_API_HOST",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
@@ -226,47 +207,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 	}
 
 	app.Action = func(c *cli.Context) error {
-		config := &Config{
-			Host:        c.String("host"),
-			UpdateURL:   c.String("update-url"),
-			Port:        c.Uint("port"),
-			Wallet:      c.String("wallet"),
-			APIPort:     c.Uint("api.port"),
-			Peers:       c.Args(),
-			Database:    c.String("db"),
-			MaxMemoryMB: c.Uint64("memory.max"),
-			WithoutGC:   withoutGC,
-			LogLevel:    c.String("loglevel"),
-		}
-
-		if genesis := c.String("genesis"); len(genesis) > 0 {
-			config.Genesis = &genesis
-		}
-
-		if apiHost := c.String("api.host"); len(apiHost) > 0 {
-			config.APIHost = &apiHost
-
-			if certsCache := c.String("api.certs"); len(certsCache) > 0 {
-				config.APICertsCache = &certsCache
-			} else {
-				return errors.New("missing api.certs flag")
-			}
-		}
-
-		conf.Update(
-			conf.WithSnowballK(c.Int("sys.snowball.k")),
-			conf.WithSnowballBeta(c.Int("sys.snowball.beta")),
-			conf.WithQueryTimeout(c.Duration("sys.query_timeout")),
-			conf.WithSecret(c.String("api.secret")),
-		)
-
-		// set the the sys variables
-		sys.DefaultTransactionFee = c.Uint64("sys.transaction_fee_amount")
-		sys.MinimumStake = c.Uint64("sys.min_stake")
-
-		start(config, stdin, stdout)
-
-		return nil
+		return start(c, stdin, stdout)
 	}
 
 	sort.Sort(cli.FlagsByName(app.Flags))
@@ -279,228 +220,154 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, withoutGC bool) {
 	}
 }
 
-func start(cfg *Config, stdin io.ReadCloser, stdout io.Writer) {
-	log.SetLevel(cfg.LogLevel)
-	logger := log.Node()
+func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
+	config := Config{
+		ServerAddr: c.String("server"),
+		UpdateURL:  c.String("update-url"),
+	}
 
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
+	// Set the log level
+	log.SetLevel(c.String("loglevel"))
+
+	// Start the background updater
+	// go periodicUpdateRoutine(c.String("update-url"))
+
+	w, err := wallet(c.String("wallet"))
 	if err != nil {
-		logger.Fatal().Err(err).Msgf("Failed to listen to port %d.", cfg.Port)
+		return err
 	}
 
-	go periodicUpdateRoutine(cfg.UpdateURL)
-
-	addr := net.JoinHostPort(cfg.Host, strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
-
-	if cfg.NAT {
-		if len(cfg.Peers) > 1 {
-			resolver := nat.NewPMP()
-
-			if err := resolver.AddMapping("tcp",
-				uint16(listener.Addr().(*net.TCPAddr).Port),
-				uint16(listener.Addr().(*net.TCPAddr).Port),
-				30*time.Minute,
-			); err != nil {
-				logger.Fatal().Err(err).Msg("Failed to add mapping.")
-			}
-		}
-
-		resp, err := http.Get("http://myexternalip.com/raw")
+	// Grab the secret
+	secret := c.String("api.secret")
+	if secret == "" {
+		// If the secret is empty, derive the secret from the base64-hashed
+		// sha224-hashed private key.
+		h, err := hex.DecodeString(secret)
 		if err != nil {
-			logger.Fatal().Err(err).Msg("Failed to get external IP.")
+			return errors.Wrap(err, "Can't decode wallet")
 		}
 
-		ip, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			logger.Fatal().Err(err).Msg("Failed to read external IP response body.")
-		}
-
-		if err := resp.Body.Close(); err != nil {
-			logger.Fatal().Err(err).Msg("Failed to close external IP response body.")
-		}
-
-		addr = net.JoinHostPort(string(ip), strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
+		sha := sha512.Sum512_224(h)
+		secret = base64.StdEncoding.EncodeToString(sha[:])
 	}
 
-	logger.Info().Str("addr", addr).Msg("Listening for peers.")
-
-	keys, err := keys(cfg.Wallet)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to setup wallet.")
-	}
-
-	client := skademlia.NewClient(
-		addr, keys,
-		skademlia.WithC1(sys.SKademliaC1),
-		skademlia.WithC2(sys.SKademliaC2),
-		skademlia.WithDialOptions(grpc.WithDefaultCallOptions(
-			grpc.UseCompressor(snappy.Name),
-			grpc.MaxCallRecvMsgSize(9*1024*1024),
-			grpc.MaxCallSendMsgSize(3*1024*1024),
-		)),
+	conf.Update(
+		conf.WithSnowballK(c.Int("sys.snowball.k")),
+		conf.WithSnowballBeta(c.Int("sys.snowball.beta")),
+		conf.WithQueryTimeout(c.Duration("sys.query_timeout")),
+		conf.WithSecret(secret),
 	)
 
-	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
+	// set the the sys variables
+	sys.DefaultTransactionFee = c.Uint64("sys.transaction_fee_amount")
+	sys.MinimumStake = c.Uint64("sys.min_stake")
 
-	client.OnPeerJoin(func(conn *grpc.ClientConn, id *skademlia.ID) {
-		publicKey := id.PublicKey()
+	var wctlCfg wctl.Config
+	wctlCfg.APISecret = conf.GetSecret()
 
-		logger := log.Network("joined")
-		logger.Info().
-			Hex("public_key", publicKey[:]).
-			Str("address", id.Address()).
-			Msg("Peer has joined.")
-
-	})
-
-	client.OnPeerLeave(func(conn *grpc.ClientConn, id *skademlia.ID) {
-		publicKey := id.PublicKey()
-
-		logger := log.Network("left")
-		logger.Info().
-			Hex("public_key", publicKey[:]).
-			Str("address", id.Address()).
-			Msg("Peer has left.")
-	})
-
-	kv, err := store.NewLevelDB(cfg.Database)
-	if err != nil {
-		logger.Fatal().Err(err).Msgf("Failed to create/open database located at %q.", cfg.Database)
-	}
-
-	opts := []wavelet.Option{
-		wavelet.WithGenesis(cfg.Genesis),
-	}
-
-	if cfg.WithoutGC {
-		opts = append(opts, wavelet.WithoutGC())
-	}
-	if cfg.MaxMemoryMB > 0 {
-		opts = append(opts, wavelet.WithMaxMemoryMB(cfg.MaxMemoryMB))
-	}
-
-	ledger := wavelet.NewLedger(kv, client, opts...)
-	server := client.Listen()
-
-	go func() {
-		wavelet.RegisterWaveletServer(server, ledger.Protocol())
-
-		if err := server.Serve(listener); err != nil {
-			logger.Fatal().Err(err).Msg("Failed to start Wavelet server.")
-		}
-	}()
-
-	for _, addr := range cfg.Peers {
-		if _, err := client.Dial(addr, skademlia.WithTimeout(10*time.Second)); err != nil {
-			fmt.Printf("Error dialing %s: %v\n", addr, err)
-		}
-	}
-
-	if peers := client.Bootstrap(); len(peers) > 0 {
-		var ids []string
-
-		for _, id := range peers {
-			ids = append(ids, id.String())
+	if config.ServerAddr == "" {
+		srvCfg := node.Config{
+			NAT:         c.Bool("nat"),
+			Host:        c.String("host"),
+			Port:        c.Uint("port"),
+			Wallet:      w,
+			APIPort:     c.Uint("api.port"),
+			Peers:       c.Args(),
+			Database:    c.String("db"),
+			MaxMemoryMB: c.Uint64("memory.max"),
+			// HTTPS
+			APIHost:       c.String("api.host"),
+			APICertsCache: c.String("api.certs"),
+			// Debugging only
+			NoGC: disableGC,
 		}
 
-		logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
-	}
+		if genesis := c.String("genesis"); len(genesis) > 0 {
+			srvCfg.Genesis = &genesis
+		}
 
-	gateway := api.New()
-	if cfg.APIHost != nil {
-		go gateway.StartHTTPS(int(cfg.APIPort), client, ledger, keys, kv, *cfg.APIHost, *cfg.APICertsCache)
+		srv, err := node.New(&srvCfg)
+		if err != nil {
+			return err
+		}
+
+		// Start the server
+		srv.Start()
+		defer srv.Close()
+
+		wctlCfg.Server = srv
+		wctlCfg.APIPort = uint16(c.Uint("api.port"))
+		wctlCfg.PrivateKey = srv.Keys.PrivateKey()
+
+		wctlCfg.APIHost = c.String("api.host")
+		if wctlCfg.APIHost == "" {
+			wctlCfg.APIHost = "127.0.0.1"
+		} else {
+			wctlCfg.UseHTTPS = true
+		}
 	} else {
-		if cfg.APIPort > 0 {
-			go gateway.StartHTTP(int(cfg.APIPort), client, ledger, keys, kv)
+		u, err := url.Parse(config.ServerAddr)
+		if err != nil {
+			return fmt.Errorf("Invalid address: %v", err)
 		}
+
+		port, _ := strconv.ParseUint(u.Port(), 10, 16)
+
+		wctlCfg.APIPort = uint16(port)
+		wctlCfg.APIHost = u.Host
+		//PrivateKey = nil // TODO?
+		wctlCfg.UseHTTPS = u.Scheme == "https"
 	}
 
-	shell, err := NewCLI(client, server, gateway, ledger, keys, stdin, stdout, kv)
+	cli, err := wctl.NewClient(wctlCfg)
 	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to create CLI.")
+		return err
+	}
+
+	shell, err := NewCLI(cli, CLIWithStdin(stdin), CLIWithStdout(stdout))
+	if err != nil {
+		return fmt.Errorf("Failed to spawn the CLI: %v", err)
 	}
 
 	shell.Start()
+	return nil
 }
 
-func keys(wallet string) (*skademlia.Keypair, error) {
+// returns hex-encoded
+func wallet(wallet string) (string, error) {
 	var keys *skademlia.Keypair
 
 	logger := log.Node()
 
 	privateKeyBuf, err := ioutil.ReadFile(wallet)
 
+	// File exists
 	if err == nil {
-		var privateKey edwards25519.PrivateKey
-
-		n, err := hex.Decode(privateKey[:], privateKeyBuf)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to decode your private key from %q", wallet)
+		// If the file content is the actual private key
+		if hex.DecodedLen(len(privateKeyBuf)) == edwards25519.SizePrivateKey {
+			return string(privateKeyBuf), nil
 		}
-
-		if n != edwards25519.SizePrivateKey {
-			return nil, errors.Errorf("private key located in %q is not of the right length", wallet)
-		}
-
-		keys, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
-		if err != nil {
-			return nil, errors.Wrapf(err, "the private key specified in %q is invalid", wallet)
-		}
-
-		publicKey := keys.PublicKey()
-
-		logger.Info().
-			Hex("privateKey", privateKey[:]).
-			Hex("publicKey", publicKey[:]).
-			Msg("Wallet loaded.")
-
-		return keys, nil
 	}
 
 	if os.IsNotExist(err) {
-		// If a private key is specified instead of a path to a wallet, then simply use the provided private key instead.
+		// If a private key is specified, simply use the provided private key instead.
 		if len(wallet) == hex.EncodedLen(edwards25519.SizePrivateKey) {
-			var privateKey edwards25519.PrivateKey
-
-			n, err := hex.Decode(privateKey[:], []byte(wallet))
-			if err != nil {
-				return nil, errors.Wrapf(err, "failed to decode the private key specified: %s", wallet)
-			}
-
-			if n != edwards25519.SizePrivateKey {
-				return nil, errors.Errorf("private key %s is not of the right length", wallet)
-			}
-
-			keys, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
-			if err != nil {
-				return nil, errors.Wrapf(err, "the private key specified is invalid: %s", wallet)
-			}
-
-			publicKey := keys.PublicKey()
-
-			logger.Info().
-				Hex("privateKey", privateKey[:]).
-				Hex("publicKey", publicKey[:]).
-				Msg("A private key was provided instead of a wallet file.")
-
-			return keys, nil
+			return wallet, nil
 		}
-
-		keys, err = skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
-		if err != nil {
-			return nil, errors.Wrapf(err, "failed to generate a new wallet")
-		}
-
-		privateKey := keys.PrivateKey()
-		publicKey := keys.PublicKey()
-
-		logger.Info().
-			Hex("privateKey", privateKey[:]).
-			Hex("publicKey", publicKey[:]).
-			Msg("Existing wallet not found: generated a new one.")
-
-		return keys, nil
 	}
 
-	return keys, err
+	keys, err = skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
+	if err != nil {
+		return "", errors.New("failed to generate a new wallet")
+	}
+
+	privateKey := keys.PrivateKey()
+	publicKey := keys.PublicKey()
+
+	logger.Info().
+		Hex("privateKey", privateKey[:]).
+		Hex("publicKey", publicKey[:]).
+		Msg("Existing wallet not found: generated a new one.")
+
+	return hex.EncodeToString(privateKey[:]), nil
 }

@@ -57,6 +57,10 @@ func (t *Transactions) BatchAdd(block BlockID, transactions ...Transaction) {
 }
 
 func (t *Transactions) add(block BlockID, tx Transaction) {
+	if t.height >= tx.Block+uint64(conf.GetPruningLimit()) {
+		return
+	}
+
 	if _, exists := t.buffer[tx.ID]; exists {
 		return
 	}
@@ -100,13 +104,24 @@ func (t *Transactions) ReshufflePending(next Block) int {
 
 	pruned := 0
 
+	// Delete transactions from the finalized block.
+
+	for _, id := range next.Transactions {
+		delete(t.buffer, id)
+	}
+
 	// Recompute indices of all items in the mempool.
 
 	items := make([]mempoolItem, 0, t.index.Len())
 
 	t.index.Ascend(func(i btree.Item) bool {
 		item := i.(mempoolItem)
-		tx := t.buffer[item.id]
+
+		tx, exists := t.buffer[item.id]
+
+		if !exists {
+			return true
+		}
 
 		if next.Index >= tx.Block+uint64(conf.GetPruningLimit()) {
 			delete(t.buffer, tx.ID)

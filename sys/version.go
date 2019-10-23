@@ -27,7 +27,9 @@ const (
 	// VersionMinor is minor version component of the current release
 	VersionMinor = 2
 	// VersionPatch is patch version component of the current release
-	VersionPatch = 0
+	VersionPatch = 1
+	// VersionMeta is append to the version string
+	VersionMeta = "testing"
 )
 
 // variables set via linker flags
@@ -35,9 +37,6 @@ var (
 	GitCommit = "unset"
 	GoVersion = "unset"
 	OSArch    = "unset"
-
-	// VersionMeta is append to the version string
-	VersionMeta = "testing"
 )
 
 // Version holds the textual version string.
