@@ -21,14 +21,16 @@ func (m mempoolItem) Less(than btree.Item) bool {
 type Transactions struct {
 	sync.RWMutex
 
-	buffer map[TransactionID]*Transaction
-	index  *btree.BTree
+	buffer  map[TransactionID]*Transaction
+	missing map[TransactionID]struct{}
+	index   *btree.BTree
 }
 
 func NewTransactions() *Transactions {
 	return &Transactions{
-		buffer: make(map[TransactionID]*Transaction),
-		index:  btree.New(32),
+		buffer:  make(map[TransactionID]*Transaction),
+		missing: make(map[TransactionID]struct{}),
+		index:   btree.New(32),
 	}
 }
 
@@ -57,6 +59,30 @@ func (t *Transactions) add(block BlockID, tx Transaction) {
 
 	t.index.ReplaceOrInsert(mempoolItem{index: tx.ComputeIndex(block), id: tx.ID})
 	t.buffer[tx.ID] = &tx
+
+	delete(t.missing, tx.ID) // In case the transaction was previously missing, mark it as no longer missing.
+}
+
+// MarkMissing marks that the node was expected to have archived a transaction with a specified id, but
+// does not have it archived and so needs to have said transaction pulled from the nodes peers.
+func (t *Transactions) MarkMissing(id TransactionID) {
+	t.Lock()
+	defer t.Unlock()
+
+	t.markMissing(id)
+}
+
+func (t *Transactions) BatchMarkMissing(ids ...TransactionID) {
+	t.Lock()
+	defer t.Unlock()
+
+	for _, id := range ids {
+		t.markMissing(id)
+	}
+}
+
+func (t *Transactions) markMissing(id TransactionID) {
+	t.missing[id] = struct{}{}
 }
 
 // ReshufflePending reshuffles all transactions that may be proposed into a new block by recomputing
@@ -171,6 +197,8 @@ func (t *Transactions) Iterate(fn func(*Transaction)) {
 	}
 }
 
+// ProposableIDs returns a slice of IDs of transactions that may be wrapped
+// into a block that may be proposed to be finalized within the network.
 func (t *Transactions) ProposableIDs() []TransactionID {
 	t.RLock()
 	defer t.RUnlock()
@@ -183,4 +211,19 @@ func (t *Transactions) ProposableIDs() []TransactionID {
 	})
 
 	return proposable
+}
+
+// MissingIDs returns a slice of IDs of transactions which the node would
+// like to pull from its peers.
+func (t *Transactions) MissingIDs() []TransactionID {
+	t.RLock()
+	defer t.RUnlock()
+
+	missing := make([]TransactionID, 0, len(t.missing))
+
+	for id := range t.missing {
+		missing = append(missing, id)
+	}
+
+	return missing
 }
