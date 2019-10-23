@@ -40,6 +40,7 @@ const (
 	RouteContract = "/contract"
 	RouteTxList   = "/tx"
 	RouteTxSend   = "/tx/send"
+	RouteNonce    = "/nonce"
 
 	RouteNode       = "/node"
 	RouteConnect    = RouteNode + "/connect"
@@ -147,6 +148,14 @@ func NewClient(config Config) (*Client, error) {
 			log.Println("WCTL_ERR:", err)
 		},
 	}
+
+	n, err := c.GetSelfNonce()
+	if err != nil {
+		return c, err
+	}
+
+	c.Nonce = n.Nonce
+	c.Block = n.Block
 
 	return c, nil
 }

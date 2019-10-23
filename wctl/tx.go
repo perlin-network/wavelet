@@ -88,7 +88,7 @@ func (c *Client) GetTransaction(txID [32]byte) (*Transaction, error) {
 
 // SendTransaction calls the /tx/send endpoint to send a raw payload.
 // Payloads are best crafted with wavelet.Transfer.
-func (c *Client) sendTransaction(tag byte, payload []byte) (*TxResponse, error) {
+func (c *Client) SendTransaction(tag byte, payload []byte) (*TxResponse, error) {
 	var res TxResponse
 
 	var nonce [8]byte // TODO(kenta): nonce
@@ -97,6 +97,8 @@ func (c *Client) sendTransaction(tag byte, payload []byte) (*TxResponse, error) 
 		c.PrivateKey,
 		append(nonce[:], append([]byte{tag}, payload...)...),
 	)
+
+	// TODO: Probably not thread safe, have mutex to guard nonce?
 
 	req := TxRequest{
 		Sender:    c.PublicKey,
@@ -119,7 +121,7 @@ func (c *Client) sendTransaction(tag byte, payload []byte) (*TxResponse, error) 
 
 // SendTransfer sends a wavelet.Transfer instead of a Payload.
 func (c *Client) sendTransfer(tag byte, transfer Marshalable) (*TxResponse, error) {
-	return c.sendTransaction(tag, transfer.Marshal())
+	return c.SendTransaction(tag, transfer.Marshal())
 }
 
 func (t *Transaction) UnmarshalJSON(b []byte) error {

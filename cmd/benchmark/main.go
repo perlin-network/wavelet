@@ -28,6 +28,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/perlin-network/noise/edwards25519"
@@ -229,11 +230,53 @@ func commandRemote(c *cli.Context) error {
 	}()
 >>>>>>> a51445561a46539e919c7b248dd9f2580c2374a1
 
+	// Fetch latest nonce and block height
+	id := client.Public()
+	resp, err := client.GetAccountNonce(hex.EncodeToString(id[:]))
+	if err != nil {
+		return err
+	}
+
+	nonce := resp.Nonce
+	block := resp.Block
+
+	// Poll block height changes
+	consensus, err := client.PollLoggerSink(nil, wctl.RouteWSConsensus)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		for msg := range consensus {
+			b, err := parseBlock(msg)
+			if err != nil {
+				continue
+			}
+
+			atomic.StoreUint64(&block, b)
+		}
+	}()
+
 	flood := floodTransactions()
 
 	for {
-		if _, err := flood(client); err != nil {
+		if _, err := flood(client, &nonce, atomic.LoadUint64(&block)); err != nil {
 			continue
 		}
 	}
+}
+
+func parseBlock(buf []byte) (uint64, error) {
+	var parser fastjson.Parser
+
+	v, err := parser.ParseBytes(buf)
+	if err != nil {
+		return 0, err
+	}
+
+	if string(v.GetStringBytes("event")) != "finalized" {
+		return 0, errors.New("not finalized")
+	}
+
+	return v.GetUint64("block_index"), nil
 }
