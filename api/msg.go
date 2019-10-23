@@ -228,17 +228,17 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 	o.Set("sync_status",
 		arena.NewString(s.ledger.SyncStatus()))
 
-	r := arena.NewObject()
-	r.Set("merkle_root",
+	b := arena.NewObject()
+	b.Set("merkle_root",
 		arena.NewString(hex.EncodeToString(block.Merkle[:])))
-	r.Set("index",
+	b.Set("height",
 		arena.NewNumberString(strconv.FormatUint(block.Index, 10)))
-	r.Set("block_id",
+	b.Set("id",
 		arena.NewString(hex.EncodeToString(block.ID[:])))
-	r.Set("transactions",
+	b.Set("transactions",
 		arena.NewNumberInt(len(block.Transactions)))
 
-	o.Set("block", r)
+	o.Set("block", b)
 
 	o.Set("num_tx",
 		arena.NewNumberInt(s.ledger.Transactions().Len()))

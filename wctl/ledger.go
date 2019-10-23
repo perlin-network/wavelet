@@ -49,8 +49,8 @@ type LedgerStatusResponse struct {
 
 	Block struct {
 		MerkleRoot [16]byte `json:"merkle_root"`
-		Index      uint64   `json:"index"`
-		ID         [32]byte `json:"block_id"`
+		Index      uint64   `json:"height"`
+		ID         [32]byte `json:"id"`
 		Txs        uint64   `json:"transactions"`
 	} `json:"block"`
 
@@ -87,7 +87,7 @@ func (l *LedgerStatusResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	if err := jsonHex(v, l.Block.ID[:], "block", "block_id"); err != nil {
+	if err := jsonHex(v, l.Block.ID[:], "block", "id"); err != nil {
 		return err
 	}
 

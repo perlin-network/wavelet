@@ -60,11 +60,11 @@ var (
 )
 
 type Wavelet struct {
-	SKademlia *skademlia.Client
-	Keypair   *skademlia.Keypair
-	Ledger    *wavelet.Ledger
-	Gateway   *api.Gateway
-	Server    *grpc.Server
+	Net     *skademlia.Client
+	Keys    *skademlia.Keypair
+	Ledger  *wavelet.Ledger
+	Gateway *api.Gateway
+	Server  *grpc.Server
 
 	config   *Config
 	db       store.KV
@@ -154,7 +154,7 @@ func New(cfg *Config) (*Wavelet, error) {
 		return nil, fmt.Errorf("The wallet specified is invalid: %v", err)
 	}
 
-	w.Keypair = keys
+	w.Keys = keys
 
 	client := skademlia.NewClient(
 		addr, keys,
@@ -171,7 +171,7 @@ func New(cfg *Config) (*Wavelet, error) {
 		addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol(),
 	))
 
-	w.SKademlia = client
+	w.Net = client
 
 	kv, err := store.NewLevelDB(cfg.Database)
 	if err != nil {
@@ -200,7 +200,7 @@ func New(cfg *Config) (*Wavelet, error) {
 }
 
 func (w *Wavelet) Start() {
-	w.Server = w.SKademlia.Listen()
+	w.Server = w.Net.Listen()
 
 	go func() {
 		wavelet.RegisterWaveletServer(w.Server, w.Ledger.Protocol())
@@ -211,7 +211,7 @@ func (w *Wavelet) Start() {
 	}()
 
 	for _, addr := range w.config.Peers {
-		if _, err := w.SKademlia.Dial(addr,
+		if _, err := w.Net.Dial(addr,
 			skademlia.WithTimeout(10*time.Second)); err != nil {
 
 			w.logger.Warn().Err(err).
@@ -220,7 +220,7 @@ func (w *Wavelet) Start() {
 		}
 	}
 
-	if peers := w.SKademlia.Bootstrap(); len(peers) > 0 {
+	if peers := w.Net.Bootstrap(); len(peers) > 0 {
 		var ids []string
 
 		for _, id := range peers {
@@ -237,14 +237,14 @@ func (w *Wavelet) Start() {
 	if w.config.APIHost != "" {
 		w.Gateway.StartHTTPS(
 			int(w.config.APIPort),
-			w.SKademlia, w.Ledger, w.Keypair, w.db,
+			w.Net, w.Ledger, w.Keys, w.db,
 			w.config.APIHost,
 			w.config.APICertsCache, // guaranteed not empty in New
 		)
 	} else {
 		w.Gateway.StartHTTP(
 			int(w.config.APIPort),
-			w.SKademlia, w.Ledger, w.Keypair, w.db,
+			w.Net, w.Ledger, w.Keys, w.db,
 		)
 	}
 }

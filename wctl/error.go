@@ -6,7 +6,6 @@ import (
 	"github.com/valyala/fastjson"
 )
 
-// "{\\\"status\\\":\\\"Internal Server Error\\\",\\\"error\\\":\\\"error adding your transaction to graph: Node is currently ouf of sync. Please try again later.\\\"}\
 type RequestError struct {
 	Status      string `json:"status"`
 	ErrorString string `json:"error"`

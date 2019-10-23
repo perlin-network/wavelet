@@ -60,7 +60,7 @@ func parseConsensusProposal(c *Client, v *fastjson.Value) error {
 func parseConsensusFinalized(c *Client, v *fastjson.Value) error {
 	var f Finalized
 
-	if err := jsonHex(v, f.BlockID[:], "block_id"); err != nil {
+	if err := jsonHex(v, f.BlockID[:], "new_block_id"); err != nil {
 		return err
 	}
 

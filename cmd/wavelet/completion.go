@@ -29,7 +29,7 @@ import (
 )
 
 func (cli *CLI) getCompleter() *readline.PrefixCompleter {
-	if cli.Server == nil {
+	if cli.client.Server == nil {
 		return nil
 	}
 
@@ -41,7 +41,7 @@ func (cli *CLI) getCompleter() *readline.PrefixCompleter {
 
 		text := f[len(f)-1]
 
-		return cli.Server.Ledger.Find(text, 10)
+		return cli.client.Server.Ledger.Find(text, 10)
 	})
 }
 

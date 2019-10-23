@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/wctl"
 )
@@ -72,7 +71,7 @@ func onError(err error) {
 	}
 
 	logger := log.Node()
-	logger.Err(err).Msg("WS Error occured.")
+	logger.Err(err).Msg("WS Error occurred.")
 }
 
 func onStakeRewardValidator(r wctl.StakeRewardValidator) {

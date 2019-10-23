@@ -29,14 +29,14 @@ import (
 )
 
 func (cli *CLI) status(ctx *cli.Context) {
-	l, err := cli.LedgerStatus("", "", 0, 0)
+	l, err := cli.client.LedgerStatus("", "", 0, 0)
 	if err != nil {
 		cli.logger.Error().Err(err).
 			Msg("Failed to get the ledger status")
 		return
 	}
 
-	a, _ := cli.GetAccount(l.PublicKey)
+	a, _ := cli.client.GetAccount(l.PublicKey)
 	if a == nil {
 		a = &wctl.Account{}
 	}
@@ -67,8 +67,8 @@ func (cli *CLI) status(ctx *cli.Context) {
 		Uint64("num_tx", l.NumTx).
 		Uint64("num_tx_in_store", l.NumTxInStore).
 		Uint64("num_accounts_in_store", l.AccountsLen).
-		Uint64("client_nonce", cli.Nonce).
-		Uint64("client_block", cli.Block).
+		Uint64("client_nonce", cli.client.Nonce).
+		Uint64("client_block", cli.client.Block).
 		Str("sync_status", l.SyncStatus).
 		Int("preferred_votes", l.PreferredVotes).
 		Msg("Here is the current status of your node.")
@@ -93,7 +93,7 @@ func (cli *CLI) pay(ctx *cli.Context) {
 		return
 	}
 
-	tx, err := cli.Pay(recipient, amount)
+	tx, err := cli.client.Pay(recipient, amount)
 	if err != nil {
 		cli.logger.Err(err).
 			Msg("Failed to pay to recipient.")
@@ -178,7 +178,7 @@ func (cli *CLI) call(ctx *cli.Context) {
 		}
 	}
 
-	tx, err := cli.Call(recipient, fn)
+	tx, err := cli.client.Call(recipient, fn)
 	if err != nil {
 		cli.logger.Err(err).
 			Msg("Failed to call function.")
@@ -205,7 +205,7 @@ func (cli *CLI) find(ctx *cli.Context) {
 		return
 	}
 
-	account, tx, err := cli.Find(address)
+	account, tx, err := cli.client.Find(address)
 	if err != nil {
 		cli.logger.Error().Err(err).
 			Msg("Cannot find address")
@@ -251,7 +251,7 @@ func (cli *CLI) spawn(ctx *cli.Context) {
 		return
 	}
 
-	tx, err := cli.Spawn(code, 100000000)
+	tx, err := cli.client.Spawn(code, 100000000)
 	if err != nil {
 		cli.logger.Err(err).
 			Msg("Failed to spawn smart contract.")
@@ -282,7 +282,7 @@ func (cli *CLI) depositGas(ctx *cli.Context) {
 		return
 	}
 
-	tx, err := cli.DepositGas(recipient, amount)
+	tx, err := cli.client.DepositGas(recipient, amount)
 	if err != nil {
 		cli.logger.Err(err).
 			Msg("Failed to deposit gas.")
@@ -308,7 +308,7 @@ func (cli *CLI) placeStake(ctx *cli.Context) {
 		return
 	}
 
-	tx, err := cli.PlaceStake(amount)
+	tx, err := cli.client.PlaceStake(amount)
 	if err != nil {
 		cli.logger.Err(err).
 			Msg("Failed to place stake.")
@@ -334,7 +334,7 @@ func (cli *CLI) withdrawStake(ctx *cli.Context) {
 		return
 	}
 
-	tx, err := cli.WithdrawStake(amount)
+	tx, err := cli.client.WithdrawStake(amount)
 	if err != nil {
 		cli.logger.Err(err).
 			Msg("Failed to withdraw stake.")
@@ -360,7 +360,7 @@ func (cli *CLI) withdrawReward(ctx *cli.Context) {
 		return
 	}
 
-	tx, err := cli.WithdrawReward(amount)
+	tx, err := cli.client.WithdrawReward(amount)
 	if err != nil {
 		cli.logger.Err(err).
 			Msg("Failed to withdraw reward.")
@@ -380,7 +380,7 @@ func (cli *CLI) connect(ctx *cli.Context) {
 		return
 	}
 
-	m, err := cli.Connect(cmd[0])
+	m, err := cli.client.Connect(cmd[0])
 	if err != nil {
 		cli.logger.Error().
 			Err(err).
@@ -399,7 +399,7 @@ func (cli *CLI) disconnect(ctx *cli.Context) {
 		return
 	}
 
-	m, err := cli.Disconnect(cmd[0])
+	m, err := cli.client.Disconnect(cmd[0])
 	if err != nil {
 		cli.logger.Error().
 			Err(err).
@@ -417,7 +417,7 @@ func (cli *CLI) restart(ctx *cli.Context) {
 		return
 	}
 
-	m, err := cli.Restart(ctx.Bool("hard"))
+	m, err := cli.client.Restart(ctx.Bool("hard"))
 	if err != nil {
 		cli.logger.Error().
 			Err(err).

@@ -51,7 +51,7 @@ type CLI struct {
 	logger zerolog.Logger
 	// keys   *skademlia.Keypair
 
-	*wctl.Client
+	client *wctl.Client
 
 	stdin  io.ReadCloser
 	stdout io.Writer
@@ -80,7 +80,7 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 	}
 
 	c := &CLI{
-		Client:  client,
+		client:  client,
 		logger:  log.Node(),
 		app:     cli.NewApp(),
 		stdin:   os.Stdin,

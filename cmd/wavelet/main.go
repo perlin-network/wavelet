@@ -297,7 +297,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 
 		wctlCfg.Server = srv
 		wctlCfg.APIPort = uint16(c.Uint("api.port"))
-		wctlCfg.PrivateKey = srv.Keypair.PrivateKey()
+		wctlCfg.PrivateKey = srv.Keys.PrivateKey()
 
 		wctlCfg.APIHost = c.String("api.host")
 		if wctlCfg.APIHost == "" {

@@ -129,14 +129,14 @@ func (err *ErrInvalidEvent) Error() string {
 	return "Unsupported event: " + err.Event
 }
 
-type ErrUnmarshallingFail struct {
+type ErrUnmarshalFail struct {
 	ErrInvalidPayload
 	Key        string
 	Underlying error
 }
 
-func errUnmarshallingFail(v *fastjson.Value, key string, err error) *ErrUnmarshallingFail {
-	return &ErrUnmarshallingFail{
+func errUnmarshalFail(v *fastjson.Value, key string, err error) *ErrUnmarshalFail {
+	return &ErrUnmarshalFail{
 		ErrInvalidPayload: ErrInvalidPayload{
 			JSONValue: v.String(),
 		},
@@ -145,6 +145,6 @@ func errUnmarshallingFail(v *fastjson.Value, key string, err error) *ErrUnmarsha
 	}
 }
 
-func (err *ErrUnmarshallingFail) Error() string {
+func (err *ErrUnmarshalFail) Error() string {
 	return "Error unmarshalling key " + err.Key + ": " + err.Underlying.Error()
 }

@@ -95,11 +95,11 @@ var ErrInvalidHexLength = errors.New("Invalid hex bytes length")
 func jsonHex(v *fastjson.Value, dst []byte, keys ...string) error {
 	i, err := hex.Decode(dst, v.GetStringBytes(keys...))
 	if err != nil {
-		return errUnmarshallingFail(v, strings.Join(keys, "."), err)
+		return errUnmarshalFail(v, strings.Join(keys, "."), err)
 	}
 
 	if i != len(dst) {
-		return errUnmarshallingFail(v, strings.Join(keys, "."),
+		return errUnmarshalFail(v, strings.Join(keys, "."),
 			ErrInvalidHexLength)
 	}
 
@@ -109,7 +109,7 @@ func jsonHex(v *fastjson.Value, dst []byte, keys ...string) error {
 func jsonTime(v *fastjson.Value, t *time.Time, keys ...string) error {
 	Time, err := time.Parse(time.RFC3339, string(v.GetStringBytes(keys...)))
 	if err != nil {
-		return errUnmarshallingFail(v, strings.Join(keys, "."), err)
+		return errUnmarshalFail(v, strings.Join(keys, "."), err)
 	}
 
 	*t = Time
@@ -118,12 +118,4 @@ func jsonTime(v *fastjson.Value, t *time.Time, keys ...string) error {
 
 func jsonString(v *fastjson.Value, keys ...string) string {
 	return string(v.GetStringBytes(keys...))
-}
-
-func StringIDs(ids [][32]byte) []string {
-	s := make([]string, len(ids))
-	for i := range ids {
-		s[i] = hex.EncodeToString(ids[i][:])
-	}
-	return s
 }
