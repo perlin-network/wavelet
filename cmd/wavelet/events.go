@@ -139,7 +139,7 @@ func onProposal(u wctl.Proposal) {
 func onFinalized(u wctl.Finalized) {
 	logger.Info().
 		Hex("block_id", u.BlockID[:]).
-		Uint64("block_index", u.BlockIndex).
+		Uint64("block_index", u.BlockHeight).
 		Msg(u.Message)
 }
 

@@ -64,11 +64,11 @@ func parseConsensusFinalized(c *Client, v *fastjson.Value) error {
 		return err
 	}
 
-	f.BlockIndex = v.GetUint64("new_block_index")
+	f.BlockHeight = v.GetUint64("new_block_height")
 	f.Message = string(v.GetStringBytes("message"))
 
 	// Update the local counter
-	c.Block = f.BlockIndex
+	c.Block = f.BlockHeight
 
 	if c.OnFinalized != nil {
 		c.OnFinalized(f)

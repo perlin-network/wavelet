@@ -72,9 +72,9 @@ type (
 	OnProposal = func(Proposal)
 
 	Finalized struct {
-		BlockID    [32]byte `json:"block_id"`
-		BlockIndex uint64   `json:"block_index"`
-		Message    string   `json:"message"`
+		BlockID     [32]byte `json:"block_id"`
+		BlockHeight uint64   `json:"block_index"`
+		Message     string   `json:"message"`
 	}
 	OnFinalized = func(Finalized)
 )
