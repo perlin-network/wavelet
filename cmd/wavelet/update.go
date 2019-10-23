@@ -1,12 +1,6 @@
 package main
 
 import (
-	"fmt"
-	"github.com/perlin-network/wavelet/sys"
-	"time"
-)
-
-import (
 	"crypto"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -14,9 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
-)
-
-import (
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -24,6 +16,9 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
+
+	"github.com/perlin-network/wavelet/sys"
 )
 
 var updateDirectory = func() string {
