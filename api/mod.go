@@ -638,7 +638,7 @@ func (g *Gateway) getAccountNonce(ctx *fasthttp.RequestCtx) {
 	nonce, _ := wavelet.ReadAccountNonce(snapshot, id)
 	block := g.ledger.Blocks().Latest().Index
 
-	g.render(ctx, &nonceResponse{nonce: nonce, block: block})
+	g.render(ctx, &nonceResponse{Nonce: nonce, Block: block})
 }
 
 func (g *Gateway) notFound() func(ctx *fasthttp.RequestCtx) {
