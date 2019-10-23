@@ -27,6 +27,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	"github.com/perlin-network/noise/edwards25519"
@@ -81,9 +82,10 @@ type Client struct {
 	url      string
 
 	// Local state counters
-	// TODO
 	Nonce uint64
 	Block uint64
+
+	cleanup func()
 
 	// TODO: metrics, stake, consensus, network
 
@@ -154,10 +156,39 @@ func NewClient(config Config) (*Client, error) {
 		return c, err
 	}
 
-	c.Nonce = n.Nonce
-	c.Block = n.Block
+	atomic.StoreUint64(&c.Nonce, n.Nonce)
+	atomic.StoreUint64(&c.Block, n.Block)
 
+	// TODO: due to the way callbacks are handled, it's not possible to
+	// have multiple callbacks for each event. So here we are using
+	// pollWS directly because client have to internally poll consensus
+	cleanup, err := c.pollWS(RouteWSConsensus, func(v *fastjson.Value) {
+		if err := checkMod(v, "consensus"); err != nil {
+			if c.OnError != nil {
+				c.OnError(err)
+			}
+			return
+		}
+
+		event := jsonString(v, "event")
+		if event != "finalized" {
+			return
+		}
+
+		atomic.StoreUint64(&c.Block, v.GetUint64("new_block_height"))
+	})
+
+	if err != nil {
+		cleanup()
+		return c, err
+	}
+
+	c.cleanup = cleanup
 	return c, nil
+}
+
+func (c *Client) Close() {
+	c.cleanup()
 }
 
 func (c *Client) GetContractCode(contractID string) (string, error) {
