@@ -88,12 +88,13 @@ func (c *Client) SendTransaction(tag byte, payload []byte) (*TxResponse, error) 
 	var nonceBuf [8]byte
 	binary.BigEndian.PutUint64(nonceBuf[:], nonce)
 
+	var blockBuf [8]byte
+	binary.BigEndian.PutUint64(blockBuf[:], block)
+
 	signature := edwards25519.Sign(
 		c.PrivateKey,
-		append(nonceBuf[:], append([]byte{tag}, payload...)...),
+		append(nonceBuf[:], append(blockBuf[:], append([]byte{byte(tag)}, payload...)...)...),
 	)
-
-	// TODO: Probably not thread safe, have mutex to guard nonce?
 
 	req := TxRequest{
 		Sender:    c.PublicKey,
