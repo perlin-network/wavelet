@@ -5,18 +5,19 @@ import "github.com/valyala/fastjson"
 func (c *Client) PollMetrics() (func(), error) {
 	return c.pollWS(RouteWSMetrics, func(v *fastjson.Value) {
 		met := Metrics{
-			RoundQueried:       v.GetUint64("round.queried"),
+			BlocksQueried:      v.GetUint64("blocks.queried"),
+			BlocksFinalized:    v.GetFloat64("blocks.finalized"),
 			TxGossiped:         v.GetUint64("tx.gossiped"),
 			TxReceived:         v.GetUint64("tx.received"),
 			TxAccepted:         v.GetUint64("tx.accepted"),
 			TxDownloaded:       v.GetUint64("tx.downloaded"),
-			RpsQueried:         v.GetFloat64("rps.queried"),
+			BpsQueried:         v.GetFloat64("bps.queried"),
 			TpsGossiped:        v.GetFloat64("tps.gossiped"),
 			TpsReceived:        v.GetFloat64("tps.received"),
 			TpsAccepted:        v.GetFloat64("tps.accepted"),
 			TpsDownloaded:      v.GetFloat64("tps.downloaded"),
-			QueryLatencyMaxMS:  v.GetFloat64("query.latency.max.ms"),
-			QueryLatencyMinMS:  v.GetFloat64("query.latency.min.ms"),
+			QueryLatencyMaxMS:  v.GetInt64("query.latency.max.ms"),
+			QueryLatencyMinMS:  v.GetInt64("query.latency.min.ms"),
 			QueryLatencyMeanMS: v.GetFloat64("query.latency.mean.ms"),
 			Message:            string(v.GetStringBytes("message")),
 		}

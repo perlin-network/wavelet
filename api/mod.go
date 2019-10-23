@@ -329,20 +329,10 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-<<<<<<< HEAD
-	tx := wavelet.AttachSenderToTransaction(
-		g.keys,
-		wavelet.Transaction{
-			Tag:              sys.Tag(req.Tag),
-			Payload:          req.payload,
-			Creator:          req.creator,
-			CreatorSignature: req.signature,
-		},
-		g.ledger.Graph().FindEligibleParents()...,
+	tx := wavelet.NewSignedTransaction(
+		req.sender, req.Nonce, req.Block,
+		sys.Tag(req.Tag), req.payload, req.signature,
 	)
-=======
-	tx := wavelet.NewSignedTransaction(req.sender, req.Nonce, req.Block, sys.Tag(req.Tag), req.payload, req.signature)
->>>>>>> a51445561a46539e919c7b248dd9f2580c2374a1
 
 	// TODO(kenta): check signature and nonce
 

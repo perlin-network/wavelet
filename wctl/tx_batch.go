@@ -6,5 +6,5 @@ import (
 )
 
 func (c *Client) SendBatch(batch wavelet.Batch) (*TxResponse, error) {
-	return c.sendTransaction(byte(sys.TagBatch), batch.Marshal())
+	return c.SendTransaction(byte(sys.TagBatch), batch.Marshal())
 }

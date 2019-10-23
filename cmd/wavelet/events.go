@@ -40,8 +40,8 @@ func setEvents(c *wctl.Client) error {
 		return err
 	}
 
-	c.OnRoundEnd = onRoundEnd
-	c.OnPrune = onPrune
+	c.OnProposal = onProposal
+	c.OnFinalized = onFinalized
 	if err := addToCloser(c.PollConsensus()); err != nil {
 		return err
 	}
@@ -130,29 +130,19 @@ func onContractLog(u wctl.ContractLog) {
 		Msg(u.Message)
 }
 
-func onRoundEnd(u wctl.RoundEnd) {
+func onProposal(u wctl.Proposal) {
 	logger.Info().
-		Uint64("num_applied_tx", u.NumAppliedTx).
-		Uint64("num_rejected_tx", u.NumRejectedTx).
-		Uint64("num_ignored_tx", u.NumIgnoredTx).
-		Uint64("old_round", u.OldRound).
-		Uint64("new_round", u.NewRound).
-		Uint64("old_difficulty", u.OldDifficulty).
-		Uint64("new_difficulty", u.NewDifficulty).
-		Hex("new_root", u.NewRoot[:]).
-		Hex("old_root", u.OldRoot[:]).
-		Hex("new_merkle_root", u.NewMerkleRoot[:]).
-		Hex("old_merkle_root", u.OldMerkleRoot[:]).
-		Int64("round_depth", u.RoundDepth).
+		Hex("block_id", u.BlockID[:]).
+		Uint64("block_index", u.BlockIndex).
+		Uint64("num_transactions", u.NumTxs).
 		Msg(u.Message)
 }
 
-func onPrune(u wctl.Prune) {
+func onFinalized(u wctl.Finalized) {
 	logger.Info().
-		Uint64("num_tx", u.NumTx).
-		Hex("current_round_id", u.CurrentRoundID[:]).
-		Hex("pruned_round_id", u.PrunedRoundID[:]).
-		Msg("Pruned: " + u.Message)
+		Hex("block_id", u.BlockID[:]).
+		Uint64("block_index", u.BlockIndex).
+		Msg(u.Message)
 }
 
 func onGasBalanceUpdated(u wctl.GasBalanceUpdate) {

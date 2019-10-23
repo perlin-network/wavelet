@@ -32,17 +32,6 @@ type TransactionEvent struct {
 	Time   time.Time `json:"time"`
 }
 
-type Transaction struct {
-	ID        [32]byte `json:"id"`
-	Sender    [32]byte `json:"sender"`
-	Status    string   `json:"status"`
-	Nonce     uint64   `json:"nonce"`
-	Depth     uint64   `json:"depth"`
-	Tag       byte     `json:"tag"`
-	Payload   []byte   `json:"payload"`
-	Signature [64]byte `json:"signature"`
-}
-
 // ListTransactions calls the /tx endpoint of the API to list all transactions.
 // The arguments are optional, zero values would default them.
 func (c *Client) ListTransactions(senderID string, creatorID string, offset uint64, limit uint64) ([]Transaction, error) {
@@ -122,6 +111,21 @@ func (c *Client) SendTransaction(tag byte, payload []byte) (*TxResponse, error) 
 // SendTransfer sends a wavelet.Transfer instead of a Payload.
 func (c *Client) sendTransfer(tag byte, transfer Marshalable) (*TxResponse, error) {
 	return c.SendTransaction(tag, transfer.Marshal())
+}
+
+/*
+	Structs
+*/
+
+type Transaction struct {
+	ID        [32]byte `json:"id"`
+	Sender    [32]byte `json:"sender"`
+	Status    string   `json:"status"`
+	Nonce     uint64   `json:"nonce"`
+	Depth     uint64   `json:"depth"`
+	Tag       byte     `json:"tag"`
+	Payload   []byte   `json:"payload"`
+	Signature [64]byte `json:"signature"`
 }
 
 func (t *Transaction) UnmarshalJSON(b []byte) error {
@@ -210,9 +214,9 @@ func (s *TxRequest) MarshalJSON() ([]byte, error) {
 }
 
 type TxResponse struct {
-	ID       [32]byte   `json:"tx_id"`
-	Parents  [][32]byte `json:"parent_ids"`
-	Critical bool       `json:"is_critical"`
+	ID [32]byte `json:"id"`
+	// Parents  [][32]byte `json:"parent_ids"`
+	// Critical bool       `json:"is_critical"`
 }
 
 func (s *TxResponse) UnmarshalJSON(b []byte) error {
@@ -223,20 +227,22 @@ func (s *TxResponse) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	if err := jsonHex(v, s.ID[:], "tx_id"); err != nil {
+	if err := jsonHex(v, s.ID[:], "id"); err != nil {
 		return err
 	}
 
-	parentsValue := v.GetArray("parents")
-	s.Parents = make([][32]byte, len(parentsValue))
+	/*
+		parentsValue := v.GetArray("parents")
+		s.Parents = make([][32]byte, len(parentsValue))
 
-	for i, parent := range parentsValue {
-		if _, err := hex.Decode(s.Parents[i][:], parent.MarshalTo(nil)); err != nil {
-			return err
+		for i, parent := range parentsValue {
+			if _, err := hex.Decode(s.Parents[i][:], parent.MarshalTo(nil)); err != nil {
+				return err
+			}
 		}
-	}
 
-	s.Critical = v.GetBool("is_critical")
+		s.Critical = v.GetBool("is_critical")
+	*/
 
 	return nil
 }
