@@ -143,7 +143,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		ptr := &genesis
 
 		if _, err := blocks.Save(ptr); err != nil {
-			logger.Fatal().Err(err).Msg("BUG: blocks..Save")
+			logger.Fatal().Err(err).Msg("BUG: blocks.Save")
 		}
 
 		block = ptr
@@ -153,7 +153,10 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 	if block == nil {
 		logger.Fatal().Err(err).Msg("BUG: COULD NOT FIND GENESIS, OR STORAGE IS CORRUPTED.")
+		return nil
 	}
+
+	transactions := NewTransactions(block.Index)
 
 	finalizer := NewSnowball()
 	syncer := NewSnowball()
@@ -165,7 +168,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 		accounts:     accounts,
 		blocks:       blocks,
-		transactions: NewTransactions(),
+		transactions: transactions,
 
 		finalizer: finalizer,
 		syncer:    syncer,

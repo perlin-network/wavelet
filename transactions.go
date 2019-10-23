@@ -22,15 +22,19 @@ type Transactions struct {
 	sync.RWMutex
 
 	buffer  map[TransactionID]*Transaction
-	missing map[TransactionID]struct{}
+	missing map[TransactionID]uint64
 	index   *btree.BTree
+
+	height uint64 // The latest block height the node is aware of.
 }
 
-func NewTransactions() *Transactions {
+func NewTransactions(height uint64) *Transactions {
 	return &Transactions{
 		buffer:  make(map[TransactionID]*Transaction),
-		missing: make(map[TransactionID]struct{}),
+		missing: make(map[TransactionID]uint64),
 		index:   btree.New(32),
+
+		height: height,
 	}
 }
 
@@ -82,7 +86,7 @@ func (t *Transactions) BatchMarkMissing(ids ...TransactionID) {
 }
 
 func (t *Transactions) markMissing(id TransactionID) {
-	t.missing[id] = struct{}{}
+	t.missing[id] = t.height
 }
 
 // ReshufflePending reshuffles all transactions that may be proposed into a new block by recomputing
@@ -136,6 +140,20 @@ func (t *Transactions) ReshufflePending(next Block) int {
 			pruned++
 		}
 	}
+
+	// Prune any IDs of transactions that we are trying to pull from our peers
+	// that have not managed to be pulled for `PruningLimit` blocks.
+
+	for id, height := range t.missing {
+		if next.Index >= height+uint64(conf.GetPruningLimit()) {
+			delete(t.missing, id)
+		}
+	}
+
+	// Have all IDs of transactions missing from now on be marked to be missing from
+	// a new block height.
+
+	t.height = next.Index
 
 	return pruned
 }
