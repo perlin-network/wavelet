@@ -249,6 +249,18 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 	return o.MarshalTo(nil), nil
 }
 
+type nonceResponse struct {
+	nonce uint64
+	block uint64
+}
+
+func (s *nonceResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
+	o := arena.NewObject()
+	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(s.nonce, 10)))
+	o.Set("block", arena.NewNumberString(strconv.FormatUint(s.block, 10)))
+	return o.MarshalTo(nil), nil
+}
+
 type transaction struct {
 	// Internal fields.
 	tx     *wavelet.Transaction

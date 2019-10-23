@@ -20,8 +20,9 @@
 package wctl
 
 import (
-	"github.com/valyala/fastjson"
 	"strconv"
+
+	"github.com/valyala/fastjson"
 )
 
 const (
@@ -30,6 +31,7 @@ const (
 	RouteContract = "/contract"
 	RouteTxList   = "/tx"
 	RouteTxSend   = "/tx/send"
+	RouteNonce    = "/nonce"
 
 	RouteWSBroadcaster  = "/poll/broadcaster"
 	RouteWSConsensus    = "/poll/consensus"
@@ -223,5 +225,23 @@ func (a *Account) UnmarshalJSON(b []byte) error {
 	a.IsContract = v.GetBool("is_contract")
 	a.NumPages = v.GetUint64("num_mem_pages")
 
+	return nil
+}
+
+type Nonce struct {
+	Nonce uint64 `json:"nonce"`
+	Block uint64 `json:"block"`
+}
+
+func (n *Nonce) UnmarshalJSON(b []byte) error {
+	var parser fastjson.Parser
+
+	v, err := parser.ParseBytes(b)
+	if err != nil {
+		return err
+	}
+
+	n.Nonce = v.GetUint64("nonce")
+	n.Block = v.GetUint64("block")
 	return nil
 }

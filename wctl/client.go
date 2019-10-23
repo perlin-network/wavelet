@@ -24,12 +24,13 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/fasthttp/websocket"
-	"github.com/perlin-network/noise/edwards25519"
-	"github.com/valyala/fasthttp"
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/fasthttp/websocket"
+	"github.com/perlin-network/noise/edwards25519"
+	"github.com/valyala/fasthttp"
 )
 
 type Config struct {
@@ -338,6 +339,14 @@ func (c *Client) GetTransaction(txID string) (Transaction, error) {
 	path := fmt.Sprintf("%s/%s", RouteTxList, txID)
 
 	var res Transaction
+	err := c.RequestJSON(path, ReqGet, nil, &res)
+	return res, err
+}
+
+func (c *Client) GetAccountNonce(accountID string) (Nonce, error) {
+	path := fmt.Sprintf("%s/%s", RouteNonce, accountID)
+
+	var res Nonce
 	err := c.RequestJSON(path, ReqGet, nil, &res)
 	return res, err
 }

@@ -141,6 +141,8 @@ func (g *Gateway) setup() {
 	r.GET("/tx/:id", g.applyMiddleware(g.getTransaction, ""))
 	r.GET("/tx", g.applyMiddleware(g.listTransactions, "/tx"))
 
+	r.GET("/nonce/:id", g.applyMiddleware(g.getAccountNonce, ""))
+
 	// Connectivity endpoints
 	r.POST("/node/connect", g.applyMiddleware(g.connect, "/node/connect", g.auth))
 	r.POST("/node/disconnect", g.applyMiddleware(g.disconnect, "/node/disconnect", g.auth))
@@ -609,6 +611,34 @@ func (g *Gateway) restart(ctx *fasthttp.RequestCtx) {
 		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error restarting node")))
 		return
 	}
+}
+
+func (g *Gateway) getAccountNonce(ctx *fasthttp.RequestCtx) {
+	param, ok := ctx.UserValue("id").(string)
+	if !ok {
+		g.renderError(ctx, ErrBadRequest(errors.New("id must be a string")))
+		return
+	}
+
+	slice, err := hex.DecodeString(param)
+	if err != nil {
+		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "account ID must be presented as valid hex")))
+		return
+	}
+
+	if len(slice) != wavelet.SizeAccountID {
+		g.renderError(ctx, ErrBadRequest(errors.Errorf("account ID must be %d bytes long", wavelet.SizeAccountID)))
+		return
+	}
+
+	var id wavelet.AccountID
+	copy(id[:], slice)
+
+	snapshot := g.ledger.Snapshot()
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, id)
+	block := g.ledger.Blocks().Latest().Index
+
+	g.render(ctx, &nonceResponse{nonce: nonce, block: block})
 }
 
 func (g *Gateway) notFound() func(ctx *fasthttp.RequestCtx) {
