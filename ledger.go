@@ -88,6 +88,8 @@ type Ledger struct {
 	stop     chan struct{}
 	stopWG   sync.WaitGroup
 	cancelGC context.CancelFunc
+
+	transactionsSyncIndex *bloom.BloomFilter
 }
 
 type config struct {
@@ -180,6 +182,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		fileBuffers:   newFileBufferPool(sys.SyncPooledFileSize, ""),
 
 		sendQuota: make(chan struct{}, 2000),
+
+		transactionsSyncIndex: bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK()),
 	}
 
 	if !cfg.GCDisabled {
@@ -241,6 +245,10 @@ func (l *Ledger) Close() {
 // beforehand.
 func (l *Ledger) AddTransaction(txs ...Transaction) {
 	l.transactions.BatchAdd(l.blocks.Latest().ID, txs...)
+
+	for _, tx := range txs {
+		l.transactionsSyncIndex.Add(tx.ID[:])
+	}
 
 	//l.TakeSendQuota()
 }
@@ -383,14 +391,8 @@ func (l *Ledger) SyncTransactions() {
 
 		logger := log.Sync("sync_tx")
 
-		proposed := l.transactions.ProposableIDs()
-		bf := bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK())
-		for _, txID := range proposed {
-			bf.Add(txID[:])
-		}
-
 		buf := bytes.NewBuffer(nil)
-		if _, err := bf.WriteTo(buf); err != nil {
+		if _, err := l.transactionsSyncIndex.WriteTo(buf); err != nil {
 			logger.Error().Err(err).Msg("failed to marshal bloom filter")
 			continue
 		}
@@ -710,6 +712,9 @@ func (l *Ledger) finalize(block Block) {
 	}
 
 	prunedCount := l.transactions.ReshufflePending(block)
+	if prunedCount > 0 {
+		l.resetTransactionsSyncIndex()
+	}
 
 	_, err = l.blocks.Save(&block)
 	if err != nil {
@@ -1371,6 +1376,8 @@ func (l *Ledger) SyncToLatestBlock() {
 			logger.Fatal().Err(err).Msg("failed to commit collapsed state to our database")
 		}
 
+		l.resetTransactionsSyncIndex()
+
 		logger = log.Sync("apply")
 		logger.Info().
 			Int("num_chunks", len(sources)).
@@ -1554,4 +1561,13 @@ func (l *Ledger) setSync(flag bitset) {
 	l.syncStatusLock.Lock()
 	l.syncStatus = flag
 	l.syncStatusLock.Unlock()
+}
+
+func (l *Ledger) resetTransactionsSyncIndex() {
+	l.transactionsSyncIndex.ClearAll()
+
+	l.transactions.Iterate(func(tx *Transaction) bool {
+		l.transactionsSyncIndex.Add(tx.ID[:])
+		return true
+	})
 }

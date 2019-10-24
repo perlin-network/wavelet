@@ -178,13 +178,13 @@ func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error
 	}
 
 	var toReturn [][]byte
-	for _, txID := range p.ledger.transactions.ProposableIDs() {
-		if exists := bf.Test(txID[:]); !exists {
-			if tx := p.ledger.transactions.Find(txID); tx != nil {
-				toReturn = append(toReturn, tx.Marshal())
-			}
+	p.ledger.transactions.Iterate(func(tx *Transaction) bool {
+		if exists := bf.Test(tx.ID[:]); !exists {
+			toReturn = append(toReturn, tx.Marshal())
 		}
-	}
+
+		return true
+	})
 
 	res := &TransactionsSyncResponse{
 		Data: &TransactionsSyncResponse_TransactionsNum{
