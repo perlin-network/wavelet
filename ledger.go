@@ -53,9 +53,10 @@ const (
 )
 
 var (
-	ErrOutOfSync     = errors.New("Node is currently ouf of sync. Please try again later.")
-	ErrAlreadyExists = errors.New("transaction already exists in the graph")
-	ErrMissingTx     = errors.New("missing transaction")
+	ErrOutOfSync          = errors.New("Node is currently ouf of sync. Please try again later.")
+	ErrAlreadyExists      = errors.New("transaction already exists in the graph")
+	ErrMissingTx          = errors.New("missing transaction")
+	ErrInvalidBlockHeight = errors.New("sender transaction must have the latest known block height")
 )
 
 type Ledger struct {
@@ -239,7 +240,14 @@ func (l *Ledger) Close() {
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
 func (l *Ledger) AddTransaction(txs ...Transaction) error {
-	l.transactions.BatchAdd(l.blocks.Latest().ID, txs...)
+	block := l.blocks.Latest()
+	for _, tx := range txs {
+		if tx.Sender == l.client.Keys().PublicKey() && tx.Block != block.Index+1 {
+			return ErrInvalidBlockHeight
+		}
+	}
+
+	l.transactions.BatchAdd(block.ID, txs...)
 
 	//l.TakeSendQuota()
 
