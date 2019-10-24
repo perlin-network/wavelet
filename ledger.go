@@ -538,38 +538,31 @@ func (l *Ledger) PullMissingTransactions() {
 			req.TransactionIds = append(req.TransactionIds, txID[:])
 		}
 
-		workerChan := make(chan *grpc.ClientConn, 16)
-		var workerWG sync.WaitGroup
-		workerWG.Add(cap(workerChan))
-		responseChan := make(chan *TransactionPullResponse, snowballK)
-		for i := 0; i < cap(workerChan); i++ {
-			go func() {
-				for conn := range workerChan {
-					client := NewWaveletClient(conn)
-
-					ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
-					batch, err := client.PullTransactions(ctx, req)
-					if err != nil {
-						logger.Error().Err(err).Msg("failed to download missing transactions")
-						cancel()
-
-						responseChan <- nil
-
-						return
-					}
-					cancel()
-
-					responseChan <- batch
-				}
-			}()
-			workerWG.Done()
-		}
-
+		var wg sync.WaitGroup
+		responseChan := make(chan *TransactionPullResponse)
 		for _, p := range peers {
-			workerChan <- p
+			wg.Add(1)
+			go func(conn *grpc.ClientConn) {
+				defer wg.Done()
+				client := NewWaveletClient(conn)
+
+				ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
+				defer cancel()
+
+				batch, err := client.PullTransactions(ctx, req)
+				if err != nil {
+					logger.Error().Err(err).Msg("failed to download missing transactions")
+
+					responseChan <- nil
+
+					return
+				}
+
+				responseChan <- batch
+			}(p)
 		}
 
-		responses := make([]*TransactionPullResponse, 0, snowballK)
+		responses := make([]*TransactionPullResponse, 0, len(peers))
 		for i := 0; i < cap(responses); i++ {
 			response := <-responseChan
 
@@ -580,8 +573,8 @@ func (l *Ledger) PullMissingTransactions() {
 			responses = append(responses, response)
 		}
 
-		close(workerChan)
-		workerWG.Wait()
+		close(responseChan)
+		wg.Wait()
 
 		count := int64(0)
 
