@@ -1,10 +1,12 @@
 package wctl
 
 import (
+	"sync/atomic"
+
 	"github.com/valyala/fastjson"
 )
 
-func (c *Client) PollConsensus() (func(), error) {
+func (c *Client) pollConsensus() (func(), error) {
 	return c.pollWS(RouteWSConsensus, func(v *fastjson.Value) {
 		var err error
 
@@ -67,8 +69,7 @@ func parseConsensusFinalized(c *Client, v *fastjson.Value) error {
 	f.BlockHeight = v.GetUint64("new_block_height")
 	f.Message = string(v.GetStringBytes("message"))
 
-	// Update the local counter
-	c.Block = f.BlockHeight
+	atomic.StoreUint64(&c.Block, f.BlockHeight)
 
 	if c.OnFinalized != nil {
 		c.OnFinalized(f)
