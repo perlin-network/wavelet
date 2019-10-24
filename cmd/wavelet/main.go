@@ -319,10 +319,12 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 		wctlCfg.UseHTTPS = u.Scheme == "https"
 	}
 
-	cli, err := wctl.NewClient(wctlCfg)
+	client, err := wctl.NewClient(wctlCfg)
 	if err != nil {
 		return err
 	}
+
+	defer client.Close()
 
 	cli.OnError = func(err error) {
 		logger.Err(err).Msg("wctl error")
