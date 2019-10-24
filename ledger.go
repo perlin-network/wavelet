@@ -24,7 +24,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"github.com/willf/bloom"
 	"io"
 	"math/rand"
@@ -240,12 +239,10 @@ func (l *Ledger) Close() {
 // invalid or fails any validation checks, an error is returned. No error
 // is returned if the transaction has already existed int he ledgers graph
 // beforehand.
-func (l *Ledger) AddTransaction(txs ...Transaction) error {
+func (l *Ledger) AddTransaction(txs ...Transaction) {
 	l.transactions.BatchAdd(l.blocks.Latest().ID, txs...)
 
 	//l.TakeSendQuota()
-
-	return nil
 }
 
 // Find searches through complete transaction and account indices for a specified
@@ -348,7 +345,8 @@ func (l *Ledger) Restart() error {
 // missing transactions and incrementally finalizing intervals of transactions in
 // the ledgers graph.
 func (l *Ledger) PerformConsensus() {
-	go l.PullTransactions()
+	go l.PullMissingTransactions()
+	go l.SyncTransactions()
 	go l.FinalizeBlocks()
 }
 
@@ -356,15 +354,10 @@ func (l *Ledger) Snapshot() *avl.Tree {
 	return l.accounts.Snapshot()
 }
 
-// PullTransactions is a goroutine which continuously pulls missing transactions
-// from randomly sampled peers in the network. It does so by sending a list of
-// transaction IDs it has, and the peer will respond with a list of transactions
-// which the peer has but the sender node doesn't.
-//
-// The transaction IDs are stored inside a bloom filter to keep the space constant
-// with increasing transactions, and also because bloom filter has no false negative
-// (the peer will only use it to check if a transaction is not in the set).
-func (l *Ledger) PullTransactions() {
+// SyncTransactions is an infinite loop which constantly sends transaction ids from its index
+// in form of the bloom filter to randomly sampled number of peers and adds to it's state all received
+// transactions.
+func (l *Ledger) SyncTransactions() {
 	l.consensus.Add(1)
 	defer l.consensus.Done()
 
@@ -388,10 +381,11 @@ func (l *Ledger) PullTransactions() {
 			continue
 		}
 
-		logger := log.Sync("pull_tx")
+		logger := log.Sync("sync_tx")
 
+		proposed := l.transactions.ProposableIDs()
 		bf := bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK())
-		for _, txID := range l.transactions.ProposableIDs() {
+		for _, txID := range proposed {
 			bf.Add(txID[:])
 		}
 
@@ -401,8 +395,145 @@ func (l *Ledger) PullTransactions() {
 			continue
 		}
 
-		req := &TransactionPullRequest{
-			Filter: buf.Bytes(),
+		var wg sync.WaitGroup
+
+		bfReq := &TransactionsSyncRequest{
+			Data: &TransactionsSyncRequest_Filter{
+				Filter: buf.Bytes(),
+			},
+		}
+
+		var (
+			chunkSize uint64 = 1000
+			maxSize   uint64 = 1 << 20
+		)
+
+		for _, p := range peers {
+			wg.Add(1)
+			go func(conn *grpc.ClientConn) {
+				defer wg.Done()
+
+				ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
+				defer cancel()
+
+				stream, err := NewWaveletClient(conn).SyncTransactions(ctx)
+				if err != nil {
+					logger.Error().Err(err).Msg("failed to create sync transactions stream")
+					return
+				}
+
+				defer func() {
+					if err := stream.CloseSend(); err != nil {
+						logger.Error().Err(err).Msg("failed to send sync transactions bloom filter")
+					}
+				}()
+
+				if err := stream.Send(bfReq); err != nil {
+					logger.Error().Err(err).Msg("failed to send sync transactions bloom filter")
+					return
+				}
+
+				res, err := stream.Recv()
+				if err != nil {
+					logger.Error().Err(err).Msg("failed to receive sync transactions header")
+					return
+				}
+
+				count := res.GetTransactionsNum()
+				if count == 0 || count > maxSize {
+					return
+				}
+
+				if count > 0 {
+					logger.Info().
+						Uint64("count", count).
+						Msg("Requesting transaction(s) to sync.")
+				}
+
+				for count > 0 {
+					req := TransactionsSyncRequest_ChunkSize{
+						ChunkSize: chunkSize,
+					}
+
+					if count < chunkSize {
+						req.ChunkSize = count
+					}
+
+					if err := stream.Send(&TransactionsSyncRequest{Data: &req}); err != nil {
+						logger.Error().Err(err).Msg("failed to receive sync transactions header")
+						return
+					}
+
+					res, err := stream.Recv()
+					if err != nil {
+						logger.Error().Err(err).Msg("failed to receive sync transactions header")
+						return
+					}
+
+					transactions := res.GetTransactions()
+					if transactions == nil {
+						return
+					}
+
+					txs := make([]Transaction, 0, len(transactions.Transactions))
+					for _, txBody := range transactions.Transactions {
+						tx, err := UnmarshalTransaction(bytes.NewReader(txBody))
+						if err != nil {
+							logger.Error().Err(err).Msg("failed to unmarshal synced transaction")
+							continue
+						}
+
+						txs = append(txs, tx)
+					}
+
+					count -= uint64(len(txs))
+
+					l.AddTransaction(txs...)
+
+					l.metrics.downloadedTX.Mark(int64(count))
+					l.metrics.receivedTX.Mark(int64(count))
+				}
+			}(p)
+		}
+
+		wg.Wait()
+	}
+}
+
+// PullMissingTransactions is a goroutine which continuously pulls missing transactions
+// from randomly sampled peers in the network. It does so by sending a list of
+// transaction IDs which node is missing.
+func (l *Ledger) PullMissingTransactions() {
+	l.consensus.Add(1)
+	defer l.consensus.Done()
+
+	for {
+		select {
+		case <-l.sync:
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
+
+		snowballK := conf.GetSnowballK()
+
+		peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
+		if err != nil {
+			select {
+			case <-l.sync:
+				return
+			default:
+			}
+
+			continue
+		}
+
+		logger := log.Sync("pull_missing_tx")
+
+		// Build list of transaction IDs
+		missingIDs := l.transactions.MissingIDs()
+		req := &TransactionPullRequest{TransactionIds: make([][]byte, 0, len(missingIDs))}
+		for _, txID := range missingIDs {
+			req.TransactionIds = append(req.TransactionIds, txID[:])
 		}
 
 		workerChan := make(chan *grpc.ClientConn, 16)
@@ -475,11 +606,7 @@ func (l *Ledger) PullTransactions() {
 		if count > 0 {
 			logger.Info().
 				Int64("count", count).
-				Msg("Pulled transaction(s).")
-		}
-
-		if len(l.transactions.MissingIDs()) > 0 {
-			fmt.Println("??????????", len(l.transactions.MissingIDs()))
+				Msg("Pulled missing transaction(s).")
 		}
 
 		l.metrics.downloadedTX.Mark(count)

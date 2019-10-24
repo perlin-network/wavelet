@@ -56,8 +56,26 @@ message SyncResponse {
     }
 }
 
+message TransactionsSyncRequest {
+    oneof Data {
+        bytes filter = 1;
+        uint64 chunk_size = 2;
+    }
+}
+
+message TransactionsSyncPart {
+    repeated bytes transactions = 1;
+}
+
+message TransactionsSyncResponse {
+    oneof Data {
+        uint64 transactions_num = 1;
+        TransactionsSyncPart transactions = 2;
+    }
+}
+
 message TransactionPullRequest {
-    bytes filter = 1;
+    repeated bytes transaction_ids = 1;
 }
 
 message TransactionPullResponse {
@@ -74,4 +92,5 @@ service Wavelet {
     rpc Sync (stream SyncRequest) returns (stream SyncResponse) {}
 
     rpc PullTransactions (TransactionPullRequest) returns (TransactionPullResponse) {}
+    rpc SyncTransactions (stream TransactionsSyncRequest) returns (stream TransactionsSyncResponse) {}
 }

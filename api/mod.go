@@ -336,10 +336,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 
 	// TODO(kenta): check signature and nonce
 
-	if err = g.ledger.AddTransaction(tx); err != nil {
-		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error adding your transaction to graph")))
-		return
-	}
+	g.ledger.AddTransaction(tx)
 
 	g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
 }

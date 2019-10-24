@@ -59,10 +59,14 @@ func (t *Transactions) BatchAdd(block BlockID, transactions ...Transaction) {
 
 func (t *Transactions) add(block BlockID, tx Transaction) {
 	if t.height >= tx.Block+uint64(conf.GetPruningLimit()) {
+		fmt.Println(">>>>>>>>>>>> why??????")
 		return
 	}
 
 	if _, exists := t.buffer[tx.ID]; exists {
+		if _, ok := t.missing[tx.ID]; ok {
+			fmt.Println(">>>>>>>>>>>> WHOAAAAAAAAAAAAAA")
+		}
 		return
 	}
 
