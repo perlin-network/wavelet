@@ -396,7 +396,7 @@ func (l *Ledger) PullTransactions() {
 			continue
 		}
 
-		logger := log.Consensus("pull-transactions")
+		logger := log.Sync("pull_tx")
 
 		buf := bytes.NewBuffer(nil)
 		if _, err := l.transactionIDs.WriteTo(buf); err != nil {

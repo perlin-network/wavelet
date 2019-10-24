@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"fmt"
 	"github.com/google/btree"
 	"github.com/perlin-network/wavelet/conf"
 	"math/big"
@@ -125,18 +126,15 @@ func (t *Transactions) ReshufflePending(next Block) int {
 
 		tx := t.buffer[item.id]
 
-		if next.Index >= tx.Block+uint64(conf.GetPruningLimit()) {
-			delete(t.buffer, tx.ID)
-			pruned++
-
-			return true
+		if next.Index < tx.Block+uint64(conf.GetPruningLimit()) {
+			item.index = tx.ComputeIndex(next.ID)
+			items = append(items, item)
 		}
-
-		item.index = tx.ComputeIndex(next.ID)
-		items = append(items, item)
 
 		return true
 	})
+
+	fmt.Printf("Restoring %d items into mempool which originally had %d items, with next block height being %d.\n", len(items), t.index.Len(), next.Index)
 
 	// Clear the entire mempool.
 
@@ -183,6 +181,18 @@ func (t *Transactions) Has(id TransactionID) bool {
 
 	_, exists := t.buffer[id]
 	return exists
+}
+
+func (t *Transactions) HasPending(block BlockID, id TransactionID) bool {
+	t.RLock()
+	defer t.RUnlock()
+
+	tx, exists := t.buffer[id]
+	if !exists {
+		return false
+	}
+
+	return t.index.Has(mempoolItem{index: tx.ComputeIndex(block), id: id})
 }
 
 // Find searches and returns a transaction by its id if the node has it
@@ -232,7 +242,10 @@ func (t *Transactions) ProposableIDs() []TransactionID {
 	proposable := make([]TransactionID, 0, t.index.Len())
 
 	t.index.Ascend(func(i btree.Item) bool {
-		proposable = append(proposable, i.(mempoolItem).id)
+		if t.buffer[i.(mempoolItem).id].Block <= t.height+1 {
+			proposable = append(proposable, i.(mempoolItem).id)
+		}
+
 		return true
 	})
 
