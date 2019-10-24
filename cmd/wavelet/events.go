@@ -138,6 +138,9 @@ func onFinalized(u wctl.Finalized) {
 	logger.Info().
 		Hex("block_id", u.BlockID[:]).
 		Uint64("block_index", u.BlockHeight).
+		Int("num_applied_tx", u.NumApplied).
+		Int("num_rejected_tx", u.NumRejected).
+		Int("num_pruned_tx", u.NumPruned).
 		Msg(u.Message)
 }
 

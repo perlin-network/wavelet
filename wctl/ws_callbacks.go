@@ -74,6 +74,9 @@ type (
 	Finalized struct {
 		BlockID     [32]byte `json:"block_id"`
 		BlockHeight uint64   `json:"block_index"`
+		NumApplied  int      `json:"num_applied_tx"`
+		NumRejected int      `json:"num_rejected_tx"`
+		NumPruned   int      `json:"num_pruned_tx"`
 		Message     string   `json:"message"`
 	}
 	OnFinalized = func(Finalized)

@@ -586,7 +586,7 @@ func (l *Ledger) finalize(block Block) {
 		return
 	}
 
-	fmt.Println("!!!!!!!!!!!!!!!!!!", l.transactions.ReshufflePending(block))
+	prunedCount := l.transactions.ReshufflePending(block)
 
 	_, err = l.blocks.Save(&block)
 	if err != nil {
@@ -620,6 +620,7 @@ func (l *Ledger) finalize(block Block) {
 	logger.Info().
 		Int("num_applied_tx", results.appliedCount).
 		Int("num_rejected_tx", results.rejectedCount).
+		Int("num_pruned_tx", prunedCount).
 		Uint64("old_block_height", current.Index).
 		Uint64("new_block_height", block.Index).
 		Hex("old_block_id", current.ID[:]).

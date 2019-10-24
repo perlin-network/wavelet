@@ -105,7 +105,7 @@ func (t *Transactions) ReshufflePending(next Block) int {
 
 	// Delete mempool entries for transactions in the finalized block.
 
-	pruned := len(next.Transactions)
+	pruned := 0
 
 	lookup := make(map[TransactionID]struct{})
 

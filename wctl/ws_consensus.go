@@ -67,6 +67,11 @@ func parseConsensusFinalized(c *Client, v *fastjson.Value) error {
 	}
 
 	f.BlockHeight = v.GetUint64("new_block_height")
+
+	f.NumApplied = v.GetInt("num_applied_tx")
+	f.NumRejected = v.GetInt("num_rejected_tx")
+	f.NumPruned = v.GetInt("num_pruned_tx")
+
 	f.Message = string(v.GetStringBytes("message"))
 
 	atomic.StoreUint64(&c.Block, f.BlockHeight)
