@@ -126,12 +126,10 @@ func (t *Transactions) ReshufflePending(next Block) int {
 
 		tx := t.buffer[item.id]
 
-		if next.Index >= tx.Block+uint64(conf.GetPruningLimit()) {
-			return true
+		if next.Index < tx.Block+uint64(conf.GetPruningLimit()) {
+			item.index = tx.ComputeIndex(next.ID)
+			items = append(items, item)
 		}
-
-		item.index = tx.ComputeIndex(next.ID)
-		items = append(items, item)
 
 		return true
 	})
@@ -183,6 +181,18 @@ func (t *Transactions) Has(id TransactionID) bool {
 
 	_, exists := t.buffer[id]
 	return exists
+}
+
+func (t *Transactions) HasPending(block BlockID, id TransactionID) bool {
+	t.RLock()
+	defer t.RUnlock()
+
+	tx, exists := t.buffer[id]
+	if !exists {
+		return false
+	}
+
+	return t.index.Has(mempoolItem{index: tx.ComputeIndex(block), id: id})
 }
 
 // Find searches and returns a transaction by its id if the node has it
