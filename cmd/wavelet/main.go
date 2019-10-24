@@ -326,11 +326,11 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 
 	defer client.Close()
 
-	cli.OnError = func(err error) {
+	client.OnError = func(err error) {
 		logger.Err(err).Msg("wctl error")
 	}
 
-	shell, err := NewCLI(cli, CLIWithStdin(stdin), CLIWithStdout(stdout))
+	shell, err := NewCLI(client, CLIWithStdin(stdin), CLIWithStdout(stdout))
 	if err != nil {
 		return fmt.Errorf("Failed to spawn the CLI: %v", err)
 	}
