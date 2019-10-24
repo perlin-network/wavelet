@@ -386,7 +386,7 @@ func (l *Ledger) PullTransactions() {
 			continue
 		}
 
-		logger := log.Consensus("pull-transactions")
+		logger := log.Sync("pull_tx")
 
 		// Build list of transaction IDs
 		req := &TransactionPullRequest{

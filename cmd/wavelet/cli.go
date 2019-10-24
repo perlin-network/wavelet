@@ -325,8 +325,16 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 
 	c.rl = rl
 
-	log.SetWriter(log.LoggerWavelet, log.NewConsoleWriter(
-		rl.Stdout(), log.FilterFor(log.ModuleNode)))
+	log.SetWriter(
+		log.LoggerWavelet,
+		log.NewConsoleWriter(
+			rl.Stdout(),
+			log.FilterFor(
+				log.ModuleNode,
+				log.ModuleSync,
+			),
+		),
+	)
 
 	return c, nil
 }
