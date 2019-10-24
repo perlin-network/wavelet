@@ -89,8 +89,6 @@ type Ledger struct {
 	stop     chan struct{}
 	stopWG   sync.WaitGroup
 	cancelGC context.CancelFunc
-
-	transactionIDs *bloom.BloomFilter
 }
 
 type config struct {
@@ -183,8 +181,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		fileBuffers:   newFileBufferPool(sys.SyncPooledFileSize, ""),
 
 		sendQuota: make(chan struct{}, 2000),
-
-		transactionIDs: bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK()),
 	}
 
 	if !cfg.GCDisabled {
@@ -246,10 +242,6 @@ func (l *Ledger) Close() {
 // beforehand.
 func (l *Ledger) AddTransaction(txs ...Transaction) error {
 	l.transactions.BatchAdd(l.blocks.Latest().ID, txs...)
-
-	for _, tx := range txs {
-		l.transactionIDs.Add(tx.ID[:])
-	}
 
 	//l.TakeSendQuota()
 
@@ -398,8 +390,13 @@ func (l *Ledger) PullTransactions() {
 
 		logger := log.Sync("pull_tx")
 
+		bf := bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK())
+		for _, txID := range l.transactions.ProposableIDs() {
+			bf.Add(txID[:])
+		}
+
 		buf := bytes.NewBuffer(nil)
-		if _, err := l.transactionIDs.WriteTo(buf); err != nil {
+		if _, err := bf.WriteTo(buf); err != nil {
 			logger.Error().Err(err).Msg("failed to marshal bloom filter")
 			continue
 		}
@@ -524,7 +521,6 @@ func (l *Ledger) FinalizeBlocks() {
 		} else {
 			if decided {
 				l.finalize(*preferred.Value().(*Block))
-				l.rebuildBloomFilter()
 			} else {
 				l.query()
 			}
@@ -1250,8 +1246,6 @@ func (l *Ledger) SyncToLatestBlock() {
 			logger.Fatal().Err(err).Msg("failed to commit collapsed state to our database")
 		}
 
-		l.rebuildBloomFilter()
-
 		logger = log.Sync("apply")
 		logger.Info().
 			Int("num_chunks", len(sources)).
@@ -1435,18 +1429,4 @@ func (l *Ledger) setSync(flag bitset) {
 	l.syncStatusLock.Lock()
 	l.syncStatus = flag
 	l.syncStatusLock.Unlock()
-}
-
-// rebuildBloomFilter rebuilds the bloom filter which stores the set of
-// transactions in the graph. This method is called after transactions are
-// pruned, as it's not possible to remove items from a bloom filter.
-func (l *Ledger) rebuildBloomFilter() {
-	l.transactionIDs.ClearAll()
-
-	fmt.Println(">>>>>>>>", l.transactions.Len(), l.transactionIDs.EstimateFalsePositiveRate(uint(l.transactions.Len())))
-
-	l.transactions.Iterate(func(tx *Transaction) bool {
-		l.transactionIDs.Add(tx.ID[:])
-		return true
-	})
 }
