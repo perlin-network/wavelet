@@ -1,6 +1,7 @@
 package wavelet
 
 import (
+	"fmt"
 	"github.com/google/btree"
 	"github.com/perlin-network/wavelet/conf"
 	"math/big"
@@ -126,9 +127,6 @@ func (t *Transactions) ReshufflePending(next Block) int {
 		tx := t.buffer[item.id]
 
 		if next.Index >= tx.Block+uint64(conf.GetPruningLimit()) {
-			delete(t.buffer, tx.ID)
-			pruned++
-
 			return true
 		}
 
@@ -137,6 +135,8 @@ func (t *Transactions) ReshufflePending(next Block) int {
 
 		return true
 	})
+
+	fmt.Printf("Restoring %d items into mempool which originally had %d items, with next block height being %d.\n", len(items), t.index.Len(), next.Index)
 
 	// Clear the entire mempool.
 
