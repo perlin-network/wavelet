@@ -183,6 +183,8 @@ func commandRemote(c *cli.Context) error {
 		return errors.Wrap(err, "failed to connect to node HTTP API")
 	}
 
+	defer client.Close()
+
 	fmt.Println("You're now connected!")
 
 	// Add the OnMetrics callback
