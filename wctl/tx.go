@@ -83,7 +83,7 @@ func (c *Client) SendTransaction(tag byte, payload []byte) (*TxResponse, error) 
 	var res TxResponse
 
 	nonce := atomic.AddUint64(&c.Nonce, 1)
-	block := atomic.LoadUint64(&c.Block) + 1
+	block := atomic.LoadUint64(&c.Block)
 
 	var nonceBuf [8]byte
 	binary.BigEndian.PutUint64(nonceBuf[:], nonce)
@@ -93,7 +93,7 @@ func (c *Client) SendTransaction(tag byte, payload []byte) (*TxResponse, error) 
 
 	signature := edwards25519.Sign(
 		c.PrivateKey,
-		append(nonceBuf[:], append(blockBuf[:], append([]byte{byte(tag)}, payload...)...)...),
+		append(nonceBuf[:], append(blockBuf[:], append([]byte{tag}, payload...)...)...),
 	)
 
 	req := TxRequest{
