@@ -70,10 +70,10 @@ func sendTransaction(
 		Payloads: make([][]byte, 0, n),
 	}
 
+	//transfer := wavelet.Transfer{Recipient: client.PublicKey, Amount: uint64(1)}
 	stake := wavelet.Stake{Opcode: sys.PlaceStake, Amount: uint64(i)}
 	for i := 0; i < n; i++ {
 		if err := payload.AddStake(stake); err != nil {
-			// Shouldn't happen
 			panic(err)
 		}
 	}
