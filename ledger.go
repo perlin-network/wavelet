@@ -747,6 +747,8 @@ func (l *Ledger) query() {
 
 		for _, id := range vote.block.Transactions {
 			if !l.transactions.Has(id) {
+				l.transactions.MarkMissing(id)
+
 				vote.block = nil
 				break
 			}
