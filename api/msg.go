@@ -212,6 +212,7 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 
 	snapshot := s.ledger.Snapshot()
 	block := s.ledger.Blocks().Latest()
+	preferred := s.ledger.Finalizer().Preferred()
 
 	accountsLen := wavelet.ReadAccountsLen(snapshot)
 
@@ -228,22 +229,40 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 	o.Set("sync_status",
 		arena.NewString(s.ledger.SyncStatus()))
 
-	b := arena.NewObject()
-	b.Set("merkle_root",
-		arena.NewString(hex.EncodeToString(block.Merkle[:])))
-	b.Set("height",
-		arena.NewNumberString(strconv.FormatUint(block.Index, 10)))
-	b.Set("id",
-		arena.NewString(hex.EncodeToString(block.ID[:])))
-	b.Set("transactions",
-		arena.NewNumberInt(len(block.Transactions)))
+	{
+		blockObj := arena.NewObject()
+		blockObj.Set("merkle_root",
+			arena.NewString(hex.EncodeToString(block.Merkle[:])))
+		blockObj.Set("height",
+			arena.NewNumberString(strconv.FormatUint(block.Index, 10)))
+		blockObj.Set("id",
+			arena.NewString(hex.EncodeToString(block.ID[:])))
+		blockObj.Set("transactions",
+			arena.NewNumberInt(len(block.Transactions)))
 
-	o.Set("block", b)
+		o.Set("block", blockObj)
+	}
+
+	if preferred != nil {
+		preferredObj := arena.NewObject()
+		preferredObj.Set("merkle_root",
+			arena.NewString(hex.EncodeToString(block.Merkle[:])))
+		preferredObj.Set("height",
+			arena.NewNumberString(strconv.FormatUint(block.Index, 10)))
+		preferredObj.Set("id",
+			arena.NewString(hex.EncodeToString(block.ID[:])))
+		preferredObj.Set("transactions",
+			arena.NewNumberInt(len(block.Transactions)))
+
+		o.Set("preferred", preferredObj)
+	} else {
+		o.Set("preferred", arena.NewNull())
+	}
 
 	o.Set("num_tx",
-		arena.NewNumberInt(s.ledger.Transactions().Len()))
-	o.Set("num_tx_in_store",
 		arena.NewNumberInt(s.ledger.Transactions().PendingLen()))
+	o.Set("num_tx_in_store",
+		arena.NewNumberInt(s.ledger.Transactions().Len()))
 	o.Set("num_accounts_in_store",
 		arena.NewNumberString(strconv.FormatUint(accountsLen, 10)))
 
