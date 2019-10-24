@@ -122,8 +122,9 @@ func TestTransactionsMarkMissing(t *testing.T) {
 			transactions = append(transactions, tx)
 		}
 
-		block := NewBlock(0, ZeroMerkleNodeID, ids...)
-		manager.BatchMarkMissing(block.Transactions...)
+		for _, id := range ids {
+			manager.MarkMissing(id)
+		}
 
 		// Assert the correct number of transactions are marked as missing,
 		if !assert.Len(t, manager.missing, cap(transactions)+1) || !assert.Len(t, manager.MissingIDs(), cap(transactions)+1) {
@@ -291,7 +292,9 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) {
 			missingIDs = append(missingIDs, tx.ID)
 		}
 
-		manager.BatchMarkMissing(missingIDs...)
+		for _, id := range missingIDs {
+			manager.MarkMissing(id)
+		}
 
 		// Generate a unique next-block ID to shuffle with that is just 1 block index before the pruning limit.
 

@@ -259,6 +259,8 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 		o.Set("preferred", arena.NewNull())
 	}
 
+	o.Set("num_missing_tx", arena.NewNumberInt(s.ledger.Transactions().MissingLen()))
+
 	o.Set("num_tx",
 		arena.NewNumberInt(s.ledger.Transactions().PendingLen()))
 	o.Set("num_tx_in_store",
