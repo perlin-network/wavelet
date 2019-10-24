@@ -232,7 +232,10 @@ func (t *Transactions) ProposableIDs() []TransactionID {
 	proposable := make([]TransactionID, 0, t.index.Len())
 
 	t.index.Ascend(func(i btree.Item) bool {
-		proposable = append(proposable, i.(mempoolItem).id)
+		if t.buffer[i.(mempoolItem).id].Block <= t.height+1 {
+			proposable = append(proposable, i.(mempoolItem).id)
+		}
+
 		return true
 	})
 

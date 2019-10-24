@@ -20,6 +20,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 
@@ -41,14 +42,11 @@ func (cli *CLI) status(ctx *cli.Context) {
 		a = &wctl.Account{}
 	}
 
-	/*
-		preferredID := "N/A"
+	preferredID := "N/A"
 
-		if preferred := cli.ledger.Finalizer().Preferred(); preferred != nil {
-			id := preferred.ID()
-			preferredID = hex.EncodeToString(id[:])
-		}
-	*/
+	if l.Preferred != nil {
+		preferredID = hex.EncodeToString(l.Preferred.ID[:])
+	}
 
 	var peers = make([]string, 0, len(l.Peers))
 	for _, p := range l.Peers {
@@ -56,7 +54,7 @@ func (cli *CLI) status(ctx *cli.Context) {
 	}
 
 	cli.logger.Info().
-		Uint64("block_index", l.Block.Index).
+		Uint64("block_height", l.Block.Index).
 		Hex("block_id", l.Block.ID[:]).
 		Hex("user_id", l.PublicKey[:]).
 		Uint64("balance", a.Balance).
@@ -70,6 +68,7 @@ func (cli *CLI) status(ctx *cli.Context) {
 		Uint64("client_nonce", cli.client.Nonce).
 		Uint64("client_block", cli.client.Block).
 		Str("sync_status", l.SyncStatus).
+		Str("preferred_block_id", preferredID).
 		Int("preferred_votes", l.PreferredVotes).
 		Msg("Here is the current status of your node.")
 }
