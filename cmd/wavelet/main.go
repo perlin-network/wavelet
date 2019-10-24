@@ -319,12 +319,18 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 		wctlCfg.UseHTTPS = u.Scheme == "https"
 	}
 
-	cli, err := wctl.NewClient(wctlCfg)
+	client, err := wctl.NewClient(wctlCfg)
 	if err != nil {
 		return err
 	}
 
-	shell, err := NewCLI(cli, CLIWithStdin(stdin), CLIWithStdout(stdout))
+	defer client.Close()
+
+	client.OnError = func(err error) {
+		logger.Err(err).Msg("wctl error")
+	}
+
+	shell, err := NewCLI(client, CLIWithStdin(stdin), CLIWithStdout(stdout))
 	if err != nil {
 		return fmt.Errorf("Failed to spawn the CLI: %v", err)
 	}

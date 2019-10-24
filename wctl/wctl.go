@@ -27,6 +27,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sync/atomic"
 	"time"
 
 	"github.com/perlin-network/noise/edwards25519"
@@ -81,9 +82,14 @@ type Client struct {
 	url      string
 
 	// Local state counters
-	// TODO
 	Nonce uint64
 	Block uint64
+
+	// Stop the background consensus that is created before
+	stopConsensus func()
+
+	// Stop other websockets that the user spawned
+	stopSockets []func()
 
 	// TODO: metrics, stake, consensus, network
 
@@ -94,20 +100,25 @@ type Client struct {
 	// Websocket callbacks
 	OnError
 
+	// Accounts
 	OnBalanceUpdated
 	OnGasBalanceUpdated
 	OnNumPagesUpdated
 	OnStakeUpdated
 	OnRewardUpdated
 
+	// Network
 	OnPeerJoin
 	OnPeerLeave
 
+	// Consensus
 	OnProposal
 	OnFinalized
 
+	// Stake
 	OnStakeRewardValidator
 
+	// Contract
 	OnContractGas
 	OnContractLog
 
@@ -154,10 +165,28 @@ func NewClient(config Config) (*Client, error) {
 		return c, err
 	}
 
-	c.Nonce = n.Nonce
-	c.Block = n.Block
+	atomic.StoreUint64(&c.Nonce, n.Nonce)
+	atomic.StoreUint64(&c.Block, n.Block)
+
+	// Start listening to consensus to track Block
+	cancel, err := c.pollConsensus()
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+
+	c.stopConsensus = cancel
 
 	return c, nil
+}
+
+func (c *Client) Close() {
+	c.stopConsensus()
+
+	// cancel user-spawned sockets
+	for _, c := range c.stopSockets {
+		c()
+	}
 }
 
 func (c *Client) GetContractCode(contractID string) (string, error) {

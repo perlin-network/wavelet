@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/wctl"
 )
@@ -40,9 +41,6 @@ func setEvents(c *wctl.Client) (func(), error) {
 
 	c.OnProposal = onProposal
 	c.OnFinalized = onFinalized
-	if err := addToCloser(toClose)(c.PollConsensus()); err != nil {
-		return cleanup, err
-	}
 
 	c.OnContractGas = onContractGas
 	c.OnContractLog = onContractLog

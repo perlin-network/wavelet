@@ -1,10 +1,12 @@
 package wctl
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"net/url"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/perlin-network/noise/edwards25519"
@@ -80,19 +82,24 @@ func (c *Client) GetTransaction(txID [32]byte) (*Transaction, error) {
 func (c *Client) SendTransaction(tag byte, payload []byte) (*TxResponse, error) {
 	var res TxResponse
 
-	var nonce [8]byte // TODO(kenta): nonce
+	nonce := atomic.AddUint64(&c.Nonce, 1)
+	block := atomic.LoadUint64(&c.Block) + 1
+
+	var nonceBuf [8]byte
+	binary.BigEndian.PutUint64(nonceBuf[:], nonce)
+
+	var blockBuf [8]byte
+	binary.BigEndian.PutUint64(blockBuf[:], block)
 
 	signature := edwards25519.Sign(
 		c.PrivateKey,
-		append(nonce[:], append([]byte{tag}, payload...)...),
+		append(nonceBuf[:], append(blockBuf[:], append([]byte{byte(tag)}, payload...)...)...),
 	)
-
-	// TODO: Probably not thread safe, have mutex to guard nonce?
 
 	req := TxRequest{
 		Sender:    c.PublicKey,
-		Nonce:     c.Nonce + 1,
-		Block:     c.Block + 1,
+		Nonce:     nonce,
+		Block:     block,
 		Tag:       tag,
 		Payload:   payload,
 		Signature: signature,
@@ -101,9 +108,6 @@ func (c *Client) SendTransaction(tag byte, payload []byte) (*TxResponse, error) 
 	if err := c.RequestJSON(RouteTxSend, ReqPost, &req, &res); err != nil {
 		return nil, err
 	}
-
-	c.Nonce++
-	c.Block++
 
 	return &res, nil
 }

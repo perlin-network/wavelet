@@ -72,10 +72,14 @@ func (c *Client) pollWS(path string, callback func(*fastjson.Value)) (func(), er
 		}
 	}()
 
-	return func() {
+	cancel := func() {
 		// Also kills the for loop above
 		ws.Close()
-	}, nil
+	}
+
+	c.stopSockets = append(c.stopSockets, cancel)
+
+	return cancel, nil
 }
 
 type ErrInvalidPayload struct {
