@@ -85,7 +85,11 @@ type Client struct {
 	Nonce uint64
 	Block uint64
 
-	cleanup func()
+	// Stop the background consensus that is created before
+	stopConsensus func()
+
+	// Stop other websockets that the user spawned
+	stopSockets []func()
 
 	// TODO: metrics, stake, consensus, network
 
@@ -96,20 +100,25 @@ type Client struct {
 	// Websocket callbacks
 	OnError
 
+	// Accounts
 	OnBalanceUpdated
 	OnGasBalanceUpdated
 	OnNumPagesUpdated
 	OnStakeUpdated
 	OnRewardUpdated
 
+	// Network
 	OnPeerJoin
 	OnPeerLeave
 
+	// Consensus
 	OnProposal
 	OnFinalized
 
+	// Stake
 	OnStakeRewardValidator
 
+	// Contract
 	OnContractGas
 	OnContractLog
 
@@ -159,36 +168,25 @@ func NewClient(config Config) (*Client, error) {
 	atomic.StoreUint64(&c.Nonce, n.Nonce)
 	atomic.StoreUint64(&c.Block, n.Block)
 
-	// TODO: due to the way callbacks are handled, it's not possible to
-	// have multiple callbacks for each event. So here we are using
-	// pollWS directly because client have to internally poll consensus
-	cleanup, err := c.pollWS(RouteWSConsensus, func(v *fastjson.Value) {
-		if err := checkMod(v, "consensus"); err != nil {
-			if c.OnError != nil {
-				c.OnError(err)
-			}
-			return
-		}
-
-		event := jsonString(v, "event")
-		if event != "finalized" {
-			return
-		}
-
-		atomic.StoreUint64(&c.Block, v.GetUint64("new_block_height"))
-	})
-
+	// Start listening to consensus to track Block
+	cancel, err := c.pollConsensus()
 	if err != nil {
-		cleanup()
-		return c, err
+		cancel()
+		return nil, err
 	}
 
-	c.cleanup = cleanup
+	c.stopConsensus = cancel
+
 	return c, nil
 }
 
 func (c *Client) Close() {
-	c.cleanup()
+	c.stopConsensus()
+
+	// cancel user-spawned sockets
+	for _, c := range c.stopSockets {
+		c()
+	}
 }
 
 func (c *Client) GetContractCode(contractID string) (string, error) {
