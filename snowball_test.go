@@ -267,7 +267,8 @@ func TestSnowball(t *testing.T) {
 }
 
 // Test if all tallies have equal value and the value is lower than alpha.
-func TestSnowball_EqualTally(t *testing.T) {
+// Snowball will never decide.
+func TestSnowball_EqualTally_LowerThanAlpha(t *testing.T) {
 	t.Parallel()
 	snowballBeta := 10
 	defaultBeta := conf.GetSnowballBeta()
@@ -321,7 +322,7 @@ func TestSnowball_EqualTally(t *testing.T) {
 // This is impossible because of the way the tally calculation works, total sum of the tallies will equal to 1.
 //
 // Nevertheless, because of the way the snowball is implemented, if this happens, the snowball will prefer the first vote.
-func TestSnowball_EqualTally_Alpha(t *testing.T) {
+func TestSnowball_EqualTally_HigherThanAlpha(t *testing.T) {
 	t.Parallel()
 	snowballBeta := 10
 	defaultBeta := conf.GetSnowballBeta()
