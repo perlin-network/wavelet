@@ -59,7 +59,6 @@ func (t *Transactions) BatchAdd(block BlockID, transactions ...Transaction) {
 
 func (t *Transactions) add(block BlockID, tx Transaction) {
 	if t.height >= tx.Block+uint64(conf.GetPruningLimit()) {
-		fmt.Println(">>>>>>>>>>>> why??????", t.height, tx.Block)
 		return
 	}
 
@@ -136,8 +135,6 @@ func (t *Transactions) ReshufflePending(next Block) int {
 
 		return true
 	})
-
-	fmt.Printf("Restoring %d items into mempool which originally had %d items, with next block height being %d.\n", len(items), t.index.Len(), next.Index)
 
 	// Clear the entire mempool.
 
