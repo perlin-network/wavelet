@@ -74,13 +74,7 @@ func (s *Snowball) Tick(votes []Vote) {
 		}
 	}
 
-	denom := float64(len(votes))
-
-	if denom < 2 {
-		denom = 2
-	}
-
-	if majority == nil || majority.Tally() < conf.GetSnowballAlpha()*2/denom {
+	if majority == nil || majority.Tally() < conf.GetSnowballAlpha() {
 		s.count = 0
 		return
 	}
