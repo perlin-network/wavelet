@@ -58,7 +58,7 @@ func (s *Snowball) Reset() {
 	s.Unlock()
 }
 
-func (s *Snowball) Tick(tallies map[VoteID]float64, votes map[VoteID]Vote) {
+func (s *Snowball) Tick(votes []Vote) {
 	s.Lock()
 	defer s.Unlock()
 
@@ -67,11 +67,10 @@ func (s *Snowball) Tick(tallies map[VoteID]float64, votes map[VoteID]Vote) {
 	}
 
 	var majority Vote
-	var majorityTally float64 = 0
 
-	for id, tally := range tallies {
-		if tally > majorityTally {
-			majority, majorityTally = votes[id], tally
+	for _, vote := range votes {
+		if majority == nil || vote.Tally() > majority.Tally() {
+			majority = vote
 		}
 	}
 
@@ -81,7 +80,7 @@ func (s *Snowball) Tick(tallies map[VoteID]float64, votes map[VoteID]Vote) {
 		denom = 2
 	}
 
-	if majority == nil || majorityTally < conf.GetSnowballAlpha()*2/denom {
+	if majority == nil || majority.Tally() < conf.GetSnowballAlpha()*2/denom {
 		s.count = 0
 		return
 	}

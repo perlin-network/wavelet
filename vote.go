@@ -36,6 +36,8 @@ type Vote interface {
 	VoterID() AccountID
 	Length() float64
 	Value() interface{}
+	Tally() float64
+	SetTally(v float64)
 }
 
 type syncVote struct {
@@ -45,6 +47,7 @@ type syncVote struct {
 	// This acts as cache since ID() can be called many times.
 	// The value will be set when the ID() is called the first time.
 	voteID VoteID
+	tally  float64
 }
 
 func (s *syncVote) ID() VoteID {
@@ -77,6 +80,14 @@ func (s *syncVote) Length() float64 {
 	return 0
 }
 
+func (s *syncVote) SetTally(v float64) {
+	s.tally = v
+}
+
+func (s *syncVote) Tally() float64 {
+	return s.tally
+}
+
 func (s *syncVote) Value() interface{} {
 	return &s.outOfSync
 }
@@ -84,6 +95,8 @@ func (s *syncVote) Value() interface{} {
 type finalizationVote struct {
 	voter *skademlia.ID
 	block *Block
+
+	tally float64
 }
 
 // If the block is empty, it will return ZeroVoteID.
@@ -109,6 +122,14 @@ func (f *finalizationVote) Length() float64 {
 // If the block is empty, it will return nil.
 func (f *finalizationVote) Value() interface{} {
 	return f.block
+}
+
+func (f *finalizationVote) SetTally(v float64) {
+	f.tally = v
+}
+
+func (f *finalizationVote) Tally() float64 {
+	return f.tally
 }
 
 func CollectVotesForSync(
@@ -147,77 +168,81 @@ func CollectVotesForSync(
 	}
 }
 
-func TickForFinalization(accounts *Accounts, snowball *Snowball, votes []*finalizationVote) {
-	snowballVotes := make([]Vote, 0, len(votes))
+func TickForFinalization(accounts *Accounts, snowball *Snowball, responses []*finalizationVote) {
+	snowballResponses := make([]Vote, 0, len(responses))
 
-	for _, vote := range votes {
-		snowballVotes = append(snowballVotes, vote)
+	for _, res := range responses {
+		snowballResponses = append(snowballResponses, res)
 	}
 
-	tick(accounts, snowball, snowballVotes)
+	tick(accounts, snowball, snowballResponses)
 }
 
-func TickForSync(accounts *Accounts, snowball *Snowball, votes []*syncVote) {
-	snowballVotes := make([]Vote, 0, len(votes))
+func TickForSync(accounts *Accounts, snowball *Snowball, responses []*syncVote) {
+	snowballResponses := make([]Vote, 0, len(responses))
 
-	for _, vote := range votes {
-		snowballVotes = append(snowballVotes, vote)
+	for _, res := range responses {
+		snowballResponses = append(snowballResponses, res)
 	}
 
-	tick(accounts, snowball, snowballVotes)
+	tick(accounts, snowball, snowballResponses)
 }
 
-func tick(accounts *Accounts, snowball *Snowball, votes []Vote) {
-	tallies := make(map[VoteID]float64, len(votes))
-	blocks := make(map[VoteID]Vote, len(votes))
+func tick(accounts *Accounts, snowball *Snowball, responses []Vote) {
+	votes := make(map[VoteID]Vote, len(responses))
 
-	for _, vote := range votes {
-		if vote.ID() == ZeroVoteID {
+	for _, res := range responses {
+		// Ignore vote with empty response
+		if res.ID() == ZeroVoteID {
 			continue
 		}
 
-		if _, exists := blocks[vote.ID()]; !exists {
-			blocks[vote.ID()] = vote
+		if _, exists := votes[res.ID()]; !exists {
+			votes[res.ID()] = res
 		}
 
-		tallies[vote.ID()] += 1.0 / float64(len(votes))
+		res.SetTally(res.Tally() + 1.0/float64(len(responses)))
 	}
 
-	for block, weight := range Normalize(ComputeProfitWeights(votes)) {
-		tallies[block] *= weight
+	for id, weight := range Normalize(ComputeProfitWeights(responses)) {
+		votes[id].SetTally(votes[id].Tally() * weight)
 	}
 
-	stakeWeights := Normalize(ComputeStakeWeights(accounts, votes))
-	for block, weight := range stakeWeights {
-		tallies[block] *= weight
+	stakeWeights := Normalize(ComputeStakeWeights(accounts, responses))
+	for id, weight := range stakeWeights {
+		votes[id].SetTally(votes[id].Tally() * weight)
 	}
 
 	totalTally := float64(0)
-	for _, tally := range tallies {
-		totalTally += tally
+	for _, block := range votes {
+		totalTally += block.Tally()
 	}
 
-	for block := range tallies {
-		tallies[block] /= totalTally
+	// Put the votes into slice to pass to snowball.
+	array := make([]Vote, 0, len(votes))
+	for id := range votes {
+		votes[id].SetTally(votes[id].Tally() / totalTally)
+
+		array = append(array, votes[id])
 	}
 
-	snowball.Tick(tallies, blocks)
+	snowball.Tick(array)
 }
 
-func ComputeProfitWeights(votes []Vote) map[VoteID]float64 {
-	weights := make(map[VoteID]float64, len(votes))
+func ComputeProfitWeights(responses []Vote) map[VoteID]float64 {
+	weights := make(map[VoteID]float64, len(responses))
 
 	var max float64
 
-	for _, vote := range votes {
-		if vote.ID() == ZeroVoteID {
+	for _, res := range responses {
+		if res.ID() == ZeroVoteID {
 			continue
 		}
 
-		weights[vote.ID()] += vote.Length()
+		weights[res.ID()] += res.Length()
 
-		if weights[vote.ID()] > max {
-			max = weights[vote.ID()]
+		if weights[res.ID()] > max {
+			max = weights[res.ID()]
 		}
 	}
 
@@ -228,28 +253,28 @@ func ComputeProfitWeights(votes []Vote) map[VoteID]float64 {
 	return weights
 }
 
-func ComputeStakeWeights(accounts *Accounts, votes []Vote) map[VoteID]float64 {
-	weights := make(map[VoteID]float64, len(votes))
+func ComputeStakeWeights(accounts *Accounts, responses []Vote) map[VoteID]float64 {
+	weights := make(map[VoteID]float64, len(responses))
 
 	var max float64
 
 	snapshot := accounts.Snapshot()
 
-	for _, vote := range votes {
-		if vote.ID() == ZeroVoteID {
+	for _, res := range responses {
+		if res.ID() == ZeroVoteID {
 			continue
 		}
 
-		stake, _ := ReadAccountStake(snapshot, vote.VoterID())
+		stake, _ := ReadAccountStake(snapshot, res.VoterID())
 
 		if stake < sys.MinimumStake {
-			weights[vote.ID()] += float64(sys.MinimumStake)
+			weights[res.ID()] += float64(sys.MinimumStake)
 		} else {
-			weights[vote.ID()] += float64(stake)
+			weights[res.ID()] += float64(stake)
 		}
 
-		if weights[vote.ID()] > max {
-			max = weights[vote.ID()]
+		if weights[res.ID()] > max {
+			max = weights[res.ID()]
 		}
 	}
 
