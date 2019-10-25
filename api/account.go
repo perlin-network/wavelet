@@ -6,6 +6,7 @@ import (
 
 	"github.com/perlin-network/wavelet"
 	"github.com/pkg/errors"
+	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 )
 
@@ -24,6 +25,50 @@ type account struct {
 }
 
 var _ marshalableJSON = (*account)(nil)
+
+func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
+	param, ok := ctx.UserValue("id").(string)
+	if !ok {
+		g.renderError(ctx, ErrBadRequest(errors.New("id must be a string")))
+		return
+	}
+
+	slice, err := hex.DecodeString(param)
+	if err != nil {
+		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "account ID must be presented as valid hex")))
+		return
+	}
+
+	if len(slice) != wavelet.SizeAccountID {
+		g.renderError(ctx, ErrBadRequest(errors.Errorf("account ID must be %d bytes long", wavelet.SizeAccountID)))
+		return
+	}
+
+	var id wavelet.AccountID
+	copy(id[:], slice)
+
+	snapshot := g.Ledger.Snapshot()
+
+	balance, _ := wavelet.ReadAccountBalance(snapshot, id)
+	gasBalance, _ := wavelet.ReadAccountContractGasBalance(snapshot, id)
+	stake, _ := wavelet.ReadAccountStake(snapshot, id)
+	reward, _ := wavelet.ReadAccountReward(snapshot, id)
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, id)
+	_, isContract := wavelet.ReadAccountContractCode(snapshot, id)
+	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, id)
+
+	g.render(ctx, &account{
+		ledger:     g.Ledger,
+		id:         id,
+		balance:    balance,
+		gasBalance: gasBalance,
+		stake:      stake,
+		reward:     reward,
+		nonce:      nonce,
+		isContract: isContract,
+		numPages:   numPages,
+	})
+}
 
 func (s *account) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	if s.ledger == nil || s.id == wavelet.ZeroAccountID {
