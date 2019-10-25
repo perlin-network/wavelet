@@ -252,7 +252,7 @@ func TestCollectVotesForSync(t *testing.T) {
 	}
 }
 
-func TestTickCalculation(t *testing.T) {
+func TestCalculateTallies(t *testing.T) {
 	getTxID := func(count int) []TransactionID {
 		var ids []TransactionID
 
