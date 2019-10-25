@@ -20,7 +20,9 @@
 package wavelet
 
 import (
+	"bytes"
 	"context"
+	"github.com/willf/bloom"
 	"io"
 
 	"github.com/perlin-network/wavelet/conf"
@@ -164,29 +166,91 @@ func (p *Protocol) CheckOutOfSync(ctx context.Context, req *OutOfSyncRequest) (*
 	}, nil
 }
 
-func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullRequest) (*TransactionPullResponse, error) {
-	res := &TransactionPullResponse{Transactions: [][]byte{}}
-
-	// Build a lookup table from the list of transaction IDs
-	var id TransactionID
-	lookup := map[TransactionID]struct{}{}
-	for _, i := range req.TransactionIds {
-		copy(id[:], i)
-		lookup[id] = struct{}{}
+func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error {
+	req, err := stream.Recv()
+	if err != nil {
+		return err
 	}
 
-	// Find missing transactions
+	bf := &bloom.BloomFilter{}
+	if _, err := bf.ReadFrom(bytes.NewReader(req.GetFilter())); err != nil {
+		return err
+	}
+
+	var toReturn [][]byte
 	p.ledger.transactions.Iterate(func(tx *Transaction) bool {
-		if _, exists := lookup[tx.ID]; !exists {
-			res.Transactions = append(res.Transactions, tx.Marshal())
+		if exists := bf.Test(tx.ID[:]); !exists {
+			toReturn = append(toReturn, tx.Marshal())
 		}
 
 		return true
 	})
 
+	res := &TransactionsSyncResponse{
+		Data: &TransactionsSyncResponse_TransactionsNum{
+			TransactionsNum: uint64(len(toReturn)),
+		},
+	}
+
+	if err := stream.Send(res); err != nil {
+		return err
+	}
+
+	pointer := 0
+	for {
+		req, err := stream.Recv()
+		if err != nil {
+			return err
+		}
+
+		chunkSize := int(req.GetChunkSize())
+		if chunkSize > len(toReturn) {
+			chunkSize = len(toReturn)
+		}
+		res := &TransactionsSyncResponse{
+			Data: &TransactionsSyncResponse_Transactions{
+				Transactions: &TransactionsSyncPart{
+					Transactions: toReturn[pointer : pointer+chunkSize],
+				},
+			},
+		}
+
+		if err := stream.Send(res); err != nil {
+			return err
+		}
+
+		pointer += chunkSize
+		if pointer >= len(toReturn) {
+			break
+		}
+	}
+
+	if pointer > 0 {
+		logger := log.Sync("sync_tx")
+		logger.Debug().
+			Int("num_transactions", len(toReturn)).
+			Msg("Provided transactions for a sync request.")
+	}
+
+	return nil
+}
+
+func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullRequest) (*TransactionPullResponse, error) {
+	res := &TransactionPullResponse{
+		Transactions: make([][]byte, 0, len(req.TransactionIds)),
+	}
+
+	var txID TransactionID
+	for _, id := range req.TransactionIds {
+		copy(txID[:], id)
+		if tx := p.ledger.transactions.Find(txID); tx != nil {
+			res.Transactions = append(res.Transactions, tx.Marshal())
+		}
+	}
+
 	if len(res.Transactions) > 0 {
-		logger := log.Sync("pull_tx")
-		logger.Info().
+		logger := log.Sync("pull_missing_tx")
+		logger.Debug().
 			Int("num_transactions", len(res.Transactions)).
 			Msg("Provided transactions for a pull request.")
 	}

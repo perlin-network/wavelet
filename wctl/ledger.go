@@ -54,6 +54,7 @@ type LedgerStatusResponse struct {
 	} `json:"block"`
 
 	NumTx        uint64 `json:"num_tx"`
+	NumMissingTx uint64 `json:"num_missing_tx"`
 	NumTxInStore uint64 `json:"num_tx_in_store"`
 	AccountsLen  uint64 `json:"num_accounts_in_store"`
 
@@ -105,6 +106,7 @@ func (l *LedgerStatusResponse) UnmarshalJSON(b []byte) error {
 	}
 
 	l.NumTx = v.GetUint64("num_tx")
+	l.NumMissingTx = v.GetUint64("num_missing_tx")
 	l.NumTxInStore = v.GetUint64("num_tx_in_store")
 
 	if v.Exists("preferred") && v.Get("preferred").Type() != fastjson.TypeNull {

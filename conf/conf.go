@@ -26,6 +26,10 @@ type config struct {
 	downloadTxTimeout     time.Duration
 	checkOutOfSyncTimeout time.Duration
 
+	// transaction syncing parameters
+	txSyncChunkSize uint64
+	txSyncLimit     uint64
+
 	// Size of individual chunks sent for a syncing peer.
 	syncChunkSize int
 
@@ -69,7 +73,10 @@ func defaultConfig() config {
 		syncChunkSize:              16384,
 		syncIfBlockIndicesDifferBy: 5,
 
-		bloomFilterM: 1024 * 1024,
+		txSyncChunkSize: 1000,
+		txSyncLimit:     1 << 20,
+
+		bloomFilterM: 1 << 24,
 		bloomFilterK: 3,
 
 		pruningLimit: 30,
@@ -185,6 +192,18 @@ func WithPruningLimit(pl uint8) Option {
 func WithSecret(s string) Option {
 	return func(c *config) {
 		c.secret = s
+	}
+}
+
+func WithTXSyncChunkSize(n uint64) Option {
+	return func(c *config) {
+		c.txSyncChunkSize = n
+	}
+}
+
+func WithTXSyncLimit(n uint64) Option {
+	return func(c *config) {
+		c.txSyncLimit = n
 	}
 }
 
@@ -319,6 +338,22 @@ func GetPruningLimit() uint8 {
 func GetSecret() string {
 	l.RLock()
 	t := c.secret
+	l.RUnlock()
+
+	return t
+}
+
+func GetTXSyncChunkSize() uint64 {
+	l.RLock()
+	t := c.txSyncChunkSize
+	l.RUnlock()
+
+	return t
+}
+
+func GetTXSyncLimit() uint64 {
+	l.RLock()
+	t := c.txSyncLimit
 	l.RUnlock()
 
 	return t

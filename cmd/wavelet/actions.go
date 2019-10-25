@@ -63,6 +63,7 @@ func (cli *CLI) status(ctx *cli.Context) {
 		Uint64("nonce", a.Nonce).
 		Strs("peers", peers).
 		Uint64("num_tx", l.NumTx).
+		Uint64("num_missing_tx", l.NumMissingTx).
 		Uint64("num_tx_in_store", l.NumTxInStore).
 		Uint64("num_accounts_in_store", l.AccountsLen).
 		Uint64("client_nonce", cli.client.Nonce).
@@ -443,6 +444,10 @@ func (cli *CLI) updateParameters(ctx *cli.Context) {
 		conf.WithSyncIfBlockIndicesDifferBy(ctx.Uint64("sync.if.rounds.differ.by")),
 		conf.WithPruningLimit(uint8(ctx.Uint64("pruning.limit"))),
 		conf.WithSecret(ctx.String("api.secret")),
+		conf.WithBloomFilterK(ctx.Uint("bloom.filter.k")),
+		conf.WithBloomFilterM(ctx.Uint("bloom.filter.m")),
+		conf.WithTXSyncChunkSize(ctx.Uint64("tx.sync.chunk.size")),
+		conf.WithTXSyncLimit(ctx.Uint64("tx.sync.limit")),
 	)
 
 	cli.logger.Info().Str("conf", conf.Stringify()).

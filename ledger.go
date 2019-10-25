@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"github.com/willf/bloom"
 	"io"
 	"math/rand"
 	"sync"
@@ -87,6 +88,8 @@ type Ledger struct {
 	stop     chan struct{}
 	stopWG   sync.WaitGroup
 	cancelGC context.CancelFunc
+
+	transactionsSyncIndex *bloom.BloomFilter
 }
 
 type config struct {
@@ -179,6 +182,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		fileBuffers:   newFileBufferPool(sys.SyncPooledFileSize, ""),
 
 		sendQuota: make(chan struct{}, 2000),
+
+		transactionsSyncIndex: bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK()),
 	}
 
 	if !cfg.GCDisabled {
@@ -234,16 +239,15 @@ func (l *Ledger) Close() {
 	l.stopWG.Wait()
 }
 
-// AddTransaction adds a transaction to the ledger. If the transaction is
-// invalid or fails any validation checks, an error is returned. No error
-// is returned if the transaction has already existed int he ledgers graph
-// beforehand.
-func (l *Ledger) AddTransaction(txs ...Transaction) error {
+// AddTransaction adds a transaction to the ledger and adds it's id to bloom filter used to sync transactions.
+func (l *Ledger) AddTransaction(txs ...Transaction) {
 	l.transactions.BatchAdd(l.blocks.Latest().ID, txs...)
 
-	//l.TakeSendQuota()
+	for _, tx := range txs {
+		l.transactionsSyncIndex.Add(tx.ID[:])
+	}
 
-	return nil
+	//l.TakeSendQuota()
 }
 
 // Find searches through complete transaction and account indices for a specified
@@ -346,7 +350,8 @@ func (l *Ledger) Restart() error {
 // missing transactions and incrementally finalizing intervals of transactions in
 // the ledgers graph.
 func (l *Ledger) PerformConsensus() {
-	go l.PullTransactions()
+	go l.PullMissingTransactions()
+	go l.SyncTransactions()
 	go l.FinalizeBlocks()
 }
 
@@ -354,15 +359,10 @@ func (l *Ledger) Snapshot() *avl.Tree {
 	return l.accounts.Snapshot()
 }
 
-// PullTransactions is a goroutine which continuously pulls missing transactions
-// from randomly sampled peers in the network. It does so by sending a list of
-// transaction IDs it has, and the peer will respond with a list of transactions
-// which the peer has but the sender node doesn't.
-//
-// The transaction IDs are stored inside a bloom filter to keep the space constant
-// with increasing transactions, and also because bloom filter has no false negative
-// (the peer will only use it to check if a transaction is not in the set).
-func (l *Ledger) PullTransactions() {
+// SyncTransactions is an infinite loop which constantly sends transaction ids from its index
+// in form of the bloom filter to randomly sampled number of peers and adds to it's state all received
+// transactions.
+func (l *Ledger) SyncTransactions() {
 	l.consensus.Add(1)
 	defer l.consensus.Done()
 
@@ -377,59 +377,178 @@ func (l *Ledger) PullTransactions() {
 
 		peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
 		if err != nil {
-			select {
-			case <-l.sync:
-				return
-			case <-time.After(1 * time.Second):
-			}
-
 			continue
 		}
 
-		logger := log.Sync("pull_tx")
+		logger := log.Sync("sync_tx")
 
-		// Build list of transaction IDs
-		req := &TransactionPullRequest{
-			TransactionIds: make([][]byte, 0, l.transactions.Len()),
+		buf := bytes.NewBuffer(nil)
+		if _, err := l.transactionsSyncIndex.WriteTo(buf); err != nil {
+			logger.Error().Err(err).Msg("failed to marshal bloom filter")
+			continue
 		}
 
-		l.transactions.Iterate(func(tx *Transaction) bool {
-			req.TransactionIds = append(req.TransactionIds, tx.ID[:])
-			return true
-		})
+		var wg sync.WaitGroup
 
-		workerChan := make(chan *grpc.ClientConn, 16)
-		var workerWG sync.WaitGroup
-		workerWG.Add(cap(workerChan))
-		responseChan := make(chan *TransactionPullResponse, snowballK)
-		for i := 0; i < cap(workerChan); i++ {
-			go func() {
-				for conn := range workerChan {
-					client := NewWaveletClient(conn)
-
-					ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
-					batch, err := client.PullTransactions(ctx, req)
-					if err != nil {
-						logger.Error().Err(err).Msg("failed to download missing transactions")
-						cancel()
-
-						responseChan <- nil
-
-						return
-					}
-					cancel()
-
-					responseChan <- batch
-				}
-			}()
-			workerWG.Done()
+		bfReq := &TransactionsSyncRequest{
+			Data: &TransactionsSyncRequest_Filter{
+				Filter: buf.Bytes(),
+			},
 		}
 
 		for _, p := range peers {
-			workerChan <- p
+			wg.Add(1)
+			go func(conn *grpc.ClientConn) {
+				defer wg.Done()
+
+				ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
+				defer cancel()
+
+				stream, err := NewWaveletClient(conn).SyncTransactions(ctx)
+				if err != nil {
+					logger.Error().Err(err).Msg("failed to create sync transactions stream")
+					return
+				}
+
+				defer func() {
+					if err := stream.CloseSend(); err != nil {
+						logger.Error().Err(err).Msg("failed to send sync transactions bloom filter")
+					}
+				}()
+
+				if err := stream.Send(bfReq); err != nil {
+					logger.Error().Err(err).Msg("failed to send sync transactions bloom filter")
+					return
+				}
+
+				res, err := stream.Recv()
+				if err != nil {
+					logger.Error().Err(err).Msg("failed to receive sync transactions header")
+					return
+				}
+
+				count := res.GetTransactionsNum()
+				if count == 0 {
+					return
+				}
+
+				if count > conf.GetTXSyncLimit() {
+					logger.Debug().
+						Uint64("count", count).
+						Str("peer_address", conn.Target()).
+						Msg("Bad number of transactions would be received")
+					return
+				}
+
+				logger.Debug().
+					Uint64("count", count).
+					Msg("Requesting transaction(s) to sync.")
+
+				for count > 0 {
+					req := TransactionsSyncRequest_ChunkSize{
+						ChunkSize: conf.GetTXSyncChunkSize(),
+					}
+
+					if count < req.ChunkSize {
+						req.ChunkSize = count
+					}
+
+					if err := stream.Send(&TransactionsSyncRequest{Data: &req}); err != nil {
+						logger.Error().Err(err).Msg("failed to receive sync transactions header")
+						return
+					}
+
+					res, err := stream.Recv()
+					if err != nil {
+						logger.Error().Err(err).Msg("failed to receive sync transactions header")
+						return
+					}
+
+					txResponse := res.GetTransactions()
+					if txResponse == nil {
+						return
+					}
+
+					transactions := make([]Transaction, 0, len(txResponse.Transactions))
+					for _, txBody := range txResponse.Transactions {
+						tx, err := UnmarshalTransaction(bytes.NewReader(txBody))
+						if err != nil {
+							logger.Error().Err(err).Msg("failed to unmarshal synced transaction")
+							continue
+						}
+
+						transactions = append(transactions, tx)
+					}
+
+					count -= uint64(len(transactions))
+
+					l.AddTransaction(transactions...)
+
+					l.metrics.downloadedTX.Mark(int64(count))
+					l.metrics.receivedTX.Mark(int64(count))
+				}
+			}(p)
 		}
 
-		responses := make([]*TransactionPullResponse, 0, snowballK)
+		wg.Wait()
+	}
+}
+
+// PullMissingTransactions is a goroutine which continuously pulls missing transactions
+// from randomly sampled peers in the network. It does so by sending a list of
+// transaction IDs which node is missing.
+func (l *Ledger) PullMissingTransactions() {
+	l.consensus.Add(1)
+	defer l.consensus.Done()
+
+	for {
+		select {
+		case <-l.sync:
+			return
+		case <-time.After(100 * time.Millisecond):
+		}
+
+		snowballK := conf.GetSnowballK()
+
+		peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
+		if err != nil {
+			continue
+		}
+
+		logger := log.Sync("pull_missing_tx")
+
+		// Build list of transaction IDs
+		missingIDs := l.transactions.MissingIDs()
+		req := &TransactionPullRequest{TransactionIds: make([][]byte, 0, len(missingIDs))}
+		for _, txID := range missingIDs {
+			req.TransactionIds = append(req.TransactionIds, txID[:])
+		}
+
+		var wg sync.WaitGroup
+		responseChan := make(chan *TransactionPullResponse)
+		for _, p := range peers {
+			wg.Add(1)
+			go func(conn *grpc.ClientConn) {
+				defer wg.Done()
+				client := NewWaveletClient(conn)
+
+				ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
+				defer cancel()
+
+				batch, err := client.PullTransactions(ctx, req)
+				if err != nil {
+					logger.Error().Err(err).Msg("failed to download missing transactions")
+
+					responseChan <- nil
+
+					return
+				}
+
+				responseChan <- batch
+			}(p)
+		}
+
+		responses := make([]*TransactionPullResponse, 0, len(peers))
 		for i := 0; i < cap(responses); i++ {
 			response := <-responseChan
 
@@ -440,8 +559,8 @@ func (l *Ledger) PullTransactions() {
 			responses = append(responses, response)
 		}
 
-		close(workerChan)
-		workerWG.Wait()
+		close(responseChan)
+		wg.Wait()
 
 		count := int64(0)
 
@@ -466,9 +585,9 @@ func (l *Ledger) PullTransactions() {
 		l.AddTransaction(pulled...)
 
 		if count > 0 {
-			logger.Debug().
+			logger.Info().
 				Int64("count", count).
-				Msg("Pulled transaction(s).")
+				Msg("Pulled missing transaction(s).")
 		}
 
 		l.metrics.downloadedTX.Mark(count)
@@ -572,6 +691,9 @@ func (l *Ledger) finalize(block Block) {
 	}
 
 	prunedCount := l.transactions.ReshufflePending(block)
+	if prunedCount > 0 {
+		l.resetTransactionsSyncIndex()
+	}
 
 	_, err = l.blocks.Save(&block)
 	if err != nil {
@@ -616,99 +738,87 @@ func (l *Ledger) finalize(block Block) {
 func (l *Ledger) query() {
 	snowballK := conf.GetSnowballK()
 
-	if len(l.client.ClosestPeerIDs()) < snowballK {
-		// TODO not enough peers, what do to ?
+	peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
+	if err != nil {
 		return
 	}
 
 	current := l.blocks.Latest()
 
-	workerChan := make(chan *grpc.ClientConn, 16)
-
-	var workerWG sync.WaitGroup
-	workerWG.Add(cap(workerChan))
+	var wg sync.WaitGroup
 
 	voteChan := make(chan *finalizationVote, snowballK)
 
 	req := &QueryRequest{BlockIndex: current.Index + 1}
 
-	for i := 0; i < cap(workerChan); i++ {
-		go func() {
-			for conn := range workerChan {
-				f := func() {
-					client := NewWaveletClient(conn)
-
-					ctx, cancel := context.WithTimeout(context.Background(), conf.GetQueryTimeout())
-
-					p := &peer.Peer{}
-
-					res, err := client.Query(ctx, req, grpc.Peer(p))
-					if err != nil {
-						logger := log.Node()
-						logger.Error().
-							Err(err).
-							Msg("error while querying peer")
-
-						cancel()
-						return
-					}
-
-					cancel()
-
-					l.metrics.queried.Mark(1)
-
-					info := noise.InfoFromPeer(p)
-					if info == nil {
-						return
-					}
-
-					voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
-					if !ok {
-						return
-					}
-
-					block, err := UnmarshalBlock(bytes.NewReader(res.Block))
-					if err != nil {
-						voteChan <- &finalizationVote{voter: voter, block: nil}
-						return
-					}
-
-					if block.ID == ZeroBlockID {
-						voteChan <- &finalizationVote{voter: voter, block: nil}
-						return
-					}
-
-					voteChan <- &finalizationVote{
-						voter: voter,
-						block: &block,
-					}
-				}
-				l.metrics.queryLatency.Time(f)
-			}
-			workerWG.Done()
-		}()
-	}
-
-	cleanupWorker := func() {
-		close(workerChan)
-		workerWG.Wait()
-	}
-
-	peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
-	if err != nil {
-		cleanupWorker()
-		return
-	}
-
 	for _, p := range peers {
-		workerChan <- p
+		wg.Add(1)
+		go func(conn *grpc.ClientConn) {
+			defer wg.Done()
+
+			var vote finalizationVote
+			defer func() {
+				voteChan <- &vote
+			}()
+
+			f := func() {
+				client := NewWaveletClient(conn)
+
+				ctx, cancel := context.WithTimeout(context.Background(), conf.GetQueryTimeout())
+				defer cancel()
+
+				p := &peer.Peer{}
+
+				res, err := client.Query(ctx, req, grpc.Peer(p))
+				if err != nil {
+					logger := log.Node()
+					logger.Error().
+						Err(err).
+						Msg("error while querying peer")
+
+					return
+				}
+
+				l.metrics.queried.Mark(1)
+
+				info := noise.InfoFromPeer(p)
+				if info == nil {
+					return
+				}
+
+				voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
+				if !ok {
+					return
+				}
+
+				vote.voter = voter
+
+				block, err := UnmarshalBlock(bytes.NewReader(res.Block))
+				if err != nil {
+					return
+				}
+
+				if block.ID == ZeroBlockID {
+					return
+				}
+
+				vote.block = &block
+			}
+			l.metrics.queryLatency.Time(f)
+		}(p)
 	}
+
+	wg.Wait()
 
 	votes := make([]*finalizationVote, 0, snowballK)
 	voters := make(map[AccountID]struct{}, snowballK)
 
 	for i := 0; i < cap(votes); i++ {
 		vote := <-voteChan
+
+		if vote.voter == nil {
+			continue
+		}
 
 		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
 			continue // To make sure the sampling process is fair, only allow one vote per peer.
@@ -717,8 +827,6 @@ func (l *Ledger) query() {
 		voters[vote.voter.PublicKey()] = struct{}{}
 		votes = append(votes, vote)
 	}
-
-	cleanupWorker()
 
 	// Filter away all query responses whose blocks comprise of transactions our node is not aware of.
 	for _, vote := range votes {
@@ -732,9 +840,7 @@ func (l *Ledger) query() {
 		}
 
 		for _, id := range vote.block.Transactions {
-			if !l.transactions.Has(id) {
-				l.transactions.MarkMissing(id)
-
+			if l.transactions.MarkMissing(id) {
 				vote.block = nil
 				break
 			}
@@ -1235,6 +1341,8 @@ func (l *Ledger) SyncToLatestBlock() {
 			logger.Fatal().Err(err).Msg("failed to commit collapsed state to our database")
 		}
 
+		l.resetTransactionsSyncIndex()
+
 		logger = log.Sync("apply")
 		logger.Info().
 			Int("num_chunks", len(sources)).
@@ -1418,4 +1526,13 @@ func (l *Ledger) setSync(flag bitset) {
 	l.syncStatusLock.Lock()
 	l.syncStatus = flag
 	l.syncStatusLock.Unlock()
+}
+
+func (l *Ledger) resetTransactionsSyncIndex() {
+	l.transactionsSyncIndex.ClearAll()
+
+	l.transactions.Iterate(func(tx *Transaction) bool {
+		l.transactionsSyncIndex.Add(tx.ID[:])
+		return true
+	})
 }

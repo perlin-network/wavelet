@@ -59,10 +59,14 @@ func (t *Transactions) BatchAdd(block BlockID, transactions ...Transaction) {
 
 func (t *Transactions) add(block BlockID, tx Transaction) {
 	if t.height >= tx.Block+uint64(conf.GetPruningLimit()) {
+		fmt.Println(">>>>>>>>>>>> why??????", t.height, tx.Block)
 		return
 	}
 
 	if _, exists := t.buffer[tx.ID]; exists {
+		if _, ok := t.missing[tx.ID]; ok {
+			fmt.Println(">>>>>>>>>>>> WHOAAAAAAAAAAAAAA")
+		}
 		return
 	}
 
@@ -74,24 +78,23 @@ func (t *Transactions) add(block BlockID, tx Transaction) {
 
 // MarkMissing marks that the node was expected to have archived a transaction with a specified id, but
 // does not have it archived and so needs to have said transaction pulled from the nodes peers.
-func (t *Transactions) MarkMissing(id TransactionID) {
+func (t *Transactions) MarkMissing(id TransactionID) bool {
 	t.Lock()
 	defer t.Unlock()
 
-	t.markMissing(id)
+	return t.markMissing(id)
 }
 
-func (t *Transactions) BatchMarkMissing(ids ...TransactionID) {
-	t.Lock()
-	defer t.Unlock()
+func (t *Transactions) markMissing(id TransactionID) bool {
+	_, exists := t.buffer[id]
 
-	for _, id := range ids {
-		t.markMissing(id)
+	if exists {
+		return false
 	}
-}
 
-func (t *Transactions) markMissing(id TransactionID) {
 	t.missing[id] = t.height
+
+	return true
 }
 
 // ReshufflePending reshuffles all transactions that may be proposed into a new block by recomputing
@@ -219,6 +222,15 @@ func (t *Transactions) PendingLen() int {
 	defer t.RUnlock()
 
 	return t.index.Len()
+}
+
+// MissingLen returns the number of transactions that the node is looking to pull from
+// its peers.
+func (t *Transactions) MissingLen() int {
+	t.RLock()
+	defer t.RUnlock()
+
+	return len(t.missing)
 }
 
 // Iterate iterates through all transactions that the node has archived.
