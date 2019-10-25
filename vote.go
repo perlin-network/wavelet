@@ -192,11 +192,13 @@ func tick(accounts *Accounts, snowball *Snowball, responses []Vote) {
 	votes := make(map[VoteID]Vote, len(responses))
 
 	for _, res := range responses {
-		if _, exists := votes[res.ID()]; !exists {
-			votes[res.ID()] = res
+		vote, exists := votes[res.ID()]
+		if !exists {
+			vote = res
+			votes[res.ID()] = vote
 		}
 
-		res.SetTally(res.Tally() + 1.0/float64(len(responses)))
+		vote.SetTally(vote.Tally() + 1.0/float64(len(responses)))
 	}
 
 	for id, weight := range Normalize(ComputeProfitWeights(responses)) {
