@@ -2,10 +2,11 @@ package wavelet
 
 import (
 	"fmt"
-	"github.com/google/btree"
-	"github.com/perlin-network/wavelet/conf"
 	"math/big"
 	"sync"
+
+	"github.com/google/btree"
+	"github.com/perlin-network/wavelet/conf"
 )
 
 var _ btree.Item = (*mempoolItem)(nil)
@@ -79,9 +80,6 @@ func (t *Transactions) add(block BlockID, tx Transaction) {
 // MarkMissing marks that the node was expected to have archived a transaction with a specified id, but
 // does not have it archived and so needs to have said transaction pulled from the nodes peers.
 func (t *Transactions) MarkMissing(id TransactionID) bool {
-	t.Lock()
-	defer t.Unlock()
-
 	return t.markMissing(id)
 }
 

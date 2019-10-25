@@ -24,7 +24,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"github.com/willf/bloom"
 	"io"
 	"math/rand"
 	"sync"
@@ -39,6 +38,7 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"github.com/willf/bloom"
 	"golang.org/x/crypto/blake2b"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
@@ -867,12 +867,14 @@ func (l *Ledger) query() {
 			continue
 		}
 
+		l.transactions.Lock()
 		for _, id := range vote.block.Transactions {
 			if l.transactions.MarkMissing(id) {
 				vote.block = nil
 				break
 			}
 		}
+		l.transactions.Unlock()
 
 		if vote.block == nil {
 			continue
