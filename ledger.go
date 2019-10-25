@@ -856,17 +856,19 @@ func (l *Ledger) query() {
 
 	cleanupWorker()
 
-	// Filter away all query responses whose blocks comprise of transactions our node is not aware of.
 	for _, vote := range votes {
+		// Filter nil blocks
 		if vote.block == nil {
 			continue
 		}
 
+		// Filter blocks with unexpected block height
 		if vote.block.Index != current.Index+1 {
 			vote.block = nil
 			continue
 		}
 
+		// Filter blocks with at least 1 missing tx
 		l.transactions.Lock()
 		for _, id := range vote.block.Transactions {
 			if l.transactions.MarkMissing(id) {
@@ -889,6 +891,7 @@ func (l *Ledger) query() {
 			continue
 		}
 
+		// Filter blocks that results in unexpected merkle root after collapse
 		if results.snapshot.Checksum() != vote.block.Merkle {
 			vote.block = nil
 			continue
