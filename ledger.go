@@ -738,99 +738,87 @@ func (l *Ledger) finalize(block Block) {
 func (l *Ledger) query() {
 	snowballK := conf.GetSnowballK()
 
-	if len(l.client.ClosestPeerIDs()) < snowballK {
-		// TODO not enough peers, what do to ?
+	peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
+	if err != nil {
 		return
 	}
 
 	current := l.blocks.Latest()
 
-	workerChan := make(chan *grpc.ClientConn, 16)
-
-	var workerWG sync.WaitGroup
-	workerWG.Add(cap(workerChan))
+	var wg sync.WaitGroup
 
 	voteChan := make(chan *finalizationVote, snowballK)
 
 	req := &QueryRequest{BlockIndex: current.Index + 1}
 
-	for i := 0; i < cap(workerChan); i++ {
-		go func() {
-			for conn := range workerChan {
-				f := func() {
-					client := NewWaveletClient(conn)
-
-					ctx, cancel := context.WithTimeout(context.Background(), conf.GetQueryTimeout())
-
-					p := &peer.Peer{}
-
-					res, err := client.Query(ctx, req, grpc.Peer(p))
-					if err != nil {
-						logger := log.Node()
-						logger.Error().
-							Err(err).
-							Msg("error while querying peer")
-
-						cancel()
-						return
-					}
-
-					cancel()
-
-					l.metrics.queried.Mark(1)
-
-					info := noise.InfoFromPeer(p)
-					if info == nil {
-						return
-					}
-
-					voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
-					if !ok {
-						return
-					}
-
-					block, err := UnmarshalBlock(bytes.NewReader(res.Block))
-					if err != nil {
-						voteChan <- &finalizationVote{voter: voter, block: nil}
-						return
-					}
-
-					if block.ID == ZeroBlockID {
-						voteChan <- &finalizationVote{voter: voter, block: nil}
-						return
-					}
-
-					voteChan <- &finalizationVote{
-						voter: voter,
-						block: &block,
-					}
-				}
-				l.metrics.queryLatency.Time(f)
-			}
-			workerWG.Done()
-		}()
-	}
-
-	cleanupWorker := func() {
-		close(workerChan)
-		workerWG.Wait()
-	}
-
-	peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
-	if err != nil {
-		cleanupWorker()
-		return
-	}
-
 	for _, p := range peers {
-		workerChan <- p
+		wg.Add(1)
+		go func(conn *grpc.ClientConn) {
+			defer wg.Done()
+
+			var vote finalizationVote
+			defer func() {
+				voteChan <- &vote
+			}()
+
+			f := func() {
+				client := NewWaveletClient(conn)
+
+				ctx, cancel := context.WithTimeout(context.Background(), conf.GetQueryTimeout())
+				defer cancel()
+
+				p := &peer.Peer{}
+
+				res, err := client.Query(ctx, req, grpc.Peer(p))
+				if err != nil {
+					logger := log.Node()
+					logger.Error().
+						Err(err).
+						Msg("error while querying peer")
+
+					return
+				}
+
+				l.metrics.queried.Mark(1)
+
+				info := noise.InfoFromPeer(p)
+				if info == nil {
+					return
+				}
+
+				voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
+				if !ok {
+					return
+				}
+
+				vote.voter = voter
+
+				block, err := UnmarshalBlock(bytes.NewReader(res.Block))
+				if err != nil {
+					return
+				}
+
+				if block.ID == ZeroBlockID {
+					return
+				}
+
+				vote.block = &block
+			}
+			l.metrics.queryLatency.Time(f)
+		}(p)
 	}
+
+	wg.Wait()
 
 	votes := make([]*finalizationVote, 0, snowballK)
 	voters := make(map[AccountID]struct{}, snowballK)
 
 	for i := 0; i < cap(votes); i++ {
 		vote := <-voteChan
+
+		if vote.voter == nil {
+			continue
+		}
 
 		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
 			continue // To make sure the sampling process is fair, only allow one vote per peer.
@@ -839,8 +827,6 @@ func (l *Ledger) query() {
 		voters[vote.voter.PublicKey()] = struct{}{}
 		votes = append(votes, vote)
 	}
-
-	cleanupWorker()
 
 	// Filter away all query responses whose blocks comprise of transactions our node is not aware of.
 	for _, vote := range votes {
