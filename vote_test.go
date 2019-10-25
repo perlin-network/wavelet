@@ -288,7 +288,7 @@ func TestCalculateTallies(t *testing.T) {
 			block: nil,
 		})
 
-		expectedTallies[ZeroVoteID] = 0.34594594594594597
+		expectedTallies[ZeroVoteID] = 0.3037300177619893
 	}
 
 	// Vote 2: has the highest stake.
@@ -305,7 +305,7 @@ func TestCalculateTallies(t *testing.T) {
 			block: &block,
 		})
 
-		expectedTallies[block.ID] = 0.000000
+		expectedTallies[block.ID] = 0.03374777975133215
 	}
 
 	// Vote 3: has the highest transactions.
@@ -322,10 +322,10 @@ func TestCalculateTallies(t *testing.T) {
 			block: &block,
 		})
 
-		expectedTallies[block.ID] = 0.000000
+		expectedTallies[block.ID] = 0.04795737122557727
 	}
 
-	// Vote 4: has two responses, and third highest tally and transactions.
+	// Vote 4: has two responses, and third highest stake and transactions.
 	{
 		nodeIDCount++
 		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
@@ -353,10 +353,10 @@ func TestCalculateTallies(t *testing.T) {
 			block: &copyBlock,
 		})
 
-		expectedTallies[block.ID] = 0.389189189189189
+		expectedTallies[block.ID] = 0.37300177619893427
 	}
 
-	// Vote 5: Second highest tally and transactions.
+	// Vote 5: Second highest stake and transactions.
 	{
 		nodeIDCount++
 		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
@@ -370,20 +370,37 @@ func TestCalculateTallies(t *testing.T) {
 			block: &block,
 		})
 
-		expectedTallies[block.ID] = 0.2648648648648648
+		expectedTallies[block.ID] = 0.24156305506216696
+	}
+
+	// Vote 6: has zero stake (thus minimum stake), and 1 transactions.
+	// It's expected that only this vote will have 0 tally because it has the lowest stake and transactions (profit).
+	{
+		nodeIDCount++
+		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
+		block := NewBlock(1, nodeID, getTxID(1)...)
+
+		voterID := getRandomID(t)
+		WriteAccountStake(snapshot, voterID.PublicKey(), 0)
+
+		votes = append(votes, &finalizationVote{
+			voter: voterID,
+			block: &block,
+		})
+
+		expectedTallies[block.ID] = 0
 	}
 
 	assert.NoError(t, accounts.Commit(snapshot))
 
 	tallies := calculateTallies(accounts, votes)
-	assert.Len(t, tallies, 5)
+	assert.Len(t, tallies, 6)
 
 	// Because of floating point inaccuracy, we convert it to an integer.
 	toInt64 := func(v float64) int64 {
 		// Use 10 ^ 15 because it seems the inaccuracy is happening at 10 ^ -16.
 		exp := math.Pow10(15)
-		vInt := int64(exp * v)
-		return vInt
+		return int64(exp * v)
 	}
 
 	for _, vote := range tallies {
