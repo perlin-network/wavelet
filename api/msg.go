@@ -25,30 +25,29 @@ import (
 	"github.com/valyala/fastjson"
 )
 
-type marshalableJSON interface {
-	marshalJSON(arena *fastjson.Arena) ([]byte, error)
+type MarshalableJSON interface {
+	MarshalJSON(arena *fastjson.Arena) ([]byte, error)
 }
 
-var _ marshalableJSON = (*msgResponse)(nil)
+var _ MarshalableJSON = (*MsgResponse)(nil)
 
-type msgResponse struct {
-	msg string
+type MsgResponse struct {
+	Message string `json:"msg"`
 }
 
-func (s *msgResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
+func (s *MsgResponse) MarshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
-
-	o.Set("msg", arena.NewString(s.msg))
+	o.Set("msg", arena.NewString(s.Message))
 
 	return o.MarshalTo(nil), nil
 }
 
-type errResponse struct {
-	Err            error `json:"-"` // low-level runtime error
-	HTTPStatusCode int   `json:"-"` // http response status code
+type ErrResponse struct {
+	Err            error `json:"error,omitempty"` // low-level runtime error
+	HTTPStatusCode int   `json:"status"`          // http response status code
 }
 
-func (e *errResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
+func (e *ErrResponse) MarshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 
 	o.Set("status", arena.NewString(http.StatusText(e.HTTPStatusCode)))
@@ -60,22 +59,22 @@ func (e *errResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	return o.MarshalTo(nil), nil
 }
 
-func ErrBadRequest(err error) *errResponse {
-	return &errResponse{
+func ErrBadRequest(err error) *ErrResponse {
+	return &ErrResponse{
 		Err:            err,
 		HTTPStatusCode: http.StatusBadRequest,
 	}
 }
 
-func ErrNotFound(err error) *errResponse {
-	return &errResponse{
+func ErrNotFound(err error) *ErrResponse {
+	return &ErrResponse{
 		Err:            err,
 		HTTPStatusCode: http.StatusNotFound,
 	}
 }
 
-func ErrInternal(err error) *errResponse {
-	return &errResponse{
+func ErrInternal(err error) *ErrResponse {
+	return &ErrResponse{
 		Err:            err,
 		HTTPStatusCode: http.StatusInternalServerError,
 	}

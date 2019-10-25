@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
@@ -18,6 +19,39 @@ type sendTransactionResponse struct {
 }
 
 var _ marshalableJSON = (*sendTransactionResponse)(nil)
+
+func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
+	req := new(sendTransactionRequest)
+
+	if g.Ledger != nil && g.Ledger.TakeSendQuota() == false {
+		g.renderError(ctx, ErrInternal(errors.New("rate limit")))
+		return
+	}
+
+	parser := g.parserPool.Get()
+	defer g.parserPool.Put(parser)
+
+	err := req.bind(parser, ctx.PostBody())
+
+	if err != nil {
+		g.renderError(ctx, ErrBadRequest(err))
+		return
+	}
+
+	tx := wavelet.NewSignedTransaction(
+		req.sender, req.Nonce, req.Block,
+		sys.Tag(req.Tag), req.payload, req.signature,
+	)
+
+	// TODO(kenta): check signature and nonce
+
+	if err = g.Ledger.AddTransaction(tx); err != nil {
+		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error adding your transaction to graph")))
+		return
+	}
+
+	g.render(ctx, &sendTransactionResponse{ledger: g.Ledger, tx: &tx})
+}
 
 func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	if s.ledger == nil || s.tx == nil {

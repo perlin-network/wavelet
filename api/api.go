@@ -124,43 +124,63 @@ func New(opts *Config) *Gateway {
 	// Setup HTTP router.
 	g.router = fasthttprouter.New()
 
-	// If the route does not exist for a method type (e.g. OPTIONS), fasthttprouter will consider it to not exist.
-	// So, we need to override notFound handler for OPTIONS method type to handle CORS.
+	// If the route does not exist for a method type (e.g. OPTIONS),
+	// fasthttprouter will consider it to not exist. So, we need to override
+	// notFound handler for OPTIONS method type to handle CORS.
 	g.router.HandleOPTIONS = false
 	g.router.NotFound = g.notFound()
 
 	// Websocket endpoints.
-	g.routeWithMiddleware("GET", "/poll/network", g.poll(sinkNetwork), true)
-	g.routeWithMiddleware("GET", "/poll/consensus", g.poll(sinkConsensus), true)
-	g.routeWithMiddleware("GET", "/poll/stake", g.poll(sinkStake), true)
-	g.routeWithMiddleware("GET", "/poll/accounts", g.poll(sinkAccounts), true)
-	g.routeWithMiddleware("GET", "/poll/contract", g.poll(sinkContracts), true)
-	g.routeWithMiddleware("GET", "/poll/tx", g.poll(sinkTransactions), true)
-	g.routeWithMiddleware("GET", "/poll/metrics", g.poll(sinkMetrics), true)
+	g.routeWithMiddleware("GET", "/poll/network",
+		g.poll(sinkNetwork), true)
+	g.routeWithMiddleware("GET", "/poll/consensus",
+		g.poll(sinkConsensus), true)
+	g.routeWithMiddleware("GET", "/poll/stake",
+		g.poll(sinkStake), true)
+	g.routeWithMiddleware("GET", "/poll/accounts",
+		g.poll(sinkAccounts), true)
+	g.routeWithMiddleware("GET", "/poll/contract",
+		g.poll(sinkContracts), true)
+	g.routeWithMiddleware("GET", "/poll/tx",
+		g.poll(sinkTransactions), true)
+	g.routeWithMiddleware("GET", "/poll/metrics",
+		g.poll(sinkMetrics), true)
 
 	// Debug endpoint.
-	g.routeWithMiddleware("GET", "/debug/*p", pprofhandler.PprofHandler, true)
+	g.routeWithMiddleware("GET", "/debug/*p",
+		pprofhandler.PprofHandler, true)
 
 	// Ledger endpoint.
-	g.routeWithMiddleware("GET", "/ledger", g.ledgerStatus, true)
+	g.routeWithMiddleware("GET", "/ledger",
+		g.ledgerStatus, true)
 
 	// Account endpoints.
-	g.routeWithMiddleware("GET", "/accounts/:id", g.getAccount, false)
+	g.routeWithMiddleware("GET", "/accounts/:id",
+		g.getAccount, false)
 
 	// Contract endpoints.
-	g.routeWithMiddleware("GET", "/contract/:id/page/:index", g.getContractPages, true, g.contractScope)
-	g.routeWithMiddleware("GET", "/contract/:id/page", g.getContractPages, true, g.contractScope)
-	g.routeWithMiddleware("GET", "/contract/:id", g.getContractCode, true, g.contractScope)
+	g.routeWithMiddleware("GET", "/contract/:id/page/:index",
+		g.getContractPages, true, g.contractScope)
+	g.routeWithMiddleware("GET", "/contract/:id/page",
+		g.getContractPages, true, g.contractScope)
+	g.routeWithMiddleware("GET", "/contract/:id",
+		g.getContractCode, true, g.contractScope)
 
 	// Transaction endpoints.
-	g.routeWithMiddleware("POST", "/tx/send", g.sendTransaction, false)
-	g.routeWithMiddleware("GET", "/tx/:id", g.getTransaction, false)
-	g.routeWithMiddleware("GET", "/tx", g.listTransactions, true)
+	g.routeWithMiddleware("POST", "/tx/send",
+		g.sendTransaction, false)
+	g.routeWithMiddleware("GET", "/tx/:id",
+		g.getTransaction, false)
+	g.routeWithMiddleware("GET", "/tx",
+		g.listTransactions, true)
 
 	// Connectivity endpoints
-	g.routeWithMiddleware("POST", "/node/connect", g.connect, true, g.auth)
-	g.routeWithMiddleware("POST", "/node/disconnect", g.disconnect, true, g.auth)
-	g.routeWithMiddleware("POST", "/node/restart", g.restart, true, g.auth)
+	g.routeWithMiddleware("POST", "/node/connect",
+		g.connect, true, g.auth)
+	g.routeWithMiddleware("POST", "/node/disconnect",
+		g.disconnect, true, g.auth)
+	g.routeWithMiddleware("POST", "/node/restart",
+		g.restart, true, g.auth)
 
 	g.server = &fasthttp.Server{Handler: g.router.Handler}
 
@@ -365,9 +385,9 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 	return len(buf), nil
 }
 
-func (g *Gateway) render(ctx *fasthttp.RequestCtx, m marshalableJSON) {
+func (g *Gateway) render(ctx *fasthttp.RequestCtx, m MarshalableJSON) {
 	arena := g.arenaPool.Get()
-	b, err := m.marshalJSON(arena)
+	b, err := m.MarshalJSON(arena)
 	g.arenaPool.Put(arena)
 
 	if err != nil {
@@ -380,9 +400,9 @@ func (g *Gateway) render(ctx *fasthttp.RequestCtx, m marshalableJSON) {
 	ctx.Response.SetBody(b)
 }
 
-func (g *Gateway) renderError(ctx *fasthttp.RequestCtx, e *errResponse) {
+func (g *Gateway) renderError(ctx *fasthttp.RequestCtx, e *ErrResponse) {
 	arena := g.arenaPool.Get()
-	b, err := e.marshalJSON(arena)
+	b, err := e.MarshalJSON(arena)
 	g.arenaPool.Put(arena)
 
 	if err != nil {

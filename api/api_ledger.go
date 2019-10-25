@@ -8,6 +8,7 @@ import (
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
 	"github.com/pkg/errors"
+	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 )
 
@@ -20,6 +21,14 @@ type ledgerStatusResponse struct {
 }
 
 var _ marshalableJSON = (*ledgerStatusResponse)(nil)
+
+func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
+	g.render(ctx, &ledgerStatusResponse{
+		client:    g.Client,
+		ledger:    g.Ledger,
+		publicKey: g.Keys.PublicKey(),
+	})
+}
 
 func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	if s.client == nil || s.ledger == nil {
