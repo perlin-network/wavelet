@@ -227,7 +227,7 @@ func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error
 
 	if pointer > 0 {
 		logger := log.Sync("sync_tx")
-		logger.Info().
+		logger.Debug().
 			Int("num_transactions", len(toReturn)).
 			Msg("Provided transactions for a sync request.")
 	}
@@ -250,7 +250,7 @@ func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullReq
 
 	if len(res.Transactions) > 0 {
 		logger := log.Sync("pull_missing_tx")
-		logger.Info().
+		logger.Debug().
 			Int("num_transactions", len(res.Transactions)).
 			Msg("Provided transactions for a pull request.")
 	}

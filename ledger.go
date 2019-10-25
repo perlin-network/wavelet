@@ -396,11 +396,6 @@ func (l *Ledger) SyncTransactions() {
 			},
 		}
 
-		var (
-			chunkSize uint64 = 1000
-			maxSize   uint64 = 1 << 20
-		)
-
 		for _, p := range peers {
 			wg.Add(1)
 			go func(conn *grpc.ClientConn) {
@@ -437,7 +432,7 @@ func (l *Ledger) SyncTransactions() {
 					return
 				}
 
-				if count > maxSize {
+				if count > conf.GetTXSyncLimit() {
 					logger.Debug().
 						Uint64("count", count).
 						Str("peer_address", conn.Target()).
@@ -451,10 +446,10 @@ func (l *Ledger) SyncTransactions() {
 
 				for count > 0 {
 					req := TransactionsSyncRequest_ChunkSize{
-						ChunkSize: chunkSize,
+						ChunkSize: conf.GetTXSyncChunkSize(),
 					}
 
-					if count < chunkSize {
+					if count < req.ChunkSize {
 						req.ChunkSize = count
 					}
 
