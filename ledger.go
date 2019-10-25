@@ -480,12 +480,13 @@ func (l *Ledger) SyncTransactions() {
 						transactions = append(transactions, tx)
 					}
 
-					count -= uint64(len(transactions))
+					downloadedNum := len(transactions)
+					count -= uint64(downloadedNum)
 
 					l.AddTransaction(transactions...)
 
-					l.metrics.downloadedTX.Mark(int64(count))
-					l.metrics.receivedTX.Mark(int64(count))
+					l.metrics.downloadedTX.Mark(int64(downloadedNum))
+					l.metrics.receivedTX.Mark(int64(downloadedNum))
 				}
 			}(p)
 		}
