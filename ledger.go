@@ -24,7 +24,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"github.com/willf/bloom"
 	"io"
 	"math/rand"
 	"sync"
@@ -39,6 +38,7 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"github.com/willf/bloom"
 	"golang.org/x/crypto/blake2b"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
@@ -828,25 +828,21 @@ func (l *Ledger) query() {
 		votes = append(votes, vote)
 	}
 
-	// Filter away all query responses whose blocks comprise of transactions our node is not aware of.
 	for _, vote := range votes {
+		// Filter nil blocks
 		if vote.block == nil {
 			continue
 		}
 
+		// Filter blocks with unexpected block height
 		if vote.block.Index != current.Index+1 {
 			vote.block = nil
 			continue
 		}
 
-		for _, id := range vote.block.Transactions {
-			if l.transactions.MarkMissing(id) {
-				vote.block = nil
-				break
-			}
-		}
-
-		if vote.block == nil {
+		// Filter blocks with at least 1 missing tx
+		if l.transactions.BatchMarkMissing(vote.block.Transactions...) {
+			vote.block = nil
 			continue
 		}
 
@@ -859,6 +855,7 @@ func (l *Ledger) query() {
 			continue
 		}
 
+		// Filter blocks that results in unexpected merkle root after collapse
 		if results.snapshot.Checksum() != vote.block.Merkle {
 			vote.block = nil
 			continue

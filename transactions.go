@@ -2,10 +2,11 @@ package wavelet
 
 import (
 	"fmt"
-	"github.com/google/btree"
-	"github.com/perlin-network/wavelet/conf"
 	"math/big"
 	"sync"
+
+	"github.com/google/btree"
+	"github.com/perlin-network/wavelet/conf"
 )
 
 var _ btree.Item = (*mempoolItem)(nil)
@@ -83,6 +84,22 @@ func (t *Transactions) MarkMissing(id TransactionID) bool {
 	defer t.Unlock()
 
 	return t.markMissing(id)
+}
+
+// BatchMarkMissing is the same as MarkMissing, but it accepts a list of transaction IDs.
+// It returns false if at least 1 transaction ID is found missing.
+func (t *Transactions) BatchMarkMissing(ids ...TransactionID) bool {
+	t.Lock()
+	defer t.Unlock()
+
+	var missing bool
+	for _, id := range ids {
+		if t.markMissing(id) {
+			missing = true
+		}
+	}
+
+	return missing
 }
 
 func (t *Transactions) markMissing(id TransactionID) bool {
