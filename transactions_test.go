@@ -14,6 +14,8 @@ import (
 )
 
 func TestTransactions(t *testing.T) {
+	t.Parallel()
+
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
@@ -99,6 +101,8 @@ func TestTransactions(t *testing.T) {
 }
 
 func TestTransactionsMarkMissing(t *testing.T) {
+	t.Parallel()
+
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
@@ -147,6 +151,8 @@ func TestTransactionsMarkMissing(t *testing.T) {
 }
 
 func TestTransactionsReshuffleIndices(t *testing.T) {
+	t.Parallel()
+
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
@@ -226,6 +232,8 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 }
 
 func TestTransactionsPruneOnReshuffle(t *testing.T) {
+	t.Parallel()
+
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 

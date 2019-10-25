@@ -1,11 +1,13 @@
 package wavelet
 
 import (
+	"encoding/binary"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
+	"math"
 	"math/rand"
 	"sync"
 	"testing"
@@ -247,6 +249,162 @@ func TestCollectVotesForSync(t *testing.T) {
 			WriteAccountStake(snapshot, keys[increaseStake].PublicKey(), 1)
 			assert.NoError(t, accounts.Commit(snapshot))
 		}
+	}
+}
+
+func TestCalculateTallies(t *testing.T) {
+	getTxID := func(count int) []TransactionID {
+		var ids []TransactionID
+
+		var id TransactionID
+		for i := 0; i < count; i++ {
+			_, err := rand.Read(id[:])
+			assert.NoError(t, err)
+
+			ids = append(ids, id)
+		}
+
+		return ids
+	}
+
+	accounts := NewAccounts(store.NewInmem())
+	snapshot := accounts.Snapshot()
+
+	var votes []Vote
+	expectedTallies := make(map[VoteID]float64)
+
+	baseStake := sys.MinimumStake * 2
+
+	nodeIDCount := uint16(0)
+	var nodeID MerkleNodeID
+
+	// Vote 1: empty vote
+	{
+		voterID := getRandomID(t)
+		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake)
+
+		votes = append(votes, &finalizationVote{
+			voter: voterID,
+			block: nil,
+		})
+
+		expectedTallies[ZeroVoteID] = 0.3037300177619893
+	}
+
+	// Vote 2: has the highest stake.
+	{
+		nodeIDCount++
+		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
+		block := NewBlock(1, nodeID, getTxID(2)...)
+
+		voterID := getRandomID(t)
+		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake*10)
+
+		votes = append(votes, &finalizationVote{
+			voter: voterID,
+			block: &block,
+		})
+
+		expectedTallies[block.ID] = 0.03374777975133215
+	}
+
+	// Vote 3: has the highest transactions.
+	{
+		nodeIDCount++
+		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
+		block := NewBlock(1, nodeID, getTxID(10)...)
+
+		voterID := getRandomID(t)
+		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake*2)
+
+		votes = append(votes, &finalizationVote{
+			voter: voterID,
+			block: &block,
+		})
+
+		expectedTallies[block.ID] = 0.04795737122557727
+	}
+
+	// Vote 4: has two responses, and third highest stake and transactions.
+	{
+		nodeIDCount++
+		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
+		block := NewBlock(1, nodeID, getTxID(4)...)
+
+		// First response
+
+		voterID := getRandomID(t)
+		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake*4)
+
+		votes = append(votes, &finalizationVote{
+			voter: voterID,
+			block: &block,
+		})
+
+		copyBlock := block
+
+		// Second response
+
+		voterID = getRandomID(t)
+		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake*4)
+
+		votes = append(votes, &finalizationVote{
+			voter: voterID,
+			block: &copyBlock,
+		})
+
+		expectedTallies[block.ID] = 0.37300177619893427
+	}
+
+	// Vote 5: Second highest stake and transactions.
+	{
+		nodeIDCount++
+		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
+		block := NewBlock(1, nodeID, getTxID(9)...)
+
+		voterID := getRandomID(t)
+		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake*9)
+
+		votes = append(votes, &finalizationVote{
+			voter: voterID,
+			block: &block,
+		})
+
+		expectedTallies[block.ID] = 0.24156305506216696
+	}
+
+	// Vote 6: has zero stake (thus minimum stake), and 1 transactions.
+	// It's expected that only this vote will have 0 tally because it has the lowest stake and transactions (profit).
+	{
+		nodeIDCount++
+		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
+		block := NewBlock(1, nodeID, getTxID(1)...)
+
+		voterID := getRandomID(t)
+		WriteAccountStake(snapshot, voterID.PublicKey(), 0)
+
+		votes = append(votes, &finalizationVote{
+			voter: voterID,
+			block: &block,
+		})
+
+		expectedTallies[block.ID] = 0
+	}
+
+	assert.NoError(t, accounts.Commit(snapshot))
+
+	tallies := calculateTallies(accounts, votes)
+	assert.Len(t, tallies, 6)
+
+	// Because of floating point inaccuracy, we convert it to an integer.
+	toInt64 := func(v float64) int64 {
+		// Use 10 ^ 15 because it seems the inaccuracy is happening at 10 ^ -16.
+		exp := math.Pow10(15)
+		return int64(exp * v)
+	}
+
+	for _, vote := range tallies {
+		assert.Equal(t, toInt64(expectedTallies[vote.ID()]), toInt64(vote.Tally()))
 	}
 }
 

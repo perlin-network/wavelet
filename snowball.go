@@ -69,6 +69,11 @@ func (s *Snowball) Tick(votes []Vote) {
 	var majority Vote
 
 	for _, vote := range votes {
+		// Empty vote can still have tally (the base tally), so we need to ignore empty vote.
+		if vote.ID() == ZeroVoteID {
+			continue
+		}
+
 		if majority == nil || vote.Tally() > majority.Tally() {
 			majority = vote
 		}
