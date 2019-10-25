@@ -192,11 +192,6 @@ func tick(accounts *Accounts, snowball *Snowball, responses []Vote) {
 	votes := make(map[VoteID]Vote, len(responses))
 
 	for _, res := range responses {
-		// Ignore vote with empty response
-		if res.ID() == ZeroVoteID {
-			continue
-		}
-
 		if _, exists := votes[res.ID()]; !exists {
 			votes[res.ID()] = res
 		}
