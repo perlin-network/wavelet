@@ -24,7 +24,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"github.com/willf/bloom"
 	"io"
 	"math/rand"
 	"sync"
@@ -39,6 +38,7 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"github.com/willf/bloom"
 	"golang.org/x/crypto/blake2b"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
@@ -239,10 +239,7 @@ func (l *Ledger) Close() {
 	l.stopWG.Wait()
 }
 
-// AddTransaction adds a transaction to the ledger. If the transaction is
-// invalid or fails any validation checks, an error is returned. No error
-// is returned if the transaction has already existed int he ledgers graph
-// beforehand.
+// AddTransaction adds a transaction to the ledger and adds it's id to bloom filter used to sync transactions.
 func (l *Ledger) AddTransaction(txs ...Transaction) {
 	l.transactions.BatchAdd(l.blocks.Latest().ID, txs...)
 
@@ -380,12 +377,6 @@ func (l *Ledger) SyncTransactions() {
 
 		peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
 		if err != nil {
-			select {
-			case <-l.sync:
-				return
-			default:
-			}
-
 			continue
 		}
 
@@ -404,11 +395,6 @@ func (l *Ledger) SyncTransactions() {
 				Filter: buf.Bytes(),
 			},
 		}
-
-		var (
-			chunkSize uint64 = 1000
-			maxSize   uint64 = 1 << 20
-		)
 
 		for _, p := range peers {
 			wg.Add(1)
@@ -442,22 +428,28 @@ func (l *Ledger) SyncTransactions() {
 				}
 
 				count := res.GetTransactionsNum()
-				if count == 0 || count > maxSize {
+				if count == 0 {
 					return
 				}
 
-				if count > 0 {
-					logger.Info().
+				if count > conf.GetTXSyncLimit() {
+					logger.Debug().
 						Uint64("count", count).
-						Msg("Requesting transaction(s) to sync.")
+						Str("peer_address", conn.Target()).
+						Msg("Bad number of transactions would be received")
+					return
 				}
+
+				logger.Debug().
+					Uint64("count", count).
+					Msg("Requesting transaction(s) to sync.")
 
 				for count > 0 {
 					req := TransactionsSyncRequest_ChunkSize{
-						ChunkSize: chunkSize,
+						ChunkSize: conf.GetTXSyncChunkSize(),
 					}
 
-					if count < chunkSize {
+					if count < req.ChunkSize {
 						req.ChunkSize = count
 					}
 
@@ -472,25 +464,25 @@ func (l *Ledger) SyncTransactions() {
 						return
 					}
 
-					transactions := res.GetTransactions()
-					if transactions == nil {
+					txResponse := res.GetTransactions()
+					if txResponse == nil {
 						return
 					}
 
-					txs := make([]Transaction, 0, len(transactions.Transactions))
-					for _, txBody := range transactions.Transactions {
+					transactions := make([]Transaction, 0, len(txResponse.Transactions))
+					for _, txBody := range txResponse.Transactions {
 						tx, err := UnmarshalTransaction(bytes.NewReader(txBody))
 						if err != nil {
 							logger.Error().Err(err).Msg("failed to unmarshal synced transaction")
 							continue
 						}
 
-						txs = append(txs, tx)
+						transactions = append(transactions, tx)
 					}
 
-					count -= uint64(len(txs))
+					count -= uint64(len(transactions))
 
-					l.AddTransaction(txs...)
+					l.AddTransaction(transactions...)
 
 					l.metrics.downloadedTX.Mark(int64(count))
 					l.metrics.receivedTX.Mark(int64(count))
@@ -520,12 +512,6 @@ func (l *Ledger) PullMissingTransactions() {
 
 		peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
 		if err != nil {
-			select {
-			case <-l.sync:
-				return
-			default:
-			}
-
 			continue
 		}
 
@@ -752,99 +738,87 @@ func (l *Ledger) finalize(block Block) {
 func (l *Ledger) query() {
 	snowballK := conf.GetSnowballK()
 
-	if len(l.client.ClosestPeerIDs()) < snowballK {
-		// TODO not enough peers, what do to ?
+	peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
+	if err != nil {
 		return
 	}
 
 	current := l.blocks.Latest()
 
-	workerChan := make(chan *grpc.ClientConn, 16)
-
-	var workerWG sync.WaitGroup
-	workerWG.Add(cap(workerChan))
+	var wg sync.WaitGroup
 
 	voteChan := make(chan *finalizationVote, snowballK)
 
 	req := &QueryRequest{BlockIndex: current.Index + 1}
 
-	for i := 0; i < cap(workerChan); i++ {
-		go func() {
-			for conn := range workerChan {
-				f := func() {
-					client := NewWaveletClient(conn)
-
-					ctx, cancel := context.WithTimeout(context.Background(), conf.GetQueryTimeout())
-
-					p := &peer.Peer{}
-
-					res, err := client.Query(ctx, req, grpc.Peer(p))
-					if err != nil {
-						logger := log.Node()
-						logger.Error().
-							Err(err).
-							Msg("error while querying peer")
-
-						cancel()
-						return
-					}
-
-					cancel()
-
-					l.metrics.queried.Mark(1)
-
-					info := noise.InfoFromPeer(p)
-					if info == nil {
-						return
-					}
-
-					voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
-					if !ok {
-						return
-					}
-
-					block, err := UnmarshalBlock(bytes.NewReader(res.Block))
-					if err != nil {
-						voteChan <- &finalizationVote{voter: voter, block: nil}
-						return
-					}
-
-					if block.ID == ZeroBlockID {
-						voteChan <- &finalizationVote{voter: voter, block: nil}
-						return
-					}
-
-					voteChan <- &finalizationVote{
-						voter: voter,
-						block: &block,
-					}
-				}
-				l.metrics.queryLatency.Time(f)
-			}
-			workerWG.Done()
-		}()
-	}
-
-	cleanupWorker := func() {
-		close(workerChan)
-		workerWG.Wait()
-	}
-
-	peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
-	if err != nil {
-		cleanupWorker()
-		return
-	}
-
 	for _, p := range peers {
-		workerChan <- p
+		wg.Add(1)
+		go func(conn *grpc.ClientConn) {
+			defer wg.Done()
+
+			var vote finalizationVote
+			defer func() {
+				voteChan <- &vote
+			}()
+
+			f := func() {
+				client := NewWaveletClient(conn)
+
+				ctx, cancel := context.WithTimeout(context.Background(), conf.GetQueryTimeout())
+				defer cancel()
+
+				p := &peer.Peer{}
+
+				res, err := client.Query(ctx, req, grpc.Peer(p))
+				if err != nil {
+					logger := log.Node()
+					logger.Error().
+						Err(err).
+						Msg("error while querying peer")
+
+					return
+				}
+
+				l.metrics.queried.Mark(1)
+
+				info := noise.InfoFromPeer(p)
+				if info == nil {
+					return
+				}
+
+				voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
+				if !ok {
+					return
+				}
+
+				vote.voter = voter
+
+				block, err := UnmarshalBlock(bytes.NewReader(res.Block))
+				if err != nil {
+					return
+				}
+
+				if block.ID == ZeroBlockID {
+					return
+				}
+
+				vote.block = &block
+			}
+			l.metrics.queryLatency.Time(f)
+		}(p)
 	}
+
+	wg.Wait()
 
 	votes := make([]*finalizationVote, 0, snowballK)
 	voters := make(map[AccountID]struct{}, snowballK)
 
 	for i := 0; i < cap(votes); i++ {
 		vote := <-voteChan
+
+		if vote.voter == nil {
+			continue
+		}
 
 		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
 			continue // To make sure the sampling process is fair, only allow one vote per peer.
@@ -854,27 +828,21 @@ func (l *Ledger) query() {
 		votes = append(votes, vote)
 	}
 
-	cleanupWorker()
-
-	// Filter away all query responses whose blocks comprise of transactions our node is not aware of.
 	for _, vote := range votes {
+		// Filter nil blocks
 		if vote.block == nil {
 			continue
 		}
 
+		// Filter blocks with unexpected block height
 		if vote.block.Index != current.Index+1 {
 			vote.block = nil
 			continue
 		}
 
-		for _, id := range vote.block.Transactions {
-			if l.transactions.MarkMissing(id) {
-				vote.block = nil
-				break
-			}
-		}
-
-		if vote.block == nil {
+		// Filter blocks with at least 1 missing tx
+		if l.transactions.BatchMarkMissing(vote.block.Transactions...) {
+			vote.block = nil
 			continue
 		}
 
@@ -887,6 +855,7 @@ func (l *Ledger) query() {
 			continue
 		}
 
+		// Filter blocks that results in unexpected merkle root after collapse
 		if results.snapshot.Checksum() != vote.block.Merkle {
 			vote.block = nil
 			continue
