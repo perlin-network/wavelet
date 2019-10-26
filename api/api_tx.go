@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/base64"
 	"encoding/hex"
-	"strconv"
 
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
@@ -12,16 +11,14 @@ import (
 	"github.com/valyala/fastjson"
 )
 
-type sendTransactionResponse struct {
-	// Internal fields.
-	ledger *wavelet.Ledger
-	tx     *wavelet.Transaction
+type TxResponse struct {
+	ID string
 }
 
-var _ marshalableJSON = (*sendTransactionResponse)(nil)
+var _ MarshalableJSON = (*TxResponse)(nil)
 
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
-	req := new(sendTransactionRequest)
+	req := new(TxRequest)
 
 	if g.Ledger != nil && g.Ledger.TakeSendQuota() == false {
 		g.renderError(ctx, ErrInternal(errors.New("rate limit")))
@@ -31,9 +28,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	parser := g.parserPool.Get()
 	defer g.parserPool.Put(parser)
 
-	err := req.bind(parser, ctx.PostBody())
-
-	if err != nil {
+	if err := req.bind(parser, ctx.PostBody()); err != nil {
 		g.renderError(ctx, ErrBadRequest(err))
 		return
 	}
@@ -45,22 +40,19 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 
 	// TODO(kenta): check signature and nonce
 
-	if err = g.Ledger.AddTransaction(tx); err != nil {
+	if err := g.Ledger.AddTransaction(tx); err != nil {
 		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error adding your transaction to graph")))
 		return
 	}
 
-	g.render(ctx, &sendTransactionResponse{ledger: g.Ledger, tx: &tx})
+	g.render(ctx, &TxResponse{
+		ID: hex.EncodeToString(tx.ID[:]),
+	})
 }
 
-func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
-	if s.ledger == nil || s.tx == nil {
-		return nil, errors.New("insufficient parameters were provided")
-	}
-
+func (s *TxResponse) MarshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
-
-	o.Set("id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
+	arenaSet(arena, o, "id", s.ID)
 
 	return o.MarshalTo(nil), nil
 }
@@ -69,13 +61,17 @@ func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, er
 	Get Transaction
 */
 
-type transaction struct {
-	// Internal fields.
-	tx     *wavelet.Transaction
-	status string
+type Transaction struct {
+	ID     string `json:"id"`     // [32]byte
+	Sender string `json:"sender"` // [32]byte
+	// Status    string `json:"status"`
+	Nonce     uint64 `json:"nonce"`
+	Tag       uint8  `json:"tag"`
+	Payload   string `json:"payload"`   // []byte base64
+	Signature string `json:"signature"` // [64]byte
 }
 
-var _ marshalableJSON = (*transaction)(nil)
+var _ MarshalableJSON = (*Transaction)(nil)
 
 func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 	param, ok := ctx.UserValue("id").(string)
@@ -104,20 +100,17 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// block := g.Ledger.Blocks().Latest()
-
-	res := &transaction{tx: tx}
-
-	// if tx.Depth <= rootDepth {
-	// 	res.status = "applied"
-	// } else {
-	// 	res.status = "received"
-	// }
-
-	g.render(ctx, res)
+	g.render(ctx, &Transaction{
+		ID:        hex.EncodeToString(tx.ID[:]),
+		Sender:    hex.EncodeToString(tx.Sender[:]),
+		Nonce:     tx.Nonce,
+		Tag:       uint8(tx.Tag),
+		Payload:   base64.StdEncoding.EncodeToString(tx.Payload),
+		Signature: hex.EncodeToString(tx.Signature[:]),
+	})
 }
 
-func (s *transaction) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
+func (s *Transaction) MarshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	o, err := s.getObject(arena)
 	if err != nil {
 		return nil, err
@@ -126,25 +119,22 @@ func (s *transaction) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	return o.MarshalTo(nil), nil
 }
 
-func (s *transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) {
-	if s.tx == nil {
-		return nil, errors.New("insufficient fields specified")
-	}
-
+func (s *Transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) {
 	o := arena.NewObject()
 
-	o.Set("id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
-	o.Set("sender", arena.NewString(hex.EncodeToString(s.tx.Sender[:])))
-	o.Set("status", arena.NewString(s.status))
-	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(s.tx.Nonce, 10)))
-	o.Set("tag", arena.NewNumberInt(int(s.tx.Tag)))
-	o.Set("payload", arena.NewString(base64.StdEncoding.EncodeToString(s.tx.Payload)))
-	o.Set("signature", arena.NewString(hex.EncodeToString(s.tx.Signature[:])))
+	arenaSets(arena, o,
+		"id", s.ID,
+		"sender", s.Sender,
+		"nonce", s.Nonce,
+		"tag", s.Tag,
+		"payload", s.Payload,
+		"signature", s.Signature,
+	)
 
 	return o, nil
 }
 
-type transactionList []*transaction
+type TransactionList []*Transaction
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 	// TODO
@@ -194,7 +184,7 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 
 	*/
 
-	var transactions transactionList
+	var transactions TransactionList
 
 	/*
 
@@ -216,7 +206,7 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 	g.render(ctx, transactions)
 }
 
-func (s transactionList) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
+func (s TransactionList) MarshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	list := arena.NewArray()
 
 	for i, v := range s {

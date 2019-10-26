@@ -19,8 +19,7 @@ type Account struct {
 	NumPages   uint64 `json:"num_pages"`
 
 	// Internal fields.
-	id     wavelet.AccountID
-	ledger *wavelet.Ledger
+	id wavelet.AccountID
 }
 
 var _ MarshalableJSON = (*Account)(nil)
@@ -59,7 +58,6 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, id)
 
 	g.render(ctx, &Account{
-		ledger:     g.Ledger,
 		id:         id,
 		Balance:    balance,
 		GasBalance: gasBalance,
@@ -72,10 +70,6 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 }
 
 func (s *Account) MarshalJSON(arena *fastjson.Arena) ([]byte, error) {
-	if s.ledger == nil || s.id == wavelet.ZeroAccountID {
-		return nil, errors.New("insufficient fields specified")
-	}
-
 	o := arena.NewObject()
 
 	arenaSet(arena, o, "public_key", s.id[:])

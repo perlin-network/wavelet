@@ -10,7 +10,7 @@ import (
 	"github.com/valyala/fastjson"
 )
 
-type sendTransactionRequest struct {
+type TxRequest struct {
 	Sender    string `json:"sender"`
 	Nonce     uint64 `json:"nonce"`
 	Block     uint64 `json:"block"`
@@ -23,7 +23,7 @@ type sendTransactionRequest struct {
 	signature edwards25519.Signature
 }
 
-func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) error {
+func (s *TxRequest) bind(parser *fastjson.Parser, body []byte) error {
 	if err := fastjson.ValidateBytes(body); err != nil {
 		return errors.Wrap(err, "invalid json")
 	}

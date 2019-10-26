@@ -22,6 +22,8 @@ func arenaSet(arena *fastjson.Arena, o *fastjson.Value, key string, value interf
 		v = arenaNewUint(arena, value)
 	case float64:
 		v = arena.NewNumberFloat64(value)
+	case uint8:
+		v = arena.NewNumberInt(int(value))
 	case bool:
 		if value {
 			v = arena.NewTrue()
@@ -35,6 +37,12 @@ func arenaSet(arena *fastjson.Arena, o *fastjson.Value, key string, value interf
 	}
 
 	o.Set(key, v)
+}
+
+func arenaSets(arena *fastjson.Arena, o *fastjson.Value, kvPair ...interface{}) {
+	for i := 0; i < len(kvPair); i += 2 {
+		arenaSet(arena, o, kvPair[i].(string), kvPair[i+1])
+	}
 }
 
 func arenaNewUint(arena *fastjson.Arena, u uint64) *fastjson.Value {

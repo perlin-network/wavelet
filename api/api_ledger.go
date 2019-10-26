@@ -2,112 +2,143 @@ package api
 
 import (
 	"encoding/hex"
-	"strconv"
 
-	"github.com/perlin-network/noise/edwards25519"
-	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
-	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 )
 
-type ledgerStatusResponse struct {
-	// Internal fields.
+type LedgerStatus struct {
+	PublicKey      string `json:"public_key"`
+	Address        string `json:"address"`
+	NumAccounts    uint64 `json:"num_accounts"`
+	PreferredVotes int    `json:"preferred_votes"`
+	SyncStatus     string `json:"sync_status"`
 
-	client    *skademlia.Client
-	ledger    *wavelet.Ledger
-	publicKey edwards25519.PublicKey
+	Block     LedgerStatusBlock  `json:"block"`
+	Preferred *LedgerStatusBlock `json:"preferred"`
+
+	NumTx        int `json:"num_tx"`
+	NumTxInStore int `json:"num_tx_in_store"`
+
+	Peers []LedgerStatusPeer
 }
 
-var _ marshalableJSON = (*ledgerStatusResponse)(nil)
+type LedgerStatusBlock struct {
+	MerkleRoot string `json:"merkle_root"` // [16]byte
+	Height     uint64 `json:"height"`
+	ID         string `json:"id"` // [32]byte
+	Txs        int    `json:"transactions"`
+}
+
+type LedgerStatusPeer struct {
+	Address   string `json:"address"`
+	PublicKey string `json:"public_key"` // [32]byte
+}
+
+var _ MarshalableJSON = (*LedgerStatus)(nil)
 
 func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
-	g.render(ctx, &ledgerStatusResponse{
-		client:    g.Client,
-		ledger:    g.Ledger,
-		publicKey: g.Keys.PublicKey(),
-	})
+	var (
+		snapshot  = g.Ledger.Snapshot()
+		block     = g.Ledger.Blocks().Latest()
+		publicKey = g.Keys.PublicKey()
+	)
+
+	var l = LedgerStatus{
+		PublicKey:      hex.EncodeToString(publicKey[:]),
+		Address:        g.Client.ID().Address(),
+		NumAccounts:    wavelet.ReadAccountsLen(snapshot),
+		PreferredVotes: g.Ledger.Finalizer().Progress(),
+		SyncStatus:     g.Ledger.SyncStatus(),
+
+		Block: LedgerStatusBlock{
+			MerkleRoot: hex.EncodeToString(block.Merkle[:]),
+			Height:     block.Index,
+			ID:         hex.EncodeToString(block.ID[:]),
+			Txs:        len(block.Transactions),
+		},
+
+		NumTx:        g.Ledger.Transactions().PendingLen(),
+		NumTxInStore: g.Ledger.Transactions().Len(),
+	}
+
+	if preferred := g.Ledger.Finalizer().Preferred(); preferred != nil {
+		b, ok := preferred.Value().(*wavelet.Block)
+		if ok {
+			l.Preferred = &LedgerStatusBlock{
+				MerkleRoot: hex.EncodeToString(b.Merkle[:]),
+				Height:     b.Index,
+				ID:         hex.EncodeToString(b.ID[:]),
+				Txs:        len(b.Transactions),
+			}
+		}
+	}
+
+	if peers := g.Client.ClosestPeerIDs(); len(peers) > 0 {
+		l.Peers = make([]LedgerStatusPeer, len(peers))
+
+		for i, p := range g.Client.ClosestPeerIDs() {
+			pub := p.PublicKey()
+
+			l.Peers[i].Address = p.Address()
+			l.Peers[i].PublicKey = hex.EncodeToString(pub[:])
+		}
+	}
+
+	g.render(ctx, &l)
 }
 
-func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
-	if s.client == nil || s.ledger == nil {
-		return nil, errors.New("insufficient parameters were provided")
-	}
-
-	snapshot := s.ledger.Snapshot()
-	block := s.ledger.Blocks().Latest()
-	preferred := s.ledger.Finalizer().Preferred()
-
-	accountsLen := wavelet.ReadAccountsLen(snapshot)
-
+func (s *LedgerStatus) MarshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 
-	o.Set("public_key",
-		arena.NewString(hex.EncodeToString(s.publicKey[:])))
-	o.Set("address",
-		arena.NewString(s.client.ID().Address()))
-	o.Set("num_accounts",
-		arena.NewNumberString(strconv.FormatUint(accountsLen, 10)))
-	o.Set("preferred_votes",
-		arena.NewNumberInt(s.ledger.Finalizer().Progress()))
-	o.Set("sync_status",
-		arena.NewString(s.ledger.SyncStatus()))
+	arenaSet(arena, o, "public_key", s.PublicKey)
+	arenaSet(arena, o, "address", s.Address)
+	arenaSet(arena, o, "num_accounts", s.NumAccounts)
+	arenaSet(arena, o, "preferred_votes", s.PreferredVotes)
+	arenaSet(arena, o, "sync_status", s.SyncStatus)
 
 	{
-		blockObj := arena.NewObject()
-		blockObj.Set("merkle_root",
-			arena.NewString(hex.EncodeToString(block.Merkle[:])))
-		blockObj.Set("height",
-			arena.NewNumberString(strconv.FormatUint(block.Index, 10)))
-		blockObj.Set("id",
-			arena.NewString(hex.EncodeToString(block.ID[:])))
-		blockObj.Set("transactions",
-			arena.NewNumberInt(len(block.Transactions)))
+		block := arena.NewObject()
 
-		o.Set("block", blockObj)
+		arenaSet(arena, block, "merkle_root", s.Block.MerkleRoot)
+		arenaSet(arena, block, "height", s.Block.Height)
+		arenaSet(arena, block, "id", s.Block.ID)
+		arenaSet(arena, block, "transactions", s.Block.Txs)
+
+		o.Set("block", block)
 	}
 
-	if preferred != nil {
-		preferredObj := arena.NewObject()
-		preferredObj.Set("merkle_root",
-			arena.NewString(hex.EncodeToString(block.Merkle[:])))
-		preferredObj.Set("height",
-			arena.NewNumberString(strconv.FormatUint(block.Index, 10)))
-		preferredObj.Set("id",
-			arena.NewString(hex.EncodeToString(block.ID[:])))
-		preferredObj.Set("transactions",
-			arena.NewNumberInt(len(block.Transactions)))
+	if s.Preferred != nil {
+		pref := arena.NewObject()
 
-		o.Set("preferred", preferredObj)
-	} else {
-		o.Set("preferred", arena.NewNull())
+		arenaSet(arena, pref, "merkle_root", s.Preferred.MerkleRoot)
+		arenaSet(arena, pref, "height", s.Preferred.Height)
+		arenaSet(arena, pref, "id", s.Preferred.ID)
+		arenaSet(arena, pref, "transactions", s.Preferred.Txs)
+
+		o.Set("preferred", pref)
 	}
 
-	o.Set("num_tx",
-		arena.NewNumberInt(s.ledger.Transactions().PendingLen()))
-	o.Set("num_tx_in_store",
-		arena.NewNumberInt(s.ledger.Transactions().Len()))
-	o.Set("num_accounts_in_store",
-		arena.NewNumberString(strconv.FormatUint(accountsLen, 10)))
+	arenaSet(arena, o, "num_tx", s.NumTx)
+	arenaSet(arena, o, "num_tx_in_store", s.NumTxInStore)
 
-	peers := s.client.ClosestPeerIDs()
-	if len(peers) > 0 {
-		peersArray := arena.NewArray()
+	var peers *fastjson.Value
 
-		for i := range peers {
-			publicKey := peers[i].PublicKey()
+	if len(s.Peers) > 0 {
+		peers = arena.NewArray()
 
+		for i, p := range s.Peers {
 			peer := arena.NewObject()
-			peer.Set("address", arena.NewString(peers[i].Address()))
-			peer.Set("public_key", arena.NewString(hex.EncodeToString(publicKey[:])))
 
-			peersArray.SetArrayItem(i, peer)
+			arenaSet(arena, peer, "address", p.Address)
+			arenaSet(arena, peer, "public_key", p.PublicKey)
+
+			peers.SetArrayItem(i, peer)
 		}
-		o.Set("peers", peersArray)
-	} else {
-		o.Set("peers", nil)
 	}
+
+	o.Set("peers", peers)
 
 	return o.MarshalTo(nil), nil
 }

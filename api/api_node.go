@@ -35,7 +35,9 @@ func (g *Gateway) connect(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	g.render(ctx, &msgResponse{msg: fmt.Sprintf("Successfully connected to %s", address)})
+	g.render(ctx, &MsgResponse{
+		Message: fmt.Sprintf("Successfully connected to %s", address),
+	})
 }
 
 func (g *Gateway) disconnect(ctx *fasthttp.RequestCtx) {
@@ -56,7 +58,8 @@ func (g *Gateway) disconnect(ctx *fasthttp.RequestCtx) {
 
 	address, err := addressVal.StringBytes()
 	if err != nil {
-		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error extracting address from payload")))
+		g.renderError(ctx, ErrInternal(
+			errors.Wrap(err, "error extracting address from payload")))
 		return
 	}
 
@@ -65,7 +68,9 @@ func (g *Gateway) disconnect(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	g.render(ctx, &msgResponse{msg: fmt.Sprintf("Successfully disconnected from %s", address)})
+	g.render(ctx, &MsgResponse{
+		Message: fmt.Sprintf("Successfully disconnected from %s", address),
+	})
 }
 
 func (g *Gateway) restart(ctx *fasthttp.RequestCtx) {
