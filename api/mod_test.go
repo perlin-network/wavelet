@@ -82,7 +82,7 @@ func TestListTransaction(t *testing.T) {
 		name         string
 		url          string
 		wantCode     int
-		wantResponse marshalableJSON
+		wantResponse marshalableArena
 	}{
 		{
 			name:     "sender not hex",
@@ -165,7 +165,7 @@ func TestListTransaction(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantResponse != nil {
-				r, err := tc.wantResponse.marshalJSON(new(fastjson.ArenaPool).Get())
+				r, err := tc.wantResponse.marshalArena(new(fastjson.ArenaPool).Get())
 				assert.NoError(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
@@ -206,7 +206,7 @@ func TestGetTransaction(t *testing.T) {
 		name         string
 		id           string
 		wantCode     int
-		wantResponse marshalableJSON
+		wantResponse marshalableArena
 	}{
 		{
 			name:     "invalid id length",
@@ -240,7 +240,7 @@ func TestGetTransaction(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantResponse != nil {
-				r, err := tc.wantResponse.marshalJSON(new(fastjson.ArenaPool).Get())
+				r, err := tc.wantResponse.marshalArena(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
@@ -382,7 +382,7 @@ func TestGetAccount(t *testing.T) {
 		name         string
 		url          string
 		wantCode     int
-		wantResponse marshalableJSON
+		wantResponse marshalableArena
 	}{
 		{
 			name:     "missing id",
@@ -421,7 +421,7 @@ func TestGetAccount(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantResponse != nil {
-				r, err := tc.wantResponse.marshalJSON(new(fastjson.ArenaPool).Get())
+				r, err := tc.wantResponse.marshalArena(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
@@ -448,7 +448,7 @@ func TestGetContractCode(t *testing.T) {
 		name      string
 		url       string
 		wantCode  int
-		wantError marshalableJSON
+		wantError marshalableArena
 	}{
 		{
 			name:     "missing id",
@@ -490,7 +490,7 @@ func TestGetContractCode(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantError != nil {
-				r, err := tc.wantError.marshalJSON(new(fastjson.ArenaPool).Get())
+				r, err := tc.wantError.marshalArena(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
@@ -510,7 +510,7 @@ func TestGetContractPages(t *testing.T) {
 		name      string
 		url       string
 		wantCode  int
-		wantError marshalableJSON
+		wantError marshalableArena
 	}{
 		{
 			name:     "page not uint",
@@ -546,7 +546,7 @@ func TestGetContractPages(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantError != nil {
-				r, err := tc.wantError.marshalJSON(new(fastjson.ArenaPool).Get())
+				r, err := tc.wantError.marshalArena(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
@@ -909,7 +909,7 @@ type testErrResponse struct {
 	ErrorText  string `json:"error,omitempty"` // application-level error message, for debugging
 }
 
-func (t testErrResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
+func (t testErrResponse) marshalArena(arena *fastjson.Arena) ([]byte, error) {
 	return json.Marshal(t)
 }
 

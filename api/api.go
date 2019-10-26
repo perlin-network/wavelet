@@ -385,9 +385,17 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 	return len(buf), nil
 }
 
-func (g *Gateway) render(ctx *fasthttp.RequestCtx, m MarshalableJSON) {
+func (g *Gateway) render(ctx *fasthttp.RequestCtx, m MarshalableArena) {
+	g._render(ctx, m, http.StatusOK)
+}
+
+func (g *Gateway) renderError(ctx *fasthttp.RequestCtx, e *ErrResponse) {
+	g._render(ctx, e, e.HTTPStatusCode)
+}
+
+func (g *Gateway) _render(ctx *fasthttp.RequestCtx, m MarshalableArena, status int) {
 	arena := g.arenaPool.Get()
-	b, err := m.MarshalJSON(arena)
+	b, err := m.MarshalArena(arena)
 	g.arenaPool.Put(arena)
 
 	if err != nil {
@@ -396,21 +404,6 @@ func (g *Gateway) render(ctx *fasthttp.RequestCtx, m MarshalableJSON) {
 	}
 
 	ctx.SetContentType("application/json")
-	ctx.Response.SetStatusCode(http.StatusOK)
-	ctx.Response.SetBody(b)
-}
-
-func (g *Gateway) renderError(ctx *fasthttp.RequestCtx, e *ErrResponse) {
-	arena := g.arenaPool.Get()
-	b, err := e.MarshalJSON(arena)
-	g.arenaPool.Put(arena)
-
-	if err != nil {
-		ctx.Error(fmt.Sprintf(`{ "error": "render error: %s" |`, err.Error()), http.StatusInternalServerError)
-		return
-	}
-
-	ctx.SetContentType("application/json")
-	ctx.Response.SetStatusCode(e.HTTPStatusCode)
+	ctx.Response.SetStatusCode(status)
 	ctx.Response.SetBody(b)
 }

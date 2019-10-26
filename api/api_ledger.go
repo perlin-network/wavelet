@@ -36,7 +36,7 @@ type LedgerStatusPeer struct {
 	PublicKey string `json:"public_key"` // [32]byte
 }
 
-var _ MarshalableJSON = (*LedgerStatus)(nil)
+var _ JSONObject = (*LedgerStatus)(nil)
 
 func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 	var (
@@ -89,7 +89,7 @@ func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 	g.render(ctx, &l)
 }
 
-func (s *LedgerStatus) MarshalJSON(arena *fastjson.Arena) ([]byte, error) {
+func (s *LedgerStatus) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 
 	arenaSet(arena, o, "public_key", s.PublicKey)
@@ -141,4 +141,18 @@ func (s *LedgerStatus) MarshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	o.Set("peers", peers)
 
 	return o.MarshalTo(nil), nil
+}
+
+func (s *LedgerStatus) UnmarshalValue(v *fastjson.Value) error {
+	s.PublicKey = valueString(v, "public_key")
+	s.Address = valueString(v, "address")
+	s.NumAccounts = v.GetUint64("num_accounts")
+	s.PreferredVotes = v.GetInt("preferred_votes")
+	s.SyncStatus = valueString(v, "sync_status")
+
+	if preferred := v.GetObject("preferred"); preferred != nil {
+		s.Preferred = &LedgerStatusBlock{
+			MerkleRoot: "",
+		}
+	}
 }

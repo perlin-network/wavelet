@@ -14,6 +14,8 @@ type NonceResponse struct {
 	Block uint64 `json:"block"`
 }
 
+var _ JSONObject = (*NonceResponse)(nil)
+
 func (g *Gateway) getAccountNonce(ctx *fasthttp.RequestCtx) {
 	param, ok := ctx.UserValue("id").(string)
 	if !ok {
@@ -44,9 +46,15 @@ func (g *Gateway) getAccountNonce(ctx *fasthttp.RequestCtx) {
 	})
 }
 
-func (s *NonceResponse) MarshalJSON(arena *fastjson.Arena) ([]byte, error) {
+func (s *NonceResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 	arenaSet(arena, o, "nonce", s.Nonce)
 	arenaSet(arena, o, "block", s.Block)
 	return o.MarshalTo(nil), nil
+}
+
+func (s *NonceResponse) UnmarshalValue(v *fastjson.Value) error {
+	s.Nonce = v.GetUint64("nonce")
+	s.Block = v.GetUint64("block")
+	return nil
 }

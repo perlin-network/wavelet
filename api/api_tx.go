@@ -15,7 +15,7 @@ type TxResponse struct {
 	ID string
 }
 
-var _ MarshalableJSON = (*TxResponse)(nil)
+var _ JSONObject = (*TxResponse)(nil)
 
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	req := new(TxRequest)
@@ -50,7 +50,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	})
 }
 
-func (s *TxResponse) MarshalJSON(arena *fastjson.Arena) ([]byte, error) {
+func (s *TxResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 	arenaSet(arena, o, "id", s.ID)
 
@@ -71,7 +71,7 @@ type Transaction struct {
 	Signature string `json:"signature"` // [64]byte
 }
 
-var _ MarshalableJSON = (*Transaction)(nil)
+var _ JSONObject = (*Transaction)(nil)
 
 func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 	param, ok := ctx.UserValue("id").(string)
@@ -110,7 +110,7 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 	})
 }
 
-func (s *Transaction) MarshalJSON(arena *fastjson.Arena) ([]byte, error) {
+func (s *Transaction) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o, err := s.getObject(arena)
 	if err != nil {
 		return nil, err
@@ -135,6 +135,8 @@ func (s *Transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 }
 
 type TransactionList []*Transaction
+
+var _ JSONObject = (TransactionList)(nil)
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 	// TODO
@@ -206,7 +208,7 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 	g.render(ctx, transactions)
 }
 
-func (s TransactionList) MarshalJSON(arena *fastjson.Arena) ([]byte, error) {
+func (s TransactionList) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	list := arena.NewArray()
 
 	for i, v := range s {

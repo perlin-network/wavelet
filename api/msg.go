@@ -25,57 +25,77 @@ import (
 	"github.com/valyala/fastjson"
 )
 
-type MarshalableJSON interface {
-	MarshalJSON(arena *fastjson.Arena) ([]byte, error)
+type MarshalableArena interface {
+	MarshalArena(arena *fastjson.Arena) ([]byte, error)
 }
 
-var _ MarshalableJSON = (*MsgResponse)(nil)
+type UnmarshalableValue interface {
+	UnmarshalValue(v *fastjson.Value) error
+}
+
+type JSONObject interface {
+	MarshalableArena
+	UnmarshalableValue
+}
+
+var _ JSONObject = (*MsgResponse)(nil)
 
 type MsgResponse struct {
 	Message string `json:"msg"`
 }
 
-func (s *MsgResponse) MarshalJSON(arena *fastjson.Arena) ([]byte, error) {
+func (s *MsgResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 	o.Set("msg", arena.NewString(s.Message))
 
 	return o.MarshalTo(nil), nil
 }
 
-type ErrResponse struct {
-	Err            error `json:"error,omitempty"` // low-level runtime error
-	HTTPStatusCode int   `json:"status"`          // http response status code
+func (s *MsgResponse) UnmarshalValue(v *fastjson.Value) error {
+	s.Message = valueString(v, "msg")
+	return nil
 }
 
-func (e *ErrResponse) MarshalJSON(arena *fastjson.Arena) ([]byte, error) {
+type ErrResponse struct {
+	Error          string `json:"error,omitempty"` // low-level runtime error
+	HTTPStatusCode int    `json:"status"`          // http response status code
+}
+
+func (e *ErrResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 
 	o.Set("status", arena.NewString(http.StatusText(e.HTTPStatusCode)))
 
-	if e.Err != nil {
-		o.Set("error", arena.NewString(e.Err.Error()))
+	if e.Error != "" {
+		o.Set("error", arena.NewString(e.Error))
 	}
 
 	return o.MarshalTo(nil), nil
 }
 
+func (e *ErrResponse) UnmarshalValue(v *fastjson.Value) error {
+	e.Error = valueString(v, "error")
+	e.HTTPStatusCode = v.GetInt("status")
+	return nil
+}
+
 func ErrBadRequest(err error) *ErrResponse {
 	return &ErrResponse{
-		Err:            err,
+		Error:          err.Error(),
 		HTTPStatusCode: http.StatusBadRequest,
 	}
 }
 
 func ErrNotFound(err error) *ErrResponse {
 	return &ErrResponse{
-		Err:            err,
+		Error:          err.Error(),
 		HTTPStatusCode: http.StatusNotFound,
 	}
 }
 
 func ErrInternal(err error) *ErrResponse {
 	return &ErrResponse{
-		Err:            err,
+		Error:          err.Error(),
 		HTTPStatusCode: http.StatusInternalServerError,
 	}
 }
