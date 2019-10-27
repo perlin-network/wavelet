@@ -200,6 +200,24 @@ func New(cfg *Config) (*Wavelet, error) {
 }
 
 func (w *Wavelet) Start() {
+	if w.config.APIPort == 0 {
+		w.config.APIPort = 9000
+	}
+
+	if w.config.APIHost != "" {
+		w.Gateway.StartHTTPS(
+			int(w.config.APIPort),
+			w.Net, w.Ledger, w.Keys, w.db,
+			w.config.APIHost,
+			w.config.APICertsCache, // guaranteed not empty in New
+		)
+	} else {
+		w.Gateway.StartHTTP(
+			int(w.config.APIPort),
+			w.Net, w.Ledger, w.Keys, w.db,
+		)
+	}
+
 	w.Server = w.Net.Listen()
 
 	go func() {
@@ -230,23 +248,6 @@ func (w *Wavelet) Start() {
 		w.logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
 	}
 
-	if w.config.APIPort == 0 {
-		w.config.APIPort = 9000
-	}
-
-	if w.config.APIHost != "" {
-		w.Gateway.StartHTTPS(
-			int(w.config.APIPort),
-			w.Net, w.Ledger, w.Keys, w.db,
-			w.config.APIHost,
-			w.config.APICertsCache, // guaranteed not empty in New
-		)
-	} else {
-		w.Gateway.StartHTTP(
-			int(w.config.APIPort),
-			w.Net, w.Ledger, w.Keys, w.db,
-		)
-	}
 }
 
 func (w *Wavelet) Close() error {
