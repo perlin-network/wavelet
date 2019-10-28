@@ -653,7 +653,6 @@ func (l *Ledger) proposeBlock() *Block {
 	}
 
 	proposed.Merkle = results.snapshot.Checksum()
-	proposed.ID = blake2b.Sum256(proposed.Marshal())
 
 	return &proposed
 }
