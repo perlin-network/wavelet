@@ -810,12 +810,7 @@ func (l *Ledger) query() {
 	voters := make(map[AccountID]struct{}, len(peers))
 
 	for i := 0; i < cap(votes); i++ {
-		var vote *finalizationVote
-		select {
-		case vote = <-voteChan:
-		case <-time.After(conf.GetQueryTimeout()):
-			continue
-		}
+		vote := <-voteChan
 
 		if vote.voter == nil {
 			continue
