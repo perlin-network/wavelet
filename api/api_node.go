@@ -14,7 +14,8 @@ func (g *Gateway) connect(ctx *fasthttp.RequestCtx) {
 	g.parserPool.Put(parser)
 
 	if err != nil {
-		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error parsing request body")))
+		g.renderError(ctx, ErrBadRequest(errors.Wrap(
+			err, "error parsing request body")))
 		return
 	}
 
@@ -26,12 +27,14 @@ func (g *Gateway) connect(ctx *fasthttp.RequestCtx) {
 
 	address, err := addressVal.StringBytes()
 	if err != nil {
-		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error extracting address from payload")))
+		g.renderError(ctx, ErrInternal(errors.Wrap(
+			err, "error extracting address from payload")))
 		return
 	}
 
 	if _, err := g.Client.Dial(string(address)); err != nil {
-		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error connecting to peer")))
+		g.renderError(ctx, ErrInternal(errors.Wrap(
+			err, "error connecting to peer")))
 		return
 	}
 
@@ -46,7 +49,8 @@ func (g *Gateway) disconnect(ctx *fasthttp.RequestCtx) {
 	g.parserPool.Put(parser)
 
 	if err != nil {
-		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error parsing request body")))
+		g.renderError(ctx, ErrBadRequest(errors.Wrap(
+			err, "error parsing request body")))
 		return
 	}
 
@@ -58,13 +62,14 @@ func (g *Gateway) disconnect(ctx *fasthttp.RequestCtx) {
 
 	address, err := addressVal.StringBytes()
 	if err != nil {
-		g.renderError(ctx, ErrInternal(
-			errors.Wrap(err, "error extracting address from payload")))
+		g.renderError(ctx, ErrInternal(errors.Wrap(
+			err, "error extracting address from payload")))
 		return
 	}
 
 	if err := g.Client.DisconnectByAddress(string(address)); err != nil {
-		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error disconnecting from peer")))
+		g.renderError(ctx, ErrInternal(errors.Wrap(
+			err, "error disconnecting from peer")))
 		return
 	}
 
@@ -75,7 +80,8 @@ func (g *Gateway) disconnect(ctx *fasthttp.RequestCtx) {
 
 func (g *Gateway) restart(ctx *fasthttp.RequestCtx) {
 	if err := g.KV.Close(); err != nil {
-		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error closing storage")))
+		g.renderError(ctx, ErrBadRequest(errors.Wrap(
+			err, "error closing storage")))
 		return
 	}
 
@@ -86,7 +92,8 @@ func (g *Gateway) restart(ctx *fasthttp.RequestCtx) {
 		g.parserPool.Put(parser)
 
 		if err != nil {
-			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error parsing request body")))
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(
+				err, "error parsing request body")))
 			return
 		}
 
@@ -94,7 +101,8 @@ func (g *Gateway) restart(ctx *fasthttp.RequestCtx) {
 			dbDir := g.KV.Dir()
 			if len(dbDir) != 0 {
 				if err := os.RemoveAll(dbDir); err != nil {
-					g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "error deleting storage content")))
+					g.renderError(ctx, ErrBadRequest(errors.Wrap(
+						err, "error deleting storage content")))
 					return
 				}
 			}
@@ -102,7 +110,8 @@ func (g *Gateway) restart(ctx *fasthttp.RequestCtx) {
 	}
 
 	if err := g.Ledger.Restart(); err != nil {
-		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error restarting node")))
+		g.renderError(ctx, ErrInternal(errors.Wrap(
+			err, "error restarting node")))
 		return
 	}
 }

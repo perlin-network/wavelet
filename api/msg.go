@@ -22,6 +22,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/rs/zerolog"
 	"github.com/valyala/fastjson"
 )
 
@@ -33,9 +34,14 @@ type UnmarshalableValue interface {
 	UnmarshalValue(v *fastjson.Value) error
 }
 
+type Loggable interface {
+	MarshalEvent(ev *zerolog.Event) error
+}
+
 type JSONObject interface {
 	MarshalableArena
 	UnmarshalableValue
+	Loggable
 }
 
 var _ JSONObject = (*MsgResponse)(nil)

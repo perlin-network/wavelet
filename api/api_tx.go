@@ -7,12 +7,13 @@ import (
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 )
 
 type TxResponse struct {
-	ID string
+	ID wavelet.TransactionID `json:"id"`
 }
 
 var _ JSONObject = (*TxResponse)(nil)
@@ -34,8 +35,8 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	}
 
 	tx := wavelet.NewSignedTransaction(
-		req.sender, req.Nonce, req.Block,
-		sys.Tag(req.Tag), req.payload, req.signature,
+		req.Sender, req.Nonce, req.Block,
+		sys.Tag(req.Tag), req.Payload, req.Signature,
 	)
 
 	// TODO(kenta): check signature and nonce
@@ -46,7 +47,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	}
 
 	g.render(ctx, &TxResponse{
-		ID: hex.EncodeToString(tx.ID[:]),
+		ID: tx.ID,
 	})
 }
 
@@ -57,18 +58,27 @@ func (s *TxResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	return o.MarshalTo(nil), nil
 }
 
+func (s *TxResponse) MarshalEvent(ev *zerolog.Event) error {
+	ev.Hex("id", s.ID[:])
+	return nil
+}
+
+func (s *TxResponse) UnmarshalValue(v *fastjson.Value) error {
+	return valueHex(v, s.ID, "id")
+}
+
 /*
 	Get Transaction
 */
 
 type Transaction struct {
-	ID     string `json:"id"`     // [32]byte
-	Sender string `json:"sender"` // [32]byte
+	ID     wavelet.TransactionID `json:"id"`
+	Sender wavelet.AccountID     `json:"sender"`
 	// Status    string `json:"status"`
-	Nonce     uint64 `json:"nonce"`
-	Tag       uint8  `json:"tag"`
-	Payload   string `json:"payload"`   // []byte base64
-	Signature string `json:"signature"` // [64]byte
+	Nonce     uint64            `json:"nonce"`
+	Tag       uint8             `json:"tag"`
+	Payload   []byte            `json:"payload"` // base64
+	Signature wavelet.Signature `json:"signature"`
 }
 
 var _ JSONObject = (*Transaction)(nil)
@@ -101,12 +111,12 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 	}
 
 	g.render(ctx, &Transaction{
-		ID:        hex.EncodeToString(tx.ID[:]),
-		Sender:    hex.EncodeToString(tx.Sender[:]),
+		ID:        tx.ID,
+		Sender:    tx.Sender,
 		Nonce:     tx.Nonce,
 		Tag:       uint8(tx.Tag),
-		Payload:   base64.StdEncoding.EncodeToString(tx.Payload),
-		Signature: hex.EncodeToString(tx.Signature[:]),
+		Payload:   tx.Payload,
+		Signature: tx.Signature,
 	})
 }
 
@@ -127,16 +137,30 @@ func (s *Transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 		"sender", s.Sender,
 		"nonce", s.Nonce,
 		"tag", s.Tag,
-		"payload", s.Payload,
+		"payload", base64.StdEncoding.EncodeToString(s.Payload),
 		"signature", s.Signature,
 	)
 
 	return o, nil
 }
 
+func (s *Transaction) UnmarshalValue(v *fastjson.Value) error {
+	valueHex(v, s.ID, "id")
+	valueHex(v, s.Sender, "sender")
+	valueHex(v, s.Signature, "signature")
+
+	s.Nonce = v.GetUint64("nonce")
+	s.Tag = uint8(v.GetUint("tag"))
+
+	pl, _ := valueBase64(v, "payload")
+	s.Payload = pl
+
+	return nil
+}
+
 type TransactionList []*Transaction
 
-var _ JSONObject = (TransactionList)(nil)
+// var _ JSONObject = (TransactionList)(nil)
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 	// TODO

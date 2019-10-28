@@ -25,12 +25,14 @@ func (g *Gateway) getAccountNonce(ctx *fasthttp.RequestCtx) {
 
 	slice, err := hex.DecodeString(param)
 	if err != nil {
-		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "account ID must be presented as valid hex")))
+		g.renderError(ctx, ErrBadRequest(errors.Wrap(
+			err, "account ID must be presented as valid hex")))
 		return
 	}
 
 	if len(slice) != wavelet.SizeAccountID {
-		g.renderError(ctx, ErrBadRequest(errors.Errorf("account ID must be %d bytes long", wavelet.SizeAccountID)))
+		g.renderError(ctx, ErrBadRequest(errors.Errorf(
+			"account ID must be %d bytes long", wavelet.SizeAccountID)))
 		return
 	}
 

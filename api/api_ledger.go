@@ -1,19 +1,18 @@
 package api
 
 import (
-	"encoding/hex"
-
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 )
 
 type LedgerStatus struct {
-	PublicKey      string `json:"public_key"`
-	Address        string `json:"address"`
-	NumAccounts    uint64 `json:"num_accounts"`
-	PreferredVotes int    `json:"preferred_votes"`
-	SyncStatus     string `json:"sync_status"`
+	PublicKey      edwards25519.PublicKey `json:"public_key"`
+	Address        string                 `json:"address"`
+	NumAccounts    uint64                 `json:"num_accounts"`
+	PreferredVotes int                    `json:"preferred_votes"`
+	SyncStatus     string                 `json:"sync_status"`
 
 	Block     LedgerStatusBlock  `json:"block"`
 	Preferred *LedgerStatusBlock `json:"preferred"`
@@ -25,15 +24,15 @@ type LedgerStatus struct {
 }
 
 type LedgerStatusBlock struct {
-	MerkleRoot string `json:"merkle_root"` // [16]byte
-	Height     uint64 `json:"height"`
-	ID         string `json:"id"` // [32]byte
-	Txs        int    `json:"transactions"`
+	MerkleRoot wavelet.MerkleNodeID `json:"merkle_root"`
+	Height     uint64               `json:"height"`
+	ID         wavelet.BlockID      `json:"id"`
+	Txs        int                  `json:"transactions"`
 }
 
 type LedgerStatusPeer struct {
-	Address   string `json:"address"`
-	PublicKey string `json:"public_key"` // [32]byte
+	Address   string                 `json:"address"`
+	PublicKey edwards25519.PublicKey `json:"public_key"`
 }
 
 var _ JSONObject = (*LedgerStatus)(nil)
@@ -46,16 +45,16 @@ func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 	)
 
 	var l = LedgerStatus{
-		PublicKey:      hex.EncodeToString(publicKey[:]),
+		PublicKey:      publicKey,
 		Address:        g.Client.ID().Address(),
 		NumAccounts:    wavelet.ReadAccountsLen(snapshot),
 		PreferredVotes: g.Ledger.Finalizer().Progress(),
 		SyncStatus:     g.Ledger.SyncStatus(),
 
 		Block: LedgerStatusBlock{
-			MerkleRoot: hex.EncodeToString(block.Merkle[:]),
+			MerkleRoot: block.Merkle,
 			Height:     block.Index,
-			ID:         hex.EncodeToString(block.ID[:]),
+			ID:         block.ID,
 			Txs:        len(block.Transactions),
 		},
 
@@ -67,9 +66,9 @@ func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 		b, ok := preferred.Value().(*wavelet.Block)
 		if ok {
 			l.Preferred = &LedgerStatusBlock{
-				MerkleRoot: hex.EncodeToString(b.Merkle[:]),
+				MerkleRoot: b.Merkle,
 				Height:     b.Index,
-				ID:         hex.EncodeToString(b.ID[:]),
+				ID:         b.ID,
 				Txs:        len(b.Transactions),
 			}
 		}
@@ -82,7 +81,7 @@ func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 			pub := p.PublicKey()
 
 			l.Peers[i].Address = p.Address()
-			l.Peers[i].PublicKey = hex.EncodeToString(pub[:])
+			l.Peers[i].PublicKey = pub
 		}
 	}
 
@@ -144,15 +143,46 @@ func (s *LedgerStatus) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 }
 
 func (s *LedgerStatus) UnmarshalValue(v *fastjson.Value) error {
-	s.PublicKey = valueString(v, "public_key")
+	if err := valueHex(v, s.PublicKey[:], "public_key"); err != nil {
+		return err
+	}
+
 	s.Address = valueString(v, "address")
 	s.NumAccounts = v.GetUint64("num_accounts")
 	s.PreferredVotes = v.GetInt("preferred_votes")
 	s.SyncStatus = valueString(v, "sync_status")
 
-	if preferred := v.GetObject("preferred"); preferred != nil {
-		s.Preferred = &LedgerStatusBlock{
-			MerkleRoot: "",
+	// Parse block
+
+	valueHex(v, s.Block.MerkleRoot, "block", "merkle_root")
+	valueHex(v, s.Block.ID, "block", "id")
+	s.Block.Height = v.GetUint64("block", "height")
+	s.Block.Txs = v.GetInt("block", "transactions")
+
+	// Parse preferred block
+
+	if v.Exists("preferred") {
+		s.Preferred = &LedgerStatusBlock{}
+
+		valueHex(v, s.Preferred.MerkleRoot, "preferred", "merkle_root")
+		valueHex(v, s.Preferred.ID, "preferred", "id")
+		s.Preferred.Height = v.GetUint64("preferred", "height")
+		s.Preferred.Txs = v.GetInt("preferred", "transactions")
+	}
+
+	s.NumTx = v.GetInt("num_tx")
+	s.NumTxInStore = v.GetInt("num_tx_in_store")
+
+	var peers = v.GetArray("peers")
+
+	if len(peers) > 0 {
+		s.Peers = make([]LedgerStatusPeer, len(peers))
+
+		for i, v := range peers {
+			s.Peers[i].Address = valueString(v, "address")
+			valueHex(v, s.Peers[i].PublicKey, "public_key")
 		}
 	}
+
+	return nil
 }

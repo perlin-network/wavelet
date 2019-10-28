@@ -10,14 +10,14 @@ import (
 )
 
 type Account struct {
-	ID         string `json:"id"`
-	Balance    uint64 `json:"balance"`
-	GasBalance uint64 `json:"gas_balance"`
-	Stake      uint64 `json:"stake"`
-	Reward     uint64 `json:"reward"`
-	Nonce      uint64 `json:"nonce"`
-	IsContract bool   `json:"is_contract"`
-	NumPages   uint64 `json:"num_pages"`
+	ID         wavelet.AccountID `json:"id"`
+	Balance    uint64            `json:"balance"`
+	GasBalance uint64            `json:"gas_balance"`
+	Stake      uint64            `json:"stake"`
+	Reward     uint64            `json:"reward"`
+	Nonce      uint64            `json:"nonce"`
+	IsContract bool              `json:"is_contract"`
+	NumPages   uint64            `json:"num_pages"`
 }
 
 var _ JSONObject = (*Account)(nil)
@@ -56,7 +56,7 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, id)
 
 	g.render(ctx, &Account{
-		ID:         hex.EncodeToString(id[:]),
+		ID:         id,
 		Balance:    balance,
 		GasBalance: gasBalance,
 		Stake:      stake,
@@ -70,7 +70,7 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 func (s *Account) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 
-	arenaSet(arena, o, "public_key", s.ID)
+	arenaSet(arena, o, "id", s.ID)
 	arenaSet(arena, o, "balance", s.Balance)
 	arenaSet(arena, o, "gas_balance", s.GasBalance)
 	arenaSet(arena, o, "stake", s.Stake)
@@ -86,7 +86,10 @@ func (s *Account) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 }
 
 func (s *Account) UnmarshalValue(v *fastjson.Value) error {
-	s.ID = valueString(v, "public_key")
+	if err := valueHex(v, s.ID[:], "id"); err != nil {
+		return err
+	}
+
 	s.Balance = v.GetUint64("balance")
 	s.GasBalance = v.GetUint64("gas_balance")
 	s.Stake = v.GetUint64("stake")

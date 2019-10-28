@@ -16,6 +16,12 @@ func arenaSet(arena *fastjson.Arena, o *fastjson.Value, key string, value interf
 		v = arena.NewString(value)
 	case []byte:
 		v = arenaNewHex(arena, value)
+	case [16]byte:
+		v = arenaNewHex(arena, value[:])
+	case [32]byte:
+		v = arenaNewHex(arena, value[:])
+	case [64]byte:
+		v = arenaNewHex(arena, value[:])
 	case int:
 		v = arena.NewNumberInt(value)
 	case uint64:
