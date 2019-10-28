@@ -522,12 +522,9 @@ func (l *Ledger) PullMissingTransactions() {
 			req.TransactionIds = append(req.TransactionIds, txID[:])
 		}
 
-		var wg sync.WaitGroup
 		responseChan := make(chan *TransactionPullResponse)
 		for _, p := range peers {
-			wg.Add(1)
 			go func(conn *grpc.ClientConn) {
-				defer wg.Done()
 				client := NewWaveletClient(conn)
 
 				ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
@@ -558,7 +555,6 @@ func (l *Ledger) PullMissingTransactions() {
 		}
 
 		close(responseChan)
-		wg.Wait()
 
 		count := int64(0)
 
@@ -743,17 +739,12 @@ func (l *Ledger) query() {
 
 	current := l.blocks.Latest()
 
-	var wg sync.WaitGroup
-
 	voteChan := make(chan *finalizationVote)
 
 	req := &QueryRequest{BlockIndex: current.Index + 1}
 
 	for _, p := range peers {
-		wg.Add(1)
 		go func(conn *grpc.ClientConn) {
-			defer wg.Done()
-
 			var vote finalizationVote
 			defer func() {
 				voteChan <- &vote
@@ -823,8 +814,6 @@ func (l *Ledger) query() {
 		voters[vote.voter.PublicKey()] = struct{}{}
 		votes = append(votes, vote)
 	}
-
-	wg.Wait()
 
 	for _, vote := range votes {
 		// Filter nil blocks
