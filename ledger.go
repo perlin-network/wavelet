@@ -85,7 +85,6 @@ type Ledger struct {
 
 	stallDetector *StallDetector
 
-	stop     chan struct{}
 	stopWG   sync.WaitGroup
 	cancelGC context.CancelFunc
 
@@ -193,9 +192,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		ledger.cancelGC = cancel
 	}
 
-	stop := make(chan struct{}) // TODO: Real graceful stop.
 	var stallDetector *StallDetector
-	stallDetector = NewStallDetector(stop, StallDetectorConfig{
+	stallDetector = NewStallDetector(StallDetectorConfig{
 		MaxMemoryMB: cfg.MaxMemoryMB,
 	}, StallDetectorDelegate{
 		PrepareShutdown: func(err error) {
@@ -206,7 +204,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	go stallDetector.Run(&ledger.stopWG)
 
 	ledger.stallDetector = stallDetector
-	ledger.stop = stop
 
 	ledger.PerformConsensus()
 
@@ -230,11 +227,11 @@ func (l *Ledger) Close() {
 
 	l.consensus.Wait()
 
-	close(l.stop)
-
 	if l.cancelGC != nil {
 		l.cancelGC()
 	}
+
+	l.stallDetector.Stop()
 
 	l.stopWG.Wait()
 }
@@ -748,7 +745,7 @@ func (l *Ledger) query() {
 
 	var wg sync.WaitGroup
 
-	voteChan := make(chan *finalizationVote, snowballK)
+	voteChan := make(chan *finalizationVote)
 
 	req := &QueryRequest{BlockIndex: current.Index + 1}
 
@@ -809,13 +806,16 @@ func (l *Ledger) query() {
 		}(p)
 	}
 
-	wg.Wait()
-
-	votes := make([]*finalizationVote, 0, snowballK)
-	voters := make(map[AccountID]struct{}, snowballK)
+	votes := make([]*finalizationVote, 0, len(peers))
+	voters := make(map[AccountID]struct{}, len(peers))
 
 	for i := 0; i < cap(votes); i++ {
-		vote := <-voteChan
+		var vote *finalizationVote
+		select {
+		case vote = <-voteChan:
+		case <-time.After(conf.GetQueryTimeout()):
+			continue
+		}
 
 		if vote.voter == nil {
 			continue
@@ -828,6 +828,8 @@ func (l *Ledger) query() {
 		voters[vote.voter.PublicKey()] = struct{}{}
 		votes = append(votes, vote)
 	}
+
+	wg.Wait()
 
 	for _, vote := range votes {
 		// Filter nil blocks

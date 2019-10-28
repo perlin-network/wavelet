@@ -282,7 +282,6 @@ func registerPeerCallbacks(c *skademlia.Client) {
 func (g *Gateway) start(ln net.Listener, ln2 net.Listener, c *skademlia.Client,
 	l *wavelet.Ledger, k *skademlia.Keypair, kv store.KV) {
 
-
 	stop := g.rateLimiter.cleanup(10 * time.Minute)
 	defer stop()
 
