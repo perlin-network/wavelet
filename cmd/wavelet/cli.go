@@ -352,6 +352,7 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 			log.FilterFor(
 				log.ModuleNode,
 				log.ModuleSync,
+				log.ModuleContract,
 			),
 		),
 	)

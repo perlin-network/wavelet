@@ -188,7 +188,7 @@ func applyContractTransaction(ctx *CollapseContext, block *Block, tx *Transactio
 	if payload.GasDeposit != 0 {
 		err = transferValue(
 			"PERL (Gas Deposit)",
-			tx.Sender, AccountID(tx.ID),
+			tx.Sender, tx.ID,
 			payload.GasDeposit,
 			ctx.ReadAccountBalance, ctx.WriteAccountBalance,
 			ctx.ReadAccountContractGasBalance, ctx.WriteAccountContractGasBalance,
@@ -198,7 +198,7 @@ func applyContractTransaction(ctx *CollapseContext, block *Block, tx *Transactio
 		}
 	}
 
-	return executeContractInTransactionContext(tx, AccountID(tx.ID), payload.Code, ctx, block, 0, payload.GasLimit, []byte("init"), payload.Params, state)
+	return executeContractInTransactionContext(tx, tx.ID, payload.Code, ctx, block, 0, payload.GasLimit, []byte("init"), payload.Params, state)
 }
 
 func applyBatchTransaction(ctx *CollapseContext, block *Block, tx *Transaction, state *contractExecutorState) error {

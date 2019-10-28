@@ -66,10 +66,10 @@ func defaultConfig() config {
 		stakeMajorityWeight:           1,
 		transactionsNumMajorityWeight: 0.3,
 
-		queryTimeout:               5000 * time.Millisecond,
-		gossipTimeout:              5000 * time.Millisecond,
+		queryTimeout:               5 * time.Second,
+		gossipTimeout:              5 * time.Second,
 		downloadTxTimeout:          30 * time.Second,
-		checkOutOfSyncTimeout:      5000 * time.Millisecond,
+		checkOutOfSyncTimeout:      5 * time.Second,
 		syncChunkSize:              16384,
 		syncIfBlockIndicesDifferBy: 5,
 

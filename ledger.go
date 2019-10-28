@@ -85,7 +85,6 @@ type Ledger struct {
 
 	stallDetector *StallDetector
 
-	stop     chan struct{}
 	stopWG   sync.WaitGroup
 	cancelGC context.CancelFunc
 
@@ -193,9 +192,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		ledger.cancelGC = cancel
 	}
 
-	stop := make(chan struct{}) // TODO: Real graceful stop.
 	var stallDetector *StallDetector
-	stallDetector = NewStallDetector(stop, StallDetectorConfig{
+	stallDetector = NewStallDetector(StallDetectorConfig{
 		MaxMemoryMB: cfg.MaxMemoryMB,
 	}, StallDetectorDelegate{
 		PrepareShutdown: func(err error) {
@@ -206,7 +204,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	go stallDetector.Run(&ledger.stopWG)
 
 	ledger.stallDetector = stallDetector
-	ledger.stop = stop
 
 	ledger.PerformConsensus()
 
@@ -230,11 +227,11 @@ func (l *Ledger) Close() {
 
 	l.consensus.Wait()
 
-	close(l.stop)
-
 	if l.cancelGC != nil {
 		l.cancelGC()
 	}
+
+	l.stallDetector.Stop()
 
 	l.stopWG.Wait()
 }
@@ -525,12 +522,9 @@ func (l *Ledger) PullMissingTransactions() {
 			req.TransactionIds = append(req.TransactionIds, txID[:])
 		}
 
-		var wg sync.WaitGroup
 		responseChan := make(chan *TransactionPullResponse)
 		for _, p := range peers {
-			wg.Add(1)
 			go func(conn *grpc.ClientConn) {
-				defer wg.Done()
 				client := NewWaveletClient(conn)
 
 				ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
@@ -561,7 +555,6 @@ func (l *Ledger) PullMissingTransactions() {
 		}
 
 		close(responseChan)
-		wg.Wait()
 
 		count := int64(0)
 
@@ -746,17 +739,12 @@ func (l *Ledger) query() {
 
 	current := l.blocks.Latest()
 
-	var wg sync.WaitGroup
-
-	voteChan := make(chan *finalizationVote, snowballK)
+	voteChan := make(chan *finalizationVote)
 
 	req := &QueryRequest{BlockIndex: current.Index + 1}
 
 	for _, p := range peers {
-		wg.Add(1)
 		go func(conn *grpc.ClientConn) {
-			defer wg.Done()
-
 			var vote finalizationVote
 			defer func() {
 				voteChan <- &vote
@@ -809,10 +797,8 @@ func (l *Ledger) query() {
 		}(p)
 	}
 
-	wg.Wait()
-
-	votes := make([]*finalizationVote, 0, snowballK)
-	voters := make(map[AccountID]struct{}, snowballK)
+	votes := make([]*finalizationVote, 0, len(peers))
+	voters := make(map[AccountID]struct{}, len(peers))
 
 	for i := 0; i < cap(votes); i++ {
 		vote := <-voteChan
