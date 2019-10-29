@@ -22,11 +22,7 @@ type Block struct {
 func NewBlock(index uint64, merkle MerkleNodeID, ids ...TransactionID) Block {
 	b := Block{Index: index, Merkle: merkle, Transactions: ids}
 
-	buf := bytes.NewBuffer(nil)
-	for _, id := range ids {
-		buf.Write(id[:])
-	}
-	b.ID = blake2b.Sum256(buf.Bytes())
+	b.ID = blake2b.Sum256(b.Marshal())
 
 	return b
 }
@@ -84,12 +80,8 @@ func UnmarshalBlock(r io.Reader) (block Block, err error) {
 			return
 		}
 	}
-	
-	idBuf := bytes.NewBuffer(nil)
-	for _, id := range block.Transactions {
-		idBuf.Write(id[:])
-	}
-	block.ID = blake2b.Sum256(idBuf.Bytes())
+
+	block.ID = blake2b.Sum256(block.Marshal())
 
 	return
 }

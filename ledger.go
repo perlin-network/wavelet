@@ -1377,7 +1377,13 @@ type CollapseState struct {
 // that are within the depth interval (start, end] where start is the interval starting point depth,
 // and end is the interval ending point depth.
 func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResults, error) {
-	_collapseState, _ := l.cacheCollapse.LoadOrPut(block.ID, &CollapseState{})
+	idBuf := bytes.NewBuffer(make([]byte, SizeTransactionID*len(block.Transactions)))
+	for _, id := range block.Transactions {
+		idBuf.Write(id[:])
+	}
+	cacheKey := blake2b.Sum256(idBuf.Bytes())
+
+	_collapseState, _ := l.cacheCollapse.LoadOrPut(cacheKey, &CollapseState{})
 	collapseState := _collapseState.(*CollapseState)
 
 	collapseState.once.Do(func() {
