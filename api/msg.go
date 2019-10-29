@@ -22,6 +22,8 @@ package api
 import (
 	"net/http"
 
+	"github.com/perlin-network/wavelet/log"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/valyala/fastjson"
 )
@@ -34,21 +36,21 @@ type UnmarshalableValue interface {
 	UnmarshalValue(v *fastjson.Value) error
 }
 
-type Loggable interface {
-	MarshalEvent(ev *zerolog.Event) error
-}
-
 type JSONObject interface {
 	MarshalableArena
 	UnmarshalableValue
-	Loggable
+	log.Loggable
 }
 
-var _ JSONObject = (*MsgResponse)(nil)
+/*
+	Message responses
+*/
 
 type MsgResponse struct {
 	Message string `json:"msg"`
 }
+
+var _ JSONObject = (*MsgResponse)(nil)
 
 func (s *MsgResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
@@ -62,10 +64,17 @@ func (s *MsgResponse) UnmarshalValue(v *fastjson.Value) error {
 	return nil
 }
 
+func (s *MsgResponse) MarshalEvent(ev *zerolog.Event) error {
+	ev.Str("msg", s.Message)
+	return nil
+}
+
 type ErrResponse struct {
 	Error          string `json:"error,omitempty"` // low-level runtime error
 	HTTPStatusCode int    `json:"status"`          // http response status code
 }
+
+var _ JSONObject = (*ErrResponse)(nil)
 
 func (e *ErrResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
@@ -82,6 +91,12 @@ func (e *ErrResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 func (e *ErrResponse) UnmarshalValue(v *fastjson.Value) error {
 	e.Error = valueString(v, "error")
 	e.HTTPStatusCode = v.GetInt("status")
+	return nil
+}
+
+func (e *ErrResponse) MarshalEvent(ev *zerolog.Event) error {
+	ev.Err(errors.New(e.Error))
+	ev.Int("code", e.HTTPStatusCode)
 	return nil
 }
 

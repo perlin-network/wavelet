@@ -5,6 +5,7 @@ import (
 
 	"github.com/perlin-network/wavelet"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 )
@@ -97,5 +98,18 @@ func (s *Account) UnmarshalValue(v *fastjson.Value) error {
 	s.Nonce = v.GetUint64("nonce")
 	s.IsContract = v.GetBool("is_contract")
 	s.NumPages = v.GetUint64("num_pages")
+	return nil
+}
+
+func (s *Account) MarshalEvent(ev *zerolog.Event) error {
+	ev.Hex("id", s.ID[:])
+	ev.Uint64("balance", s.Balance)
+	ev.Uint64("gas_balance", s.GasBalance)
+	ev.Uint64("stake", s.Stake)
+	ev.Uint64("reward", s.Reward)
+	ev.Uint64("nonce", s.Nonce)
+	ev.Bool("is_contract", s.IsContract)
+	ev.Uint64("num_pages", s.NumPages)
+
 	return nil
 }
