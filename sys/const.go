@@ -24,7 +24,8 @@ type Tag byte
 
 // Transaction tags.
 const (
-	TagTransfer Tag = iota
+	_ Tag = iota // The first value was used for Nop. To make it backward compatible, we skip 0 value.
+	TagTransfer
 	TagContract
 	TagStake
 	TagBatch
