@@ -33,8 +33,8 @@ type Snowball struct {
 	count  int
 	counts map[VoteID]uint16
 
-	preferred Vote
-	last      Vote
+	preferred *Vote
+	last      *Vote
 
 	decided bool
 }
@@ -66,16 +66,17 @@ func (s *Snowball) Tick(votes []Vote) {
 		return
 	}
 
-	var majority Vote
+	var majority *Vote
 
-	for _, vote := range votes {
+	for i := range votes {
+		vote := votes[i]
 		// Empty vote can still have tally (the base tally), so we need to ignore empty vote.
 		if vote.ID() == ZeroVoteID {
 			continue
 		}
 
-		if majority == nil || vote.Tally() > majority.Tally() {
-			majority = vote
+		if majority == nil || vote.tally > majority.tally {
+			majority = &vote
 		}
 	}
 
@@ -85,7 +86,7 @@ func (s *Snowball) Tick(votes []Vote) {
 		denom = 2
 	}
 
-	if majority == nil || majority.Tally() < conf.GetSnowballAlpha()*2/denom {
+	if majority == nil || majority.tally < conf.GetSnowballAlpha()*2/denom {
 		s.count = 0
 		return
 	}
@@ -109,11 +110,11 @@ func (s *Snowball) Tick(votes []Vote) {
 
 func (s *Snowball) Prefer(b Vote) {
 	s.Lock()
-	s.preferred = b
+	s.preferred = &b
 	s.Unlock()
 }
 
-func (s *Snowball) Preferred() Vote {
+func (s *Snowball) Preferred() *Vote {
 	s.RLock()
 	preferred := s.preferred
 	s.RUnlock()

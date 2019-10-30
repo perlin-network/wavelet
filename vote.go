@@ -31,121 +31,89 @@ type VoteID BlockID
 
 var ZeroVoteID VoteID
 
-type Vote interface {
-	ID() VoteID
-	VoterID() AccountID
-	Length() float64
-	Value() interface{}
-	Tally() float64
-	SetTally(v float64)
+type Vote struct {
+	id     VoteID
+	voter  *skademlia.ID
+	length float64
+	value  interface{}
+	tally  float64
+}
+
+func NewVoteFinalization(res finalizationVote) Vote {
+	vote := Vote{
+		id:     ZeroVoteID,
+		voter:  res.voter,
+		tally:  0,
+		length: 0,
+	}
+
+	if res.block != nil {
+		vote.value = res.block
+		vote.id = res.block.ID
+		vote.length = float64(len(res.block.Transactions))
+	}
+
+	return vote
+}
+
+func NewVoteSync(res syncVote) Vote {
+	vote := Vote{
+		id:     ZeroVoteID,
+		voter:  res.voter,
+		value:  res.outOfSync,
+		tally:  0,
+		length: 0,
+	}
+
+	// Use non-zero value to avoid conflict with ZeroVoteID.
+	if res.outOfSync {
+		binary.BigEndian.PutUint16(vote.id[:], 1)
+	} else {
+		binary.BigEndian.PutUint16(vote.id[:], 2)
+	}
+
+	return vote
+}
+
+func (v Vote) ID() VoteID {
+	return v.id
+}
+
+func (v Vote) VoterID() AccountID {
+	return v.voter.PublicKey()
+}
+
+func (v Vote) Length() float64 {
+	return v.length
+}
+
+func (v Vote) Value() interface{} {
+	return v.value
 }
 
 type syncVote struct {
 	voter     *skademlia.ID
 	outOfSync bool
-
-	// This acts as cache since ID() can be called many times.
-	// The value will be set when the ID() is called the first time.
-	voteID VoteID
-	tally  float64
-}
-
-func (s *syncVote) ID() VoteID {
-	if s.voteID == ZeroVoteID {
-		var voteID VoteID
-
-		// Use non-zero value to avoid conflict with ZeroVoteID.
-		var v uint16
-
-		if s.outOfSync {
-			v = 1
-		} else {
-			v = 2
-		}
-
-		binary.BigEndian.PutUint16(voteID[:], v)
-
-		s.voteID = voteID
-	}
-
-	return s.voteID
-}
-
-func (s *syncVote) VoterID() AccountID {
-	return s.voter.PublicKey()
-}
-
-func (s *syncVote) Length() float64 {
-	// Not applicable, so we return 0
-	return 0
-}
-
-func (s *syncVote) SetTally(v float64) {
-	s.tally = v
-}
-
-func (s *syncVote) Tally() float64 {
-	return s.tally
-}
-
-func (s *syncVote) Value() interface{} {
-	return &s.outOfSync
 }
 
 type finalizationVote struct {
 	voter *skademlia.ID
 	block *Block
-
-	tally float64
-}
-
-// If the block is empty, it will return ZeroVoteID.
-func (f *finalizationVote) ID() VoteID {
-	if f.block == nil {
-		return ZeroVoteID
-	}
-	return f.block.ID
-}
-
-func (f *finalizationVote) VoterID() AccountID {
-	return f.voter.PublicKey()
-}
-
-// If the block is empty, it will return 0.
-func (f *finalizationVote) Length() float64 {
-	if f.block == nil {
-		return 0
-	}
-	return float64(len(f.block.Transactions))
-}
-
-// If the block is empty, it will return nil.
-func (f *finalizationVote) Value() interface{} {
-	return f.block
-}
-
-func (f *finalizationVote) SetTally(v float64) {
-	f.tally = v
-}
-
-func (f *finalizationVote) Tally() float64 {
-	return f.tally
 }
 
 func CollectVotesForSync(
 	accounts *Accounts,
 	snowball *Snowball,
-	voteChan <-chan *syncVote,
+	voteChan <-chan syncVote,
 	wg *sync.WaitGroup,
 	snowballK int,
 ) {
-	votes := make([]*syncVote, 0, snowballK)
+	votes := make([]syncVote, 0, snowballK)
 	voters := make(map[AccountID]struct{}, snowballK)
 
-	// TODO is this the best place to set the initial preferred
-	snowball.Prefer(&syncVote{
+	snowball.Prefer(NewVoteSync(syncVote{
 		outOfSync: false,
-	})
+	}))
 
 	for vote := range voteChan {
 		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
@@ -168,21 +136,21 @@ func CollectVotesForSync(
 	}
 }
 
-func TickForFinalization(accounts *Accounts, snowball *Snowball, responses []*finalizationVote) {
+func TickForFinalization(accounts *Accounts, snowball *Snowball, responses []finalizationVote) {
 	snowballResponses := make([]Vote, 0, len(responses))
 
-	for _, res := range responses {
-		snowballResponses = append(snowballResponses, res)
+	for i := range responses {
+		snowballResponses = append(snowballResponses, NewVoteFinalization(responses[i]))
 	}
 
 	snowball.Tick(calculateTallies(accounts, snowballResponses))
 }
 
-func TickForSync(accounts *Accounts, snowball *Snowball, responses []*syncVote) {
+func TickForSync(accounts *Accounts, snowball *Snowball, responses []syncVote) {
 	snowballResponses := make([]Vote, 0, len(responses))
 
-	for _, res := range responses {
-		snowballResponses = append(snowballResponses, res)
+	for i := range responses {
+		snowballResponses = append(snowballResponses, NewVoteSync(responses[i]))
 	}
 
 	snowball.Tick(calculateTallies(accounts, snowballResponses))
@@ -190,40 +158,48 @@ func TickForSync(accounts *Accounts, snowball *Snowball, responses []*syncVote) 
 
 // Return back the votes with their tallies calculated.
 func calculateTallies(accounts *Accounts, responses []Vote) []Vote {
-	votes := make(map[VoteID]Vote, len(responses))
+	votes := make([]Vote, 0, len(responses))
+	votesIndexByID := make(map[VoteID]int, len(responses))
 
-	for _, res := range responses {
-		vote, exists := votes[res.ID()]
-		if !exists {
-			vote = res
-
-			votes[vote.ID()] = vote
+	getVote := func(id VoteID) int {
+		index, exist := votesIndexByID[id]
+		if !exist {
+			return -1
 		}
 
-		vote.SetTally(vote.Tally() + 1.0/float64(len(responses)))
+		return index
+	}
+
+	for i := range responses {
+		index := getVote(responses[i].ID())
+		if index == -1 {
+			index = len(votes)
+			votes = append(votes, responses[i])
+
+			votesIndexByID[responses[i].ID()] = index
+		}
+
+		votes[index].tally += 1.0 / float64(len(responses))
 	}
 
 	for id, weight := range Normalize(ComputeProfitWeights(responses)) {
-		votes[id].SetTally(votes[id].Tally() * weight)
+		votes[getVote(id)].tally *= weight
 	}
 
 	for id, weight := range Normalize(ComputeStakeWeights(accounts, responses)) {
-		votes[id].SetTally(votes[id].Tally() * weight)
+		votes[getVote(id)].tally *= weight
 	}
 
 	totalTally := float64(0)
 	for _, block := range votes {
-		totalTally += block.Tally()
+		totalTally += block.tally
 	}
 
-	array := make([]Vote, 0, len(votes))
-	for id := range votes {
-		votes[id].SetTally(votes[id].Tally() / totalTally)
-
-		array = append(array, votes[id])
+	for i := range votes {
+		votes[i].tally /= totalTally
 	}
 
-	return array
+	return votes
 }
 
 func ComputeProfitWeights(responses []Vote) map[VoteID]float64 {

@@ -625,9 +625,9 @@ func (l *Ledger) FinalizeBlocks() {
 					Int("num_transactions", len(proposedBlock.Transactions)).
 					Msg("Proposing block...")
 
-				l.finalizer.Prefer(&finalizationVote{
+				l.finalizer.Prefer(NewVoteFinalization(finalizationVote{
 					block: proposedBlock,
-				})
+				}))
 			}
 		} else {
 			if decided {
@@ -747,7 +747,7 @@ func (l *Ledger) query() {
 
 	current := l.blocks.Latest()
 
-	voteChan := make(chan *finalizationVote)
+	voteChan := make(chan finalizationVote)
 
 	req := &QueryRequest{BlockIndex: current.Index + 1}
 
@@ -755,7 +755,7 @@ func (l *Ledger) query() {
 		go func(conn *grpc.ClientConn) {
 			var vote finalizationVote
 			defer func() {
-				voteChan <- &vote
+				voteChan <- vote
 			}()
 
 			f := func() {
@@ -805,7 +805,7 @@ func (l *Ledger) query() {
 		}(p)
 	}
 
-	votes := make([]*finalizationVote, 0, len(peers))
+	votes := make([]finalizationVote, 0, len(peers))
 	voters := make(map[AccountID]struct{}, len(peers))
 
 	for i := 0; i < cap(votes); i++ {
@@ -823,25 +823,25 @@ func (l *Ledger) query() {
 		votes = append(votes, vote)
 	}
 
-	for _, vote := range votes {
+	for i := range votes {
 		// Filter nil blocks
-		if vote.block == nil {
+		if votes[i].block == nil {
 			continue
 		}
 
 		// Filter blocks with unexpected block height
-		if vote.block.Index != current.Index+1 {
-			vote.block = nil
+		if votes[i].block.Index != current.Index+1 {
+			votes[i].block = nil
 			continue
 		}
 
 		// Filter blocks with at least 1 missing tx
-		if l.transactions.BatchMarkMissing(vote.block.Transactions...) {
-			vote.block = nil
+		if l.transactions.BatchMarkMissing(votes[i].block.Transactions...) {
+			votes[i].block = nil
 			continue
 		}
 
-		results, err := l.collapseTransactions(vote.block, false)
+		results, err := l.collapseTransactions(votes[i].block, false)
 		if err != nil {
 			logger := log.Node()
 			logger.Error().
@@ -851,8 +851,8 @@ func (l *Ledger) query() {
 		}
 
 		// Filter blocks that results in unexpected merkle root after collapse
-		if results.snapshot.Checksum() != vote.block.Merkle {
-			vote.block = nil
+		if results.snapshot.Checksum() != votes[i].block.Merkle {
+			votes[i].block = nil
 			continue
 		}
 	}
@@ -868,7 +868,7 @@ func (l *Ledger) SyncToLatestBlock() {
 	voteWG := new(sync.WaitGroup)
 
 	snowballK := conf.GetSnowballK()
-	syncVotes := make(chan *syncVote, snowballK)
+	syncVotes := make(chan syncVote, snowballK)
 
 	logger := log.Sync("sync")
 
@@ -930,7 +930,7 @@ func (l *Ledger) SyncToLatestBlock() {
 						return
 					}
 
-					syncVotes <- &syncVote{voter: voter, outOfSync: res.OutOfSync}
+					syncVotes <- syncVote{voter: voter, outOfSync: res.OutOfSync}
 
 					wg.Done()
 				}(conn)
@@ -948,7 +948,7 @@ func (l *Ledger) SyncToLatestBlock() {
 		current := l.blocks.Latest()
 		preferred := l.syncer.Preferred()
 
-		oos := *preferred.Value().(*bool)
+		oos := preferred.Value().(bool)
 		if !oos {
 			l.applySync(synced)
 			l.syncer.Reset()
@@ -983,7 +983,7 @@ func (l *Ledger) SyncToLatestBlock() {
 		restart := func() { // Respawn all previously stopped workers.
 			snowballK = conf.GetSnowballK()
 
-			syncVotes = make(chan *syncVote, snowballK)
+			syncVotes = make(chan syncVote, snowballK)
 			go CollectVotesForSync(l.accounts, l.syncer, syncVotes, voteWG, snowballK)
 
 			l.sync = make(chan struct{})
