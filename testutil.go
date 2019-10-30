@@ -680,39 +680,29 @@ func (l *TestLedger) Pay(to *TestLedger, amount uint64) Transaction {
 // 	err := l.ledger.AddTransaction(tx)
 // 	return tx, err
 // }
-//
-// func (l *TestLedger) PlaceStake(amount uint64) (Transaction, error) {
-// 	payload := Stake{
-// 		Opcode: sys.PlaceStake,
-// 		Amount: amount,
-// 	}
-//
-// 	keys := l.ledger.client.Keys()
-// 	tx := AttachSenderToTransaction(
-// 		keys,
-// 		NewTransaction(sys.TagStake, payload.Marshal()),
-// 		l.ledger.Graph().FindEligibleParents()...)
-//
-// 	err := l.ledger.AddTransaction(tx)
-// 	return tx, err
-// }
-//
-// func (l *TestLedger) WithdrawStake(amount uint64) (Transaction, error) {
-// 	payload := Stake{
-// 		Opcode: sys.WithdrawStake,
-// 		Amount: amount,
-// 	}
-//
-// 	keys := l.ledger.client.Keys()
-// 	tx := AttachSenderToTransaction(
-// 		keys,
-// 		NewTransaction(sys.TagStake, payload.Marshal()),
-// 		l.ledger.Graph().FindEligibleParents()...)
-//
-// 	err := l.ledger.AddTransaction(tx)
-// 	return tx, err
-// }
-//
+
+func (l *TestLedger) PlaceStake(amount uint64) Transaction {
+	payload := Stake{
+		Opcode: sys.PlaceStake,
+		Amount: amount,
+	}
+
+	tx := l.newSignedTransaction(sys.TagStake, payload.Marshal())
+	l.ledger.AddTransaction(tx)
+	return tx
+}
+
+func (l *TestLedger) WithdrawStake(amount uint64) Transaction {
+	payload := Stake{
+		Opcode: sys.WithdrawStake,
+		Amount: amount,
+	}
+
+	tx := l.newSignedTransaction(sys.TagStake, payload.Marshal())
+	l.ledger.AddTransaction(tx)
+	return tx
+}
+
 // func (l *TestLedger) WithdrawReward(amount uint64) (Transaction, error) {
 // 	payload := Stake{
 // 		Opcode: sys.WithdrawReward,
