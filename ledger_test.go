@@ -6,45 +6,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// func TestLedger_AddTransaction(t *testing.T) {
-// 	testnet := NewTestNetwork(t)
-// 	defer testnet.Cleanup()
-//
-// 	alice := testnet.AddNode(t) // alice
-// 	testnet.AddNode(t)          // bob
-//
-// 	start := alice.ledger.Rounds().Latest().Index
-//
-// 	assert.True(t, <-alice.WaitForSync())
-//
-// 	// Add just 1 transaction
-// 	tx, err := testnet.Faucet().PlaceStake(100)
-// 	assert.NoError(t, err)
-//
-// 	// Try to wait for 2 rounds of consensus.
-// 	// The second call should result in timeout, because
-// 	// only 1 round should be finalized.
-// 	assert.True(t, <-alice.WaitForConsensus())
-// 	assert.False(t, <-alice.WaitForConsensus())
-//
-// 	current := alice.ledger.Rounds().Latest().Index
-// 	assert.Equal(t, current-start, uint64(1), "expected only 1 round to be finalized")
-//
-// 	// Adding existing transaction returns no error as the error is ignored
-// 	assert.NoError(t, alice.ledger.AddTransaction(tx))
-//
-// 	for i := uint64(0); i < conf.GetMaxDepthDiff()+1; i++ {
-// 		assert.NoError(t, txError(testnet.Faucet().PlaceStake(1)))
-// 		alice.WaitUntilConsensus(t)
-// 	}
-//
-// 	// Force ledger to prune graph
-// 	alice.ledger.Graph().PruneBelowDepth(alice.ledger.Graph().RootDepth())
-//
-// 	// Adding a tx with depth that is too low returns no error as the error is ignored
-// 	assert.NoError(t, alice.ledger.AddTransaction(tx))
-// }
-
 func TestLedger_Pay(t *testing.T) {
 	testnet := NewTestNetwork(t)
 	defer testnet.Cleanup()
@@ -154,59 +115,53 @@ func TestLedger_Stake(t *testing.T) {
 	}
 }
 
-// func TestLedger_CallContract(t *testing.T) {
-// 	testnet := NewTestNetwork(t)
-// 	defer testnet.Cleanup()
-//
-// 	alice := testnet.AddNode(t)
-//
-// 	for i := 0; i < 5; i++ {
-// 		testnet.AddNode(t)
-// 	}
-//
-// 	testnet.WaitForSync(t)
-//
-// 	assert.NoError(t, txError(testnet.Faucet().Pay(alice, 1000000)))
-// 	alice.WaitUntilBalance(t, 1000000)
-//
-// 	contract, err := alice.SpawnContract("testdata/transfer_back.wasm",
-// 		10000, nil)
-// 	assert.NoError(t, err)
-//
-// 	alice.WaitUntilConsensus(t)
-//
-// 	// Calling the contract should cause the contract to send back 250000 PERL back to alice
-// 	_, err = alice.CallContract(contract.ID, 500000, 100000, "on_money_received", contract.ID[:])
-// 	assert.NoError(t, err)
-//
-// 	waitFor(t, func() bool { return alice.Balance() > 700000 })
-// }
-//
-// func TestLedger_DepositGas(t *testing.T) {
-// 	testnet := NewTestNetwork(t)
-// 	defer testnet.Cleanup()
-//
-// 	alice := testnet.AddNode(t)
-//
-// 	for i := 0; i < 5; i++ {
-// 		testnet.AddNode(t)
-// 	}
-//
-// 	testnet.WaitForSync(t)
-//
-// 	assert.NoError(t, txError(testnet.Faucet().Pay(alice, 1000000)))
-// 	alice.WaitUntilBalance(t, 1000000)
-//
-// 	contract, err := alice.SpawnContract("testdata/transfer_back.wasm",
-// 		10000, nil)
-// 	assert.NoError(t, err)
-//
-// 	alice.WaitUntilConsensus(t)
-//
-// 	assert.NoError(t, txError(alice.DepositGas(contract.ID, 654321)))
-// 	waitFor(t, func() bool { return alice.GasBalanceOfAddress(contract.ID) == 654321 })
-// }
-//
+func TestLedger_CallContract(t *testing.T) {
+	testnet := NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	alice := testnet.AddNode(t)
+
+	for i := 0; i < 5; i++ {
+		testnet.AddNode(t)
+	}
+
+	testnet.Faucet().Pay(alice, 1000000)
+	alice.WaitUntilBalance(t, 1000000)
+
+	contract, err := alice.SpawnContract("testdata/transfer_back.wasm",
+		10000, nil)
+	assert.NoError(t, err)
+
+	alice.WaitUntilConsensus(t)
+
+	// Calling the contract should cause the contract to send back 250000 PERL back to alice
+	alice.CallContract(contract.ID, 500000, 100000, "on_money_received", contract.ID[:])
+	waitFor(t, func() bool { return alice.Balance() > 700000 })
+}
+
+func TestLedger_DepositGas(t *testing.T) {
+	testnet := NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	alice := testnet.AddNode(t)
+
+	for i := 0; i < 5; i++ {
+		testnet.AddNode(t)
+	}
+
+	testnet.Faucet().Pay(alice, 1000000)
+	alice.WaitUntilBalance(t, 1000000)
+
+	contract, err := alice.SpawnContract("testdata/transfer_back.wasm",
+		10000, nil)
+	assert.NoError(t, err)
+
+	alice.WaitUntilConsensus(t)
+
+	alice.DepositGas(contract.ID, 654321)
+	waitFor(t, func() bool { return alice.GasBalanceOfAddress(contract.ID) == 654321 })
+}
+
 // type account struct {
 // 	PublicKey [32]byte
 // 	Balance   uint64

@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"net"
 	"os"
 	"strconv"
@@ -605,63 +606,48 @@ func (l *TestLedger) Pay(to *TestLedger, amount uint64) Transaction {
 	return tx
 }
 
-// func (l *TestLedger) SpawnContract(contractPath string, gasLimit uint64, params []byte) (Transaction, error) {
-// 	code, err := ioutil.ReadFile(contractPath)
-// 	if err != nil {
-// 		return Transaction{}, err
-// 	}
-//
-// 	payload := Contract{
-// 		GasLimit: gasLimit,
-// 		Code:     code,
-// 		Params:   params,
-// 	}
-//
-// 	keys := l.ledger.client.Keys()
-// 	tx := AttachSenderToTransaction(
-// 		keys,
-// 		NewTransaction(sys.TagContract, payload.Marshal()),
-// 		l.ledger.Graph().FindEligibleParents()...)
-//
-// 	err = l.ledger.AddTransaction(tx)
-// 	return tx, err
-// }
-//
-// func (l *TestLedger) DepositGas(id [32]byte, gasDeposit uint64) (Transaction, error) {
-// 	payload := Transfer{
-// 		Recipient:  id,
-// 		GasDeposit: gasDeposit,
-// 	}
-//
-// 	keys := l.ledger.client.Keys()
-// 	tx := AttachSenderToTransaction(
-// 		keys,
-// 		NewTransaction(sys.TagTransfer, payload.Marshal()),
-// 		l.ledger.Graph().FindEligibleParents()...)
-//
-// 	err := l.ledger.AddTransaction(tx)
-// 	return tx, err
-// }
-//
-// func (l *TestLedger) CallContract(id [32]byte, amount uint64, gasLimit uint64, funcName string, params []byte) (Transaction, error) {
-// 	payload := Transfer{
-// 		Recipient:  id,
-// 		Amount:     amount,
-// 		GasLimit:   gasLimit,
-// 		FuncName:   []byte(funcName),
-// 		FuncParams: params,
-// 	}
-//
-// 	keys := l.ledger.client.Keys()
-// 	tx := AttachSenderToTransaction(
-// 		keys,
-// 		NewTransaction(sys.TagTransfer, payload.Marshal()),
-// 		l.ledger.Graph().FindEligibleParents()...)
-//
-// 	err := l.ledger.AddTransaction(tx)
-// 	return tx, err
-// }
-//
+func (l *TestLedger) SpawnContract(contractPath string, gasLimit uint64, params []byte) (Transaction, error) {
+	code, err := ioutil.ReadFile(contractPath)
+	if err != nil {
+		return Transaction{}, err
+	}
+
+	payload := Contract{
+		GasLimit: gasLimit,
+		Code:     code,
+		Params:   params,
+	}
+
+	tx := l.newSignedTransaction(sys.TagContract, payload.Marshal())
+	l.ledger.AddTransaction(tx)
+	return tx, nil
+}
+
+func (l *TestLedger) DepositGas(id [32]byte, gasDeposit uint64) Transaction {
+	payload := Transfer{
+		Recipient:  id,
+		GasDeposit: gasDeposit,
+	}
+
+	tx := l.newSignedTransaction(sys.TagTransfer, payload.Marshal())
+	l.ledger.AddTransaction(tx)
+	return tx
+}
+
+func (l *TestLedger) CallContract(id [32]byte, amount uint64, gasLimit uint64, funcName string, params []byte) Transaction {
+	payload := Transfer{
+		Recipient:  id,
+		Amount:     amount,
+		GasLimit:   gasLimit,
+		FuncName:   []byte(funcName),
+		FuncParams: params,
+	}
+
+	tx := l.newSignedTransaction(sys.TagTransfer, payload.Marshal())
+	l.ledger.AddTransaction(tx)
+	return tx
+}
+
 // func (l *TestLedger) Benchmark(batchSize int) (Transaction, error) {
 // 	payload := Batch{}
 // 	for i := 0; i < batchSize; i++ {
