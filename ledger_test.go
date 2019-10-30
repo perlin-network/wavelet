@@ -17,6 +17,8 @@ func TestLedger_Pay(t *testing.T) {
 		testnet.AddNode(t)
 	}
 
+	testnet.WaitForSync(t)
+
 	testnet.Faucet().Pay(alice, 1000000)
 	alice.WaitUntilBalance(t, 1000000)
 
@@ -45,6 +47,8 @@ func TestLedger_PayInsufficientBalance(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		testnet.AddNode(t)
 	}
+
+	testnet.WaitForSync(t)
 
 	testnet.Faucet().Pay(alice, 1000000)
 	alice.WaitUntilBalance(t, 1000000)
@@ -80,6 +84,8 @@ func TestLedger_Stake(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		testnet.AddNode(t)
 	}
+
+	testnet.WaitForSync(t)
 
 	testnet.Faucet().Pay(alice, 1000000)
 	alice.WaitUntilBalance(t, 1000000)
@@ -125,6 +131,8 @@ func TestLedger_CallContract(t *testing.T) {
 		testnet.AddNode(t)
 	}
 
+	testnet.WaitForSync(t)
+
 	testnet.Faucet().Pay(alice, 1000000)
 	alice.WaitUntilBalance(t, 1000000)
 
@@ -148,6 +156,8 @@ func TestLedger_DepositGas(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		testnet.AddNode(t)
 	}
+
+	testnet.WaitForSync(t)
 
 	testnet.Faucet().Pay(alice, 1000000)
 	alice.WaitUntilBalance(t, 1000000)

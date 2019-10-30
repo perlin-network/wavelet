@@ -553,7 +553,7 @@ func (l *TestLedger) WaitUntilBlock(t testing.TB, round uint64) {
 func (l *TestLedger) WaitForSync() <-chan bool {
 	ch := make(chan bool)
 	go func() {
-		timeout := time.NewTimer(time.Second * 3)
+		timeout := time.NewTimer(time.Second * 10)
 		ticker := time.NewTicker(time.Millisecond * 50)
 		for {
 			select {
