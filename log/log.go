@@ -1,27 +1,38 @@
 package log
 
-import "github.com/rs/zerolog"
+import (
+	"github.com/rs/zerolog"
+	"github.com/valyala/fastjson"
+)
 
 type Loggable interface {
-	MarshalEvent(ev *zerolog.Event) error
+	UnmarshalableValue
+
+	// MarshalEvent sends the event as well.
+	MarshalEvent(ev *zerolog.Event)
 }
 
-// MustLoggableTo does NOT panic.
-func MustLoggableTo(to zerolog.Logger, level zerolog.Level, msg string, loggable Loggable) {
-	if err := LoggableTo(to, level, msg, loggable); err != nil {
-		to.Error().Err(err).Msg("Failed to log")
-	}
+type MarshalableArena interface {
+	MarshalArena(arena *fastjson.Arena) ([]byte, error)
 }
 
-func LoggableTo(to zerolog.Logger, level zerolog.Level, msg string, loggable Loggable) error {
-	return EventTo(to.WithLevel(level), msg, loggable)
+type UnmarshalableValue interface {
+	UnmarshalValue(v *fastjson.Value) error
 }
 
-func EventTo(ev *zerolog.Event, msg string, loggable Loggable) error {
-	if err := loggable.MarshalEvent(ev); err != nil {
-		return err
-	}
+type JSONObject interface {
+	Loggable
+	MarshalableArena
+}
 
-	ev.Msg(msg)
-	return nil
+func LoggableTo(to zerolog.Logger, level zerolog.Level, loggable Loggable) {
+	EventTo(to.WithLevel(level), loggable)
+}
+
+func EventTo(ev *zerolog.Event, loggable Loggable) {
+	loggable.MarshalEvent(ev)
+}
+
+func Info(logger zerolog.Logger, loggable Loggable) {
+	EventTo(logger.Info(), loggable)
 }

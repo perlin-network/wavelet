@@ -1,8 +1,12 @@
 package api
 
 import (
+	"encoding/hex"
+
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/log"
+	"github.com/rs/zerolog"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 )
@@ -35,7 +39,7 @@ type LedgerStatusPeer struct {
 	PublicKey edwards25519.PublicKey `json:"public_key"`
 }
 
-var _ JSONObject = (*LedgerStatus)(nil)
+var _ log.JSONObject = (*LedgerStatus)(nil)
 
 func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 	var (
@@ -185,4 +189,36 @@ func (s *LedgerStatus) UnmarshalValue(v *fastjson.Value) error {
 	}
 
 	return nil
+}
+
+func (s *LedgerStatus) MarshalEvent(ev *zerolog.Event) {
+	ev.Hex("public_key", s.PublicKey[:])
+	ev.Str("address", s.Address)
+	ev.Uint64("num_accounts", s.NumAccounts)
+	ev.Int("preferred_votes", s.PreferredVotes)
+	ev.Str("sync_status", s.SyncStatus)
+
+	ev.Hex("block_merkle_root", s.Block.MerkleRoot[:])
+	ev.Hex("block_id", s.Block.ID[:])
+	ev.Uint64("block_height", s.Block.Height)
+	ev.Int("block_transactions", s.Block.Txs)
+
+	if s.Preferred != nil {
+		ev.Hex("preferred_merkle_root", s.Preferred.MerkleRoot[:])
+		ev.Hex("preferred_id", s.Preferred.ID[:])
+		ev.Uint64("preferred_height", s.Preferred.Height)
+		ev.Int("preferred_transactions", s.Preferred.Txs)
+	}
+
+	ev.Int("num_tx", s.NumTx)
+	ev.Int("num_tx_in_store", s.NumTxInStore)
+
+	var peers = make([]string, len(s.Peers))
+	for i, p := range s.Peers {
+		peers[i] = p.Address +
+			"[" + hex.EncodeToString(p.PublicKey[:]) + "]"
+	}
+	ev.Strs("peers", peers)
+
+	ev.Msg("Here is the current status of your node.")
 }

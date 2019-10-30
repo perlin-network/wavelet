@@ -28,20 +28,6 @@ import (
 	"github.com/valyala/fastjson"
 )
 
-type MarshalableArena interface {
-	MarshalArena(arena *fastjson.Arena) ([]byte, error)
-}
-
-type UnmarshalableValue interface {
-	UnmarshalValue(v *fastjson.Value) error
-}
-
-type JSONObject interface {
-	MarshalableArena
-	UnmarshalableValue
-	log.Loggable
-}
-
 /*
 	Message responses
 */
@@ -50,7 +36,7 @@ type MsgResponse struct {
 	Message string `json:"msg"`
 }
 
-var _ JSONObject = (*MsgResponse)(nil)
+var _ log.JSONObject = (*MsgResponse)(nil)
 
 func (s *MsgResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
@@ -74,7 +60,7 @@ type ErrResponse struct {
 	HTTPStatusCode int    `json:"status"`          // http response status code
 }
 
-var _ JSONObject = (*ErrResponse)(nil)
+var _ log.JSONObject = (*ErrResponse)(nil)
 
 func (e *ErrResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
@@ -94,10 +80,10 @@ func (e *ErrResponse) UnmarshalValue(v *fastjson.Value) error {
 	return nil
 }
 
-func (e *ErrResponse) MarshalEvent(ev *zerolog.Event) error {
+func (e *ErrResponse) MarshalEvent(ev *zerolog.Event) {
 	ev.Err(errors.New(e.Error))
 	ev.Int("code", e.HTTPStatusCode)
-	return nil
+	ev.Msg(e.Error)
 }
 
 func ErrBadRequest(err error) *ErrResponse {

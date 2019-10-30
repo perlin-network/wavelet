@@ -4,17 +4,21 @@ import (
 	"encoding/hex"
 
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 )
 
 type NonceResponse struct {
+	ID wavelet.AccountID `json:"-"`
+
 	Nonce uint64 `json:"nonce"`
 	Block uint64 `json:"block"`
 }
 
-var _ JSONObject = (*NonceResponse)(nil)
+var _ log.JSONObject = (*NonceResponse)(nil)
 
 func (g *Gateway) getAccountNonce(ctx *fasthttp.RequestCtx) {
 	param, ok := ctx.UserValue("id").(string)
@@ -59,4 +63,10 @@ func (s *NonceResponse) UnmarshalValue(v *fastjson.Value) error {
 	s.Nonce = v.GetUint64("nonce")
 	s.Block = v.GetUint64("block")
 	return nil
+}
+
+func (s *NonceResponse) MarshalEvent(ev *zerolog.Event) {
+	ev.Uint64("nonce", s.Nonce)
+	ev.Uint64("block", s.Block)
+	ev.Msgf("Account: %x", s.ID)
 }

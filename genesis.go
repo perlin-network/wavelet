@@ -70,10 +70,7 @@ func SetGenesisByNetwork(name string) error {
 // performInception loads data expected to exist at the birth of any node in this ledgers network.
 // The data is fed in as .json.
 func performInception(tree *avl.Tree, genesis *string) Block {
-	logger := log.Node()
-
 	var buf []byte
-
 	if genesis != nil {
 		buf = []byte(*genesis)
 	} else {
@@ -83,15 +80,13 @@ func performInception(tree *avl.Tree, genesis *string) Block {
 	var p fastjson.Parser
 
 	parsed, err := p.ParseBytes(buf)
-
 	if err != nil {
-		logger.Fatal().Err(err).Msg("ParseBytes()")
+		log.PanicNode(err, "ParseBytes()")
 	}
 
 	accounts, err := parsed.Object()
-
 	if err != nil {
-		logger.Fatal().Err(err).Msg("parsed.Object()")
+		log.PanicNode(err, "parsed.Object()")
 	}
 
 	var balance, stake, reward uint64
@@ -127,7 +122,6 @@ func performInception(tree *avl.Tree, genesis *string) Block {
 		set[id] = struct{}{}
 
 		fields, err = val.Object()
-
 		if err != nil {
 			return
 		}
@@ -174,7 +168,7 @@ func performInception(tree *avl.Tree, genesis *string) Block {
 	})
 
 	if err != nil {
-		logger.Fatal().Err(err).Msg("accounts.Visit")
+		log.PanicNode(err, "accounts.Visit")
 	}
 
 	return NewBlock(0, tree.Checksum())

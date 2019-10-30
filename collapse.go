@@ -21,6 +21,7 @@ package wavelet
 
 import (
 	"encoding/hex"
+
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/lru"
@@ -91,9 +92,7 @@ func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) 
 			res.rejectedErrors = append(res.rejectedErrors, err)
 			res.rejectedCount += tx.LogicalUnits()
 
-			logger := log.Node()
-			logger.Error().Err(err).Msg("error applying transaction")
-
+			log.ErrNode(err, "error applying transaction")
 			continue
 		}
 

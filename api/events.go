@@ -9,23 +9,17 @@ import (
 func (g *Gateway) registerEvents() {
 	if g.Config != nil && g.Client != nil {
 		g.Client.OnPeerJoin(func(conn *grpc.ClientConn, id *skademlia.ID) {
-			publicKey := id.PublicKey()
-
-			logger := log.Network("joined")
-			logger.Info().
-				Hex("public_key", publicKey[:]).
-				Str("address", id.Address()).
-				Msg("Peer has joined.")
+			log.EventTo(log.Network("left").Info(), log.NetworkJoined{
+				PublicKey: id.PublicKey(),
+				Address:   id.Address(),
+			})
 		})
 
 		g.Client.OnPeerLeave(func(conn *grpc.ClientConn, id *skademlia.ID) {
-			publicKey := id.PublicKey()
-
-			logger := log.Network("left")
-			logger.Info().
-				Hex("public_key", publicKey[:]).
-				Str("address", id.Address()).
-				Msg("Peer has left.")
+			log.EventTo(log.Network("left").Info(), log.NetworkLeft{
+				PublicKey: id.PublicKey(),
+				Address:   id.Address(),
+			})
 		})
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/valyala/fasthttp"
@@ -21,7 +22,7 @@ type Account struct {
 	NumPages   uint64            `json:"num_pages"`
 }
 
-var _ JSONObject = (*Account)(nil)
+var _ log.JSONObject = (*Account)(nil)
 
 func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 	param, ok := ctx.UserValue("id").(string)
@@ -101,7 +102,7 @@ func (s *Account) UnmarshalValue(v *fastjson.Value) error {
 	return nil
 }
 
-func (s *Account) MarshalEvent(ev *zerolog.Event) error {
+func (s *Account) MarshalEvent(ev *zerolog.Event) {
 	ev.Hex("id", s.ID[:])
 	ev.Uint64("balance", s.Balance)
 	ev.Uint64("gas_balance", s.GasBalance)
@@ -111,5 +112,5 @@ func (s *Account) MarshalEvent(ev *zerolog.Event) error {
 	ev.Bool("is_contract", s.IsContract)
 	ev.Uint64("num_pages", s.NumPages)
 
-	return nil
+	ev.Msg("Account")
 }

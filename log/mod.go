@@ -97,38 +97,42 @@ func SetWriter(key string, writer io.Writer) {
 	output.SetWriter(key, writer)
 }
 
-func Node() zerolog.Logger {
-	return node
+func Node() *zerolog.Logger {
+	return wrap(node)
 }
 
-func Network(event string) zerolog.Logger {
-	return network.With().Str(KeyEvent, event).Logger()
+func Network(event string) *zerolog.Logger {
+	return wrap(network.With().Str(KeyEvent, event).Logger())
 }
 
-func Accounts(event string) zerolog.Logger {
-	return accounts.With().Str(KeyEvent, event).Logger()
+func Accounts(event string) *zerolog.Logger {
+	return wrap(accounts.With().Str(KeyEvent, event).Logger())
 }
 
-func Contracts(event string) zerolog.Logger {
-	return contract.With().Str(KeyEvent, event).Logger()
+func Contracts(event string) *zerolog.Logger {
+	return wrap(contract.With().Str(KeyEvent, event).Logger())
 }
 
-func TX(event string) zerolog.Logger {
-	return tx.With().Str(KeyEvent, event).Logger()
+func TX(event string) *zerolog.Logger {
+	return wrap(tx.With().Str(KeyEvent, event).Logger())
 }
 
-func Consensus(event string) zerolog.Logger {
-	return consensus.With().Str(KeyEvent, event).Logger()
+func Consensus(event string) *zerolog.Logger {
+	return wrap(consensus.With().Str(KeyEvent, event).Logger())
 }
 
-func Stake(event string) zerolog.Logger {
-	return stake.With().Str(KeyEvent, event).Logger()
+func Stake(event string) *zerolog.Logger {
+	return wrap(stake.With().Str(KeyEvent, event).Logger())
 }
 
-func Sync(event string) zerolog.Logger {
-	return syncer.With().Str(KeyEvent, event).Logger()
+func Sync(event string) *zerolog.Logger {
+	return wrap(syncer.With().Str(KeyEvent, event).Logger())
 }
 
-func Metrics() zerolog.Logger {
-	return metrics
+func Metrics() *zerolog.Logger {
+	return wrap(metrics)
+}
+
+func wrap(l zerolog.Logger) *zerolog.Logger {
+	return &l
 }

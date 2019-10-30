@@ -47,7 +47,10 @@ func (b *fileBufferPool) GetBounded(size int64) (buffer.BufferAt, error) {
 		buffers = append(buffers, file.(buffer.BufferAt))
 	}
 
-	return &boundedFileBuffer{Files: buffers, BufferAt: buffer.NewMultiAt(buffers...)}, nil
+	return &boundedFileBuffer{
+		Files:    buffers,
+		BufferAt: buffer.NewMultiAt(buffers...),
+	}, nil
 }
 
 func (b *fileBufferPool) Put(buf buffer.Buffer) {

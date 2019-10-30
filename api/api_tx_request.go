@@ -4,6 +4,8 @@ import (
 	"encoding/base64"
 
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/log"
+	"github.com/rs/zerolog"
 	"github.com/valyala/fastjson"
 )
 
@@ -16,7 +18,7 @@ type TxRequest struct {
 	Signature wavelet.Signature `json:"signature"`
 }
 
-var _ JSONObject = (*TxRequest)(nil)
+var _ log.JSONObject = (*TxRequest)(nil)
 
 func (s *TxRequest) bind(parser *fastjson.Parser, body []byte) error {
 	v, err := parser.ParseBytes(body)
@@ -55,4 +57,19 @@ func (s *TxRequest) UnmarshalValue(v *fastjson.Value) error {
 	s.Payload = pl
 
 	return nil
+}
+
+// MarshalEvent doesn't return the full contents of Payload, but only its
+// length.
+func (s *TxRequest) MarshalEvent(ev *zerolog.Event) {
+	ev.Hex("sender", s.Sender[:])
+	ev.Hex("signature", s.Signature[:])
+
+	ev.Uint64("nonce", s.Nonce)
+	ev.Uint64("block", s.Block)
+	ev.Uint8("tag", s.Tag)
+
+	ev.Int("payload_len", len(s.Payload))
+
+	ev.Msg("Transaction request")
 }

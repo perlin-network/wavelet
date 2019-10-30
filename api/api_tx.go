@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
@@ -16,7 +17,7 @@ type TxResponse struct {
 	ID wavelet.TransactionID `json:"id"`
 }
 
-var _ JSONObject = (*TxResponse)(nil)
+var _ log.JSONObject = (*TxResponse)(nil)
 
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	req := new(TxRequest)
@@ -58,13 +59,13 @@ func (s *TxResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	return o.MarshalTo(nil), nil
 }
 
-func (s *TxResponse) MarshalEvent(ev *zerolog.Event) error {
-	ev.Hex("id", s.ID[:])
-	return nil
-}
-
 func (s *TxResponse) UnmarshalValue(v *fastjson.Value) error {
 	return valueHex(v, s.ID, "id")
+}
+
+func (s *TxResponse) MarshalEvent(ev *zerolog.Event) {
+	ev.Hex("id", s.ID[:])
+	ev.Msg("Transaction sent.")
 }
 
 /*
@@ -81,7 +82,7 @@ type Transaction struct {
 	Signature wavelet.Signature `json:"signature"`
 }
 
-var _ JSONObject = (*Transaction)(nil)
+var _ log.JSONObject = (*Transaction)(nil)
 
 func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 	param, ok := ctx.UserValue("id").(string)
@@ -158,9 +159,24 @@ func (s *Transaction) UnmarshalValue(v *fastjson.Value) error {
 	return nil
 }
 
+// MarshalEvent doesn't return the full contents of Payload, but only its
+// length.
+func (s *Transaction) MarshalEvent(ev *zerolog.Event) {
+	ev.Hex("id", s.ID[:])
+	ev.Hex("sender", s.Sender[:])
+	ev.Hex("signature", s.Signature[:])
+
+	ev.Uint64("nonce", s.Nonce)
+	ev.Uint8("tag", s.Tag)
+
+	ev.Int("payload_len", len(s.Payload))
+
+	ev.Msg("Transaction")
+}
+
 type TransactionList []*Transaction
 
-// var _ JSONObject = (TransactionList)(nil)
+// var _ log.JSONObject = (TransactionList)(nil)
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 	// TODO
