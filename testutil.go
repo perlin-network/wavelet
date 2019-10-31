@@ -151,8 +151,8 @@ func (n *TestNetwork) Nodes() []*TestLedger {
 }
 
 // WaitForRound waits for all the nodes in the network to
-// reach the specified round.
-func (n *TestNetwork) WaitForBlock(t testing.TB, round uint64) {
+// reach the specified block.
+func (n *TestNetwork) WaitForBlock(t testing.TB, block uint64) {
 	if len(n.nodes) == 0 {
 		return
 	}
@@ -161,8 +161,8 @@ func (n *TestNetwork) WaitForBlock(t testing.TB, round uint64) {
 	go func() {
 		for _, node := range n.nodes {
 			for {
-				ri := <-node.WaitForBlock(round)
-				if ri == round {
+				ri := <-node.WaitForBlock(block)
+				if ri == block {
 					break
 				}
 			}
@@ -173,7 +173,7 @@ func (n *TestNetwork) WaitForBlock(t testing.TB, round uint64) {
 
 	select {
 	case <-time.After(time.Second * 10):
-		t.Fatal("timed out waiting for round")
+		t.Fatal("timed out waiting for block")
 
 	case <-done:
 		return
@@ -217,7 +217,7 @@ func (n *TestNetwork) WaitForConsensus(t testing.TB) {
 	case <-timer.C:
 		close(stop)
 		<-done
-		t.Fatal("consensus round took too long")
+		t.Fatal("consensus took too long")
 	}
 }
 
@@ -243,6 +243,12 @@ func (n *TestNetwork) WaitForSync(t testing.TB) {
 		return
 	case <-timer.C:
 		t.Fatal("timeout while waiting for all nodes to be synced")
+	}
+}
+
+func (n *TestNetwork) WaitUntilSync(t testing.TB) {
+	for _, l := range n.nodes {
+		l.WaitUntilSync(t)
 	}
 }
 
@@ -476,7 +482,7 @@ func (l *TestLedger) WaitUntilBalance(t testing.TB, balance uint64) {
 	t.Helper()
 
 	ticker := time.NewTicker(time.Millisecond * 200)
-	timeout := time.NewTimer(time.Second * 30)
+	timeout := time.NewTimer(time.Second * 300)
 	for {
 		select {
 		case <-ticker.C:
@@ -494,7 +500,7 @@ func (l *TestLedger) WaitUntilStake(t testing.TB, stake uint64) {
 	t.Helper()
 
 	ticker := time.NewTicker(time.Millisecond * 200)
-	timeout := time.NewTimer(time.Second * 30)
+	timeout := time.NewTimer(time.Second * 300)
 	for {
 		select {
 		case <-ticker.C:
@@ -533,19 +539,19 @@ func (l *TestLedger) WaitForBlock(index uint64) <-chan uint64 {
 	return ch
 }
 
-func (l *TestLedger) WaitUntilBlock(t testing.TB, round uint64) {
+func (l *TestLedger) WaitUntilBlock(t testing.TB, block uint64) {
 	t.Helper()
 
-	timeout := time.NewTimer(time.Second * 30)
+	timeout := time.NewTimer(time.Second * 300)
 	for {
 		select {
-		case ri := <-l.WaitForBlock(round):
-			if ri >= round {
+		case ri := <-l.WaitForBlock(block):
+			if ri >= block {
 				return
 			}
 
 		case <-timeout.C:
-			t.Fatal("timed out waiting for round")
+			t.Fatal("timed out waiting for block")
 		}
 	}
 }
@@ -553,7 +559,7 @@ func (l *TestLedger) WaitUntilBlock(t testing.TB, round uint64) {
 func (l *TestLedger) WaitForSync() <-chan bool {
 	ch := make(chan bool)
 	go func() {
-		timeout := time.NewTimer(time.Second * 10)
+		timeout := time.NewTimer(time.Second * 3)
 		ticker := time.NewTicker(time.Millisecond * 50)
 		for {
 			select {
@@ -571,6 +577,23 @@ func (l *TestLedger) WaitForSync() <-chan bool {
 	}()
 
 	return ch
+}
+
+func (l *TestLedger) WaitUntilSync(t testing.TB) {
+	t.Helper()
+
+	timeout := time.NewTimer(time.Second * 300)
+	for {
+		select {
+		case s := <-l.WaitForSync():
+			if s {
+				return
+			}
+
+		case <-timeout.C:
+			t.Fatal("timed out waiting for sync")
+		}
+	}
 }
 
 func (l *TestLedger) newSignedTransaction(tag sys.Tag, payload []byte) Transaction {
