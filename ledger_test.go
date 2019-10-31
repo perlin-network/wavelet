@@ -1,8 +1,12 @@
 package wavelet
 
 import (
+	"bytes"
+	"math/rand"
 	"testing"
+	"time"
 
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -155,164 +159,106 @@ func TestLedger_DepositGas(t *testing.T) {
 	waitFor(t, func() bool { return alice.GasBalanceOfAddress(contract.ID) == 654321 })
 }
 
-// type account struct {
-// 	PublicKey [32]byte
-// 	Balance   uint64
-// 	Stake     uint64
-// 	Reward    uint64
-// }
-//
-// func TestLedger_Sync(t *testing.T) {
-// 	testnet := NewTestNetwork(t)
-// 	defer testnet.Cleanup()
-//
-// 	rand.Seed(time.Now().UnixNano())
-//
-// 	var code [1024 * 1024]byte
-// 	if _, err := rand.Read(code[:]); err != nil {
-// 		t.Fatal(err)
-// 	}
-//
-// 	// Generate accounts
-// 	accounts := make([]account, 500)
-// 	for i := 0; i < len(accounts); i++ {
-// 		// Use random keys to speed up generation
-// 		var key [32]byte
-// 		if _, err := rand.Read(key[:]); err != nil {
-// 			t.Fatal(err)
-// 		}
-//
-// 		accounts[i] = account{
-// 			PublicKey: key,
-// 			Balance:   rand.Uint64(),
-// 			Stake:     rand.Uint64(),
-// 			Reward:    rand.Uint64(),
-// 		}
-// 	}
-//
-// 	// Setup network with 3 nodes
-// 	alice := testnet.Faucet()
-// 	for i := 0; i < 2; i++ {
-// 		testnet.AddNode(t)
-// 	}
-//
-// 	testnet.WaitForSync(t)
-//
-// 	// Advance the network by a few rounds larger than sys.SyncIfRoundsDifferBy
-// 	for i := 0; i < int(conf.GetSyncIfBlockIndicesDifferBy())+1; i++ {
-// 		assert.NoError(t, txError(alice.PlaceStake(1)))
-// 		alice.WaitUntilConsensus(t)
-// 	}
-//
-// 	testnet.WaitForRound(t, alice.RoundIndex())
-//
-// 	snapshot := testnet.Nodes()[0].ledger.accounts.Snapshot()
-//
-// 	snapshot.SetViewID(alice.RoundIndex() + 1)
-// 	for _, acc := range accounts {
-// 		WriteAccountBalance(snapshot, acc.PublicKey, acc.Balance)
-// 		WriteAccountStake(snapshot, acc.PublicKey, acc.Stake)
-// 		WriteAccountReward(snapshot, acc.PublicKey, acc.Reward)
-// 		WriteAccountContractCode(snapshot, acc.PublicKey, code[:])
-// 	}
-//
-// 	// Override ledger state of all nodes
-// 	for _, node := range testnet.Nodes() {
-// 		err := node.ledger.accounts.Commit(snapshot)
-// 		if err != nil {
-// 			t.Fatal(err)
-// 		}
-//
-// 		// Override latest round merkle with the new state snapshot
-// 		// TODO: this is causing data race
-// 		round := node.ledger.rounds.Latest()
-// 		round.Merkle = snapshot.Checksum()
-// 	}
-//
-// 	// When a new node joins the network, it will eventually
-// 	// sync with the other nodes
-// 	// log.SetWriter(log.ModuleNode, os.Stdout)
-// 	charlie := testnet.AddNode(t)
-//
-// 	timeout := time.NewTimer(time.Second * 300)
-// 	for {
-// 		select {
-// 		case <-timeout.C:
-// 			t.Fatal("timed out waiting for sync")
-//
-// 		default:
-// 			ri := <-charlie.WaitForRound(alice.RoundIndex())
-// 			if ri >= alice.RoundIndex() {
-// 				goto DONE
-// 			}
-// 		}
-// 	}
-//
-// DONE:
-// 	for _, acc := range accounts {
-// 		assert.EqualValues(t, acc.Balance, charlie.BalanceWithPublicKey(acc.PublicKey))
-// 		assert.EqualValues(t, acc.Stake, charlie.StakeWithPublicKey(acc.PublicKey))
-// 		assert.EqualValues(t, acc.Reward, charlie.RewardWithPublicKey(acc.PublicKey))
-//
-// 		checkCode, _ := ReadAccountContractCode(charlie.ledger.accounts.Snapshot(), acc.PublicKey)
-// 		assert.True(t, bytes.Equal(code[:], checkCode))
-// 	}
-// }
-//
-// func TestLedger_SpamContracts(t *testing.T) {
-// 	testnet := NewTestNetwork(t)
-// 	defer testnet.Cleanup()
-//
-// 	alice := testnet.AddNode(t)
-// 	testnet.AddNode(t)
-//
-// 	assert.True(t, <-alice.WaitForSync())
-//
-// 	assert.NoError(t, txError(testnet.Faucet().Pay(alice, 100000)))
-// 	alice.WaitUntilBalance(t, 100000)
-//
-// 	// spamming spawn transactions should cause no problem for consensus
-// 	// this is possible if they applied in different order on different nodes
-// 	for i := 0; i < 5; i++ {
-// 		_, err := alice.SpawnContract("testdata/transfer_back.wasm", 10000, nil)
-// 		if !assert.NoError(t, err) {
-// 			return
-// 		}
-// 	}
-//
-// 	alice.WaitUntilConsensus(t)
-// }
-//
-// func TestLedger_MinimalSync(t *testing.T) {
-// 	testnet := NewTestNetwork(t, WithoutFaucet())
-// 	defer testnet.Cleanup()
-//
-// 	var alice, bob *TestLedger
-// 	for i := 0; i < 4; i++ {
-// 		switch i {
-// 		case 0:
-// 			alice = testnet.AddNode(t,
-// 				WithWallet(FaucetWallet))
-// 			testnet.SetFaucet(alice)
-//
-// 		case 1:
-// 			bob = testnet.AddNode(t)
-//
-// 		default:
-// 			testnet.AddNode(t)
-// 		}
-// 	}
-//
-// 	assert.NoError(t, txError(alice.Pay(bob, 100)))
-// 	bob.WaitUntilBalance(t, 100)
-//
-// 	// End of round 1
-//
-// 	charlie := testnet.AddNode(t)
-// 	<-charlie.WaitForSync()
-//
-// 	assert.NoError(t, txError(alice.Pay(bob, 100)))
-//
-// 	bob.WaitUntilBalance(t, 200)
-// 	charlie.WaitUntilRound(t, 2)
-// }
+type account struct {
+	PublicKey [32]byte
+	Balance   uint64
+	Stake     uint64
+	Reward    uint64
+}
+
+func TestLedger_Sync(t *testing.T) {
+	testnet := NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	rand.Seed(time.Now().UnixNano())
+
+	var code [1024 * 1024]byte
+	if _, err := rand.Read(code[:]); err != nil {
+		t.Fatal(err)
+	}
+
+	// Generate accounts
+	accounts := make([]account, 100)
+	for i := 0; i < len(accounts); i++ {
+		// Use random keys to speed up generation
+		var key [32]byte
+		if _, err := rand.Read(key[:]); err != nil {
+			t.Fatal(err)
+		}
+
+		accounts[i] = account{
+			PublicKey: key,
+			Balance:   rand.Uint64(),
+			Stake:     rand.Uint64(),
+			Reward:    rand.Uint64(),
+		}
+	}
+
+	// Setup network with 3 nodes
+	alice := testnet.Faucet()
+	for i := 0; i < 2; i++ {
+		testnet.AddNode(t)
+	}
+
+	testnet.WaitUntilSync(t)
+
+	// Advance the network by a few blocks larger than sys.SyncIfBlockIndicesDifferBy
+	for i := 0; i < int(conf.GetSyncIfBlockIndicesDifferBy())+1; i++ {
+		alice.PlaceStake(1)
+		alice.WaitUntilConsensus(t)
+	}
+
+	testnet.WaitForBlock(t, alice.BlockIndex())
+
+	snapshot := testnet.Nodes()[0].ledger.accounts.Snapshot()
+
+	snapshot.SetViewID(alice.BlockIndex() + 1)
+	for _, acc := range accounts {
+		WriteAccountBalance(snapshot, acc.PublicKey, acc.Balance)
+		WriteAccountStake(snapshot, acc.PublicKey, acc.Stake)
+		WriteAccountReward(snapshot, acc.PublicKey, acc.Reward)
+		WriteAccountContractCode(snapshot, acc.PublicKey, code[:])
+	}
+
+	// Override ledger state of all nodes
+	for _, node := range testnet.Nodes() {
+		err := node.ledger.accounts.Commit(snapshot)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Override latest round merkle with the new state snapshot
+		// TODO: this is causing data race
+		block := node.ledger.blocks.Latest()
+		block.Merkle = snapshot.Checksum()
+	}
+
+	// When a new node joins the network, it will eventually
+	// sync with the other nodes
+	// log.SetWriter(log.ModuleNode, os.Stdout)
+	charlie := testnet.AddNode(t)
+
+	timeout := time.NewTimer(time.Second * 1000)
+	for {
+		select {
+		case <-timeout.C:
+			t.Fatal("timed out waiting for sync")
+
+		default:
+			ri := <-charlie.WaitForBlock(alice.BlockIndex())
+			if ri >= alice.BlockIndex() {
+				goto DONE
+			}
+		}
+	}
+
+DONE:
+	for _, acc := range accounts {
+		assert.EqualValues(t, acc.Balance, charlie.BalanceWithPublicKey(acc.PublicKey))
+		assert.EqualValues(t, acc.Stake, charlie.StakeWithPublicKey(acc.PublicKey))
+		assert.EqualValues(t, acc.Reward, charlie.RewardWithPublicKey(acc.PublicKey))
+
+		checkCode, _ := ReadAccountContractCode(charlie.ledger.accounts.Snapshot(), acc.PublicKey)
+		assert.True(t, bytes.Equal(code[:], checkCode))
+	}
+}
