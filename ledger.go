@@ -1171,6 +1171,7 @@ func (l *Ledger) SyncToLatestBlock() {
 			Int("num_workers", cap(workers)).
 			Msg("Starting up workers to downloaded all chunks of data needed to sync to the latest block...")
 
+		var chunksBufferLock sync.Mutex
 		chunksBuffer, err := l.fileBuffers.GetBounded(int64(len(sources)) * sys.SyncChunkSize)
 		if err != nil {
 			logger.Error().
@@ -1233,7 +1234,11 @@ func (l *Ledger) SyncToLatestBlock() {
 						}
 
 						// We found the chunk! Store the chunks contents.
-						if _, err := chunksBuffer.WriteAt(chunk, int64(src.idx)*sys.SyncChunkSize); err != nil {
+						chunksBufferLock.Lock()
+						_, err = chunksBuffer.WriteAt(chunk, int64(src.idx)*sys.SyncChunkSize)
+						chunksBufferLock.Unlock()
+
+						if err != nil {
 							continue
 						}
 
