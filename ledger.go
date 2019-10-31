@@ -88,7 +88,8 @@ type Ledger struct {
 	stopWG   sync.WaitGroup
 	cancelGC context.CancelFunc
 
-	transactionsSyncIndex *bloom.BloomFilter
+	transactionsSyncIndexLock sync.RWMutex
+	transactionsSyncIndex     *bloom.BloomFilter
 }
 
 type config struct {
@@ -240,9 +241,11 @@ func (l *Ledger) Close() {
 func (l *Ledger) AddTransaction(txs ...Transaction) {
 	l.transactions.BatchAdd(l.blocks.Latest().ID, txs...)
 
+	l.transactionsSyncIndexLock.Lock()
 	for _, tx := range txs {
 		l.transactionsSyncIndex.Add(tx.ID[:])
 	}
+	l.transactionsSyncIndexLock.Unlock()
 
 	//l.TakeSendQuota()
 }
@@ -379,8 +382,14 @@ func (l *Ledger) SyncTransactions() {
 
 		logger := log.Sync("sync_tx")
 
+		// Marshal bloom filter
 		buf := bytes.NewBuffer(nil)
-		if _, err := l.transactionsSyncIndex.WriteTo(buf); err != nil {
+
+		l.transactionsSyncIndexLock.RLock()
+		_, err = l.transactionsSyncIndex.WriteTo(buf)
+		l.transactionsSyncIndexLock.RUnlock()
+
+		if err != nil {
 			logger.Error().Err(err).Msg("failed to marshal bloom filter")
 			continue
 		}
@@ -1162,6 +1171,7 @@ func (l *Ledger) SyncToLatestBlock() {
 			Int("num_workers", cap(workers)).
 			Msg("Starting up workers to downloaded all chunks of data needed to sync to the latest block...")
 
+		var chunksBufferLock sync.Mutex
 		chunksBuffer, err := l.fileBuffers.GetBounded(int64(len(sources)) * sys.SyncChunkSize)
 		if err != nil {
 			logger.Error().
@@ -1224,7 +1234,11 @@ func (l *Ledger) SyncToLatestBlock() {
 						}
 
 						// We found the chunk! Store the chunks contents.
-						if _, err := chunksBuffer.WriteAt(chunk, int64(src.idx)*sys.SyncChunkSize); err != nil {
+						chunksBufferLock.Lock()
+						_, err = chunksBuffer.WriteAt(chunk, int64(src.idx)*sys.SyncChunkSize)
+						chunksBufferLock.Unlock()
+
+						if err != nil {
 							continue
 						}
 
@@ -1518,6 +1532,9 @@ func (l *Ledger) setSync(flag bitset) {
 }
 
 func (l *Ledger) resetTransactionsSyncIndex() {
+	l.transactionsSyncIndexLock.Lock()
+	defer l.transactionsSyncIndexLock.Unlock()
+
 	l.transactionsSyncIndex.ClearAll()
 
 	l.transactions.Iterate(func(tx *Transaction) bool {
