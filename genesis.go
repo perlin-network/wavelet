@@ -21,6 +21,7 @@ package wavelet
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet/avl"
@@ -75,7 +76,7 @@ func SetGenesisByNetwork(name string) error {
 	return nil
 }
 
-// performInception restore genesis data from the a directory expected to exist at the birth of any node in this ledgers network.
+// performInception restore genesis data from the a directory or JSON contents expected to exist at the birth of any node in this ledgers network.
 //
 // An account state may be specified within the genesis directory in the form of a [account address].json file with key-value pairs.
 //
@@ -83,21 +84,22 @@ func SetGenesisByNetwork(name string) error {
 //
 // The AccountsLen in the restored tree may not match with the original tree.
 //
-// If the directory is nil, restore from the hardcoded default genesis.
-func performInception(tree *avl.Tree, dir *string) Round {
+// If the genesis is nil, restore from the hardcoded default genesis.
+func performInception(tree *avl.Tree, genesis *string) Round {
 	logger := log.Node()
 
 	var err error
-	if dir != nil {
-		var absDir string
-		absDir, err = filepath.Abs(*dir)
-
-		if err != nil {
-			logger.Fatal().Err(err).Msgf("failed to determine absolute path of genesis directory %s", *dir)
+	if genesis != nil {
+		isJSON := func(str string) bool {
+			var js json.RawMessage
+			return json.Unmarshal([]byte(str), &js) == nil
 		}
 
-		err = restoreFromDir(tree, absDir)
-
+		if isJSON(*genesis) {
+			err = restoreFromJSON(tree, []byte(*genesis))
+		} else {
+			err = restoreFromDir(tree, *genesis)
+		}
 	} else {
 		err = restoreFromJSON(tree, []byte(defaultGenesis))
 	}
