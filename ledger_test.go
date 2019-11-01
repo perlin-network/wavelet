@@ -1,12 +1,13 @@
 package wavelet
 
 import (
+	"bytes"
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/perlin-network/wavelet/conf"
-
 	"github.com/stretchr/testify/assert"
 )
 
@@ -27,15 +28,8 @@ func TestLedger_BroadcastNop(t *testing.T) {
 	assert.True(t, <-alice.WaitForSync())
 	assert.True(t, <-bob.WaitForSync())
 
-	_, err := testnet.faucet.Pay(alice, 1000000)
-	assert.NoError(t, err)
-
-	// Wait for balance to update
-	for range alice.WaitForConsensus() {
-		if alice.Balance() > 0 {
-			break
-		}
-	}
+	assert.NoError(t, txError(testnet.Faucet().Pay(alice, 1000000)))
+	alice.WaitUntilBalance(t, 1000000)
 
 	// Add lots of transactions
 	var txsLock sync.Mutex
@@ -110,7 +104,7 @@ func TestLedger_AddTransaction(t *testing.T) {
 	assert.True(t, <-alice.WaitForSync())
 
 	// Add just 1 transaction
-	_, err := testnet.faucet.PlaceStake(100)
+	tx, err := testnet.Faucet().PlaceStake(100)
 	assert.NoError(t, err)
 
 	// Try to wait for 2 rounds of consensus.
@@ -121,6 +115,20 @@ func TestLedger_AddTransaction(t *testing.T) {
 
 	current := alice.ledger.Rounds().Latest().Index
 	assert.Equal(t, current-start, uint64(1), "expected only 1 round to be finalized")
+
+	// Adding existing transaction returns no error as the error is ignored
+	assert.NoError(t, alice.ledger.AddTransaction(tx))
+
+	for i := uint64(0); i < conf.GetMaxDepthDiff()+1; i++ {
+		assert.NoError(t, txError(testnet.Faucet().PlaceStake(1)))
+		alice.WaitUntilConsensus(t)
+	}
+
+	// Force ledger to prune graph
+	alice.ledger.Graph().PruneBelowDepth(alice.ledger.Graph().RootDepth())
+
+	// Adding a tx with depth that is too low returns no error as the error is ignored
+	assert.NoError(t, alice.ledger.AddTransaction(tx))
 }
 
 func TestLedger_Pay(t *testing.T) {
@@ -137,24 +145,20 @@ func TestLedger_Pay(t *testing.T) {
 	testnet.WaitForSync(t)
 
 	assert.NoError(t, txError(testnet.Faucet().Pay(alice, 1000000)))
-	<-alice.WaitForConsensus()
+	alice.WaitUntilBalance(t, 1000000)
 
 	assert.NoError(t, txError(alice.Pay(bob, 1337)))
-	testnet.WaitForConsensus(t)
-
-	// Bob should receive the tx amount
-	assert.EqualValues(t, 1337, bob.Balance())
+	bob.WaitUntilBalance(t, 1337)
 
 	// Alice balance should be balance-txAmount-gas
-	aliceBalance := alice.Balance()
-	assert.True(t, aliceBalance < 1000000-1337)
-
-	testnet.WaitForRound(t, alice.RoundIndex())
+	waitFor(t, func() bool { return alice.Balance() < 1000000-1337 })
 
 	// Everyone else should see the updated balance of Alice and Bob
 	for _, node := range testnet.Nodes() {
-		assert.EqualValues(t, aliceBalance, node.BalanceOfAccount(alice))
-		assert.EqualValues(t, 1337, node.BalanceOfAccount(bob))
+		waitFor(t, func() bool {
+			return node.BalanceOfAccount(alice) == alice.Balance() &&
+				node.BalanceOfAccount(bob) == 1337
+		})
 	}
 }
 
@@ -169,29 +173,28 @@ func TestLedger_PayInsufficientBalance(t *testing.T) {
 		testnet.AddNode(t)
 	}
 
-	testnet.WaitForSync(t)
-
 	assert.NoError(t, txError(testnet.Faucet().Pay(alice, 1000000)))
-	<-alice.WaitForConsensus()
+	alice.WaitUntilBalance(t, 1000000)
 
 	// Alice attempt to pay Bob more than what
 	// she has in her wallet
 	assert.NoError(t, txError(alice.Pay(bob, 1000001)))
+	alice.WaitUntilConsensus(t)
 
-	testnet.WaitForConsensus(t)
+	// Alice should have paid for gas even though the tx failed
+	waitFor(t, func() bool {
+		return alice.Balance() > 0 && alice.Balance() < 1000000
+	})
 
 	// Bob should not receive the tx amount
 	assert.EqualValues(t, 0, bob.Balance())
 
-	// Alice should have paid for gas even though the tx failed
-	aliceBalance := alice.Balance()
-	assert.True(t, aliceBalance > 0)
-	assert.True(t, aliceBalance < 1000000)
-
 	// Everyone else should see the updated balance of Alice and Bob
 	for _, node := range testnet.Nodes() {
-		assert.EqualValues(t, aliceBalance, node.BalanceOfAccount(alice))
-		assert.EqualValues(t, 0, node.BalanceOfAccount(bob))
+		waitFor(t, func() bool {
+			return node.BalanceOfAccount(alice) == alice.Balance() &&
+				node.BalanceOfAccount(bob) == 0
+		})
 	}
 }
 
@@ -208,37 +211,36 @@ func TestLedger_Stake(t *testing.T) {
 	testnet.WaitForSync(t)
 
 	assert.NoError(t, txError(testnet.Faucet().Pay(alice, 1000000)))
-	testnet.WaitForConsensus(t)
+	alice.WaitUntilBalance(t, 1000000)
 
 	assert.NoError(t, txError(alice.PlaceStake(9001)))
-	testnet.WaitForConsensus(t)
-
-	assert.EqualValues(t, 9001, alice.Stake())
+	alice.WaitUntilStake(t, 9001)
 
 	// Alice balance should be balance-stakeAmount-gas
-	aliceBalance := alice.Balance()
-	assert.True(t, aliceBalance < 1000000-9001)
+	waitFor(t, func() bool { return alice.Balance() < 1000000-9001 })
 
 	// Everyone else should see the updated balance of Alice
 	for _, node := range testnet.Nodes() {
-		assert.EqualValues(t, aliceBalance, node.BalanceOfAccount(alice))
-		assert.EqualValues(t, alice.Stake(), node.StakeOfAccount(alice))
+		waitFor(t, func() bool {
+			return node.BalanceOfAccount(alice) == alice.Balance() &&
+				node.StakeOfAccount(alice) == alice.Stake()
+		})
 	}
 
-	assert.NoError(t, txError(alice.WithdrawStake(5000)))
-	testnet.WaitForConsensus(t)
+	oldBalance := alice.Balance()
 
-	assert.EqualValues(t, 4001, alice.Stake())
+	assert.NoError(t, txError(alice.WithdrawStake(5000)))
+	alice.WaitUntilStake(t, 4001)
 
 	// Withdrawn stake should be added to balance
-	oldBalance := aliceBalance
-	aliceBalance = alice.Balance()
-	assert.True(t, aliceBalance > oldBalance)
+	waitFor(t, func() bool { return alice.Balance() > oldBalance })
 
 	// Everyone else should see the updated balance of Alice
 	for _, node := range testnet.Nodes() {
-		assert.EqualValues(t, aliceBalance, node.BalanceOfAccount(alice))
-		assert.EqualValues(t, alice.Stake(), node.StakeOfAccount(alice))
+		waitFor(t, func() bool {
+			return node.BalanceOfAccount(alice) == alice.Balance() &&
+				node.StakeOfAccount(alice) == alice.Stake()
+		})
 	}
 }
 
@@ -255,21 +257,19 @@ func TestLedger_CallContract(t *testing.T) {
 	testnet.WaitForSync(t)
 
 	assert.NoError(t, txError(testnet.Faucet().Pay(alice, 1000000)))
-	testnet.WaitForConsensus(t)
+	alice.WaitUntilBalance(t, 1000000)
 
 	contract, err := alice.SpawnContract("testdata/transfer_back.wasm",
 		10000, nil)
 	assert.NoError(t, err)
 
-	testnet.WaitForConsensus(t)
+	alice.WaitUntilConsensus(t)
 
 	// Calling the contract should cause the contract to send back 250000 PERL back to alice
 	_, err = alice.CallContract(contract.ID, 500000, 100000, "on_money_received", contract.ID[:])
 	assert.NoError(t, err)
 
-	<-alice.WaitForConsensus()
-
-	assert.True(t, alice.Balance() > 700000)
+	waitFor(t, func() bool { return alice.Balance() > 700000 })
 }
 
 func TestLedger_DepositGas(t *testing.T) {
@@ -285,25 +285,52 @@ func TestLedger_DepositGas(t *testing.T) {
 	testnet.WaitForSync(t)
 
 	assert.NoError(t, txError(testnet.Faucet().Pay(alice, 1000000)))
-	testnet.WaitForConsensus(t)
+	alice.WaitUntilBalance(t, 1000000)
 
 	contract, err := alice.SpawnContract("testdata/transfer_back.wasm",
 		10000, nil)
 	assert.NoError(t, err)
 
-	testnet.WaitForConsensus(t)
+	alice.WaitUntilConsensus(t)
 
-	_, err = alice.DepositGas(contract.ID, 654321)
-	assert.NoError(t, err)
+	assert.NoError(t, txError(alice.DepositGas(contract.ID, 654321)))
+	waitFor(t, func() bool { return alice.GasBalanceOfAddress(contract.ID) == 654321 })
+}
 
-	<-alice.WaitForConsensus()
-
-	assert.EqualValues(t, 654321, alice.GasBalanceOfAddress(contract.ID))
+type account struct {
+	PublicKey [32]byte
+	Balance   uint64
+	Stake     uint64
+	Reward    uint64
 }
 
 func TestLedger_Sync(t *testing.T) {
 	testnet := NewTestNetwork(t)
 	defer testnet.Cleanup()
+
+	rand.Seed(time.Now().UnixNano())
+
+	var code [1024 * 1024]byte
+	if _, err := rand.Read(code[:]); err != nil {
+		t.Fatal(err)
+	}
+
+	// Generate accounts
+	accounts := make([]account, 500)
+	for i := 0; i < len(accounts); i++ {
+		// Use random keys to speed up generation
+		var key [32]byte
+		if _, err := rand.Read(key[:]); err != nil {
+			t.Fatal(err)
+		}
+
+		accounts[i] = account{
+			PublicKey: key,
+			Balance:   rand.Uint64(),
+			Stake:     rand.Uint64(),
+			Reward:    rand.Uint64(),
+		}
+	}
 
 	// Setup network with 3 nodes
 	alice := testnet.Faucet()
@@ -314,27 +341,42 @@ func TestLedger_Sync(t *testing.T) {
 	testnet.WaitForSync(t)
 
 	// Advance the network by a few rounds larger than sys.SyncIfRoundsDifferBy
-	for i := 0; i < int(conf.GetSyncIfRoundsDifferBy())+5; i++ {
-		<-alice.WaitForSync()
-		_, err := alice.PlaceStake(10)
-		if err != nil {
-			t.Fatal(err)
-		}
-		<-alice.WaitForConsensus()
+	for i := 0; i < int(conf.GetSyncIfRoundsDifferBy())+1; i++ {
+		assert.NoError(t, txError(alice.PlaceStake(1)))
+		alice.WaitUntilConsensus(t)
 	}
 
 	testnet.WaitForRound(t, alice.RoundIndex())
 
-	// When a new node joins the network, it should eventually
-	// sync (state and txs) with the other nodes
-	charlie := testnet.AddNode(t)
+	snapshot := testnet.Nodes()[0].ledger.accounts.Snapshot()
 
-	_, err := alice.Pay(charlie, 1337)
-	if err != nil {
-		t.Fatal(err)
+	snapshot.SetViewID(alice.RoundIndex() + 1)
+	for _, acc := range accounts {
+		WriteAccountBalance(snapshot, acc.PublicKey, acc.Balance)
+		WriteAccountStake(snapshot, acc.PublicKey, acc.Stake)
+		WriteAccountReward(snapshot, acc.PublicKey, acc.Reward)
+		WriteAccountContractCode(snapshot, acc.PublicKey, code[:])
 	}
 
-	timeout := time.NewTimer(time.Second * 30)
+	// Override ledger state of all nodes
+	for _, node := range testnet.Nodes() {
+		err := node.ledger.accounts.Commit(snapshot)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// Override latest round merkle with the new state snapshot
+		// TODO: this is causing data race
+		round := node.ledger.rounds.Latest()
+		round.Merkle = snapshot.Checksum()
+	}
+
+	// When a new node joins the network, it will eventually
+	// sync with the other nodes
+	// log.SetWriter(log.ModuleNode, os.Stdout)
+	charlie := testnet.AddNode(t)
+
+	timeout := time.NewTimer(time.Second * 300)
 	for {
 		select {
 		case <-timeout.C:
@@ -349,10 +391,14 @@ func TestLedger_Sync(t *testing.T) {
 	}
 
 DONE:
-	assert.EqualValues(t, alice.Balance(), charlie.BalanceOfAccount(alice))
+	for _, acc := range accounts {
+		assert.EqualValues(t, acc.Balance, charlie.BalanceWithPublicKey(acc.PublicKey))
+		assert.EqualValues(t, acc.Stake, charlie.StakeWithPublicKey(acc.PublicKey))
+		assert.EqualValues(t, acc.Reward, charlie.RewardWithPublicKey(acc.PublicKey))
 
-	<-charlie.WaitForConsensus()
-	assert.EqualValues(t, 1337, charlie.Balance())
+		checkCode, _ := ReadAccountContractCode(charlie.ledger.accounts.Snapshot(), acc.PublicKey)
+		assert.True(t, bytes.Equal(code[:], checkCode))
+	}
 }
 
 func TestLedger_SpamContracts(t *testing.T) {
@@ -364,10 +410,8 @@ func TestLedger_SpamContracts(t *testing.T) {
 
 	assert.True(t, <-alice.WaitForSync())
 
-	_, err := testnet.faucet.Pay(alice, 100000)
-	assert.NoError(t, err)
-
-	testnet.WaitForConsensus(t)
+	assert.NoError(t, txError(testnet.Faucet().Pay(alice, 100000)))
+	alice.WaitUntilBalance(t, 100000)
 
 	// spamming spawn transactions should cause no problem for consensus
 	// this is possible if they applied in different order on different nodes
@@ -378,7 +422,41 @@ func TestLedger_SpamContracts(t *testing.T) {
 		}
 	}
 
-	assert.True(t, <-alice.WaitForConsensus())
+	alice.WaitUntilConsensus(t)
+}
+
+func TestLedger_MinimalSync(t *testing.T) {
+	testnet := NewTestNetwork(t, WithoutFaucet())
+	defer testnet.Cleanup()
+
+	var alice, bob *TestLedger
+	for i := 0; i < 4; i++ {
+		switch i {
+		case 0:
+			alice = testnet.AddNode(t,
+				WithWallet(FaucetWallet))
+			testnet.SetFaucet(alice)
+
+		case 1:
+			bob = testnet.AddNode(t)
+
+		default:
+			testnet.AddNode(t)
+		}
+	}
+
+	assert.NoError(t, txError(alice.Pay(bob, 100)))
+	bob.WaitUntilBalance(t, 100)
+
+	// End of round 1
+
+	charlie := testnet.AddNode(t)
+	<-charlie.WaitForSync()
+
+	assert.NoError(t, txError(alice.Pay(bob, 100)))
+
+	bob.WaitUntilBalance(t, 200)
+	charlie.WaitUntilRound(t, 2)
 }
 
 func txError(tx Transaction, err error) error {

@@ -745,28 +745,13 @@ func TestConnectDisconnect(t *testing.T) {
 	gateway := New()
 	gateway.setup()
 	gateway.ledger = network.Faucet().Ledger()
+	gateway.client = network.Faucet().Client()
 
-	keys, err := skademlia.NewKeys(1, 1)
-	assert.NoError(t, err)
-	gateway.keys = keys
-
-	l, err := net.Listen("tcp", ":0")
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(l.Addr().(*net.TCPAddr).Port))
-
-	gateway.client = skademlia.NewClient(addr, keys,
-		skademlia.WithC1(sys.SKademliaC1),
-		skademlia.WithC2(sys.SKademliaC2),
-	)
-	gateway.client.SetCredentials(
-		noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), gateway.client.Protocol()),
-	)
+	network.AddNode(t)
 
 	node := network.AddNode(t)
-	defer node.Cleanup()
+
+	network.WaitForSync(t)
 
 	currentSecret := conf.GetSecret()
 	defer conf.Update(conf.WithSecret(currentSecret))
@@ -860,7 +845,7 @@ func TestConnectDisconnectErrors(t *testing.T) {
 			uri:        "/node/connect",
 			authHeader: authHeader,
 			body:       `{"address":"aaa"}`,
-			errorStr:   `{"status":"Internal Server Error","error":"error connecting to peer: failed to dial peer: connection error: desc = \"transport: error while dialing: dial tcp: address aaa: missing port in address\""}`,
+			errorStr:   `{"status":"Internal Server Error","error":"error connecting to peer: connection could not be identified: failed to ping peer: rpc error: code = Unavailable desc = all SubConns are in TransientFailure, latest connection error: connection error: desc = \"transport: error while dialing: dial tcp: address aaa: missing port in address\""}`,
 			code:       http.StatusInternalServerError,
 		},
 		{
@@ -876,7 +861,7 @@ func TestConnectDisconnectErrors(t *testing.T) {
 			uri:        "/node/connect",
 			authHeader: authHeader,
 			body:       `{"address":"127.0.0.1:1234"}`,
-			errorStr:   `{"status":"Internal Server Error","error":"error connecting to peer: failed to dial peer: connection error: desc = \"transport: error while dialing: dial tcp 127.0.0.1:1234: connect: connection refused\""}`,
+			errorStr:   `{"status":"Internal Server Error","error":"error connecting to peer: connection could not be identified: failed to ping peer: rpc error: code = Unavailable desc = all SubConns are in TransientFailure, latest connection error: connection error: desc = \"transport: error while dialing: dial tcp 127.0.0.1:1234: connect: connection refused\""}`,
 			code:       http.StatusInternalServerError,
 		},
 		{

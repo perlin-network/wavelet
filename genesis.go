@@ -37,7 +37,7 @@ import (
 	"strings"
 )
 
-const defaultGenesis = `
+const testingGenesis = `
 {
   "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405": {
     "balance": 10000000000000000000,
@@ -51,6 +51,29 @@ const defaultGenesis = `
   }
 }
 `
+
+const testnetGenesis = `
+{
+    "0f569c84d434fb0ca682c733176f7c0c2d853fce04d95ae131d2f9b4124d93d8": {
+        "balance": 10000000000000000000
+    }
+}
+`
+
+var defaultGenesis = testingGenesis
+
+func SetGenesisByNetwork(name string) error {
+	switch name {
+	case "testnet":
+		defaultGenesis = testnetGenesis
+	case "testing":
+		defaultGenesis = testingGenesis
+	default:
+		return fmt.Errorf("Invalid network: %s", name)
+	}
+
+	return nil
+}
 
 // performInception restore genesis data from the a directory expected to exist at the birth of any node in this ledgers network.
 //

@@ -25,11 +25,9 @@ const (
 	// VersionMajor is major version component of the current release
 	VersionMajor = 0
 	// VersionMinor is minor version component of the current release
-	VersionMinor = 1
+	VersionMinor = 2
 	// VersionPatch is patch version component of the current release
-	VersionPatch = 1
-	// VersionMeta is append to the version string
-	VersionMeta = "testnet"
+	VersionPatch = 0
 )
 
 // variables set via linker flags
@@ -37,9 +35,21 @@ var (
 	GitCommit = "unset"
 	GoVersion = "unset"
 	OSArch    = "unset"
+	GoExe     = ""
+
+	// VersionMeta is append to the version string
+	VersionMeta = "testing"
 )
 
 // Version holds the textual version string.
 var Version = func() string {
 	return fmt.Sprintf("v%d.%d.%d-%s", VersionMajor, VersionMinor, VersionPatch, VersionMeta)
+}()
+
+var VersionCode = func() uint32 {
+	var versionCode uint32
+
+	versionCode = (VersionMajor << 24) | (VersionMinor << 16) | VersionPatch
+
+	return versionCode
 }()
