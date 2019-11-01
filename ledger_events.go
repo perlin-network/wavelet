@@ -1,17 +1,21 @@
-package log
+package wavelet
 
 import (
-	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/rs/zerolog"
 	"github.com/valyala/fastjson"
 )
+
+/*
+	Sync events
+*/
 
 // event: out_of_sync
 type SyncOutOfSync struct {
 	CurrentBlockIndex uint64 `json:"current_block_index"`
 }
 
-var _ Loggable = (*SyncOutOfSync)(nil)
+var _ log.Loggable = (*SyncOutOfSync)(nil)
 
 func (s *SyncOutOfSync) MarshalEvent(ev *zerolog.Event) {
 	ev.Uint64("current_block_index", s.CurrentBlockIndex)
@@ -29,7 +33,7 @@ type SyncApplying struct {
 	TargetBlock uint64 `json:"target_block"`
 }
 
-var _ Loggable = (*SyncApplying)(nil)
+var _ log.Loggable = (*SyncApplying)(nil)
 
 func (s *SyncApplying) MarshalEvent(ev *zerolog.Event) {
 	ev.Int("num_chunks", s.NumChunks)
@@ -50,14 +54,14 @@ type SyncApplied struct {
 	OldBlockIndex uint64 `json:"old_block_index"`
 	NewBlockIndex uint64 `json:"new_block_index"`
 
-	OldBlockID wavelet.BlockID `json:"old_block_id"`
-	NewBlockID wavelet.BlockID `json:"new_block_id"`
+	OldBlockID BlockID `json:"old_block_id"`
+	NewBlockID BlockID `json:"new_block_id"`
 
-	NewMerkleRoot wavelet.MerkleNodeID `json:"new_merkle_root"`
-	OldMerkleRoot wavelet.MerkleRootID `json:"old_merkle_root"`
+	NewMerkleRoot MerkleNodeID `json:"new_merkle_root"`
+	OldMerkleRoot MerkleNodeID `json:"old_merkle_root"`
 }
 
-var _ Loggable = (*SyncApplied)(nil)
+var _ log.Loggable = (*SyncApplied)(nil)
 
 func (s *SyncApplied) MarshalEvent(ev *zerolog.Event) {
 	ev.Int("num_chunks", s.NumChunks)
@@ -75,11 +79,54 @@ func (s *SyncApplied) UnmarshalValue(v *fastjson.Value) error {
 	s.OldBlockIndex = v.GetUint64("old_block_index")
 	s.NewBlockIndex = v.GetUint64("new_block_index")
 
-	ValueHex(v, s.NewBlockID, "new_block_id")
-	ValueHex(v, s.OldBlockID, "old_block_id")
+	log.ValueHex(v, s.NewBlockID, "new_block_id")
+	log.ValueHex(v, s.OldBlockID, "old_block_id")
 
-	ValueHex(v, s.NewMerkleRoot, "new_merkle_root")
-	ValueHex(v, s.OldMerkleRoot, "old_merkle_root")
+	log.ValueHex(v, s.NewMerkleRoot, "new_merkle_root")
+	log.ValueHex(v, s.OldMerkleRoot, "old_merkle_root")
+
+	return nil
+}
+
+/*
+	Consensus events
+*/
+
+// event: finalized
+type ConsensusFinalized struct {
+	AppliedTxs  int `json:"num_applied_tx"`
+	RejectedTxs int `json:"num_rejected_tx"`
+	PrunedTxs   int `json:"num_pruned_tx"`
+
+	OldBlockHeight uint64 `json:"old_block_height"`
+	NewBlockHeight uint64 `json:"new_block_height"`
+
+	OldBlockID BlockID `json:"old_block_id"`
+	NewBlockID BlockID `json:"new_block_id"`
+}
+
+var _ log.Loggable = (*ConsensusFinalized)(nil)
+
+func (c *ConsensusFinalized) MarshalEvent(ev *zerolog.Event) {
+	ev.Int("num_applied_tx", c.AppliedTxs)
+	ev.Int("num_rejected_tx", c.RejectedTxs)
+	ev.Int("num_pruned_tx", c.PrunedTxs)
+	ev.Uint64("old_block_height", c.OldBlockHeight)
+	ev.Uint64("new_block_height", c.NewBlockHeight)
+	ev.Hex("old_block_id", c.OldBlockID[:])
+	ev.Hex("new_block_id", c.NewBlockID[:])
+	ev.Msg("Finalized block.")
+}
+
+func (c *ConsensusFinalized) UnmarshalValue(v *fastjson.Value) error {
+	c.AppliedTxs = v.GetInt("num_applied_tx")
+	c.RejectedTxs = v.GetInt("num_rejected_tx")
+	c.PrunedTxs = v.GetInt("num_pruned_tx")
+	c.OldBlockHeight = v.GetUint64("old_block_height")
+	c.NewBlockHeight = v.GetUint64("new_block_height")
+
+	log.ValueHex(v, c.OldBlockID, "old_block_id")
+	log.ValueHex(v, c.NewBlockID, "new_block_id")
 
 	return nil
 }

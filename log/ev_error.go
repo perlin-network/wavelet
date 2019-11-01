@@ -10,20 +10,26 @@ import (
 
 // !!! DOC: parse "event" for error|warn|debug first, then break it down
 
-type Error struct {
+type ErrorEvent struct {
 	Error   error  `json:"error"`
 	Message string `json:"message"`
 }
 
-func NewError(err error, msg string) *Error {
-	return &Error{
+func NewError(err error, msg string) *ErrorEvent {
+	return &ErrorEvent{
 		Error:   err,
 		Message: msg,
 	}
 }
 
+var _ JSONObject = (*ErrorEvent)(nil)
+
 func ErrNode(err error, msg string) {
 	EventTo(node.Error(), NewError(err, msg))
+}
+
+func ErrNodeX() *zerolog.Event {
+	return node.Error()
 }
 
 func FatalNode(err error, msg string) {
@@ -35,21 +41,28 @@ func PanicNode(err error, msg string) {
 	EventTo(node.Panic(), NewError(err, msg))
 }
 
-func ErrTo(logger *zerolog.Logger, err error, msg string) {
+func Error(logger *zerolog.Logger, err error, msg string) {
 	EventTo(logger.Error(), NewError(err, msg))
 }
 
-func ErrToF(logger *zerolog.Logger, err error, msgF string, v ...interface{}) {
+func ErrorF(logger *zerolog.Logger, err error, msgF string, v ...interface{}) {
 	EventTo(logger.Error(), NewError(err, fmt.Sprintf(msgF, v...)))
 }
 
-var _ JSONObject = (*Error)(nil)
+func ErrorX(logger *zerolog.Logger, err error) *zerolog.Event {
+	ev := logger.Error()
+	if err != nil {
+		ev.Err(err)
+	}
 
-func (err *Error) MarshalEvent(ev *zerolog.Event) {
+	return ev
+}
+
+func (err *ErrorEvent) MarshalEvent(ev *zerolog.Event) {
 	ev.Err(err.Error).Msg(err.Message)
 }
 
-func (err *Error) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
+func (err *ErrorEvent) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 	o.Set("error", arena.NewString(err.Error.Error()))
 	o.Set("message", arena.NewString(err.Message))
@@ -58,7 +71,7 @@ func (err *Error) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 }
 
 // UnmarshalValue does nothing.
-func (err *Error) UnmarshalValue(v *fastjson.Value) error {
+func (err *ErrorEvent) UnmarshalValue(v *fastjson.Value) error {
 	if str := v.GetStringBytes("error"); len(str) > 0 {
 		err.Error = errors.New(string(str))
 	}

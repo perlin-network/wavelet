@@ -192,8 +192,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		MaxMemoryMB: cfg.MaxMemoryMB,
 	}, StallDetectorDelegate{
 		PrepareShutdown: func(err error) {
-			logger := log.Node()
-			logger.Error().Err(err).Msg("Shutting down node...")
+			log.ErrNode(err, "Shutting down node...")
 		},
 	})
 	go stallDetector.Run(&ledger.stopWG)
@@ -406,8 +405,8 @@ func (l *Ledger) PullTransactions() {
 					ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
 					batch, err := client.PullTransactions(ctx, req)
 					if err != nil {
-						log.EventTo(log.Sync("pull_tx").Error(),
-							log.NewError(err, "failed to download missing transactions"))
+						log.Error(log.Sync("pull_tx"), err,
+							"failed to download missing transactions")
 						cancel()
 
 						responseChan <- nil
@@ -448,8 +447,9 @@ func (l *Ledger) PullTransactions() {
 			for _, buf := range res.Transactions {
 				tx, err := UnmarshalTransaction(bytes.NewReader(buf))
 				if err != nil {
-					log.EventTo(log.Sync("pull_tx").Error().Hex("tx_id", tx.ID[:]),
-						log.NewError(err, "error unmarshaling downloaded tx"))
+					log.ErrorX(log.Sync("pull_tx"), err).
+						Hex("tx_id", tx.ID[:]).
+						Msg("error unmarshaling downloaded tx")
 					continue
 				}
 
@@ -548,7 +548,7 @@ func (l *Ledger) finalize(block Block) {
 
 	if checksum := results.snapshot.Checksum(); checksum != block.Merkle {
 		// TODO port to a proper error
-		log.Node().Error().
+		log.ErrNodeX().
 			Uint64("target_block_id", block.Index).
 			Hex("expected_merkle_root", block.Merkle[:]).
 			Hex("yielded_merkle_root", checksum[:]).
@@ -580,7 +580,7 @@ func (l *Ledger) finalize(block Block) {
 	// Reset snowball
 	l.finalizer.Reset()
 
-	log.Info(log.Consensus("finalized"), &log.ConsensusFinalized{
+	log.Info(log.Consensus("finalized"), &ConsensusFinalized{
 		AppliedTxs:     results.appliedCount,
 		RejectedTxs:    results.rejectedCount,
 		PrunedTxs:      prunedCount,
@@ -779,7 +779,7 @@ func (l *Ledger) SyncToLatestBlock() {
 					)
 
 					if err != nil {
-						log.ErrToF(log.Sync("error"), err,
+						log.ErrorF(log.Sync("check_out_of_sync_failed"), err,
 							"error while checking out of sync with %v", p.Addr)
 
 						cancel()
@@ -863,14 +863,14 @@ func (l *Ledger) SyncToLatestBlock() {
 
 		shutdown() // Shutdown all consensus-related workers.
 
-		log.EventTo(log.Sync("out_of_sync").Info(), &log.SyncOutOfSync{
+		log.Info(log.Sync("out_of_sync"), &SyncOutOfSync{
 			CurrentBlockIndex: current.Index,
 		})
 
 	SYNC:
 		conns, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
 		if err != nil {
-			log.Warn(log.Sync,
+			log.Warn(log.Sync("no_peers"),
 				"It looks like there are no peers for us to sync with. Retrying...")
 			time.Sleep(1 * time.Second)
 
@@ -954,17 +954,17 @@ func (l *Ledger) SyncToLatestBlock() {
 		// If there is no majority or a tie, dispose all streams and try again.
 
 		if majority == nil {
-			log.Warn(log.Sync,
+			log.Warn(log.Sync("no_majority"),
 				"It looks like our peers could not decide on what the latest block currently is. Retrying...")
 
 			dispose()
 			goto SYNC
 		}
 
-		log.Sync("debug").Debug().
+		log.Sync("majority").Debug().
 			Uint64("block_id", latest.Index).
 			Hex("merkle_root", latest.Merkle[:]).
-			Msg("Discovered the latest block the majority of our peers ar eon.")
+			Msg("Discovered the latest block the majority of our peers are on.")
 
 		type source struct {
 			idx      int
@@ -1038,14 +1038,14 @@ func (l *Ledger) SyncToLatestBlock() {
 		var chunkWG sync.WaitGroup
 		chunkWG.Add(len(sources))
 
-		log.Sync("debug").Debug().
+		log.Sync("downloading_chunks").Debug().
 			Int("num_chunks", len(sources)).
 			Int("num_workers", cap(workers)).
-			Msg("Starting up workers to downloaded all chunks of data needed to sync to the latest block...")
+			Msg("Starting up workers to download all chunks of data needed to sync to the latest block...")
 
 		chunksBuffer, err := l.fileBuffers.GetBounded(int64(len(sources)) * sys.SyncChunkSize)
 		if err != nil {
-			log.ErrTo(log.Sync("error"), err,
+			log.Error(log.Sync("create_paged_buffer_failed"), err,
 				"Could not create paged buffer! Retrying...")
 			goto SYNC
 		}
@@ -1128,7 +1128,7 @@ func (l *Ledger) SyncToLatestBlock() {
 		close(workers)
 		workerWG.Wait() // Wait until all workers have been closed.
 
-		log.Sync("debug").Debug().
+		log.Sync("downloaded_chunks").Debug().
 			Int("num_chunks", len(sources)).
 			Int("num_workers", cap(workers)).
 			Msg("Downloaded whatever chunks were available to sync to the latest block, and shutted down all workers. Checking validity of chunks...")
@@ -1139,7 +1139,7 @@ func (l *Ledger) SyncToLatestBlock() {
 		var diffSize int64
 		for i, src := range sources {
 			if src.size == 0 {
-				log.Sync("error").Error().
+				log.ErrorX(log.Sync("download_chunks_failed"), nil).
 					Uint64("target_block_id", latest.Index).
 					Hex("chunk_checksum", sources[i].checksum[:]).
 					Msg("Could not download one of the chunks necessary to sync to the latest block! Retrying...")
@@ -1152,25 +1152,23 @@ func (l *Ledger) SyncToLatestBlock() {
 		}
 
 		if _, err := io.CopyN(diffBuffer, chunksBuffer, diffSize); err != nil {
-			log.Sync("error").Error().
+			log.ErrorX(log.Sync("write_chunks_failed"), err).
 				Uint64("target_block_id", latest.Index).
-				Err(err).
 				Msg("Failed to write chunks to bounded memory buffer. Restarting sync...")
 
 			cleanup()
 			goto SYNC
 		}
 
-		log.EventTo(log.Sync("applying"), &log.SyncApplying{
+		log.Info(log.Sync("applying"), &SyncApplying{
 			NumChunks:   len(sources),
 			TargetBlock: latest.Index,
 		})
 
 		snapshot := l.accounts.Snapshot()
 		if err := snapshot.ApplyDiff(diffBuffer); err != nil {
-			log.Sync("error").Error().
+			log.ErrorX(log.Sync("apply_ledger_failed"), err).
 				Uint64("target_block_id", latest.Index).
-				Err(err).
 				Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
 
 			cleanup()
@@ -1178,11 +1176,11 @@ func (l *Ledger) SyncToLatestBlock() {
 		}
 
 		if checksum := snapshot.Checksum(); checksum != latest.Merkle {
-			log.Sync("error").Error().
+			log.ErrorX(log.Sync("ledger_checksum_failed"), nil).
 				Uint64("target_block_id", latest.Index).
 				Hex("expected_merkle_root", latest.Merkle[:]).
 				Hex("yielded_merkle_root", checksum[:]).
-				Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
+				Msg("Re-assembled diff has mismatched checksum in our ledger state. Restarting sync...")
 
 			cleanup()
 			goto SYNC
@@ -1190,9 +1188,8 @@ func (l *Ledger) SyncToLatestBlock() {
 
 		_, err = l.blocks.Save(latest)
 		if err != nil {
-			log.Sync("error").Error().
-				Err(err).
-				Msg("Failed to save finalized block to our database")
+			log.Error(log.Sync("save_failed"), err,
+				"Failed to save finalized block to our database")
 
 			cleanup()
 			goto SYNC
@@ -1200,10 +1197,11 @@ func (l *Ledger) SyncToLatestBlock() {
 
 		if err := l.accounts.Commit(snapshot); err != nil {
 			cleanup()
-			log.FatalNode(err, "failed to commit collapsed state to our database")
+			log.FatalNode(err,
+				"Failed to commit collapsed state to our database")
 		}
 
-		log.Info(log.Sync("applied"), &log.Applied{
+		log.Info(log.Sync("applied"), &SyncApplied{
 			NumChunks:     len(sources),
 			OldBlockIndex: current.Index,
 			NewBlockIndex: latest.Index,
@@ -1278,11 +1276,12 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 
 	if logging {
 		for _, tx := range collapseState.results.applied {
-			logEventTX("applied", tx)
+			log.Info(log.TX("applied"), tx)
 		}
 
 		for i, tx := range collapseState.results.rejected {
-			logEventTX("rejected", tx, collapseState.results.rejectedErrors[i])
+			tx.Error = collapseState.results.rejectedErrors[i]
+			log.Info(log.TX("rejected"), tx)
 		}
 	}
 
@@ -1314,12 +1313,17 @@ func (l *Ledger) LogChanges(snapshot *avl.Tree, lastBlockIndex uint64) {
 		case bytes.HasPrefix(key, balanceKey):
 			copy(id[:], key[len(balanceKey):])
 
-			balanceLogger.Log().
-				Hex("account_id", id[:]).
-				Uint64("balance", binary.LittleEndian.Uint64(value)).
-				Msg("")
+			log.Info(balanceLogger, AccountBalanceUpdate{
+				AccountID: id,
+				Balance: binary.LittleEndian.Uint64(value),
+			})
 		case bytes.HasPrefix(key, gasBalanceKey):
 			copy(id[:], key[len(gasBalanceKey):])
+
+			log.Info(balanceLogger, AccountBalanceUpdate{
+				AccountID: id,
+				Balance: binary.LittleEndian.Uint64(value),
+			})
 
 			gasBalanceLogger.Log().
 				Hex("account_id", id[:]).

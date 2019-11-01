@@ -7,7 +7,10 @@ import (
 
 type Loggable interface {
 	UnmarshalableValue
+	MarshalableEvent
+}
 
+type MarshalableEvent interface {
 	// MarshalEvent sends the event as well.
 	MarshalEvent(ev *zerolog.Event)
 }
@@ -25,14 +28,14 @@ type JSONObject interface {
 	MarshalableArena
 }
 
-func LoggableTo(to zerolog.Logger, level zerolog.Level, loggable Loggable) {
+func LoggableTo(to *zerolog.Logger, level zerolog.Level, loggable MarshalableEvent) {
 	EventTo(to.WithLevel(level), loggable)
 }
 
-func EventTo(ev *zerolog.Event, loggable Loggable) {
+func EventTo(ev *zerolog.Event, loggable MarshalableEvent) {
 	loggable.MarshalEvent(ev)
 }
 
-func Info(logger zerolog.Logger, loggable Loggable) {
+func Info(logger *zerolog.Logger, loggable MarshalableEvent) {
 	EventTo(logger.Info(), loggable)
 }

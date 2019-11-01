@@ -5,27 +5,27 @@ import (
 	"github.com/valyala/fastjson"
 )
 
-type Warn struct {
+type WarnEvent struct {
 	Message string `json:"message"`
 }
 
-func NewWarn(msg string) *Warn {
-	return &Warn{
+func NewWarn(msg string) *WarnEvent {
+	return &WarnEvent{
 		Message: msg,
 	}
 }
 
-func WarnTo(logger *zerolog.Logger, msg string) {
+func Warn(logger *zerolog.Logger, msg string) {
 	EventTo(logger.Warn(), NewWarn(msg))
 }
 
-var _ JSONObject = (*Warn)(nil)
+var _ JSONObject = (*WarnEvent)(nil)
 
-func (w *Warn) MarshalEvent(ev *zerolog.Event) {
+func (w *WarnEvent) MarshalEvent(ev *zerolog.Event) {
 	ev.Msg(w.Message)
 }
 
-func (w *Warn) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
+func (w *WarnEvent) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 	o.Set("message", arena.NewString(w.Message))
 
@@ -33,7 +33,7 @@ func (w *Warn) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 }
 
 // UnmarshalValue does nothing.
-func (w *Warn) UnmarshalValue(v *fastjson.Value) error {
+func (w *WarnEvent) UnmarshalValue(v *fastjson.Value) error {
 	w.Message = string(v.GetStringBytes("message"))
 	return nil
 }

@@ -23,49 +23,100 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/perlin-network/noise/edwards25519"
-	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/wavelet/sys"
-	"github.com/pkg/errors"
-	"golang.org/x/crypto/blake2b"
 	"io"
 	"math/big"
+
+	"github.com/perlin-network/noise/edwards25519"
+	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/sys"
+	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+	"github.com/valyala/fastjson"
+	"golang.org/x/crypto/blake2b"
 )
 
 type Transaction struct {
-	Sender AccountID // Transaction sender.
-	Nonce  uint64
+	ID     TransactionID `json:"id"`     // BLAKE2b(*).
+	Sender AccountID     `json:"sender"` // Transaction sender.
 
-	Block uint64
+	Nonce uint64 `json:"nonce"`
+	Block uint64 `json:"block"`
 
-	Tag     sys.Tag
-	Payload []byte
+	Tag     sys.Tag `json:"tag"`
+	Payload []byte  `json:"-"`
 
-	Signature Signature
+	Signature Signature `json:"-"`
 
-	ID TransactionID // BLAKE2b(*).
+	Error error `json:"error,omitempty"`
 }
 
-func NewTransaction(sender *skademlia.Keypair, nonce, block uint64, tag sys.Tag, payload []byte) Transaction {
+var _ log.Loggable = (*Transaction)(nil)
+
+func NewTransaction(sender *skademlia.Keypair, nonce, block uint64,
+	tag sys.Tag, payload []byte) Transaction {
+
 	var nonceBuf [8]byte
 	binary.BigEndian.PutUint64(nonceBuf[:], nonce)
 
 	var blockBuf [8]byte
 	binary.BigEndian.PutUint64(blockBuf[:], block)
 
-	signature := edwards25519.Sign(sender.PrivateKey(), append(nonceBuf[:], append(blockBuf[:], append([]byte{byte(tag)}, payload...)...)...))
+	signature := edwards25519.Sign(
+		sender.PrivateKey(),
+		append(nonceBuf[:], append(blockBuf[:], append(
+			[]byte{byte(tag)}, payload...,
+		)...)...),
+	)
 
 	return NewSignedTransaction(sender.PublicKey(), nonce, block, tag, payload, signature)
 }
 
-func NewSignedTransaction(sender edwards25519.PublicKey, nonce, block uint64, tag sys.Tag, payload []byte, signature edwards25519.Signature) Transaction {
-	tx := Transaction{Sender: sender, Nonce: nonce, Block: block, Tag: tag, Payload: payload, Signature: signature}
+func NewSignedTransaction(sender edwards25519.PublicKey, nonce, block uint64,
+	tag sys.Tag, payload []byte, signature edwards25519.Signature) Transaction {
+
+	tx := Transaction{
+		Sender:    sender,
+		Nonce:     nonce,
+		Block:     block,
+		Tag:       tag,
+		Payload:   payload,
+		Signature: signature,
+	}
+
 	tx.ID = blake2b.Sum256(tx.Marshal())
 
 	return tx
 }
 
-func (tx Transaction) Marshal() []byte {
+func (tx *Transaction) MarshalEvent(ev *zerolog.Event) {
+	if tx.Error != nil {
+		ev.Err(tx.Error)
+	}
+
+	ev.Hex("id", tx.ID[:])
+	ev.Hex("sender", tx.Sender[:])
+	ev.Uint64("nonce", tx.Nonce)
+	ev.Uint64("block", tx.Block)
+	ev.Uint8("tag", uint8(tx.Tag))
+	ev.Msg("Transaction")
+}
+
+func (tx *Transaction) UnmarshalValue(v *fastjson.Value) error {
+	log.ValueHex(v, tx.ID, "id")
+	log.ValueHex(v, tx.Sender, "sender")
+	tx.Nonce = v.GetUint64("nonce")
+	tx.Block = v.GetUint64("block")
+	tx.Tag = sys.Tag(v.GetUint("tag"))
+
+	if err := v.GetStringBytes("error"); len(err) > 0 {
+		tx.Error = errors.New(string(err))
+	}
+
+	return nil
+}
+
+func (tx *Transaction) Marshal() []byte {
 	w := bytes.NewBuffer(make([]byte, 0, 32+8+8+1+4+len(tx.Payload)+64))
 
 	w.Write(tx.Sender[:])
@@ -89,7 +140,7 @@ func (tx Transaction) Marshal() []byte {
 	return w.Bytes()
 }
 
-func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
+func (t *Transaction) Unmarshal(r io.Reader) (err error) {
 	if _, err = io.ReadFull(r, t.Sender[:]); err != nil {
 		err = errors.Wrap(err, "failed to decode transaction sender")
 		return
@@ -142,7 +193,12 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 
 	t.ID = blake2b.Sum256(t.Marshal())
 
-	return t, nil
+	return nil
+}
+
+func UnmarshalTransaction(r io.Reader) (Transaction, error) {
+	var t Transaction
+	return t, t.Unmarshal(r)
 }
 
 func (tx Transaction) ComputeIndex(id BlockID) *big.Int {
