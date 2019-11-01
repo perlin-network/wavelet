@@ -13,7 +13,7 @@ jobs:
       - name: Download Go modules
         run: go mod download
       - name: Run unit tests
-        run: go test -v -coverprofile=coverage.txt -covermode=atomic -race .
+        run: go test -v -coverprofile=coverage.txt -covermode=atomic -race -timeout=30m .
       - name: Upload coverage report
         uses: codecov/codecov-action@v1.0.3
         with:
