@@ -43,6 +43,9 @@ type config struct {
 	// Number of blocks after which transactions will be pruned from the graph
 	pruningLimit uint8
 
+	// Max number of transactions within the block
+	blockTxLimit uint64
+
 	// shared secret for http api authorization
 	secret string
 }
@@ -80,6 +83,8 @@ func defaultConfig() config {
 		bloomFilterK: 3,
 
 		pruningLimit: 30,
+
+		blockTxLimit: 1 << 16,
 	}
 
 	switch sys.VersionMeta {
@@ -204,6 +209,12 @@ func WithTXSyncChunkSize(n uint64) Option {
 func WithTXSyncLimit(n uint64) Option {
 	return func(c *config) {
 		c.txSyncLimit = n
+	}
+}
+
+func WithBlockTXLimit(n uint64) Option {
+	return func(c *config) {
+		c.blockTxLimit = n
 	}
 }
 
@@ -354,6 +365,14 @@ func GetTXSyncChunkSize() uint64 {
 func GetTXSyncLimit() uint64 {
 	l.RLock()
 	t := c.txSyncLimit
+	l.RUnlock()
+
+	return t
+}
+
+func GetBlockTXLimit() uint64 {
+	l.RLock()
+	t := c.blockTxLimit
 	l.RUnlock()
 
 	return t
