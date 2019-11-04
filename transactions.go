@@ -268,14 +268,19 @@ func (t *Transactions) ProposableIDs() []TransactionID {
 	t.RLock()
 	defer t.RUnlock()
 
-	proposable := make([]TransactionID, 0, t.index.Len())
+	limit := int(conf.GetBlockTXLimit())
+	if t.index.Len() < limit {
+		limit = t.index.Len()
+	}
+
+	proposable := make([]TransactionID, 0, limit)
 
 	t.index.Ascend(func(i btree.Item) bool {
 		if t.buffer[i.(mempoolItem).id].Block <= t.height+1 {
 			proposable = append(proposable, i.(mempoolItem).id)
 		}
 
-		return true
+		return len(proposable) < limit
 	})
 
 	return proposable
