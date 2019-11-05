@@ -661,6 +661,30 @@ func (cli *CLI) updateParameters(ctx *cli.Context) {
 	cli.logger.Info().Str("conf", conf.Stringify()).Msg("Current configuration values")
 }
 
+func (cli *CLI) dump(ctx *cli.Context) {
+	var cmd = ctx.Args()
+
+	if len(cmd) < 1 {
+		cli.logger.Error().
+			Msg("Invalid usage: dump <path-to-directory>")
+		return
+	}
+
+	dir := cmd[0]
+
+	dumpContract := ctx.Bool("c")
+
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		cli.logger.Info().Msg("Writing into existing directory.")
+	}
+
+	err := wavelet.Dump(cli.ledger.Snapshot(), dir, dumpContract, false)
+	if err != nil {
+		cli.logger.Error().Err(err).Msg("Failed to dump states.")
+		return
+	}
+}
+
 func (cli *CLI) sendTransaction(tx wavelet.Transaction) (wavelet.Transaction, error) {
 	tx = wavelet.AttachSenderToTransaction(
 		cli.keys, tx, cli.ledger.Graph().FindEligibleParents()...,

@@ -264,6 +264,17 @@ func NewCLI(
 				},
 			},
 		},
+		{
+			Name:        "dump",
+			Action:      a(c.dump),
+			Description: "dump wallet states, and you may use -c to dump contract code and pages",
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:  "c",
+					Usage: "dump contract code and pages",
+				},
+			},
+		},
 	}
 
 	// Generate the help message
