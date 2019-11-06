@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/url"
 	"strconv"
-	"sync/atomic"
 	"time"
 
 	"github.com/perlin-network/noise/edwards25519"
@@ -82,8 +81,8 @@ func (c *Client) GetTransaction(txID [32]byte) (*Transaction, error) {
 func (c *Client) SendTransaction(tag byte, payload []byte) (*TxResponse, error) {
 	var res TxResponse
 
-	nonce := atomic.AddUint64(&c.Nonce, 1)
-	block := atomic.LoadUint64(&c.Block)
+	nonce := c.Nonce.Add(1)
+	block := c.Block.Value()
 
 	var nonceBuf [8]byte
 	binary.BigEndian.PutUint64(nonceBuf[:], nonce)

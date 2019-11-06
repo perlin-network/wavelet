@@ -66,8 +66,8 @@ func (cli *CLI) status(ctx *cli.Context) {
 		Uint64("num_missing_tx", l.NumMissingTx).
 		Uint64("num_tx_in_store", l.NumTxInStore).
 		Uint64("num_accounts_in_store", l.AccountsLen).
-		Uint64("client_nonce", cli.client.Nonce).
-		Uint64("client_block", cli.client.Block).
+		Uint64("client_nonce", cli.client.Nonce.Value()).
+		Uint64("client_block", cli.client.Block.Value()).
 		Str("sync_status", l.SyncStatus).
 		Str("preferred_block_id", preferredID).
 		Int("preferred_votes", l.PreferredVotes).
