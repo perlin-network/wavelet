@@ -1,10 +1,10 @@
 package wavelet
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"github.com/valyala/bytebufferpool"
 	"io"
 
 	"github.com/pkg/errors"
@@ -36,7 +36,8 @@ func (b *Block) GetID() string {
 }
 
 func (b Block) Marshal() []byte {
-	buf := bytes.NewBuffer(make([]byte, 0, 8+SizeMerkleNodeID+4+4+len(b.Transactions)*SizeTransactionID))
+	buf := bytebufferpool.Get()
+	defer bytebufferpool.Put(buf)
 
 	binary.Write(buf, binary.BigEndian, b.Index)
 	buf.Write(b.Merkle[:])
