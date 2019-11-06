@@ -82,7 +82,7 @@ func (c *Client) SendTransaction(tag byte, payload []byte) (*TxResponse, error) 
 	var res TxResponse
 
 	nonce := c.Nonce.Add(1)
-	block := c.Block.Value()
+	block := c.Block.Load()
 
 	var nonceBuf [8]byte
 	binary.BigEndian.PutUint64(nonceBuf[:], nonce)
