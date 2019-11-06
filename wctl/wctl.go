@@ -82,8 +82,8 @@ type Client struct {
 	url      string
 
 	// Local state counters
-	Nonce atomic.Uint64
-	Block atomic.Uint64
+	Nonce *atomic.Uint64
+	Block *atomic.Uint64
 
 	// Stop the background consensus that is created before
 	stopConsensus func()
@@ -158,6 +158,8 @@ func NewClient(config Config) (*Client, error) {
 		OnError: func(err error) {
 			log.Println("WCTL_ERR:", err)
 		},
+		Nonce: atomic.NewUint64(0),
+		Block: atomic.NewUint64(0),
 	}
 
 	n, err := c.GetSelfNonce()
