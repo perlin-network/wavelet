@@ -90,6 +90,8 @@ type Ledger struct {
 
 	transactionsSyncIndexLock sync.RWMutex
 	transactionsSyncIndex     *bloom.BloomFilter
+
+	queueWorkerPool *WorkerPool
 }
 
 type config struct {
@@ -184,6 +186,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		sendQuota: make(chan struct{}, 2000),
 
 		transactionsSyncIndex: bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK()),
+
+		queueWorkerPool: NewWorkerPool(),
 	}
 
 	if !cfg.GCDisabled {
@@ -205,6 +209,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	go stallDetector.Run(&ledger.stopWG)
 
 	ledger.stallDetector = stallDetector
+
+	ledger.queueWorkerPool.Start(16)
 
 	ledger.PerformConsensus()
 
@@ -231,6 +237,8 @@ func (l *Ledger) Close() {
 	if l.cancelGC != nil {
 		l.cancelGC()
 	}
+
+	l.queueWorkerPool.Stop()
 
 	l.stallDetector.Stop()
 
@@ -370,7 +378,7 @@ func (l *Ledger) SyncTransactions() {
 		select {
 		case <-l.sync:
 			return
-		case <-time.After(1 * time.Second):
+		case <-time.After(100 * time.Millisecond):
 		}
 
 		snowballK := conf.GetSnowballK()
@@ -402,7 +410,7 @@ func (l *Ledger) SyncTransactions() {
 			},
 		}
 
-		for _, p := range peers {
+		for _, p := range peers[:1] {
 			wg.Add(1)
 			go func(conn *grpc.ClientConn) {
 				defer wg.Done()
@@ -752,7 +760,7 @@ func (l *Ledger) query() {
 	req := &QueryRequest{BlockIndex: current.Index + 1}
 
 	for _, p := range peers {
-		go func(conn *grpc.ClientConn) {
+		f := func(conn *grpc.ClientConn) {
 			var vote finalizationVote
 			defer func() {
 				voteChan <- &vote
@@ -802,7 +810,9 @@ func (l *Ledger) query() {
 				vote.block = &block
 			}
 			l.metrics.queryLatency.Time(f)
-		}(p)
+		}
+
+		l.queueWorkerPool.Queue(func() { f(p) })
 	}
 
 	votes := make([]*finalizationVote, 0, len(peers))
