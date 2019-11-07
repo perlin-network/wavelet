@@ -37,6 +37,7 @@ require (
 	github.com/willf/bitset v1.1.10 // indirect
 	github.com/willf/bloom v2.0.3+incompatible
 	go.opencensus.io v0.22.1 // indirect
+	go.uber.org/atomic v1.5.0
 	golang.org/x/crypto v0.0.0-20190911031432-227b76d455e7
 	golang.org/x/net v0.0.0-20191105084925-a882066a44e0
 	golang.org/x/sys v0.0.0-20190919044723-0c1ff786ef13 // indirect

@@ -1,8 +1,6 @@
 package wctl
 
 import (
-	"sync/atomic"
-
 	"github.com/valyala/fastjson"
 )
 
@@ -74,7 +72,7 @@ func parseConsensusFinalized(c *Client, v *fastjson.Value) error {
 
 	f.Message = string(v.GetStringBytes("message"))
 
-	atomic.StoreUint64(&c.Block, f.BlockHeight)
+	c.Block.Store(f.BlockHeight)
 
 	if c.OnFinalized != nil {
 		c.OnFinalized(f)

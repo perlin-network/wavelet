@@ -27,12 +27,12 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"sync/atomic"
 	"time"
 
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/cmd/wavelet/node"
 	"github.com/valyala/fastjson"
+	"go.uber.org/atomic"
 )
 
 const (
@@ -82,8 +82,8 @@ type Client struct {
 	url      string
 
 	// Local state counters
-	Nonce uint64
-	Block uint64
+	Nonce *atomic.Uint64
+	Block *atomic.Uint64
 
 	// Stop the background consensus that is created before
 	stopConsensus func()
@@ -158,6 +158,8 @@ func NewClient(config Config) (*Client, error) {
 		OnError: func(err error) {
 			log.Println("WCTL_ERR:", err)
 		},
+		Nonce: atomic.NewUint64(0),
+		Block: atomic.NewUint64(0),
 	}
 
 	n, err := c.GetSelfNonce()
@@ -165,8 +167,8 @@ func NewClient(config Config) (*Client, error) {
 		return c, err
 	}
 
-	atomic.StoreUint64(&c.Nonce, n.Nonce)
-	atomic.StoreUint64(&c.Block, n.Block)
+	c.Nonce.Store(n.Nonce)
+	c.Block.Store(n.Block)
 
 	// Start listening to consensus to track Block
 	cancel, err := c.pollConsensus()

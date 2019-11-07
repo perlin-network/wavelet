@@ -381,7 +381,7 @@ func (n *node) serializeForDifference(wr io.Writer) error {
 	buf.WriteByte(byte(n.kind))
 
 	if n.kind == NodeLeafValue {
-		if len(n.key) > math.MaxUint32 {
+		if uint32(len(n.key)) > uint32(math.MaxUint32) {
 			panic("avl: key is too long")
 		}
 
@@ -389,7 +389,7 @@ func (n *node) serializeForDifference(wr io.Writer) error {
 		buf.Write(buf64[:4])
 		buf.Write(n.key)
 
-		if len(n.value) > math.MaxUint32 {
+		if uint32(len(n.value)) > uint32(math.MaxUint32) {
 			panic("avl: value is too long")
 		}
 
@@ -532,7 +532,7 @@ func (n *node) serialize(buf *bytebufferpool.ByteBuffer) {
 	buf.Write(buf64[:])
 
 	// Write key.
-	if len(n.key) > math.MaxUint32 {
+	if uint32(len(n.key)) > uint32(math.MaxUint32) {
 		panic("avl: key is too long")
 	}
 
@@ -542,7 +542,7 @@ func (n *node) serialize(buf *bytebufferpool.ByteBuffer) {
 
 	if n.kind == NodeLeafValue {
 		// Write value.
-		if len(n.value) > math.MaxUint32 {
+		if uint32(len(n.key)) > uint32(math.MaxUint32) {
 			panic("avl: value is too long")
 		}
 
