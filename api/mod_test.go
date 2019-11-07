@@ -22,6 +22,8 @@ package api
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -38,6 +40,7 @@ import (
 
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/cipher"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/handshake"
 	"github.com/perlin-network/wavelet/conf"
 
@@ -51,6 +54,180 @@ import (
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 )
+
+func TestListTransaction(t *testing.T) {
+	gateway := New()
+	gateway.setup()
+
+	gateway.ledger = createLedger(t)
+
+	// Create a transaction
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	var buf [200]byte
+	_, err = rand.Read(buf[:])
+	assert.NoError(t, err)
+
+	tx := newTransaction(keys, sys.TagTransfer, 0, 0, buf[:])
+	gateway.ledger.AddTransaction(tx)
+
+	// Build an expected response
+	var expectedResponse transactionList
+
+	gateway.ledger.Transactions().Iterate(func(tx *wavelet.Transaction) bool {
+		txRes := &transaction{tx: tx}
+		txRes.status = "applied"
+
+		//_, err := txRes.marshal()
+		//assert.NoError(t, err)
+		expectedResponse = append(expectedResponse, txRes)
+		return true
+	})
+
+	tests := []struct {
+		name         string
+		url          string
+		wantCode     int
+		wantResponse marshalableJSON
+	}{
+		{
+			name:     "sender not hex",
+			url:      "/tx?sender=1",
+			wantCode: http.StatusBadRequest,
+			wantResponse: testErrResponse{
+				StatusText: "Bad Request",
+				ErrorText:  "sender ID must be presented as valid hex: encoding/hex: odd length hex string",
+			},
+		},
+		{
+			name:     "sender invalid length",
+			url:      "/tx?sender=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
+			wantCode: http.StatusBadRequest,
+			wantResponse: testErrResponse{
+				StatusText: "Bad Request",
+				ErrorText:  "sender ID must be 32 bytes long",
+			},
+		},
+		{
+			name:     "offset negative invalid",
+			url:      "/tx?offset=-1",
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:     "limit negative invalid",
+			url:      "/tx?limit=-1",
+			wantCode: http.StatusBadRequest,
+		},
+		{
+			name:         "success",
+			url:          "/tx?limit=1&offset=0",
+			wantCode:     http.StatusOK,
+			wantResponse: expectedResponse,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			request, err := http.NewRequest("GET", "http://localhost"+tc.url, nil)
+			assert.NoError(t, err)
+
+			w, err := serve(gateway.router, request)
+			if err != nil {
+				t.Fatal(t)
+			}
+			assert.NoError(t, err)
+			assert.NotNil(t, w)
+
+			response, err := ioutil.ReadAll(w.Body)
+			assert.NoError(t, err)
+
+			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
+
+			if tc.wantResponse != nil {
+				r, err := tc.wantResponse.marshalJSON(new(fastjson.ArenaPool).Get())
+				assert.NoError(t, err)
+				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
+			}
+		})
+	}
+}
+
+func TestGetTransaction(t *testing.T) {
+	gateway := New()
+	gateway.setup()
+
+	gateway.ledger = createLedger(t)
+
+	// Create a transaction
+	keys, err := skademlia.NewKeys(1, 1)
+	assert.NoError(t, err)
+
+	var buf [200]byte
+	_, err = rand.Read(buf[:])
+	assert.NoError(t, err)
+
+	gateway.ledger.AddTransaction(newTransaction(keys, sys.TagTransfer, 0, 0, buf[:]))
+
+	var txId wavelet.TransactionID
+	gateway.ledger.Transactions().Iterate(func(tx *wavelet.Transaction) bool {
+		txId = tx.ID
+		return false
+	})
+
+	tx := gateway.ledger.Transactions().Find(txId)
+	if tx == nil {
+		t.Fatal("not found")
+	}
+
+	txRes := &transaction{tx: tx}
+	txRes.status = "applied"
+
+	tests := []struct {
+		name         string
+		id           string
+		wantCode     int
+		wantResponse marshalableJSON
+	}{
+		{
+			name:     "invalid id length",
+			id:       "1c331c1d",
+			wantCode: http.StatusBadRequest,
+			wantResponse: &testErrResponse{
+				StatusText: "Bad Request",
+				ErrorText:  fmt.Sprintf("transaction ID must be %d bytes long", wavelet.SizeTransactionID),
+			},
+		},
+		{
+			name:         "success",
+			id:           hex.EncodeToString(txId[:]),
+			wantCode:     http.StatusOK,
+			wantResponse: txRes,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			request, err := http.NewRequest("GET", "http://localhost/tx/"+tc.id, nil)
+			assert.NoError(t, err)
+
+			w, err := serve(gateway.router, request)
+			assert.NoError(t, err)
+			assert.NotNil(t, w)
+
+			response, err := ioutil.ReadAll(w.Body)
+			assert.NoError(t, err)
+
+			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
+
+			if tc.wantResponse != nil {
+				r, err := tc.wantResponse.marshalJSON(new(fastjson.ArenaPool).Get())
+				assert.Nil(t, err)
+				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
+			}
+		})
+	}
+}
 
 func TestSendTransaction(t *testing.T) {
 	gateway := New()
@@ -841,4 +1018,22 @@ func (rw *readWriter) SetReadDeadline(t time.Time) error {
 
 func (rw *readWriter) SetWriteDeadline(t time.Time) error {
 	return nil
+}
+
+func newTransaction(keys *skademlia.Keypair, tag sys.Tag, nonce uint64, block uint64, payload []byte) wavelet.Transaction {
+	var nonceBuf [8]byte
+	binary.BigEndian.PutUint64(nonceBuf[:], nonce)
+
+	var blockBuf [8]byte
+	binary.BigEndian.PutUint64(blockBuf[:], block)
+
+	signature := edwards25519.Sign(
+		keys.PrivateKey(),
+		append(nonceBuf[:], append(blockBuf[:], append([]byte{byte(tag)}, payload...)...)...),
+	)
+
+	return wavelet.NewSignedTransaction(
+		keys.PublicKey(), nonce, block,
+		tag, payload, signature,
+	)
 }

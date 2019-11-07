@@ -24,7 +24,10 @@ func setEvents(c *wctl.Client) (func(), error) {
 		}
 	}
 
-	c.OnError = onError
+	logger := log.Node()
+	c.OnError = func(err error) {
+		logger.Err(err).Msg("WS Error occurred.")
+	}
 
 	c.OnPeerJoin = onPeerJoin
 	c.OnPeerLeave = onPeerLeave
@@ -62,15 +65,6 @@ func setEvents(c *wctl.Client) (func(), error) {
 	}
 
 	return cleanup, nil
-}
-
-func onError(err error) {
-	if disableGC {
-		return // testing
-	}
-
-	logger := log.Node()
-	logger.Err(err).Msg("WS Error occurred.")
 }
 
 func onStakeRewardValidator(r wctl.StakeRewardValidator) {

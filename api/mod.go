@@ -31,6 +31,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/buaazp/fasthttprouter"
@@ -59,7 +60,9 @@ type Gateway struct {
 	router  *fasthttprouter.Router
 	servers []*fasthttp.Server
 
-	sinks         map[string]*sink
+	sinks     map[string]*sink
+	sinksLock sync.RWMutex
+
 	enableTimeout bool
 
 	rateLimiter *rateLimiter
@@ -356,62 +359,72 @@ func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 }
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
-	// TODO
+	var sender wavelet.AccountID
+	var offset, limit uint64
+	var err error
 
-	//var sender wavelet.AccountID
-	//var offset, limit uint64
-	//var err error
+	queryArgs := ctx.QueryArgs()
+	if raw := string(queryArgs.Peek("sender")); len(raw) > 0 {
+		slice, err := hex.DecodeString(raw)
+		if err != nil {
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
+			return
+		}
 
-	//queryArgs := ctx.QueryArgs()
-	//if raw := string(queryArgs.Peek("sender")); len(raw) > 0 {
-	//slice, err := hex.DecodeString(raw)
-	//if err != nil {
-	//g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
-	//return
-	//}
+		if len(slice) != wavelet.SizeAccountID {
+			g.renderError(ctx, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", wavelet.SizeAccountID)))
+			return
+		}
 
-	//if len(slice) != wavelet.SizeAccountID {
-	//g.renderError(ctx, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", wavelet.SizeAccountID)))
-	//return
-	//}
+		copy(sender[:], slice)
+	}
 
-	//copy(sender[:], slice)
-	//}
+	if raw := string(queryArgs.Peek("offset")); len(raw) > 0 {
+		offset, err = strconv.ParseUint(raw, 10, 64)
 
-	//if raw := string(queryArgs.Peek("offset")); len(raw) > 0 {
-	//offset, err = strconv.ParseUint(raw, 10, 64)
+		if err != nil {
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
+			return
+		}
+	}
 
-	//if err != nil {
-	//g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
-	//return
-	//}
-	//}
+	if raw := string(queryArgs.Peek("limit")); len(raw) > 0 {
+		limit, err = strconv.ParseUint(raw, 10, 64)
 
-	//if raw := string(queryArgs.Peek("limit")); len(raw) > 0 {
-	//limit, err = strconv.ParseUint(raw, 10, 64)
+		if err != nil {
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
+			return
+		}
+	}
 
-	//if err != nil {
-	//g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
-	//return
-	//}
-	//}
-
-	//if limit > maxPaginationLimit {
-	//limit = maxPaginationLimit
-	//}
+	if limit > maxPaginationLimit {
+		limit = maxPaginationLimit
+	}
 
 	var transactions transactionList
-	//var rootDepth = g.ledger.Graph().RootDepth()
+	var latestBlockIndex = g.ledger.Blocks().Latest().Index
 
-	//for _, tx := range g.ledger.Graph().ListTransactions(offset, limit, sender) {
-	//status := "received"
+	// TODO: maybe there is be a better way to do this? Currently, this iterates
+	// the entire transaction list
+	g.ledger.Transactions().Iterate(func(tx *wavelet.Transaction) bool {
+		if tx.Block < offset {
+			return true
+		}
+		if uint64(len(transactions)) >= limit {
+			return true
+		}
+		if sender != wavelet.ZeroAccountID && tx.Sender != sender {
+			return true
+		}
 
-	//if tx.Depth <= rootDepth {
-	//status = "applied"
-	//}
+		status := "received"
+		if tx.Block <= latestBlockIndex {
+			status = "applied"
+		}
 
-	//transactions = append(transactions, &transaction{tx: tx, status: status})
-	//}
+		transactions = append(transactions, &transaction{tx: tx, status: status})
+		return true
+	})
 
 	g.render(ctx, transactions)
 }
@@ -444,15 +457,15 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	// block := g.ledger.Blocks().Latest()
+	latestBlockIndex := g.ledger.Blocks().Latest().Index
 
 	res := &transaction{tx: tx}
 
-	// if tx.Depth <= rootDepth {
-	// 	res.status = "applied"
-	// } else {
-	// 	res.status = "received"
-	// }
+	if tx.Block <= latestBlockIndex {
+		res.status = "applied"
+	} else {
+		res.status = "received"
+	}
 
 	g.render(ctx, res)
 }
@@ -751,11 +764,10 @@ func (g *Gateway) registerWebsocketSink(rawURL string, factory *debounce.Factory
 	}
 
 	sink := &sink{
-		filters:   filters,
-		broadcast: make(chan broadcastItem),
-		join:      make(chan *client),
-		leave:     make(chan *client),
-		clients:   make(map[*client]struct{}),
+		ops: make(chan func(map[*client]struct{})),
+		filters: filters,
+		join:    make(chan *client),
+		leave:   make(chan *client),
 	}
 
 	if factory != nil {
@@ -764,7 +776,9 @@ func (g *Gateway) registerWebsocketSink(rawURL string, factory *debounce.Factory
 
 	go sink.run()
 
+	g.sinksLock.Lock()
 	g.sinks[u.Hostname()] = sink
+	g.sinksLock.Unlock()
 
 	return sink
 }
@@ -782,7 +796,10 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 		return n, errors.Errorf("all logs must have the field %q", log.KeyModule)
 	}
 
+	g.sinksLock.RLock()
 	sink, exists := g.sinks[string(mod)]
+	g.sinksLock.RUnlock()
+
 	if !exists {
 		return len(buf), nil
 	}
@@ -790,7 +807,7 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 	cpy := make([]byte, len(buf))
 	copy(cpy, buf)
 
-	sink.broadcast <- broadcastItem{value: v, buf: cpy}
+	sink.broadcast(broadcastItem{value: v, buf: cpy})
 
 	return len(buf), nil
 }

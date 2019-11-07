@@ -65,15 +65,16 @@ func init() { // nolint:gochecknoinits
 }
 
 func setupChildLoggers() {
-	node = logger.With().Str(KeyModule, ModuleNode).Logger()
-	network = logger.With().Str(KeyModule, ModuleNetwork).Logger()
-	accounts = logger.With().Str(KeyModule, ModuleAccounts).Logger()
-	consensus = logger.With().Str(KeyModule, ModuleConsensus).Logger()
-	contract = logger.With().Str(KeyModule, ModuleContract).Logger()
-	syncer = logger.With().Str(KeyModule, ModuleSync).Logger()
-	stake = logger.With().Str(KeyModule, ModuleStake).Logger()
-	tx = logger.With().Str(KeyModule, ModuleTX).Logger()
-	metrics = logger.With().Str(KeyModule, ModuleMetrics).Logger()
+	// Default to Debug
+	node = logger.With().Str(KeyModule, ModuleNode).Logger().Level(zerolog.DebugLevel)
+	network = logger.With().Str(KeyModule, ModuleNetwork).Logger().Level(zerolog.DebugLevel)
+	accounts = logger.With().Str(KeyModule, ModuleAccounts).Logger().Level(zerolog.DebugLevel)
+	consensus = logger.With().Str(KeyModule, ModuleConsensus).Logger().Level(zerolog.DebugLevel)
+	contract = logger.With().Str(KeyModule, ModuleContract).Logger().Level(zerolog.DebugLevel)
+	syncer = logger.With().Str(KeyModule, ModuleSync).Logger().Level(zerolog.DebugLevel)
+	stake = logger.With().Str(KeyModule, ModuleStake).Logger().Level(zerolog.DebugLevel)
+	tx = logger.With().Str(KeyModule, ModuleTX).Logger().Level(zerolog.DebugLevel)
+	metrics = logger.With().Str(KeyModule, ModuleMetrics).Logger().Level(zerolog.DebugLevel)
 }
 
 func SetLevel(ls string) {

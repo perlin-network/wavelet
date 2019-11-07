@@ -444,7 +444,7 @@ func (cli *CLI) updateParameters(ctx *cli.Context) {
 		conf.WithDownloadTxTimeout(ctx.Duration("download.tx.timeout")),
 		conf.WithCheckOutOfSyncTimeout(ctx.Duration("check.out.of.sync.timeout")),
 		conf.WithSyncChunkSize(ctx.Int("sync.chunk.size")),
-		conf.WithSyncIfBlockIndicesDifferBy(ctx.Uint64("sync.if.rounds.differ.by")),
+		conf.WithSyncIfBlockIndicesDifferBy(ctx.Uint64("sync.if.block.indices.differ.by")),
 		conf.WithPruningLimit(uint8(ctx.Uint64("pruning.limit"))),
 		conf.WithSecret(ctx.String("api.secret")),
 		conf.WithBloomFilterK(ctx.Uint("bloom.filter.k")),

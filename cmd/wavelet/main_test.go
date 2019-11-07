@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/phayes/freeport"
 	"github.com/stretchr/testify/assert"
 )
@@ -26,7 +27,7 @@ import (
 var wallet1 = "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405"
 var wallet2 = "85e7450f7cf0d9cd1d1d7bf4169c2f364eea4ba833a7280e0f931a1d92fd92c2696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a"
 
-func TestMain(t *testing.T) {
+func TestMain_Basic(t *testing.T) {
 	w := NewTestWavelet(t, defaultConfig())
 	defer w.Cleanup()
 
@@ -59,11 +60,9 @@ func TestMain_WithLogLevel(t *testing.T) {
 	}
 }
 
-func TestMain_WithInvalidLogLevel(t *testing.T) {
-	// Invalid loglevel will cause the ledger to use the default log level,
-	// which is debug
+func TestMain_WithDefaultLogLevel(t *testing.T) {
+	// Test default loglevel should be debug
 	config := defaultConfig()
-	config.LogLevel = "foobar"
 	w := NewTestWavelet(t, config)
 	defer w.Cleanup()
 
@@ -151,9 +150,7 @@ func TestMain_Spawn(t *testing.T) {
 	w := NewTestWavelet(t, config)
 	defer w.Cleanup()
 
-	for i := 0; i < 3; i++ {
-		w.Testnet.AddNode(t)
-	}
+	w.Testnet.AddNode(t)
 
 	w.Testnet.WaitForSync(t)
 
@@ -172,9 +169,7 @@ func TestMain_Call(t *testing.T) {
 	w := NewTestWavelet(t, config)
 	defer w.Cleanup()
 
-	for i := 0; i < 3; i++ {
-		w.Testnet.AddNode(t)
-	}
+	w.Testnet.AddNode(t)
 
 	w.Testnet.WaitForSync(t)
 
@@ -195,9 +190,7 @@ func TestMain_CallWithParams(t *testing.T) {
 	w := NewTestWavelet(t, config)
 	defer w.Cleanup()
 
-	for i := 0; i < 3; i++ {
-		w.Testnet.AddNode(t)
-	}
+	w.Testnet.AddNode(t)
 
 	w.Testnet.WaitForSync(t)
 
@@ -268,9 +261,7 @@ func TestMain_DepositGas(t *testing.T) {
 	w := NewTestWavelet(t, config)
 	defer w.Cleanup()
 
-	for i := 0; i < 3; i++ {
-		w.Testnet.AddNode(t)
-	}
+	w.Testnet.AddNode(t)
 
 	w.Testnet.WaitForSync(t)
 
@@ -362,9 +353,7 @@ func TestMain_WithdrawReward(t *testing.T) {
 	w := NewTestWavelet(t, config)
 	defer w.Cleanup()
 
-	for i := 0; i < 3; i++ {
-		w.Testnet.AddNode(t)
-	}
+	w.Testnet.AddNode(t)
 
 	w.Testnet.WaitForSync(t)
 
@@ -393,33 +382,26 @@ func TestMain_UpdateParams(t *testing.T) {
 	}{
 		{"snowball.k", "snowballK", int(123)},
 		{"snowball.beta", "snowballBeta", int(789)},
+		{"vote.sync.threshold", "syncVoteThreshold", float64(12.34)},
+		{"vote.finalization.threshold", "finalizationVoteThreshold", float64(56.78)},
+		{"vote.finalization.stake.weight", "stakeMajorityWeight", float64(11.11)},
 		{"query.timeout", "queryTimeout", time.Second * 9},
 		{"gossip.timeout", "gossipTimeout", time.Second * 4},
 		{"download.tx.timeout", "downloadTxTimeout", time.Second * 3},
 		{"check.out.of.sync.timeout", "checkOutOfSyncTimeout", time.Second * 7},
 		{"sync.chunk.size", "syncChunkSize", int(1337)},
+		{"sync.if.block.indices.differ.by", "syncIfBlockIndicesDifferBy", uint64(42)},
+		{"bloom.filter.m", "bloomFilterM", uint64(54321)},
+		{"bloom.filter.k", "bloomFilterK", uint64(9)},
 		{"pruning.limit", "pruningLimit", uint64(255)},
+		// {"block.tx.limit", "blockTxLimit", uint64(666)},
 		{"api.secret", "secret", "shambles"},
 	}
 
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.Config, func(t *testing.T) {
-			var inputVal string
-			switch v := tt.Value.(type) {
-			case time.Duration:
-				inputVal = v.String()
-			case int:
-				inputVal = strconv.Itoa(v)
-			case uint64:
-				inputVal = strconv.FormatUint(v, 10)
-			case float64:
-				inputVal = strconv.FormatFloat(v, 'f', -1, 64)
-			case string:
-				inputVal = v
-			}
-
-			w.Stdin <- fmt.Sprintf("up --%s %s", tt.Config, inputVal)
+			w.Stdin <- fmt.Sprintf("up --%s %+v", tt.Config, tt.Value)
 
 			searchVal := tt.Value
 			switch v := tt.Value.(type) {
@@ -472,7 +454,7 @@ func nextPort(t *testing.T) string {
 }
 
 func waitForAPI(t *testing.T, apiPort string) {
-	timeout := time.NewTimer(time.Second * 5)
+	timeout := time.NewTimer(time.Second * 30)
 	tick := time.NewTicker(time.Second * 1)
 
 	for {
@@ -526,16 +508,20 @@ func (s mockStdin) Close() error {
 type mockStdout struct {
 	Lines chan string
 	buf   []byte
+	lock  sync.Mutex
 }
 
 func newMockStdout() *mockStdout {
 	return &mockStdout{
-		Lines: make(chan string, 256*1024),
+		Lines: make(chan string, 1024),
 		buf:   make([]byte, 0),
 	}
 }
 
 func (s *mockStdout) Write(p []byte) (n int, err error) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
 	s.buf = append(s.buf, p...)
 
 	ni := bytes.Index(s.buf, []byte{'\n'})
@@ -636,18 +622,21 @@ func defaultConfig() *TestWaveletConfig {
 }
 
 func NewTestWavelet(t *testing.T, cfg *TestWaveletConfig) *TestWavelet {
+	// We set the loglevel directly instead of using the flag, to prevent race condition.
+	// The race condition will happen, we have to run the app on different goroutine than testing's goroutine.
+	if cfg.LogLevel != "" {
+		log.SetLevel(cfg.LogLevel)
+	}
+
 	testnet := wavelet.NewTestNetwork(t)
 
 	port := nextPort(t)
 	apiPort := nextPort(t)
 
-	args := []string{"wavelet", "--port", port, "--api.port", apiPort}
+	args := []string{"wavelet", "--loglevel", "", "--port", port, "--api.port", apiPort}
 	if cfg != nil {
 		if cfg.Wallet != "" {
 			args = append(args, []string{"--wallet", cfg.Wallet}...)
-		}
-		if cfg.LogLevel != "" {
-			args = append(args, []string{"--loglevel", cfg.LogLevel}...)
 		}
 	}
 
@@ -665,13 +654,10 @@ func NewTestWavelet(t *testing.T, cfg *TestWaveletConfig) *TestWavelet {
 		Stdout:  stdout,
 	}
 
-	// Disable the garbage-collector
-	disableGC = true
-
 	w.StopWG.Add(1)
 	go func() {
 		defer w.StopWG.Done()
-		Run(args, stdin, stdout)
+		Run(args, stdin, stdout, true)
 	}()
 	waitForAPI(t, apiPort)
 

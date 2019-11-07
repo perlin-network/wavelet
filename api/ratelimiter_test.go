@@ -20,9 +20,10 @@
 package api
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRateLimit(t *testing.T) {
@@ -54,5 +55,8 @@ func TestRateLimit(t *testing.T) {
 		close(done)
 	}()
 	<-done
+
+	rl.RLock()
 	assert.Nil(t, rl.limiters["key1"])
+	rl.RUnlock()
 }
