@@ -410,7 +410,7 @@ func (l *Ledger) SyncTransactions() {
 			},
 		}
 
-		for _, p := range peers[:1] {
+		for _, p := range peers {
 			wg.Add(1)
 			go func(conn *grpc.ClientConn) {
 				defer wg.Done()
