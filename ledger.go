@@ -90,6 +90,8 @@ type Ledger struct {
 
 	transactionsSyncIndexLock sync.RWMutex
 	transactionsSyncIndex     *bloom.BloomFilter
+
+	queryBlockCache map[[blake2b.Size256]byte]*Block
 }
 
 type config struct {
@@ -184,6 +186,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		sendQuota: make(chan struct{}, 2000),
 
 		transactionsSyncIndex: bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK()),
+
+		queryBlockCache: make(map[BlockID]*Block),
 	}
 
 	if !cfg.GCDisabled {
@@ -740,23 +744,37 @@ func (l *Ledger) finalize(block Block) {
 func (l *Ledger) query() {
 	snowballK := conf.GetSnowballK()
 
-	peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
+	peers, err := ClosestPeers(l.client, snowballK)
 	if err != nil {
 		return
 	}
 
 	current := l.blocks.Latest()
 
-	voteChan := make(chan *finalizationVote)
+	type response struct {
+		vote finalizationVote
 
-	req := &QueryRequest{BlockIndex: current.Index + 1}
+		cacheValid bool
+		cacheBlock *Block
+	}
+
+	responseChan := make(chan response)
 
 	for _, p := range peers {
-		go func(conn *grpc.ClientConn) {
-			var vote finalizationVote
+		go func(conn *grpc.ClientConn, cacheBlock *Block) {
+			var response response
 			defer func() {
-				voteChan <- &vote
+				responseChan <- response
 			}()
+
+			req := &QueryRequest{BlockIndex: current.Index + 1}
+
+			if cacheBlock != nil {
+				req.CacheBlockId = make([]byte, SizeBlockID)
+				copy(req.CacheBlockId, cacheBlock.ID[:])
+
+				response.cacheBlock = cacheBlock
+			}
 
 			f := func() {
 				client := NewWaveletClient(conn)
@@ -788,9 +806,14 @@ func (l *Ledger) query() {
 					return
 				}
 
-				vote.voter = voter
+				response.vote.voter = voter
 
-				block, err := UnmarshalBlock(bytes.NewReader(res.Block))
+				if res.CacheValid {
+					response.cacheValid = true
+					return
+				}
+
+				block, err := UnmarshalBlock(bytes.NewReader(res.GetBlock()))
 				if err != nil {
 					return
 				}
@@ -799,28 +822,37 @@ func (l *Ledger) query() {
 					return
 				}
 
-				vote.block = &block
+				response.vote.block = &block
 			}
 			l.metrics.queryLatency.Time(f)
-		}(p)
+		}(p.conn, l.queryBlockCache[p.id.Checksum()])
 	}
 
 	votes := make([]*finalizationVote, 0, len(peers))
 	voters := make(map[AccountID]struct{}, len(peers))
 
 	for i := 0; i < cap(votes); i++ {
-		vote := <-voteChan
+		response := <-responseChan
 
-		if vote.voter == nil {
+		if response.vote.voter == nil {
 			continue
 		}
 
-		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
+		if _, recorded := voters[response.vote.voter.PublicKey()]; recorded {
 			continue // To make sure the sampling process is fair, only allow one vote per peer.
 		}
 
-		voters[vote.voter.PublicKey()] = struct{}{}
-		votes = append(votes, vote)
+		voters[response.vote.voter.PublicKey()] = struct{}{}
+
+		if response.cacheValid {
+			response.vote.block = response.cacheBlock
+		} else {
+			if response.vote.block != nil {
+				l.queryBlockCache[response.vote.voter.Checksum()] = response.vote.block
+			}
+		}
+
+		votes = append(votes, &response.vote)
 	}
 
 	for _, vote := range votes {
