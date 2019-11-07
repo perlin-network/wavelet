@@ -30,7 +30,10 @@ import (
 
 func floodTransactions() func(client *wctl.Client) ([]*wctl.TxResponse, error) {
 	return func(client *wctl.Client) ([]*wctl.TxResponse, error) {
-		numWorkers := runtime.NumCPU()
+		numWorkers := runtime.NumCPU() / 2
+		if numWorkers < 2 {
+			numWorkers = 2
+		}
 
 		chRes := make(chan *wctl.TxResponse, numWorkers)
 		chErr := make(chan error, numWorkers)
