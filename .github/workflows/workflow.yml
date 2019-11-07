@@ -13,9 +13,9 @@ jobs:
       - name: Download Go modules
         run: go mod download
       - name: Build for linux
-        run: GOOS=linux GOARCH=amd64 go build ./cmd/wavelet -o wavelet-linux-amd64
+        run: GOOS=linux GOARCH=amd64 go build -o wavelet-linux-amd64 ./cmd/wavelet
       - name: Build for 32 bit arm
-        run: GOOS=linux GOARCH=arm go build ./cmd/wavelet -o wavelet-linux-arm
+        run: GOOS=linux GOARCH=arm go build -o wavelet-linux-arm ./cmd/wavelet
       - name: Run unit tests
         run: go test -v -coverprofile=coverage.txt -covermode=atomic -race -timeout=30m .
       - name: Upload coverage report
