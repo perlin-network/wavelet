@@ -760,7 +760,8 @@ func (l *Ledger) query() {
 	req := &QueryRequest{BlockIndex: current.Index + 1}
 
 	for _, p := range peers {
-		f := func(conn *grpc.ClientConn) {
+		conn := p
+		f := func() {
 			var vote finalizationVote
 			defer func() {
 				voteChan <- &vote
@@ -812,7 +813,7 @@ func (l *Ledger) query() {
 			l.metrics.queryLatency.Time(f)
 		}
 
-		l.queueWorkerPool.Queue(func() { f(p) })
+		l.queueWorkerPool.Queue(f)
 	}
 
 	votes := make([]*finalizationVote, 0, len(peers))
