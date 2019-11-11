@@ -23,7 +23,12 @@ func (c *Client) Pay(recipient [32]byte, amount uint64) (*TxResponse, error) {
 		return nil, ErrInsufficientPerls
 	}
 
-	if a.IsContract {
+	recipientAccount, err := c.GetAccount(recipient)
+	if err != nil {
+		return nil, err
+	}
+
+	if recipientAccount.IsContract {
 		// Set the contract parameters
 		t.GasLimit = a.Balance - amount - 4*1024*1024
 		t.FuncName = []byte("on_money_received")
