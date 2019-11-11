@@ -337,22 +337,10 @@ func restoreFromDir(tree *avl.Tree, dir string) error {
 		return err
 	}
 
-	// Each contract must have Gas Balance, Code, Globals, and Page files.
+	// Each contract must have Code.
 	for _, id := range contracts {
-		if _, exist := ReadAccountContractGasBalance(tree, id); !exist {
-			return errors.Errorf("contract %x is missing gas balance", id)
-		}
-
 		if _, exist := ReadAccountContractCode(tree, id); !exist {
 			return errors.Errorf("contract %x is missing code", id)
-		}
-
-		if _, exist := ReadAccountContractGlobals(tree, id); !exist {
-			return errors.Errorf("contract %x is missing globals", id)
-		}
-
-		if _, exist := contractPageFiles[id]; !exist {
-			return errors.Errorf("contract %x is missing pages", id)
 		}
 	}
 
