@@ -33,8 +33,9 @@ type leveldbWriteBatch struct {
 	batch *leveldb.Batch
 }
 
-func (b *leveldbWriteBatch) Put(key, value []byte) {
+func (b *leveldbWriteBatch) Put(key, value []byte) error {
 	b.batch.Put(key, value)
+	return nil
 }
 
 func (b *leveldbWriteBatch) Clear() {
