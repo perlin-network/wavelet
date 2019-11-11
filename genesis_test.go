@@ -4,16 +4,16 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"github.com/perlin-network/wavelet/avl"
-	"github.com/perlin-network/wavelet/store"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/store"
+	"github.com/stretchr/testify/assert"
 )
 
-var testDumpDir = "testdata/testdump"
 var testRestoreDir = "testdata/testgenesis"
 
 func getGenesisTestNetwork(t testing.TB) (testnet *TestNetwork, alice *TestLedger, cleanup func()) {
@@ -31,7 +31,7 @@ func getGenesisTestNetwork(t testing.TB) (testnet *TestNetwork, alice *TestLedge
 
 	var err error
 
-	_, err = testnet.faucet.Pay(alice, 10000000000)
+	testnet.faucet.Pay(alice, 10000000000)
 	assert.NoError(t, err)
 	for <-alice.WaitForConsensus() {
 		if alice.Balance() > 0 {
@@ -39,7 +39,7 @@ func getGenesisTestNetwork(t testing.TB) (testnet *TestNetwork, alice *TestLedge
 		}
 	}
 
-	_, err = testnet.faucet.Pay(bob, 10000000000)
+	testnet.faucet.Pay(bob, 10000000000)
 	assert.NoError(t, err)
 	for <-bob.WaitForConsensus() {
 		if bob.Balance() > 0 {
@@ -47,10 +47,10 @@ func getGenesisTestNetwork(t testing.TB) (testnet *TestNetwork, alice *TestLedge
 		}
 	}
 
-	_, err = alice.PlaceStake(100)
+	alice.PlaceStake(100)
 	assert.True(t, <-alice.WaitForConsensus())
 
-	_, err = bob.PlaceStake(100)
+	bob.PlaceStake(100)
 	assert.True(t, <-bob.WaitForConsensus())
 
 	for i := 0; i < 5; i++ {
@@ -60,7 +60,7 @@ func getGenesisTestNetwork(t testing.TB) (testnet *TestNetwork, alice *TestLedge
 		}
 		testnet.WaitForConsensus(t)
 
-		tx, err = alice.DepositGas(tx.ID, (uint64(i)+1)*100)
+		tx = alice.DepositGas(tx.ID, (uint64(i)+1)*100)
 		if !assert.NoError(t, err) {
 			return nil, nil, cleanup
 		}
@@ -71,6 +71,8 @@ func getGenesisTestNetwork(t testing.TB) (testnet *TestNetwork, alice *TestLedge
 }
 
 func TestDumpIncludingContract(t *testing.T) {
+	testDumpDir := "testDumpIncludingContract"
+
 	testnet, target, cleanup := getGenesisTestNetwork(t)
 	defer cleanup()
 	if testnet == nil || target == nil {
@@ -88,6 +90,8 @@ func TestDumpIncludingContract(t *testing.T) {
 }
 
 func TestDumpWithoutContract(t *testing.T) {
+	testDumpDir := "testDumpIncludingContract"
+
 	testnet, target, cleanup := getGenesisTestNetwork(t)
 	defer cleanup()
 	if testnet == nil || target == nil {
@@ -120,7 +124,7 @@ func testDump(t *testing.T, dumpDir string, expected *avl.Tree, checkContract bo
 	var checksum = actual.Checksum()
 	for i := 0; i < 100; i++ {
 		tree := avl.New(store.NewInmem())
-		_ = performInception(tree, &testDumpDir)
+		_ = performInception(tree, &dumpDir)
 
 		assert.Equal(t, checksum, tree.Checksum())
 	}
@@ -179,16 +183,14 @@ func compareTree(t *testing.T, expected *avl.Tree, actual *avl.Tree, checkContra
 }
 
 func TestPerformInception(t *testing.T) {
+	t.Parallel()
+
 	tree := avl.New(store.NewInmem())
-	round := performInception(tree, &testRestoreDir)
+	block := performInception(tree, &testRestoreDir)
 
-	assert.Equal(t, uint64(0), round.Index)
-	assert.Equal(t, uint32(0), round.Transactions)
-	assert.Equal(t, Transaction{}, round.Start)
-
-	tx := Transaction{}
-	tx.rehash()
-	assert.Equal(t, tx, round.End)
+	assert.Equal(t, uint64(0), block.Index)
+	assert.Nil(t, block.Transactions)
+	assert.Equal(t, "6c669ad9992286e000f6bb4c0aa5a416", fmt.Sprintf("%x", block.Merkle))
 
 	uint64p := func(v uint64) *uint64 {
 		return &v
@@ -323,22 +325,6 @@ func checkRestoredDefaults(t *testing.T, tree *avl.Tree) {
 	var val []byte
 	var exist bool
 
-	val, exist = tree.Lookup(keyRounds[:])
-	assert.False(t, exist)
-	assert.Nil(t, val)
-
-	val, exist = tree.Lookup(keyRoundLatestIx[:])
-	assert.False(t, exist)
-	assert.Nil(t, val)
-
-	val, exist = tree.Lookup(keyRoundOldestIx[:])
-	assert.False(t, exist)
-	assert.Nil(t, val)
-
-	val, exist = tree.Lookup(keyRoundStoredCount[:])
-	assert.False(t, exist)
-	assert.Nil(t, val)
-
 	val, exist = tree.Lookup(keyRewardWithdrawals[:])
 	assert.False(t, exist, )
 	assert.Nil(t, val)
@@ -360,6 +346,8 @@ func checkRestoredDefaults(t *testing.T, tree *avl.Tree) {
 }
 
 func BenchmarkDump(b *testing.B) {
+	testDumpDir := "testDumpIncludingContract"
+
 	testnet, target, cleanup := getGenesisTestNetwork(b)
 	defer cleanup()
 	if testnet == nil || target == nil {
