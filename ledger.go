@@ -206,6 +206,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 			logger.Error().Err(err).Msg("Shutting down node...")
 		},
 	})
+	
+	ledger.stopWG.Add(1)
 	go stallDetector.Run(&ledger.stopWG)
 
 	ledger.stallDetector = stallDetector
