@@ -16,7 +16,7 @@ import (
 
 var testRestoreDir = "testdata/testgenesis"
 
-func getGenesisTestNetwork(t testing.TB) (testnet *TestNetwork, alice *TestLedger, cleanup func()) {
+func getGenesisTestNetwork(t testing.TB, withContract bool) (testnet *TestNetwork, alice *TestLedger, cleanup func()) {
 	testnet = NewTestNetwork(t)
 
 	cleanup = func() {
@@ -26,45 +26,39 @@ func getGenesisTestNetwork(t testing.TB) (testnet *TestNetwork, alice *TestLedge
 	alice = testnet.AddNode(t)
 	bob := testnet.AddNode(t)
 
-	assert.True(t, <-alice.WaitForSync())
-	assert.True(t, <-bob.WaitForSync())
+	alice.WaitUntilSync(t)
+	bob.WaitUntilSync(t)
 
 	var err error
 
 	testnet.faucet.Pay(alice, 10000000000)
 	assert.NoError(t, err)
-	for <-alice.WaitForConsensus() {
-		if alice.Balance() > 0 {
-			break
-		}
-	}
+	alice.WaitUntilBalance(t, 10000000000)
 
 	testnet.faucet.Pay(bob, 10000000000)
 	assert.NoError(t, err)
-	for <-bob.WaitForConsensus() {
-		if bob.Balance() > 0 {
-			break
-		}
-	}
+	bob.WaitUntilBalance(t, 10000000000)
 
 	alice.PlaceStake(100)
-	assert.True(t, <-alice.WaitForConsensus())
+	alice.WaitUntilStake(t, 100)
 
 	bob.PlaceStake(100)
-	assert.True(t, <-bob.WaitForConsensus())
+	bob.WaitUntilStake(t, 100)
 
-	for i := 0; i < 5; i++ {
-		tx, err := alice.SpawnContract("testdata/transfer_back.wasm", 10000, nil)
-		if !assert.NoError(t, err) {
-			return nil, nil, cleanup
-		}
-		testnet.WaitForConsensus(t)
+	if withContract {
+		for i := 0; i < 5; i++ {
+			tx, err := alice.SpawnContract("testdata/transfer_back.wasm", 10000, nil)
+			if !assert.NoError(t, err) {
+				return nil, nil, cleanup
+			}
+			alice.WaitUntilConsensus(t)
 
-		tx = alice.DepositGas(tx.ID, (uint64(i)+1)*100)
-		if !assert.NoError(t, err) {
-			return nil, nil, cleanup
+			tx = alice.DepositGas(tx.ID, (uint64(i)+1)*100)
+			if !assert.NoError(t, err) {
+				return nil, nil, cleanup
+			}
+			alice.WaitUntilConsensus(t)
 		}
-		testnet.WaitForConsensus(t)
 	}
 
 	return testnet, alice, cleanup
@@ -73,7 +67,7 @@ func getGenesisTestNetwork(t testing.TB) (testnet *TestNetwork, alice *TestLedge
 func TestDumpIncludingContract(t *testing.T) {
 	testDumpDir := "testDumpIncludingContract"
 
-	testnet, target, cleanup := getGenesisTestNetwork(t)
+	testnet, target, cleanup := getGenesisTestNetwork(t, true)
 	defer cleanup()
 	if testnet == nil || target == nil {
 		assert.FailNow(t, "failed to get test network.")
@@ -92,7 +86,7 @@ func TestDumpIncludingContract(t *testing.T) {
 func TestDumpWithoutContract(t *testing.T) {
 	testDumpDir := "testDumpIncludingContract"
 
-	testnet, target, cleanup := getGenesisTestNetwork(t)
+	testnet, target, cleanup := getGenesisTestNetwork(t, false)
 	defer cleanup()
 	if testnet == nil || target == nil {
 		assert.FailNow(t, "failed setup test network.")
@@ -122,7 +116,7 @@ func testDump(t *testing.T, dumpDir string, expected *avl.Tree, checkContract bo
 
 	// Repeatedly restore the dump and check it's checksum to make sure there's no randomness in the order of the restoration.
 	var checksum = actual.Checksum()
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 50; i++ {
 		tree := avl.New(store.NewInmem())
 		_ = performInception(tree, &dumpDir)
 
@@ -348,7 +342,7 @@ func checkRestoredDefaults(t *testing.T, tree *avl.Tree) {
 func BenchmarkDump(b *testing.B) {
 	testDumpDir := "testDumpIncludingContract"
 
-	testnet, target, cleanup := getGenesisTestNetwork(b)
+	testnet, target, cleanup := getGenesisTestNetwork(b, true)
 	defer cleanup()
 	if testnet == nil || target == nil {
 		assert.FailNow(b, "failed setup test network.")
