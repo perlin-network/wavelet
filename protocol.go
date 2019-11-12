@@ -20,9 +20,8 @@
 package wavelet
 
 import (
-	"bytes"
 	"context"
-	"github.com/willf/bloom"
+	cuckoo "github.com/seiflotfy/cuckoofilter"
 	"io"
 
 	"github.com/perlin-network/wavelet/conf"
@@ -172,14 +171,14 @@ func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error
 		return err
 	}
 
-	bf := &bloom.BloomFilter{}
-	if _, err := bf.ReadFrom(bytes.NewReader(req.GetFilter())); err != nil {
+	cf, err := cuckoo.Decode(req.GetFilter())
+	if err != nil {
 		return err
 	}
 
 	var toReturn [][]byte
 	p.ledger.transactions.Iterate(func(tx *Transaction) bool {
-		if exists := bf.Test(tx.ID[:]); !exists {
+		if exists := cf.Lookup(tx.ID[:]); !exists {
 			toReturn = append(toReturn, tx.Marshal())
 		}
 
