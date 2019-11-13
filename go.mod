@@ -20,7 +20,7 @@ require (
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/minio/highwayhash v1.0.0
 	github.com/perlin-network/life v0.0.0-20190723115110-3091ed0c1be8
-	github.com/perlin-network/noise v1.1.1-0.20191106061607-bf3f562fb797
+	github.com/perlin-network/noise v1.1.1-0.20191111043414-58046b382f54
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
 	github.com/phf/go-queue v0.0.0-20170504031614-9abe38d0371d
 	github.com/pkg/errors v0.8.1
