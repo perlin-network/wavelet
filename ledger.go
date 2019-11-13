@@ -498,7 +498,7 @@ func (l *Ledger) SyncTransactions() {
 					l.metrics.downloadedTX.Mark(int64(downloadedNum))
 					l.metrics.receivedTX.Mark(int64(downloadedNum))
 				}
-			}(p)
+			}(p.Conn())
 		}
 
 		wg.Wait()
@@ -553,7 +553,7 @@ func (l *Ledger) PullMissingTransactions() {
 				}
 
 				responseChan <- batch
-			}(p)
+			}(p.Conn())
 		}
 
 		responses := make([]*TransactionPullResponse, 0, len(peers))
@@ -744,7 +744,7 @@ func (l *Ledger) finalize(block Block) {
 func (l *Ledger) query() {
 	snowballK := conf.GetSnowballK()
 
-	peers, err := ClosestPeers(l.client, snowballK)
+	peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
 	if err != nil {
 		return
 	}
@@ -825,7 +825,7 @@ func (l *Ledger) query() {
 				response.vote.block = &block
 			}
 			l.metrics.queryLatency.Time(f)
-		}(p.conn, l.queryBlockCache[p.id.Checksum()])
+		}(p.Conn(), l.queryBlockCache[p.ID().Checksum()])
 	}
 
 	votes := make([]*finalizationVote, 0, len(peers))
@@ -911,7 +911,7 @@ func (l *Ledger) SyncToLatestBlock() {
 		for {
 			time.Sleep(5 * time.Millisecond)
 
-			conns, err := SelectPeers(l.client.ClosestPeers(), snowballK)
+			peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
 			if err != nil {
 				select {
 				case <-time.After(1 * time.Second):
@@ -923,9 +923,9 @@ func (l *Ledger) SyncToLatestBlock() {
 			current := l.blocks.Latest()
 
 			var wg sync.WaitGroup
-			wg.Add(len(conns))
+			wg.Add(len(peers))
 
-			for _, conn := range conns {
+			for _, p := range peers {
 				go func(conn *grpc.ClientConn) {
 					client := NewWaveletClient(conn)
 
@@ -965,7 +965,7 @@ func (l *Ledger) SyncToLatestBlock() {
 					syncVotes <- &syncVote{voter: voter, outOfSync: res.OutOfSync}
 
 					wg.Done()
-				}(conn)
+				}(p.Conn())
 			}
 
 			wg.Wait()
@@ -1029,7 +1029,7 @@ func (l *Ledger) SyncToLatestBlock() {
 			Msg("Noticed that we are out of sync; downloading latest state Snapshot from our peer(s).")
 
 	SYNC:
-		conns, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
+		peers, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
 		if err != nil {
 			logger.Warn().Msg("It looks like there are no peers for us to sync with. Retrying...")
 
@@ -1046,10 +1046,10 @@ func (l *Ledger) SyncToLatestBlock() {
 			stream Wavelet_SyncClient
 		}
 
-		responses := make([]response, 0, len(conns))
+		responses := make([]response, 0, len(peers))
 
-		for _, conn := range conns {
-			stream, err := NewWaveletClient(conn).Sync(context.Background())
+		for _, p := range peers {
+			stream, err := NewWaveletClient(p.Conn()).Sync(context.Background())
 			if err != nil {
 				continue
 			}
