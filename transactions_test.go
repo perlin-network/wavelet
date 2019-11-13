@@ -205,7 +205,7 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 
 		// Shuffle the manager, and assert no transactions have been pruned.
 
-		if !assert.Equal(t, manager.ReshufflePending(next), 0) {
+		if !assert.Len(t, manager.ReshufflePending(next), 0) {
 			return false
 		}
 
@@ -320,7 +320,7 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) {
 
 		// Shuffle the manager, and assert that no transactions have been pruned.
 
-		if !assert.Zero(t, manager.ReshufflePending(next)) {
+		if !assert.Len(t, manager.ReshufflePending(next), 0) {
 			return false
 		}
 
@@ -346,7 +346,7 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) {
 
 		// Shuffle the manager, and assert that the correct number of transactions have been pruned.
 
-		if !assert.Equal(t, manager.ReshufflePending(next), len(toBePrunedTransactions)+len(finalizedTransactions)) {
+		if !assert.Equal(t, len(manager.ReshufflePending(next)), len(toBePrunedTransactions)+len(finalizedTransactions)) {
 			return false
 		}
 
