@@ -40,23 +40,34 @@ func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse
 
 	latestBlock := p.ledger.blocks.Latest()
 
+	var block *Block
+
 	// Return preferred block if peer is finalizing on the same block
 	if latestBlock.Index+1 == req.BlockIndex {
 		preferred := p.ledger.finalizer.Preferred()
 		if preferred != nil {
-			res.Block = preferred.Value().(*Block).Marshal()
+			block = preferred.Value().(*Block)
 		}
-
-		return res, nil
 	}
 
 	// Otherwise, return the finalized block
 	if latestBlock.Index+1 > req.BlockIndex {
-		block, err := p.ledger.blocks.GetByIndex(req.BlockIndex)
-		if err == nil {
-			res.Block = block.Marshal()
+		block, _ = p.ledger.blocks.GetByIndex(req.BlockIndex)
+	}
+
+	if block == nil {
+		return res, nil
+	}
+
+	// Check cache block ID
+	if req.CacheBlockId != nil {
+		if bytes.Compare(block.ID[:], req.CacheBlockId) == 0 {
+			res.CacheValid = true
+			return res, nil
 		}
 	}
+
+	res.Block = block.Marshal()
 
 	return res, nil
 }
