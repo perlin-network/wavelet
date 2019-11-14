@@ -173,7 +173,7 @@ func New(cfg *Config) (*Wavelet, error) {
 
 	w.Net = client
 
-	kv, err := store.NewLevelDB(cfg.Database)
+	kv, err := store.NewBadger(cfg.Database)
 	if err != nil {
 		return nil, fmt.Errorf(
 			"Failed to create/open database located at %s", cfg.Database)
