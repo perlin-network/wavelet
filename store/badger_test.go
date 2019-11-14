@@ -28,13 +28,13 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func BenchmarkLevelDB(b *testing.B) {
-	path := "level"
+func BenchmarkBadger(b *testing.B) {
+	path := "badger"
 	_ = os.RemoveAll(path)
 
 	b.StopTimer()
 
-	db, err := NewLevelDB(path)
+	db, err := NewBadger(path)
 	assert.NoError(b, err)
 	defer os.RemoveAll(path)
 	defer db.Close()
@@ -61,11 +61,11 @@ func BenchmarkLevelDB(b *testing.B) {
 	}
 }
 
-func TestLevelDB_Existence(t *testing.T) {
-	path := "level"
+func TestBadger_Existence(t *testing.T) {
+	path := "badger"
 	_ = os.RemoveAll(path)
 
-	db, err := NewLevelDB(path)
+	db, err := NewBadger(path)
 	assert.NoError(t, err)
 	defer os.RemoveAll(path)
 	defer db.Close()
@@ -81,11 +81,11 @@ func TestLevelDB_Existence(t *testing.T) {
 	assert.Equal(t, []byte{}, val)
 }
 
-func TestLevelDB(t *testing.T) {
-	path := "level"
+func TestBadger(t *testing.T) {
+	path := "badger"
 	_ = os.RemoveAll(path)
 
-	db, err := NewLevelDB(path)
+	db, err := NewBadger(path)
 	assert.NoError(t, err)
 	defer os.RemoveAll(path)
 
@@ -100,7 +100,7 @@ func TestLevelDB(t *testing.T) {
 
 	assert.NoError(t, db.Close())
 
-	db2, err := NewLevelDB(path)
+	db2, err := NewBadger(path)
 	assert.NoError(t, err)
 
 	v, err := db2.Get([]byte("exist"))
@@ -119,11 +119,11 @@ func TestLevelDB(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestLevelDB_WriteBatch(t *testing.T) {
-	path := "bbolt"
+func TestBadger_WriteBatch(t *testing.T) {
+	path := "badger"
 	_ = os.RemoveAll(path)
 
-	db, err := NewLevelDB(path)
+	db, err := NewBadger(path)
 	assert.NoError(t, err)
 	defer os.RemoveAll(path)
 
@@ -134,11 +134,11 @@ func TestLevelDB_WriteBatch(t *testing.T) {
 
 	assert.NoError(t, db.Close())
 
-	db2, err := NewLevelDB(path)
+	db2, err := NewBadger(path)
 	assert.NoError(t, err)
 
 	_, err = db2.Get([]byte("key_batch100000"))
-	assert.EqualError(t, err, "leveldb: not found")
+	assert.EqualError(t, err, "Key not found")
 
 	wb = db2.NewWriteBatch()
 	for i := 0; i < 100000; i++ {
@@ -148,7 +148,7 @@ func TestLevelDB_WriteBatch(t *testing.T) {
 	assert.NoError(t, db2.CommitWriteBatch(wb))
 	assert.NoError(t, db2.Close())
 
-	db3, err := NewLevelDB(path)
+	db3, err := NewBadger(path)
 	assert.NoError(t, err)
 
 	v, err := db3.Get([]byte("key_batch100000"))

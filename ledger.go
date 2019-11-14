@@ -91,6 +91,8 @@ type Ledger struct {
 	transactionsSyncIndexLock sync.RWMutex
 	transactionsSyncIndex     *bloom.BloomFilter
 
+	queryBlockCache map[[blake2b.Size256]byte]*Block
+
 	queueWorkerPool *WorkerPool
 }
 
@@ -187,6 +189,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 		transactionsSyncIndex: bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK()),
 
+		queryBlockCache: make(map[BlockID]*Block),
+
 		queueWorkerPool: NewWorkerPool(),
 	}
 
@@ -206,7 +210,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 			logger.Error().Err(err).Msg("Shutting down node...")
 		},
 	})
-	
+
 	ledger.stopWG.Add(1)
 	go stallDetector.Run(&ledger.stopWG)
 
@@ -504,7 +508,7 @@ func (l *Ledger) SyncTransactions() {
 					l.metrics.downloadedTX.Mark(int64(downloadedNum))
 					l.metrics.receivedTX.Mark(int64(downloadedNum))
 				}
-			}(p)
+			}(p.Conn())
 		}
 
 		wg.Wait()
@@ -559,7 +563,7 @@ func (l *Ledger) PullMissingTransactions() {
 				}
 
 				responseChan <- batch
-			}(p)
+			}(p.Conn())
 		}
 
 		responses := make([]*TransactionPullResponse, 0, len(peers))
@@ -757,17 +761,33 @@ func (l *Ledger) query() {
 
 	current := l.blocks.Latest()
 
-	voteChan := make(chan *finalizationVote)
+	type response struct {
+		vote finalizationVote
 
-	req := &QueryRequest{BlockIndex: current.Index + 1}
+		cacheValid bool
+		cacheBlock *Block
+	}
+
+	responseChan := make(chan response)
 
 	for _, p := range peers {
-		conn := p
+		conn := p.Conn()
+		cacheBlock := l.queryBlockCache[p.ID().Checksum()]
+
 		f := func() {
-			var vote finalizationVote
+			var response response
 			defer func() {
-				voteChan <- &vote
+				responseChan <- response
 			}()
+
+			req := &QueryRequest{BlockIndex: current.Index + 1}
+
+			if cacheBlock != nil {
+				req.CacheBlockId = make([]byte, SizeBlockID)
+				copy(req.CacheBlockId, cacheBlock.ID[:])
+
+				response.cacheBlock = cacheBlock
+			}
 
 			f := func() {
 				client := NewWaveletClient(conn)
@@ -799,9 +819,14 @@ func (l *Ledger) query() {
 					return
 				}
 
-				vote.voter = voter
+				response.vote.voter = voter
 
-				block, err := UnmarshalBlock(bytes.NewReader(res.Block))
+				if res.CacheValid {
+					response.cacheValid = true
+					return
+				}
+
+				block, err := UnmarshalBlock(bytes.NewReader(res.GetBlock()))
 				if err != nil {
 					return
 				}
@@ -810,7 +835,7 @@ func (l *Ledger) query() {
 					return
 				}
 
-				vote.block = &block
+				response.vote.block = &block
 			}
 			l.metrics.queryLatency.Time(f)
 		}
@@ -822,18 +847,27 @@ func (l *Ledger) query() {
 	voters := make(map[AccountID]struct{}, len(peers))
 
 	for i := 0; i < cap(votes); i++ {
-		vote := <-voteChan
+		response := <-responseChan
 
-		if vote.voter == nil {
+		if response.vote.voter == nil {
 			continue
 		}
 
-		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
+		if _, recorded := voters[response.vote.voter.PublicKey()]; recorded {
 			continue // To make sure the sampling process is fair, only allow one vote per peer.
 		}
 
-		voters[vote.voter.PublicKey()] = struct{}{}
-		votes = append(votes, vote)
+		voters[response.vote.voter.PublicKey()] = struct{}{}
+
+		if response.cacheValid {
+			response.vote.block = response.cacheBlock
+		} else {
+			if response.vote.block != nil {
+				l.queryBlockCache[response.vote.voter.Checksum()] = response.vote.block
+			}
+		}
+
+		votes = append(votes, &response.vote)
 	}
 
 	for _, vote := range votes {
@@ -892,7 +926,7 @@ func (l *Ledger) SyncToLatestBlock() {
 		for {
 			time.Sleep(5 * time.Millisecond)
 
-			conns, err := SelectPeers(l.client.ClosestPeers(), snowballK)
+			peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
 			if err != nil {
 				select {
 				case <-time.After(1 * time.Second):
@@ -904,9 +938,9 @@ func (l *Ledger) SyncToLatestBlock() {
 			current := l.blocks.Latest()
 
 			var wg sync.WaitGroup
-			wg.Add(len(conns))
+			wg.Add(len(peers))
 
-			for _, conn := range conns {
+			for _, p := range peers {
 				go func(conn *grpc.ClientConn) {
 					client := NewWaveletClient(conn)
 
@@ -946,7 +980,7 @@ func (l *Ledger) SyncToLatestBlock() {
 					syncVotes <- &syncVote{voter: voter, outOfSync: res.OutOfSync}
 
 					wg.Done()
-				}(conn)
+				}(p.Conn())
 			}
 
 			wg.Wait()
@@ -1010,7 +1044,7 @@ func (l *Ledger) SyncToLatestBlock() {
 			Msg("Noticed that we are out of sync; downloading latest state Snapshot from our peer(s).")
 
 	SYNC:
-		conns, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
+		peers, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
 		if err != nil {
 			logger.Warn().Msg("It looks like there are no peers for us to sync with. Retrying...")
 
@@ -1027,10 +1061,10 @@ func (l *Ledger) SyncToLatestBlock() {
 			stream Wavelet_SyncClient
 		}
 
-		responses := make([]response, 0, len(conns))
+		responses := make([]response, 0, len(peers))
 
-		for _, conn := range conns {
-			stream, err := NewWaveletClient(conn).Sync(context.Background())
+		for _, p := range peers {
+			stream, err := NewWaveletClient(p.Conn()).Sync(context.Background())
 			if err != nil {
 				continue
 			}
