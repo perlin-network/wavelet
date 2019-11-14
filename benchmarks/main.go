@@ -17,41 +17,26 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package store
+package main
 
 import (
-	"io"
+	"fmt"
+	"os"
 )
 
-type KV interface {
-	io.Closer
+func main() {
+	args := os.Args[1:]
+	if len(args) == 0 {
+		fmt.Println("usage: go run . <benchmark>")
+		os.Exit(1)
+	}
 
-	Get(key []byte) ([]byte, error)
-	MultiGet(keys ...[]byte) ([][]byte, error)
+	benchmark := args[0]
+	switch benchmark {
+	case "accounts":
+		runAccountsBenchmark()
 
-	Put(key, value []byte) error
-
-	NewWriteBatch() WriteBatch
-	CommitWriteBatch(batch WriteBatch) error
-
-	Delete(key []byte) error
-
-	Dir() string
-}
-
-// WriteBatch batches a collection of put operations in memory before
-// it's committed to disk.
-//
-// It's not guaranteed that all of the operations are kept in memory before
-// the write batch is explicitly committed. It might be possible that the
-// database decided commit the batch to disk earlier. For example, if a write
-// batch is created, and 1000 put operations are batched, it might happen
-// that while batching the 600th operation, the database decides to commit
-// the first 599th operations first before proceeding.
-type WriteBatch interface {
-	Put(key, value []byte) error
-
-	Clear()
-	Count() int
-	Destroy()
+	case "tree":
+		runTreeBenchmark()
+	}
 }
