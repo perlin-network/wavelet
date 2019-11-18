@@ -8,15 +8,15 @@ import (
 )
 
 // converts a normal (func to close, error) to only an error
-func addToCloser(toClose []func()) func(f func(), err error) error {
+func addToCloser(toClose *[]func()) func(f func(), err error) error {
 	return func(f func(), err error) error {
-		toClose = append(toClose, f)
+		*toClose = append(*toClose, f)
 		return err
 	}
 }
 
 func setEvents(c *wctl.Client) (func(), error) {
-	toClose := []func(){}
+	var toClose []func()
 	cleanup := func() {
 		for _, f := range toClose {
 			f()
@@ -27,7 +27,7 @@ func setEvents(c *wctl.Client) (func(), error) {
 
 	c.OnPeerJoin = onPeerJoin
 	c.OnPeerLeave = onPeerLeave
-	if err := addToCloser(toClose)(c.PollNetwork()); err != nil {
+	if err := addToCloser(&toClose)(c.PollNetwork()); err != nil {
 		return cleanup, err
 	}
 
@@ -35,7 +35,7 @@ func setEvents(c *wctl.Client) (func(), error) {
 	c.OnGasBalanceUpdated = onGasBalanceUpdated
 	c.OnStakeUpdated = onStakeUpdated
 	c.OnRewardUpdated = onRewardUpdate
-	if err := addToCloser(toClose)(c.PollAccounts()); err != nil {
+	if err := addToCloser(&toClose)(c.PollAccounts()); err != nil {
 		return cleanup, err
 	}
 
@@ -44,19 +44,19 @@ func setEvents(c *wctl.Client) (func(), error) {
 
 	c.OnContractGas = onContractGas
 	c.OnContractLog = onContractLog
-	if err := addToCloser(toClose)(c.PollContracts()); err != nil {
+	if err := addToCloser(&toClose)(c.PollContracts()); err != nil {
 		return cleanup, err
 	}
 
 	c.OnTxApplied = onTxApplied
 	c.OnTxGossipError = onTxGossipError
 	c.OnTxFailed = onTxFailed
-	if err := addToCloser(toClose)(c.PollTransactions()); err != nil {
+	if err := addToCloser(&toClose)(c.PollTransactions()); err != nil {
 		return cleanup, err
 	}
 
 	c.OnStakeRewardValidator = onStakeRewardValidator
-	if err := addToCloser(toClose)(c.PollStake()); err != nil {
+	if err := addToCloser(&toClose)(c.PollStake()); err != nil {
 		return cleanup, err
 	}
 
