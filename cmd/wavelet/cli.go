@@ -361,11 +361,7 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 }
 
 func (cli *CLI) Start() {
-	defer func() {
-		fmt.Println("before cli cleanup")
-		cli.cleanup()
-		fmt.Println("after cli cleanup")
-	}()
+	defer cli.cleanup()
 
 ReadLoop:
 	for {

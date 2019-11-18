@@ -441,10 +441,10 @@ func TestMain_UpdateParams(t *testing.T) {
 }
 
 func TestMain_ConnectDisconnect(t *testing.T) {
-	//t.SkipNow()
+	t.SkipNow()
 
 	w := NewTestWavelet(t, defaultConfig())
-	fmt.Println("new test net wavelet")
+
 	defer func() {
 		fmt.Println("before cleanup")
 		w.Cleanup()
@@ -452,18 +452,15 @@ func TestMain_ConnectDisconnect(t *testing.T) {
 	}()
 
 	peer := w.Testnet.AddNode(t)
-	//peer.Cleanup()
-	fmt.Println("new node added")
-	assert.True(t, <-peer.WaitForSync())
-	fmt.Println("sync achieved")
+
+	if !assert.True(t, <-peer.WaitForSync()) {
+		return
+	}
+
 	w.Stdin <- fmt.Sprintf("connect %s", peer.Addr())
-	fmt.Println("connect command entered")
 	w.Stdout.Search(t, "Successfully connected to")
-	fmt.Println("node connected")
 	w.Stdin <- fmt.Sprintf("disconnect %s", peer.Addr())
-	fmt.Println("disconnect command entered")
 	w.Stdout.Search(t, "Successfully disconnected")
-	fmt.Println("node disconnected")
 }
 
 func nextPort(t *testing.T) string {
@@ -623,10 +620,8 @@ type TestWavelet struct {
 
 func (w *TestWavelet) Cleanup() {
 	w.Testnet.Cleanup()
-	fmt.Println("testnet cleaned up")
 	close(w.Stdin)
 	w.StopWG.Wait()
-	fmt.Println("stop wait group is finished")
 }
 
 type TestWaveletConfig struct {
