@@ -178,11 +178,9 @@ func New(cfg *Config) (*Wavelet, error) {
 	var kv store.KV
 	if len(cfg.Database) == 0 {
 		kv = store.NewInmem()
-	} else {
-		if kv, err = store.NewLevelDB(cfg.Database); err != nil {
-			return nil, fmt.Errorf(
-				"Failed to create/open database located at %s", cfg.Database)
-		}
+	} else if kv, err = store.NewLevelDB(cfg.Database); err != nil {
+		return nil, fmt.Errorf(
+			"failed to create/open database located at %s", cfg.Database)
 	}
 
 	w.db = kv

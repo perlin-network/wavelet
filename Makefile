@@ -17,7 +17,7 @@ fmt:
 
 lint:
 #	https://github.com/golangci/golangci-lint#install
-	golangci-lint run --enable-all -D gochecknoglobals,goimports,funlen,maligned,lll
+	golangci-lint -c .golangci.yml run
 
 check: fmt lint test
 
