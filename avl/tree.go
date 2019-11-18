@@ -201,7 +201,10 @@ func (t *Tree) Commit() error {
 			return false, err
 		}
 
-		batch.Put(append(NodeKeyPrefix, n.id[:]...), buf.Bytes())
+		if err := batch.Put(append(NodeKeyPrefix, n.id[:]...), buf.Bytes()); err != nil {
+			return false, err
+		}
+
 		return true, nil
 	})
 	if err != nil {

@@ -20,18 +20,14 @@
 package main
 
 import (
-	"runtime"
-
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
 )
 
-func floodTransactions() func(client *wctl.Client) ([]*wctl.TxResponse, error) {
+func floodTransactions(numWorkers int) func(client *wctl.Client) ([]*wctl.TxResponse, error) {
 	return func(client *wctl.Client) ([]*wctl.TxResponse, error) {
-		numWorkers := runtime.NumCPU()
-
 		chRes := make(chan *wctl.TxResponse, numWorkers)
 		chErr := make(chan error, numWorkers)
 

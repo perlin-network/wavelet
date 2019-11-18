@@ -17,36 +17,26 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package wavelet
+package main
 
 import (
-	"math/rand"
-
-	"github.com/perlin-network/noise/skademlia"
-
-	"github.com/pkg/errors"
-	"google.golang.org/grpc/connectivity"
+	"fmt"
+	"os"
 )
 
-func SelectPeers(peers []skademlia.ClosestPeer, amount int) ([]skademlia.ClosestPeer, error) {
-	if len(peers) < amount {
-		return peers, errors.Errorf("only connected to %d peer(s), but require a minimum of %d peer(s)", len(peers), amount)
+func main() {
+	args := os.Args[1:]
+	if len(args) == 0 {
+		fmt.Println("usage: go run . <benchmark>")
+		os.Exit(1)
 	}
 
-	activePeers := make([]skademlia.ClosestPeer, 0, len(peers))
-	for _, p := range peers {
-		if p.Conn().GetState() == connectivity.Ready {
-			activePeers = append(activePeers, p)
-		}
+	benchmark := args[0]
+	switch benchmark {
+	case "accounts":
+		runAccountsBenchmark()
+
+	case "tree":
+		runTreeBenchmark()
 	}
-
-	if len(activePeers) > amount {
-		rand.Shuffle(len(activePeers), func(i, j int) {
-			activePeers[i], activePeers[j] = activePeers[j], activePeers[i]
-		})
-
-		activePeers = activePeers[:amount]
-	}
-
-	return activePeers, nil
 }

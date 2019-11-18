@@ -25,6 +25,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -80,6 +81,11 @@ func main() {
 					Name:  "wallet",
 					Usage: "private key in hex format to connect to node HTTP API with",
 					Value: "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+				},
+				cli.IntFlag{
+					Name:  "worker, w",
+					Usage: "the number of workers used to spam transactions per iteration, where one worker will send one transaction. default to the number of logical CPU and min is 1.",
+					Value: runtime.NumCPU(),
 				},
 			},
 			Action: commandRemote,
@@ -185,6 +191,11 @@ func commandRemote(c *cli.Context) error {
 		Hex("publicKey", publicKey[:]).
 		Msg("Loaded wallet.")
 
+	numWorkers := c.Int("worker")
+	if numWorkers < 0 {
+		numWorkers = 1
+	}
+
 	client, err := connectToAPI(host, port, k.PrivateKey())
 	if err != nil {
 		return errors.Wrap(err, "failed to connect to node HTTP API")
@@ -192,7 +203,7 @@ func commandRemote(c *cli.Context) error {
 
 	defer client.Close()
 
-	fmt.Println("You're now connected!")
+	fmt.Printf("You're now connected! Using %d workers\n.", numWorkers)
 
 	// Add the OnMetrics callback
 	client.OnMetrics = func(met wctl.Metrics) {
@@ -213,7 +224,7 @@ func commandRemote(c *cli.Context) error {
 		panic(err)
 	}
 
-	flood := floodTransactions()
+	flood := floodTransactions(numWorkers)
 
 	for {
 		if _, err := flood(client); err != nil {

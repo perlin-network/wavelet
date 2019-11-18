@@ -37,8 +37,9 @@ type inmemWriteBatch struct {
 	pairs []kvPair
 }
 
-func (b *inmemWriteBatch) Put(key, value []byte) {
+func (b *inmemWriteBatch) Put(key, value []byte) error {
 	b.pairs = append(b.pairs, kvPair{key: key, value: value})
+	return nil
 }
 
 func (b *inmemWriteBatch) Clear() {

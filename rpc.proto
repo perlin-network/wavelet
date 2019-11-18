@@ -23,10 +23,12 @@ package wavelet;
 
 message QueryRequest {
     uint64 block_index = 1;
+    bytes cache_block_id = 2;
 }
 
 message QueryResponse {
     bytes block = 1;
+    bool cache_valid = 2;
 }
 
 message OutOfSyncRequest {

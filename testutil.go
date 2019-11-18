@@ -270,7 +270,7 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 		path = cfg.DBPath
 	}
 
-	kv, cleanup := store.NewTestKV(t, "level", path, kvOpts...)
+	kv, cleanup := store.NewTestKV(t, "badger", path, kvOpts...)
 	ledger := NewLedger(kv, client, WithoutGC())
 	server := client.Listen()
 	RegisterWaveletServer(server, ledger.Protocol())

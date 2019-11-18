@@ -56,7 +56,7 @@ func TestSelectPeers(t *testing.T) {
 		select {
 		case <-ticker.C:
 			for _, peer := range closest {
-				if peer.GetState() == connectivity.Ready {
+				if peer.Conn().GetState() == connectivity.Ready {
 					activeCount++
 				}
 			}
