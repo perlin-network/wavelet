@@ -17,8 +17,9 @@ jobs:
       - name: Build for 32 bit arm
         run: GOOS=linux GOARCH=arm go build -o wavelet-linux-arm ./cmd/wavelet
       - name: Run linter
-        run: golangci-lint run --enable-all -D gochecknoglobals,goimports,funlen,maligned,lll
-        uses: golangci/golangci-lint@v1.21.0
+        uses: matoous/golangci-lint-action@v1.1.0
+        with:
+          config: .golangci.yml
       - name: Run unit tests
         run: go test -v -coverprofile=coverage.txt -covermode=atomic -race -timeout=30m .
       - name: Upload coverage report

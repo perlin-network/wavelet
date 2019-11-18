@@ -1,0 +1,8 @@
+linters:
+  enable-all: true
+  disable:
+    - gochecknoglobals
+    - goimports
+    - funlen
+    - maligned
+    - lll
