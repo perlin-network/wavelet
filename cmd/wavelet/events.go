@@ -10,7 +10,9 @@ import (
 // converts a normal (func to close, error) to only an error
 func addToCloser(toClose *[]func()) func(f func(), err error) error {
 	return func(f func(), err error) error {
-		*toClose = append(*toClose, f)
+		if f != nil {
+			*toClose = append(*toClose, f)
+		}
 		return err
 	}
 }
