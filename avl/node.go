@@ -47,19 +47,17 @@ const (
 )
 
 type node struct {
-	id, left, right   [MerkleHashSize]byte
-	leftObj, rightObj *node
-
 	wroteBack bool
+	depth     byte
+
+	key, value      []byte
+	id, left, right [MerkleHashSize]byte
 
 	viewID uint64
+	size   uint64
 
-	key, value []byte
-
-	kind nodeType
-
-	depth byte
-	size  uint64
+	kind              nodeType
+	leftObj, rightObj *node
 }
 
 func newLeafNode(t *Tree, key, value []byte) *node {
@@ -196,42 +194,42 @@ func (n *node) insert(t *Tree, key, value []byte) *node {
 				node.leftObj = left
 				node.sync(t, left, right)
 			}).rebalance(t)
-		} else {
-			return n.update(t, func(node *node) {
-				right = right.insert(t, key, value)
-
-				node.right = right.id
-				node.rightObj = right
-				node.sync(t, left, right)
-			}).rebalance(t)
 		}
+
+		return n.update(t, func(node *node) {
+			right = right.insert(t, key, value)
+
+			node.right = right.id
+			node.rightObj = right
+			node.sync(t, left, right)
+		}).rebalance(t)
 	} else if n.kind == NodeLeafValue {
 		if bytes.Equal(key, n.key) {
 			return n.update(t, func(node *node) {
 				node.value = value
 			})
-		} else {
-			out := n.update(t, func(node *node) {
-				node.kind = NodeNonLeaf
-
-				if bytes.Compare(key, n.key) < 0 {
-					newLeft := newLeafNode(t, key, value)
-					node.left = newLeft.id
-					node.leftObj = newLeft
-					node.right = n.id
-					node.rightObj = n
-				} else {
-					node.left = n.id
-					node.leftObj = n
-					newRight := newLeafNode(t, key, value)
-					node.right = newRight.id
-					node.rightObj = newRight
-				}
-
-				node.sync(t, nil, nil)
-			})
-			return out
 		}
+
+		out := n.update(t, func(node *node) {
+			node.kind = NodeNonLeaf
+
+			if bytes.Compare(key, n.key) < 0 {
+				newLeft := newLeafNode(t, key, value)
+				node.left = newLeft.id
+				node.leftObj = newLeft
+				node.right = n.id
+				node.rightObj = n
+			} else {
+				node.left = n.id
+				node.leftObj = n
+				newRight := newLeafNode(t, key, value)
+				node.right = newRight.id
+				node.rightObj = newRight
+			}
+
+			node.sync(t, nil, nil)
+		})
+		return out
 	}
 
 	panic(errors.Errorf("avl: on insert, found an unsupported node kind %d", n.kind))
@@ -241,17 +239,17 @@ func (n *node) lookup(t *Tree, key []byte) ([]byte, bool) {
 	if n.kind == NodeLeafValue {
 		if bytes.Equal(n.key, key) {
 			return n.value, true
-		} else {
-			return nil, false
 		}
+
+		return nil, false
 	} else if n.kind == NodeNonLeaf {
 		child := t.mustLoadLeft(n)
 
 		if bytes.Compare(key, child.key) <= 0 {
 			return child.lookup(t, key)
-		} else {
-			return t.mustLoadRight(n).lookup(t, key)
 		}
+
+		return t.mustLoadRight(n).lookup(t, key)
 	}
 
 	panic(errors.Errorf("avl: on lookup, found an unsupported node kind %d", n.kind))
@@ -282,9 +280,9 @@ func (n *node) delete(t *Tree, key []byte) (*node, bool) {
 	if n.kind == NodeLeafValue {
 		if bytes.Equal(n.key, key) {
 			return nil, true
-		} else {
-			return n, false
 		}
+
+		return n, false
 	} else if n.kind == NodeNonLeaf {
 		var deleted bool
 
@@ -296,30 +294,34 @@ func (n *node) delete(t *Tree, key []byte) (*node, bool) {
 
 			if left == nil {
 				return right, deleted
-			} else if deleted {
+			}
+
+			if deleted {
 				return n.update(t, func(node *node) {
 					node.left = left.id
 					node.leftObj = left
 					node.sync(t, left, right)
 				}).rebalance(t), deleted
-			} else {
-				return n, deleted
 			}
-		} else {
-			right, deleted = right.delete(t, key)
 
-			if right == nil {
-				return left, deleted
-			} else if deleted {
-				return n.update(t, func(node *node) {
-					node.right = right.id
-					node.rightObj = right
-					node.sync(t, left, right)
-				}).rebalance(t), deleted
-			} else {
-				return n, deleted
-			}
+			return n, deleted
 		}
+
+		right, deleted = right.delete(t, key)
+
+		if right == nil {
+			return left, deleted
+		}
+
+		if deleted {
+			return n.update(t, func(node *node) {
+				node.right = right.id
+				node.rightObj = right
+				node.sync(t, left, right)
+			}).rebalance(t), deleted
+		}
+
+		return n, deleted
 	}
 
 	panic(errors.Errorf("avl: on delete, found an unsupported node kind %d", n.kind))
@@ -331,7 +333,9 @@ func (n *node) rehash() {
 
 func (n *node) rehashNoWrite() [MerkleHashSize]byte {
 	buf := bytebufferpool.Get()
-	n.serialize(buf)
+	if err := n.serialize(buf); err != nil {
+		panic(err)
+	}
 
 	hash := highwayhash.Sum128(buf.Bytes(), hashKey)
 
@@ -375,10 +379,19 @@ func (n *node) serializeForDifference(wr io.Writer) error {
 	buf := bytebufferpool.Get()
 	defer bytebufferpool.Put(buf)
 
-	buf.Write(n.id[:])
+	if _, err := buf.Write(n.id[:]); err != nil {
+		return err
+	}
+
 	binary.LittleEndian.PutUint64(buf64[:], n.viewID)
-	buf.Write(buf64[:])
-	buf.WriteByte(byte(n.kind))
+
+	if _, err := buf.Write(buf64[:]); err != nil {
+		return err
+	}
+
+	if err := buf.WriteByte(byte(n.kind)); err != nil {
+		return err
+	}
 
 	if n.kind == NodeLeafValue {
 		if uint32(len(n.key)) > uint32(math.MaxUint32) {
@@ -386,19 +399,34 @@ func (n *node) serializeForDifference(wr io.Writer) error {
 		}
 
 		binary.LittleEndian.PutUint32(buf64[:4], uint32(len(n.key)))
-		buf.Write(buf64[:4])
-		buf.Write(n.key)
+		if _, err := buf.Write(buf64[:4]); err != nil {
+			return err
+		}
+
+		if _, err := buf.Write(n.key); err != nil {
+			return err
+		}
 
 		if uint32(len(n.value)) > uint32(math.MaxUint32) {
 			panic("avl: value is too long")
 		}
 
 		binary.LittleEndian.PutUint32(buf64[:4], uint32(len(n.value)))
-		buf.Write(buf64[:4])
-		buf.Write(n.value)
+		if _, err := buf.Write(buf64[:4]); err != nil {
+			return err
+		}
+
+		if _, err := buf.Write(n.value); err != nil {
+			return err
+		}
 	} else {
-		buf.Write(n.left[:])
-		buf.Write(n.right[:])
+		if _, err := buf.Write(n.left[:]); err != nil {
+			return err
+		}
+
+		if _, err := buf.Write(n.right[:]); err != nil {
+			return err
+		}
 	}
 
 	_, err := buf.WriteTo(wr)
@@ -444,7 +472,7 @@ func (n *node) dfs(t *Tree, allowMissingNodes bool, cb func(*node) (bool, error)
 	return nil
 }
 
-func DeserializeFromDifference(r io.Reader, localViewID uint64) (*node, error) {
+func DeserializeFromDifference(r io.Reader, localViewID uint64) (*node, error) { // nolint:golint
 	var buf64 [8]byte
 
 	var id [MerkleHashSize]byte
@@ -468,7 +496,8 @@ func DeserializeFromDifference(r io.Reader, localViewID uint64) (*node, error) {
 	}
 	kind := nodeType(buf64[0])
 
-	if kind == NodeLeafValue {
+	switch kind {
+	case NodeLeafValue:
 		_, err = r.Read(buf64[:4])
 		if err != nil {
 			return nil, err
@@ -495,8 +524,7 @@ func DeserializeFromDifference(r io.Reader, localViewID uint64) (*node, error) {
 			value:  value,
 			kind:   kind,
 		}, nil
-
-	} else if kind == NodeNonLeaf {
+	case NodeNonLeaf:
 		var left, right [MerkleHashSize]byte
 		_, err = r.Read(left[:])
 		if err != nil {
@@ -513,23 +541,33 @@ func DeserializeFromDifference(r io.Reader, localViewID uint64) (*node, error) {
 			left:   left,
 			right:  right,
 		}, nil
-	} else {
+	default:
 		return nil, errors.New("invalid kind")
 	}
 }
 
-func (n *node) serialize(buf *bytebufferpool.ByteBuffer) {
-	buf.WriteByte(byte(n.kind))
+func (n *node) serialize(buf *bytebufferpool.ByteBuffer) error {
+	if err := buf.WriteByte(byte(n.kind)); err != nil {
+		return err
+	}
 
 	if n.kind != NodeLeafValue {
-		buf.Write(n.left[:])
-		buf.Write(n.right[:])
+		if _, err := buf.Write(n.left[:]); err != nil {
+			return err
+		}
+
+		if _, err := buf.Write(n.right[:]); err != nil {
+			return err
+		}
 	}
 
 	var buf64 [8]byte
 
 	binary.LittleEndian.PutUint64(buf64[:], n.viewID)
-	buf.Write(buf64[:])
+
+	if _, err := buf.Write(buf64[:]); err != nil {
+		return err
+	}
 
 	// Write key.
 	if uint32(len(n.key)) > uint32(math.MaxUint32) {
@@ -537,8 +575,13 @@ func (n *node) serialize(buf *bytebufferpool.ByteBuffer) {
 	}
 
 	binary.LittleEndian.PutUint32(buf64[:4], uint32(len(n.key)))
-	buf.Write(buf64[:4])
-	buf.Write(n.key)
+	if _, err := buf.Write(buf64[:4]); err != nil {
+		return err
+	}
+
+	if _, err := buf.Write(n.key); err != nil {
+		return err
+	}
 
 	if n.kind == NodeLeafValue {
 		// Write value.
@@ -547,16 +590,25 @@ func (n *node) serialize(buf *bytebufferpool.ByteBuffer) {
 		}
 
 		binary.LittleEndian.PutUint32(buf64[:4], uint32(len(n.value)))
-		buf.Write(buf64[:4])
-		buf.Write(n.value)
+		if _, err := buf.Write(buf64[:4]); err != nil {
+			return err
+		}
+
+		if _, err := buf.Write(n.value); err != nil {
+			return err
+		}
 	}
 
 	// Write depth.
-	buf.WriteByte(n.depth)
+	if err := buf.WriteByte(n.depth); err != nil {
+		return err
+	}
 
 	// Write size.
 	binary.LittleEndian.PutUint64(buf64[:], n.size)
-	buf.Write(buf64[:])
+	_, err := buf.Write(buf64[:])
+
+	return err
 }
 
 func deserialize(r *bytes.Reader) (*node, error) {
@@ -642,7 +694,10 @@ func mustDeserialize(r *bytes.Reader) *node {
 }
 
 // populateDiffs constructs a valid AVL tree from the incoming preloaded tree difference.
-func populateDiffs(t *Tree, id [MerkleHashSize]byte, preloaded *diffQueue, visited map[[MerkleHashSize]byte]struct{}, updateNotifier func(key, value []byte)) (*node, error) {
+func populateDiffs(
+	t *Tree, id [MerkleHashSize]byte, preloaded *diffQueue, visited map[[MerkleHashSize]byte]struct{},
+	updateNotifier func(key, value []byte),
+) (*node, error) {
 	if t.root != nil && !t.root.wroteBack {
 		return nil, errors.New("cannot call populateDiffs() on a dirty tree")
 	}
@@ -675,7 +730,8 @@ func populateDiffs(t *Tree, id [MerkleHashSize]byte, preloaded *diffQueue, visit
 		return nil, errors.New("invalid diff order")
 	}
 
-	if n.kind == NodeLeafValue {
+	switch n.kind {
+	case NodeLeafValue:
 		n.size = 1
 		n.depth = 0
 		if n.id != n.rehashNoWrite() {
@@ -685,7 +741,7 @@ func populateDiffs(t *Tree, id [MerkleHashSize]byte, preloaded *diffQueue, visit
 			updateNotifier(n.key, n.value)
 		}
 		return n, nil
-	} else if n.kind == NodeNonLeaf {
+	case NodeNonLeaf:
 		leftNode, err := populateDiffs(t, n.left, preloaded, visited, updateNotifier)
 		if err != nil {
 			return nil, err
@@ -732,7 +788,7 @@ func populateDiffs(t *Tree, id [MerkleHashSize]byte, preloaded *diffQueue, visit
 		n.rightObj = rightNode
 
 		return n, nil
-	} else {
+	default:
 		return nil, errors.New("unknown node kind")
 	}
 

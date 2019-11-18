@@ -90,7 +90,7 @@ func (s *inmemKV) MultiGet(keys ...[]byte) ([][]byte, error) {
 	s.RLock()
 	defer s.RUnlock()
 
-	var bufs [][]byte
+	bufs := make([][]byte, 0, len(keys))
 
 	for _, key := range keys {
 		buf, found := s.db.GetValue(key)
@@ -152,7 +152,7 @@ func (s *inmemKV) Dir() string {
 	return ""
 }
 
-func NewInmem() *inmemKV {
+func NewInmem() *inmemKV { // nolint:golint
 	var comparator skiplist.GreaterThanFunc = func(lhs, rhs interface{}) bool {
 		return bytes.Compare(lhs.([]byte), rhs.([]byte)) == 1
 	}

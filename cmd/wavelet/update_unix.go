@@ -5,7 +5,7 @@ import (
 	"syscall"
 )
 
-func switchToUpdatedBinary(newBinary string) error {
+func switchToUpdatedBinary(newBinary string) error { // nolint:unused
 	origArg0 := os.Args[0]
 
 	os.Args[0] = newBinary

@@ -20,13 +20,14 @@
 package wavelet
 
 import (
+	"crypto/rand"
 	"encoding/binary"
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/blake2b"
-	"math/rand"
+	mrand "math/rand"
 	"testing"
 )
 
@@ -128,9 +129,9 @@ func TestSnowball(t *testing.T) {
 	assert.Len(t, snowball.counts, 1)
 
 	// Try tick once more. Does absolutely nothing.
-	cloned := *snowball
+	cloned := *snowball // nolint:govet
 	snowball.Tick(votes)
-	assert.Equal(t, *snowball, cloned)
+	assert.Equal(t, *snowball, cloned) // nolint:govet
 
 	// Reset Snowball and assert everything is cleared properly.
 	snowball.Reset()
@@ -304,7 +305,7 @@ func TestSnowball_EqualTally_LowerThanAlpha(t *testing.T) {
 	// Expected: The preferred will not change.
 
 	// Prefer a random vote
-	last := votes[rand.Intn(len(votes))].(*testVote)
+	last := votes[mrand.Intn(len(votes))].(*testVote)
 	snowball.Prefer(last)
 
 	for i := 0; i < snowballBeta*2; i++ {

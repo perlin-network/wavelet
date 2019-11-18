@@ -20,8 +20,8 @@
 package store
 
 import (
+	"crypto/rand"
 	"github.com/stretchr/testify/assert"
-	"math/rand"
 	"os"
 	"testing"
 )

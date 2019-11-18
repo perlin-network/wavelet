@@ -1,3 +1,4 @@
+// nolint
 package main
 
 import (
@@ -16,9 +17,6 @@ import (
 	"path"
 	"strconv"
 	"strings"
-	"time"
-
-	"github.com/perlin-network/wavelet/sys"
 )
 
 var updateDirectory = func() string {
@@ -57,9 +55,9 @@ func validateSignature(publicKeyPEM []byte, signatureHex string, hash []byte) er
 		return err
 	}
 
-	switch publicKey := publicKey.(type) {
+	switch publicKey := publicKey.(type) { // nolint:gocritic
 	case *rsa.PublicKey:
-		err = rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hash[:], signature)
+		err = rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hash, signature)
 		return err
 	}
 
@@ -137,6 +135,8 @@ func downloadUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte)
 	if err != nil {
 		return fmt.Errorf("Unable to download update file (begin): %+v", err)
 	}
+
+	defer binaryHandle.Body.Close()
 
 	_, err = io.Copy(binaryTempFile, binaryHandle.Body)
 	if err != nil {
@@ -216,35 +216,6 @@ func checkForUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte,
 	switchToUpdatedVersion()
 
 	return
-}
-
-func periodicUpdateRoutine(updateURL string) {
-	if updateURL == "" {
-		return
-	}
-
-	/*
-	 * Public key(s) which may sign updates;  For now this is
-	 * a single key.
-	 */
-	publicKeyPEM := []byte(`-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArpAZWeG0HHOGNALRj+UF
-JLqXMJ2+AxFu7EWqQOVVh+LSpNn4kOm68TY4c4J4KsjRY9FlXXkZOv64oCBwIAXU
-13+ciLIguJkJkSgOcuTuzBN1xPkWQdFRY1dkRv0Uc1AwEC5t89shkDbEB7z5uhyu
-PHY/AnnudR60OP3Qe+HqxPLQAlhEvgHzGt0FktRRH+dcah+QycSWWjR3gEyDvKiO
-keq8rrb+65AWob+AVIjiBN0SSqim9VxeEWIaMKOAjSBrUK9QahkPca+ZcrW5vIJX
-E5M6PhOfWnxmqDGntZ/uJ+QEbTsUDisx4mEOen1JU6CgU8zqj1t3RGyDpWllCQT9
-yQIDAQAB
------END PUBLIC KEY-----`)
-
-	currentVersion := sys.VersionCode
-
-	baseURL := fmt.Sprintf("%s/network/%s/platform/%s", updateURL, sys.VersionMeta, sys.OSArch)
-
-	for {
-		checkForUpdate(baseURL, updateDirectory, publicKeyPEM, currentVersion)
-		time.Sleep(10 * time.Minute)
-	}
 }
 
 func switchToUpdatedVersion() {

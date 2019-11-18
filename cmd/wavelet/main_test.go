@@ -398,14 +398,12 @@ func TestMain_UpdateParams(t *testing.T) {
 		{"download.tx.timeout", "downloadTxTimeout", time.Second * 3},
 		{"check.out.of.sync.timeout", "checkOutOfSyncTimeout", time.Second * 7},
 		{"sync.chunk.size", "syncChunkSize", int(1337)},
-		{"sync.if.rounds.differ.by", "syncIfRoundsDifferBy", uint64(42)},
-		{"max.download.depth.diff", "maxDownloadDepthDiff", uint64(69)},
-		{"max.depth.diff", "maxDepthDiff", uint64(9001)},
 		{"pruning.limit", "pruningLimit", uint64(255)},
 		{"api.secret", "secret", "shambles"},
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.Config, func(t *testing.T) {
 			var inputVal string
 			switch v := tt.Value.(type) {
@@ -443,17 +441,29 @@ func TestMain_UpdateParams(t *testing.T) {
 }
 
 func TestMain_ConnectDisconnect(t *testing.T) {
+	//t.SkipNow()
+
 	w := NewTestWavelet(t, defaultConfig())
-	defer w.Cleanup()
+	fmt.Println("new test net wavelet")
+	defer func() {
+		fmt.Println("before cleanup")
+		w.Cleanup()
+		fmt.Println("after cleanup")
+	}()
 
 	peer := w.Testnet.AddNode(t)
-	<-peer.WaitForSync()
-
+	//peer.Cleanup()
+	fmt.Println("new node added")
+	assert.True(t, <-peer.WaitForSync())
+	fmt.Println("sync achieved")
 	w.Stdin <- fmt.Sprintf("connect %s", peer.Addr())
+	fmt.Println("connect command entered")
 	w.Stdout.Search(t, "Successfully connected to")
-
+	fmt.Println("node connected")
 	w.Stdin <- fmt.Sprintf("disconnect %s", peer.Addr())
+	fmt.Println("disconnect command entered")
 	w.Stdout.Search(t, "Successfully disconnected")
+	fmt.Println("node disconnected")
 }
 
 func nextPort(t *testing.T) string {
@@ -498,10 +508,6 @@ type TestTransaction struct {
 	Payload string `json:"payload"`
 }
 
-func nopStdin() io.ReadCloser {
-	return ioutil.NopCloser(strings.NewReader(""))
-}
-
 type mockStdin chan string
 
 func (s mockStdin) Read(dst []byte) (n int, err error) {
@@ -510,7 +516,8 @@ func (s mockStdin) Read(dst []byte) (n int, err error) {
 		return 0, io.EOF
 	}
 
-	copy(dst, []byte(line+"\n"))
+	copy(dst, line+"\n")
+
 	return len(line) + 1, nil
 }
 
@@ -522,7 +529,6 @@ func (s mockStdin) Close() error {
 type mockStdout struct {
 	Lines chan string
 	buf   []byte
-	bi    int
 }
 
 func newMockStdout() *mockStdout {
@@ -617,9 +623,10 @@ type TestWavelet struct {
 
 func (w *TestWavelet) Cleanup() {
 	w.Testnet.Cleanup()
-
+	fmt.Println("testnet cleaned up")
 	close(w.Stdin)
 	w.StopWG.Wait()
+	fmt.Println("stop wait group is finished")
 }
 
 type TestWaveletConfig struct {
@@ -782,7 +789,7 @@ func getTransaction(apiPort string, id string) (*TestTransaction, error) {
 
 func (w *TestWavelet) WaitForConsensus(t *testing.T) {
 	t.Helper()
-	w.Stdout.Search(t, "Finalized consensus round")
+	w.Stdout.Search(t, "Finalized block")
 }
 
 func asAccountID(t *testing.T, s string) wavelet.AccountID {

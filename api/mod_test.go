@@ -22,7 +22,6 @@ package api
 import (
 	"bufio"
 	"bytes"
-	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -53,170 +52,6 @@ import (
 	"github.com/valyala/fastjson"
 )
 
-func TestListTransaction(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
-
-	// Create a transaction
-	var buf [200]byte
-	_, err := rand.Read(buf[:])
-	assert.NoError(t, err)
-	_ = wavelet.NewTransaction(sys.TagTransfer, buf[:])
-	assert.NoError(t, err)
-
-	// Build an expected response
-	var expectedResponse transactionList
-	for _, tx := range gateway.ledger.Graph().ListTransactions(0, 0, wavelet.AccountID{}) {
-		txRes := &transaction{tx: tx}
-		txRes.status = "applied"
-
-		//_, err := txRes.marshal()
-		//assert.NoError(t, err)
-		expectedResponse = append(expectedResponse, txRes)
-	}
-
-	tests := []struct {
-		name         string
-		url          string
-		wantCode     int
-		wantResponse marshalableJSON
-	}{
-		{
-			name:     "sender not hex",
-			url:      "/tx?sender=1",
-			wantCode: http.StatusBadRequest,
-			wantResponse: testErrResponse{
-				StatusText: "Bad Request",
-				ErrorText:  "sender ID must be presented as valid hex: encoding/hex: odd length hex string",
-			},
-		},
-		{
-			name:     "sender invalid length",
-			url:      "/tx?sender=746c703579786279793638626e726a77666574656c6d34386d6739306b7166306565",
-			wantCode: http.StatusBadRequest,
-			wantResponse: testErrResponse{
-				StatusText: "Bad Request",
-				ErrorText:  "sender ID must be 32 bytes long",
-			},
-		},
-		{
-			name:     "offset negative invalid",
-			url:      "/tx?offset=-1",
-			wantCode: http.StatusBadRequest,
-		},
-		{
-			name:     "limit negative invalid",
-			url:      "/tx?limit=-1",
-			wantCode: http.StatusBadRequest,
-		},
-		{
-			name:         "success",
-			url:          "/tx?limit=1&offset=0",
-			wantCode:     http.StatusOK,
-			wantResponse: expectedResponse,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			request, err := http.NewRequest("GET", "http://localhost"+tc.url, nil)
-			assert.NoError(t, err)
-
-			w, err := serve(gateway.router, request)
-			if err != nil {
-				t.Fatal(t)
-			}
-			assert.NoError(t, err)
-			assert.NotNil(t, w)
-
-			response, err := ioutil.ReadAll(w.Body)
-			assert.NoError(t, err)
-
-			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
-
-			if tc.wantResponse != nil {
-				r, err := tc.wantResponse.marshalJSON(new(fastjson.ArenaPool).Get())
-				assert.NoError(t, err)
-				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
-			}
-		})
-	}
-}
-
-func TestGetTransaction(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
-
-	var buf [200]byte
-	_, err := rand.Read(buf[:])
-	assert.NoError(t, err)
-	_ = wavelet.NewTransaction(sys.TagTransfer, buf[:])
-	assert.NoError(t, err)
-
-	var txId wavelet.TransactionID
-	for _, tx := range gateway.ledger.Graph().ListTransactions(0, 0, wavelet.AccountID{}) {
-		txId = tx.ID
-		break
-	}
-
-	tx := gateway.ledger.Graph().FindTransaction(txId)
-	if tx == nil {
-		t.Fatal("not found")
-	}
-
-	txRes := &transaction{tx: tx}
-	txRes.status = "applied"
-
-	tests := []struct {
-		name         string
-		id           string
-		wantCode     int
-		wantResponse marshalableJSON
-	}{
-		{
-			name:     "invalid id length",
-			id:       "1c331c1d",
-			wantCode: http.StatusBadRequest,
-			wantResponse: &testErrResponse{
-				StatusText: "Bad Request",
-				ErrorText:  fmt.Sprintf("transaction ID must be %d bytes long", wavelet.SizeTransactionID),
-			},
-		},
-		{
-			name:         "success",
-			id:           hex.EncodeToString(txId[:]),
-			wantCode:     http.StatusOK,
-			wantResponse: txRes,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			request, err := http.NewRequest("GET", "http://localhost/tx/"+tc.id, nil)
-			assert.NoError(t, err)
-
-			w, err := serve(gateway.router, request)
-			assert.NoError(t, err)
-			assert.NotNil(t, w)
-
-			response, err := ioutil.ReadAll(w.Body)
-			assert.NoError(t, err)
-
-			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
-
-			if tc.wantResponse != nil {
-				r, err := tc.wantResponse.marshalJSON(new(fastjson.ArenaPool).Get())
-				assert.Nil(t, err)
-				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
-			}
-		})
-	}
-}
-
 func TestSendTransaction(t *testing.T) {
 	gateway := New()
 	gateway.setup()
@@ -233,6 +68,7 @@ func TestSendTransaction(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			reqBody, err := json.Marshal(tc.req)
 			assert.NoError(t, err)
@@ -240,8 +76,13 @@ func TestSendTransaction(t *testing.T) {
 			request := httptest.NewRequest("POST", "http://localhost/tx/send", bytes.NewReader(reqBody))
 
 			w, err := serve(gateway.router, request)
-			assert.NoError(t, err)
-			assert.NotNil(t, w)
+			if !assert.NoError(t, err) || !assert.NotNil(t, w) {
+				return
+			}
+
+			defer func() {
+				_ = w.Body.Close()
+			}()
 
 			_, err = ioutil.ReadAll(w.Body)
 			assert.Nil(t, err)
@@ -269,9 +110,14 @@ func TestSendTransactionRandom(t *testing.T) {
 		request := httptest.NewRequest("POST", "http://localhost/tx/send", bytes.NewReader(reqBody))
 
 		res, err := serve(gateway.router, request)
-		assert.NoError(t, err)
+		if !assert.NoError(t, err) || !assert.NotNil(t, res) {
+			return false
+		}
 
-		assert.NotNil(t, res)
+		defer func() {
+			_ = res.Body.Close()
+		}()
+
 		assert.NotEqual(t, http.StatusNotFound, res.StatusCode)
 
 		return true
@@ -298,6 +144,7 @@ func TestPostPayloadRandom(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.url, func(t *testing.T) {
 			f := func(random1 [][]byte, random2 [][]byte) bool {
 
@@ -313,10 +160,14 @@ func TestPostPayloadRandom(t *testing.T) {
 				request := httptest.NewRequest("POST", "http://localhost"+tc.url, bytes.NewReader(payload))
 
 				res, err := serve(gateway.router, request)
+				if !assert.NoError(t, err) || !assert.NotNil(t, res) {
+					return false
+				}
 
-				assert.NoError(t, err)
+				defer func() {
+					_ = res.Body.Close()
+				}()
 
-				assert.NotNil(t, res)
 				assert.NotEmpty(t, res.StatusCode)
 
 				return true
@@ -380,13 +231,19 @@ func TestGetAccount(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
+	for _, tc := range tests { // nolint:dupl
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			request := httptest.NewRequest("GET", "http://localhost"+tc.url, nil)
 
 			w, err := serve(gateway.router, request)
-			assert.NoError(t, err)
-			assert.NotNil(t, w)
+			if !assert.NoError(t, err) || !assert.NotNil(t, w) {
+				return
+			}
+
+			defer func() {
+				_ = w.Body.Close()
+			}()
 
 			response, err := ioutil.ReadAll(w.Body)
 			assert.NoError(t, err)
@@ -450,13 +307,19 @@ func TestGetContractCode(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
+	for _, tc := range tests { // nolint:dupl
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			request := httptest.NewRequest("GET", "http://localhost"+tc.url, nil)
 
 			w, err := serve(gateway.router, request)
-			assert.NoError(t, err)
-			assert.NotNil(t, w)
+			if !assert.NoError(t, err) || !assert.NotNil(t, w) {
+				return
+			}
+
+			defer func() {
+				_ = w.Body.Close()
+			}()
 
 			response, err := ioutil.ReadAll(w.Body)
 			assert.NoError(t, err)
@@ -507,13 +370,19 @@ func TestGetContractPages(t *testing.T) {
 		},
 	}
 
-	for _, tc := range tests {
+	for _, tc := range tests { // nolint:dupl
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			request := httptest.NewRequest("GET", "http://localhost"+tc.url, nil)
 
 			w, err := serve(gateway.router, request)
-			assert.NoError(t, err)
-			assert.NotNil(t, w)
+			if !assert.NoError(t, err) || !assert.NotNil(t, w) {
+				return
+			}
+
+			defer func() {
+				_ = w.Body.Close()
+			}()
 
 			response, err := ioutil.ReadAll(w.Body)
 			assert.NoError(t, err)
@@ -539,7 +408,7 @@ func TestGetLedger(t *testing.T) {
 	assert.NoError(t, err)
 	gateway.keys = keys
 
-	listener, err := net.Listen("tcp", ":0")
+	listener, err := net.Listen("tcp", ":0") // nolint:gosec
 	assert.NoError(t, err)
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
 
@@ -548,17 +417,16 @@ func TestGetLedger(t *testing.T) {
 		skademlia.WithC2(sys.SKademliaC2),
 	)
 
-	//n, err := xnoise.ListenTCP(0)
-	//assert.NoError(t, err)
-	//gateway.node = n
-
-	//gateway.network = skademlia.New(net.JoinHostPort("127.0.0.1", strconv.Itoa(n.Addr().(*net.TCPAddr).Port)), keys, xnoise.DialTCP)
-
 	request := httptest.NewRequest("GET", "http://localhost/ledger", nil)
 
 	w, err := serve(gateway.router, request)
-	assert.NoError(t, err)
-	assert.NotNil(t, w)
+	if !assert.NoError(t, err) || !assert.NotNil(t, w) {
+		return
+	}
+
+	defer func() {
+		_ = w.Body.Close()
+	}()
 
 	response, err := ioutil.ReadAll(w.Body)
 	assert.NoError(t, err)
@@ -568,12 +436,12 @@ func TestGetLedger(t *testing.T) {
 	publicKey := keys.PublicKey()
 
 	expectedJSON := fmt.Sprintf(
-		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"preferred_votes":0,"sync_status":"Node is taking part in consensus process","preferred_id":"","round":{"merkle_root":"cd3b0df841268ab6c987a594de29ad19","start_id":"0000000000000000000000000000000000000000000000000000000000000000","end_id":"403517ca121f7638349cc92d654d20ac0f63d1958c897bc0cbcc2cdfe8bc74cc","index":0,"depth":0,"difficulty":8},"graph":{"num_tx":1,"num_missing_tx":0,"num_tx_in_store":1,"num_incomplete_tx":0,"height":1},"peers":null}`,
+		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"preferred_votes":0,"sync_status":"Node is taking part in consensus process","block":{"merkle_root":"cd3b0df841268ab6c987a594de29ad19","height":0,"id":"4b35bb7ead7ac9a0e7064c6d99342962360854308f84dde9fe0703cd7772a94d","transactions":0},"preferred":null,"num_missing_tx":0,"num_tx":0,"num_tx_in_store":0,"num_accounts_in_store":3,"peers":null}`,
 		hex.EncodeToString(publicKey[:]),
 		listener.Addr().(*net.TCPAddr).Port,
 	)
 
-	assert.NoError(t, compareJson([]byte(expectedJSON), response))
+	assert.NoError(t, compareJSON([]byte(expectedJSON), response))
 }
 
 // Test the rate limit on all endpoints
@@ -588,7 +456,7 @@ func TestEndpointsRateLimit(t *testing.T) {
 	assert.NoError(t, err)
 	gateway.keys = keys
 
-	listener, err := net.Listen("tcp", ":0")
+	listener, err := net.Listen("tcp", ":0") // nolint:gosec
 	assert.NoError(t, err)
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
 
@@ -682,13 +550,19 @@ func TestEndpointsRateLimit(t *testing.T) {
 	maxPerSecond := 10
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.url, func(t *testing.T) {
 			// We assume the loop will complete in less than 1 second.
 			for i := 0; i < maxPerSecond*2; i++ {
 				request := httptest.NewRequest(tc.method, "http://localhost"+tc.url, nil)
 				w, err := serve(gateway.router, request)
-				assert.NoError(t, err)
-				assert.NotNil(t, w)
+				if !assert.NoError(t, err) || !assert.NotNil(t, w) {
+					return
+				}
+
+				defer func() {
+					_ = w.Body.Close()
+				}()
 
 				_, err = ioutil.ReadAll(w.Body)
 				assert.NoError(t, err)
@@ -731,9 +605,13 @@ func TestConnectDisconnect(t *testing.T) {
 	request := httptest.NewRequest(http.MethodPost, "http://localhost/node/connect", strings.NewReader(body))
 	request.Header.Set("Authorization", "Bearer secret")
 	w, err := serve(gateway.router, request)
-	assert.NoError(t, err)
+	if !assert.NoError(t, err) || !assert.NotNil(t, w) {
+		return
+	}
 
-	assert.NotNil(t, w)
+	defer func() {
+		_ = w.Body.Close()
+	}()
 
 	assert.Equal(t, http.StatusOK, w.StatusCode)
 
@@ -765,7 +643,7 @@ func TestConnectDisconnectErrors(t *testing.T) {
 	assert.NoError(t, err)
 	gateway.keys = keys
 
-	l, err := net.Listen("tcp", ":0")
+	l, err := net.Listen("tcp", ":0") // nolint:gosec
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -845,19 +723,21 @@ func TestConnectDisconnectErrors(t *testing.T) {
 
 	for _, testCase := range testCases {
 		tc := testCase
-		t.Run(testCase.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, "http://localhost"+tc.uri, strings.NewReader(tc.body))
 
-			if len(testCase.authHeader) > 0 {
-				request.Header.Set("Authorization", testCase.authHeader)
+			if len(tc.authHeader) > 0 {
+				request.Header.Set("Authorization", tc.authHeader)
 			}
 
 			w, err := serve(gateway.router, request)
-			assert.NoError(t, err)
-
-			if !assert.NotNil(t, w) {
+			if !assert.NoError(t, err) || !assert.NotNil(t, w) {
 				return
 			}
+
+			defer func() {
+				_ = w.Body.Close()
+			}()
 
 			resp, err := ioutil.ReadAll(w.Body)
 			if !assert.NoError(t, err) {
@@ -870,7 +750,7 @@ func TestConnectDisconnectErrors(t *testing.T) {
 	}
 }
 
-func compareJson(expected []byte, response []byte) error {
+func compareJSON(expected []byte, response []byte) error {
 	if bytes.Equal(bytes.TrimSpace(response), expected) {
 		return nil
 	}

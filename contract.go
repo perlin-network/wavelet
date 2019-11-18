@@ -203,9 +203,9 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				ok := edwards25519.Verify(pub, data, edSig)
 				if ok {
 					return 0
-				} else {
-					return 1
 				}
+
+				return 1
 			}
 		case "_hash_blake2b_256":
 			return buildHashImpl(
@@ -445,7 +445,7 @@ func SaveContractMemorySnapshot(snapshot *avl.Tree, id AccountID, mem []byte) {
 
 	for pageIdx := uint64(0); pageIdx < numPages; pageIdx++ {
 		old, _ := ReadAccountContractPage(snapshot, id, pageIdx)
-		identical, allZero = true, false
+		allZero = false
 		pageStart = pageIdx * PageSize
 
 		if len(old) == 0 {
@@ -474,10 +474,11 @@ func buildContractPayload(block *Block, tx *Transaction, amount uint64, params [
 	var nilTransactionID TransactionID
 
 	if block != nil {
-		binary.LittleEndian.PutUint64(b[:], uint64(block.Index))
+		binary.LittleEndian.PutUint64(b, block.Index)
 	} else {
-		binary.LittleEndian.PutUint64(b[:], 0)
+		binary.LittleEndian.PutUint64(b, 0)
 	}
+
 	p = append(p, b...)
 
 	if block != nil {
@@ -494,7 +495,7 @@ func buildContractPayload(block *Block, tx *Transaction, amount uint64, params [
 		p = append(p, nilAccountID[:]...)
 	}
 
-	binary.LittleEndian.PutUint64(b[:], amount)
+	binary.LittleEndian.PutUint64(b, amount)
 	p = append(p, b...)
 
 	p = append(p, params...)

@@ -96,14 +96,6 @@ func (cli *CLI) getPathCompleter() readline.PrefixCompleterInterface {
 	}
 }
 
-func joinFolder(fs []string) (p string) {
-	for _, f := range fs {
-		p += f + "/"
-	}
-
-	return
-}
-
 func commandAddCompleter(completers *[]readline.PrefixCompleterInterface,
 	cmd cli.Command, completer readline.PrefixCompleterInterface) {
 

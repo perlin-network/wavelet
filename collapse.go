@@ -132,8 +132,6 @@ type CollapseContext struct {
 	accountIDs []AccountID
 	accounts   map[AccountID]struct{}
 
-	writes map[AccountID]struct{}
-
 	balances            map[AccountID]uint64
 	stakes              map[AccountID]uint64
 	rewards             map[AccountID]uint64

@@ -197,7 +197,9 @@ func (t *Tree) Commit() error {
 		n.wroteBack = true
 		buf := bytebufferpool.Get()
 		defer bytebufferpool.Put(buf)
-		n.serialize(buf)
+		if err := n.serialize(buf); err != nil {
+			return false, err
+		}
 
 		batch.Put(append(NodeKeyPrefix, n.id[:]...), buf.Bytes())
 		return true, nil
@@ -229,9 +231,9 @@ func (t *Tree) getNextOldRootIndex() uint64 {
 	nextOldRootIndexBuf, err := t.kv.Get(NextOldRootIndexKey)
 	if err != nil || len(nextOldRootIndexBuf) == 0 {
 		return 0
-	} else {
-		return binary.LittleEndian.Uint64(nextOldRootIndexBuf)
 	}
+
+	return binary.LittleEndian.Uint64(nextOldRootIndexBuf)
 }
 
 func (t *Tree) setNextOldRootIndex(x uint64) {
@@ -247,11 +249,11 @@ func (t *Tree) getOldRoot(idx uint64) ([MerkleHashSize]byte, bool) {
 	out, err := t.kv.Get(append(OldRootsPrefix, buf[:]...))
 	if err != nil || len(out) == 0 {
 		return [MerkleHashSize]byte{}, false
-	} else {
-		var ret [MerkleHashSize]byte
-		copy(ret[:], out)
-		return ret, true
 	}
+
+	var ret [MerkleHashSize]byte
+	copy(ret[:], out)
+	return ret, true
 }
 
 func (t *Tree) setOldRoot(idx uint64, value []byte) {
@@ -381,17 +383,11 @@ func (t *Tree) iterateDiff(prevViewID uint64, callback func(n *node) bool) {
 
 // DumpDiff writes the AVL tree difference into a io.Writer.
 func (t *Tree) DumpDiff(prevViewID uint64, wr io.Writer) error {
-	var lastErr error
-
 	nodeIDs := make([][MerkleHashSize]byte, 0)
 	t.iterateDiff(prevViewID, func(n *node) bool {
 		nodeIDs = append(nodeIDs, n.id)
 		return true
 	})
-
-	if lastErr != nil {
-		return lastErr
-	}
 
 	// Diff header
 	if err := binary.Write(wr, binary.LittleEndian, uint64(len(nodeIDs))); err != nil {
@@ -404,6 +400,7 @@ func (t *Tree) DumpDiff(prevViewID uint64, wr io.Writer) error {
 		}
 	}
 
+	var lastErr error
 	t.iterateDiff(prevViewID, func(n *node) bool {
 		if err := n.serializeForDifference(wr); err != nil {
 			lastErr = err
@@ -412,16 +409,16 @@ func (t *Tree) DumpDiff(prevViewID uint64, wr io.Writer) error {
 		return true
 	})
 
-	return nil
+	return lastErr
 }
 
 func (t *Tree) IterateLeafDiff(prevViewID uint64, callback func(key, value []byte) bool) {
 	t.iterateDiff(prevViewID, func(n *node) bool {
 		if n.kind == NodeLeafValue {
 			return callback(n.key, n.value)
-		} else {
-			return true
 		}
+
+		return true
 	})
 }
 
@@ -438,7 +435,7 @@ func (t *Tree) ApplyDiffWithUpdateNotifier(diff io.Reader, updateNotifier func(k
 	}
 
 	var rootID [MerkleHashSize]byte
-	preloaded := newDiffQueue(t.kv, DiffsKeyPrefix, t.viewID)
+	preloaded := newDiffQueue(t.kv, DiffsKeyPrefix)
 
 	var id [MerkleHashSize]byte
 	for i := uint64(0); i < nodeCount; i++ {
@@ -507,7 +504,7 @@ func (t *Tree) GetGCProfile(preserveDepth uint64) *GCProfile {
 
 func (profile *GCProfile) PerformFullGC() (int, error) {
 	var mark [16]byte
-	if _, err := rand.Read(mark[:]); err != nil {
+	if _, err := rand.Read(mark[:]); err != nil { // nolint:gosec
 		return 0, err
 	}
 

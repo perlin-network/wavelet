@@ -1,13 +1,13 @@
 package wavelet
 
 import (
+	"crypto/rand"
 	"github.com/google/btree"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 	"math"
-	"math/rand"
 	"sort"
 	"testing"
 	"testing/quick"
@@ -75,11 +75,7 @@ func TestTransactions(t *testing.T) {
 		manager.Iterate(func(tx *Transaction) bool {
 			i++
 
-			if i == 2 {
-				return false
-			}
-
-			return true
+			return i != 2
 		})
 
 		// Check that the mempool index is sorted properly.
@@ -166,12 +162,10 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 		// Generate and add a bunch of transactions to the manager.
 
 		transactions := make([]Transaction, 0, numTransactions)
-		ids := make([]TransactionID, 0, cap(transactions))
 
 		for i := 0; i < cap(transactions); i++ {
 			tx := NewTransaction(keys, uint64(i+1), 0, sys.TagTransfer, nil)
 
-			ids = append(ids, tx.ID)
 			transactions = append(transactions, tx)
 		}
 
@@ -179,14 +173,17 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 
 		// Generate a unique next-block ID to shuffle with.
 
-		next := NewBlock(1, ZeroMerkleNodeID)
+		next, err := NewBlock(1, ZeroMerkleNodeID)
+		if !assert.NoError(t, err) {
+			return false
+		}
 
 		for {
 			if next.ID != prev {
 				break
 			}
 
-			if _, err := rand.Read(next.ID[:]); !assert.NoError(t, err) {
+			if _, err := rand.Read(next.ID[:]); !assert.NoError(t, err) { // nolint:gosec
 				return false
 			}
 		}
@@ -221,11 +218,7 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 			return true
 		})
 
-		if !assert.Equal(t, manager.height, next.Index) {
-			return false
-		}
-
-		return true
+		return assert.Equal(t, manager.height, next.Index)
 	}
 
 	assert.NoError(t, quick.Check(fn, nil))
@@ -258,7 +251,6 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) {
 		toNotBePrunedIDs := make([]TransactionID, 0)
 
 		toBePrunedTransactions := make([]Transaction, 0)
-		toBePrunedIDs := make([]TransactionID, 0)
 
 		for i := 0; i < int(numProposed); i++ {
 			if i%2 == 0 {
@@ -269,7 +261,6 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) {
 			} else {
 				tx := NewTransaction(keys, uint64(i+1), 0, sys.TagTransfer, nil)
 
-				toBePrunedIDs = append(toBePrunedIDs, tx.ID)
 				toBePrunedTransactions = append(toBePrunedTransactions, tx)
 			}
 		}
@@ -280,12 +271,10 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) {
 		// Generate and add a bunch of finalized transactions to the manager.
 
 		finalizedTransactions := make([]Transaction, 0)
-		finalizedIDs := make([]TransactionID, 0)
 
 		for i := 0; i < int(numFinalized); i++ {
 			tx := NewTransaction(keys, uint64(i+1), 0, sys.TagStake, nil)
 
-			finalizedIDs = append(finalizedIDs, tx.ID)
 			finalizedTransactions = append(finalizedTransactions, tx)
 
 			manager.buffer[tx.ID] = &tx // Do not index the transaction into the mempool index.
@@ -306,14 +295,17 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) {
 
 		// Generate a unique next-block ID to shuffle with that is just 1 block index before the pruning limit.
 
-		next := NewBlock(uint64(conf.GetPruningLimit())-1, ZeroMerkleNodeID)
+		next, err := NewBlock(uint64(conf.GetPruningLimit())-1, ZeroMerkleNodeID)
+		if !assert.NoError(t, err) {
+			return false
+		}
 
 		for {
 			if next.ID != prev {
 				break
 			}
 
-			if _, err := rand.Read(next.ID[:]); !assert.NoError(t, err) {
+			if _, err := rand.Read(next.ID[:]); !assert.NoError(t, err) { // nolint:gosec
 				return false
 			}
 		}
@@ -326,14 +318,17 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) {
 
 		// Generate a unique next-block ID to shuffle with that is exactly at the pruning limit.
 
-		next = NewBlock(uint64(conf.GetPruningLimit()), ZeroMerkleNodeID)
+		next, err = NewBlock(uint64(conf.GetPruningLimit()), ZeroMerkleNodeID)
+		if !assert.NoError(t, err) {
+			return false
+		}
 
 		for {
 			if next.ID != prev {
 				break
 			}
 
-			if _, err := rand.Read(next.ID[:]); !assert.NoError(t, err) {
+			if _, err := rand.Read(next.ID[:]); !assert.NoError(t, err) { // nolint:gosec
 				return false
 			}
 		}
@@ -376,11 +371,7 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) {
 
 		before := len(manager.buffer)
 		manager.Add(ZeroBlockID, NewTransaction(keys, math.MaxUint64, 0, sys.TagStake, nil))
-		if !assert.Len(t, manager.buffer, before) {
-			return false
-		}
-
-		return true
+		return assert.Len(t, manager.buffer, before)
 	}
 
 	assert.NoError(t, quick.Check(fn, nil))

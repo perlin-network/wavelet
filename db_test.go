@@ -20,11 +20,12 @@
 package wavelet
 
 import (
+	"crypto/rand"
 	"encoding/binary"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/stretchr/testify/assert"
-	"math/rand"
+	mrand "math/rand"
 	"sort"
 	"testing"
 )
@@ -35,18 +36,21 @@ func TestRewardWithdrawals(t *testing.T) {
 	var a AccountID
 	rws := make([]RewardWithdrawalRequest, 20)
 	for i := range rws {
-		rand.Read(a[:])
+		_, err := rand.Read(a[:])
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		rw := RewardWithdrawalRequest{
 			account:    a,
 			blockIndex: uint64(i + 1),
-			amount:     rand.Uint64(),
+			amount:     mrand.Uint64(),
 		}
 
 		rws[i] = rw
 	}
 
-	rand.Shuffle(len(rws), func(i, j int) { rws[i], rws[j] = rws[j], rws[i] })
+	mrand.Shuffle(len(rws), func(i, j int) { rws[i], rws[j] = rws[j], rws[i] })
 
 	for _, rw := range rws {
 		StoreRewardWithdrawalRequest(tree, rw)

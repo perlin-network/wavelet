@@ -113,22 +113,3 @@ func parseAccountStakeUpdated(c *Client, v *fastjson.Value) error {
 	}
 	return nil
 }
-
-func parseAccountRewardUpdated(c *Client, v *fastjson.Value) error {
-	var a RewardUpdated
-
-	if err := jsonHex(v, a.AccountID[:], "account_id"); err != nil {
-		return err
-	}
-
-	if err := jsonTime(v, &a.Time, "time"); err != nil {
-		return err
-	}
-
-	a.Reward = v.GetUint64("reward")
-
-	if c.OnRewardUpdated != nil {
-		c.OnRewardUpdated(a)
-	}
-	return nil
-}

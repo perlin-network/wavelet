@@ -82,7 +82,7 @@ func newNode(t *testing.T) (*skademlia.Client, string, func()) {
 	keys, err := skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
 	assert.NoError(t, err)
 
-	ln, err := net.Listen("tcp", ":0")
+	ln, err := net.Listen("tcp", ":0") // nolint:gosec
 	assert.NoError(t, err)
 
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(ln.Addr().(*net.TCPAddr).Port))
@@ -95,7 +95,7 @@ func newNode(t *testing.T) (*skademlia.Client, string, func()) {
 	server := client.Listen()
 	RegisterWaveletServer(server, ledger.Protocol())
 
-	go func() {
+	go func() { // nolint:staticcheck
 		if err := server.Serve(ln); err != nil && err != grpc.ErrServerStopped {
 			t.Fatal(err)
 		}

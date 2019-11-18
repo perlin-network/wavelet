@@ -90,7 +90,7 @@ func (j jsonRaw) MarshalJSON() ([]byte, error) {
 	return j, nil
 }
 
-var ErrInvalidHexLength = errors.New("Invalid hex bytes length")
+var ErrInvalidHexLength = errors.New("invalid hex bytes length")
 
 func jsonHex(v *fastjson.Value, dst []byte, keys ...string) error {
 	i, err := hex.Decode(dst, v.GetStringBytes(keys...))

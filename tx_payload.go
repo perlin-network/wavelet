@@ -252,45 +252,69 @@ func ParseBatch(payload []byte) (Batch, error) {
 	return batch, nil
 }
 
-func (t Transfer) Marshal() []byte {
+func (t Transfer) Marshal() ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, 32+8+8+8+4+4))
 
 	buf.Write(t.Recipient[:])
-	binary.Write(buf, binary.LittleEndian, t.Amount)
+	if err := binary.Write(buf, binary.LittleEndian, t.Amount); err != nil {
+		return nil, errors.Wrap(err, "error marshaling amount")
+	}
 
-	binary.Write(buf, binary.LittleEndian, t.GasLimit)
-	binary.Write(buf, binary.LittleEndian, t.GasDeposit)
+	if err := binary.Write(buf, binary.LittleEndian, t.GasLimit); err != nil {
+		return nil, errors.Wrap(err, "error marshaling gas limit")
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, t.GasDeposit); err != nil {
+		return nil, errors.Wrap(err, "error marshaling gas deposit")
+	}
 
 	if t.FuncName != nil && len(t.FuncName) > 0 {
-		binary.Write(buf, binary.LittleEndian, uint32(len(t.FuncName)))
+		if err := binary.Write(buf, binary.LittleEndian, uint32(len(t.FuncName))); err != nil {
+			return nil, errors.Wrap(err, "error marshaling func name")
+		}
 		buf.Write(t.FuncName)
 
 		if t.FuncParams != nil && len(t.FuncParams) > 0 {
-			binary.Write(buf, binary.LittleEndian, uint32(len(t.FuncParams)))
+			if err := binary.Write(buf, binary.LittleEndian, uint32(len(t.FuncParams))); err != nil {
+				return nil, errors.Wrap(err, "error marshaling func params")
+			}
 			buf.Write(t.FuncParams)
 		}
 	}
 
-	return buf.Bytes()
+	return buf.Bytes(), nil
 }
 
-func (s Stake) Marshal() []byte {
+func (s Stake) Marshal() ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, 1+8))
 
 	buf.WriteByte(s.Opcode)
-	binary.Write(buf, binary.LittleEndian, s.Amount)
-	return buf.Bytes()
+	if err := binary.Write(buf, binary.LittleEndian, s.Amount); err != nil {
+		return nil, errors.Wrap(err, "error marshaling amount")
+	}
+
+	return buf.Bytes(), nil
 }
 
-func (c Contract) Marshal() []byte {
+func (c Contract) Marshal() ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, 8+8+4+len(c.Params)+len(c.Code)))
 
-	binary.Write(buf, binary.LittleEndian, c.GasLimit)
-	binary.Write(buf, binary.LittleEndian, c.GasDeposit)
-	binary.Write(buf, binary.LittleEndian, uint32(len(c.Params)))
+	if err := binary.Write(buf, binary.LittleEndian, c.GasLimit); err != nil {
+		return nil, errors.Wrap(err, "error marshaling gas limit")
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, c.GasDeposit); err != nil {
+		return nil, errors.Wrap(err, "error marshaling gas deposit")
+	}
+
+	if err := binary.Write(buf, binary.LittleEndian, uint32(len(c.Params))); err != nil {
+		return nil, errors.Wrap(err, "error marshaling params")
+	}
+
 	buf.Write(c.Params)
 	buf.Write(c.Code)
-	return buf.Bytes()
+
+	return buf.Bytes(), nil
 }
 
 // AddTransfer adds a Transfer payload into a batch.
@@ -301,7 +325,14 @@ func (b *Batch) AddTransfer(t Transfer) error {
 
 	b.Size++
 	b.Tags = append(b.Tags, uint8(sys.TagTransfer))
-	b.Payloads = append(b.Payloads, t.Marshal())
+
+	payload, err := t.Marshal()
+	if err != nil {
+		return errors.Wrap(err, "error marshaling transfer")
+	}
+
+	b.Payloads = append(b.Payloads, payload)
+
 	return nil
 }
 
@@ -313,7 +344,14 @@ func (b *Batch) AddStake(s Stake) error {
 
 	b.Size++
 	b.Tags = append(b.Tags, uint8(sys.TagStake))
-	b.Payloads = append(b.Payloads, s.Marshal())
+
+	payload, err := s.Marshal()
+	if err != nil {
+		return errors.Wrap(err, "error marshaling stake")
+	}
+
+	b.Payloads = append(b.Payloads, payload)
+
 	return nil
 
 }
@@ -326,21 +364,30 @@ func (b *Batch) AddContract(c Contract) error {
 
 	b.Size++
 	b.Tags = append(b.Tags, uint8(sys.TagContract))
-	b.Payloads = append(b.Payloads, c.Marshal())
+
+	payload, err := c.Marshal()
+	if err != nil {
+		return errors.Wrap(err, "error marshaling contract")
+	}
+
+	b.Payloads = append(b.Payloads, payload)
+
 	return nil
 
 }
 
-func (b Batch) Marshal() []byte {
+func (b Batch) Marshal() ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, 1+(b.Size*(1+4))))
 
-	buf.WriteByte(byte(b.Size))
+	buf.WriteByte(b.Size)
 
 	for i := uint8(0); i < b.Size; i++ {
-		buf.WriteByte(byte(b.Tags[i]))
-		binary.Write(buf, binary.BigEndian, uint32(len(b.Payloads[i])))
+		buf.WriteByte(b.Tags[i])
+		if err := binary.Write(buf, binary.BigEndian, uint32(len(b.Payloads[i]))); err != nil {
+			return nil, errors.Wrap(err, "error marshaling payload")
+		}
 		buf.Write(b.Payloads[i])
 	}
 
-	return buf.Bytes()
+	return buf.Bytes(), nil
 }

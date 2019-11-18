@@ -10,7 +10,16 @@ protoc-docker:
 	docker run --rm -v `pwd`:/src znly/protoc --gogofaster_out=plugins=grpc:. -I=. src/rpc.proto
 
 test:
-	go test -coverprofile=coverage.txt -covermode=atomic -timeout 300s -v -bench -race ./...
+	go test -coverprofile=coverage.txt -covermode=atomic -timeout 10m -v -bench -race ./...
+
+fmt:
+	go fmt ./...
+
+lint:
+#	https://github.com/golangci/golangci-lint#install
+	golangci-lint run --enable-all -D gochecknoglobals,goimports,funlen,maligned,lll
+
+check: fmt lint test
 
 bench:
 	go test -bench=. -benchmem

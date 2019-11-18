@@ -76,7 +76,7 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 	cleanup, err := setEvents(client)
 	if err != nil {
 		cleanup()
-		return nil, fmt.Errorf("Failed to start websockets to the server: %v", err)
+		return nil, fmt.Errorf("failed to start websockets to the server: %v", err)
 	}
 
 	c := &CLI{
@@ -361,7 +361,11 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 }
 
 func (cli *CLI) Start() {
-	defer cli.cleanup()
+	defer func() {
+		fmt.Println("before cli cleanup")
+		cli.cleanup()
+		fmt.Println("after cli cleanup")
+	}()
 
 ReadLoop:
 	for {

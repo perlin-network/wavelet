@@ -44,7 +44,12 @@ func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse
 	if latestBlock.Index+1 == req.BlockIndex {
 		preferred := p.ledger.finalizer.Preferred()
 		if preferred != nil {
-			res.Block = preferred.Value().(*Block).Marshal()
+			block, err := preferred.Value().(*Block).Marshal()
+			if err != nil {
+				return nil, err
+			}
+
+			res.Block = block
 		}
 
 		return res, nil
@@ -54,7 +59,12 @@ func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse
 	if latestBlock.Index+1 > req.BlockIndex {
 		block, err := p.ledger.blocks.GetByIndex(req.BlockIndex)
 		if err == nil {
-			res.Block = block.Marshal()
+			block, err := block.Marshal()
+			if err != nil {
+				return nil, err
+			}
+
+			res.Block = block
 		}
 	}
 
@@ -68,7 +78,12 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 	}
 
 	res := &SyncResponse{}
-	header := &SyncInfo{Block: p.ledger.blocks.Latest().Marshal()}
+	block, err := p.ledger.blocks.Latest().Marshal()
+	if err != nil {
+		return err
+	}
+
+	header := &SyncInfo{Block: block}
 
 	diffBuffer := p.ledger.fileBuffers.GetUnbounded()
 	defer p.ledger.fileBuffers.Put(diffBuffer)
@@ -99,7 +114,7 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 	chunkBuf := make([]byte, syncChunkSize)
 	var i int
 	for {
-		n, err := chunksBuffer.ReadAt(chunkBuf[:], int64(i*syncChunkSize))
+		n, err := chunksBuffer.ReadAt(chunkBuf, int64(i*syncChunkSize))
 		if n > 0 {
 			chunk := make([]byte, n)
 			copy(chunk, chunkBuf[:n])

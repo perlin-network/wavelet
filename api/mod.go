@@ -54,8 +54,7 @@ type Gateway struct {
 	ledger *wavelet.Ledger
 	kv     store.KV
 
-	network *skademlia.Protocol
-	keys    *skademlia.Keypair
+	keys *skademlia.Keypair
 
 	router  *fasthttprouter.Router
 	servers []*fasthttp.Server
@@ -224,7 +223,7 @@ func (g *Gateway) StartHTTPS(
 	}
 
 	// Setup TLS listener
-	inner, err := net.Listen("tcp", ":443")
+	inner, err := net.Listen("tcp", ":443") // nolint:gosec
 	if err != nil {
 		logger.Fatal().Err(err).Msgf("Failed to listen to port %d.", 443)
 	}
@@ -303,7 +302,9 @@ func (g *Gateway) start(ln net.Listener, ln2 net.Listener, c *skademlia.Client,
 
 		go func() {
 			if err := s.Serve(ln2); err != nil {
-				logger.Fatal().Int("port", ln2.Addr().(*net.TCPAddr).Port).Err(err).Msg("Failed to start HTTP server on the second listener.")
+				logger.Fatal().
+					Int("port", ln2.Addr().(*net.TCPAddr).Port).
+					Err(err).Msg("Failed to start HTTP server on the second listener.")
 			}
 		}()
 	}
@@ -810,13 +811,8 @@ func (g *Gateway) render(ctx *fasthttp.RequestCtx, m marshalableJSON) {
 
 func (g *Gateway) renderError(ctx *fasthttp.RequestCtx, e *errResponse) {
 	arena := g.arenaPool.Get()
-	b, err := e.marshalJSON(arena)
+	b := e.marshalJSON(arena)
 	g.arenaPool.Put(arena)
-
-	if err != nil {
-		ctx.Error(fmt.Sprintf(`{ "error": "render error: %s" |`, err.Error()), http.StatusInternalServerError)
-		return
-	}
 
 	ctx.SetContentType("application/json")
 	ctx.Response.SetStatusCode(e.HTTPStatusCode)
