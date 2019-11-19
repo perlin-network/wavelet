@@ -23,8 +23,10 @@ func (wp *WorkerPool) Start(workers int) {
 			defer wp.wg.Done()
 			for {
 				select {
-				case job := <-wp.bus:
-					job()
+				case job, _ := <-wp.bus:
+					if job != nil {
+						job()
+					}
 				case <-wp.stop:
 					return
 				}
@@ -42,7 +44,10 @@ func (wp *WorkerPool) Stop() {
 		return
 	}
 
+	close(wp.bus)
+
 	close(wp.stop)
 	wp.wg.Wait()
+
 	wp.closed = true
 }
