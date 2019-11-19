@@ -20,6 +20,8 @@
 package store
 
 import (
+	"os"
+
 	"github.com/dgraph-io/badger"
 	"github.com/pkg/errors"
 )
@@ -52,6 +54,18 @@ type badgerKV struct {
 }
 
 func NewBadger(dir string) (*badgerKV, error) { // nolint:golint
+	if fi, err := os.Stat(dir); err == nil {
+		if !fi.IsDir() {
+			return nil, errors.Errorf("open %s: not a directory", dir)
+		}
+	} else if os.IsNotExist(err) {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, err
+	}
+
 	db, err := badger.Open(badger.DefaultOptions(dir).WithLogger(nullLog{}))
 	if err != nil {
 		return nil, err
