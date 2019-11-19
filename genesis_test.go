@@ -14,6 +14,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+const tempDirName = `testDumpIncludingContract`
+
 var testRestoreDir = "testdata/testgenesis"
 
 func getGenesisTestNetwork(t testing.TB, withContract bool) (testnet *TestNetwork, alice *TestLedger, cleanup func()) {
@@ -40,9 +42,11 @@ func getGenesisTestNetwork(t testing.TB, withContract bool) (testnet *TestNetwor
 	bob.WaitUntilBalance(t, 10000000000)
 
 	_, err = alice.PlaceStake(100)
+	assert.NoError(t, err)
 	alice.WaitUntilStake(t, 100)
 
 	_, err = bob.PlaceStake(100)
+	assert.NoError(t, err)
 	bob.WaitUntilStake(t, 100)
 
 	if withContract {
@@ -67,8 +71,6 @@ func getGenesisTestNetwork(t testing.TB, withContract bool) (testnet *TestNetwor
 }
 
 func TestDumpIncludingContract(t *testing.T) {
-	testDumpDir := "testDumpIncludingContract"
-
 	testnet, target, cleanup := getGenesisTestNetwork(t, true)
 	defer cleanup()
 	if testnet == nil || target == nil {
@@ -76,19 +78,19 @@ func TestDumpIncludingContract(t *testing.T) {
 		return
 	}
 	defer func() {
-		_ = os.RemoveAll(testDumpDir)
+		_ = os.RemoveAll(tempDirName)
 	}()
 
 	// Delete the dir in case it already exists
-	assert.NoError(t, os.RemoveAll(testDumpDir))
+	assert.NoError(t, os.RemoveAll(tempDirName))
 
 	expected := target.ledger.Snapshot()
-	if !assert.NoError(t, Dump(expected, testDumpDir, true, false)) {
+	if !assert.NoError(t, Dump(expected, tempDirName, true, false)) {
 		return
 	}
 
 	fmt.Println("checkdump")
-	testDump(t, testDumpDir, expected, true)
+	testDump(t, tempDirName, expected, true)
 }
 
 func TestDumpWithoutContract(t *testing.T) {
@@ -140,7 +142,7 @@ func testDump(t *testing.T, dumpDir string, expected *avl.Tree, checkContract bo
 func compareTree(t *testing.T, expected *avl.Tree, actual *avl.Tree, checkContract bool) {
 	expected.Iterate(func(key, value []byte) {
 		var globalPrefix [1]byte
-		copy(globalPrefix[:], key[:])
+		copy(globalPrefix[:], key)
 
 		if globalPrefix != keyAccounts {
 			return
@@ -267,7 +269,10 @@ func TestPerformInception(t *testing.T) {
 
 // Check the expected values of a contract against the contract's values in the tree.
 // Also, compare the contract's code in the tree against the actual contract code file.
-func checkContract(t *testing.T, tree *avl.Tree, id TransactionID, codeFilePath string, expectedGasBalance uint64, expectedPageNum uint64, expectedEmptyMemPages []int, expectedNotEmptyMemPages []int) {
+func checkContract(
+	t *testing.T, tree *avl.Tree, id TransactionID, codeFilePath string, expectedGasBalance uint64,
+	expectedPageNum uint64, expectedEmptyMemPages []int, expectedNotEmptyMemPages []int, // nolint:unparam
+) {
 	code, exist := ReadAccountContractCode(tree, id)
 	assert.True(t, exist, "contract ID: %x", id)
 	assert.NotEmpty(t, code, "contract ID: %x", id)
@@ -333,7 +338,7 @@ func checkRestoredDefaults(t *testing.T, tree *avl.Tree) {
 	var exist bool
 
 	val, exist = tree.Lookup(keyRewardWithdrawals[:])
-	assert.False(t, exist, )
+	assert.False(t, exist)
 	assert.Nil(t, val)
 
 	// Check all the account nonce values must be 1.
