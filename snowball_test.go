@@ -197,7 +197,6 @@ func TestSnowball(t *testing.T) {
 			assert.Equal(t, *newMajorityVote, *preferred)
 		} else {
 			assert.Equal(t, *majorityVote, *preferred)
-
 		}
 	}
 

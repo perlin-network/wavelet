@@ -46,7 +46,7 @@ func (d *StallDetector) Stop() {
 	close(d.stop)
 }
 
-func (d *StallDetector) Run(wg *sync.WaitGroup) {
+func (d *StallDetector) Run(wg *sync.WaitGroup) { // nolint:gocognit
 	wg.Add(1)
 	defer wg.Done()
 

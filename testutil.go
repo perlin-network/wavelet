@@ -172,7 +172,6 @@ func (n *TestNetwork) WaitForConsensus(t testing.TB) {
 					return
 				}
 			}
-
 		}(l)
 	}
 

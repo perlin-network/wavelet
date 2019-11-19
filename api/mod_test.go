@@ -147,8 +147,8 @@ func TestPostPayloadRandom(t *testing.T) {
 		tc := tc
 		t.Run(tc.url, func(t *testing.T) {
 			f := func(random1 [][]byte, random2 [][]byte) bool {
-
 				var payload []byte
+
 				for i := range random1 {
 					payload = append(payload, random1[i]...)
 				}

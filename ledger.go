@@ -364,7 +364,7 @@ func (l *Ledger) Snapshot() *avl.Tree {
 // SyncTransactions is an infinite loop which constantly sends transaction ids from its index
 // in form of the bloom filter to randomly sampled number of peers and adds to it's state all received
 // transactions.
-func (l *Ledger) SyncTransactions() {
+func (l *Ledger) SyncTransactions() { // nolint:gocognit
 	l.consensus.Add(1)
 	defer l.consensus.Done()
 
@@ -902,7 +902,7 @@ func (l *Ledger) query() {
 // If the majority of its peers responded that it is out of sync (decided using snowball),
 // the node will attempt to sync its state to the latest block by downloading the AVL tree
 // diff from its peers and applying the diff to its local AVL tree.
-func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo
+func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 	voteWG := new(sync.WaitGroup)
 
 	snowballK := conf.GetSnowballK()

@@ -235,7 +235,6 @@ func (w *Wavelet) Start() {
 	for _, addr := range w.config.Peers {
 		if _, err := w.Net.Dial(addr,
 			skademlia.WithTimeout(10*time.Second)); err != nil {
-
 			w.logger.Warn().Err(err).
 				Str("addr", addr).
 				Msg("Error dialing")
@@ -251,7 +250,6 @@ func (w *Wavelet) Start() {
 
 		w.logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
 	}
-
 }
 
 func (w *Wavelet) Close() error {

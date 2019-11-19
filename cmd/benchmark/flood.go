@@ -60,7 +60,6 @@ func sendTransaction(
 	chRes chan<- *wctl.TxResponse,
 	chErr chan<- error,
 ) {
-
 	n := 1
 	payload := wavelet.Batch{
 		Tags:     make([]uint8, 0, n),

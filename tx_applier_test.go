@@ -499,7 +499,6 @@ func TestApplyContractTransaction(t *testing.T) {
 }
 
 func buildTransferWithInvocationPayload(dest AccountID, amount uint64, gasLimit uint64, funcName []byte, param []byte, gasDeposit uint64) Transfer {
-
 	return Transfer{
 		Recipient:  dest,
 		Amount:     amount,

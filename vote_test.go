@@ -372,7 +372,6 @@ func TestCollectVotesForSync(t *testing.T) {
 			for n := range votes {
 				voteC <- votes[n]
 			}
-
 		}
 
 		close(voteC)

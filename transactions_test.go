@@ -224,7 +224,7 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 	assert.NoError(t, quick.Check(fn, nil))
 }
 
-func TestTransactionsPruneOnReshuffle(t *testing.T) {
+func TestTransactionsPruneOnReshuffle(t *testing.T) { // nolint:gocognit
 	t.Parallel()
 
 	keys, err := skademlia.NewKeys(1, 1)

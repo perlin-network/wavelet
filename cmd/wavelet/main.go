@@ -43,7 +43,7 @@ import (
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
 
-	_ "net/http/pprof"
+	_ "net/http/pprof" // nolint:gosec
 	"net/url"
 )
 

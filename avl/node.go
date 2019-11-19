@@ -694,7 +694,7 @@ func mustDeserialize(r *bytes.Reader) *node {
 }
 
 // populateDiffs constructs a valid AVL tree from the incoming preloaded tree difference.
-func populateDiffs(
+func populateDiffs( // nolint:gocognit
 	t *Tree, id [MerkleHashSize]byte, preloaded *diffQueue, visited map[[MerkleHashSize]byte]struct{},
 	updateNotifier func(key, value []byte),
 ) (*node, error) {
@@ -791,5 +791,4 @@ func populateDiffs(
 	default:
 		return nil, errors.New("unknown node kind")
 	}
-
 }

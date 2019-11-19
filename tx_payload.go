@@ -353,7 +353,6 @@ func (b *Batch) AddStake(s Stake) error {
 	b.Payloads = append(b.Payloads, payload)
 
 	return nil
-
 }
 
 // AddContract adds a Contract payload into a batch.
@@ -373,7 +372,6 @@ func (b *Batch) AddContract(c Contract) error {
 	b.Payloads = append(b.Payloads, payload)
 
 	return nil
-
 }
 
 func (b Batch) Marshal() ([]byte, error) {

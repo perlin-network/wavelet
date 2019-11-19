@@ -426,7 +426,6 @@ func (t *Tree) IterateLeafDiff(prevViewID uint64, callback func(key, value []byt
 }
 
 func (t *Tree) ApplyDiffWithUpdateNotifier(diff io.Reader, updateNotifier func(key, value []byte)) error {
-
 	// Deserialize header
 	var nodeCount uint64
 	if err := binary.Read(diff, binary.LittleEndian, &nodeCount); err != nil {
