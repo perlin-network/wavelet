@@ -17,11 +17,11 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package store
+package store // nolint:dupl
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"os"
 	"testing"
 
@@ -36,8 +36,10 @@ func BenchmarkBadger(b *testing.B) {
 
 	db, err := NewBadger(path)
 	assert.NoError(b, err)
-	defer os.RemoveAll(path)
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+		_ = os.RemoveAll(path)
+	}()
 
 	b.StartTimer()
 	defer b.StopTimer()
@@ -67,8 +69,10 @@ func TestBadger_Existence(t *testing.T) {
 
 	db, err := NewBadger(path)
 	assert.NoError(t, err)
-	defer os.RemoveAll(path)
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+		_ = os.RemoveAll(path)
+	}()
 
 	_, err = db.Get([]byte("not_exist"))
 	assert.Error(t, err)
@@ -87,15 +91,17 @@ func TestBadger(t *testing.T) {
 
 	db, err := NewBadger(path)
 	assert.NoError(t, err)
-	defer os.RemoveAll(path)
+	defer func() {
+		_ = os.RemoveAll(path)
+	}()
 
 	err = db.Put([]byte("exist"), []byte("value"))
 	assert.NoError(t, err)
 
 	wb := db.NewWriteBatch()
-	wb.Put([]byte("key_batch1"), []byte("val_batch1"))
-	wb.Put([]byte("key_batch2"), []byte("val_batch2"))
-	wb.Put([]byte("key_batch3"), []byte("val_batch2"))
+	assert.NoError(t, wb.Put([]byte("key_batch1"), []byte("val_batch1")))
+	assert.NoError(t, wb.Put([]byte("key_batch2"), []byte("val_batch2")))
+	assert.NoError(t, wb.Put([]byte("key_batch3"), []byte("val_batch2")))
 	assert.NoError(t, db.CommitWriteBatch(wb))
 
 	assert.NoError(t, db.Close())
@@ -125,11 +131,13 @@ func TestBadger_WriteBatch(t *testing.T) {
 
 	db, err := NewBadger(path)
 	assert.NoError(t, err)
-	defer os.RemoveAll(path)
+	defer func() {
+		_ = os.RemoveAll(path)
+	}()
 
 	wb := db.NewWriteBatch()
 	for i := 0; i < 100000; i++ {
-		wb.Put([]byte(fmt.Sprintf("key_batch%d", i+1)), []byte(fmt.Sprintf("val_batch%d", i+1)))
+		assert.NoError(t, wb.Put([]byte(fmt.Sprintf("key_batch%d", i+1)), []byte(fmt.Sprintf("val_batch%d", i+1))))
 	}
 
 	assert.NoError(t, db.Close())
@@ -142,7 +150,7 @@ func TestBadger_WriteBatch(t *testing.T) {
 
 	wb = db2.NewWriteBatch()
 	for i := 0; i < 100000; i++ {
-		wb.Put([]byte(fmt.Sprintf("key_batch%d", i+1)), []byte(fmt.Sprintf("val_batch%d", i+1)))
+		assert.NoError(t, wb.Put([]byte(fmt.Sprintf("key_batch%d", i+1)), []byte(fmt.Sprintf("val_batch%d", i+1))))
 	}
 
 	assert.NoError(t, db2.CommitWriteBatch(wb))

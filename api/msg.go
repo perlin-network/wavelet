@@ -397,7 +397,7 @@ type errResponse struct {
 	HTTPStatusCode int   `json:"-"` // http response status code
 }
 
-func (e *errResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
+func (e *errResponse) marshalJSON(arena *fastjson.Arena) []byte {
 	o := arena.NewObject()
 
 	o.Set("status", arena.NewString(http.StatusText(e.HTTPStatusCode)))
@@ -406,24 +406,24 @@ func (e *errResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 		o.Set("error", arena.NewString(e.Err.Error()))
 	}
 
-	return o.MarshalTo(nil), nil
+	return o.MarshalTo(nil)
 }
 
-func ErrBadRequest(err error) *errResponse {
+func ErrBadRequest(err error) *errResponse { // nolint:golint
 	return &errResponse{
 		Err:            err,
 		HTTPStatusCode: http.StatusBadRequest,
 	}
 }
 
-func ErrNotFound(err error) *errResponse {
+func ErrNotFound(err error) *errResponse { // nolint:golint
 	return &errResponse{
 		Err:            err,
 		HTTPStatusCode: http.StatusNotFound,
 	}
 }
 
-func ErrInternal(err error) *errResponse {
+func ErrInternal(err error) *errResponse { // nolint:golint
 	return &errResponse{
 		Err:            err,
 		HTTPStatusCode: http.StatusInternalServerError,

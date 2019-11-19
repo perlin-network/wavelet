@@ -20,8 +20,8 @@
 package store
 
 import (
+	"crypto/rand"
 	"github.com/stretchr/testify/assert"
-	"math/rand"
 	"testing"
 )
 
@@ -40,9 +40,9 @@ func BenchmarkInmem(b *testing.B) {
 		var randomKey [128]byte
 		var randomValue [600]byte
 
-		_, err := rand.Read(randomKey[:])
+		_, err := rand.Read(randomKey[:]) // nolint:gosec
 		assert.NoError(b, err)
-		_, err = rand.Read(randomValue[:])
+		_, err = rand.Read(randomValue[:]) // nolint:gosec
 		assert.NoError(b, err)
 
 		err = db.Put(randomKey[:], randomValue[:])

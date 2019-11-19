@@ -14,11 +14,11 @@ func BenchmarkRehashNoWrite(b *testing.B) {
 	tree := New(kv)
 
 	var key [32]byte
-	_, err := rand.Read(key[:])
+	_, err := rand.Read(key[:]) // nolint:gosec
 	assert.NoError(b, err)
 
 	var val [64]byte
-	_, err = rand.Read(val[:])
+	_, err = rand.Read(val[:]) // nolint:gosec
 	assert.NoError(b, err)
 
 	node := newLeafNode(tree, key[:], val[:])

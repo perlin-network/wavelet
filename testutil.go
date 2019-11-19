@@ -45,12 +45,6 @@ func defaultTestNetworkConfig() TestNetworkConfig {
 
 type TestNetworkOption func(cfg *TestNetworkConfig)
 
-func WithoutFaucet() TestNetworkOption {
-	return func(cfg *TestNetworkConfig) {
-		cfg.AddFaucet = false
-	}
-}
-
 func NewTestNetwork(t testing.TB, opts ...TestNetworkOption) *TestNetwork {
 	// Remove existing db
 	for i := 0; i < 20; i++ {
@@ -100,28 +94,8 @@ func WithWallet(wallet string) TestLedgerOption {
 	}
 }
 
-func WithKeepExistingDB() TestLedgerOption {
-	return func(cfg *TestLedgerConfig) {
-		cfg.RemoveExistingDB = false
-	}
-}
-
-func WithPeers(peers ...string) TestLedgerOption {
-	return func(cfg *TestLedgerConfig) {
-		for _, peer := range peers {
-			cfg.Peers = append(cfg.Peers, peer)
-		}
-	}
-}
-
-func WithDBPath(path string) TestLedgerOption {
-	return func(cfg *TestLedgerConfig) {
-		cfg.DBPath = path
-	}
-}
-
 func (n *TestNetwork) AddNode(t testing.TB, opts ...TestLedgerOption) *TestLedger {
-	peers := []string{}
+	var peers []string
 	if n.faucet != nil {
 		peers = append(peers, n.faucet.Addr())
 	}
@@ -143,7 +117,7 @@ func (n *TestNetwork) AddNode(t testing.TB, opts ...TestLedgerOption) *TestLedge
 }
 
 func (n *TestNetwork) Nodes() []*TestLedger {
-	nodes := []*TestLedger{}
+	nodes := make([]*TestLedger, 0, len(n.nodes))
 	for _, n := range n.nodes {
 		nodes = append(nodes, n)
 	}
@@ -198,7 +172,6 @@ func (n *TestNetwork) WaitForConsensus(t testing.TB) {
 					return
 				}
 			}
-
 		}(l)
 	}
 
@@ -237,7 +210,7 @@ func (n *TestNetwork) WaitForSync(t testing.TB) {
 		close(done)
 	}()
 
-	timer := time.NewTimer(5 * time.Second)
+	timer := time.NewTimer(30 * time.Second)
 	select {
 	case <-done:
 		return
@@ -262,7 +235,6 @@ type TestLedger struct {
 	dbPath    string
 	kv        store.KV
 	kvCleanup func()
-	finalized chan struct{}
 	stopped   chan struct{}
 }
 
@@ -274,18 +246,12 @@ type TestLedgerConfig struct {
 	DBPath           string
 }
 
-func defaultConfig(t testing.TB) *TestLedgerConfig {
-	return &TestLedgerConfig{
-		RemoveExistingDB: true,
-	}
-}
-
 func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 	t.Helper()
 
 	keys := loadKeys(t, cfg.Wallet)
 
-	ln, err := net.Listen("tcp", ":0")
+	ln, err := net.Listen("tcp", ":0") // nolint:gosec
 	assert.NoError(t, err)
 
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(ln.Addr().(*net.TCPAddr).Port))
@@ -293,7 +259,7 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 	client := skademlia.NewClient(addr, keys, skademlia.WithC1(sys.SKademliaC1), skademlia.WithC2(sys.SKademliaC2))
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
-	kvOpts := []store.TestKVOption{}
+	var kvOpts []store.TestKVOption
 	if !cfg.RemoveExistingDB {
 		kvOpts = append(kvOpts, store.WithKeepExisting())
 	}
@@ -559,7 +525,7 @@ func (l *TestLedger) WaitUntilBlock(t testing.TB, block uint64) {
 func (l *TestLedger) WaitForSync() <-chan bool {
 	ch := make(chan bool)
 	go func() {
-		timeout := time.NewTimer(time.Second * 3)
+		timeout := time.NewTimer(time.Second * 30)
 		ticker := time.NewTicker(time.Millisecond * 50)
 		for {
 			select {
@@ -582,7 +548,7 @@ func (l *TestLedger) WaitForSync() <-chan bool {
 func (l *TestLedger) WaitUntilSync(t testing.TB) {
 	t.Helper()
 
-	timeout := time.NewTimer(time.Second * 300)
+	timeout := time.NewTimer(time.Second * 30)
 	for {
 		select {
 		case s := <-l.WaitForSync():
@@ -618,15 +584,22 @@ func (l *TestLedger) newSignedTransaction(tag sys.Tag, payload []byte) Transacti
 	)
 }
 
-func (l *TestLedger) Pay(to *TestLedger, amount uint64) Transaction {
-	payload := Transfer{
+func (l *TestLedger) Pay(to *TestLedger, amount uint64) (Transaction, error) {
+	t := Transfer{
 		Recipient: to.PublicKey(),
 		Amount:    amount,
 	}
 
-	tx := l.newSignedTransaction(sys.TagTransfer, payload.Marshal())
+	var tx Transaction
+	payload, err := t.Marshal()
+	if err != nil {
+		return tx, err
+	}
+
+	tx = l.newSignedTransaction(sys.TagTransfer, payload)
 	l.ledger.AddTransaction(tx)
-	return tx
+
+	return tx, nil
 }
 
 func (l *TestLedger) SpawnContract(contractPath string, gasLimit uint64, params []byte) (Transaction, error) {
@@ -635,30 +608,44 @@ func (l *TestLedger) SpawnContract(contractPath string, gasLimit uint64, params 
 		return Transaction{}, err
 	}
 
-	payload := Contract{
+	c := Contract{
 		GasLimit: gasLimit,
 		Code:     code,
 		Params:   params,
 	}
 
-	tx := l.newSignedTransaction(sys.TagContract, payload.Marshal())
+	var tx Transaction
+	payload, err := c.Marshal()
+	if err != nil {
+		return tx, err
+	}
+
+	tx = l.newSignedTransaction(sys.TagContract, payload)
 	l.ledger.AddTransaction(tx)
+
 	return tx, nil
 }
 
-func (l *TestLedger) DepositGas(id [32]byte, gasDeposit uint64) Transaction {
-	payload := Transfer{
+func (l *TestLedger) DepositGas(id [32]byte, gasDeposit uint64) (Transaction, error) {
+	t := Transfer{
 		Recipient:  id,
 		GasDeposit: gasDeposit,
 	}
 
-	tx := l.newSignedTransaction(sys.TagTransfer, payload.Marshal())
+	var tx Transaction
+	payload, err := t.Marshal()
+	if err != nil {
+		return tx, err
+	}
+
+	tx = l.newSignedTransaction(sys.TagTransfer, payload)
 	l.ledger.AddTransaction(tx)
-	return tx
+
+	return tx, nil
 }
 
-func (l *TestLedger) CallContract(id [32]byte, amount uint64, gasLimit uint64, funcName string, params []byte) Transaction {
-	payload := Transfer{
+func (l *TestLedger) CallContract(id [32]byte, amount uint64, gasLimit uint64, funcName string, params []byte) (Transaction, error) {
+	t := Transfer{
 		Recipient:  id,
 		Amount:     amount,
 		GasLimit:   gasLimit,
@@ -666,75 +653,53 @@ func (l *TestLedger) CallContract(id [32]byte, amount uint64, gasLimit uint64, f
 		FuncParams: params,
 	}
 
-	tx := l.newSignedTransaction(sys.TagTransfer, payload.Marshal())
+	var tx Transaction
+	payload, err := t.Marshal()
+	if err != nil {
+		return tx, err
+	}
+
+	tx = l.newSignedTransaction(sys.TagTransfer, payload)
 	l.ledger.AddTransaction(tx)
-	return tx
+
+	return tx, nil
 }
 
-// func (l *TestLedger) Benchmark(batchSize int) (Transaction, error) {
-// 	payload := Batch{}
-// 	for i := 0; i < batchSize; i++ {
-// 		payload.AddStake(Stake{
-// 			Opcode: sys.PlaceStake,
-// 			Amount: 1,
-// 		})
-// 	}
-//
-// 	keys := l.ledger.client.Keys()
-// 	tx := AttachSenderToTransaction(
-// 		keys,
-// 		NewTransaction(sys.TagBatch, payload.Marshal()),
-// 		l.ledger.Graph().FindEligibleParents()...)
-//
-// 	err := l.ledger.AddTransaction(tx)
-// 	return tx, err
-// }
-
-func (l *TestLedger) PlaceStake(amount uint64) Transaction {
-	payload := Stake{
+func (l *TestLedger) PlaceStake(amount uint64) (Transaction, error) {
+	s := Stake{
 		Opcode: sys.PlaceStake,
 		Amount: amount,
 	}
 
-	tx := l.newSignedTransaction(sys.TagStake, payload.Marshal())
+	var tx Transaction
+	payload, err := s.Marshal()
+	if err != nil {
+		return tx, err
+	}
+
+	tx = l.newSignedTransaction(sys.TagStake, payload)
 	l.ledger.AddTransaction(tx)
-	return tx
+
+	return tx, nil
 }
 
-func (l *TestLedger) WithdrawStake(amount uint64) Transaction {
-	payload := Stake{
+func (l *TestLedger) WithdrawStake(amount uint64) (Transaction, error) {
+	s := Stake{
 		Opcode: sys.WithdrawStake,
 		Amount: amount,
 	}
 
-	tx := l.newSignedTransaction(sys.TagStake, payload.Marshal())
-	l.ledger.AddTransaction(tx)
-	return tx
-}
+	var tx Transaction
+	payload, err := s.Marshal()
+	if err != nil {
+		return tx, err
+	}
 
-// func (l *TestLedger) WithdrawReward(amount uint64) (Transaction, error) {
-// 	payload := Stake{
-// 		Opcode: sys.WithdrawReward,
-// 		Amount: amount,
-// 	}
-//
-// 	keys := l.ledger.client.Keys()
-// 	tx := AttachSenderToTransaction(
-// 		keys,
-// 		NewTransaction(sys.TagStake, payload.Marshal()),
-// 		l.ledger.Graph().FindEligibleParents()...)
-//
-// 	err := l.ledger.AddTransaction(tx)
-// 	return tx, err
-// }
-//
-// func (l *TestLedger) FindTransaction(t testing.TB, id TransactionID) *Transaction {
-// 	return l.ledger.Graph().FindTransaction(id)
-// }
-//
-// func (l *TestLedger) Applied(tx Transaction) bool {
-// 	return tx.Depth <= l.ledger.Graph().RootDepth()
-// }
+	tx = l.newSignedTransaction(sys.TagStake, payload)
+	l.ledger.AddTransaction(tx)
+
+	return tx, nil
+}
 
 // loadKeys returns a keypair from a wallet string, or generates a new one
 // if no wallet is provided.
@@ -772,25 +737,6 @@ func waitFor(t testing.TB, fn func() bool) {
 	t.Helper()
 
 	timeout := time.NewTimer(time.Second * 30)
-	ticker := time.NewTicker(time.Millisecond * 100)
-
-	for {
-		select {
-		case <-timeout.C:
-			t.Fatal("timed out waiting")
-
-		case <-ticker.C:
-			if fn() {
-				return
-			}
-		}
-	}
-}
-
-func waitForDuration(t testing.TB, fn func() bool, d time.Duration) {
-	t.Helper()
-
-	timeout := time.NewTimer(d)
 	ticker := time.NewTicker(time.Millisecond * 100)
 
 	for {

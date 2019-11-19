@@ -21,7 +21,7 @@ var (
 
 var (
 	// ErrInsufficientPerls is returned when you don't have enough PERLs.
-	ErrInsufficientPerls = errors.New("Insufficient PERLs")
+	ErrInsufficientPerls = errors.New("insufficient PERLs")
 )
 
 type TransactionEvent struct {
@@ -39,11 +39,11 @@ func (c *Client) ListTransactions(senderID string, creatorID string, offset uint
 	vals := url.Values{}
 
 	if senderID != "" {
-		vals.Set("sender", string(senderID[:]))
+		vals.Set("sender", senderID)
 	}
 
 	if creatorID != "" {
-		vals.Set("creator", string(creatorID[:]))
+		vals.Set("creator", creatorID)
 	}
 
 	if offset != 0 {
@@ -113,7 +113,12 @@ func (c *Client) SendTransaction(tag byte, payload []byte) (*TxResponse, error) 
 
 // SendTransfer sends a wavelet.Transfer instead of a Payload.
 func (c *Client) sendTransfer(tag byte, transfer Marshalable) (*TxResponse, error) {
-	return c.SendTransaction(tag, transfer.Marshal())
+	payload, err := transfer.Marshal()
+	if err != nil {
+		return nil, err
+	}
+
+	return c.SendTransaction(tag, payload)
 }
 
 /*
@@ -179,11 +184,13 @@ func (t *TransactionList) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	var list []Transaction
+	list := make([]Transaction, 0, len(a))
 
 	for _, v := range a {
 		tx := &Transaction{}
-		tx.ParseJSON(v)
+		if err := tx.ParseJSON(v); err != nil {
+			return err
+		}
 
 		list = append(list, *tx)
 	}

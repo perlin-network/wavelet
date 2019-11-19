@@ -39,7 +39,7 @@ func NewTestKV(t testing.TB, kv string, path string, opts ...TestKVOption) (KV, 
 			_ = inmemdb.Close()
 		}
 
-	case "level":
+	case "level": //nolint:goconst
 		if cfg.RemoveExisting {
 			_ = os.RemoveAll(path)
 		}
@@ -56,7 +56,7 @@ func NewTestKV(t testing.TB, kv string, path string, opts ...TestKVOption) (KV, 
 			}
 		}
 
-	case "badger":
+	case "badger": // nolint:goconst
 		if cfg.RemoveExisting {
 			_ = os.RemoveAll(path)
 		}
