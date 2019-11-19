@@ -211,7 +211,7 @@ func (n *TestNetwork) WaitForSync(t testing.TB) {
 		close(done)
 	}()
 
-	timer := time.NewTimer(5 * time.Second)
+	timer := time.NewTimer(30 * time.Second)
 	select {
 	case <-done:
 		return
@@ -526,7 +526,7 @@ func (l *TestLedger) WaitUntilBlock(t testing.TB, block uint64) {
 func (l *TestLedger) WaitForSync() <-chan bool {
 	ch := make(chan bool)
 	go func() {
-		timeout := time.NewTimer(time.Second * 3)
+		timeout := time.NewTimer(time.Second * 30)
 		ticker := time.NewTicker(time.Millisecond * 50)
 		for {
 			select {
