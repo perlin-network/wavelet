@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	cuckoo "github.com/seiflotfy/cuckoofilter"
 	"io"
 	"math/rand"
 	"sync"
@@ -38,7 +39,6 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
-	"github.com/willf/bloom"
 	"golang.org/x/crypto/blake2b"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
@@ -87,7 +87,7 @@ type Ledger struct {
 	cancelGC context.CancelFunc
 
 	transactionsSyncIndexLock sync.RWMutex
-	transactionsSyncIndex     *bloom.BloomFilter
+	transactionsSyncIndex     *cuckoo.Filter
 
 	queryBlockCache map[[blake2b.Size256]byte]*Block
 
@@ -185,7 +185,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 		sendQuota: make(chan struct{}, 2000),
 
-		transactionsSyncIndex: bloom.New(conf.GetBloomFilterM(), conf.GetBloomFilterK()),
+		transactionsSyncIndex: cuckoo.NewFilter(conf.GetBloomFilterM()),
 
 		queryBlockCache: make(map[BlockID]*Block),
 
@@ -255,7 +255,7 @@ func (l *Ledger) AddTransaction(txs ...Transaction) {
 
 	l.transactionsSyncIndexLock.Lock()
 	for _, tx := range txs {
-		l.transactionsSyncIndex.Add(tx.ID[:])
+		l.transactionsSyncIndex.InsertUnique(tx.ID[:])
 	}
 	l.transactionsSyncIndexLock.Unlock()
 
@@ -382,7 +382,7 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 		select {
 		case <-l.sync:
 			return
-		case <-time.After(100 * time.Millisecond):
+		case <-time.After(3 * time.Second):
 		}
 
 		snowballK := conf.GetSnowballK()
@@ -394,11 +394,8 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 
 		logger := log.Sync("sync_tx")
 
-		// Marshal bloom filter
-		buf := bytes.NewBuffer(nil)
-
 		l.transactionsSyncIndexLock.RLock()
-		_, err = l.transactionsSyncIndex.WriteTo(buf)
+		cf := l.transactionsSyncIndex.Encode()
 		l.transactionsSyncIndexLock.RUnlock()
 
 		if err != nil {
@@ -410,7 +407,7 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 
 		bfReq := &TransactionsSyncRequest{
 			Data: &TransactionsSyncRequest_Filter{
-				Filter: buf.Bytes(),
+				Filter: cf,
 			},
 		}
 
@@ -540,6 +537,7 @@ func (l *Ledger) PullMissingTransactions() {
 		missingIDs := l.transactions.MissingIDs()
 		req := &TransactionPullRequest{TransactionIds: make([][]byte, 0, len(missingIDs))}
 		for _, txID := range missingIDs {
+			txID := txID
 			req.TransactionIds = append(req.TransactionIds, txID[:])
 		}
 
@@ -579,7 +577,7 @@ func (l *Ledger) PullMissingTransactions() {
 
 		count := int64(0)
 
-		var pulled []Transaction
+		pulled := map[TransactionID]Transaction{}
 
 		for _, res := range responses {
 			for _, buf := range res.Transactions {
@@ -592,12 +590,19 @@ func (l *Ledger) PullMissingTransactions() {
 					continue
 				}
 
-				pulled = append(pulled, tx)
-				count += int64(tx.LogicalUnits())
+				if _, ok := pulled[tx.ID]; !ok {
+					pulled[tx.ID] = tx
+					count += int64(tx.LogicalUnits())
+				}
 			}
 		}
 
-		l.AddTransaction(pulled...)
+		pulledTXs := make([]Transaction, 0, len(pulled))
+		for _, tx := range pulled {
+			pulledTXs = append(pulledTXs, tx)
+		}
+
+		l.AddTransaction(pulledTXs...)
 
 		if count > 0 {
 			logger.Info().
@@ -714,10 +719,12 @@ func (l *Ledger) finalize(block Block) {
 		return
 	}
 
-	prunedCount := l.transactions.ReshufflePending(block)
-	if prunedCount > 0 {
-		l.resetTransactionsSyncIndex()
+	pruned := l.transactions.ReshufflePending(block)
+	l.transactionsSyncIndexLock.Lock()
+	for _, txID := range pruned {
+		l.transactionsSyncIndex.Delete(txID[:])
 	}
+	l.transactionsSyncIndexLock.Unlock()
 
 	_, err = l.blocks.Save(&block)
 	if err != nil {
@@ -751,7 +758,7 @@ func (l *Ledger) finalize(block Block) {
 	logger.Info().
 		Int("num_applied_tx", results.appliedCount).
 		Int("num_rejected_tx", results.rejectedCount).
-		Int("num_pruned_tx", prunedCount).
+		Int("num_pruned_tx", len(pruned)).
 		Uint64("old_block_height", current.Index).
 		Uint64("new_block_height", block.Index).
 		Hex("old_block_id", current.ID[:]).
@@ -1578,10 +1585,10 @@ func (l *Ledger) resetTransactionsSyncIndex() {
 	l.transactionsSyncIndexLock.Lock()
 	defer l.transactionsSyncIndexLock.Unlock()
 
-	l.transactionsSyncIndex.ClearAll()
+	l.transactionsSyncIndex.Reset()
 
 	l.transactions.Iterate(func(tx *Transaction) bool {
-		l.transactionsSyncIndex.Add(tx.ID[:])
+		l.transactionsSyncIndex.Insert(tx.ID[:])
 		return true
 	})
 }

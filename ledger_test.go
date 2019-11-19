@@ -3,6 +3,7 @@ package wavelet
 import (
 	"bytes"
 	"crypto/rand"
+	cuckoo "github.com/seiflotfy/cuckoofilter"
 	mrand "math/rand"
 	"testing"
 	"time"
@@ -317,3 +318,30 @@ DONE:
 		assert.True(t, bytes.Equal(code[:], checkCode))
 	}
 }
+
+func benchBloom(n int, b *testing.B) {
+	bf := cuckoo.NewFilter(conf.GetBloomFilterM())
+
+	var txID TransactionID
+	for i := 0; i < n; i++ {
+		if _, err := rand.Read(txID[:]); err != nil {
+			b.Fatal(err)
+		}
+		bf.InsertUnique(txID[:])
+	}
+
+	for i := 0; i < b.N; i++ {
+		if _, err := rand.Read(txID[:]); err != nil {
+			b.Fatal(err)
+		}
+		bf.Lookup(txID[:])
+	}
+}
+
+func BenchmarkBloom10K(b *testing.B)  { benchBloom(10000, b) }
+func BenchmarkBloom100K(b *testing.B) { benchBloom(100000, b) }
+func BenchmarkBloom1M(b *testing.B)   { benchBloom(1000000, b) }
+
+//BenchmarkBloom10K-12     	 4642104	       261 ns/op
+//BenchmarkBloom100K-12    	 4711498	       238 ns/op
+//BenchmarkBloom1M-12      	 4065445	       262 ns/op

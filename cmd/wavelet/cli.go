@@ -29,12 +29,13 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"gopkg.in/urfave/cli.v1"
+
 	"github.com/benpye/readline"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/rs/zerolog"
-	"github.com/urfave/cli"
 )
 
 const (
@@ -280,6 +281,17 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 					Name:  "tx.sync.limit",
 					Value: conf.GetTXSyncLimit(),
 					Usage: "max number of transactions to be synced",
+				},
+			},
+		},
+		{
+			Name:        "dump",
+			Action:      a(c.dump),
+			Description: "dump wallet states, and you may use -c to dump contract code and pages",
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:  "c",
+					Usage: "dump contract code and pages",
 				},
 			},
 		},
