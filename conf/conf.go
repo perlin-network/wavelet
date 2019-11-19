@@ -79,7 +79,7 @@ func defaultConfig() config {
 		txSyncChunkSize: 1000,
 		txSyncLimit:     1 << 20,
 
-		bloomFilterM: 1 << 24,
+		bloomFilterM: 1 << 21,
 		bloomFilterK: 3,
 
 		pruningLimit: 30,

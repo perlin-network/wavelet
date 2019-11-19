@@ -119,13 +119,11 @@ func (t *Transactions) markMissing(id TransactionID) bool {
 //
 // It also prunes away transactions that are too stale, based on the index specified of the next
 // block. It returns the total number of transactions pruned.
-func (t *Transactions) ReshufflePending(next Block) int {
+func (t *Transactions) ReshufflePending(next Block) []TransactionID {
 	t.Lock()
 	defer t.Unlock()
 
 	// Delete mempool entries for transactions in the finalized block.
-
-	pruned := 0
 
 	lookup := make(map[TransactionID]struct{})
 
@@ -168,11 +166,11 @@ func (t *Transactions) ReshufflePending(next Block) int {
 
 	// Go through the entire transactions index and prune away
 	// any transactions that are too old.
-
+	pruned := []TransactionID{}
 	for _, tx := range t.buffer {
 		if next.Index >= tx.Block+uint64(conf.GetPruningLimit()) {
 			delete(t.buffer, tx.ID)
-			pruned++
+			pruned = append(pruned, tx.ID)
 		}
 	}
 
