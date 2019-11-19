@@ -9,7 +9,6 @@ import (
 )
 
 const (
-	RouteWSBroadcaster  = "/poll/broadcaster"
 	RouteWSConsensus    = "/poll/consensus"
 	RouteWSStake        = "/poll/stake"
 	RouteWSAccounts     = "/poll/accounts"
@@ -120,7 +119,7 @@ type ErrInvalidEvent struct {
 	Event string
 }
 
-func errInvalidEvent(v *fastjson.Value, event string) *ErrInvalidEvent {
+func errInvalidEvent(v *fastjson.Value, event string) *ErrInvalidEvent { // nolint:interfacer
 	return &ErrInvalidEvent{
 		ErrInvalidPayload: ErrInvalidPayload{
 			JSONValue: v.String(),
@@ -139,7 +138,7 @@ type ErrUnmarshalFail struct {
 	Underlying error
 }
 
-func errUnmarshalFail(v *fastjson.Value, key string, err error) *ErrUnmarshalFail {
+func errUnmarshalFail(v *fastjson.Value, key string, err error) *ErrUnmarshalFail { // nolint:interfacer
 	return &ErrUnmarshalFail{
 		ErrInvalidPayload: ErrInvalidPayload{
 			JSONValue: v.String(),

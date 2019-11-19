@@ -30,7 +30,7 @@ import (
 // Name is the name registered for the Snappy compressor.
 const Name = "snappy"
 
-func init() {
+func init() { // nolint:gochecknoinits
 	encoding.RegisterCompressor(&compressor{})
 }
 

@@ -18,5 +18,5 @@ func (c *Client) Find(address [32]byte) (*Account, *Transaction, error) {
 	}
 
 	// return nil, nil, err
-	return nil, nil, errors.New("Address not found")
+	return nil, nil, errors.New("address not found")
 }

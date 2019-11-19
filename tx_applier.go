@@ -320,7 +320,6 @@ func executeContractInTransactionContext(
 				Uint64("gas", executor.Gas).
 				Uint64("gas_limit", realGasLimit).
 				Msg("Exceeded gas limit while invoking smart contract function.")
-
 		} else {
 			logger.Info().Err(invocationErr).Msg("failed to invoke smart contract")
 		}

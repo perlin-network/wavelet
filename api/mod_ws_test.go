@@ -54,23 +54,22 @@ func TestPollLog(t *testing.T) {
 
 	t.Run("tx-tag-filter", func(t *testing.T) {
 		u := url.URL{Scheme: "ws", Host: ":8080", Path: `/poll/tx`, RawQuery: "tag=1"}
-		c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+		c, resp, err := websocket.DefaultDialer.Dial(u.String(), nil)
 		if !assert.NoError(t, err) {
 			return
 		}
 
+		defer func() {
+			_ = resp.Body.Close()
+			_ = c.Close()
+		}()
+
 		response := make(chan []byte, 10)
-		stop := make(chan struct{})
+
 		go func() {
 			for {
-				select {
-				case <-stop:
-					return
-				default:
-				}
-
 				_, msg, err := c.ReadMessage()
-				if !assert.NoError(t, err) {
+				if err != nil {
 					return
 				}
 				response <- msg
@@ -85,31 +84,27 @@ func TestPollLog(t *testing.T) {
 
 		time.Sleep(2500 * time.Millisecond)
 
-		close(stop)
-
 		assert.Equal(t, 1, len(response))
 	})
 
 	t.Run("accounts-grouping", func(t *testing.T) {
 		u := url.URL{Scheme: "ws", Host: ":8080", Path: `/poll/accounts`}
-		c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+		c, resp, err := websocket.DefaultDialer.Dial(u.String(), nil)
 		if !assert.NoError(t, err) {
 			return
 		}
 
+		defer func() {
+			_ = resp.Body.Close()
+			_ = c.Close()
+		}()
+
 		response := make(chan []byte, 10)
-		stop := make(chan struct{})
 
 		go func() {
 			for {
-				select {
-				case <-stop:
-					return
-				default:
-				}
-
 				_, msg, err := c.ReadMessage()
-				if !assert.NoError(t, err) {
+				if err != nil {
 					return
 				}
 				response <- msg
@@ -127,7 +122,6 @@ func TestPollLog(t *testing.T) {
 		}
 
 		time.Sleep(1000 * time.Millisecond)
-		close(stop)
 
 		if !assert.Equal(t, 1, len(response)) {
 			return

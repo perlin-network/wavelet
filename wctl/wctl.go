@@ -52,10 +52,10 @@ const (
 	ReqGet  = "GET"
 )
 
-var ErrNoHost = errors.New("No host provided")
+var ErrNoHost = errors.New("no host provided")
 
 type Marshalable interface {
-	Marshal() []byte
+	Marshal() ([]byte, error)
 }
 
 type Config struct {

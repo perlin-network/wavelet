@@ -186,7 +186,7 @@ func ReadAccountContractCode(tree *avl.Tree, id TransactionID) ([]byte, bool) {
 }
 
 func WriteAccountContractCode(tree *avl.Tree, id TransactionID, code []byte) {
-	writeUnderAccounts(tree, id, keyAccountContractCode[:], code[:])
+	writeUnderAccounts(tree, id, keyAccountContractCode[:], code)
 }
 
 func ReadAccountContractNumPages(tree *avl.Tree, id TransactionID) (uint64, bool) {
@@ -298,7 +298,7 @@ func WriteAccountsLen(tree *avl.Tree, size uint64) {
 }
 
 func StoreBlock(kv store.KV, block Block, currentIx, oldestIx uint32, storedCount uint8) error {
-	if err := kv.Put(keyBlockStoredCount[:], []byte{byte(storedCount)}); err != nil {
+	if err := kv.Put(keyBlockStoredCount[:], []byte{storedCount}); err != nil {
 		return errors.Wrap(err, "error storing stored block count")
 	}
 
@@ -314,7 +314,12 @@ func StoreBlock(kv store.KV, block Block, currentIx, oldestIx uint32, storedCoun
 		return errors.Wrap(err, "error storing latest block index")
 	}
 
-	if err := kv.Put(append(keyBlocks[:], strconv.Itoa(int(currentIx))...), block.Marshal()); err != nil {
+	marshaled, err := block.Marshal()
+	if err != nil {
+		return errors.Wrap(err, "error marshaling block")
+	}
+
+	if err := kv.Put(append(keyBlocks[:], strconv.Itoa(int(currentIx))...), marshaled); err != nil {
 		return errors.Wrap(err, "error storing block")
 	}
 

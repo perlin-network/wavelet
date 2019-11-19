@@ -20,11 +20,11 @@
 package wavelet
 
 import (
-	"crypto/md5"
+	"crypto/md5" // nolint:gosec
 	"golang.org/x/crypto/blake2b"
 )
 
-import _ "github.com/perlin-network/wavelet/internal/snappy"
+import _ "github.com/perlin-network/wavelet/internal/snappy" // Compressor registration is done in init of snappy package
 
 const (
 	SizeTransactionID   = blake2b.Size256
