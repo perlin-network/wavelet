@@ -362,8 +362,13 @@ func (l *Ledger) Restart() error {
 // missing transactions and incrementally finalizing intervals of transactions in
 // the ledgers graph.
 func (l *Ledger) PerformConsensus() {
+	l.consensus.Add(1)
 	go l.PullMissingTransactions()
+
+	l.consensus.Add(1)
 	go l.SyncTransactions()
+
+	l.consensus.Add(1)
 	go l.FinalizeBlocks()
 }
 
@@ -375,7 +380,6 @@ func (l *Ledger) Snapshot() *avl.Tree {
 // in form of the bloom filter to randomly sampled number of peers and adds to it's state all received
 // transactions.
 func (l *Ledger) SyncTransactions() { // nolint:gocognit
-	l.consensus.Add(1)
 	defer l.consensus.Done()
 
 	for {
@@ -514,7 +518,6 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 // from randomly sampled peers in the network. It does so by sending a list of
 // transaction IDs which node is missing.
 func (l *Ledger) PullMissingTransactions() {
-	l.consensus.Add(1)
 	defer l.consensus.Done()
 
 	for {
@@ -617,7 +620,6 @@ func (l *Ledger) PullMissingTransactions() {
 
 // FinalizeBlocks continuously attempts to finalize blocks.
 func (l *Ledger) FinalizeBlocks() {
-	l.consensus.Add(1)
 	defer l.consensus.Done()
 
 	for {
