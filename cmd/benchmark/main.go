@@ -100,6 +100,69 @@ func main() {
 	}
 }
 
+func getKeys(wallet string) (edwards25519.PrivateKey, edwards25519.PublicKey) {
+	var (
+		emptyPrivateKey edwards25519.PrivateKey
+		emptyPublicKey  edwards25519.PublicKey
+	)
+
+	privateKeyBuf, err := ioutil.ReadFile(wallet)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// If a private key is specified instead of a path to a wallet, then simply use the provided private key instead.
+			if len(wallet) == hex.EncodedLen(edwards25519.SizePrivateKey) {
+				var privateKey edwards25519.PrivateKey
+
+				n, err := hex.Decode(privateKey[:], []byte(wallet))
+				if err != nil {
+					log.Fatal().Err(err).Msgf("Failed to decode the private key specified: %s", wallet)
+				}
+
+				if n != edwards25519.SizePrivateKey {
+					log.Fatal().Msgf("Private key %s is not of the right length.", wallet)
+					return emptyPrivateKey, emptyPublicKey
+				}
+
+				k, err := skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+				if err != nil {
+					log.Fatal().Err(err).Msgf("The private key specified is invalid: %s", wallet)
+					return emptyPrivateKey, emptyPublicKey
+				}
+
+				return k.PrivateKey(), k.PublicKey()
+			}
+
+			log.Fatal().Msgf("Could not find an existing wallet at %q.", wallet)
+
+			return emptyPrivateKey, emptyPublicKey
+		}
+
+		log.Warn().Err(err).Msgf("Encountered an unexpected error loading your wallet from %q.", wallet)
+
+		return emptyPrivateKey, emptyPublicKey
+	}
+
+	var privateKey edwards25519.PrivateKey
+	n, err := hex.Decode(privateKey[:], privateKeyBuf)
+	if err != nil {
+		log.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", wallet)
+		return emptyPrivateKey, emptyPublicKey
+	}
+
+	if n != edwards25519.SizePrivateKey {
+		log.Fatal().Msgf("Private key located in %q is not of the right length.", wallet)
+		return emptyPrivateKey, emptyPublicKey
+	}
+
+	k, err := skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+	if err != nil {
+		log.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", wallet)
+		return emptyPrivateKey, emptyPublicKey
+	}
+
+	return k.PrivateKey(), k.PublicKey()
+}
+
 func commandRemote(c *cli.Context) error {
 	args := strings.Split(c.String("host"), ":")
 
@@ -120,71 +183,7 @@ func commandRemote(c *cli.Context) error {
 
 	wallet := c.String("wallet")
 
-	var k *skademlia.Keypair
-
-	// If a private key is specified instead of a path to a wallet, then simply use the provided private key instead.
-
-	privateKeyBuf, err := ioutil.ReadFile(wallet)
-
-	if err != nil {
-		if os.IsNotExist(err) {
-			if len(wallet) == hex.EncodedLen(edwards25519.SizePrivateKey) {
-				var privateKey edwards25519.PrivateKey
-
-				n, err := hex.Decode(privateKey[:], []byte(wallet))
-				if err != nil {
-					log.Fatal().Err(err).Msgf("Failed to decode the private key specified: %s", wallet)
-				}
-
-				if n != edwards25519.SizePrivateKey {
-					log.Fatal().Msgf("Private key %s is not of the right length.", wallet)
-					return nil
-				}
-
-				k, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
-				if err != nil {
-					log.Fatal().Err(err).Msgf("The private key specified is invalid: %s", wallet)
-					return nil
-				}
-
-				privateKey, publicKey := k.PrivateKey(), k.PublicKey()
-
-				log.Info().
-					Hex("privateKey", privateKey[:]).
-					Hex("publicKey", publicKey[:]).
-					Msg("Loaded wallet.")
-
-				return nil
-			}
-
-			log.Fatal().Msgf("Could not find an existing wallet at %q.", wallet)
-			return nil
-		}
-
-		log.Warn().Err(err).Msgf("Encountered an unexpected error loading your wallet from %q.", wallet)
-		return nil
-	}
-
-	var privateKey edwards25519.PrivateKey
-
-	n, err := hex.Decode(privateKey[:], privateKeyBuf)
-	if err != nil {
-		log.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", wallet)
-		return nil
-	}
-
-	if n != edwards25519.SizePrivateKey {
-		log.Fatal().Msgf("Private key located in %q is not of the right length.", wallet)
-		return nil
-	}
-
-	k, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
-	if err != nil {
-		log.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", wallet)
-		return nil
-	}
-
-	privateKey, publicKey := k.PrivateKey(), k.PublicKey()
+	privateKey, publicKey := getKeys(wallet)
 
 	log.Info().
 		Hex("privateKey", privateKey[:]).
@@ -196,7 +195,7 @@ func commandRemote(c *cli.Context) error {
 		numWorkers = 1
 	}
 
-	client, err := connectToAPI(host, port, k.PrivateKey())
+	client, err := connectToAPI(host, port, privateKey)
 	if err != nil {
 		return errors.Wrap(err, "failed to connect to node HTTP API")
 	}
