@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/perlin-network/wavelet/sys"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -17,6 +18,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var updateDirectory = func() string {
@@ -216,6 +218,35 @@ func checkForUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte,
 	switchToUpdatedVersion()
 
 	return
+}
+
+func periodicUpdateRoutine(updateURL string) { // nolint:unused
+	if updateURL == "" {
+		return
+	}
+
+	/*
+	 * Public key(s) which may sign updates;  For now this is
+	 * a single key.
+	 */
+	publicKeyPEM := []byte(`-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArpAZWeG0HHOGNALRj+UF
+JLqXMJ2+AxFu7EWqQOVVh+LSpNn4kOm68TY4c4J4KsjRY9FlXXkZOv64oCBwIAXU
+13+ciLIguJkJkSgOcuTuzBN1xPkWQdFRY1dkRv0Uc1AwEC5t89shkDbEB7z5uhyu
+PHY/AnnudR60OP3Qe+HqxPLQAlhEvgHzGt0FktRRH+dcah+QycSWWjR3gEyDvKiO
+keq8rrb+65AWob+AVIjiBN0SSqim9VxeEWIaMKOAjSBrUK9QahkPca+ZcrW5vIJX
+E5M6PhOfWnxmqDGntZ/uJ+QEbTsUDisx4mEOen1JU6CgU8zqj1t3RGyDpWllCQT9
+yQIDAQAB
+-----END PUBLIC KEY-----`)
+
+	currentVersion := sys.VersionCode
+
+	baseURL := fmt.Sprintf("%s/network/%s/platform/%s", updateURL, sys.VersionMeta, sys.OSArch)
+
+	for {
+		checkForUpdate(baseURL, updateDirectory, publicKeyPEM, currentVersion)
+		time.Sleep(10 * time.Minute)
+	}
 }
 
 func switchToUpdatedVersion() {
