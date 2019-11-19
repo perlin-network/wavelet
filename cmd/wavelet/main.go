@@ -43,7 +43,7 @@ import (
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
 
-	_ "net/http/pprof"
+	_ "net/http/pprof" // nolint:gosec
 	"net/url"
 )
 
@@ -59,7 +59,9 @@ type Config struct {
 
 func main() {
 	// switchToUpdatedVersion()
-	wavelet.SetGenesisByNetwork(sys.VersionMeta)
+	if err := wavelet.SetGenesisByNetwork(sys.VersionMeta); err != nil {
+		panic(err)
+	}
 
 	Run(os.Args, os.Stdin, os.Stdout)
 }
@@ -293,7 +295,9 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 
 		// Start the server
 		srv.Start()
-		defer srv.Close()
+		defer func() {
+			_ = srv.Close()
+		}()
 
 		wctlCfg.Server = srv
 		wctlCfg.APIPort = uint16(c.Uint("api.port"))
@@ -308,7 +312,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 	} else {
 		u, err := url.Parse(config.ServerAddr)
 		if err != nil {
-			return fmt.Errorf("Invalid address: %v", err)
+			return fmt.Errorf("invalid address: %v", err)
 		}
 
 		port, _ := strconv.ParseUint(u.Port(), 10, 16)
@@ -332,7 +336,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 
 	shell, err := NewCLI(client, CLIWithStdin(stdin), CLIWithStdout(stdout))
 	if err != nil {
-		return fmt.Errorf("Failed to spawn the CLI: %v", err)
+		return fmt.Errorf("failed to spawn the CLI: %v", err)
 	}
 
 	shell.Start()

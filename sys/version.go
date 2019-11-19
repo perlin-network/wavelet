@@ -45,9 +45,5 @@ var Version = func() string {
 }()
 
 var VersionCode = func() uint32 {
-	var versionCode uint32
-
-	versionCode = (VersionMajor << 24) | (VersionMinor << 16) | VersionPatch
-
-	return versionCode
+	return (VersionMajor << 24) | (VersionMinor << 16) | VersionPatch
 }()

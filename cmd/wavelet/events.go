@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/wctl"
 )

@@ -228,7 +228,7 @@ func (cli *CLI) find(ctx *cli.Context) {
 		cli.logger.Info().
 			Hex("sender", tx.Sender[:]).
 			Uint64("nonce", tx.Nonce).
-			Uint8("tag", byte(tx.Tag)).
+			Uint8("tag", tx.Tag).
 			Msgf("Transaction: %s", cmd[0])
 	}
 }

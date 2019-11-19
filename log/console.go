@@ -129,15 +129,19 @@ func (w ConsoleWriter) Write(p []byte) (n int, err error) {
 	if w.PartsOrder == nil {
 		w.PartsOrder = consoleDefaultPartsOrder()
 	}
+
 	if w.TimeFormat == "" && consoleTimeFormat != consoleDefaultTimeFormat {
 		consoleTimeFormat = consoleDefaultTimeFormat
 	}
+
 	if w.TimeFormat != "" && consoleTimeFormat != w.TimeFormat {
 		consoleTimeFormat = w.TimeFormat
 	}
+
 	if !w.NoColor && consoleNoColor {
 		consoleNoColor = false
 	}
+
 	if w.NoColor && consoleNoColor != w.NoColor {
 		consoleNoColor = w.NoColor
 	}
@@ -178,13 +182,16 @@ func (w ConsoleWriter) Write(p []byte) (n int, err error) {
 // writeFields appends formatted key-value pairs to buf.
 func (w ConsoleWriter) writeFields(evt map[string]interface{}, buf *bytes.Buffer) {
 	var fields = make([]string, 0, len(evt))
+
 	for field := range evt {
 		switch field {
 		case zerolog.LevelFieldName, zerolog.TimestampFieldName, zerolog.MessageFieldName, zerolog.CallerFieldName:
 			continue
 		}
+
 		fields = append(fields, field)
 	}
+
 	sort.Strings(fields)
 
 	if len(fields) > 0 {
@@ -196,7 +203,9 @@ func (w ConsoleWriter) writeFields(evt map[string]interface{}, buf *bytes.Buffer
 	if ei < len(fields) && fields[ei] == zerolog.ErrorFieldName {
 		fields[ei] = ""
 		fields = append([]string{zerolog.ErrorFieldName}, fields...)
+
 		var xfields = make([]string, 0, len(fields))
+
 		for _, field := range fields {
 			if field == "" { // Skip empty fields
 				continue

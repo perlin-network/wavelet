@@ -51,7 +51,7 @@ type badgerKV struct {
 	db  *badger.DB
 }
 
-func NewBadger(dir string) (*badgerKV, error) {
+func NewBadger(dir string) (*badgerKV, error) { // nolint:golint
 	db, err := badger.Open(badger.DefaultOptions(dir).WithLogger(nullLog{}))
 	if err != nil {
 		return nil, err

@@ -47,16 +47,14 @@ import (
 type bitset uint8
 
 const (
-	outOfSync   bitset = 0
+	outOfSync   bitset = 0 //nolint:staticcheck
 	synced             = 1
 	finalized          = 2
 	fullySynced        = 3
 )
 
 var (
-	ErrOutOfSync     = errors.New("Node is currently ouf of sync. Please try again later.")
-	ErrAlreadyExists = errors.New("transaction already exists in the graph")
-	ErrMissingTx     = errors.New("missing transaction")
+	ErrMissingTx = errors.New("missing transaction")
 )
 
 type Ledger struct {
@@ -201,8 +199,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		ledger.cancelGC = cancel
 	}
 
-	var stallDetector *StallDetector
-	stallDetector = NewStallDetector(StallDetectorConfig{
+	stallDetector := NewStallDetector(StallDetectorConfig{
 		MaxMemoryMB: cfg.MaxMemoryMB,
 	}, StallDetectorDelegate{
 		PrepareShutdown: func(err error) {
@@ -212,6 +209,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	})
 
 	ledger.stopWG.Add(1)
+
 	go stallDetector.Run(&ledger.stopWG)
 
 	ledger.stallDetector = stallDetector
@@ -376,7 +374,7 @@ func (l *Ledger) Snapshot() *avl.Tree {
 // SyncTransactions is an infinite loop which constantly sends transaction ids from its index
 // in form of the bloom filter to randomly sampled number of peers and adds to it's state all received
 // transactions.
-func (l *Ledger) SyncTransactions() {
+func (l *Ledger) SyncTransactions() { // nolint:gocognit
 	l.consensus.Add(1)
 	defer l.consensus.Done()
 
@@ -663,11 +661,21 @@ func (l *Ledger) proposeBlock() *Block {
 		return nil
 	}
 
-	proposed := NewBlock(l.blocks.Latest().Index+1, l.accounts.tree.Checksum(), proposing...)
+	logger := log.Node()
+
+	block, err := NewBlock(l.blocks.Latest().Index+1, l.accounts.tree.Checksum(), proposing...)
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Msg("error creating new block")
+
+		return nil
+	}
+
+	proposed := block
 
 	results, err := l.collapseTransactions(&proposed, false)
 	if err != nil {
-		logger := log.Node()
 		logger.Error().
 			Err(err).
 			Msg("error collapsing transactions during block proposal")
@@ -861,10 +869,8 @@ func (l *Ledger) query() {
 
 		if response.cacheValid {
 			response.vote.block = response.cacheBlock
-		} else {
-			if response.vote.block != nil {
-				l.queryBlockCache[response.vote.voter.Checksum()] = response.vote.block
-			}
+		} else if response.vote.block != nil {
+			l.queryBlockCache[response.vote.voter.Checksum()] = response.vote.block
 		}
 
 		votes = append(votes, &response.vote)
@@ -911,7 +917,7 @@ func (l *Ledger) query() {
 // If the majority of its peers responded that it is out of sync (decided using snowball),
 // the node will attempt to sync its state to the latest block by downloading the AVL tree
 // diff from its peers and applying the diff to its local AVL tree.
-func (l *Ledger) SyncToLatestBlock() {
+func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 	voteWG := new(sync.WaitGroup)
 
 	snowballK := conf.GetSnowballK()
@@ -928,9 +934,7 @@ func (l *Ledger) SyncToLatestBlock() {
 
 			peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
 			if err != nil {
-				select {
-				case <-time.After(1 * time.Second):
-				}
+				<-time.After(1 * time.Second)
 
 				continue
 			}
@@ -1276,7 +1280,7 @@ func (l *Ledger) SyncToLatestBlock() {
 							continue
 						}
 
-						if blake2b.Sum256(chunk[:]) != src.checksum {
+						if blake2b.Sum256(chunk) != src.checksum {
 							continue
 						}
 
@@ -1556,14 +1560,6 @@ func (l *Ledger) SyncStatus() string {
 	default:
 		return "Sync status unknown"
 	}
-}
-
-func (l *Ledger) isOutOfSync() bool {
-	l.syncStatusLock.RLock()
-	synced := l.syncStatus == fullySynced
-	l.syncStatusLock.RUnlock()
-
-	return !synced
 }
 
 func (l *Ledger) applySync(flag bitset) {
