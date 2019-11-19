@@ -31,33 +31,35 @@ func getGenesisTestNetwork(t testing.TB, withContract bool) (testnet *TestNetwor
 
 	var err error
 
-	testnet.faucet.Pay(alice, 10000000000)
+	_, err = testnet.faucet.Pay(alice, 10000000000)
 	assert.NoError(t, err)
 	alice.WaitUntilBalance(t, 10000000000)
 
-	testnet.faucet.Pay(bob, 10000000000)
+	_, err = testnet.faucet.Pay(bob, 10000000000)
 	assert.NoError(t, err)
 	bob.WaitUntilBalance(t, 10000000000)
 
-	alice.PlaceStake(100)
+	_, err = alice.PlaceStake(100)
 	alice.WaitUntilStake(t, 100)
 
-	bob.PlaceStake(100)
+	_, err = bob.PlaceStake(100)
 	bob.WaitUntilStake(t, 100)
 
 	if withContract {
-		for i := 0; i < 5; i++ {
+		for i := 0; i < 4; i++ {
 			tx, err := alice.SpawnContract("testdata/transfer_back.wasm", 10000, nil)
 			if !assert.NoError(t, err) {
 				return nil, nil, cleanup
 			}
 			alice.WaitUntilConsensus(t)
 
-			tx = alice.DepositGas(tx.ID, (uint64(i)+1)*100)
-			if !assert.NoError(t, err) {
-				return nil, nil, cleanup
+			if i%2 == 0 {
+				tx, err = alice.DepositGas(tx.ID, (uint64(i)+1)*100)
+				if !assert.NoError(t, err) {
+					return nil, nil, cleanup
+				}
+				alice.WaitUntilConsensus(t)
 			}
-			alice.WaitUntilConsensus(t)
 		}
 	}
 
@@ -71,15 +73,21 @@ func TestDumpIncludingContract(t *testing.T) {
 	defer cleanup()
 	if testnet == nil || target == nil {
 		assert.FailNow(t, "failed to get test network.")
+		return
 	}
-	defer os.RemoveAll(testDumpDir)
+	defer func() {
+		_ = os.RemoveAll(testDumpDir)
+	}()
 
 	// Delete the dir in case it already exists
 	assert.NoError(t, os.RemoveAll(testDumpDir))
 
 	expected := target.ledger.Snapshot()
-	assert.NoError(t, Dump(expected, testDumpDir, true, false))
+	if !assert.NoError(t, Dump(expected, testDumpDir, true, false)) {
+		return
+	}
 
+	fmt.Println("checkdump")
 	testDump(t, testDumpDir, expected, true)
 }
 
@@ -90,14 +98,19 @@ func TestDumpWithoutContract(t *testing.T) {
 	defer cleanup()
 	if testnet == nil || target == nil {
 		assert.FailNow(t, "failed setup test network.")
+		return
 	}
-	defer os.RemoveAll(testDumpDir)
+	defer func() {
+		_ = os.RemoveAll(testDumpDir)
+	}()
 
 	// Delete the dir in case it already exists
 	assert.NoError(t, os.RemoveAll(testDumpDir))
 
 	expected := target.ledger.Snapshot()
-	assert.NoError(t, Dump(expected, testDumpDir, false, false))
+	if !assert.NoError(t, Dump(expected, testDumpDir, false, false)) {
+		return
+	}
 
 	testDump(t, testDumpDir, expected, false)
 }
@@ -116,7 +129,7 @@ func testDump(t *testing.T, dumpDir string, expected *avl.Tree, checkContract bo
 
 	// Repeatedly restore the dump and check it's checksum to make sure there's no randomness in the order of the restoration.
 	var checksum = actual.Checksum()
-	for i := 0; i < 50; i++ {
+	for i := 0; i < 30; i++ {
 		tree := avl.New(store.NewInmem())
 		_ = performInception(tree, &dumpDir)
 
@@ -346,8 +359,11 @@ func BenchmarkDump(b *testing.B) {
 	defer cleanup()
 	if testnet == nil || target == nil {
 		assert.FailNow(b, "failed setup test network.")
+		return
 	}
-	defer os.RemoveAll(testDumpDir)
+	defer func() {
+		_ = os.RemoveAll(testDumpDir)
+	}()
 
 	b.ResetTimer()
 	b.ReportAllocs()
