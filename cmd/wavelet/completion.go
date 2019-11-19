@@ -20,12 +20,12 @@
 package main
 
 import (
+	"gopkg.in/urfave/cli.v1"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/benpye/readline"
-	"github.com/urfave/cli"
 )
 
 func (cli *CLI) getCompleter() *readline.PrefixCompleter {
