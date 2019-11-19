@@ -71,7 +71,11 @@ func TestApplyTransaction_Single(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(42))
 
-	block := NewBlock(viewID, state.Checksum())
+	block, err := NewBlock(viewID, state.Checksum())
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	var nonce uint64
 
 	for i := 0; i < 10000; i++ {
@@ -83,10 +87,15 @@ func TestApplyTransaction_Single(t *testing.T) {
 			account.effect.Stake += amount
 			account.effect.Balance -= amount
 
+			payload, err := buildPlaceStakePayload(amount).Marshal()
+			if !assert.NoError(t, err) {
+				return
+			}
+
 			tx := buildSignedTransaction(
 				account.keys, sys.TagStake,
 				atomic.AddUint64(&nonce, 1), block.Index+1,
-				buildPlaceStakePayload(amount).Marshal(),
+				payload,
 			)
 
 			assert.NoError(t, ApplyTransaction(state, &block, &tx))
@@ -106,10 +115,15 @@ func TestApplyTransaction_Single(t *testing.T) {
 			fromAccount.effect.Balance -= amount
 			toAccount.effect.Balance += amount
 
+			payload, err := buildTransferPayload(toAccountID, amount).Marshal()
+			if !assert.NoError(t, err) {
+				return
+			}
+
 			tx := buildSignedTransaction(
 				fromAccount.keys, sys.TagTransfer,
 				atomic.AddUint64(&nonce, 1), block.Index+1,
-				buildTransferPayload(toAccountID, amount).Marshal(),
+				payload,
 			)
 
 			assert.NoError(t, ApplyTransaction(state, &block, &tx))
@@ -132,7 +146,10 @@ func TestApplyTransferTransaction(t *testing.T) {
 	t.Parallel()
 
 	state := avl.New(store.NewInmem())
-	block := NewBlock(0, state.Checksum())
+	block, err := NewBlock(0, state.Checksum())
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	alice, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
@@ -147,26 +164,41 @@ func TestApplyTransferTransaction(t *testing.T) {
 	// Case 1 - Success
 	WriteAccountBalance(state, aliceID, 1)
 
+	payload, err := buildTransferPayload(bobID, 1).Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	tx := buildSignedTransaction(
 		alice, sys.TagTransfer,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		buildTransferPayload(bobID, 1).Marshal(),
+		payload,
 	)
 	assert.NoError(t, ApplyTransaction(state, &block, &tx))
 
 	// Case 2 - Not enough balance
+	payload, err = buildTransferPayload(bobID, 1).Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	tx = buildSignedTransaction(
 		alice, sys.TagTransfer,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		buildTransferPayload(bobID, 1).Marshal(),
+		payload,
 	)
 	assert.Error(t, ApplyTransaction(state, &block, &tx))
 
 	// Case 3 - Self-transfer without enough balance
+	payload, err = buildTransferPayload(aliceID, 1).Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	tx = buildSignedTransaction(
 		alice, sys.TagTransfer,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		buildTransferPayload(aliceID, 1).Marshal(),
+		payload,
 	)
 	assert.Error(t, ApplyTransaction(state, &block, &tx))
 }
@@ -175,7 +207,10 @@ func TestApplyStakeTransaction(t *testing.T) {
 	t.Parallel()
 
 	state := avl.New(store.NewInmem())
-	block := NewBlock(0, state.Checksum())
+	block, err := NewBlock(0, state.Checksum())
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	account, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
@@ -186,26 +221,41 @@ func TestApplyStakeTransaction(t *testing.T) {
 	// Case 1 - Placement success
 	WriteAccountBalance(state, accountID, 100)
 
+	payload, err := buildPlaceStakePayload(100).Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	tx := buildSignedTransaction(
 		account, sys.TagStake,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		buildPlaceStakePayload(100).Marshal(),
+		payload,
 	)
 	assert.NoError(t, ApplyTransaction(state, &block, &tx))
 
 	// Case 2 - Not enough balance
+	payload, err = buildPlaceStakePayload(100).Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	tx = buildSignedTransaction(
 		account, sys.TagStake,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		buildPlaceStakePayload(100).Marshal(),
+		payload,
 	)
 	assert.Error(t, ApplyTransaction(state, &block, &tx))
 
 	// Case 3 - Withdrawal success
+	payload, err = buildWithdrawStakePayload(100).Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	tx = buildSignedTransaction(
 		account, sys.TagStake,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		buildWithdrawStakePayload(100).Marshal(),
+		payload,
 	)
 	assert.NoError(t, ApplyTransaction(state, &block, &tx))
 
@@ -217,7 +267,10 @@ func TestApplyBatchTransaction(t *testing.T) {
 	t.Parallel()
 
 	state := avl.New(store.NewInmem())
-	block := NewBlock(0, state.Checksum())
+	block, err := NewBlock(0, state.Checksum())
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	alice, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
@@ -230,11 +283,16 @@ func TestApplyBatchTransaction(t *testing.T) {
 
 	WriteAccountBalance(state, aliceID, 100)
 
+	payload, err := buildPlaceStakePayload(100).Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	// initial stake
 	tx := buildSignedTransaction(
 		alice, sys.TagStake,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		buildPlaceStakePayload(100).Marshal(),
+		payload,
 	)
 	err = ApplyTransaction(state, &block, &tx)
 	assert.NoError(t, err)
@@ -244,10 +302,15 @@ func TestApplyBatchTransaction(t *testing.T) {
 	assert.NoError(t, batch.AddStake(buildWithdrawStakePayload(100)))
 	assert.NoError(t, batch.AddTransfer(buildTransferPayload(bobID, 100)))
 
+	payload, err = batch.Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	tx = buildSignedTransaction(
 		alice, sys.TagBatch,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		batch.Marshal(),
+		payload,
 	)
 	assert.NoError(t, ApplyTransaction(state, &block, &tx))
 
@@ -259,7 +322,10 @@ func TestApplyContractTransaction(t *testing.T) {
 	t.Parallel()
 
 	state := avl.New(store.NewInmem())
-	block := NewBlock(0, state.Checksum())
+	block, err := NewBlock(0, state.Checksum())
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	account, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
@@ -271,20 +337,30 @@ func TestApplyContractTransaction(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Case 1 - balance < gas_fee
+	payload, err := buildContractSpawnPayload(100000, 0, code).Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	WriteAccountBalance(state, accountID, 99999)
 	tx := buildSignedTransaction(
 		account, sys.TagContract,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		buildContractSpawnPayload(100000, 0, code).Marshal(),
+		payload,
 	)
 	assert.Error(t, ApplyTransaction(state, &block, &tx))
 
 	// Case 2 - Success
+	payload, err = buildContractSpawnPayload(100000, 0, code).Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	WriteAccountBalance(state, accountID, 100000)
 	tx = buildSignedTransaction(
 		account, sys.TagContract,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		buildContractSpawnPayload(100000, 0, code).Marshal(),
+		payload,
 	)
 	assert.NoError(t, ApplyTransaction(state, &block, &tx))
 
@@ -294,11 +370,16 @@ func TestApplyContractTransaction(t *testing.T) {
 	contractID := tx.ID
 
 	// Try to deposit gas
+	payload, err = buildTransferWithInvocationPayload(contractID, 0, 0, nil, nil, 1337).Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	WriteAccountBalance(state, accountID, 1000000000)
 	tx = buildSignedTransaction(
 		account, sys.TagTransfer,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		buildTransferWithInvocationPayload(contractID, 0, 0, nil, nil, 1337).Marshal(),
+		payload,
 	)
 
 	assert.NoError(t, ApplyTransaction(state, &block, &tx))
@@ -307,11 +388,16 @@ func TestApplyContractTransaction(t *testing.T) {
 	assert.EqualValues(t, 1337, gasDeposit)
 
 	// Try to transfer some money
+	payload, err = buildTransferWithInvocationPayload(contractID, 200000000, 500000, []byte("on_money_received"), nil, 0).Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	WriteAccountBalance(state, accountID, 1000000000)
 	tx = buildSignedTransaction(
 		account, sys.TagTransfer,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		buildTransferWithInvocationPayload(contractID, 200000000, 500000, []byte("on_money_received"), nil, 0).Marshal(),
+		payload,
 	)
 
 	assert.NoError(t, ApplyTransaction(state, &block, &tx))
@@ -323,10 +409,15 @@ func TestApplyContractTransaction(t *testing.T) {
 	WriteAccountBalance(state, accountID, 200000000)
 	WriteAccountContractGasBalance(state, contractID, 1000000000)
 
+	payload, err = buildTransferWithInvocationPayload(contractID, 200000000, 500000, []byte("on_money_received"), nil, 0).Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	tx = buildSignedTransaction(
 		account, sys.TagTransfer,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		buildTransferWithInvocationPayload(contractID, 200000000, 500000, []byte("on_money_received"), nil, 0).Marshal(),
+		payload,
 	)
 	assert.NoError(t, ApplyTransaction(state, &block, &tx))
 
@@ -339,10 +430,15 @@ func TestApplyContractTransaction(t *testing.T) {
 	WriteAccountBalance(state, accountID, 300000000)
 	WriteAccountContractGasBalance(state, contractID, 10)
 
+	payload, err = buildTransferWithInvocationPayload(contractID, 200000000, 500000, []byte("on_money_received"), nil, 0).Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	tx = buildSignedTransaction(
 		account, sys.TagTransfer,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		buildTransferWithInvocationPayload(contractID, 200000000, 500000, []byte("on_money_received"), nil, 0).Marshal(),
+		payload,
 	)
 	assert.NoError(t, ApplyTransaction(state, &block, &tx))
 
@@ -355,31 +451,46 @@ func TestApplyContractTransaction(t *testing.T) {
 	WriteAccountBalance(state, accountID, 200000000)
 	WriteAccountContractGasBalance(state, contractID, 0)
 
+	payload, err = buildTransferWithInvocationPayload(contractID, 200000000, 500000, []byte("on_money_received"), nil, 0).Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	tx = buildSignedTransaction(
 		account, sys.TagTransfer,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		buildTransferWithInvocationPayload(contractID, 200000000, 500000, []byte("on_money_received"), nil, 0).Marshal(),
+		payload,
 	)
 	assert.Error(t, ApplyTransaction(state, &block, &tx))
 
 	code, err = ioutil.ReadFile("testdata/recursive_invocation.wasm")
 	assert.NoError(t, err)
 
+	payload, err = buildContractSpawnPayload(100000, 0, code).Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	WriteAccountBalance(state, accountID, 100000000)
 	tx = buildSignedTransaction(
 		account, sys.TagContract,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		buildContractSpawnPayload(100000, 0, code).Marshal(),
+		payload,
 	)
 	assert.NoError(t, ApplyTransaction(state, &block, &tx))
 
 	recursiveInvocationContractID := tx.ID
 
+	payload, err = buildTransferWithInvocationPayload(recursiveInvocationContractID, 0, 5000000, []byte("bomb"), recursiveInvocationContractID[:], 0).Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	WriteAccountBalance(state, accountID, 6000000)
 	tx = buildSignedTransaction(
 		account, sys.TagTransfer,
 		atomic.AddUint64(&nonce, 1), block.Index+1,
-		buildTransferWithInvocationPayload(recursiveInvocationContractID, 0, 5000000, []byte("bomb"), recursiveInvocationContractID[:], 0).Marshal(),
+		payload,
 	)
 	assert.NoError(t, ApplyTransaction(state, &block, &tx))
 
@@ -388,7 +499,6 @@ func TestApplyContractTransaction(t *testing.T) {
 }
 
 func buildTransferWithInvocationPayload(dest AccountID, amount uint64, gasLimit uint64, funcName []byte, param []byte, gasDeposit uint64) Transfer {
-
 	return Transfer{
 		Recipient:  dest,
 		Amount:     amount,

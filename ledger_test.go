@@ -2,8 +2,9 @@ package wavelet
 
 import (
 	"bytes"
+	"crypto/rand"
 	cuckoo "github.com/seiflotfy/cuckoofilter"
-	"math/rand"
+	mrand "math/rand"
 	"testing"
 	"time"
 
@@ -20,10 +21,18 @@ func TestLedger_Pay(t *testing.T) {
 
 	testnet.WaitUntilSync(t)
 
-	testnet.Faucet().Pay(alice, 1000000)
+	_, err := testnet.Faucet().Pay(alice, 1000000)
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	alice.WaitUntilBalance(t, 1000000)
 
-	alice.Pay(bob, 1337)
+	_, err = alice.Pay(bob, 1337)
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	bob.WaitUntilBalance(t, 1337)
 
 	// Alice balance should be balance-txAmount-gas
@@ -31,6 +40,7 @@ func TestLedger_Pay(t *testing.T) {
 
 	// Everyone else should see the updated balance of Alice and Bob
 	for _, node := range testnet.Nodes() {
+		node := node
 		waitFor(t, func() bool {
 			return node.BalanceOfAccount(alice) == alice.Balance() &&
 				node.BalanceOfAccount(bob) == 1337
@@ -47,12 +57,20 @@ func TestLedger_PayInsufficientBalance(t *testing.T) {
 
 	testnet.WaitUntilSync(t)
 
-	testnet.Faucet().Pay(alice, 1000000)
+	_, err := testnet.Faucet().Pay(alice, 1000000)
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	alice.WaitUntilBalance(t, 1000000)
 
 	// Alice attempt to pay Bob more than what
 	// she has in her wallet
-	alice.Pay(bob, 1000001)
+	_, err = alice.Pay(bob, 1000001)
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	alice.WaitUntilConsensus(t)
 
 	// Alice should have paid for gas even though the tx failed
@@ -65,6 +83,7 @@ func TestLedger_PayInsufficientBalance(t *testing.T) {
 
 	// Everyone else should see the updated balance of Alice and Bob
 	for _, node := range testnet.Nodes() {
+		node := node
 		waitFor(t, func() bool {
 			return node.BalanceOfAccount(alice) == alice.Balance() &&
 				node.BalanceOfAccount(bob) == 0
@@ -81,10 +100,18 @@ func TestLedger_Stake(t *testing.T) {
 
 	testnet.WaitUntilSync(t)
 
-	testnet.Faucet().Pay(alice, 1000000)
+	_, err := testnet.Faucet().Pay(alice, 1000000)
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	alice.WaitUntilBalance(t, 1000000)
 
-	alice.PlaceStake(9001)
+	_, err = alice.PlaceStake(9001)
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	alice.WaitUntilStake(t, 9001)
 
 	// Alice balance should be balance-stakeAmount-gas
@@ -92,6 +119,7 @@ func TestLedger_Stake(t *testing.T) {
 
 	// Everyone else should see the updated balance of Alice
 	for _, node := range testnet.Nodes() {
+		node := node
 		waitFor(t, func() bool {
 			return node.BalanceOfAccount(alice) == alice.Balance() &&
 				node.StakeOfAccount(alice) == alice.Stake()
@@ -100,7 +128,11 @@ func TestLedger_Stake(t *testing.T) {
 
 	oldBalance := alice.Balance()
 
-	alice.WithdrawStake(5000)
+	_, err = alice.WithdrawStake(5000)
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	alice.WaitUntilStake(t, 4001)
 
 	// Withdrawn stake should be added to balance
@@ -108,6 +140,7 @@ func TestLedger_Stake(t *testing.T) {
 
 	// Everyone else should see the updated balance of Alice
 	for _, node := range testnet.Nodes() {
+		node := node
 		waitFor(t, func() bool {
 			return node.BalanceOfAccount(alice) == alice.Balance() &&
 				node.StakeOfAccount(alice) == alice.Stake()
@@ -124,7 +157,11 @@ func TestLedger_CallContract(t *testing.T) {
 
 	testnet.WaitUntilSync(t)
 
-	testnet.Faucet().Pay(alice, 1000000)
+	_, err := testnet.Faucet().Pay(alice, 1000000)
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	alice.WaitUntilBalance(t, 1000000)
 
 	contract, err := alice.SpawnContract("testdata/transfer_back.wasm",
@@ -134,7 +171,13 @@ func TestLedger_CallContract(t *testing.T) {
 	alice.WaitUntilConsensus(t)
 
 	// Calling the contract should cause the contract to send back 250000 PERL back to alice
-	alice.CallContract(contract.ID, 500000, 100000, "on_money_received", contract.ID[:])
+	_, err = alice.CallContract(
+		contract.ID, 500000, 100000, "on_money_received", contract.ID[:],
+	)
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	waitFor(t, func() bool { return alice.Balance() > 700000 })
 }
 
@@ -147,7 +190,11 @@ func TestLedger_DepositGas(t *testing.T) {
 
 	testnet.WaitUntilSync(t)
 
-	testnet.Faucet().Pay(alice, 1000000)
+	_, err := testnet.Faucet().Pay(alice, 1000000)
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	alice.WaitUntilBalance(t, 1000000)
 
 	contract, err := alice.SpawnContract("testdata/transfer_back.wasm",
@@ -156,7 +203,11 @@ func TestLedger_DepositGas(t *testing.T) {
 
 	alice.WaitUntilConsensus(t)
 
-	alice.DepositGas(contract.ID, 654321)
+	_, err = alice.DepositGas(contract.ID, 654321)
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	waitFor(t, func() bool { return alice.GasBalanceOfAddress(contract.ID) == 654321 })
 }
 
@@ -171,7 +222,7 @@ func TestLedger_Sync(t *testing.T) {
 	testnet := NewTestNetwork(t)
 	defer testnet.Cleanup()
 
-	rand.Seed(time.Now().UnixNano())
+	mrand.Seed(time.Now().UnixNano())
 
 	var code [1024 * 1024]byte
 	if _, err := rand.Read(code[:]); err != nil {
@@ -189,9 +240,9 @@ func TestLedger_Sync(t *testing.T) {
 
 		accounts[i] = account{
 			PublicKey: key,
-			Balance:   rand.Uint64(),
-			Stake:     rand.Uint64(),
-			Reward:    rand.Uint64(),
+			Balance:   mrand.Uint64(),
+			Stake:     mrand.Uint64(),
+			Reward:    mrand.Uint64(),
 		}
 	}
 
@@ -205,7 +256,11 @@ func TestLedger_Sync(t *testing.T) {
 
 	// Advance the network by a few blocks larger than sys.SyncIfBlockIndicesDifferBy
 	for i := 0; i < int(conf.GetSyncIfBlockIndicesDifferBy())+1; i++ {
-		alice.PlaceStake(1)
+		_, err := alice.PlaceStake(1)
+		if !assert.NoError(t, err) {
+			return
+		}
+
 		alice.WaitUntilConsensus(t)
 	}
 
@@ -269,19 +324,23 @@ func benchBloom(n int, b *testing.B) {
 
 	var txID TransactionID
 	for i := 0; i < n; i++ {
-		rand.Read(txID[:])
+		if _, err := rand.Read(txID[:]); err != nil {
+			b.Fatal(err)
+		}
 		bf.InsertUnique(txID[:])
 	}
 
 	for i := 0; i < b.N; i++ {
-		rand.Read(txID[:])
+		if _, err := rand.Read(txID[:]); err != nil {
+			b.Fatal(err)
+		}
 		bf.Lookup(txID[:])
 	}
 }
 
-func BenchmarkBloom10K(b *testing.B) {benchBloom(10000, b)}
-func BenchmarkBloom100K(b *testing.B) {benchBloom(100000, b)}
-func BenchmarkBloom1M(b *testing.B) {benchBloom(1000000, b)}
+func BenchmarkBloom10K(b *testing.B)  { benchBloom(10000, b) }
+func BenchmarkBloom100K(b *testing.B) { benchBloom(100000, b) }
+func BenchmarkBloom1M(b *testing.B)   { benchBloom(1000000, b) }
 
 //BenchmarkBloom10K-12     	 4642104	       261 ns/op
 //BenchmarkBloom100K-12    	 4711498	       238 ns/op

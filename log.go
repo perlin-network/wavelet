@@ -31,7 +31,7 @@ func logEventTX(event string, tx *Transaction, other ...interface{}) {
 		Uint8("tag", byte(tx.Tag))
 
 	for _, o := range other {
-		switch o := o.(type) {
+		switch o := o.(type) { // nolint:gocritic
 		case error:
 			log = log.Err(o)
 		}

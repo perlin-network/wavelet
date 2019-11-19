@@ -60,7 +60,7 @@ const (
 	ModuleMetrics   = "metrics"
 )
 
-func init() {
+func init() { // nolint:gochecknoinits
 	setupChildLoggers()
 }
 

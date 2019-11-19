@@ -20,8 +20,9 @@
 package main
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
+	mrand "math/rand"
 	"testing"
 
 	"github.com/perlin-network/wavelet"
@@ -80,9 +81,9 @@ func benchmarkAccountsCommit(size int, db string, dir string) func(b *testing.B)
 
 		gen[i] = account{
 			PublicKey: key,
-			Balance:   rand.Uint64(),
-			Stake:     rand.Uint64(),
-			Reward:    rand.Uint64(),
+			Balance:   mrand.Uint64(),
+			Stake:     mrand.Uint64(),
+			Reward:    mrand.Uint64(),
 		}
 	}
 

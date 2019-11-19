@@ -30,7 +30,7 @@ func (c *Client) PollNetwork() (func(), error) {
 	})
 }
 
-func parsePeerUpdate(c *Client, v *fastjson.Value) (p PeerUpdate, err error) {
+func parsePeerUpdate(v *fastjson.Value) (p PeerUpdate, err error) {
 	if err = jsonHex(v, p.AccountID[:], "public_key"); err != nil {
 		return
 	}
@@ -46,7 +46,7 @@ func parsePeerUpdate(c *Client, v *fastjson.Value) (p PeerUpdate, err error) {
 }
 
 func parsePeerJoin(c *Client, v *fastjson.Value) error {
-	u, err := parsePeerUpdate(c, v)
+	u, err := parsePeerUpdate(v)
 	if err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func parsePeerJoin(c *Client, v *fastjson.Value) error {
 }
 
 func parsePeerLeave(c *Client, v *fastjson.Value) error {
-	u, err := parsePeerUpdate(c, v)
+	u, err := parsePeerUpdate(v)
 	if err != nil {
 		return err
 	}

@@ -53,7 +53,7 @@ type config struct {
 var c config
 var l sync.RWMutex
 
-func init() {
+func init() { // nolint:gochecknoinits
 	c = defaultConfig()
 	l = sync.RWMutex{}
 }
@@ -87,8 +87,7 @@ func defaultConfig() config {
 		blockTxLimit: 1 << 16,
 	}
 
-	switch sys.VersionMeta {
-	case "testnet":
+	if sys.VersionMeta == "testnet" {
 		defConf.snowballK = 10
 	}
 

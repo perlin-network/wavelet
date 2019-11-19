@@ -27,7 +27,7 @@ type StallDetectorDelegate struct {
 	PrepareShutdown func(error)
 }
 
-func (d StallDetectorDelegate) prepareShutdown(mu *sync.Mutex, err error) {
+func (d StallDetectorDelegate) prepareShutdown(mu sync.Locker, err error) {
 	mu.Unlock()
 	d.PrepareShutdown(err)
 	mu.Lock()
@@ -46,7 +46,7 @@ func (d *StallDetector) Stop() {
 	close(d.stop)
 }
 
-func (d *StallDetector) Run(wg *sync.WaitGroup) {
+func (d *StallDetector) Run(wg *sync.WaitGroup) { // nolint:gocognit
 	wg.Add(1)
 	defer wg.Done()
 
@@ -68,7 +68,7 @@ LOOP:
 					runtime.ReadMemStats(&memStats)
 
 					if memStats.Alloc > 1048576*d.config.MaxMemoryMB {
-						d.delegate.prepareShutdown(d.mu, errors.New("Memory usage exceeded maximum. Node is scheduled to shutdown now."))
+						d.delegate.prepareShutdown(d.mu, errors.New("memory usage exceeded maximum. Node is scheduled to shutdown now"))
 
 						func() {
 							// Create directory where we will store the dump

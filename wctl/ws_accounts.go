@@ -24,7 +24,7 @@ func (c *Client) PollAccounts() (func(), error) {
 			case "stake_updated":
 				err = parseAccountStakeUpdated(c, o)
 			case "reward_updated":
-				err = parseAccountStakeUpdated(c, o)
+				err = parseAccountRewardUpdated(c, o)
 			default:
 				err = errInvalidEvent(o, ev)
 			}

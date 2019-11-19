@@ -27,8 +27,6 @@ import (
 
 type Snowball struct {
 	sync.RWMutex
-	beta  int
-	alpha int
 
 	count  int
 	counts map[VoteID]uint16
@@ -90,7 +88,7 @@ func (s *Snowball) Tick(votes []Vote) {
 		return
 	}
 
-	s.counts[majority.ID()] += 1
+	s.counts[majority.ID()]++
 
 	if s.preferred == nil || s.counts[majority.ID()] > s.counts[s.preferred.ID()] {
 		s.preferred = majority
@@ -99,7 +97,7 @@ func (s *Snowball) Tick(votes []Vote) {
 	if s.last == nil || majority.ID() != s.last.ID() {
 		s.last, s.count = majority, 1
 	} else {
-		s.count += 1
+		s.count++
 
 		if s.count > conf.GetSnowballBeta() {
 			s.decided = true

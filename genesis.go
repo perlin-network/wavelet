@@ -61,7 +61,7 @@ func SetGenesisByNetwork(name string) error {
 	case "testing":
 		defaultGenesis = testingGenesis
 	default:
-		return fmt.Errorf("Invalid network: %s", name)
+		return fmt.Errorf("invalid network: %s", name)
 	}
 
 	return nil
@@ -154,7 +154,7 @@ func performInception(tree *avl.Tree, genesis *string) Block {
 					return
 				}
 
-				WriteAccountStake(tree, id, uint64(stake))
+				WriteAccountStake(tree, id, stake)
 			case "reward":
 				reward, err = v.Uint64()
 
@@ -163,7 +163,7 @@ func performInception(tree *avl.Tree, genesis *string) Block {
 					return
 				}
 
-				WriteAccountReward(tree, id, uint64(reward))
+				WriteAccountReward(tree, id, reward)
 			}
 		})
 
@@ -177,5 +177,11 @@ func performInception(tree *avl.Tree, genesis *string) Block {
 		logger.Fatal().Err(err).Msg("accounts.Visit")
 	}
 
-	return NewBlock(0, tree.Checksum())
+	block, err := NewBlock(0, tree.Checksum())
+
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to create new block")
+	}
+
+	return block
 }

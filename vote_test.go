@@ -1,13 +1,13 @@
 package wavelet
 
 import (
+	"crypto/rand"
 	"encoding/binary"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 	"math"
-	"math/rand"
 	"sync"
 	"testing"
 )
@@ -28,7 +28,7 @@ func TestCalculateTallies(t *testing.T) {
 
 		var id TransactionID
 		for i := 0; i < count; i++ {
-			_, err := rand.Read(id[:])
+			_, err := rand.Read(id[:]) // nolint:gosec
 			assert.NoError(t, err)
 
 			ids = append(ids, id)
@@ -65,7 +65,7 @@ func TestCalculateTallies(t *testing.T) {
 	{
 		nodeIDCount++
 		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
-		block := NewBlock(1, nodeID, getTxID(2)...)
+		block, _ := NewBlock(1, nodeID, getTxID(2)...)
 
 		voterID := getRandomID(t)
 		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake*10)
@@ -82,7 +82,7 @@ func TestCalculateTallies(t *testing.T) {
 	{
 		nodeIDCount++
 		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
-		block := NewBlock(1, nodeID, getTxID(10)...)
+		block, _ := NewBlock(1, nodeID, getTxID(10)...)
 
 		voterID := getRandomID(t)
 		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake*2)
@@ -99,7 +99,7 @@ func TestCalculateTallies(t *testing.T) {
 	{
 		nodeIDCount++
 		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
-		block := NewBlock(1, nodeID, getTxID(4)...)
+		block, _ := NewBlock(1, nodeID, getTxID(4)...)
 
 		// First response
 
@@ -130,7 +130,7 @@ func TestCalculateTallies(t *testing.T) {
 	{
 		nodeIDCount++
 		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
-		block := NewBlock(1, nodeID, getTxID(9)...)
+		block, _ := NewBlock(1, nodeID, getTxID(9)...)
 
 		voterID := getRandomID(t)
 		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake*9)
@@ -148,7 +148,7 @@ func TestCalculateTallies(t *testing.T) {
 	{
 		nodeIDCount++
 		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
-		block := NewBlock(1, nodeID, getTxID(1)...)
+		block, _ := NewBlock(1, nodeID, getTxID(1)...)
 
 		voterID := getRandomID(t)
 		WriteAccountStake(snapshot, voterID.PublicKey(), 0)
@@ -184,7 +184,7 @@ func TestTickForFinalization(t *testing.T) {
 
 		for i := 0; i < count; i++ {
 			var id TransactionID
-			_, err := rand.Read(id[:])
+			_, err := rand.Read(id[:]) // nolint:gosec
 			assert.NoError(t, err)
 			ids = append(ids, id)
 		}
@@ -208,7 +208,10 @@ func TestTickForFinalization(t *testing.T) {
 		votes := make([]*finalizationVote, 0, snowballK)
 
 		for i := 0; i < cap(votes); i++ {
-			block := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
+			block, err := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
+			if !assert.NoError(t, err) {
+				return
+			}
 
 			votes = append(votes, &finalizationVote{
 				voter: getRandomID(t),
@@ -231,7 +234,10 @@ func TestTickForFinalization(t *testing.T) {
 		snapshot := accounts.Snapshot()
 		votes := make([]*finalizationVote, 0, snowballK)
 
-		_block := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
+		_block, err := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		for i := 0; i < cap(votes); i++ {
 			voter := getRandomID(t)
@@ -270,12 +276,16 @@ func TestTickForFinalization(t *testing.T) {
 		votes := make([]*finalizationVote, 0, snowballK)
 
 		for i := 0; i < cap(votes); i++ {
-			block := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
+			block, err := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
+			if !assert.NoError(t, err) {
+				return
+			}
+
 			voter := getRandomID(t)
 
 			stake := sys.MinimumStake
 			if i == biggestStakeIdx {
-				stake += 1
+				stake++
 			}
 
 			WriteAccountStake(snapshot, voter.PublicKey(), stake)
@@ -307,10 +317,13 @@ func TestTickForFinalization(t *testing.T) {
 		for i := 0; i < cap(votes); i++ {
 			num := 2
 			if i == biggestTxNumIdx {
-				num += 1
+				num++
 			}
 
-			block := NewBlock(1, accounts.tree.Checksum(), getTxIDs(num)...)
+			block, err := NewBlock(1, accounts.tree.Checksum(), getTxIDs(num)...)
+			if !assert.NoError(t, err) {
+				return
+			}
 
 			votes = append(votes, &finalizationVote{
 				voter: getRandomID(t),
@@ -359,7 +372,6 @@ func TestCollectVotesForSync(t *testing.T) {
 			for n := range votes {
 				voteC <- votes[n]
 			}
-
 		}
 
 		close(voteC)

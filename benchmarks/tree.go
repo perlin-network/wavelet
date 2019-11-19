@@ -20,8 +20,8 @@
 package main
 
 import (
+	"crypto/rand"
 	"fmt"
-	"math/rand"
 	"testing"
 
 	"github.com/perlin-network/wavelet"
@@ -60,12 +60,12 @@ func runTreeBenchmark() {
 
 func benchmarkTreeCommit(size int, db string, dir string) func(b *testing.B) {
 	code := make([]byte, 1024*size)
-	if _, err := rand.Read(code); err != nil {
+	if _, err := rand.Read(code); err != nil { // nolint:gosec
 		panic(err)
 	}
 
 	var key [32]byte
-	if _, err := rand.Read(key[:]); err != nil {
+	if _, err := rand.Read(key[:]); err != nil { // nolint:gosec
 		panic(err)
 	}
 

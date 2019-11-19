@@ -58,8 +58,8 @@ func sendTransaction(
 	i int,
 	client *wctl.Client,
 	chRes chan<- *wctl.TxResponse,
-	chErr chan<- error) {
-
+	chErr chan<- error,
+) {
 	n := 1
 	payload := wavelet.Batch{
 		Tags:     make([]uint8, 0, n),
@@ -74,7 +74,12 @@ func sendTransaction(
 		}
 	}
 
-	res, err := client.SendTransaction(byte(sys.TagBatch), payload.Marshal())
+	marshaled, err := payload.Marshal()
+	if err != nil {
+		panic(err)
+	}
+
+	res, err := client.SendTransaction(byte(sys.TagBatch), marshaled)
 	if err != nil {
 		chRes <- res
 		chErr <- err

@@ -9,7 +9,7 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 )
 
-var ErrNotContract = errors.New("Address is not smart contract")
+var ErrNotContract = errors.New("address is not smart contract")
 
 // Call calls a smart contract function
 func (c *Client) Call(recipient [32]byte, fn FunctionCall) (*TxResponse, error) {
@@ -35,13 +35,6 @@ type FunctionCall struct {
 	Amount   uint64
 	GasLimit uint64
 	Params   [][]byte
-}
-
-func NewFunctionCall(name string, params ...[]byte) FunctionCall {
-	return FunctionCall{
-		Name:   name,
-		Params: params,
-	}
 }
 
 func (fn *FunctionCall) AddParams(params ...[]byte) {
@@ -80,10 +73,6 @@ func EncodeBytes(b []byte) []byte {
 
 func EncodeByte(u byte) []byte {
 	return []byte{u}
-}
-
-func EncodeUint8(u uint8) []byte {
-	return EncodeByte(byte(u))
 }
 
 func EncodeUint16(u uint16) []byte {

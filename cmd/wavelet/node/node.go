@@ -56,7 +56,7 @@ var DefaultConfig = Config{
 }
 
 var (
-	ErrHTTPSMissingCerts = errors.New("Missing API certs in config.APICertsCache")
+	ErrHTTPSMissingCerts = errors.New("missing API certs in config.APICertsCache")
 )
 
 type Wavelet struct {
@@ -94,7 +94,7 @@ func New(cfg *Config) (*Wavelet, error) {
 
 	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", cfg.Port))
 	if err != nil {
-		return nil, fmt.Errorf("Failed to open port %d: %v", cfg.Port, err)
+		return nil, fmt.Errorf("failed to open port %d: %v", cfg.Port, err)
 	}
 
 	w.listener = listener
@@ -112,20 +112,22 @@ func New(cfg *Config) (*Wavelet, error) {
 				uint16(listener.Addr().(*net.TCPAddr).Port),
 				30*time.Minute,
 			); err != nil {
-				return nil, fmt.Errorf("Failed to initialize NAT: %v", err)
+				return nil, fmt.Errorf("failed to initialize NAT: %v", err)
 			}
 		}
 
 		resp, err := http.Get("http://myexternalip.com/raw")
 		if err != nil {
-			return nil, fmt.Errorf("Failed to get external IP: %v", err)
+			return nil, fmt.Errorf("failed to get external IP: %v", err)
 		}
 
-		defer resp.Body.Close()
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 
 		ip, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
-			return nil, fmt.Errorf("Failed to get external IP: %v", err)
+			return nil, fmt.Errorf("failed to get external IP: %v", err)
 		}
 
 		addr = net.JoinHostPort(
@@ -141,17 +143,17 @@ func New(cfg *Config) (*Wavelet, error) {
 
 	i, err := hex.Decode(privateKey[:], []byte(cfg.Wallet))
 	if err != nil {
-		return nil, fmt.Errorf("Failed to decode hex wallet %s", cfg.Wallet)
+		return nil, fmt.Errorf("failed to decode hex wallet %s", cfg.Wallet)
 	}
 
 	if i != edwards25519.SizePrivateKey {
-		return nil, fmt.Errorf("Wallet is not of the right length (%d not %d)",
+		return nil, fmt.Errorf("wallet is not of the right length (%d not %d)",
 			i, edwards25519.SizePrivateKey)
 	}
 
 	keys, err := skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
 	if err != nil {
-		return nil, fmt.Errorf("The wallet specified is invalid: %v", err)
+		return nil, fmt.Errorf("the wallet specified is invalid: %v", err)
 	}
 
 	w.Keys = keys
@@ -173,10 +175,12 @@ func New(cfg *Config) (*Wavelet, error) {
 
 	w.Net = client
 
-	kv, err := store.NewBadger(cfg.Database)
-	if err != nil {
+	var kv store.KV
+	if len(cfg.Database) == 0 {
+		kv = store.NewInmem()
+	} else if kv, err = store.NewLevelDB(cfg.Database); err != nil {
 		return nil, fmt.Errorf(
-			"Failed to create/open database located at %s", cfg.Database)
+			"failed to create/open database located at %s", cfg.Database)
 	}
 
 	w.db = kv
@@ -231,7 +235,6 @@ func (w *Wavelet) Start() {
 	for _, addr := range w.config.Peers {
 		if _, err := w.Net.Dial(addr,
 			skademlia.WithTimeout(10*time.Second)); err != nil {
-
 			w.logger.Warn().Err(err).
 				Str("addr", addr).
 				Msg("Error dialing")
@@ -247,7 +250,6 @@ func (w *Wavelet) Start() {
 
 		w.logger.Info().Msgf("Bootstrapped with peers: %+v", ids)
 	}
-
 }
 
 func (w *Wavelet) Close() error {
