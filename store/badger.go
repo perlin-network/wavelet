@@ -21,6 +21,8 @@ package store
 
 import (
 	"os"
+	"sync"
+	"time"
 
 	"github.com/dgraph-io/badger"
 	"github.com/pkg/errors"
@@ -51,6 +53,10 @@ func (b *badgerWriteBatch) Destroy() {
 type badgerKV struct {
 	dir string
 	db  *badger.DB
+
+	// Stops gc goroutine when db is closed.
+	closeCh chan struct{}
+	closeWg sync.WaitGroup
 }
 
 func NewBadger(dir string) (*badgerKV, error) { // nolint:golint
@@ -71,13 +77,21 @@ func NewBadger(dir string) (*badgerKV, error) { // nolint:golint
 		return nil, err
 	}
 
-	return &badgerKV{
-		dir: dir,
-		db:  db,
-	}, nil
+	b := &badgerKV{
+		dir:     dir,
+		db:      db,
+		closeCh: make(chan struct{}),
+	}
+
+	b.gc(1 * time.Minute)
+
+	return b, nil
 }
 
 func (b *badgerKV) Close() error {
+	close(b.closeCh)
+	b.closeWg.Wait()
+
 	return b.db.Close()
 }
 
@@ -144,6 +158,39 @@ func (b *badgerKV) CommitWriteBatch(batch WriteBatch) error {
 	}
 
 	return wb.batch.Flush()
+}
+
+func (b *badgerKV) gc(interval time.Duration) {
+	b.closeWg.Add(1)
+
+	go func() {
+		defer b.closeWg.Done()
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-b.closeCh:
+				return
+			case <-ticker.C:
+				for {
+					// Check for close signal, in case it's closed during GC loop.
+					select {
+					case <-b.closeCh:
+						return
+					default:
+					}
+
+					// When there's no more GC, an error will be returned.
+					err := b.db.RunValueLogGC(0.5)
+					if err != nil {
+						break
+					}
+				}
+			}
+		}
+	}()
 }
 
 type nullLog struct{}
