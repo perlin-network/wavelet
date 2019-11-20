@@ -700,7 +700,7 @@ func (l *Ledger) finalize(block Block) {
 
 	logger := log.Consensus("finalized")
 
-	results, err := l.collapseTransactions(&block, false)
+	results, err := l.collapseTransactions(&block, true)
 	if err != nil {
 		logger := log.Node()
 		logger.Error().
