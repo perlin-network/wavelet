@@ -59,16 +59,8 @@ type badgerKV struct {
 	closeWg sync.WaitGroup
 }
 
-func NewBadger(dir string) (*badgerKV, error) { // nolint:golint,gocritic
-	if fi, err := os.Stat(dir); err == nil {
-		if !fi.IsDir() {
-			return nil, errors.Errorf("open %s: not a directory", dir)
-		}
-	} else if os.IsNotExist(err) {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return nil, err
-		}
-	} else {
+func NewBadger(dir string) (*badgerKV, error) { // nolint:golint
+	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
 
