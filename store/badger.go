@@ -24,7 +24,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dgraph-io/badger"
+	"github.com/dgraph-io/badger/v2"
+	"github.com/dgraph-io/badger/v2/options"
 	"github.com/pkg/errors"
 )
 
@@ -64,7 +65,8 @@ func NewBadger(dir string) (*badgerKV, error) { // nolint:golint
 		return nil, err
 	}
 
-	db, err := badger.Open(badger.DefaultOptions(dir).WithLogger(nullLog{}))
+	// Explicitly specify compression. Because the default compression with CGO is ZSTD, and without CGO it's Snappy.
+	db, err := badger.Open(badger.DefaultOptions(dir).WithLogger(nullLog{}).WithCompression(options.Snappy))
 	if err != nil {
 		return nil, err
 	}
