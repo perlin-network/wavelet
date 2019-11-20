@@ -23,12 +23,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
 
 	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet/avl"
@@ -432,8 +426,6 @@ func restoreAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 				return
 			}
 		}
-
-		return nil
 	})
 
 	if err != nil {
