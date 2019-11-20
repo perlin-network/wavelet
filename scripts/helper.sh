@@ -71,6 +71,7 @@ for os_arch in ${OS_ARCH}; do
     )
 
     (
+exit 0
         cd cmd/wctl || exit 1
         CGO_ENABLED=0 go build \
             -a \
