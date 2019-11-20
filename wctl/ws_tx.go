@@ -51,11 +51,6 @@ func parseTxApplied(c *Client, v *fastjson.Value) error {
 		return err
 	}
 
-	if err := jsonHex(v, t.CreatorID[:], "creator_id"); err != nil {
-		return err
-	}
-
-	t.Depth = v.GetUint64("depth")
 	t.Tag = byte(v.GetUint("tag"))
 
 	if err := jsonTime(v, &t.Time, "time"); err != nil {
@@ -97,11 +92,6 @@ func parseTxFailed(c *Client, v *fastjson.Value) error {
 		return err
 	}
 
-	if err := jsonHex(v, t.CreatorID[:], "creator_id"); err != nil {
-		return err
-	}
-
-	t.Depth = v.GetUint64("depth")
 	t.Tag = byte(v.GetUint("tag"))
 	t.Error = jsonString(v, "error")
 
