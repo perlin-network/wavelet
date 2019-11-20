@@ -1,16 +1,19 @@
+// +build !integration,unit
+
 package wavelet
 
 import (
 	"crypto/rand"
+	"math"
+	"sort"
+	"testing"
+	"testing/quick"
+
 	"github.com/google/btree"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
-	"math"
-	"sort"
-	"testing"
-	"testing/quick"
 )
 
 func TestTransactions(t *testing.T) {

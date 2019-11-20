@@ -1,3 +1,5 @@
+// +build !integration,unit
+
 package conf
 
 import (
