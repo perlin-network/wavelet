@@ -20,12 +20,13 @@
 package api
 
 import (
-	"github.com/valyala/fasthttp"
-	"golang.org/x/time/rate"
 	"math"
 	"net/http"
 	"sync"
 	"time"
+
+	"github.com/valyala/fasthttp"
+	"golang.org/x/time/rate"
 )
 
 type limiter struct {

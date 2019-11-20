@@ -17,18 +17,21 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// +build !integration,unit
+
 package wavelet
 
 import (
 	"crypto/rand"
 	"encoding/binary"
+	mrand "math/rand"
+	"testing"
+
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/blake2b"
-	mrand "math/rand"
-	"testing"
 )
 
 type testVote struct {

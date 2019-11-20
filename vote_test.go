@@ -1,15 +1,18 @@
+// +build !integration,unit
+
 package wavelet
 
 import (
 	"crypto/rand"
 	"encoding/binary"
+	"math"
+	"sync"
+	"testing"
+
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
-	"math"
-	"sync"
-	"testing"
 )
 
 func TestFinalizationVoteWithoutBlock(t *testing.T) {
