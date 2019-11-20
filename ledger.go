@@ -1480,7 +1480,7 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 		collapseState.results, collapseState.err = collapseTransactions(txs, block, l.accounts)
 	})
 
-	if logging {
+	if logging && collapseState.results != nil {
 		for _, tx := range collapseState.results.applied {
 			logEventTX("applied", tx)
 		}
