@@ -254,7 +254,7 @@ func (w *Wavelet) Start() {
 
 func (w *Wavelet) Close() error {
 	w.Gateway.Shutdown()
-	w.Server.GracefulStop()
+	w.Server.Stop()
 	w.Ledger.Close()
 	return w.db.Close()
 }

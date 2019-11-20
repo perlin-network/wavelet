@@ -90,6 +90,8 @@ type Ledger struct {
 	transactionsSyncIndex     *cuckoo.Filter
 
 	queryBlockCache map[[blake2b.Size256]byte]*Block
+
+	queueWorkerPool *WorkerPool
 }
 
 type config struct {
@@ -186,6 +188,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		transactionsSyncIndex: cuckoo.NewFilter(conf.GetBloomFilterM()),
 
 		queryBlockCache: make(map[BlockID]*Block),
+
+		queueWorkerPool: NewWorkerPool(),
 	}
 
 	if !cfg.GCDisabled {
@@ -204,9 +208,13 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		},
 	})
 
+	ledger.stopWG.Add(1)
+
 	go stallDetector.Run(&ledger.stopWG)
 
 	ledger.stallDetector = stallDetector
+
+	ledger.queueWorkerPool.Start(16)
 
 	ledger.PerformConsensus()
 
@@ -233,6 +241,8 @@ func (l *Ledger) Close() {
 	if l.cancelGC != nil {
 		l.cancelGC()
 	}
+
+	l.queueWorkerPool.Stop()
 
 	l.stallDetector.Stop()
 
@@ -352,8 +362,13 @@ func (l *Ledger) Restart() error {
 // missing transactions and incrementally finalizing intervals of transactions in
 // the ledgers graph.
 func (l *Ledger) PerformConsensus() {
+	l.consensus.Add(1)
 	go l.PullMissingTransactions()
+
+	l.consensus.Add(1)
 	go l.SyncTransactions()
+
+	l.consensus.Add(1)
 	go l.FinalizeBlocks()
 }
 
@@ -365,7 +380,6 @@ func (l *Ledger) Snapshot() *avl.Tree {
 // in form of the bloom filter to randomly sampled number of peers and adds to it's state all received
 // transactions.
 func (l *Ledger) SyncTransactions() { // nolint:gocognit
-	l.consensus.Add(1)
 	defer l.consensus.Done()
 
 	for {
@@ -504,7 +518,6 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 // from randomly sampled peers in the network. It does so by sending a list of
 // transaction IDs which node is missing.
 func (l *Ledger) PullMissingTransactions() {
-	l.consensus.Add(1)
 	defer l.consensus.Done()
 
 	for {
@@ -607,7 +620,6 @@ func (l *Ledger) PullMissingTransactions() {
 
 // FinalizeBlocks continuously attempts to finalize blocks.
 func (l *Ledger) FinalizeBlocks() {
-	l.consensus.Add(1)
 	defer l.consensus.Done()
 
 	for {
@@ -776,7 +788,10 @@ func (l *Ledger) query() {
 	responseChan := make(chan response)
 
 	for _, p := range peers {
-		go func(conn *grpc.ClientConn, cacheBlock *Block) {
+		conn := p.Conn()
+		cacheBlock := l.queryBlockCache[p.ID().Checksum()]
+
+		f := func() {
 			var response response
 			defer func() {
 				responseChan <- response
@@ -840,7 +855,9 @@ func (l *Ledger) query() {
 				response.vote.block = &block
 			}
 			l.metrics.queryLatency.Time(f)
-		}(p.Conn(), l.queryBlockCache[p.ID().Checksum()])
+		}
+
+		l.queueWorkerPool.Queue(f)
 	}
 
 	votes := make([]*finalizationVote, 0, len(peers))

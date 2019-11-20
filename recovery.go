@@ -47,7 +47,6 @@ func (d *StallDetector) Stop() {
 }
 
 func (d *StallDetector) Run(wg *sync.WaitGroup) { // nolint:gocognit
-	wg.Add(1)
 	defer wg.Done()
 
 	ticker := time.NewTicker(5 * time.Second)

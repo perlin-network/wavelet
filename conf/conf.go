@@ -76,7 +76,7 @@ func defaultConfig() config {
 		syncChunkSize:              16384,
 		syncIfBlockIndicesDifferBy: 5,
 
-		txSyncChunkSize: 1000,
+		txSyncChunkSize: 5000,
 		txSyncLimit:     1 << 20,
 
 		bloomFilterM: 1 << 21,

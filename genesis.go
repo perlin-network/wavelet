@@ -165,7 +165,7 @@ func restoreFromJSON(tree *avl.Tree, json []byte) error {
 	return nil
 }
 
-func restoreFromDir(tree *avl.Tree, dir string) error {
+func restoreFromDir(tree *avl.Tree, dir string) error { // nolint:gocognit,gocyclo
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return errors.Wrapf(err, "directory %s does not exist", dir)
 	}
@@ -212,7 +212,8 @@ func restoreFromDir(tree *avl.Tree, dir string) error {
 		ext := filepath.Ext(path)
 		filename := strings.TrimSuffix(filepath.Base(path), ext)
 
-		if ext == ".json" {
+		switch ext {
+		case ".json":
 			var id AccountID
 			// filename is the id
 			if n, err := hex.Decode(id[:], []byte(filename)); n != cap(id) || err != nil {
@@ -247,7 +248,7 @@ func restoreFromDir(tree *avl.Tree, dir string) error {
 			}
 
 			return restoreAccount(tree, id, val)
-		} else if ext == ".wasm" {
+		case ".wasm":
 			var id TransactionID
 			// filename is the id
 			if n, err := hex.Decode(id[:], []byte(filename)); n != cap(id) || err != nil {
@@ -282,7 +283,7 @@ func restoreFromDir(tree *avl.Tree, dir string) error {
 			}
 
 			WriteAccountContractCode(tree, id, buf.Bytes())
-		} else if ext == ".dmp" {
+		case ".dmp":
 			secondExt := filepath.Ext(filename)
 
 			var id TransactionID
@@ -546,8 +547,8 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 			folder = filepath.Join(dir, fmt.Sprintf("%x", id))
 
 			// Make sure the folder exists
-			if err := os.MkdirAll(folder, 0700); err != nil {
-				err = errors.Wrapf(err, "failed to create directory %s", dir)
+			if internalErr := os.MkdirAll(folder, 0700); internalErr != nil {
+				err = errors.Wrapf(internalErr, "failed to create directory %s", dir)
 				return
 			}
 		}
@@ -578,17 +579,20 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 		if v.gasBalance != nil {
 			o.Set("gas_balance", arena.NewNumberString(strconv.FormatUint(*v.gasBalance, 10)))
 		}
+
 		if v.balance != nil {
 			o.Set("balance", arena.NewNumberString(strconv.FormatUint(*v.balance, 10)))
 		}
+
 		if v.stake != nil {
 			o.Set("stake", arena.NewNumberString(strconv.FormatUint(*v.stake, 10)))
 		}
+
 		if v.reward != nil {
 			o.Set("reward", arena.NewNumberString(strconv.FormatUint(*v.reward, 10)))
 		}
 
-		data = o.MarshalTo(data[:])
+		data = o.MarshalTo(data)
 		filename := fmt.Sprintf("%x.json", id)
 
 		err := ioutil.WriteFile(filepath.Join(dir, filename), data, filePerm)

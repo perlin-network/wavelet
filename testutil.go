@@ -548,7 +548,7 @@ func (l *TestLedger) WaitForSync() <-chan bool {
 func (l *TestLedger) WaitUntilSync(t testing.TB) {
 	t.Helper()
 
-	timeout := time.NewTimer(time.Second * 300)
+	timeout := time.NewTimer(time.Second * 30)
 	for {
 		select {
 		case s := <-l.WaitForSync():
