@@ -123,8 +123,6 @@ type (
 	TxApplied struct {
 		TxID      [32]byte  `json:"tx_id"`
 		SenderID  [32]byte  `json:"sender_id"`
-		CreatorID [32]byte  `json:"creator_id"`
-		Depth     uint64    `json:"depth"`
 		Tag       byte      `json:"tag"`
 		Time      time.Time `json:"time"`
 	}
@@ -140,8 +138,6 @@ type (
 	TxFailed struct {
 		TxID      [32]byte  `json:"tx_id"`
 		SenderID  [32]byte  `json:"sender_id"`
-		CreatorID [32]byte  `json:"creator_id"`
-		Depth     uint64    `json:"depth"`
 		Tag       byte      `json:"tag"`
 		Error     string    `json:"error"`
 		Time      time.Time `json:"time"`

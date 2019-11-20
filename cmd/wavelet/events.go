@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/wctl"
 )
@@ -90,8 +91,6 @@ func onTxApplied(u wctl.TxApplied) {
 	logger.Info().
 		Hex("tx_id", u.TxID[:]).
 		Hex("sender_id", u.SenderID[:]).
-		Hex("creator_id", u.CreatorID[:]).
-		Uint64("depth", u.Depth).
 		Uint8("tag", u.Tag).
 		Msg("Transaction applied.")
 	*/
@@ -106,8 +105,6 @@ func onTxFailed(u wctl.TxFailed) {
 	logger.Err(errors.New(u.Error)).
 		Hex("tx_id", u.TxID[:]).
 		Hex("sender_id", u.SenderID[:]).
-		Hex("creator_id", u.CreatorID[:]).
-		Uint64("depth", u.Depth).
 		Uint8("tag", u.Tag).
 		Msg("Transaction failed.")
 }
