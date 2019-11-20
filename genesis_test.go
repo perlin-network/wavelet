@@ -288,7 +288,7 @@ func checkContract(t *testing.T, tree *avl.Tree, id TransactionID, codeFilePath 
 
 	numPages, exist := ReadAccountContractNumPages(tree, id)
 	assert.True(t, exist, "contract ID: %x", id)
-	assert.Equal(t, expectedPageNum, numPages, "contract ID: %x", id)
+	assert.EqualValues(t, expectedPageNum, numPages, "contract ID: %x", id)
 
 	for _, v := range expectedEmptyMemPages {
 		page, exist := ReadAccountContractPage(tree, id, uint64(v))
