@@ -194,17 +194,6 @@ SENDING:
 	}
 }
 
-func (s *sink) send(buf []byte) {
-	o, err := fastjson.ParseBytes(buf)
-	if err != nil {
-		return
-	}
-
-	s.ops <- func(clients map[*client]struct{}) {
-		s.doSend(clients, buf, o)
-	}
-}
-
 func (s *sink) debounce(batch [][]byte) {
 	f := func(clients map[*client]struct{}) {
 	SENDING:

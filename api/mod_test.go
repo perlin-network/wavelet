@@ -128,14 +128,17 @@ func TestListTransaction(t *testing.T) {
 	}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			request, err := http.NewRequest("GET", "http://localhost"+tc.url, nil)
 			assert.NoError(t, err)
 
 			w, err := serve(gateway.router, request)
-			if err != nil {
-				t.Fatal(t)
-			}
+			assert.NoError(t, err)
+			assert.NotNil(t, w)
+
+			defer w.Body.Close()
+
 			assert.NoError(t, err)
 			assert.NotNil(t, w)
 
@@ -169,13 +172,13 @@ func TestGetTransaction(t *testing.T) {
 
 	gateway.ledger.AddTransaction(newTransaction(keys, sys.TagTransfer, 0, 0, buf[:]))
 
-	var txId wavelet.TransactionID
+	var txID wavelet.TransactionID
 	gateway.ledger.Transactions().Iterate(func(tx *wavelet.Transaction) bool {
-		txId = tx.ID
+		txID = tx.ID
 		return false
 	})
 
-	tx := gateway.ledger.Transactions().Find(txId)
+	tx := gateway.ledger.Transactions().Find(txID)
 	if tx == nil {
 		t.Fatal("not found")
 	}
@@ -200,13 +203,14 @@ func TestGetTransaction(t *testing.T) {
 		},
 		{
 			name:         "success",
-			id:           hex.EncodeToString(txId[:]),
+			id:           hex.EncodeToString(txID[:]),
 			wantCode:     http.StatusOK,
 			wantResponse: txRes,
 		},
 	}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			request, err := http.NewRequest("GET", "http://localhost/tx/"+tc.id, nil)
 			assert.NoError(t, err)
@@ -214,6 +218,8 @@ func TestGetTransaction(t *testing.T) {
 			w, err := serve(gateway.router, request)
 			assert.NoError(t, err)
 			assert.NotNil(t, w)
+
+			defer w.Body.Close()
 
 			response, err := ioutil.ReadAll(w.Body)
 			assert.NoError(t, err)

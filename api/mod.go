@@ -50,6 +50,11 @@ import (
 	"google.golang.org/grpc"
 )
 
+const (
+	statusApplied  = "applied"
+	statusReceived = "received"
+)
+
 type Gateway struct {
 	client *skademlia.Client
 	ledger *wavelet.Ledger
@@ -417,9 +422,9 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 			return true
 		}
 
-		status := "received"
+		status := statusReceived
 		if tx.Block <= latestBlockIndex {
-			status = "applied"
+			status = statusApplied
 		}
 
 		transactions = append(transactions, &transaction{tx: tx, status: status})
@@ -462,9 +467,9 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 	res := &transaction{tx: tx}
 
 	if tx.Block <= latestBlockIndex {
-		res.status = "applied"
+		res.status = statusApplied
 	} else {
-		res.status = "received"
+		res.status = statusReceived
 	}
 
 	g.render(ctx, res)
@@ -764,7 +769,7 @@ func (g *Gateway) registerWebsocketSink(rawURL string, factory *debounce.Factory
 	}
 
 	sink := &sink{
-		ops: make(chan func(map[*client]struct{})),
+		ops:     make(chan func(map[*client]struct{})),
 		filters: filters,
 		join:    make(chan *client),
 		leave:   make(chan *client),

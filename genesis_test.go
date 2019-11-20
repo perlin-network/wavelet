@@ -14,7 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-const tempDirName = `testDumpIncludingContract`
+const (
+	testDumpDir = "testDumpIncludingContract"
+)
 
 var testRestoreDir = "testdata/testgenesis"
 
@@ -78,19 +80,19 @@ func TestDumpIncludingContract(t *testing.T) {
 		return
 	}
 	defer func() {
-		_ = os.RemoveAll(tempDirName)
+		_ = os.RemoveAll(testDumpDir)
 	}()
 
 	// Delete the dir in case it already exists
-	assert.NoError(t, os.RemoveAll(tempDirName))
+	assert.NoError(t, os.RemoveAll(testDumpDir))
 
 	expected := target.ledger.Snapshot()
-	if !assert.NoError(t, Dump(expected, tempDirName, true, false)) {
+	if !assert.NoError(t, Dump(expected, testDumpDir, true, false)) {
 		return
 	}
 
 	fmt.Println("checkdump")
-	testDump(t, tempDirName, expected, true)
+	testDump(t, testDumpDir, expected, true)
 }
 
 func TestDumpWithoutContract(t *testing.T) {
@@ -235,31 +237,31 @@ func TestPerformInception(t *testing.T) {
 	contractID = id("294b4ee8614d4a2c914154b2f112e2c8d899ffcf2a890202d2cbc224db87c64e")
 	checkContract(t, tree, contractID,
 		filepath.Join(testRestoreDir, fmt.Sprintf("%x.wasm", contractID)), 100,
-		18, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16, 17},
+		[]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16, 17},
 	)
 
 	contractID = id("4cd1808ad6c62dc96fc22c21dc9ba97a149642651b76a65c5a1ad789b5fb7d0a")
 	checkContract(t, tree, contractID,
 		filepath.Join(testRestoreDir, fmt.Sprintf("%x.wasm", contractID)), 300,
-		18, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16, 17},
+		[]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16, 17},
 	)
 
 	contractID = id("b11581647113dc928c02cb148ff8a4030b7c3468fc1d27f4b4ea89c9caec300d")
 	checkContract(t, tree, contractID,
 		filepath.Join(testRestoreDir, fmt.Sprintf("%x.wasm", contractID)), 500,
-		18, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16, 17},
+		[]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16, 17},
 	)
 
 	contractID = id("c1ae186b7a079dfb6a7db8ffdae487a39dbcd11e8d5da8dfeb7208a2e463a111")
 	checkContract(t, tree, contractID,
 		filepath.Join(testRestoreDir, fmt.Sprintf("%x.wasm", contractID)), 400,
-		18, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16, 17},
+		[]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16, 17},
 	)
 
 	contractID = id("c8f1bbfb4ed2952adea735e95327e144e5660b9de066110996ae1db34206a36f")
 	checkContract(t, tree, contractID,
 		filepath.Join(testRestoreDir, fmt.Sprintf("%x.wasm", contractID)), 200,
-		18, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16, 17},
+		[]int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14}, []int{15, 16, 17},
 	)
 
 	assert.Equal(t, uint64(5), ReadAccountsLen(tree))
@@ -267,12 +269,11 @@ func TestPerformInception(t *testing.T) {
 	checkRestoredDefaults(t, tree)
 }
 
+const expectedPageNum = 18
+
 // Check the expected values of a contract against the contract's values in the tree.
 // Also, compare the contract's code in the tree against the actual contract code file.
-func checkContract(
-	t *testing.T, tree *avl.Tree, id TransactionID, codeFilePath string, expectedGasBalance uint64,
-	expectedPageNum uint64, expectedEmptyMemPages []int, expectedNotEmptyMemPages []int, // nolint:unparam
-) {
+func checkContract(t *testing.T, tree *avl.Tree, id TransactionID, codeFilePath string, expectedGasBalance uint64, expectedEmptyMemPages []int, expectedNotEmptyMemPages []int) {
 	code, exist := ReadAccountContractCode(tree, id)
 	assert.True(t, exist, "contract ID: %x", id)
 	assert.NotEmpty(t, code, "contract ID: %x", id)
