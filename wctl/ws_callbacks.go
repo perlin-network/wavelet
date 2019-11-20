@@ -121,10 +121,10 @@ type (
 // Mod: tx
 type (
 	TxApplied struct {
-		TxID      [32]byte  `json:"tx_id"`
-		SenderID  [32]byte  `json:"sender_id"`
-		Tag       byte      `json:"tag"`
-		Time      time.Time `json:"time"`
+		TxID     [32]byte  `json:"tx_id"`
+		SenderID [32]byte  `json:"sender_id"`
+		Tag      byte      `json:"tag"`
+		Time     time.Time `json:"time"`
 	}
 	OnTxApplied = func(TxApplied)
 
@@ -136,11 +136,11 @@ type (
 	OnTxGossipError = func(TxGossipError)
 
 	TxFailed struct {
-		TxID      [32]byte  `json:"tx_id"`
-		SenderID  [32]byte  `json:"sender_id"`
-		Tag       byte      `json:"tag"`
-		Error     string    `json:"error"`
-		Time      time.Time `json:"time"`
+		TxID     [32]byte  `json:"tx_id"`
+		SenderID [32]byte  `json:"sender_id"`
+		Tag      byte      `json:"tag"`
+		Error    string    `json:"error"`
+		Time     time.Time `json:"time"`
 	}
 	OnTxFailed = func(TxFailed)
 )
