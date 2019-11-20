@@ -55,7 +55,7 @@ type Config struct {
 }
 
 func main() {
-	// switchToUpdatedVersion()
+	switchToUpdatedVersion(true)
 	if err := wavelet.SetGenesisByNetwork(sys.VersionMeta); err != nil {
 		panic(err)
 	}

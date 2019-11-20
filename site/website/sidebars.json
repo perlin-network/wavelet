@@ -11,7 +11,8 @@
     ],
     "Tutorials": [
       "examples/decentralized-chat-app",
-      "examples/decentralized-todo-app"
+      "examples/decentralized-todo-app",
+      "examples/wasm-to-decentralized-program"
     ]
   }
 }

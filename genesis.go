@@ -37,6 +37,12 @@ import (
 	"github.com/pkg/errors"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fastjson"
+	"io"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 const testingGenesis = `
@@ -426,6 +432,8 @@ func restoreAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 				return
 			}
 		}
+
+		return nil
 	})
 
 	if err != nil {
