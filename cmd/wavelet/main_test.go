@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/perlin-network/wavelet/conf"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -89,7 +90,9 @@ func TestMain_WithWalletFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() {
+		_ = os.RemoveAll(dir)
+	}()
 
 	walletPath := filepath.Join(dir, "wallet.txt")
 	if err := ioutil.WriteFile(walletPath, []byte(wallet), 0666); err != nil {
@@ -381,8 +384,12 @@ func TestMain_WithdrawReward(t *testing.T) {
 
 func TestMain_UpdateParams(t *testing.T) {
 	w := NewTestWavelet(t, defaultConfig())
-	defer w.Cleanup()
+	defer func() {
+		w.Cleanup()
+		conf.Reset()
+	}()
 
+	conf.GetBlockTXLimit()
 	w.Stdin <- "up"
 	w.Stdout.Search(t, "Current configuration values")
 
@@ -391,13 +398,13 @@ func TestMain_UpdateParams(t *testing.T) {
 		Var    string
 		Value  interface{}
 	}{
-		{"snowball.k", "snowballK", int(123)},
-		{"snowball.beta", "snowballBeta", int(789)},
+		{"snowball.k", "snowballK", 123},
+		{"snowball.beta", "snowballBeta", 789},
 		{"query.timeout", "queryTimeout", time.Second * 9},
 		{"gossip.timeout", "gossipTimeout", time.Second * 4},
 		{"download.tx.timeout", "downloadTxTimeout", time.Second * 3},
 		{"check.out.of.sync.timeout", "checkOutOfSyncTimeout", time.Second * 7},
-		{"sync.chunk.size", "syncChunkSize", int(1337)},
+		{"sync.chunk.size", "syncChunkSize", 1337},
 		{"pruning.limit", "pruningLimit", uint64(255)},
 		{"api.secret", "secret", "shambles"},
 	}
@@ -441,25 +448,22 @@ func TestMain_UpdateParams(t *testing.T) {
 }
 
 func TestMain_ConnectDisconnect(t *testing.T) {
-	t.SkipNow()
-
 	w := NewTestWavelet(t, defaultConfig())
 
 	defer func() {
-		fmt.Println("before cleanup")
 		w.Cleanup()
-		fmt.Println("after cleanup")
 	}()
 
-	peer := w.Testnet.AddNode(t)
-
-	if !assert.True(t, <-peer.WaitForSync()) {
-		return
+	for i := 0; i < 2; i++ {
+		w.Testnet.AddNode(t)
 	}
 
-	w.Stdin <- fmt.Sprintf("connect %s", peer.Addr())
+	w.Testnet.WaitForSync(t)
+
+	peerAddr := w.Testnet.Nodes()[0].Addr()
+	w.Stdin <- fmt.Sprintf("connect %s", peerAddr)
 	w.Stdout.Search(t, "Successfully connected to")
-	w.Stdin <- fmt.Sprintf("disconnect %s", peer.Addr())
+	w.Stdin <- fmt.Sprintf("disconnect %s", peerAddr)
 	w.Stdout.Search(t, "Successfully disconnected")
 }
 
@@ -711,7 +715,9 @@ func getLedgerStatus(apiPort string) (*TestLedgerStatus, error) {
 		return nil, err
 	}
 
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("expecting GET /ledger to return 200, got %d instead", resp.StatusCode)
@@ -768,7 +774,9 @@ func getTransaction(apiPort string, id string) (*TestTransaction, error) {
 		return nil, err
 	}
 
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("expecting GET /tx/%s to return 200, got %d instead", id, resp.StatusCode)
