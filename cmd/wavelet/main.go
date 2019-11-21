@@ -47,9 +47,6 @@ import (
 	"net/url"
 )
 
-// default false, used for testing
-var disableGC bool
-
 var logger = log.Node()
 
 type Config struct {
@@ -58,15 +55,15 @@ type Config struct {
 }
 
 func main() {
-	// switchToUpdatedVersion()
+	switchToUpdatedVersion(true)
 	if err := wavelet.SetGenesisByNetwork(sys.VersionMeta); err != nil {
 		panic(err)
 	}
 
-	Run(os.Args, os.Stdin, os.Stdout)
+	Run(os.Args, os.Stdin, os.Stdout, false)
 }
 
-func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
+func Run(args []string, stdin io.ReadCloser, stdout io.Writer, disableGC bool) {
 	log.SetWriter(log.LoggerWavelet, log.NewConsoleWriter(
 		stdout, log.FilterFor(log.ModuleNode)))
 
@@ -209,7 +206,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 	}
 
 	app.Action = func(c *cli.Context) error {
-		return start(c, stdin, stdout)
+		return start(c, stdin, stdout, disableGC)
 	}
 
 	sort.Sort(cli.FlagsByName(app.Flags))
@@ -222,14 +219,16 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 	}
 }
 
-func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
+func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer, disableGC bool) error {
 	config := Config{
 		ServerAddr: c.String("server"),
 		UpdateURL:  c.String("update-url"),
 	}
 
-	// Set the log level
-	log.SetLevel(c.String("loglevel"))
+	// Set the log level if it's not empty
+	if c.String("loglevel") != "" {
+		log.SetLevel(c.String("loglevel"))
+	}
 
 	// Start the background updater
 	// go periodicUpdateRoutine(c.String("update-url"))

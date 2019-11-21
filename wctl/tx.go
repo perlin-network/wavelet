@@ -25,12 +25,11 @@ var (
 )
 
 type TransactionEvent struct {
-	Event  string    `json:"event"`
-	ID     [32]byte  `json:"tx_id"`
-	Sender [32]byte  `json:"sender_id"`
-	Depth  uint64    `json:"depth"`
-	Tag    byte      `json:"tag"`
-	Time   time.Time `json:"time"`
+	Event string    `json:"event"`
+	ID    [32]byte  `json:"tx_id"`
+	Depth uint64    `json:"depth"`
+	Tag   byte      `json:"tag"`
+	Time  time.Time `json:"time"`
 }
 
 // ListTransactions calls the /tx endpoint of the API to list all transactions.
@@ -130,7 +129,6 @@ type Transaction struct {
 	Sender    [32]byte `json:"sender"`
 	Status    string   `json:"status"`
 	Nonce     uint64   `json:"nonce"`
-	Depth     uint64   `json:"depth"`
 	Tag       byte     `json:"tag"`
 	Payload   []byte   `json:"payload"`
 	Signature [64]byte `json:"signature"`
@@ -158,7 +156,6 @@ func (t *Transaction) ParseJSON(v *fastjson.Value) error {
 
 	t.Status = string(v.GetStringBytes("status"))
 	t.Nonce = v.GetUint64("nonce")
-	t.Depth = v.GetUint64("depth")
 	t.Tag = byte(v.GetUint("tag"))
 	t.Payload = v.GetStringBytes("payload")
 

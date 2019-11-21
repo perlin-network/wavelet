@@ -1,12 +1,15 @@
+// +build integration,!unit
+
 package wavelet
 
 import (
 	"bytes"
 	"crypto/rand"
-	cuckoo "github.com/seiflotfy/cuckoofilter"
 	mrand "math/rand"
 	"testing"
 	"time"
+
+	cuckoo "github.com/seiflotfy/cuckoofilter"
 
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/stretchr/testify/assert"

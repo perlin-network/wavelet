@@ -1,10 +1,13 @@
+// +build !integration,unit
+
 package avl
 
 import (
 	"crypto/rand"
+	"testing"
+
 	"github.com/perlin-network/wavelet/store"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 func BenchmarkRehashNoWrite(b *testing.B) {

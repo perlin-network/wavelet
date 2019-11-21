@@ -1,3 +1,5 @@
+// +build !windows
+
 package main
 
 import (
@@ -5,7 +7,7 @@ import (
 	"syscall"
 )
 
-func switchToUpdatedBinary(newBinary string) error { // nolint:unused
+func switchToUpdatedBinary(newBinary string, atStartup bool) error { // nolint:unused
 	origArg0 := os.Args[0]
 
 	os.Args[0] = newBinary

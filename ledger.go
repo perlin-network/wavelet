@@ -24,11 +24,12 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	cuckoo "github.com/seiflotfy/cuckoofilter"
 	"io"
 	"math/rand"
 	"sync"
 	"time"
+
+	cuckoo "github.com/seiflotfy/cuckoofilter"
 
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
@@ -194,6 +195,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 	if !cfg.GCDisabled {
 		ctx, cancel := context.WithCancel(context.Background())
+		ledger.stopWG.Add(1)
 		go accounts.GC(ctx, &ledger.stopWG)
 
 		ledger.cancelGC = cancel
@@ -209,7 +211,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	})
 
 	ledger.stopWG.Add(1)
-
 	go stallDetector.Run(&ledger.stopWG)
 
 	ledger.stallDetector = stallDetector
@@ -700,7 +701,7 @@ func (l *Ledger) finalize(block Block) {
 
 	logger := log.Consensus("finalized")
 
-	results, err := l.collapseTransactions(&block, false)
+	results, err := l.collapseTransactions(&block, true)
 	if err != nil {
 		logger := log.Node()
 		logger.Error().
@@ -1480,7 +1481,7 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 		collapseState.results, collapseState.err = collapseTransactions(txs, block, l.accounts)
 	})
 
-	if logging {
+	if logging && collapseState.results != nil {
 		for _, tx := range collapseState.results.applied {
 			logEventTX("applied", tx)
 		}

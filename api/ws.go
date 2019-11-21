@@ -20,19 +20,21 @@
 package api
 
 import (
+	"strconv"
+	"time"
+
 	"github.com/fasthttp/websocket"
 	"github.com/perlin-network/wavelet/debounce"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
-	"strconv"
-	"time"
 )
 
 const (
-	writeWait      = 10 * time.Second
-	pongWait       = 60 * time.Second
-	pingPeriod     = (pongWait * 9) / 10
-	maxMessageSize = 512
+	writeWait          = 10 * time.Second
+	pongWait           = 60 * time.Second
+	pingPeriod         = (pongWait * 9) / 10
+	maxMessageSize     = 512
+	maxPaginationLimit = 5000
 )
 
 var upgrader = websocket.FastHTTPUpgrader{
@@ -49,6 +51,7 @@ type client struct {
 
 	filters map[string]string
 	queue   chan []byte
+	done    chan struct{}
 }
 
 func (c *client) readWorker() {
@@ -72,6 +75,8 @@ func (c *client) readWorker() {
 }
 
 func (c *client) writeWorker() {
+	defer close(c.done)
+
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
@@ -83,6 +88,7 @@ func (c *client) writeWorker() {
 		case msg, ok := <-c.queue:
 			if !ok {
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				c.queue = nil
 				return
 			}
 
@@ -122,6 +128,7 @@ func (s *sink) serve(ctx *fasthttp.RequestCtx) error {
 			sink:    s,
 			conn:    conn,
 			queue:   make(chan []byte, 256),
+			done:    make(chan struct{}),
 		}
 
 		s.join <- client
@@ -137,46 +144,39 @@ type broadcastItem struct {
 }
 
 type sink struct {
-	clients map[*client]struct{}
+	ops     chan func(map[*client]struct{})
 	filters map[string]string
 
-	broadcast   chan broadcastItem
 	join, leave chan *client
 
 	debouncer debounce.Debouncer
 }
 
 func (s *sink) run() {
+	clients := make(map[*client]struct{})
+
 	for {
 		select {
 		case client := <-s.join:
-			s.clients[client] = struct{}{}
+			clients[client] = struct{}{}
 		case client := <-s.leave:
-			if _, ok := s.clients[client]; ok {
-				delete(s.clients, client)
+			if _, ok := clients[client]; ok {
 				close(client.queue)
-				client.queue = nil
+				<-client.done
+
+				delete(clients, client)
 			}
-		case msg := <-s.broadcast:
-			if s.debouncer != nil {
-				s.debouncer.Add(debounce.Bytes(msg.buf))
-			} else {
-				s.send(msg.buf)
-			}
+		case op := <-s.ops:
+			op(clients)
 		}
 	}
 }
 
-func (s *sink) send(buf []byte) {
-	o, err := fastjson.ParseBytes(buf)
-	if err != nil {
-		return
-	}
-
+func (s *sink) doSend(clients map[*client]struct{}, buf []byte, bufVal *fastjson.Value) {
 SENDING:
-	for c := range s.clients {
+	for c := range clients {
 		for key, condition := range c.filters {
-			val := o.Get(key)
+			val := bufVal.Get(key)
 
 			if val == nil {
 				continue SENDING
@@ -195,42 +195,56 @@ SENDING:
 }
 
 func (s *sink) debounce(batch [][]byte) {
-SENDING:
-	for c := range s.clients {
-		idx, obj := 0, fastjson.MustParse("[]")
+	f := func(clients map[*client]struct{}) {
+	SENDING:
+		for c := range clients {
+			idx, obj := 0, fastjson.MustParse("[]")
 
-	BATCHING:
-		for _, buf := range batch {
-			o, err := fastjson.ParseBytes(buf)
-			if err != nil {
-				continue BATCHING
-			}
-
-			for key, condition := range c.filters {
-				val := o.Get(key)
-
-				if val == nil {
+		BATCHING:
+			for _, buf := range batch {
+				o, err := fastjson.ParseBytes(buf)
+				if err != nil {
 					continue BATCHING
 				}
 
-				if !fastjsonEquals(val, condition) {
-					continue BATCHING
+				for key, condition := range c.filters {
+					val := o.Get(key)
+
+					if val == nil {
+						continue BATCHING
+					}
+
+					if !fastjsonEquals(val, condition) {
+						continue BATCHING
+					}
 				}
+
+				obj.SetArrayItem(idx, o)
+				idx++
 			}
 
-			obj.SetArrayItem(idx, o)
-			idx++
+			if idx == 0 {
+				continue SENDING
+			}
+
+			buf := obj.MarshalTo(nil)
+
+			select {
+			case c.queue <- buf:
+			default:
+			}
 		}
+	}
 
-		if idx == 0 {
-			continue SENDING
-		}
+	s.ops <- f
+}
 
-		buf := obj.MarshalTo(nil)
-
-		select {
-		case c.queue <- buf:
-		default:
+func (s *sink) broadcast(item broadcastItem) {
+	if s.debouncer != nil {
+		s.debouncer.Add(debounce.Bytes(item.buf))
+	} else {
+		s.ops <- func(clients map[*client]struct{}) {
+			s.doSend(clients, item.buf, item.value)
 		}
 	}
 }

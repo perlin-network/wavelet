@@ -244,15 +244,17 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 	}
 
 	if preferred != nil {
+		preferredBlock := preferred.Value().(*wavelet.Block)
+
 		preferredObj := arena.NewObject()
 		preferredObj.Set("merkle_root",
-			arena.NewString(hex.EncodeToString(block.Merkle[:])))
+			arena.NewString(hex.EncodeToString(preferredBlock.Merkle[:])))
 		preferredObj.Set("height",
-			arena.NewNumberString(strconv.FormatUint(block.Index, 10)))
+			arena.NewNumberString(strconv.FormatUint(preferredBlock.Index, 10)))
 		preferredObj.Set("id",
-			arena.NewString(hex.EncodeToString(block.ID[:])))
+			arena.NewString(hex.EncodeToString(preferredBlock.ID[:])))
 		preferredObj.Set("transactions",
-			arena.NewNumberInt(len(block.Transactions)))
+			arena.NewNumberInt(len(preferredBlock.Transactions)))
 
 		o.Set("preferred", preferredObj)
 	} else {

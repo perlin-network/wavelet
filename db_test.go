@@ -17,17 +17,20 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// +build !integration,unit
+
 package wavelet
 
 import (
 	"crypto/rand"
 	"encoding/binary"
-	"github.com/perlin-network/wavelet/avl"
-	"github.com/perlin-network/wavelet/store"
-	"github.com/stretchr/testify/assert"
 	mrand "math/rand"
 	"sort"
 	"testing"
+
+	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/store"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRewardWithdrawals(t *testing.T) {
