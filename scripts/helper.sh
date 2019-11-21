@@ -32,9 +32,11 @@ GIT_COMMIT=$(git rev-parse --short HEAD)
 GO_VERSION=$(go version | awk '{print $3}')
 BUILD_NETWORK="${BUILD_NETWORK:-testnet}"
 
-# loop through each architecture and build to an output
 set -e
-for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
+
+# loop through each architecture and build to an output
+export IFS="," 
+for os_arch in ${OS_ARCH}; do
     OS=$(echo "${os_arch}" | cut -d- -f1)
     ARCH=$(echo "${os_arch}" | cut -d- -f2)
 
@@ -69,6 +71,7 @@ for os_arch in $( echo ${OS_ARCH} | tr "," " " ); do
     )
 
     (
+exit 0
         cd cmd/wctl || exit 1
         CGO_ENABLED=0 go build \
             -a \

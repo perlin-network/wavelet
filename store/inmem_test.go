@@ -17,12 +17,15 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// +build !integration,unit
+
 package store
 
 import (
-	"github.com/stretchr/testify/assert"
-	"math/rand"
+	"crypto/rand"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func BenchmarkInmem(b *testing.B) {
@@ -40,9 +43,9 @@ func BenchmarkInmem(b *testing.B) {
 		var randomKey [128]byte
 		var randomValue [600]byte
 
-		_, err := rand.Read(randomKey[:])
+		_, err := rand.Read(randomKey[:]) // nolint:gosec
 		assert.NoError(b, err)
-		_, err = rand.Read(randomValue[:])
+		_, err = rand.Read(randomValue[:]) // nolint:gosec
 		assert.NoError(b, err)
 
 		err = db.Put(randomKey[:], randomValue[:])

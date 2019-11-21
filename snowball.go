@@ -23,102 +23,79 @@ import (
 	"sync"
 
 	"github.com/perlin-network/wavelet/conf"
-	"github.com/perlin-network/wavelet/log"
 )
-
-type SnowballOption func(*Snowball)
-
-func WithName(name string) SnowballOption {
-	return func(snowball *Snowball) {
-		snowball.name = name
-	}
-}
-
-type Identifiable interface {
-	GetID() string
-}
 
 type Snowball struct {
 	sync.RWMutex
-	beta int
 
-	candidates          map[string]Identifiable
-	preferredID, lastID string
+	count  int
+	counts map[VoteID]uint16
 
-	counts  map[string]int
-	count   int
+	preferred Vote
+	last      Vote
+
 	decided bool
-	name    string
 }
 
-func NewSnowball(opts ...SnowballOption) *Snowball {
-	s := &Snowball{
-		candidates: make(map[string]Identifiable),
-		counts:     make(map[string]int),
-		name:       "default",
+func NewSnowball() *Snowball {
+	return &Snowball{
+		counts: make(map[VoteID]uint16),
 	}
-
-	for _, opt := range opts {
-		opt(s)
-	}
-
-	return s
 }
 
 func (s *Snowball) Reset() {
 	s.Lock()
 
-	s.preferredID = ""
-	s.lastID = ""
+	s.preferred = nil
+	s.last = nil
 
-	s.candidates = make(map[string]Identifiable)
-	s.counts = make(map[string]int)
+	s.counts = make(map[VoteID]uint16)
 	s.count = 0
 
 	s.decided = false
-
 	s.Unlock()
 }
 
-func (s *Snowball) Tick(v Identifiable) {
+func (s *Snowball) Tick(votes []Vote) {
 	s.Lock()
 	defer s.Unlock()
 
-	if s.decided { // Do not allow any further ticks until Reset() gets called.
+	if s.decided {
 		return
 	}
 
-	if v == nil || v.GetID() == "" { // Have nil responses reset Snowball.
-		s.lastID = ""
-		s.count = 0
+	var majority Vote
 
-		return
-	}
-
-	id := v.GetID()
-	if _, exists := s.candidates[id]; !exists {
-		s.candidates[id] = v
-	}
-
-	s.counts[id]++ // Handle decision case.
-
-	if s.counts[id] > s.counts[s.preferredID] {
-		s.preferredID = id
-	}
-
-	if s.lastID != id { // Handle termination case.
-		if s.lastID != "" {
-			logger := log.Node()
-			logger.Warn().
-				Str("name", s.name).
-				Str("last_id", s.lastID).
-				Int("count", s.count).
-				Str("new_id", id).
-				Msg("Snowball liveness fault")
+	for _, vote := range votes {
+		// Empty vote can still have tally (the base tally), so we need to ignore empty vote.
+		if vote.ID() == ZeroVoteID {
+			continue
 		}
 
-		s.lastID = id
+		if majority == nil || vote.Tally() > majority.Tally() {
+			majority = vote
+		}
+	}
+
+	denom := float64(len(votes))
+
+	if denom < 2 {
+		denom = 2
+	}
+
+	if majority == nil || majority.Tally() < conf.GetSnowballAlpha()*2/denom {
 		s.count = 0
+		return
+	}
+
+	s.counts[majority.ID()]++
+
+	if s.preferred == nil || s.counts[majority.ID()] > s.counts[s.preferred.ID()] {
+		s.preferred = majority
+	}
+
+	if s.last == nil || majority.ID() != s.last.ID() {
+		s.last, s.count = majority, 1
 	} else {
 		s.count++
 
@@ -128,19 +105,15 @@ func (s *Snowball) Tick(v Identifiable) {
 	}
 }
 
-func (s *Snowball) Prefer(v Identifiable) {
+func (s *Snowball) Prefer(b Vote) {
 	s.Lock()
-	id := v.GetID()
-	if _, exists := s.candidates[id]; !exists {
-		s.candidates[id] = v
-	}
-	s.preferredID = id
+	s.preferred = b
 	s.Unlock()
 }
 
-func (s *Snowball) Preferred() Identifiable {
+func (s *Snowball) Preferred() Vote {
 	s.RLock()
-	preferred := s.candidates[s.preferredID]
+	preferred := s.preferred
 	s.RUnlock()
 
 	return preferred

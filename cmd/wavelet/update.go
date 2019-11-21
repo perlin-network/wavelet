@@ -1,10 +1,5 @@
+// nolint
 package main
-
-import (
-	"fmt"
-	"github.com/perlin-network/wavelet/sys"
-	"time"
-)
 
 import (
 	"crypto"
@@ -14,9 +9,8 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"errors"
-)
-
-import (
+	"fmt"
+	"github.com/perlin-network/wavelet/sys"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -24,6 +18,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var updateDirectory = func() string {
@@ -62,9 +57,9 @@ func validateSignature(publicKeyPEM []byte, signatureHex string, hash []byte) er
 		return err
 	}
 
-	switch publicKey := publicKey.(type) {
+	switch publicKey := publicKey.(type) { // nolint:gocritic
 	case *rsa.PublicKey:
-		err = rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hash[:], signature)
+		err = rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hash, signature)
 		return err
 	}
 
@@ -143,6 +138,8 @@ func downloadUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte)
 	if err != nil {
 		return fmt.Errorf("Unable to download update file (begin): %+v", err)
 	}
+
+	defer binaryHandle.Body.Close()
 
 	_, err = io.Copy(binaryTempFile, binaryHandle.Body)
 	if err != nil {
@@ -245,7 +242,7 @@ func checkForUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte,
 	return
 }
 
-func periodicUpdateRoutine(updateURL string) {
+func periodicUpdateRoutine(updateURL string) { // nolint:unused
 	if updateURL == "" {
 		return
 	}

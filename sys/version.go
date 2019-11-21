@@ -27,7 +27,7 @@ const (
 	// VersionMinor is minor version component of the current release
 	VersionMinor = 2
 	// VersionPatch is patch version component of the current release
-	VersionPatch = 0
+	VersionPatch = 1
 )
 
 // variables set via linker flags
@@ -47,9 +47,5 @@ var Version = func() string {
 }()
 
 var VersionCode = func() uint32 {
-	var versionCode uint32
-
-	versionCode = (VersionMajor << 24) | (VersionMinor << 16) | VersionPatch
-
-	return versionCode
+	return (VersionMajor << 24) | (VersionMinor << 16) | VersionPatch
 }()

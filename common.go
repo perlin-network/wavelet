@@ -20,16 +20,16 @@
 package wavelet
 
 import (
-	"crypto/md5"
+	"crypto/md5" // nolint:gosec
 	"golang.org/x/crypto/blake2b"
 )
 
-import _ "github.com/perlin-network/wavelet/internal/snappy"
+import _ "github.com/perlin-network/wavelet/internal/snappy" // Compressor registration is done in init of snappy package
 
 const (
 	SizeTransactionID   = blake2b.Size256
 	SizeTransactionSeed = blake2b.Size256
-	SizeRoundID         = blake2b.Size256
+	SizeBlockID         = blake2b.Size256
 	SizeMerkleNodeID    = md5.Size
 	SizeAccountID       = 32
 	SizeSignature       = 64
@@ -37,19 +37,18 @@ const (
 
 type TransactionID = [SizeTransactionID]byte
 type TransactionSeed = [SizeTransactionSeed]byte
-type RoundID = [SizeRoundID]byte
+type BlockID = [SizeBlockID]byte
 type MerkleNodeID = [SizeMerkleNodeID]byte
 type AccountID = [SizeAccountID]byte
 type Signature = [SizeSignature]byte
 
 var (
 	ZeroTransactionID TransactionID
-	ZeroRoundID       RoundID
+	ZeroBlockID       BlockID
 	ZeroMerkleNodeID  MerkleNodeID
 	ZeroAccountID     AccountID
 	ZeroSignature     Signature
-
-	ZeroRoundPtr = &Round{}
+	ZeroBlockPtr      = &Block{}
 
 	ZeroPage = make([]byte, PageSize)
 )

@@ -21,21 +21,21 @@ package main
 
 import (
 	"encoding/csv"
+	"encoding/hex"
 	"fmt"
 	"io"
+	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 
+	"gopkg.in/urfave/cli.v1"
+
 	"github.com/benpye/readline"
-	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/store"
+	"github.com/perlin-network/wavelet/wctl"
 	"github.com/rs/zerolog"
-	"github.com/urfave/cli"
-	"google.golang.org/grpc"
 )
 
 const (
@@ -45,38 +45,52 @@ const (
 )
 
 type CLI struct {
-	app     *cli.App
-	rl      *readline.Instance
-	client  *skademlia.Client
-	server  *grpc.Server
-	gateway *api.Gateway
-	ledger  *wavelet.Ledger
-	logger  zerolog.Logger
-	keys    *skademlia.Keypair
-	kv      store.KV
+	app *cli.App
+	rl  *readline.Instance
+	// client *skademlia.Client
+	// ledger *wavelet.Ledger
+	logger zerolog.Logger
+	// keys   *skademlia.Keypair
 
-	completion []string
+	client *wctl.Client
+
+	stdin  io.ReadCloser
+	stdout io.Writer
+
+	cleanup func()
 }
 
-func NewCLI(
-	client *skademlia.Client,
-	server *grpc.Server,
-	gateway *api.Gateway,
-	ledger *wavelet.Ledger,
-	keys *skademlia.Keypair,
-	stdin io.ReadCloser,
-	stdout io.Writer,
-	kv store.KV,
-) (*CLI, error) {
+func CLIWithStdin(stdin io.ReadCloser) func(cli *CLI) {
+	return func(cli *CLI) {
+		cli.stdin = stdin
+	}
+}
+
+func CLIWithStdout(stdout io.Writer) func(cli *CLI) {
+	return func(cli *CLI) {
+		cli.stdout = stdout
+	}
+}
+
+func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
+	// Set CLI callbacks, mainly loggers
+	cleanup, err := setEvents(client)
+	if err != nil {
+		cleanup()
+		return nil, fmt.Errorf("failed to start websockets to the server: %v", err)
+	}
+
 	c := &CLI{
 		client:  client,
-		server:  server,
-		gateway: gateway,
-		ledger:  ledger,
 		logger:  log.Node(),
-		keys:    keys,
 		app:     cli.NewApp(),
-		kv:      kv,
+		stdin:   os.Stdin,
+		stdout:  os.Stdout,
+		cleanup: cleanup,
+	}
+
+	for _, o := range opts {
+		o(c)
 	}
 
 	c.app.Name = "wavelet"
@@ -156,11 +170,6 @@ func NewCLI(
 			Description: "disconnect a peer",
 		},
 		{
-			Name:    "exit",
-			Aliases: []string{"quit", ":q"},
-			Action:  a(c.exit),
-		},
-		{
 			Name:        "restart",
 			Aliases:     []string{"r"},
 			Action:      a(c.restart),
@@ -171,7 +180,13 @@ func NewCLI(
 					Usage: "database will be erased if provided",
 				},
 			},
-		}, {
+		},
+		{
+			Name:    "exit",
+			Aliases: []string{"quit", ":q"},
+			Action:  a(c.exit),
+		},
+		{
 			Name:      "update-params",
 			UsageText: "Updates parameters, if no value provided, default one will be used.",
 			Aliases:   []string{"up"},
@@ -207,11 +222,6 @@ func NewCLI(
 					Value: conf.GetTransactionsNumMajorityWeight(),
 					Usage: "weight for percentage of max transactions number used in finalization majority calculation",
 				},
-				cli.Float64Flag{
-					Name:  "vote.finalization.depth.weight",
-					Value: conf.GetRoundDepthMajorityWeight(),
-					Usage: "weight for percentage of min depth number used in finalization majority calculation",
-				},
 				cli.DurationFlag{
 					Name:  "query.timeout",
 					Value: conf.GetQueryTimeout(),
@@ -238,29 +248,50 @@ func NewCLI(
 					Usage: "chunk size for state syncing",
 				},
 				cli.Uint64Flag{
-					Name:  "sync.if.rounds.differ.by",
-					Value: conf.GetSyncIfRoundsDifferBy(),
-					Usage: "difference in rounds between nodes which initiates state syncing",
-				},
-				cli.Uint64Flag{
-					Name:  "max.download.depth.diff",
-					Value: conf.GetMaxDownloadDepthDiff(),
-					Usage: "maximum depth for transactions which need to be downloaded",
-				},
-				cli.Uint64Flag{
-					Name:  "max.depth.diff",
-					Value: conf.GetMaxDepthDiff(),
-					Usage: "maximum depth difference for transactions to be added to the graph",
+					Name:  "sync.if.block.indices.differ.by",
+					Value: conf.GetSyncIfBlockIndicesDifferBy(),
+					Usage: "difference in blocks between nodes which initiates state syncing",
 				},
 				cli.Uint64Flag{
 					Name:  "pruning.limit",
 					Value: uint64(conf.GetPruningLimit()),
-					Usage: "number of rounds after which pruning of transactions will happen",
+					Usage: "number of blocks after which pruning of transactions will happen",
 				},
 				cli.StringFlag{
 					Name:  "api.secret",
 					Value: conf.GetSecret(),
 					Usage: "shared secret for http api authorization",
+				},
+				cli.UintFlag{
+					Name:  "bloom.filter.k",
+					Value: conf.GetBloomFilterK(),
+					Usage: "bloom filter K parameter for transaction syncing",
+				},
+				cli.UintFlag{
+					Name:  "bloom.filter.m",
+					Value: conf.GetBloomFilterM(),
+					Usage: "bloom filter M parameter for transaction syncing",
+				},
+				cli.Uint64Flag{
+					Name:  "tx.sync.chunk.size",
+					Value: conf.GetTXSyncChunkSize(),
+					Usage: "number of transactions per chunk for transaction syncing",
+				},
+				cli.Uint64Flag{
+					Name:  "tx.sync.limit",
+					Value: conf.GetTXSyncLimit(),
+					Usage: "max number of transactions to be synced",
+				},
+			},
+		},
+		{
+			Name:        "dump",
+			Action:      a(c.dump),
+			Description: "dump wallet states, and you may use -c to dump contract code and pages",
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:  "c",
+					Usage: "dump contract code and pages",
 				},
 			},
 		},
@@ -327,8 +358,8 @@ func NewCLI(
 		InterruptPrompt:   "^C",
 		EOFPrompt:         "exit",
 		HistorySearchFold: true,
-		Stdin:             stdin,
-		Stdout:            stdout,
+		Stdin:             c.stdin,
+		Stdout:            c.stdout,
 	})
 
 	if err != nil {
@@ -343,9 +374,7 @@ func NewCLI(
 			rl.Stdout(),
 			log.FilterFor(
 				log.ModuleNode,
-				log.ModuleNetwork,
 				log.ModuleSync,
-				log.ModuleConsensus,
 				log.ModuleContract,
 			),
 		),
@@ -355,6 +384,8 @@ func NewCLI(
 }
 
 func (cli *CLI) Start() {
+	defer cli.cleanup()
+
 ReadLoop:
 	for {
 		line, err := cli.rl.Readline()
@@ -388,11 +419,6 @@ ReadLoop:
 	}
 
 	_ = cli.rl.Close()
-
-	cli.gateway.Shutdown()
-	cli.server.GracefulStop()
-	cli.ledger.Close()
-	cli.kv.Close()
 }
 
 func (cli *CLI) exit(ctx *cli.Context) {
@@ -404,4 +430,34 @@ func a(f func(*cli.Context)) func(*cli.Context) error {
 		f(ctx)
 		return nil
 	}
+}
+
+func (cli *CLI) parseRecipient(arg string) ([32]byte, bool) {
+	var recipient [32]byte
+
+	i, err := hex.Decode(recipient[:], []byte(arg))
+	if err != nil {
+		cli.logger.Error().Err(err).
+			Msg("The ID you specified is invalid.")
+		return recipient, false
+	}
+
+	if i != 32 {
+		cli.logger.Error().Int("length", len(recipient)).
+			Msg("The ID you specified is invalid.")
+		return recipient, false
+	}
+
+	return recipient, true
+}
+
+func (cli *CLI) parseAmount(arg string) (a uint64, ok bool) {
+	amount, err := strconv.ParseUint(arg, 10, 64)
+	if err != nil {
+		cli.logger.Error().Err(err).
+			Msg("Failed to convert payment amount to a uint64.")
+		return 0, false
+	}
+
+	return amount, true
 }

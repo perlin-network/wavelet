@@ -17,12 +17,15 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// +build !integration,unit
+
 package avl
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/binary"
-	"math/rand"
+	mrand "math/rand"
 	"testing"
 	"testing/quick"
 
@@ -43,7 +46,7 @@ func TestSerialize(t *testing.T) {
 		buf := bytebufferpool.Get()
 		defer bytebufferpool.Put(buf)
 
-		node.serialize(buf)
+		assert.NoError(t, node.serialize(buf))
 
 		assert.ObjectsAreEqual(node, mustDeserialize(bytes.NewReader(buf.Bytes())))
 
@@ -110,7 +113,7 @@ func TestTree_DeleteUntilEmpty(t *testing.T) {
 	{
 		tree := New(kv)
 
-		// Previous change should be commited
+		// Previous change should be committed
 		for k := range values {
 			_, ok := tree.Lookup([]byte(k))
 			assert.False(t, ok)
@@ -164,7 +167,7 @@ func TestTree_Diff_Randomized(t *testing.T) {
 
 		var a, b *Tree
 
-		if rand.Int()%2 == 0 {
+		if mrand.Int()%2 == 0 { // nolint:gosec
 			a, b = tree1, tree2
 		} else {
 			a, b = tree2, tree1
@@ -219,7 +222,7 @@ func TestTree_Diff_UpdateNotifier(t *testing.T) {
 	tree1.SetViewID(tree1.viewID + 1)
 	tree1.Insert([]byte("e"), []byte("f"))
 
-	tree2.Commit()
+	assert.NoError(t, tree2.Commit())
 
 	diffMap := make(map[string]string)
 	iterCount := 0
@@ -259,8 +262,8 @@ func TestTree_ApplyEmptyDiff(t *testing.T) {
 	tree2.Insert([]byte("a"), []byte("b"))
 	tree2.viewID++
 
-	tree1.Commit()
-	tree2.Commit()
+	assert.NoError(t, tree1.Commit())
+	assert.NoError(t, tree2.Commit())
 
 	assert.NoError(t, applyDiffFromBytes(tree2, dumpDiffAll(tree1, tree2.viewID)))
 
@@ -281,7 +284,7 @@ func TestTree_Difference(t *testing.T) {
 	tree2 := New(kv2)
 	tree2.SetViewID(0)
 
-	tree2.Commit()
+	assert.NoError(t, tree2.Commit())
 
 	assert.NoError(t, applyDiffFromBytes(tree2, dumpDiffAll(tree, 0)))
 	assert.Equal(t, tree2.viewID, uint64(1))
@@ -294,7 +297,7 @@ func TestTree_Difference(t *testing.T) {
 	result, _ = tree2.Lookup([]byte("k2"))
 	assert.Equal(t, []byte("2"), result)
 
-	tree.Commit()
+	assert.NoError(t, tree.Commit())
 	assert.NoError(t, applyDiffFromBytes(tree, dumpDiffAll(tree2, 1)))
 	assert.Equal(t, tree.viewID, uint64(2))
 
@@ -333,12 +336,10 @@ func TestTree_IterateFrom(t *testing.T) {
 		v := binary.BigEndian.Uint64(value)
 		assert.Equal(t, k, v)
 		result = append(result, k)
-		if k == 42 {
-			return false
-		} else {
-			return true
-		}
+
+		return k != 42
 	})
+
 	var expected []uint64
 	for i := uint64(20); i <= 42; i++ {
 		expected = append(expected, i)

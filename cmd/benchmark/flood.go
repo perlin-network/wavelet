@@ -20,32 +20,22 @@
 package main
 
 import (
-	"runtime"
-	"sync"
-
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
 )
 
-func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionResponse, error) {
-	return func(client *wctl.Client) ([]wctl.SendTransactionResponse, error) {
-		numWorkers := runtime.NumCPU()
-
-		var wg sync.WaitGroup
-		wg.Add(numWorkers)
-
-		chRes := make(chan wctl.SendTransactionResponse, numWorkers)
+func floodTransactions(numWorkers int) func(client *wctl.Client) ([]*wctl.TxResponse, error) {
+	return func(client *wctl.Client) ([]*wctl.TxResponse, error) {
+		chRes := make(chan *wctl.TxResponse, numWorkers)
 		chErr := make(chan error, numWorkers)
 
 		for i := 0; i < numWorkers; i++ {
-			go sendTransaction(i+1, client, &wg, chRes, chErr)
+			go sendTransaction(i+1, client, chRes, chErr)
 		}
 
-		wg.Wait()
-
-		var responses []wctl.SendTransactionResponse
+		var responses []*wctl.TxResponse
 		var err error
 
 		for i := 0; i < numWorkers; i++ {
@@ -67,28 +57,29 @@ func floodTransactions() func(client *wctl.Client) ([]wctl.SendTransactionRespon
 func sendTransaction(
 	i int,
 	client *wctl.Client,
-	wg *sync.WaitGroup,
-	chRes chan<- wctl.SendTransactionResponse,
-	chErr chan<- error) {
-
-	defer wg.Done()
-
-	n := 40
+	chRes chan<- *wctl.TxResponse,
+	chErr chan<- error,
+) {
+	n := 1
 	payload := wavelet.Batch{
 		Tags:     make([]uint8, 0, n),
 		Payloads: make([][]byte, 0, n),
 	}
 
+	//transfer := wavelet.Transfer{Recipient: client.PublicKey, Amount: uint64(1)}
 	stake := wavelet.Stake{Opcode: sys.PlaceStake, Amount: uint64(i)}
-	for i := 0; i < 40; i++ {
+	for i := 0; i < n; i++ {
 		if err := payload.AddStake(stake); err != nil {
-			// Shouldn't happen
 			panic(err)
 		}
 	}
 
-	var res wctl.SendTransactionResponse
-	res, err := client.SendTransaction(byte(sys.TagBatch), payload.Marshal())
+	marshaled, err := payload.Marshal()
+	if err != nil {
+		panic(err)
+	}
+
+	res, err := client.SendTransaction(byte(sys.TagBatch), marshaled)
 	if err != nil {
 		chRes <- res
 		chErr <- err

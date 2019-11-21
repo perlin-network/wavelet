@@ -21,9 +21,10 @@ package wavelet
 
 import (
 	"context"
+	"time"
+
 	"github.com/perlin-network/wavelet/log"
 	"github.com/rcrowley/go-metrics"
-	"time"
 )
 
 type Metrics struct {
@@ -36,18 +37,22 @@ type Metrics struct {
 	acceptedTX   metrics.Meter
 	downloadedTX metrics.Meter
 
+	finalizedBlocks metrics.Meter
+
 	queryLatency metrics.Timer
 }
 
 func NewMetrics(ctx context.Context) *Metrics {
 	registry := metrics.NewRegistry()
 
-	queried := metrics.NewRegisteredMeter("round.queried", registry)
+	queried := metrics.NewRegisteredMeter("blocks.queried", registry)
 
 	gossipedTX := metrics.NewRegisteredMeter("tx.gossiped", registry)
 	receivedTX := metrics.NewRegisteredMeter("tx.received", registry)
 	acceptedTX := metrics.NewRegisteredMeter("tx.accepted", registry)
 	downloadedTX := metrics.NewRegisteredMeter("tx.downloaded", registry)
+
+	finalizedBlocks := metrics.NewRegisteredMeter("block.finalized", registry)
 
 	queryLatency := metrics.NewRegisteredTimer("query.latency", registry)
 
@@ -58,16 +63,17 @@ func NewMetrics(ctx context.Context) *Metrics {
 			select {
 			case <-time.After(1 * time.Second):
 				logger.Info().
-					Int64("round.queried", queried.Count()).
+					Int64("blocks.queried", queried.Count()).
 					Int64("tx.gossiped", gossipedTX.Count()).
 					Int64("tx.received", receivedTX.Count()).
 					Int64("tx.accepted", acceptedTX.Count()).
 					Int64("tx.downloaded", downloadedTX.Count()).
-					Float64("rps.queried", queried.RateMean()).
+					Float64("bps.queried", queried.RateMean()).
 					Float64("tps.gossiped", gossipedTX.RateMean()).
 					Float64("tps.received", receivedTX.RateMean()).
 					Float64("tps.accepted", acceptedTX.RateMean()).
 					Float64("tps.downloaded", downloadedTX.RateMean()).
+					Float64("blocks.finalized", finalizedBlocks.RateMean()).
 					Int64("query.latency.max.ms", queryLatency.Max()/(1.0e+7)).
 					Int64("query.latency.min.ms", queryLatency.Min()/(1.0e+7)).
 					Float64("query.latency.mean.ms", queryLatency.Mean()/(1.0e+7)).
@@ -88,6 +94,8 @@ func NewMetrics(ctx context.Context) *Metrics {
 		acceptedTX:   acceptedTX,
 		downloadedTX: downloadedTX,
 
+		finalizedBlocks: finalizedBlocks,
+
 		queryLatency: queryLatency,
 	}
 }
@@ -99,6 +107,8 @@ func (m *Metrics) Stop() {
 	m.receivedTX.Stop()
 	m.acceptedTX.Stop()
 	m.downloadedTX.Stop()
+
+	m.finalizedBlocks.Stop()
 
 	m.queryLatency.Stop()
 }

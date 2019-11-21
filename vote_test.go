@@ -1,397 +1,536 @@
+// +build !integration,unit
+
 package wavelet
 
 import (
 	"crypto/rand"
-	"fmt"
-	"github.com/perlin-network/noise/edwards25519"
-	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/wavelet/conf"
-	"github.com/perlin-network/wavelet/store"
-	"github.com/stretchr/testify/assert"
-	"golang.org/x/crypto/blake2b"
+	"encoding/binary"
+	"math"
 	"sync"
 	"testing"
+
+	"github.com/perlin-network/wavelet/conf"
+	"github.com/perlin-network/wavelet/store"
+	"github.com/perlin-network/wavelet/sys"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestCollectVotesForSync(t *testing.T) {
-	kv := store.NewInmem()
-	accounts := NewAccounts(kv)
-	snowballB := 5
-	conf.Update(conf.WithSnowballBeta(snowballB))
-	s := NewSnowball(WithName("test"))
+func TestFinalizationVoteWithoutBlock(t *testing.T) {
+	v := &finalizationVote{
+		voter: getRandomID(t),
+	}
 
-	pubKey := edwards25519.PublicKey{}
-	nonce := [blake2b.Size256]byte{}
+	assert.Equal(t, ZeroVoteID, v.ID())
+	assert.Nil(t, v.Value())
+	assert.Zero(t, v.Length())
+}
 
-	t.Run("success - decision made", func(t *testing.T) {
-		s.Reset()
+func TestCalculateTallies(t *testing.T) {
+	getTxID := func(count int) []TransactionID {
+		var ids []TransactionID
 
-		voteC := make(chan syncVote)
-		wg := new(sync.WaitGroup)
+		var id TransactionID
+		for i := 0; i < count; i++ {
+			_, err := rand.Read(id[:]) // nolint:gosec
+			assert.NoError(t, err)
 
-		wg.Add(1)
-		go CollectVotesForSync(accounts, s, voteC, wg, conf.GetSnowballK())
-
-		peersNum := conf.GetSnowballK()
-		for j := 0; j < snowballB+2; j++ { // +2 because snowball count starts with zero and needs to be greater than B
-			for i := 0; i < peersNum; i++ {
-				_, _ = rand.Read(pubKey[:])
-				voteC <- syncVote{
-					voter:     skademlia.NewID("", pubKey, nonce),
-					outOfSync: true,
-				}
-			}
+			ids = append(ids, id)
 		}
 
-		close(voteC)
-		wg.Wait()
+		return ids
+	}
 
-		assert.True(t, s.Decided())
-		assert.Equal(t, "true", s.Preferred().GetID())
+	accounts := NewAccounts(store.NewInmem())
+	snapshot := accounts.Snapshot()
+
+	var votes []Vote
+	expectedTallies := make(map[VoteID]float64)
+
+	baseStake := sys.MinimumStake * 2
+
+	nodeIDCount := uint16(0)
+	var nodeID MerkleNodeID
+
+	// Vote 1: empty vote
+	{
+		voterID := getRandomID(t)
+		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake)
+
+		votes = append(votes, &finalizationVote{
+			voter: voterID,
+			block: nil,
+		})
+
+		expectedTallies[ZeroVoteID] = 0.3037300177619893
+	}
+
+	// Vote 2: has the highest stake.
+	{
+		nodeIDCount++
+		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
+		block, _ := NewBlock(1, nodeID, getTxID(2)...)
+
+		voterID := getRandomID(t)
+		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake*10)
+
+		votes = append(votes, &finalizationVote{
+			voter: voterID,
+			block: &block,
+		})
+
+		expectedTallies[block.ID] = 0.03374777975133215
+	}
+
+	// Vote 3: has the highest transactions.
+	{
+		nodeIDCount++
+		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
+		block, _ := NewBlock(1, nodeID, getTxID(10)...)
+
+		voterID := getRandomID(t)
+		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake*2)
+
+		votes = append(votes, &finalizationVote{
+			voter: voterID,
+			block: &block,
+		})
+
+		expectedTallies[block.ID] = 0.04795737122557727
+	}
+
+	// Vote 4: has two responses, and third highest stake and transactions.
+	{
+		nodeIDCount++
+		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
+		block, _ := NewBlock(1, nodeID, getTxID(4)...)
+
+		// First response
+
+		voterID := getRandomID(t)
+		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake*4)
+
+		votes = append(votes, &finalizationVote{
+			voter: voterID,
+			block: &block,
+		})
+
+		copyBlock := block
+
+		// Second response
+
+		voterID = getRandomID(t)
+		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake*4)
+
+		votes = append(votes, &finalizationVote{
+			voter: voterID,
+			block: &copyBlock,
+		})
+
+		expectedTallies[block.ID] = 0.37300177619893427
+	}
+
+	// Vote 5: Second highest stake and transactions.
+	{
+		nodeIDCount++
+		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
+		block, _ := NewBlock(1, nodeID, getTxID(9)...)
+
+		voterID := getRandomID(t)
+		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake*9)
+
+		votes = append(votes, &finalizationVote{
+			voter: voterID,
+			block: &block,
+		})
+
+		expectedTallies[block.ID] = 0.24156305506216696
+	}
+
+	// Vote 6: has zero stake (thus minimum stake), and 1 transactions.
+	// It's expected that only this vote will have 0 tally because it has the lowest stake and transactions (profit).
+	{
+		nodeIDCount++
+		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
+		block, _ := NewBlock(1, nodeID, getTxID(1)...)
+
+		voterID := getRandomID(t)
+		WriteAccountStake(snapshot, voterID.PublicKey(), 0)
+
+		votes = append(votes, &finalizationVote{
+			voter: voterID,
+			block: &block,
+		})
+
+		expectedTallies[block.ID] = 0
+	}
+
+	assert.NoError(t, accounts.Commit(snapshot))
+
+	tallies := calculateTallies(accounts, votes)
+	assert.Len(t, tallies, 6)
+
+	// Because of floating point inaccuracy, we convert it to an integer.
+	toInt64 := func(v float64) int64 {
+		// Use 10 ^ 15 because it seems the inaccuracy is happening at 10 ^ -16.
+		exp := math.Pow10(15)
+		return int64(exp * v)
+	}
+
+	for _, vote := range tallies {
+		assert.Equal(t, toInt64(expectedTallies[vote.ID()]), toInt64(vote.Tally()))
+	}
+}
+
+func TestTickForFinalization(t *testing.T) {
+	getTxIDs := func(count int) []TransactionID {
+		var ids []TransactionID
+
+		for i := 0; i < count; i++ {
+			var id TransactionID
+			_, err := rand.Read(id[:]) // nolint:gosec
+			assert.NoError(t, err)
+			ids = append(ids, id)
+		}
+
+		return ids
+	}
+
+	snowballK := 10
+	defaultBeta := conf.GetSnowballBeta()
+	conf.Update(conf.WithSnowballBeta(5))
+	defer func() {
+		conf.Update(conf.WithSnowballBeta(defaultBeta))
+	}()
+
+	snowball := NewSnowball()
+
+	t.Run("no decision in case of all equal tallies", func(t *testing.T) {
+		accounts := NewAccounts(store.NewInmem())
+		snowball.Reset()
+
+		votes := make([]*finalizationVote, 0, snowballK)
+
+		for i := 0; i < cap(votes); i++ {
+			block, err := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
+			if !assert.NoError(t, err) {
+				return
+			}
+
+			votes = append(votes, &finalizationVote{
+				voter: getRandomID(t),
+				block: &block,
+			})
+		}
+
+		for i := 0; i < conf.GetSnowballBeta()+1; i++ {
+			TickForFinalization(accounts, snowball, votes)
+		}
+
+		assert.False(t, snowball.Decided())
+		assert.Nil(t, snowball.Preferred())
 	})
 
-	t.Run("success - one of the voters votes wrong, but majority is enough", func(t *testing.T) {
-		s.Reset()
+	t.Run("no decision in case of 20% empty votes", func(t *testing.T) {
+		accounts := NewAccounts(store.NewInmem())
+		snowball.Reset()
 
-		voteC := make(chan syncVote)
-		wg := new(sync.WaitGroup)
+		snapshot := accounts.Snapshot()
+		votes := make([]*finalizationVote, 0, snowballK)
 
-		peersNum := 5
-
-		wg.Add(1)
-		go CollectVotesForSync(accounts, s, voteC, wg, peersNum)
-
-		for j := 0; j < snowballB+2; j++ {
-			for i := 0; i < peersNum; i++ {
-				outOfSync := true
-				if i == 0 {
-					outOfSync = false
-				}
-
-				_, _ = rand.Read(pubKey[:])
-				voteC <- syncVote{
-					voter:     skademlia.NewID("", pubKey, nonce),
-					outOfSync: outOfSync,
-				}
-			}
-		}
-
-		close(voteC)
-		wg.Wait()
-
-		assert.True(t, s.Decided())
-		if !assert.NotNil(t, s.Preferred()) {
+		_block, err := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
+		if !assert.NoError(t, err) {
 			return
 		}
-		assert.Equal(t, "true", s.Preferred().GetID())
-	})
 
-	t.Run("no decision - two voters vote wrong, majority is less than snowballA", func(t *testing.T) {
-		s.Reset()
+		for i := 0; i < cap(votes); i++ {
+			voter := getRandomID(t)
 
-		voteC := make(chan syncVote)
-		wg := new(sync.WaitGroup)
+			var block *Block
+			if i < int(conf.GetSnowballAlpha()*float64(cap(votes))) {
+				block = &_block
 
-		peersNum := 5
-		wg.Add(1)
-		go CollectVotesForSync(accounts, s, voteC, wg, peersNum)
-
-		for j := 0; j < snowballB+2; j++ {
-			for i := 0; i < peersNum; i++ {
-				outOfSync := true
-				if i == 0 || i == 1 {
-					outOfSync = false
-				}
-
-				_, _ = rand.Read(pubKey[:])
-				voteC <- syncVote{
-					voter:     skademlia.NewID("", pubKey, nonce),
-					outOfSync: outOfSync,
-				}
+				// Make sure that the amount of stakes does not matter in case of 20% empty votes.
+				WriteAccountStake(snapshot, voter.PublicKey(), sys.MinimumStake*10)
 			}
+
+			votes = append(votes, &finalizationVote{
+				voter: voter,
+				block: block,
+			})
 		}
 
-		close(voteC)
-		wg.Wait()
+		assert.NoError(t, accounts.Commit(snapshot))
 
-		assert.False(t, s.Decided())
-	})
-
-	t.Run("no decision - less than snowballK voters", func(t *testing.T) {
-		s.Reset()
-
-		voteC := make(chan syncVote)
-		wg := new(sync.WaitGroup)
-
-		wg.Add(1)
-		go CollectVotesForSync(accounts, s, voteC, wg, conf.GetSnowballK())
-
-		peersNum := conf.GetSnowballK() - 1
-		for j := 0; j < snowballB+2; j++ {
-			for i := 0; i < peersNum; i++ {
-				_, _ = rand.Read(pubKey[:])
-				voteC <- syncVote{
-					voter:     skademlia.NewID("", pubKey, nonce),
-					outOfSync: true,
-				}
-			}
+		for i := 0; i < conf.GetSnowballBeta()+1; i++ {
+			TickForFinalization(accounts, snowball, votes)
 		}
 
-		close(voteC)
-		wg.Wait()
+		assert.False(t, snowball.Decided())
+		assert.Equal(t, _block, *snowball.Preferred().Value().(*Block))
+	})
 
-		assert.False(t, s.Decided())
+	t.Run("stake majority block wins", func(t *testing.T) {
+		accounts := NewAccounts(store.NewInmem())
+		snowball.Reset()
+
+		biggestStakeIdx := 0
+		snapshot := accounts.Snapshot()
+
+		votes := make([]*finalizationVote, 0, snowballK)
+
+		for i := 0; i < cap(votes); i++ {
+			block, err := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
+			if !assert.NoError(t, err) {
+				return
+			}
+
+			voter := getRandomID(t)
+
+			stake := sys.MinimumStake
+			if i == biggestStakeIdx {
+				stake++
+			}
+
+			WriteAccountStake(snapshot, voter.PublicKey(), stake)
+
+			votes = append(votes, &finalizationVote{
+				voter: voter,
+				block: &block,
+			})
+		}
+
+		assert.NoError(t, accounts.Commit(snapshot))
+
+		for i := 0; i < conf.GetSnowballBeta()+1; i++ {
+			TickForFinalization(accounts, snowball, votes)
+		}
+
+		assert.True(t, snowball.Decided())
+		assert.Equal(t, votes[biggestStakeIdx].block, snowball.Preferred().Value())
+	})
+
+	t.Run("transactions num majority block wins", func(t *testing.T) {
+		accounts := NewAccounts(store.NewInmem())
+
+		snowball.Reset()
+
+		biggestTxNumIdx := 0
+		votes := make([]*finalizationVote, 0, snowballK)
+
+		for i := 0; i < cap(votes); i++ {
+			num := 2
+			if i == biggestTxNumIdx {
+				num++
+			}
+
+			block, err := NewBlock(1, accounts.tree.Checksum(), getTxIDs(num)...)
+			if !assert.NoError(t, err) {
+				return
+			}
+
+			votes = append(votes, &finalizationVote{
+				voter: getRandomID(t),
+				block: &block,
+			})
+		}
+
+		for i := 0; i < conf.GetSnowballBeta()+1; i++ {
+			TickForFinalization(accounts, snowball, votes)
+		}
+
+		assert.True(t, snowball.Decided())
+		assert.Equal(t, votes[biggestTxNumIdx].block, snowball.Preferred().Value())
 	})
 }
 
-func TestCollectVotesForFinalization(t *testing.T) {
-	kv := store.NewInmem()
-	accounts := NewAccounts(kv)
-	snowballB := 5
+func TestCollectVotesForSync(t *testing.T) {
+	snowballK := 10
+	defaultBeta := conf.GetSnowballBeta()
+	conf.Update(conf.WithSnowballBeta(5))
+	defer func() {
+		conf.Update(conf.WithSnowballBeta(defaultBeta))
+	}()
 
-	defaultSnowballB := conf.GetSnowballBeta()
-	defer conf.Update(conf.WithSnowballBeta(defaultSnowballB))
+	snowball := NewSnowball()
 
-	conf.Update(conf.WithSnowballBeta(snowballB))
-	s := NewSnowball(WithName("test"))
+	t.Run("success - decision made", func(t *testing.T) {
+		accounts := NewAccounts(store.NewInmem())
+		snowball.Reset()
 
-	pubKey := edwards25519.PublicKey{}
-	nonce := [blake2b.Size256]byte{}
-
-	t.Run("no decision in case of all equal values", func(t *testing.T) {
-		s.Reset()
-
-		voteC := make(chan finalizationVote)
+		votes := make([]*syncVote, 0, snowballK)
+		voteC := make(chan *syncVote)
 		wg := new(sync.WaitGroup)
 
 		wg.Add(1)
-		go CollectVotesForFinalization(accounts, s, voteC, wg, conf.GetSnowballK())
+		go CollectVotesForSync(accounts, snowball, voteC, wg, snowballK)
 
-		voters := make([]*skademlia.ID, conf.GetSnowballK())
-		for i := 0; i < len(voters); i++ {
-			_, err := rand.Read(pubKey[:])
-			if !assert.NoError(t, err) {
-				return
-			}
-
-			id := skademlia.NewID("", pubKey, nonce)
-			voters[i] = id
+		for i := 0; i < cap(votes); i++ {
+			votes = append(votes, &syncVote{
+				voter:     getRandomID(t),
+				outOfSync: true,
+			})
 		}
 
-		roundIDs := make([]RoundID, conf.GetSnowballK()) // each voter votes for different round
-		var roundID RoundID
-		for i := 0; i < len(roundIDs); i++ {
-			_, err := rand.Read(roundID[:])
-			if !assert.NoError(t, err) {
-				return
-			}
-
-			roundIDs[i] = roundID
-		}
-
-		for i := 0; i < snowballB+2; i++ {
-			for j := 0; j < conf.GetSnowballK(); j++ {
-				voteC <- finalizationVote{
-					voter: voters[j],
-					round: &Round{
-						ID: roundIDs[j],
-					},
-				}
+		for i := 0; i < conf.GetSnowballBeta()+1; i++ {
+			for n := range votes {
+				voteC <- votes[n]
 			}
 		}
 
 		close(voteC)
 		wg.Wait()
 
-		assert.False(t, s.Decided())
+		assert.True(t, snowball.Decided())
+		assert.True(t, *snowball.preferred.Value().(*bool))
 	})
 
-	t.Run("stake majority round wins", func(t *testing.T) {
-		s.Reset()
+	t.Run("success - one of the voters votes wrong, but majority is enough", func(t *testing.T) {
+		accounts := NewAccounts(store.NewInmem())
+		snowball.Reset()
 
-		var defaultStake uint64 = 10
-		biggestVoter := 0
+		votes := make([]*syncVote, 0, snowballK)
+		voteC := make(chan *syncVote)
+		wg := new(sync.WaitGroup)
 
+		wg.Add(1)
+		go CollectVotesForSync(accounts, snowball, voteC, wg, snowballK)
+
+		for i := 0; i < cap(votes); i++ {
+			outOfSync := true
+			if i == 0 {
+				outOfSync = false
+			}
+
+			votes = append(votes, &syncVote{
+				voter:     getRandomID(t),
+				outOfSync: outOfSync,
+			})
+		}
+
+		for i := 0; i < conf.GetSnowballBeta()+1; i++ {
+			for n := range votes {
+				voteC <- votes[n]
+			}
+		}
+
+		close(voteC)
+		wg.Wait()
+
+		assert.True(t, snowball.Decided())
+		assert.True(t, *snowball.preferred.Value().(*bool))
+	})
+
+	t.Run("success - 50-50 votes, but one vote has the highest stake", func(t *testing.T) {
+		accounts := NewAccounts(store.NewInmem())
 		snapshot := accounts.Snapshot()
-		voters := make([]*skademlia.ID, conf.GetSnowballK())
-		roundIDs := make([]RoundID, len(voters)) // each voter votes for different round
+		snowball.Reset()
 
-		var roundID RoundID
-		for i := 0; i < len(voters); i++ {
-			_, err := rand.Read(pubKey[:])
-			if !assert.NoError(t, err) {
-				return
-			}
-
-			id := skademlia.NewID("", pubKey, nonce)
-			voters[i] = id
-
-			stake := defaultStake
-			if i == biggestVoter {
-				stake *= 100
-			}
-
-			WriteAccountStake(snapshot, id.PublicKey(), stake)
-
-			_, err = rand.Read(roundID[:])
-			if !assert.NoError(t, err) {
-				return
-			}
-
-			roundIDs[i] = roundID
-		}
-
-		if !assert.NoError(t, accounts.Commit(snapshot)) {
-			return
-		}
-
-		voteC := make(chan finalizationVote)
+		votes := make([]*syncVote, 0, snowballK)
+		voteC := make(chan *syncVote)
 		wg := new(sync.WaitGroup)
 
 		wg.Add(1)
-		go CollectVotesForFinalization(accounts, s, voteC, wg, conf.GetSnowballK())
+		go CollectVotesForSync(accounts, snowball, voteC, wg, snowballK)
 
-		for i := 0; i < snowballB+2; i++ {
-			for j := 0; j < len(voters); j++ {
-				voteC <- finalizationVote{
-					voter: voters[j],
-					round: &Round{
-						ID: roundIDs[j],
-					},
-				}
+		for i := 0; i < cap(votes); i++ {
+			voter := getRandomID(t)
+
+			outOfSync := false
+			if i%2 == 0 {
+				outOfSync = true
+			}
+
+			stake := sys.MinimumStake
+			if i == 0 {
+				stake *= 10
+			}
+			WriteAccountStake(snapshot, voter.PublicKey(), stake)
+
+			votes = append(votes, &syncVote{
+				voter:     voter,
+				outOfSync: outOfSync,
+			})
+		}
+
+		assert.NoError(t, accounts.Commit(snapshot))
+
+		for i := 0; i < conf.GetSnowballBeta()+1; i++ {
+			for n := range votes {
+				voteC <- votes[n]
 			}
 		}
 
 		close(voteC)
 		wg.Wait()
 
-		assert.True(t, s.Decided())
-		if !assert.NotNil(t, s.Preferred()) {
-			return
-		}
-
-		assert.Equal(t, fmt.Sprintf("%x", roundIDs[biggestVoter]), s.Preferred().GetID())
+		assert.True(t, snowball.Decided())
+		assert.True(t, *snowball.Preferred().Value().(*bool))
 	})
 
-	t.Run("transactions num majority round wins", func(t *testing.T) {
-		s.Reset()
+	t.Run("no decision - 50-50 votes", func(t *testing.T) {
+		accounts := NewAccounts(store.NewInmem())
+		snowball.Reset()
 
-		var transactionsNum uint32 = 10
-		biggestVoter := 1
-
-		voters := make([]*skademlia.ID, conf.GetSnowballK())
-		rounds := make([]*Round, len(voters)) // each voter votes for different round
-
-		var roundID RoundID
-		for i := 0; i < len(voters); i++ {
-			_, err := rand.Read(pubKey[:])
-			if !assert.NoError(t, err) {
-				return
-			}
-
-			id := skademlia.NewID("", pubKey, nonce)
-			voters[i] = id
-
-			_, err = rand.Read(roundID[:])
-			if !assert.NoError(t, err) {
-				return
-			}
-
-			transactions := transactionsNum
-			if i == biggestVoter {
-				transactions *= 1000
-			}
-
-			rounds[i] = &Round{
-				ID:           roundID,
-				Transactions: transactions,
-			}
-		}
-
-		voteC := make(chan finalizationVote)
+		votes := make([]*syncVote, 0, snowballK)
+		voteC := make(chan *syncVote)
 		wg := new(sync.WaitGroup)
 
 		wg.Add(1)
-		go CollectVotesForFinalization(accounts, s, voteC, wg, conf.GetSnowballK())
+		go CollectVotesForSync(accounts, snowball, voteC, wg, snowballK)
 
-		for i := 0; i < snowballB+2; i++ {
-			for j := 0; j < conf.GetSnowballK(); j++ {
-				voteC <- finalizationVote{
-					voter: voters[j],
-					round: rounds[j],
-				}
+		for i := 0; i < cap(votes); i++ {
+			voter := getRandomID(t)
+
+			outOfSync := true
+			if i%2 == 0 {
+				outOfSync = false
+			}
+
+			votes = append(votes, &syncVote{
+				voter:     voter,
+				outOfSync: outOfSync,
+			})
+		}
+
+		for i := 0; i < conf.GetSnowballBeta()+1; i++ {
+			for n := range votes {
+				voteC <- votes[n]
 			}
 		}
 
 		close(voteC)
 		wg.Wait()
 
-		assert.True(t, s.Decided())
-		if !assert.NotNil(t, s.Preferred()) {
-			return
-		}
-
-		assert.Equal(t, fmt.Sprintf("%x", rounds[biggestVoter].ID), s.Preferred().GetID())
+		assert.False(t, snowball.Decided())
 	})
 
-	t.Run("depth majority round wins", func(t *testing.T) {
-		s.Reset()
+	t.Run("no decision - less than snowballK voter", func(t *testing.T) {
+		accounts := NewAccounts(store.NewInmem())
+		snowball.Reset()
 
-		var roundDepth uint64 = 1000
-		biggestVoter := 0
-
-		voters := make([]*skademlia.ID, conf.GetSnowballK())
-		rounds := make([]*Round, len(voters)) // each voter votes for different round
-
-		var roundID RoundID
-		for i := 0; i < len(voters); i++ {
-			_, err := rand.Read(pubKey[:])
-			if !assert.NoError(t, err) {
-				return
-			}
-
-			id := skademlia.NewID("", pubKey, nonce)
-			voters[i] = id
-
-			_, err = rand.Read(roundID[:])
-			if !assert.NoError(t, err) {
-				return
-			}
-
-			depth := roundDepth
-			if i == biggestVoter {
-				depth /= 100
-			}
-
-			rounds[i] = &Round{
-				ID:  roundID,
-				End: Transaction{Depth: depth},
-			}
-		}
-
-		voteC := make(chan finalizationVote)
+		votes := make([]*syncVote, 0, snowballK)
+		voteC := make(chan *syncVote)
 		wg := new(sync.WaitGroup)
 
 		wg.Add(1)
-		go CollectVotesForFinalization(accounts, s, voteC, wg, conf.GetSnowballK())
+		go CollectVotesForSync(accounts, snowball, voteC, wg, snowballK)
 
-		for i := 0; i < snowballB+2; i++ {
-			for j := 0; j < conf.GetSnowballK(); j++ {
-				voteC <- finalizationVote{
-					voter: voters[j],
-					round: rounds[j],
-				}
+		for i := 0; i < cap(votes)-1; i++ {
+			votes = append(votes, &syncVote{
+				voter:     getRandomID(t),
+				outOfSync: true,
+			})
+		}
+
+		for i := 0; i < conf.GetSnowballBeta()+1; i++ {
+			for n := range votes {
+				voteC <- votes[n]
 			}
 		}
 
 		close(voteC)
 		wg.Wait()
 
-		assert.True(t, s.Decided())
-		if !assert.NotNil(t, s.Preferred()) {
-			return
-		}
-
-		assert.Equal(t, fmt.Sprintf("%x", rounds[biggestVoter].ID), s.Preferred().GetID())
+		assert.False(t, snowball.Decided())
 	})
 }

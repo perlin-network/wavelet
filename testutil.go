@@ -1,6 +1,9 @@
+// +build integration,!unit
+
 package wavelet
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
@@ -8,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -42,12 +46,6 @@ func defaultTestNetworkConfig() TestNetworkConfig {
 }
 
 type TestNetworkOption func(cfg *TestNetworkConfig)
-
-func WithoutFaucet() TestNetworkOption {
-	return func(cfg *TestNetworkConfig) {
-		cfg.AddFaucet = false
-	}
-}
 
 func NewTestNetwork(t testing.TB, opts ...TestNetworkOption) *TestNetwork {
 	// Remove existing db
@@ -98,28 +96,8 @@ func WithWallet(wallet string) TestLedgerOption {
 	}
 }
 
-func WithKeepExistingDB() TestLedgerOption {
-	return func(cfg *TestLedgerConfig) {
-		cfg.RemoveExistingDB = false
-	}
-}
-
-func WithPeers(peers ...string) TestLedgerOption {
-	return func(cfg *TestLedgerConfig) {
-		for _, peer := range peers {
-			cfg.Peers = append(cfg.Peers, peer)
-		}
-	}
-}
-
-func WithDBPath(path string) TestLedgerOption {
-	return func(cfg *TestLedgerConfig) {
-		cfg.DBPath = path
-	}
-}
-
 func (n *TestNetwork) AddNode(t testing.TB, opts ...TestLedgerOption) *TestLedger {
-	peers := []string{}
+	var peers []string
 	if n.faucet != nil {
 		peers = append(peers, n.faucet.Addr())
 	}
@@ -141,7 +119,7 @@ func (n *TestNetwork) AddNode(t testing.TB, opts ...TestLedgerOption) *TestLedge
 }
 
 func (n *TestNetwork) Nodes() []*TestLedger {
-	nodes := []*TestLedger{}
+	nodes := make([]*TestLedger, 0, len(n.nodes))
 	for _, n := range n.nodes {
 		nodes = append(nodes, n)
 	}
@@ -149,8 +127,8 @@ func (n *TestNetwork) Nodes() []*TestLedger {
 }
 
 // WaitForRound waits for all the nodes in the network to
-// reach the specified round.
-func (n *TestNetwork) WaitForRound(t testing.TB, round uint64) {
+// reach the specified block.
+func (n *TestNetwork) WaitForBlock(t testing.TB, block uint64) {
 	if len(n.nodes) == 0 {
 		return
 	}
@@ -159,8 +137,8 @@ func (n *TestNetwork) WaitForRound(t testing.TB, round uint64) {
 	go func() {
 		for _, node := range n.nodes {
 			for {
-				ri := <-node.WaitForRound(round)
-				if ri == round {
+				ri := <-node.WaitForBlock(block)
+				if ri == block {
 					break
 				}
 			}
@@ -171,7 +149,7 @@ func (n *TestNetwork) WaitForRound(t testing.TB, round uint64) {
 
 	select {
 	case <-time.After(time.Second * 10):
-		t.Fatal("timed out waiting for round")
+		t.Fatal("timed out waiting for block")
 
 	case <-done:
 		return
@@ -196,7 +174,6 @@ func (n *TestNetwork) WaitForConsensus(t testing.TB) {
 					return
 				}
 			}
-
 		}(l)
 	}
 
@@ -215,7 +192,7 @@ func (n *TestNetwork) WaitForConsensus(t testing.TB) {
 	case <-timer.C:
 		close(stop)
 		<-done
-		t.Fatal("consensus round took too long")
+		t.Fatal("consensus took too long")
 	}
 }
 
@@ -235,7 +212,7 @@ func (n *TestNetwork) WaitForSync(t testing.TB) {
 		close(done)
 	}()
 
-	timer := time.NewTimer(5 * time.Second)
+	timer := time.NewTimer(30 * time.Second)
 	select {
 	case <-done:
 		return
@@ -244,8 +221,15 @@ func (n *TestNetwork) WaitForSync(t testing.TB) {
 	}
 }
 
+func (n *TestNetwork) WaitUntilSync(t testing.TB) {
+	for _, l := range n.nodes {
+		l.WaitUntilSync(t)
+	}
+}
+
 type TestLedger struct {
 	network   *TestNetwork
+	nonce     uint64
 	ledger    *Ledger
 	client    *skademlia.Client
 	server    *grpc.Server
@@ -253,7 +237,6 @@ type TestLedger struct {
 	dbPath    string
 	kv        store.KV
 	kvCleanup func()
-	finalized chan struct{}
 	stopped   chan struct{}
 }
 
@@ -265,18 +248,12 @@ type TestLedgerConfig struct {
 	DBPath           string
 }
 
-func defaultConfig(t testing.TB) *TestLedgerConfig {
-	return &TestLedgerConfig{
-		RemoveExistingDB: true,
-	}
-}
-
 func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 	t.Helper()
 
 	keys := loadKeys(t, cfg.Wallet)
 
-	ln, err := net.Listen("tcp", ":0")
+	ln, err := net.Listen("tcp", ":0") // nolint:gosec
 	assert.NoError(t, err)
 
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(ln.Addr().(*net.TCPAddr).Port))
@@ -284,7 +261,7 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 	client := skademlia.NewClient(addr, keys, skademlia.WithC1(sys.SKademliaC1), skademlia.WithC2(sys.SKademliaC2))
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
-	kvOpts := []store.TestKVOption{}
+	var kvOpts []store.TestKVOption
 	if !cfg.RemoveExistingDB {
 		kvOpts = append(kvOpts, store.WithKeepExisting())
 	}
@@ -294,7 +271,7 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 		path = cfg.DBPath
 	}
 
-	kv, cleanup := store.NewTestKV(t, "level", path, kvOpts...)
+	kv, cleanup := store.NewTestKV(t, "badger", path, kvOpts...)
 	ledger := NewLedger(kv, client, WithoutGC())
 	server := client.Listen()
 	RegisterWaveletServer(server, ledger.Protocol())
@@ -420,14 +397,14 @@ func (l *TestLedger) RewardWithPublicKey(key AccountID) uint64 {
 	return reward
 }
 
-func (l *TestLedger) RoundIndex() uint64 {
-	return l.ledger.Rounds().Latest().Index
+func (l *TestLedger) BlockIndex() uint64 {
+	return l.ledger.Blocks().Latest().Index
 }
 
 func (l *TestLedger) WaitForConsensus() <-chan bool {
 	ch := make(chan bool)
 	go func() {
-		start := l.ledger.Rounds().Latest()
+		start := l.ledger.Blocks().Latest()
 		timeout := time.NewTimer(time.Second * 3)
 		ticker := time.NewTicker(time.Millisecond * 5)
 
@@ -438,7 +415,7 @@ func (l *TestLedger) WaitForConsensus() <-chan bool {
 				return
 
 			case <-ticker.C:
-				current := l.ledger.Rounds().Latest()
+				current := l.ledger.Blocks().Latest()
 				if current.Index > start.Index {
 					ch <- true
 					return
@@ -473,7 +450,7 @@ func (l *TestLedger) WaitUntilBalance(t testing.TB, balance uint64) {
 	t.Helper()
 
 	ticker := time.NewTicker(time.Millisecond * 200)
-	timeout := time.NewTimer(time.Second * 30)
+	timeout := time.NewTimer(time.Second * 300)
 	for {
 		select {
 		case <-ticker.C:
@@ -491,7 +468,7 @@ func (l *TestLedger) WaitUntilStake(t testing.TB, stake uint64) {
 	t.Helper()
 
 	ticker := time.NewTicker(time.Millisecond * 200)
-	timeout := time.NewTimer(time.Second * 30)
+	timeout := time.NewTimer(time.Second * 300)
 	for {
 		select {
 		case <-ticker.C:
@@ -505,7 +482,7 @@ func (l *TestLedger) WaitUntilStake(t testing.TB, stake uint64) {
 	}
 }
 
-func (l *TestLedger) WaitForRound(index uint64) <-chan uint64 {
+func (l *TestLedger) WaitForBlock(index uint64) <-chan uint64 {
 	ch := make(chan uint64)
 	go func() {
 		timeout := time.NewTimer(time.Second * 3)
@@ -518,7 +495,7 @@ func (l *TestLedger) WaitForRound(index uint64) <-chan uint64 {
 				return
 
 			case <-ticker.C:
-				current := l.ledger.Rounds().Latest()
+				current := l.ledger.Blocks().Latest()
 				if current.Index >= index {
 					ch <- current.Index
 					return
@@ -530,19 +507,19 @@ func (l *TestLedger) WaitForRound(index uint64) <-chan uint64 {
 	return ch
 }
 
-func (l *TestLedger) WaitUntilRound(t testing.TB, round uint64) {
+func (l *TestLedger) WaitUntilBlock(t testing.TB, block uint64) {
 	t.Helper()
 
-	timeout := time.NewTimer(time.Second * 30)
+	timeout := time.NewTimer(time.Second * 300)
 	for {
 		select {
-		case ri := <-l.WaitForRound(round):
-			if ri >= round {
+		case ri := <-l.WaitForBlock(block):
+			if ri >= block {
 				return
 			}
 
 		case <-timeout.C:
-			t.Fatal("timed out waiting for round")
+			t.Fatal("timed out waiting for block")
 		}
 	}
 }
@@ -550,7 +527,7 @@ func (l *TestLedger) WaitUntilRound(t testing.TB, round uint64) {
 func (l *TestLedger) WaitForSync() <-chan bool {
 	ch := make(chan bool)
 	go func() {
-		timeout := time.NewTimer(time.Second * 3)
+		timeout := time.NewTimer(time.Second * 30)
 		ticker := time.NewTicker(time.Millisecond * 50)
 		for {
 			select {
@@ -570,31 +547,61 @@ func (l *TestLedger) WaitForSync() <-chan bool {
 	return ch
 }
 
-func (l *TestLedger) Nop() (Transaction, error) {
-	keys := l.ledger.client.Keys()
-	tx := AttachSenderToTransaction(
-		keys,
-		NewTransaction(keys, sys.TagNop, nil),
-		l.ledger.Graph().FindEligibleParents()...)
+func (l *TestLedger) WaitUntilSync(t testing.TB) {
+	t.Helper()
 
-	err := l.ledger.AddTransaction(tx)
-	return tx, err
+	timeout := time.NewTimer(time.Second * 30)
+	for {
+		select {
+		case s := <-l.WaitForSync():
+			if s {
+				return
+			}
+
+		case <-timeout.C:
+			t.Fatal("timed out waiting for sync")
+		}
+	}
+}
+
+func (l *TestLedger) newSignedTransaction(tag sys.Tag, payload []byte) Transaction {
+	nonce := atomic.AddUint64(&l.nonce, 1)
+	block := l.BlockIndex()
+
+	var nonceBuf [8]byte
+	binary.BigEndian.PutUint64(nonceBuf[:], nonce)
+
+	var blockBuf [8]byte
+	binary.BigEndian.PutUint64(blockBuf[:], block)
+
+	keys := l.ledger.client.Keys()
+	signature := edwards25519.Sign(
+		keys.PrivateKey(),
+		append(nonceBuf[:], append(blockBuf[:], append([]byte{byte(tag)}, payload...)...)...),
+	)
+
+	return NewSignedTransaction(
+		keys.PublicKey(), nonce, block,
+		tag, payload, signature,
+	)
 }
 
 func (l *TestLedger) Pay(to *TestLedger, amount uint64) (Transaction, error) {
-	payload := Transfer{
+	t := Transfer{
 		Recipient: to.PublicKey(),
 		Amount:    amount,
 	}
 
-	keys := l.ledger.client.Keys()
-	tx := AttachSenderToTransaction(
-		keys,
-		NewTransaction(keys, sys.TagTransfer, payload.Marshal()),
-		l.ledger.Graph().FindEligibleParents()...)
+	var tx Transaction
+	payload, err := t.Marshal()
+	if err != nil {
+		return tx, err
+	}
 
-	err := l.ledger.AddTransaction(tx)
-	return tx, err
+	tx = l.newSignedTransaction(sys.TagTransfer, payload)
+	l.ledger.AddTransaction(tx)
+
+	return tx, nil
 }
 
 func (l *TestLedger) SpawnContract(contractPath string, gasLimit uint64, params []byte) (Transaction, error) {
@@ -603,40 +610,44 @@ func (l *TestLedger) SpawnContract(contractPath string, gasLimit uint64, params 
 		return Transaction{}, err
 	}
 
-	payload := Contract{
+	c := Contract{
 		GasLimit: gasLimit,
 		Code:     code,
 		Params:   params,
 	}
 
-	keys := l.ledger.client.Keys()
-	tx := AttachSenderToTransaction(
-		keys,
-		NewTransaction(keys, sys.TagContract, payload.Marshal()),
-		l.ledger.Graph().FindEligibleParents()...)
+	var tx Transaction
+	payload, err := c.Marshal()
+	if err != nil {
+		return tx, err
+	}
 
-	err = l.ledger.AddTransaction(tx)
-	return tx, err
+	tx = l.newSignedTransaction(sys.TagContract, payload)
+	l.ledger.AddTransaction(tx)
+
+	return tx, nil
 }
 
 func (l *TestLedger) DepositGas(id [32]byte, gasDeposit uint64) (Transaction, error) {
-	payload := Transfer{
+	t := Transfer{
 		Recipient:  id,
 		GasDeposit: gasDeposit,
 	}
 
-	keys := l.ledger.client.Keys()
-	tx := AttachSenderToTransaction(
-		keys,
-		NewTransaction(keys, sys.TagTransfer, payload.Marshal()),
-		l.ledger.Graph().FindEligibleParents()...)
+	var tx Transaction
+	payload, err := t.Marshal()
+	if err != nil {
+		return tx, err
+	}
 
-	err := l.ledger.AddTransaction(tx)
-	return tx, err
+	tx = l.newSignedTransaction(sys.TagTransfer, payload)
+	l.ledger.AddTransaction(tx)
+
+	return tx, nil
 }
 
 func (l *TestLedger) CallContract(id [32]byte, amount uint64, gasLimit uint64, funcName string, params []byte) (Transaction, error) {
-	payload := Transfer{
+	t := Transfer{
 		Recipient:  id,
 		Amount:     amount,
 		GasLimit:   gasLimit,
@@ -644,89 +655,52 @@ func (l *TestLedger) CallContract(id [32]byte, amount uint64, gasLimit uint64, f
 		FuncParams: params,
 	}
 
-	keys := l.ledger.client.Keys()
-	tx := AttachSenderToTransaction(
-		keys,
-		NewTransaction(keys, sys.TagTransfer, payload.Marshal()),
-		l.ledger.Graph().FindEligibleParents()...)
-
-	err := l.ledger.AddTransaction(tx)
-	return tx, err
-}
-
-func (l *TestLedger) Benchmark(batchSize int) (Transaction, error) {
-	payload := Batch{}
-	for i := 0; i < batchSize; i++ {
-		payload.AddStake(Stake{
-			Opcode: sys.PlaceStake,
-			Amount: 1,
-		})
+	var tx Transaction
+	payload, err := t.Marshal()
+	if err != nil {
+		return tx, err
 	}
 
-	keys := l.ledger.client.Keys()
-	tx := AttachSenderToTransaction(
-		keys,
-		NewTransaction(keys, sys.TagBatch, payload.Marshal()),
-		l.ledger.Graph().FindEligibleParents()...)
+	tx = l.newSignedTransaction(sys.TagTransfer, payload)
+	l.ledger.AddTransaction(tx)
 
-	err := l.ledger.AddTransaction(tx)
-	return tx, err
+	return tx, nil
 }
 
 func (l *TestLedger) PlaceStake(amount uint64) (Transaction, error) {
-	payload := Stake{
+	s := Stake{
 		Opcode: sys.PlaceStake,
 		Amount: amount,
 	}
 
-	keys := l.ledger.client.Keys()
-	tx := AttachSenderToTransaction(
-		keys,
-		NewTransaction(keys, sys.TagStake, payload.Marshal()),
-		l.ledger.Graph().FindEligibleParents()...)
+	var tx Transaction
+	payload, err := s.Marshal()
+	if err != nil {
+		return tx, err
+	}
 
-	err := l.ledger.AddTransaction(tx)
-	return tx, err
+	tx = l.newSignedTransaction(sys.TagStake, payload)
+	l.ledger.AddTransaction(tx)
+
+	return tx, nil
 }
 
 func (l *TestLedger) WithdrawStake(amount uint64) (Transaction, error) {
-	payload := Stake{
+	s := Stake{
 		Opcode: sys.WithdrawStake,
 		Amount: amount,
 	}
 
-	keys := l.ledger.client.Keys()
-	tx := AttachSenderToTransaction(
-		keys,
-		NewTransaction(keys, sys.TagStake, payload.Marshal()),
-		l.ledger.Graph().FindEligibleParents()...)
-
-	err := l.ledger.AddTransaction(tx)
-	return tx, err
-}
-
-func (l *TestLedger) WithdrawReward(amount uint64) (Transaction, error) {
-	payload := Stake{
-		Opcode: sys.WithdrawReward,
-		Amount: amount,
+	var tx Transaction
+	payload, err := s.Marshal()
+	if err != nil {
+		return tx, err
 	}
 
-	keys := l.ledger.client.Keys()
-	tx := AttachSenderToTransaction(
-		keys,
-		NewTransaction(keys, sys.TagStake, payload.Marshal()),
-		l.ledger.Graph().FindEligibleParents()...)
+	tx = l.newSignedTransaction(sys.TagStake, payload)
+	l.ledger.AddTransaction(tx)
 
-	err := l.ledger.AddTransaction(tx)
-	return tx, err
-}
-
-func (l *TestLedger) FindTransaction(t testing.TB, id TransactionID) *Transaction {
-	return l.ledger.Graph().FindTransaction(id)
-}
-
-func (l *TestLedger) Applied(tx Transaction) bool {
-	return tx.Depth <= l.ledger.Graph().RootDepth()
+	return tx, nil
 }
 
 // loadKeys returns a keypair from a wallet string, or generates a new one
@@ -765,25 +739,6 @@ func waitFor(t testing.TB, fn func() bool) {
 	t.Helper()
 
 	timeout := time.NewTimer(time.Second * 30)
-	ticker := time.NewTicker(time.Millisecond * 100)
-
-	for {
-		select {
-		case <-timeout.C:
-			t.Fatal("timed out waiting")
-
-		case <-ticker.C:
-			if fn() {
-				return
-			}
-		}
-	}
-}
-
-func waitForDuration(t testing.TB, fn func() bool, d time.Duration) {
-	t.Helper()
-
-	timeout := time.NewTimer(d)
 	ticker := time.NewTicker(time.Millisecond * 100)
 
 	for {

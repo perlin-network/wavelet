@@ -63,14 +63,15 @@ func (s *msgResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 
 type sendTransactionRequest struct {
 	Sender    string `json:"sender"`
+	Nonce     uint64 `json:"nonce"`
+	Block     uint64 `json:"block"`
 	Tag       byte   `json:"tag"`
 	Payload   string `json:"payload"`
 	Signature string `json:"signature"`
 
-	// Internal fields.
-	creator   wavelet.AccountID
-	signature wavelet.Signature
+	sender    edwards25519.PublicKey
 	payload   []byte
+	signature edwards25519.Signature
 }
 
 func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) error {
@@ -87,22 +88,43 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if senderVal == nil {
 		return errors.New("missing sender")
 	}
-	if senderVal.Type() != fastjson.TypeString {
-		return errors.New("sender is not a string")
-	}
-	senderStr, err := senderVal.StringBytes()
+	sender, err := senderVal.StringBytes()
 	if err != nil {
 		return errors.Wrap(err, "invalid sender")
+	}
+
+	nonceVal := v.Get("nonce")
+	if nonceVal == nil {
+		return errors.New("missing nonce")
+	}
+	nonce, err := nonceVal.Uint64()
+	if err != nil {
+		return errors.Wrap(err, "invalid nonce")
+	}
+
+	blockVal := v.Get("block")
+	if blockVal == nil {
+		return errors.New("missing block height")
+	}
+	block, err := blockVal.Uint64()
+	if err != nil {
+		return errors.Wrap(err, "invalid block height")
+	}
+
+	tagVal := v.Get("tag")
+	if tagVal == nil {
+		return errors.New("missing tag")
+	}
+	tag, err := tagVal.Uint()
+	if err != nil {
+		return errors.Wrap(err, "invalid tag")
 	}
 
 	payloadVal := v.Get("payload")
 	if payloadVal == nil {
 		return errors.New("missing payload")
 	}
-	if payloadVal.Type() != fastjson.TypeString {
-		return errors.New("payload is not a string")
-	}
-	payloadStr, err := payloadVal.StringBytes()
+	payload, err := payloadVal.StringBytes()
 	if err != nil {
 		return errors.Wrap(err, "invalid payload")
 	}
@@ -111,30 +133,17 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if signatureVal == nil {
 		return errors.New("missing signature")
 	}
-	if signatureVal.Type() != fastjson.TypeString {
-		return errors.New("signature is not a string")
-	}
-	signatureStr, err := signatureVal.StringBytes()
+	signature, err := signatureVal.StringBytes()
 	if err != nil {
 		return errors.Wrap(err, "invalid signature")
 	}
 
-	tagVal := v.Get("tag")
-	if tagVal == nil {
-		return errors.New("missing tag")
-	}
-	if tagVal.Type() != fastjson.TypeNumber {
-		return errors.New("tag is not a number")
-	}
-	tag, err := tagVal.Uint()
-	if err != nil {
-		return errors.Wrap(err, "invalid tag")
-	}
-
-	s.Sender = string(senderStr)
-	s.Payload = string(payloadStr)
-	s.Signature = string(signatureStr)
+	s.Sender = string(sender)
+	s.Nonce = nonce
+	s.Block = block
 	s.Tag = byte(tag)
+	s.Payload = string(payload)
+	s.Signature = string(signature)
 
 	senderBuf, err := hex.DecodeString(s.Sender)
 	if err != nil {
@@ -144,6 +153,8 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if len(senderBuf) != wavelet.SizeAccountID {
 		return errors.Errorf("sender public key must be size %d", wavelet.SizeAccountID)
 	}
+
+	copy(s.sender[:], senderBuf)
 
 	if sys.Tag(s.Tag) > sys.TagBatch {
 		return errors.New("unknown transaction tag specified")
@@ -156,14 +167,13 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 
 	signatureBuf, err := hex.DecodeString(s.Signature)
 	if err != nil {
-		return errors.Wrap(err, "sender signature provided is not hex-formatted")
+		return errors.Wrap(err, "signature provided is not hex-formatted")
 	}
 
 	if len(signatureBuf) != wavelet.SizeSignature {
-		return errors.Errorf("sender signature must be size %d", wavelet.SizeSignature)
+		return errors.Errorf("signature must be size %d", wavelet.SizeSignature)
 	}
 
-	copy(s.creator[:], senderBuf)
 	copy(s.signature[:], signatureBuf)
 
 	return nil
@@ -182,25 +192,7 @@ func (s *sendTransactionResponse) marshalJSON(arena *fastjson.Arena) ([]byte, er
 
 	o := arena.NewObject()
 
-	o.Set("tx_id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
-
-	if s.tx.ParentIDs != nil {
-		parents := arena.NewArray()
-		for i, parentID := range s.tx.ParentIDs {
-			parents.SetArrayItem(i, arena.NewString(hex.EncodeToString(parentID[:])))
-		}
-		o.Set("parent_ids", parents)
-	} else {
-		o.Set("parent_ids", nil)
-	}
-
-	round := s.ledger.Rounds().Latest()
-
-	if s.tx.IsCritical(round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)) {
-		o.Set("is_critical", arena.NewTrue())
-	} else {
-		o.Set("is_critical", arena.NewFalse())
-	}
+	o.Set("id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
 
 	return o.MarshalTo(nil), nil
 }
@@ -219,25 +211,64 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 	}
 
 	snapshot := s.ledger.Snapshot()
-	round := s.ledger.Rounds().Latest()
+	block := s.ledger.Blocks().Latest()
+	preferred := s.ledger.Finalizer().Preferred()
 
 	accountsLen := wavelet.ReadAccountsLen(snapshot)
 
 	o := arena.NewObject()
 
-	o.Set("public_key", arena.NewString(hex.EncodeToString(s.publicKey[:])))
-	o.Set("address", arena.NewString(s.client.ID().Address()))
-	o.Set("num_accounts", arena.NewNumberString(strconv.FormatUint(accountsLen, 10)))
+	o.Set("public_key",
+		arena.NewString(hex.EncodeToString(s.publicKey[:])))
+	o.Set("address",
+		arena.NewString(s.client.ID().Address()))
+	o.Set("num_accounts",
+		arena.NewNumberString(strconv.FormatUint(accountsLen, 10)))
+	o.Set("preferred_votes",
+		arena.NewNumberInt(s.ledger.Finalizer().Progress()))
+	o.Set("sync_status",
+		arena.NewString(s.ledger.SyncStatus()))
 
-	r := arena.NewObject()
-	r.Set("merkle_root", arena.NewString(hex.EncodeToString(round.Merkle[:])))
-	r.Set("start_id", arena.NewString(hex.EncodeToString(round.Start.ID[:])))
-	r.Set("end_id", arena.NewString(hex.EncodeToString(round.End.ID[:])))
-	r.Set("transactions", arena.NewNumberString(strconv.FormatUint(uint64(round.Transactions), 10)))
-	r.Set("depth", arena.NewNumberString(strconv.FormatUint(round.End.Depth-round.Start.Depth, 10)))
-	r.Set("difficulty", arena.NewNumberString(strconv.FormatUint(uint64(round.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)), 10)))
+	{
+		blockObj := arena.NewObject()
+		blockObj.Set("merkle_root",
+			arena.NewString(hex.EncodeToString(block.Merkle[:])))
+		blockObj.Set("height",
+			arena.NewNumberString(strconv.FormatUint(block.Index, 10)))
+		blockObj.Set("id",
+			arena.NewString(hex.EncodeToString(block.ID[:])))
+		blockObj.Set("transactions",
+			arena.NewNumberInt(len(block.Transactions)))
 
-	o.Set("round", r)
+		o.Set("block", blockObj)
+	}
+
+	if preferred != nil {
+		preferredBlock := preferred.Value().(*wavelet.Block)
+
+		preferredObj := arena.NewObject()
+		preferredObj.Set("merkle_root",
+			arena.NewString(hex.EncodeToString(preferredBlock.Merkle[:])))
+		preferredObj.Set("height",
+			arena.NewNumberString(strconv.FormatUint(preferredBlock.Index, 10)))
+		preferredObj.Set("id",
+			arena.NewString(hex.EncodeToString(preferredBlock.ID[:])))
+		preferredObj.Set("transactions",
+			arena.NewNumberInt(len(preferredBlock.Transactions)))
+
+		o.Set("preferred", preferredObj)
+	} else {
+		o.Set("preferred", arena.NewNull())
+	}
+
+	o.Set("num_missing_tx", arena.NewNumberInt(s.ledger.Transactions().MissingLen()))
+
+	o.Set("num_tx",
+		arena.NewNumberInt(s.ledger.Transactions().PendingLen()))
+	o.Set("num_tx_in_store",
+		arena.NewNumberInt(s.ledger.Transactions().Len()))
+	o.Set("num_accounts_in_store",
+		arena.NewNumberString(strconv.FormatUint(accountsLen, 10)))
 
 	peers := s.client.ClosestPeerIDs()
 	if len(peers) > 0 {
@@ -257,6 +288,18 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 		o.Set("peers", nil)
 	}
 
+	return o.MarshalTo(nil), nil
+}
+
+type nonceResponse struct {
+	Nonce uint64 `json:"nonce"`
+	Block uint64 `json:"block"`
+}
+
+func (s *nonceResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
+	o := arena.NewObject()
+	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(s.Nonce, 10)))
+	o.Set("block", arena.NewNumberString(strconv.FormatUint(s.Block, 10)))
 	return o.MarshalTo(nil), nil
 }
 
@@ -284,24 +327,11 @@ func (s *transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 
 	o.Set("id", arena.NewString(hex.EncodeToString(s.tx.ID[:])))
 	o.Set("sender", arena.NewString(hex.EncodeToString(s.tx.Sender[:])))
-	o.Set("creator", arena.NewString(hex.EncodeToString(s.tx.Creator[:])))
 	o.Set("status", arena.NewString(s.status))
 	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(s.tx.Nonce, 10)))
-	o.Set("depth", arena.NewNumberString(strconv.FormatUint(s.tx.Depth, 10)))
 	o.Set("tag", arena.NewNumberInt(int(s.tx.Tag)))
 	o.Set("payload", arena.NewString(base64.StdEncoding.EncodeToString(s.tx.Payload)))
-	o.Set("sender_signature", arena.NewString(hex.EncodeToString(s.tx.SenderSignature[:])))
-	o.Set("creator_signature", arena.NewString(hex.EncodeToString(s.tx.CreatorSignature[:])))
-
-	if s.tx.ParentIDs != nil {
-		parents := arena.NewArray()
-		for i := range s.tx.ParentIDs {
-			parents.SetArrayItem(i, arena.NewString(hex.EncodeToString(s.tx.ParentIDs[i][:])))
-		}
-		o.Set("parents", parents)
-	} else {
-		o.Set("parents", nil)
-	}
+	o.Set("signature", arena.NewString(hex.EncodeToString(s.tx.Signature[:])))
 
 	return o, nil
 }
@@ -327,6 +357,14 @@ type account struct {
 	// Internal fields.
 	id     wavelet.AccountID
 	ledger *wavelet.Ledger
+
+	balance    uint64
+	gasBalance uint64
+	stake      uint64
+	reward     uint64
+	nonce      uint64
+	isContract bool
+	numPages   uint64
 }
 
 func (s *account) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
@@ -334,37 +372,23 @@ func (s *account) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 		return nil, errors.New("insufficient fields specified")
 	}
 
-	snapshot := s.ledger.Snapshot()
-
 	o := arena.NewObject()
 
 	o.Set("public_key", arena.NewString(hex.EncodeToString(s.id[:])))
+	o.Set("balance", arena.NewNumberString(strconv.FormatUint(s.balance, 10)))
+	o.Set("gas_balance", arena.NewNumberString(strconv.FormatUint(s.gasBalance, 10)))
+	o.Set("stake", arena.NewNumberString(strconv.FormatUint(s.stake, 10)))
+	o.Set("reward", arena.NewNumberString(strconv.FormatUint(s.reward, 10)))
+	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(s.nonce, 10)))
 
-	balance, _ := wavelet.ReadAccountBalance(snapshot, s.id)
-	o.Set("balance", arena.NewNumberString(strconv.FormatUint(balance, 10)))
-
-	gasBalance, _ := wavelet.ReadAccountContractGasBalance(snapshot, s.id)
-	o.Set("gas_balance", arena.NewNumberString(strconv.FormatUint(gasBalance, 10)))
-
-	stake, _ := wavelet.ReadAccountStake(snapshot, s.id)
-	o.Set("stake", arena.NewNumberString(strconv.FormatUint(stake, 10)))
-
-	reward, _ := wavelet.ReadAccountReward(snapshot, s.id)
-	o.Set("reward", arena.NewNumberString(strconv.FormatUint(reward, 10)))
-
-	nonce, _ := wavelet.ReadAccountNonce(snapshot, s.id)
-	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(nonce, 10)))
-
-	_, isContract := wavelet.ReadAccountContractCode(snapshot, s.id)
-	if isContract {
+	if s.isContract {
 		o.Set("is_contract", arena.NewTrue())
 	} else {
 		o.Set("is_contract", arena.NewFalse())
 	}
 
-	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, s.id)
-	if numPages != 0 {
-		o.Set("num_mem_pages", arena.NewNumberString(strconv.FormatUint(numPages, 10)))
+	if s.numPages != 0 {
+		o.Set("num_mem_pages", arena.NewNumberString(strconv.FormatUint(s.numPages, 10)))
 	}
 
 	return o.MarshalTo(nil), nil
@@ -375,7 +399,7 @@ type errResponse struct {
 	HTTPStatusCode int   `json:"-"` // http response status code
 }
 
-func (e *errResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
+func (e *errResponse) marshalJSON(arena *fastjson.Arena) []byte {
 	o := arena.NewObject()
 
 	o.Set("status", arena.NewString(http.StatusText(e.HTTPStatusCode)))
@@ -384,24 +408,24 @@ func (e *errResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 		o.Set("error", arena.NewString(e.Err.Error()))
 	}
 
-	return o.MarshalTo(nil), nil
+	return o.MarshalTo(nil)
 }
 
-func ErrBadRequest(err error) *errResponse {
+func ErrBadRequest(err error) *errResponse { // nolint:golint
 	return &errResponse{
 		Err:            err,
 		HTTPStatusCode: http.StatusBadRequest,
 	}
 }
 
-func ErrNotFound(err error) *errResponse {
+func ErrNotFound(err error) *errResponse { // nolint:golint
 	return &errResponse{
 		Err:            err,
 		HTTPStatusCode: http.StatusNotFound,
 	}
 }
 
-func ErrInternal(err error) *errResponse {
+func ErrInternal(err error) *errResponse { // nolint:golint
 	return &errResponse{
 		Err:            err,
 		HTTPStatusCode: http.StatusInternalServerError,

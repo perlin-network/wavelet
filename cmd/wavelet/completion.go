@@ -20,15 +20,19 @@
 package main
 
 import (
+	"gopkg.in/urfave/cli.v1"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/benpye/readline"
-	"github.com/urfave/cli"
 )
 
 func (cli *CLI) getCompleter() *readline.PrefixCompleter {
+	if cli.client.Server == nil {
+		return nil
+	}
+
 	return readline.PcItemDynamic(func(line string) []string {
 		f := strings.Split(line, " ")
 		if len(f) < 2 {
@@ -37,7 +41,7 @@ func (cli *CLI) getCompleter() *readline.PrefixCompleter {
 
 		text := f[len(f)-1]
 
-		return cli.ledger.Find(text, 10)
+		return cli.client.Server.Ledger.Find(text, 10)
 	})
 }
 
@@ -92,17 +96,10 @@ func (cli *CLI) getPathCompleter() readline.PrefixCompleterInterface {
 	}
 }
 
-func joinFolder(fs []string) (p string) {
-	for _, f := range fs {
-		p += f + "/"
-	}
-
-	return
-}
-
-func commandAddCompleter(completers *[]readline.PrefixCompleterInterface,
-	cmd cli.Command, completer readline.PrefixCompleterInterface) {
-
+func commandAddCompleter(
+	completers *[]readline.PrefixCompleterInterface,
+	cmd cli.Command, completer readline.PrefixCompleterInterface,
+) {
 	*completers = append(*completers, readline.PcItem(
 		cmd.Name, completer,
 	))

@@ -22,6 +22,15 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"runtime"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	logger "github.com/perlin-network/wavelet/log"
@@ -30,15 +39,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/valyala/fastjson"
 	"gopkg.in/urfave/cli.v1"
-	"io/ioutil"
-	"net/http"
-	"os"
-	"sort"
-	"strconv"
-	"strings"
-	"time"
 )
 
 func main() {
@@ -68,18 +69,6 @@ func main() {
 
 	app.Commands = []cli.Command{
 		{
-			Name:  "local",
-			Usage: "spawn some number of nodes locally and spam transactions on all of them",
-			Flags: []cli.Flag{
-				cli.UintFlag{
-					Name:  "count",
-					Usage: "number of nodes to spawn",
-					Value: 2,
-				},
-			},
-			Action: commandLocal,
-		},
-		{
 			Name:  "remote",
 			Usage: "connect to an already-running node and spam transactions on it",
 			Flags: []cli.Flag{
@@ -92,6 +81,11 @@ func main() {
 					Name:  "wallet",
 					Usage: "private key in hex format to connect to node HTTP API with",
 					Value: "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+				},
+				cli.IntFlag{
+					Name:  "worker, w",
+					Usage: "the number of workers used to spam transactions per iteration, where one worker will send one transaction. default to the number of logical CPU and min is 1.",
+					Value: runtime.NumCPU(),
 				},
 			},
 			Action: commandRemote,
@@ -106,6 +100,69 @@ func main() {
 	}
 }
 
+func getKeys(wallet string) (edwards25519.PrivateKey, edwards25519.PublicKey) {
+	var (
+		emptyPrivateKey edwards25519.PrivateKey
+		emptyPublicKey  edwards25519.PublicKey
+	)
+
+	privateKeyBuf, err := ioutil.ReadFile(wallet)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// If a private key is specified instead of a path to a wallet, then simply use the provided private key instead.
+			if len(wallet) == hex.EncodedLen(edwards25519.SizePrivateKey) {
+				var privateKey edwards25519.PrivateKey
+
+				n, err := hex.Decode(privateKey[:], []byte(wallet))
+				if err != nil {
+					log.Fatal().Err(err).Msgf("Failed to decode the private key specified: %s", wallet)
+				}
+
+				if n != edwards25519.SizePrivateKey {
+					log.Fatal().Msgf("Private key %s is not of the right length.", wallet)
+					return emptyPrivateKey, emptyPublicKey
+				}
+
+				k, err := skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+				if err != nil {
+					log.Fatal().Err(err).Msgf("The private key specified is invalid: %s", wallet)
+					return emptyPrivateKey, emptyPublicKey
+				}
+
+				return k.PrivateKey(), k.PublicKey()
+			}
+
+			log.Fatal().Msgf("Could not find an existing wallet at %q.", wallet)
+
+			return emptyPrivateKey, emptyPublicKey
+		}
+
+		log.Warn().Err(err).Msgf("Encountered an unexpected error loading your wallet from %q.", wallet)
+
+		return emptyPrivateKey, emptyPublicKey
+	}
+
+	var privateKey edwards25519.PrivateKey
+	n, err := hex.Decode(privateKey[:], privateKeyBuf)
+	if err != nil {
+		log.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", wallet)
+		return emptyPrivateKey, emptyPublicKey
+	}
+
+	if n != edwards25519.SizePrivateKey {
+		log.Fatal().Msgf("Private key located in %q is not of the right length.", wallet)
+		return emptyPrivateKey, emptyPublicKey
+	}
+
+	k, err := skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+	if err != nil {
+		log.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", wallet)
+		return emptyPrivateKey, emptyPublicKey
+	}
+
+	return k.PrivateKey(), k.PublicKey()
+}
+
 func commandRemote(c *cli.Context) error {
 	args := strings.Split(c.String("host"), ":")
 
@@ -117,149 +174,60 @@ func commandRemote(c *cli.Context) error {
 
 	var port uint16
 
-	if p, err := strconv.ParseUint(args[1], 10, 16); err != nil {
+	p, err := strconv.ParseUint(args[1], 10, 16)
+	if err != nil {
 		return errors.Wrap(err, "failed to decode port")
-	} else {
-		port = uint16(p)
 	}
+
+	port = uint16(p)
 
 	wallet := c.String("wallet")
 
-	var k *skademlia.Keypair
+	privateKey, publicKey := getKeys(wallet)
 
-	// If a private key is specified instead of a path to a wallet, then simply use the provided private key instead.
+	log.Info().
+		Hex("privateKey", privateKey[:]).
+		Hex("publicKey", publicKey[:]).
+		Msg("Loaded wallet.")
 
-	privateKeyBuf, err := ioutil.ReadFile(wallet)
-
-	if err != nil && os.IsNotExist(err) && len(wallet) == hex.EncodedLen(edwards25519.SizePrivateKey) {
-		var privateKey edwards25519.PrivateKey
-
-		n, err := hex.Decode(privateKey[:], []byte(wallet))
-		if err != nil {
-			log.Fatal().Err(err).Msgf("Failed to decode the private key specified: %s", wallet)
-		}
-
-		if n != edwards25519.SizePrivateKey {
-			log.Fatal().Msgf("Private key %s is not of the right length.", wallet)
-			return nil
-		}
-
-		k, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
-		if err != nil {
-			log.Fatal().Err(err).Msgf("The private key specified is invalid: %s", wallet)
-			return nil
-		}
-
-		privateKey, publicKey := k.PrivateKey(), k.PublicKey()
-
-		log.Info().
-			Hex("privateKey", privateKey[:]).
-			Hex("publicKey", publicKey[:]).
-			Msg("Loaded wallet.")
-	} else if err != nil && os.IsNotExist(err) {
-		log.Fatal().Msgf("Could not find an existing wallet at %q.", wallet)
-		return nil
-	} else if err != nil {
-		log.Warn().Err(err).Msgf("Encountered an unexpected error loading your wallet from %q.", wallet)
-		return nil
-	} else {
-		var privateKey edwards25519.PrivateKey
-
-		n, err := hex.Decode(privateKey[:], privateKeyBuf)
-		if err != nil {
-			log.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", wallet)
-			return nil
-		}
-
-		if n != edwards25519.SizePrivateKey {
-			log.Fatal().Msgf("Private key located in %q is not of the right length.", wallet)
-			return nil
-		}
-
-		k, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
-		if err != nil {
-			log.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", wallet)
-			return nil
-		}
-
-		privateKey, publicKey := k.PrivateKey(), k.PublicKey()
-
-		log.Info().
-			Hex("privateKey", privateKey[:]).
-			Hex("publicKey", publicKey[:]).
-			Msg("Loaded wallet.")
+	numWorkers := c.Int("worker")
+	if numWorkers < 0 {
+		numWorkers = 1
 	}
 
-	client, err := connectToAPI(host, port, k.PrivateKey())
+	client, err := connectToAPI(host, port, privateKey)
 	if err != nil {
 		return errors.Wrap(err, "failed to connect to node HTTP API")
 	}
 
-	fmt.Println("You're now connected!")
+	defer client.Close()
 
-	go func() {
-		events, err := client.PollLoggerSink(nil, wctl.RouteWSMetrics)
-		if err != nil {
-			panic(err)
-		}
+	fmt.Printf("You're now connected! Using %d workers\n.", numWorkers)
 
-		var p fastjson.Parser
+	// Add the OnMetrics callback
+	client.OnMetrics = func(met wctl.Metrics) {
+		log.Info().
+			Float64("accepted_tps", met.TpsAccepted).
+			Float64("received_tps", met.TpsReceived).
+			Float64("gossiped_tps", met.TpsGossiped).
+			Float64("downloaded_tps", met.TpsDownloaded).
+			Float64("queried_bps", met.BpsQueried).
+			Int64("query_latency_max_ms", met.QueryLatencyMaxMS).
+			Int64("query_latency_min_ms", met.QueryLatencyMinMS).
+			Float64("query_latency_mean_ms", met.QueryLatencyMeanMS).
+			Str("message", met.Message).
+			Msg("Benchmarking...")
+	}
 
-		for evt := range events {
-			v, err := p.ParseBytes(evt)
+	if _, err := client.PollMetrics(); err != nil {
+		panic(err)
+	}
 
-			if err != nil {
-				continue
-			}
-
-			log.Info().
-				Float64("accepted_tps", v.GetFloat64("tps.accepted")).
-				Float64("received_tps", v.GetFloat64("tps.received")).
-				Float64("gossiped_tps", v.GetFloat64("tps.gossiped")).
-				Float64("downloaded_tps", v.GetFloat64("tps.downloaded")).
-				Float64("queried_rps", v.GetFloat64("rps.queried")).
-				Int64("query_latency_max_ms", v.GetInt64("query.latency.max.ms")).
-				Int64("query_latency_min_ms", v.GetInt64("query.latency.min.ms")).
-				Float64("query_latency_mean_ms", v.GetFloat64("query.latency.mean.ms")).
-				Msg("Benchmarking...")
-		}
-	}()
-
-	flood := floodTransactions()
+	flood := floodTransactions(numWorkers)
 
 	for {
 		if _, err := flood(client); err != nil {
 			continue
-		}
-	}
-}
-
-func commandLocal(c *cli.Context) error {
-	build()
-
-	count := c.Uint("count")
-
-	if count == 0 {
-		return errors.New("count must be > 0")
-	}
-
-	nodes := []*node{
-		spawn(nextAvailablePort(), nextAvailablePort(), false),
-	}
-
-	for i := uint(0); i < count-1; i++ {
-		nodes = append(nodes, spawn(nextAvailablePort(), nextAvailablePort(), true, fmt.Sprintf("127.0.0.1:%d", nodes[0].nodePort)))
-	}
-
-	wait(nodes...)
-
-	fmt.Println("Nodes are initialized!")
-
-	flood := floodTransactions()
-
-	for {
-		if _, err := flood(nodes[0].client); err != nil {
-			fmt.Println(err)
 		}
 	}
 }

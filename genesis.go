@@ -23,6 +23,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+
 	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
@@ -70,7 +71,7 @@ func SetGenesisByNetwork(name string) error {
 	case "testing":
 		defaultGenesis = testingGenesis
 	default:
-		return fmt.Errorf("Invalid network: %s", name)
+		return fmt.Errorf("invalid network: %s", name)
 	}
 
 	return nil
@@ -85,7 +86,7 @@ func SetGenesisByNetwork(name string) error {
 // The AccountsLen in the restored tree may not match with the original tree.
 //
 // If the genesis is nil, restore from the hardcoded default genesis.
-func performInception(tree *avl.Tree, genesis *string) Round {
+func performInception(tree *avl.Tree, genesis *string) Block {
 	logger := log.Node()
 
 	var err error
@@ -108,10 +109,12 @@ func performInception(tree *avl.Tree, genesis *string) Round {
 		logger.Fatal().Err(err).Msg("genesis")
 	}
 
-	tx := Transaction{}
-	tx.rehash()
+	block, err := NewBlock(0, tree.Checksum())
+	if err != nil {
+		logger.Fatal().Err(err).Msg("genesis block")
+	}
 
-	return NewRound(0, tree.Checksum(), 0, Transaction{}, tx)
+	return block
 }
 
 func restoreFromJSON(tree *avl.Tree, json []byte) error {
@@ -162,6 +165,28 @@ func restoreFromJSON(tree *avl.Tree, json []byte) error {
 	return nil
 }
 
+func restoreContractGlobals(tree *avl.Tree, id TransactionID, path string) error {
+	globalsBuf := make([]byte, sys.ContractMaxGlobals)
+
+	f, err := os.Open(path)
+	if err != nil {
+		return errors.Wrapf(err, "failed to open contract globals file %s", path)
+	}
+
+	n, err := f.Read(globalsBuf)
+	if err != nil && err != io.EOF {
+		return errors.Wrapf(err, "failed to read contract globals %s", path)
+	}
+	if err == nil && n == cap(globalsBuf) {
+		return errors.Wrapf(err, "failed to read contract globals %s, buffer is not enough", path)
+	}
+
+	// This assumes WriteAccountContractGlobals will make a copy of the bytes.
+	WriteAccountContractGlobals(tree, id, globalsBuf[:n])
+
+	return nil
+}
+
 func restoreFromDir(tree *avl.Tree, dir string) error {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return errors.Wrapf(err, "directory %s does not exist", dir)
@@ -174,28 +199,6 @@ func restoreFromDir(tree *avl.Tree, dir string) error {
 	contractsExist := make(map[TransactionID]struct{})
 	var contracts []TransactionID
 
-	globalsBuf := make([]byte, sys.ContractMaxGlobals)
-
-	restoreGlobals := func(id TransactionID, path string) error {
-		f, err := os.Open(path)
-		if err != nil {
-			return errors.Wrapf(err, "failed to open contract globals file %s", path)
-		}
-
-		n, err := f.Read(globalsBuf)
-		if err != nil && err != io.EOF {
-			return errors.Wrapf(err, "failed to read contract globals %s", path)
-		}
-		if err == nil && n == cap(globalsBuf) {
-			return errors.Wrapf(err, "failed to read contract globals %s, buffer is not enough", path)
-		}
-
-		// This assumes WriteAccountContractGlobals will make a copy of the bytes.
-		WriteAccountContractGlobals(tree, id, globalsBuf[:n])
-
-		return nil
-	}
-
 	pool := &bytebufferpool.Pool{}
 	var p fastjson.Parser
 	var walletBuf [512]byte
@@ -207,129 +210,15 @@ func restoreFromDir(tree *avl.Tree, dir string) error {
 		}
 
 		ext := filepath.Ext(path)
-		filename := strings.TrimSuffix(filepath.Base(path), ext)
+		switch ext {
+		case ".json":
+			return restoreFromDirJSON(tree, walletBuf, p, accounts, path)
 
-		if ext == ".json" {
-			var id AccountID
-			// filename is the id
-			if n, err := hex.Decode(id[:], []byte(filename)); n != cap(id) || err != nil {
-				if err != nil {
-					return errors.Wrapf(err, "filename of %s has invalid account ID", path)
-				}
-				return errors.Errorf("filename of %s has invalid account ID", path)
-			}
+		case ".wasm":
+			return restoreFromDirWASM(tree, pool, &contracts, contractsExist, path)
 
-			// Check for duplicate
-			if _, exist := accounts[id]; exist {
-				return nil
-			}
-			accounts[id] = struct{}{}
-
-			f, err := os.Open(path)
-			if err != nil {
-				return errors.Wrapf(err, "failed to open file %s", path)
-			}
-
-			n, err := f.Read(walletBuf[:])
-			if err != nil && err != io.EOF {
-				return errors.Wrapf(err, "failed to read wallet %s", path)
-			}
-			if err == nil && n == cap(walletBuf) {
-				return errors.Wrapf(err, "failed to read wallet %s, buffer is not enough", path)
-			}
-
-			val, err := p.ParseBytes(walletBuf[:n])
-			if err != nil {
-				return errors.Wrapf(err, "failed to parse file %s", path)
-			}
-
-			return restoreAccount(tree, id, val)
-		} else if ext == ".wasm" {
-			var id TransactionID
-			// filename is the id
-			if n, err := hex.Decode(id[:], []byte(filename)); n != cap(id) || err != nil {
-				if err != nil {
-					return errors.Wrapf(err, "filename of %s has invalid contract ID", path)
-				}
-				return errors.Errorf("filename of %s has invalid contract ID", path)
-			}
-
-			// Check for duplicate
-			if _, exist := contractsExist[id]; exist {
-				return nil
-			}
-			contractsExist[id] = struct{}{}
-			contracts = append(contracts, id)
-
-			f, err := os.Open(path)
-			if err != nil {
-				return errors.Wrapf(err, "failed to open file %s", path)
-			}
-
-			buf := pool.Get()
-			defer pool.Put(buf)
-
-			_, err = buf.ReadFrom(f)
-			if err != nil {
-				return errors.Wrapf(err, "failed to open file %s", path)
-			}
-
-			if err := wasm.GetValidator().ValidateWasm(buf.Bytes()); err != nil {
-				return errors.Wrapf(err, "file %s has invalid wasm", path)
-			}
-
-			WriteAccountContractCode(tree, id, buf.Bytes())
-		} else if ext == ".dmp" {
-			secondExt := filepath.Ext(filename)
-
-			var id TransactionID
-			// filename is the id
-			if n, err := hex.Decode(id[:], []byte(strings.TrimSuffix(filename, secondExt))); n != cap(id) || err != nil {
-				if err != nil {
-					return errors.Wrapf(err, "filename of %s has invalid contract ID", path)
-				}
-				return errors.Errorf("filename of %s has invalid contract ID", path)
-			}
-
-			// Restore contract globals.
-			if secondExt == ".globals" {
-				return restoreGlobals(id, path)
-			}
-
-			// For contract pages, get all the contract pages first and group them by contract ID.
-			// This is to make sure, for each contract the pages are complete and there are no missing pages.
-
-			// Must at least contain a character. e.g. .1
-			if len(secondExt) < 2 {
-				return errors.Errorf("filename of %s has invalid name, expected index after contract address", path)
-			}
-
-			idx, err := strconv.Atoi(secondExt[1:])
-			if err != nil {
-				return errors.Wrapf(err, "filename of %s has invalid index, expected an unsigned integer", path)
-			}
-			if idx < 0 {
-				return errors.Errorf("filename of %s has invalid index, expected an unsigned integer", path)
-			}
-
-			files := contractPageFiles[id]
-
-			// Grow the slice according to the page idx
-			// The key of the slice is the page idx.
-			if i := idx - cap(files) + 1; i > 0 {
-				newFiles := make([]string, len(files)+i)
-				copy(newFiles, files)
-
-				contractPageFiles[id] = newFiles
-				files = newFiles
-			}
-
-			// Check if the page already exist
-			if len(files[idx]) > 0 {
-				return nil
-			}
-
-			files[idx] = path
+		case ".dmp":
+			return restoreFromDirDMP(tree, contractPageFiles, path)
 		}
 
 		return nil
@@ -339,26 +228,152 @@ func restoreFromDir(tree *avl.Tree, dir string) error {
 		return err
 	}
 
-	// Each contract must have Gas Balance, Code, Globals, and Page files.
+	// Each contract must have Code.
 	for _, id := range contracts {
-		if _, exist := ReadAccountContractGasBalance(tree, id); !exist {
-			return errors.Errorf("contract %x is missing gas balance", id)
-		}
-
 		if _, exist := ReadAccountContractCode(tree, id); !exist {
 			return errors.Errorf("contract %x is missing code", id)
-		}
-
-		if _, exist := ReadAccountContractGlobals(tree, id); !exist {
-			return errors.Errorf("contract %x is missing globals", id)
-		}
-
-		if _, exist := contractPageFiles[id]; !exist {
-			return errors.Errorf("contract %x is missing pages", id)
 		}
 	}
 
 	return restoreContractPages(tree, contracts, contractPageFiles)
+}
+
+func restoreFromDirJSON(tree *avl.Tree, walletBuf [512]byte, p fastjson.Parser, accounts map[AccountID]struct{}, path string) error {
+	filename := strings.TrimSuffix(filepath.Base(path), ".json")
+
+	var id AccountID
+	// filename is the id
+	if n, err := hex.Decode(id[:], []byte(filename)); n != cap(id) || err != nil {
+		if err != nil {
+			return errors.Wrapf(err, "filename of %s has invalid account ID", path)
+		}
+		return errors.Errorf("filename of %s has invalid account ID", path)
+	}
+
+	// Check for duplicate
+	if _, exist := accounts[id]; exist {
+		return nil
+	}
+	accounts[id] = struct{}{}
+
+	f, err := os.Open(path)
+	if err != nil {
+		return errors.Wrapf(err, "failed to open file %s", path)
+	}
+
+	n, err := f.Read(walletBuf[:])
+	if err != nil && err != io.EOF {
+		return errors.Wrapf(err, "failed to read wallet %s", path)
+	}
+	if err == nil && n == cap(walletBuf) {
+		return errors.Wrapf(err, "failed to read wallet %s, buffer is not enough", path)
+	}
+
+	val, err := p.ParseBytes(walletBuf[:n])
+	if err != nil {
+		return errors.Wrapf(err, "failed to parse file %s", path)
+	}
+
+	return restoreAccount(tree, id, val)
+}
+
+func restoreFromDirWASM(tree *avl.Tree, pool *bytebufferpool.Pool, contracts *[]TransactionID, contractsExist map[AccountID]struct{}, path string) error {
+	filename := strings.TrimSuffix(filepath.Base(path), ".wasm")
+
+	var id TransactionID
+	// filename is the id
+	if n, err := hex.Decode(id[:], []byte(filename)); n != cap(id) || err != nil {
+		if err != nil {
+			return errors.Wrapf(err, "filename of %s has invalid contract ID", path)
+		}
+		return errors.Errorf("filename of %s has invalid contract ID", path)
+	}
+
+	// Check for duplicate
+	if _, exist := contractsExist[id]; exist {
+		return nil
+	}
+
+	contractsExist[id] = struct{}{}
+
+	// Maybe instead of doing this, the function should return the contract id
+	// and have the caller append it to the contracts list
+	*contracts = append(*contracts, id)
+
+	f, err := os.Open(path)
+	if err != nil {
+		return errors.Wrapf(err, "failed to open file %s", path)
+	}
+
+	buf := pool.Get()
+	defer pool.Put(buf)
+
+	_, err = buf.ReadFrom(f)
+	if err != nil {
+		return errors.Wrapf(err, "failed to open file %s", path)
+	}
+
+	if err := wasm.GetValidator().ValidateWasm(buf.Bytes()); err != nil {
+		return errors.Wrapf(err, "file %s has invalid wasm", path)
+	}
+
+	WriteAccountContractCode(tree, id, buf.Bytes())
+	return nil
+}
+
+func restoreFromDirDMP(tree *avl.Tree, contractPageFiles map[TransactionID][]string, path string) error {
+	filename := strings.TrimSuffix(filepath.Base(path), ".dmp")
+	secondExt := filepath.Ext(filename)
+
+	var id TransactionID
+	// filename is the id
+	if n, err := hex.Decode(id[:], []byte(strings.TrimSuffix(filename, secondExt))); n != cap(id) || err != nil {
+		if err != nil {
+			return errors.Wrapf(err, "filename of %s has invalid contract ID", path)
+		}
+		return errors.Errorf("filename of %s has invalid contract ID", path)
+	}
+
+	// Restore contract globals.
+	if secondExt == ".globals" {
+		return restoreContractGlobals(tree, id, path)
+	}
+
+	// For contract pages, get all the contract pages first and group them by contract ID.
+	// This is to make sure, for each contract the pages are complete and there are no missing pages.
+
+	// Must at least contain a character. e.g. .1
+	if len(secondExt) < 2 {
+		return errors.Errorf("filename of %s has invalid name, expected index after contract address", path)
+	}
+
+	idx, err := strconv.Atoi(secondExt[1:])
+	if err != nil {
+		return errors.Wrapf(err, "filename of %s has invalid index, expected an unsigned integer", path)
+	}
+	if idx < 0 {
+		return errors.Errorf("filename of %s has invalid index, expected an unsigned integer", path)
+	}
+
+	files := contractPageFiles[id]
+
+	// Grow the slice according to the page idx
+	// The key of the slice is the page idx.
+	if i := idx - cap(files) + 1; i > 0 {
+		newFiles := make([]string, len(files)+i)
+		copy(newFiles, files)
+
+		contractPageFiles[id] = newFiles
+		files = newFiles
+	}
+
+	// Check if the page already exist
+	if len(files[idx]) > 0 {
+		return nil
+	}
+
+	files[idx] = path
+	return nil
 }
 
 func restoreAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
@@ -555,8 +570,8 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 			folder = filepath.Join(dir, fmt.Sprintf("%x", id))
 
 			// Make sure the folder exists
-			if err := os.MkdirAll(folder, 0700); err != nil {
-				err = errors.Wrapf(err, "failed to create directory %s", dir)
+			if ferr := os.MkdirAll(folder, 0700); ferr != nil {
+				err = errors.Wrapf(ferr, "failed to create directory %s", dir)
 				return
 			}
 		}
@@ -597,7 +612,7 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 			o.Set("reward", arena.NewNumberString(strconv.FormatUint(*v.reward, 10)))
 		}
 
-		data = o.MarshalTo(data[:])
+		data = o.MarshalTo(data)
 		filename := fmt.Sprintf("%x.json", id)
 
 		err := ioutil.WriteFile(filepath.Join(dir, filename), data, filePerm)

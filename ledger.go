@@ -24,12 +24,12 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"math/rand"
-	"strings"
 	"sync"
 	"time"
+
+	cuckoo "github.com/seiflotfy/cuckoofilter"
 
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
@@ -42,21 +42,20 @@ import (
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/peer"
 )
 
 type bitset uint8
 
 const (
-	outOfSync   bitset = 0
+	outOfSync   bitset = 0 //nolint:staticcheck
 	synced             = 1
 	finalized          = 2
 	fullySynced        = 3
 )
 
 var (
-	ErrOutOfSync = errors.New("Node is currently ouf of sync. Please try again later.")
+	ErrMissingTx = errors.New("missing transaction")
 )
 
 type Ledger struct {
@@ -64,20 +63,14 @@ type Ledger struct {
 	metrics *Metrics
 	indexer *Indexer
 
-	accounts *Accounts
-	rounds   *Rounds
-	graph    *Graph
+	accounts     *Accounts
+	blocks       *Blocks
+	transactions *Transactions
 
-	gossiper  *Gossiper
 	finalizer *Snowball
 	syncer    *Snowball
 
 	consensus sync.WaitGroup
-
-	broadcastNops         bool
-	broadcastNopsMaxDepth uint64
-	broadcastNopsDelay    time.Time
-	broadcastNopsLock     sync.Mutex
 
 	sync chan struct{}
 
@@ -91,9 +84,15 @@ type Ledger struct {
 
 	stallDetector *StallDetector
 
-	stop     chan struct{}
 	stopWG   sync.WaitGroup
 	cancelGC context.CancelFunc
+
+	transactionsSyncIndexLock sync.RWMutex
+	transactionsSyncIndex     *cuckoo.Filter
+
+	queryBlockCache map[[blake2b.Size256]byte]*Block
+
+	queueWorkerPool *WorkerPool
 }
 
 type config struct {
@@ -135,11 +134,11 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	indexer := NewIndexer()
 
 	accounts := NewAccounts(kv)
-	rounds, err := NewRounds(kv, conf.GetPruningLimit())
+	blocks, err := NewBlocks(kv, conf.GetPruningLimit())
 
-	var round *Round
+	var block *Block
 
-	if rounds != nil && err != nil {
+	if blocks != nil && err != nil {
 		genesis := performInception(accounts.tree, cfg.Genesis)
 		if err := accounts.Commit(nil); err != nil {
 			logger.Fatal().Err(err).Msg("BUG: accounts.Commit")
@@ -147,35 +146,34 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 		ptr := &genesis
 
-		if _, err := rounds.Save(ptr); err != nil {
-			logger.Fatal().Err(err).Msg("BUG: rounds.Save")
+		if _, err := blocks.Save(ptr); err != nil {
+			logger.Fatal().Err(err).Msg("BUG: blocks.Save")
 		}
 
-		round = ptr
-	} else if rounds != nil {
-		round = rounds.Latest()
+		block = ptr
+	} else if blocks != nil {
+		block = blocks.Latest()
 	}
 
-	if round == nil {
+	if block == nil {
 		logger.Fatal().Err(err).Msg("BUG: COULD NOT FIND GENESIS, OR STORAGE IS CORRUPTED.")
+		return nil
 	}
 
-	graph := NewGraph(WithMetrics(metrics), WithIndexer(indexer), WithRoot(round.End), VerifySignatures())
+	transactions := NewTransactions(block.Index)
 
-	gossiper := NewGossiper(context.TODO(), client, metrics)
-	finalizer := NewSnowball(WithName("finalizer"))
-	syncer := NewSnowball(WithName("syncer"))
+	finalizer := NewSnowball()
+	syncer := NewSnowball()
 
 	ledger := &Ledger{
 		client:  client,
 		metrics: metrics,
 		indexer: indexer,
 
-		accounts: accounts,
-		rounds:   rounds,
-		graph:    graph,
+		accounts:     accounts,
+		blocks:       blocks,
+		transactions: transactions,
 
-		gossiper:  gossiper,
 		finalizer: finalizer,
 		syncer:    syncer,
 
@@ -187,18 +185,23 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		fileBuffers:   newFileBufferPool(sys.SyncPooledFileSize, ""),
 
 		sendQuota: make(chan struct{}, 2000),
+
+		transactionsSyncIndex: cuckoo.NewFilter(conf.GetBloomFilterM()),
+
+		queryBlockCache: make(map[BlockID]*Block),
+
+		queueWorkerPool: NewWorkerPool(),
 	}
 
 	if !cfg.GCDisabled {
 		ctx, cancel := context.WithCancel(context.Background())
+		ledger.stopWG.Add(1)
 		go accounts.GC(ctx, &ledger.stopWG)
 
 		ledger.cancelGC = cancel
 	}
 
-	stop := make(chan struct{}) // TODO: Real graceful stop.
-	var stallDetector *StallDetector
-	stallDetector = NewStallDetector(stop, StallDetectorConfig{
+	stallDetector := NewStallDetector(StallDetectorConfig{
 		MaxMemoryMB: cfg.MaxMemoryMB,
 	}, StallDetectorDelegate{
 		PrepareShutdown: func(err error) {
@@ -206,14 +209,17 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 			logger.Error().Err(err).Msg("Shutting down node...")
 		},
 	})
+
+	ledger.stopWG.Add(1)
 	go stallDetector.Run(&ledger.stopWG)
 
 	ledger.stallDetector = stallDetector
-	ledger.stop = stop
+
+	ledger.queueWorkerPool.Start(16)
 
 	ledger.PerformConsensus()
 
-	go ledger.SyncToLatestRound()
+	go ledger.SyncToLatestBlock()
 	go ledger.PushSendQuota()
 
 	return ledger
@@ -233,51 +239,28 @@ func (l *Ledger) Close() {
 
 	l.consensus.Wait()
 
-	close(l.stop)
-
 	if l.cancelGC != nil {
 		l.cancelGC()
 	}
 
+	l.queueWorkerPool.Stop()
+
+	l.stallDetector.Stop()
+
 	l.stopWG.Wait()
 }
 
-// AddTransaction adds a transaction to the ledger. If the transaction has
-// never been added in the ledgers graph before, it is pushed to the gossip
-// mechanism to then be gossiped to this nodes peers. If the transaction is
-// invalid or fails any validation checks, an error is returned. No error
-// is returned if the transaction has already existed int he ledgers graph
-// beforehand.
-func (l *Ledger) AddTransaction(tx Transaction) error {
-	err := l.graph.AddTransaction(tx)
+// AddTransaction adds a transaction to the ledger and adds it's id to bloom filter used to sync transactions.
+func (l *Ledger) AddTransaction(txs ...Transaction) {
+	l.transactions.BatchAdd(l.blocks.Latest().ID, txs...)
 
-	// Ignore error if transaction already exists,
-	// or transaction's depth is too low due to pruning
-	if err != nil &&
-		errors.Cause(err) != ErrAlreadyExists &&
-		errors.Cause(err) != ErrDepthTooLow {
-
-		return err
+	l.transactionsSyncIndexLock.Lock()
+	for _, tx := range txs {
+		l.transactionsSyncIndex.InsertUnique(tx.ID[:])
 	}
+	l.transactionsSyncIndexLock.Unlock()
 
-	if err == nil {
-		l.TakeSendQuota()
-
-		l.gossiper.Push(tx)
-
-		l.broadcastNopsLock.Lock()
-		if tx.Tag != sys.TagNop && tx.Sender == l.client.Keys().PublicKey() {
-			l.broadcastNops = true
-			l.broadcastNopsDelay = time.Now()
-
-			if tx.Depth > l.broadcastNopsMaxDepth {
-				l.broadcastNopsMaxDepth = tx.Depth
-			}
-		}
-		l.broadcastNopsLock.Unlock()
-	}
-
-	return nil
+	//l.TakeSendQuota()
 }
 
 // Find searches through complete transaction and account indices for a specified
@@ -355,21 +338,20 @@ func (l *Ledger) Protocol() *Protocol {
 	return &Protocol{ledger: l}
 }
 
-// Graph returns the directed-acyclic-graph of transactions accompanying
-// the ledger.
-func (l *Ledger) Graph() *Graph {
-	return l.graph
-}
-
 // Finalizer returns the Snowball finalizer which finalizes the contents of individual
-// consensus rounds.
+// blocks.
 func (l *Ledger) Finalizer() *Snowball {
 	return l.finalizer
 }
 
-// Rounds returns the round manager for the ledger.
-func (l *Ledger) Rounds() *Rounds {
-	return l.rounds
+// Blocks returns the block manager for the ledger.
+func (l *Ledger) Blocks() *Blocks {
+	return l.blocks
+}
+
+// Transactions returns the transaction manager for the ledger.
+func (l *Ledger) Transactions() *Transactions {
+	return l.transactions
 }
 
 // Restart restart wavelet process by means of stall detector (approach is platform dependent)
@@ -381,269 +363,255 @@ func (l *Ledger) Restart() error {
 // missing transactions and incrementally finalizing intervals of transactions in
 // the ledgers graph.
 func (l *Ledger) PerformConsensus() {
+	l.consensus.Add(1)
 	go l.PullMissingTransactions()
+
+	l.consensus.Add(1)
 	go l.SyncTransactions()
-	go l.FinalizeRounds()
+
+	l.consensus.Add(1)
+	go l.FinalizeBlocks()
 }
 
 func (l *Ledger) Snapshot() *avl.Tree {
 	return l.accounts.Snapshot()
 }
 
-// BroadcastingNop returns true if the node is
-// supposed to broadcast nop transaction.
-func (l *Ledger) BroadcastingNop() bool {
-	l.broadcastNopsLock.Lock()
-	broadcastNops := l.broadcastNops
-	l.broadcastNopsLock.Unlock()
-
-	return broadcastNops
-}
-
-// BroadcastNop has the node send a nop transaction should they have sufficient
-// balance available. They are broadcasted if no other transaction that is not a nop transaction
-// is not broadcasted by the node after 500 milliseconds. These conditions only apply so long as
-// at least one transaction gets broadcasted by the node within the current round. Once a round
-// is tentatively being finalized, a node will stop broadcasting nops.
-func (l *Ledger) BroadcastNop() *Transaction {
-	l.broadcastNopsLock.Lock()
-	broadcastNops := l.broadcastNops
-	broadcastNopsDelay := l.broadcastNopsDelay
-	l.broadcastNopsLock.Unlock()
-
-	if !broadcastNops || time.Now().Sub(broadcastNopsDelay) < 100*time.Millisecond {
-		return nil
-	}
-
-	keys := l.client.Keys()
-	publicKey := keys.PublicKey()
-
-	balance, _ := ReadAccountBalance(l.accounts.Snapshot(), publicKey)
-
-	// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
-	if balance < sys.DefaultTransactionFee && hex.EncodeToString(publicKey[:]) != sys.FaucetAddress {
-		return nil
-	}
-
-	nop := AttachSenderToTransaction(keys, NewTransaction(keys, sys.TagNop, nil), l.graph.FindEligibleParents()...)
-
-	if err := l.AddTransaction(nop); err != nil {
-		return nil
-	}
-
-	return l.graph.FindTransaction(nop.ID)
-}
-
-func (l *Ledger) SyncTransactions() {
-	l.consensus.Add(1)
+// SyncTransactions is an infinite loop which constantly sends transaction ids from its index
+// in form of the bloom filter to randomly sampled number of peers and adds to it's state all received
+// transactions.
+func (l *Ledger) SyncTransactions() { // nolint:gocognit
 	defer l.consensus.Done()
 
-	logger := log.Consensus("transaction-sync")
-
-	pullingPeriod := 1 * time.Second
-	t := time.NewTimer(pullingPeriod)
-
 	for {
-		t.Reset(pullingPeriod)
-
 		select {
 		case <-l.sync:
 			return
-
-		case <-t.C:
+		case <-time.After(3 * time.Second):
 		}
 
-		l.syncStatusLock.RLock()
-		status := l.syncStatus
-		l.syncStatusLock.RUnlock()
-		if status != synced {
-			continue
-		}
+		snowballK := conf.GetSnowballK()
 
-		closestPeers := l.client.ClosestPeers()
-
-		peers := make([]*grpc.ClientConn, 0, len(closestPeers))
-		for _, p := range closestPeers {
-			if p.GetState() == connectivity.Ready {
-				peers = append(peers, p)
-			}
-		}
-
-		if len(peers) == 0 {
-			select {
-			case <-l.sync:
-				return
-			default:
-			}
-
-			continue
-		}
-
-		rand.Shuffle(len(peers), func(i, j int) {
-			peers[i], peers[j] = peers[j], peers[i]
-		})
-		now := time.Now()
-		currentDepth := l.graph.RootDepth()
-		lowLimit := currentDepth - conf.GetMaxDepthDiff()
-		highLimit := currentDepth + conf.GetMaxDownloadDepthDiff()
-		txs := l.Graph().GetTransactionsByDepth(&lowLimit, &highLimit)
-
-		ids := make([][]byte, len(txs))
-		for i, tx := range txs {
-			ids[i] = tx.ID[:]
-		}
-
-		req := &DownloadTxRequest{
-			Depth:   currentDepth,
-			SkipIds: ids,
-		}
-
-		conn := peers[0]
-		client := NewWaveletClient(conn)
-
-		ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
-		batch, err := client.DownloadTx(ctx, req)
+		peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
 		if err != nil {
-			logger.Error().Err(err).Msg("failed to download missing transactions")
-			cancel()
 			continue
 		}
-		cancel()
 
-		txCount, logicalCount := 0, 0
-		for _, buf := range batch.Transactions {
-			tx, err := UnmarshalTransaction(bytes.NewReader(buf))
-			if err != nil {
-				logger.Error().
-					Err(err).
-					Hex("tx_id", tx.ID[:]).
-					Msg("failed to download missing transactions")
-				continue
-			}
+		logger := log.Sync("sync_tx")
 
-			if err := l.AddTransaction(tx); err != nil && errors.Cause(err) != ErrMissingParents {
-				logger.Error().
-					Err(err).
-					Hex("tx_id", tx.ID[:]).
-					Msg("failed to download missing transactions")
-				continue
-			}
+		l.transactionsSyncIndexLock.RLock()
+		cf := l.transactionsSyncIndex.Encode()
+		l.transactionsSyncIndexLock.RUnlock()
 
-			logicalCount += tx.LogicalUnits()
-			txCount++
+		if err != nil {
+			logger.Error().Err(err).Msg("failed to marshal bloom filter")
+			continue
 		}
 
-		if txCount > 0 {
-			logger.Debug().
-				Int("synced_tx", txCount).
-				Int("logical_tx", logicalCount).
-				Dur("duration", time.Now().Sub(now)).
-				Msg("Transaction downloaded")
+		var wg sync.WaitGroup
+
+		bfReq := &TransactionsSyncRequest{
+			Data: &TransactionsSyncRequest_Filter{
+				Filter: cf,
+			},
 		}
+
+		for _, p := range peers {
+			wg.Add(1)
+			go func(conn *grpc.ClientConn) {
+				defer wg.Done()
+
+				ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
+				defer cancel()
+
+				stream, err := NewWaveletClient(conn).SyncTransactions(ctx)
+				if err != nil {
+					logger.Error().Err(err).Msg("failed to create sync transactions stream")
+					return
+				}
+
+				defer func() {
+					if err := stream.CloseSend(); err != nil {
+						logger.Error().Err(err).Msg("failed to send sync transactions bloom filter")
+					}
+				}()
+
+				if err := stream.Send(bfReq); err != nil {
+					logger.Error().Err(err).Msg("failed to send sync transactions bloom filter")
+					return
+				}
+
+				res, err := stream.Recv()
+				if err != nil {
+					logger.Error().Err(err).Msg("failed to receive sync transactions header")
+					return
+				}
+
+				count := res.GetTransactionsNum()
+				if count == 0 {
+					return
+				}
+
+				if count > conf.GetTXSyncLimit() {
+					logger.Debug().
+						Uint64("count", count).
+						Str("peer_address", conn.Target()).
+						Msg("Bad number of transactions would be received")
+					return
+				}
+
+				logger.Debug().
+					Uint64("count", count).
+					Msg("Requesting transaction(s) to sync.")
+
+				for count > 0 {
+					req := TransactionsSyncRequest_ChunkSize{
+						ChunkSize: conf.GetTXSyncChunkSize(),
+					}
+
+					if count < req.ChunkSize {
+						req.ChunkSize = count
+					}
+
+					if err := stream.Send(&TransactionsSyncRequest{Data: &req}); err != nil {
+						logger.Error().Err(err).Msg("failed to receive sync transactions header")
+						return
+					}
+
+					res, err := stream.Recv()
+					if err != nil {
+						logger.Error().Err(err).Msg("failed to receive sync transactions header")
+						return
+					}
+
+					txResponse := res.GetTransactions()
+					if txResponse == nil {
+						return
+					}
+
+					transactions := make([]Transaction, 0, len(txResponse.Transactions))
+					for _, txBody := range txResponse.Transactions {
+						tx, err := UnmarshalTransaction(bytes.NewReader(txBody))
+						if err != nil {
+							logger.Error().Err(err).Msg("failed to unmarshal synced transaction")
+							continue
+						}
+
+						transactions = append(transactions, tx)
+					}
+
+					downloadedNum := len(transactions)
+					count -= uint64(downloadedNum)
+
+					l.AddTransaction(transactions...)
+
+					l.metrics.downloadedTX.Mark(int64(downloadedNum))
+					l.metrics.receivedTX.Mark(int64(downloadedNum))
+				}
+			}(p.Conn())
+		}
+
+		wg.Wait()
 	}
 }
 
-// PullMissingTransactions is an infinite loop continually sending RPC requests
-// to pull any transactions identified to be missing by the ledger. It periodically
-// samples a random peer from the network, and requests the peer for the contents
-// of all missing transactions by their respective IDs. When the ledger is in amidst
-// synchronizing/teleporting ahead to a new round, the infinite loop will be cleaned
-// up. It is intended to call PullMissingTransactions() in a new goroutine.
+// PullMissingTransactions is a goroutine which continuously pulls missing transactions
+// from randomly sampled peers in the network. It does so by sending a list of
+// transaction IDs which node is missing.
 func (l *Ledger) PullMissingTransactions() {
-	l.consensus.Add(1)
 	defer l.consensus.Done()
 
 	for {
 		select {
 		case <-l.sync:
 			return
-
-		default:
+		case <-time.After(100 * time.Millisecond):
 		}
 
-		missing := l.graph.Missing()
+		snowballK := conf.GetSnowballK()
 
-		if len(missing) == 0 {
-			select {
-			case <-l.sync:
-				return
-			case <-time.After(100 * time.Millisecond):
-			}
-
-			continue
-		}
-
-		closestPeers := l.client.ClosestPeers()
-
-		peers := make([]*grpc.ClientConn, 0, len(closestPeers))
-		for _, p := range closestPeers {
-			if p.GetState() == connectivity.Ready {
-				peers = append(peers, p)
-			}
-		}
-
-		if len(peers) == 0 {
-			select {
-			case <-l.sync:
-				return
-			case <-time.After(1 * time.Second):
-			}
-
-			continue
-		}
-
-		rand.Shuffle(len(peers), func(i, j int) {
-			peers[i], peers[j] = peers[j], peers[i]
-		})
-
-		rand.Shuffle(len(missing), func(i, j int) {
-			missing[i], missing[j] = missing[j], missing[i]
-		})
-		if len(missing) > 256 {
-			missing = missing[:256]
-		}
-
-		req := &DownloadMissingTxRequest{Ids: make([][]byte, len(missing))}
-
-		for i, id := range missing {
-			req.Ids[i] = id[:]
-		}
-
-		conn := peers[0]
-		client := NewWaveletClient(conn)
-
-		logger := log.Consensus("pull-missing-transactions")
-
-		ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
-		batch, err := client.DownloadMissingTx(ctx, req)
+		peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
 		if err != nil {
-			logger.Error().Err(err).Msg("failed to download missing transactions")
-			cancel()
 			continue
 		}
-		cancel()
+
+		logger := log.Sync("pull_missing_tx")
+
+		// Build list of transaction IDs
+		missingIDs := l.transactions.MissingIDs()
+		req := &TransactionPullRequest{TransactionIds: make([][]byte, 0, len(missingIDs))}
+		for _, txID := range missingIDs {
+			txID := txID
+			req.TransactionIds = append(req.TransactionIds, txID[:])
+		}
+
+		responseChan := make(chan *TransactionPullResponse)
+		for _, p := range peers {
+			go func(conn *grpc.ClientConn) {
+				client := NewWaveletClient(conn)
+
+				ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
+				defer cancel()
+
+				batch, err := client.PullTransactions(ctx, req)
+				if err != nil {
+					logger.Error().Err(err).Msg("failed to download missing transactions")
+
+					responseChan <- nil
+
+					return
+				}
+
+				responseChan <- batch
+			}(p.Conn())
+		}
+
+		responses := make([]*TransactionPullResponse, 0, len(peers))
+		for i := 0; i < cap(responses); i++ {
+			response := <-responseChan
+
+			if response == nil {
+				continue
+			}
+
+			responses = append(responses, response)
+		}
+
+		close(responseChan)
 
 		count := int64(0)
 
-		for _, buf := range batch.Transactions {
-			tx, err := UnmarshalTransaction(bytes.NewReader(buf))
-			if err != nil {
-				logger.Error().
-					Err(err).
-					Hex("tx_id", tx.ID[:]).
-					Msg("error unmarshaling downloaded tx")
-				continue
-			}
+		pulled := map[TransactionID]Transaction{}
 
-			if err := l.AddTransaction(tx); err != nil && errors.Cause(err) != ErrMissingParents {
-				logger.Error().
-					Err(err).
-					Hex("tx_id", tx.ID[:]).
-					Msg("error adding downloaded tx to graph")
-				continue
-			}
+		for _, res := range responses {
+			for _, buf := range res.Transactions {
+				tx, err := UnmarshalTransaction(bytes.NewReader(buf))
+				if err != nil {
+					logger.Error().
+						Err(err).
+						Hex("tx_id", tx.ID[:]).
+						Msg("error unmarshaling downloaded tx")
+					continue
+				}
 
-			count += int64(tx.LogicalUnits())
+				if _, ok := pulled[tx.ID]; !ok {
+					pulled[tx.ID] = tx
+					count += int64(tx.LogicalUnits())
+				}
+			}
+		}
+
+		pulledTXs := make([]Transaction, 0, len(pulled))
+		for _, tx := range pulled {
+			pulledTXs = append(pulledTXs, tx)
+		}
+
+		l.AddTransaction(pulledTXs...)
+
+		if count > 0 {
+			logger.Info().
+				Int64("count", count).
+				Msg("Pulled missing transaction(s).")
 		}
 
 		l.metrics.downloadedTX.Mark(count)
@@ -651,17 +619,10 @@ func (l *Ledger) PullMissingTransactions() {
 	}
 }
 
-// FinalizeRounds periodically attempts to find an eligible critical transaction suited for the
-// current round. If it finds one, it will then proceed to perform snowball sampling over its
-// peers to decide on a single critical transaction that serves as an ending point for the
-// current consensus round. The round is finalized, transactions of the finalized round are
-// applied to the current ledger state, and the graph is updated to cleanup artifacts from
-// the old round.
-func (l *Ledger) FinalizeRounds() {
-	l.consensus.Add(1)
+// FinalizeBlocks continuously attempts to finalize blocks.
+func (l *Ledger) FinalizeBlocks() {
 	defer l.consensus.Done()
 
-FINALIZE_ROUNDS:
 	for {
 		select {
 		case <-l.sync:
@@ -670,334 +631,307 @@ FINALIZE_ROUNDS:
 		default:
 		}
 
-		if len(l.client.ClosestPeerIDs()) < conf.GetSnowballK() {
-			select {
-			case <-l.sync:
-				return
-			case <-time.After(1 * time.Second):
+		preferred := l.finalizer.Preferred()
+		decided := l.finalizer.Decided()
+
+		if preferred == nil {
+			proposedBlock := l.proposeBlock()
+
+			logger := log.Consensus("proposal")
+			if proposedBlock != nil {
+				logger.Debug().
+					Hex("block_id", proposedBlock.ID[:]).
+					Uint64("block_index", proposedBlock.Index).
+					Int("num_transactions", len(proposedBlock.Transactions)).
+					Msg("Proposing block...")
+
+				l.finalizer.Prefer(&finalizationVote{
+					block: proposedBlock,
+				})
 			}
-
-			continue FINALIZE_ROUNDS
-		}
-
-		current := l.rounds.Latest()
-		currentDifficulty := current.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)
-
-		if preferred := l.finalizer.Preferred(); preferred == nil {
-			eligible := l.graph.FindEligibleCritical(currentDifficulty)
-
-			if eligible == nil {
-				nop := l.BroadcastNop()
-
-				if nop != nil {
-					if !nop.IsCritical(currentDifficulty) {
-						select {
-						case <-l.sync:
-							return
-						case <-time.After(500 * time.Microsecond):
-						}
-					}
-
-					continue FINALIZE_ROUNDS
-				}
-
-				select {
-				case <-l.sync:
-					return
-				case <-time.After(100 * time.Millisecond):
-				}
-
-				continue FINALIZE_ROUNDS
-			}
-
-			results, err := l.collapseTransactions(current.Index+1, current.End, *eligible, false)
-			if err != nil {
-				logger := log.Node()
-				logger.Error().
-					Err(err).
-					Msg("error collapsing transactions during finalization")
-				continue
-			}
-
-			candidate := NewRound(current.Index+1, results.snapshot.Checksum(), uint32(results.appliedCount+results.rejectedCount), current.End, *eligible)
-			l.finalizer.Prefer(&candidate)
-
-			continue FINALIZE_ROUNDS
-		}
-
-		// Only stop broadcasting nops if the most recently added transaction
-		// has been applied
-		l.broadcastNopsLock.Lock()
-		preferred := l.finalizer.Preferred().(*Round)
-		if l.broadcastNops && l.broadcastNopsMaxDepth <= preferred.End.Depth {
-			l.broadcastNops = false
-		}
-		l.broadcastNopsLock.Unlock()
-
-		workerChan := make(chan *grpc.ClientConn, 16)
-
-		var workerWG sync.WaitGroup
-		workerWG.Add(cap(workerChan))
-
-		snowballK := conf.GetSnowballK()
-		voteChan := make(chan finalizationVote, snowballK)
-		go CollectVotesForFinalization(l.accounts, l.finalizer, voteChan, &workerWG, snowballK)
-
-		req := &QueryRequest{RoundIndex: current.Index + 1}
-
-		for i := 0; i < cap(workerChan); i++ {
-			go func() {
-				for conn := range workerChan {
-					f := func() {
-						client := NewWaveletClient(conn)
-
-						ctx, cancel := context.WithTimeout(context.Background(), conf.GetQueryTimeout())
-
-						p := &peer.Peer{}
-
-						res, err := client.Query(ctx, req, grpc.Peer(p))
-						if err != nil {
-							logger := log.Node()
-							logger.Error().
-								Err(err).
-								Msg("error while querying peer")
-
-							cancel()
-							return
-						}
-
-						cancel()
-
-						l.metrics.queried.Mark(1)
-
-						info := noise.InfoFromPeer(p)
-						if info == nil {
-							return
-						}
-
-						voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
-						if !ok {
-							return
-						}
-
-						round, err := UnmarshalRound(bytes.NewReader(res.Round))
-						if err != nil {
-							voteChan <- finalizationVote{voter: voter, round: ZeroRoundPtr}
-							return
-						}
-
-						if round.ID == ZeroRoundID || round.Start.ID == ZeroTransactionID || round.End.ID == ZeroTransactionID {
-							voteChan <- finalizationVote{voter: voter, round: ZeroRoundPtr}
-							return
-						}
-
-						if round.End.Depth <= round.Start.Depth {
-							return
-						}
-
-						if round.Index != current.Index+1 {
-							return
-						}
-
-						if round.Start.ID != current.End.ID {
-							return
-						}
-
-						if err := l.AddTransaction(round.Start); err != nil {
-							return
-						}
-
-						if err := l.AddTransaction(round.End); err != nil {
-							return
-						}
-
-						if !round.End.IsCritical(currentDifficulty) {
-							return
-						}
-
-						results, err := l.collapseTransactions(round.Index, round.Start, round.End, false)
-						if err != nil {
-							if !strings.Contains(err.Error(), "missing ancestor") {
-								logger := log.Node()
-								logger.Error().
-									Err(err).
-									Msg("error collapsing transactions")
-							}
-							return
-						}
-
-						if uint32(results.appliedCount+results.rejectedCount) != round.Transactions {
-							logger := log.Node()
-							logger.Error().
-								Err(err).
-								Uint32("expected", round.Transactions).
-								Int("actual", results.appliedCount).
-								Int("rejected", results.rejectedCount).
-								Int("ignored", results.ignoredCount).
-								Msg("Number of applied transactions does not match")
-							return
-						}
-
-						if results.snapshot.Checksum() != round.Merkle {
-							actualMerkle := results.snapshot.Checksum()
-							logger := log.Node()
-							logger.Error().
-								Err(err).
-								Hex("expected", round.Merkle[:]).
-								Hex("actual", actualMerkle[:]).
-								Msg("Unexpected round merkle root")
-							return
-						}
-
-						voteChan <- finalizationVote{
-							voter: voter,
-							round: &round,
-						}
-					}
-
-					l.metrics.queryLatency.Time(f)
-				}
-
-				workerWG.Done()
-			}()
-		}
-
-		for !l.finalizer.Decided() {
-			select {
-			case <-l.sync:
-				close(workerChan)
-				workerWG.Wait()
-				workerWG.Add(1)
-				close(voteChan)
-				workerWG.Wait() // Wait for vote processor worker to stop
-
-				return
-			default:
-			}
-
-			// Randomly sample a peer to query
-			peers, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
-			if err != nil {
-				close(workerChan)
-				workerWG.Wait()
-				workerWG.Add(1)
-				close(voteChan)
-				workerWG.Wait() // Wait for vote processor worker to stop
-
-				continue FINALIZE_ROUNDS
-			}
-
-			for _, p := range peers {
-				workerChan <- p
+		} else {
+			if decided {
+				l.finalize(*preferred.Value().(*Block))
+			} else {
+				l.query()
 			}
 		}
-
-		close(workerChan)
-		workerWG.Wait() // Wait for query workers to stop
-		workerWG.Add(1)
-		close(voteChan)
-		workerWG.Wait() // Wait for vote processor worker to stop
-
-		preferred = l.finalizer.Preferred().(*Round)
-		l.finalizer.Reset()
-
-		results, err := l.collapseTransactions(preferred.Index, preferred.Start, preferred.End, true)
-		if err != nil {
-			if !strings.Contains(err.Error(), "missing ancestor") {
-				logger := log.Node()
-				logger.Error().
-					Err(err).
-					Msg("error collapsing transactions during finalization")
-			}
-			continue
-		}
-
-		if uint32(results.appliedCount+results.rejectedCount) != preferred.Transactions {
-			logger := log.Node()
-			logger.Error().
-				Err(err).
-				Uint32("expected", preferred.Transactions).
-				Int("actual", results.appliedCount).
-				Msg("Number of applied transactions does not match")
-			continue
-		}
-
-		if results.snapshot.Checksum() != preferred.Merkle {
-			logger := log.Node()
-			actualMerkle := results.snapshot.Checksum()
-			logger.Error().
-				Err(err).
-				Hex("expected", preferred.Merkle[:]).
-				Hex("actual", actualMerkle[:]).
-				Msg("Unexpected round merkle root")
-			continue
-		}
-
-		pruned, err := l.rounds.Save(preferred)
-		if err != nil {
-			logger := log.Node()
-			logger.Error().
-				Err(err).
-				Msg("Failed to save preferred round to our database")
-		}
-
-		if pruned != nil {
-			count := l.graph.PruneBelowDepth(pruned.End.Depth)
-
-			logger := log.Consensus("prune")
-			logger.Debug().
-				Int("num_tx", count).
-				Uint64("current_round_id", preferred.Index).
-				Uint64("pruned_round_id", pruned.Index).
-				Msg("Pruned away round and transactions.")
-		}
-
-		l.graph.UpdateRootDepth(preferred.End.Depth)
-
-		if err = l.accounts.Commit(results.snapshot); err != nil {
-			logger := log.Node()
-			logger.Error().
-				Err(err).
-				Msg("Failed to commit collaped state to our database")
-		}
-
-		l.metrics.acceptedTX.Mark(int64(results.appliedCount))
-
-		l.LogChanges(results.snapshot, current.Index)
-
-		l.applySync(finalized)
-
-		logger := log.Consensus("round_end")
-		logger.Info().
-			Int("num_applied_tx", results.appliedCount).
-			Int("num_rejected_tx", results.rejectedCount).
-			Int("num_ignored_tx", results.ignoredCount).
-			Uint64("old_round", current.Index).
-			Uint64("new_round", preferred.Index).
-			Uint8("old_difficulty", current.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-			Uint8("new_difficulty", preferred.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-			Hex("new_root", preferred.End.ID[:]).
-			Hex("old_root", current.End.ID[:]).
-			Hex("new_merkle_root", preferred.Merkle[:]).
-			Hex("old_merkle_root", current.Merkle[:]).
-			Uint64("round_depth", preferred.End.Depth-preferred.Start.Depth).
-			Msg("Finalized consensus round, and initialized a new round.")
 	}
 }
 
-type outOfSyncVote struct {
-	outOfSync bool
+// proposeBlock takes all transactions from the first quarter of the mempool
+// and creates a new block, which will be proposed to be finalized as the
+// next block in the chain.
+func (l *Ledger) proposeBlock() *Block {
+	proposing := l.transactions.ProposableIDs()
+
+	if len(proposing) == 0 {
+		return nil
+	}
+
+	logger := log.Node()
+
+	block, err := NewBlock(l.blocks.Latest().Index+1, l.accounts.tree.Checksum(), proposing...)
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Msg("error creating new block")
+
+		return nil
+	}
+
+	proposed := block
+
+	results, err := l.collapseTransactions(&proposed, false)
+	if err != nil {
+		logger.Error().
+			Err(err).
+			Msg("error collapsing transactions during block proposal")
+
+		return nil
+	}
+
+	proposed.Merkle = results.snapshot.Checksum()
+
+	return &proposed
 }
 
-func (o *outOfSyncVote) GetID() string {
-	return fmt.Sprintf("%v", o.outOfSync)
+func (l *Ledger) finalize(block Block) {
+	current := l.blocks.Latest()
+
+	logger := log.Consensus("finalized")
+
+	results, err := l.collapseTransactions(&block, true)
+	if err != nil {
+		logger := log.Node()
+		logger.Error().
+			Err(err).
+			Msg("error collapsing transactions during finalization")
+
+		return
+	}
+
+	if checksum := results.snapshot.Checksum(); checksum != block.Merkle {
+		logger := log.Node()
+		logger.Error().
+			Uint64("target_block_id", block.Index).
+			Hex("expected_merkle_root", block.Merkle[:]).
+			Hex("yielded_merkle_root", checksum[:]).
+			Msg("Merkle root does not match")
+
+		return
+	}
+
+	pruned := l.transactions.ReshufflePending(block)
+	l.transactionsSyncIndexLock.Lock()
+	for _, txID := range pruned {
+		l.transactionsSyncIndex.Delete(txID[:])
+	}
+	l.transactionsSyncIndexLock.Unlock()
+
+	_, err = l.blocks.Save(&block)
+	if err != nil {
+		logger := log.Node()
+		logger.Error().
+			Err(err).
+			Msg("Failed to save preferred block to database")
+
+		return
+	}
+
+	if err = l.accounts.Commit(results.snapshot); err != nil {
+		logger := log.Node()
+		logger.Error().
+			Err(err).
+			Msg("Failed to commit collaped state to our database")
+
+		return
+	}
+
+	l.metrics.acceptedTX.Mark(int64(results.appliedCount))
+	l.metrics.finalizedBlocks.Mark(1)
+
+	l.LogChanges(results.snapshot, current.Index)
+
+	l.applySync(finalized)
+
+	// Reset snowball
+	l.finalizer.Reset()
+
+	logger.Info().
+		Int("num_applied_tx", results.appliedCount).
+		Int("num_rejected_tx", results.rejectedCount).
+		Int("num_pruned_tx", len(pruned)).
+		Uint64("old_block_height", current.Index).
+		Uint64("new_block_height", block.Index).
+		Hex("old_block_id", current.ID[:]).
+		Hex("new_block_id", block.ID[:]).
+		Msg("Finalized block.")
 }
 
-func (l *Ledger) SyncToLatestRound() {
+func (l *Ledger) query() {
+	snowballK := conf.GetSnowballK()
+
+	peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
+	if err != nil {
+		return
+	}
+
+	current := l.blocks.Latest()
+
+	type response struct {
+		vote finalizationVote
+
+		cacheValid bool
+		cacheBlock *Block
+	}
+
+	responseChan := make(chan response)
+
+	for _, p := range peers {
+		conn := p.Conn()
+		cacheBlock := l.queryBlockCache[p.ID().Checksum()]
+
+		f := func() {
+			var response response
+			defer func() {
+				responseChan <- response
+			}()
+
+			req := &QueryRequest{BlockIndex: current.Index + 1}
+
+			if cacheBlock != nil {
+				req.CacheBlockId = make([]byte, SizeBlockID)
+				copy(req.CacheBlockId, cacheBlock.ID[:])
+
+				response.cacheBlock = cacheBlock
+			}
+
+			f := func() {
+				client := NewWaveletClient(conn)
+
+				ctx, cancel := context.WithTimeout(context.Background(), conf.GetQueryTimeout())
+				defer cancel()
+
+				p := &peer.Peer{}
+
+				res, err := client.Query(ctx, req, grpc.Peer(p))
+				if err != nil {
+					logger := log.Node()
+					logger.Error().
+						Err(err).
+						Msg("error while querying peer")
+
+					return
+				}
+
+				l.metrics.queried.Mark(1)
+
+				info := noise.InfoFromPeer(p)
+				if info == nil {
+					return
+				}
+
+				voter, ok := info.Get(skademlia.KeyID).(*skademlia.ID)
+				if !ok {
+					return
+				}
+
+				response.vote.voter = voter
+
+				if res.CacheValid {
+					response.cacheValid = true
+					return
+				}
+
+				block, err := UnmarshalBlock(bytes.NewReader(res.GetBlock()))
+				if err != nil {
+					return
+				}
+
+				if block.ID == ZeroBlockID {
+					return
+				}
+
+				response.vote.block = &block
+			}
+			l.metrics.queryLatency.Time(f)
+		}
+
+		l.queueWorkerPool.Queue(f)
+	}
+
+	votes := make([]*finalizationVote, 0, len(peers))
+	voters := make(map[AccountID]struct{}, len(peers))
+
+	for i := 0; i < cap(votes); i++ {
+		response := <-responseChan
+
+		if response.vote.voter == nil {
+			continue
+		}
+
+		if _, recorded := voters[response.vote.voter.PublicKey()]; recorded {
+			continue // To make sure the sampling process is fair, only allow one vote per peer.
+		}
+
+		voters[response.vote.voter.PublicKey()] = struct{}{}
+
+		if response.cacheValid {
+			response.vote.block = response.cacheBlock
+		} else if response.vote.block != nil {
+			l.queryBlockCache[response.vote.voter.Checksum()] = response.vote.block
+		}
+
+		votes = append(votes, &response.vote)
+	}
+
+	for _, vote := range votes {
+		// Filter nil blocks
+		if vote.block == nil {
+			continue
+		}
+
+		// Filter blocks with unexpected block height
+		if vote.block.Index != current.Index+1 {
+			vote.block = nil
+			continue
+		}
+
+		// Filter blocks with at least 1 missing tx
+		if l.transactions.BatchMarkMissing(vote.block.Transactions...) {
+			vote.block = nil
+			continue
+		}
+
+		results, err := l.collapseTransactions(vote.block, false)
+		if err != nil {
+			logger := log.Node()
+			logger.Error().
+				Err(err).
+				Msg("error collapsing transactions during query")
+			continue
+		}
+
+		// Filter blocks that results in unexpected merkle root after collapse
+		if results.snapshot.Checksum() != vote.block.Merkle {
+			vote.block = nil
+			continue
+		}
+	}
+
+	TickForFinalization(l.accounts, l.finalizer, votes)
+}
+
+// SyncToLatestBlock continuously checks if the node is out of sync from its peers.
+// If the majority of its peers responded that it is out of sync (decided using snowball),
+// the node will attempt to sync its state to the latest block by downloading the AVL tree
+// diff from its peers and applying the diff to its local AVL tree.
+func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 	voteWG := new(sync.WaitGroup)
 
 	snowballK := conf.GetSnowballK()
-	syncVotes := make(chan syncVote, snowballK)
+	syncVotes := make(chan *syncVote, snowballK)
 
 	logger := log.Sync("sync")
 
@@ -1008,21 +942,19 @@ func (l *Ledger) SyncToLatestRound() {
 		for {
 			time.Sleep(5 * time.Millisecond)
 
-			conns, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
+			peers, err := SelectPeers(l.client.ClosestPeers(), snowballK)
 			if err != nil {
-				select {
-				case <-time.After(1 * time.Second):
-				}
+				<-time.After(1 * time.Second)
 
 				continue
 			}
 
-			current := l.rounds.Latest()
+			current := l.blocks.Latest()
 
 			var wg sync.WaitGroup
-			wg.Add(len(conns))
+			wg.Add(len(peers))
 
-			for _, conn := range conns {
+			for _, p := range peers {
 				go func(conn *grpc.ClientConn) {
 					client := NewWaveletClient(conn)
 
@@ -1032,7 +964,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 					res, err := client.CheckOutOfSync(
 						ctx,
-						&OutOfSyncRequest{RoundIndex: current.Index},
+						&OutOfSyncRequest{BlockIndex: current.Index},
 						grpc.Peer(p),
 					)
 					if err != nil {
@@ -1059,10 +991,10 @@ func (l *Ledger) SyncToLatestRound() {
 						return
 					}
 
-					syncVotes <- syncVote{voter: voter, outOfSync: res.OutOfSync}
+					syncVotes <- &syncVote{voter: voter, outOfSync: res.OutOfSync}
 
 					wg.Done()
-				}(conn)
+				}(p.Conn())
 			}
 
 			wg.Wait()
@@ -1074,10 +1006,10 @@ func (l *Ledger) SyncToLatestRound() {
 
 		// Reset syncing Snowball sampler. Check if it is a false alarm such that we don't have to sync.
 
-		current := l.rounds.Latest()
+		current := l.blocks.Latest()
 		preferred := l.syncer.Preferred()
 
-		oos := preferred.(*outOfSyncVote).outOfSync
+		oos := *preferred.Value().(*bool)
 		if !oos {
 			l.applySync(synced)
 			l.syncer.Reset()
@@ -1110,9 +1042,9 @@ func (l *Ledger) SyncToLatestRound() {
 		}
 
 		restart := func() { // Respawn all previously stopped workers.
-			snowballK := conf.GetSnowballK()
+			snowballK = conf.GetSnowballK()
 
-			syncVotes = make(chan syncVote, snowballK)
+			syncVotes = make(chan *syncVote, snowballK)
 			go CollectVotesForSync(l.accounts, l.syncer, syncVotes, voteWG, snowballK)
 
 			l.sync = make(chan struct{})
@@ -1122,11 +1054,11 @@ func (l *Ledger) SyncToLatestRound() {
 		shutdown() // Shutdown all consensus-related workers.
 
 		logger.Info().
-			Uint64("current_round", current.Index).
+			Uint64("current_block_index", current.Index).
 			Msg("Noticed that we are out of sync; downloading latest state Snapshot from our peer(s).")
 
 	SYNC:
-		conns, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
+		peers, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
 		if err != nil {
 			logger.Warn().Msg("It looks like there are no peers for us to sync with. Retrying...")
 
@@ -1135,18 +1067,18 @@ func (l *Ledger) SyncToLatestRound() {
 			goto SYNC
 		}
 
-		req := &SyncRequest{Data: &SyncRequest_RoundId{RoundId: current.Index}}
+		req := &SyncRequest{Data: &SyncRequest_BlockId{BlockId: current.Index}}
 
 		type response struct {
 			header *SyncInfo
-			latest Round
+			latest Block
 			stream Wavelet_SyncClient
 		}
 
-		responses := make([]response, 0, len(conns))
+		responses := make([]response, 0, len(peers))
 
-		for _, conn := range conns {
-			stream, err := NewWaveletClient(conn).Sync(context.Background())
+		for _, p := range peers {
+			stream, err := NewWaveletClient(p.Conn()).Sync(context.Background())
 			if err != nil {
 				continue
 			}
@@ -1166,7 +1098,7 @@ func (l *Ledger) SyncToLatestRound() {
 				continue
 			}
 
-			latest, err := UnmarshalRound(bytes.NewReader(header.LatestRound))
+			latest, err := UnmarshalBlock(bytes.NewReader(header.Block))
 			if err != nil {
 				continue
 			}
@@ -1196,9 +1128,9 @@ func (l *Ledger) SyncToLatestRound() {
 			set[v.latest.Index] = append(set[v.latest.Index], v)
 		}
 
-		// Select a round to sync to which the majority of peers are on.
+		// Select a block to sync to which the majority of peers are on.
 
-		var latest *Round
+		var latest *Block
 		var majority []response
 
 		for _, votes := range set {
@@ -1212,16 +1144,16 @@ func (l *Ledger) SyncToLatestRound() {
 		// If there is no majority or a tie, dispose all streams and try again.
 
 		if majority == nil {
-			logger.Warn().Msg("It looks like our peers could not decide on what the latest round currently is. Retrying...")
+			logger.Warn().Msg("It looks like our peers could not decide on what the latest block currently is. Retrying...")
 
 			dispose()
 			goto SYNC
 		}
 
 		logger.Debug().
-			Uint64("latest_round", latest.Index).
-			Hex("latest_round_root", latest.End.ID[:]).
-			Msg("Discovered the round which the majority of our peers are currently in.")
+			Uint64("block_id", latest.Index).
+			Hex("merkle_root", latest.Merkle[:]).
+			Msg("Discovered the latest block the majority of our peers ar eon.")
 
 		type source struct {
 			idx      int
@@ -1298,8 +1230,9 @@ func (l *Ledger) SyncToLatestRound() {
 		logger.Debug().
 			Int("num_chunks", len(sources)).
 			Int("num_workers", cap(workers)).
-			Msg("Starting up workers to downloaded all chunks of data needed to sync to the latest round...")
+			Msg("Starting up workers to downloaded all chunks of data needed to sync to the latest block...")
 
+		var chunksBufferLock sync.Mutex
 		chunksBuffer, err := l.fileBuffers.GetBounded(int64(len(sources)) * sys.SyncChunkSize)
 		if err != nil {
 			logger.Error().
@@ -1357,12 +1290,16 @@ func (l *Ledger) SyncToLatestRound() {
 							continue
 						}
 
-						if blake2b.Sum256(chunk[:]) != src.checksum {
+						if blake2b.Sum256(chunk) != src.checksum {
 							continue
 						}
 
 						// We found the chunk! Store the chunks contents.
-						if _, err := chunksBuffer.WriteAt(chunk, int64(src.idx)*sys.SyncChunkSize); err != nil {
+						chunksBufferLock.Lock()
+						_, err = chunksBuffer.WriteAt(chunk, int64(src.idx)*sys.SyncChunkSize)
+						chunksBufferLock.Unlock()
+
+						if err != nil {
 							continue
 						}
 
@@ -1389,7 +1326,7 @@ func (l *Ledger) SyncToLatestRound() {
 		logger.Debug().
 			Int("num_chunks", len(sources)).
 			Int("num_workers", cap(workers)).
-			Msg("Downloaded whatever chunks were available to sync to the latest round, and shutted down all workers. Checking validity of chunks...")
+			Msg("Downloaded whatever chunks were available to sync to the latest block, and shutted down all workers. Checking validity of chunks...")
 
 		dispose() // Shutdown all streams as we no longer need them.
 
@@ -1398,9 +1335,9 @@ func (l *Ledger) SyncToLatestRound() {
 		for i, src := range sources {
 			if src.size == 0 {
 				logger.Error().
-					Uint64("target_round", latest.Index).
+					Uint64("target_block_id", latest.Index).
 					Hex("chunk_checksum", sources[i].checksum[:]).
-					Msg("Could not download one of the chunks necessary to sync to the latest round! Retrying...")
+					Msg("Could not download one of the chunks necessary to sync to the latest block! Retrying...")
 
 				cleanup()
 				goto SYNC
@@ -1411,7 +1348,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 		if _, err := io.CopyN(diffBuffer, chunksBuffer, diffSize); err != nil {
 			logger.Error().
-				Uint64("target_round", latest.Index).
+				Uint64("target_block_id", latest.Index).
 				Err(err).
 				Msg("Failed to write chunks to bounded memory buffer. Restarting sync...")
 
@@ -1421,13 +1358,13 @@ func (l *Ledger) SyncToLatestRound() {
 
 		logger.Info().
 			Int("num_chunks", len(sources)).
-			Uint64("target_round", latest.Index).
+			Uint64("target_block", latest.Index).
 			Msg("All chunks have been successfully verified and re-assembled into a diff. Applying diff...")
 
 		snapshot := l.accounts.Snapshot()
 		if err := snapshot.ApplyDiff(diffBuffer); err != nil {
 			logger.Error().
-				Uint64("target_round", latest.Index).
+				Uint64("target_block_id", latest.Index).
 				Err(err).
 				Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
 
@@ -1437,7 +1374,7 @@ func (l *Ledger) SyncToLatestRound() {
 
 		if checksum := snapshot.Checksum(); checksum != latest.Merkle {
 			logger.Error().
-				Uint64("target_round", latest.Index).
+				Uint64("target_block_id", latest.Index).
 				Hex("expected_merkle_root", latest.Merkle[:]).
 				Hex("yielded_merkle_root", checksum[:]).
 				Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
@@ -1446,28 +1383,15 @@ func (l *Ledger) SyncToLatestRound() {
 			goto SYNC
 		}
 
-		pruned, err := l.rounds.Save(latest)
+		_, err = l.blocks.Save(latest)
 		if err != nil {
 			logger.Error().
 				Err(err).
-				Msg("Failed to save finalized round to our database")
+				Msg("Failed to save finalized block to our database")
 
 			cleanup()
 			goto SYNC
 		}
-
-		if pruned != nil {
-			count := l.graph.PruneBelowDepth(pruned.End.Depth)
-
-			logger := log.Consensus("prune")
-			logger.Debug().
-				Int("num_tx", count).
-				Uint64("current_round_id", latest.Index).
-				Uint64("pruned_round_id", pruned.Index).
-				Msg("Pruned away round and transactions.")
-		}
-
-		l.graph.UpdateRoot(latest.End)
 
 		if err := l.accounts.Commit(snapshot); err != nil {
 			cleanup()
@@ -1475,18 +1399,18 @@ func (l *Ledger) SyncToLatestRound() {
 			logger.Fatal().Err(err).Msg("failed to commit collapsed state to our database")
 		}
 
+		l.resetTransactionsSyncIndex()
+
 		logger = log.Sync("apply")
 		logger.Info().
 			Int("num_chunks", len(sources)).
-			Uint64("old_round", current.Index).
-			Uint64("new_round", latest.Index).
-			Uint8("old_difficulty", current.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-			Uint8("new_difficulty", latest.ExpectedDifficulty(sys.MinDifficulty, sys.DifficultyScaleFactor)).
-			Hex("new_root", latest.End.ID[:]).
-			Hex("old_root", current.End.ID[:]).
+			Uint64("old_block_index", current.Index).
+			Uint64("new_block_index", latest.Index).
+			Hex("new_block_id", latest.ID[:]).
+			Hex("old_block_id", current.ID[:]).
 			Hex("new_merkle_root", latest.Merkle[:]).
 			Hex("old_merkle_root", current.Merkle[:]).
-			Msg("Successfully built a new state Snapshot out of chunk(s) we have received from peers.")
+			Msg("Successfully built a new state snapshot out of chunk(s) we have received from peers.")
 
 		cleanup()
 		restart()
@@ -1503,7 +1427,6 @@ type collapseResults struct {
 
 	appliedCount  int
 	rejectedCount int
-	ignoredCount  int
 
 	snapshot *avl.Tree
 }
@@ -1528,15 +1451,37 @@ type CollapseState struct {
 // It is important to note that transactions that are inspected over are specifically transactions
 // that are within the depth interval (start, end] where start is the interval starting point depth,
 // and end is the interval ending point depth.
-func (l *Ledger) collapseTransactions(round uint64, start, end Transaction, logging bool) (*collapseResults, error) {
-	_collapseState, _ := l.cacheCollapse.LoadOrPut(end.ID, &CollapseState{})
+func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResults, error) {
+	idBuf := bytes.NewBuffer(make([]byte, SizeTransactionID*len(block.Transactions)))
+	for _, id := range block.Transactions {
+		idBuf.Write(id[:])
+	}
+	cacheKey := blake2b.Sum256(idBuf.Bytes())
+
+	_collapseState, _ := l.cacheCollapse.LoadOrPut(cacheKey, &CollapseState{})
 	collapseState := _collapseState.(*CollapseState)
 
 	collapseState.once.Do(func() {
-		collapseState.results, collapseState.err = collapseTransactions(l.graph, l.accounts, round, l.Rounds().Latest(), start, end, logging)
+		txs := make([]*Transaction, 0, len(block.Transactions))
+
+		for _, id := range block.Transactions {
+			tx := l.transactions.Find(id)
+			if tx == nil {
+				collapseState.err = errors.Wrapf(ErrMissingTx, "%x", id)
+				break
+			}
+
+			txs = append(txs, tx)
+		}
+
+		if collapseState.err != nil {
+			return
+		}
+
+		collapseState.results, collapseState.err = collapseTransactions(txs, block, l.accounts)
 	})
 
-	if logging {
+	if logging && collapseState.results != nil {
 		for _, tx := range collapseState.results.applied {
 			logEventTX("applied", tx)
 		}
@@ -1551,7 +1496,7 @@ func (l *Ledger) collapseTransactions(round uint64, start, end Transaction, logg
 
 // LogChanges logs all changes made to an AVL tree state snapshot for the purposes
 // of logging out changes to account state to Wavelet's HTTP API.
-func (l *Ledger) LogChanges(snapshot *avl.Tree, lastRound uint64) {
+func (l *Ledger) LogChanges(snapshot *avl.Tree, lastBlockIndex uint64) {
 	balanceLogger := log.Accounts("balance_updated")
 	gasBalanceLogger := log.Accounts("gas_balance_updated")
 	stakeLogger := log.Accounts("stake_updated")
@@ -1566,7 +1511,7 @@ func (l *Ledger) LogChanges(snapshot *avl.Tree, lastRound uint64) {
 
 	var id AccountID
 
-	snapshot.IterateLeafDiff(lastRound, func(key, value []byte) bool {
+	snapshot.IterateLeafDiff(lastBlockIndex, func(key, value []byte) bool {
 		switch {
 		case bytes.HasPrefix(key, balanceKey):
 			copy(id[:], key[len(balanceKey):])
@@ -1627,14 +1572,6 @@ func (l *Ledger) SyncStatus() string {
 	}
 }
 
-func (l *Ledger) isOutOfSync() bool {
-	l.syncStatusLock.RLock()
-	synced := l.syncStatus == fullySynced
-	l.syncStatusLock.RUnlock()
-
-	return !synced
-}
-
 func (l *Ledger) applySync(flag bitset) {
 	l.syncStatusLock.Lock()
 	l.syncStatus |= flag
@@ -1645,4 +1582,16 @@ func (l *Ledger) setSync(flag bitset) {
 	l.syncStatusLock.Lock()
 	l.syncStatus = flag
 	l.syncStatusLock.Unlock()
+}
+
+func (l *Ledger) resetTransactionsSyncIndex() {
+	l.transactionsSyncIndexLock.Lock()
+	defer l.transactionsSyncIndexLock.Unlock()
+
+	l.transactionsSyncIndex.Reset()
+
+	l.transactions.Iterate(func(tx *Transaction) bool {
+		l.transactionsSyncIndex.Insert(tx.ID[:])
+		return true
+	})
 }

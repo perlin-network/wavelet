@@ -39,7 +39,7 @@ func NewTestKV(t testing.TB, kv string, path string, opts ...TestKVOption) (KV, 
 			_ = inmemdb.Close()
 		}
 
-	case "level":
+	case "level": //nolint:goconst
 		if cfg.RemoveExisting {
 			_ = os.RemoveAll(path)
 		}
@@ -51,6 +51,23 @@ func NewTestKV(t testing.TB, kv string, path string, opts ...TestKVOption) (KV, 
 
 		return leveldb, func() {
 			_ = leveldb.Close()
+			if cfg.RemoveExisting {
+				_ = os.RemoveAll(path)
+			}
+		}
+
+	case "badger": // nolint:goconst
+		if cfg.RemoveExisting {
+			_ = os.RemoveAll(path)
+		}
+
+		badger, err := NewBadger(path)
+		if err != nil {
+			t.Fatalf("failed to create Badger: %s", err)
+		}
+
+		return badger, func() {
+			_ = badger.Close()
 			if cfg.RemoveExisting {
 				_ = os.RemoveAll(path)
 			}

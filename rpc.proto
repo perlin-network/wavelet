@@ -22,15 +22,17 @@ syntax = "proto3";
 package wavelet;
 
 message QueryRequest {
-    uint64 round_index = 1;
+    uint64 block_index = 1;
+    bytes cache_block_id = 2;
 }
 
 message QueryResponse {
-    bytes round = 1;
+    bytes block = 1;
+    bool cache_valid = 2;
 }
 
 message OutOfSyncRequest {
-    uint64 round_index = 1;
+    uint64 block_index = 1;
 }
 
 message OutOfSyncResponse {
@@ -38,13 +40,13 @@ message OutOfSyncResponse {
 }
 
 message SyncInfo {
-    bytes latest_round = 1;
+    bytes block = 1;
     repeated bytes checksums = 2;
 }
 
 message SyncRequest {
     oneof Data {
-        uint64 round_id = 1;
+        uint64 block_id = 1;
         bytes checksum = 2;
     }
 }
@@ -56,20 +58,29 @@ message SyncResponse {
     }
 }
 
-message DownloadTxRequest {
-    repeated bytes skip_ids = 1;
-    uint64 depth = 2;
+message TransactionsSyncRequest {
+    oneof Data {
+        bytes filter = 1;
+        uint64 chunk_size = 2;
+    }
 }
 
-message DownloadMissingTxRequest {
-    repeated bytes ids = 1;
-}
-
-message DownloadTxResponse {
+message TransactionsSyncPart {
     repeated bytes transactions = 1;
 }
 
-message Transactions {
+message TransactionsSyncResponse {
+    oneof Data {
+        uint64 transactions_num = 1;
+        TransactionsSyncPart transactions = 2;
+    }
+}
+
+message TransactionPullRequest {
+    repeated bytes transaction_ids = 1;
+}
+
+message TransactionPullResponse {
     repeated bytes transactions = 1;
 }
 
@@ -77,12 +88,11 @@ message Empty {
 }
 
 service Wavelet {
-    rpc Gossip (stream Transactions) returns (Empty) {}
     rpc Query (QueryRequest) returns (QueryResponse) {}
 
     rpc CheckOutOfSync (OutOfSyncRequest) returns (OutOfSyncResponse) {}
     rpc Sync (stream SyncRequest) returns (stream SyncResponse) {}
 
-    rpc DownloadTx (DownloadTxRequest) returns (DownloadTxResponse) {}
-    rpc DownloadMissingTx (DownloadMissingTxRequest) returns (DownloadTxResponse) {}
+    rpc PullTransactions (TransactionPullRequest) returns (TransactionPullResponse) {}
+    rpc SyncTransactions (stream TransactionsSyncRequest) returns (stream TransactionsSyncResponse) {}
 }

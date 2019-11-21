@@ -33,8 +33,9 @@ type leveldbWriteBatch struct {
 	batch *leveldb.Batch
 }
 
-func (b *leveldbWriteBatch) Put(key, value []byte) {
+func (b *leveldbWriteBatch) Put(key, value []byte) error {
 	b.batch.Put(key, value)
+	return nil
 }
 
 func (b *leveldbWriteBatch) Clear() {
@@ -106,7 +107,7 @@ func (l *leveldbKV) Delete(key []byte) error {
 	return l.db.Delete(key, nil)
 }
 
-func NewLevelDB(dir string) (*leveldbKV, error) {
+func NewLevelDB(dir string) (*leveldbKV, error) { // nolint:golint
 	opts := &opt.Options{
 		Filter:       filter.NewBloomFilter(10),
 		NoWriteMerge: true,

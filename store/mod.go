@@ -39,8 +39,17 @@ type KV interface {
 	Dir() string
 }
 
+// WriteBatch batches a collection of put operations in memory before
+// it's committed to disk.
+//
+// It's not guaranteed that all of the operations are kept in memory before
+// the write batch is explicitly committed. It might be possible that the
+// database decided commit the batch to disk earlier. For example, if a write
+// batch is created, and 1000 put operations are batched, it might happen
+// that while batching the 600th operation, the database decides to commit
+// the first 599th operations first before proceeding.
 type WriteBatch interface {
-	Put(key, value []byte)
+	Put(key, value []byte) error
 
 	Clear()
 	Count() int

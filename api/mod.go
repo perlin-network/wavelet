@@ -31,6 +31,7 @@ import (
 	"net/url"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/buaazp/fasthttprouter"
@@ -46,6 +47,12 @@ import (
 	"github.com/valyala/fastjson"
 	"golang.org/x/crypto/acme"
 	"golang.org/x/crypto/acme/autocert"
+	"google.golang.org/grpc"
+)
+
+const (
+	statusApplied  = "applied"
+	statusReceived = "received"
 )
 
 type Gateway struct {
@@ -53,13 +60,14 @@ type Gateway struct {
 	ledger *wavelet.Ledger
 	kv     store.KV
 
-	network *skademlia.Protocol
-	keys    *skademlia.Keypair
+	keys *skademlia.Keypair
 
 	router  *fasthttprouter.Router
 	servers []*fasthttp.Server
 
-	sinks         map[string]*sink
+	sinks     map[string]*sink
+	sinksLock sync.RWMutex
+
 	enableTimeout bool
 
 	rateLimiter *rateLimiter
@@ -94,7 +102,7 @@ func (g *Gateway) setup() {
 			debounce.WithKeys("contract_id"),
 		),
 	)
-	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&creator=creator_id&tag=tag",
+	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&tag=tag",
 		debounce.NewFactory(debounce.TypeLimiter,
 			debounce.WithPeriod(2200*time.Millisecond),
 			debounce.WithBufferLimit(1638400),
@@ -140,6 +148,8 @@ func (g *Gateway) setup() {
 	r.POST("/tx/send", g.applyMiddleware(g.sendTransaction, ""))
 	r.GET("/tx/:id", g.applyMiddleware(g.getTransaction, ""))
 	r.GET("/tx", g.applyMiddleware(g.listTransactions, "/tx"))
+
+	r.GET("/nonce/:id", g.applyMiddleware(g.getAccountNonce, ""))
 
 	// Connectivity endpoints
 	r.POST("/node/connect", g.applyMiddleware(g.connect, "/node/connect", g.auth))
@@ -194,14 +204,15 @@ func (g *Gateway) StartHTTP(
 
 	logger.Info().Int("port", port).Msg("Started HTTP API server.")
 
-	g.start(ln, nil, c, l, k, kv)
+	registerPeerCallbacks(c)
+
+	go g.start(ln, nil, c, l, k, kv)
 }
 
 // Only support tls-alpn-01.
 func (g *Gateway) StartHTTPS(
 	httpPort int, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair,
-	kv store.KV,
-	allowedHost, certCacheDir string,
+	kv store.KV, allowedHost, certCacheDir string,
 ) {
 	logger := log.Node()
 
@@ -220,7 +231,7 @@ func (g *Gateway) StartHTTPS(
 	}
 
 	// Setup TLS listener
-	inner, err := net.Listen("tcp", ":443")
+	inner, err := net.Listen("tcp", ":443") // nolint:gosec
 	if err != nil {
 		logger.Fatal().Err(err).Msgf("Failed to listen to port %d.", 443)
 	}
@@ -244,11 +255,40 @@ func (g *Gateway) StartHTTPS(
 	logger.Info().Int("port", 443).Msg("Started HTTPS API server.")
 	logger.Info().Int("port", httpPort).Msg("Started HTTP API server.")
 
-	g.start(tlsLn, ln, c, l, k, kv)
+	registerPeerCallbacks(c)
+
+	go g.start(tlsLn, ln, c, l, k, kv)
+}
+
+func registerPeerCallbacks(c *skademlia.Client) {
+	if c == nil {
+		return
+	}
+
+	c.OnPeerJoin(func(conn *grpc.ClientConn, id *skademlia.ID) {
+		publicKey := id.PublicKey()
+
+		logger := log.Network("joined")
+		logger.Info().
+			Hex("public_key", publicKey[:]).
+			Str("address", id.Address()).
+			Msg("Peer has joined.")
+	})
+
+	c.OnPeerLeave(func(conn *grpc.ClientConn, id *skademlia.ID) {
+		publicKey := id.PublicKey()
+
+		logger := log.Network("left")
+		logger.Info().
+			Hex("public_key", publicKey[:]).
+			Str("address", id.Address()).
+			Msg("Peer has left.")
+	})
 }
 
 func (g *Gateway) start(
-	ln net.Listener, ln2 net.Listener, c *skademlia.Client, l *wavelet.Ledger, k *skademlia.Keypair, kv store.KV,
+	ln net.Listener, ln2 net.Listener, c *skademlia.Client,
+	l *wavelet.Ledger, k *skademlia.Keypair, kv store.KV,
 ) {
 	stop := g.rateLimiter.cleanup(10 * time.Minute)
 	defer stop()
@@ -271,7 +311,9 @@ func (g *Gateway) start(
 
 		go func() {
 			if err := s.Serve(ln2); err != nil {
-				logger.Fatal().Int("port", ln2.Addr().(*net.TCPAddr).Port).Err(err).Msg("Failed to start HTTP server on the second listener.")
+				logger.Fatal().
+					Int("port", ln2.Addr().(*net.TCPAddr).Port).
+					Err(err).Msg("Failed to start HTTP server on the second listener.")
 			}
 		}()
 	}
@@ -293,34 +335,26 @@ func (g *Gateway) Shutdown() {
 }
 
 func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
-	req := new(sendTransactionRequest)
-
-	if g.ledger != nil && g.ledger.TakeSendQuota() == false {
-		g.renderError(ctx, ErrInternal(errors.New("rate limit")))
-		return
-	}
+	req := &sendTransactionRequest{}
 
 	parser := g.parserPool.Get()
+	defer g.parserPool.Put(parser)
+
 	err := req.bind(parser, ctx.PostBody())
-	g.parserPool.Put(parser)
 
 	if err != nil {
 		g.renderError(ctx, ErrBadRequest(err))
 		return
 	}
 
-	tx := wavelet.AttachSenderToTransaction(
-		g.keys,
-		wavelet.Transaction{Tag: sys.Tag(req.Tag), Payload: req.payload, Creator: req.creator, CreatorSignature: req.signature},
-		g.ledger.Graph().FindEligibleParents()...,
+	tx := wavelet.NewSignedTransaction(
+		req.sender, req.Nonce, req.Block,
+		sys.Tag(req.Tag), req.payload, req.signature,
 	)
 
-	err = g.ledger.AddTransaction(tx)
+	// TODO(kenta): check signature and nonce
 
-	if err != nil && errors.Cause(err) != wavelet.ErrMissingParents {
-		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error adding your transaction to graph")))
-		return
-	}
+	g.ledger.AddTransaction(tx)
 
 	g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
 }
@@ -331,7 +365,6 @@ func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 	var sender wavelet.AccountID
-	var creator wavelet.AccountID
 	var offset, limit uint64
 	var err error
 
@@ -349,21 +382,6 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 		}
 
 		copy(sender[:], slice)
-	}
-
-	if raw := string(queryArgs.Peek("creator")); len(raw) > 0 {
-		slice, err := hex.DecodeString(raw)
-		if err != nil {
-			g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "creator ID must be presented as valid hex")))
-			return
-		}
-
-		if len(slice) != wavelet.SizeAccountID {
-			g.renderError(ctx, ErrBadRequest(errors.Errorf("creator ID must be %d bytes long", wavelet.SizeAccountID)))
-			return
-		}
-
-		copy(creator[:], slice)
 	}
 
 	if raw := string(queryArgs.Peek("offset")); len(raw) > 0 {
@@ -388,19 +406,30 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 		limit = maxPaginationLimit
 	}
 
-	rootDepth := g.ledger.Graph().RootDepth()
-
 	var transactions transactionList
+	var latestBlockIndex = g.ledger.Blocks().Latest().Index
 
-	for _, tx := range g.ledger.Graph().ListTransactions(offset, limit, sender, creator) {
-		status := "received"
+	// TODO: maybe there is be a better way to do this? Currently, this iterates
+	// the entire transaction list
+	g.ledger.Transactions().Iterate(func(tx *wavelet.Transaction) bool {
+		if tx.Block < offset {
+			return true
+		}
+		if uint64(len(transactions)) >= limit {
+			return true
+		}
+		if sender != wavelet.ZeroAccountID && tx.Sender != sender {
+			return true
+		}
 
-		if tx.Depth <= rootDepth {
-			status = "applied"
+		status := statusReceived
+		if tx.Block <= latestBlockIndex {
+			status = statusApplied
 		}
 
 		transactions = append(transactions, &transaction{tx: tx, status: status})
-	}
+		return true
+	})
 
 	g.render(ctx, transactions)
 }
@@ -426,21 +455,21 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 	var id wavelet.TransactionID
 	copy(id[:], slice)
 
-	tx := g.ledger.Graph().FindTransaction(id)
+	tx := g.ledger.Transactions().Find(id)
 
 	if tx == nil {
 		g.renderError(ctx, ErrNotFound(errors.Errorf("could not find transaction with ID %x", id)))
 		return
 	}
 
-	rootDepth := g.ledger.Graph().RootDepth()
+	latestBlockIndex := g.ledger.Blocks().Latest().Index
 
 	res := &transaction{tx: tx}
 
-	if tx.Depth <= rootDepth {
-		res.status = "applied"
+	if tx.Block <= latestBlockIndex {
+		res.status = statusApplied
 	} else {
-		res.status = "received"
+		res.status = statusReceived
 	}
 
 	g.render(ctx, res)
@@ -467,7 +496,27 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 	var id wavelet.AccountID
 	copy(id[:], slice)
 
-	g.render(ctx, &account{ledger: g.ledger, id: id})
+	snapshot := g.ledger.Snapshot()
+
+	balance, _ := wavelet.ReadAccountBalance(snapshot, id)
+	gasBalance, _ := wavelet.ReadAccountContractGasBalance(snapshot, id)
+	stake, _ := wavelet.ReadAccountStake(snapshot, id)
+	reward, _ := wavelet.ReadAccountReward(snapshot, id)
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, id)
+	_, isContract := wavelet.ReadAccountContractCode(snapshot, id)
+	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, id)
+
+	g.render(ctx, &account{
+		ledger:     g.ledger,
+		id:         id,
+		balance:    balance,
+		gasBalance: gasBalance,
+		stake:      stake,
+		reward:     reward,
+		nonce:      nonce,
+		isContract: isContract,
+		numPages:   numPages,
+	})
 }
 
 func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {
@@ -634,6 +683,34 @@ func (g *Gateway) restart(ctx *fasthttp.RequestCtx) {
 	}
 }
 
+func (g *Gateway) getAccountNonce(ctx *fasthttp.RequestCtx) {
+	param, ok := ctx.UserValue("id").(string)
+	if !ok {
+		g.renderError(ctx, ErrBadRequest(errors.New("id must be a string")))
+		return
+	}
+
+	slice, err := hex.DecodeString(param)
+	if err != nil {
+		g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "account ID must be presented as valid hex")))
+		return
+	}
+
+	if len(slice) != wavelet.SizeAccountID {
+		g.renderError(ctx, ErrBadRequest(errors.Errorf("account ID must be %d bytes long", wavelet.SizeAccountID)))
+		return
+	}
+
+	var id wavelet.AccountID
+	copy(id[:], slice)
+
+	snapshot := g.ledger.Snapshot()
+	nonce, _ := wavelet.ReadAccountNonce(snapshot, id)
+	block := g.ledger.Blocks().Latest().Index
+
+	g.render(ctx, &nonceResponse{Nonce: nonce, Block: block})
+}
+
 func (g *Gateway) notFound() func(ctx *fasthttp.RequestCtx) {
 	methods := []string{"GET", "POST", "PUT", "DELETE", "PATCH"}
 
@@ -692,11 +769,10 @@ func (g *Gateway) registerWebsocketSink(rawURL string, factory *debounce.Factory
 	}
 
 	sink := &sink{
-		filters:   filters,
-		broadcast: make(chan broadcastItem),
-		join:      make(chan *client),
-		leave:     make(chan *client),
-		clients:   make(map[*client]struct{}),
+		ops:     make(chan func(map[*client]struct{})),
+		filters: filters,
+		join:    make(chan *client),
+		leave:   make(chan *client),
 	}
 
 	if factory != nil {
@@ -705,7 +781,9 @@ func (g *Gateway) registerWebsocketSink(rawURL string, factory *debounce.Factory
 
 	go sink.run()
 
+	g.sinksLock.Lock()
 	g.sinks[u.Hostname()] = sink
+	g.sinksLock.Unlock()
 
 	return sink
 }
@@ -723,7 +801,10 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 		return n, errors.Errorf("all logs must have the field %q", log.KeyModule)
 	}
 
+	g.sinksLock.RLock()
 	sink, exists := g.sinks[string(mod)]
+	g.sinksLock.RUnlock()
+
 	if !exists {
 		return len(buf), nil
 	}
@@ -731,7 +812,7 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 	cpy := make([]byte, len(buf))
 	copy(cpy, buf)
 
-	sink.broadcast <- broadcastItem{value: v, buf: cpy}
+	sink.broadcast(broadcastItem{value: v, buf: cpy})
 
 	return len(buf), nil
 }
@@ -753,13 +834,8 @@ func (g *Gateway) render(ctx *fasthttp.RequestCtx, m marshalableJSON) {
 
 func (g *Gateway) renderError(ctx *fasthttp.RequestCtx, e *errResponse) {
 	arena := g.arenaPool.Get()
-	b, err := e.marshalJSON(arena)
+	b := e.marshalJSON(arena)
 	g.arenaPool.Put(arena)
-
-	if err != nil {
-		ctx.Error(fmt.Sprintf(`{ "error": "render error: %s" |`, err.Error()), http.StatusInternalServerError)
-		return
-	}
 
 	ctx.SetContentType("application/json")
 	ctx.Response.SetStatusCode(e.HTTPStatusCode)

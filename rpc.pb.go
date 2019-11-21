@@ -15,10 +15,11 @@
 		SyncInfo
 		SyncRequest
 		SyncResponse
-		DownloadTxRequest
-		DownloadMissingTxRequest
-		DownloadTxResponse
-		Transactions
+		TransactionsSyncRequest
+		TransactionsSyncPart
+		TransactionsSyncResponse
+		TransactionPullRequest
+		TransactionPullResponse
 		Empty
 */
 package wavelet
@@ -46,7 +47,8 @@ var _ = math.Inf
 const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 
 type QueryRequest struct {
-	RoundIndex uint64 `protobuf:"varint,1,opt,name=round_index,json=roundIndex,proto3" json:"round_index,omitempty"`
+	BlockIndex   uint64 `protobuf:"varint,1,opt,name=block_index,json=blockIndex,proto3" json:"block_index,omitempty"`
+	CacheBlockId []byte `protobuf:"bytes,2,opt,name=cache_block_id,json=cacheBlockId,proto3" json:"cache_block_id,omitempty"`
 }
 
 func (m *QueryRequest) Reset()                    { *m = QueryRequest{} }
@@ -54,15 +56,23 @@ func (m *QueryRequest) String() string            { return proto.CompactTextStri
 func (*QueryRequest) ProtoMessage()               {}
 func (*QueryRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{0} }
 
-func (m *QueryRequest) GetRoundIndex() uint64 {
+func (m *QueryRequest) GetBlockIndex() uint64 {
 	if m != nil {
-		return m.RoundIndex
+		return m.BlockIndex
 	}
 	return 0
 }
 
+func (m *QueryRequest) GetCacheBlockId() []byte {
+	if m != nil {
+		return m.CacheBlockId
+	}
+	return nil
+}
+
 type QueryResponse struct {
-	Round []byte `protobuf:"bytes,1,opt,name=round,proto3" json:"round,omitempty"`
+	Block      []byte `protobuf:"bytes,1,opt,name=block,proto3" json:"block,omitempty"`
+	CacheValid bool   `protobuf:"varint,2,opt,name=cache_valid,json=cacheValid,proto3" json:"cache_valid,omitempty"`
 }
 
 func (m *QueryResponse) Reset()                    { *m = QueryResponse{} }
@@ -70,15 +80,22 @@ func (m *QueryResponse) String() string            { return proto.CompactTextStr
 func (*QueryResponse) ProtoMessage()               {}
 func (*QueryResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{1} }
 
-func (m *QueryResponse) GetRound() []byte {
+func (m *QueryResponse) GetBlock() []byte {
 	if m != nil {
-		return m.Round
+		return m.Block
 	}
 	return nil
 }
 
+func (m *QueryResponse) GetCacheValid() bool {
+	if m != nil {
+		return m.CacheValid
+	}
+	return false
+}
+
 type OutOfSyncRequest struct {
-	RoundIndex uint64 `protobuf:"varint,1,opt,name=round_index,json=roundIndex,proto3" json:"round_index,omitempty"`
+	BlockIndex uint64 `protobuf:"varint,1,opt,name=block_index,json=blockIndex,proto3" json:"block_index,omitempty"`
 }
 
 func (m *OutOfSyncRequest) Reset()                    { *m = OutOfSyncRequest{} }
@@ -86,9 +103,9 @@ func (m *OutOfSyncRequest) String() string            { return proto.CompactText
 func (*OutOfSyncRequest) ProtoMessage()               {}
 func (*OutOfSyncRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{2} }
 
-func (m *OutOfSyncRequest) GetRoundIndex() uint64 {
+func (m *OutOfSyncRequest) GetBlockIndex() uint64 {
 	if m != nil {
-		return m.RoundIndex
+		return m.BlockIndex
 	}
 	return 0
 }
@@ -110,8 +127,8 @@ func (m *OutOfSyncResponse) GetOutOfSync() bool {
 }
 
 type SyncInfo struct {
-	LatestRound []byte   `protobuf:"bytes,1,opt,name=latest_round,json=latestRound,proto3" json:"latest_round,omitempty"`
-	Checksums   [][]byte `protobuf:"bytes,2,rep,name=checksums" json:"checksums,omitempty"`
+	Block     []byte   `protobuf:"bytes,1,opt,name=block,proto3" json:"block,omitempty"`
+	Checksums [][]byte `protobuf:"bytes,2,rep,name=checksums" json:"checksums,omitempty"`
 }
 
 func (m *SyncInfo) Reset()                    { *m = SyncInfo{} }
@@ -119,9 +136,9 @@ func (m *SyncInfo) String() string            { return proto.CompactTextString(m
 func (*SyncInfo) ProtoMessage()               {}
 func (*SyncInfo) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{4} }
 
-func (m *SyncInfo) GetLatestRound() []byte {
+func (m *SyncInfo) GetBlock() []byte {
 	if m != nil {
-		return m.LatestRound
+		return m.Block
 	}
 	return nil
 }
@@ -135,7 +152,7 @@ func (m *SyncInfo) GetChecksums() [][]byte {
 
 type SyncRequest struct {
 	// Types that are valid to be assigned to Data:
-	//	*SyncRequest_RoundId
+	//	*SyncRequest_BlockId
 	//	*SyncRequest_Checksum
 	Data isSyncRequest_Data `protobuf_oneof:"Data"`
 }
@@ -151,14 +168,14 @@ type isSyncRequest_Data interface {
 	Size() int
 }
 
-type SyncRequest_RoundId struct {
-	RoundId uint64 `protobuf:"varint,1,opt,name=round_id,json=roundId,proto3,oneof"`
+type SyncRequest_BlockId struct {
+	BlockId uint64 `protobuf:"varint,1,opt,name=block_id,json=blockId,proto3,oneof"`
 }
 type SyncRequest_Checksum struct {
 	Checksum []byte `protobuf:"bytes,2,opt,name=checksum,proto3,oneof"`
 }
 
-func (*SyncRequest_RoundId) isSyncRequest_Data()  {}
+func (*SyncRequest_BlockId) isSyncRequest_Data()  {}
 func (*SyncRequest_Checksum) isSyncRequest_Data() {}
 
 func (m *SyncRequest) GetData() isSyncRequest_Data {
@@ -168,9 +185,9 @@ func (m *SyncRequest) GetData() isSyncRequest_Data {
 	return nil
 }
 
-func (m *SyncRequest) GetRoundId() uint64 {
-	if x, ok := m.GetData().(*SyncRequest_RoundId); ok {
-		return x.RoundId
+func (m *SyncRequest) GetBlockId() uint64 {
+	if x, ok := m.GetData().(*SyncRequest_BlockId); ok {
+		return x.BlockId
 	}
 	return 0
 }
@@ -185,7 +202,7 @@ func (m *SyncRequest) GetChecksum() []byte {
 // XXX_OneofFuncs is for the internal use of the proto package.
 func (*SyncRequest) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
 	return _SyncRequest_OneofMarshaler, _SyncRequest_OneofUnmarshaler, _SyncRequest_OneofSizer, []interface{}{
-		(*SyncRequest_RoundId)(nil),
+		(*SyncRequest_BlockId)(nil),
 		(*SyncRequest_Checksum)(nil),
 	}
 }
@@ -194,9 +211,9 @@ func _SyncRequest_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
 	m := msg.(*SyncRequest)
 	// Data
 	switch x := m.Data.(type) {
-	case *SyncRequest_RoundId:
+	case *SyncRequest_BlockId:
 		_ = b.EncodeVarint(1<<3 | proto.WireVarint)
-		_ = b.EncodeVarint(uint64(x.RoundId))
+		_ = b.EncodeVarint(uint64(x.BlockId))
 	case *SyncRequest_Checksum:
 		_ = b.EncodeVarint(2<<3 | proto.WireBytes)
 		_ = b.EncodeRawBytes(x.Checksum)
@@ -210,12 +227,12 @@ func _SyncRequest_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
 func _SyncRequest_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
 	m := msg.(*SyncRequest)
 	switch tag {
-	case 1: // Data.round_id
+	case 1: // Data.block_id
 		if wire != proto.WireVarint {
 			return true, proto.ErrInternalBadWireType
 		}
 		x, err := b.DecodeVarint()
-		m.Data = &SyncRequest_RoundId{x}
+		m.Data = &SyncRequest_BlockId{x}
 		return true, err
 	case 2: // Data.checksum
 		if wire != proto.WireBytes {
@@ -233,9 +250,9 @@ func _SyncRequest_OneofSizer(msg proto.Message) (n int) {
 	m := msg.(*SyncRequest)
 	// Data
 	switch x := m.Data.(type) {
-	case *SyncRequest_RoundId:
+	case *SyncRequest_BlockId:
 		n += proto.SizeVarint(1<<3 | proto.WireVarint)
-		n += proto.SizeVarint(uint64(x.RoundId))
+		n += proto.SizeVarint(uint64(x.BlockId))
 	case *SyncRequest_Checksum:
 		n += proto.SizeVarint(2<<3 | proto.WireBytes)
 		n += proto.SizeVarint(uint64(len(x.Checksum)))
@@ -366,72 +383,280 @@ func _SyncResponse_OneofSizer(msg proto.Message) (n int) {
 	return n
 }
 
-type DownloadTxRequest struct {
-	SkipIds [][]byte `protobuf:"bytes,1,rep,name=skip_ids,json=skipIds" json:"skip_ids,omitempty"`
-	Depth   uint64   `protobuf:"varint,2,opt,name=depth,proto3" json:"depth,omitempty"`
+type TransactionsSyncRequest struct {
+	// Types that are valid to be assigned to Data:
+	//	*TransactionsSyncRequest_Filter
+	//	*TransactionsSyncRequest_ChunkSize
+	Data isTransactionsSyncRequest_Data `protobuf_oneof:"Data"`
 }
 
-func (m *DownloadTxRequest) Reset()                    { *m = DownloadTxRequest{} }
-func (m *DownloadTxRequest) String() string            { return proto.CompactTextString(m) }
-func (*DownloadTxRequest) ProtoMessage()               {}
-func (*DownloadTxRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{7} }
+func (m *TransactionsSyncRequest) Reset()                    { *m = TransactionsSyncRequest{} }
+func (m *TransactionsSyncRequest) String() string            { return proto.CompactTextString(m) }
+func (*TransactionsSyncRequest) ProtoMessage()               {}
+func (*TransactionsSyncRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{7} }
 
-func (m *DownloadTxRequest) GetSkipIds() [][]byte {
+type isTransactionsSyncRequest_Data interface {
+	isTransactionsSyncRequest_Data()
+	MarshalTo([]byte) (int, error)
+	Size() int
+}
+
+type TransactionsSyncRequest_Filter struct {
+	Filter []byte `protobuf:"bytes,1,opt,name=filter,proto3,oneof"`
+}
+type TransactionsSyncRequest_ChunkSize struct {
+	ChunkSize uint64 `protobuf:"varint,2,opt,name=chunk_size,json=chunkSize,proto3,oneof"`
+}
+
+func (*TransactionsSyncRequest_Filter) isTransactionsSyncRequest_Data()    {}
+func (*TransactionsSyncRequest_ChunkSize) isTransactionsSyncRequest_Data() {}
+
+func (m *TransactionsSyncRequest) GetData() isTransactionsSyncRequest_Data {
 	if m != nil {
-		return m.SkipIds
+		return m.Data
 	}
 	return nil
 }
 
-func (m *DownloadTxRequest) GetDepth() uint64 {
-	if m != nil {
-		return m.Depth
+func (m *TransactionsSyncRequest) GetFilter() []byte {
+	if x, ok := m.GetData().(*TransactionsSyncRequest_Filter); ok {
+		return x.Filter
+	}
+	return nil
+}
+
+func (m *TransactionsSyncRequest) GetChunkSize() uint64 {
+	if x, ok := m.GetData().(*TransactionsSyncRequest_ChunkSize); ok {
+		return x.ChunkSize
 	}
 	return 0
 }
 
-type DownloadMissingTxRequest struct {
-	Ids [][]byte `protobuf:"bytes,1,rep,name=ids" json:"ids,omitempty"`
+// XXX_OneofFuncs is for the internal use of the proto package.
+func (*TransactionsSyncRequest) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
+	return _TransactionsSyncRequest_OneofMarshaler, _TransactionsSyncRequest_OneofUnmarshaler, _TransactionsSyncRequest_OneofSizer, []interface{}{
+		(*TransactionsSyncRequest_Filter)(nil),
+		(*TransactionsSyncRequest_ChunkSize)(nil),
+	}
 }
 
-func (m *DownloadMissingTxRequest) Reset()                    { *m = DownloadMissingTxRequest{} }
-func (m *DownloadMissingTxRequest) String() string            { return proto.CompactTextString(m) }
-func (*DownloadMissingTxRequest) ProtoMessage()               {}
-func (*DownloadMissingTxRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{8} }
-
-func (m *DownloadMissingTxRequest) GetIds() [][]byte {
-	if m != nil {
-		return m.Ids
+func _TransactionsSyncRequest_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
+	m := msg.(*TransactionsSyncRequest)
+	// Data
+	switch x := m.Data.(type) {
+	case *TransactionsSyncRequest_Filter:
+		_ = b.EncodeVarint(1<<3 | proto.WireBytes)
+		_ = b.EncodeRawBytes(x.Filter)
+	case *TransactionsSyncRequest_ChunkSize:
+		_ = b.EncodeVarint(2<<3 | proto.WireVarint)
+		_ = b.EncodeVarint(uint64(x.ChunkSize))
+	case nil:
+	default:
+		return fmt.Errorf("TransactionsSyncRequest.Data has unexpected type %T", x)
 	}
 	return nil
 }
 
-type DownloadTxResponse struct {
+func _TransactionsSyncRequest_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*TransactionsSyncRequest)
+	switch tag {
+	case 1: // Data.filter
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeRawBytes(true)
+		m.Data = &TransactionsSyncRequest_Filter{x}
+		return true, err
+	case 2: // Data.chunk_size
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Data = &TransactionsSyncRequest_ChunkSize{x}
+		return true, err
+	default:
+		return false, nil
+	}
+}
+
+func _TransactionsSyncRequest_OneofSizer(msg proto.Message) (n int) {
+	m := msg.(*TransactionsSyncRequest)
+	// Data
+	switch x := m.Data.(type) {
+	case *TransactionsSyncRequest_Filter:
+		n += proto.SizeVarint(1<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(len(x.Filter)))
+		n += len(x.Filter)
+	case *TransactionsSyncRequest_ChunkSize:
+		n += proto.SizeVarint(2<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.ChunkSize))
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	return n
+}
+
+type TransactionsSyncPart struct {
 	Transactions [][]byte `protobuf:"bytes,1,rep,name=transactions" json:"transactions,omitempty"`
 }
 
-func (m *DownloadTxResponse) Reset()                    { *m = DownloadTxResponse{} }
-func (m *DownloadTxResponse) String() string            { return proto.CompactTextString(m) }
-func (*DownloadTxResponse) ProtoMessage()               {}
-func (*DownloadTxResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{9} }
+func (m *TransactionsSyncPart) Reset()                    { *m = TransactionsSyncPart{} }
+func (m *TransactionsSyncPart) String() string            { return proto.CompactTextString(m) }
+func (*TransactionsSyncPart) ProtoMessage()               {}
+func (*TransactionsSyncPart) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{8} }
 
-func (m *DownloadTxResponse) GetTransactions() [][]byte {
+func (m *TransactionsSyncPart) GetTransactions() [][]byte {
 	if m != nil {
 		return m.Transactions
 	}
 	return nil
 }
 
-type Transactions struct {
+type TransactionsSyncResponse struct {
+	// Types that are valid to be assigned to Data:
+	//	*TransactionsSyncResponse_TransactionsNum
+	//	*TransactionsSyncResponse_Transactions
+	Data isTransactionsSyncResponse_Data `protobuf_oneof:"Data"`
+}
+
+func (m *TransactionsSyncResponse) Reset()                    { *m = TransactionsSyncResponse{} }
+func (m *TransactionsSyncResponse) String() string            { return proto.CompactTextString(m) }
+func (*TransactionsSyncResponse) ProtoMessage()               {}
+func (*TransactionsSyncResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{9} }
+
+type isTransactionsSyncResponse_Data interface {
+	isTransactionsSyncResponse_Data()
+	MarshalTo([]byte) (int, error)
+	Size() int
+}
+
+type TransactionsSyncResponse_TransactionsNum struct {
+	TransactionsNum uint64 `protobuf:"varint,1,opt,name=transactions_num,json=transactionsNum,proto3,oneof"`
+}
+type TransactionsSyncResponse_Transactions struct {
+	Transactions *TransactionsSyncPart `protobuf:"bytes,2,opt,name=transactions,oneof"`
+}
+
+func (*TransactionsSyncResponse_TransactionsNum) isTransactionsSyncResponse_Data() {}
+func (*TransactionsSyncResponse_Transactions) isTransactionsSyncResponse_Data()    {}
+
+func (m *TransactionsSyncResponse) GetData() isTransactionsSyncResponse_Data {
+	if m != nil {
+		return m.Data
+	}
+	return nil
+}
+
+func (m *TransactionsSyncResponse) GetTransactionsNum() uint64 {
+	if x, ok := m.GetData().(*TransactionsSyncResponse_TransactionsNum); ok {
+		return x.TransactionsNum
+	}
+	return 0
+}
+
+func (m *TransactionsSyncResponse) GetTransactions() *TransactionsSyncPart {
+	if x, ok := m.GetData().(*TransactionsSyncResponse_Transactions); ok {
+		return x.Transactions
+	}
+	return nil
+}
+
+// XXX_OneofFuncs is for the internal use of the proto package.
+func (*TransactionsSyncResponse) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), func(msg proto.Message) (n int), []interface{}) {
+	return _TransactionsSyncResponse_OneofMarshaler, _TransactionsSyncResponse_OneofUnmarshaler, _TransactionsSyncResponse_OneofSizer, []interface{}{
+		(*TransactionsSyncResponse_TransactionsNum)(nil),
+		(*TransactionsSyncResponse_Transactions)(nil),
+	}
+}
+
+func _TransactionsSyncResponse_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
+	m := msg.(*TransactionsSyncResponse)
+	// Data
+	switch x := m.Data.(type) {
+	case *TransactionsSyncResponse_TransactionsNum:
+		_ = b.EncodeVarint(1<<3 | proto.WireVarint)
+		_ = b.EncodeVarint(uint64(x.TransactionsNum))
+	case *TransactionsSyncResponse_Transactions:
+		_ = b.EncodeVarint(2<<3 | proto.WireBytes)
+		if err := b.EncodeMessage(x.Transactions); err != nil {
+			return err
+		}
+	case nil:
+	default:
+		return fmt.Errorf("TransactionsSyncResponse.Data has unexpected type %T", x)
+	}
+	return nil
+}
+
+func _TransactionsSyncResponse_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*TransactionsSyncResponse)
+	switch tag {
+	case 1: // Data.transactions_num
+		if wire != proto.WireVarint {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeVarint()
+		m.Data = &TransactionsSyncResponse_TransactionsNum{x}
+		return true, err
+	case 2: // Data.transactions
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		msg := new(TransactionsSyncPart)
+		err := b.DecodeMessage(msg)
+		m.Data = &TransactionsSyncResponse_Transactions{msg}
+		return true, err
+	default:
+		return false, nil
+	}
+}
+
+func _TransactionsSyncResponse_OneofSizer(msg proto.Message) (n int) {
+	m := msg.(*TransactionsSyncResponse)
+	// Data
+	switch x := m.Data.(type) {
+	case *TransactionsSyncResponse_TransactionsNum:
+		n += proto.SizeVarint(1<<3 | proto.WireVarint)
+		n += proto.SizeVarint(uint64(x.TransactionsNum))
+	case *TransactionsSyncResponse_Transactions:
+		s := proto.Size(x.Transactions)
+		n += proto.SizeVarint(2<<3 | proto.WireBytes)
+		n += proto.SizeVarint(uint64(s))
+		n += s
+	case nil:
+	default:
+		panic(fmt.Sprintf("proto: unexpected type %T in oneof", x))
+	}
+	return n
+}
+
+type TransactionPullRequest struct {
+	TransactionIds [][]byte `protobuf:"bytes,1,rep,name=transaction_ids,json=transactionIds" json:"transaction_ids,omitempty"`
+}
+
+func (m *TransactionPullRequest) Reset()                    { *m = TransactionPullRequest{} }
+func (m *TransactionPullRequest) String() string            { return proto.CompactTextString(m) }
+func (*TransactionPullRequest) ProtoMessage()               {}
+func (*TransactionPullRequest) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{10} }
+
+func (m *TransactionPullRequest) GetTransactionIds() [][]byte {
+	if m != nil {
+		return m.TransactionIds
+	}
+	return nil
+}
+
+type TransactionPullResponse struct {
 	Transactions [][]byte `protobuf:"bytes,1,rep,name=transactions" json:"transactions,omitempty"`
 }
 
-func (m *Transactions) Reset()                    { *m = Transactions{} }
-func (m *Transactions) String() string            { return proto.CompactTextString(m) }
-func (*Transactions) ProtoMessage()               {}
-func (*Transactions) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{10} }
+func (m *TransactionPullResponse) Reset()                    { *m = TransactionPullResponse{} }
+func (m *TransactionPullResponse) String() string            { return proto.CompactTextString(m) }
+func (*TransactionPullResponse) ProtoMessage()               {}
+func (*TransactionPullResponse) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{11} }
 
-func (m *Transactions) GetTransactions() [][]byte {
+func (m *TransactionPullResponse) GetTransactions() [][]byte {
 	if m != nil {
 		return m.Transactions
 	}
@@ -444,7 +669,7 @@ type Empty struct {
 func (m *Empty) Reset()                    { *m = Empty{} }
 func (m *Empty) String() string            { return proto.CompactTextString(m) }
 func (*Empty) ProtoMessage()               {}
-func (*Empty) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{11} }
+func (*Empty) Descriptor() ([]byte, []int) { return fileDescriptorRpc, []int{12} }
 
 func init() {
 	proto.RegisterType((*QueryRequest)(nil), "wavelet.QueryRequest")
@@ -454,10 +679,11 @@ func init() {
 	proto.RegisterType((*SyncInfo)(nil), "wavelet.SyncInfo")
 	proto.RegisterType((*SyncRequest)(nil), "wavelet.SyncRequest")
 	proto.RegisterType((*SyncResponse)(nil), "wavelet.SyncResponse")
-	proto.RegisterType((*DownloadTxRequest)(nil), "wavelet.DownloadTxRequest")
-	proto.RegisterType((*DownloadMissingTxRequest)(nil), "wavelet.DownloadMissingTxRequest")
-	proto.RegisterType((*DownloadTxResponse)(nil), "wavelet.DownloadTxResponse")
-	proto.RegisterType((*Transactions)(nil), "wavelet.Transactions")
+	proto.RegisterType((*TransactionsSyncRequest)(nil), "wavelet.TransactionsSyncRequest")
+	proto.RegisterType((*TransactionsSyncPart)(nil), "wavelet.TransactionsSyncPart")
+	proto.RegisterType((*TransactionsSyncResponse)(nil), "wavelet.TransactionsSyncResponse")
+	proto.RegisterType((*TransactionPullRequest)(nil), "wavelet.TransactionPullRequest")
+	proto.RegisterType((*TransactionPullResponse)(nil), "wavelet.TransactionPullResponse")
 	proto.RegisterType((*Empty)(nil), "wavelet.Empty")
 }
 
@@ -472,12 +698,11 @@ const _ = grpc.SupportPackageIsVersion4
 // Client API for Wavelet service
 
 type WaveletClient interface {
-	Gossip(ctx context.Context, opts ...grpc.CallOption) (Wavelet_GossipClient, error)
 	Query(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (*QueryResponse, error)
 	CheckOutOfSync(ctx context.Context, in *OutOfSyncRequest, opts ...grpc.CallOption) (*OutOfSyncResponse, error)
 	Sync(ctx context.Context, opts ...grpc.CallOption) (Wavelet_SyncClient, error)
-	DownloadTx(ctx context.Context, in *DownloadTxRequest, opts ...grpc.CallOption) (*DownloadTxResponse, error)
-	DownloadMissingTx(ctx context.Context, in *DownloadMissingTxRequest, opts ...grpc.CallOption) (*DownloadTxResponse, error)
+	PullTransactions(ctx context.Context, in *TransactionPullRequest, opts ...grpc.CallOption) (*TransactionPullResponse, error)
+	SyncTransactions(ctx context.Context, opts ...grpc.CallOption) (Wavelet_SyncTransactionsClient, error)
 }
 
 type waveletClient struct {
@@ -486,40 +711,6 @@ type waveletClient struct {
 
 func NewWaveletClient(cc *grpc.ClientConn) WaveletClient {
 	return &waveletClient{cc}
-}
-
-func (c *waveletClient) Gossip(ctx context.Context, opts ...grpc.CallOption) (Wavelet_GossipClient, error) {
-	stream, err := grpc.NewClientStream(ctx, &_Wavelet_serviceDesc.Streams[0], c.cc, "/wavelet.Wavelet/Gossip", opts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &waveletGossipClient{stream}
-	return x, nil
-}
-
-type Wavelet_GossipClient interface {
-	Send(*Transactions) error
-	CloseAndRecv() (*Empty, error)
-	grpc.ClientStream
-}
-
-type waveletGossipClient struct {
-	grpc.ClientStream
-}
-
-func (x *waveletGossipClient) Send(m *Transactions) error {
-	return x.ClientStream.SendMsg(m)
-}
-
-func (x *waveletGossipClient) CloseAndRecv() (*Empty, error) {
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	m := new(Empty)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
 }
 
 func (c *waveletClient) Query(ctx context.Context, in *QueryRequest, opts ...grpc.CallOption) (*QueryResponse, error) {
@@ -541,7 +732,7 @@ func (c *waveletClient) CheckOutOfSync(ctx context.Context, in *OutOfSyncRequest
 }
 
 func (c *waveletClient) Sync(ctx context.Context, opts ...grpc.CallOption) (Wavelet_SyncClient, error) {
-	stream, err := grpc.NewClientStream(ctx, &_Wavelet_serviceDesc.Streams[1], c.cc, "/wavelet.Wavelet/Sync", opts...)
+	stream, err := grpc.NewClientStream(ctx, &_Wavelet_serviceDesc.Streams[0], c.cc, "/wavelet.Wavelet/Sync", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -571,63 +762,58 @@ func (x *waveletSyncClient) Recv() (*SyncResponse, error) {
 	return m, nil
 }
 
-func (c *waveletClient) DownloadTx(ctx context.Context, in *DownloadTxRequest, opts ...grpc.CallOption) (*DownloadTxResponse, error) {
-	out := new(DownloadTxResponse)
-	err := grpc.Invoke(ctx, "/wavelet.Wavelet/DownloadTx", in, out, c.cc, opts...)
+func (c *waveletClient) PullTransactions(ctx context.Context, in *TransactionPullRequest, opts ...grpc.CallOption) (*TransactionPullResponse, error) {
+	out := new(TransactionPullResponse)
+	err := grpc.Invoke(ctx, "/wavelet.Wavelet/PullTransactions", in, out, c.cc, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *waveletClient) DownloadMissingTx(ctx context.Context, in *DownloadMissingTxRequest, opts ...grpc.CallOption) (*DownloadTxResponse, error) {
-	out := new(DownloadTxResponse)
-	err := grpc.Invoke(ctx, "/wavelet.Wavelet/DownloadMissingTx", in, out, c.cc, opts...)
+func (c *waveletClient) SyncTransactions(ctx context.Context, opts ...grpc.CallOption) (Wavelet_SyncTransactionsClient, error) {
+	stream, err := grpc.NewClientStream(ctx, &_Wavelet_serviceDesc.Streams[1], c.cc, "/wavelet.Wavelet/SyncTransactions", opts...)
 	if err != nil {
 		return nil, err
 	}
-	return out, nil
+	x := &waveletSyncTransactionsClient{stream}
+	return x, nil
+}
+
+type Wavelet_SyncTransactionsClient interface {
+	Send(*TransactionsSyncRequest) error
+	Recv() (*TransactionsSyncResponse, error)
+	grpc.ClientStream
+}
+
+type waveletSyncTransactionsClient struct {
+	grpc.ClientStream
+}
+
+func (x *waveletSyncTransactionsClient) Send(m *TransactionsSyncRequest) error {
+	return x.ClientStream.SendMsg(m)
+}
+
+func (x *waveletSyncTransactionsClient) Recv() (*TransactionsSyncResponse, error) {
+	m := new(TransactionsSyncResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
 }
 
 // Server API for Wavelet service
 
 type WaveletServer interface {
-	Gossip(Wavelet_GossipServer) error
 	Query(context.Context, *QueryRequest) (*QueryResponse, error)
 	CheckOutOfSync(context.Context, *OutOfSyncRequest) (*OutOfSyncResponse, error)
 	Sync(Wavelet_SyncServer) error
-	DownloadTx(context.Context, *DownloadTxRequest) (*DownloadTxResponse, error)
-	DownloadMissingTx(context.Context, *DownloadMissingTxRequest) (*DownloadTxResponse, error)
+	PullTransactions(context.Context, *TransactionPullRequest) (*TransactionPullResponse, error)
+	SyncTransactions(Wavelet_SyncTransactionsServer) error
 }
 
 func RegisterWaveletServer(s *grpc.Server, srv WaveletServer) {
 	s.RegisterService(&_Wavelet_serviceDesc, srv)
-}
-
-func _Wavelet_Gossip_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(WaveletServer).Gossip(&waveletGossipServer{stream})
-}
-
-type Wavelet_GossipServer interface {
-	SendAndClose(*Empty) error
-	Recv() (*Transactions, error)
-	grpc.ServerStream
-}
-
-type waveletGossipServer struct {
-	grpc.ServerStream
-}
-
-func (x *waveletGossipServer) SendAndClose(m *Empty) error {
-	return x.ServerStream.SendMsg(m)
-}
-
-func (x *waveletGossipServer) Recv() (*Transactions, error) {
-	m := new(Transactions)
-	if err := x.ServerStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
 }
 
 func _Wavelet_Query_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -692,40 +878,48 @@ func (x *waveletSyncServer) Recv() (*SyncRequest, error) {
 	return m, nil
 }
 
-func _Wavelet_DownloadTx_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DownloadTxRequest)
+func _Wavelet_PullTransactions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TransactionPullRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(WaveletServer).DownloadTx(ctx, in)
+		return srv.(WaveletServer).PullTransactions(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/wavelet.Wavelet/DownloadTx",
+		FullMethod: "/wavelet.Wavelet/PullTransactions",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(WaveletServer).DownloadTx(ctx, req.(*DownloadTxRequest))
+		return srv.(WaveletServer).PullTransactions(ctx, req.(*TransactionPullRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _Wavelet_DownloadMissingTx_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(DownloadMissingTxRequest)
-	if err := dec(in); err != nil {
+func _Wavelet_SyncTransactions_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(WaveletServer).SyncTransactions(&waveletSyncTransactionsServer{stream})
+}
+
+type Wavelet_SyncTransactionsServer interface {
+	Send(*TransactionsSyncResponse) error
+	Recv() (*TransactionsSyncRequest, error)
+	grpc.ServerStream
+}
+
+type waveletSyncTransactionsServer struct {
+	grpc.ServerStream
+}
+
+func (x *waveletSyncTransactionsServer) Send(m *TransactionsSyncResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+func (x *waveletSyncTransactionsServer) Recv() (*TransactionsSyncRequest, error) {
+	m := new(TransactionsSyncRequest)
+	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
-	if interceptor == nil {
-		return srv.(WaveletServer).DownloadMissingTx(ctx, in)
-	}
-	info := &grpc.UnaryServerInfo{
-		Server:     srv,
-		FullMethod: "/wavelet.Wavelet/DownloadMissingTx",
-	}
-	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(WaveletServer).DownloadMissingTx(ctx, req.(*DownloadMissingTxRequest))
-	}
-	return interceptor(ctx, in, info, handler)
+	return m, nil
 }
 
 var _Wavelet_serviceDesc = grpc.ServiceDesc{
@@ -741,23 +935,20 @@ var _Wavelet_serviceDesc = grpc.ServiceDesc{
 			Handler:    _Wavelet_CheckOutOfSync_Handler,
 		},
 		{
-			MethodName: "DownloadTx",
-			Handler:    _Wavelet_DownloadTx_Handler,
-		},
-		{
-			MethodName: "DownloadMissingTx",
-			Handler:    _Wavelet_DownloadMissingTx_Handler,
+			MethodName: "PullTransactions",
+			Handler:    _Wavelet_PullTransactions_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "Gossip",
-			Handler:       _Wavelet_Gossip_Handler,
+			StreamName:    "Sync",
+			Handler:       _Wavelet_Sync_Handler,
+			ServerStreams: true,
 			ClientStreams: true,
 		},
 		{
-			StreamName:    "Sync",
-			Handler:       _Wavelet_Sync_Handler,
+			StreamName:    "SyncTransactions",
+			Handler:       _Wavelet_SyncTransactions_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},
@@ -780,10 +971,16 @@ func (m *QueryRequest) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.RoundIndex != 0 {
+	if m.BlockIndex != 0 {
 		dAtA[i] = 0x8
 		i++
-		i = encodeVarintRpc(dAtA, i, uint64(m.RoundIndex))
+		i = encodeVarintRpc(dAtA, i, uint64(m.BlockIndex))
+	}
+	if len(m.CacheBlockId) > 0 {
+		dAtA[i] = 0x12
+		i++
+		i = encodeVarintRpc(dAtA, i, uint64(len(m.CacheBlockId)))
+		i += copy(dAtA[i:], m.CacheBlockId)
 	}
 	return i, nil
 }
@@ -803,11 +1000,21 @@ func (m *QueryResponse) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.Round) > 0 {
+	if len(m.Block) > 0 {
 		dAtA[i] = 0xa
 		i++
-		i = encodeVarintRpc(dAtA, i, uint64(len(m.Round)))
-		i += copy(dAtA[i:], m.Round)
+		i = encodeVarintRpc(dAtA, i, uint64(len(m.Block)))
+		i += copy(dAtA[i:], m.Block)
+	}
+	if m.CacheValid {
+		dAtA[i] = 0x10
+		i++
+		if m.CacheValid {
+			dAtA[i] = 1
+		} else {
+			dAtA[i] = 0
+		}
+		i++
 	}
 	return i, nil
 }
@@ -827,10 +1034,10 @@ func (m *OutOfSyncRequest) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if m.RoundIndex != 0 {
+	if m.BlockIndex != 0 {
 		dAtA[i] = 0x8
 		i++
-		i = encodeVarintRpc(dAtA, i, uint64(m.RoundIndex))
+		i = encodeVarintRpc(dAtA, i, uint64(m.BlockIndex))
 	}
 	return i, nil
 }
@@ -878,11 +1085,11 @@ func (m *SyncInfo) MarshalTo(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.LatestRound) > 0 {
+	if len(m.Block) > 0 {
 		dAtA[i] = 0xa
 		i++
-		i = encodeVarintRpc(dAtA, i, uint64(len(m.LatestRound)))
-		i += copy(dAtA[i:], m.LatestRound)
+		i = encodeVarintRpc(dAtA, i, uint64(len(m.Block)))
+		i += copy(dAtA[i:], m.Block)
 	}
 	if len(m.Checksums) > 0 {
 		for _, b := range m.Checksums {
@@ -920,11 +1127,11 @@ func (m *SyncRequest) MarshalTo(dAtA []byte) (int, error) {
 	return i, nil
 }
 
-func (m *SyncRequest_RoundId) MarshalTo(dAtA []byte) (int, error) {
+func (m *SyncRequest_BlockId) MarshalTo(dAtA []byte) (int, error) {
 	i := 0
 	dAtA[i] = 0x8
 	i++
-	i = encodeVarintRpc(dAtA, i, uint64(m.RoundId))
+	i = encodeVarintRpc(dAtA, i, uint64(m.BlockId))
 	return i, nil
 }
 func (m *SyncRequest_Checksum) MarshalTo(dAtA []byte) (int, error) {
@@ -986,7 +1193,7 @@ func (m *SyncResponse_Chunk) MarshalTo(dAtA []byte) (int, error) {
 	}
 	return i, nil
 }
-func (m *DownloadTxRequest) Marshal() (dAtA []byte, err error) {
+func (m *TransactionsSyncRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalTo(dAtA)
@@ -996,28 +1203,39 @@ func (m *DownloadTxRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *DownloadTxRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *TransactionsSyncRequest) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
 	_ = l
-	if len(m.SkipIds) > 0 {
-		for _, b := range m.SkipIds {
-			dAtA[i] = 0xa
-			i++
-			i = encodeVarintRpc(dAtA, i, uint64(len(b)))
-			i += copy(dAtA[i:], b)
+	if m.Data != nil {
+		nn4, err := m.Data.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
 		}
+		i += nn4
 	}
-	if m.Depth != 0 {
-		dAtA[i] = 0x10
+	return i, nil
+}
+
+func (m *TransactionsSyncRequest_Filter) MarshalTo(dAtA []byte) (int, error) {
+	i := 0
+	if m.Filter != nil {
+		dAtA[i] = 0xa
 		i++
-		i = encodeVarintRpc(dAtA, i, uint64(m.Depth))
+		i = encodeVarintRpc(dAtA, i, uint64(len(m.Filter)))
+		i += copy(dAtA[i:], m.Filter)
 	}
 	return i, nil
 }
-
-func (m *DownloadMissingTxRequest) Marshal() (dAtA []byte, err error) {
+func (m *TransactionsSyncRequest_ChunkSize) MarshalTo(dAtA []byte) (int, error) {
+	i := 0
+	dAtA[i] = 0x10
+	i++
+	i = encodeVarintRpc(dAtA, i, uint64(m.ChunkSize))
+	return i, nil
+}
+func (m *TransactionsSyncPart) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalTo(dAtA)
@@ -1027,33 +1245,7 @@ func (m *DownloadMissingTxRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *DownloadMissingTxRequest) MarshalTo(dAtA []byte) (int, error) {
-	var i int
-	_ = i
-	var l int
-	_ = l
-	if len(m.Ids) > 0 {
-		for _, b := range m.Ids {
-			dAtA[i] = 0xa
-			i++
-			i = encodeVarintRpc(dAtA, i, uint64(len(b)))
-			i += copy(dAtA[i:], b)
-		}
-	}
-	return i, nil
-}
-
-func (m *DownloadTxResponse) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalTo(dAtA)
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *DownloadTxResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *TransactionsSyncPart) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -1069,7 +1261,7 @@ func (m *DownloadTxResponse) MarshalTo(dAtA []byte) (int, error) {
 	return i, nil
 }
 
-func (m *Transactions) Marshal() (dAtA []byte, err error) {
+func (m *TransactionsSyncResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalTo(dAtA)
@@ -1079,7 +1271,79 @@ func (m *Transactions) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *Transactions) MarshalTo(dAtA []byte) (int, error) {
+func (m *TransactionsSyncResponse) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if m.Data != nil {
+		nn5, err := m.Data.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += nn5
+	}
+	return i, nil
+}
+
+func (m *TransactionsSyncResponse_TransactionsNum) MarshalTo(dAtA []byte) (int, error) {
+	i := 0
+	dAtA[i] = 0x8
+	i++
+	i = encodeVarintRpc(dAtA, i, uint64(m.TransactionsNum))
+	return i, nil
+}
+func (m *TransactionsSyncResponse_Transactions) MarshalTo(dAtA []byte) (int, error) {
+	i := 0
+	if m.Transactions != nil {
+		dAtA[i] = 0x12
+		i++
+		i = encodeVarintRpc(dAtA, i, uint64(m.Transactions.Size()))
+		n6, err := m.Transactions.MarshalTo(dAtA[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n6
+	}
+	return i, nil
+}
+func (m *TransactionPullRequest) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *TransactionPullRequest) MarshalTo(dAtA []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.TransactionIds) > 0 {
+		for _, b := range m.TransactionIds {
+			dAtA[i] = 0xa
+			i++
+			i = encodeVarintRpc(dAtA, i, uint64(len(b)))
+			i += copy(dAtA[i:], b)
+		}
+	}
+	return i, nil
+}
+
+func (m *TransactionPullResponse) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalTo(dAtA)
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *TransactionPullResponse) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -1143,8 +1407,12 @@ func encodeVarintRpc(dAtA []byte, offset int, v uint64) int {
 func (m *QueryRequest) Size() (n int) {
 	var l int
 	_ = l
-	if m.RoundIndex != 0 {
-		n += 1 + sovRpc(uint64(m.RoundIndex))
+	if m.BlockIndex != 0 {
+		n += 1 + sovRpc(uint64(m.BlockIndex))
+	}
+	l = len(m.CacheBlockId)
+	if l > 0 {
+		n += 1 + l + sovRpc(uint64(l))
 	}
 	return n
 }
@@ -1152,9 +1420,12 @@ func (m *QueryRequest) Size() (n int) {
 func (m *QueryResponse) Size() (n int) {
 	var l int
 	_ = l
-	l = len(m.Round)
+	l = len(m.Block)
 	if l > 0 {
 		n += 1 + l + sovRpc(uint64(l))
+	}
+	if m.CacheValid {
+		n += 2
 	}
 	return n
 }
@@ -1162,8 +1433,8 @@ func (m *QueryResponse) Size() (n int) {
 func (m *OutOfSyncRequest) Size() (n int) {
 	var l int
 	_ = l
-	if m.RoundIndex != 0 {
-		n += 1 + sovRpc(uint64(m.RoundIndex))
+	if m.BlockIndex != 0 {
+		n += 1 + sovRpc(uint64(m.BlockIndex))
 	}
 	return n
 }
@@ -1180,7 +1451,7 @@ func (m *OutOfSyncResponse) Size() (n int) {
 func (m *SyncInfo) Size() (n int) {
 	var l int
 	_ = l
-	l = len(m.LatestRound)
+	l = len(m.Block)
 	if l > 0 {
 		n += 1 + l + sovRpc(uint64(l))
 	}
@@ -1202,10 +1473,10 @@ func (m *SyncRequest) Size() (n int) {
 	return n
 }
 
-func (m *SyncRequest_RoundId) Size() (n int) {
+func (m *SyncRequest_BlockId) Size() (n int) {
 	var l int
 	_ = l
-	n += 1 + sovRpc(uint64(m.RoundId))
+	n += 1 + sovRpc(uint64(m.BlockId))
 	return n
 }
 func (m *SyncRequest_Checksum) Size() (n int) {
@@ -1244,34 +1515,31 @@ func (m *SyncResponse_Chunk) Size() (n int) {
 	}
 	return n
 }
-func (m *DownloadTxRequest) Size() (n int) {
+func (m *TransactionsSyncRequest) Size() (n int) {
 	var l int
 	_ = l
-	if len(m.SkipIds) > 0 {
-		for _, b := range m.SkipIds {
-			l = len(b)
-			n += 1 + l + sovRpc(uint64(l))
-		}
-	}
-	if m.Depth != 0 {
-		n += 1 + sovRpc(uint64(m.Depth))
+	if m.Data != nil {
+		n += m.Data.Size()
 	}
 	return n
 }
 
-func (m *DownloadMissingTxRequest) Size() (n int) {
+func (m *TransactionsSyncRequest_Filter) Size() (n int) {
 	var l int
 	_ = l
-	if len(m.Ids) > 0 {
-		for _, b := range m.Ids {
-			l = len(b)
-			n += 1 + l + sovRpc(uint64(l))
-		}
+	if m.Filter != nil {
+		l = len(m.Filter)
+		n += 1 + l + sovRpc(uint64(l))
 	}
 	return n
 }
-
-func (m *DownloadTxResponse) Size() (n int) {
+func (m *TransactionsSyncRequest_ChunkSize) Size() (n int) {
+	var l int
+	_ = l
+	n += 1 + sovRpc(uint64(m.ChunkSize))
+	return n
+}
+func (m *TransactionsSyncPart) Size() (n int) {
 	var l int
 	_ = l
 	if len(m.Transactions) > 0 {
@@ -1283,7 +1551,43 @@ func (m *DownloadTxResponse) Size() (n int) {
 	return n
 }
 
-func (m *Transactions) Size() (n int) {
+func (m *TransactionsSyncResponse) Size() (n int) {
+	var l int
+	_ = l
+	if m.Data != nil {
+		n += m.Data.Size()
+	}
+	return n
+}
+
+func (m *TransactionsSyncResponse_TransactionsNum) Size() (n int) {
+	var l int
+	_ = l
+	n += 1 + sovRpc(uint64(m.TransactionsNum))
+	return n
+}
+func (m *TransactionsSyncResponse_Transactions) Size() (n int) {
+	var l int
+	_ = l
+	if m.Transactions != nil {
+		l = m.Transactions.Size()
+		n += 1 + l + sovRpc(uint64(l))
+	}
+	return n
+}
+func (m *TransactionPullRequest) Size() (n int) {
+	var l int
+	_ = l
+	if len(m.TransactionIds) > 0 {
+		for _, b := range m.TransactionIds {
+			l = len(b)
+			n += 1 + l + sovRpc(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *TransactionPullResponse) Size() (n int) {
 	var l int
 	_ = l
 	if len(m.Transactions) > 0 {
@@ -1345,9 +1649,9 @@ func (m *QueryRequest) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RoundIndex", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field BlockIndex", wireType)
 			}
-			m.RoundIndex = 0
+			m.BlockIndex = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowRpc
@@ -1357,11 +1661,42 @@ func (m *QueryRequest) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.RoundIndex |= (uint64(b) & 0x7F) << shift
+				m.BlockIndex |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CacheBlockId", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.CacheBlockId = append(m.CacheBlockId[:0], dAtA[iNdEx:postIndex]...)
+			if m.CacheBlockId == nil {
+				m.CacheBlockId = []byte{}
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(dAtA[iNdEx:])
@@ -1414,7 +1749,7 @@ func (m *QueryResponse) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Round", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Block", wireType)
 			}
 			var byteLen int
 			for shift := uint(0); ; shift += 7 {
@@ -1438,11 +1773,31 @@ func (m *QueryResponse) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Round = append(m.Round[:0], dAtA[iNdEx:postIndex]...)
-			if m.Round == nil {
-				m.Round = []byte{}
+			m.Block = append(m.Block[:0], dAtA[iNdEx:postIndex]...)
+			if m.Block == nil {
+				m.Block = []byte{}
 			}
 			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field CacheValid", wireType)
+			}
+			var v int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.CacheValid = bool(v != 0)
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(dAtA[iNdEx:])
@@ -1495,9 +1850,9 @@ func (m *OutOfSyncRequest) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RoundIndex", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field BlockIndex", wireType)
 			}
-			m.RoundIndex = 0
+			m.BlockIndex = 0
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowRpc
@@ -1507,7 +1862,7 @@ func (m *OutOfSyncRequest) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.RoundIndex |= (uint64(b) & 0x7F) << shift
+				m.BlockIndex |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
@@ -1634,7 +1989,7 @@ func (m *SyncInfo) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field LatestRound", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Block", wireType)
 			}
 			var byteLen int
 			for shift := uint(0); ; shift += 7 {
@@ -1658,9 +2013,9 @@ func (m *SyncInfo) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.LatestRound = append(m.LatestRound[:0], dAtA[iNdEx:postIndex]...)
-			if m.LatestRound == nil {
-				m.LatestRound = []byte{}
+			m.Block = append(m.Block[:0], dAtA[iNdEx:postIndex]...)
+			if m.Block == nil {
+				m.Block = []byte{}
 			}
 			iNdEx = postIndex
 		case 2:
@@ -1744,7 +2099,7 @@ func (m *SyncRequest) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field RoundId", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field BlockId", wireType)
 			}
 			var v uint64
 			for shift := uint(0); ; shift += 7 {
@@ -1761,7 +2116,7 @@ func (m *SyncRequest) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-			m.Data = &SyncRequest_RoundId{v}
+			m.Data = &SyncRequest_BlockId{v}
 		case 2:
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field Checksum", wireType)
@@ -1925,7 +2280,7 @@ func (m *SyncResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *DownloadTxRequest) Unmarshal(dAtA []byte) error {
+func (m *TransactionsSyncRequest) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1948,15 +2303,15 @@ func (m *DownloadTxRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: DownloadTxRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: TransactionsSyncRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DownloadTxRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: TransactionsSyncRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field SkipIds", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field Filter", wireType)
 			}
 			var byteLen int
 			for shift := uint(0); ; shift += 7 {
@@ -1980,14 +2335,15 @@ func (m *DownloadTxRequest) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.SkipIds = append(m.SkipIds, make([]byte, postIndex-iNdEx))
-			copy(m.SkipIds[len(m.SkipIds)-1], dAtA[iNdEx:postIndex])
+			v := make([]byte, postIndex-iNdEx)
+			copy(v, dAtA[iNdEx:postIndex])
+			m.Data = &TransactionsSyncRequest_Filter{v}
 			iNdEx = postIndex
 		case 2:
 			if wireType != 0 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Depth", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field ChunkSize", wireType)
 			}
-			m.Depth = 0
+			var v uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowRpc
@@ -1997,11 +2353,12 @@ func (m *DownloadTxRequest) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				m.Depth |= (uint64(b) & 0x7F) << shift
+				v |= (uint64(b) & 0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
+			m.Data = &TransactionsSyncRequest_ChunkSize{v}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipRpc(dAtA[iNdEx:])
@@ -2023,7 +2380,7 @@ func (m *DownloadTxRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *DownloadMissingTxRequest) Unmarshal(dAtA []byte) error {
+func (m *TransactionsSyncPart) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -2046,89 +2403,10 @@ func (m *DownloadMissingTxRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: DownloadMissingTxRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: TransactionsSyncPart: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DownloadMissingTxRequest: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Ids", wireType)
-			}
-			var byteLen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowRpc
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				byteLen |= (int(b) & 0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if byteLen < 0 {
-				return ErrInvalidLengthRpc
-			}
-			postIndex := iNdEx + byteLen
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Ids = append(m.Ids, make([]byte, postIndex-iNdEx))
-			copy(m.Ids[len(m.Ids)-1], dAtA[iNdEx:postIndex])
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipRpc(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthRpc
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
-func (m *DownloadTxResponse) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowRpc
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= (uint64(b) & 0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: DownloadTxResponse: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: DownloadTxResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: TransactionsSyncPart: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -2181,7 +2459,7 @@ func (m *DownloadTxResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *Transactions) Unmarshal(dAtA []byte) error {
+func (m *TransactionsSyncResponse) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -2204,10 +2482,191 @@ func (m *Transactions) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: Transactions: wiretype end group for non-group")
+			return fmt.Errorf("proto: TransactionsSyncResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Transactions: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: TransactionsSyncResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TransactionsNum", wireType)
+			}
+			var v uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				v |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			m.Data = &TransactionsSyncResponse_TransactionsNum{v}
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Transactions", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			v := &TransactionsSyncPart{}
+			if err := v.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			m.Data = &TransactionsSyncResponse_Transactions{v}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipRpc(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthRpc
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *TransactionPullRequest) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowRpc
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: TransactionPullRequest: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: TransactionPullRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field TransactionIds", wireType)
+			}
+			var byteLen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowRpc
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				byteLen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if byteLen < 0 {
+				return ErrInvalidLengthRpc
+			}
+			postIndex := iNdEx + byteLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.TransactionIds = append(m.TransactionIds, make([]byte, postIndex-iNdEx))
+			copy(m.TransactionIds[len(m.TransactionIds)-1], dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipRpc(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthRpc
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *TransactionPullResponse) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowRpc
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: TransactionPullResponse: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: TransactionPullResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -2418,39 +2877,43 @@ var (
 func init() { proto.RegisterFile("src/rpc.proto", fileDescriptorRpc) }
 
 var fileDescriptorRpc = []byte{
-	// 539 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x94, 0xdf, 0x6e, 0xd3, 0x30,
-	0x14, 0xc6, 0x93, 0xf5, 0xef, 0x4e, 0xb3, 0xa9, 0xb5, 0xb6, 0xa9, 0xeb, 0x50, 0xd9, 0x2c, 0x21,
-	0x55, 0x02, 0x75, 0xa8, 0xbd, 0x19, 0xb7, 0xa3, 0x68, 0xad, 0x10, 0x1a, 0x98, 0x21, 0x2e, 0xb8,
-	0x88, 0x42, 0xe2, 0xd2, 0xa8, 0x9d, 0x1d, 0x62, 0x87, 0xad, 0x6f, 0xc1, 0x13, 0xf0, 0x3c, 0x5c,
-	0xf2, 0x08, 0xa8, 0xbc, 0x08, 0x8a, 0x93, 0x38, 0x69, 0x37, 0x69, 0xbb, 0x6a, 0xcf, 0xe7, 0xf3,
-	0xfd, 0x7c, 0x8e, 0xcf, 0x51, 0x60, 0x47, 0x84, 0xee, 0x69, 0x18, 0xb8, 0xfd, 0x20, 0xe4, 0x92,
-	0xa3, 0xda, 0x8d, 0xf3, 0x83, 0x2e, 0xa8, 0xc4, 0xa7, 0x60, 0x7d, 0x88, 0x68, 0xb8, 0x24, 0xf4,
-	0x7b, 0x44, 0x85, 0x44, 0x4f, 0xa1, 0x11, 0xf2, 0x88, 0x79, 0xb6, 0xcf, 0x3c, 0x7a, 0xdb, 0x36,
-	0x8f, 0xcd, 0x5e, 0x99, 0x80, 0x92, 0x26, 0xb1, 0x82, 0x9f, 0xc1, 0x4e, 0x6a, 0x10, 0x01, 0x67,
-	0x82, 0xa2, 0x3d, 0xa8, 0xa8, 0x63, 0x95, 0x6b, 0x91, 0x24, 0xc0, 0x43, 0x68, 0x5e, 0x46, 0xf2,
-	0x72, 0xfa, 0x71, 0xc9, 0xdc, 0x47, 0xb3, 0x87, 0xd0, 0x2a, 0x98, 0x52, 0x7e, 0x17, 0x1a, 0x3c,
-	0x92, 0x36, 0x9f, 0xda, 0x62, 0xc9, 0x5c, 0xe5, 0xaa, 0x93, 0x6d, 0x9e, 0xe5, 0xe1, 0xb7, 0x50,
-	0x8f, 0x7f, 0x27, 0x6c, 0xca, 0xd1, 0x09, 0x58, 0x0b, 0x47, 0x52, 0x21, 0xed, 0x62, 0x49, 0x8d,
-	0x44, 0x23, 0xb1, 0x84, 0x9e, 0xc0, 0xb6, 0x3b, 0xa3, 0xee, 0x5c, 0x44, 0xd7, 0xa2, 0xbd, 0x75,
-	0x5c, 0xea, 0x59, 0x24, 0x17, 0xf0, 0x7b, 0x68, 0x14, 0x2b, 0x3e, 0x82, 0x7a, 0x5a, 0x71, 0xc2,
-	0x2a, 0x8f, 0x0d, 0x52, 0x4b, 0x0a, 0x8e, 0x49, 0xf5, 0xcc, 0xd8, 0xde, 0x8a, 0x2f, 0x1a, 0x1b,
-	0x44, 0x2b, 0xe7, 0x55, 0x28, 0x8f, 0x1c, 0xe9, 0xe0, 0x2f, 0x60, 0xad, 0xb5, 0xf3, 0x1c, 0xaa,
-	0x33, 0xea, 0x78, 0x34, 0x54, 0xc0, 0xc6, 0xa0, 0xd5, 0x4f, 0x47, 0xd1, 0xcf, 0xba, 0x18, 0x1b,
-	0x24, 0x4d, 0x41, 0x07, 0x50, 0x71, 0x67, 0x11, 0x9b, 0x6b, 0x7e, 0x12, 0x6a, 0xf8, 0x08, 0x5a,
-	0x23, 0x7e, 0xc3, 0x16, 0xdc, 0xf1, 0xae, 0x6e, 0xb3, 0xa2, 0x0f, 0xa1, 0x2e, 0xe6, 0x7e, 0x60,
-	0xfb, 0x9e, 0x68, 0x9b, 0xaa, 0xc1, 0x5a, 0x1c, 0x4f, 0x3c, 0x11, 0xcf, 0xca, 0xa3, 0x81, 0x9c,
-	0x29, 0x5e, 0x99, 0x24, 0x01, 0x7e, 0x01, 0xed, 0x8c, 0xf2, 0xce, 0x17, 0xc2, 0x67, 0xdf, 0x72,
-	0x58, 0x13, 0x4a, 0x39, 0x27, 0xfe, 0x8b, 0xcf, 0x00, 0x15, 0xef, 0x4c, 0xdb, 0xc2, 0x60, 0xc9,
-	0xd0, 0x61, 0xc2, 0x71, 0xa5, 0xcf, 0x59, 0x66, 0x58, 0xd3, 0xf0, 0x00, 0xac, 0xab, 0x42, 0xfc,
-	0x28, 0x4f, 0x0d, 0x2a, 0x6f, 0xae, 0x03, 0xb9, 0x1c, 0xfc, 0x2a, 0x41, 0xed, 0x73, 0xf2, 0x52,
-	0x68, 0x08, 0xd5, 0x0b, 0x2e, 0x84, 0x1f, 0xa0, 0x7d, 0xfd, 0x7a, 0x45, 0x72, 0x67, 0x57, 0xcb,
-	0xca, 0x8c, 0x8d, 0x9e, 0x89, 0xce, 0xa0, 0xa2, 0x16, 0xb7, 0xe0, 0x29, 0x6e, 0x7e, 0xe7, 0x60,
-	0x53, 0x4e, 0x3a, 0xc3, 0x06, 0x9a, 0xc0, 0xee, 0xeb, 0x78, 0xac, 0x7a, 0x37, 0xd1, 0xa1, 0xce,
-	0xdd, 0x5c, 0xf2, 0x4e, 0xe7, 0xbe, 0x23, 0x8d, 0x7a, 0x05, 0x65, 0x05, 0xd8, 0x5b, 0x9b, 0x7a,
-	0xe6, 0xdd, 0xdf, 0x50, 0x33, 0x5b, 0xcf, 0x7c, 0x69, 0xa2, 0x0b, 0x80, 0xfc, 0xdd, 0x51, 0x7e,
-	0xcd, 0x9d, 0x05, 0xe8, 0x1c, 0xdd, 0x7b, 0xa6, 0x6b, 0xf8, 0x94, 0x2f, 0x8d, 0x1e, 0x37, 0x3a,
-	0xb9, 0xe3, 0xd9, 0x5c, 0x85, 0x07, 0xb0, 0xe7, 0xcd, 0xdf, 0xab, 0xae, 0xf9, 0x67, 0xd5, 0x35,
-	0xff, 0xae, 0xba, 0xe6, 0xcf, 0x7f, 0x5d, 0xe3, 0x6b, 0x55, 0x7d, 0x6b, 0x86, 0xff, 0x03, 0x00,
-	0x00, 0xff, 0xff, 0x42, 0x34, 0xae, 0xcf, 0x7c, 0x04, 0x00, 0x00,
+	// 599 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x54, 0x5d, 0x8f, 0xd2, 0x40,
+	0x14, 0x6d, 0x77, 0xf9, 0xbc, 0x74, 0x91, 0x9d, 0xb0, 0x58, 0x71, 0x05, 0x6c, 0x4c, 0x24, 0x31,
+	0x41, 0xb3, 0xbc, 0xa8, 0x89, 0x26, 0xb2, 0x6a, 0xe0, 0xc5, 0xc5, 0xae, 0xba, 0x0f, 0x6a, 0x9a,
+	0x6e, 0x3b, 0x84, 0x86, 0xd2, 0x62, 0x67, 0xba, 0xca, 0xbe, 0xf9, 0x0f, 0x7c, 0xf0, 0x47, 0xf9,
+	0xe8, 0x4f, 0x30, 0xf8, 0x47, 0x4c, 0xa7, 0xed, 0x38, 0x45, 0x30, 0xfb, 0x44, 0xe6, 0xf4, 0xdc,
+	0x73, 0xcf, 0x3d, 0x33, 0x17, 0xd8, 0x23, 0x81, 0x75, 0x3f, 0x58, 0x58, 0xbd, 0x45, 0xe0, 0x53,
+	0x1f, 0x15, 0x3f, 0x9b, 0x17, 0xd8, 0xc5, 0x54, 0x7b, 0x0b, 0xca, 0xeb, 0x10, 0x07, 0x4b, 0x1d,
+	0x7f, 0x0a, 0x31, 0xa1, 0xa8, 0x0d, 0x95, 0x73, 0xd7, 0xb7, 0x66, 0x86, 0xe3, 0xd9, 0xf8, 0x8b,
+	0x2a, 0x77, 0xe4, 0x6e, 0x4e, 0x07, 0x06, 0x8d, 0x22, 0x04, 0xdd, 0x81, 0xaa, 0x65, 0x5a, 0x53,
+	0x6c, 0x24, 0x34, 0x5b, 0xdd, 0xe9, 0xc8, 0x5d, 0x45, 0x57, 0x18, 0x3a, 0x60, 0x44, 0x5b, 0x7b,
+	0x09, 0x7b, 0x89, 0x2c, 0x59, 0xf8, 0x1e, 0xc1, 0xa8, 0x0e, 0x79, 0x56, 0xc0, 0x14, 0x15, 0x3d,
+	0x3e, 0x44, 0xdd, 0x62, 0xb1, 0x0b, 0xd3, 0x4d, 0x94, 0x4a, 0x3a, 0x30, 0xe8, 0x5d, 0x84, 0x68,
+	0x7d, 0xa8, 0x9d, 0x84, 0xf4, 0x64, 0x72, 0xba, 0xf4, 0xac, 0xab, 0x5a, 0xd4, 0xfa, 0xb0, 0x2f,
+	0x14, 0x25, 0x06, 0x5a, 0x50, 0xf1, 0x43, 0x6a, 0xf8, 0x13, 0x83, 0x2c, 0x3d, 0x8b, 0x55, 0x95,
+	0xf4, 0xb2, 0x9f, 0xf2, 0xb4, 0xa7, 0x50, 0x8a, 0x7e, 0x47, 0xde, 0xc4, 0xdf, 0x62, 0xf6, 0x10,
+	0xca, 0xd6, 0x14, 0x5b, 0x33, 0x12, 0xce, 0x89, 0xba, 0xd3, 0xd9, 0xed, 0x2a, 0xfa, 0x5f, 0x40,
+	0x1b, 0x43, 0x45, 0x34, 0x79, 0x13, 0x4a, 0x3c, 0x20, 0xe6, 0x70, 0x28, 0xe9, 0xc5, 0xd8, 0xa3,
+	0x8d, 0x0e, 0xa1, 0x94, 0x16, 0xc6, 0xe9, 0x0d, 0x25, 0x9d, 0x23, 0x83, 0x02, 0xe4, 0x9e, 0x9b,
+	0xd4, 0xd4, 0xde, 0x83, 0x92, 0x99, 0xe0, 0x1e, 0x14, 0xa6, 0xd8, 0xb4, 0x71, 0xc0, 0x04, 0x2b,
+	0x47, 0xfb, 0xbd, 0xe4, 0x12, 0x7b, 0xa9, 0xf1, 0xa1, 0xa4, 0x27, 0x14, 0xd4, 0x80, 0xbc, 0x35,
+	0x0d, 0xbd, 0x19, 0xd7, 0x8f, 0x8f, 0x5c, 0xfc, 0x03, 0x5c, 0x7f, 0x13, 0x98, 0x1e, 0x31, 0x2d,
+	0xea, 0xf8, 0x1e, 0x11, 0xad, 0xab, 0x50, 0x98, 0x38, 0x2e, 0x4d, 0xfa, 0x44, 0xb5, 0xc9, 0x19,
+	0xb5, 0x01, 0x98, 0x8a, 0x41, 0x9c, 0x4b, 0xcc, 0x94, 0xa3, 0xb1, 0xca, 0x0c, 0x3b, 0x75, 0x2e,
+	0x31, 0x57, 0x7f, 0x0c, 0xf5, 0x75, 0xf5, 0xb1, 0x19, 0x50, 0xa4, 0x81, 0x42, 0x05, 0x5c, 0x95,
+	0x59, 0x8a, 0x19, 0x4c, 0xfb, 0x2e, 0x83, 0xfa, 0xaf, 0x35, 0x9e, 0x41, 0x4d, 0x24, 0x1b, 0x5e,
+	0x38, 0xe7, 0xf1, 0x5e, 0x13, 0xbf, 0xbc, 0x0a, 0xe7, 0xe8, 0x78, 0xad, 0xdb, 0x0e, 0x8b, 0xed,
+	0x16, 0x8f, 0x6d, 0x93, 0xc5, 0xa1, 0x94, 0xb5, 0xc3, 0x47, 0x7a, 0x06, 0x0d, 0x81, 0x3f, 0x0e,
+	0x5d, 0x37, 0xcd, 0xeb, 0x2e, 0x88, 0x9d, 0x0d, 0xc7, 0x4e, 0xe7, 0xaa, 0x0a, 0xf0, 0xc8, 0x26,
+	0xda, 0x93, 0x4c, 0xe6, 0xb1, 0x44, 0x32, 0xd7, 0x55, 0x82, 0x29, 0x42, 0xfe, 0xc5, 0x7c, 0x41,
+	0x97, 0x47, 0x5f, 0x77, 0xa1, 0x78, 0x16, 0xcf, 0x80, 0x1e, 0x42, 0x9e, 0x2d, 0x1a, 0x3a, 0xe0,
+	0x63, 0x89, 0xfb, 0xdc, 0x6c, 0xac, 0xc3, 0x71, 0x43, 0x4d, 0x42, 0x23, 0xa8, 0x1e, 0x47, 0x4f,
+	0x8e, 0xaf, 0x0a, 0xba, 0xc1, 0xb9, 0xeb, 0x3b, 0xd7, 0x6c, 0x6e, 0xfa, 0xc4, 0xa5, 0x1e, 0x41,
+	0x8e, 0x09, 0xd4, 0x33, 0x2f, 0x32, 0xad, 0x3d, 0x58, 0x43, 0xd3, 0xb2, 0xae, 0xfc, 0x40, 0x46,
+	0x67, 0x50, 0x8b, 0x82, 0x10, 0xaf, 0x02, 0xb5, 0x37, 0xdd, 0x90, 0x90, 0x78, 0xb3, 0xb3, 0x9d,
+	0xc0, 0x3d, 0x7d, 0x84, 0x5a, 0xd4, 0x2e, 0x23, 0xdc, 0xd9, 0x7a, 0xf5, 0xa9, 0xf2, 0xed, 0xff,
+	0x30, 0x44, 0xdf, 0x83, 0xda, 0x8f, 0x55, 0x4b, 0xfe, 0xb9, 0x6a, 0xc9, 0xbf, 0x56, 0x2d, 0xf9,
+	0xdb, 0xef, 0x96, 0x74, 0x5e, 0x60, 0xff, 0xac, 0xfd, 0x3f, 0x01, 0x00, 0x00, 0xff, 0xff, 0x2a,
+	0x19, 0x66, 0x74, 0x6a, 0x05, 0x00, 0x00,
 }
