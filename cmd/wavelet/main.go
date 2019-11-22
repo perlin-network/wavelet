@@ -64,8 +64,7 @@ func main() {
 }
 
 func Run(args []string, stdin io.ReadCloser, stdout io.Writer, disableGC bool) {
-	log.SetWriter(log.LoggerWavelet, log.NewConsoleWriter(
-		stdout, log.FilterFor(log.ModuleNode)))
+	log.SetWriter(log.LoggerWavelet, log.NewConsoleWriter(stdout, log.FilterFor(log.ModuleNode)))
 
 	app := cli.NewApp()
 

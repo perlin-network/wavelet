@@ -27,13 +27,26 @@ import (
 type multiWriter struct {
 	sync.RWMutex
 	writers map[string]io.Writer
+	writersModules map[string]map[string]struct{}
 }
 
-func (t *multiWriter) SetWriter(key string, writer io.Writer) {
+func (t *multiWriter) SetWriter(key string, writer io.Writer, modules ...string) {
 	t.Lock()
 	defer t.Unlock()
 
 	t.writers[key] = writer
+
+	if len(modules) == 0 {
+		return
+	}
+
+	if t.writersModules[key] == nil {
+		t.writersModules[key] = make(map[string]struct{})
+	}
+
+	for i := range modules {
+		t.writersModules[key][modules[i]] = struct{}{}
+	}
 }
 
 func (t *multiWriter) Write(p []byte) (n int, err error) {
@@ -41,14 +54,43 @@ func (t *multiWriter) Write(p []byte) (n int, err error) {
 	defer t.RUnlock()
 
 	for _, w := range t.writers {
-		n, err = w.Write(p)
+		n, err = write(w, p)
 		if err != nil {
 			return
 		}
-		if n != len(p) {
-			err = io.ErrShortWrite
+	}
+	return len(p), nil
+}
+
+// WriteFilter writes to only writers that have filter for the module.
+func (t *multiWriter) WriteFilter(p []byte, module string) (n int, err error) {
+	t.RLock()
+	defer t.RUnlock()
+
+	for k, w := range t.writers {
+		writerModules, _ := t.writersModules[k]
+		if writerModules != nil {
+			if _, exist := writerModules[module]; !exist {
+				continue
+			}
+		}
+
+		n, err = write(w, p)
+		if err != nil {
 			return
 		}
+	}
+	return len(p), nil
+}
+
+func write(w io.Writer, p []byte) (n int, err error) {
+	n, err = w.Write(p)
+	if err != nil {
+		return
+	}
+	if n != len(p) {
+		err = io.ErrShortWrite
+		return
 	}
 	return len(p), nil
 }

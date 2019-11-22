@@ -769,7 +769,7 @@ func (g *Gateway) registerWebsocketSink(rawURL string, factory *debounce.Factory
 	}
 
 	sink := &sink{
-		ops:     make(chan func(map[*client]struct{})),
+		ops: make(chan func(map[*client]struct{})),
 		filters: filters,
 		join:    make(chan *client),
 		leave:   make(chan *client),
