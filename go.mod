@@ -4,6 +4,8 @@ go 1.12
 
 replace github.com/go-interpreter/wagon => github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39
 
+replace github.com/dgraph-io/badger/v2 => github.com/perlin-network/badger/v2 v2.0.1
+
 require (
 	github.com/armon/go-radix v1.0.0
 	github.com/benpye/readline v0.0.0-20181117181432-5ff4ccac79cf

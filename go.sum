@@ -98,6 +98,8 @@ github.com/onsi/ginkgo v1.7.0/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+W
 github.com/onsi/gomega v1.4.3 h1:RE1xgDvH7imwFD45h+u2SgIfERHlS2yNG4DObb5BSKU=
 github.com/onsi/gomega v1.4.3/go.mod h1:ex+gbHU/CVuBBDIJjb2X0qEXbFg53c61hWP/1CpauHY=
 github.com/pelletier/go-toml v1.2.0/go.mod h1:5z9KED0ma1S8pY6P1sdut58dfprrGBbd/94hg7ilaic=
+github.com/perlin-network/badger/v2 v2.0.1 h1:TObtZsE+UKwJj1O+35cDQfWr8RKFdhqnqJYkVMjH41U=
+github.com/perlin-network/badger/v2 v2.0.1/go.mod h1:Lawe2+hkeB05vLC/XXOSdzeWKvs92a9D3vSdf+9HxhY=
 github.com/perlin-network/life v0.0.0-20190723115110-3091ed0c1be8 h1:wFDze+PYm6otisX/y9CEm6CLPCvN+8+TseswoyT5O50=
 github.com/perlin-network/life v0.0.0-20190723115110-3091ed0c1be8/go.mod h1:z/EH0mO9zbeuTT5NX4u2VqVSG8y2vDQXz6iDKxikW2I=
 github.com/perlin-network/noise v1.1.1-0.20191113101947-c8dc081eafa7 h1:PYf5SuHjBeJwEjLgJ+YsB+eSf24TSzksP/HE+i4TGs4=
