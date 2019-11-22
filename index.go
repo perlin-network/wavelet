@@ -63,6 +63,7 @@ func (m *Indexer) Find(query string, max int) (results []string) {
 		}
 
 		results = append(results, a)
+
 		return true
 	}
 

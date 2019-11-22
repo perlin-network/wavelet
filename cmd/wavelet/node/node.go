@@ -256,5 +256,6 @@ func (w *Wavelet) Close() error {
 	w.Gateway.Shutdown()
 	w.Server.Stop()
 	w.Ledger.Close()
+
 	return w.db.Close()
 }

@@ -31,6 +31,7 @@ type badgerWriteBatch struct {
 func (b *badgerWriteBatch) Put(key, value []byte) error {
 	k := append([]byte{}, key...)
 	v := append([]byte{}, value...)
+
 	return b.batch.Set(k, v)
 }
 
@@ -69,6 +70,7 @@ func (b *badgerKV) Close() error {
 
 func (b *badgerKV) Get(key []byte) ([]byte, error) {
 	var value []byte
+
 	err := b.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get(key)
 		if err != nil {

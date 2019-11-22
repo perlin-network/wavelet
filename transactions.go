@@ -60,14 +60,10 @@ func (t *Transactions) BatchAdd(block BlockID, transactions ...Transaction) {
 
 func (t *Transactions) add(block BlockID, tx Transaction) {
 	if t.height >= tx.Block+uint64(conf.GetPruningLimit()) {
-		fmt.Println(">>>>>>>>>>>> why??????", t.height, tx.Block)
 		return
 	}
 
 	if _, exists := t.buffer[tx.ID]; exists {
-		if _, ok := t.missing[tx.ID]; ok {
-			fmt.Println(">>>>>>>>>>>> WHOAAAAAAAAAAAAAA")
-		}
 		return
 	}
 
@@ -93,6 +89,7 @@ func (t *Transactions) BatchMarkMissing(ids ...TransactionID) bool {
 	defer t.Unlock()
 
 	var missing bool
+
 	for _, id := range ids {
 		if t.markMissing(id) {
 			missing = true
@@ -167,6 +164,7 @@ func (t *Transactions) ReshufflePending(next Block) []TransactionID {
 	// Go through the entire transactions index and prune away
 	// any transactions that are too old.
 	pruned := []TransactionID{}
+
 	for _, tx := range t.buffer {
 		if next.Index >= tx.Block+uint64(conf.GetPruningLimit()) {
 			delete(t.buffer, tx.ID)
@@ -198,6 +196,7 @@ func (t *Transactions) Has(id TransactionID) bool {
 	defer t.RUnlock()
 
 	_, exists := t.buffer[id]
+
 	return exists
 }
 

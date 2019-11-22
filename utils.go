@@ -34,6 +34,7 @@ func SelectPeers(peers []skademlia.ClosestPeer, amount int) ([]skademlia.Closest
 	}
 
 	activePeers := make([]skademlia.ClosestPeer, 0, len(peers))
+
 	for _, p := range peers {
 		if p.Conn().GetState() == connectivity.Ready {
 			activePeers = append(activePeers, p)

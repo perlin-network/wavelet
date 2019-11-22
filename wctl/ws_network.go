@@ -54,6 +54,7 @@ func parsePeerJoin(c *Client, v *fastjson.Value) error {
 	if c.OnPeerJoin != nil {
 		c.OnPeerJoin(PeerJoin{u})
 	}
+
 	return nil
 }
 
@@ -66,5 +67,6 @@ func parsePeerLeave(c *Client, v *fastjson.Value) error {
 	if c.OnPeerLeave != nil {
 		c.OnPeerLeave(PeerLeave{u})
 	}
+
 	return nil
 }

@@ -183,6 +183,7 @@ func ParseContract(payload []byte) (Contract, error) {
 	if size > 1024*1024 {
 		return contract, errors.New("contract: smart contract payload exceeds 1MB")
 	}
+
 	contract.Params = make([]byte, size)
 
 	if _, err := io.ReadFull(r, contract.Params); err != nil {
@@ -256,6 +257,7 @@ func (t Transfer) Marshal() ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, 32+8+8+8+4+4))
 
 	buf.Write(t.Recipient[:])
+
 	if err := binary.Write(buf, binary.LittleEndian, t.Amount); err != nil {
 		return nil, errors.Wrap(err, "error marshaling amount")
 	}
@@ -272,12 +274,14 @@ func (t Transfer) Marshal() ([]byte, error) {
 		if err := binary.Write(buf, binary.LittleEndian, uint32(len(t.FuncName))); err != nil {
 			return nil, errors.Wrap(err, "error marshaling func name")
 		}
+
 		buf.Write(t.FuncName)
 
 		if t.FuncParams != nil && len(t.FuncParams) > 0 {
 			if err := binary.Write(buf, binary.LittleEndian, uint32(len(t.FuncParams))); err != nil {
 				return nil, errors.Wrap(err, "error marshaling func params")
 			}
+
 			buf.Write(t.FuncParams)
 		}
 	}
@@ -289,6 +293,7 @@ func (s Stake) Marshal() ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, 1+8))
 
 	buf.WriteByte(s.Opcode)
+
 	if err := binary.Write(buf, binary.LittleEndian, s.Amount); err != nil {
 		return nil, errors.Wrap(err, "error marshaling amount")
 	}
@@ -381,9 +386,11 @@ func (b Batch) Marshal() ([]byte, error) {
 
 	for i := uint8(0); i < b.Size; i++ {
 		buf.WriteByte(b.Tags[i])
+
 		if err := binary.Write(buf, binary.BigEndian, uint32(len(b.Payloads[i]))); err != nil {
 			return nil, errors.Wrap(err, "error marshaling payload")
 		}
+
 		buf.Write(b.Payloads[i])
 	}
 

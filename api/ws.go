@@ -78,6 +78,7 @@ func (c *client) writeWorker() {
 	defer close(c.done)
 
 	ticker := time.NewTicker(pingPeriod)
+
 	defer func() {
 		ticker.Stop()
 		_ = c.conn.Close()
@@ -89,6 +90,7 @@ func (c *client) writeWorker() {
 			if !ok {
 				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				c.queue = nil
+
 				return
 			}
 
@@ -265,6 +267,7 @@ func fastjsonEquals(v *fastjson.Value, filter string) bool {
 		if err != nil {
 			return false
 		}
+
 		return strconv.FormatBool(b) == filter
 	default:
 		return false

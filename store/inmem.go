@@ -47,6 +47,7 @@ func (b *inmemWriteBatch) Put(key, value []byte) error {
 	copy(valueCopy, value)
 
 	b.pairs = append(b.pairs, kvPair{key: keyCopy, value: valueCopy})
+
 	return nil
 }
 
@@ -80,6 +81,7 @@ func (s *inmemKV) Close() error {
 
 	s.db.Init()
 	s.db = nil
+
 	return nil
 }
 
@@ -140,6 +142,7 @@ func (s *inmemKV) Put(key, value []byte) error {
 	copy(valueCopy, value)
 
 	_ = s.db.Set(keyCopy, valueCopy)
+
 	return nil
 }
 
@@ -165,6 +168,7 @@ func (s *inmemKV) CommitWriteBatch(batch WriteBatch) error {
 		}
 
 		writeBatchPool.Put(wb)
+
 		return nil
 	}
 
@@ -178,6 +182,7 @@ func (s *inmemKV) Delete(key []byte) error {
 	defer s.Unlock()
 
 	_ = s.db.Remove(key)
+
 	return nil
 }
 

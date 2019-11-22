@@ -113,8 +113,10 @@ func NewLevelDB(dir string) (*leveldbKV, error) { // nolint:golint
 		NoWriteMerge: true,
 	}
 
-	var db *leveldb.DB
-	var err error
+	var (
+		db  *leveldb.DB
+		err error
+	)
 
 	if len(dir) == 0 {
 		db, err = leveldb.Open(storage.NewMemStorage(), opts)
