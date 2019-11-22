@@ -143,6 +143,7 @@ func getKeys(wallet string) (edwards25519.PrivateKey, edwards25519.PublicKey) {
 	}
 
 	var privateKey edwards25519.PrivateKey
+
 	n, err := hex.Decode(privateKey[:], privateKeyBuf)
 	if err != nil {
 		log.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", wallet)

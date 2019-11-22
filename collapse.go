@@ -49,11 +49,11 @@ func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) 
 	// all the way down to the beginning of the round.
 	for _, tx := range txs {
 		// Update nonce.
-
 		nonce, exists := ctx.ReadAccountNonce(tx.Sender)
 		if !exists {
 			ctx.WriteAccountsLen(ctx.ReadAccountsLen() + 1)
 		}
+
 		ctx.WriteAccountNonce(tx.Sender, nonce+1)
 
 		if hex.EncodeToString(tx.Sender[:]) != sys.FaucetAddress {
@@ -75,13 +75,13 @@ func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) 
 			totalFee += fee
 
 			stake, _ := ctx.ReadAccountStake(tx.Sender)
-
 			if stake >= sys.MinimumStake {
 				if _, ok := stakes[tx.Sender]; !ok {
 					stakes[tx.Sender] = stake
 				} else {
 					stakes[tx.Sender] += stake
 				}
+
 				totalStake += stake
 			}
 		}

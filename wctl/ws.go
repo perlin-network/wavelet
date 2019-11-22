@@ -37,6 +37,7 @@ func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 	}
 
 	conn, _, err := dialer.Dial(uri.String(), nil)
+
 	return conn, err
 }
 

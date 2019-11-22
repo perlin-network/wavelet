@@ -16,4 +16,3 @@ linters:
     - funlen
     - maligned
     - lll
-    - wsl

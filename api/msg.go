@@ -88,6 +88,7 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if senderVal == nil {
 		return errors.New("missing sender")
 	}
+
 	sender, err := senderVal.StringBytes()
 	if err != nil {
 		return errors.Wrap(err, "invalid sender")
@@ -97,6 +98,7 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if nonceVal == nil {
 		return errors.New("missing nonce")
 	}
+
 	nonce, err := nonceVal.Uint64()
 	if err != nil {
 		return errors.Wrap(err, "invalid nonce")
@@ -106,6 +108,7 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if blockVal == nil {
 		return errors.New("missing block height")
 	}
+
 	block, err := blockVal.Uint64()
 	if err != nil {
 		return errors.Wrap(err, "invalid block height")
@@ -115,6 +118,7 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if tagVal == nil {
 		return errors.New("missing tag")
 	}
+
 	tag, err := tagVal.Uint()
 	if err != nil {
 		return errors.Wrap(err, "invalid tag")
@@ -124,6 +128,7 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if payloadVal == nil {
 		return errors.New("missing payload")
 	}
+
 	payload, err := payloadVal.StringBytes()
 	if err != nil {
 		return errors.Wrap(err, "invalid payload")
@@ -133,6 +138,7 @@ func (s *sendTransactionRequest) bind(parser *fastjson.Parser, body []byte) erro
 	if signatureVal == nil {
 		return errors.New("missing signature")
 	}
+
 	signature, err := signatureVal.StringBytes()
 	if err != nil {
 		return errors.Wrap(err, "invalid signature")
@@ -283,6 +289,7 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 
 			peersArray.SetArrayItem(i, peer)
 		}
+
 		o.Set("peers", peersArray)
 	} else {
 		o.Set("peers", nil)
@@ -298,8 +305,10 @@ type nonceResponse struct {
 
 func (s *nonceResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
+
 	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(s.Nonce, 10)))
 	o.Set("block", arena.NewNumberString(strconv.FormatUint(s.Block, 10)))
+
 	return o.MarshalTo(nil), nil
 }
 

@@ -42,6 +42,7 @@ func ApplyTransaction(tree *avl.Tree, block *Block, tx *Transaction) error {
 	if err := ctx.ApplyTransaction(block, tx); err != nil {
 		return err
 	}
+
 	return ctx.Flush()
 }
 
@@ -297,6 +298,7 @@ func executeContractInTransactionContext(
 	if realGasLimit < executor.Gas {
 		logger.Fatal().Msg("BUG: realGasLimit < executor.Gas")
 	}
+
 	if state.GasLimit < realGasLimit {
 		logger.Fatal().Msg("BUG: state.GasLimit < realGasLimit")
 	}
@@ -304,13 +306,16 @@ func executeContractInTransactionContext(
 	if invocationErr != nil { // Revert changes and have the gas payer pay gas fees.
 		if executor.Gas > contractGasBalance {
 			ctx.WriteAccountContractGasBalance(contractID, 0)
+
 			if gasPayerBalance < (executor.Gas - contractGasBalance) {
 				logger.Fatal().Msg("BUG: gasPayerBalance < (executor.Gas - contractGasBalance)")
 			}
+
 			ctx.WriteAccountBalance(state.GasPayer, gasPayerBalance-(executor.Gas-contractGasBalance))
 		} else {
 			ctx.WriteAccountContractGasBalance(contractID, contractGasBalance-executor.Gas)
 		}
+
 		state.GasLimit -= executor.Gas
 
 		if executor.GasLimitExceeded {

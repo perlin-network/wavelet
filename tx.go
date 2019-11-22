@@ -48,9 +48,11 @@ type Transaction struct {
 
 func NewTransaction(sender *skademlia.Keypair, nonce, block uint64, tag sys.Tag, payload []byte) Transaction {
 	var nonceBuf [8]byte
+
 	binary.BigEndian.PutUint64(nonceBuf[:], nonce)
 
 	var blockBuf [8]byte
+
 	binary.BigEndian.PutUint64(blockBuf[:], block)
 
 	signature := edwards25519.Sign(sender.PrivateKey(), append(nonceBuf[:], append(blockBuf[:], append([]byte{byte(tag)}, payload...)...)...))
@@ -71,6 +73,7 @@ func (tx Transaction) Marshal() []byte {
 	w.Write(tx.Sender[:])
 
 	var buf [8]byte
+
 	binary.BigEndian.PutUint64(buf[:8], tx.Nonce)
 	w.Write(buf[:8])
 

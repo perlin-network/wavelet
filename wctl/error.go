@@ -16,8 +16,10 @@ type RequestError struct {
 }
 
 func ParseRequestError(b []byte) *RequestError {
-	var parser fastjson.Parser
-	var e RequestError
+	var (
+		parser fastjson.Parser
+		e      RequestError
+	)
 
 	v, err := parser.ParseBytes(b)
 	if err != nil {

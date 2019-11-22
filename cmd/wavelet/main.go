@@ -56,6 +56,7 @@ type Config struct {
 
 func main() {
 	switchToUpdatedVersion(true)
+
 	if err := wavelet.SetGenesisByNetwork(sys.VersionMeta); err != nil {
 		panic(err)
 	}
@@ -294,6 +295,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer, disableGC bool
 
 		// Start the server
 		srv.Start()
+
 		defer func() {
 			_ = srv.Close()
 		}()
@@ -339,6 +341,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer, disableGC bool
 	}
 
 	shell.Start()
+
 	return nil
 }
 

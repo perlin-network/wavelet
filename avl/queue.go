@@ -42,5 +42,6 @@ func (h *diffQueue) Dequeue() (*node, error) {
 	if h.OnDequeue != nil {
 		err = h.OnDequeue(node)
 	}
+
 	return node, err
 }

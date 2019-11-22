@@ -143,7 +143,8 @@ func parseTransfer(data []byte) ([]byte, error) {
 		return nil, ErrInvalidAccountIDSize // Return invalid recipient ID error
 	}
 
-	var recipient AccountID              // Initialize ID buffer
+	var recipient AccountID // Initialize ID buffer
+
 	copy(recipient[:], decodedRecipient) // Copy address to buffer
 
 	_, err = payload.Write(recipient[:]) // Write recipient value
@@ -153,7 +154,8 @@ func parseTransfer(data []byte) ([]byte, error) {
 
 	decodedAmount := json.GetUint64(PayloadParamNameAmount) // Get amount value
 
-	var amount [8]byte                                      // Initialize integer buffer
+	var amount [8]byte // Initialize integer buffer
+
 	binary.LittleEndian.PutUint64(amount[:], decodedAmount) // Write to buffer
 
 	_, err = payload.Write(amount[:]) // Write amount value
@@ -164,7 +166,8 @@ func parseTransfer(data []byte) ([]byte, error) {
 	if json.Exists(PayloadParamNameGasLimit) { // Check has gas limit value
 		decodedGasLimit := json.GetUint64(PayloadParamNameGasLimit) // Get uint64 gas limit value
 
-		var gasLimit [8]byte                                        // Initialize integer buffer
+		var gasLimit [8]byte // Initialize integer buffer
+
 		binary.LittleEndian.PutUint64(gasLimit[:], decodedGasLimit) // Write to buffer
 
 		_, err = payload.Write(gasLimit[:]) // Write gas limit
@@ -188,7 +191,8 @@ func parseTransfer(data []byte) ([]byte, error) {
 	if json.Exists(PayloadParamNameFuncName) { // Check has function name
 		funcName := string(json.GetStringBytes(PayloadParamNameFuncName)) // Get function name
 
-		var funcNameLength [8]byte                                               // Initialize dedicated len buffer
+		var funcNameLength [8]byte // Initialize dedicated len buffer
+
 		binary.LittleEndian.PutUint32(funcNameLength[:4], uint32(len(funcName))) // Write to buffer
 
 		payload.Write(funcNameLength[:4]) // Write name length
@@ -296,7 +300,8 @@ func parseStake(data []byte) ([]byte, error) {
 
 	decodedAmount := uint64(json.GetFloat64(PayloadParamNameAmount)) // Get amount value
 
-	var amount [8]byte                                      // Initialize integer buffer
+	var amount [8]byte // Initialize integer buffer
+
 	binary.LittleEndian.PutUint64(amount[:], decodedAmount) // Write to buffer
 
 	err = payload.WriteByte(operation) // Write operation
@@ -329,7 +334,8 @@ func parseContract(data []byte) ([]byte, error) {
 
 	decodedGasLimit := json.GetUint64(PayloadParamNameGasLimit) // Get uint64 gas limit value
 
-	var gasLimit [8]byte                                        // Initialize integer buffer
+	var gasLimit [8]byte // Initialize integer buffer
+
 	binary.LittleEndian.PutUint64(gasLimit[:], decodedGasLimit) // Write to buffer
 
 	_, err = payload.Write(gasLimit[:]) // Write gas limit
@@ -344,6 +350,7 @@ func parseContract(data []byte) ([]byte, error) {
 	}
 
 	var gasDeposit [8]byte
+
 	binary.LittleEndian.PutUint64(gasDeposit[:], decodedGasDeposit) // Write to buffer
 
 	_, err = payload.Write(gasDeposit[:]) // Write gas deposit

@@ -42,6 +42,7 @@ func chain(f fasthttp.RequestHandler, middlewares []middleware) fasthttp.Request
 	for i := len(middlewares) - 1; i >= 0; i-- {
 		last = middlewares[i](last)
 	}
+
 	return last
 }
 
@@ -59,7 +60,7 @@ func recoverer(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 		next(ctx)
 	}
 
-	return fasthttp.RequestHandler(fn)
+	return fn
 }
 
 func timeout(timeout time.Duration, msg string) func(next fasthttp.RequestHandler) fasthttp.RequestHandler {
@@ -100,6 +101,7 @@ func parseBearerToken(auth string) string {
 	if !strings.HasPrefix(auth, authPrefix) {
 		return ""
 	}
+
 	return auth[len(authPrefix):]
 }
 

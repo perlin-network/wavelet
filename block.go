@@ -73,6 +73,7 @@ func UnmarshalBlock(r io.Reader) (Block, error) {
 	if _, err := io.ReadFull(r, buf[:]); err != nil {
 		return block, errors.Wrap(err, "failed to decode block index")
 	}
+
 	block.Index = binary.BigEndian.Uint64(buf[:8])
 
 	if _, err := io.ReadFull(r, block.Merkle[:]); err != nil {

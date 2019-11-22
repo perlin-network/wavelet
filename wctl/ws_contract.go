@@ -54,6 +54,7 @@ func parseContractGas(c *Client, v *fastjson.Value) error {
 	if c.OnContractGas != nil {
 		c.OnContractGas(g)
 	}
+
 	return nil
 }
 
@@ -73,5 +74,6 @@ func parseContractLog(c *Client, v *fastjson.Value) error {
 	if c.OnContractLog != nil {
 		c.OnContractLog(l)
 	}
+
 	return nil
 }

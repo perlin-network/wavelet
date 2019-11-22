@@ -364,9 +364,11 @@ func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 }
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
-	var sender wavelet.AccountID
-	var offset, limit uint64
-	var err error
+	var (
+		sender        wavelet.AccountID
+		offset, limit uint64
+		err           error
+	)
 
 	queryArgs := ctx.QueryArgs()
 	if raw := string(queryArgs.Peek("sender")); len(raw) > 0 {
@@ -406,8 +408,10 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 		limit = maxPaginationLimit
 	}
 
-	var transactions transactionList
-	var latestBlockIndex = g.ledger.Blocks().Latest().Index
+	var (
+		transactions     transactionList
+		latestBlockIndex = g.ledger.Blocks().Latest().Index
+	)
 
 	// TODO: maybe there is be a better way to do this? Currently, this iterates
 	// the entire transaction list
@@ -453,6 +457,7 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 	}
 
 	var id wavelet.TransactionID
+
 	copy(id[:], slice)
 
 	tx := g.ledger.Transactions().Find(id)
@@ -494,10 +499,10 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 	}
 
 	var id wavelet.AccountID
+
 	copy(id[:], slice)
 
 	snapshot := g.ledger.Snapshot()
-
 	balance, _ := wavelet.ReadAccountBalance(snapshot, id)
 	gasBalance, _ := wavelet.ReadAccountContractGasBalance(snapshot, id)
 	stake, _ := wavelet.ReadAccountStake(snapshot, id)
@@ -547,8 +552,10 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	var idx uint64
-	var err error
+	var (
+		idx uint64
+		err error
+	)
 
 	rawIdx, ok := ctx.UserValue("index").(string)
 	if !ok {
@@ -702,6 +709,7 @@ func (g *Gateway) getAccountNonce(ctx *fasthttp.RequestCtx) {
 	}
 
 	var id wavelet.AccountID
+
 	copy(id[:], slice)
 
 	snapshot := g.ledger.Snapshot()
