@@ -93,6 +93,8 @@ type Ledger struct {
 	queryBlockCache map[[blake2b.Size256]byte]*Block
 
 	queueWorkerPool *WorkerPool
+
+	collapseResultsLogger *CollapseResultsLogger
 }
 
 type config struct {
@@ -191,6 +193,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		queryBlockCache: make(map[BlockID]*Block),
 
 		queueWorkerPool: NewWorkerPool(),
+
+		collapseResultsLogger: NewCollapseResultsLogger(),
 	}
 
 	if !cfg.GCDisabled {
@@ -249,6 +253,8 @@ func (l *Ledger) Close() {
 	l.queueWorkerPool.Stop()
 
 	l.stallDetector.Stop()
+
+	l.collapseResultsLogger.Stop()
 
 	l.stopWG.Wait()
 }
@@ -1516,13 +1522,7 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 	})
 
 	if logging && collapseState.results != nil {
-		for _, tx := range collapseState.results.applied {
-			logEventTX("applied", tx)
-		}
-
-		for i, tx := range collapseState.results.rejected {
-			logEventTX("rejected", tx, collapseState.results.rejectedErrors[i])
-		}
+		l.collapseResultsLogger.Log(collapseState.results)
 	}
 
 	return collapseState.results, collapseState.err
