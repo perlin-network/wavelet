@@ -33,8 +33,8 @@ jobs:
 
       - name: Concat coverage
         run: |
-        echo "mode: atomic" > coverage.txt
-        grep -h -v "mode: atomic" coverage_*.txt >> coverage.txt
+                echo "mode: atomic" > coverage.txt
+                grep -h -v "mode: atomic" coverage_*.txt >> coverage.txt
 
       - name: Upload coverage report
         uses: codecov/codecov-action@v1.0.3
