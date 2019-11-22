@@ -329,6 +329,14 @@ func (l *TestLedger) Client() *skademlia.Client {
 	return l.client
 }
 
+func (l *TestLedger) KV() store.KV {
+	return l.kv
+}
+
+func (l *TestLedger) Keys() *skademlia.Keypair {
+	return l.ledger.client.Keys()
+}
+
 func (l *TestLedger) PrivateKey() edwards25519.PrivateKey {
 	keys := l.ledger.client.Keys()
 	return keys.PrivateKey()
