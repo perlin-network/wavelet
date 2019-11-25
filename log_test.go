@@ -17,6 +17,8 @@ import (
 )
 
 func TestCollapseResultsLogger(t *testing.T) {
+	log.ClearWriters()
+
 	logger := NewCollapseResultsLogger()
 
 	keys, err := skademlia.NewKeys(1, 1)
