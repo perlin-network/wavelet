@@ -29,7 +29,7 @@ func TestCollapseResultsLogger(t *testing.T) {
 
 	results := &collapseResults{}
 
-	payload, err := Transfer{Recipient: recipient.PublicKey(), Amount: 1,}.Marshal()
+	payload, err := Transfer{Recipient: recipient.PublicKey(), Amount: 1}.Marshal()
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -37,7 +37,7 @@ func TestCollapseResultsLogger(t *testing.T) {
 	results.appliedCount++
 	results.applied = append(results.applied, &txApplied)
 
-	payload, err = Transfer{Recipient: recipient.PublicKey(), Amount: 10,}.Marshal()
+	payload, err = Transfer{Recipient: recipient.PublicKey(), Amount: 10}.Marshal()
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -48,7 +48,6 @@ func TestCollapseResultsLogger(t *testing.T) {
 
 	logCh := make(chan []byte)
 	log.SetWriter("tx", writerFunc(func(p []byte) (n int, err error) {
-
 		logCh <- p
 		return len(p), nil
 	}))

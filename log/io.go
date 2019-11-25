@@ -26,7 +26,7 @@ import (
 
 type multiWriter struct {
 	sync.RWMutex
-	writers map[string]io.Writer
+	writers        map[string]io.Writer
 	writersModules map[string]map[string]struct{}
 }
 
@@ -68,7 +68,7 @@ func (t *multiWriter) WriteFilter(p []byte, module string) (n int, err error) {
 	defer t.RUnlock()
 
 	for k, w := range t.writers {
-		writerModules, _ := t.writersModules[k]
+		writerModules := t.writersModules[k]
 		if writerModules != nil {
 			if _, exist := writerModules[module]; !exist {
 				continue
