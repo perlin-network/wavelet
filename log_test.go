@@ -5,7 +5,6 @@ package wavelet
 import (
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -63,7 +62,6 @@ func TestCollapseResultsLogger(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		select {
 		case b := <-logCh:
-			fmt.Println(string(b))
 			outputs = append(outputs, b)
 		case <-time.After(100 * time.Millisecond):
 			assert.FailNow(t, "timeout waiting for message", "expected 2 messages, timeout at %d", i)
