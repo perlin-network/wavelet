@@ -196,8 +196,6 @@ func compareTree(t *testing.T, expected *avl.Tree, actual *avl.Tree, checkContra
 }
 
 func TestPerformInception(t *testing.T) {
-	t.Parallel()
-
 	tree := avl.New(store.NewInmem())
 	block := performInception(tree, &testRestoreDir)
 
