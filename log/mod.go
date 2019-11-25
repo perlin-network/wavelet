@@ -105,6 +105,10 @@ func SetWriter(key string, writer io.Writer) {
 	output.SetWriter(key, writer, modules...)
 }
 
+func ClearWriters() {
+	output.Clear()
+}
+
 func Node() zerolog.Logger {
 	return node
 }

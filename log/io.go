@@ -62,6 +62,14 @@ func (t *multiWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+func (t *multiWriter) Clear() {
+	t.Lock()
+	defer t.Unlock()
+
+	t.writers = make(map[string]io.Writer)
+	t.writersModules = make(map[string]map[string]struct{})
+}
+
 // WriteFilter writes to only writers that have filter for the module.
 func (t *multiWriter) WriteFilter(p []byte, module string) (n int, err error) {
 	t.RLock()
