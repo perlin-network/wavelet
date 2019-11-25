@@ -49,8 +49,8 @@ func TestCollapseResultsLogger(t *testing.T) {
 	results.rejected = append(results.rejected, &txRejected)
 	results.rejectedErrors = append(results.rejectedErrors, errors.New("error rejected"))
 
-	logCh := make(chan []byte)
-	log.SetWriter("tx", writerFunc(func(p []byte) (n int, err error) {
+	logCh := make(chan []byte, 2)
+	log.SetWriter("tx_write_test", writerFunc(func(p []byte) (n int, err error) {
 		logCh <- p
 		return len(p), nil
 	}))
