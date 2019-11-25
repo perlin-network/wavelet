@@ -37,12 +37,12 @@ func (t *multiWriter) SetWriter(key string, writer io.Writer, modules ...string)
 	t.writers[key] = writer
 
 	if len(modules) == 0 {
+		t.writersModules[key] = nil
 		return
 	}
 
-	if t.writersModules[key] == nil {
-		t.writersModules[key] = make(map[string]struct{})
-	}
+	// Make sure to clear the existing modules if the writer already exists.
+	t.writersModules[key] = make(map[string]struct{})
 
 	for i := range modules {
 		t.writersModules[key][modules[i]] = struct{}{}
