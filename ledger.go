@@ -1350,7 +1350,10 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 		logger.Debug().
 			Int("num_chunks", len(sources)).
 			Int("num_workers", cap(workers)).
-			Msg("Downloaded whatever chunks were available to sync to the latest block, and shutted down all workers. Checking validity of chunks...")
+			Msg(
+				"Downloaded whatever chunks were available to sync to the latest block, and shutted down all " +
+					"workers. Checking validity of chunks...",
+			)
 
 		dispose() // Shutdown all streams as we no longer need them.
 

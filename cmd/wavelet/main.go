@@ -129,13 +129,16 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, disableGC bool) {
 			EnvVar: "WAVELET_API_SECRET",
 		},
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:   "wallet",
-			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded private key to a wallet may also be specified.",
+			Name: "wallet",
+			Usage: "Path to file containing hex-encoded private key. If the path specified is invalid, or no file " +
+				"exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded" +
+				" private key to a wallet may also be specified.",
 			EnvVar: "WAVELET_WALLET",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:   "genesis",
-			Usage:  "Directory path or JSON contents containing genesis files representing initial fields of some set of accounts at round 0.",
+			Name: "genesis",
+			Usage: "Directory path or JSON contents containing genesis files representing initial fields of some set " +
+				"of accounts at round 0.",
 			EnvVar: "WAVELET_GENESIS",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{

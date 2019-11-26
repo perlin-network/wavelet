@@ -80,11 +80,12 @@ func main() {
 				cli.StringFlag{
 					Name:  "wallet",
 					Usage: "private key in hex format to connect to node HTTP API with",
-					Value: "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+					Value: "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405", // nolint:lll
 				},
 				cli.IntFlag{
-					Name:  "worker, w",
-					Usage: "the number of workers used to spam transactions per iteration, where one worker will send one transaction. default to the number of logical CPU and min is 1.",
+					Name: "worker, w",
+					Usage: "the number of workers used to spam transactions per iteration, where one worker will send" +
+						" one transaction. default to the number of logical CPU and min is 1.",
 					Value: runtime.NumCPU(),
 				},
 			},

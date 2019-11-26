@@ -228,8 +228,10 @@ package wavelet
 //	// Choose a random
 //	var sender = g.accounts[g.accountIDs[rng.Intn(len(g.accountIDs))]]
 //
-//	tx := AttachSenderToTransaction(sender,
-//		NewTransaction(sys.TagContract, buildContractSpawnPayload(100000, 0, code).Marshal()), g.graph.FindEligibleParents()...,
+//	tx := AttachSenderToTransaction(
+//		sender,
+//		NewTransaction(sys.TagContract, buildContractSpawnPayload(100000, 0, code).Marshal()),
+//		g.graph.FindEligibleParents()...,
 //	)
 //
 //	if err := g.graph.AddTransaction(tx); err != nil {
@@ -255,7 +257,9 @@ package wavelet
 //
 //	b.StopTimer()
 //
-//	g.block = NewRound(g.viewID, results.snapshot.Checksum(), uint32(results.appliedCount+results.rejectedCount), g.block.End, *g.end)
+//	g.block = NewRound(
+//		g.viewID, results.snapshot.Checksum(), uint32(results.appliedCount+results.rejectedCount), g.block.End, *g.end,
+//	)
 //	g.end = nil
 //
 //	b.StartTimer()
@@ -334,7 +338,9 @@ package wavelet
 //	})
 //}
 //
-//func (g *collapseTestContainer) addContractTransferTxs(b *testing.B, noOfTx int, sender, contractID AccountID, funcName []byte, amount, gasLimit, gasDeposit uint64) {
+//func (g *collapseTestContainer) addContractTransferTxs(
+//	b *testing.B, noOfTx int, sender, contractID AccountID, funcName []byte, amount, gasLimit, gasDeposit uint64,
+//	) {
 //	g.addTxs(b, noOfTx, func(sender *skademlia.Keypair) Transaction {
 //		tx := NewTransaction(
 //			sys.TagTransfer,

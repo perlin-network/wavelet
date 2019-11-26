@@ -55,12 +55,16 @@ func NewTransaction(sender *skademlia.Keypair, nonce, block uint64, tag sys.Tag,
 
 	binary.BigEndian.PutUint64(blockBuf[:], block)
 
-	signature := edwards25519.Sign(sender.PrivateKey(), append(nonceBuf[:], append(blockBuf[:], append([]byte{byte(tag)}, payload...)...)...))
+	signature := edwards25519.Sign(
+		sender.PrivateKey(), append(nonceBuf[:], append(blockBuf[:], append([]byte{byte(tag)}, payload...)...)...),
+	)
 
 	return NewSignedTransaction(sender.PublicKey(), nonce, block, tag, payload, signature)
 }
 
-func NewSignedTransaction(sender edwards25519.PublicKey, nonce, block uint64, tag sys.Tag, payload []byte, signature edwards25519.Signature) Transaction {
+func NewSignedTransaction(
+	sender edwards25519.PublicKey, nonce, block uint64, tag sys.Tag, payload []byte, signature edwards25519.Signature,
+) Transaction {
 	tx := Transaction{Sender: sender, Nonce: nonce, Block: block, Tag: tag, Payload: payload, Signature: signature}
 	tx.ID = blake2b.Sum256(tx.Marshal())
 

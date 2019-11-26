@@ -66,7 +66,9 @@ type VMState struct {
 	Memory  []byte
 }
 
-func (state VMState) Apply(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver, move bool) (*exec.VirtualMachine, error) {
+func (state VMState) Apply(
+	vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver, move bool,
+) (*exec.VirtualMachine, error) {
 	if len(vm.Globals) != len(state.Globals) {
 		return nil, errors.New("global count mismatch")
 	}
@@ -93,7 +95,9 @@ func (state VMState) Apply(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy
 	}, nil
 }
 
-func CloneVM(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver) (*exec.VirtualMachine, error) {
+func CloneVM(
+	vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver,
+) (*exec.VirtualMachine, error) {
 	return SnapshotVMState(vm).Apply(vm, gasPolicy, importResolver, false)
 }
 

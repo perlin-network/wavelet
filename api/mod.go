@@ -161,7 +161,9 @@ func (g *Gateway) setup() {
 
 // Apply base middleware to the handler and along with middleware passed.
 // If rateLimiterKey is not empty, enable rate limit.
-func (g *Gateway) applyMiddleware(f fasthttp.RequestHandler, rateLimiterKey string, m ...middleware) fasthttp.RequestHandler {
+func (g *Gateway) applyMiddleware(
+	f fasthttp.RequestHandler, rateLimiterKey string, m ...middleware,
+) fasthttp.RequestHandler {
 	var list []middleware
 
 	if len(rateLimiterKey) == 0 {
@@ -582,7 +584,9 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 	}
 
 	if idx >= numPages {
-		g.renderError(ctx, ErrBadRequest(errors.Errorf("contract with ID %x only has %d pages, but you requested page %d", id, numPages, idx)))
+		err := errors.Errorf("contract with ID %x only has %d pages, but you requested page %d", id, numPages, idx)
+		g.renderError(ctx, ErrBadRequest(err))
+
 		return
 	}
 
