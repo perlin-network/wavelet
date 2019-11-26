@@ -430,15 +430,12 @@ func TestMain_WithdrawReward(t *testing.T) {
 // }
 
 func TestMain_ConnectDisconnect(t *testing.T) {
-	w := NewTestWavelet(t, defaultConfig())
+	config := defaultConfig()
+	config.Wallet = wallet2
+	w := NewTestWavelet(t, config)
+	defer w.Cleanup()
 
-	defer func() {
-		w.Cleanup()
-	}()
-
-	for i := 0; i < 2; i++ {
-		w.Testnet.AddNode(t)
-	}
+	w.Testnet.AddNode(t)
 
 	w.Testnet.WaitForSync(t)
 
