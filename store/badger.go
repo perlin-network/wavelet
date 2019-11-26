@@ -177,7 +177,7 @@ func (b *badgerKV) gc(interval time.Duration) {
 					}
 
 					// When there's no more GC, an error will be returned.
-					err := b.db.RunValueLogGC(0.5)
+					err := b.db.RunValueLogGC(0.05)
 					if err != nil {
 						break
 					}
