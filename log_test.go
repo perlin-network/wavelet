@@ -17,6 +17,7 @@ import (
 
 func TestCollapseResultsLogger(t *testing.T) {
 	log.ClearWriters()
+	defer log.ClearWriters()
 
 	logger := NewCollapseResultsLogger()
 
