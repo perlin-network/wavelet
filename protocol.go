@@ -271,7 +271,9 @@ func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error
 	return nil
 }
 
-func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullRequest) (*TransactionPullResponse, error) {
+func (p *Protocol) PullTransactions(
+	ctx context.Context, req *TransactionPullRequest) (*TransactionPullResponse, error,
+) {
 	res := &TransactionPullResponse{
 		Transactions: make([][]byte, 0, len(req.TransactionIds)),
 	}

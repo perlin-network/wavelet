@@ -134,8 +134,8 @@ func parseTransfer(data []byte) ([]byte, error) {
 		return nil, ErrNilField // Return nil field error
 	}
 
-	decodedRecipient, err := hex.DecodeString(string(json.GetStringBytes(PayloadParamNameRecipient))) // Decode recipient hex string
-	if err != nil {                                                                                   // Check for errors
+	decodedRecipient, err := hex.DecodeString(string(json.GetStringBytes(PayloadParamNameRecipient)))
+	if err != nil {
 		return nil, err // Return found error
 	}
 
@@ -256,7 +256,7 @@ func parseTransfer(data []byte) ([]byte, error) {
 				}
 			}
 
-			binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(params.Bytes()))) // Write length of function parameters to buffer
+			binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(params.Bytes())))
 
 			payload.Write(intBuf[:4])     // Write length of function parameters
 			payload.Write(params.Bytes()) // Write parameters
@@ -416,7 +416,7 @@ func parseContract(data []byte) ([]byte, error) {
 			}
 		}
 
-		binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(params.Bytes()))) // Write length of function parameters to buffer
+		binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(params.Bytes())))
 
 		payload.Write(intBuf[:4])     // Write length of function parameters
 		payload.Write(params.Bytes()) // Write parameters

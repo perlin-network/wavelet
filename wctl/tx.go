@@ -34,7 +34,9 @@ type TransactionEvent struct {
 
 // ListTransactions calls the /tx endpoint of the API to list all transactions.
 // The arguments are optional, zero values would default them.
-func (c *Client) ListTransactions(senderID string, creatorID string, offset uint64, limit uint64) ([]Transaction, error) {
+func (c *Client) ListTransactions(
+	senderID string, creatorID string, offset uint64, limit uint64,
+) ([]Transaction, error) {
 	vals := url.Values{}
 
 	if senderID != "" {
