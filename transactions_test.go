@@ -35,12 +35,12 @@ func TestTransactions(t *testing.T) {
 
 		// Check that all transactions were successfully stored in the manager.
 
-		manager.BatchAdd(block, transactions...)
+		manager.BatchAdd(block, transactions, true)
 
 		// Attempt to re-add all transactions that were already stored in the manager.
 
 		for _, tx := range transactions {
-			manager.Add(block, tx)
+			manager.Add(block, tx, true)
 		}
 
 		if !assert.Len(t, manager.buffer, len(transactions)) || !assert.Equal(t, manager.Len(), len(transactions)) {
@@ -136,8 +136,8 @@ func TestTransactionsMarkMissing(t *testing.T) {
 
 		// Adding all the transactions into the manager should make len(missing) = 0.
 
-		manager.Add(ZeroBlockID, tx)
-		manager.BatchAdd(ZeroBlockID, transactions...)
+		manager.Add(ZeroBlockID, tx, true)
+		manager.BatchAdd(ZeroBlockID, transactions, true)
 
 		if !assert.Len(t, manager.missing, 0) || !assert.Len(t, manager.MissingIDs(), 0) {
 			return false
@@ -172,7 +172,7 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 			transactions = append(transactions, tx)
 		}
 
-		manager.BatchAdd(prev, transactions...)
+		manager.BatchAdd(prev, transactions, true)
 
 		// Generate a unique next-block ID to shuffle with.
 
@@ -268,8 +268,8 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) { // nolint:gocognit
 			}
 		}
 
-		manager.BatchAdd(prev, toNotBePrunedTransactions...)
-		manager.BatchAdd(prev, toBePrunedTransactions...)
+		manager.BatchAdd(prev, toNotBePrunedTransactions, true)
+		manager.BatchAdd(prev, toBePrunedTransactions, true)
 
 		// Generate and add a bunch of finalized transactions to the manager.
 
@@ -373,7 +373,7 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) { // nolint:gocognit
 		// Check that stale transactions cannot be added to the manager.
 
 		before := len(manager.buffer)
-		manager.Add(ZeroBlockID, NewTransaction(keys, math.MaxUint64, 0, sys.TagStake, nil))
+		manager.Add(ZeroBlockID, NewTransaction(keys, math.MaxUint64, 0, sys.TagStake, nil), true)
 		return assert.Len(t, manager.buffer, before)
 	}
 
