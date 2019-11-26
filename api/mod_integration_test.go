@@ -738,7 +738,7 @@ func TestEndpointsRateLimit(t *testing.T) {
 		tc := tc
 		t.Run(tc.url, func(t *testing.T) {
 			// We assume the loop will complete in less than 1 second.
-			for i := 0; i < maxPerSecond*2; i++ {
+			for i := 0; i < maxPerSecond+1; i++ {
 				request := httptest.NewRequest(tc.method, "http://localhost"+tc.url, nil)
 				w, err := serve(gateway.router, request)
 				if !assert.NoError(t, err) || !assert.NotNil(t, w) {
