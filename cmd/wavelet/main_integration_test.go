@@ -318,8 +318,12 @@ func TestMain_PlaceStake(t *testing.T) {
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, alice.PublicKey, tx.Sender)
 
-	<-bob.WaitForConsensus()
-	assert.EqualValues(t, 1000, bob.StakeWithPublicKey(asAccountID(t, alice.PublicKey)))
+	waitFor(t, func() error {
+		if bob.StakeWithPublicKey(asAccountID(t, alice.PublicKey)) != 1000 {
+			return fmt.Errorf("wrong stake amount")
+		}
+		return nil
+	})
 }
 
 func TestMain_WithdrawStake(t *testing.T) {
@@ -347,8 +351,12 @@ func TestMain_WithdrawStake(t *testing.T) {
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, alice.PublicKey, tx.Sender)
 
-	<-bob.WaitForConsensus()
-	assert.EqualValues(t, 500, bob.StakeWithPublicKey(asAccountID(t, alice.PublicKey)))
+	waitFor(t, func() error {
+		if bob.StakeWithPublicKey(asAccountID(t, alice.PublicKey)) != 500 {
+			return fmt.Errorf("wrong stake amount")
+		}
+		return nil
+	})
 }
 
 func TestMain_WithdrawReward(t *testing.T) {
@@ -579,7 +587,7 @@ func extractTxID(t *testing.T, s string) string {
 }
 
 func waitFor(t *testing.T, fn func() error) {
-	timeout := time.NewTimer(time.Second * 10)
+	timeout := time.NewTimer(time.Second * 30)
 	ticker := time.NewTicker(time.Second * 1)
 
 	for {
