@@ -769,57 +769,57 @@ func TestGetLedger(t *testing.T) {
 // 		})
 // 	}
 // }
-
-func TestConnectDisconnect(t *testing.T) {
-	network := wavelet.NewTestNetwork(t)
-	defer network.Cleanup()
-
-	network.AddNode(t)
-	node := network.AddNode(t)
-
-	network.WaitForSync(t)
-
-	gateway := New()
-	gateway.setup()
-	gateway.ledger = network.Faucet().Ledger()
-	gateway.client = network.Faucet().Client()
-
-	currentSecret := conf.GetSecret()
-	defer conf.Update(conf.WithSecret(currentSecret))
-	conf.Update(conf.WithSecret("secret"))
-
-	body := fmt.Sprintf(`{"address": "%s"}`, node.Addr())
-
-	request := httptest.NewRequest(http.MethodPost, "http://localhost/node/connect", strings.NewReader(body))
-	request.Header.Set("Authorization", "Bearer secret")
-	w, err := serve(gateway.router, request)
-	if !assert.NoError(t, err) || !assert.NotNil(t, w) {
-		return
-	}
-
-	defer func() {
-		_ = w.Body.Close()
-	}()
-
-	assert.Equal(t, http.StatusOK, w.StatusCode)
-
-	resp, err := ioutil.ReadAll(w.Body)
-	assert.NoError(t, err)
-	assert.Equal(t, fmt.Sprintf(`{"msg":"Successfully connected to %s"}`, node.Addr()), string(resp))
-
-	request = httptest.NewRequest(http.MethodPost, "http://localhost/node/disconnect", strings.NewReader(body))
-	request.Header.Set("Authorization", "Bearer secret")
-	w, err = serve(gateway.router, request)
-	assert.NoError(t, err)
-
-	assert.NotNil(t, w)
-
-	assert.Equal(t, http.StatusOK, w.StatusCode)
-
-	resp, err = ioutil.ReadAll(w.Body)
-	assert.NoError(t, err)
-	assert.Equal(t, fmt.Sprintf(`{"msg":"Successfully disconnected from %s"}`, node.Addr()), string(resp))
-}
+//
+// func TestConnectDisconnect(t *testing.T) {
+// 	network := wavelet.NewTestNetwork(t)
+// 	defer network.Cleanup()
+//
+// 	network.AddNode(t)
+// 	node := network.AddNode(t)
+//
+// 	network.WaitForSync(t)
+//
+// 	gateway := New()
+// 	gateway.setup()
+// 	gateway.ledger = network.Faucet().Ledger()
+// 	gateway.client = network.Faucet().Client()
+//
+// 	currentSecret := conf.GetSecret()
+// 	defer conf.Update(conf.WithSecret(currentSecret))
+// 	conf.Update(conf.WithSecret("secret"))
+//
+// 	body := fmt.Sprintf(`{"address": "%s"}`, node.Addr())
+//
+// 	request := httptest.NewRequest(http.MethodPost, "http://localhost/node/connect", strings.NewReader(body))
+// 	request.Header.Set("Authorization", "Bearer secret")
+// 	w, err := serve(gateway.router, request)
+// 	if !assert.NoError(t, err) || !assert.NotNil(t, w) {
+// 		return
+// 	}
+//
+// 	defer func() {
+// 		_ = w.Body.Close()
+// 	}()
+//
+// 	assert.Equal(t, http.StatusOK, w.StatusCode)
+//
+// 	resp, err := ioutil.ReadAll(w.Body)
+// 	assert.NoError(t, err)
+// 	assert.Equal(t, fmt.Sprintf(`{"msg":"Successfully connected to %s"}`, node.Addr()), string(resp))
+//
+// 	request = httptest.NewRequest(http.MethodPost, "http://localhost/node/disconnect", strings.NewReader(body))
+// 	request.Header.Set("Authorization", "Bearer secret")
+// 	w, err = serve(gateway.router, request)
+// 	assert.NoError(t, err)
+//
+// 	assert.NotNil(t, w)
+//
+// 	assert.Equal(t, http.StatusOK, w.StatusCode)
+//
+// 	resp, err = ioutil.ReadAll(w.Body)
+// 	assert.NoError(t, err)
+// 	assert.Equal(t, fmt.Sprintf(`{"msg":"Successfully disconnected from %s"}`, node.Addr()), string(resp))
+// }
 
 func TestConnectDisconnectErrors(t *testing.T) {
 	gateway := New()
