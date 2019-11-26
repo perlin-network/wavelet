@@ -103,7 +103,9 @@ func ParseTransfer(payload []byte) (Transfer, error) {
 
 	if r.Len() > 0 {
 		if _, err := io.ReadFull(r, b[:4]); err != nil {
-			return transfer, errors.Wrap(err, "transfer: failed to decode number of smart contract function invocation parameters")
+			return transfer, errors.Wrap(
+				err, "transfer: failed to decode number of smart contract function invocation parameters",
+			)
 		}
 
 		size := binary.LittleEndian.Uint32(b[:4])
@@ -114,12 +116,16 @@ func ParseTransfer(payload []byte) (Transfer, error) {
 		transfer.FuncParams = make([]byte, size)
 
 		if _, err := io.ReadFull(r, transfer.FuncParams); err != nil {
-			return transfer, errors.Wrap(err, "transfer: failed to decode smart contract function invocation parameters")
+			return transfer, errors.Wrap(
+				err, "transfer: failed to decode smart contract function invocation parameters",
+			)
 		}
 	}
 
 	if transfer.GasLimit == 0 && len(transfer.FuncName) > 0 {
-		return transfer, errors.New("transfer: gas limit for invoking smart contract function must be greater than zero")
+		return transfer, errors.New(
+			"transfer: gas limit for invoking smart contract function must be greater than zero",
+		)
 	}
 
 	return transfer, nil
@@ -146,7 +152,10 @@ func ParseStake(payload []byte) (Stake, error) {
 	}
 
 	if stake.Opcode == sys.WithdrawReward && stake.Amount < sys.MinimumRewardWithdraw {
-		return stake, errors.Errorf("stake: must withdraw a reward of a minimum of %d PERLs, but requested to withdraw %d PERLs", sys.MinimumRewardWithdraw, stake.Amount)
+		return stake, errors.Errorf(
+			"stake: must withdraw a reward of a minimum of %d PERLs, but requested to withdraw %d PERLs",
+			sys.MinimumRewardWithdraw, stake.Amount,
+		)
 	}
 
 	return stake, nil
@@ -170,7 +179,9 @@ func ParseContract(payload []byte) (Contract, error) {
 	}
 
 	if contract.GasLimit == 0 {
-		return contract, errors.New("contract: gas limit for invoking smart contract function must be greater than zero")
+		return contract, errors.New(
+			"contract: gas limit for invoking smart contract function must be greater than zero",
+		)
 	}
 
 	contract.GasDeposit = binary.LittleEndian.Uint64(b)

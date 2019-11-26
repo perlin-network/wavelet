@@ -77,11 +77,14 @@ func SetGenesisByNetwork(name string) error {
 	return nil
 }
 
-// performInception restore genesis data from the a directory or JSON contents expected to exist at the birth of any node in this ledgers network.
+// performInception restore genesis data from the a directory or JSON contents expected to exist at the birth of any
+// node in this ledgers network.
 //
-// An account state may be specified within the genesis directory in the form of a [account address].json file with key-value pairs.
+// An account state may be specified within the genesis directory in the form of a [account address].json file with key
+// value pairs.
 //
-// A smart contract may be specified within the genesis directory in the form of a [contract address].wasm file with accompanying [contract address].[page index].dmp files representing the contracts memory pages.
+// A smart contract may be specified within the genesis directory in the form of a [contract address].wasm file with
+// accompanying [contract address].[page index].dmp files representing the contracts memory pages.
 //
 // The AccountsLen in the restored tree may not match with the original tree.
 //
@@ -243,7 +246,9 @@ func restoreFromDir(tree *avl.Tree, dir string) error {
 	return restoreContractPages(tree, contracts, contractPageFiles)
 }
 
-func restoreFromDirJSON(tree *avl.Tree, walletBuf [512]byte, p fastjson.Parser, accounts map[AccountID]struct{}, path string) error {
+func restoreFromDirJSON(
+	tree *avl.Tree, walletBuf [512]byte, p fastjson.Parser, accounts map[AccountID]struct{}, path string,
+) error {
 	filename := strings.TrimSuffix(filepath.Base(path), ".json")
 
 	var id AccountID
@@ -285,7 +290,13 @@ func restoreFromDirJSON(tree *avl.Tree, walletBuf [512]byte, p fastjson.Parser, 
 	return restoreAccount(tree, id, val)
 }
 
-func restoreFromDirWASM(tree *avl.Tree, pool *bytebufferpool.Pool, contracts *[]TransactionID, contractsExist map[AccountID]struct{}, path string) error {
+func restoreFromDirWASM(
+	tree *avl.Tree,
+	pool *bytebufferpool.Pool,
+	contracts *[]TransactionID,
+	contractsExist map[AccountID]struct{},
+	path string,
+) error {
 	filename := strings.TrimSuffix(filepath.Base(path), ".wasm")
 
 	var id TransactionID
@@ -460,7 +471,9 @@ func restoreAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 // 2. the file size is either 0 or 65536,
 //
 // Considered success only if all the conditions are true, otherwise returns an error.
-func restoreContractPages(tree *avl.Tree, contracts []TransactionID, contractPageFiles map[TransactionID][]string) error {
+func restoreContractPages(
+	tree *avl.Tree, contracts []TransactionID, contractPageFiles map[TransactionID][]string,
+) error {
 	pool := bytebufferpool.Pool{}
 
 	for _, id := range contracts {
@@ -489,7 +502,9 @@ func restoreContractPages(tree *avl.Tree, contracts []TransactionID, contractPag
 
 			// Check page size
 			if n != 0 && n != PageSize {
-				return errors.Errorf("contract page file %s has invalid page size %d. must be 0 or %d", file, n, PageSize)
+				return errors.Errorf(
+					"contract page file %s has invalid page size %d. must be 0 or %d", file, n, PageSize,
+				)
 			}
 
 			if buf.Len() == 0 {
