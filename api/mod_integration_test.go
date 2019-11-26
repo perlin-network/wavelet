@@ -774,16 +774,15 @@ func TestConnectDisconnect(t *testing.T) {
 	network := wavelet.NewTestNetwork(t)
 	defer network.Cleanup()
 
+	network.AddNode(t)
+	node := network.AddNode(t)
+
+	network.WaitForSync(t)
+
 	gateway := New()
 	gateway.setup()
 	gateway.ledger = network.Faucet().Ledger()
 	gateway.client = network.Faucet().Client()
-
-	network.AddNode(t)
-
-	node := network.AddNode(t)
-
-	network.WaitForSync(t)
 
 	currentSecret := conf.GetSecret()
 	defer conf.Update(conf.WithSecret(currentSecret))
