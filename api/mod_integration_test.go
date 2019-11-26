@@ -696,22 +696,22 @@ func TestEndpointsRateLimit(t *testing.T) {
 			isRateLimited: true,
 		},
 		{
-			url:           "/accounts/1",
+			url:           "/accounts/696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a",
 			method:        "GET",
 			isRateLimited: false,
 		},
 		{
-			url:           "/contract/1/page/1",
+			url:           "/contract/7d07f70f29fc87bfd8a78a4840175e58f1f39b195f00bde9813352c9714c4e14/page/1",
 			method:        "GET",
 			isRateLimited: true,
 		},
 		{
-			url:           "/contract/1/page",
+			url:           "/contract/7d07f70f29fc87bfd8a78a4840175e58f1f39b195f00bde9813352c9714c4e14/page",
 			method:        "GET",
 			isRateLimited: true,
 		},
 		{
-			url:           "/contract/1",
+			url:           "/contract/7d07f70f29fc87bfd8a78a4840175e58f1f39b195f00bde9813352c9714c4e14",
 			method:        "GET",
 			isRateLimited: true,
 		},
@@ -721,7 +721,7 @@ func TestEndpointsRateLimit(t *testing.T) {
 			isRateLimited: false,
 		},
 		{
-			url:           "/tx/1",
+			url:           "/tx/7d07f70f29fc87bfd8a78a4840175e58f1f39b195f00bde9813352c9714c4e14",
 			method:        "GET",
 			isRateLimited: false,
 		},
