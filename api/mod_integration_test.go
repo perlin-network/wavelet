@@ -749,8 +749,12 @@ func TestEndpointsRateLimit(t *testing.T) {
 					_ = w.Body.Close()
 				}()
 
-				_, err = ioutil.ReadAll(w.Body)
+				b, err := ioutil.ReadAll(w.Body)
 				assert.NoError(t, err)
+
+				if w.StatusCode != http.StatusOK {
+					fmt.Println(string(b))
+				}
 
 				if tc.isRateLimited {
 					if i < maxPerSecond {
