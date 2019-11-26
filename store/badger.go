@@ -80,7 +80,6 @@ func NewBadger(dir string) (*badgerKV, error) { // nolint:golint
 	b.gc(1 * time.Minute)
 
 	return b, nil
-
 }
 
 func (b *badgerKV) Close() error {
