@@ -352,9 +352,10 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		sys.Tag(req.Tag), req.payload, req.signature,
 	)
 
-	// TODO(kenta): check signature and nonce
-
-	g.ledger.AddTransaction(tx)
+	if err := g.ledger.AddTransaction(true, tx); err != nil {
+		g.renderError(ctx, ErrInternal(err))
+		return
+	}
 
 	g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
 }

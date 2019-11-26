@@ -5,15 +5,60 @@ package wavelet
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/binary"
 	mrand "math/rand"
 	"testing"
 	"time"
 
 	cuckoo "github.com/seiflotfy/cuckoofilter"
 
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/conf"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 )
+
+func TestLedger_AddTxInvalidSignature(t *testing.T) {
+	testnet := NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	alice := testnet.AddNode(t)
+	testnet.AddNode(t)
+
+	testnet.WaitUntilSync(t)
+
+	transfer := Transfer{
+		Recipient: alice.PublicKey(),
+		Amount:    100000,
+	}
+
+	payload, err := transfer.Marshal()
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	var nonceBuf [8]byte
+	binary.BigEndian.PutUint64(nonceBuf[:], 1)
+
+	var blockBuf [8]byte
+	binary.BigEndian.PutUint64(blockBuf[:], 1)
+
+	signature := edwards25519.Sign(
+		alice.PrivateKey(),
+		append(nonceBuf[:], append(blockBuf[:], append([]byte{byte(sys.TagTransfer)}, payload...)...)...),
+	)
+
+	tx := NewSignedTransaction(
+		alice.PublicKey(), 1, 1,
+		sys.TagTransfer, payload, signature,
+	)
+
+	// Modify the signature
+	tx.Signature[0] = 'z'
+
+	err = testnet.Faucet().Ledger().AddTransaction(true, tx)
+	assert.EqualError(t, err, ErrInvalidTxSignature.Error())
+}
 
 func TestLedger_Pay(t *testing.T) {
 	testnet := NewTestNetwork(t)

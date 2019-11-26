@@ -23,13 +23,14 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
+	"math/big"
+
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
-	"io"
-	"math/big"
 )
 
 type Transaction struct {
@@ -179,4 +180,14 @@ func (tx Transaction) LogicalUnits() int {
 
 func (tx Transaction) String() string {
 	return fmt.Sprintf("Transaction{ID: %x}", tx.ID)
+}
+
+func (tx Transaction) VerifySignature() bool {
+	var nonceBuf [8]byte
+	binary.BigEndian.PutUint64(nonceBuf[:], tx.Nonce)
+
+	var blockBuf [8]byte
+	binary.BigEndian.PutUint64(blockBuf[:], tx.Block)
+
+	return edwards25519.Verify(tx.Sender, append(nonceBuf[:], append(blockBuf[:], append([]byte{byte(tx.Tag)}, tx.Payload...)...)...), tx.Signature)
 }

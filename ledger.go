@@ -55,7 +55,8 @@ const (
 )
 
 var (
-	ErrMissingTx = errors.New("missing transaction")
+	ErrMissingTx          = errors.New("missing transaction")
+	ErrInvalidTxSignature = errors.New("invalid tx signature")
 )
 
 type Ledger struct {
@@ -251,7 +252,15 @@ func (l *Ledger) Close() {
 }
 
 // AddTransaction adds a transaction to the ledger and adds it's id to bloom filter used to sync transactions.
-func (l *Ledger) AddTransaction(txs ...Transaction) {
+func (l *Ledger) AddTransaction(verifySignature bool, txs ...Transaction) error {
+	if verifySignature {
+		for _, tx := range txs {
+			if !tx.VerifySignature() {
+				return ErrInvalidTxSignature
+			}
+		}
+	}
+
 	l.transactions.BatchAdd(l.blocks.Latest().ID, txs...)
 
 	l.transactionsSyncIndexLock.Lock()
@@ -261,6 +270,7 @@ func (l *Ledger) AddTransaction(txs ...Transaction) {
 	l.transactionsSyncIndexLock.Unlock()
 
 	//l.TakeSendQuota()
+	return nil
 }
 
 // Find searches through complete transaction and account indices for a specified
@@ -503,7 +513,10 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 					downloadedNum := len(transactions)
 					count -= uint64(downloadedNum)
 
-					l.AddTransaction(transactions...)
+					if err := l.AddTransaction(false, transactions...); err != nil {
+						logger.Error().Err(err).Msg("failed to add transaction")
+						continue
+					}
 
 					l.metrics.downloadedTX.Mark(int64(downloadedNum))
 					l.metrics.receivedTX.Mark(int64(downloadedNum))
@@ -606,7 +619,10 @@ func (l *Ledger) PullMissingTransactions() {
 			pulledTXs = append(pulledTXs, tx)
 		}
 
-		l.AddTransaction(pulledTXs...)
+		if err := l.AddTransaction(false, pulledTXs...); err != nil {
+			logger.Error().Err(err).Msg("failed to add transaction")
+			continue
+		}
 
 		if count > 0 {
 			logger.Info().
