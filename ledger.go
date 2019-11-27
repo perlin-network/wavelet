@@ -124,15 +124,14 @@ func WithMaxMemoryMB(n uint64) Option {
 
 func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	var cfg config
+
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 
 	logger := log.Node()
-
 	metrics := NewMetrics(context.TODO())
 	indexer := NewIndexer()
-
 	accounts := NewAccounts(kv)
 	blocks, err := NewBlocks(kv, conf.GetPruningLimit())
 
@@ -140,6 +139,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 	if blocks != nil && err != nil {
 		genesis := performInception(accounts.tree, cfg.Genesis)
+
 		if err := accounts.Commit(nil); err != nil {
 			logger.Fatal().Err(err).Msg("BUG: accounts.Commit")
 		}
@@ -195,7 +195,9 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 	if !cfg.GCDisabled {
 		ctx, cancel := context.WithCancel(context.Background())
+
 		ledger.stopWG.Add(1)
+
 		go accounts.GC(ctx, &ledger.stopWG)
 
 		ledger.cancelGC = cancel
@@ -211,15 +213,16 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	})
 
 	ledger.stopWG.Add(1)
+
 	go stallDetector.Run(&ledger.stopWG)
 
 	ledger.stallDetector = stallDetector
 
 	ledger.queueWorkerPool.Start(16)
-
 	ledger.PerformConsensus()
 
 	go ledger.SyncToLatestBlock()
+
 	go ledger.PushSendQuota()
 
 	return ledger
@@ -253,14 +256,13 @@ func (l *Ledger) Close() {
 // AddTransaction adds a transaction to the ledger and adds it's id to bloom filter used to sync transactions.
 func (l *Ledger) AddTransaction(verifySignature bool, txs ...Transaction) {
 	l.transactions.BatchAdd(l.blocks.Latest().ID, txs, verifySignature)
-
 	l.transactionsSyncIndexLock.Lock()
+
 	for _, tx := range txs {
 		l.transactionsSyncIndex.InsertUnique(tx.ID[:])
 	}
-	l.transactionsSyncIndexLock.Unlock()
 
-	//l.TakeSendQuota()
+	l.transactionsSyncIndexLock.Unlock()
 }
 
 // Find searches through complete transaction and account indices for a specified
@@ -364,12 +366,15 @@ func (l *Ledger) Restart() error {
 // the ledgers graph.
 func (l *Ledger) PerformConsensus() {
 	l.consensus.Add(1)
+
 	go l.PullMissingTransactions()
 
 	l.consensus.Add(1)
+
 	go l.SyncTransactions()
 
 	l.consensus.Add(1)
+
 	go l.FinalizeBlocks()
 }
 
@@ -418,6 +423,7 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 
 		for _, p := range peers {
 			wg.Add(1)
+
 			go func(conn *grpc.ClientConn) {
 				defer wg.Done()
 
@@ -540,12 +546,14 @@ func (l *Ledger) PullMissingTransactions() {
 		// Build list of transaction IDs
 		missingIDs := l.transactions.MissingIDs()
 		req := &TransactionPullRequest{TransactionIds: make([][]byte, 0, len(missingIDs))}
+
 		for _, txID := range missingIDs {
 			txID := txID
 			req.TransactionIds = append(req.TransactionIds, txID[:])
 		}
 
 		responseChan := make(chan *TransactionPullResponse)
+
 		for _, p := range peers {
 			go func(conn *grpc.ClientConn) {
 				client := NewWaveletClient(conn)
@@ -591,6 +599,7 @@ func (l *Ledger) PullMissingTransactions() {
 						Err(err).
 						Hex("tx_id", tx.ID[:]).
 						Msg("error unmarshaling downloaded tx")
+
 					continue
 				}
 
@@ -627,17 +636,16 @@ func (l *Ledger) FinalizeBlocks() {
 		select {
 		case <-l.sync:
 			return
-
 		default:
 		}
 
-		preferred := l.finalizer.Preferred()
 		decided := l.finalizer.Decided()
 
+		preferred := l.finalizer.Preferred()
 		if preferred == nil {
 			proposedBlock := l.proposeBlock()
-
 			logger := log.Consensus("proposal")
+
 			if proposedBlock != nil {
 				logger.Debug().
 					Hex("block_id", proposedBlock.ID[:]).
@@ -794,6 +802,7 @@ func (l *Ledger) query() {
 
 		f := func() {
 			var response response
+
 			defer func() {
 				responseChan <- response
 			}()
@@ -910,6 +919,7 @@ func (l *Ledger) query() {
 			logger.Error().
 				Err(err).
 				Msg("error collapsing transactions during query")
+
 			continue
 		}
 
@@ -938,6 +948,7 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 	go CollectVotesForSync(l.accounts, l.syncer, syncVotes, voteWG, snowballK)
 
 	syncTimeoutMultiplier := 0
+
 	for {
 		for {
 			time.Sleep(5 * time.Millisecond)
@@ -952,6 +963,7 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 			current := l.blocks.Latest()
 
 			var wg sync.WaitGroup
+
 			wg.Add(len(peers))
 
 			for _, p := range peers {
@@ -1059,6 +1071,7 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 
 	SYNC:
 		peers, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
+
 		if err != nil {
 			logger.Warn().Msg("It looks like there are no peers for us to sync with. Retrying...")
 
@@ -1130,13 +1143,16 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 
 		// Select a block to sync to which the majority of peers are on.
 
-		var latest *Block
-		var majority []response
+		var (
+			latest   *Block
+			majority []response
+		)
 
 		for _, votes := range set {
 			if len(votes) >= len(set)*2/3 {
 				latest = &votes[0].latest
 				majority = votes
+
 				break
 			}
 		}
@@ -1147,6 +1163,7 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 			logger.Warn().Msg("It looks like our peers could not decide on what the latest block currently is. Retrying...")
 
 			dispose()
+
 			goto SYNC
 		}
 
@@ -1178,6 +1195,7 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 				}
 
 				var checksum [blake2b.Size256]byte
+
 				copy(checksum[:], response.header.Checksums[idx])
 
 				set[checksum] = append(set[checksum], response.stream)
@@ -1201,6 +1219,7 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 
 				sources = append(sources, source{idx: idx, checksum: checksum, streams: voters})
 				consistent = true
+
 				break
 			}
 
@@ -1217,14 +1236,17 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 
 		// Streams may not concurrently send and receive messages at once.
 		streamLocks := make(map[Wavelet_SyncClient]*sync.Mutex)
+
 		var streamLock sync.Mutex
 
 		workers := make(chan source, 16)
 
 		var workerWG sync.WaitGroup
+
 		workerWG.Add(cap(workers))
 
 		var chunkWG sync.WaitGroup
+
 		chunkWG.Add(len(sources))
 
 		logger.Debug().
@@ -1233,11 +1255,13 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 			Msg("Starting up workers to downloaded all chunks of data needed to sync to the latest block...")
 
 		var chunksBufferLock sync.Mutex
+
 		chunksBuffer, err := l.fileBuffers.GetBounded(int64(len(sources)) * sys.SyncChunkSize)
 		if err != nil {
 			logger.Error().
 				Err(err).
 				Msg("Could not create paged buffer! Retrying...")
+
 			goto SYNC
 		}
 
@@ -1326,12 +1350,16 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 		logger.Debug().
 			Int("num_chunks", len(sources)).
 			Int("num_workers", cap(workers)).
-			Msg("Downloaded whatever chunks were available to sync to the latest block, and shutted down all workers. Checking validity of chunks...")
+			Msg(
+				"Downloaded whatever chunks were available to sync to the latest block, and shutted down all " +
+					"workers. Checking validity of chunks...",
+			)
 
 		dispose() // Shutdown all streams as we no longer need them.
 
 		// Check all chunks has been received
 		var diffSize int64
+
 		for i, src := range sources {
 			if src.size == 0 {
 				logger.Error().
@@ -1340,6 +1368,7 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 					Msg("Could not download one of the chunks necessary to sync to the latest block! Retrying...")
 
 				cleanup()
+
 				goto SYNC
 			}
 
@@ -1353,6 +1382,7 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 				Msg("Failed to write chunks to bounded memory buffer. Restarting sync...")
 
 			cleanup()
+
 			goto SYNC
 		}
 
@@ -1369,6 +1399,7 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 				Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
 
 			cleanup()
+
 			goto SYNC
 		}
 
@@ -1380,6 +1411,7 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 				Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
 
 			cleanup()
+
 			goto SYNC
 		}
 
@@ -1390,11 +1422,13 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 				Msg("Failed to save finalized block to our database")
 
 			cleanup()
+
 			goto SYNC
 		}
 
 		if err := l.accounts.Commit(snapshot); err != nil {
 			cleanup()
+
 			logger := log.Node()
 			logger.Fatal().Err(err).Msg("failed to commit collapsed state to our database")
 		}
@@ -1454,11 +1488,12 @@ type CollapseState struct {
 // and end is the interval ending point depth.
 func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResults, error) {
 	idBuf := bytes.NewBuffer(make([]byte, SizeTransactionID*len(block.Transactions)))
+
 	for _, id := range block.Transactions {
 		idBuf.Write(id[:])
 	}
-	cacheKey := blake2b.Sum256(idBuf.Bytes())
 
+	cacheKey := blake2b.Sum256(idBuf.Bytes())
 	_collapseState, _ := l.cacheCollapse.LoadOrPut(cacheKey, &CollapseState{})
 	collapseState := _collapseState.(*CollapseState)
 
@@ -1492,6 +1527,7 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 		}
 
 		logger := log.Accounts("nonce_updated")
+
 		for accountID, nonce := range collapseState.results.accountNonces {
 			logger.Log().
 				Hex("account_id", accountID[:]).

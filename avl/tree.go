@@ -63,6 +63,7 @@ func New(kv store.KV) *Tree {
 	// Load root node if it already exists.
 	if buf, err := t.kv.Get(RootKey); err == nil && len(buf) == MerkleHashSize {
 		var rootID [MerkleHashSize]byte
+
 		copy(rootID[:], buf)
 
 		t.root = t.mustLoadNode(rootID)
@@ -129,6 +130,7 @@ func (t *Tree) IterateFrom(key []byte, callback func(key, value []byte) bool) {
 	if t.root == nil {
 		return
 	}
+
 	t.root.iterateFrom(t, key, callback)
 }
 
@@ -136,11 +138,14 @@ func (t *Tree) IteratePrefix(prefix []byte, callback func(key, value []byte)) {
 	if t.root == nil {
 		return
 	}
+
 	t.root.iterateFrom(t, prefix, func(key, value []byte) bool {
 		if !bytes.HasPrefix(key, prefix) {
 			return false
 		}
+
 		callback(key, value)
+
 		return true
 	})
 }
@@ -173,6 +178,7 @@ func (t *Tree) doPrintContents(n *node, depth int) {
 	}
 
 	fmt.Printf("%s: %s\n", hex.EncodeToString(n.id[:]), n.getString())
+
 	if n.kind == NodeNonLeaf {
 		t.doPrintContents(t.mustLoadLeft(n), depth+1)
 		t.doPrintContents(t.mustLoadRight(n), depth+1)
@@ -241,12 +247,14 @@ func (t *Tree) getNextOldRootIndex() uint64 {
 
 func (t *Tree) setNextOldRootIndex(x uint64) {
 	var buf [8]byte
+
 	binary.LittleEndian.PutUint64(buf[:], x)
 	_ = t.kv.Put(NextOldRootIndexKey, buf[:])
 }
 
 func (t *Tree) getOldRoot(idx uint64) ([MerkleHashSize]byte, bool) {
 	var buf [8]byte
+
 	binary.LittleEndian.PutUint64(buf[:], idx)
 
 	out, err := t.kv.Get(append(OldRootsPrefix, buf[:]...))
@@ -255,21 +263,23 @@ func (t *Tree) getOldRoot(idx uint64) ([MerkleHashSize]byte, bool) {
 	}
 
 	var ret [MerkleHashSize]byte
+
 	copy(ret[:], out)
+
 	return ret, true
 }
 
 func (t *Tree) setOldRoot(idx uint64, value []byte) {
 	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], idx)
 
+	binary.LittleEndian.PutUint64(buf[:], idx)
 	_ = t.kv.Put(append(OldRootsPrefix, buf[:]...), value)
 }
 
 func (t *Tree) deleteOldRoot(idx uint64) {
 	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], idx)
 
+	binary.LittleEndian.PutUint64(buf[:], idx)
 	_ = t.kv.Delete(append(OldRootsPrefix, buf[:]...))
 }
 
@@ -304,6 +314,7 @@ func (t *Tree) mustLoadNode(id [MerkleHashSize]byte) *node {
 	if err != nil {
 		panic(err)
 	}
+
 	return n
 }
 
@@ -316,7 +327,9 @@ func (t *Tree) loadLeft(n *node) (*node, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	n.leftObj = ret
+
 	return ret, nil
 }
 
@@ -329,7 +342,9 @@ func (t *Tree) loadRight(n *node) (*node, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	n.rightObj = ret
+
 	return ret, nil
 }
 
@@ -337,8 +352,10 @@ func (t *Tree) mustLoadLeft(n *node) *node {
 	if n.leftObj != nil {
 		return n.leftObj
 	}
+
 	ret := t.mustLoadNode(n.left)
 	n.leftObj = ret
+
 	return ret
 }
 
@@ -346,8 +363,10 @@ func (t *Tree) mustLoadRight(n *node) *node {
 	if n.rightObj != nil {
 		return n.rightObj
 	}
+
 	ret := t.mustLoadNode(n.right)
 	n.rightObj = ret
+
 	return ret
 }
 
@@ -363,6 +382,7 @@ func (t *Tree) SetViewID(viewID uint64) {
 
 func (t *Tree) iterateDiff(prevViewID uint64, callback func(n *node) bool) {
 	var stack queue.Queue
+
 	stack.PushBack(t.root)
 
 	for stack.Len() > 0 {
@@ -387,6 +407,7 @@ func (t *Tree) iterateDiff(prevViewID uint64, callback func(n *node) bool) {
 // DumpDiff writes the AVL tree difference into a io.Writer.
 func (t *Tree) DumpDiff(prevViewID uint64, wr io.Writer) error {
 	nodeIDs := make([][MerkleHashSize]byte, 0)
+
 	t.iterateDiff(prevViewID, func(n *node) bool {
 		nodeIDs = append(nodeIDs, n.id)
 		return true
@@ -404,11 +425,13 @@ func (t *Tree) DumpDiff(prevViewID uint64, wr io.Writer) error {
 	}
 
 	var lastErr error
+
 	t.iterateDiff(prevViewID, func(n *node) bool {
 		if err := n.serializeForDifference(wr); err != nil {
 			lastErr = err
 			return false
 		}
+
 		return true
 	})
 
@@ -436,10 +459,13 @@ func (t *Tree) ApplyDiffWithUpdateNotifier(diff io.Reader, updateNotifier func(k
 		return nil
 	}
 
-	var rootID [MerkleHashSize]byte
+	var (
+		rootID [MerkleHashSize]byte
+		id     [MerkleHashSize]byte
+	)
+
 	preloaded := newDiffQueue(t.kv, DiffsKeyPrefix)
 
-	var id [MerkleHashSize]byte
 	for i := uint64(0); i < nodeCount; i++ {
 		if _, err := diff.Read(id[:]); err != nil {
 			return err
@@ -460,6 +486,7 @@ func (t *Tree) ApplyDiffWithUpdateNotifier(diff io.Reader, updateNotifier func(k
 			if _, ok := unresolved[n.id]; !ok {
 				return errors.Errorf("unexpected node")
 			}
+
 			delete(unresolved, n.id)
 		}
 
@@ -467,6 +494,7 @@ func (t *Tree) ApplyDiffWithUpdateNotifier(diff io.Reader, updateNotifier func(k
 			unresolved[n.left] = struct{}{}
 			unresolved[n.right] = struct{}{}
 		}
+
 		return nil
 	}
 
@@ -511,8 +539,10 @@ func (profile *GCProfile) PerformFullGC() (int, error) {
 	}
 
 	var i int64
+
 	for i = int64(profile.lastDepth); i >= int64(profile.lastDepth-profile.preserveDepth); i-- {
 		i := uint64(i)
+
 		id, ok := profile.t.getOldRoot(i)
 		if !ok {
 			return 0, nil
@@ -522,6 +552,7 @@ func (profile *GCProfile) PerformFullGC() (int, error) {
 		if err != nil {
 			return 0, err
 		}
+
 		err = n.dfs(profile.t, false, func(n *node) (bool, error) {
 			return true, profile.t.kv.Put(append(GCAliveMarkPrefix, n.id[:]...), mark[:])
 		})
@@ -531,8 +562,10 @@ func (profile *GCProfile) PerformFullGC() (int, error) {
 	}
 
 	deleteCount := 0
+
 	for ; i >= 0; i-- {
 		i := uint64(i)
+
 		id, ok := profile.t.getOldRoot(i)
 		if !ok {
 			return deleteCount, nil
@@ -542,13 +575,16 @@ func (profile *GCProfile) PerformFullGC() (int, error) {
 		if err != nil {
 			return 0, err
 		}
+
 		err = n.dfs(profile.t, true, func(n *node) (bool, error) {
 			gotMark, _ := profile.t.kv.Get(append(GCAliveMarkPrefix, n.id[:]...))
 			if bytes.Equal(gotMark, mark[:]) {
 				return false, nil
 			}
+
 			profile.t.deleteNodeAndMetadata(n.id)
 			deleteCount++
+
 			return true, nil
 		})
 		if err != nil {

@@ -21,6 +21,7 @@ func (n *Nonce) UnmarshalJSON(b []byte) error {
 
 	n.Nonce = v.GetUint64("nonce")
 	n.Block = v.GetUint64("block")
+
 	return nil
 }
 
@@ -28,7 +29,9 @@ func (c *Client) GetAccountNonce(account [32]byte) (*Nonce, error) {
 	path := RouteNonce + "/" + hex.EncodeToString(account[:])
 
 	var res Nonce
+
 	err := c.RequestJSON(path, ReqGet, nil, &res)
+
 	return &res, err
 }
 

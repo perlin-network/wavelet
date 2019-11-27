@@ -28,6 +28,7 @@ func NewTestKV(t testing.TB, kv string, path string, opts ...TestKVOption) (KV, 
 	t.Helper()
 
 	cfg := defaultKVConfig()
+
 	for _, opt := range opts {
 		opt(&cfg)
 	}
@@ -35,10 +36,10 @@ func NewTestKV(t testing.TB, kv string, path string, opts ...TestKVOption) (KV, 
 	switch kv {
 	case "inmem":
 		inmemdb := NewInmem()
+
 		return inmemdb, func() {
 			_ = inmemdb.Close()
 		}
-
 	case "level": //nolint:goconst
 		if cfg.RemoveExisting {
 			_ = os.RemoveAll(path)
@@ -51,11 +52,11 @@ func NewTestKV(t testing.TB, kv string, path string, opts ...TestKVOption) (KV, 
 
 		return leveldb, func() {
 			_ = leveldb.Close()
+
 			if cfg.RemoveExisting {
 				_ = os.RemoveAll(path)
 			}
 		}
-
 	case "badger": // nolint:goconst
 		if cfg.RemoveExisting {
 			_ = os.RemoveAll(path)
@@ -68,11 +69,11 @@ func NewTestKV(t testing.TB, kv string, path string, opts ...TestKVOption) (KV, 
 
 		return badger, func() {
 			_ = badger.Close()
+
 			if cfg.RemoveExisting {
 				_ = os.RemoveAll(path)
 			}
 		}
-
 	default:
 		panic("unknown kv " + kv)
 	}

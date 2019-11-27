@@ -194,8 +194,8 @@ func (c *Client) Close() {
 
 func (c *Client) GetContractCode(contractID string) (string, error) {
 	path := fmt.Sprintf("%s/%s", RouteContract, contractID)
-
 	res, err := c.Request(path, ReqGet, nil)
+
 	return string(res), err
 }
 
@@ -206,5 +206,6 @@ func (c *Client) GetContractPages(contractID string, index *uint64) (string, err
 	}
 
 	res, err := c.Request(path, ReqGet, nil)
+
 	return base64.StdEncoding.EncodeToString(res), err
 }

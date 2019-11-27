@@ -51,6 +51,7 @@ type PathCompleter struct {
 
 func (p *PathCompleter) GetDynamicNames(line []rune) [][]rune {
 	var path string
+
 	words := strings.Split(string(line), " ")
 	if len(words) > 1 && words[1] != "" { // has some file
 		path = filepath.Dir(strings.Join(words[1:], " "))

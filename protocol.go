@@ -90,14 +90,15 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 	}
 
 	res := &SyncResponse{}
+
 	block, err := p.ledger.blocks.Latest().Marshal()
 	if err != nil {
 		return err
 	}
 
 	header := &SyncInfo{Block: block}
-
 	diffBuffer := p.ledger.fileBuffers.GetUnbounded()
+
 	defer p.ledger.fileBuffers.Put(diffBuffer)
 
 	if err := p.ledger.accounts.Snapshot().DumpDiff(req.GetBlockId(), diffBuffer); err != nil {
@@ -108,6 +109,7 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 	if err != nil {
 		return err
 	}
+
 	defer p.ledger.fileBuffers.Put(chunksBuffer)
 
 	if _, err := io.Copy(chunksBuffer, diffBuffer); err != nil {
@@ -124,7 +126,9 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 	// Chunk dumped diff
 	syncChunkSize := conf.GetSyncChunkSize()
 	chunkBuf := make([]byte, syncChunkSize)
+
 	var i int
+
 	for {
 		n, err := chunksBuffer.ReadAt(chunkBuf, int64(i*syncChunkSize))
 		if n > 0 {
@@ -160,11 +164,13 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 		}
 
 		var checksum [blake2b.Size256]byte
+
 		copy(checksum[:], req.GetChecksum())
 
 		info, ok := chunks[checksum]
 		if !ok {
 			res.Data.(*SyncResponse_Chunk).Chunk = nil
+
 			if err = stream.Send(res); err != nil {
 				return err
 			}
@@ -205,6 +211,7 @@ func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error
 	}
 
 	var toReturn [][]byte
+
 	p.ledger.transactions.Iterate(func(tx *Transaction) bool {
 		if exists := cf.Lookup(tx.ID[:]); !exists {
 			toReturn = append(toReturn, tx.Marshal())
@@ -224,6 +231,7 @@ func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error
 	}
 
 	pointer := 0
+
 	for {
 		req, err := stream.Recv()
 		if err != nil {
@@ -234,6 +242,7 @@ func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error
 		if chunkSize > len(toReturn) {
 			chunkSize = len(toReturn)
 		}
+
 		res := &TransactionsSyncResponse{
 			Data: &TransactionsSyncResponse_Transactions{
 				Transactions: &TransactionsSyncPart{
@@ -262,14 +271,18 @@ func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error
 	return nil
 }
 
-func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullRequest) (*TransactionPullResponse, error) {
+func (p *Protocol) PullTransactions(
+	ctx context.Context, req *TransactionPullRequest) (*TransactionPullResponse, error,
+) {
 	res := &TransactionPullResponse{
 		Transactions: make([][]byte, 0, len(req.TransactionIds)),
 	}
 
 	var txID TransactionID
+
 	for _, id := range req.TransactionIds {
 		copy(txID[:], id)
+
 		if tx := p.ledger.transactions.Find(txID); tx != nil {
 			res.Transactions = append(res.Transactions, tx.Marshal())
 		}

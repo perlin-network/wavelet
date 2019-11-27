@@ -66,6 +66,7 @@ func EncodeString(s string) []byte {
 
 func EncodeBytes(b []byte) []byte {
 	var lenbuf = make([]byte, 4)
+
 	binary.LittleEndian.PutUint32(lenbuf, uint32(len(b)))
 
 	return append(lenbuf, b...)
@@ -77,18 +78,24 @@ func EncodeByte(u byte) []byte {
 
 func EncodeUint16(u uint16) []byte {
 	var buf = make([]byte, 2)
+
 	binary.LittleEndian.PutUint16(buf, u)
+
 	return buf
 }
 
 func EncodeUint32(u uint32) []byte {
 	var buf = make([]byte, 4)
+
 	binary.LittleEndian.PutUint32(buf, u)
+
 	return buf
 }
 
 func EncodeUint64(u uint64) []byte {
 	var buf = make([]byte, 8)
+
 	binary.LittleEndian.PutUint64(buf, u)
+
 	return buf
 }

@@ -104,6 +104,7 @@ func (f *finalizationVote) ID() VoteID {
 	if f.block == nil {
 		return ZeroVoteID
 	}
+
 	return f.block.ID
 }
 
@@ -116,6 +117,7 @@ func (f *finalizationVote) Length() float64 {
 	if f.block == nil {
 		return 0
 	}
+
 	return float64(len(f.block.Transactions))
 }
 
@@ -153,6 +155,7 @@ func CollectVotesForSync(
 		}
 
 		voters[vote.voter.PublicKey()] = struct{}{}
+
 		votes = append(votes, vote)
 
 		if len(votes) == cap(votes) {
@@ -217,6 +220,7 @@ func calculateTallies(accounts *Accounts, responses []Vote) []Vote {
 	}
 
 	array := make([]Vote, 0, len(votes))
+
 	for id := range votes {
 		votes[id].SetTally(votes[id].Tally() / totalTally)
 

@@ -18,6 +18,7 @@ func NewWorkerPool() *WorkerPool {
 
 func (wp *WorkerPool) Start(workers int) {
 	wp.wg.Add(workers)
+
 	for i := 0; i < workers; i++ {
 		go func() {
 			defer wp.wg.Done()

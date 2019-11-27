@@ -35,7 +35,6 @@ func main() {
 	switch benchmark {
 	case "accounts":
 		runAccountsBenchmark()
-
 	case "tree":
 		runTreeBenchmark()
 	}

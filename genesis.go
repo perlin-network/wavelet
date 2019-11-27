@@ -77,11 +77,14 @@ func SetGenesisByNetwork(name string) error {
 	return nil
 }
 
-// performInception restore genesis data from the a directory or JSON contents expected to exist at the birth of any node in this ledgers network.
+// performInception restore genesis data from the a directory or JSON contents expected to exist at the birth of any
+// node in this ledgers network.
 //
-// An account state may be specified within the genesis directory in the form of a [account address].json file with key-value pairs.
+// An account state may be specified within the genesis directory in the form of a [account address].json file with key
+// value pairs.
 //
-// A smart contract may be specified within the genesis directory in the form of a [contract address].wasm file with accompanying [contract address].[page index].dmp files representing the contracts memory pages.
+// A smart contract may be specified within the genesis directory in the form of a [contract address].wasm file with
+// accompanying [contract address].[page index].dmp files representing the contracts memory pages.
 //
 // The AccountsLen in the restored tree may not match with the original tree.
 //
@@ -90,6 +93,7 @@ func performInception(tree *avl.Tree, genesis *string) Block {
 	logger := log.Node()
 
 	var err error
+
 	if genesis != nil {
 		isJSON := func(str string) bool {
 			var js json.RawMessage
@@ -177,6 +181,7 @@ func restoreContractGlobals(tree *avl.Tree, id TransactionID, path string) error
 	if err != nil && err != io.EOF {
 		return errors.Wrapf(err, "failed to read contract globals %s", path)
 	}
+
 	if err == nil && n == cap(globalsBuf) {
 		return errors.Wrapf(err, "failed to read contract globals %s, buffer is not enough", path)
 	}
@@ -197,11 +202,14 @@ func restoreFromDir(tree *avl.Tree, dir string) error {
 
 	// This is should only used to check for duplicates.
 	contractsExist := make(map[TransactionID]struct{})
-	var contracts []TransactionID
 
 	pool := &bytebufferpool.Pool{}
-	var p fastjson.Parser
-	var walletBuf [512]byte
+
+	var (
+		p         fastjson.Parser
+		walletBuf [512]byte
+		contracts []TransactionID
+	)
 
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
 		if info.IsDir() {
@@ -238,7 +246,9 @@ func restoreFromDir(tree *avl.Tree, dir string) error {
 	return restoreContractPages(tree, contracts, contractPageFiles)
 }
 
-func restoreFromDirJSON(tree *avl.Tree, walletBuf [512]byte, p fastjson.Parser, accounts map[AccountID]struct{}, path string) error {
+func restoreFromDirJSON(
+	tree *avl.Tree, walletBuf [512]byte, p fastjson.Parser, accounts map[AccountID]struct{}, path string,
+) error {
 	filename := strings.TrimSuffix(filepath.Base(path), ".json")
 
 	var id AccountID
@@ -247,6 +257,7 @@ func restoreFromDirJSON(tree *avl.Tree, walletBuf [512]byte, p fastjson.Parser, 
 		if err != nil {
 			return errors.Wrapf(err, "filename of %s has invalid account ID", path)
 		}
+
 		return errors.Errorf("filename of %s has invalid account ID", path)
 	}
 
@@ -254,6 +265,7 @@ func restoreFromDirJSON(tree *avl.Tree, walletBuf [512]byte, p fastjson.Parser, 
 	if _, exist := accounts[id]; exist {
 		return nil
 	}
+
 	accounts[id] = struct{}{}
 
 	f, err := os.Open(path)
@@ -265,6 +277,7 @@ func restoreFromDirJSON(tree *avl.Tree, walletBuf [512]byte, p fastjson.Parser, 
 	if err != nil && err != io.EOF {
 		return errors.Wrapf(err, "failed to read wallet %s", path)
 	}
+
 	if err == nil && n == cap(walletBuf) {
 		return errors.Wrapf(err, "failed to read wallet %s, buffer is not enough", path)
 	}
@@ -277,7 +290,13 @@ func restoreFromDirJSON(tree *avl.Tree, walletBuf [512]byte, p fastjson.Parser, 
 	return restoreAccount(tree, id, val)
 }
 
-func restoreFromDirWASM(tree *avl.Tree, pool *bytebufferpool.Pool, contracts *[]TransactionID, contractsExist map[AccountID]struct{}, path string) error {
+func restoreFromDirWASM(
+	tree *avl.Tree,
+	pool *bytebufferpool.Pool,
+	contracts *[]TransactionID,
+	contractsExist map[AccountID]struct{},
+	path string,
+) error {
 	filename := strings.TrimSuffix(filepath.Base(path), ".wasm")
 
 	var id TransactionID
@@ -286,6 +305,7 @@ func restoreFromDirWASM(tree *avl.Tree, pool *bytebufferpool.Pool, contracts *[]
 		if err != nil {
 			return errors.Wrapf(err, "filename of %s has invalid contract ID", path)
 		}
+
 		return errors.Errorf("filename of %s has invalid contract ID", path)
 	}
 
@@ -318,6 +338,7 @@ func restoreFromDirWASM(tree *avl.Tree, pool *bytebufferpool.Pool, contracts *[]
 	}
 
 	WriteAccountContractCode(tree, id, buf.Bytes())
+
 	return nil
 }
 
@@ -331,6 +352,7 @@ func restoreFromDirDMP(tree *avl.Tree, contractPageFiles map[TransactionID][]str
 		if err != nil {
 			return errors.Wrapf(err, "filename of %s has invalid contract ID", path)
 		}
+
 		return errors.Errorf("filename of %s has invalid contract ID", path)
 	}
 
@@ -351,6 +373,7 @@ func restoreFromDirDMP(tree *avl.Tree, contractPageFiles map[TransactionID][]str
 	if err != nil {
 		return errors.Wrapf(err, "filename of %s has invalid index, expected an unsigned integer", path)
 	}
+
 	if idx < 0 {
 		return errors.Errorf("filename of %s has invalid index, expected an unsigned integer", path)
 	}
@@ -373,6 +396,7 @@ func restoreFromDirDMP(tree *avl.Tree, contractPageFiles map[TransactionID][]str
 	}
 
 	files[idx] = path
+
 	return nil
 }
 
@@ -382,8 +406,10 @@ func restoreAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 		return err
 	}
 
-	var balance, stake, reward, gasBalance uint64
-	var isContract bool
+	var (
+		balance, stake, reward, gasBalance uint64
+		isContract                         bool
+	)
 
 	fields.Visit(func(key []byte, v *fastjson.Value) {
 		switch string(key) {
@@ -445,8 +471,11 @@ func restoreAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 // 2. the file size is either 0 or 65536,
 //
 // Considered success only if all the conditions are true, otherwise returns an error.
-func restoreContractPages(tree *avl.Tree, contracts []TransactionID, contractPageFiles map[TransactionID][]string) error {
+func restoreContractPages(
+	tree *avl.Tree, contracts []TransactionID, contractPageFiles map[TransactionID][]string,
+) error {
 	pool := bytebufferpool.Pool{}
+
 	for _, id := range contracts {
 		files := contractPageFiles[id]
 
@@ -473,7 +502,9 @@ func restoreContractPages(tree *avl.Tree, contracts []TransactionID, contractPag
 
 			// Check page size
 			if n != 0 && n != PageSize {
-				return errors.Errorf("contract page file %s has invalid page size %d. must be 0 or %d", file, n, PageSize)
+				return errors.Errorf(
+					"contract page file %s has invalid page size %d. must be 0 or %d", file, n, PageSize,
+				)
 			}
 
 			if buf.Len() == 0 {
@@ -514,9 +545,11 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 		gasBalance *uint64
 	}
 
-	var filePerm os.FileMode = 0644
+	var (
+		filePerm os.FileMode = 0644
+		err      error
+	)
 
-	var err error
 	accounts := make(map[AccountID]*account)
 
 	tree.IteratePrefix(keyAccounts[:], func(key, value []byte) {
@@ -602,12 +635,15 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 		if v.gasBalance != nil {
 			o.Set("gas_balance", arena.NewNumberString(strconv.FormatUint(*v.gasBalance, 10)))
 		}
+
 		if v.balance != nil {
 			o.Set("balance", arena.NewNumberString(strconv.FormatUint(*v.balance, 10)))
 		}
+
 		if v.stake != nil {
 			o.Set("stake", arena.NewNumberString(strconv.FormatUint(*v.stake, 10)))
 		}
+
 		if v.reward != nil {
 			o.Set("reward", arena.NewNumberString(strconv.FormatUint(*v.reward, 10)))
 		}

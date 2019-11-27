@@ -161,7 +161,9 @@ func (g *Gateway) setup() {
 
 // Apply base middleware to the handler and along with middleware passed.
 // If rateLimiterKey is not empty, enable rate limit.
-func (g *Gateway) applyMiddleware(f fasthttp.RequestHandler, rateLimiterKey string, m ...middleware) fasthttp.RequestHandler {
+func (g *Gateway) applyMiddleware(
+	f fasthttp.RequestHandler, rateLimiterKey string, m ...middleware,
+) fasthttp.RequestHandler {
 	var list []middleware
 
 	if len(rateLimiterKey) == 0 {
@@ -362,9 +364,11 @@ func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 }
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
-	var sender wavelet.AccountID
-	var offset, limit uint64
-	var err error
+	var (
+		sender        wavelet.AccountID
+		offset, limit uint64
+		err           error
+	)
 
 	queryArgs := ctx.QueryArgs()
 	if raw := string(queryArgs.Peek("sender")); len(raw) > 0 {
@@ -404,8 +408,10 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 		limit = maxPaginationLimit
 	}
 
-	var transactions transactionList
-	var latestBlockIndex = g.ledger.Blocks().Latest().Index
+	var (
+		transactions     transactionList
+		latestBlockIndex = g.ledger.Blocks().Latest().Index
+	)
 
 	// TODO: maybe there is be a better way to do this? Currently, this iterates
 	// the entire transaction list
@@ -451,6 +457,7 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 	}
 
 	var id wavelet.TransactionID
+
 	copy(id[:], slice)
 
 	tx := g.ledger.Transactions().Find(id)
@@ -492,10 +499,10 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 	}
 
 	var id wavelet.AccountID
+
 	copy(id[:], slice)
 
 	snapshot := g.ledger.Snapshot()
-
 	balance, _ := wavelet.ReadAccountBalance(snapshot, id)
 	gasBalance, _ := wavelet.ReadAccountContractGasBalance(snapshot, id)
 	stake, _ := wavelet.ReadAccountStake(snapshot, id)
@@ -545,8 +552,10 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	var idx uint64
-	var err error
+	var (
+		idx uint64
+		err error
+	)
 
 	rawIdx, ok := ctx.UserValue("index").(string)
 	if !ok {
@@ -573,7 +582,9 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 	}
 
 	if idx >= numPages {
-		g.renderError(ctx, ErrBadRequest(errors.Errorf("contract with ID %x only has %d pages, but you requested page %d", id, numPages, idx)))
+		err := errors.Errorf("contract with ID %x only has %d pages, but you requested page %d", id, numPages, idx)
+		g.renderError(ctx, ErrBadRequest(err))
+
 		return
 	}
 
@@ -700,6 +711,7 @@ func (g *Gateway) getAccountNonce(ctx *fasthttp.RequestCtx) {
 	}
 
 	var id wavelet.AccountID
+
 	copy(id[:], slice)
 
 	snapshot := g.ledger.Snapshot()

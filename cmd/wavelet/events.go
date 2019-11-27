@@ -19,6 +19,7 @@ func addToCloser(toClose *[]func()) func(f func(), err error) error {
 
 func setEvents(c *wctl.Client) (func(), error) {
 	var toClose []func()
+
 	cleanup := func() {
 		for _, f := range toClose {
 			f()
@@ -32,6 +33,7 @@ func setEvents(c *wctl.Client) (func(), error) {
 
 	c.OnPeerJoin = onPeerJoin
 	c.OnPeerLeave = onPeerLeave
+
 	if err := addToCloser(&toClose)(c.PollNetwork()); err != nil {
 		return cleanup, err
 	}
@@ -41,15 +43,16 @@ func setEvents(c *wctl.Client) (func(), error) {
 	c.OnStakeUpdated = onStakeUpdated
 	c.OnRewardUpdated = onRewardUpdate
 	c.OnNonceUpdated = onNonceUpdated
+
 	if err := addToCloser(&toClose)(c.PollAccounts()); err != nil {
 		return cleanup, err
 	}
 
 	c.OnProposal = onProposal
 	c.OnFinalized = onFinalized
-
 	c.OnContractGas = onContractGas
 	c.OnContractLog = onContractLog
+
 	if err := addToCloser(&toClose)(c.PollContracts()); err != nil {
 		return cleanup, err
 	}
@@ -57,6 +60,7 @@ func setEvents(c *wctl.Client) (func(), error) {
 	c.OnTxApplied = onTxApplied
 	c.OnTxGossipError = onTxGossipError
 	c.OnTxFailed = onTxFailed
+
 	if err := addToCloser(&toClose)(c.PollTransactions()); err != nil {
 		return cleanup, err
 	}

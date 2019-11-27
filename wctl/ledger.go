@@ -11,7 +11,9 @@ var _ UnmarshalableJSON = (*LedgerStatusResponse)(nil)
 
 // GetLedgerStatus calls the /ledger endpoint of the API. All arguments are
 // optional.
-func (c *Client) LedgerStatus(senderID string, creatorID string, offset uint64, limit uint64) (*LedgerStatusResponse, error) {
+func (c *Client) LedgerStatus(
+	senderID string, creatorID string, offset uint64, limit uint64,
+) (*LedgerStatusResponse, error) {
 	vals := url.Values{}
 
 	if senderID != "" {

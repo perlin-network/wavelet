@@ -64,9 +64,9 @@ func (rw RewardWithdrawalRequest) Key() []byte {
 	w.Write(keyRewardWithdrawals[:])
 
 	var buf [8]byte
+
 	binary.BigEndian.PutUint64(buf[:], rw.blockIndex)
 	w.Write(buf[:8])
-
 	w.Write(rw.account[:])
 
 	return w.Bytes()
@@ -78,6 +78,7 @@ func (rw RewardWithdrawalRequest) Marshal() []byte {
 	w.Write(rw.account[:])
 
 	var buf [8]byte
+
 	binary.BigEndian.PutUint64(buf[:], rw.amount)
 	w.Write(buf[:8])
 
@@ -124,8 +125,8 @@ func ReadAccountNonce(tree *avl.Tree, id AccountID) (uint64, bool) {
 
 func WriteAccountNonce(tree *avl.Tree, id AccountID, nonce uint64) {
 	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], nonce)
 
+	binary.LittleEndian.PutUint64(buf[:], nonce)
 	writeUnderAccounts(tree, id, keyAccountNonce[:], buf[:])
 }
 
@@ -140,8 +141,8 @@ func ReadAccountBalance(tree *avl.Tree, id AccountID) (uint64, bool) {
 
 func WriteAccountBalance(tree *avl.Tree, id AccountID, balance uint64) {
 	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], balance)
 
+	binary.LittleEndian.PutUint64(buf[:], balance)
 	writeUnderAccounts(tree, id, keyAccountBalance[:], buf[:])
 }
 
@@ -156,8 +157,8 @@ func ReadAccountStake(tree *avl.Tree, id AccountID) (uint64, bool) {
 
 func WriteAccountStake(tree *avl.Tree, id AccountID, stake uint64) {
 	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], stake)
 
+	binary.LittleEndian.PutUint64(buf[:], stake)
 	writeUnderAccounts(tree, id, keyAccountStake[:], buf[:])
 }
 
@@ -172,6 +173,7 @@ func ReadAccountReward(tree *avl.Tree, id AccountID) (uint64, bool) {
 
 func WriteAccountReward(tree *avl.Tree, id AccountID, reward uint64) {
 	var buf [8]byte
+
 	binary.LittleEndian.PutUint64(buf[:], reward)
 	writeUnderAccounts(tree, id, keyAccountReward[:], buf[:])
 }
@@ -200,8 +202,8 @@ func ReadAccountContractNumPages(tree *avl.Tree, id TransactionID) (uint64, bool
 
 func WriteAccountContractNumPages(tree *avl.Tree, id TransactionID, numPages uint64) {
 	var buf [8]byte
-	binary.LittleEndian.PutUint64(buf[:], numPages)
 
+	binary.LittleEndian.PutUint64(buf[:], numPages)
 	writeUnderAccounts(tree, id, keyAccountContractNumPages[:], buf[:])
 }
 
@@ -254,6 +256,7 @@ func ReadAccountContractGasBalance(tree *avl.Tree, id TransactionID) (uint64, bo
 
 func WriteAccountContractGasBalance(tree *avl.Tree, id TransactionID, gasBalance uint64) {
 	var buf [8]byte
+
 	binary.LittleEndian.PutUint64(buf[:], gasBalance)
 	writeUnderAccounts(tree, id, keyAccountContractGasBalance[:], buf[:])
 }
@@ -292,8 +295,8 @@ func ReadAccountsLen(tree *avl.Tree) uint64 {
 
 func WriteAccountsLen(tree *avl.Tree, size uint64) {
 	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], size)
 
+	binary.BigEndian.PutUint64(buf[:], size)
 	tree.Insert(keyAccountsLen[:], buf[:])
 }
 
@@ -303,13 +306,17 @@ func StoreBlock(kv store.KV, block Block, currentIx, oldestIx uint32, storedCoun
 	}
 
 	var oldestIxBuf [4]byte
+
 	binary.BigEndian.PutUint32(oldestIxBuf[:], oldestIx)
+
 	if err := kv.Put(keyBlockOldestIx[:], oldestIxBuf[:]); err != nil {
 		return errors.Wrap(err, "error storing oldest block index")
 	}
 
 	var currentIxBuf [4]byte
+
 	binary.BigEndian.PutUint32(currentIxBuf[:], currentIx)
+
 	if err := kv.Put(keyBlockLatestIx[:], currentIxBuf[:]); err != nil {
 		return errors.Wrap(err, "error storing latest block index")
 	}
@@ -327,28 +334,33 @@ func StoreBlock(kv store.KV, block Block, currentIx, oldestIx uint32, storedCoun
 }
 
 func LoadBlocks(kv store.KV) ([]*Block, uint32, uint32, error) {
-	var b []byte
-	var err error
+	var (
+		b   []byte
+		err error
+	)
 
 	b, err = kv.Get(keyBlockLatestIx[:])
 	if err != nil {
 		return nil, 0, 0, errors.Wrap(err, "error loading latest block index")
 	}
+
 	latestIx := binary.BigEndian.Uint32(b[:4])
 
 	b, err = kv.Get(keyBlockOldestIx[:])
 	if err != nil {
 		return nil, 0, 0, errors.Wrap(err, "error loading oldest block index")
 	}
+
 	oldestIx := binary.BigEndian.Uint32(b[:4])
 
 	b, err = kv.Get(keyBlockStoredCount[:])
 	if err != nil {
 		return nil, 0, 0, errors.Wrap(err, "error loading block count")
 	}
-	storedBlock := int(b[0])
 
+	storedBlock := int(b[0])
 	blocks := make([]*Block, storedBlock)
+
 	for i := 0; i < storedBlock; i++ {
 		b, err = kv.Get(append(keyBlocks[:], strconv.Itoa(i)...))
 		if err != nil {

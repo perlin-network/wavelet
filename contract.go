@@ -66,7 +66,9 @@ type VMState struct {
 	Memory  []byte
 }
 
-func (state VMState) Apply(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver, move bool) (*exec.VirtualMachine, error) {
+func (state VMState) Apply(
+	vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver, move bool,
+) (*exec.VirtualMachine, error) {
 	if len(vm.Globals) != len(state.Globals) {
 		return nil, errors.New("global count mismatch")
 	}
@@ -93,7 +95,9 @@ func (state VMState) Apply(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy
 	}, nil
 }
 
-func CloneVM(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver) (*exec.VirtualMachine, error) {
+func CloneVM(
+	vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver,
+) (*exec.VirtualMachine, error) {
 	return SnapshotVMState(vm).Apply(vm, gasPolicy, importResolver, false)
 }
 
@@ -106,12 +110,6 @@ func SnapshotVMState(vm *exec.VirtualMachine) VMState {
 
 func (e *ContractExecutor) GetCost(key string) int64 {
 	return 1 // FIXME(kenta): Remove for testnet.
-	//cost, ok := sys.GasTable[key]
-	//if !ok {
-	//	return 1
-	//}
-	//
-	//return int64(cost)
 }
 
 func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport {
@@ -388,6 +386,7 @@ func (e *ContractExecutor) Execute( // nolint:gocognit
 	}
 
 	vmState := SnapshotVMState(vm)
+
 	return &vmState, nil
 }
 
@@ -406,6 +405,7 @@ func LoadContractGlobals(snapshot *avl.Tree, id AccountID) ([]int64, bool) {
 	for i := 0; i < len(raw); i += 8 {
 		buf = append(buf, int64(binary.LittleEndian.Uint64(raw[i:])))
 	}
+
 	return buf, true
 }
 
@@ -476,8 +476,10 @@ func buildContractPayload(block *Block, tx *Transaction, amount uint64, params [
 	p := make([]byte, 0)
 	b := make([]byte, 8)
 
-	var nilAccountID AccountID
-	var nilTransactionID TransactionID
+	var (
+		nilAccountID     AccountID
+		nilTransactionID TransactionID
+	)
 
 	if block != nil {
 		binary.LittleEndian.PutUint64(b, block.Index)

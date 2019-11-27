@@ -15,5 +15,3 @@ linters:
     - goimports
     - funlen
     - maligned
-    - lll
-    - wsl

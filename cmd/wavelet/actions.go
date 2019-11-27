@@ -177,14 +177,14 @@ func (cli *CLI) call(ctx *cli.Context) {
 			cli.logger.Error().
 				Str("prefix", string(arg[0])).
 				Msgf("Invalid argument prefix specified")
+
 			return
 		}
 	}
 
 	tx, err := cli.client.Call(recipient, fn)
 	if err != nil {
-		cli.logger.Err(err).
-			Msg("Failed to call function.")
+		cli.logger.Err(err).Msg("Failed to call function.")
 		return
 	}
 
@@ -198,8 +198,7 @@ func (cli *CLI) find(ctx *cli.Context) {
 	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
-		cli.logger.Error().
-			Msg("Invalid usage: find <tx-id | wallet-address>")
+		cli.logger.Error().Msg("Invalid usage: find <tx-id | wallet-address>")
 		return
 	}
 
@@ -251,13 +250,13 @@ func (cli *CLI) spawn(ctx *cli.Context) {
 			Err(err).
 			Str("path", cmd[0]).
 			Msg("Failed to find/load the smart contract code from the given path.")
+
 		return
 	}
 
 	tx, err := cli.client.Spawn(code, 100000000)
 	if err != nil {
-		cli.logger.Err(err).
-			Msg("Failed to spawn smart contract.")
+		cli.logger.Err(err).Msg("Failed to spawn smart contract.")
 		return
 	}
 
@@ -388,6 +387,7 @@ func (cli *CLI) connect(ctx *cli.Context) {
 		cli.logger.Error().
 			Err(err).
 			Msg("Failed to connect to address.")
+
 		return
 	}
 
@@ -407,6 +407,7 @@ func (cli *CLI) disconnect(ctx *cli.Context) {
 		cli.logger.Error().
 			Err(err).
 			Msg("Failed to disconnect to address.")
+
 		return
 	}
 
@@ -425,6 +426,7 @@ func (cli *CLI) restart(ctx *cli.Context) {
 		cli.logger.Error().
 			Err(err).
 			Msg("Failed to restart node.")
+
 		return
 	}
 
