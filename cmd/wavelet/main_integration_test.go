@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/phayes/freeport"
 	"github.com/stretchr/testify/assert"
@@ -90,7 +91,9 @@ func TestMain_WithWalletFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() {
+		_ = os.RemoveAll(dir)
+	}()
 
 	walletPath := filepath.Join(dir, "wallet.txt")
 	if err := ioutil.WriteFile(walletPath, []byte(wallet), 0666); err != nil {
@@ -316,8 +319,12 @@ func TestMain_PlaceStake(t *testing.T) {
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, alice.PublicKey, tx.Sender)
 
-	<-bob.WaitForConsensus()
-	assert.EqualValues(t, 1000, bob.StakeWithPublicKey(asAccountID(t, alice.PublicKey)))
+	waitFor(t, func() error {
+		if bob.StakeWithPublicKey(asAccountID(t, alice.PublicKey)) != 1000 {
+			return fmt.Errorf("wrong stake amount")
+		}
+		return nil
+	})
 }
 
 func TestMain_WithdrawStake(t *testing.T) {
@@ -345,8 +352,12 @@ func TestMain_WithdrawStake(t *testing.T) {
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, alice.PublicKey, tx.Sender)
 
-	<-bob.WaitForConsensus()
-	assert.EqualValues(t, 500, bob.StakeWithPublicKey(asAccountID(t, alice.PublicKey)))
+	waitFor(t, func() error {
+		if bob.StakeWithPublicKey(asAccountID(t, alice.PublicKey)) != 500 {
+			return fmt.Errorf("wrong stake amount")
+		}
+		return nil
+	})
 }
 
 func TestMain_WithdrawReward(t *testing.T) {
@@ -370,80 +381,77 @@ func TestMain_WithdrawReward(t *testing.T) {
 	// TODO: check if reward is actually withdrawn
 }
 
-// func TestMain_UpdateParams(t *testing.T) {
-// 	w := NewTestWavelet(t, defaultConfig())
-// 	defer w.Cleanup()
-//
-// 	w.Stdin <- "up"
-// 	w.Stdout.Search(t, "Current configuration values")
-//
-// 	tests := []struct {
-// 		Config string
-// 		Var    string
-// 		Value  interface{}
-// 	}{
-// 		{"snowball.k", "snowballK", int(123)},
-// 		{"snowball.beta", "snowballBeta", int(789)},
-// 		{"vote.sync.threshold", "syncVoteThreshold", float64(12.34)},
-// 		{"vote.finalization.threshold", "finalizationVoteThreshold", float64(56.78)},
-// 		{"vote.finalization.stake.weight", "stakeMajorityWeight", float64(11.11)},
-// 		{"query.timeout", "queryTimeout", time.Second * 9},
-// 		{"gossip.timeout", "gossipTimeout", time.Second * 4},
-// 		{"download.tx.timeout", "downloadTxTimeout", time.Second * 3},
-// 		{"check.out.of.sync.timeout", "checkOutOfSyncTimeout", time.Second * 7},
-// 		{"sync.chunk.size", "syncChunkSize", int(1337)},
-// 		{"sync.if.block.indices.differ.by", "syncIfBlockIndicesDifferBy", uint64(42)},
-// 		{"bloom.filter.m", "bloomFilterM", uint64(54321)},
-// 		{"bloom.filter.k", "bloomFilterK", uint64(9)},
-// 		{"pruning.limit", "pruningLimit", uint64(255)},
-// 		// {"block.tx.limit", "blockTxLimit", uint64(666)},
-// 		{"api.secret", "secret", "shambles"},
-// 	}
-//
-// 	for _, tt := range tests {
-// 		tt := tt
-// 		t.Run(tt.Config, func(t *testing.T) {
-// 			w.Stdin <- fmt.Sprintf("up --%s %+v", tt.Config, tt.Value)
-//
-// 			searchVal := tt.Value
-// 			switch v := tt.Value.(type) {
-// 			case time.Duration:
-// 				searchVal = strconv.FormatUint(uint64(v), 10)
-// 			case int:
-// 				searchVal = strconv.Itoa(v)
-// 			case uint64:
-// 				searchVal = strconv.FormatUint(v, 10)
-// 			case float64:
-// 				searchVal = strconv.FormatFloat(v, 'f', -1, 64)
-// 			case string:
-// 				searchVal = v
-// 			}
-//
-// 			w.Stdout.Search(t, fmt.Sprintf("%s:%s", tt.Var, searchVal))
-// 		})
-// 	}
-// }
-
-func TestMain_ConnectDisconnect(t *testing.T) {
-	t.SkipNow()
-
+func TestMain_UpdateParams(t *testing.T) {
 	w := NewTestWavelet(t, defaultConfig())
-
 	defer func() {
-		fmt.Println("before cleanup")
 		w.Cleanup()
-		fmt.Println("after cleanup")
+		conf.Reset()
 	}()
 
-	peer := w.Testnet.AddNode(t)
+	w.Stdin <- "up"
+	w.Stdout.Search(t, "Current configuration values")
 
-	if !assert.True(t, <-peer.WaitForSync()) {
-		return
+	tests := []struct {
+		Config string
+		Var    string
+		Value  interface{}
+	}{
+		{"snowball.k", "snowballK", int(123)},
+		{"snowball.beta", "snowballBeta", int(789)},
+		{"vote.sync.threshold", "syncVoteThreshold", float64(12.34)},
+		{"vote.finalization.threshold", "finalizationVoteThreshold", float64(56.78)},
+		{"vote.finalization.stake.weight", "stakeMajorityWeight", float64(11.11)},
+		{"query.timeout", "queryTimeout", time.Second * 9},
+		{"gossip.timeout", "gossipTimeout", time.Second * 4},
+		{"download.tx.timeout", "downloadTxTimeout", time.Second * 3},
+		{"check.out.of.sync.timeout", "checkOutOfSyncTimeout", time.Second * 7},
+		{"sync.chunk.size", "syncChunkSize", int(1337)},
+		{"sync.if.block.indices.differ.by", "syncIfBlockIndicesDifferBy", uint64(42)},
+		{"bloom.filter.m", "bloomFilterM", uint64(54321)},
+		{"bloom.filter.k", "bloomFilterK", uint64(9)},
+		{"pruning.limit", "pruningLimit", uint64(255)},
+		// {"block.tx.limit", "blockTxLimit", uint64(666)},
+		{"api.secret", "secret", "shambles"},
 	}
 
-	w.Stdin <- fmt.Sprintf("connect %s", peer.Addr())
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.Config, func(t *testing.T) {
+			w.Stdin <- fmt.Sprintf("up --%s %+v", tt.Config, tt.Value)
+
+			searchVal := tt.Value
+			switch v := tt.Value.(type) {
+			case time.Duration:
+				searchVal = strconv.FormatUint(uint64(v), 10)
+			case int:
+				searchVal = strconv.Itoa(v)
+			case uint64:
+				searchVal = strconv.FormatUint(v, 10)
+			case float64:
+				searchVal = strconv.FormatFloat(v, 'f', -1, 64)
+			case string:
+				searchVal = v
+			}
+
+			w.Stdout.Search(t, fmt.Sprintf("%s:%s", tt.Var, searchVal))
+		})
+	}
+}
+
+func TestMain_ConnectDisconnect(t *testing.T) {
+	config := defaultConfig()
+	config.Wallet = wallet2
+	w := NewTestWavelet(t, config)
+	defer w.Cleanup()
+
+	w.Testnet.AddNode(t)
+
+	w.Testnet.WaitForSync(t)
+
+	peerAddr := w.Testnet.Nodes()[0].Addr()
+	w.Stdin <- fmt.Sprintf("connect %s", peerAddr)
 	w.Stdout.Search(t, "Successfully connected to")
-	w.Stdin <- fmt.Sprintf("disconnect %s", peer.Addr())
+	w.Stdin <- fmt.Sprintf("disconnect %s", peerAddr)
 	w.Stdout.Search(t, "Successfully disconnected")
 }
 
@@ -580,7 +588,7 @@ func extractTxID(t *testing.T, s string) string {
 }
 
 func waitFor(t *testing.T, fn func() error) {
-	timeout := time.NewTimer(time.Second * 10)
+	timeout := time.NewTimer(time.Second * 30)
 	ticker := time.NewTicker(time.Second * 1)
 
 	for {
@@ -699,7 +707,9 @@ func getLedgerStatus(apiPort string) (*TestLedgerStatus, error) {
 		return nil, err
 	}
 
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("expecting GET /ledger to return 200, got %d instead", resp.StatusCode)
@@ -756,7 +766,9 @@ func getTransaction(apiPort string, id string) (*TestTransaction, error) {
 		return nil, err
 	}
 
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("expecting GET /tx/%s to return 200, got %d instead", id, resp.StatusCode)
