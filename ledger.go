@@ -1527,6 +1527,7 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 		}
 
 		logger := log.Accounts("nonce_updated")
+
 		for accountID, nonce := range collapseState.results.accountNonces {
 			logger.Log().
 				Hex("account_id", accountID[:]).

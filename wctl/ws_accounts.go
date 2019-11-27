@@ -156,5 +156,6 @@ func parseAccountNonceUpdated(c *Client, v *fastjson.Value) error {
 	if c.OnNonceUpdated != nil {
 		c.OnNonceUpdated(a)
 	}
+
 	return nil
 }
