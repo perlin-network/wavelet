@@ -2,7 +2,6 @@ package wavelet
 
 import (
 	"encoding/binary"
-	"fmt"
 	"github.com/perlin-network/noise/edwards25519"
 	"math/big"
 	"sync"
