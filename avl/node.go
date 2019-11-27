@@ -260,6 +260,7 @@ func (n *node) iterateFrom(t *Tree, key []byte, callback func(key, value []byte)
 		if bytes.Compare(key, n.key) <= 0 {
 			return callback(n.key, n.value)
 		}
+
 		return true
 	} else if n.kind == NodeNonLeaf {
 		child := t.mustLoadLeft(n)
@@ -270,6 +271,7 @@ func (n *node) iterateFrom(t *Tree, key []byte, callback func(key, value []byte)
 				return false
 			}
 		}
+
 		return t.mustLoadRight(n).iterateFrom(t, key, callback)
 	}
 
@@ -399,6 +401,7 @@ func (n *node) serializeForDifference(wr io.Writer) error {
 		}
 
 		binary.LittleEndian.PutUint32(buf64[:4], uint32(len(n.key)))
+
 		if _, err := buf.Write(buf64[:4]); err != nil {
 			return err
 		}
@@ -412,6 +415,7 @@ func (n *node) serializeForDifference(wr io.Writer) error {
 		}
 
 		binary.LittleEndian.PutUint32(buf64[:4], uint32(len(n.value)))
+
 		if _, err := buf.Write(buf64[:4]); err != nil {
 			return err
 		}
@@ -430,6 +434,7 @@ func (n *node) serializeForDifference(wr io.Writer) error {
 	}
 
 	_, err := buf.WriteTo(wr)
+
 	return err
 }
 
@@ -438,9 +443,11 @@ func (n *node) dfs(t *Tree, allowMissingNodes bool, cb func(*node) (bool, error)
 	if err != nil {
 		return err
 	}
+
 	if !recurseInto {
 		return nil
 	}
+
 	if n.kind == NodeLeafValue {
 		return nil
 	}
@@ -450,11 +457,8 @@ func (n *node) dfs(t *Tree, allowMissingNodes bool, cb func(*node) (bool, error)
 		if !allowMissingNodes {
 			return err
 		}
-	} else {
-		err = left.dfs(t, allowMissingNodes, cb)
-		if err != nil {
-			return err
-		}
+	} else if err := left.dfs(t, allowMissingNodes, cb); err != nil {
+		return err
 	}
 
 	right, err := t.loadRight(n)
@@ -462,20 +466,19 @@ func (n *node) dfs(t *Tree, allowMissingNodes bool, cb func(*node) (bool, error)
 		if !allowMissingNodes {
 			return err
 		}
-	} else {
-		err = right.dfs(t, allowMissingNodes, cb)
-		if err != nil {
-			return err
-		}
+	} else if err := right.dfs(t, allowMissingNodes, cb); err != nil {
+		return err
 	}
 
 	return nil
 }
 
 func DeserializeFromDifference(r io.Reader, localViewID uint64) (*node, error) { // nolint:golint
-	var buf64 [8]byte
+	var (
+		buf64 [8]byte
+		id    [MerkleHashSize]byte
+	)
 
-	var id [MerkleHashSize]byte
 	_, err := r.Read(id[:])
 	if err != nil {
 		return nil, err
@@ -485,6 +488,7 @@ func DeserializeFromDifference(r io.Reader, localViewID uint64) (*node, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	viewID := binary.LittleEndian.Uint64(buf64[:])
 	if viewID <= localViewID {
 		return nil, errors.New("got view id < local view id")
@@ -494,6 +498,7 @@ func DeserializeFromDifference(r io.Reader, localViewID uint64) (*node, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	kind := nodeType(buf64[0])
 
 	switch kind {
@@ -502,7 +507,9 @@ func DeserializeFromDifference(r io.Reader, localViewID uint64) (*node, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		key := make([]byte, binary.LittleEndian.Uint32(buf64[:4]))
+
 		_, err = r.Read(key)
 		if err != nil {
 			return nil, err
@@ -512,11 +519,14 @@ func DeserializeFromDifference(r io.Reader, localViewID uint64) (*node, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		value := make([]byte, binary.LittleEndian.Uint32(buf64[:4]))
+
 		_, err = r.Read(value)
 		if err != nil {
 			return nil, err
 		}
+
 		return &node{
 			id:     id,
 			viewID: viewID,
@@ -526,14 +536,17 @@ func DeserializeFromDifference(r io.Reader, localViewID uint64) (*node, error) {
 		}, nil
 	case NodeNonLeaf:
 		var left, right [MerkleHashSize]byte
+
 		_, err = r.Read(left[:])
 		if err != nil {
 			return nil, err
 		}
+
 		_, err = r.Read(right[:])
 		if err != nil {
 			return nil, err
 		}
+
 		return &node{
 			id:     id,
 			viewID: viewID,
@@ -575,6 +588,7 @@ func (n *node) serialize(buf *bytebufferpool.ByteBuffer) error {
 	}
 
 	binary.LittleEndian.PutUint32(buf64[:4], uint32(len(n.key)))
+
 	if _, err := buf.Write(buf64[:4]); err != nil {
 		return err
 	}
@@ -590,6 +604,7 @@ func (n *node) serialize(buf *bytebufferpool.ByteBuffer) error {
 		}
 
 		binary.LittleEndian.PutUint32(buf64[:4], uint32(len(n.value)))
+
 		if _, err := buf.Write(buf64[:4]); err != nil {
 			return err
 		}
@@ -618,16 +633,15 @@ func deserialize(r *bytes.Reader) (*node, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	n.kind = nodeType(kindBuf)
 
 	if n.kind != NodeLeafValue {
-		_, err = r.Read(n.left[:])
-		if err != nil {
+		if _, err := r.Read(n.left[:]); err != nil {
 			return nil, err
 		}
 
-		_, err = r.Read(n.right[:])
-		if err != nil {
+		if _, err := r.Read(n.right[:]); err != nil {
 			return nil, err
 		}
 	}
@@ -648,20 +662,19 @@ func deserialize(r *bytes.Reader) (*node, error) {
 	}
 
 	n.key = make([]byte, binary.LittleEndian.Uint32(buf64[:4]))
-	_, err = r.Read(n.key)
-	if err != nil {
+
+	if _, err := r.Read(n.key); err != nil {
 		return nil, err
 	}
 
 	if n.kind == NodeLeafValue {
-		_, err = r.Read(buf64[:4])
-		if err != nil {
+		if _, err := r.Read(buf64[:4]); err != nil {
 			return nil, err
 		}
 
 		n.value = make([]byte, binary.LittleEndian.Uint32(buf64[:4]))
-		_, err = r.Read(n.value)
-		if err != nil {
+
+		if _, err := r.Read(n.value); err != nil {
 			return nil, err
 		}
 	}
@@ -673,8 +686,7 @@ func deserialize(r *bytes.Reader) (*node, error) {
 	}
 
 	// Read size.
-	_, err = r.Read(buf64[:])
-	if err != nil {
+	if _, err := r.Read(buf64[:]); err != nil {
 		return nil, err
 	}
 
@@ -690,6 +702,7 @@ func mustDeserialize(r *bytes.Reader) *node {
 	if err != nil {
 		panic(err)
 	}
+
 	return n
 }
 
@@ -705,6 +718,7 @@ func populateDiffs( // nolint:gocognit
 	if _, seen := visited[id]; seen {
 		return nil, errors.New("cycle detected")
 	}
+
 	visited[id] = struct{}{}
 
 	// Node is not a preloaded diff
@@ -734,12 +748,15 @@ func populateDiffs( // nolint:gocognit
 	case NodeLeafValue:
 		n.size = 1
 		n.depth = 0
+
 		if n.id != n.rehashNoWrite() {
 			return nil, errors.New("hash mismatch")
 		}
+
 		if updateNotifier != nil {
 			updateNotifier(n.key, n.value)
 		}
+
 		return n, nil
 	case NodeNonLeaf:
 		leftNode, err := populateDiffs(t, n.left, preloaded, visited, updateNotifier)

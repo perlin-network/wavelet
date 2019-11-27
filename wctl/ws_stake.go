@@ -60,5 +60,6 @@ func parseRewardValidator(c *Client, v *fastjson.Value) error {
 	if c.OnStakeRewardValidator != nil {
 		c.OnStakeRewardValidator(r)
 	}
+
 	return nil
 }

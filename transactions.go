@@ -62,10 +62,12 @@ func (t *Transactions) BatchAdd(block BlockID, transactions []Transaction, verif
 
 func (t *Transactions) add(block BlockID, tx Transaction, verifySignature bool) {
 	if verifySignature {
-		var nonceBuf [8]byte
-		binary.BigEndian.PutUint64(nonceBuf[:], tx.Nonce)
+		var (
+			nonceBuf [8]byte
+			blockBuf [8]byte
+		)
 
-		var blockBuf [8]byte
+		binary.BigEndian.PutUint64(nonceBuf[:], tx.Nonce)
 		binary.BigEndian.PutUint64(blockBuf[:], tx.Block)
 
 		if !edwards25519.Verify(
@@ -107,6 +109,7 @@ func (t *Transactions) BatchMarkMissing(ids ...TransactionID) bool {
 	defer t.Unlock()
 
 	var missing bool
+
 	for _, id := range ids {
 		if t.markMissing(id) {
 			missing = true
@@ -179,6 +182,7 @@ func (t *Transactions) ReshufflePending(next Block) []TransactionID {
 	// Go through the entire transactions index and prune away
 	// any transactions that are too old.
 	pruned := []TransactionID{}
+
 	for _, tx := range t.buffer {
 		if next.Index >= tx.Block+uint64(conf.GetPruningLimit()) {
 			delete(t.buffer, tx.ID)
@@ -210,6 +214,7 @@ func (t *Transactions) Has(id TransactionID) bool {
 	defer t.RUnlock()
 
 	_, exists := t.buffer[id]
+
 	return exists
 }
 

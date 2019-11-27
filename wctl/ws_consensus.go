@@ -54,6 +54,7 @@ func parseConsensusProposal(c *Client, v *fastjson.Value) error {
 	if c.OnProposal != nil {
 		c.OnProposal(p)
 	}
+
 	return nil
 }
 
@@ -77,5 +78,6 @@ func parseConsensusFinalized(c *Client, v *fastjson.Value) error {
 	if c.OnFinalized != nil {
 		c.OnFinalized(f)
 	}
+
 	return nil
 }

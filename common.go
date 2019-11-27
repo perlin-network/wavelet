@@ -24,7 +24,7 @@ import (
 	"golang.org/x/crypto/blake2b"
 )
 
-import _ "github.com/perlin-network/wavelet/internal/snappy" // Compressor registration is done in init of snappy package
+import _ "github.com/perlin-network/wavelet/internal/snappy" //Compressor registration is done in init of snappy package
 
 const (
 	SizeTransactionID   = blake2b.Size256

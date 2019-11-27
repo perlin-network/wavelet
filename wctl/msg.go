@@ -15,5 +15,6 @@ func (r *MsgResponse) UnmarshalJSON(b []byte) error {
 	}
 
 	r.Message = string(v.GetStringBytes("msg"))
+
 	return nil
 }

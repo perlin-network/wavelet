@@ -11,6 +11,7 @@ type fileBufferPool struct {
 
 func newFileBufferPool(fileSize int64, dir string) *fileBufferPool {
 	filePool := buffer.NewFilePool(fileSize, dir)
+
 	return &fileBufferPool{
 		fileSize: fileSize,
 		filePool: filePool,
@@ -27,6 +28,7 @@ func (fbp *fileBufferPool) GetBounded(size int64) (buffer.BufferAt, error) {
 	var buffers []buffer.BufferAt
 
 	filesCount := size / fbp.fileSize
+
 	if size%fbp.fileSize > 0 {
 		filesCount++
 	}

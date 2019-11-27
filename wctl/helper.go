@@ -113,6 +113,7 @@ func jsonTime(v *fastjson.Value, t *time.Time, keys ...string) error {
 	}
 
 	*t = Time
+
 	return nil
 }
 

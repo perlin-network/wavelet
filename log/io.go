@@ -45,10 +45,12 @@ func (t *multiWriter) Write(p []byte) (n int, err error) {
 		if err != nil {
 			return
 		}
+
 		if n != len(p) {
 			err = io.ErrShortWrite
 			return
 		}
 	}
+
 	return len(p), nil
 }

@@ -34,7 +34,9 @@ type TransactionEvent struct {
 
 // ListTransactions calls the /tx endpoint of the API to list all transactions.
 // The arguments are optional, zero values would default them.
-func (c *Client) ListTransactions(senderID string, creatorID string, offset uint64, limit uint64) ([]Transaction, error) {
+func (c *Client) ListTransactions(
+	senderID string, creatorID string, offset uint64, limit uint64,
+) ([]Transaction, error) {
 	vals := url.Values{}
 
 	if senderID != "" {
@@ -84,9 +86,11 @@ func (c *Client) SendTransaction(tag byte, payload []byte) (*TxResponse, error) 
 	block := c.Block.Load()
 
 	var nonceBuf [8]byte
+
 	binary.BigEndian.PutUint64(nonceBuf[:], nonce)
 
 	var blockBuf [8]byte
+
 	binary.BigEndian.PutUint64(blockBuf[:], block)
 
 	signature := edwards25519.Sign(

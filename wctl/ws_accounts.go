@@ -56,6 +56,7 @@ func parseAccountsBalanceUpdated(c *Client, v *fastjson.Value) error {
 	if c.OnBalanceUpdated != nil {
 		c.OnBalanceUpdated(a)
 	}
+
 	return nil
 }
 
@@ -75,6 +76,7 @@ func parseAccountsGasBalanceUpdated(c *Client, v *fastjson.Value) error {
 	if c.OnGasBalanceUpdated != nil {
 		c.OnGasBalanceUpdated(a)
 	}
+
 	return nil
 }
 
@@ -94,6 +96,7 @@ func parseAccountNumPagesUpdated(c *Client, v *fastjson.Value) error {
 	if c.OnNumPagesUpdated != nil {
 		c.OnNumPagesUpdated(a)
 	}
+
 	return nil
 }
 
@@ -113,6 +116,7 @@ func parseAccountStakeUpdated(c *Client, v *fastjson.Value) error {
 	if c.OnStakeUpdated != nil {
 		c.OnStakeUpdated(a)
 	}
+
 	return nil
 }
 
@@ -132,6 +136,7 @@ func parseAccountRewardUpdated(c *Client, v *fastjson.Value) error {
 	if c.OnRewardUpdated != nil {
 		c.OnRewardUpdated(a)
 	}
+
 	return nil
 }
 
@@ -151,5 +156,6 @@ func parseAccountNonceUpdated(c *Client, v *fastjson.Value) error {
 	if c.OnNonceUpdated != nil {
 		c.OnNonceUpdated(a)
 	}
+
 	return nil
 }

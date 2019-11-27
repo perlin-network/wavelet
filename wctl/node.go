@@ -7,6 +7,7 @@ import (
 func (c *Client) Connect(address string) (*MsgResponse, error) {
 	// TODO: proper response struct
 	var arena fastjson.Arena
+
 	o := (&fastjson.Arena{}).NewObject()
 	o.Set("address", arena.NewString(address))
 
@@ -23,6 +24,7 @@ func (c *Client) Connect(address string) (*MsgResponse, error) {
 func (c *Client) Disconnect(address string) (*MsgResponse, error) {
 	// TODO: proper response struct
 	var arena fastjson.Arena
+
 	o := (&fastjson.Arena{}).NewObject()
 	o.Set("address", arena.NewString(address))
 
@@ -39,6 +41,7 @@ func (c *Client) Disconnect(address string) (*MsgResponse, error) {
 func (c *Client) Restart(hard bool) (*MsgResponse, error) {
 	// TODO: proper response struct
 	var arena fastjson.Arena
+
 	o := (&fastjson.Arena{}).NewObject()
 
 	if hard {

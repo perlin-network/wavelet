@@ -90,5 +90,6 @@ func (a *Accounts) Commit(new *avl.Tree) error {
 	if profile != nil {
 		atomic.StorePointer((*unsafe.Pointer)(unsafe.Pointer(&a.profile)), unsafe.Pointer(profile))
 	}
+
 	return nil
 }

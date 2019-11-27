@@ -51,7 +51,6 @@ func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) 
 	// all the way down to the beginning of the round.
 	for _, tx := range txs {
 		// Update nonce.
-
 		nonce, exists := ctx.ReadAccountNonce(tx.Sender)
 		if !exists {
 			ctx.WriteAccountsLen(ctx.ReadAccountsLen() + 1)
@@ -70,7 +69,10 @@ func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) 
 				res.rejected = append(res.rejected, tx)
 				res.rejectedErrors = append(
 					res.rejectedErrors,
-					errors.Errorf("stake: sender %x does not have enough PERLs to pay transaction fees (comprised of %d PERLs)", tx.Sender, fee),
+					errors.Errorf(
+						"stake: sender %x does not have enough PERLs to pay transaction fees (comprised of %d PERLs)",
+						tx.Sender, fee,
+					),
 				)
 				res.rejectedCount += tx.LogicalUnits()
 
@@ -81,13 +83,13 @@ func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) 
 			totalFee += fee
 
 			stake, _ := ctx.ReadAccountStake(tx.Sender)
-
 			if stake >= sys.MinimumStake {
 				if _, ok := stakes[tx.Sender]; !ok {
 					stakes[tx.Sender] = stake
 				} else {
 					stakes[tx.Sender] += stake
 				}
+
 				totalStake += stake
 			}
 		}
@@ -342,7 +344,10 @@ func (c *CollapseContext) processRewardWithdrawals(blockIndex uint64) {
 // Write the changes into the tree.
 func (c *CollapseContext) Flush() error {
 	if c.checksum != c.tree.Checksum() {
-		return errors.Errorf("stale state, the state has been modified. got merkle %x but expected %x.", c.tree.Checksum(), c.checksum)
+		return errors.Errorf(
+			"stale state, the state has been modified. got merkle %x but expected %x.",
+			c.tree.Checksum(), c.checksum,
+		)
 	}
 
 	WriteAccountsLen(c.tree, c.accountLen)
