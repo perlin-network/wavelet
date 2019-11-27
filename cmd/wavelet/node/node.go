@@ -2,7 +2,6 @@ package node
 
 import (
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -22,6 +21,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 )
@@ -179,8 +179,7 @@ func New(cfg *Config) (*Wavelet, error) {
 	if len(cfg.Database) == 0 {
 		kv = store.NewInmem()
 	} else if kv, err = store.NewBadger(cfg.Database); err != nil {
-		return nil, fmt.Errorf(
-			"failed to create/open database located at %s", cfg.Database)
+		return nil, errors.Wrapf(err, "failed to create/open database located at %s", cfg.Database)
 	}
 
 	w.db = kv

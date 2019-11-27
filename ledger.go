@@ -1458,6 +1458,7 @@ type collapseResults struct {
 	applied        []*Transaction
 	rejected       []*Transaction
 	rejectedErrors []error
+	accountNonces  map[AccountID]uint64
 
 	appliedCount  int
 	rejectedCount int
@@ -1523,6 +1524,14 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 
 		for i, tx := range collapseState.results.rejected {
 			logEventTX("rejected", tx, collapseState.results.rejectedErrors[i])
+		}
+
+		logger := log.Accounts("nonce_updated")
+		for accountID, nonce := range collapseState.results.accountNonces {
+			logger.Log().
+				Hex("account_id", accountID[:]).
+				Uint64("nonce", nonce).
+				Msg("Nonce updated")
 		}
 	}
 
