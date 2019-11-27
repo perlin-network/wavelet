@@ -251,8 +251,8 @@ func (l *Ledger) Close() {
 }
 
 // AddTransaction adds a transaction to the ledger and adds it's id to bloom filter used to sync transactions.
-func (l *Ledger) AddTransaction(txs ...Transaction) {
-	l.transactions.BatchAdd(l.blocks.Latest().ID, txs...)
+func (l *Ledger) AddTransaction(verifySignature bool, txs ...Transaction) {
+	l.transactions.BatchAdd(l.blocks.Latest().ID, txs, verifySignature)
 
 	l.transactionsSyncIndexLock.Lock()
 	for _, tx := range txs {
@@ -503,7 +503,7 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 					downloadedNum := len(transactions)
 					count -= uint64(downloadedNum)
 
-					l.AddTransaction(transactions...)
+					l.AddTransaction(true, transactions...)
 
 					l.metrics.downloadedTX.Mark(int64(downloadedNum))
 					l.metrics.receivedTX.Mark(int64(downloadedNum))
@@ -606,7 +606,7 @@ func (l *Ledger) PullMissingTransactions() {
 			pulledTXs = append(pulledTXs, tx)
 		}
 
-		l.AddTransaction(pulledTXs...)
+		l.AddTransaction(true, pulledTXs...)
 
 		if count > 0 {
 			logger.Info().
