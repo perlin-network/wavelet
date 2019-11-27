@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -48,10 +49,7 @@ func defaultTestNetworkConfig() TestNetworkConfig {
 type TestNetworkOption func(cfg *TestNetworkConfig)
 
 func NewTestNetwork(t testing.TB, opts ...TestNetworkOption) *TestNetwork {
-	// Remove existing db
-	for i := 0; i < 20; i++ {
-		_ = os.RemoveAll(fmt.Sprintf("db_%d", i))
-	}
+	removeTestDBs()
 
 	n := &TestNetwork{
 		nodes: map[AccountID]*TestLedger{},
@@ -74,9 +72,19 @@ func (n *TestNetwork) Cleanup() {
 		node.Cleanup()
 	}
 
-	// Remove db
-	for i := 0; i < 20; i++ {
-		_ = os.RemoveAll(fmt.Sprintf("db_%d", i))
+	removeTestDBs()
+}
+
+func removeTestDBs() {
+	files, err := ioutil.ReadDir(".")
+	if err != nil {
+		panic(err)
+	}
+
+	for _, f := range files {
+		if f.IsDir() && strings.HasPrefix(f.Name(), "db_") {
+			_ = os.RemoveAll(f.Name())
+		}
 	}
 }
 
