@@ -25,6 +25,8 @@ func (c *Client) PollAccounts() (func(), error) {
 				err = parseAccountStakeUpdated(c, o)
 			case "reward_updated":
 				err = parseAccountRewardUpdated(c, o)
+			case "nonce_updated":
+				err = parseAccountNonceUpdated(c, o)
 			default:
 				err = errInvalidEvent(o, ev)
 			}
@@ -129,6 +131,25 @@ func parseAccountRewardUpdated(c *Client, v *fastjson.Value) error {
 
 	if c.OnRewardUpdated != nil {
 		c.OnRewardUpdated(a)
+	}
+	return nil
+}
+
+func parseAccountNonceUpdated(c *Client, v *fastjson.Value) error {
+	var a NonceUpdated
+
+	if err := jsonHex(v, a.AccountID[:], "account_id"); err != nil {
+		return err
+	}
+
+	if err := jsonTime(v, &a.Time, "time"); err != nil {
+		return err
+	}
+
+	a.Nonce = v.GetUint64("nonce")
+
+	if c.OnNonceUpdated != nil {
+		c.OnNonceUpdated(a)
 	}
 	return nil
 }
