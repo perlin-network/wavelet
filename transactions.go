@@ -62,10 +62,12 @@ func (t *Transactions) BatchAdd(block BlockID, transactions []Transaction, verif
 
 func (t *Transactions) add(block BlockID, tx Transaction, verifySignature bool) {
 	if verifySignature {
-		var nonceBuf [8]byte
-		binary.BigEndian.PutUint64(nonceBuf[:], tx.Nonce)
+		var (
+			nonceBuf [8]byte
+			blockBuf [8]byte
+		)
 
-		var blockBuf [8]byte
+		binary.BigEndian.PutUint64(nonceBuf[:], tx.Nonce)
 		binary.BigEndian.PutUint64(blockBuf[:], tx.Block)
 
 		if !edwards25519.Verify(
