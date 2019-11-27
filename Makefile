@@ -9,8 +9,13 @@ protoc:
 protoc-docker:
 	docker run --rm -v `pwd`:/src znly/protoc --gogofaster_out=plugins=grpc:. -I=. src/rpc.proto
 
-test:
+integration_test:
+	go test -tags=integration -v -coverprofile=coverage.txt -covermode=atomic -timeout=60m -parallel 1 ./...
+
+unit_test:
 	go test -coverprofile=coverage.txt -covermode=atomic -timeout 10m -v -bench -race ./...
+
+test: unit_test integration_test
 
 fmt:
 	go fmt ./...

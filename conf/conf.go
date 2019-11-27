@@ -50,13 +50,12 @@ type config struct {
 	secret string
 }
 
-var c config
-var l sync.RWMutex
+var (
+	l sync.RWMutex
 
-func init() { // nolint:gochecknoinits
-	c = defaultConfig()
-	l = sync.RWMutex{}
-}
+	defaultConf = defaultConfig()
+	c           = defaultConf
+)
 
 func defaultConfig() config {
 	defConf := config{
@@ -395,4 +394,10 @@ func Stringify() string {
 	l.RUnlock()
 
 	return s
+}
+
+func Reset() {
+	l.Lock()
+	c = defaultConf
+	l.Unlock()
 }
