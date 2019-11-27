@@ -615,7 +615,7 @@ func (l *TestLedger) Pay(to *TestLedger, amount uint64) (Transaction, error) {
 	}
 
 	tx = l.newSignedTransaction(sys.TagTransfer, payload)
-	l.ledger.AddTransaction(tx)
+	l.ledger.AddTransaction(true, tx)
 
 	return tx, nil
 }
@@ -639,7 +639,7 @@ func (l *TestLedger) SpawnContract(contractPath string, gasLimit uint64, params 
 	}
 
 	tx = l.newSignedTransaction(sys.TagContract, payload)
-	l.ledger.AddTransaction(tx)
+	l.ledger.AddTransaction(true, tx)
 
 	return tx, nil
 }
@@ -657,7 +657,7 @@ func (l *TestLedger) DepositGas(id [32]byte, gasDeposit uint64) (Transaction, er
 	}
 
 	tx = l.newSignedTransaction(sys.TagTransfer, payload)
-	l.ledger.AddTransaction(tx)
+	l.ledger.AddTransaction(true, tx)
 
 	return tx, nil
 }
@@ -678,7 +678,7 @@ func (l *TestLedger) CallContract(id [32]byte, amount uint64, gasLimit uint64, f
 	}
 
 	tx = l.newSignedTransaction(sys.TagTransfer, payload)
-	l.ledger.AddTransaction(tx)
+	l.ledger.AddTransaction(true, tx)
 
 	return tx, nil
 }
@@ -696,7 +696,7 @@ func (l *TestLedger) PlaceStake(amount uint64) (Transaction, error) {
 	}
 
 	tx = l.newSignedTransaction(sys.TagStake, payload)
-	l.ledger.AddTransaction(tx)
+	l.ledger.AddTransaction(true, tx)
 
 	return tx, nil
 }
@@ -714,7 +714,7 @@ func (l *TestLedger) WithdrawStake(amount uint64) (Transaction, error) {
 	}
 
 	tx = l.newSignedTransaction(sys.TagStake, payload)
-	l.ledger.AddTransaction(tx)
+	l.ledger.AddTransaction(true, tx)
 
 	return tx, nil
 }
