@@ -22,6 +22,7 @@
 package api
 
 import (
+	"net/http"
 	"net/url"
 	"strconv"
 	"testing"
@@ -52,66 +53,24 @@ func TestPollLog(t *testing.T) {
 	go gateway.StartHTTP(8080, nil, ledger, keys, kv)
 	defer gateway.Shutdown()
 
-	time.Sleep(100 * time.Millisecond)
-
 	t.Run("tx-tag-filter", func(t *testing.T) {
 		u := url.URL{Scheme: "ws", Host: ":8080", Path: `/poll/tx`, RawQuery: "tag=1"}
-		c, resp, err := websocket.DefaultDialer.Dial(u.String(), nil)
-		if !assert.NoError(t, err) {
-			return
-		}
-
-		defer func() {
-			_ = resp.Body.Close()
-			_ = c.Close()
-		}()
-
-		response := make(chan []byte, 10)
-
-		go func() {
-			for {
-				_, msg, err := c.ReadMessage()
-				if err != nil {
-					return
-				}
-				response <- msg
-			}
-		}()
+		c, cleanup := tryConnectWebsocket(t, u)
+		defer cleanup()
 
 		// log 2 messages with different tags
 		logger := log.TX("test")
 		logger.Log().Uint8("tag", byte(sys.TagTransfer)).Msg("")
-
 		logger.Log().Uint8("tag", byte(sys.TagStake)).Msg("")
 
-		time.Sleep(2500 * time.Millisecond)
-
-		assert.Equal(t, 1, len(response))
+		messages := readAllMessages(t, c, 1)
+		assert.Equal(t, 1, len(messages))
 	})
 
 	t.Run("accounts-grouping", func(t *testing.T) {
 		u := url.URL{Scheme: "ws", Host: ":8080", Path: `/poll/accounts`}
-		c, resp, err := websocket.DefaultDialer.Dial(u.String(), nil)
-		if !assert.NoError(t, err) {
-			return
-		}
-
-		defer func() {
-			_ = resp.Body.Close()
-			_ = c.Close()
-		}()
-
-		response := make(chan []byte, 10)
-
-		go func() {
-			for {
-				_, msg, err := c.ReadMessage()
-				if err != nil {
-					return
-				}
-				response <- msg
-			}
-		}()
+		c, cleanup := tryConnectWebsocket(t, u)
+		defer cleanup()
 
 		// log bunch of messages but only about 2 accounts
 		logger := log.Accounts("test")
@@ -123,13 +82,12 @@ func TestPollLog(t *testing.T) {
 			logger.Log().Str("account_id", id).Msg("")
 		}
 
-		time.Sleep(1000 * time.Millisecond)
-
-		if !assert.Equal(t, 1, len(response)) {
+		messages := readAllMessages(t, c, 1)
+		if !assert.Equal(t, 1, len(messages)) {
 			return
 		}
 
-		v, err := fastjson.Parse(string(<-response))
+		v, err := fastjson.Parse(string(messages[0]))
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -141,4 +99,113 @@ func TestPollLog(t *testing.T) {
 
 		assert.Equal(t, 2, len(vals))
 	})
+}
+
+func TestPollNonce(t *testing.T) {
+	testnet := wavelet.NewTestNetwork(t)
+	defer testnet.Cleanup()
+
+	alice := testnet.AddNode(t)
+	testnet.AddNode(t)
+
+	testnet.WaitUntilSync(t)
+
+	gateway := New()
+	gateway.setup()
+
+	go gateway.StartHTTP(8080, nil, alice.Ledger(), alice.Keys(), alice.KV())
+	defer gateway.Shutdown()
+
+	_, err := testnet.Faucet().Pay(alice, 1000000)
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	u := url.URL{
+		Scheme: "ws",
+		Host:   ":8080",
+		Path:   "/poll/accounts",
+	}
+
+	c, cleanup := tryConnectWebsocket(t, u)
+	defer cleanup()
+
+	_, msg, err := c.ReadMessage()
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	v, err := fastjson.Parse(string(msg))
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	vals, err := v.Array()
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	for _, e := range vals {
+		if string(e.GetStringBytes("event")) != "nonce_updated" {
+			continue
+		}
+
+		assert.EqualValues(t, 2, e.GetUint64("nonce"))
+		return
+	}
+
+	assert.Fail(t, "nonce_updated event not found")
+}
+
+func tryConnectWebsocket(t *testing.T, url url.URL) (*websocket.Conn, func()) {
+	var conn *websocket.Conn
+	var resp *http.Response
+	var err error
+
+	tries := 0
+	tick := time.Tick(time.Second * 1)
+	for range tick {
+		conn, resp, err = websocket.DefaultDialer.Dial(url.String(), nil)
+		if err == nil || (err != nil && tries >= 5) {
+			break
+		}
+
+		tries++
+	}
+
+	assert.NoError(t, err)
+
+	return conn, func() {
+		_ = resp.Body.Close()
+		_ = conn.Close()
+	}
+}
+
+func readAllMessages(t *testing.T, client *websocket.Conn, n int) (messages [][]byte) {
+	messages = make([][]byte, 0)
+
+	ch := make(chan []byte, 10)
+	go func() {
+		for {
+			_, msg, err := client.ReadMessage()
+			if err != nil {
+				return
+			}
+
+			ch <- msg
+		}
+	}()
+
+	for {
+		select {
+		case msg := <-ch:
+			messages = append(messages, msg)
+			if len(messages) == n {
+				return
+			}
+
+		case <-time.After(10 * time.Second):
+			return
+		}
+	}
 }

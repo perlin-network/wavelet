@@ -40,6 +40,7 @@ func setEvents(c *wctl.Client) (func(), error) {
 	c.OnGasBalanceUpdated = onGasBalanceUpdated
 	c.OnStakeUpdated = onStakeUpdated
 	c.OnRewardUpdated = onRewardUpdate
+	c.OnNonceUpdated = onNonceUpdated
 	if err := addToCloser(&toClose)(c.PollAccounts()); err != nil {
 		return cleanup, err
 	}
@@ -162,6 +163,13 @@ func onRewardUpdate(u wctl.RewardUpdated) {
 		Hex("public_key", u.AccountID[:]).
 		Uint64("reward", u.Reward).
 		Msg("Reward updated.")
+}
+
+func onNonceUpdated(u wctl.NonceUpdated) {
+	logger.Info().
+		Hex("public_key", u.AccountID[:]).
+		Uint64("nonce", u.Nonce).
+		Msg("Nonce updated.")
 }
 
 func onPeerJoin(u wctl.PeerJoin) {
