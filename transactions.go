@@ -166,8 +166,6 @@ func (t *Transactions) ReshufflePending(next Block) []TransactionID {
 		return true
 	})
 
-	fmt.Printf("Restoring %d items into mempool which originally had %d items, with next block height being %d.\n", len(items), t.index.Len(), next.Index)
-
 	// Clear the entire mempool.
 
 	t.index.Clear(false)
