@@ -21,7 +21,6 @@ package wavelet
 
 import (
 	"encoding/hex"
-
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/lru"
@@ -36,7 +35,6 @@ func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) 
 	res.applied = make([]*Transaction, 0, len(txs))
 	res.rejected = make([]*Transaction, 0, len(txs))
 	res.rejectedErrors = make([]error, 0, len(txs))
-	res.accountNonces = make(map[AccountID]uint64)
 
 	ctx := NewCollapseContext(res.snapshot)
 
@@ -56,11 +54,7 @@ func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) 
 		if !exists {
 			ctx.WriteAccountsLen(ctx.ReadAccountsLen() + 1)
 		}
-
 		ctx.WriteAccountNonce(tx.Sender, nonce+1)
-
-		// Keep track of latest nonce of each account
-		res.accountNonces[tx.Sender] = nonce + 1
 
 		if hex.EncodeToString(tx.Sender[:]) != sys.FaucetAddress {
 			fee := tx.Fee()
