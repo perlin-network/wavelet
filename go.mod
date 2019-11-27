@@ -4,13 +4,15 @@ go 1.12
 
 replace github.com/go-interpreter/wagon => github.com/perlin-network/wagon v0.3.1-0.20180825141017-f8cb99b55a39
 
+replace github.com/dgraph-io/badger/v2 => github.com/perlin-network/badger/v2 v2.0.1
+
 require (
 	github.com/armon/go-radix v1.0.0
 	github.com/benpye/readline v0.0.0-20181117181432-5ff4ccac79cf
 	github.com/buaazp/fasthttprouter v0.1.1
 	github.com/chzyer/logex v1.1.10 // indirect
 	github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1 // indirect
-	github.com/dgraph-io/badger v1.6.0
+	github.com/dgraph-io/badger/v2 v2.0.0
 	github.com/dgryski/go-metro v0.0.0-20180109044635-280f6062b5bc // indirect
 	github.com/djherbis/buffer v1.1.0
 	github.com/fasthttp/websocket v1.4.0
@@ -19,7 +21,6 @@ require (
 	github.com/google/btree v1.0.0
 	github.com/gorilla/websocket v1.4.0
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
-	github.com/kr/pretty v0.1.0 // indirect
 	github.com/minio/highwayhash v1.0.0
 	github.com/perlin-network/life v0.0.0-20190723115110-3091ed0c1be8
 	github.com/perlin-network/noise v1.1.1-0.20191113101947-c8dc081eafa7
@@ -31,7 +32,6 @@ require (
 	github.com/seiflotfy/cuckoofilter v0.0.0-20190302225222-764cb5258d9b
 	github.com/stretchr/testify v1.4.0
 	github.com/syndtr/goleveldb v1.0.0
-	github.com/urfave/cli v1.21.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0
 	github.com/valyala/fasthttp v1.3.0
 	github.com/valyala/fastjson v1.4.1
@@ -43,6 +43,5 @@ require (
 	google.golang.org/appengine v1.6.2 // indirect
 	google.golang.org/genproto v0.0.0-20190916214212-f660b8655731 // indirect
 	google.golang.org/grpc v1.25.0
-	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	gopkg.in/urfave/cli.v1 v1.20.0
 )
