@@ -23,12 +23,12 @@ package wavelet
 
 import (
 	"encoding/hex"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
 	"github.com/valyala/fastjson"
@@ -40,36 +40,46 @@ func TestCollapseResultsLogger(t *testing.T) {
 
 	logger := NewCollapseResultsLogger()
 
-	keys, err := skademlia.NewKeys(1, 1)
+	sender, err := skademlia.NewKeys(1, 1)
 	if !assert.NoError(t, err) {
 		return
 	}
+	senderID := sender.PublicKey()
 
 	recipient, err := skademlia.NewKeys(1, 1)
 	if !assert.NoError(t, err) {
 		return
 	}
 
-	results := &collapseResults{}
+	accounts := NewAccounts(store.NewInmem())
+	WriteAccountBalance(accounts.tree, sender.PublicKey(), 5)
+
+	var txs []*Transaction
 
 	payload, err := Transfer{Recipient: recipient.PublicKey(), Amount: 1}.Marshal()
 	if !assert.NoError(t, err) {
 		return
 	}
-	txApplied := NewTransaction(keys, 0, 0, sys.TagTransfer, payload)
-	results.appliedCount++
-	results.applied = append(results.applied, &txApplied)
+	txApplied := NewTransaction(sender, 1, 0, sys.TagTransfer, payload)
+	txs = append(txs, &txApplied)
 
 	payload, err = Transfer{Recipient: recipient.PublicKey(), Amount: 10}.Marshal()
 	if !assert.NoError(t, err) {
 		return
 	}
-	txRejected := NewTransaction(keys, 0, 0, sys.TagTransfer, payload)
-	results.rejectedCount++
-	results.rejected = append(results.rejected, &txRejected)
-	results.rejectedErrors = append(results.rejectedErrors, errors.New("error rejected"))
+	txRejected := NewTransaction(sender, 2, 0, sys.TagTransfer, payload)
+	txs = append(txs, &txRejected)
 
-	logCh := make(chan []byte, 2)
+	block, err := NewBlock(0, MerkleNodeID{})
+	if !assert.NoError(t, err) {
+		return
+	}
+	results, err := collapseTransactions(txs, &block, accounts)
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	logCh := make(chan []byte, 3)
 	log.SetWriter("tx_write_test", writerFunc(func(p []byte) (n int, err error) {
 		logCh <- p
 		return len(p), nil
@@ -79,16 +89,17 @@ func TestCollapseResultsLogger(t *testing.T) {
 
 	var outputs [][]byte
 	// Wait for the log messages
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 3; i++ {
 		select {
 		case b := <-logCh:
+			t.Log(string(b))
 			outputs = append(outputs, b)
 		case <-time.After(100 * time.Millisecond):
-			assert.FailNow(t, "timeout waiting for message", "expected 2 messages, timeout at %d", i)
+			assert.FailNow(t, "timeout waiting for message", "expected 3 messages, timeout at %d", i)
 		}
 	}
 
-	// Check the first tx
+	// Check the first tx event
 
 	v, err := fastjson.ParseBytes(outputs[0])
 	if !assert.NoError(t, err) {
@@ -100,7 +111,7 @@ func TestCollapseResultsLogger(t *testing.T) {
 	assert.Equal(t, hex.EncodeToString(txApplied.Sender[:]), string(v.GetStringBytes("sender_id")))
 	assert.Nil(t, v.GetStringBytes("error"))
 
-	// Check the second tx
+	// Check the second tx event
 
 	v, err = fastjson.ParseBytes(outputs[1])
 	if !assert.NoError(t, err) {
@@ -110,7 +121,19 @@ func TestCollapseResultsLogger(t *testing.T) {
 	assert.Equal(t, "rejected", string(v.GetStringBytes("event")))
 	assert.Equal(t, hex.EncodeToString(txRejected.ID[:]), string(v.GetStringBytes("tx_id")))
 	assert.Equal(t, hex.EncodeToString(txRejected.Sender[:]), string(v.GetStringBytes("sender_id")))
-	assert.Equal(t, "error rejected", string(v.GetStringBytes("error")))
+	assert.Contains(t, string(v.GetStringBytes("error")), "could not apply transfer transaction")
+
+	// Check the nonce event
+
+	v, err = fastjson.ParseBytes(outputs[2])
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, "accounts", string(v.GetStringBytes("mod")))
+	assert.Equal(t, "nonce_updated", string(v.GetStringBytes("event")))
+	assert.Equal(t, hex.EncodeToString(senderID[:]), string(v.GetStringBytes("account_id")))
+	assert.Equal(t, 2, v.GetInt("nonce"))
+	assert.Equal(t, "Nonce updated", string(v.GetStringBytes("message")))
 
 	// Call twice, the second call should have no effect.
 	logger.Stop()
