@@ -1,22 +1,20 @@
 package wctl
 
 import (
-	"encoding/hex"
-	"errors"
 	"net/http"
-	"strings"
 	"time"
 
+	"github.com/perlin-network/wavelet/log"
+	"github.com/pkg/errors"
 	"github.com/valyala/fasthttp"
-	"github.com/valyala/fastjson"
 )
 
 type MarshalableJSON interface {
-	MarshalJSON() ([]byte, error)
+	log.MarshalableArena
 }
 
 type UnmarshalableJSON interface {
-	UnmarshalJSON([]byte) error
+	log.UnmarshalableValue
 }
 
 // RequestJSON will make a request to a given path, with a given body and
@@ -25,7 +23,10 @@ func (c *Client) RequestJSON(path, method string, body MarshalableJSON, out Unma
 	var bytes []byte
 
 	if body != nil {
-		raw, err := body.MarshalJSON()
+		a := c.arenas.Get()
+		defer c.arenas.Put(a)
+
+		raw, err := body.MarshalArena(a)
 		if err != nil {
 			return err
 		}
@@ -42,7 +43,15 @@ func (c *Client) RequestJSON(path, method string, body MarshalableJSON, out Unma
 		return nil
 	}
 
-	return out.UnmarshalJSON(resBody)
+	p := c.parsers.Get()
+	defer c.parsers.Put(p)
+
+	v, err := p.ParseBytes(resBody)
+	if err != nil {
+		return errors.Wrap(err, "Failed to parse JSON")
+	}
+
+	return out.UnmarshalValue(v)
 }
 
 // Request will make a request to a given path, with a given body and return
@@ -82,40 +91,4 @@ func (c *Client) Request(path string, method string, body []byte) ([]byte, error
 	}
 
 	return res.Body(), nil
-}
-
-type jsonRaw []byte
-
-func (j jsonRaw) MarshalJSON() ([]byte, error) {
-	return j, nil
-}
-
-var ErrInvalidHexLength = errors.New("Invalid hex bytes length")
-
-func jsonHex(v *fastjson.Value, dst []byte, keys ...string) error {
-	i, err := hex.Decode(dst, v.GetStringBytes(keys...))
-	if err != nil {
-		return errUnmarshalFail(v, strings.Join(keys, "."), err)
-	}
-
-	if i != len(dst) {
-		return errUnmarshalFail(v, strings.Join(keys, "."),
-			ErrInvalidHexLength)
-	}
-
-	return nil
-}
-
-func jsonTime(v *fastjson.Value, t *time.Time, keys ...string) error {
-	Time, err := time.Parse(time.RFC3339, string(v.GetStringBytes(keys...)))
-	if err != nil {
-		return errUnmarshalFail(v, strings.Join(keys, "."), err)
-	}
-
-	*t = Time
-	return nil
-}
-
-func jsonString(v *fastjson.Value, keys ...string) string {
-	return string(v.GetStringBytes(keys...))
 }

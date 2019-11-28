@@ -1,6 +1,7 @@
 package wctl
 
 import (
+	"github.com/perlin-network/wavelet/log"
 	"github.com/valyala/fastjson"
 )
 
@@ -10,7 +11,7 @@ func (c *Client) Connect(address string) (*MsgResponse, error) {
 	o := (&fastjson.Arena{}).NewObject()
 	o.Set("address", arena.NewString(address))
 
-	j := jsonRaw(o.MarshalTo(nil))
+	j := log.JSONRaw(o.MarshalTo(nil))
 
 	var resp MsgResponse
 	if err := c.RequestJSON(RouteConnect, ReqPost, j, &resp); err != nil {
@@ -26,7 +27,7 @@ func (c *Client) Disconnect(address string) (*MsgResponse, error) {
 	o := (&fastjson.Arena{}).NewObject()
 	o.Set("address", arena.NewString(address))
 
-	j := jsonRaw(o.MarshalTo(nil))
+	j := log.JSONRaw(o.MarshalTo(nil))
 
 	var resp MsgResponse
 	if err := c.RequestJSON(RouteDisconnect, ReqPost, j, &resp); err != nil {
@@ -47,7 +48,7 @@ func (c *Client) Restart(hard bool) (*MsgResponse, error) {
 		o.Set("hard", arena.NewFalse())
 	}
 
-	j := jsonRaw(o.MarshalTo(nil))
+	j := log.JSONRaw(o.MarshalTo(nil))
 
 	var resp MsgResponse
 	if err := c.RequestJSON(RouteRestart, ReqPost, j, &resp); err != nil {

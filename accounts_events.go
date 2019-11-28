@@ -9,36 +9,36 @@ import (
 // Balance Update
 
 // balance_updated
-type AccountBalanceUpdate struct {
+type AccountBalanceUpdated struct {
 	AccountID AccountID `json:"account_id"`
 	Balance   uint64    `json:"balance"`
 }
 
-var _ log.Loggable = (*AccountBalanceUpdate)(nil)
+var _ log.Loggable = (*AccountBalanceUpdated)(nil)
 
-func (a AccountBalanceUpdate) MarshalEvent(ev *zerolog.Event) {
+func (a AccountBalanceUpdated) MarshalEvent(ev *zerolog.Event) {
 	marshalAccountIDandUint64(ev, a.AccountID, "balance", a.Balance, "balance")
 }
 
-func (a *AccountBalanceUpdate) UnmarshalValue(v *fastjson.Value) error {
+func (a *AccountBalanceUpdated) UnmarshalValue(v *fastjson.Value) error {
 	return unmarshalAccountIDandUint64(v, a.AccountID, "balance", &a.Balance)
 }
 
 // Gas Balance update
 
 // gas_balance_updated
-type AccountGasBalanceUpdate struct {
+type AccountGasBalanceUpdated struct {
 	AccountID  AccountID `json:"account_id"`
 	GasBalance uint64    `json:"gas_balance"`
 }
 
-var _ log.Loggable = (*AccountGasBalanceUpdate)(nil)
+var _ log.Loggable = (*AccountGasBalanceUpdated)(nil)
 
-func (a *AccountGasBalanceUpdate) MarshalEvent(ev *zerolog.Event) {
+func (a AccountGasBalanceUpdated) MarshalEvent(ev *zerolog.Event) {
 	marshalAccountIDandUint64(ev, a.AccountID, "gas_balance", a.GasBalance, "gas balance")
 }
 
-func (a *AccountGasBalanceUpdate) UnmarshalValue(v *fastjson.Value) error {
+func (a *AccountGasBalanceUpdated) UnmarshalValue(v *fastjson.Value) error {
 	return unmarshalAccountIDandUint64(v, a.AccountID, "gas_balance", &a.GasBalance)
 }
 
@@ -52,7 +52,7 @@ type AccountNumPagesUpdated struct {
 
 var _ log.Loggable = (*AccountNumPagesUpdated)(nil)
 
-func (a *AccountNumPagesUpdated) MarshalEvent(ev *zerolog.Event) {
+func (a AccountNumPagesUpdated) MarshalEvent(ev *zerolog.Event) {
 	marshalAccountIDandUint64(ev, a.AccountID, "num_pages", a.NumPages, "pages")
 }
 
@@ -70,7 +70,7 @@ type AccountStakeUpdated struct {
 
 var _ log.Loggable = (*AccountStakeUpdated)(nil)
 
-func (a *AccountStakeUpdated) MarshalEvent(ev *zerolog.Event) {
+func (a AccountStakeUpdated) MarshalEvent(ev *zerolog.Event) {
 	marshalAccountIDandUint64(ev, a.AccountID, "stake", a.Stake, "stake")
 }
 

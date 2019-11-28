@@ -2,10 +2,11 @@ package wctl
 
 import (
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/sys"
 )
 
-func (c *Client) Pay(recipient [32]byte, amount uint64) (*TxResponse, error) {
+func (c *Client) Pay(recipient [32]byte, amount uint64) (*api.TxResponse, error) {
 	a, err := c.GetSelf()
 	if err != nil {
 		return nil, err

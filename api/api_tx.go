@@ -59,13 +59,13 @@ func (s *TxResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	return o.MarshalTo(nil), nil
 }
 
-func (s *TxResponse) UnmarshalValue(v *fastjson.Value) error {
-	return valueHex(v, s.ID, "id")
-}
-
 func (s *TxResponse) MarshalEvent(ev *zerolog.Event) {
 	ev.Hex("id", s.ID[:])
 	ev.Msg("Transaction sent.")
+}
+
+func (s *TxResponse) UnmarshalValue(v *fastjson.Value) error {
+	return log.ValueHex(v, s.ID, "id")
 }
 
 /*
@@ -146,14 +146,14 @@ func (s *Transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 }
 
 func (s *Transaction) UnmarshalValue(v *fastjson.Value) error {
-	valueHex(v, s.ID, "id")
-	valueHex(v, s.Sender, "sender")
-	valueHex(v, s.Signature, "signature")
+	log.ValueHex(v, s.ID, "id")
+	log.ValueHex(v, s.Sender, "sender")
+	log.ValueHex(v, s.Signature, "signature")
 
 	s.Nonce = v.GetUint64("nonce")
 	s.Tag = uint8(v.GetUint("tag"))
 
-	pl, _ := valueBase64(v, "payload")
+	pl, _ := log.ValueBase64(v, "payload")
 	s.Payload = pl
 
 	return nil
@@ -170,13 +170,15 @@ func (s *Transaction) MarshalEvent(ev *zerolog.Event) {
 	ev.Uint8("tag", s.Tag)
 
 	ev.Int("payload_len", len(s.Payload))
-
-	ev.Msg("Transaction")
 }
 
-type TransactionList []*Transaction
+func (s *Transaction) MarshalZerologObject(ev *zerolog.Event) {
+	s.MarshalEvent(ev)
+}
 
-// var _ log.JSONObject = (TransactionList)(nil)
+type TransactionList []Transaction
+
+var _ log.JSONObject = (*TransactionList)(nil)
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 	// TODO
@@ -248,10 +250,10 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 	g.render(ctx, transactions)
 }
 
-func (s TransactionList) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
+func (s *TransactionList) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	list := arena.NewArray()
 
-	for i, v := range s {
+	for i, v := range *s {
 		o, err := v.getObject(arena)
 		if err != nil {
 			return nil, err
@@ -261,4 +263,49 @@ func (s TransactionList) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	}
 
 	return list.MarshalTo(nil), nil
+}
+
+func (s *TransactionList) UnmarshalValue(v *fastjson.Value) error {
+	a, err := v.Array()
+	if err != nil {
+		return log.NewErrUnmarshalErr(v, nil, err)
+	}
+
+	var txs = make([]Transaction, len(a))
+
+	for i, v := range a {
+		var t Transaction
+
+		if err := log.ValueBatch(v,
+			"id", &t.ID,
+			"sender", &t.Sender,
+			"nonce", &t.Nonce,
+			"tag", &t.Tag,
+			"signature", &t.Signature); err != nil {
+
+			return err
+		}
+
+		b, err := log.ValueBase64(v, "payload")
+		if err != nil {
+			return err
+		}
+
+		t.Payload = b
+
+		txs[i] = t
+	}
+
+	return nil
+}
+
+// MarshalEvent doesn't return the full contents of Payload, but only its
+// length.
+func (s *TransactionList) MarshalEvent(ev *zerolog.Event) {
+	var array = zerolog.Arr()
+	for _, tx := range *s {
+		array.Object(&tx)
+	}
+
+	ev.Array("txs", array)
 }

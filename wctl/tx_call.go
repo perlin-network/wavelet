@@ -6,13 +6,14 @@ import (
 	"errors"
 
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/sys"
 )
 
 var ErrNotContract = errors.New("Address is not smart contract")
 
 // Call calls a smart contract function
-func (c *Client) Call(recipient [32]byte, fn FunctionCall) (*TxResponse, error) {
+func (c *Client) Call(recipient [32]byte, fn FunctionCall) (*api.TxResponse, error) {
 	a, err := c.GetSelf()
 	if err != nil {
 		return nil, err

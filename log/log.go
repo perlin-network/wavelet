@@ -5,6 +5,11 @@ import (
 	"github.com/valyala/fastjson"
 )
 
+func init() {
+	zerolog.MessageFieldName = "msg"
+	zerolog.LevelFieldName = "level"
+}
+
 type Loggable interface {
 	UnmarshalableValue
 	MarshalableEvent
@@ -38,4 +43,28 @@ func EventTo(ev *zerolog.Event, loggable MarshalableEvent) {
 
 func Info(logger *zerolog.Logger, loggable MarshalableEvent) {
 	EventTo(logger.Info(), loggable)
+}
+
+type JSONRaw []byte
+
+var _ JSONObject = (*JSONRaw)(nil)
+
+func (j JSONRaw) MarshalEvent(ev *zerolog.Event) {
+	ev.RawJSON("json", j)
+	ev.Msg("Raw JSON")
+}
+
+func (j JSONRaw) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
+	return j, nil
+}
+
+func (j JSONRaw) UnmarshalValue(v *fastjson.Value) error {
+	var parser fastjson.Parser
+	parsed, err := parser.ParseBytes(j)
+	if err != nil {
+		return err
+	}
+
+	*v = *parsed
+	return nil
 }

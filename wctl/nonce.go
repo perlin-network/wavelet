@@ -3,35 +3,20 @@ package wctl
 import (
 	"encoding/hex"
 
-	"github.com/valyala/fastjson"
+	"github.com/perlin-network/wavelet/api"
 )
 
-type Nonce struct {
-	Nonce uint64 `json:"nonce"`
-	Block uint64 `json:"block"`
-}
-
-func (n *Nonce) UnmarshalJSON(b []byte) error {
-	var parser fastjson.Parser
-
-	v, err := parser.ParseBytes(b)
-	if err != nil {
-		return err
-	}
-
-	n.Nonce = v.GetUint64("nonce")
-	n.Block = v.GetUint64("block")
-	return nil
-}
-
-func (c *Client) GetAccountNonce(account [32]byte) (*Nonce, error) {
+func (c *Client) GetAccountNonce(account [32]byte) (*api.NonceResponse, error) {
 	path := RouteNonce + "/" + hex.EncodeToString(account[:])
 
-	var res Nonce
-	err := c.RequestJSON(path, ReqGet, nil, &res)
-	return &res, err
+	var res api.NonceResponse
+	if err := c.RequestJSON(path, ReqGet, nil, &res); err != nil {
+		return nil, err
+	}
+
+	return &res, nil
 }
 
-func (c *Client) GetSelfNonce() (*Nonce, error) {
+func (c *Client) GetSelfNonce() (*api.NonceResponse, error) {
 	return c.GetAccountNonce(c.PublicKey)
 }

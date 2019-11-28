@@ -52,6 +52,8 @@ const (
 	ReqGet  = "GET"
 )
 
+const JSONPoolSize = 8 // sane size of 8 arenas and parsers in a pool
+
 var ErrNoHost = errors.New("No host provided")
 
 type Marshalable interface {
@@ -84,6 +86,10 @@ type Client struct {
 	// Local state counters
 	Nonce uint64
 	Block uint64
+
+	// JSON stuff
+	parsers fastjson.ParserPool
+	arenas  fastjson.ArenaPool
 
 	// Stop the background consensus that is created before
 	stopConsensus func()
@@ -160,6 +166,16 @@ func NewClient(config Config) (*Client, error) {
 		},
 	}
 
+	// Generate parsers and arenas
+	for i := 0; i < JSONPoolSize; i++ {
+		var a fastjson.Arena
+		c.arenas.Put(&a)
+
+		var p fastjson.Parser
+		c.parsers.Put(&p)
+	}
+
+	// Get the nonce
 	n, err := c.GetSelfNonce()
 	if err != nil {
 		return c, err

@@ -60,7 +60,7 @@ var (
 
 type Ledger struct {
 	client  *skademlia.Client
-	metrics *Metrics
+	metrics *MetricsService
 	indexer *Indexer
 
 	accounts     *Accounts
@@ -1291,65 +1291,56 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 // LogChanges logs all changes made to an AVL tree state snapshot for the purposes
 // of logging out changes to account state to Wavelet's HTTP API.
 func (l *Ledger) LogChanges(snapshot *avl.Tree, lastBlockIndex uint64) {
-	balanceLogger := log.Accounts("balance_updated")
-	gasBalanceLogger := log.Accounts("gas_balance_updated")
-	stakeLogger := log.Accounts("stake_updated")
-	rewardLogger := log.Accounts("reward_updated")
-	numPagesLogger := log.Accounts("num_pages_updated")
-
-	balanceKey := append(keyAccounts[:], keyAccountBalance[:]...)
-	gasBalanceKey := append(keyAccounts[:], keyAccountContractGasBalance[:]...)
-	stakeKey := append(keyAccounts[:], keyAccountStake[:]...)
-	rewardKey := append(keyAccounts[:], keyAccountReward[:]...)
-	numPagesKey := append(keyAccounts[:], keyAccountContractNumPages[:]...)
-
-	var id AccountID
-
-	// TODO
-	!!! Work on me: log/accounts
+	var (
+		balanceKey    = append(keyAccounts[:], keyAccountBalance[:]...)
+		gasBalanceKey = append(keyAccounts[:], keyAccountContractGasBalance[:]...)
+		stakeKey      = append(keyAccounts[:], keyAccountStake[:]...)
+		rewardKey     = append(keyAccounts[:], keyAccountReward[:]...)
+		numPagesKey   = append(keyAccounts[:], keyAccountContractNumPages[:]...)
+	)
 
 	snapshot.IterateLeafDiff(lastBlockIndex, func(key, value []byte) bool {
 		switch {
 		case bytes.HasPrefix(key, balanceKey):
+			var id AccountID
 			copy(id[:], key[len(balanceKey):])
 
-			log.Info(balanceLogger, AccountBalanceUpdate{
+			log.Info(log.Accounts("balance_updated"), AccountBalanceUpdated{
 				AccountID: id,
-				Balance: binary.LittleEndian.Uint64(value),
+				Balance:   binary.LittleEndian.Uint64(value),
 			})
 		case bytes.HasPrefix(key, gasBalanceKey):
+			var id AccountID
 			copy(id[:], key[len(gasBalanceKey):])
 
-			log.Info(balanceLogger, AccountBalanceUpdate{
-				AccountID: id,
-				Balance: binary.LittleEndian.Uint64(value),
+			log.Info(log.Accounts("gas_balance_updated"), AccountGasBalanceUpdated{
+				AccountID:  id,
+				GasBalance: binary.LittleEndian.Uint64(value),
 			})
-
-			gasBalanceLogger.Log().
-				Hex("account_id", id[:]).
-				Uint64("gas_balance", binary.LittleEndian.Uint64(value)).
-				Msg("")
 		case bytes.HasPrefix(key, stakeKey):
+			var id AccountID
 			copy(id[:], key[len(stakeKey):])
 
-			stakeLogger.Log().
-				Hex("account_id", id[:]).
-				Uint64("stake", binary.LittleEndian.Uint64(value)).
-				Msg("")
+			log.Info(log.Accounts("stake_updated"), AccountStakeUpdated{
+				AccountID: id,
+				Stake:     binary.LittleEndian.Uint64(value),
+			})
 		case bytes.HasPrefix(key, rewardKey):
+			var id AccountID
 			copy(id[:], key[len(rewardKey):])
 
-			rewardLogger.Log().
-				Hex("account_id", id[:]).
-				Uint64("reward", binary.LittleEndian.Uint64(value)).
-				Msg("")
+			log.Info(log.Accounts("reward_updated"), AccountRewardUpdated{
+				AccountID: id,
+				Reward:    binary.LittleEndian.Uint64(value),
+			})
 		case bytes.HasPrefix(key, numPagesKey):
+			var id AccountID
 			copy(id[:], key[len(numPagesKey):])
 
-			numPagesLogger.Log().
-				Hex("account_id", id[:]).
-				Uint64("num_pages", binary.LittleEndian.Uint64(value)).
-				Msg("")
+			log.Info(log.Accounts("num_pages_updated"), AccountNumPagesUpdated{
+				AccountID: id,
+				NumPages:  binary.LittleEndian.Uint64(value),
+			})
 		}
 
 		return true

@@ -1,6 +1,10 @@
 package wctl
 
-import "github.com/valyala/fastjson"
+import (
+	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/log"
+	"github.com/valyala/fastjson"
+)
 
 func (c *Client) PollAccounts() (func(), error) {
 	return c.pollWS(RouteWSAccounts, func(v *fastjson.Value) {
@@ -14,9 +18,14 @@ func (c *Client) PollAccounts() (func(), error) {
 				continue
 			}
 
-			switch ev := jsonString(o, "event"); ev {
+			switch ev := log.ValueString(o, "event"); ev {
 			case "balance_updated":
-				err = parseAccountsBalanceUpdated(c, o)
+				var a wavelet.AccountBalanceUpdated
+				if err := a.UnmarshalValue(o); err != nil {
+					c.OnError(err)
+					continue
+				}
+				c.OnBalanceUpdated(a)
 			case "gas_balance_updated":
 				err = parseAccountsGasBalanceUpdated(c, o)
 			case "num_pages_updated":

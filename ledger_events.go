@@ -10,16 +10,46 @@ import (
 	Sync events
 */
 
+// event: *, level: error
+type SyncError struct {
+	Message string      `json:"msg"`
+	Event   log.MiniLog `json:"event"`
+}
+
+var _ log.JSONObject = (*SyncOutOfSync)(nil)
+
+func (s *SyncError) MarshalEvent(ev *zerolog.Event) {
+	s.Event.MarshalEvent(ev)
+	ev.Msg(s.Message)
+}
+
+func (s *SyncError) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
+	return log.MarshalObjectBatch(arena,
+		"msg", s.Message,
+		"event", s.Event)
+}
+
+func (s *SyncError) UnmarshalValue(v *fastjson.Value) error {
+	return log.ValueBatch(v,
+		"msg", &s.Message,
+		"event", &s.Event)
+}
+
 // event: out_of_sync
 type SyncOutOfSync struct {
 	CurrentBlockIndex uint64 `json:"current_block_index"`
 }
 
-var _ log.Loggable = (*SyncOutOfSync)(nil)
+var _ log.JSONObject = (*SyncOutOfSync)(nil)
 
 func (s *SyncOutOfSync) MarshalEvent(ev *zerolog.Event) {
 	ev.Uint64("current_block_index", s.CurrentBlockIndex)
 	ev.Msg("Noticed that we are out of sync; downloading latest state Snapshot from our peer(s).")
+}
+
+func (s *SyncOutOfSync) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
+	return log.MarshalObjectBatch(arena,
+		"current_block_index", s.CurrentBlockIndex)
 }
 
 func (s *SyncOutOfSync) UnmarshalValue(v *fastjson.Value) error {
@@ -33,12 +63,18 @@ type SyncApplying struct {
 	TargetBlock uint64 `json:"target_block"`
 }
 
-var _ log.Loggable = (*SyncApplying)(nil)
+var _ log.JSONObject = (*SyncApplying)(nil)
 
 func (s *SyncApplying) MarshalEvent(ev *zerolog.Event) {
 	ev.Int("num_chunks", s.NumChunks)
 	ev.Uint64("target_block", s.TargetBlock)
 	ev.Msg("All chunks have been successfully verified and re-assembled into a diff. Applying diff...")
+}
+
+func (s *SyncApplying) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
+	return log.MarshalObjectBatch(arena,
+		"num_chunks", s.NumChunks,
+		"target_block", s.TargetBlock)
 }
 
 func (s *SyncApplying) UnmarshalValue(v *fastjson.Value) error {
@@ -61,7 +97,7 @@ type SyncApplied struct {
 	OldMerkleRoot MerkleNodeID `json:"old_merkle_root"`
 }
 
-var _ log.Loggable = (*SyncApplied)(nil)
+var _ log.JSONObject = (*SyncApplied)(nil)
 
 func (s *SyncApplied) MarshalEvent(ev *zerolog.Event) {
 	ev.Int("num_chunks", s.NumChunks)
@@ -72,6 +108,17 @@ func (s *SyncApplied) MarshalEvent(ev *zerolog.Event) {
 	ev.Hex("new_merkle_root", s.NewMerkleRoot[:])
 	ev.Hex("old_merkle_root", s.OldMerkleRoot[:])
 	ev.Msg("Successfully built a new state snapshot out of chunk(s) we have received from peers.")
+}
+
+func (s *SyncApplied) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
+	return log.MarshalObjectBatch(arena,
+		"num_chunks", s.NumChunks,
+		"old_block_index", s.OldBlockIndex,
+		"new_block_index", s.NewBlockIndex,
+		"new_block_id", s.NewBlockID,
+		"old_block_id", s.OldBlockID,
+		"new_merkle_root", s.NewMerkleRoot,
+		"old_merkle_root", s.OldMerkleRoot)
 }
 
 func (s *SyncApplied) UnmarshalValue(v *fastjson.Value) error {
@@ -105,7 +152,7 @@ type ConsensusFinalized struct {
 	NewBlockID BlockID `json:"new_block_id"`
 }
 
-var _ log.Loggable = (*ConsensusFinalized)(nil)
+var _ log.JSONObject = (*ConsensusFinalized)(nil)
 
 func (c *ConsensusFinalized) MarshalEvent(ev *zerolog.Event) {
 	ev.Int("num_applied_tx", c.AppliedTxs)
@@ -116,6 +163,17 @@ func (c *ConsensusFinalized) MarshalEvent(ev *zerolog.Event) {
 	ev.Hex("old_block_id", c.OldBlockID[:])
 	ev.Hex("new_block_id", c.NewBlockID[:])
 	ev.Msg("Finalized block.")
+}
+
+func (c *ConsensusFinalized) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
+	return log.MarshalObjectBatch(arena,
+		"num_applied_tx", c.AppliedTxs,
+		"num_rejected_tx", c.RejectedTxs,
+		"num_pruned_tx", c.PrunedTxs,
+		"old_block_height", c.OldBlockHeight,
+		"new_block_height", c.NewBlockHeight,
+		"old_block_id", c.OldBlockID,
+		"new_block_id", c.NewBlockID)
 }
 
 func (c *ConsensusFinalized) UnmarshalValue(v *fastjson.Value) error {
