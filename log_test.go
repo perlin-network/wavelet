@@ -92,7 +92,6 @@ func TestCollapseResultsLogger(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		select {
 		case b := <-logCh:
-			t.Log(string(b))
 			outputs = append(outputs, b)
 		case <-time.After(100 * time.Millisecond):
 			assert.FailNow(t, "timeout waiting for message", "expected 3 messages, timeout at %d", i)
