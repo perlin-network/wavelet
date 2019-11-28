@@ -21,6 +21,7 @@ package wavelet
 
 import (
 	"encoding/hex"
+	"strconv"
 	"sync"
 	"time"
 
@@ -37,39 +38,34 @@ import (
 // It also has a buffer to prevent blocking, as writing all the transactions in a collapse result may take sometime.
 // A collapse result may contain tens of thousands of transactions.
 type CollapseResultsLogger struct {
-	arena         *fastjson.Arena
-	mod           []byte // "tx"
-	eventApplied  []byte // "applied"
-	eventRejected []byte // "rejected"
-	timeLayout    string // "2006-01-02T15:04:05Z07:00"
+	arena      *fastjson.Arena
+	timeLayout string // "2006-01-02T15:04:05Z07:00"
 
-	bufTxID     []byte
-	bufSenderID []byte
-	bufTime     []byte
+	bufTime []byte
 
 	// Buffer for a batch of messages (many transactions)
-	bufBatch [][]byte
+	bufBatch []logBuffer
 
-	flushCh chan [][]byte
+	flushCh chan []logBuffer
 
 	stopWg sync.WaitGroup
 	stop   chan struct{}
 	closed bool
 }
 
+type logBuffer struct {
+	module  []byte
+	message []byte
+}
+
 func NewCollapseResultsLogger() *CollapseResultsLogger {
 	c := &CollapseResultsLogger{
-		arena:         &fastjson.Arena{},
-		mod:           []byte("tx"),
-		eventApplied:  []byte("applied"),
-		eventRejected: []byte("rejected"),
-		timeLayout:    "2006-01-02T15:04:05Z07:00",
-		bufTxID:       make([]byte, hex.EncodedLen(SizeTransactionID)),
-		bufSenderID:   make([]byte, hex.EncodedLen(SizeAccountID)),
-		bufTime:       make([]byte, 0, 64),
+		arena:      &fastjson.Arena{},
+		timeLayout: "2006-01-02T15:04:05Z07:00",
+		bufTime:    make([]byte, 0, 64),
 
-		bufBatch: make([][]byte, 0, conf.GetBlockTXLimit()/4),
-		flushCh:  make(chan [][]byte, 1024),
+		bufBatch: make([]logBuffer, 0, conf.GetBlockTXLimit()/4),
+		flushCh:  make(chan []logBuffer, 1024),
 
 		stop: make(chan struct{}),
 	}
@@ -77,8 +73,6 @@ func NewCollapseResultsLogger() *CollapseResultsLogger {
 	c.stopWg.Add(1)
 	go func() {
 		defer c.stopWg.Done()
-
-		mod := string(c.mod)
 
 		for {
 			// Make stop higher priority.
@@ -92,7 +86,7 @@ func NewCollapseResultsLogger() *CollapseResultsLogger {
 			select {
 			case b := <-c.flushCh:
 				for i := range b {
-					_ = log.Write(mod, b[i])
+					_ = log.Write(string(b[i].module), b[i].message)
 				}
 			case <-c.stop:
 				return
@@ -106,30 +100,53 @@ func NewCollapseResultsLogger() *CollapseResultsLogger {
 func (c *CollapseResultsLogger) Log(results *collapseResults) {
 	timestamp := time.Now()
 
+	modTx := []byte("tx")
+	eventApplied := []byte("applied")
+	bufTxID := make([]byte, hex.EncodedLen(SizeTransactionID))
+	bufAccount := make([]byte, hex.EncodedLen(SizeAccountID))
+
 	for _, tx := range results.applied {
-		c.add(tx, c.eventApplied, timestamp, nil)
+		_ = hex.Encode(bufTxID, tx.ID[:])
+		_ = hex.Encode(bufAccount, tx.Sender[:])
+
+		c.addTx(modTx, eventApplied, timestamp, int(tx.Tag), bufTxID, bufAccount, nil)
 	}
 
+	eventRejected := []byte("rejected")
+
 	for i, tx := range results.rejected {
-		c.add(tx, c.eventRejected, timestamp, results.rejectedErrors[i])
+		_ = hex.Encode(bufTxID, tx.ID[:])
+		_ = hex.Encode(bufAccount, tx.Sender[:])
+
+		c.addTx(modTx, eventRejected, timestamp, int(tx.Tag), bufTxID, bufAccount, results.rejectedErrors[i])
+	}
+
+	modAccount := []byte("accounts")
+	eventNonce := []byte("nonce_updated")
+	msg := []byte("Nonce updated")
+	bufNonce := make([]byte, 0, 20)
+
+	for accountID, nonce := range results.accountNonces {
+		_ = hex.Encode(bufAccount, accountID[:])
+
+		c.addNonce(modAccount, eventNonce, timestamp, bufAccount, strconv.AppendUint(bufNonce, nonce, 10), msg)
+
+		bufNonce = bufNonce[:0]
 	}
 
 	c.flush()
 }
 
-func (c *CollapseResultsLogger) add(tx *Transaction, event []byte, timestamp time.Time, logError error) {
+func (c *CollapseResultsLogger) addTx(mod, event []byte, timestamp time.Time, tag int, txID []byte, sender []byte, logError error) {
 	o := c.arena.NewObject()
 
-	o.Set("mod", c.arena.NewStringBytes(c.mod))
+	o.Set("mod", c.arena.NewStringBytes(mod))
 	o.Set("event", c.arena.NewStringBytes(event))
 	o.Set("time", c.arena.NewStringBytes(timestamp.AppendFormat(c.bufTime, c.timeLayout)))
-	o.Set("tag", c.arena.NewNumberInt(int(tx.Tag)))
 
-	_ = hex.Encode(c.bufTxID, tx.ID[:])
-	o.Set("tx_id", c.arena.NewStringBytes(c.bufTxID))
-
-	_ = hex.Encode(c.bufSenderID, tx.Sender[:])
-	o.Set("sender_id", c.arena.NewStringBytes(c.bufSenderID))
+	o.Set("tag", c.arena.NewNumberInt(tag))
+	o.Set("tx_id", c.arena.NewStringBytes(txID))
+	o.Set("sender_id", c.arena.NewStringBytes(sender))
 
 	if logError != nil {
 		o.Set("error", c.arena.NewString(logError.Error()))
@@ -137,7 +154,26 @@ func (c *CollapseResultsLogger) add(tx *Transaction, event []byte, timestamp tim
 
 	// The length of the JSON is 227, not including the error field.
 	buf := make([]byte, 0, 256)
-	c.bufBatch = append(c.bufBatch, o.MarshalTo(buf))
+	c.bufBatch = append(c.bufBatch, logBuffer{module: mod, message: o.MarshalTo(buf)})
+
+	c.bufTime = c.bufTime[:0]
+	c.arena.Reset()
+}
+
+func (c *CollapseResultsLogger) addNonce(mod, event []byte, timestamp time.Time, accountID []byte, nonce []byte, msg []byte) {
+	o := c.arena.NewObject()
+
+	o.Set("mod", c.arena.NewStringBytes(mod))
+	o.Set("event", c.arena.NewStringBytes(event))
+	o.Set("time", c.arena.NewStringBytes(timestamp.AppendFormat(c.bufTime, c.timeLayout)))
+
+	o.Set("account_id", c.arena.NewStringBytes(accountID))
+	o.Set("nonce", c.arena.NewNumberString(string(nonce)))
+	o.Set("message", c.arena.NewStringBytes(msg))
+
+	// The max length of the JSON is 229.
+	buf := make([]byte, 0, 256)
+	c.bufBatch = append(c.bufBatch, logBuffer{module: mod, message: o.MarshalTo(buf)})
 
 	c.bufTime = c.bufTime[:0]
 	c.arena.Reset()
@@ -146,7 +182,7 @@ func (c *CollapseResultsLogger) add(tx *Transaction, event []byte, timestamp tim
 func (c *CollapseResultsLogger) flush() {
 	c.flushCh <- c.bufBatch
 
-	c.bufBatch = make([][]byte, 0, cap(c.bufBatch))
+	c.bufBatch = make([]logBuffer, 0, cap(c.bufBatch))
 }
 
 func (c *CollapseResultsLogger) Stop() {
