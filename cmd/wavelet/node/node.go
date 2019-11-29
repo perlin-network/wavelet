@@ -38,8 +38,8 @@ type Config struct {
 	MaxMemoryMB uint64
 
 	// HTTPS
-	APIHost       string
-	APICertsCache string
+	APIHostPolicy   string
+	APICertCacheDir string
 
 	// Only for testing
 	NoGC bool
@@ -68,7 +68,7 @@ type Wavelet struct {
 
 	config   *Config
 	db       store.KV
-	logger   zerolog.Logger
+	logger   *zerolog.Logger
 	listener net.Listener
 }
 
@@ -77,13 +77,12 @@ func New(cfg *Config) (*Wavelet, error) {
 		cfg = &DefaultConfig
 	}
 
-	if cfg.APIHost != "" && cfg.APICertsCache == "" {
+	if cfg.APIHostPolicy != "" && cfg.APICertCacheDir == "" {
 		return nil, ErrHTTPSMissingCerts
 	}
 
 	w := Wavelet{
-		config:  cfg,
-		Gateway: api.New(),
+		config: cfg,
 	}
 
 	// Make a logger
@@ -196,6 +195,17 @@ func New(cfg *Config) (*Wavelet, error) {
 	ledger := wavelet.NewLedger(kv, client, opts...)
 	w.Ledger = ledger
 
+	w.Gateway = api.New(&api.Config{
+		Port:   int(cfg.Port),
+		Client: w.Net,
+		Ledger: w.Ledger,
+		KV:     w.db,
+		Keys:   w.Keys,
+
+		HostPolicy:   cfg.APIHostPolicy,
+		CertCacheDir: cfg.APICertCacheDir,
+	})
+
 	return &w, nil
 }
 
@@ -234,18 +244,9 @@ func (w *Wavelet) Start() {
 		w.config.APIPort = 9000
 	}
 
-	if w.config.APIHost != "" {
-		w.Gateway.StartHTTPS(
-			int(w.config.APIPort),
-			w.Net, w.Ledger, w.Keys, w.db,
-			w.config.APIHost,
-			w.config.APICertsCache, // guaranteed not empty in New
-		)
-	} else {
-		w.Gateway.StartHTTP(
-			int(w.config.APIPort),
-			w.Net, w.Ledger, w.Keys, w.db,
-		)
+	if err := w.Gateway.Start(); err != nil {
+		w.logger.Fatal().Err(err).
+			Msg("Failed to start Wavelet gateway")
 	}
 }
 

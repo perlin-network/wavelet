@@ -70,36 +70,25 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 }
 
 func (s *Account) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
-	o := arena.NewObject()
-
-	arenaSet(arena, o, "id", s.ID)
-	arenaSet(arena, o, "balance", s.Balance)
-	arenaSet(arena, o, "gas_balance", s.GasBalance)
-	arenaSet(arena, o, "stake", s.Stake)
-	arenaSet(arena, o, "reward", s.Reward)
-	arenaSet(arena, o, "nonce", s.Nonce)
-	arenaSet(arena, o, "is_contract", s.IsContract)
-
-	if s.NumPages != 0 {
-		arenaSet(arena, o, "num_pages", s.NumPages)
-	}
-
-	return o.MarshalTo(nil), nil
+	return log.MarshalObjectBatch(arena,
+		"id", s.ID,
+		"balance", s.Balance,
+		"gas_balance", s.GasBalance,
+		"stake", s.Stake,
+		"reward", s.Reward,
+		"nonce", s.Nonce,
+		"is_contract", s.IsContract)
 }
 
 func (s *Account) UnmarshalValue(v *fastjson.Value) error {
-	if err := valueHex(v, s.ID[:], "id"); err != nil {
-		return err
-	}
-
-	s.Balance = v.GetUint64("balance")
-	s.GasBalance = v.GetUint64("gas_balance")
-	s.Stake = v.GetUint64("stake")
-	s.Reward = v.GetUint64("reward")
-	s.Nonce = v.GetUint64("nonce")
-	s.IsContract = v.GetBool("is_contract")
-	s.NumPages = v.GetUint64("num_pages")
-	return nil
+	return log.ValueBatch(v,
+		"id", s.ID,
+		"balance", &s.Balance,
+		"stake", &s.Stake,
+		"reward", &s.Reward,
+		"nonce", &s.Nonce,
+		"is_contract", &s.IsContract,
+		"num_pages", &s.NumPages)
 }
 
 func (s *Account) MarshalEvent(ev *zerolog.Event) {

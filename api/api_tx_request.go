@@ -30,33 +30,32 @@ func (s *TxRequest) bind(parser *fastjson.Parser, body []byte) error {
 }
 
 func (s *TxRequest) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
-	o := arena.NewObject()
-
-	arenaSets(arena, o,
+	return log.MarshalObjectBatch(arena,
 		"sender", s.Sender,
 		"nonce", s.Nonce,
 		"block", s.Block,
 		"tag", s.Tag,
 		"payload", base64.StdEncoding.EncodeToString(s.Payload),
-		"signature", s.Signature,
-	)
-
-	return o.MarshalTo(nil), nil
+		"signature", s.Signature)
 }
 
 func (s *TxRequest) UnmarshalValue(v *fastjson.Value) error {
-	// TODO error handling
-	valueHex(v, s.Sender, "sender")
-	valueHex(v, s.Signature, "signature")
+	return log.ValueBatch(v,
+		"sender", s.Sender,
+		"signature", s.Signature,
+		"nonce", &s.Nonce,
+		"block", &s.Block,
+		"tag", &s.Tag,
+		"payload", func(b []byte) error {
+			b, err := base64.StdEncoding.DecodeString(string(b))
+			if err != nil {
+				return err
+			}
 
-	s.Nonce = v.GetUint64("nonce")
-	s.Block = v.GetUint64("block")
-	s.Tag = uint8(v.GetUint("tag"))
-
-	pl, _ := valueBase64(v, "payload")
-	s.Payload = pl
-
-	return nil
+			s.Payload = b
+			return nil
+		},
+	)
 }
 
 // MarshalEvent doesn't return the full contents of Payload, but only its

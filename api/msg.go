@@ -39,20 +39,16 @@ type MsgResponse struct {
 var _ log.JSONObject = (*MsgResponse)(nil)
 
 func (s *MsgResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
-	o := arena.NewObject()
-	o.Set("msg", arena.NewString(s.Message))
-
-	return o.MarshalTo(nil), nil
+	return log.MarshalObjectBatch(arena,
+		"msg", s.Message)
 }
 
 func (s *MsgResponse) UnmarshalValue(v *fastjson.Value) error {
-	s.Message = valueString(v, "msg")
-	return nil
+	return log.ValueAny(v, &s.Message, "msg")
 }
 
-func (s *MsgResponse) MarshalEvent(ev *zerolog.Event) error {
-	ev.Str("msg", s.Message)
-	return nil
+func (s *MsgResponse) MarshalEvent(ev *zerolog.Event) {
+	ev.Msg(s.Message)
 }
 
 type ErrResponse struct {
@@ -63,21 +59,16 @@ type ErrResponse struct {
 var _ log.JSONObject = (*ErrResponse)(nil)
 
 func (e *ErrResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
-	o := arena.NewObject()
-
-	o.Set("status", arena.NewString(http.StatusText(e.HTTPStatusCode)))
-
-	if e.Error != "" {
-		o.Set("error", arena.NewString(e.Error))
-	}
-
-	return o.MarshalTo(nil), nil
+	return log.MarshalObjectBatch(arena,
+		"status", http.StatusText(e.HTTPStatusCode),
+		"error,omitempty", e.Error,
+	)
 }
 
 func (e *ErrResponse) UnmarshalValue(v *fastjson.Value) error {
-	e.Error = valueString(v, "error")
-	e.HTTPStatusCode = v.GetInt("status")
-	return nil
+	return log.ValueBatch(v,
+		"error", &e.Error,
+		"status", &e.HTTPStatusCode)
 }
 
 func (e *ErrResponse) MarshalEvent(ev *zerolog.Event) {

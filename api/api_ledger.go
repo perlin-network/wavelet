@@ -147,19 +147,19 @@ func (s *LedgerStatus) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 }
 
 func (s *LedgerStatus) UnmarshalValue(v *fastjson.Value) error {
-	if err := valueHex(v, s.PublicKey[:], "public_key"); err != nil {
+	if err := log.ValueHex(v, s.PublicKey[:], "public_key"); err != nil {
 		return err
 	}
 
-	s.Address = valueString(v, "address")
+	s.Address = log.ValueString(v, "address")
 	s.NumAccounts = v.GetUint64("num_accounts")
 	s.PreferredVotes = v.GetInt("preferred_votes")
-	s.SyncStatus = valueString(v, "sync_status")
+	s.SyncStatus = log.ValueString(v, "sync_status")
 
 	// Parse block
 
-	valueHex(v, s.Block.MerkleRoot, "block", "merkle_root")
-	valueHex(v, s.Block.ID, "block", "id")
+	log.ValueHex(v, s.Block.MerkleRoot, "block", "merkle_root")
+	log.ValueHex(v, s.Block.ID, "block", "id")
 	s.Block.Height = v.GetUint64("block", "height")
 	s.Block.Txs = v.GetInt("block", "transactions")
 
@@ -168,8 +168,8 @@ func (s *LedgerStatus) UnmarshalValue(v *fastjson.Value) error {
 	if v.Exists("preferred") {
 		s.Preferred = &LedgerStatusBlock{}
 
-		valueHex(v, s.Preferred.MerkleRoot, "preferred", "merkle_root")
-		valueHex(v, s.Preferred.ID, "preferred", "id")
+		log.ValueHex(v, s.Preferred.MerkleRoot, "preferred", "merkle_root")
+		log.ValueHex(v, s.Preferred.ID, "preferred", "id")
 		s.Preferred.Height = v.GetUint64("preferred", "height")
 		s.Preferred.Txs = v.GetInt("preferred", "transactions")
 	}
@@ -183,8 +183,8 @@ func (s *LedgerStatus) UnmarshalValue(v *fastjson.Value) error {
 		s.Peers = make([]LedgerStatusPeer, len(peers))
 
 		for i, v := range peers {
-			s.Peers[i].Address = valueString(v, "address")
-			valueHex(v, s.Peers[i].PublicKey, "public_key")
+			s.Peers[i].Address = log.ValueString(v, "address")
+			log.ValueHex(v, s.Peers[i].PublicKey, "public_key")
 		}
 	}
 

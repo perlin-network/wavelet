@@ -33,18 +33,21 @@ import (
 func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {
 	id, ok := ctx.UserValue("contract_id").(wavelet.TransactionID)
 	if !ok {
-		g.renderError(ctx, ErrBadRequest(errors.New("id must be a TransactionID")))
+		g.renderError(ctx, ErrBadRequest(errors.New(
+			"id must be a TransactionID")))
 		return
 	}
 
 	code, available := wavelet.ReadAccountContractCode(g.Ledger.Snapshot(), id)
 
 	if len(code) == 0 || !available {
-		g.renderError(ctx, ErrNotFound(errors.Errorf("could not find contract with ID %x", id)))
+		g.renderError(ctx, ErrNotFound(errors.Errorf(
+			"could not find contract with ID %x", id)))
 		return
 	}
 
-	ctx.Response.Header.Set("Content-Disposition", "attachment; filename="+hex.EncodeToString(id[:])+".wasm")
+	ctx.Response.Header.Set("Content-Disposition",
+		"attachment; filename="+hex.EncodeToString(id[:])+".wasm")
 	ctx.Response.Header.Set("Content-Type", "application/wasm")
 	ctx.Response.Header.Set("Content-Length", strconv.Itoa(len(code)))
 
@@ -54,7 +57,8 @@ func (g *Gateway) getContractCode(ctx *fasthttp.RequestCtx) {
 func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 	id, ok := ctx.UserValue("contract_id").(wavelet.TransactionID)
 	if !ok {
-		g.renderError(ctx, ErrBadRequest(errors.New("id must be a TransactionID")))
+		g.renderError(ctx, ErrBadRequest(errors.New(
+			"id must be a TransactionID")))
 		return
 	}
 
@@ -63,7 +67,8 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 
 	rawIdx, ok := ctx.UserValue("index").(string)
 	if !ok {
-		g.renderError(ctx, ErrBadRequest(errors.New("could not cast index into string")))
+		g.renderError(ctx, ErrBadRequest(errors.New(
+			"could not cast index into string")))
 		return
 	}
 
@@ -71,7 +76,8 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 		idx, err = strconv.ParseUint(rawIdx, 10, 64)
 
 		if err != nil {
-			g.renderError(ctx, ErrBadRequest(errors.New("could not parse page index")))
+			g.renderError(ctx, ErrBadRequest(errors.New(
+				"could not parse page index")))
 			return
 		}
 	}
@@ -81,12 +87,15 @@ func (g *Gateway) getContractPages(ctx *fasthttp.RequestCtx) {
 	numPages, available := wavelet.ReadAccountContractNumPages(snapshot, id)
 
 	if !available {
-		g.renderError(ctx, ErrNotFound(errors.Errorf("could not find any pages for contract with ID %x", id)))
+		g.renderError(ctx, ErrNotFound(errors.Errorf(
+			"could not find any pages for contract with ID %x", id)))
 		return
 	}
 
 	if idx >= numPages {
-		g.renderError(ctx, ErrBadRequest(errors.Errorf("contract with ID %x only has %d pages, but you requested page %d", id, numPages, idx)))
+		g.renderError(ctx, ErrBadRequest(errors.Errorf(
+			"contract with ID %x only has %d pages, but you requested page %d",
+			id, numPages, idx)))
 		return
 	}
 

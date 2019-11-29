@@ -96,6 +96,30 @@ func ValueAny(value *fastjson.Value, dst interface{}, key ...string) error {
 	case []byte, [16]byte, [32]byte, [64]byte:
 		return ValueHex(value, dst, key...)
 
+	case *[]byte, *[16]byte, *[32]byte, *[64]byte:
+		b, err := val.StringBytes()
+		if err != nil {
+			return NewErrUnmarshalErr(val, key, err)
+		}
+
+		switch dst := dst.(type) {
+		case *[]byte:
+			h, err := hex.DecodeString(string(b))
+			if err != nil {
+				return NewErrUnmarshalErr(val, key, err)
+			}
+
+			*dst = h
+			return nil
+
+		case *[16]byte:
+			return ValueHex(value, *dst, key...)
+		case *[32]byte:
+			return ValueHex(value, *dst, key...)
+		case *[64]byte:
+			return ValueHex(value, *dst, key...)
+		}
+
 	case *string:
 		if val.Type() != fastjson.TypeString {
 			return NewErrUnmarshalCustom(val, key, "Not a string")
@@ -178,6 +202,14 @@ func ValueAny(value *fastjson.Value, dst interface{}, key ...string) error {
 		case *float64:
 			*dst = f64
 		}
+
+	case func([]byte) error:
+		b, err := val.StringBytes()
+		if err != nil {
+			return NewErrUnmarshalErr(val, key, err)
+		}
+
+		dst(b)
 
 	default:
 		return NewErrUnmarshalCustom(val, key, "Unknown dst type")

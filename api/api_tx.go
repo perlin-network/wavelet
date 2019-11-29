@@ -247,7 +247,7 @@ func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
 
 	*/
 
-	g.render(ctx, transactions)
+	g.render(ctx, &transactions)
 }
 
 func (s *TransactionList) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
