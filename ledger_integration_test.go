@@ -74,7 +74,7 @@ func TestLedger_PayInsufficientBalance(t *testing.T) {
 		return
 	}
 
-	alice.WaitUntilConsensus(t)
+	alice.WaitUntilBlock(t, 2)
 
 	// Alice should have paid for gas even though the tx failed
 	waitFor(t, func() bool {
@@ -171,7 +171,7 @@ func TestLedger_CallContract(t *testing.T) {
 		10000, nil)
 	assert.NoError(t, err)
 
-	alice.WaitUntilConsensus(t)
+	alice.WaitUntilBlock(t, 2)
 
 	// Calling the contract should cause the contract to send back 250000 PERL back to alice
 	_, err = alice.CallContract(
@@ -204,7 +204,7 @@ func TestLedger_DepositGas(t *testing.T) {
 		10000, nil)
 	assert.NoError(t, err)
 
-	alice.WaitUntilConsensus(t)
+	alice.WaitUntilBlock(t, 2)
 
 	_, err = alice.DepositGas(contract.ID, 654321)
 	if !assert.NoError(t, err) {
@@ -264,7 +264,7 @@ func TestLedger_Sync(t *testing.T) {
 			return
 		}
 
-		alice.WaitUntilConsensus(t)
+		alice.WaitUntilBlock(t, uint64(i+1))
 	}
 
 	testnet.WaitForBlock(t, alice.BlockIndex())
