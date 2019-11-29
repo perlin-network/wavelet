@@ -2,10 +2,11 @@ package wavelet
 
 import (
 	"fmt"
-	"github.com/google/btree"
-	"github.com/perlin-network/wavelet/conf"
 	"math/big"
 	"sync"
+
+	"github.com/google/btree"
+	"github.com/perlin-network/wavelet/conf"
 )
 
 var _ btree.Item = (*mempoolItem)(nil)
@@ -66,7 +67,9 @@ func (t *Transactions) add(block BlockID, tx Transaction) {
 		return
 	}
 
-	t.index.ReplaceOrInsert(mempoolItem{index: tx.ComputeIndex(block), id: tx.ID})
+	t.index.ReplaceOrInsert(mempoolItem{
+		index: tx.ComputeIndex(block), id: tx.ID,
+	})
 	t.buffer[tx.ID] = &tx
 
 	delete(t.missing, tx.ID) // In case the transaction was previously missing, mark it as no longer missing.

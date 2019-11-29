@@ -29,7 +29,9 @@ import (
 	"github.com/pkg/errors"
 )
 
-func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) (*collapseResults, error) {
+func collapseTransactions(txs []*Transaction, block *Block,
+	accounts *Accounts) (*collapseResults, error) {
+
 	res := &collapseResults{snapshot: accounts.Snapshot()}
 	res.snapshot.SetViewID(block.Index)
 
@@ -65,7 +67,9 @@ func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) 
 				res.rejected = append(res.rejected, tx)
 				res.rejectedErrors = append(
 					res.rejectedErrors,
-					errors.Errorf("stake: sender %x does not have enough PERLs to pay transaction fees (comprised of %d PERLs)", tx.Sender, fee),
+					errors.Errorf("stake: sender %x does not have enough PERLs"+
+						" to pay transaction fees (comprised of %d PERLs)",
+						tx.Sender, fee),
 				)
 				res.rejectedCount += tx.LogicalUnits()
 
@@ -337,7 +341,8 @@ func (c *CollapseContext) processRewardWithdrawals(blockIndex uint64) {
 // Write the changes into the tree.
 func (c *CollapseContext) Flush() error {
 	if c.checksum != c.tree.Checksum() {
-		return errors.Errorf("stale state, the state has been modified. got merkle %x but expected %x.", c.tree.Checksum(), c.checksum)
+		return errors.Errorf("stale state, the state has been modified. "+
+			"got merkle %x but expected %x.", c.tree.Checksum(), c.checksum)
 	}
 
 	WriteAccountsLen(c.tree, c.accountLen)
@@ -377,11 +382,12 @@ func (c *CollapseContext) Flush() error {
 }
 
 // Apply a transaction by writing the states into memory.
-// After you've finished, you MUST call CollapseContext.Flush() to actually write the states into the tree.
+// After you've finished, you MUST call CollapseContext.Flush() to actually
+// write the states into the tree.
 func (c *CollapseContext) ApplyTransaction(block *Block, tx *Transaction) error {
-	if err := applyTransaction(block, c, tx, &contractExecutorState{
-		GasPayer: tx.Sender,
-	}); err != nil {
+	if err := applyTransaction(block, c, tx,
+		&contractExecutorState{GasPayer: tx.Sender}); err != nil {
+
 		return err
 	}
 

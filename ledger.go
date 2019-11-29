@@ -447,9 +447,10 @@ func (l *Ledger) PullTransactions() {
 			for _, buf := range res.Transactions {
 				tx, err := UnmarshalTransaction(bytes.NewReader(buf))
 				if err != nil {
-					log.ErrorX(log.Sync("pull_tx"), err).
+					log.NewError(log.Sync("")).
+						Err(err).
 						Hex("tx_id", tx.ID[:]).
-						Msg("error unmarshaling downloaded tx")
+						Msg("error unmarshalling downloaded tx")
 					continue
 				}
 
@@ -526,8 +527,8 @@ func (l *Ledger) proposeBlock() *Block {
 
 	results, err := l.collapseTransactions(&proposed, false)
 	if err != nil {
-		log.ErrNode(err, "error collapsing transactions during block proposal")
-
+		log.Error(log.Sync(""), err,
+			"error collapsing transactions during block proposal")
 		return nil
 	}
 
@@ -542,13 +543,13 @@ func (l *Ledger) finalize(block Block) {
 
 	results, err := l.collapseTransactions(&block, false)
 	if err != nil {
-		log.ErrNode(err, "error collapsing transactions during finalization")
+		log.Error(log.Consensus(""), err,
+			"error collapsing transactions during finalization")
 		return
 	}
 
 	if checksum := results.snapshot.Checksum(); checksum != block.Merkle {
-		// TODO port to a proper error
-		log.ErrNodeX().
+		log.NewError(log.Consensus("finalize")).
 			Uint64("target_block_id", block.Index).
 			Hex("expected_merkle_root", block.Merkle[:]).
 			Hex("yielded_merkle_root", checksum[:]).
@@ -561,12 +562,14 @@ func (l *Ledger) finalize(block Block) {
 
 	_, err = l.blocks.Save(&block)
 	if err != nil {
-		log.ErrNode(err, "Failed to save preferred block to database")
+		log.Error(log.Consensus(""), err,
+			"Failed to save preferred block to database")
 		return
 	}
 
 	if err = l.accounts.Commit(results.snapshot); err != nil {
-		log.ErrNode(err, "Failed to commit collaped state to our database")
+		log.Error(log.Consensus(""), err,
+			"Failed to commit collaped state to our database")
 		return
 	}
 
@@ -616,13 +619,15 @@ func (l *Ledger) query() {
 				f := func() {
 					client := NewWaveletClient(conn)
 
-					ctx, cancel := context.WithTimeout(context.Background(), conf.GetQueryTimeout())
+					ctx, cancel := context.WithTimeout(context.Background(),
+						conf.GetQueryTimeout())
 
 					p := &peer.Peer{}
 
 					res, err := client.Query(ctx, req, grpc.Peer(p))
 					if err != nil {
-						log.ErrNode(err, "error while querying peer")
+						log.NewError(log.Sync("query_failed")).
+							Err(err).Msg("error while querying peer")
 						cancel()
 						return
 					}
@@ -685,7 +690,9 @@ func (l *Ledger) query() {
 		vote := <-voteChan
 
 		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
-			continue // To make sure the sampling process is fair, only allow one vote per peer.
+			// To make sure the sampling process is fair, only allow one vote
+			// per peer.
+			continue
 		}
 
 		voters[vote.voter.PublicKey()] = struct{}{}
@@ -694,7 +701,8 @@ func (l *Ledger) query() {
 
 	cleanupWorker()
 
-	// Filter away all query responses whose blocks comprise of transactions our node is not aware of.
+	// Filter away all query responses whose blocks comprise of transactions
+	// our node is not aware of.
 	for _, vote := range votes {
 		if vote.block == nil {
 			continue
@@ -720,7 +728,8 @@ func (l *Ledger) query() {
 
 		results, err := l.collapseTransactions(vote.block, false)
 		if err != nil {
-			log.ErrNode(err, "error collapsing transactions during query")
+			log.NewError(log.Sync("query_failed")).
+				Err(err).Msg("error collapsing transactions during query")
 			continue
 		}
 
@@ -1139,7 +1148,7 @@ func (l *Ledger) SyncToLatestBlock() {
 		var diffSize int64
 		for i, src := range sources {
 			if src.size == 0 {
-				log.ErrorX(log.Sync("download_chunks_failed"), nil).
+				log.NewError(log.Sync("download_chunks_failed")).
 					Uint64("target_block_id", latest.Index).
 					Hex("chunk_checksum", sources[i].checksum[:]).
 					Msg("Could not download one of the chunks necessary to sync to the latest block! Retrying...")
@@ -1152,7 +1161,7 @@ func (l *Ledger) SyncToLatestBlock() {
 		}
 
 		if _, err := io.CopyN(diffBuffer, chunksBuffer, diffSize); err != nil {
-			log.ErrorX(log.Sync("write_chunks_failed"), err).
+			log.NewError(log.Sync("write_chunks_failed")).
 				Uint64("target_block_id", latest.Index).
 				Msg("Failed to write chunks to bounded memory buffer. Restarting sync...")
 
@@ -1167,7 +1176,7 @@ func (l *Ledger) SyncToLatestBlock() {
 
 		snapshot := l.accounts.Snapshot()
 		if err := snapshot.ApplyDiff(diffBuffer); err != nil {
-			log.ErrorX(log.Sync("apply_ledger_failed"), err).
+			log.NewError(log.Sync("apply_ledger_failed")).
 				Uint64("target_block_id", latest.Index).
 				Msg("Failed to apply re-assembled diff to our ledger state. Restarting sync...")
 
@@ -1176,7 +1185,7 @@ func (l *Ledger) SyncToLatestBlock() {
 		}
 
 		if checksum := snapshot.Checksum(); checksum != latest.Merkle {
-			log.ErrorX(log.Sync("ledger_checksum_failed"), nil).
+			log.NewError(log.Sync("ledger_checksum_failed")).
 				Uint64("target_block_id", latest.Index).
 				Hex("expected_merkle_root", latest.Merkle[:]).
 				Hex("yielded_merkle_root", checksum[:]).

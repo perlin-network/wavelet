@@ -71,6 +71,8 @@ type Metrics struct {
 	MeanQueryLatency float64 `json:"query.latency.mean.ms"`
 }
 
+var _ log.JSONObject = (*Metrics)(nil)
+
 func (m *Metrics) MarshalEvent(ev *zerolog.Event) {
 	ev.Int64("blocks.queried", m.BlocksQueried)
 	ev.Int64("tx.gossiped", m.TxGossiped)
@@ -87,6 +89,25 @@ func (m *Metrics) MarshalEvent(ev *zerolog.Event) {
 	ev.Int64("query.latency.min.ms", m.MinQueryLatency)
 	ev.Float64("query.latency.mean.ms", m.MeanQueryLatency)
 	ev.Msg("Updated metrics.")
+}
+
+func (m *Metrics) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
+	return log.MarshalObjectBatch(arena,
+		"blocks.queried", m.BlocksQueried,
+		"tx.gossiped", m.TxGossiped,
+		"tx.received", m.TxReceived,
+		"tx.accepted", m.TxAccepted,
+		"tx.downloaded", m.TxDownloaded,
+		"bps.queried", m.TPSGossiped,
+		"tps.gossiped", m.TPSReceived,
+		"tps.received", m.TPSReceived,
+		"tps.accepted", m.TPSAccepted,
+		"tps.downloaded", m.TPSDownloaded,
+		"blocks.finalized", m.BlocksFinalized,
+		"query.latency.max.ms", m.MaxQueryLatency,
+		"query.latency.min.ms", m.MinQueryLatency,
+		"query.latency.mean.ms", m.MeanQueryLatency,
+	)
 }
 
 func (m *Metrics) UnmarshalValue(v *fastjson.Value) error {

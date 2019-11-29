@@ -3,6 +3,7 @@ package wctl
 import (
 	"fmt"
 	"net/url"
+	"strings"
 
 	"github.com/gorilla/websocket"
 	"github.com/valyala/fastjson"
@@ -18,6 +19,12 @@ const (
 	RouteWSMetrics      = "/poll/metrics"
 	RouteWSNetwork      = "/poll/network"
 )
+
+// This works, since we know API uses the logger names for the WS paths.
+func parseMod(path string) string {
+	parts := strings.Split(path, "/")
+	return parts[len(parts)-1]
+}
 
 // EstablishWS will create a websocket connection.
 func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
@@ -42,7 +49,9 @@ func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 }
 
 // callback is spawned in a goroutine
-func (c *Client) pollWS(path string, callback func(*fastjson.Value)) (func(), error) {
+func (c *Client) _pollWS(path string,
+	callback func(*fastjson.Value)) (func(), error) {
+
 	ws, err := c.EstablishWS(path)
 	if err != nil {
 		return nil, err
@@ -80,6 +89,50 @@ func (c *Client) pollWS(path string, callback func(*fastjson.Value)) (func(), er
 	c.stopSockets = append(c.stopSockets, cancel)
 
 	return cancel, nil
+}
+
+func (c *Client) pollWS(path string,
+	callback func(*fastjson.Value) error) (func(), error) {
+
+	return c._pollWS(path, c.wrapCallback(parseMod(path), callback))
+}
+
+func (c *Client) pollWSArray(path string,
+	callback func(*fastjson.Value) error) (func(), error) {
+
+	return c._pollWS(path, c.wrapCallbackArray(parseMod(path), callback))
+}
+
+// wrapWScallback abstracts away some repetitive code
+func (c *Client) wrapCallback(mod string,
+	callback func(v *fastjson.Value) error) func(v *fastjson.Value) {
+
+	return func(v *fastjson.Value) {
+		// Check for error
+		if c.possibleError(v) {
+			return
+		}
+
+		// Check for valid mod
+		if err := checkMod(v, mod); err != nil {
+			c.error(err)
+			return
+		}
+
+		if err := callback(v); err != nil {
+			c.error(err)
+		}
+	}
+}
+
+func (c *Client) wrapCallbackArray(mod string,
+	callback func(v *fastjson.Value) error) func(v *fastjson.Value) {
+
+	return func(v *fastjson.Value) {
+		for _, v := range v.GetArray() {
+			c.wrapCallback(mod, callback)(v)
+		}
+	}
 }
 
 type ErrInvalidPayload struct {

@@ -6,8 +6,11 @@ import (
 )
 
 func init() {
-	zerolog.MessageFieldName = "msg"
+	zerolog.MessageFieldName = "message"
 	zerolog.LevelFieldName = "level"
+	zerolog.ErrorFieldName = "error"
+
+	setupChildLoggers()
 }
 
 type Loggable interface {

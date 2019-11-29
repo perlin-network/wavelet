@@ -7,137 +7,56 @@ import (
 )
 
 func (c *Client) PollAccounts() (func(), error) {
-	return c.pollWS(RouteWSAccounts, func(v *fastjson.Value) {
-		var err error
+	return c.pollWSArray(RouteWSAccounts, func(v *fastjson.Value) error {
+		var (
+			a  log.UnmarshalableValue
+			ev = log.ValueString(v, "event")
+		)
 
-		for _, o := range v.GetArray() {
-			if err := checkMod(o, "accounts"); err != nil {
-				if c.OnError != nil {
-					c.OnError(err)
+		switch ev {
+		case "balance_updated":
+			a = &wavelet.AccountBalanceUpdated{}
+		case "gas_balance_updated":
+			a = &wavelet.AccountGasBalanceUpdated{}
+		case "num_pages_updated":
+			a = &wavelet.AccountNumPagesUpdated{}
+		case "stake_updated":
+			a = &wavelet.AccountStakeUpdated{}
+		case "reward_updated":
+			a = &wavelet.AccountRewardUpdated{}
+		default:
+			return errInvalidEvent(v, ev)
+		}
+
+		if err := a.UnmarshalValue(v); err != nil {
+			return err
+		}
+
+		for v := range c.handlers {
+			switch a := a.(type) {
+			case *wavelet.AccountBalanceUpdated:
+				if f, ok := v.(func(*wavelet.AccountBalanceUpdated)); ok {
+					f(a)
 				}
-				continue
-			}
-
-			switch ev := log.ValueString(o, "event"); ev {
-			case "balance_updated":
-				var a wavelet.AccountBalanceUpdated
-				if err := a.UnmarshalValue(o); err != nil {
-					c.OnError(err)
-					continue
+			case *wavelet.AccountGasBalanceUpdated:
+				if f, ok := v.(func(*wavelet.AccountGasBalanceUpdated)); ok {
+					f(a)
 				}
-				c.OnBalanceUpdated(a)
-			case "gas_balance_updated":
-				err = parseAccountsGasBalanceUpdated(c, o)
-			case "num_pages_updated":
-				err = parseAccountNumPagesUpdated(c, o)
-			case "stake_updated":
-				err = parseAccountStakeUpdated(c, o)
-			case "reward_updated":
-				err = parseAccountStakeUpdated(c, o)
-			default:
-				err = errInvalidEvent(o, ev)
-			}
-
-			if err != nil {
-				if c.OnError != nil {
-					c.OnError(err)
+			case *wavelet.AccountNumPagesUpdated:
+				if f, ok := v.(func(*wavelet.AccountNumPagesUpdated)); ok {
+					f(a)
+				}
+			case *wavelet.AccountRewardUpdated:
+				if f, ok := v.(func(*wavelet.AccountRewardUpdated)); ok {
+					f(a)
+				}
+			case *wavelet.AccountStakeUpdated:
+				if f, ok := v.(func(*wavelet.AccountStakeUpdated)); ok {
+					f(a)
 				}
 			}
 		}
+
+		return nil
 	})
-}
-
-func parseAccountsBalanceUpdated(c *Client, v *fastjson.Value) error {
-	var a BalanceUpdate
-
-	if err := jsonHex(v, a.AccountID[:], "account_id"); err != nil {
-		return err
-	}
-
-	if err := jsonTime(v, &a.Time, "time"); err != nil {
-		return err
-	}
-
-	a.Balance = v.GetUint64("balance")
-
-	if c.OnBalanceUpdated != nil {
-		c.OnBalanceUpdated(a)
-	}
-	return nil
-}
-
-func parseAccountsGasBalanceUpdated(c *Client, v *fastjson.Value) error {
-	var a GasBalanceUpdate
-
-	if err := jsonHex(v, a.AccountID[:], "account_id"); err != nil {
-		return err
-	}
-
-	if err := jsonTime(v, &a.Time, "time"); err != nil {
-		return err
-	}
-
-	a.GasBalance = v.GetUint64("gas_balance")
-
-	if c.OnGasBalanceUpdated != nil {
-		c.OnGasBalanceUpdated(a)
-	}
-	return nil
-}
-
-func parseAccountNumPagesUpdated(c *Client, v *fastjson.Value) error {
-	var a NumPagesUpdated
-
-	if err := jsonHex(v, a.AccountID[:], "account_id"); err != nil {
-		return err
-	}
-
-	if err := jsonTime(v, &a.Time, "time"); err != nil {
-		return err
-	}
-
-	a.NumPages = v.GetUint64("num_pages_updated")
-
-	if c.OnNumPagesUpdated != nil {
-		c.OnNumPagesUpdated(a)
-	}
-	return nil
-}
-
-func parseAccountStakeUpdated(c *Client, v *fastjson.Value) error {
-	var a StakeUpdated
-
-	if err := jsonHex(v, a.AccountID[:], "account_id"); err != nil {
-		return err
-	}
-
-	if err := jsonTime(v, &a.Time, "time"); err != nil {
-		return err
-	}
-
-	a.Stake = v.GetUint64("stake")
-
-	if c.OnStakeUpdated != nil {
-		c.OnStakeUpdated(a)
-	}
-	return nil
-}
-
-func parseAccountRewardUpdated(c *Client, v *fastjson.Value) error {
-	var a RewardUpdated
-
-	if err := jsonHex(v, a.AccountID[:], "account_id"); err != nil {
-		return err
-	}
-
-	if err := jsonTime(v, &a.Time, "time"); err != nil {
-		return err
-	}
-
-	a.Reward = v.GetUint64("reward")
-
-	if c.OnRewardUpdated != nil {
-		c.OnRewardUpdated(a)
-	}
-	return nil
 }

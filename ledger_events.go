@@ -7,33 +7,21 @@ import (
 )
 
 /*
-	Sync events
+	TX events
 */
 
-// event: *, level: error
-type SyncError struct {
-	Message string      `json:"msg"`
-	Event   log.MiniLog `json:"event"`
+// event: applied
+type TxApplied struct {
+	*Transaction
 }
 
-var _ log.JSONObject = (*SyncOutOfSync)(nil)
-
-func (s *SyncError) MarshalEvent(ev *zerolog.Event) {
-	s.Event.MarshalEvent(ev)
-	ev.Msg(s.Message)
+type TxRejected struct {
+	*Transaction
 }
 
-func (s *SyncError) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
-	return log.MarshalObjectBatch(arena,
-		"msg", s.Message,
-		"event", s.Event)
-}
-
-func (s *SyncError) UnmarshalValue(v *fastjson.Value) error {
-	return log.ValueBatch(v,
-		"msg", &s.Message,
-		"event", &s.Event)
-}
+/*
+	Sync events
+*/
 
 // event: out_of_sync
 type SyncOutOfSync struct {

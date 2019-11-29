@@ -22,16 +22,17 @@ package wctl
 
 import (
 	"encoding/base64"
-	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/cmd/wavelet/node"
+	"github.com/perlin-network/wavelet/log"
+	"github.com/pkg/errors"
 	"github.com/valyala/fastjson"
 )
 
@@ -102,38 +103,11 @@ type Client struct {
 	// These callbacks are only called when the function that calls them is
 	// started. The function's name is written above each block.
 	// These functions would also return a callback to stop polling.
-
-	// Websocket callbacks
 	OnError
 
-	// Accounts
-	OnBalanceUpdated
-	OnGasBalanceUpdated
-	OnNumPagesUpdated
-	OnStakeUpdated
-	OnRewardUpdated
-
-	// Network
-	OnPeerJoin
-	OnPeerLeave
-
-	// Consensus
-	OnProposal
-	OnFinalized
-
-	// Stake
-	OnStakeRewardValidator
-
-	// Contract
-	OnContractGas
-	OnContractLog
-
-	// PollTransactions
-	OnTxApplied
-	OnTxGossipError
-	OnTxFailed
-
-	OnMetrics
+	// map is easier, honestly
+	handlers  map[interface{}]struct{}
+	handlerMu sync.Mutex
 }
 
 func NewClient(config Config) (*Client, error) {
@@ -162,7 +136,7 @@ func NewClient(config Config) (*Client, error) {
 			Timeout: 5 * time.Second,
 		},
 		OnError: func(err error) {
-			log.Println("WCTL_ERR:", err)
+			log.ErrNode(err, "")
 		},
 	}
 
@@ -196,6 +170,24 @@ func NewClient(config Config) (*Client, error) {
 	return c, nil
 }
 
+// AddHandler adds a custom handler into the list of handlers to call on a known
+// event. The handler must have its only argument a pointer to a struct.
+// Example:
+//     func(finalized *wavelet.ConsensusFinalized)
+func (c *Client) AddHandler(handler interface{}) func() {
+	c.handlerMu.Lock()
+	defer c.handlerMu.Unlock()
+
+	c.handlers[handler] = struct{}{}
+
+	return func() {
+		c.handlerMu.Lock()
+		defer c.handlerMu.Unlock()
+
+		delete(c.handlers, handler)
+	}
+}
+
 func (c *Client) Close() {
 	c.stopConsensus()
 
@@ -220,4 +212,29 @@ func (c *Client) GetContractPages(contractID string, index *uint64) (string, err
 
 	res, err := c.Request(path, ReqGet, nil)
 	return base64.StdEncoding.EncodeToString(res), err
+}
+
+func (c *Client) error(err error) {
+	if c.OnError != nil {
+		c.OnError(err)
+	}
+}
+
+// If this method returns true, skip the object
+func (c *Client) possibleError(v *fastjson.Value) bool {
+	// Return if not an error
+	if log.ValueString(v) != "error" {
+		return false
+	}
+
+	var ev log.ErrorEvent
+
+	if err := ev.UnmarshalValue(v); err != nil {
+		// Invalid error, log
+		c.error(errors.Wrap(err, "Failed to parse error event"))
+		return true
+	}
+
+	c.error(errors.Wrap(ev.Error, ev.Message))
+	return true
 }

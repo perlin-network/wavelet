@@ -55,14 +55,9 @@ const (
 	ModuleConsensus = "consensus"
 	ModuleContract  = "contract"
 	ModuleSync      = "sync"
-	ModuleStake     = "stake"
 	ModuleTX        = "tx"
 	ModuleMetrics   = "metrics"
 )
-
-func init() {
-	setupChildLoggers()
-}
 
 func setupChildLoggers() {
 	node = logger.With().Str(KeyModule, ModuleNode).Logger()
@@ -71,7 +66,6 @@ func setupChildLoggers() {
 	consensus = logger.With().Str(KeyModule, ModuleConsensus).Logger()
 	contract = logger.With().Str(KeyModule, ModuleContract).Logger()
 	syncer = logger.With().Str(KeyModule, ModuleSync).Logger()
-	stake = logger.With().Str(KeyModule, ModuleStake).Logger()
 	tx = logger.With().Str(KeyModule, ModuleTX).Logger()
 	metrics = logger.With().Str(KeyModule, ModuleMetrics).Logger()
 }
@@ -88,7 +82,6 @@ func SetLevel(ls string) {
 	consensus = consensus.Level(level)
 	contract = contract.Level(level)
 	syncer = syncer.Level(level)
-	stake = stake.Level(level)
 	tx = tx.Level(level)
 	metrics = metrics.Level(level)
 }
@@ -98,41 +91,44 @@ func SetWriter(key string, writer io.Writer) {
 }
 
 func Node() *zerolog.Logger {
-	return wrap(node)
+	return &node
 }
 
 func Network(event string) *zerolog.Logger {
-	return wrap(network.With().Str(KeyEvent, event).Logger())
+	return eventIf(event, network)
 }
 
 func Accounts(event string) *zerolog.Logger {
-	return wrap(accounts.With().Str(KeyEvent, event).Logger())
+	return eventIf(event, accounts)
 }
 
 func Contracts(event string) *zerolog.Logger {
-	return wrap(contract.With().Str(KeyEvent, event).Logger())
+	return eventIf(event, contract)
 }
 
 func TX(event string) *zerolog.Logger {
-	return wrap(tx.With().Str(KeyEvent, event).Logger())
+	return eventIf(event, tx)
 }
 
 func Consensus(event string) *zerolog.Logger {
-	return wrap(consensus.With().Str(KeyEvent, event).Logger())
-}
-
-func Stake(event string) *zerolog.Logger {
-	return wrap(stake.With().Str(KeyEvent, event).Logger())
+	return eventIf(event, consensus)
 }
 
 func Sync(event string) *zerolog.Logger {
-	return wrap(syncer.With().Str(KeyEvent, event).Logger())
+	return eventIf(event, syncer)
 }
 
 func Metrics() *zerolog.Logger {
-	return wrap(metrics)
+	return &metrics
 }
 
-func wrap(l zerolog.Logger) *zerolog.Logger {
+func eventIf(event string, logger zerolog.Logger) *zerolog.Logger {
+	var l zerolog.Logger
+	if event == "" {
+		l = logger.With().Logger()
+	} else {
+		l = logger.With().Str(KeyEvent, event).Logger()
+	}
+
 	return &l
 }

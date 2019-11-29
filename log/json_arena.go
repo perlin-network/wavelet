@@ -2,11 +2,9 @@ package log
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"strconv"
 
-	"github.com/pkg/errors"
 	"github.com/valyala/fastjson"
 )
 
@@ -124,30 +122,6 @@ func ObjectAny(arena *fastjson.Arena, o *fastjson.Value, key string,
 		target = arena.NewNumberFloat64(val)
 	case float32:
 		target = arena.NewNumberFloat64(float64(val))
-
-	case MiniLog, map[string]interface{}:
-		var l MiniLog
-
-		switch val := val.(type) {
-		case MiniLog:
-			l = val
-		case map[string]interface{}:
-			l = MiniLog(val)
-		}
-
-		// TODO: ...why? Sometimes, I feel like code could give me an
-		// existential crisis. This is one of them.
-		b, err := json.Marshal(l)
-		if err != nil {
-			return errors.Wrap(err, "Failed to marshal minilog")
-		}
-
-		p, err := (&fastjson.Parser{}).ParseBytes(b)
-		if err != nil {
-			return errors.Wrap(err, "Failed to re-parse minilog")
-		}
-
-		target = p
 
 	default:
 		panic("BUG: Unknown dst type")

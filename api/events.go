@@ -29,10 +29,20 @@ func (n *NetworkJoined) MarshalEvent(ev *zerolog.Event) {
 }
 
 func (n *NetworkJoined) UnmarshalValue(v *fastjson.Value) error {
-	n.Address = string(v.GetStringBytes("address"))
-	n.Message = log.ValueString(v, "message")
-	n.Time, _ = log.ValueTime(v, time.RFC3339Nano, "time")
-	return log.ValueHex(v, n.PublicKey, "public_key")
+	if err := log.ValueBatch(v,
+		"address", &n.Address,
+		"message", &n.Message); err != nil {
+
+		return err
+	}
+
+	t, err := log.ValueTime(v, time.RFC3339Nano, "time")
+	if err != nil {
+		return err
+	}
+	n.Time = *t
+
+	return nil
 }
 
 // event: left
@@ -53,10 +63,20 @@ func (n *NetworkLeft) MarshalEvent(ev *zerolog.Event) {
 }
 
 func (n *NetworkLeft) UnmarshalValue(v *fastjson.Value) error {
-	n.Address = string(v.GetStringBytes("address"))
-	n.Message = log.ValueString(v, "message")
-	n.Time, _ = log.ValueTime(v, time.RFC3339Nano, "time")
-	return log.ValueHex(v, n.PublicKey, "public_key")
+	if err := log.ValueBatch(v,
+		"address", &n.Address,
+		"message", &n.Message); err != nil {
+
+		return err
+	}
+
+	t, err := log.ValueTime(v, time.RFC3339Nano, "time")
+	if err != nil {
+		return err
+	}
+	n.Time = *t
+
+	return nil
 }
 
 func (g *Gateway) registerEvents() {

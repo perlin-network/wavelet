@@ -119,6 +119,7 @@ func New(opts *Config) *Gateway {
 	)
 	sinkMetrics := g.registerWebsocketSink("ws://metrics/", nil)
 
+	log.SetLevel("info")
 	log.SetWriter(log.LoggerWebsocket, g)
 
 	// Setup HTTP router.
@@ -360,7 +361,8 @@ func (g *Gateway) registerWebsocketSink(rawURL string, factory *debounce.Factory
 }
 
 func (g *Gateway) Write(buf []byte) (n int, err error) {
-	var p fastjson.Parser
+	p := g.parserPool.Get()
+	defer g.parserPool.Put(p)
 
 	v, err := p.ParseBytes(buf)
 	if err != nil {
@@ -368,7 +370,7 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 	}
 
 	mod := v.GetStringBytes(log.KeyModule)
-	if mod == nil {
+	if len(mod) == 0 {
 		return n, errors.Errorf("all logs must have the field %q", log.KeyModule)
 	}
 
@@ -385,7 +387,7 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 	return len(buf), nil
 }
 
-func (g *Gateway) render(ctx *fasthttp.RequestCtx, m MarshalableArena) {
+func (g *Gateway) render(ctx *fasthttp.RequestCtx, m log.MarshalableArena) {
 	g._render(ctx, m, http.StatusOK)
 }
 
@@ -393,11 +395,11 @@ func (g *Gateway) renderError(ctx *fasthttp.RequestCtx, e *ErrResponse) {
 	g._render(ctx, e, e.HTTPStatusCode)
 }
 
-func (g *Gateway) _render(ctx *fasthttp.RequestCtx, m MarshalableArena, status int) {
+func (g *Gateway) _render(ctx *fasthttp.RequestCtx, m log.MarshalableArena, status int) {
 	arena := g.arenaPool.Get()
-	b, err := m.MarshalArena(arena)
-	g.arenaPool.Put(arena)
+	defer g.arenaPool.Put(arena)
 
+	b, err := m.MarshalArena(arena)
 	if err != nil {
 		ctx.Error(fmt.Sprintf(`{ "error": "render error: %s" }`, err.Error()), http.StatusInternalServerError)
 		return

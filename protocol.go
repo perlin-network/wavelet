@@ -145,10 +145,9 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 			return err
 		}
 
-		logger := log.Sync("provide_chunk")
-		logger.Info().
-			Hex("requested_hash", req.GetChecksum()).
-			Msg("Responded to sync chunk request.")
+		log.EventTo(log.Sync("provide_chunk").Info(), &SyncProvideChunk{
+			RequestedHash: req.GetChecksum(),
+		})
 
 		res.Data.(*SyncResponse_Chunk).Chunk = chunkBuf[:info.Size]
 
@@ -185,10 +184,9 @@ func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullReq
 	})
 
 	if len(res.Transactions) > 0 {
-		logger := log.Sync("pull_tx")
-		logger.Info().
-			Int("num_transactions", len(res.Transactions)).
-			Msg("Provided transactions for a pull request.")
+		log.EventTo(log.Sync("pull_tx").Info(), &SyncPullTransaction{
+			NumTransactions: len(res.Transactions),
+		})
 	}
 
 	return res, nil

@@ -21,6 +21,7 @@ package wavelet
 
 import (
 	"encoding/hex"
+
 	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
@@ -314,15 +315,16 @@ func executeContractInTransactionContext(
 		state.GasLimit -= executor.Gas
 
 		if executor.GasLimitExceeded {
-			logger.Info().
+			log.NewError(logger).
 				Hex("sender_id", tx.Sender[:]).
 				Hex("contract_id", contractID[:]).
 				Uint64("gas", executor.Gas).
 				Uint64("gas_limit", realGasLimit).
 				Msg("Exceeded gas limit while invoking smart contract function.")
-
 		} else {
-			logger.Info().Err(invocationErr).Msg("failed to invoke smart contract")
+			log.NewError(logger).
+				Err(invocationErr).
+				Msg("Failed to invoke smart contract")
 		}
 	} else {
 		// Contract invocation succeeded. VM state can be safely saved now.
@@ -348,7 +350,8 @@ func executeContractInTransactionContext(
 		for _, entry := range executor.Queue {
 			err := applyTransaction(block, ctx, entry, state)
 			if err != nil {
-				logger.Info().Err(err).Msg("failed to process sub-transaction")
+				log.NewError(logger).Err(err).
+					Msg("failed to process sub-transaction")
 			}
 		}
 	}

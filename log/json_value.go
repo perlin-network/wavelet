@@ -3,7 +3,6 @@ package log
 import (
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -80,9 +79,8 @@ func ValueBatch(value *fastjson.Value, keyDstPair ...interface{}) error {
 }
 
 // ValueAny unmarshals primitives: *string, *int{,8,16,32,64}, *bool,
-// *float{,32,64}, *uint{,8,16,32,64} {[]byte, [16,32,64]byte} hex types,
-// *MiniLog and *map[string]interface{}. This function panics on unknown dst
-// types.
+// *float{,32,64}, *uint{,8,16,32,64} {[]byte, [16,32,64]byte} hex types.
+// This function panics on unknown dst types.
 func ValueAny(value *fastjson.Value, dst interface{}, key ...string) error {
 	val := value.Get(key...)
 	if val == nil {
@@ -180,11 +178,6 @@ func ValueAny(value *fastjson.Value, dst interface{}, key ...string) error {
 		case *float64:
 			*dst = f64
 		}
-
-	case *MiniLog:
-		return json.Unmarshal(val.MarshalTo(nil), dst)
-	case *map[string]interface{}:
-		return json.Unmarshal(val.MarshalTo(nil), dst)
 
 	default:
 		return NewErrUnmarshalCustom(val, key, "Unknown dst type")

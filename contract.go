@@ -25,6 +25,9 @@ import (
 	"crypto/sha512"
 	"encoding/binary"
 	"fmt"
+	"reflect"
+	"unsafe"
+
 	"github.com/perlin-network/life/compiler"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
@@ -34,8 +37,6 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
-	"reflect"
-	"unsafe"
 )
 
 var (
@@ -66,7 +67,9 @@ type VMState struct {
 	Memory  []byte
 }
 
-func (state VMState) Apply(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver, move bool) (*exec.VirtualMachine, error) {
+func (state VMState) Apply(vm *exec.VirtualMachine, gp compiler.GasPolicy,
+	ir exec.ImportResolver, move bool) (*exec.VirtualMachine, error) {
+
 	if len(vm.Globals) != len(state.Globals) {
 		return nil, errors.New("global count mismatch")
 	}
@@ -88,13 +91,15 @@ func (state VMState) Apply(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy
 		Globals:         state.Globals,
 		Memory:          state.Memory,
 		Exited:          true,
-		GasPolicy:       gasPolicy,
-		ImportResolver:  importResolver,
+		GasPolicy:       gp,
+		ImportResolver:  ir,
 	}, nil
 }
 
-func CloneVM(vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver) (*exec.VirtualMachine, error) {
-	return SnapshotVMState(vm).Apply(vm, gasPolicy, importResolver, false)
+func CloneVM(vm *exec.VirtualMachine, gp compiler.GasPolicy,
+	ir exec.ImportResolver) (*exec.VirtualMachine, error) {
+
+	return SnapshotVMState(vm).Apply(vm, gp, ir, false)
 }
 
 func SnapshotVMState(vm *exec.VirtualMachine) VMState {
@@ -255,12 +260,15 @@ func (e *ContractExecutor) ResolveGlobal(module, field string) int64 {
 	panic("global variables are disallowed in smart contracts")
 }
 
-// contractState is an optional parameter that is used to pass the VMState of the contract.
-// If you cache the VMState, you can pass it.
-// If it's nil, we'll try to load the state from the tree.
-//
-// This function MUST NOT write into the tree. The new or updated VM State must be returned.
-func (e *ContractExecutor) Execute(id AccountID, block *Block, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte, tree *avl.Tree, vmCache *lru.LRU, contractState *VMState) (*VMState, error) {
+// contractState is an optional parameter that is used to pass the VMState of
+// the contract. If you cache the VMState, you can pass it. If it's nil, we'll
+// try to load the state from the tree.
+// This function MUST NOT write into the tree. The new or updated VM State must
+// be returned.
+func (e *ContractExecutor) Execute(id AccountID, block *Block, tx *Transaction,
+	amount, gasLimit uint64, name string, params, code []byte, tree *avl.Tree,
+	vmCache *lru.LRU, contractState *VMState) (*VMState, error) {
+
 	var vm *exec.VirtualMachine
 	var err error
 
@@ -270,6 +278,7 @@ func (e *ContractExecutor) Execute(id AccountID, block *Block, tx *Transaction, 
 			return nil, errors.Wrap(err, "cannot clone vm")
 		}
 		vm.Config.GasLimit = gasLimit
+
 	} else {
 		config := exec.VMConfig{
 			DefaultMemoryPages: sys.ContractDefaultMemoryPages,
@@ -296,8 +305,9 @@ func (e *ContractExecutor) Execute(id AccountID, block *Block, tx *Transaction, 
 		vmCache.Put(id, cloned)
 	}
 
-	// We can safely initialize the VM first before checking this because the size of the global slice
-	// is proportional to the size of the contract's global section.
+	// We can safely initialize the VM first before checking this because the
+	// size of the global slice is proportional to the size of the contract's
+	// global section.
 	if len(vm.Globals) > sys.ContractMaxGlobals {
 		return nil, errors.New("too many globals")
 	}
@@ -327,7 +337,8 @@ func (e *ContractExecutor) Execute(id AccountID, block *Block, tx *Transaction, 
 
 	entry, exists := vm.GetFunctionExport("_contract_" + name)
 	if !exists {
-		return nil, errors.Wrapf(ErrContractFunctionNotFound, `fn "_contract_%s" does not exist`, name)
+		return nil, errors.Wrapf(ErrContractFunctionNotFound,
+			`fn "_contract_%s" does not exist`, name)
 	}
 
 	if vm.FunctionCode[entry].NumParams != 0 {
@@ -395,7 +406,8 @@ func LoadContractGlobals(snapshot *avl.Tree, id AccountID) ([]int64, bool) {
 		return nil, false
 	}
 
-	// We cannot use the unsafe method as in SaveContractGlobals due to possible alignment issues.
+	// We cannot use the unsafe method as in SaveContractGlobals due to
+	// possible alignment issues.
 	buf := make([]int64, 0, len(raw)/8)
 	for i := 0; i < len(raw); i += 8 {
 		buf = append(buf, int64(binary.LittleEndian.Uint64(raw[i:])))
@@ -411,6 +423,7 @@ func SaveContractGlobals(snapshot *avl.Tree, id AccountID, globals []int64) {
 		Len:  oldHeader.Len * 8,
 		Cap:  oldHeader.Len * 8, // prevent appending in place
 	}
+
 	WriteAccountContractGlobals(snapshot, id, *(*[]byte)(unsafe.Pointer(&header)))
 }
 
