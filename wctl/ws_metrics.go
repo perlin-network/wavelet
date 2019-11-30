@@ -2,6 +2,7 @@ package wctl
 
 import (
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/valyala/fastjson"
 )
 
@@ -12,7 +13,12 @@ func (c *Client) PollMetrics() (func(), error) {
 			return err
 		}
 
-		for v := range c.handlers {
+		for _, v := range c.handlers {
+			if f, ok := v.(func(log.MarshalableEvent)); ok {
+				f(&met)
+				continue
+			}
+
 			if f, ok := v.(func(*wavelet.Metrics)); ok {
 				f(&met)
 			}

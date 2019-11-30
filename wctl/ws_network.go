@@ -8,7 +8,7 @@ import (
 
 func (c *Client) PollNetwork() (func(), error) {
 	return c.pollWS(RouteWSNetwork, func(v *fastjson.Value) error {
-		var ev log.UnmarshalableValue
+		var ev log.Loggable
 
 		switch event := log.ValueString(v, "event"); event {
 		case "joined":
@@ -23,7 +23,12 @@ func (c *Client) PollNetwork() (func(), error) {
 			return err
 		}
 
-		for v := range c.handlers {
+		for _, v := range c.handlers {
+			if f, ok := v.(func(log.MarshalableEvent)); ok {
+				f(ev)
+				continue
+			}
+
 			switch ev := ev.(type) {
 			case *api.NetworkJoined:
 				if f, ok := v.(func(*api.NetworkJoined)); ok {

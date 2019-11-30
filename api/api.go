@@ -176,6 +176,9 @@ func New(opts *Config) *Gateway {
 	g.routeWithMiddleware("GET", "/tx",
 		g.listTransactions, true)
 
+	g.routeWithMiddleware("GET", "/nonce/:id",
+		g.getAccountNonce, false)
+
 	// Connectivity endpoints
 	g.routeWithMiddleware("POST", "/node/connect",
 		g.connect, true, g.auth)

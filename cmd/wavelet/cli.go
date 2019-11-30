@@ -45,12 +45,9 @@ const (
 )
 
 type CLI struct {
-	app *cli.App
-	rl  *readline.Instance
-	// client *skademlia.Client
-	// ledger *wavelet.Ledger
-	logger zerolog.Logger
-	// keys   *skademlia.Keypair
+	app    *cli.App
+	rl     *readline.Instance
+	logger *zerolog.Logger
 
 	client *wctl.Client
 

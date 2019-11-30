@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/base64"
 	"encoding/hex"
+	"strconv"
 
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
@@ -50,7 +51,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 
 func (s *TxResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
-	arenaSet(arena, o, "id", s.ID)
+	log.ObjectAny(arena, o, "id", s.ID[:])
 
 	return o.MarshalTo(nil), nil
 }
@@ -61,7 +62,7 @@ func (s *TxResponse) MarshalEvent(ev *zerolog.Event) {
 }
 
 func (s *TxResponse) UnmarshalValue(v *fastjson.Value) error {
-	return log.ValueHex(v, s.ID, "id")
+	return log.ValueHex(v, s.ID[:], "id")
 }
 
 /*
@@ -129,8 +130,8 @@ func (s *Transaction) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 func (s *Transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) {
 	o := arena.NewObject()
 
-	arenaSets(arena, o,
-		"id", s.ID,
+	err := log.ObjectBatch(arena, o,
+		"id", s.ID[:],
 		"sender", s.Sender,
 		"nonce", s.Nonce,
 		"tag", s.Tag,
@@ -138,11 +139,11 @@ func (s *Transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 		"signature", s.Signature,
 	)
 
-	return o, nil
+	return o, err
 }
 
 func (s *Transaction) UnmarshalValue(v *fastjson.Value) error {
-	log.ValueHex(v, s.ID, "id")
+	log.ValueHex(v, s.ID[:], "id")
 	log.ValueHex(v, s.Sender, "sender")
 	log.ValueHex(v, s.Signature, "signature")
 
@@ -272,22 +273,10 @@ func (s *TransactionList) UnmarshalValue(v *fastjson.Value) error {
 	for i, v := range a {
 		var t Transaction
 
-		if err := log.ValueBatch(v,
-			"id", &t.ID,
-			"sender", &t.Sender,
-			"nonce", &t.Nonce,
-			"tag", &t.Tag,
-			"signature", &t.Signature); err != nil {
-
-			return err
+		if err := t.UnmarshalValue(v); err != nil {
+			return errors.Wrap(err, "Failed to unmarshal tx index "+
+				strconv.Itoa(i))
 		}
-
-		b, err := log.ValueBase64(v, "payload")
-		if err != nil {
-			return err
-		}
-
-		t.Payload = b
 
 		txs[i] = t
 	}

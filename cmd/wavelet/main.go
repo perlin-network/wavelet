@@ -217,8 +217,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, disableGC bool) {
 	sort.Sort(cli.CommandsByName(app.Commands))
 
 	if err := app.Run(args); err != nil {
-		logger := log.Node()
-		logger.Fatal().Err(err).
+		log.Node().Fatal().Err(err).
 			Msg("Failed to parse configuration/command-line arguments.")
 	}
 }
@@ -281,8 +280,8 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer, disableGC bool
 			Database:    c.String("db"),
 			MaxMemoryMB: c.Uint64("memory.max"),
 			// HTTPS
-			APIHost:       c.String("api.host"),
-			APICertsCache: c.String("api.certs"),
+			APIHostPolicy:   c.String("api.host"),
+			APICertCacheDir: c.String("api.certs"),
 			// Debugging only
 			NoGC: disableGC,
 		}
@@ -293,7 +292,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer, disableGC bool
 
 		srv, err := node.New(&srvCfg)
 		if err != nil {
-			return err
+			return errors.Wrap(err, "Failed to create a new Wavelet node")
 		}
 
 		// Start the server
@@ -329,7 +328,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer, disableGC bool
 
 	client, err := wctl.NewClient(wctlCfg)
 	if err != nil {
-		return err
+		return errors.Wrap(err, "Failed to create a wctl client")
 	}
 
 	defer client.Close()
@@ -340,7 +339,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer, disableGC bool
 
 	shell, err := NewCLI(client, CLIWithStdin(stdin), CLIWithStdout(stdout))
 	if err != nil {
-		return fmt.Errorf("failed to spawn the CLI: %v", err)
+		return errors.Wrap(err, "Failed to spawn the CLI")
 	}
 
 	shell.Start()

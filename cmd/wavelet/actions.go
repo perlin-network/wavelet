@@ -40,8 +40,10 @@ func (cli *CLI) status(ctx *cli.Context) {
 		return
 	}
 
-	a, err := cli.client.GetSelf(l.PublicKey)
+	a, err := cli.client.GetSelf()
 	if err != nil {
+		cli.logger.Error().Err(err).
+			Msg("Failed to get self-account status")
 	}
 
 	preferredID := "N/A"
@@ -56,7 +58,7 @@ func (cli *CLI) status(ctx *cli.Context) {
 	}
 
 	cli.logger.Info().
-		Uint64("block_height", l.Block.Index).
+		Uint64("block_height", l.Block.Height).
 		Hex("block_id", l.Block.ID[:]).
 		Hex("user_id", l.PublicKey[:]).
 		Uint64("balance", a.Balance).
@@ -64,10 +66,9 @@ func (cli *CLI) status(ctx *cli.Context) {
 		Uint64("reward", a.Reward).
 		Uint64("nonce", a.Nonce).
 		Strs("peers", peers).
-		Uint64("num_tx", l.NumTx).
-		Uint64("num_missing_tx", l.NumMissingTx).
-		Uint64("num_tx_in_store", l.NumTxInStore).
-		Uint64("num_accounts_in_store", l.AccountsLen).
+		Int("num_tx", l.NumTx).
+		Int("num_tx_in_store", l.NumTxInStore).
+		Uint64("num_accounts_in_store", l.NumAccounts).
 		Uint64("client_nonce", cli.client.Nonce.Load()).
 		Uint64("client_block", cli.client.Block.Load()).
 		Str("sync_status", l.SyncStatus).
@@ -216,7 +217,7 @@ func (cli *CLI) find(ctx *cli.Context) {
 	switch {
 	case account != nil:
 		cli.logger.Info().
-			Hex("public_key", account.PublicKey[:]).
+			Hex("public_key", account.ID[:]).
 			Uint64("balance", account.Balance).
 			Uint64("gas_balance", account.GasBalance).
 			Uint64("stake", account.Stake).

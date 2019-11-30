@@ -29,17 +29,29 @@ func (c *Client) PollTransactions() (func(), error) {
 
 		switch ev {
 		case "applied":
-		}
+			tx := &wavelet.TxApplied{
+				Transaction: tx,
+			}
 
-		for v := range c.handlers {
-			switch ev {
-			case "applied":
-				if f, ok := v.(func(*wavelet.TxApplied)); ok {
-					f(&wavelet.TxApplied{tx})
+			for _, v := range c.handlers {
+				switch f := v.(type) {
+				case func(log.MarshalableEvent):
+					f(tx)
+				case func(*wavelet.TxApplied):
+					f(tx)
 				}
-			case "rejected":
-				if f, ok := v.(func(*wavelet.TxRejected)); ok {
-					f(&wavelet.TxRejected{tx})
+			}
+		case "rejected":
+			tx := &wavelet.TxRejected{
+				Transaction: tx,
+			}
+
+			for _, v := range c.handlers {
+				switch f := v.(type) {
+				case func(log.MarshalableEvent):
+					f(tx)
+				case func(*wavelet.TxRejected):
+					f(tx)
 				}
 			}
 		}

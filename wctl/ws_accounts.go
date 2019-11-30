@@ -9,7 +9,7 @@ import (
 func (c *Client) PollAccounts() (func(), error) {
 	return c.pollWSArray(RouteWSAccounts, func(v *fastjson.Value) error {
 		var (
-			a  log.UnmarshalableValue
+			a  log.Loggable
 			ev = log.ValueString(v, "event")
 		)
 
@@ -32,7 +32,12 @@ func (c *Client) PollAccounts() (func(), error) {
 			return err
 		}
 
-		for v := range c.handlers {
+		for _, v := range c.handlers {
+			if f, ok := v.(func(log.MarshalableEvent)); ok {
+				f(a)
+				continue
+			}
+
 			switch a := a.(type) {
 			case *wavelet.AccountBalanceUpdated:
 				if f, ok := v.(func(*wavelet.AccountBalanceUpdated)); ok {

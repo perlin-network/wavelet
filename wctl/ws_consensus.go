@@ -15,15 +15,21 @@ func (c *Client) pollConsensus() (func(), error) {
 				return err
 			}
 
-			for v := range c.handlers {
+			for _, v := range c.handlers {
+				if f, ok := v.(func(log.MarshalableEvent)); ok {
+					f(&cf)
+					continue
+				}
+
 				if f, ok := v.(func(*wavelet.ConsensusFinalized)); ok {
 					f(&cf)
 				}
 			}
-		default:
-			c.error(errInvalidEvent(v, ev))
-		}
 
-		return nil
+			return nil
+
+		default:
+			return errInvalidEvent(v, ev)
+		}
 	})
 }

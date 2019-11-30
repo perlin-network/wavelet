@@ -196,7 +196,7 @@ func New(cfg *Config) (*Wavelet, error) {
 	w.Ledger = ledger
 
 	w.Gateway = api.New(&api.Config{
-		Port:   int(cfg.Port),
+		Port:   int(cfg.APIPort),
 		Client: w.Net,
 		Ledger: w.Ledger,
 		KV:     w.db,

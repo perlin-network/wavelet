@@ -23,6 +23,7 @@ package wctl
 import (
 	"encoding/base64"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"sync"
@@ -105,8 +106,8 @@ type Client struct {
 	// These functions would also return a callback to stop polling.
 	OnError
 
-	// map is easier, honestly
-	handlers  map[interface{}]struct{}
+	// map of random number ID to function handlers
+	handlers  map[int64]interface{}
 	handlerMu sync.Mutex
 }
 
@@ -138,6 +139,10 @@ func NewClient(config Config) (*Client, error) {
 		OnError: func(err error) {
 			log.ErrNode(err, "")
 		},
+		Nonce: atomic.NewUint64(0),
+		Block: atomic.NewUint64(0),
+
+		handlers: map[int64]interface{}{},
 	}
 
 	// Generate parsers and arenas
@@ -152,7 +157,7 @@ func NewClient(config Config) (*Client, error) {
 	// Get the nonce
 	n, err := c.GetSelfNonce()
 	if err != nil {
-		return c, err
+		return c, errors.Wrap(err, "Failed to get self nonce")
 	}
 
 	c.Nonce.Store(n.Nonce)
@@ -178,13 +183,22 @@ func (c *Client) AddHandler(handler interface{}) func() {
 	c.handlerMu.Lock()
 	defer c.handlerMu.Unlock()
 
-	c.handlers[handler] = struct{}{}
+	var id int64
+
+	for {
+		id = rand.Int63()
+		if _, ok := c.handlers[id]; !ok {
+			break
+		}
+	}
+
+	c.handlers[id] = handler
 
 	return func() {
 		c.handlerMu.Lock()
 		defer c.handlerMu.Unlock()
 
-		delete(c.handlers, handler)
+		delete(c.handlers, id)
 	}
 }
 
@@ -223,7 +237,8 @@ func (c *Client) error(err error) {
 // If this method returns true, skip the object
 func (c *Client) possibleError(v *fastjson.Value) bool {
 	// Return if not an error
-	if log.ValueString(v) == "error" {
+	switch log.ValueString(v) {
+	case "error":
 		var ev log.ErrorEvent
 
 		if err := ev.UnmarshalValue(v); err != nil {
@@ -234,6 +249,20 @@ func (c *Client) possibleError(v *fastjson.Value) bool {
 
 		c.error(errors.Wrap(ev.Error, ev.Message))
 		return true
+
+	case "warn":
+		// ???
+		// TODO: Do something about this
+		var ev log.WarnEvent
+
+		if err := ev.UnmarshalValue(v); err != nil {
+			c.error(errors.Wrap(err, "Failed to parse warn event"))
+			return true
+		}
+
+		c.error(errors.New("WARNING: " + ev.Message))
+		return true
 	}
+
 	return false
 }

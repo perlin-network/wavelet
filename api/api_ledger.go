@@ -21,8 +21,9 @@ type LedgerStatus struct {
 	Block     LedgerStatusBlock  `json:"block"`
 	Preferred *LedgerStatusBlock `json:"preferred"`
 
-	NumTx        int `json:"num_tx"`
-	NumTxInStore int `json:"num_tx_in_store"`
+	NumTx              int `json:"num_tx"`
+	NumTxInStore       int `json:"num_tx_in_store"`
+	NumAccountsInStore int `json:"num_accounts_in_store"`
 
 	Peers []LedgerStatusPeer
 }
@@ -95,19 +96,19 @@ func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 func (s *LedgerStatus) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 
-	arenaSet(arena, o, "public_key", s.PublicKey)
-	arenaSet(arena, o, "address", s.Address)
-	arenaSet(arena, o, "num_accounts", s.NumAccounts)
-	arenaSet(arena, o, "preferred_votes", s.PreferredVotes)
-	arenaSet(arena, o, "sync_status", s.SyncStatus)
+	log.ObjectAny(arena, o, "public_key", s.PublicKey[:])
+	log.ObjectAny(arena, o, "address", s.Address)
+	log.ObjectAny(arena, o, "num_accounts", s.NumAccounts)
+	log.ObjectAny(arena, o, "preferred_votes", s.PreferredVotes)
+	log.ObjectAny(arena, o, "sync_status", s.SyncStatus)
 
 	{
 		block := arena.NewObject()
 
-		arenaSet(arena, block, "merkle_root", s.Block.MerkleRoot)
-		arenaSet(arena, block, "height", s.Block.Height)
-		arenaSet(arena, block, "id", s.Block.ID)
-		arenaSet(arena, block, "transactions", s.Block.Txs)
+		log.ObjectAny(arena, block, "merkle_root", s.Block.MerkleRoot)
+		log.ObjectAny(arena, block, "height", s.Block.Height)
+		log.ObjectAny(arena, block, "id", s.Block.ID)
+		log.ObjectAny(arena, block, "transactions", s.Block.Txs)
 
 		o.Set("block", block)
 	}
@@ -115,16 +116,16 @@ func (s *LedgerStatus) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	if s.Preferred != nil {
 		pref := arena.NewObject()
 
-		arenaSet(arena, pref, "merkle_root", s.Preferred.MerkleRoot)
-		arenaSet(arena, pref, "height", s.Preferred.Height)
-		arenaSet(arena, pref, "id", s.Preferred.ID)
-		arenaSet(arena, pref, "transactions", s.Preferred.Txs)
+		log.ObjectAny(arena, pref, "merkle_root", s.Preferred.MerkleRoot)
+		log.ObjectAny(arena, pref, "height", s.Preferred.Height)
+		log.ObjectAny(arena, pref, "id", s.Preferred.ID)
+		log.ObjectAny(arena, pref, "transactions", s.Preferred.Txs)
 
 		o.Set("preferred", pref)
 	}
 
-	arenaSet(arena, o, "num_tx", s.NumTx)
-	arenaSet(arena, o, "num_tx_in_store", s.NumTxInStore)
+	log.ObjectAny(arena, o, "num_tx", s.NumTx)
+	log.ObjectAny(arena, o, "num_tx_in_store", s.NumTxInStore)
 
 	var peers *fastjson.Value
 
@@ -134,8 +135,8 @@ func (s *LedgerStatus) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 		for i, p := range s.Peers {
 			peer := arena.NewObject()
 
-			arenaSet(arena, peer, "address", p.Address)
-			arenaSet(arena, peer, "public_key", p.PublicKey)
+			log.ObjectAny(arena, peer, "address", p.Address)
+			log.ObjectAny(arena, peer, "public_key", p.PublicKey[:])
 
 			peers.SetArrayItem(i, peer)
 		}
@@ -184,7 +185,7 @@ func (s *LedgerStatus) UnmarshalValue(v *fastjson.Value) error {
 
 		for i, v := range peers {
 			s.Peers[i].Address = log.ValueString(v, "address")
-			log.ValueHex(v, s.Peers[i].PublicKey, "public_key")
+			log.ValueHex(v, s.Peers[i].PublicKey[:], "public_key")
 		}
 	}
 

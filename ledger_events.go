@@ -7,19 +7,6 @@ import (
 )
 
 /*
-	TX events
-*/
-
-// event: applied
-type TxApplied struct {
-	*Transaction
-}
-
-type TxRejected struct {
-	*Transaction
-}
-
-/*
 	Sync events
 */
 

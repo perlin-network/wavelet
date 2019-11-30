@@ -71,18 +71,19 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 
 func (s *Account) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	return log.MarshalObjectBatch(arena,
-		"id", s.ID,
+		"id", s.ID[:],
 		"balance", s.Balance,
 		"gas_balance", s.GasBalance,
 		"stake", s.Stake,
 		"reward", s.Reward,
 		"nonce", s.Nonce,
-		"is_contract", s.IsContract)
+		"is_contract", s.IsContract,
+		"num_pages", s.NumPages)
 }
 
 func (s *Account) UnmarshalValue(v *fastjson.Value) error {
 	return log.ValueBatch(v,
-		"id", s.ID,
+		"id", s.ID[:],
 		"balance", &s.Balance,
 		"stake", &s.Stake,
 		"reward", &s.Reward,

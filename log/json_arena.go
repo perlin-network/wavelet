@@ -53,7 +53,7 @@ func ObjectBatch(arena *fastjson.Arena, o *fastjson.Value, keyValPair ...interfa
 		panic("keyValPair is not even")
 	}
 
-	for i := 0; i < len(keyValPair); i++ {
+	for i := 0; i < len(keyValPair); i += 2 {
 		key, ok := keyValPair[i].(string)
 		if !ok {
 			panic(fmt.Sprintf("Key at index %d is not string", i))
@@ -179,7 +179,7 @@ func ObjectAny(arena *fastjson.Arena, o *fastjson.Value, key string,
 		target = arena.NewNumberFloat64(float64(val))
 
 	default:
-		panic("BUG: Unknown dst type")
+		panic("BUG: Unknown dst type when marshaling " + key)
 	}
 
 	o.Set(key, target)
