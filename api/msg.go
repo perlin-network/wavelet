@@ -298,20 +298,6 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 	return o.MarshalTo(nil), nil
 }
 
-type nonceResponse struct {
-	Nonce uint64 `json:"nonce"`
-	Block uint64 `json:"block"`
-}
-
-func (s *nonceResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
-	o := arena.NewObject()
-
-	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(s.Nonce, 10)))
-	o.Set("block", arena.NewNumberString(strconv.FormatUint(s.Block, 10)))
-
-	return o.MarshalTo(nil), nil
-}
-
 type transaction struct {
 	// Internal fields.
 	tx     *wavelet.Transaction
@@ -371,7 +357,6 @@ type account struct {
 	gasBalance uint64
 	stake      uint64
 	reward     uint64
-	nonce      uint64
 	isContract bool
 	numPages   uint64
 }
@@ -388,7 +373,6 @@ func (s *account) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
 	o.Set("gas_balance", arena.NewNumberString(strconv.FormatUint(s.gasBalance, 10)))
 	o.Set("stake", arena.NewNumberString(strconv.FormatUint(s.stake, 10)))
 	o.Set("reward", arena.NewNumberString(strconv.FormatUint(s.reward, 10)))
-	o.Set("nonce", arena.NewNumberString(strconv.FormatUint(s.nonce, 10)))
 
 	if s.isContract {
 		o.Set("is_contract", arena.NewTrue())

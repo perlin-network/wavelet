@@ -1,4 +1,4 @@
-// +build integration,!unit
+// +build integration
 
 package wavelet
 
@@ -203,7 +203,7 @@ func TestPerformInception(t *testing.T) {
 
 	assert.Equal(t, uint64(0), block.Index)
 	assert.Nil(t, block.Transactions)
-	assert.Equal(t, "6c669ad9992286e000f6bb4c0aa5a416", fmt.Sprintf("%x", block.Merkle))
+	assert.Equal(t, "3a4598625c7fcf107257c648c9f289da", fmt.Sprintf("%x", block.Merkle))
 
 	uint64p := func(v uint64) *uint64 {
 		return &v
@@ -333,31 +333,11 @@ func checkAccount(t *testing.T, tree *avl.Tree, id AccountID, expectedBalance, e
 }
 
 // Used to check the restored tree to make sure some of the global prefixes must not exist.
-// Also, check all the accounts' nonce have value 1.
 func checkRestoredDefaults(t *testing.T, tree *avl.Tree) {
-	// Check for global prefixes that must not exists.
+	val, exist := tree.Lookup(keyRewardWithdrawals[:])
 
-	var val []byte
-	var exist bool
-
-	val, exist = tree.Lookup(keyRewardWithdrawals[:])
 	assert.False(t, exist)
 	assert.Nil(t, val)
-
-	// Check all the account nonce values must be 1.
-
-	tree.IteratePrefix(append(keyAccounts[:], keyAccountNonce[:]...), func(key, value []byte) {
-		var id AccountID
-		copy(id[:], key[2:])
-
-		if _, isContract := ReadAccountContractCode(tree, id); isContract {
-			return
-		}
-
-		nonce, exist := ReadAccountNonce(tree, id)
-		assert.True(t, exist, "account %x is missing nonce", id)
-		assert.Equal(t, uint64(1), nonce, "account %x, expected nonce is 1", id)
-	})
 }
 
 func BenchmarkDump(b *testing.B) {

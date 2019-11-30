@@ -41,7 +41,6 @@ const (
 	RouteContract = "/contract"
 	RouteTxList   = "/tx"
 	RouteTxSend   = "/tx/send"
-	RouteNonce    = "/nonce"
 
 	RouteNode       = "/node"
 	RouteConnect    = RouteNode + "/connect"
@@ -82,7 +81,6 @@ type Client struct {
 	url      string
 
 	// Local state counters
-	Nonce *atomic.Uint64
 	Block *atomic.Uint64
 
 	// Stop the background consensus that is created before
@@ -159,17 +157,15 @@ func NewClient(config Config) (*Client, error) {
 		OnError: func(err error) {
 			log.Println("WCTL_ERR:", err)
 		},
-		Nonce: atomic.NewUint64(0),
 		Block: atomic.NewUint64(0),
 	}
 
-	n, err := c.GetSelfNonce()
+	ls, err := c.LedgerStatus()
 	if err != nil {
 		return c, err
 	}
 
-	c.Nonce.Store(n.Nonce)
-	c.Block.Store(n.Block)
+	c.Block.Store(ls.Block.Index)
 
 	// Start listening to consensus to track Block
 	cancel, err := c.pollConsensus()

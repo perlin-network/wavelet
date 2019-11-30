@@ -1,9 +1,6 @@
 package wctl
 
 import (
-	"net/url"
-	"strconv"
-
 	"github.com/valyala/fastjson"
 )
 
@@ -11,31 +8,10 @@ var _ UnmarshalableJSON = (*LedgerStatusResponse)(nil)
 
 // GetLedgerStatus calls the /ledger endpoint of the API. All arguments are
 // optional.
-func (c *Client) LedgerStatus(
-	senderID string, creatorID string, offset uint64, limit uint64,
-) (*LedgerStatusResponse, error) {
-	vals := url.Values{}
-
-	if senderID != "" {
-		vals.Set("sender", senderID)
-	}
-
-	if creatorID != "" {
-		vals.Set("creator", creatorID)
-	}
-
-	if offset != 0 {
-		vals.Set("offset", strconv.FormatUint(offset, 10))
-	}
-
-	if limit != 0 {
-		vals.Set("limit", strconv.FormatUint(limit, 10))
-	}
-
-	path := RouteLedger + "?" + vals.Encode()
-
+func (c *Client) LedgerStatus() (*LedgerStatusResponse, error) {
 	var res LedgerStatusResponse
-	if err := c.RequestJSON(path, ReqGet, nil, &res); err != nil {
+
+	if err := c.RequestJSON(RouteLedger, ReqGet, nil, &res); err != nil {
 		return nil, err
 	}
 

@@ -33,7 +33,7 @@ import (
 )
 
 func (cli *CLI) status(ctx *cli.Context) {
-	l, err := cli.client.LedgerStatus("", "", 0, 0)
+	l, err := cli.client.LedgerStatus()
 	if err != nil {
 		cli.logger.Error().Err(err).
 			Msg("Failed to get the ledger status")
@@ -63,13 +63,11 @@ func (cli *CLI) status(ctx *cli.Context) {
 		Uint64("balance", a.Balance).
 		Uint64("stake", a.Stake).
 		Uint64("reward", a.Reward).
-		Uint64("nonce", a.Nonce).
 		Strs("peers", peers).
 		Uint64("num_tx", l.NumTx).
 		Uint64("num_missing_tx", l.NumMissingTx).
 		Uint64("num_tx_in_store", l.NumTxInStore).
 		Uint64("num_accounts_in_store", l.AccountsLen).
-		Uint64("client_nonce", cli.client.Nonce.Load()).
 		Uint64("client_block", cli.client.Block.Load()).
 		Str("sync_status", l.SyncStatus).
 		Str("preferred_block_id", preferredID).
@@ -221,7 +219,6 @@ func (cli *CLI) find(ctx *cli.Context) {
 			Uint64("balance", account.Balance).
 			Uint64("gas_balance", account.GasBalance).
 			Uint64("stake", account.Stake).
-			Uint64("nonce", account.Nonce).
 			Uint64("reward", account.Reward).
 			Bool("is_contract", account.IsContract).
 			Uint64("num_pages", account.NumPages).

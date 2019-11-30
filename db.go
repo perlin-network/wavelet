@@ -42,7 +42,6 @@ var (
 	keyRewardWithdrawals = [...]byte{0x7}
 
 	// Account-local prefixes.
-	keyAccountNonce              = [...]byte{0x1}
 	keyAccountBalance            = [...]byte{0x2}
 	keyAccountStake              = [...]byte{0x3}
 	keyAccountReward             = [...]byte{0x4}
@@ -112,22 +111,6 @@ func UnmarshalRewardWithdrawalRequest(r io.Reader) (RewardWithdrawalRequest, err
 	rw.blockIndex = binary.BigEndian.Uint64(buf[:8])
 
 	return rw, nil
-}
-
-func ReadAccountNonce(tree *avl.Tree, id AccountID) (uint64, bool) {
-	buf, exists := readUnderAccounts(tree, id, keyAccountNonce[:])
-	if !exists || len(buf) == 0 {
-		return 0, false
-	}
-
-	return binary.LittleEndian.Uint64(buf), true
-}
-
-func WriteAccountNonce(tree *avl.Tree, id AccountID, nonce uint64) {
-	var buf [8]byte
-
-	binary.LittleEndian.PutUint64(buf[:], nonce)
-	writeUnderAccounts(tree, id, keyAccountNonce[:], buf[:])
 }
 
 func ReadAccountBalance(tree *avl.Tree, id AccountID) (uint64, bool) {

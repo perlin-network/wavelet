@@ -7,7 +7,7 @@ import "errors"
 func (c *Client) Find(address [32]byte) (*Account, *Transaction, error) {
 	a, err := c.GetAccount(address)
 	if err == nil {
-		if a.Balance > 0 || a.Stake > 0 || a.Nonce > 0 || a.IsContract || a.NumPages > 0 {
+		if a.Balance > 0 || a.Stake > 0 || a.IsContract || a.NumPages > 0 {
 			return a, nil, nil
 		}
 	}
