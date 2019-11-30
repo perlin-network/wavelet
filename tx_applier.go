@@ -21,7 +21,6 @@ package wavelet
 
 import (
 	"encoding/hex"
-
 	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
@@ -43,6 +42,7 @@ func ApplyTransaction(tree *avl.Tree, block *Block, tx *Transaction) error {
 	if err := ctx.ApplyTransaction(block, tx); err != nil {
 		return err
 	}
+
 	return ctx.Flush()
 }
 
@@ -78,7 +78,9 @@ func applyTransferTransaction(ctx *CollapseContext, block *Block, tx *Transactio
 	code, codeAvailable := ctx.ReadAccountContractCode(payload.Recipient)
 
 	if !codeAvailable && (payload.GasLimit > 0 || len(payload.FuncName) > 0 || len(payload.FuncParams) > 0) {
-		return errors.New("transfer: transactions to non-contract accounts should not specify gas limit or function names or params")
+		return errors.New(
+			"transfer: transactions to non-contract accounts should not specify gas limit or function names or params",
+		)
 	}
 
 	// FIXME(kenta): FOR TESTNET ONLY. FAUCET DOES NOT GET ANY PERLs DEDUCTED.
@@ -121,7 +123,10 @@ func applyTransferTransaction(ctx *CollapseContext, block *Block, tx *Transactio
 		return nil
 	}
 
-	return executeContractInTransactionContext(tx, payload.Recipient, code, ctx, block, payload.Amount, payload.GasLimit, payload.FuncName, payload.FuncParams, state)
+	return executeContractInTransactionContext(
+		tx, payload.Recipient, code, ctx, block, payload.Amount, payload.GasLimit, payload.FuncName, payload.FuncParams,
+		state,
+	)
 }
 
 func applyStakeTransaction(ctx *CollapseContext, block *Block, tx *Transaction) error {
@@ -137,25 +142,39 @@ func applyStakeTransaction(ctx *CollapseContext, block *Block, tx *Transaction) 
 	switch payload.Opcode {
 	case sys.PlaceStake:
 		if balance < payload.Amount {
-			return errors.Errorf("stake: %x attempt to place a stake of %d PERLs, but only has %d PERLs", tx.Sender, payload.Amount, balance)
+			return errors.Errorf(
+				"stake: %x attempt to place a stake of %d PERLs, but only has %d PERLs",
+				tx.Sender, payload.Amount, balance,
+			)
 		}
 
 		ctx.WriteAccountBalance(tx.Sender, balance-payload.Amount)
 		ctx.WriteAccountStake(tx.Sender, stake+payload.Amount)
 	case sys.WithdrawStake:
 		if stake < payload.Amount {
-			return errors.Errorf("stake: %x attempt to withdraw a stake of %d PERLs, but only has staked %d PERLs", tx.Sender, payload.Amount, payload)
+			return errors.Errorf(
+				"stake: %x attempt to withdraw a stake of %d PERLs, but only has staked %d PERLs",
+				tx.Sender, payload.Amount, payload,
+			)
 		}
 
 		ctx.WriteAccountBalance(tx.Sender, balance+payload.Amount)
 		ctx.WriteAccountStake(tx.Sender, stake-payload.Amount)
 	case sys.WithdrawReward:
 		if payload.Amount < sys.MinimumRewardWithdraw {
-			return errors.Errorf("stake: %x attempt to withdraw rewards amounting to %d PERLs, but system requires the minimum amount to withdraw to be %d PERLs", tx.Sender, payload.Amount, sys.MinimumRewardWithdraw)
+			return errors.Errorf(
+				"stake: %x attempt to withdraw rewards amounting to %d PERLs, but system requires the minimum "+
+					"amount to withdraw to be %d PERLs",
+				tx.Sender, payload.Amount, sys.MinimumRewardWithdraw,
+			)
 		}
 
 		if reward < payload.Amount {
-			return errors.Errorf("stake: %x attempt to withdraw rewards amounting to %d PERLs, but only has rewards amounting to %d PERLs", tx.Sender, payload.Amount, reward)
+			return errors.Errorf(
+				"stake: %x attempt to withdraw rewards amounting to %d PERLs, but only has rewards amounting "+
+					"to %d PERLs",
+				tx.Sender, payload.Amount, reward,
+			)
 		}
 
 		ctx.WriteAccountReward(tx.Sender, reward-payload.Amount)
@@ -189,7 +208,7 @@ func applyContractTransaction(ctx *CollapseContext, block *Block, tx *Transactio
 	if payload.GasDeposit != 0 {
 		err = transferValue(
 			"PERL (Gas Deposit)",
-			tx.Sender, AccountID(tx.ID),
+			tx.Sender, tx.ID,
 			payload.GasDeposit,
 			ctx.ReadAccountBalance, ctx.WriteAccountBalance,
 			ctx.ReadAccountContractGasBalance, ctx.WriteAccountContractGasBalance,
@@ -199,7 +218,9 @@ func applyContractTransaction(ctx *CollapseContext, block *Block, tx *Transactio
 		}
 	}
 
-	return executeContractInTransactionContext(tx, AccountID(tx.ID), payload.Code, ctx, block, 0, payload.GasLimit, []byte("init"), payload.Params, state)
+	return executeContractInTransactionContext(
+		tx, tx.ID, payload.Code, ctx, block, 0, payload.GasLimit, []byte("init"), payload.Params, state,
+	)
 }
 
 func applyBatchTransaction(ctx *CollapseContext, block *Block, tx *Transaction, state *contractExecutorState) error {
@@ -279,12 +300,16 @@ func executeContractInTransactionContext(
 	}
 
 	if realGasLimit == 0 {
-		return errors.New("execute_contract: gas limit for invoking smart contract function must be greater than zero")
+		return errors.New(
+			"execute_contract: gas limit for invoking smart contract function must be greater than zero",
+		)
 	}
 
 	if availableBalance < realGasLimit {
-		return errors.Errorf("execute_contract: attempted to deduct gas fee from %x of %d PERLs, but only has %d PERLs",
-			state.GasPayer, realGasLimit, availableBalance)
+		return errors.Errorf(
+			"execute_contract: attempted to deduct gas fee from %x of %d PERLs, but only has %d PERLs",
+			state.GasPayer, realGasLimit, availableBalance,
+		)
 	}
 
 	executor := &ContractExecutor{}
@@ -292,12 +317,16 @@ func executeContractInTransactionContext(
 	var contractState *VMState
 	contractState, _ = ctx.GetContractState(contractID)
 
-	newContractState, invocationErr := executor.Execute(contractID, block, tx, amount, realGasLimit, string(funcName), funcParams, code, ctx.tree, ctx.VMCache, contractState)
+	newContractState, invocationErr := executor.Execute(
+		contractID, block, tx, amount, realGasLimit, string(funcName), funcParams, code, ctx.tree, ctx.VMCache,
+		contractState,
+	)
 
 	// availableBalance >= realGasLimit >= executor.Gas && state.GasLimit >= realGasLimit must always hold.
 	if realGasLimit < executor.Gas {
 		logger.Fatal().Msg("BUG: realGasLimit < executor.Gas")
 	}
+
 	if state.GasLimit < realGasLimit {
 		logger.Fatal().Msg("BUG: state.GasLimit < realGasLimit")
 	}
@@ -305,26 +334,27 @@ func executeContractInTransactionContext(
 	if invocationErr != nil { // Revert changes and have the gas payer pay gas fees.
 		if executor.Gas > contractGasBalance {
 			ctx.WriteAccountContractGasBalance(contractID, 0)
+
 			if gasPayerBalance < (executor.Gas - contractGasBalance) {
 				logger.Fatal().Msg("BUG: gasPayerBalance < (executor.Gas - contractGasBalance)")
 			}
+
 			ctx.WriteAccountBalance(state.GasPayer, gasPayerBalance-(executor.Gas-contractGasBalance))
 		} else {
 			ctx.WriteAccountContractGasBalance(contractID, contractGasBalance-executor.Gas)
 		}
+
 		state.GasLimit -= executor.Gas
 
 		if executor.GasLimitExceeded {
-			log.NewError(logger).
+			logger.Info().
 				Hex("sender_id", tx.Sender[:]).
 				Hex("contract_id", contractID[:]).
 				Uint64("gas", executor.Gas).
 				Uint64("gas_limit", realGasLimit).
 				Msg("Exceeded gas limit while invoking smart contract function.")
 		} else {
-			log.NewError(logger).
-				Err(invocationErr).
-				Msg("Failed to invoke smart contract")
+			logger.Info().Err(invocationErr).Msg("failed to invoke smart contract")
 		}
 	} else {
 		// Contract invocation succeeded. VM state can be safely saved now.
@@ -342,7 +372,6 @@ func executeContractInTransactionContext(
 		state.GasLimit -= executor.Gas
 
 		//logger.Info().
-		//	Hex("sender_id", tx.Creator[:]).
 		//	Uint64("gas", executor.Gas).
 		//	Uint64("gas_limit", realGasLimit).
 		//	Msg("Deducted PERLs for invoking smart contract function.")
@@ -350,8 +379,7 @@ func executeContractInTransactionContext(
 		for _, entry := range executor.Queue {
 			err := applyTransaction(block, ctx, entry, state)
 			if err != nil {
-				log.NewError(logger).Err(err).
-					Msg("failed to process sub-transaction")
+				logger.Info().Err(err).Msg("failed to process sub-transaction")
 			}
 		}
 	}

@@ -1,3 +1,4 @@
+// nolint
 package main
 
 import (
@@ -9,6 +10,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/perlin-network/wavelet/sys"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -17,8 +19,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/perlin-network/wavelet/sys"
 )
 
 var updateDirectory = func() string {
@@ -57,9 +57,9 @@ func validateSignature(publicKeyPEM []byte, signatureHex string, hash []byte) er
 		return err
 	}
 
-	switch publicKey := publicKey.(type) {
+	switch publicKey := publicKey.(type) { // nolint:gocritic
 	case *rsa.PublicKey:
-		err = rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hash[:], signature)
+		err = rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hash, signature)
 		return err
 	}
 
@@ -124,8 +124,9 @@ func downloadUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte)
 	 * Download the new binary to a temporary
 	 * location while we validate the signature.
 	 */
-	binaryFileName := path.Join(updateDirectory, "wavelet")
+	binaryFileName := path.Join(updateDirectory, "wavelet"+sys.GoExe)
 	binaryTempFileName := path.Join(updateDirectory, "wavelet.new")
+	binaryOldFileName := path.Join(updateDirectory, "wavelet.old")
 	binaryTempFile, err := os.OpenFile(binaryTempFileName, os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0600)
 	if err != nil {
 		return fmt.Errorf("Unable to create temporary file: %+v", err)
@@ -137,6 +138,8 @@ func downloadUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte)
 	if err != nil {
 		return fmt.Errorf("Unable to download update file (begin): %+v", err)
 	}
+
+	defer binaryHandle.Body.Close()
 
 	_, err = io.Copy(binaryTempFile, binaryHandle.Body)
 	if err != nil {
@@ -180,10 +183,31 @@ func downloadUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte)
 		return fmt.Errorf("Unable set mode on old file: %+v", err)
 	}
 
+	/*
+	 * Remove any spurious copy of the old binary and rename the
+	 * existing binary out of the way.  This is significant on
+	 * Windows because we cannot delete the running binary
+	 * while it is running.  We do not check for any errors here
+	 * since most error cases do not matter, the error cases that
+	 * do matter will be detected at a later step
+	 */
+	os.Remove(binaryOldFileName)
+	os.Rename(binaryFileName, binaryOldFileName)
+
 	err = os.Rename(binaryTempFileName, binaryFileName)
 	if err != nil {
+		/*
+		 * If there was an error renaming things into
+		 * their final location, attempt to put things
+		 * back to the way they were before we tried
+		 */
+		os.Remove(binaryFileName)
+		os.Rename(binaryOldFileName, binaryFileName)
+
 		return fmt.Errorf("Unable rename file into place: %+v", err)
 	}
+
+	os.Remove(binaryOldFileName)
 
 	return nil
 }
@@ -213,12 +237,12 @@ func checkForUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte,
 	}
 
 	/* Use the new binary */
-	switchToUpdatedVersion()
+	switchToUpdatedVersion(false)
 
 	return
 }
 
-func periodicUpdateRoutine(updateURL string) {
+func periodicUpdateRoutine(updateURL string) { // nolint:unused
 	if updateURL == "" {
 		return
 	}
@@ -247,11 +271,11 @@ yQIDAQAB
 	}
 }
 
-func switchToUpdatedVersion() {
+func switchToUpdatedVersion(atStartup bool) {
 	/*
 	 * Check for the new binary
 	 */
-	binaryFileName := path.Join(updateDirectory, "wavelet")
+	binaryFileName := path.Join(updateDirectory, "wavelet"+sys.GoExe)
 	_, err := os.Stat(binaryFileName)
 	if err != nil {
 		return
@@ -260,7 +284,7 @@ func switchToUpdatedVersion() {
 	/*
 	 * Re-exec with the new binary
 	 */
-	switchToUpdatedBinary(binaryFileName)
+	switchToUpdatedBinary(binaryFileName, atStartup)
 
 	return
 }

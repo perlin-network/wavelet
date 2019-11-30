@@ -43,12 +43,9 @@ import (
 	"gopkg.in/urfave/cli.v1"
 	"gopkg.in/urfave/cli.v1/altsrc"
 
-	_ "net/http/pprof"
+	_ "net/http/pprof" // nolint:gosec
 	"net/url"
 )
-
-// default false, used for testing
-var disableGC bool
 
 var logger = log.Node()
 
@@ -58,13 +55,16 @@ type Config struct {
 }
 
 func main() {
-	// switchToUpdatedVersion()
-	wavelet.SetGenesisByNetwork(sys.VersionMeta)
+	switchToUpdatedVersion(true)
 
-	Run(os.Args, os.Stdin, os.Stdout)
+	if err := wavelet.SetGenesisByNetwork(sys.VersionMeta); err != nil {
+		panic(err)
+	}
+
+	Run(os.Args, os.Stdin, os.Stdout, false)
 }
 
-func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
+func Run(args []string, stdin io.ReadCloser, stdout io.Writer, disableGC bool) {
 	log.SetWriter(log.LoggerWavelet, log.NewConsoleWriter(
 		stdout, log.FilterFor(log.ModuleNode)))
 
@@ -129,13 +129,16 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 			EnvVar: "WAVELET_API_SECRET",
 		},
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:   "wallet",
-			Usage:  "Path to file containing hex-encoded private key. If the path specified is invalid, or no file exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded private key to a wallet may also be specified.",
+			Name: "wallet",
+			Usage: "Path to file containing hex-encoded private key. If the path specified is invalid, or no file " +
+				"exists at the specified path, a random wallet will be generated. Optionally, a 128-length hex-encoded" +
+				" private key to a wallet may also be specified.",
 			EnvVar: "WAVELET_WALLET",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:   "genesis",
-			Usage:  "Genesis JSON file contents representing initial fields of some set of accounts at block 0.",
+			Name: "genesis",
+			Usage: "Directory path or JSON contents containing genesis files representing initial fields of some set " +
+				"of accounts at round 0.",
 			EnvVar: "WAVELET_GENESIS",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
@@ -207,7 +210,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 	}
 
 	app.Action = func(c *cli.Context) error {
-		return start(c, stdin, stdout)
+		return start(c, stdin, stdout, disableGC)
 	}
 
 	sort.Sort(cli.FlagsByName(app.Flags))
@@ -220,14 +223,16 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer) {
 	}
 }
 
-func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
+func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer, disableGC bool) error {
 	config := Config{
 		ServerAddr: c.String("server"),
 		UpdateURL:  c.String("update-url"),
 	}
 
-	// Set the log level
-	log.SetLevel(c.String("loglevel"))
+	// Set the log level if it's not empty
+	if c.String("loglevel") != "" {
+		log.SetLevel(c.String("loglevel"))
+	}
 
 	// Start the background updater
 	// go periodicUpdateRoutine(c.String("update-url"))
@@ -293,7 +298,10 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 
 		// Start the server
 		srv.Start()
-		defer srv.Close()
+
+		defer func() {
+			_ = srv.Close()
+		}()
 
 		wctlCfg.Server = srv
 		wctlCfg.APIPort = uint16(c.Uint("api.port"))
@@ -308,7 +316,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 	} else {
 		u, err := url.Parse(config.ServerAddr)
 		if err != nil {
-			return fmt.Errorf("Invalid address: %v", err)
+			return fmt.Errorf("invalid address: %v", err)
 		}
 
 		port, _ := strconv.ParseUint(u.Port(), 10, 16)
@@ -332,10 +340,11 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer) error {
 
 	shell, err := NewCLI(client, CLIWithStdin(stdin), CLIWithStdout(stdout))
 	if err != nil {
-		return fmt.Errorf("Failed to spawn the CLI: %v", err)
+		return fmt.Errorf("failed to spawn the CLI: %v", err)
 	}
 
 	shell.Start()
+
 	return nil
 }
 

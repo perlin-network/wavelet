@@ -25,6 +25,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -79,7 +80,13 @@ func main() {
 				cli.StringFlag{
 					Name:  "wallet",
 					Usage: "private key in hex format to connect to node HTTP API with",
-					Value: "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+					Value: "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405", // nolint:lll
+				},
+				cli.IntFlag{
+					Name: "worker, w",
+					Usage: "the number of workers used to spam transactions per iteration, where one worker will send" +
+						" one transaction. default to the number of logical CPU and min is 1.",
+					Value: runtime.NumCPU(),
 				},
 			},
 			Action: commandRemote,
@@ -94,6 +101,70 @@ func main() {
 	}
 }
 
+func getKeys(wallet string) (edwards25519.PrivateKey, edwards25519.PublicKey) {
+	var (
+		emptyPrivateKey edwards25519.PrivateKey
+		emptyPublicKey  edwards25519.PublicKey
+	)
+
+	privateKeyBuf, err := ioutil.ReadFile(wallet)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// If a private key is specified instead of a path to a wallet, then simply use the provided private key instead.
+			if len(wallet) == hex.EncodedLen(edwards25519.SizePrivateKey) {
+				var privateKey edwards25519.PrivateKey
+
+				n, err := hex.Decode(privateKey[:], []byte(wallet))
+				if err != nil {
+					log.Fatal().Err(err).Msgf("Failed to decode the private key specified: %s", wallet)
+				}
+
+				if n != edwards25519.SizePrivateKey {
+					log.Fatal().Msgf("Private key %s is not of the right length.", wallet)
+					return emptyPrivateKey, emptyPublicKey
+				}
+
+				k, err := skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+				if err != nil {
+					log.Fatal().Err(err).Msgf("The private key specified is invalid: %s", wallet)
+					return emptyPrivateKey, emptyPublicKey
+				}
+
+				return k.PrivateKey(), k.PublicKey()
+			}
+
+			log.Fatal().Msgf("Could not find an existing wallet at %q.", wallet)
+
+			return emptyPrivateKey, emptyPublicKey
+		}
+
+		log.Warn().Err(err).Msgf("Encountered an unexpected error loading your wallet from %q.", wallet)
+
+		return emptyPrivateKey, emptyPublicKey
+	}
+
+	var privateKey edwards25519.PrivateKey
+
+	n, err := hex.Decode(privateKey[:], privateKeyBuf)
+	if err != nil {
+		log.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", wallet)
+		return emptyPrivateKey, emptyPublicKey
+	}
+
+	if n != edwards25519.SizePrivateKey {
+		log.Fatal().Msgf("Private key located in %q is not of the right length.", wallet)
+		return emptyPrivateKey, emptyPublicKey
+	}
+
+	k, err := skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
+	if err != nil {
+		log.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", wallet)
+		return emptyPrivateKey, emptyPublicKey
+	}
+
+	return k.PrivateKey(), k.PublicKey()
+}
+
 func commandRemote(c *cli.Context) error {
 	args := strings.Split(c.String("host"), ":")
 
@@ -105,87 +176,35 @@ func commandRemote(c *cli.Context) error {
 
 	var port uint16
 
-	if p, err := strconv.ParseUint(args[1], 10, 16); err != nil {
+	p, err := strconv.ParseUint(args[1], 10, 16)
+	if err != nil {
 		return errors.Wrap(err, "failed to decode port")
-	} else {
-		port = uint16(p)
 	}
+
+	port = uint16(p)
 
 	wallet := c.String("wallet")
 
-	var k *skademlia.Keypair
+	privateKey, publicKey := getKeys(wallet)
 
-	// If a private key is specified instead of a path to a wallet, then simply use the provided private key instead.
+	log.Info().
+		Hex("privateKey", privateKey[:]).
+		Hex("publicKey", publicKey[:]).
+		Msg("Loaded wallet.")
 
-	privateKeyBuf, err := ioutil.ReadFile(wallet)
-
-	if err != nil && os.IsNotExist(err) && len(wallet) == hex.EncodedLen(edwards25519.SizePrivateKey) {
-		var privateKey edwards25519.PrivateKey
-
-		n, err := hex.Decode(privateKey[:], []byte(wallet))
-		if err != nil {
-			log.Fatal().Err(err).Msgf("Failed to decode the private key specified: %s", wallet)
-		}
-
-		if n != edwards25519.SizePrivateKey {
-			log.Fatal().Msgf("Private key %s is not of the right length.", wallet)
-			return nil
-		}
-
-		k, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
-		if err != nil {
-			log.Fatal().Err(err).Msgf("The private key specified is invalid: %s", wallet)
-			return nil
-		}
-
-		privateKey, publicKey := k.PrivateKey(), k.PublicKey()
-
-		log.Info().
-			Hex("privateKey", privateKey[:]).
-			Hex("publicKey", publicKey[:]).
-			Msg("Loaded wallet.")
-	} else if err != nil && os.IsNotExist(err) {
-		log.Fatal().Msgf("Could not find an existing wallet at %q.", wallet)
-		return nil
-	} else if err != nil {
-		log.Warn().Err(err).Msgf("Encountered an unexpected error loading your wallet from %q.", wallet)
-		return nil
-	} else {
-		var privateKey edwards25519.PrivateKey
-
-		n, err := hex.Decode(privateKey[:], privateKeyBuf)
-		if err != nil {
-			log.Fatal().Err(err).Msgf("Failed to decode your private key from %q.", wallet)
-			return nil
-		}
-
-		if n != edwards25519.SizePrivateKey {
-			log.Fatal().Msgf("Private key located in %q is not of the right length.", wallet)
-			return nil
-		}
-
-		k, err = skademlia.LoadKeys(privateKey, sys.SKademliaC1, sys.SKademliaC2)
-		if err != nil {
-			log.Fatal().Err(err).Msgf("The private key specified in %q is invalid.", wallet)
-			return nil
-		}
-
-		privateKey, publicKey := k.PrivateKey(), k.PublicKey()
-
-		log.Info().
-			Hex("privateKey", privateKey[:]).
-			Hex("publicKey", publicKey[:]).
-			Msg("Loaded wallet.")
+	numWorkers := c.Int("worker")
+	if numWorkers < 0 {
+		numWorkers = 1
 	}
 
-	client, err := connectToAPI(host, port, k.PrivateKey())
+	client, err := connectToAPI(host, port, privateKey)
 	if err != nil {
 		return errors.Wrap(err, "failed to connect to node HTTP API")
 	}
 
 	defer client.Close()
 
-	fmt.Println("You're now connected!")
+	fmt.Printf("You're now connected! Using %d workers\n.", numWorkers)
 
 	// Add the OnMetrics callback
 	client.OnMetrics = func(met wctl.Metrics) {
@@ -206,7 +225,7 @@ func commandRemote(c *cli.Context) error {
 		panic(err)
 	}
 
-	flood := floodTransactions()
+	flood := floodTransactions(numWorkers)
 
 	for {
 		if _, err := flood(client); err != nil {

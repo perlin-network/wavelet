@@ -37,8 +37,18 @@ type inmemWriteBatch struct {
 	pairs []kvPair
 }
 
-func (b *inmemWriteBatch) Put(key, value []byte) {
-	b.pairs = append(b.pairs, kvPair{key: key, value: value})
+// It is safe to modify the contents of the argument after Put returns but not
+// before.
+func (b *inmemWriteBatch) Put(key, value []byte) error {
+	keyCopy := make([]byte, len(key))
+	copy(keyCopy, key)
+
+	valueCopy := make([]byte, len(value))
+	copy(valueCopy, value)
+
+	b.pairs = append(b.pairs, kvPair{key: keyCopy, value: valueCopy})
+
+	return nil
 }
 
 func (b *inmemWriteBatch) Clear() {
@@ -71,44 +81,68 @@ func (s *inmemKV) Close() error {
 
 	s.db.Init()
 	s.db = nil
+
 	return nil
 }
 
-func (s *inmemKV) Get(key []byte) ([]byte, error) {
-	s.RLock()
-	defer s.RUnlock()
-
-	buf, found := s.db.GetValue(key)
+func (s *inmemKV) get(key []byte) ([]byte, error) {
+	v, found := s.db.GetValue(key)
 	if !found {
 		return nil, errors.New("key not found")
 	}
 
-	return buf.([]byte), nil
+	src := v.([]byte)
+	dest := make([]byte, len(src))
+	copy(dest, src)
+
+	return dest, nil
 }
 
+// The returned slice is its own copy, it is safe to modify the contents
+// of the returned slice.
+// It is safe to modify the contents of the argument after Get returns.
+func (s *inmemKV) Get(key []byte) ([]byte, error) {
+	s.RLock()
+	defer s.RUnlock()
+
+	return s.get(key)
+}
+
+// The returned slice is its own copy, it is safe to modify the contents
+// of the returned slice.
+// It is safe to modify the contents of the argument after Get returns.
 func (s *inmemKV) MultiGet(keys ...[]byte) ([][]byte, error) {
 	s.RLock()
 	defer s.RUnlock()
 
-	var bufs [][]byte
+	bufs := make([][]byte, 0, len(keys))
 
 	for _, key := range keys {
-		buf, found := s.db.GetValue(key)
-		if !found {
-			return nil, errors.New("key not found")
+		buf, err := s.get(key)
+		if err != nil {
+			return nil, err
 		}
 
-		bufs = append(bufs, buf.([]byte))
+		bufs = append(bufs, buf)
 	}
 
 	return bufs, nil
 }
 
+// It is safe to modify the contents of the arguments after Put returns but not
+// before.
 func (s *inmemKV) Put(key, value []byte) error {
 	s.Lock()
 	defer s.Unlock()
 
-	_ = s.db.Set(key, value)
+	keyCopy := make([]byte, len(key))
+	copy(keyCopy, key)
+
+	valueCopy := make([]byte, len(value))
+	copy(valueCopy, value)
+
+	_ = s.db.Set(keyCopy, valueCopy)
+
 	return nil
 }
 
@@ -134,17 +168,21 @@ func (s *inmemKV) CommitWriteBatch(batch WriteBatch) error {
 		}
 
 		writeBatchPool.Put(wb)
+
 		return nil
 	}
 
 	return errors.New("inmem: not fed in a proper in-memory write batch")
 }
 
+// It is safe to modify the contents of the arguments after Delete returns but
+// not before.
 func (s *inmemKV) Delete(key []byte) error {
 	s.Lock()
 	defer s.Unlock()
 
 	_ = s.db.Remove(key)
+
 	return nil
 }
 
@@ -152,7 +190,7 @@ func (s *inmemKV) Dir() string {
 	return ""
 }
 
-func NewInmem() *inmemKV {
+func NewInmem() *inmemKV { // nolint:golint
 	var comparator skiplist.GreaterThanFunc = func(lhs, rhs interface{}) bool {
 		return bytes.Compare(lhs.([]byte), rhs.([]byte)) == 1
 	}

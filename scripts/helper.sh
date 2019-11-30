@@ -65,11 +65,13 @@ for os_arch in ${OS_ARCH}; do
                 -X ${PROJ_DIR}/sys.GitCommit=${GIT_COMMIT} \
                 -X ${PROJ_DIR}/sys.GoVersion=${GO_VERSION} \
                 -X ${PROJ_DIR}/sys.OSArch=${os_arch} \
-                -X ${PROJ_DIR}/sys.VersionMeta=${BUILD_NETWORK}" \
+                -X ${PROJ_DIR}/sys.VersionMeta=${BUILD_NETWORK} \
+                -X ${PROJ_DIR}/sys.GoExe=${BINARY_POSTFIX}" \
             .
     )
 
     (
+exit 0
         cd cmd/wctl || exit 1
         CGO_ENABLED=0 go build \
             -a \
@@ -78,7 +80,8 @@ for os_arch in ${OS_ARCH}; do
                 -X ${PROJ_DIR}/sys.GitCommit=${GIT_COMMIT} \
                 -X ${PROJ_DIR}/sys.GoVersion=${GO_VERSION} \
                 -X ${PROJ_DIR}/sys.OSArch=${os_arch} \
-                -X ${PROJ_DIR}/sys.VersionMeta=${BUILD_NETWORK}" \
+                -X ${PROJ_DIR}/sys.VersionMeta=${BUILD_NETWORK} \
+                -X ${PROJ_DIR}/sys.GoExe=${BINARY_POSTFIX}" \
             .
     )
 
@@ -91,7 +94,8 @@ for os_arch in ${OS_ARCH}; do
                 -X ${PROJ_DIR}/sys.GitCommit=${GIT_COMMIT} \
                 -X ${PROJ_DIR}/sys.GoVersion=${GO_VERSION} \
                 -X ${PROJ_DIR}/sys.OSArch=${os_arch} \
-                -X ${PROJ_DIR}/sys.VersionMeta=${BUILD_NETWORK}" \
+                -X ${PROJ_DIR}/sys.VersionMeta=${BUILD_NETWORK} \
+                -X ${PROJ_DIR}/sys.GoExe=${BINARY_POSTFIX}" \
             .
     )
 

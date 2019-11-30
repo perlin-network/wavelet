@@ -17,17 +17,20 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// +build !integration,unit
+
 package debounce
 
 import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestLimiterOverfill(t *testing.T) {
@@ -54,9 +57,9 @@ func TestLimiterOverfill(t *testing.T) {
 }
 
 func TestLimiterBufferFull(t *testing.T) {
-	called := 0
+	var called int32
 	a := func([][]byte) {
-		called++
+		atomic.AddInt32(&called, 1)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -77,7 +80,7 @@ func TestLimiterBufferFull(t *testing.T) {
 
 	// Since timer period is much bigger than needed, we expect debouncer to call handler
 	// based on buffer threshold (10 = 1000/100).
-	assert.Equal(t, 10, called)
+	assert.Equal(t, int32(10), atomic.LoadInt32(&called))
 }
 
 func TestLimiterTimer(t *testing.T) {
@@ -101,7 +104,7 @@ func TestLimiterTimer(t *testing.T) {
 
 	// Since timer period is much smaller comparing to speed on which data incoming
 	// we expect number of handler calls to be based on timer (100 calls per 1 tx).
-	assert.Equal(t, int32(100), called)
+	assert.Equal(t, int32(100), atomic.LoadInt32(&called))
 }
 
 func BenchmarkLimiter(b *testing.B) {
@@ -115,11 +118,11 @@ func BenchmarkLimiter(b *testing.B) {
 }
 
 func TestDeduper(t *testing.T) {
-	called := 0
+	var called int32
 	size := 0
 	action := func(data [][]byte) {
 		size = len(data)
-		called++
+		atomic.AddInt32(&called, 1)
 	}
 
 	fd := NewDeduper(context.TODO(), WithAction(action), WithPeriod(100*time.Millisecond), WithKeys("test"))
@@ -134,6 +137,6 @@ func TestDeduper(t *testing.T) {
 
 	time.Sleep(200 * time.Millisecond)
 
-	assert.Equal(t, 1, called)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&called))
 	assert.Equal(t, 2, size)
 }

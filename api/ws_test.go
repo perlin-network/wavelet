@@ -17,12 +17,15 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// +build !integration,unit
+
 package api
 
 import (
+	"testing"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/valyala/fastjson"
-	"testing"
 )
 
 func TestSinkEqual(t *testing.T) {

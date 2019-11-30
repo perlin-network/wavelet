@@ -1,7 +1,8 @@
 package wavelet
 
 import (
-	"fmt"
+	"encoding/binary"
+	"github.com/perlin-network/noise/edwards25519"
 	"math/big"
 	"sync"
 
@@ -42,23 +43,41 @@ func NewTransactions(height uint64) *Transactions {
 
 // Add adds a transaction into the node, and indexes it into the nodes mempool
 // based on the value BLAKE2b(tx.ID || block.ID).
-func (t *Transactions) Add(block BlockID, tx Transaction) {
+func (t *Transactions) Add(block BlockID, tx Transaction, verifySignature bool) {
 	t.Lock()
 	defer t.Unlock()
 
-	t.add(block, tx)
+	t.add(block, tx, verifySignature)
 }
 
-func (t *Transactions) BatchAdd(block BlockID, transactions ...Transaction) {
+func (t *Transactions) BatchAdd(block BlockID, transactions []Transaction, verifySignature bool) {
 	t.Lock()
 	defer t.Unlock()
 
 	for _, tx := range transactions {
-		t.add(block, tx)
+		t.add(block, tx, verifySignature)
 	}
 }
 
-func (t *Transactions) add(block BlockID, tx Transaction) {
+func (t *Transactions) add(block BlockID, tx Transaction, verifySignature bool) {
+	if verifySignature {
+		var (
+			nonceBuf [8]byte
+			blockBuf [8]byte
+		)
+
+		binary.BigEndian.PutUint64(nonceBuf[:], tx.Nonce)
+		binary.BigEndian.PutUint64(blockBuf[:], tx.Block)
+
+		if !edwards25519.Verify(
+			tx.Sender,
+			append(nonceBuf[:], append(blockBuf[:], append([]byte{byte(tx.Tag)}, tx.Payload...)...)...),
+			tx.Signature,
+		) {
+			return
+		}
+	}
+
 	if t.height >= tx.Block+uint64(conf.GetPruningLimit()) {
 		return
 	}
@@ -67,9 +86,7 @@ func (t *Transactions) add(block BlockID, tx Transaction) {
 		return
 	}
 
-	t.index.ReplaceOrInsert(mempoolItem{
-		index: tx.ComputeIndex(block), id: tx.ID,
-	})
+	t.index.ReplaceOrInsert(mempoolItem{index: tx.ComputeIndex(block), id: tx.ID})
 	t.buffer[tx.ID] = &tx
 
 	delete(t.missing, tx.ID) // In case the transaction was previously missing, mark it as no longer missing.
@@ -77,24 +94,40 @@ func (t *Transactions) add(block BlockID, tx Transaction) {
 
 // MarkMissing marks that the node was expected to have archived a transaction with a specified id, but
 // does not have it archived and so needs to have said transaction pulled from the nodes peers.
-func (t *Transactions) MarkMissing(id TransactionID) {
+func (t *Transactions) MarkMissing(id TransactionID) bool {
 	t.Lock()
 	defer t.Unlock()
 
-	t.markMissing(id)
+	return t.markMissing(id)
 }
 
-func (t *Transactions) BatchMarkMissing(ids ...TransactionID) {
+// BatchMarkMissing is the same as MarkMissing, but it accepts a list of transaction IDs.
+// It returns false if at least 1 transaction ID is found missing.
+func (t *Transactions) BatchMarkMissing(ids ...TransactionID) bool {
 	t.Lock()
 	defer t.Unlock()
+
+	var missing bool
 
 	for _, id := range ids {
-		t.markMissing(id)
+		if t.markMissing(id) {
+			missing = true
+		}
 	}
+
+	return missing
 }
 
-func (t *Transactions) markMissing(id TransactionID) {
+func (t *Transactions) markMissing(id TransactionID) bool {
+	_, exists := t.buffer[id]
+
+	if exists {
+		return false
+	}
+
 	t.missing[id] = t.height
+
+	return true
 }
 
 // ReshufflePending reshuffles all transactions that may be proposed into a new block by recomputing
@@ -102,13 +135,11 @@ func (t *Transactions) markMissing(id TransactionID) {
 //
 // It also prunes away transactions that are too stale, based on the index specified of the next
 // block. It returns the total number of transactions pruned.
-func (t *Transactions) ReshufflePending(next Block) int {
+func (t *Transactions) ReshufflePending(next Block) []TransactionID {
 	t.Lock()
 	defer t.Unlock()
 
 	// Delete mempool entries for transactions in the finalized block.
-
-	pruned := 0
 
 	lookup := make(map[TransactionID]struct{})
 
@@ -137,8 +168,6 @@ func (t *Transactions) ReshufflePending(next Block) int {
 		return true
 	})
 
-	fmt.Printf("Restoring %d items into mempool which originally had %d items, with next block height being %d.\n", len(items), t.index.Len(), next.Index)
-
 	// Clear the entire mempool.
 
 	t.index.Clear(false)
@@ -151,11 +180,12 @@ func (t *Transactions) ReshufflePending(next Block) int {
 
 	// Go through the entire transactions index and prune away
 	// any transactions that are too old.
+	pruned := []TransactionID{}
 
 	for _, tx := range t.buffer {
 		if next.Index >= tx.Block+uint64(conf.GetPruningLimit()) {
 			delete(t.buffer, tx.ID)
-			pruned++
+			pruned = append(pruned, tx.ID)
 		}
 	}
 
@@ -183,6 +213,7 @@ func (t *Transactions) Has(id TransactionID) bool {
 	defer t.RUnlock()
 
 	_, exists := t.buffer[id]
+
 	return exists
 }
 
@@ -224,6 +255,15 @@ func (t *Transactions) PendingLen() int {
 	return t.index.Len()
 }
 
+// MissingLen returns the number of transactions that the node is looking to pull from
+// its peers.
+func (t *Transactions) MissingLen() int {
+	t.RLock()
+	defer t.RUnlock()
+
+	return len(t.missing)
+}
+
 // Iterate iterates through all transactions that the node has archived.
 func (t *Transactions) Iterate(fn func(*Transaction) bool) {
 	t.RLock()
@@ -242,14 +282,19 @@ func (t *Transactions) ProposableIDs() []TransactionID {
 	t.RLock()
 	defer t.RUnlock()
 
-	proposable := make([]TransactionID, 0, t.index.Len())
+	limit := int(conf.GetBlockTXLimit())
+	if t.index.Len() < limit {
+		limit = t.index.Len()
+	}
+
+	proposable := make([]TransactionID, 0, limit)
 
 	t.index.Ascend(func(i btree.Item) bool {
 		if t.buffer[i.(mempoolItem).id].Block <= t.height+1 {
 			proposable = append(proposable, i.(mempoolItem).id)
 		}
 
-		return true
+		return len(proposable) < limit
 	})
 
 	return proposable

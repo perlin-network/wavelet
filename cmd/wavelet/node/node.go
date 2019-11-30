@@ -2,7 +2,6 @@ package node
 
 import (
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
@@ -22,6 +21,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
+	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc"
 )
@@ -48,7 +48,7 @@ type Config struct {
 var DefaultConfig = Config{
 	Host:     "127.0.0.1",
 	Port:     3000,
-	Wallet:   "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
+	Wallet:   "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405", // nolint:lll
 	Genesis:  nil,
 	APIPort:  9000,
 	Peers:    []string{},
@@ -252,7 +252,7 @@ func (w *Wavelet) Start() {
 
 func (w *Wavelet) Close() error {
 	w.Gateway.Shutdown()
-	w.Server.GracefulStop()
+	w.Server.Stop()
 	w.Ledger.Close()
 	return w.db.Close()
 }

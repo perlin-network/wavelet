@@ -20,12 +20,12 @@
 package main
 
 import (
+	"gopkg.in/urfave/cli.v1"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/benpye/readline"
-	"github.com/urfave/cli"
 )
 
 func (cli *CLI) getCompleter() *readline.PrefixCompleter {
@@ -51,6 +51,7 @@ type PathCompleter struct {
 
 func (p *PathCompleter) GetDynamicNames(line []rune) [][]rune {
 	var path string
+
 	words := strings.Split(string(line), " ")
 	if len(words) > 1 && words[1] != "" { // has some file
 		path = filepath.Dir(strings.Join(words[1:], " "))
@@ -96,17 +97,10 @@ func (cli *CLI) getPathCompleter() readline.PrefixCompleterInterface {
 	}
 }
 
-func joinFolder(fs []string) (p string) {
-	for _, f := range fs {
-		p += f + "/"
-	}
-
-	return
-}
-
-func commandAddCompleter(completers *[]readline.PrefixCompleterInterface,
-	cmd cli.Command, completer readline.PrefixCompleterInterface) {
-
+func commandAddCompleter(
+	completers *[]readline.PrefixCompleterInterface,
+	cmd cli.Command, completer readline.PrefixCompleterInterface,
+) {
 	*completers = append(*completers, readline.PcItem(
 		cmd.Name, completer,
 	))

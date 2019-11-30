@@ -104,6 +104,7 @@ func (f *finalizationVote) ID() VoteID {
 	if f.block == nil {
 		return ZeroVoteID
 	}
+
 	return f.block.ID
 }
 
@@ -116,6 +117,7 @@ func (f *finalizationVote) Length() float64 {
 	if f.block == nil {
 		return 0
 	}
+
 	return float64(len(f.block.Transactions))
 }
 
@@ -153,6 +155,7 @@ func CollectVotesForSync(
 		}
 
 		voters[vote.voter.PublicKey()] = struct{}{}
+
 		votes = append(votes, vote)
 
 		if len(votes) == cap(votes) {
@@ -175,7 +178,7 @@ func TickForFinalization(accounts *Accounts, snowball *Snowball, responses []*fi
 		snowballResponses = append(snowballResponses, res)
 	}
 
-	tick(accounts, snowball, snowballResponses)
+	snowball.Tick(calculateTallies(accounts, snowballResponses))
 }
 
 func TickForSync(accounts *Accounts, snowball *Snowball, responses []*syncVote) {
@@ -185,31 +188,29 @@ func TickForSync(accounts *Accounts, snowball *Snowball, responses []*syncVote) 
 		snowballResponses = append(snowballResponses, res)
 	}
 
-	tick(accounts, snowball, snowballResponses)
+	snowball.Tick(calculateTallies(accounts, snowballResponses))
 }
 
-func tick(accounts *Accounts, snowball *Snowball, responses []Vote) {
+// Return back the votes with their tallies calculated.
+func calculateTallies(accounts *Accounts, responses []Vote) []Vote {
 	votes := make(map[VoteID]Vote, len(responses))
 
 	for _, res := range responses {
-		// Ignore vote with empty response
-		if res.ID() == ZeroVoteID {
-			continue
+		vote, exists := votes[res.ID()]
+		if !exists {
+			vote = res
+
+			votes[vote.ID()] = vote
 		}
 
-		if _, exists := votes[res.ID()]; !exists {
-			votes[res.ID()] = res
-		}
-
-		res.SetTally(res.Tally() + 1.0/float64(len(responses)))
+		vote.SetTally(vote.Tally() + 1.0/float64(len(responses)))
 	}
 
 	for id, weight := range Normalize(ComputeProfitWeights(responses)) {
 		votes[id].SetTally(votes[id].Tally() * weight)
 	}
 
-	stakeWeights := Normalize(ComputeStakeWeights(accounts, responses))
-	for id, weight := range stakeWeights {
+	for id, weight := range Normalize(ComputeStakeWeights(accounts, responses)) {
 		votes[id].SetTally(votes[id].Tally() * weight)
 	}
 
@@ -218,15 +219,15 @@ func tick(accounts *Accounts, snowball *Snowball, responses []Vote) {
 		totalTally += block.Tally()
 	}
 
-	// Put the votes into slice to pass to snowball.
 	array := make([]Vote, 0, len(votes))
+
 	for id := range votes {
 		votes[id].SetTally(votes[id].Tally() / totalTally)
 
 		array = append(array, votes[id])
 	}
 
-	snowball.Tick(array)
+	return array
 }
 
 func ComputeProfitWeights(responses []Vote) map[VoteID]float64 {

@@ -26,7 +26,6 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/perlin-network/noise/edwards25519"
@@ -34,6 +33,7 @@ import (
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
 	"github.com/valyala/fastjson"
+	"go.uber.org/atomic"
 )
 
 const (
@@ -55,10 +55,10 @@ const (
 
 const JSONPoolSize = 8 // sane size of 8 arenas and parsers in a pool
 
-var ErrNoHost = errors.New("No host provided")
+var ErrNoHost = errors.New("no host provided")
 
 type Marshalable interface {
-	Marshal() []byte
+	Marshal() ([]byte, error)
 }
 
 type Config struct {
@@ -85,8 +85,8 @@ type Client struct {
 	url      string
 
 	// Local state counters
-	Nonce uint64
-	Block uint64
+	Nonce *atomic.Uint64
+	Block *atomic.Uint64
 
 	// JSON stuff
 	parsers fastjson.ParserPool
@@ -155,8 +155,8 @@ func NewClient(config Config) (*Client, error) {
 		return c, err
 	}
 
-	atomic.StoreUint64(&c.Nonce, n.Nonce)
-	atomic.StoreUint64(&c.Block, n.Block)
+	c.Nonce.Store(n.Nonce)
+	c.Block.Store(n.Block)
 
 	// Start listening to consensus to track Block
 	cancel, err := c.pollConsensus()
@@ -223,18 +223,17 @@ func (c *Client) error(err error) {
 // If this method returns true, skip the object
 func (c *Client) possibleError(v *fastjson.Value) bool {
 	// Return if not an error
-	if log.ValueString(v) != "error" {
-		return false
-	}
+	if log.ValueString(v) == "error" {
+		var ev log.ErrorEvent
 
-	var ev log.ErrorEvent
+		if err := ev.UnmarshalValue(v); err != nil {
+			// Invalid error, log
+			c.error(errors.Wrap(err, "Failed to parse error event"))
+			return true
+		}
 
-	if err := ev.UnmarshalValue(v); err != nil {
-		// Invalid error, log
-		c.error(errors.Wrap(err, "Failed to parse error event"))
+		c.error(errors.Wrap(ev.Error, ev.Message))
 		return true
 	}
-
-	c.error(errors.Wrap(ev.Error, ev.Message))
-	return true
+	return false
 }

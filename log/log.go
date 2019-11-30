@@ -5,7 +5,7 @@ import (
 	"github.com/valyala/fastjson"
 )
 
-func init() {
+func init() { // nolint:gochecknoinits
 	zerolog.MessageFieldName = "message"
 	zerolog.LevelFieldName = "level"
 	zerolog.ErrorFieldName = "error"

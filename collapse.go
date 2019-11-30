@@ -29,15 +29,14 @@ import (
 	"github.com/pkg/errors"
 )
 
-func collapseTransactions(txs []*Transaction, block *Block,
-	accounts *Accounts) (*collapseResults, error) {
-
+func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) (*collapseResults, error) {
 	res := &collapseResults{snapshot: accounts.Snapshot()}
 	res.snapshot.SetViewID(block.Index)
 
 	res.applied = make([]*Transaction, 0, len(txs))
 	res.rejected = make([]*Transaction, 0, len(txs))
 	res.rejectedErrors = make([]error, 0, len(txs))
+	res.accountNonces = make(map[AccountID]uint64)
 
 	ctx := NewCollapseContext(res.snapshot)
 
@@ -52,12 +51,15 @@ func collapseTransactions(txs []*Transaction, block *Block,
 	// all the way down to the beginning of the round.
 	for _, tx := range txs {
 		// Update nonce.
-
 		nonce, exists := ctx.ReadAccountNonce(tx.Sender)
 		if !exists {
 			ctx.WriteAccountsLen(ctx.ReadAccountsLen() + 1)
 		}
+
 		ctx.WriteAccountNonce(tx.Sender, nonce+1)
+
+		// Keep track of latest nonce of each account
+		res.accountNonces[tx.Sender] = nonce + 1
 
 		if hex.EncodeToString(tx.Sender[:]) != sys.FaucetAddress {
 			fee := tx.Fee()
@@ -67,9 +69,10 @@ func collapseTransactions(txs []*Transaction, block *Block,
 				res.rejected = append(res.rejected, tx)
 				res.rejectedErrors = append(
 					res.rejectedErrors,
-					errors.Errorf("stake: sender %x does not have enough PERLs"+
-						" to pay transaction fees (comprised of %d PERLs)",
-						tx.Sender, fee),
+					errors.Errorf(
+						"stake: sender %x does not have enough PERLs to pay transaction fees (comprised of %d PERLs)",
+						tx.Sender, fee,
+					),
 				)
 				res.rejectedCount += tx.LogicalUnits()
 
@@ -80,13 +83,13 @@ func collapseTransactions(txs []*Transaction, block *Block,
 			totalFee += fee
 
 			stake, _ := ctx.ReadAccountStake(tx.Sender)
-
 			if stake >= sys.MinimumStake {
 				if _, ok := stakes[tx.Sender]; !ok {
 					stakes[tx.Sender] = stake
 				} else {
 					stakes[tx.Sender] += stake
 				}
+
 				totalStake += stake
 			}
 		}
@@ -96,7 +99,9 @@ func collapseTransactions(txs []*Transaction, block *Block,
 			res.rejectedErrors = append(res.rejectedErrors, err)
 			res.rejectedCount += tx.LogicalUnits()
 
-			log.ErrNode(err, "error applying transaction")
+			logger := log.Node()
+			logger.Error().Err(err).Msg("error applying transaction")
+
 			continue
 		}
 
@@ -134,8 +139,6 @@ type CollapseContext struct {
 	// To preserve order of state insertions of accounts
 	accountIDs []AccountID
 	accounts   map[AccountID]struct{}
-
-	writes map[AccountID]struct{}
 
 	balances            map[AccountID]uint64
 	stakes              map[AccountID]uint64
@@ -341,8 +344,10 @@ func (c *CollapseContext) processRewardWithdrawals(blockIndex uint64) {
 // Write the changes into the tree.
 func (c *CollapseContext) Flush() error {
 	if c.checksum != c.tree.Checksum() {
-		return errors.Errorf("stale state, the state has been modified. "+
-			"got merkle %x but expected %x.", c.tree.Checksum(), c.checksum)
+		return errors.Errorf(
+			"stale state, the state has been modified. got merkle %x but expected %x.",
+			c.tree.Checksum(), c.checksum,
+		)
 	}
 
 	WriteAccountsLen(c.tree, c.accountLen)
@@ -382,12 +387,11 @@ func (c *CollapseContext) Flush() error {
 }
 
 // Apply a transaction by writing the states into memory.
-// After you've finished, you MUST call CollapseContext.Flush() to actually
-// write the states into the tree.
+// After you've finished, you MUST call CollapseContext.Flush() to actually write the states into the tree.
 func (c *CollapseContext) ApplyTransaction(block *Block, tx *Transaction) error {
-	if err := applyTransaction(block, c, tx,
-		&contractExecutorState{GasPayer: tx.Sender}); err != nil {
-
+	if err := applyTransaction(block, c, tx, &contractExecutorState{
+		GasPayer: tx.Sender,
+	}); err != nil {
 		return err
 	}
 

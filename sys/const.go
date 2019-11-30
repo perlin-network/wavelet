@@ -24,7 +24,8 @@ type Tag byte
 
 // Transaction tags.
 const (
-	TagTransfer Tag = iota
+	_ Tag = iota // The first value was used for Nop. To make it backward compatible, we skip 0 value.
+	TagTransfer
 	TagContract
 	TagStake
 	TagBatch
@@ -45,17 +46,17 @@ const (
 )
 
 var (
-	// S/Kademlia overlay network parameters.
+	// SKademliaC1 and SKademliaC2 - S/Kademlia overlay network parameters.
 	SKademliaC1 = 1
 	SKademliaC2 = 1
 
-	// Default fee amount paid by a node per transaction.
+	// DefaultTransactionFee Default fee amount paid by a node per transaction.
 	DefaultTransactionFee uint64 = 2
 
-	// Multiplier for size of transaction payload to calculate it's fee
+	// TransactionFeeMultiplier Multiplier for size of transaction payload to calculate it's fee
 	TransactionFeeMultiplier = 0.05
 
-	// Minimum amount of stake to start being able to reap validator rewards.
+	// MinimumStake Minimum amount of stake to start being able to reap validator rewards.
 	MinimumStake uint64 = 100
 
 	MinimumRewardWithdraw = MinimumStake
@@ -64,7 +65,7 @@ var (
 
 	FaucetAddress = "0f569c84d434fb0ca682c733176f7c0c2d853fce04d95ae131d2f9b4124d93d8"
 
-	GasTable = map[string]uint64{
+	GasTable = map[string]uint64{ // nolint:unused
 		"nop":                     1,
 		"unreachable":             1,
 		"select":                  12,
@@ -259,16 +260,15 @@ var (
 	ContractMaxGlobals         = 64
 )
 
-func init() {
-	switch VersionMeta {
-	case "testnet":
+func init() { // nolint:gochecknoinits
+	if VersionMeta == "testnet" {
 		MinimumStake = 10000
 	}
 }
 
 // String converts a given tag to a string.
 func (tag Tag) String() string {
-	if tag < 0 || tag > 3 { // Check out of bounds
+	if tag < 0 || tag > 3 { // nolint:staticcheck
 		return "" // Return invalid tag
 	}
 

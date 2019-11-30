@@ -10,7 +10,7 @@ type SyncProvideChunk struct {
 	RequestedHash []byte `json:"requested_hash"`
 }
 
-var _ log.JSONObject = (*SyncApplied)(nil)
+var _ log.JSONObject = (*SyncProvideChunk)(nil)
 
 func (s *SyncProvideChunk) MarshalEvent(ev *zerolog.Event) {
 	ev.Hex("requested_hash", s.RequestedHash)

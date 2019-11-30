@@ -33,6 +33,7 @@ func (c *Client) LedgerStatus(senderID string, creatorID string, offset uint64,
 	path := RouteLedger + "?" + vals.Encode()
 
 	var res api.LedgerStatus
+
 	if err := c.RequestJSON(path, ReqGet, nil, &res); err != nil {
 		return nil, err
 	}

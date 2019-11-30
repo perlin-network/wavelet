@@ -25,9 +25,6 @@ import (
 	"crypto/sha512"
 	"encoding/binary"
 	"fmt"
-	"reflect"
-	"unsafe"
-
 	"github.com/perlin-network/life/compiler"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
@@ -37,6 +34,8 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
+	"reflect"
+	"unsafe"
 )
 
 var (
@@ -67,9 +66,9 @@ type VMState struct {
 	Memory  []byte
 }
 
-func (state VMState) Apply(vm *exec.VirtualMachine, gp compiler.GasPolicy,
-	ir exec.ImportResolver, move bool) (*exec.VirtualMachine, error) {
-
+func (state VMState) Apply(
+	vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver, move bool,
+) (*exec.VirtualMachine, error) {
 	if len(vm.Globals) != len(state.Globals) {
 		return nil, errors.New("global count mismatch")
 	}
@@ -91,15 +90,15 @@ func (state VMState) Apply(vm *exec.VirtualMachine, gp compiler.GasPolicy,
 		Globals:         state.Globals,
 		Memory:          state.Memory,
 		Exited:          true,
-		GasPolicy:       gp,
-		ImportResolver:  ir,
+		GasPolicy:       gasPolicy,
+		ImportResolver:  importResolver,
 	}, nil
 }
 
-func CloneVM(vm *exec.VirtualMachine, gp compiler.GasPolicy,
-	ir exec.ImportResolver) (*exec.VirtualMachine, error) {
-
-	return SnapshotVMState(vm).Apply(vm, gp, ir, false)
+func CloneVM(
+	vm *exec.VirtualMachine, gasPolicy compiler.GasPolicy, importResolver exec.ImportResolver,
+) (*exec.VirtualMachine, error) {
+	return SnapshotVMState(vm).Apply(vm, gasPolicy, importResolver, false)
 }
 
 func SnapshotVMState(vm *exec.VirtualMachine) VMState {
@@ -111,12 +110,6 @@ func SnapshotVMState(vm *exec.VirtualMachine) VMState {
 
 func (e *ContractExecutor) GetCost(key string) int64 {
 	return 1 // FIXME(kenta): Remove for testnet.
-	//cost, ok := sys.GasTable[key]
-	//if !ok {
-	//	return 1
-	//}
-	//
-	//return int64(cost)
 }
 
 func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport {
@@ -208,9 +201,9 @@ func (e *ContractExecutor) ResolveFunc(module, field string) exec.FunctionImport
 				ok := edwards25519.Verify(pub, data, edSig)
 				if ok {
 					return 0
-				} else {
-					return 1
 				}
+
+				return 1
 			}
 		case "_hash_blake2b_256":
 			return buildHashImpl(
@@ -260,25 +253,27 @@ func (e *ContractExecutor) ResolveGlobal(module, field string) int64 {
 	panic("global variables are disallowed in smart contracts")
 }
 
-// contractState is an optional parameter that is used to pass the VMState of
-// the contract. If you cache the VMState, you can pass it. If it's nil, we'll
-// try to load the state from the tree.
-// This function MUST NOT write into the tree. The new or updated VM State must
-// be returned.
-func (e *ContractExecutor) Execute(id AccountID, block *Block, tx *Transaction,
-	amount, gasLimit uint64, name string, params, code []byte, tree *avl.Tree,
-	vmCache *lru.LRU, contractState *VMState) (*VMState, error) {
-
-	var vm *exec.VirtualMachine
-	var err error
+// contractState is an optional parameter that is used to pass the VMState of the contract.
+// If you cache the VMState, you can pass it.
+// If it's nil, we'll try to load the state from the tree.
+//
+// This function MUST NOT write into the tree. The new or updated VM State must be returned.
+func (e *ContractExecutor) Execute( // nolint:gocognit
+	id AccountID, block *Block, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte,
+	tree *avl.Tree, vmCache *lru.LRU, contractState *VMState,
+) (*VMState, error) {
+	var (
+		vm  *exec.VirtualMachine
+		err error
+	)
 
 	if cached, ok := vmCache.Load(id); ok {
 		vm, err = CloneVM(cached.(*exec.VirtualMachine), e, e)
 		if err != nil {
 			return nil, errors.Wrap(err, "cannot clone vm")
 		}
-		vm.Config.GasLimit = gasLimit
 
+		vm.Config.GasLimit = gasLimit
 	} else {
 		config := exec.VMConfig{
 			DefaultMemoryPages: sys.ContractDefaultMemoryPages,
@@ -305,9 +300,8 @@ func (e *ContractExecutor) Execute(id AccountID, block *Block, tx *Transaction,
 		vmCache.Put(id, cloned)
 	}
 
-	// We can safely initialize the VM first before checking this because the
-	// size of the global slice is proportional to the size of the contract's
-	// global section.
+	// We can safely initialize the VM first before checking this because the size of the global slice
+	// is proportional to the size of the contract's global section.
 	if len(vm.Globals) > sys.ContractMaxGlobals {
 		return nil, errors.New("too many globals")
 	}
@@ -337,8 +331,7 @@ func (e *ContractExecutor) Execute(id AccountID, block *Block, tx *Transaction,
 
 	entry, exists := vm.GetFunctionExport("_contract_" + name)
 	if !exists {
-		return nil, errors.Wrapf(ErrContractFunctionNotFound,
-			`fn "_contract_%s" does not exist`, name)
+		return nil, errors.Wrapf(ErrContractFunctionNotFound, `fn "_contract_%s" does not exist`, name)
 	}
 
 	if vm.FunctionCode[entry].NumParams != 0 {
@@ -393,6 +386,7 @@ func (e *ContractExecutor) Execute(id AccountID, block *Block, tx *Transaction,
 	}
 
 	vmState := SnapshotVMState(vm)
+
 	return &vmState, nil
 }
 
@@ -406,12 +400,12 @@ func LoadContractGlobals(snapshot *avl.Tree, id AccountID) ([]int64, bool) {
 		return nil, false
 	}
 
-	// We cannot use the unsafe method as in SaveContractGlobals due to
-	// possible alignment issues.
+	// We cannot use the unsafe method as in SaveContractGlobals due to possible alignment issues.
 	buf := make([]int64, 0, len(raw)/8)
 	for i := 0; i < len(raw); i += 8 {
 		buf = append(buf, int64(binary.LittleEndian.Uint64(raw[i:])))
 	}
+
 	return buf, true
 }
 
@@ -423,7 +417,6 @@ func SaveContractGlobals(snapshot *avl.Tree, id AccountID, globals []int64) {
 		Len:  oldHeader.Len * 8,
 		Cap:  oldHeader.Len * 8, // prevent appending in place
 	}
-
 	WriteAccountContractGlobals(snapshot, id, *(*[]byte)(unsafe.Pointer(&header)))
 }
 
@@ -458,7 +451,7 @@ func SaveContractMemorySnapshot(snapshot *avl.Tree, id AccountID, mem []byte) {
 
 	for pageIdx := uint64(0); pageIdx < numPages; pageIdx++ {
 		old, _ := ReadAccountContractPage(snapshot, id, pageIdx)
-		identical, allZero = true, false
+		allZero = false
 		pageStart = pageIdx * PageSize
 
 		if len(old) == 0 {
@@ -483,14 +476,17 @@ func buildContractPayload(block *Block, tx *Transaction, amount uint64, params [
 	p := make([]byte, 0)
 	b := make([]byte, 8)
 
-	var nilAccountID AccountID
-	var nilTransactionID TransactionID
+	var (
+		nilAccountID     AccountID
+		nilTransactionID TransactionID
+	)
 
 	if block != nil {
-		binary.LittleEndian.PutUint64(b[:], uint64(block.Index))
+		binary.LittleEndian.PutUint64(b, block.Index)
 	} else {
-		binary.LittleEndian.PutUint64(b[:], 0)
+		binary.LittleEndian.PutUint64(b, 0)
 	}
+
 	p = append(p, b...)
 
 	if block != nil {
@@ -507,7 +503,7 @@ func buildContractPayload(block *Block, tx *Transaction, amount uint64, params [
 		p = append(p, nilAccountID[:]...)
 	}
 
-	binary.LittleEndian.PutUint64(b[:], amount)
+	binary.LittleEndian.PutUint64(b, amount)
 	p = append(p, b...)
 
 	p = append(p, params...)

@@ -29,12 +29,13 @@ import (
 	"strings"
 	"text/tabwriter"
 
+	"gopkg.in/urfave/cli.v1"
+
 	"github.com/benpye/readline"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/rs/zerolog"
-	"github.com/urfave/cli"
 )
 
 const (
@@ -76,7 +77,7 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 	cleanup, err := setEvents(client)
 	if err != nil {
 		cleanup()
-		return nil, fmt.Errorf("Failed to start websockets to the server: %v", err)
+		return nil, fmt.Errorf("failed to start websockets to the server: %v", err)
 	}
 
 	c := &CLI{
@@ -261,6 +262,48 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 					Value: conf.GetSecret(),
 					Usage: "shared secret for http api authorization",
 				},
+				cli.UintFlag{
+					Name:  "bloom.filter.k",
+					Value: conf.GetBloomFilterK(),
+					Usage: "bloom filter K parameter for transaction syncing",
+				},
+				cli.UintFlag{
+					Name:  "bloom.filter.m",
+					Value: conf.GetBloomFilterM(),
+					Usage: "bloom filter M parameter for transaction syncing",
+				},
+				cli.Uint64Flag{
+					Name:  "tx.sync.chunk.size",
+					Value: conf.GetTXSyncChunkSize(),
+					Usage: "number of transactions per chunk for transaction syncing",
+				},
+				cli.Uint64Flag{
+					Name:  "tx.sync.limit",
+					Value: conf.GetTXSyncLimit(),
+					Usage: "max number of transactions to be synced",
+				},
+			},
+		},
+		{
+			Name:        "dump",
+			Action:      a(c.dump),
+			Description: "dump wallet states, and you may use -c to dump contract code and pages",
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:  "c",
+					Usage: "dump contract code and pages",
+				},
+			},
+		},
+		{
+			Name:        "dump",
+			Action:      a(c.dump),
+			Description: "dump wallet states, and you may use -c to dump contract code and pages",
+			Flags: []cli.Flag{
+				cli.BoolFlag{
+					Name:  "c",
+					Usage: "dump contract code and pages",
+				},
 			},
 		},
 	}
@@ -332,6 +375,7 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 			log.FilterFor(
 				log.ModuleNode,
 				log.ModuleSync,
+				log.ModuleContract,
 			),
 		),
 	)

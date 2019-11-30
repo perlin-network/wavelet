@@ -10,7 +10,6 @@ import (
 )
 
 const (
-	RouteWSBroadcaster  = "/poll/broadcaster"
 	RouteWSConsensus    = "/poll/consensus"
 	RouteWSStake        = "/poll/stake"
 	RouteWSAccounts     = "/poll/accounts"
@@ -173,7 +172,7 @@ type ErrInvalidEvent struct {
 	Event string
 }
 
-func errInvalidEvent(v *fastjson.Value, event string) *ErrInvalidEvent {
+func errInvalidEvent(v *fastjson.Value, event string) *ErrInvalidEvent { // nolint:interfacer
 	return &ErrInvalidEvent{
 		ErrInvalidPayload: ErrInvalidPayload{
 			JSONValue: v.String(),

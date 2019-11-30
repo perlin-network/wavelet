@@ -8,26 +8,33 @@ import (
 )
 
 // converts a normal (func to close, error) to only an error
-func addToCloser(toClose []func()) func(f func(), err error) error {
+func addToCloser(toClose *[]func()) func(f func(), err error) error {
 	return func(f func(), err error) error {
-		toClose = append(toClose, f)
+		if f != nil {
+			*toClose = append(*toClose, f)
+		}
 		return err
 	}
 }
 
 func setEvents(c *wctl.Client) (func(), error) {
-	toClose := []func(){}
+	var toClose []func()
+
 	cleanup := func() {
 		for _, f := range toClose {
 			f()
 		}
 	}
 
-	c.OnError = onError
+	logger := log.Node()
+	c.OnError = func(err error) {
+		logger.Err(err).Msg("WS Error occurred.")
+	}
 
 	c.OnPeerJoin = onPeerJoin
 	c.OnPeerLeave = onPeerLeave
-	if err := addToCloser(toClose)(c.PollNetwork()); err != nil {
+
+	if err := addToCloser(&toClose)(c.PollNetwork()); err != nil {
 		return cleanup, err
 	}
 
@@ -35,41 +42,35 @@ func setEvents(c *wctl.Client) (func(), error) {
 	c.OnGasBalanceUpdated = onGasBalanceUpdated
 	c.OnStakeUpdated = onStakeUpdated
 	c.OnRewardUpdated = onRewardUpdate
-	if err := addToCloser(toClose)(c.PollAccounts()); err != nil {
+	c.OnNonceUpdated = onNonceUpdated
+
+	if err := addToCloser(&toClose)(c.PollAccounts()); err != nil {
 		return cleanup, err
 	}
 
 	c.OnProposal = onProposal
 	c.OnFinalized = onFinalized
-
 	c.OnContractGas = onContractGas
 	c.OnContractLog = onContractLog
-	if err := addToCloser(toClose)(c.PollContracts()); err != nil {
+
+	if err := addToCloser(&toClose)(c.PollContracts()); err != nil {
 		return cleanup, err
 	}
 
 	c.OnTxApplied = onTxApplied
 	c.OnTxGossipError = onTxGossipError
 	c.OnTxFailed = onTxFailed
-	if err := addToCloser(toClose)(c.PollTransactions()); err != nil {
+
+	if err := addToCloser(&toClose)(c.PollTransactions()); err != nil {
 		return cleanup, err
 	}
 
 	c.OnStakeRewardValidator = onStakeRewardValidator
-	if err := addToCloser(toClose)(c.PollStake()); err != nil {
+	if err := addToCloser(&toClose)(c.PollStake()); err != nil {
 		return cleanup, err
 	}
 
 	return cleanup, nil
-}
-
-func onError(err error) {
-	if disableGC {
-		return // testing
-	}
-
-	logger := log.Node()
-	logger.Err(err).Msg("WS Error occurred.")
 }
 
 func onStakeRewardValidator(r wctl.StakeRewardValidator) {
@@ -89,8 +90,6 @@ func onTxApplied(u wctl.TxApplied) {
 	logger.Info().
 		Hex("tx_id", u.TxID[:]).
 		Hex("sender_id", u.SenderID[:]).
-		Hex("creator_id", u.CreatorID[:]).
-		Uint64("depth", u.Depth).
 		Uint8("tag", u.Tag).
 		Msg("Transaction applied.")
 	*/
@@ -105,8 +104,6 @@ func onTxFailed(u wctl.TxFailed) {
 	logger.Err(errors.New(u.Error)).
 		Hex("tx_id", u.TxID[:]).
 		Hex("sender_id", u.SenderID[:]).
-		Hex("creator_id", u.CreatorID[:]).
-		Uint64("depth", u.Depth).
 		Uint8("tag", u.Tag).
 		Msg("Transaction failed.")
 }
@@ -170,6 +167,13 @@ func onRewardUpdate(u wctl.RewardUpdated) {
 		Hex("public_key", u.AccountID[:]).
 		Uint64("reward", u.Reward).
 		Msg("Reward updated.")
+}
+
+func onNonceUpdated(u wctl.NonceUpdated) {
+	logger.Info().
+		Hex("public_key", u.AccountID[:]).
+		Uint64("nonce", u.Nonce).
+		Msg("Nonce updated.")
 }
 
 func onPeerJoin(u wctl.PeerJoin) {

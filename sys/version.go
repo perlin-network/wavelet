@@ -28,8 +28,6 @@ const (
 	VersionMinor = 2
 	// VersionPatch is patch version component of the current release
 	VersionPatch = 1
-	// VersionMeta is append to the version string
-	VersionMeta = "testing"
 )
 
 // variables set via linker flags
@@ -37,6 +35,10 @@ var (
 	GitCommit = "unset"
 	GoVersion = "unset"
 	OSArch    = "unset"
+	GoExe     = ""
+
+	// VersionMeta is append to the version string
+	VersionMeta = "testing"
 )
 
 // Version holds the textual version string.
@@ -45,9 +47,5 @@ var Version = func() string {
 }()
 
 var VersionCode = func() uint32 {
-	var versionCode uint32
-
-	versionCode = (VersionMajor << 24) | (VersionMinor << 16) | VersionPatch
-
-	return versionCode
+	return (VersionMajor << 24) | (VersionMinor << 16) | VersionPatch
 }()

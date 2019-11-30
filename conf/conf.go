@@ -26,6 +26,10 @@ type config struct {
 	downloadTxTimeout     time.Duration
 	checkOutOfSyncTimeout time.Duration
 
+	// transaction syncing parameters
+	txSyncChunkSize uint64
+	txSyncLimit     uint64
+
 	// Size of individual chunks sent for a syncing peer.
 	syncChunkSize int
 
@@ -39,17 +43,19 @@ type config struct {
 	// Number of blocks after which transactions will be pruned from the graph
 	pruningLimit uint8
 
+	// Max number of transactions within the block
+	blockTxLimit uint64
+
 	// shared secret for http api authorization
 	secret string
 }
 
-var c config
-var l sync.RWMutex
+var (
+	l sync.RWMutex
 
-func init() {
-	c = defaultConfig()
-	l = sync.RWMutex{}
-}
+	defaultConf = defaultConfig()
+	c           = defaultConf
+)
 
 func defaultConfig() config {
 	defConf := config{
@@ -62,21 +68,25 @@ func defaultConfig() config {
 		stakeMajorityWeight:           1,
 		transactionsNumMajorityWeight: 0.3,
 
-		queryTimeout:               5000 * time.Millisecond,
-		gossipTimeout:              5000 * time.Millisecond,
+		queryTimeout:               5 * time.Second,
+		gossipTimeout:              5 * time.Second,
 		downloadTxTimeout:          30 * time.Second,
-		checkOutOfSyncTimeout:      5000 * time.Millisecond,
+		checkOutOfSyncTimeout:      5 * time.Second,
 		syncChunkSize:              16384,
 		syncIfBlockIndicesDifferBy: 5,
 
-		bloomFilterM: 1024 * 1024,
+		txSyncChunkSize: 5000,
+		txSyncLimit:     1 << 20,
+
+		bloomFilterM: 1 << 21,
 		bloomFilterK: 3,
 
 		pruningLimit: 30,
+
+		blockTxLimit: 1 << 16,
 	}
 
-	switch sys.VersionMeta {
-	case "testnet":
+	if sys.VersionMeta == "testnet" {
 		defConf.snowballK = 10
 	}
 
@@ -185,6 +195,24 @@ func WithPruningLimit(pl uint8) Option {
 func WithSecret(s string) Option {
 	return func(c *config) {
 		c.secret = s
+	}
+}
+
+func WithTXSyncChunkSize(n uint64) Option {
+	return func(c *config) {
+		c.txSyncChunkSize = n
+	}
+}
+
+func WithTXSyncLimit(n uint64) Option {
+	return func(c *config) {
+		c.txSyncLimit = n
+	}
+}
+
+func WithBlockTXLimit(n uint64) Option {
+	return func(c *config) {
+		c.blockTxLimit = n
 	}
 }
 
@@ -324,6 +352,30 @@ func GetSecret() string {
 	return t
 }
 
+func GetTXSyncChunkSize() uint64 {
+	l.RLock()
+	t := c.txSyncChunkSize
+	l.RUnlock()
+
+	return t
+}
+
+func GetTXSyncLimit() uint64 {
+	l.RLock()
+	t := c.txSyncLimit
+	l.RUnlock()
+
+	return t
+}
+
+func GetBlockTXLimit() uint64 {
+	l.RLock()
+	t := c.blockTxLimit
+	l.RUnlock()
+
+	return t
+}
+
 func Update(options ...Option) {
 	l.Lock()
 
@@ -342,4 +394,10 @@ func Stringify() string {
 	l.RUnlock()
 
 	return s
+}
+
+func Reset() {
+	l.Lock()
+	c = defaultConf
+	l.Unlock()
 }

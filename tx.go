@@ -181,7 +181,7 @@ func (t *Transaction) Unmarshal(r io.Reader) (err error) {
 
 	t.Payload = make([]byte, binary.BigEndian.Uint32(buf[:4]))
 
-	if _, err = io.ReadFull(r, t.Payload[:]); err != nil {
+	if _, err = io.ReadFull(r, t.Payload); err != nil {
 		err = errors.Wrap(err, "could not read transaction payload")
 		return
 	}

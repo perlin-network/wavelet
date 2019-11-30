@@ -23,10 +23,12 @@ package wavelet;
 
 message QueryRequest {
     uint64 block_index = 1;
+    bytes cache_block_id = 2;
 }
 
 message QueryResponse {
     bytes block = 1;
+    bool cache_valid = 2;
 }
 
 message OutOfSyncRequest {
@@ -56,6 +58,24 @@ message SyncResponse {
     }
 }
 
+message TransactionsSyncRequest {
+    oneof Data {
+        bytes filter = 1;
+        uint64 chunk_size = 2;
+    }
+}
+
+message TransactionsSyncPart {
+    repeated bytes transactions = 1;
+}
+
+message TransactionsSyncResponse {
+    oneof Data {
+        uint64 transactions_num = 1;
+        TransactionsSyncPart transactions = 2;
+    }
+}
+
 message TransactionPullRequest {
     repeated bytes transaction_ids = 1;
 }
@@ -74,4 +94,5 @@ service Wavelet {
     rpc Sync (stream SyncRequest) returns (stream SyncResponse) {}
 
     rpc PullTransactions (TransactionPullRequest) returns (TransactionPullResponse) {}
+    rpc SyncTransactions (stream TransactionsSyncRequest) returns (stream TransactionsSyncResponse) {}
 }

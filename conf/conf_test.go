@@ -1,3 +1,5 @@
+// +build !integration,unit
+
 package conf
 
 import (
@@ -9,7 +11,7 @@ import (
 
 func TestGet(t *testing.T) {
 	assert.EqualValues(t, 2, GetSnowballK())
-	assert.EqualValues(t, 50, GetSnowballBeta())
+	assert.EqualValues(t, 150, GetSnowballBeta())
 
 	assert.EqualValues(t, 0.8, GetSyncVoteThreshold())
 	assert.EqualValues(t, 0.8, GetFinalizationVoteThreshold())
@@ -22,7 +24,7 @@ func TestGet(t *testing.T) {
 	assert.EqualValues(t, 5000*time.Millisecond, GetCheckOutOfSyncTimeout())
 
 	assert.EqualValues(t, 16384, GetSyncChunkSize())
-	assert.EqualValues(t, 2, GetSyncIfBlockIndicesDifferBy())
+	assert.EqualValues(t, uint64(5), GetSyncIfBlockIndicesDifferBy())
 	assert.EqualValues(t, 30, GetPruningLimit())
 	assert.EqualValues(t, "", GetSecret())
 }

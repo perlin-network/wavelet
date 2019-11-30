@@ -3,6 +3,7 @@ package wctl
 import (
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
+
 	"github.com/valyala/fastjson"
 )
 

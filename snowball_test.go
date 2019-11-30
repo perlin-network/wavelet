@@ -17,17 +17,21 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// +build !integration,unit
+
 package wavelet
 
 import (
+	"crypto/rand"
 	"encoding/binary"
+	mrand "math/rand"
+	"testing"
+
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/crypto/blake2b"
-	"math/rand"
-	"testing"
 )
 
 type testVote struct {
@@ -128,9 +132,9 @@ func TestSnowball(t *testing.T) {
 	assert.Len(t, snowball.counts, 1)
 
 	// Try tick once more. Does absolutely nothing.
-	cloned := *snowball
+	cloned := *snowball // nolint:govet
 	snowball.Tick(votes)
-	assert.Equal(t, *snowball, cloned)
+	assert.Equal(t, *snowball, cloned) // nolint:govet
 
 	// Reset Snowball and assert everything is cleared properly.
 	snowball.Reset()
@@ -196,7 +200,6 @@ func TestSnowball(t *testing.T) {
 			assert.Equal(t, *newMajorityVote, *preferred)
 		} else {
 			assert.Equal(t, *majorityVote, *preferred)
-
 		}
 	}
 
@@ -304,7 +307,7 @@ func TestSnowball_EqualTally_LowerThanAlpha(t *testing.T) {
 	// Expected: The preferred will not change.
 
 	// Prefer a random vote
-	last := votes[rand.Intn(len(votes))].(*testVote)
+	last := votes[mrand.Intn(len(votes))].(*testVote)
 	snowball.Prefer(last)
 
 	for i := 0; i < snowballBeta*2; i++ {

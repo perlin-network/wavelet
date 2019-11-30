@@ -54,6 +54,11 @@ const (
 
 	// PayloadParamNameContractCode defines a string representation of the contract_code payload param.
 	PayloadParamNameContractCode = "contract_code"
+
+	uint64Str = `uint64`
+	uint32Str = `uint32`
+	uint16Str = `uint16`
+	uint8Str  = `uint8`
 )
 
 var (
@@ -88,7 +93,7 @@ func ParseJSON(data []byte, tag string) ([]byte, error) {
 		return nil, err // Return found error
 	}
 
-	if intTag := sys.TagLabels[tag]; intTag >= sys.TagBatch || intTag < 0 { // Check invalid tag value
+	if intTag := sys.TagLabels[tag]; intTag >= sys.TagBatch || intTag < 0 { // nolint:staticcheck
 		return nil, ErrInvalidTag // Return invalid tag error
 	}
 
@@ -129,8 +134,8 @@ func parseTransfer(data []byte) ([]byte, error) {
 		return nil, ErrNilField // Return nil field error
 	}
 
-	decodedRecipient, err := hex.DecodeString(string(json.GetStringBytes(PayloadParamNameRecipient))) // Decode recipient hex string
-	if err != nil {                                                                                   // Check for errors
+	decodedRecipient, err := hex.DecodeString(string(json.GetStringBytes(PayloadParamNameRecipient)))
+	if err != nil {
 		return nil, err // Return found error
 	}
 
@@ -138,7 +143,8 @@ func parseTransfer(data []byte) ([]byte, error) {
 		return nil, ErrInvalidAccountIDSize // Return invalid recipient ID error
 	}
 
-	var recipient AccountID              // Initialize ID buffer
+	var recipient AccountID // Initialize ID buffer
+
 	copy(recipient[:], decodedRecipient) // Copy address to buffer
 
 	_, err = payload.Write(recipient[:]) // Write recipient value
@@ -146,9 +152,10 @@ func parseTransfer(data []byte) ([]byte, error) {
 		return nil, err // Return found error
 	}
 
-	decodedAmount := uint64(json.GetUint64(PayloadParamNameAmount)) // Get amount value
+	decodedAmount := json.GetUint64(PayloadParamNameAmount) // Get amount value
 
-	var amount [8]byte                                      // Initialize integer buffer
+	var amount [8]byte // Initialize integer buffer
+
 	binary.LittleEndian.PutUint64(amount[:], decodedAmount) // Write to buffer
 
 	_, err = payload.Write(amount[:]) // Write amount value
@@ -157,9 +164,10 @@ func parseTransfer(data []byte) ([]byte, error) {
 	}
 
 	if json.Exists(PayloadParamNameGasLimit) { // Check has gas limit value
-		decodedGasLimit := uint64(json.GetUint64(PayloadParamNameGasLimit)) // Get uint64 gas limit value
+		decodedGasLimit := json.GetUint64(PayloadParamNameGasLimit) // Get uint64 gas limit value
 
-		var gasLimit [8]byte                                        // Initialize integer buffer
+		var gasLimit [8]byte // Initialize integer buffer
+
 		binary.LittleEndian.PutUint64(gasLimit[:], decodedGasLimit) // Write to buffer
 
 		_, err = payload.Write(gasLimit[:]) // Write gas limit
@@ -171,19 +179,20 @@ func parseTransfer(data []byte) ([]byte, error) {
 	var gasDeposit [8]byte // Initialize integer buffer
 
 	if json.Exists(PayloadParamNameGasDeposit) { // Check has gas deposit value
-		decodedGasDeposit := uint64(json.GetUint64(PayloadParamNameGasDeposit)) // Get uint64 gas deposit value
-		binary.LittleEndian.PutUint64(gasDeposit[:], decodedGasDeposit)         // Write to buffer
+		decodedGasDeposit := json.GetUint64(PayloadParamNameGasDeposit) // Get uint64 gas deposit value
+		binary.LittleEndian.PutUint64(gasDeposit[:], decodedGasDeposit) // Write to buffer
 	}
 
 	_, err = payload.Write(gasDeposit[:]) // Write gas deposit
-	if err != nil {                       // Check for errors
-		return nil, err // Return foudn error
+	if err != nil {
+		return nil, err
 	}
 
 	if json.Exists(PayloadParamNameFuncName) { // Check has function name
 		funcName := string(json.GetStringBytes(PayloadParamNameFuncName)) // Get function name
 
-		var funcNameLength [8]byte                                               // Initialize dedicated len buffer
+		var funcNameLength [8]byte // Initialize dedicated len buffer
+
 		binary.LittleEndian.PutUint32(funcNameLength[:4], uint32(len(funcName))) // Write to buffer
 
 		payload.Write(funcNameLength[:4]) // Write name length
@@ -194,7 +203,7 @@ func parseTransfer(data []byte) ([]byte, error) {
 
 			params := bytes.NewBuffer(nil) // Initialize payload buffer
 
-			for _, payloadValue := range json.GetArray(PayloadParamNameFuncPayload) { // Iterate through payloads
+			for _, payloadValue := range json.GetArray(PayloadParamNameFuncPayload) { // nolint:dupl
 				if !payloadValue.Exists("type") { // Check does not declare type
 					return nil, ErrNilField // Return nil field error
 				}
@@ -216,21 +225,21 @@ func parseTransfer(data []byte) ([]byte, error) {
 
 					params.Write(intBuf[:4]) // Write to buffer
 					params.Write(value)      // Write value
-				case "uint8", "uint16", "uint32", "uint64":
+				case uint8Str, uint16Str, uint32Str, uint64Str:
 					value := payloadValue.GetInt64("value") // Get value
 
 					switch payloadType { // Handle different int sizes
-					case "uint8":
+					case uint8Str:
 						params.WriteByte(byte(value)) // Write value
-					case "uint16":
+					case uint16Str:
 						binary.LittleEndian.PutUint16(intBuf[:2], uint16(value)) // Write to buffer
 
 						params.Write(intBuf[:2]) // Write value
-					case "uint32":
+					case uint32Str:
 						binary.LittleEndian.PutUint32(intBuf[:4], uint32(value)) // Write to buffer
 
 						params.Write(intBuf[:4]) // Write value
-					case "uint64":
+					case uint64Str:
 						binary.LittleEndian.PutUint64(intBuf[:8], uint64(value)) // Write to buffer
 
 						params.Write(intBuf[:8]) // Write value
@@ -247,7 +256,7 @@ func parseTransfer(data []byte) ([]byte, error) {
 				}
 			}
 
-			binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(params.Bytes()))) // Write length of function parameters to buffer
+			binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(params.Bytes())))
 
 			payload.Write(intBuf[:4])     // Write length of function parameters
 			payload.Write(params.Bytes()) // Write parameters
@@ -276,7 +285,7 @@ func parseStake(data []byte) ([]byte, error) {
 
 	operationInt := json.GetInt(PayloadParamNameOperation) // Get operation code
 
-	if sys.Tag(operationInt) >= sys.TagBatch || sys.Tag(operationInt) < 0 { // Check invalid value
+	if sys.Tag(operationInt) >= sys.TagBatch || sys.Tag(operationInt) < 0 { // nolint:staticcheck
 		return nil, ErrInvalidOperation // Return invalid operation error
 	}
 
@@ -291,7 +300,8 @@ func parseStake(data []byte) ([]byte, error) {
 
 	decodedAmount := uint64(json.GetFloat64(PayloadParamNameAmount)) // Get amount value
 
-	var amount [8]byte                                      // Initialize integer buffer
+	var amount [8]byte // Initialize integer buffer
+
 	binary.LittleEndian.PutUint64(amount[:], decodedAmount) // Write to buffer
 
 	err = payload.WriteByte(operation) // Write operation
@@ -322,9 +332,10 @@ func parseContract(data []byte) ([]byte, error) {
 		return nil, ErrNilField // Return nil field error
 	}
 
-	decodedGasLimit := uint64(json.GetUint64(PayloadParamNameGasLimit)) // Get uint64 gas limit value
+	decodedGasLimit := json.GetUint64(PayloadParamNameGasLimit) // Get uint64 gas limit value
 
-	var gasLimit [8]byte                                        // Initialize integer buffer
+	var gasLimit [8]byte // Initialize integer buffer
+
 	binary.LittleEndian.PutUint64(gasLimit[:], decodedGasLimit) // Write to buffer
 
 	_, err = payload.Write(gasLimit[:]) // Write gas limit
@@ -335,10 +346,11 @@ func parseContract(data []byte) ([]byte, error) {
 	var decodedGasDeposit uint64
 
 	if json.Exists(PayloadParamNameGasDeposit) {
-		decodedGasDeposit = uint64(json.GetUint64(PayloadParamNameGasDeposit)) // Get uiint64 gas deposit value
+		decodedGasDeposit = json.GetUint64(PayloadParamNameGasDeposit) // Get uiint64 gas deposit value
 	}
 
 	var gasDeposit [8]byte
+
 	binary.LittleEndian.PutUint64(gasDeposit[:], decodedGasDeposit) // Write to buffer
 
 	_, err = payload.Write(gasDeposit[:]) // Write gas deposit
@@ -351,7 +363,7 @@ func parseContract(data []byte) ([]byte, error) {
 
 		params := bytes.NewBuffer(nil) // Initialize payload buffer
 
-		for _, payloadValue := range json.GetArray("fn_payload") { // Iterate through payloads
+		for _, payloadValue := range json.GetArray("fn_payload") { // nolint:dupl
 			if !payloadValue.Exists("type") { // Check does not declare type
 				return nil, ErrNilField // Return nil field error
 			}
@@ -373,21 +385,21 @@ func parseContract(data []byte) ([]byte, error) {
 
 				params.Write(intBuf[:4]) // Write to buffer
 				params.Write(value)      // Write value
-			case "uint8", "uint16", "uint32", "uint64":
+			case uint8Str, uint16Str, uint32Str, uint64Str:
 				value := payloadValue.GetInt64("value") // Get value
 
 				switch payloadType { // Handle different int sizes
-				case "uint8":
+				case uint8Str:
 					params.WriteByte(byte(value)) // Write value
-				case "uint16":
+				case uint16Str:
 					binary.LittleEndian.PutUint16(intBuf[:2], uint16(value)) // Write to buffer
 
 					params.Write(intBuf[:2]) // Write value
-				case "uint32":
+				case uint32Str:
 					binary.LittleEndian.PutUint32(intBuf[:4], uint32(value)) // Write to buffer
 
 					params.Write(intBuf[:4]) // Write value
-				case "uint64":
+				case uint64Str:
 					binary.LittleEndian.PutUint64(intBuf[:8], uint64(value)) // Write to buffer
 
 					params.Write(intBuf[:8]) // Write value
@@ -404,7 +416,7 @@ func parseContract(data []byte) ([]byte, error) {
 			}
 		}
 
-		binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(params.Bytes()))) // Write length of function parameters to buffer
+		binary.LittleEndian.PutUint32(intBuf[:4], uint32(len(params.Bytes())))
 
 		payload.Write(intBuf[:4])     // Write length of function parameters
 		payload.Write(params.Bytes()) // Write parameters

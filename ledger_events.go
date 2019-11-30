@@ -23,6 +23,16 @@ type TxRejected struct {
 	Sync events
 */
 
+// event: pull_missing_tx
+type SyncPullMissingTx struct {
+	Count int64 `json:"count"`
+}
+
+func (s *SyncPullMissingTx) MarshalEvent(ev *zerolog.Event) {
+	ev.Int64("count", s.Count)
+	ev.Msg("Pulled missing transaction(s).")
+}
+
 // event: out_of_sync
 type SyncOutOfSync struct {
 	CurrentBlockIndex uint64 `json:"current_block_index"`
@@ -71,8 +81,8 @@ func (s *SyncApplying) UnmarshalValue(v *fastjson.Value) error {
 	return nil
 }
 
-// event: applied
-type SyncApplied struct {
+// event: apply
+type SyncApply struct {
 	NumChunks int `json:"num_chunks"`
 
 	OldBlockIndex uint64 `json:"old_block_index"`
@@ -85,9 +95,9 @@ type SyncApplied struct {
 	OldMerkleRoot MerkleNodeID `json:"old_merkle_root"`
 }
 
-var _ log.JSONObject = (*SyncApplied)(nil)
+var _ log.JSONObject = (*SyncApply)(nil)
 
-func (s *SyncApplied) MarshalEvent(ev *zerolog.Event) {
+func (s *SyncApply) MarshalEvent(ev *zerolog.Event) {
 	ev.Int("num_chunks", s.NumChunks)
 	ev.Uint64("old_block_index", s.OldBlockIndex)
 	ev.Uint64("new_block_index", s.NewBlockIndex)
@@ -98,7 +108,7 @@ func (s *SyncApplied) MarshalEvent(ev *zerolog.Event) {
 	ev.Msg("Successfully built a new state snapshot out of chunk(s) we have received from peers.")
 }
 
-func (s *SyncApplied) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
+func (s *SyncApply) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	return log.MarshalObjectBatch(arena,
 		"num_chunks", s.NumChunks,
 		"old_block_index", s.OldBlockIndex,
@@ -109,7 +119,7 @@ func (s *SyncApplied) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 		"old_merkle_root", s.OldMerkleRoot)
 }
 
-func (s *SyncApplied) UnmarshalValue(v *fastjson.Value) error {
+func (s *SyncApply) UnmarshalValue(v *fastjson.Value) error {
 	s.NumChunks = v.GetInt("num_chunks")
 	s.OldBlockIndex = v.GetUint64("old_block_index")
 	s.NewBlockIndex = v.GetUint64("new_block_index")

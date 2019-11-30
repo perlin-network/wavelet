@@ -78,9 +78,9 @@ func (r *rateLimiter) getLimiter(key string) *limiter {
 
 // At every interval, check the map for limiters that haven't been seen for
 // more than the expiry duration and delete the entries.
-func (r *rateLimiter) cleanup(interval time.Duration) (stop func()) {
+func (r *rateLimiter) cleanup(interval time.Duration) func() {
 	done := make(chan struct{})
-	stop = func() {
+	stop := func() {
 		close(done)
 	}
 
@@ -109,7 +109,7 @@ func (r *rateLimiter) cleanup(interval time.Duration) (stop func()) {
 		}
 	}()
 
-	return
+	return stop
 }
 
 // Apply rate limiting by key and IP

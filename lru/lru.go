@@ -56,6 +56,7 @@ func (l *LRU) Load(key interface{}) (interface{}, bool) {
 	}
 
 	l.access.MoveToFront(elem)
+
 	return elem.Value.(*objectInfo).obj, ok
 }
 

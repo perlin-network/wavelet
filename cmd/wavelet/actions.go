@@ -23,10 +23,13 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
+	"os"
+
+	"github.com/perlin-network/wavelet"
+	"gopkg.in/urfave/cli.v1"
 
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/wctl"
-	"github.com/urfave/cli"
 )
 
 func (cli *CLI) status(ctx *cli.Context) {
@@ -37,9 +40,8 @@ func (cli *CLI) status(ctx *cli.Context) {
 		return
 	}
 
-	a, _ := cli.client.GetAccount(l.PublicKey)
-	if a == nil {
-		a = &wctl.Account{}
+	a, err := cli.client.GetSelf(l.PublicKey)
+	if err != nil {
 	}
 
 	preferredID := "N/A"
@@ -63,10 +65,11 @@ func (cli *CLI) status(ctx *cli.Context) {
 		Uint64("nonce", a.Nonce).
 		Strs("peers", peers).
 		Uint64("num_tx", l.NumTx).
+		Uint64("num_missing_tx", l.NumMissingTx).
 		Uint64("num_tx_in_store", l.NumTxInStore).
 		Uint64("num_accounts_in_store", l.AccountsLen).
-		Uint64("client_nonce", cli.client.Nonce).
-		Uint64("client_block", cli.client.Block).
+		Uint64("client_nonce", cli.client.Nonce.Load()).
+		Uint64("client_block", cli.client.Block.Load()).
 		Str("sync_status", l.SyncStatus).
 		Str("preferred_block_id", preferredID).
 		Int("preferred_votes", l.PreferredVotes).
@@ -173,14 +176,14 @@ func (cli *CLI) call(ctx *cli.Context) {
 			cli.logger.Error().
 				Str("prefix", string(arg[0])).
 				Msgf("Invalid argument prefix specified")
+
 			return
 		}
 	}
 
 	tx, err := cli.client.Call(recipient, fn)
 	if err != nil {
-		cli.logger.Err(err).
-			Msg("Failed to call function.")
+		cli.logger.Err(err).Msg("Failed to call function.")
 		return
 	}
 
@@ -194,8 +197,7 @@ func (cli *CLI) find(ctx *cli.Context) {
 	cmd := ctx.Args()
 
 	if len(cmd) < 1 {
-		cli.logger.Error().
-			Msg("Invalid usage: find <tx-id | wallet-address>")
+		cli.logger.Error().Msg("Invalid usage: find <tx-id | wallet-address>")
 		return
 	}
 
@@ -227,7 +229,7 @@ func (cli *CLI) find(ctx *cli.Context) {
 		cli.logger.Info().
 			Hex("sender", tx.Sender[:]).
 			Uint64("nonce", tx.Nonce).
-			Uint8("tag", byte(tx.Tag)).
+			Uint8("tag", tx.Tag).
 			Msgf("Transaction: %s", cmd[0])
 	}
 }
@@ -247,13 +249,13 @@ func (cli *CLI) spawn(ctx *cli.Context) {
 			Err(err).
 			Str("path", cmd[0]).
 			Msg("Failed to find/load the smart contract code from the given path.")
+
 		return
 	}
 
 	tx, err := cli.client.Spawn(code, 100000000)
 	if err != nil {
-		cli.logger.Err(err).
-			Msg("Failed to spawn smart contract.")
+		cli.logger.Err(err).Msg("Failed to spawn smart contract.")
 		return
 	}
 
@@ -384,6 +386,7 @@ func (cli *CLI) connect(ctx *cli.Context) {
 		cli.logger.Error().
 			Err(err).
 			Msg("Failed to connect to address.")
+
 		return
 	}
 
@@ -403,6 +406,7 @@ func (cli *CLI) disconnect(ctx *cli.Context) {
 		cli.logger.Error().
 			Err(err).
 			Msg("Failed to disconnect to address.")
+
 		return
 	}
 
@@ -421,6 +425,7 @@ func (cli *CLI) restart(ctx *cli.Context) {
 		cli.logger.Error().
 			Err(err).
 			Msg("Failed to restart node.")
+
 		return
 	}
 
@@ -440,11 +445,45 @@ func (cli *CLI) updateParameters(ctx *cli.Context) {
 		conf.WithDownloadTxTimeout(ctx.Duration("download.tx.timeout")),
 		conf.WithCheckOutOfSyncTimeout(ctx.Duration("check.out.of.sync.timeout")),
 		conf.WithSyncChunkSize(ctx.Int("sync.chunk.size")),
-		conf.WithSyncIfBlockIndicesDifferBy(ctx.Uint64("sync.if.rounds.differ.by")),
+		conf.WithSyncIfBlockIndicesDifferBy(ctx.Uint64("sync.if.block.indices.differ.by")),
 		conf.WithPruningLimit(uint8(ctx.Uint64("pruning.limit"))),
 		conf.WithSecret(ctx.String("api.secret")),
+		conf.WithBloomFilterK(ctx.Uint("bloom.filter.k")),
+		conf.WithBloomFilterM(ctx.Uint("bloom.filter.m")),
+		conf.WithTXSyncChunkSize(ctx.Uint64("tx.sync.chunk.size")),
+		conf.WithTXSyncLimit(ctx.Uint64("tx.sync.limit")),
 	)
 
 	cli.logger.Info().Str("conf", conf.Stringify()).
 		Msg("Current configuration values")
+}
+
+func (cli *CLI) dump(ctx *cli.Context) {
+	if cli.client.Server == nil {
+		cli.logger.Error().
+			Msg("Cannot dump remote server.")
+		return
+	}
+
+	var cmd = ctx.Args()
+
+	if len(cmd) < 1 {
+		cli.logger.Error().
+			Msg("Invalid usage: dump <path-to-directory>")
+		return
+	}
+
+	dir := cmd[0]
+
+	dumpContract := ctx.Bool("c")
+
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		cli.logger.Info().Msg("Writing into existing directory.")
+	}
+
+	err := wavelet.Dump(cli.client.Server.Ledger.Snapshot(), dir, dumpContract, false)
+	if err != nil {
+		cli.logger.Error().Err(err).Msg("Failed to dump states.")
+		return
+	}
 }

@@ -17,13 +17,17 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package store
+// +build !integration,unit
+
+package store // nolint:dupl
 
 import (
-	"github.com/stretchr/testify/assert"
-	"math/rand"
+	"crypto/rand"
+	"fmt"
 	"os"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func BenchmarkLevelDB(b *testing.B) {
@@ -34,8 +38,10 @@ func BenchmarkLevelDB(b *testing.B) {
 
 	db, err := NewLevelDB(path)
 	assert.NoError(b, err)
-	defer os.RemoveAll(path)
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+		_ = os.RemoveAll(path)
+	}()
 
 	b.StartTimer()
 	defer b.StopTimer()
@@ -59,14 +65,16 @@ func BenchmarkLevelDB(b *testing.B) {
 	}
 }
 
-func TestLevelDBExistence(t *testing.T) {
+func TestLevelDB_Existence(t *testing.T) {
 	path := "level"
 	_ = os.RemoveAll(path)
 
 	db, err := NewLevelDB(path)
 	assert.NoError(t, err)
-	defer os.RemoveAll(path)
-	defer db.Close()
+	defer func() {
+		_ = db.Close()
+		_ = os.RemoveAll(path)
+	}()
 
 	_, err = db.Get([]byte("not_exist"))
 	assert.Error(t, err)
@@ -85,15 +93,17 @@ func TestLevelDB(t *testing.T) {
 
 	db, err := NewLevelDB(path)
 	assert.NoError(t, err)
-	defer os.RemoveAll(path)
+	defer func() {
+		_ = os.RemoveAll(path)
+	}()
 
 	err = db.Put([]byte("exist"), []byte("value"))
 	assert.NoError(t, err)
 
 	wb := db.NewWriteBatch()
-	wb.Put([]byte("key_batch1"), []byte("val_batch1"))
-	wb.Put([]byte("key_batch2"), []byte("val_batch2"))
-	wb.Put([]byte("key_batch3"), []byte("val_batch2"))
+	assert.NoError(t, wb.Put([]byte("key_batch1"), []byte("val_batch1")))
+	assert.NoError(t, wb.Put([]byte("key_batch2"), []byte("val_batch2")))
+	assert.NoError(t, wb.Put([]byte("key_batch3"), []byte("val_batch2")))
 	assert.NoError(t, db.CommitWriteBatch(wb))
 
 	assert.NoError(t, db.Close())
@@ -115,4 +125,43 @@ func TestLevelDB(t *testing.T) {
 
 	_, err = db2.Get([]byte("exist"))
 	assert.Error(t, err)
+}
+
+func TestLevelDB_WriteBatch(t *testing.T) {
+	path := "bbolt"
+	_ = os.RemoveAll(path)
+
+	db, err := NewLevelDB(path)
+	assert.NoError(t, err)
+	defer func() {
+		_ = os.RemoveAll(path)
+	}()
+
+	wb := db.NewWriteBatch()
+	for i := 0; i < 100000; i++ {
+		assert.NoError(t, wb.Put([]byte(fmt.Sprintf("key_batch%d", i+1)), []byte(fmt.Sprintf("val_batch%d", i+1))))
+	}
+
+	assert.NoError(t, db.Close())
+
+	db2, err := NewLevelDB(path)
+	assert.NoError(t, err)
+
+	_, err = db2.Get([]byte("key_batch100000"))
+	assert.EqualError(t, err, "leveldb: not found")
+
+	wb = db2.NewWriteBatch()
+	for i := 0; i < 100000; i++ {
+		assert.NoError(t, wb.Put([]byte(fmt.Sprintf("key_batch%d", i+1)), []byte(fmt.Sprintf("val_batch%d", i+1))))
+	}
+
+	assert.NoError(t, db2.CommitWriteBatch(wb))
+	assert.NoError(t, db2.Close())
+
+	db3, err := NewLevelDB(path)
+	assert.NoError(t, err)
+
+	v, err := db3.Get([]byte("key_batch100000"))
+	assert.NoError(t, err)
+	assert.EqualValues(t, []byte("val_batch100000"), v)
 }

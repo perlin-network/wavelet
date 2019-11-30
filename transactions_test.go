@@ -1,19 +1,24 @@
+// +build !integration,unit
+
 package wavelet
 
 import (
+	"crypto/rand"
+	"math"
+	"sort"
+	"testing"
+	"testing/quick"
+
 	"github.com/google/btree"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
-	"math"
-	"math/rand"
-	"sort"
-	"testing"
-	"testing/quick"
 )
 
 func TestTransactions(t *testing.T) {
+	t.Parallel()
+
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
@@ -30,12 +35,12 @@ func TestTransactions(t *testing.T) {
 
 		// Check that all transactions were successfully stored in the manager.
 
-		manager.BatchAdd(block, transactions...)
+		manager.BatchAdd(block, transactions, true)
 
 		// Attempt to re-add all transactions that were already stored in the manager.
 
 		for _, tx := range transactions {
-			manager.Add(block, tx)
+			manager.Add(block, tx, true)
 		}
 
 		if !assert.Len(t, manager.buffer, len(transactions)) || !assert.Equal(t, manager.Len(), len(transactions)) {
@@ -73,11 +78,7 @@ func TestTransactions(t *testing.T) {
 		manager.Iterate(func(tx *Transaction) bool {
 			i++
 
-			if i == 2 {
-				return false
-			}
-
-			return true
+			return i != 2
 		})
 
 		// Check that the mempool index is sorted properly.
@@ -99,6 +100,8 @@ func TestTransactions(t *testing.T) {
 }
 
 func TestTransactionsMarkMissing(t *testing.T) {
+	t.Parallel()
+
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
@@ -122,8 +125,9 @@ func TestTransactionsMarkMissing(t *testing.T) {
 			transactions = append(transactions, tx)
 		}
 
-		block := NewBlock(0, ZeroMerkleNodeID, ids...)
-		manager.BatchMarkMissing(block.Transactions...)
+		for _, id := range ids {
+			manager.MarkMissing(id)
+		}
 
 		// Assert the correct number of transactions are marked as missing,
 		if !assert.Len(t, manager.missing, cap(transactions)+1) || !assert.Len(t, manager.MissingIDs(), cap(transactions)+1) {
@@ -132,8 +136,8 @@ func TestTransactionsMarkMissing(t *testing.T) {
 
 		// Adding all the transactions into the manager should make len(missing) = 0.
 
-		manager.Add(ZeroBlockID, tx)
-		manager.BatchAdd(ZeroBlockID, transactions...)
+		manager.Add(ZeroBlockID, tx, true)
+		manager.BatchAdd(ZeroBlockID, transactions, true)
 
 		if !assert.Len(t, manager.missing, 0) || !assert.Len(t, manager.MissingIDs(), 0) {
 			return false
@@ -146,6 +150,8 @@ func TestTransactionsMarkMissing(t *testing.T) {
 }
 
 func TestTransactionsReshuffleIndices(t *testing.T) {
+	t.Parallel()
+
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
@@ -159,27 +165,28 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 		// Generate and add a bunch of transactions to the manager.
 
 		transactions := make([]Transaction, 0, numTransactions)
-		ids := make([]TransactionID, 0, cap(transactions))
 
 		for i := 0; i < cap(transactions); i++ {
 			tx := NewTransaction(keys, uint64(i+1), 0, sys.TagTransfer, nil)
 
-			ids = append(ids, tx.ID)
 			transactions = append(transactions, tx)
 		}
 
-		manager.BatchAdd(prev, transactions...)
+		manager.BatchAdd(prev, transactions, true)
 
 		// Generate a unique next-block ID to shuffle with.
 
-		next := NewBlock(1, ZeroMerkleNodeID)
+		next, err := NewBlock(1, ZeroMerkleNodeID)
+		if !assert.NoError(t, err) {
+			return false
+		}
 
 		for {
 			if next.ID != prev {
 				break
 			}
 
-			if _, err := rand.Read(next.ID[:]); !assert.NoError(t, err) {
+			if _, err := rand.Read(next.ID[:]); !assert.NoError(t, err) { // nolint:gosec
 				return false
 			}
 		}
@@ -198,7 +205,7 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 
 		// Shuffle the manager, and assert no transactions have been pruned.
 
-		if !assert.Equal(t, manager.ReshufflePending(next), 0) {
+		if !assert.Len(t, manager.ReshufflePending(next), 0) {
 			return false
 		}
 
@@ -214,17 +221,15 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 			return true
 		})
 
-		if !assert.Equal(t, manager.height, next.Index) {
-			return false
-		}
-
-		return true
+		return assert.Equal(t, manager.height, next.Index)
 	}
 
 	assert.NoError(t, quick.Check(fn, nil))
 }
 
-func TestTransactionsPruneOnReshuffle(t *testing.T) {
+func TestTransactionsPruneOnReshuffle(t *testing.T) { // nolint:gocognit
+	t.Parallel()
+
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
@@ -249,7 +254,6 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) {
 		toNotBePrunedIDs := make([]TransactionID, 0)
 
 		toBePrunedTransactions := make([]Transaction, 0)
-		toBePrunedIDs := make([]TransactionID, 0)
 
 		for i := 0; i < int(numProposed); i++ {
 			if i%2 == 0 {
@@ -260,23 +264,20 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) {
 			} else {
 				tx := NewTransaction(keys, uint64(i+1), 0, sys.TagTransfer, nil)
 
-				toBePrunedIDs = append(toBePrunedIDs, tx.ID)
 				toBePrunedTransactions = append(toBePrunedTransactions, tx)
 			}
 		}
 
-		manager.BatchAdd(prev, toNotBePrunedTransactions...)
-		manager.BatchAdd(prev, toBePrunedTransactions...)
+		manager.BatchAdd(prev, toNotBePrunedTransactions, true)
+		manager.BatchAdd(prev, toBePrunedTransactions, true)
 
 		// Generate and add a bunch of finalized transactions to the manager.
 
 		finalizedTransactions := make([]Transaction, 0)
-		finalizedIDs := make([]TransactionID, 0)
 
 		for i := 0; i < int(numFinalized); i++ {
 			tx := NewTransaction(keys, uint64(i+1), 0, sys.TagStake, nil)
 
-			finalizedIDs = append(finalizedIDs, tx.ID)
 			finalizedTransactions = append(finalizedTransactions, tx)
 
 			manager.buffer[tx.ID] = &tx // Do not index the transaction into the mempool index.
@@ -291,38 +292,46 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) {
 			missingIDs = append(missingIDs, tx.ID)
 		}
 
-		manager.BatchMarkMissing(missingIDs...)
+		for _, id := range missingIDs {
+			manager.MarkMissing(id)
+		}
 
 		// Generate a unique next-block ID to shuffle with that is just 1 block index before the pruning limit.
 
-		next := NewBlock(uint64(conf.GetPruningLimit())-1, ZeroMerkleNodeID)
+		next, err := NewBlock(uint64(conf.GetPruningLimit())-1, ZeroMerkleNodeID)
+		if !assert.NoError(t, err) {
+			return false
+		}
 
 		for {
 			if next.ID != prev {
 				break
 			}
 
-			if _, err := rand.Read(next.ID[:]); !assert.NoError(t, err) {
+			if _, err := rand.Read(next.ID[:]); !assert.NoError(t, err) { // nolint:gosec
 				return false
 			}
 		}
 
 		// Shuffle the manager, and assert that no transactions have been pruned.
 
-		if !assert.Zero(t, manager.ReshufflePending(next)) {
+		if !assert.Len(t, manager.ReshufflePending(next), 0) {
 			return false
 		}
 
 		// Generate a unique next-block ID to shuffle with that is exactly at the pruning limit.
 
-		next = NewBlock(uint64(conf.GetPruningLimit()), ZeroMerkleNodeID)
+		next, err = NewBlock(uint64(conf.GetPruningLimit()), ZeroMerkleNodeID)
+		if !assert.NoError(t, err) {
+			return false
+		}
 
 		for {
 			if next.ID != prev {
 				break
 			}
 
-			if _, err := rand.Read(next.ID[:]); !assert.NoError(t, err) {
+			if _, err := rand.Read(next.ID[:]); !assert.NoError(t, err) { // nolint:gosec
 				return false
 			}
 		}
@@ -335,7 +344,7 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) {
 
 		// Shuffle the manager, and assert that the correct number of transactions have been pruned.
 
-		if !assert.Equal(t, manager.ReshufflePending(next), len(toBePrunedTransactions)+len(finalizedTransactions)) {
+		if !assert.Equal(t, len(manager.ReshufflePending(next)), len(toBePrunedTransactions)+len(finalizedTransactions)) {
 			return false
 		}
 
@@ -364,12 +373,8 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) {
 		// Check that stale transactions cannot be added to the manager.
 
 		before := len(manager.buffer)
-		manager.Add(ZeroBlockID, NewTransaction(keys, math.MaxUint64, 0, sys.TagStake, nil))
-		if !assert.Len(t, manager.buffer, before) {
-			return false
-		}
-
-		return true
+		manager.Add(ZeroBlockID, NewTransaction(keys, math.MaxUint64, 0, sys.TagStake, nil), true)
+		return assert.Len(t, manager.buffer, before)
 	}
 
 	assert.NoError(t, quick.Check(fn, nil))

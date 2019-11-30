@@ -3,13 +3,12 @@ package wctl
 import (
 	"encoding/binary"
 	"encoding/hex"
-	"errors"
 	"net/url"
 	"strconv"
-	"sync/atomic"
 
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/api"
+	"github.com/pkg/errors"
 )
 
 var (
@@ -67,8 +66,8 @@ func (c *Client) GetTransaction(txID [32]byte) (*api.Transaction, error) {
 func (c *Client) SendTransaction(tag byte, payload []byte) (*api.TxResponse, error) {
 	var res api.TxResponse
 
-	nonce := atomic.AddUint64(&c.Nonce, 1)
-	block := atomic.LoadUint64(&c.Block)
+	nonce := c.Nonce.Add(1)
+	block := c.Block.Load()
 
 	var nonceBuf [8]byte
 	binary.BigEndian.PutUint64(nonceBuf[:], nonce)
@@ -99,5 +98,10 @@ func (c *Client) SendTransaction(tag byte, payload []byte) (*api.TxResponse, err
 
 // SendTransfer sends a wavelet.Transfer instead of a Payload.
 func (c *Client) sendTransfer(tag byte, transfer Marshalable) (*api.TxResponse, error) {
-	return c.SendTransaction(tag, transfer.Marshal())
+	b, err := transfer.Marshal()
+	if err != nil {
+		return nil, errors.Wrap(err, "Failed to marshal")
+	}
+
+	return c.SendTransaction(tag, b)
 }

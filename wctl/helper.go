@@ -9,17 +9,9 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-type MarshalableJSON interface {
-	log.MarshalableArena
-}
-
-type UnmarshalableJSON interface {
-	log.UnmarshalableValue
-}
-
 // RequestJSON will make a request to a given path, with a given body and
 // return the JSON bytes result into `out` to unmarshal.
-func (c *Client) RequestJSON(path, method string, body MarshalableJSON, out UnmarshalableJSON) error {
+func (c *Client) RequestJSON(path, method string, body log.MarshalableArena, out log.UnmarshalableValue) error {
 	var bytes []byte
 
 	if body != nil {

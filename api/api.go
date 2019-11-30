@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/buaazp/fasthttprouter"
@@ -26,19 +27,19 @@ import (
 
 type Gateway struct {
 	*Config
-	addr    string
-	tls     *tls.Config
-	network *skademlia.Protocol
+	addr string
+	tls  *tls.Config
 
 	router    *fasthttprouter.Router
 	server    *fasthttp.Server
 	serverTLS *fasthttp.Server
 
-	sinks         map[string]*sink
+	sinks     map[string]*sink
+	sinksLock sync.RWMutex
+
 	enableTimeout bool
 
 	rateLimiter *rateLimiter
-	stopLimiter func()
 
 	parserPool *fastjson.ParserPool
 	arenaPool  *fastjson.ArenaPool
@@ -197,10 +198,8 @@ func New(opts *Config) *Gateway {
 
 // Start listens to the given port and TLS if given. It does not block.
 func (g *Gateway) Start() error {
-	logger := log.Node()
-
 	// Start the cleanup daemon
-	g.stopLimiter = g.rateLimiter.cleanup(10 * time.Minute)
+	stop := g.rateLimiter.cleanup(10 * time.Minute)
 
 	// Create a new HTTP listener at arbitrary port given in (*Config).Port
 	httpLn, err := net.Listen("tcp4", g.addr)
@@ -211,15 +210,17 @@ func (g *Gateway) Start() error {
 	// Create a new server
 	g.server = &fasthttp.Server{Handler: g.router.Handler}
 	go func() {
+		defer stop()
+
 		// Listen to the listener in the background
 		if err := g.server.Serve(httpLn); err != nil {
-			logger.Fatal().Err(err).
+			log.Node().Fatal().Err(err).
 				Str("addr", g.addr).
 				Msg("Failed to start the HTTP server.")
 		}
 	}()
 
-	logger.Info().
+	log.Node().Info().
 		Str("addr", g.addr).
 		Msg("Started the HTTP API server.")
 
@@ -233,13 +234,13 @@ func (g *Gateway) Start() error {
 		go func() {
 			// Listen to the wrapped TLS listener
 			if err := g.serverTLS.Serve(tls.NewListener(tlsLn, g.tls)); err != nil {
-				logger.Fatal().Err(err).
+				log.Node().Fatal().Err(err).
 					Str("addr", g.addr).
 					Msg("Failed to start the HTTP server.")
 			}
 		}()
 
-		logger.Info().
+		log.Node().Info().
 			Str("addr", ":443").
 			Msg("Started the HTTPS/TLS API server.")
 	}
@@ -247,16 +248,20 @@ func (g *Gateway) Start() error {
 	return nil
 }
 
-func (g *Gateway) Shutdown() error {
-	defer g.stopLimiter()
-
+func (g *Gateway) Shutdown() {
 	if g.serverTLS != nil {
 		if err := g.serverTLS.Shutdown(); err != nil {
-			return err
+			log.Node().Error().
+				Err(err).
+				Msg("Failed to stop the HTTPS/TLS server")
 		}
 	}
 
-	return g.server.Shutdown()
+	if err := g.server.Shutdown(); err != nil {
+		log.Node().Error().
+			Err(err).
+			Msg("Failed to stop the HTTP server")
+	}
 }
 
 // helper fn to add middlewares
@@ -342,11 +347,10 @@ func (g *Gateway) registerWebsocketSink(rawURL string, factory *debounce.Factory
 	}
 
 	sink := &sink{
-		filters:   filters,
-		broadcast: make(chan broadcastItem),
-		join:      make(chan *client),
-		leave:     make(chan *client),
-		clients:   make(map[*client]struct{}),
+		ops:     make(chan func(map[*client]struct{})),
+		filters: filters,
+		join:    make(chan *client),
+		leave:   make(chan *client),
 	}
 
 	if factory != nil {
@@ -355,7 +359,9 @@ func (g *Gateway) registerWebsocketSink(rawURL string, factory *debounce.Factory
 
 	go sink.run()
 
+	g.sinksLock.Lock()
 	g.sinks[u.Hostname()] = sink
+	g.sinksLock.Unlock()
 
 	return sink
 }
@@ -382,7 +388,7 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 	cpy := make([]byte, len(buf))
 	copy(cpy, buf)
 
-	sink.broadcast <- broadcastItem{value: v, buf: cpy}
+	sink.broadcast(broadcastItem{value: v, buf: cpy})
 
 	return len(buf), nil
 }

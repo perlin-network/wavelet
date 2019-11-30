@@ -16,7 +16,7 @@ type diffQueue struct {
 	OnDequeue func(*node) error
 }
 
-func newDiffQueue(kv store.KV, prefix []byte, viewID uint64) *diffQueue {
+func newDiffQueue(kv store.KV, prefix []byte) *diffQueue {
 	return &diffQueue{
 		prefix: prefix,
 		kv:     kv,
@@ -42,5 +42,6 @@ func (h *diffQueue) Dequeue() (*node, error) {
 	if h.OnDequeue != nil {
 		err = h.OnDequeue(node)
 	}
+
 	return node, err
 }

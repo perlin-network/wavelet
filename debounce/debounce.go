@@ -172,10 +172,13 @@ func (d *Limiter) Add(oss ...PayloadOption) {
 		return
 	}
 
-	var buffer [][]byte
-	var action func([][]byte)
+	var (
+		buffer [][]byte
+		action func([][]byte)
+	)
 
 	d.mu.Lock()
+
 	if d.bufferOffset >= d.bufferLimit {
 		action = d.action
 		buffer = d.buffer

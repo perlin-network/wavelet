@@ -20,7 +20,9 @@
 package wavelet
 
 import (
+	"bytes"
 	"context"
+	cuckoo "github.com/seiflotfy/cuckoofilter"
 	"io"
 
 	"github.com/perlin-network/wavelet/conf"
@@ -38,23 +40,45 @@ func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse
 
 	latestBlock := p.ledger.blocks.Latest()
 
+	var (
+		block *Block
+		err   error
+	)
+
 	// Return preferred block if peer is finalizing on the same block
 	if latestBlock.Index+1 == req.BlockIndex {
 		preferred := p.ledger.finalizer.Preferred()
 		if preferred != nil {
-			res.Block = preferred.Value().(*Block).Marshal()
+			block = preferred.Value().(*Block)
 		}
-
-		return res, nil
 	}
 
 	// Otherwise, return the finalized block
 	if latestBlock.Index+1 > req.BlockIndex {
-		block, err := p.ledger.blocks.GetByIndex(req.BlockIndex)
-		if err == nil {
-			res.Block = block.Marshal()
+		block, err = p.ledger.blocks.GetByIndex(req.BlockIndex)
+		if err != nil {
+			return nil, err
 		}
 	}
+
+	if block == nil {
+		return res, nil
+	}
+
+	// Check cache block ID
+	if req.CacheBlockId != nil {
+		if bytes.Equal(block.ID[:], req.CacheBlockId) {
+			res.CacheValid = true
+			return res, nil
+		}
+	}
+
+	payload, err := block.Marshal()
+	if err != nil {
+		return nil, err
+	}
+
+	res.Block = payload
 
 	return res, nil
 }
@@ -66,9 +90,15 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 	}
 
 	res := &SyncResponse{}
-	header := &SyncInfo{Block: p.ledger.blocks.Latest().Marshal()}
 
+	block, err := p.ledger.blocks.Latest().Marshal()
+	if err != nil {
+		return err
+	}
+
+	header := &SyncInfo{Block: block}
 	diffBuffer := p.ledger.fileBuffers.GetUnbounded()
+
 	defer p.ledger.fileBuffers.Put(diffBuffer)
 
 	if err := p.ledger.accounts.Snapshot().DumpDiff(req.GetBlockId(), diffBuffer); err != nil {
@@ -79,6 +109,7 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 	if err != nil {
 		return err
 	}
+
 	defer p.ledger.fileBuffers.Put(chunksBuffer)
 
 	if _, err := io.Copy(chunksBuffer, diffBuffer); err != nil {
@@ -95,9 +126,11 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 	// Chunk dumped diff
 	syncChunkSize := conf.GetSyncChunkSize()
 	chunkBuf := make([]byte, syncChunkSize)
+
 	var i int
+
 	for {
-		n, err := chunksBuffer.ReadAt(chunkBuf[:], int64(i*syncChunkSize))
+		n, err := chunksBuffer.ReadAt(chunkBuf, int64(i*syncChunkSize))
 		if n > 0 {
 			chunk := make([]byte, n)
 			copy(chunk, chunkBuf[:n])
@@ -131,11 +164,13 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 		}
 
 		var checksum [blake2b.Size256]byte
+
 		copy(checksum[:], req.GetChecksum())
 
 		info, ok := chunks[checksum]
 		if !ok {
 			res.Data.(*SyncResponse_Chunk).Chunk = nil
+
 			if err = stream.Send(res); err != nil {
 				return err
 			}
@@ -145,9 +180,10 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 			return err
 		}
 
-		log.EventTo(log.Sync("provide_chunk").Info(), &SyncProvideChunk{
-			RequestedHash: req.GetChecksum(),
-		})
+		logger := log.Sync("provide_chunk")
+		logger.Info().
+			Hex("requested_hash", req.GetChecksum()).
+			Msg("Responded to sync chunk request.")
 
 		res.Data.(*SyncResponse_Chunk).Chunk = chunkBuf[:info.Size]
 
@@ -163,30 +199,100 @@ func (p *Protocol) CheckOutOfSync(ctx context.Context, req *OutOfSyncRequest) (*
 	}, nil
 }
 
-func (p *Protocol) PullTransactions(ctx context.Context, req *TransactionPullRequest) (*TransactionPullResponse, error) {
-	res := &TransactionPullResponse{Transactions: [][]byte{}}
-
-	// Build a lookup table from the list of transaction IDs
-	var id TransactionID
-	lookup := map[TransactionID]struct{}{}
-	for _, i := range req.TransactionIds {
-		copy(id[:], i)
-		lookup[id] = struct{}{}
+func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error {
+	req, err := stream.Recv()
+	if err != nil {
+		return err
 	}
 
-	// Find missing transactions
+	cf, err := cuckoo.Decode(req.GetFilter())
+	if err != nil {
+		return err
+	}
+
+	var toReturn [][]byte
+
 	p.ledger.transactions.Iterate(func(tx *Transaction) bool {
-		if _, exists := lookup[tx.ID]; !exists {
-			res.Transactions = append(res.Transactions, tx.Marshal())
+		if exists := cf.Lookup(tx.ID[:]); !exists {
+			toReturn = append(toReturn, tx.Marshal())
 		}
 
 		return true
 	})
 
+	res := &TransactionsSyncResponse{
+		Data: &TransactionsSyncResponse_TransactionsNum{
+			TransactionsNum: uint64(len(toReturn)),
+		},
+	}
+
+	if err := stream.Send(res); err != nil {
+		return err
+	}
+
+	pointer := 0
+
+	for {
+		req, err := stream.Recv()
+		if err != nil {
+			return err
+		}
+
+		chunkSize := int(req.GetChunkSize())
+		if chunkSize > len(toReturn) {
+			chunkSize = len(toReturn)
+		}
+
+		res := &TransactionsSyncResponse{
+			Data: &TransactionsSyncResponse_Transactions{
+				Transactions: &TransactionsSyncPart{
+					Transactions: toReturn[pointer : pointer+chunkSize],
+				},
+			},
+		}
+
+		if err := stream.Send(res); err != nil {
+			return err
+		}
+
+		pointer += chunkSize
+		if pointer >= len(toReturn) {
+			break
+		}
+	}
+
+	if pointer > 0 {
+		logger := log.Sync("sync_tx")
+		logger.Debug().
+			Int("num_transactions", len(toReturn)).
+			Msg("Provided transactions for a sync request.")
+	}
+
+	return nil
+}
+
+func (p *Protocol) PullTransactions(
+	ctx context.Context, req *TransactionPullRequest) (*TransactionPullResponse, error,
+) {
+	res := &TransactionPullResponse{
+		Transactions: make([][]byte, 0, len(req.TransactionIds)),
+	}
+
+	var txID TransactionID
+
+	for _, id := range req.TransactionIds {
+		copy(txID[:], id)
+
+		if tx := p.ledger.transactions.Find(txID); tx != nil {
+			res.Transactions = append(res.Transactions, tx.Marshal())
+		}
+	}
+
 	if len(res.Transactions) > 0 {
-		log.EventTo(log.Sync("pull_tx").Info(), &SyncPullTransaction{
-			NumTransactions: len(res.Transactions),
-		})
+		logger := log.Sync("pull_missing_tx")
+		logger.Debug().
+			Int("num_transactions", len(res.Transactions)).
+			Msg("Provided transactions for a pull request.")
 	}
 
 	return res, nil

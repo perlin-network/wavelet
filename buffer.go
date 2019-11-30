@@ -11,6 +11,7 @@ type fileBufferPool struct {
 
 func newFileBufferPool(fileSize int64, dir string) *fileBufferPool {
 	filePool := buffer.NewFilePool(fileSize, dir)
+
 	return &fileBufferPool{
 		fileSize: fileSize,
 		filePool: filePool,
@@ -18,27 +19,28 @@ func newFileBufferPool(fileSize int64, dir string) *fileBufferPool {
 }
 
 // GetUnbounded returns an unbounded buffer.
-func (b *fileBufferPool) GetUnbounded() buffer.Buffer {
-	return buffer.NewPartition(b.filePool)
+func (fbp *fileBufferPool) GetUnbounded() buffer.Buffer {
+	return buffer.NewPartition(fbp.filePool)
 }
 
 // GetBounded creates a bounded buffer of the given size.
-func (b *fileBufferPool) GetBounded(size int64) (buffer.BufferAt, error) {
-	buffers := []buffer.BufferAt{}
+func (fbp *fileBufferPool) GetBounded(size int64) (buffer.BufferAt, error) {
+	var buffers []buffer.BufferAt
 
-	filesCount := size / b.fileSize
-	if size%b.fileSize > 0 {
+	filesCount := size / fbp.fileSize
+
+	if size%fbp.fileSize > 0 {
 		filesCount++
 	}
 
 	cleanup := func() {
 		for _, f := range buffers {
-			b.filePool.Put(f)
+			_ = fbp.filePool.Put(f)
 		}
 	}
 
 	for i := 0; i < int(filesCount); i++ {
-		file, err := b.filePool.Get()
+		file, err := fbp.filePool.Get()
 		if err != nil {
 			cleanup()
 			return nil, err
@@ -53,11 +55,11 @@ func (b *fileBufferPool) GetBounded(size int64) (buffer.BufferAt, error) {
 	}, nil
 }
 
-func (b *fileBufferPool) Put(buf buffer.Buffer) {
-	buffer, ok := buf.(*boundedFileBuffer)
+func (fbp *fileBufferPool) Put(buf buffer.Buffer) {
+	b, ok := buf.(*boundedFileBuffer)
 	if ok {
-		for _, f := range buffer.Files {
-			b.filePool.Put(f)
+		for _, f := range b.Files {
+			_ = fbp.filePool.Put(f)
 		}
 	}
 

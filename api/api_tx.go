@@ -41,11 +41,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	)
 
 	// TODO(kenta): check signature and nonce
-
-	if err := g.Ledger.AddTransaction(tx); err != nil {
-		g.renderError(ctx, ErrInternal(errors.Wrap(err, "error adding your transaction to graph")))
-		return
-	}
+	g.Ledger.AddTransaction(true, tx)
 
 	g.render(ctx, &TxResponse{
 		ID: tx.ID,
