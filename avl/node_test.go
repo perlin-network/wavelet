@@ -1,4 +1,4 @@
-// +build !integration,unit
+// +build unit
 
 package avl
 
