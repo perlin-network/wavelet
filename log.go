@@ -33,10 +33,12 @@ import (
 // CollapseResultsLogger is used to write CollapseResults to the logger's writers.
 //
 // It writes directly into the writers without going through zerolog.
-// The reason is that, zerolog will write into all the writers, even the writer's module does not match with the message's module.
+// The reason is that, zerolog will write into all the writers, even the writer's
+// module does not match with the message's module.
 //
-// It also has a buffer to prevent blocking, as writing all the transactions in a collapse result may take sometime.
-// A collapse result may contain tens of thousands of transactions.
+// It also has a buffer to prevent blocking, as writing all the transactions in
+// a collapse result may take sometime. A collapse result may contain
+// tens of thousands of transactions.
 type CollapseResultsLogger struct {
 	arena      *fastjson.Arena
 	timeLayout string // "2006-01-02T15:04:05Z07:00"
@@ -71,6 +73,7 @@ func NewCollapseResultsLogger() *CollapseResultsLogger {
 	}
 
 	c.stopWg.Add(1)
+
 	go func() {
 		defer c.stopWg.Done()
 
@@ -137,7 +140,9 @@ func (c *CollapseResultsLogger) Log(results *collapseResults) {
 	c.flush()
 }
 
-func (c *CollapseResultsLogger) addTx(mod, event []byte, timestamp time.Time, tag int, txID []byte, sender []byte, logError error) {
+func (c *CollapseResultsLogger) addTx(mod, event []byte,
+	timestamp time.Time, tag int,
+	txID []byte, sender []byte, logError error) {
 	o := c.arena.NewObject()
 
 	o.Set("mod", c.arena.NewStringBytes(mod))
@@ -154,13 +159,16 @@ func (c *CollapseResultsLogger) addTx(mod, event []byte, timestamp time.Time, ta
 
 	// The length of the JSON is 227, not including the error field.
 	buf := make([]byte, 0, 256)
+
 	c.bufBatch = append(c.bufBatch, logBuffer{module: mod, message: o.MarshalTo(buf)})
 
 	c.bufTime = c.bufTime[:0]
 	c.arena.Reset()
 }
 
-func (c *CollapseResultsLogger) addNonce(mod, event []byte, timestamp time.Time, accountID []byte, nonce []byte, msg []byte) {
+func (c *CollapseResultsLogger) addNonce(mod, event []byte,
+	timestamp time.Time,
+	accountID []byte, nonce []byte, msg []byte) {
 	o := c.arena.NewObject()
 
 	o.Set("mod", c.arena.NewStringBytes(mod))
@@ -173,6 +181,7 @@ func (c *CollapseResultsLogger) addNonce(mod, event []byte, timestamp time.Time,
 
 	// The max length of the JSON is 229.
 	buf := make([]byte, 0, 256)
+
 	c.bufBatch = append(c.bufBatch, logBuffer{module: mod, message: o.MarshalTo(buf)})
 
 	c.bufTime = c.bufTime[:0]

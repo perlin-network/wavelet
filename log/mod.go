@@ -97,11 +97,13 @@ func SetLevel(ls string) {
 
 func SetWriter(key string, writer io.Writer) {
 	var modules []string
+
 	if cw, ok := writer.(ConsoleWriter); ok {
 		for k := range cw.FilteredModules {
 			modules = append(modules, k)
 		}
 	}
+
 	output.SetWriter(key, writer, modules...)
 }
 

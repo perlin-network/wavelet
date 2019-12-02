@@ -59,6 +59,7 @@ func (t *multiWriter) Write(p []byte) (n int, err error) {
 			return
 		}
 	}
+
 	return len(p), nil
 }
 
@@ -79,6 +80,7 @@ func (t *multiWriter) WriteFilter(p []byte, module string) (n int, err error) {
 			return
 		}
 	}
+
 	return len(p), nil
 }
 
