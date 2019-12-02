@@ -155,7 +155,13 @@ func (n *TestNetwork) WaitForBlock(t testing.TB, block uint64) {
 		close(done)
 	}()
 
-	<-done
+	select {
+	case <-time.After(time.Second * 10):
+		t.Fatal("timed out waiting for block")
+
+	case <-done:
+		return
+	}
 }
 
 func (n *TestNetwork) WaitForConsensus(t testing.TB) {
@@ -185,9 +191,17 @@ func (n *TestNetwork) WaitForConsensus(t testing.TB) {
 		close(done)
 	}()
 
-	<-done
-	close(stop)
-	return
+	timer := time.NewTimer(10 * time.Second)
+	select {
+	case <-done:
+		close(stop)
+		return
+
+	case <-timer.C:
+		close(stop)
+		<-done
+		t.Fatal("consensus took too long")
+	}
 }
 
 func (n *TestNetwork) WaitForSync(t testing.TB) {
@@ -206,8 +220,13 @@ func (n *TestNetwork) WaitForSync(t testing.TB) {
 		close(done)
 	}()
 
-	<-done
-	return
+	timer := time.NewTimer(30 * time.Second)
+	select {
+	case <-done:
+		return
+	case <-timer.C:
+		t.Fatal("timeout while waiting for all nodes to be synced")
+	}
 }
 
 func (n *TestNetwork) WaitUntilSync(t testing.TB) {
@@ -402,10 +421,15 @@ func (l *TestLedger) WaitForConsensus() <-chan bool {
 	ch := make(chan bool)
 	go func() {
 		start := l.ledger.Blocks().Latest()
+		timeout := time.NewTimer(time.Second * 3)
 		ticker := time.NewTicker(time.Millisecond * 5)
 
 		for {
 			select {
+			case <-timeout.C:
+				ch <- false
+				return
+
 			case <-ticker.C:
 				current := l.ledger.Blocks().Latest()
 				if current.Index > start.Index {
@@ -422,10 +446,16 @@ func (l *TestLedger) WaitForConsensus() <-chan bool {
 func (l *TestLedger) WaitUntilConsensus(t testing.TB) {
 	t.Helper()
 
+	timeout := time.NewTimer(time.Second * 30)
 	for {
-		c := <-l.WaitForConsensus()
-		if c {
-			return
+		select {
+		case c := <-l.WaitForConsensus():
+			if c {
+				return
+			}
+
+		case <-timeout.C:
+			t.Fatal("timed out waiting for consensus")
 		}
 	}
 }
@@ -436,12 +466,16 @@ func (l *TestLedger) WaitUntilBalance(t testing.TB, balance uint64) {
 	t.Helper()
 
 	ticker := time.NewTicker(time.Millisecond * 200)
+	timeout := time.NewTimer(time.Second * 300)
 	for {
 		select {
 		case <-ticker.C:
 			if l.Balance() == balance {
 				return
 			}
+
+		case <-timeout.C:
+			t.Fatal("timed out waiting for balance")
 		}
 	}
 }
@@ -450,12 +484,16 @@ func (l *TestLedger) WaitUntilStake(t testing.TB, stake uint64) {
 	t.Helper()
 
 	ticker := time.NewTicker(time.Millisecond * 200)
+	timeout := time.NewTimer(time.Second * 300)
 	for {
 		select {
 		case <-ticker.C:
 			if l.Stake() == stake {
 				return
 			}
+
+		case <-timeout.C:
+			t.Fatal("timed out waiting for stake")
 		}
 	}
 }
@@ -463,10 +501,15 @@ func (l *TestLedger) WaitUntilStake(t testing.TB, stake uint64) {
 func (l *TestLedger) WaitForBlock(index uint64) <-chan uint64 {
 	ch := make(chan uint64)
 	go func() {
+		timeout := time.NewTimer(time.Second * 3)
 		ticker := time.NewTicker(time.Millisecond * 10)
 
 		for {
 			select {
+			case <-timeout.C:
+				ch <- 0
+				return
+
 			case <-ticker.C:
 				current := l.ledger.Blocks().Latest()
 				if current.Index >= index {
@@ -483,12 +526,16 @@ func (l *TestLedger) WaitForBlock(index uint64) <-chan uint64 {
 func (l *TestLedger) WaitUntilBlock(t testing.TB, block uint64) {
 	t.Helper()
 
+	timeout := time.NewTimer(time.Second * 300)
 	for {
 		select {
 		case ri := <-l.WaitForBlock(block):
 			if ri >= block {
 				return
 			}
+
+		case <-timeout.C:
+			t.Fatal("timed out waiting for block")
 		}
 	}
 }
@@ -496,9 +543,14 @@ func (l *TestLedger) WaitUntilBlock(t testing.TB, block uint64) {
 func (l *TestLedger) WaitForSync() <-chan bool {
 	ch := make(chan bool)
 	go func() {
+		timeout := time.NewTimer(time.Second * 30)
 		ticker := time.NewTicker(time.Millisecond * 50)
 		for {
 			select {
+			case <-timeout.C:
+				ch <- false
+				return
+
 			case <-ticker.C:
 				if l.ledger.SyncStatus() == "Node is fully synced" {
 					ch <- true
@@ -514,10 +566,16 @@ func (l *TestLedger) WaitForSync() <-chan bool {
 func (l *TestLedger) WaitUntilSync(t testing.TB) {
 	t.Helper()
 
+	timeout := time.NewTimer(time.Second * 30)
 	for {
-		s := <-l.WaitForSync()
-		if s {
-			return
+		select {
+		case s := <-l.WaitForSync():
+			if s {
+				return
+			}
+
+		case <-timeout.C:
+			t.Fatal("timed out waiting for sync")
 		}
 	}
 }
@@ -696,10 +754,14 @@ func loadKeys(t testing.TB, wallet string) *skademlia.Keypair {
 func waitFor(t testing.TB, fn func() bool) {
 	t.Helper()
 
+	timeout := time.NewTimer(time.Second * 30)
 	ticker := time.NewTicker(time.Millisecond * 100)
 
 	for {
 		select {
+		case <-timeout.C:
+			t.Fatal("timed out waiting")
+
 		case <-ticker.C:
 			if fn() {
 				return
