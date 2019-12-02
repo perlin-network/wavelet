@@ -21,7 +21,6 @@ package wavelet
 
 import (
 	"encoding/hex"
-	"strconv"
 	"sync"
 	"time"
 
@@ -124,19 +123,6 @@ func (c *CollapseResultsLogger) Log(results *collapseResults) {
 		c.addTx(modTx, eventRejected, timestamp, int(tx.Tag), bufTxID, bufAccount, results.rejectedErrors[i])
 	}
 
-	modAccount := []byte("accounts")
-	eventNonce := []byte("nonce_updated")
-	msg := []byte("Nonce updated")
-	bufNonce := make([]byte, 0, 20)
-
-	for accountID, nonce := range results.accountNonces {
-		_ = hex.Encode(bufAccount, accountID[:])
-
-		c.addNonce(modAccount, eventNonce, timestamp, bufAccount, strconv.AppendUint(bufNonce, nonce, 10), msg)
-
-		bufNonce = bufNonce[:0]
-	}
-
 	c.flush()
 }
 
@@ -158,28 +144,6 @@ func (c *CollapseResultsLogger) addTx(mod, event []byte,
 	}
 
 	// The length of the JSON is 227, not including the error field.
-	buf := make([]byte, 0, 256)
-
-	c.bufBatch = append(c.bufBatch, logBuffer{module: mod, message: o.MarshalTo(buf)})
-
-	c.bufTime = c.bufTime[:0]
-	c.arena.Reset()
-}
-
-func (c *CollapseResultsLogger) addNonce(mod, event []byte,
-	timestamp time.Time,
-	accountID []byte, nonce []byte, msg []byte) {
-	o := c.arena.NewObject()
-
-	o.Set("mod", c.arena.NewStringBytes(mod))
-	o.Set("event", c.arena.NewStringBytes(event))
-	o.Set("time", c.arena.NewStringBytes(timestamp.AppendFormat(c.bufTime, c.timeLayout)))
-
-	o.Set("account_id", c.arena.NewStringBytes(accountID))
-	o.Set("nonce", c.arena.NewNumberString(string(nonce)))
-	o.Set("message", c.arena.NewStringBytes(msg))
-
-	// The max length of the JSON is 229.
 	buf := make([]byte, 0, 256)
 
 	c.bufBatch = append(c.bufBatch, logBuffer{module: mod, message: o.MarshalTo(buf)})

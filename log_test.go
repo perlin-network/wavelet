@@ -44,7 +44,6 @@ func TestCollapseResultsLogger(t *testing.T) {
 	if !assert.NoError(t, err) {
 		return
 	}
-	senderID := sender.PublicKey()
 
 	recipient, err := skademlia.NewKeys(1, 1)
 	if !assert.NoError(t, err) {
@@ -79,7 +78,7 @@ func TestCollapseResultsLogger(t *testing.T) {
 		return
 	}
 
-	logCh := make(chan []byte, 3)
+	logCh := make(chan []byte, 2)
 	log.SetWriter("tx_write_test", writerFunc(func(p []byte) (n int, err error) {
 		logCh <- p
 		return len(p), nil
@@ -89,7 +88,7 @@ func TestCollapseResultsLogger(t *testing.T) {
 
 	var outputs [][]byte
 	// Wait for the log messages
-	for i := 0; i < 3; i++ {
+	for i := 0; i < 2; i++ {
 		select {
 		case b := <-logCh:
 			outputs = append(outputs, b)
@@ -121,18 +120,6 @@ func TestCollapseResultsLogger(t *testing.T) {
 	assert.Equal(t, hex.EncodeToString(txRejected.ID[:]), string(v.GetStringBytes("tx_id")))
 	assert.Equal(t, hex.EncodeToString(txRejected.Sender[:]), string(v.GetStringBytes("sender_id")))
 	assert.Contains(t, string(v.GetStringBytes("error")), "could not apply transfer transaction")
-
-	// Check the nonce event
-
-	v, err = fastjson.ParseBytes(outputs[2])
-	if !assert.NoError(t, err) {
-		return
-	}
-	assert.Equal(t, "accounts", string(v.GetStringBytes("mod")))
-	assert.Equal(t, "nonce_updated", string(v.GetStringBytes("event")))
-	assert.Equal(t, hex.EncodeToString(senderID[:]), string(v.GetStringBytes("account_id")))
-	assert.Equal(t, 2, v.GetInt("nonce"))
-	assert.Equal(t, "Nonce updated", string(v.GetStringBytes("message")))
 
 	// Call twice, the second call should have no effect.
 	logger.Stop()
