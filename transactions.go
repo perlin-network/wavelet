@@ -79,6 +79,8 @@ func (t *Transactions) add(block BlockID, tx Transaction, verifySignature bool) 
 	}
 
 	if t.height >= tx.Block+uint64(conf.GetPruningLimit()) {
+		delete(t.missing, tx.ID)
+
 		return
 	}
 
