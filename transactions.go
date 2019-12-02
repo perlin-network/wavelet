@@ -238,6 +238,25 @@ func (t *Transactions) Find(id TransactionID) *Transaction {
 	return t.buffer[id]
 }
 
+// BatchFind returns an error if one of the id does not exist.
+func (t *Transactions) BatchFind(ids []TransactionID) ([]*Transaction, error) {
+	t.RLock()
+	defer t.RUnlock()
+
+	txs := make([]*Transaction, 0, len(ids))
+
+	for i := range ids {
+		tx, exist := t.buffer[ids[i]]
+		if !exist {
+			return nil, errors.Wrapf(ErrMissingTx, "%x", ids[i])
+		}
+
+		txs = append(txs, tx)
+	}
+
+	return txs, nil
+}
+
 // Len returns the total number of transactions that the node has archived.
 func (t *Transactions) Len() int {
 	t.RLock()

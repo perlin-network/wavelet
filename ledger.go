@@ -1502,19 +1502,9 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 	collapseState := _collapseState.(*CollapseState)
 
 	collapseState.once.Do(func() {
-		txs := make([]*Transaction, 0, len(block.Transactions))
-
-		for _, id := range block.Transactions {
-			tx := l.transactions.Find(id)
-			if tx == nil {
-				collapseState.err = errors.Wrapf(ErrMissingTx, "%x", id)
-				break
-			}
-
-			txs = append(txs, tx)
-		}
-
-		if collapseState.err != nil {
+		txs, err := l.transactions.BatchFind(block.Transactions)
+		if err != nil {
+			collapseState.err = err
 			return
 		}
 
