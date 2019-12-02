@@ -82,7 +82,7 @@ func (c *Client) GetTransaction(txID [32]byte) (*Transaction, error) {
 func (c *Client) SendTransaction(tag byte, payload []byte) (*TxResponse, error) {
 	var res TxResponse
 
-	nonce := c.Nonce.Add(1)
+	nonce := uint64(time.Now().UnixNano())
 	block := c.Block.Load()
 
 	var nonceBuf [8]byte

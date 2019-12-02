@@ -286,8 +286,7 @@ func (l *Ledger) Find(query string, max int) (results []string) {
 		return nil
 	}
 
-	bucketPrefix := append(keyAccounts[:], keyAccountNonce[:]...)
-	fullQuery := append(bucketPrefix, prefix...)
+	fullQuery := append(keyAccounts[:], prefix...)
 
 	l.Snapshot().IterateFrom(fullQuery, func(key, _ []byte) bool {
 		if !bytes.HasPrefix(key, fullQuery) {
@@ -298,7 +297,7 @@ func (l *Ledger) Find(query string, max int) (results []string) {
 			return false
 		}
 
-		results = append(results, hex.EncodeToString(key[len(bucketPrefix):]))
+		results = append(results, hex.EncodeToString(key[len(keyAccounts):]))
 		return true
 	})
 
@@ -1458,7 +1457,6 @@ type collapseResults struct {
 	applied        []*Transaction
 	rejected       []*Transaction
 	rejectedErrors []error
-	accountNonces  map[AccountID]uint64
 
 	appliedCount  int
 	rejectedCount int
@@ -1524,15 +1522,6 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 
 		for i, tx := range collapseState.results.rejected {
 			logEventTX("rejected", tx, collapseState.results.rejectedErrors[i])
-		}
-
-		logger := log.Accounts("nonce_updated")
-
-		for accountID, nonce := range collapseState.results.accountNonces {
-			logger.Log().
-				Hex("account_id", accountID[:]).
-				Uint64("nonce", nonce).
-				Msg("Nonce updated")
 		}
 	}
 

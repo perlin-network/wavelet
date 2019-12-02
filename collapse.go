@@ -36,7 +36,6 @@ func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) 
 	res.applied = make([]*Transaction, 0, len(txs))
 	res.rejected = make([]*Transaction, 0, len(txs))
 	res.rejectedErrors = make([]error, 0, len(txs))
-	res.accountNonces = make(map[AccountID]uint64)
 
 	ctx := NewCollapseContext(res.snapshot)
 
@@ -50,17 +49,6 @@ func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) 
 	// Apply transactions in reverse order from the end of the round
 	// all the way down to the beginning of the round.
 	for _, tx := range txs {
-		// Update nonce.
-		nonce, exists := ctx.ReadAccountNonce(tx.Sender)
-		if !exists {
-			ctx.WriteAccountsLen(ctx.ReadAccountsLen() + 1)
-		}
-
-		ctx.WriteAccountNonce(tx.Sender, nonce+1)
-
-		// Keep track of latest nonce of each account
-		res.accountNonces[tx.Sender] = nonce + 1
-
 		if hex.EncodeToString(tx.Sender[:]) != sys.FaucetAddress {
 			fee := tx.Fee()
 
@@ -186,19 +174,6 @@ func (c *CollapseContext) ReadAccountsLen() uint64 {
 
 func (c *CollapseContext) WriteAccountsLen(size uint64) {
 	c.accountLen = size
-}
-
-func (c *CollapseContext) ReadAccountNonce(id AccountID) (uint64, bool) {
-	if nonce, ok := c.nonces[id]; ok {
-		return nonce, true
-	}
-
-	nonce, exists := ReadAccountNonce(c.tree, id)
-	if exists {
-		c.nonces[id] = nonce
-	}
-
-	return nonce, exists
 }
 
 func (c *CollapseContext) ReadAccountBalance(id AccountID) (uint64, bool) {
@@ -363,10 +338,6 @@ func (c *CollapseContext) Flush() error {
 
 		if reward, ok := c.rewards[id]; ok {
 			WriteAccountReward(c.tree, id, reward)
-		}
-
-		if nonce, ok := c.nonces[id]; ok {
-			WriteAccountNonce(c.tree, id, nonce)
 		}
 
 		if gasBal, ok := c.contractGasBalances[id]; ok {

@@ -460,7 +460,6 @@ func restoreAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 
 	if !isContract {
 		WriteAccountsLen(tree, ReadAccountsLen(tree)+1)
-		WriteAccountNonce(tree, id, 1)
 	}
 
 	return nil

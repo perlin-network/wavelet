@@ -17,7 +17,7 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// +build integration,!unit
+// +build integration
 
 package api
 
@@ -621,7 +621,7 @@ func TestGetLedger(t *testing.T) {
 	publicKey := keys.PublicKey()
 
 	expectedJSON := fmt.Sprintf(
-		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"preferred_votes":0,"sync_status":"Node is taking part in consensus process","block":{"merkle_root":"cd3b0df841268ab6c987a594de29ad19","height":0,"id":"4b35bb7ead7ac9a0e7064c6d99342962360854308f84dde9fe0703cd7772a94d","transactions":0},"preferred":null,"num_missing_tx":0,"num_tx":0,"num_tx_in_store":0,"num_accounts_in_store":3,"peers":null}`,
+		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"preferred_votes":0,"sync_status":"Node is taking part in consensus process","block":{"merkle_root":"0c2d4da48122ef4d5dc2e175071b1aed","height":0,"id":"447d70fa65f0b4dfde4ec2fee479ad7a93ce090b76726e2df361608c2fa2919e","transactions":0},"preferred":null,"num_missing_tx":0,"num_tx":0,"num_tx_in_store":0,"num_accounts_in_store":3,"peers":null}`,
 		hex.EncodeToString(publicKey[:]),
 		listener.Addr().(*net.TCPAddr).Port,
 	)

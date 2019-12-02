@@ -101,62 +101,6 @@ func TestPollLog(t *testing.T) {
 	})
 }
 
-func TestPollNonce(t *testing.T) {
-	testnet := wavelet.NewTestNetwork(t)
-	defer testnet.Cleanup()
-
-	alice := testnet.AddNode(t)
-	testnet.AddNode(t)
-
-	testnet.WaitUntilSync(t)
-
-	gateway := New()
-	gateway.setup()
-
-	go gateway.StartHTTP(8080, nil, alice.Ledger(), alice.Keys(), alice.KV())
-	defer gateway.Shutdown()
-
-	_, err := testnet.Faucet().Pay(alice, 1000000)
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	u := url.URL{
-		Scheme: "ws",
-		Host:   ":8080",
-		Path:   "/poll/accounts",
-	}
-
-	c, cleanup := tryConnectWebsocket(t, u)
-	defer cleanup()
-
-	_, msg, err := c.ReadMessage()
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	v, err := fastjson.Parse(string(msg))
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	vals, err := v.Array()
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	for _, e := range vals {
-		if string(e.GetStringBytes("event")) != "nonce_updated" {
-			continue
-		}
-
-		assert.EqualValues(t, 2, e.GetUint64("nonce"))
-		return
-	}
-
-	assert.Fail(t, "nonce_updated event not found")
-}
-
 func tryConnectWebsocket(t *testing.T, url url.URL) (*websocket.Conn, func()) {
 	var conn *websocket.Conn
 	var resp *http.Response
