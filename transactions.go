@@ -50,7 +50,7 @@ func (t *Transactions) Add(block BlockID, tx Transaction, verifySignature bool) 
 	t.Lock()
 	defer t.Unlock()
 
-	t.add(block, tx, verifySignature)
+	t.add(block, tx)
 }
 
 func (t *Transactions) BatchAdd(block BlockID, transactions []Transaction, verifySignature bool) {
