@@ -508,13 +508,20 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 							continue
 						}
 
+						if !tx.VerifySignature() {
+							logger.Error().
+								Hex("tx_id", tx.ID[:]).
+								Msg("bad signature")
+							continue
+						}
+
 						transactions = append(transactions, tx)
 					}
 
 					downloadedNum := len(transactions)
 					count -= uint64(downloadedNum)
 
-					l.AddTransaction(true, transactions...)
+					l.AddTransaction(false, transactions...)
 
 					l.metrics.downloadedTX.Mark(int64(downloadedNum))
 					l.metrics.receivedTX.Mark(int64(downloadedNum))
@@ -557,10 +564,20 @@ func (l *Ledger) PullMissingTransactions() {
 			req.TransactionIds = append(req.TransactionIds, txID[:])
 		}
 
-		responseChan := make(chan *TransactionPullResponse)
+		type response struct {
+			txs []Transaction
+		}
+
+		responseChan := make(chan response)
 
 		for _, p := range peers {
 			go func(conn *grpc.ClientConn) {
+				var response response
+
+				defer func() {
+					responseChan <- response
+				}()
+
 				client := NewWaveletClient(conn)
 
 				ctx, cancel := context.WithTimeout(context.Background(), conf.GetDownloadTxTimeout())
@@ -570,57 +587,58 @@ func (l *Ledger) PullMissingTransactions() {
 				if err != nil {
 					logger.Error().Err(err).Msg("failed to download missing transactions")
 
-					responseChan <- nil
-
 					return
 				}
 
-				responseChan <- batch
+				response.txs = make([]Transaction, 0, len(batch.Transactions))
+
+				for _, buf := range batch.Transactions {
+					tx, err := UnmarshalTransaction(bytes.NewReader(buf))
+					if err != nil {
+						logger.Error().
+							Err(err).
+							Hex("tx_id", tx.ID[:]).
+							Msg("error unmarshaling downloaded tx")
+
+						continue
+					}
+
+					response.txs = append(response.txs, tx)
+				}
 			}(p.Conn())
 		}
 
-		responses := make([]*TransactionPullResponse, 0, len(peers))
-		for i := 0; i < cap(responses); i++ {
-			response := <-responseChan
+		count := int64(0)
+		pulled := make(map[TransactionID]Transaction)
 
-			if response == nil {
-				continue
+		for i := 0; i < len(peers); i++ {
+			res := <-responseChan
+
+			for i := range res.txs {
+				if _, ok := pulled[res.txs[i].ID]; !ok {
+					pulled[res.txs[i].ID] = res.txs[i]
+					count += int64(res.txs[i].LogicalUnits())
+				}
 			}
-
-			responses = append(responses, response)
 		}
 
 		close(responseChan)
 
-		count := int64(0)
-
-		pulled := map[TransactionID]Transaction{}
-
-		for _, res := range responses {
-			for _, buf := range res.Transactions {
-				tx, err := UnmarshalTransaction(bytes.NewReader(buf))
-				if err != nil {
-					logger.Error().
-						Err(err).
-						Hex("tx_id", tx.ID[:]).
-						Msg("error unmarshaling downloaded tx")
-
-					continue
-				}
-
-				if _, ok := pulled[tx.ID]; !ok {
-					pulled[tx.ID] = tx
-					count += int64(tx.LogicalUnits())
-				}
-			}
-		}
-
 		pulledTXs := make([]Transaction, 0, len(pulled))
+
 		for _, tx := range pulled {
+			if !tx.VerifySignature() {
+				logger.Error().
+					Hex("tx_id", tx.ID[:]).
+					Msg("bad signature")
+
+				continue
+			}
+
 			pulledTXs = append(pulledTXs, tx)
 		}
 
-		l.AddTransaction(true, pulledTXs...)
+		l.AddTransaction(false, pulledTXs...)
 
 		if count > 0 {
 			logger.Info().
@@ -1502,19 +1520,9 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 	collapseState := _collapseState.(*CollapseState)
 
 	collapseState.once.Do(func() {
-		txs := make([]*Transaction, 0, len(block.Transactions))
-
-		for _, id := range block.Transactions {
-			tx := l.transactions.Find(id)
-			if tx == nil {
-				collapseState.err = errors.Wrapf(ErrMissingTx, "%x", id)
-				break
-			}
-
-			txs = append(txs, tx)
-		}
-
-		if collapseState.err != nil {
+		txs, err := l.transactions.BatchFind(block.Transactions)
+		if err != nil {
+			collapseState.err = err
 			return
 		}
 

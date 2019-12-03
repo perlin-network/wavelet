@@ -1,13 +1,12 @@
 package wavelet
 
 import (
-	"encoding/binary"
-	"github.com/perlin-network/noise/edwards25519"
 	"math/big"
 	"sync"
 
 	"github.com/google/btree"
 	"github.com/perlin-network/wavelet/conf"
+	"github.com/pkg/errors"
 )
 
 var _ btree.Item = (*mempoolItem)(nil)
@@ -44,6 +43,10 @@ func NewTransactions(height uint64) *Transactions {
 // Add adds a transaction into the node, and indexes it into the nodes mempool
 // based on the value BLAKE2b(tx.ID || block.ID).
 func (t *Transactions) Add(block BlockID, tx Transaction, verifySignature bool) {
+	if verifySignature && !tx.VerifySignature() {
+		return
+	}
+
 	t.Lock()
 	defer t.Unlock()
 
@@ -51,34 +54,30 @@ func (t *Transactions) Add(block BlockID, tx Transaction, verifySignature bool) 
 }
 
 func (t *Transactions) BatchAdd(block BlockID, transactions []Transaction, verifySignature bool) {
+	if verifySignature {
+		filtered := transactions[:0]
+
+		for i := range transactions {
+			if transactions[i].VerifySignature() {
+				filtered = append(filtered, transactions[i])
+			}
+		}
+
+		transactions = filtered
+	}
+
 	t.Lock()
 	defer t.Unlock()
 
 	for _, tx := range transactions {
-		t.add(block, tx, verifySignature)
+		t.add(block, tx)
 	}
 }
 
-func (t *Transactions) add(block BlockID, tx Transaction, verifySignature bool) {
-	if verifySignature {
-		var (
-			nonceBuf [8]byte
-			blockBuf [8]byte
-		)
-
-		binary.BigEndian.PutUint64(nonceBuf[:], tx.Nonce)
-		binary.BigEndian.PutUint64(blockBuf[:], tx.Block)
-
-		if !edwards25519.Verify(
-			tx.Sender,
-			append(nonceBuf[:], append(blockBuf[:], append([]byte{byte(tx.Tag)}, tx.Payload...)...)...),
-			tx.Signature,
-		) {
-			return
-		}
-	}
-
+func (t *Transactions) add(block BlockID, tx Transaction) {
 	if t.height >= tx.Block+uint64(conf.GetPruningLimit()) {
+		delete(t.missing, tx.ID)
+
 		return
 	}
 
@@ -236,6 +235,25 @@ func (t *Transactions) Find(id TransactionID) *Transaction {
 	defer t.RUnlock()
 
 	return t.buffer[id]
+}
+
+// BatchFind returns an error if one of the id does not exist.
+func (t *Transactions) BatchFind(ids []TransactionID) ([]*Transaction, error) {
+	t.RLock()
+	defer t.RUnlock()
+
+	txs := make([]*Transaction, 0, len(ids))
+
+	for i := range ids {
+		tx, exist := t.buffer[ids[i]]
+		if !exist {
+			return nil, errors.Wrapf(ErrMissingTx, "%x", ids[i])
+		}
+
+		txs = append(txs, tx)
+	}
+
+	return txs, nil
 }
 
 // Len returns the total number of transactions that the node has archived.
