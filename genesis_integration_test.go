@@ -73,7 +73,7 @@ func getGenesisTestNetwork(t testing.TB, withContract bool) (testnet *TestNetwor
 	bob.WaitUntilStake(t, 100)
 
 	if withContract {
-		for i := 0; i < 4; i++ {
+		for i := 0; i < 3; i++ {
 			tx, err := alice.SpawnContract("testdata/transfer_back.wasm", 10000, nil)
 			if !assert.NoError(t, err) {
 				return nil, nil, cleanup
@@ -112,7 +112,6 @@ func TestDumpIncludingContract(t *testing.T) {
 		return
 	}
 
-	fmt.Println("checkdump")
 	testDump(t, testDumpDir, expected, true)
 }
 
@@ -154,7 +153,7 @@ func testDump(t *testing.T, dumpDir string, expected *avl.Tree, checkContract bo
 
 	// Repeatedly restore the dump and check it's checksum to make sure there's no randomness in the order of the restoration.
 	var checksum = actual.Checksum()
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 10; i++ {
 		tree := avl.New(store.NewInmem())
 		_ = performInception(tree, &dumpDir)
 
