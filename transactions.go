@@ -70,11 +70,11 @@ func (t *Transactions) BatchAdd(block BlockID, transactions []Transaction, verif
 	defer t.Unlock()
 
 	for _, tx := range transactions {
-		t.add(block, tx, verifySignature)
+		t.add(block, tx)
 	}
 }
 
-func (t *Transactions) add(block BlockID, tx Transaction, verifySignature bool) { //nolint:unparam
+func (t *Transactions) add(block BlockID, tx Transaction) {
 	if t.height >= tx.Block+uint64(conf.GetPruningLimit()) {
 		delete(t.missing, tx.ID)
 
