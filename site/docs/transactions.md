@@ -47,17 +47,6 @@ Upon the creation of a transaction, the transaction creator would sign the tag, 
 would play the role of being the transactions sender. The sender would then assign consensus-related information to the transaction, sign the entirety of
 the transaction, and broadcast it out to the network to be verified and finalized by other Wavelet nodes.
 
-## Replay Attacks
-
-A nonce is associated to each and every Wavelet account. A nonce is an incremental, ascending counter that gets incremented every single time a transaction
-that was created by some given account gets finalized and apply to the ledgers state.
-
-The nonce is used to prevent replay attacks, where after an account creates a transaction, there may exist a possibility that several nodes may attempt
-to re-sign the transaction such that the transaction may operate and be applied on the ledger indefinite amounts of times.
-
-By attaching a nonce counter, once a single instance of some accounts transaction gets finalized, no other node may re-sign and re-broadcast the transaction
-to cause a replay attack.
-
 ## Binary Format
 
 Transactions are encoded using a simple binary encoding scheme, where all integers are little-endian encoded, and all variable-sized arrays are
@@ -70,7 +59,7 @@ The current binary format of a Wavelet transaction is denoted as follows:
 | Flag | A single byte that is 1 if the Creator Account ID is the same as the Sender Account ID, and is 0 otherwise. |
 | Sender Account ID | 256-bit wallet address/public key. | 
 | Creator Account ID | 256-bit wallet address/public key. | 
-| Nonce | Latest nonce value of the creators account, denoted as an unsigned 64-bit little-endian integer. | 
+| Nonce | Unique value, denoted as an unsigned 64-bit little-endian integer. | 
 | Parent IDs | Length-prefixed array of 256-bit transaction IDs; assigned by the transactions sender. |
 | Parent Seeds | Array of 256-bit transaction seeds, with the same length as the Parent IDs field and therefore not length-prefixed; must correspond to the transactions specified by Parent IDs. |
 | Depth | Unsigned 64-bit little-endian integer; assigned by the transactions sender. |
