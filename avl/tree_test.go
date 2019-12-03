@@ -374,7 +374,7 @@ func BenchmarkAVL(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N/InnerLoopCount; i++ {
-		kv, cleanup := store.NewTestKV(b, "level", "db")
+		kv, cleanup := store.NewTestKV(b, "level", "")
 		tree := New(kv)
 
 		refMap := make(map[string][]byte)

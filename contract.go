@@ -25,6 +25,9 @@ import (
 	"crypto/sha512"
 	"encoding/binary"
 	"fmt"
+	"reflect"
+	"unsafe"
+
 	"github.com/perlin-network/life/compiler"
 	"github.com/perlin-network/life/exec"
 	"github.com/perlin-network/life/utils"
@@ -34,8 +37,6 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
-	"reflect"
-	"unsafe"
 )
 
 var (
@@ -260,7 +261,7 @@ func (e *ContractExecutor) ResolveGlobal(module, field string) int64 {
 // This function MUST NOT write into the tree. The new or updated VM State must be returned.
 func (e *ContractExecutor) Execute( // nolint:gocognit
 	id AccountID, block *Block, tx *Transaction, amount, gasLimit uint64, name string, params, code []byte,
-	tree *avl.Tree, vmCache *lru.LRU, contractState *VMState,
+	tree *avl.Tree, vmCache *lru.VMLRU, contractState *VMState,
 ) (*VMState, error) {
 	var (
 		vm  *exec.VirtualMachine
@@ -268,7 +269,7 @@ func (e *ContractExecutor) Execute( // nolint:gocognit
 	)
 
 	if cached, ok := vmCache.Load(id); ok {
-		vm, err = CloneVM(cached.(*exec.VirtualMachine), e, e)
+		vm, err = CloneVM(cached, e, e)
 		if err != nil {
 			return nil, errors.Wrap(err, "cannot clone vm")
 		}

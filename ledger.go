@@ -36,7 +36,6 @@ import (
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/lru"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -77,7 +76,7 @@ type Ledger struct {
 	syncStatus     bitset
 	syncStatusLock sync.RWMutex
 
-	cacheCollapse *lru.LRU
+	cacheCollapse *CollapseLRU
 	fileBuffers   *fileBufferPool
 
 	sendQuota chan struct{}
@@ -183,7 +182,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 		sync: make(chan struct{}),
 
-		cacheCollapse: lru.NewLRU(16),
+		cacheCollapse: NewCollapseLRU(16),
 		fileBuffers:   newFileBufferPool(sys.SyncPooledFileSize, ""),
 
 		sendQuota: make(chan struct{}, 2000),
@@ -1516,8 +1515,7 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 	}
 
 	cacheKey := blake2b.Sum256(idBuf.Bytes())
-	_collapseState, _ := l.cacheCollapse.LoadOrPut(cacheKey, &CollapseState{})
-	collapseState := _collapseState.(*CollapseState)
+	collapseState, _ := l.cacheCollapse.LoadOrPut(cacheKey, &CollapseState{})
 
 	collapseState.once.Do(func() {
 		txs, err := l.transactions.BatchFind(block.Transactions)

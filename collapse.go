@@ -138,7 +138,7 @@ type CollapseContext struct {
 
 	rewardWithdrawalRequests []RewardWithdrawalRequest
 
-	VMCache *lru.LRU
+	VMCache *lru.VMLRU
 }
 
 func NewCollapseContext(tree *avl.Tree) *CollapseContext {
@@ -165,7 +165,7 @@ func (c *CollapseContext) init() {
 	c.contractGasBalances = make(map[TransactionID]uint64)
 	c.contractVMs = make(map[AccountID]*VMState)
 
-	c.VMCache = lru.NewLRU(4)
+	c.VMCache = lru.NewVMLRU(4)
 }
 
 func (c *CollapseContext) ReadAccountsLen() uint64 {
