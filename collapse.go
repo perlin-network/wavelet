@@ -131,7 +131,6 @@ type CollapseContext struct {
 	balances            map[AccountID]uint64
 	stakes              map[AccountID]uint64
 	rewards             map[AccountID]uint64
-	nonces              map[AccountID]uint64
 	contracts           map[TransactionID][]byte
 	contractGasBalances map[TransactionID]uint64
 	contractVMs         map[AccountID]*VMState
@@ -160,7 +159,6 @@ func (c *CollapseContext) init() {
 	c.balances = make(map[AccountID]uint64)
 	c.stakes = make(map[AccountID]uint64)
 	c.rewards = make(map[AccountID]uint64)
-	c.nonces = make(map[AccountID]uint64)
 	c.contracts = make(map[TransactionID][]byte)
 	c.contractGasBalances = make(map[TransactionID]uint64)
 	c.contractVMs = make(map[AccountID]*VMState)

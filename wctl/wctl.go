@@ -104,7 +104,6 @@ type Client struct {
 	OnNumPagesUpdated
 	OnStakeUpdated
 	OnRewardUpdated
-	OnNonceUpdated
 
 	// Network
 	OnPeerJoin
