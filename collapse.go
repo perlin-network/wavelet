@@ -33,11 +33,11 @@ func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) 
 	res := &collapseResults{snapshot: accounts.Snapshot()}
 	res.snapshot.SetViewID(block.Index)
 
+	ctx := NewCollapseContext(res.snapshot)
+
 	res.applied = make([]*Transaction, 0, len(txs))
 	res.rejected = make([]*Transaction, 0, len(txs))
 	res.rejectedErrors = make([]error, 0, len(txs))
-
-	ctx := NewCollapseContext(res.snapshot)
 
 	var (
 		totalStake uint64
@@ -253,11 +253,6 @@ func (c *CollapseContext) addAccount(id AccountID) {
 
 	c.accounts[id] = struct{}{}
 	c.accountIDs = append(c.accountIDs, id)
-}
-
-func (c *CollapseContext) WriteAccountNonce(id AccountID, nonce uint64) {
-	c.addAccount(id)
-	c.nonces[id] = nonce
 }
 
 func (c *CollapseContext) WriteAccountBalance(id AccountID, balance uint64) {
