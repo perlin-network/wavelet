@@ -56,6 +56,7 @@ func (t *Transactions) Add(block BlockID, tx Transaction, verifySignature bool) 
 func (t *Transactions) BatchAdd(block BlockID, transactions []Transaction, verifySignature bool) {
 	if verifySignature {
 		filtered := transactions[:0]
+
 		for i := range transactions {
 			if transactions[i].VerifySignature() {
 				filtered = append(filtered, transactions[i])
@@ -73,7 +74,7 @@ func (t *Transactions) BatchAdd(block BlockID, transactions []Transaction, verif
 	}
 }
 
-func (t *Transactions) add(block BlockID, tx Transaction, verifySignature bool) {
+func (t *Transactions) add(block BlockID, tx Transaction, verifySignature bool) { //nolint:unparam
 	if t.height >= tx.Block+uint64(conf.GetPruningLimit()) {
 		delete(t.missing, tx.ID)
 

@@ -625,11 +625,13 @@ func (l *Ledger) PullMissingTransactions() {
 		close(responseChan)
 
 		pulledTXs := make([]Transaction, 0, len(pulled))
+
 		for _, tx := range pulled {
 			if !tx.VerifySignature() {
 				logger.Error().
 					Hex("tx_id", tx.ID[:]).
 					Msg("bad signature")
+
 				continue
 			}
 
