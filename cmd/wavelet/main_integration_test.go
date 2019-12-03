@@ -396,21 +396,20 @@ func TestMain_UpdateParams(t *testing.T) {
 		Var    string
 		Value  interface{}
 	}{
-		{"snowball.k", "snowballK", int(123)},
-		{"snowball.beta", "snowballBeta", int(789)},
-		{"vote.sync.threshold", "syncVoteThreshold", float64(12.34)},
-		{"vote.finalization.threshold", "finalizationVoteThreshold", float64(56.78)},
-		{"vote.finalization.stake.weight", "stakeMajorityWeight", float64(11.11)},
+		{"snowball.k", "snowballK", 123},
+		{"snowball.beta", "snowballBeta", 789},
+		{"vote.sync.threshold", "syncVoteThreshold", 12.34},
+		{"vote.finalization.threshold", "finalizationVoteThreshold", 56.78},
+		{"vote.finalization.stake.weight", "stakeMajorityWeight", 11.11},
 		{"query.timeout", "queryTimeout", time.Second * 9},
 		{"gossip.timeout", "gossipTimeout", time.Second * 4},
 		{"download.tx.timeout", "downloadTxTimeout", time.Second * 3},
 		{"check.out.of.sync.timeout", "checkOutOfSyncTimeout", time.Second * 7},
-		{"sync.chunk.size", "syncChunkSize", int(1337)},
+		{"sync.chunk.size", "syncChunkSize", 1337},
 		{"sync.if.block.indices.differ.by", "syncIfBlockIndicesDifferBy", uint64(42)},
 		{"bloom.filter.m", "bloomFilterM", uint64(54321)},
 		{"bloom.filter.k", "bloomFilterK", uint64(9)},
 		{"pruning.limit", "pruningLimit", uint64(255)},
-		// {"block.tx.limit", "blockTxLimit", uint64(666)},
 		{"api.secret", "secret", "shambles"},
 	}
 

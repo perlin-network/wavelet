@@ -20,7 +20,12 @@
 package store
 
 import (
+	"errors"
 	"io"
+)
+
+var (
+	ErrNotFound = errors.New("not found")
 )
 
 type KV interface {

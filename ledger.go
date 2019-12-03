@@ -134,7 +134,12 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	metrics := NewMetrics(context.TODO())
 	indexer := NewIndexer()
 	accounts := NewAccounts(kv)
+
 	blocks, err := NewBlocks(kv, conf.GetPruningLimit())
+	if err != nil && errors.Cause(err) != store.ErrNotFound {
+		logger.Fatal().Err(err).Msg("BUG: Could not load blocks from db")
+		return nil
+	}
 
 	var block *Block
 
@@ -162,6 +167,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	}
 
 	transactions := NewTransactions(block.Index)
+	transactions.AddMissingBlocks(blocks.GetAll())
 
 	finalizer := NewSnowball()
 	syncer := NewSnowball()
@@ -556,6 +562,12 @@ func (l *Ledger) PullMissingTransactions() {
 
 		// Build list of transaction IDs
 		missingIDs := l.transactions.MissingIDs()
+
+		missingTxPullLimit := conf.GetMissingTxPullLimit()
+		if uint64(len(missingIDs)) > missingTxPullLimit {
+			missingIDs = missingIDs[:missingTxPullLimit]
+		}
+
 		req := &TransactionPullRequest{TransactionIds: make([][]byte, 0, len(missingIDs))}
 
 		for _, txID := range missingIDs {

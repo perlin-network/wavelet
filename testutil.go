@@ -10,7 +10,6 @@ import (
 	"net"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -49,8 +48,6 @@ func defaultTestNetworkConfig() TestNetworkConfig {
 type TestNetworkOption func(cfg *TestNetworkConfig)
 
 func NewTestNetwork(t testing.TB, opts ...TestNetworkOption) *TestNetwork {
-	removeTestDBs()
-
 	n := &TestNetwork{
 		nodes: map[AccountID]*TestLedger{},
 	}
@@ -61,7 +58,7 @@ func NewTestNetwork(t testing.TB, opts ...TestNetworkOption) *TestNetwork {
 	}
 
 	if cfg.AddFaucet {
-		n.faucet = n.AddNode(t, WithWallet(FaucetWallet))
+		n.faucet = n.AddNode(t, WithWallet(FaucetWallet), WithRemoveExistingDB(true))
 	}
 
 	return n
@@ -69,22 +66,7 @@ func NewTestNetwork(t testing.TB, opts ...TestNetworkOption) *TestNetwork {
 
 func (n *TestNetwork) Cleanup() {
 	for _, node := range n.nodes {
-		node.Cleanup()
-	}
-
-	removeTestDBs()
-}
-
-func removeTestDBs() {
-	files, err := ioutil.ReadDir(".")
-	if err != nil {
-		panic(err)
-	}
-
-	for _, f := range files {
-		if f.IsDir() && strings.HasPrefix(f.Name(), "db_") {
-			_ = os.RemoveAll(f.Name())
-		}
+		node.Cleanup(true)
 	}
 }
 
@@ -104,8 +86,21 @@ func WithWallet(wallet string) TestLedgerOption {
 	}
 }
 
+func WithRemoveExistingDB(remove bool) TestLedgerOption {
+	return func(cfg *TestLedgerConfig) {
+		cfg.RemoveExistingDB = remove
+	}
+}
+
+func WithDBPath(path string) TestLedgerOption {
+	return func(cfg *TestLedgerConfig) {
+		cfg.DBPath = path
+	}
+}
+
 func (n *TestNetwork) AddNode(t testing.TB, opts ...TestLedgerOption) *TestLedger {
 	var peers []string
+
 	if n.faucet != nil {
 		peers = append(peers, n.faucet.Addr())
 	}
@@ -281,6 +276,11 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 
 	kv, cleanup := store.NewTestKV(t, "level", path, kvOpts...)
 	ledger := NewLedger(kv, client, WithoutGC())
+
+	if ledger == nil {
+		panic("Error creating new test ledger")
+	}
+
 	server := client.Listen()
 	RegisterWaveletServer(server, ledger.Protocol())
 
@@ -312,17 +312,23 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 	}
 }
 
-func (l *TestLedger) Leave() {
-	l.Cleanup()
+func (l *TestLedger) Leave(wipeDB bool) {
+	l.Cleanup(wipeDB)
 	delete(l.network.nodes, l.PublicKey())
 }
 
-func (l *TestLedger) Cleanup() {
+func (l *TestLedger) Cleanup(wipeDB bool) {
 	l.server.Stop()
 	<-l.stopped
 
 	l.ledger.Close()
 	l.kvCleanup()
+
+	if wipeDB && len(l.DBPath()) != 0 {
+		if err := os.RemoveAll(l.DBPath()); err != nil {
+			panic(err)
+		}
+	}
 }
 
 func (l *TestLedger) Addr() string {

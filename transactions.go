@@ -117,6 +117,19 @@ func (t *Transactions) BatchMarkMissing(ids ...TransactionID) bool {
 	return missing
 }
 
+// AddMissingBlocks adds all transaction ids from given blocks to missing transactions index in order for them to be
+// pulled. Used during startup, since only blocks are persisted into db.
+func (t *Transactions) AddMissingBlocks(blocks []*Block) {
+	t.Lock()
+	defer t.Unlock()
+
+	for _, b := range blocks {
+		for _, txID := range b.Transactions {
+			t.missing[txID] = b.Index
+		}
+	}
+}
+
 func (t *Transactions) markMissing(id TransactionID) bool {
 	_, exists := t.buffer[id]
 

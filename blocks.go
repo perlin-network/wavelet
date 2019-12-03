@@ -104,3 +104,14 @@ func (b *Blocks) GetByIndex(ix uint64) (*Block, error) {
 
 	return block, nil
 }
+
+func (b *Blocks) GetAll() []*Block {
+	b.RLock()
+
+	blocks := make([]*Block, 0, len(b.buffer))
+	blocks = append(blocks, b.buffer...)
+
+	b.RUnlock()
+
+	return blocks
+}

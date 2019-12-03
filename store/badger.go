@@ -103,6 +103,10 @@ func (b *badgerKV) Get(key []byte) ([]byte, error) {
 		return err
 	})
 
+	if err != nil {
+		return nil, errors.Wrap(ErrNotFound, err.Error())
+	}
+
 	if value == nil {
 		value = []byte{}
 	}

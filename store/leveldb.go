@@ -62,7 +62,12 @@ func (l *leveldbKV) Close() error {
 }
 
 func (l *leveldbKV) Get(key []byte) ([]byte, error) {
-	return l.db.Get(key, nil)
+	v, err := l.db.Get(key, nil)
+	if err != nil {
+		return nil, errors.Wrap(ErrNotFound, err.Error())
+	}
+
+	return v, nil
 }
 
 func (l *leveldbKV) MultiGet(keys ...[]byte) ([][]byte, error) {

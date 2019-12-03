@@ -88,7 +88,7 @@ func (s *inmemKV) Close() error {
 func (s *inmemKV) get(key []byte) ([]byte, error) {
 	v, found := s.db.GetValue(key)
 	if !found {
-		return nil, errors.New("key not found")
+		return nil, ErrNotFound
 	}
 
 	src := v.([]byte)
