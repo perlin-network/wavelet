@@ -49,17 +49,16 @@ func TestLimiterOverfill(t *testing.T) {
 		close(done)
 	}()
 
-	select {
-	case <-done:
-	case <-time.After(10 * time.Millisecond):
-		assert.Fail(t, "Put() timed out")
-	}
+	<-done
 }
 
 func TestLimiterBufferFull(t *testing.T) {
+	done := make(chan struct{})
 	var called int32
 	a := func([][]byte) {
-		atomic.AddInt32(&called, 1)
+		if atomic.AddInt32(&called, 1) == 10 {
+			close(done)
+		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -76,17 +75,16 @@ func TestLimiterBufferFull(t *testing.T) {
 		d.Add(Bytes(msg[:]))
 	}
 
-	time.Sleep(20 * time.Millisecond)
-
-	// Since timer period is much bigger than needed, we expect debouncer to call handler
-	// based on buffer threshold (10 = 1000/100).
-	assert.Equal(t, int32(10), atomic.LoadInt32(&called))
+	<-done
 }
 
 func TestLimiterTimer(t *testing.T) {
+	done := make(chan struct{})
 	var called int32
 	a := func([][]byte) {
-		atomic.AddInt32(&called, 1)
+		if atomic.AddInt32(&called, 1) == 100 {
+			close(done)
+		}
 	}
 
 	timeout := 1 * time.Millisecond
@@ -100,11 +98,7 @@ func TestLimiterTimer(t *testing.T) {
 		d.Add(Bytes([]byte{0x00, 0x01, 0x02}))
 	}
 
-	time.Sleep(timeout * 2)
-
-	// Since timer period is much smaller comparing to speed on which data incoming
-	// we expect number of handler calls to be based on timer (100 calls per 1 tx).
-	assert.Equal(t, int32(100), atomic.LoadInt32(&called))
+	<-done
 }
 
 func BenchmarkLimiter(b *testing.B) {
