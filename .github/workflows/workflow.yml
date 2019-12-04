@@ -28,11 +28,11 @@ jobs:
       - name: Run unit tests
         run: make unit_test
 
-      - name: Run integration tests
-        run: make integration_test
-
       - name: Run genesis tests
         run: go test -v -tags=integration -parallel 1 . -run TestDump
+
+      - name: Run integration tests
+        run: make integration_test
 
       - name: Concat coverage
         run: |
