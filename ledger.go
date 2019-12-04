@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"github.com/perlin-network/wavelet/internal/worker"
 	"io"
 	"math/rand"
 	"sync"
@@ -91,7 +92,7 @@ type Ledger struct {
 
 	queryBlockCache map[[blake2b.Size256]byte]*Block
 
-	queueWorkerPool *WorkerPool
+	queryWorkerPool *worker.Pool
 
 	collapseResultsLogger *CollapseResultsLogger
 }
@@ -191,7 +192,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 		queryBlockCache: make(map[BlockID]*Block),
 
-		queueWorkerPool: NewWorkerPool(),
+		queryWorkerPool: worker.NewWorkerPool(),
 
 		collapseResultsLogger: NewCollapseResultsLogger(),
 	}
@@ -221,7 +222,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 	ledger.stallDetector = stallDetector
 
-	ledger.queueWorkerPool.Start(16)
+	ledger.queryWorkerPool.Start(16)
 	ledger.PerformConsensus()
 
 	go ledger.SyncToLatestBlock()
@@ -249,7 +250,7 @@ func (l *Ledger) Close() {
 		l.cancelGC()
 	}
 
-	l.queueWorkerPool.Stop()
+	l.queryWorkerPool.Stop()
 
 	l.stallDetector.Stop()
 
@@ -889,7 +890,7 @@ func (l *Ledger) query() {
 			l.metrics.queryLatency.Time(f)
 		}
 
-		l.queueWorkerPool.Queue(f)
+		l.queryWorkerPool.Queue(f)
 	}
 
 	votes := make([]*finalizationVote, 0, len(peers))
