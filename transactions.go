@@ -3,6 +3,7 @@ package wavelet
 import (
 	"math/big"
 	"sync"
+	"sync/atomic"
 
 	"github.com/google/btree"
 	"github.com/perlin-network/wavelet/conf"
@@ -23,8 +24,8 @@ func (m mempoolItem) Less(than btree.Item) bool {
 type Transactions struct {
 	sync.RWMutex
 
-	buffer  map[TransactionID]*Transaction
-	missing map[TransactionID]uint64
+	buffer  TransactionMap
+	missing TransactionMap
 	index   *btree.BTree
 
 	height uint64 // The latest block height the node is aware of.
@@ -32,8 +33,8 @@ type Transactions struct {
 
 func NewTransactions(height uint64) *Transactions {
 	return &Transactions{
-		buffer:  make(map[TransactionID]*Transaction),
-		missing: make(map[TransactionID]uint64),
+		buffer:  NewTransactionMap(),
+		missing: NewTransactionMap(),
 		index:   btree.New(32),
 
 		height: height,
@@ -75,27 +76,27 @@ func (t *Transactions) BatchAdd(block BlockID, transactions []Transaction, verif
 }
 
 func (t *Transactions) add(block BlockID, tx Transaction) {
-	if t.height >= tx.Block+uint64(conf.GetPruningLimit()) {
-		delete(t.missing, tx.ID)
+	if atomic.LoadUint64(&t.height) >= tx.Block+uint64(conf.GetPruningLimit()) {
+		t.missing.Delete(tx.ID)
 
 		return
 	}
 
-	if _, exists := t.buffer[tx.ID]; exists {
+	if _, exists := t.buffer.Get(tx.ID); exists {
 		return
 	}
 
 	t.index.ReplaceOrInsert(mempoolItem{index: tx.ComputeIndex(block), id: tx.ID})
-	t.buffer[tx.ID] = &tx
+	t.buffer.Put(tx.ID, &tx)
 
-	delete(t.missing, tx.ID) // In case the transaction was previously missing, mark it as no longer missing.
+	t.missing.Delete(tx.ID) // In case the transaction was previously missing, mark it as no longer missing.
 }
 
 // MarkMissing marks that the node was expected to have archived a transaction with a specified id, but
 // does not have it archived and so needs to have said transaction pulled from the nodes peers.
 func (t *Transactions) MarkMissing(id TransactionID) bool {
-	t.Lock()
-	defer t.Unlock()
+	// t.Lock()
+	// defer t.Unlock()
 
 	return t.markMissing(id)
 }
@@ -103,8 +104,8 @@ func (t *Transactions) MarkMissing(id TransactionID) bool {
 // BatchMarkMissing is the same as MarkMissing, but it accepts a list of transaction IDs.
 // It returns false if at least 1 transaction ID is found missing.
 func (t *Transactions) BatchMarkMissing(ids ...TransactionID) bool {
-	t.Lock()
-	defer t.Unlock()
+	// t.Lock()
+	// defer t.Unlock()
 
 	var missing bool
 
@@ -118,13 +119,13 @@ func (t *Transactions) BatchMarkMissing(ids ...TransactionID) bool {
 }
 
 func (t *Transactions) markMissing(id TransactionID) bool {
-	_, exists := t.buffer[id]
+	_, exists := t.buffer.Get(id)
 
 	if exists {
 		return false
 	}
 
-	t.missing[id] = t.height
+	t.missing.Put(id, atomic.LoadUint64(&t.height))
 
 	return true
 }
@@ -157,7 +158,8 @@ func (t *Transactions) ReshufflePending(next Block) []TransactionID {
 			return true
 		}
 
-		tx := t.buffer[item.id]
+		txe, _ := t.buffer.Get(item.id)
+		tx := txe.(*Transaction)
 
 		if next.Index < tx.Block+uint64(conf.GetPruningLimit()) {
 			item.index = tx.ComputeIndex(next.ID)
@@ -181,26 +183,34 @@ func (t *Transactions) ReshufflePending(next Block) []TransactionID {
 	// any transactions that are too old.
 	pruned := []TransactionID{}
 
-	for _, tx := range t.buffer {
+	t.buffer.Iterate(func(key TransactionID, value interface{}) bool {
+		tx := value.(*Transaction)
+
 		if next.Index >= tx.Block+uint64(conf.GetPruningLimit()) {
-			delete(t.buffer, tx.ID)
+			t.buffer.Delete(tx.ID)
 			pruned = append(pruned, tx.ID)
 		}
-	}
+
+		return true
+	})
 
 	// Prune any IDs of transactions that we are trying to pull from our peers
 	// that have not managed to be pulled for `PruningLimit` blocks.
 
-	for id, height := range t.missing {
+	t.missing.Iterate(func(key TransactionID, value interface{}) bool {
+		height := value.(uint64)
+
 		if next.Index >= height+uint64(conf.GetPruningLimit()) {
-			delete(t.missing, id)
+			t.missing.Delete(key)
 		}
-	}
+
+		return true
+	})
 
 	// Have all IDs of transactions missing from now on be marked to be missing from
 	// a new block height.
 
-	t.height = next.Index
+	atomic.StoreUint64(&t.height, next.Index)
 
 	return pruned
 }
@@ -208,49 +218,54 @@ func (t *Transactions) ReshufflePending(next Block) []TransactionID {
 // Has returns whether or not the node is archiving some transaction specified
 // by an id.
 func (t *Transactions) Has(id TransactionID) bool {
-	t.RLock()
-	defer t.RUnlock()
+	// t.RLock()
+	// defer t.RUnlock()
 
-	_, exists := t.buffer[id]
-
+	_, exists := t.buffer.Get(id)
 	return exists
 }
 
 func (t *Transactions) HasPending(block BlockID, id TransactionID) bool {
-	t.RLock()
-	defer t.RUnlock()
-
-	tx, exists := t.buffer[id]
+	txe, exists := t.buffer.Get(id)
 	if !exists {
 		return false
 	}
 
+	t.RLock()
+	defer t.RUnlock()
+
+	tx := txe.(*Transaction)
 	return t.index.Has(mempoolItem{index: tx.ComputeIndex(block), id: id})
 }
 
 // Find searches and returns a transaction by its id if the node has it
 // archived.
 func (t *Transactions) Find(id TransactionID) *Transaction {
-	t.RLock()
-	defer t.RUnlock()
+	// t.RLock()
+	// defer t.RUnlock()
 
-	return t.buffer[id]
+	txe, exists := t.buffer.Get(id)
+	if !exists {
+		return nil
+	}
+
+	return txe.(*Transaction)
 }
 
 // BatchFind returns an error if one of the id does not exist.
 func (t *Transactions) BatchFind(ids []TransactionID) ([]*Transaction, error) {
-	t.RLock()
-	defer t.RUnlock()
+	// t.RLock()
+	// defer t.RUnlock()
 
 	txs := make([]*Transaction, 0, len(ids))
 
 	for i := range ids {
-		tx, exist := t.buffer[ids[i]]
+		txe, exist := t.buffer.Get(ids[i])
 		if !exist {
 			return nil, errors.Wrapf(ErrMissingTx, "%x", ids[i])
 		}
 
-		txs = append(txs, tx)
+		txs = append(txs, txe.(*Transaction))
 	}
 
 	return txs, nil
@@ -258,17 +273,17 @@ func (t *Transactions) BatchFind(ids []TransactionID) ([]*Transaction, error) {
 
 // Len returns the total number of transactions that the node has archived.
 func (t *Transactions) Len() int {
-	t.RLock()
-	defer t.RUnlock()
+	// t.RLock()
+	// defer t.RUnlock()
 
-	return len(t.buffer)
+	return int(t.buffer.Len())
 }
 
 // PendingLen returns the number of transactions the node has archived that may be proposed
 // into a block.
 func (t *Transactions) PendingLen() int {
-	t.RLock()
-	defer t.RUnlock()
+	// t.RLock()
+	// defer t.RUnlock()
 
 	return t.index.Len()
 }
@@ -276,22 +291,21 @@ func (t *Transactions) PendingLen() int {
 // MissingLen returns the number of transactions that the node is looking to pull from
 // its peers.
 func (t *Transactions) MissingLen() int {
-	t.RLock()
-	defer t.RUnlock()
+	// t.RLock()
+	// defer t.RUnlock()
 
-	return len(t.missing)
+	return int(t.missing.Len())
 }
 
 // Iterate iterates through all transactions that the node has archived.
 func (t *Transactions) Iterate(fn func(*Transaction) bool) {
-	t.RLock()
-	defer t.RUnlock()
+	// t.RLock()
+	// defer t.RUnlock()
 
-	for _, tx := range t.buffer {
-		if !fn(tx) {
-			return
-		}
-	}
+	t.buffer.Iterate(func(key TransactionID, value interface{}) bool {
+		tx := value.(*Transaction)
+		return fn(tx)
+	})
 }
 
 // ProposableIDs returns a slice of IDs of transactions that may be wrapped
@@ -308,7 +322,10 @@ func (t *Transactions) ProposableIDs() []TransactionID {
 	proposable := make([]TransactionID, 0, limit)
 
 	t.index.Ascend(func(i btree.Item) bool {
-		if t.buffer[i.(mempoolItem).id].Block <= t.height+1 {
+		txe, _ := t.buffer.Get(i.(mempoolItem).id)
+		tx := txe.(*Transaction)
+
+		if tx.Block <= atomic.LoadUint64(&t.height)+1 {
 			proposable = append(proposable, i.(mempoolItem).id)
 		}
 
@@ -321,14 +338,15 @@ func (t *Transactions) ProposableIDs() []TransactionID {
 // MissingIDs returns a slice of IDs of transactions which the node would
 // like to pull from its peers.
 func (t *Transactions) MissingIDs() []TransactionID {
-	t.RLock()
-	defer t.RUnlock()
+	// t.RLock()
+	// defer t.RUnlock()
 
 	missing := make([]TransactionID, 0, len(t.missing))
 
-	for id := range t.missing {
-		missing = append(missing, id)
-	}
+	t.missing.Iterate(func(key TransactionID, value interface{}) bool {
+		missing = append(missing, key)
+		return true
+	})
 
 	return missing
 }
