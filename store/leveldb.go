@@ -50,6 +50,11 @@ func (b *leveldbWriteBatch) Destroy() {
 	b.batch = nil
 }
 
+func (b *leveldbWriteBatch) Delete(key []byte) error {
+	b.batch.Delete(key)
+	return nil
+}
+
 var _ KV = (*leveldbKV)(nil)
 
 type leveldbKV struct {

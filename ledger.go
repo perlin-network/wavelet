@@ -65,6 +65,7 @@ type Ledger struct {
 	accounts     *Accounts
 	blocks       *Blocks
 	transactions *Transactions
+	db           store.KV
 
 	finalizer *Snowball
 	syncer    *Snowball
@@ -135,39 +136,35 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	indexer := NewIndexer()
 	accounts := NewAccounts(kv)
 
-	blocks, err := NewBlocks(kv, conf.GetPruningLimit())
-	if err != nil && errors.Cause(err) != store.ErrNotFound {
-		logger.Fatal().Err(err).Msg("BUG: Could not load blocks from db")
-		return nil
-	}
-
 	var block *Block
 
-	if blocks != nil && err != nil {
+	blocks, err := NewBlocks(kv, conf.GetPruningLimit())
+	if err != nil {
+		if errors.Cause(err) != store.ErrNotFound {
+			logger.Fatal().Err(err).Msg("BUG: Could not load blocks from db")
+			return nil
+		}
+
 		genesis := performInception(accounts.tree, cfg.Genesis)
 
 		if err := accounts.Commit(nil); err != nil {
-			logger.Fatal().Err(err).Msg("BUG: accounts.Commit")
+			logger.Fatal().Err(err).Msg("BUG: accounts.Commit during genesis")
+			return nil
 		}
 
 		ptr := &genesis
 
 		if _, err := blocks.Save(ptr); err != nil {
-			logger.Fatal().Err(err).Msg("BUG: blocks.Save")
+			logger.Fatal().Err(err).Msg("BUG: blocks.Save during genesis")
+			return nil
 		}
 
 		block = ptr
-	} else if blocks != nil {
+	} else {
 		block = blocks.Latest()
 	}
 
-	if block == nil {
-		logger.Fatal().Err(err).Msg("BUG: COULD NOT FIND GENESIS, OR STORAGE IS CORRUPTED.")
-		return nil
-	}
-
 	transactions := NewTransactions(block.Index)
-	transactions.AddMissingBlocks(blocks.GetAll())
 
 	finalizer := NewSnowball()
 	syncer := NewSnowball()
@@ -180,6 +177,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		accounts:     accounts,
 		blocks:       blocks,
 		transactions: transactions,
+		db:           kv,
 
 		finalizer: finalizer,
 		syncer:    syncer,
@@ -200,6 +198,11 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 		queueWorkerPool: NewWorkerPool(),
 
 		collapseResultsLogger: NewCollapseResultsLogger(),
+	}
+
+	if err := ledger.loadTransactions(); err != nil && errors.Cause(err) != store.ErrNotFound {
+		logger.Fatal().Err(err).Msg("BUG: COULD NOT LOAD TRANSACTIONS FROM DB.")
+		return nil
 	}
 
 	if !cfg.GCDisabled {
@@ -771,12 +774,21 @@ func (l *Ledger) finalize(block Block) {
 	}
 	l.transactionsSyncIndexLock.Unlock()
 
-	_, err = l.blocks.Save(&block)
+	evicted, err := l.blocks.Save(&block)
 	if err != nil {
 		logger := log.Node()
 		logger.Error().
 			Err(err).
 			Msg("Failed to save preferred block to database")
+
+		return
+	}
+
+	if err := l.storeTransactions(&block, evicted); err != nil {
+		logger := log.Node()
+		logger.Error().
+			Err(err).
+			Msg("Failed to save transactions from preferred block to database")
 
 		return
 	}
@@ -1449,11 +1461,21 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 			goto SYNC
 		}
 
-		_, err = l.blocks.Save(latest)
+		evicted, err := l.blocks.Save(latest)
 		if err != nil {
 			logger.Error().
 				Err(err).
 				Msg("Failed to save finalized block to our database")
+
+			cleanup()
+
+			goto SYNC
+		}
+
+		if err := l.storeTransactions(latest, evicted); err != nil {
+			logger.Error().
+				Err(err).
+				Msg("Failed to save transactions from finalized block to our database")
 
 			cleanup()
 
@@ -1646,4 +1668,53 @@ func (l *Ledger) resetTransactionsSyncIndex() {
 		l.transactionsSyncIndex.Insert(tx.ID[:])
 		return true
 	})
+}
+
+func (l *Ledger) loadTransactions() error {
+	txNum := 0
+
+	blocks := l.blocks.GetAll()
+	for _, b := range blocks {
+		txs, err := LoadTransactions(l.db, b.Transactions)
+		if err != nil {
+			return err
+		}
+
+		l.transactions.BatchBufferAdd(txs)
+
+		l.transactionsSyncIndexLock.Lock()
+		for _, tx := range txs {
+			l.transactionsSyncIndex.Insert(tx.ID[:])
+		}
+		l.transactionsSyncIndexLock.Unlock()
+
+		txNum += len(txs)
+	}
+
+	if len(blocks) > 0 && txNum > 0 {
+		logger := log.Node()
+		logger.Info().
+			Int("blocks", len(blocks)).
+			Int("tx_num", txNum).
+			Msg("Loaded transactions from db.")
+	}
+
+	return nil
+}
+
+func (l *Ledger) storeTransactions(stored *Block, evicted *Block) error {
+	txs, _ := l.transactions.BatchFind(stored.Transactions)
+	if txs == nil {
+		return nil
+	}
+
+	if err := StoreTransactions(l.db, txs); err != nil {
+		return err
+	}
+
+	if evicted != nil {
+		return DeleteTransactions(l.db, evicted.Transactions)
+	}
+
+	return nil
 }

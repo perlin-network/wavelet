@@ -52,6 +52,10 @@ func (b *badgerWriteBatch) Destroy() {
 	b.batch.Cancel()
 }
 
+func (b *badgerWriteBatch) Delete(key []byte) error {
+	return b.batch.Delete(key)
+}
+
 type badgerKV struct {
 	dir string
 	db  *badger.DB
