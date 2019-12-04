@@ -22,6 +22,7 @@ package wavelet
 import (
 	"encoding/binary"
 	"github.com/perlin-network/wavelet/sys"
+	"math"
 	"sync"
 
 	"github.com/perlin-network/noise/skademlia"
@@ -196,14 +197,11 @@ func calculateTallies(accounts *Accounts, responses []Vote) []Vote {
 	votes := make(map[VoteID]Vote, len(responses))
 
 	for _, res := range responses {
-		vote, exists := votes[res.ID()]
-		if !exists {
-			vote = res
-
-			votes[vote.ID()] = vote
+		if _, exists := votes[res.ID()]; !exists {
+			votes[res.ID()] = res
 		}
 
-		vote.SetTally(vote.Tally() + 1.0/float64(len(responses)))
+		votes[res.ID()].SetTally(votes[res.ID()].Tally() + 1.0/float64(len(responses)))
 	}
 
 	for id, weight := range Normalize(ComputeProfitWeights(responses)) {
@@ -214,26 +212,23 @@ func calculateTallies(accounts *Accounts, responses []Vote) []Vote {
 		votes[id].SetTally(votes[id].Tally() * weight)
 	}
 
-	totalTally := float64(0)
-	for _, block := range votes {
-		totalTally += block.Tally()
+	total := float64(0)
+	for _, vote := range votes {
+		total += vote.Tally()
 	}
 
-	array := make([]Vote, 0, len(votes))
+	tallies := make([]Vote, 0, len(votes))
 
-	for id := range votes {
-		votes[id].SetTally(votes[id].Tally() / totalTally)
-
-		array = append(array, votes[id])
+	for _, vote := range votes {
+		vote.SetTally(vote.Tally() / total)
+		tallies = append(tallies, vote)
 	}
 
-	return array
+	return tallies
 }
 
 func ComputeProfitWeights(responses []Vote) map[VoteID]float64 {
 	weights := make(map[VoteID]float64, len(responses))
-
-	var max float64
 
 	for _, res := range responses {
 		if res.ID() == ZeroVoteID {
@@ -241,14 +236,6 @@ func ComputeProfitWeights(responses []Vote) map[VoteID]float64 {
 		}
 
 		weights[res.ID()] += res.Length()
-
-		if weights[res.ID()] > max {
-			max = weights[res.ID()]
-		}
-	}
-
-	for id := range weights {
-		weights[id] /= max
 	}
 
 	return weights
@@ -256,8 +243,6 @@ func ComputeProfitWeights(responses []Vote) map[VoteID]float64 {
 
 func ComputeStakeWeights(accounts *Accounts, responses []Vote) map[VoteID]float64 {
 	weights := make(map[VoteID]float64, len(responses))
-
-	var max float64
 
 	snapshot := accounts.Snapshot()
 
@@ -273,47 +258,35 @@ func ComputeStakeWeights(accounts *Accounts, responses []Vote) map[VoteID]float6
 		} else {
 			weights[res.ID()] += float64(stake)
 		}
-
-		if weights[res.ID()] > max {
-			max = weights[res.ID()]
-		}
-	}
-
-	for id := range weights {
-		weights[id] /= max
 	}
 
 	return weights
 }
 
 func Normalize(weights map[VoteID]float64) map[VoteID]float64 {
-	normalized := make(map[VoteID]float64, len(weights))
-	min, max := float64(1), float64(0)
+	min, max := math.MaxFloat64, math.SmallestNonzeroFloat64
 
-	// Find minimum weight.
+	// Find minimum and maximum weights.
 	for _, weight := range weights {
 		if min > weight {
 			min = weight
 		}
-	}
 
-	// Subtract minimum and find maximum normalized weight.
-	for vote, weight := range weights {
-		normalized[vote] = weight - min
-
-		if normalized[vote] > max {
-			max = normalized[vote]
+		if max < weight {
+			max = weight
 		}
 	}
 
-	// Normalize weight using maximum normalized weight into range [0, 1].
-	for vote := range weights {
-		if max == 0 {
-			normalized[vote] = 1
+	denom := max - min
+
+	// Normalize weights into range [0, 1].
+	for id := range weights {
+		if denom <= 1e-30 {
+			weights[id] = 1
 		} else {
-			normalized[vote] /= max
+			weights[id] = (weights[id] - min) / denom
 		}
 	}
 
-	return normalized
+	return weights
 }
