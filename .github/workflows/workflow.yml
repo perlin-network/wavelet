@@ -18,9 +18,6 @@ jobs:
           path: $(go env GOPATH)/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
 
-      - name: Download Go modules
-        run: go mod download
-
       - name: Build for linux
         run: GOOS=linux GOARCH=amd64 go build -o wavelet-linux-amd64 ./cmd/wavelet
 
