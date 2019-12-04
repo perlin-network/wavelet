@@ -31,6 +31,9 @@ jobs:
       - name: Run integration tests
         run: make integration_test
 
+      - name: Run genesis tests
+        run: go test -v -tags=integration -parallel 1 . -run TestDump
+
       - name: Concat coverage
         run: |
                 echo "mode: atomic" > coverage.txt
