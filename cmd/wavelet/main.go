@@ -320,8 +320,8 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer, disableGC bool
 		} else {
 			wctlCfg.APIPort = uint16(c.Uint("api.port"))
 		}
-		wctlCfg.PrivateKey = srv.Keys.PrivateKey()
 
+		wctlCfg.PrivateKey = srv.Keys.PrivateKey()
 		wctlCfg.APIHost = c.String("wctl.host")
 		if wctlCfg.APIHost == "" {
 			wctlCfg.APIHost = "127.0.0.1"
