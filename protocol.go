@@ -22,7 +22,7 @@ package wavelet
 import (
 	"bytes"
 	"context"
-	cuckoo "github.com/seiflotfy/cuckoofilter"
+	"github.com/perlin-network/wavelet/internal/cuckoo"
 	"io"
 
 	"github.com/perlin-network/wavelet/conf"
@@ -205,7 +205,7 @@ func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error
 		return err
 	}
 
-	cf, err := cuckoo.Decode(req.GetFilter())
+	cf, err := cuckoo.UnmarshalBinary(req.GetFilter())
 	if err != nil {
 		return err
 	}
@@ -213,7 +213,7 @@ func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error
 	var toReturn [][]byte
 
 	p.ledger.transactions.Iterate(func(tx *Transaction) bool {
-		if exists := cf.Lookup(tx.ID[:]); !exists {
+		if exists := cf.Lookup(tx.ID); !exists {
 			toReturn = append(toReturn, tx.Marshal())
 		}
 

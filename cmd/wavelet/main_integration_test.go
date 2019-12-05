@@ -407,8 +407,6 @@ func TestMain_UpdateParams(t *testing.T) {
 		{"check.out.of.sync.timeout", "checkOutOfSyncTimeout", time.Second * 7},
 		{"sync.chunk.size", "syncChunkSize", int(1337)},
 		{"sync.if.block.indices.differ.by", "syncIfBlockIndicesDifferBy", uint64(42)},
-		{"bloom.filter.m", "bloomFilterM", uint64(54321)},
-		{"bloom.filter.k", "bloomFilterK", uint64(9)},
 		{"pruning.limit", "pruningLimit", uint64(255)},
 		// {"block.tx.limit", "blockTxLimit", uint64(666)},
 		{"api.secret", "secret", "shambles"},
