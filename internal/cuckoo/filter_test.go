@@ -46,11 +46,13 @@ func samples(t testing.TB) [][32]byte {
 }
 
 /**
-BenchmarkNewFilter-8               56608            221212 ns/op
-BenchmarkInsert-8               328951662               36.5 ns/op
-BenchmarkLookup-8               345647392               35.3 ns/op
-BenchmarkMarshalBinary-8            8439           1330817 ns/op
-BenchmarkUnmarshalBinary-8          2826           4143137 ns/o
+go test -tags=unit -bench=. -benchtime=10s
+
+BenchmarkNewFilter-8               50552            203224 ns/op
+BenchmarkInsert-8               355878726               34.4 ns/op
+BenchmarkLookup-8               352105975               33.6 ns/op
+BenchmarkMarshalBinary-8        1000000000               0.746 ns/op
+BenchmarkUnmarshalBinary-8          3204           3848225 ns/op
 */
 
 func BenchmarkNewFilter(b *testing.B) {
