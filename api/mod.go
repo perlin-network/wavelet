@@ -352,6 +352,8 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 
 	if !tx.VerifySignature() {
 		g.renderError(ctx, ErrBadRequest(errors.New("bad signature")))
+
+		return
 	}
 
 	g.ledger.AddTransaction(false, tx)
