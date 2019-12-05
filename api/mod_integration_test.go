@@ -756,9 +756,15 @@ func compareJSON(expected []byte, response []byte) error {
 
 func createLedger(t *testing.T) *wavelet.Ledger {
 	keys, err := skademlia.NewKeys(1, 1)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	ledger := wavelet.NewLedger(store.NewInmem(), skademlia.NewClient(":0", keys))
+	ledger, err := wavelet.NewLedger(store.NewInmem(), skademlia.NewClient(":0", keys))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	return ledger
 }
 
