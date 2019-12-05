@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestNewRounds(t *testing.T) {
+func TestNewBlocks(t *testing.T) {
 	t.Parallel()
 
 	storage := store.NewInmem()
@@ -47,7 +47,7 @@ func TestNewRounds(t *testing.T) {
 	assert.Equal(t, uint64(5), newRM.Count())
 }
 
-func TestRoundsCircular(t *testing.T) {
+func TestBlocksCircular(t *testing.T) {
 	t.Parallel()
 
 	storage := store.NewInmem()
