@@ -47,7 +47,12 @@ func UnmarshalBinary(buf []byte) (*Filter, error) {
 		return nil, fmt.Errorf("must be %d bytes, but got %d bytes", NumBuckets*BucketSize, len(buf))
 	}
 
-	count := NumFilled(buf) / 8
+	count := uint(0)
+	for _, b := range buf {
+		if b != 0 {
+			count++
+		}
+	}
 
 	ptr := (*reflect.SliceHeader)(unsafe.Pointer(&buf)).Data
 	buckets := *(*[NumBuckets]Bucket)(unsafe.Pointer(ptr))
