@@ -124,14 +124,13 @@ func WithMaxMemoryMB(n uint64) Option {
 	}
 }
 
-func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
+func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, error) {
 	var cfg config
 
 	for _, opt := range opts {
 		opt(&cfg)
 	}
 
-	logger := log.Node()
 	metrics := NewMetrics(context.TODO())
 	indexer := NewIndexer()
 	accounts := NewAccounts(kv)
@@ -141,22 +140,19 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	blocks, err := NewBlocks(kv, conf.GetPruningLimit())
 	if err != nil {
 		if errors.Cause(err) != store.ErrNotFound {
-			logger.Fatal().Err(err).Msg("BUG: Could not load blocks from db")
-			return nil
+			return nil, errors.Wrap(err, "error getting blocks from db")
 		}
 
 		genesis := performInception(accounts.tree, cfg.Genesis)
 
 		if err := accounts.Commit(nil); err != nil {
-			logger.Fatal().Err(err).Msg("BUG: accounts.Commit during genesis")
-			return nil
+			return nil, errors.Wrap(err, "error committing accounts from genesis")
 		}
 
 		ptr := &genesis
 
 		if _, err := blocks.Save(ptr); err != nil {
-			logger.Fatal().Err(err).Msg("BUG: blocks.Save during genesis")
-			return nil
+			return nil, errors.Wrap(err, "error saving genesis block to db")
 		}
 
 		block = ptr
@@ -201,8 +197,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 	}
 
 	if err := ledger.loadTransactions(); err != nil && errors.Cause(err) != store.ErrNotFound {
-		logger.Fatal().Err(err).Msg("BUG: COULD NOT LOAD TRANSACTIONS FROM DB.")
-		return nil
+		return nil, errors.Wrap(err, "error loading transactions from db")
 	}
 
 	if !cfg.GCDisabled {
@@ -237,7 +232,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 	go ledger.PushSendQuota()
 
-	return ledger
+	return ledger, nil
 }
 
 // Close stops all goroutines and waits for them to complete.

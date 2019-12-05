@@ -196,7 +196,11 @@ func New(cfg *Config) (*Wavelet, error) {
 		opts = append(opts, wavelet.WithMaxMemoryMB(cfg.MaxMemoryMB))
 	}
 
-	ledger := wavelet.NewLedger(kv, client, opts...)
+	ledger, err := wavelet.NewLedger(kv, client, opts...)
+	if err != nil {
+		return nil, errors.Wrap(err, "error creating ledger")
+	}
+
 	w.Ledger = ledger
 
 	return &w, nil

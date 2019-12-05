@@ -275,10 +275,9 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 	}
 
 	kv, cleanup := store.NewTestKV(t, "level", path, kvOpts...)
-	ledger := NewLedger(kv, client, WithoutGC())
-
-	if ledger == nil {
-		t.Fatal("Error creating new test ledger")
+	ledger, err := NewLedger(kv, client, WithoutGC())
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	server := client.Listen()
