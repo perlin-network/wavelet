@@ -4,25 +4,24 @@ import (
 	"sync"
 )
 
-// TransactionMap is a sharded map with TransactionID as its key
-type TransactionMap map[uint64]*transactionMapShard
-
-type transactionMapShard struct {
-	items map[TransactionID]interface{}
-	lock  *sync.RWMutex
-}
-
 const (
 	shardsCount = 64
 )
 
-func NewTransactionMap() TransactionMap {
-	shards := make(TransactionMap, shardsCount)
+// TransactionMap is a sharded map with TransactionID as its key
+type TransactionMap [shardsCount]*transactionMapShard
 
+type transactionMapShard struct {
+	sync.Mutex
+
+	items map[TransactionID]interface{}
+}
+
+func NewTransactionMap() TransactionMap {
+	var shards TransactionMap
 	for i := uint64(0); i < shardsCount; i++ {
 		shards[i] = &transactionMapShard{
 			items: make(map[TransactionID]interface{}, 2048),
-			lock:  new(sync.RWMutex),
 		}
 	}
 
@@ -30,40 +29,37 @@ func NewTransactionMap() TransactionMap {
 }
 
 func (c TransactionMap) Len() uint64 {
-	// Lock all shards
-	for i := uint64(0); i < shardsCount; i++ {
-		c[i].lock.RLock()
-		defer c[i].lock.RUnlock()
-	}
-
 	var l uint64
+
 	for i := uint64(0); i < shardsCount; i++ {
+		c[i].Lock()
 		l += uint64(len(c[i].items))
+		c[i].Unlock()
 	}
 
 	return l
 }
 
 func (c TransactionMap) Iterate(fn func(key TransactionID, value interface{}) bool) {
-	// Lock all shards
 	for i := uint64(0); i < shardsCount; i++ {
-		c[i].lock.RLock()
-		defer c[i].lock.RUnlock()
-	}
+		c[i].Lock()
 
-	for i := uint64(0); i < shardsCount; i++ {
 		for key, value := range c[i].items {
 			if !fn(key, value) {
+				c[i].Unlock()
 				return
 			}
 		}
+
+		c[i].Unlock()
 	}
 }
 
 func (c TransactionMap) Get(key TransactionID) (interface{}, bool) {
 	shard := c.GetShard(key)
-	shard.lock.RLock()
-	defer shard.lock.RUnlock()
+
+	shard.Lock()
+	defer shard.Unlock()
 
 	if tx, exists := shard.items[key]; !exists {
 		return nil, false
@@ -75,8 +71,8 @@ func (c TransactionMap) Get(key TransactionID) (interface{}, bool) {
 func (c TransactionMap) Put(key TransactionID, value interface{}) {
 	shard := c.GetShard(key)
 
-	shard.lock.Lock()
-	defer shard.lock.Unlock()
+	shard.Lock()
+	defer shard.Unlock()
 
 	shard.items[key] = value
 }
@@ -84,8 +80,8 @@ func (c TransactionMap) Put(key TransactionID, value interface{}) {
 func (c TransactionMap) Delete(key TransactionID) {
 	shard := c.GetShard(key)
 
-	shard.lock.Lock()
-	defer shard.lock.Unlock()
+	shard.Lock()
+	defer shard.Unlock()
 
 	delete(shard.items, key)
 }
