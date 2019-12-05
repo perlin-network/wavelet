@@ -48,6 +48,7 @@ func UnmarshalBinary(buf []byte) (*Filter, error) {
 	}
 
 	count := uint(0)
+
 	for _, b := range buf {
 		if b != 0 {
 			count++
@@ -159,6 +160,7 @@ func (b *Bucket) Insert(val byte) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -169,6 +171,7 @@ func (b *Bucket) Delete(val byte) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -178,6 +181,7 @@ func (b *Bucket) IndexOf(val byte) int {
 			return i
 		}
 	}
+
 	return -1
 }
 
