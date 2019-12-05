@@ -20,7 +20,12 @@
 package store
 
 import (
+	"errors"
 	"io"
+)
+
+var (
+	ErrNotFound = errors.New("not found")
 )
 
 type KV interface {
@@ -50,6 +55,7 @@ type KV interface {
 // the first 599th operations first before proceeding.
 type WriteBatch interface {
 	Put(key, value []byte) error
+	Delete(key []byte) error
 
 	Clear()
 	Count() int

@@ -40,6 +40,7 @@ var (
 	keyBlockOldestIx     = [...]byte{0x5}
 	keyBlockStoredCount  = [...]byte{0x6}
 	keyRewardWithdrawals = [...]byte{0x7}
+	keyTransactions      = [...]byte{0x8}
 
 	// Account-local prefixes.
 	keyAccountBalance            = [...]byte{0x2}
@@ -359,6 +360,50 @@ func LoadBlocks(kv store.KV) ([]*Block, uint32, uint32, error) {
 	}
 
 	return blocks, latestIx, oldestIx, nil
+}
+
+func StoreTransactions(kv store.KV, txs []*Transaction) error {
+	batch := kv.NewWriteBatch()
+
+	for _, tx := range txs {
+		if err := batch.Put(append(keyTransactions[:], tx.ID[:]...), tx.Marshal()); err != nil {
+			return errors.Wrapf(err, "error marshaling transaction %x", tx.ID)
+		}
+	}
+
+	return errors.Wrap(kv.CommitWriteBatch(batch), "error committing transactions batch")
+}
+
+func LoadTransactions(kv store.KV, ids []TransactionID) ([]*Transaction, error) {
+	result := make([]*Transaction, 0, len(ids))
+
+	for _, id := range ids {
+		payload, err := kv.Get(append(keyTransactions[:], id[:]...))
+		if err != nil {
+			return nil, errors.Wrapf(err, "error getting tx %x from db", id)
+		}
+
+		tx, err := UnmarshalTransaction(bytes.NewReader(payload))
+		if err != nil {
+			return nil, errors.Wrapf(err, "error unmarshaling tx %x", id)
+		}
+
+		result = append(result, &tx)
+	}
+
+	return result, nil
+}
+
+func DeleteTransactions(kv store.KV, ids []TransactionID) error {
+	batch := kv.NewWriteBatch()
+
+	for _, id := range ids {
+		if err := batch.Delete(append(keyTransactions[:], id[:]...)); err != nil {
+			return errors.Wrapf(err, "error adding deletion of tx %x to batch", id)
+		}
+	}
+
+	return errors.Wrap(kv.CommitWriteBatch(batch), "error committing batch")
 }
 
 func GetRewardWithdrawalRequests(tree *avl.Tree, blockLimit uint64) []RewardWithdrawalRequest {

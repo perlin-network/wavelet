@@ -74,6 +74,17 @@ func (t *Transactions) BatchAdd(block BlockID, transactions []Transaction, verif
 	}
 }
 
+// BatchUnsafeAdd adds transactions to buffer without adding them to index
+// used on node's start
+func (t *Transactions) BatchUnsafeAdd(txs []*Transaction) {
+	t.Lock()
+	defer t.Unlock()
+
+	for _, tx := range txs {
+		t.buffer[tx.ID] = tx
+	}
+}
+
 func (t *Transactions) add(block BlockID, tx Transaction) {
 	if t.height >= tx.Block+uint64(conf.GetPruningLimit()) {
 		delete(t.missing, tx.ID)

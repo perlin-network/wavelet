@@ -30,6 +30,9 @@ type config struct {
 	txSyncChunkSize uint64
 	txSyncLimit     uint64
 
+	// max number of missing transactions to be pulled at once
+	missingTxPullLimit uint64
+
 	// Size of individual chunks sent for a syncing peer.
 	syncChunkSize int
 
@@ -73,6 +76,8 @@ func defaultConfig() config {
 
 		txSyncChunkSize: 5000,
 		txSyncLimit:     1 << 20,
+
+		missingTxPullLimit: 5000,
 
 		pruningLimit: 30,
 
@@ -194,6 +199,12 @@ func WithTXSyncLimit(n uint64) Option {
 func WithBlockTXLimit(n uint64) Option {
 	return func(c *config) {
 		c.blockTxLimit = n
+	}
+}
+
+func WithMissingTxPullLimit(n uint64) Option {
+	return func(c *config) {
+		c.missingTxPullLimit = n
 	}
 }
 
@@ -336,6 +347,14 @@ func GetTXSyncLimit() uint64 {
 func GetBlockTXLimit() uint64 {
 	l.RLock()
 	t := c.blockTxLimit
+	l.RUnlock()
+
+	return t
+}
+
+func GetMissingTxPullLimit() uint64 {
+	l.RLock()
+	t := c.missingTxPullLimit
 	l.RUnlock()
 
 	return t
