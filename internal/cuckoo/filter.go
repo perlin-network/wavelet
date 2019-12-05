@@ -1,9 +1,32 @@
+//go:generate go run avo/asm.go -out filter.s -stubs filter_stub.go
+
+// Copyright (c) 2019 Perlin
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of
+// this software and associated documentation files (the "Software"), to deal in
+// the Software without restriction, including without limitation the rights to
+// use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+// the Software, and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+// FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+// IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 package cuckoo
 
 import (
 	"encoding/binary"
 	"fmt"
 	"math/rand"
+	"reflect"
+	"unsafe"
 )
 
 const (
@@ -24,27 +47,22 @@ func UnmarshalBinary(buf []byte) (*Filter, error) {
 		return nil, fmt.Errorf("must be %d bytes, but got %d bytes", NumBuckets*BucketSize, len(buf))
 	}
 
-	f := &Filter{}
+	count := NumFilled(buf) / 8
 
-	for i := 0; i < NumBuckets; i++ {
-		for j := 0; j < BucketSize; j++ {
-			index := i*BucketSize + j
+	ptr := (*reflect.SliceHeader)(unsafe.Pointer(&buf)).Data
+	buckets := *(*[NumBuckets]Bucket)(unsafe.Pointer(ptr))
 
-			if buf[index] != 0 {
-				f.Buckets[i][j] = buf[index]
-				f.Count++
-			}
-		}
-	}
-
-	return f, nil
+	return &Filter{Buckets: buckets, Count: count}, nil
 }
 
 func (f *Filter) MarshalBinary() []byte {
-	buf := make([]byte, 0, NumBuckets*BucketSize)
-	for _, b := range f.Buckets {
-		buf = append(buf, b[:]...)
-	}
+	var buf []byte
+
+	sh := (*reflect.SliceHeader)(unsafe.Pointer(&buf))
+	sh.Data = uintptr(unsafe.Pointer(&f.Buckets))
+	sh.Len = NumBuckets * BucketSize
+	sh.Cap = NumBuckets * BucketSize
+
 	return buf
 }
 

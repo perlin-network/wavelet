@@ -22,6 +22,7 @@ require (
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
 	github.com/mauricelam/genny v0.0.0-20190320071652-0800202903e5
 	github.com/minio/highwayhash v1.0.0
+	github.com/mmcloughlin/avo v0.0.0-20190927041150-15d6a9a17e53
 	github.com/perlin-network/life v0.0.0-20190723115110-3091ed0c1be8
 	github.com/perlin-network/noise v1.1.1-0.20191113101947-c8dc081eafa7
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
