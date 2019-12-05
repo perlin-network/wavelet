@@ -278,7 +278,7 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 	ledger := NewLedger(kv, client, WithoutGC())
 
 	if ledger == nil {
-		panic("Error creating new test ledger")
+		t.Fatal("Error creating new test ledger")
 	}
 
 	server := client.Listen()
