@@ -113,15 +113,15 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, disableGC bool) {
 			EnvVar: "WAVELET_API_PORT",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
-			Name:   "wctl.host",
+			Name:   "cli.host",
 			Usage:  "Host to reach to manage the node.",
-			EnvVar: "WAVELET_WCTL_HOST",
+			EnvVar: "WAVELET_CLI_HOST",
 		}),
 		altsrc.NewUintFlag(cli.UintFlag{
-			Name:   "wctl.port",
+			Name:   "cli.port",
 			Value:  0,
 			Usage:  "Port to connect to to manage the node.",
-			EnvVar: "WAVELET_WCTL_PORT",
+			EnvVar: "WAVELET_CLI_PORT",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "api.host",
@@ -315,14 +315,16 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer, disableGC bool
 		}()
 
 		wctlCfg.Server = srv
-		if c.Uint("wctl.port") != 0 {
-			wctlCfg.APIPort = uint16(c.Uint("wctl.port"))
+
+		if c.Uint("cli.port") != 0 {
+			wctlCfg.APIPort = uint16(c.Uint("cli.port"))
 		} else {
 			wctlCfg.APIPort = uint16(c.Uint("api.port"))
 		}
 
 		wctlCfg.PrivateKey = srv.Keys.PrivateKey()
-		wctlCfg.APIHost = c.String("wctl.host")
+		wctlCfg.APIHost = c.String("cli.host")
+
 		if wctlCfg.APIHost == "" {
 			wctlCfg.APIHost = "127.0.0.1"
 		} else {
