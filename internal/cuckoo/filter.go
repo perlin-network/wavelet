@@ -192,5 +192,6 @@ func jenkins(a uint) uint {
 	a = (a + 0xd3a2646c) ^ (a << 9)
 	a = (a + 0xfd7046c5) + (a << 3)
 	a = (a ^ 0xb55a4f09) ^ (a >> 16)
+
 	return a
 }

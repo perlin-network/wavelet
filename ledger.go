@@ -258,7 +258,8 @@ func (l *Ledger) Close() {
 	l.stopWG.Wait()
 }
 
-// AddTransaction adds a transaction to the ledger and adds it's id to a probabilistic data structure used to sync transactions.
+// AddTransaction adds a transaction to the ledger and adds it's id to a probabilistic
+// data structure used to sync transactions.
 func (l *Ledger) AddTransaction(verifySignature bool, txs ...Transaction) {
 	l.transactions.BatchAdd(l.blocks.Latest().ID, txs, verifySignature)
 	l.transactionsSyncIndexLock.Lock()
