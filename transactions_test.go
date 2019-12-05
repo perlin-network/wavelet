@@ -35,12 +35,12 @@ func TestTransactions(t *testing.T) {
 
 		// Check that all transactions were successfully stored in the manager.
 
-		manager.BatchAdd(transactions, true)
+		manager.BatchAdd(transactions, true, false, nil)
 
 		// Attempt to re-add all transactions that were already stored in the manager.
 
 		for _, tx := range transactions {
-			manager.Add(tx, true)
+			manager.Add(tx, true, false, nil)
 		}
 
 		if !assert.Len(t, manager.buffer, len(transactions)) || !assert.Equal(t, manager.Len(), len(transactions)) {
@@ -136,8 +136,8 @@ func TestTransactionsMarkMissing(t *testing.T) {
 
 		// Adding all the transactions into the manager should make len(missing) = 0.
 
-		manager.Add(tx, true)
-		manager.BatchAdd(transactions, true)
+		manager.Add(tx, true, false, nil)
+		manager.BatchAdd(transactions, true, false, nil)
 
 		if !assert.Len(t, manager.missing, 0) || !assert.Len(t, manager.MissingIDs(), 0) {
 			return false
@@ -172,7 +172,7 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 			transactions = append(transactions, tx)
 		}
 
-		manager.BatchAdd(transactions, true)
+		manager.BatchAdd(transactions, true, false, nil)
 
 		// Generate a unique next-block ID to shuffle with.
 
@@ -265,8 +265,8 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) { // nolint:gocognit
 			}
 		}
 
-		manager.BatchAdd(toNotBePrunedTransactions, true)
-		manager.BatchAdd(toBePrunedTransactions, true)
+		manager.BatchAdd(toNotBePrunedTransactions, true, false, nil)
+		manager.BatchAdd(toBePrunedTransactions, true, false, nil)
 
 		// Generate and add a bunch of finalized transactions to the manager.
 
@@ -364,7 +364,7 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) { // nolint:gocognit
 		// Check that stale transactions cannot be added to the manager.
 
 		before := len(manager.buffer)
-		manager.Add(NewTransaction(keys, math.MaxUint64, 0, sys.TagStake, nil), true)
+		manager.Add(NewTransaction(keys, math.MaxUint64, 0, sys.TagStake, nil), true, false, nil)
 		return assert.Len(t, manager.buffer, before)
 	}
 

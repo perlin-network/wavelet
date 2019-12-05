@@ -72,7 +72,7 @@ func TestListTransaction(t *testing.T) {
 	assert.NoError(t, err)
 
 	tx := newTransaction(keys, sys.TagTransfer, 0, 0, buf[:])
-	gateway.ledger.AddTransaction(true, tx)
+	gateway.ledger.AddTransaction(true, false, tx)
 
 	// Build an expected response
 	var expectedResponse transactionList
@@ -172,7 +172,7 @@ func TestGetTransaction(t *testing.T) {
 	_, err = rand.Read(buf[:])
 	assert.NoError(t, err)
 
-	gateway.ledger.AddTransaction(true, newTransaction(keys, sys.TagTransfer, 0, 0, buf[:]))
+	gateway.ledger.AddTransaction(true, false, newTransaction(keys, sys.TagTransfer, 0, 0, buf[:]))
 
 	var txID wavelet.TransactionID
 	gateway.ledger.Transactions().Iterate(func(tx *wavelet.Transaction) bool {

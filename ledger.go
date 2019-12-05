@@ -266,8 +266,13 @@ func (l *Ledger) Close() {
 
 // AddTransaction adds a transaction to the ledger and adds it's id to a probabilistic
 // data structure used to sync transactions.
-func (l *Ledger) AddTransaction(verifySignature bool, txs ...Transaction) {
-	l.transactions.BatchAdd(txs, verifySignature)
+func (l *Ledger) AddTransaction(verifySignature, validateState bool, txs ...Transaction) {
+	var snapshot *avl.Tree
+	if validateState {
+		snapshot = l.Snapshot()
+	}
+
+	l.transactions.BatchAdd(txs, verifySignature, validateState, snapshot)
 	l.transactionFilterLock.Lock()
 
 	for _, tx := range txs {
@@ -398,6 +403,8 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 			continue
 		}
 
+		snapshot := l.Snapshot()
+
 		var wg sync.WaitGroup
 
 		bfReq := &TransactionsSyncRequest{
@@ -481,6 +488,7 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 					}
 
 					transactions := make([]Transaction, 0, len(txResponse.Transactions))
+
 					for _, txBody := range txResponse.Transactions {
 						tx, err := UnmarshalTransaction(bytes.NewReader(txBody))
 						if err != nil {
@@ -495,13 +503,17 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 							continue
 						}
 
+						if err := ValidateTransaction(snapshot, tx); err != nil {
+							continue
+						}
+
 						transactions = append(transactions, tx)
 					}
 
 					downloadedNum := len(transactions)
 					count -= uint64(downloadedNum)
 
-					l.AddTransaction(false, transactions...)
+					l.AddTransaction(false, false, transactions...)
 
 					l.metrics.downloadedTX.Mark(int64(downloadedNum))
 					l.metrics.receivedTX.Mark(int64(downloadedNum))
@@ -611,6 +623,7 @@ func (l *Ledger) PullMissingTransactions() {
 		close(responseChan)
 
 		pulledTXs := make([]Transaction, 0, len(pulled))
+		snapshot := l.Snapshot()
 
 		for _, tx := range pulled {
 			if !tx.VerifySignature() {
@@ -621,10 +634,14 @@ func (l *Ledger) PullMissingTransactions() {
 				continue
 			}
 
+			if err := ValidateTransaction(snapshot, tx); err != nil {
+				continue
+			}
+
 			pulledTXs = append(pulledTXs, tx)
 		}
 
-		l.AddTransaction(false, pulledTXs...)
+		l.AddTransaction(false, false, pulledTXs...)
 
 		if count > 0 {
 			logger.Info().

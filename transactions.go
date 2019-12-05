@@ -29,9 +29,17 @@ func NewTransactions(latest Block) *Transactions {
 
 // Add adds a transaction into the node, and indexes it into the nodes mempool
 // based on the value BLAKE2b(tx.ID || block.ID).
-func (t *Transactions) Add(tx Transaction, verifySignature bool) {
+//
+// snapshot can be nil if validateState is false.
+func (t *Transactions) Add(tx Transaction, verifySignature, validateState bool, snapshot *avl.Tree) {
 	if verifySignature && !tx.VerifySignature() {
 		return
+	}
+
+	if validateState {
+		if err := ValidateTransaction(snapshot, tx); err != nil {
+			return
+		}
 	}
 
 	t.Lock()
@@ -40,14 +48,24 @@ func (t *Transactions) Add(tx Transaction, verifySignature bool) {
 	t.add(tx)
 }
 
-func (t *Transactions) BatchAdd(transactions []Transaction, verifySignature bool) {
-	if verifySignature {
+// snapshot can be nil if validateState is false.
+func (t *Transactions) BatchAdd(transactions []Transaction, verifySignature, validateState bool,
+	snapshot *avl.Tree) {
+	if verifySignature || validateState {
 		filtered := transactions[:0]
 
 		for i := range transactions {
-			if transactions[i].VerifySignature() {
-				filtered = append(filtered, transactions[i])
+			if verifySignature && !transactions[i].VerifySignature() {
+				continue
 			}
+
+			if validateState {
+				if err := ValidateTransaction(snapshot, transactions[i]); err != nil {
+					continue
+				}
+			}
+
+			filtered = append(filtered, transactions[i])
 		}
 
 		transactions = filtered

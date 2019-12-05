@@ -356,7 +356,15 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	g.ledger.AddTransaction(false, tx)
+	snapshot := g.ledger.Snapshot()
+
+	if err := wavelet.ValidateTransaction(snapshot, tx); err != nil {
+		g.renderError(ctx, ErrBadRequest(err))
+
+		return
+	}
+
+	g.ledger.AddTransaction(false, false, tx)
 
 	g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
 }
