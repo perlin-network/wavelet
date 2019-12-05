@@ -1,6 +1,6 @@
 // +build unit
 
-package wavelet
+package worker
 
 import (
 	"testing"

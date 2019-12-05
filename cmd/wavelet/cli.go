@@ -262,16 +262,6 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 					Value: conf.GetSecret(),
 					Usage: "shared secret for http api authorization",
 				},
-				cli.UintFlag{
-					Name:  "bloom.filter.k",
-					Value: conf.GetBloomFilterK(),
-					Usage: "bloom filter K parameter for transaction syncing",
-				},
-				cli.UintFlag{
-					Name:  "bloom.filter.m",
-					Value: conf.GetBloomFilterM(),
-					Usage: "bloom filter M parameter for transaction syncing",
-				},
 				cli.Uint64Flag{
 					Name:  "tx.sync.chunk.size",
 					Value: conf.GetTXSyncChunkSize(),

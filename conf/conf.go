@@ -39,10 +39,6 @@ type config struct {
 	// Number of blocks we should be behind before we start syncing.
 	syncIfBlockIndicesDifferBy uint64
 
-	// Bloom filter parameters
-	bloomFilterM uint
-	bloomFilterK uint
-
 	// Number of blocks after which transactions will be pruned from the graph
 	pruningLimit uint8
 
@@ -82,9 +78,6 @@ func defaultConfig() config {
 		txSyncLimit:     1 << 20,
 
 		missingTxPullLimit: 5000,
-
-		bloomFilterM: 1 << 21,
-		bloomFilterK: 3,
 
 		pruningLimit: 30,
 
@@ -176,18 +169,6 @@ func WithSyncChunkSize(cs int) Option {
 func WithSyncIfBlockIndicesDifferBy(rdb uint64) Option {
 	return func(c *config) {
 		c.syncIfBlockIndicesDifferBy = rdb
-	}
-}
-
-func WithBloomFilterM(m uint) Option {
-	return func(c *config) {
-		c.bloomFilterM = m
-	}
-}
-
-func WithBloomFilterK(k uint) Option {
-	return func(c *config) {
-		c.bloomFilterK = k
 	}
 }
 
@@ -329,22 +310,6 @@ func GetSyncIfBlockIndicesDifferBy() uint64 {
 	l.RUnlock()
 
 	return t
-}
-
-func GetBloomFilterM() uint {
-	l.RLock()
-	m := c.bloomFilterM
-	l.RUnlock()
-
-	return m
-}
-
-func GetBloomFilterK() uint {
-	l.RLock()
-	k := c.bloomFilterK
-	l.RUnlock()
-
-	return k
 }
 
 func GetPruningLimit() uint8 {

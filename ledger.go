@@ -24,12 +24,12 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"github.com/perlin-network/wavelet/internal/cuckoo"
+	"github.com/perlin-network/wavelet/internal/worker"
 	"io"
 	"math/rand"
 	"sync"
 	"time"
-
-	cuckoo "github.com/seiflotfy/cuckoofilter"
 
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
@@ -92,7 +92,7 @@ type Ledger struct {
 
 	queryBlockCache map[[blake2b.Size256]byte]*Block
 
-	queueWorkerPool *WorkerPool
+	queryWorkerPool *worker.Pool
 
 	collapseResultsLogger *CollapseResultsLogger
 }
@@ -191,11 +191,11 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 		sendQuota: make(chan struct{}, 2000),
 
-		transactionsSyncIndex: cuckoo.NewFilter(conf.GetBloomFilterM()),
+		transactionsSyncIndex: cuckoo.NewFilter(),
 
 		queryBlockCache: make(map[BlockID]*Block),
 
-		queueWorkerPool: NewWorkerPool(),
+		queryWorkerPool: worker.NewWorkerPool(),
 
 		collapseResultsLogger: NewCollapseResultsLogger(),
 	}
@@ -230,7 +230,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) *Ledger {
 
 	ledger.stallDetector = stallDetector
 
-	ledger.queueWorkerPool.Start(16)
+	ledger.queryWorkerPool.Start(16)
 	ledger.PerformConsensus()
 
 	go ledger.SyncToLatestBlock()
@@ -258,7 +258,7 @@ func (l *Ledger) Close() {
 		l.cancelGC()
 	}
 
-	l.queueWorkerPool.Stop()
+	l.queryWorkerPool.Stop()
 
 	l.stallDetector.Stop()
 
@@ -267,13 +267,14 @@ func (l *Ledger) Close() {
 	l.stopWG.Wait()
 }
 
-// AddTransaction adds a transaction to the ledger and adds it's id to bloom filter used to sync transactions.
+// AddTransaction adds a transaction to the ledger and adds it's id to a probabilistic
+// data structure used to sync transactions.
 func (l *Ledger) AddTransaction(verifySignature bool, txs ...Transaction) {
 	l.transactions.BatchAdd(l.blocks.Latest().ID, txs, verifySignature)
 	l.transactionsSyncIndexLock.Lock()
 
 	for _, tx := range txs {
-		l.transactionsSyncIndex.InsertUnique(tx.ID[:])
+		l.transactionsSyncIndex.Insert(tx.ID)
 	}
 
 	l.transactionsSyncIndexLock.Unlock()
@@ -396,7 +397,7 @@ func (l *Ledger) Snapshot() *avl.Tree {
 }
 
 // SyncTransactions is an infinite loop which constantly sends transaction ids from its index
-// in form of the bloom filter to randomly sampled number of peers and adds to it's state all received
+// into a Cuckoo Filter to randomly sampled number of peers and adds to it's state all received
 // transactions.
 func (l *Ledger) SyncTransactions() { // nolint:gocognit
 	defer l.consensus.Done()
@@ -418,11 +419,11 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 		logger := log.Sync("sync_tx")
 
 		l.transactionsSyncIndexLock.RLock()
-		cf := l.transactionsSyncIndex.Encode()
+		cf := l.transactionsSyncIndex.MarshalBinary()
 		l.transactionsSyncIndexLock.RUnlock()
 
 		if err != nil {
-			logger.Error().Err(err).Msg("failed to marshal bloom filter")
+			logger.Error().Err(err).Msg("failed to marshal set membership filter data")
 			continue
 		}
 
@@ -451,12 +452,12 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 
 				defer func() {
 					if err := stream.CloseSend(); err != nil {
-						logger.Error().Err(err).Msg("failed to send sync transactions bloom filter")
+						logger.Error().Err(err).Msg("failed to send set membership filter data")
 					}
 				}()
 
 				if err := stream.Send(bfReq); err != nil {
-					logger.Error().Err(err).Msg("failed to send sync transactions bloom filter")
+					logger.Error().Err(err).Msg("failed to send set membership filter data")
 					return
 				}
 
@@ -770,7 +771,7 @@ func (l *Ledger) finalize(block Block) {
 	pruned := l.transactions.ReshufflePending(block)
 	l.transactionsSyncIndexLock.Lock()
 	for _, txID := range pruned {
-		l.transactionsSyncIndex.Delete(txID[:])
+		l.transactionsSyncIndex.Delete(txID)
 	}
 	l.transactionsSyncIndexLock.Unlock()
 
@@ -913,7 +914,7 @@ func (l *Ledger) query() {
 			l.metrics.queryLatency.Time(f)
 		}
 
-		l.queueWorkerPool.Queue(f)
+		l.queryWorkerPool.Queue(f)
 	}
 
 	votes := make([]*finalizationVote, 0, len(peers))
@@ -1665,7 +1666,7 @@ func (l *Ledger) resetTransactionsSyncIndex() {
 	l.transactionsSyncIndex.Reset()
 
 	l.transactions.Iterate(func(tx *Transaction) bool {
-		l.transactionsSyncIndex.Insert(tx.ID[:])
+		l.transactionsSyncIndex.Insert(tx.ID)
 		return true
 	})
 }
@@ -1673,18 +1674,18 @@ func (l *Ledger) resetTransactionsSyncIndex() {
 func (l *Ledger) loadTransactions() error {
 	txNum := 0
 
-	blocks := l.blocks.GetAll()
+	blocks := l.blocks.Clone()
 	for _, b := range blocks {
 		txs, err := LoadTransactions(l.db, b.Transactions)
 		if err != nil {
 			return err
 		}
 
-		l.transactions.BatchBufferAdd(txs)
+		l.transactions.BatchUnsafeAdd(txs)
 
 		l.transactionsSyncIndexLock.Lock()
 		for _, tx := range txs {
-			l.transactionsSyncIndex.Insert(tx.ID[:])
+			l.transactionsSyncIndex.Insert(tx.ID)
 		}
 		l.transactionsSyncIndexLock.Unlock()
 

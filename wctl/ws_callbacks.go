@@ -43,13 +43,6 @@ type (
 		Time      time.Time `json:"time"`
 	}
 	OnRewardUpdated = func(RewardUpdated)
-
-	NonceUpdated struct {
-		AccountID [32]byte  `json:"account_id"`
-		Nonce     uint64    `json:"nonce"`
-		Time      time.Time `json:"time"`
-	}
-	OnNonceUpdated = func(NonceUpdated)
 )
 
 // Mod: network
