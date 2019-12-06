@@ -28,7 +28,7 @@ jobs:
         uses: actions/upload-artifact@v1
         with:
           name: coverage_unit
-          path: coverage.txt
+          path: coverage_unit.txt
 
   integration_tests:
     runs-on: ubuntu-latest
