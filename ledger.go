@@ -82,7 +82,6 @@ type Ledger struct {
 	syncStatus     bitset
 	syncStatusLock sync.RWMutex
 
-	stateLRU *StateLRU
 	filePool *filebuffer.Pool
 
 	stallDetector *stall.Detector
@@ -90,10 +89,11 @@ type Ledger struct {
 	stopWG   sync.WaitGroup
 	cancelGC context.CancelFunc
 
-	filterLock sync.RWMutex
-	filter     *cuckoo.Filter
+	transactionFilterLock sync.RWMutex
+	transactionFilter     *cuckoo.Filter
 
 	queryBlockCache map[[blake2b.Size256]byte]*Block
+	queryStateCache *StateLRU
 
 	queryWorkerPool *worker.Pool
 
@@ -185,10 +185,10 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 
 		sync: make(chan struct{}),
 
-		stateLRU: NewStateLRU(16),
-		filePool: filebuffer.NewPool(sys.SyncPooledFileSize, ""),
+		queryStateCache: NewStateLRU(16),
+		filePool:        filebuffer.NewPool(sys.SyncPooledFileSize, ""),
 
-		filter: cuckoo.NewFilter(),
+		transactionFilter: cuckoo.NewFilter(),
 
 		queryBlockCache: make(map[BlockID]*Block),
 
@@ -265,13 +265,13 @@ func (l *Ledger) Close() {
 // data structure used to sync transactions.
 func (l *Ledger) AddTransaction(verifySignature bool, txs ...Transaction) {
 	l.transactions.BatchAdd(l.blocks.Latest().ID, txs, verifySignature)
-	l.filterLock.Lock()
+	l.transactionFilterLock.Lock()
 
 	for _, tx := range txs {
-		l.filter.Insert(tx.ID)
+		l.transactionFilter.Insert(tx.ID)
 	}
 
-	l.filterLock.Unlock()
+	l.transactionFilterLock.Unlock()
 }
 
 // Find searches through complete transaction and account indices for a specified
@@ -386,9 +386,9 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 
 		logger := log.Sync("sync_tx")
 
-		l.filterLock.RLock()
-		cf := l.filter.MarshalBinary()
-		l.filterLock.RUnlock()
+		l.transactionFilterLock.RLock()
+		cf := l.transactionFilter.MarshalBinary()
+		l.transactionFilterLock.RUnlock()
 
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to marshal set membership filter data")
@@ -727,11 +727,11 @@ func (l *Ledger) finalize(block Block) {
 	}
 
 	pruned := l.transactions.ReshufflePending(block)
-	l.filterLock.Lock()
+	l.transactionFilterLock.Lock()
 	for _, txID := range pruned {
-		l.filter.Delete(txID)
+		l.transactionFilter.Delete(txID)
 	}
-	l.filterLock.Unlock()
+	l.transactionFilterLock.Unlock()
 
 	evicted, err := l.blocks.Save(&block)
 	if err != nil {
@@ -1458,7 +1458,7 @@ type CollapseState struct {
 // applied, rejected, or otherwise ignored transactions.
 func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResults, error) {
 	cacheKey := highwayhash.Sum64(*(*[]byte)(unsafe.Pointer(&block.Transactions)), CacheKey)
-	state, _ := l.stateLRU.LoadOrPut(cacheKey, &CollapseState{})
+	state, _ := l.queryStateCache.LoadOrPut(cacheKey, &CollapseState{})
 
 	state.once.Do(func() {
 		txs, err := l.transactions.BatchFind(block.Transactions)
@@ -1568,13 +1568,13 @@ func (l *Ledger) setSync(flag bitset) {
 }
 
 func (l *Ledger) resetTransactionsSyncIndex() {
-	l.filterLock.Lock()
-	defer l.filterLock.Unlock()
+	l.transactionFilterLock.Lock()
+	defer l.transactionFilterLock.Unlock()
 
-	l.filter.Reset()
+	l.transactionFilter.Reset()
 
 	l.transactions.Iterate(func(tx *Transaction) bool {
-		l.filter.Insert(tx.ID)
+		l.transactionFilter.Insert(tx.ID)
 		return true
 	})
 }
@@ -1591,11 +1591,11 @@ func (l *Ledger) loadTransactions() error {
 
 		l.transactions.BatchUnsafeAdd(transactions)
 
-		l.filterLock.Lock()
+		l.transactionFilterLock.Lock()
 		for _, tx := range transactions {
-			l.filter.Insert(tx.ID)
+			l.transactionFilter.Insert(tx.ID)
 		}
-		l.filterLock.Unlock()
+		l.transactionFilterLock.Unlock()
 
 		count += len(transactions)
 	}
