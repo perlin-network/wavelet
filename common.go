@@ -51,4 +51,5 @@ var (
 	ZeroBlockPtr      = &Block{}
 
 	ZeroPage = make([]byte, PageSize)
+	CacheKey = make([]byte, 32)
 )

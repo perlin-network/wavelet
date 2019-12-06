@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"github.com/minio/highwayhash"
 	"github.com/perlin-network/wavelet/internal/cuckoo"
 	"github.com/perlin-network/wavelet/internal/filebuffer"
 	"github.com/perlin-network/wavelet/internal/radix"
@@ -33,6 +34,7 @@ import (
 	"math/rand"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
@@ -1450,45 +1452,29 @@ type CollapseState struct {
 	err     error
 }
 
-// collapseTransactions takes all transactions recorded within a graph depth interval, and applies
-// all valid and available ones to a snapshot of all accounts stored in the ledger. It returns
-// an updated snapshot with all finalized transactions applied, alongside count summaries of the
-// number of applied, rejected, or otherwise ignored transactions.
-//
-// Transactions that intersect within all paths from the start to end of a depth interval that are
-// also applicable to the ledger state are considered as accepted. Transactions that do not
-// intersect with any of the paths from the start to end of a depth interval t all are considered
-// as ignored transactions. Transactions that fall entirely out of either applied or ignored are
-// considered to be rejected.
-//
-// It is important to note that transactions that are inspected over are specifically transactions
-// that are within the depth interval (start, end] where start is the interval starting point depth,
-// and end is the interval ending point depth.
+// collapseTransactions takes all transactions recorded within a block, and applies all valid
+// and available ones to a snapshot of all accounts stored in the ledger. It returns an updated
+// snapshot with all finalized transactions applied, alongside count summaries of the number of
+// applied, rejected, or otherwise ignored transactions.
 func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResults, error) {
-	idBuf := bytes.NewBuffer(make([]byte, SizeTransactionID*len(block.Transactions)))
+	cacheKey := highwayhash.Sum64(*(*[]byte)(unsafe.Pointer(&block.Transactions)), CacheKey)
+	state, _ := l.stateLRU.LoadOrPut(cacheKey, &CollapseState{})
 
-	for _, id := range block.Transactions {
-		idBuf.Write(id[:])
-	}
-
-	cacheKey := blake2b.Sum256(idBuf.Bytes())
-	collapseState, _ := l.stateLRU.LoadOrPut(cacheKey, &CollapseState{})
-
-	collapseState.once.Do(func() {
+	state.once.Do(func() {
 		txs, err := l.transactions.BatchFind(block.Transactions)
 		if err != nil {
-			collapseState.err = err
+			state.err = err
 			return
 		}
 
-		collapseState.results, collapseState.err = collapseTransactions(txs, block, l.accounts)
+		state.results, state.err = collapseTransactions(txs, block, l.accounts)
 	})
 
-	if logging && collapseState.results != nil {
-		l.collapseResultsLogger.Log(collapseState.results)
+	if logging && state.results != nil {
+		l.collapseResultsLogger.Log(state.results)
 	}
 
-	return collapseState.results, collapseState.err
+	return state.results, state.err
 }
 
 // LogChanges logs all changes made to an AVL tree state snapshot for the purposes

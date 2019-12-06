@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"reflect"
+	"unsafe"
 
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
@@ -35,8 +37,7 @@ func (b *Block) GetID() string {
 }
 
 func (b Block) Marshal() []byte {
-	buf := make([]byte, 8+SizeMerkleNodeID+4+len(b.Transactions)*SizeTransactionID)
-	n := 0
+	buf, n := make([]byte, 8+SizeMerkleNodeID+4+len(b.Transactions)*SizeTransactionID), 0
 
 	binary.BigEndian.PutUint64(buf[n:n+8], b.Index)
 
@@ -50,11 +51,14 @@ func (b Block) Marshal() []byte {
 
 	n += 4
 
-	for _, id := range b.Transactions {
-		copy(buf[n:n+SizeTransactionID], id[:])
+	var ids []byte
 
-		n += SizeTransactionID
-	}
+	sh := (*reflect.SliceHeader)(unsafe.Pointer(&ids))
+	sh.Data = (*reflect.SliceHeader)(unsafe.Pointer(&b.Transactions)).Data
+	sh.Len = SizeTransactionID * len(b.Transactions)
+	sh.Cap = SizeTransactionID * len(b.Transactions)
+
+	copy(buf[n:n+len(b.Transactions)*SizeTransactionID], ids)
 
 	return buf
 }

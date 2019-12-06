@@ -39,24 +39,24 @@ type StateLRU struct {
 
 	size int
 
-	elements map[[32]byte]*list.Element
+	elements map[uint64]*list.Element
 	access   *list.List
 }
 
 type objectInfoState struct {
-	key [32]byte
+	key uint64
 	obj *CollapseState
 }
 
 func NewStateLRU(size int) *StateLRU {
 	return &StateLRU{
 		size:     size,
-		elements: make(map[[32]byte]*list.Element, size),
+		elements: make(map[uint64]*list.Element, size),
 		access:   list.New(),
 	}
 }
 
-func (l *StateLRU) Load(key [32]byte) (*CollapseState, bool) {
+func (l *StateLRU) Load(key uint64) (*CollapseState, bool) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -70,7 +70,7 @@ func (l *StateLRU) Load(key [32]byte) (*CollapseState, bool) {
 	return elem.Value.(*objectInfoState).obj, ok
 }
 
-func (l *StateLRU) LoadOrPut(key [32]byte, val *CollapseState) (*CollapseState, bool) {
+func (l *StateLRU) LoadOrPut(key uint64, val *CollapseState) (*CollapseState, bool) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -95,7 +95,7 @@ func (l *StateLRU) LoadOrPut(key [32]byte, val *CollapseState) (*CollapseState, 
 	return val, ok
 }
 
-func (l *StateLRU) Put(key [32]byte, val *CollapseState) {
+func (l *StateLRU) Put(key uint64, val *CollapseState) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -118,7 +118,7 @@ func (l *StateLRU) Put(key [32]byte, val *CollapseState) {
 	}
 }
 
-func (l *StateLRU) Remove(key [32]byte) {
+func (l *StateLRU) Remove(key uint64) {
 	l.Lock()
 	defer l.Unlock()
 

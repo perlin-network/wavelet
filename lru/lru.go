@@ -27,7 +27,7 @@ import (
 )
 
 //nolint:lll
-//go:generate genny -in=$GOFILE -out=../lru.state.go -pkg wavelet gen "KeyType=[32]byte ValueType=*CollapseState NameType=State"
+//go:generate genny -in=$GOFILE -out=../lru.state.go -pkg wavelet gen "KeyType=uint64 ValueType=*CollapseState NameType=State"
 
 //nolint:lll
 //go:generate genny -in=$GOFILE -out=../avl/lru.node.go -pkg avl gen "KeyType=[16]byte ValueType=*node NameType=Node"
