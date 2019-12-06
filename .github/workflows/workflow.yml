@@ -17,6 +17,8 @@ jobs:
         with:
           path: $(go env GOPATH)/pkg/mod
           key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
 
       - name: Build for linux
         run: GOOS=linux GOARCH=amd64 go build -o wavelet-linux-amd64 ./cmd/wavelet
