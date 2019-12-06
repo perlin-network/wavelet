@@ -24,12 +24,19 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"github.com/perlin-network/wavelet/internal/cuckoo"
+	"github.com/perlin-network/wavelet/internal/filebuffer"
+	"github.com/perlin-network/wavelet/internal/stall"
+	"github.com/perlin-network/wavelet/internal/worker"
+	"io"
+	"math/rand"
+	"sync"
+	"time"
+
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/conf"
-	"github.com/perlin-network/wavelet/internal/cuckoo"
-	"github.com/perlin-network/wavelet/internal/worker"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
@@ -37,10 +44,6 @@ import (
 	"golang.org/x/crypto/blake2b"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
-	"io"
-	"math/rand"
-	"sync"
-	"time"
 )
 
 type bitset uint8
@@ -77,11 +80,11 @@ type Ledger struct {
 	syncStatusLock sync.RWMutex
 
 	cacheCollapse *CollapseLRU
-	fileBuffers   *fileBufferPool
+	fileBuffers   *filebuffer.Pool
 
 	sendQuota chan struct{}
 
-	stallDetector *StallDetector
+	stallDetector *stall.Detector
 
 	stopWG   sync.WaitGroup
 	cancelGC context.CancelFunc
@@ -182,7 +185,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 		sync: make(chan struct{}),
 
 		cacheCollapse: NewCollapseLRU(16),
-		fileBuffers:   newFileBufferPool(sys.SyncPooledFileSize, ""),
+		fileBuffers:   filebuffer.NewPool(sys.SyncPooledFileSize, ""),
 
 		sendQuota: make(chan struct{}, 2000),
 
@@ -209,9 +212,9 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 		ledger.cancelGC = cancel
 	}
 
-	stallDetector := NewStallDetector(StallDetectorConfig{
+	stallDetector := stall.NewStallDetector(stall.Config{
 		MaxMemoryMB: cfg.MaxMemoryMB,
-	}, StallDetectorDelegate{
+	}, stall.Delegate{
 		PrepareShutdown: func(err error) {
 			logger := log.Node()
 			logger.Error().Err(err).Msg("Shutting down node...")
@@ -366,7 +369,7 @@ func (l *Ledger) Transactions() *Transactions {
 
 // Restart restart wavelet process by means of stall detector (approach is platform dependent)
 func (l *Ledger) Restart() error {
-	return l.stallDetector.tryRestart()
+	return l.stallDetector.TryRestart()
 }
 
 // PerformConsensus spawns workers related to performing consensus, such as pulling

@@ -1,5 +1,3 @@
-//go:generate go run avo/asm.go -out filter.s -stubs filter_stub.go
-
 // Copyright (c) 2019 Perlin
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy of
