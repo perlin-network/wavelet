@@ -246,7 +246,7 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer, disableGC bool
 	}
 
 	// Start the background updater
-	// go periodicUpdateRoutine(c.String("update-url"))
+	go periodicUpdateRoutine(config.UpdateURL)
 
 	w, err := wallet(c.String("wallet"))
 	if err != nil {
