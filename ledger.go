@@ -1631,7 +1631,7 @@ func (l *Ledger) loadTransactions() error {
 			return err
 		}
 
-		l.transactions.BatchUnsafeAdd(transactions...)
+		l.transactions.BatchUnsafeAdd(transactions)
 
 		l.transactionsSyncIndexLock.Lock()
 		for _, tx := range transactions {

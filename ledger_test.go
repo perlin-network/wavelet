@@ -28,11 +28,11 @@ func TestLedger_FilterInvalidVotes(t *testing.T) {
 		ids = append(ids, tx.ID)
 	}
 
-	alice.ledger.transactions.BatchUnsafeAdd(transactions...)
+	alice.ledger.transactions.BatchUnsafeAdd(transactions)
 
 	// Crete a single transaction with an invalid height.
 	invalid := NewTransaction(alice.Keys(), uint64(conf.GetSnowballK()*2), current.Index-uint64(conf.GetPruningLimit()), sys.TagTransfer, nil)
-	alice.ledger.transactions.BatchUnsafeAdd(&invalid)
+	alice.ledger.transactions.BatchUnsafeAdd([]*Transaction{&invalid})
 
 	// Create valid block proposals.
 	var proposals []Block
