@@ -21,7 +21,7 @@ jobs:
             ${{ runner.os }}-go-
 
       - name: Download Go modules
-        run: go mod download
+        run: go mod download -json
 
       - name: Build for linux
         run: GOOS=linux GOARCH=amd64 go build -o wavelet-linux-amd64 ./cmd/wavelet
