@@ -32,6 +32,7 @@ import (
 	"github.com/perlin-network/wavelet/internal/worker"
 	"io"
 	"math/rand"
+	"reflect"
 	"sync"
 	"time"
 	"unsafe"
@@ -1457,7 +1458,14 @@ type CollapseState struct {
 // snapshot with all finalized transactions applied, alongside count summaries of the number of
 // applied, rejected, or otherwise ignored transactions.
 func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResults, error) {
-	cacheKey := highwayhash.Sum64(*(*[]byte)(unsafe.Pointer(&block.Transactions)), CacheKey)
+	var ids []byte
+
+	sh := (*reflect.SliceHeader)(unsafe.Pointer(&ids))
+	sh.Data = (*reflect.SliceHeader)(unsafe.Pointer(&block.Transactions)).Data
+	sh.Len = SizeTransactionID * len(block.Transactions)
+	sh.Cap = SizeTransactionID * len(block.Transactions)
+
+	cacheKey := highwayhash.Sum64(ids, CacheKey)
 	state, _ := l.queryStateCache.LoadOrPut(cacheKey, &CollapseState{})
 
 	state.once.Do(func() {
