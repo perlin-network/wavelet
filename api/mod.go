@@ -364,7 +364,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	g.ledger.AddTransaction(false, false, tx)
+	g.ledger.AddTransaction(false, tx)
 
 	g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
 }

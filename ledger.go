@@ -37,6 +37,9 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/perlin-network/wavelet/internal/cuckoo"
+	"github.com/perlin-network/wavelet/internal/worker"
+
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
@@ -266,13 +269,8 @@ func (l *Ledger) Close() {
 
 // AddTransaction adds a transaction to the ledger and adds it's id to a probabilistic
 // data structure used to sync transactions.
-func (l *Ledger) AddTransaction(verifySignature, validateState bool, txs ...Transaction) {
-	var snapshot *avl.Tree
-	if validateState {
-		snapshot = l.Snapshot()
-	}
-
-	l.transactions.BatchAdd(txs, verifySignature, validateState, snapshot)
+func (l *Ledger) AddTransaction(verifySignature bool, txs ...Transaction) {
+	l.transactions.BatchAdd(txs, verifySignature)
 	l.transactionFilterLock.Lock()
 
 	for _, tx := range txs {
@@ -513,7 +511,7 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 					downloadedNum := len(transactions)
 					count -= uint64(downloadedNum)
 
-					l.AddTransaction(false, false, transactions...)
+					l.AddTransaction(false, transactions...)
 
 					l.metrics.downloadedTX.Mark(int64(downloadedNum))
 					l.metrics.receivedTX.Mark(int64(downloadedNum))
@@ -641,7 +639,7 @@ func (l *Ledger) PullMissingTransactions() {
 			pulledTXs = append(pulledTXs, tx)
 		}
 
-		l.AddTransaction(false, false, pulledTXs...)
+		l.AddTransaction(false, pulledTXs...)
 
 		if count > 0 {
 			logger.Info().
