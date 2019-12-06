@@ -1,4 +1,4 @@
-// +build integration
+// +build unit integration
 
 package wavelet
 

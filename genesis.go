@@ -113,12 +113,7 @@ func performInception(tree *avl.Tree, genesis *string) Block {
 		logger.Fatal().Err(err).Msg("genesis")
 	}
 
-	block, err := NewBlock(0, tree.Checksum())
-	if err != nil {
-		logger.Fatal().Err(err).Msg("genesis block")
-	}
-
-	return block
+	return NewBlock(0, tree.Checksum())
 }
 
 func restoreFromJSON(tree *avl.Tree, json []byte) error {

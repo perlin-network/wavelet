@@ -305,12 +305,7 @@ func StoreBlock(kv store.KV, block Block, currentIx, oldestIx uint32, storedCoun
 		return errors.Wrap(err, "error storing latest block index")
 	}
 
-	marshaled, err := block.Marshal()
-	if err != nil {
-		return errors.Wrap(err, "error marshaling block")
-	}
-
-	if err := kv.Put(append(keyBlocks[:], strconv.Itoa(int(currentIx))...), marshaled); err != nil {
+	if err := kv.Put(append(keyBlocks[:], strconv.Itoa(int(currentIx))...), block.Marshal()); err != nil {
 		return errors.Wrap(err, "error storing block")
 	}
 

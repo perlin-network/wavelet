@@ -176,10 +176,7 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 
 		// Generate a unique next-block ID to shuffle with.
 
-		next, err := NewBlock(1, ZeroMerkleNodeID)
-		if !assert.NoError(t, err) {
-			return false
-		}
+		next := NewBlock(1, ZeroMerkleNodeID)
 
 		for {
 			if next.ID != prev {
@@ -298,10 +295,7 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) { // nolint:gocognit
 
 		// Generate a unique next-block ID to shuffle with that is just 1 block index before the pruning limit.
 
-		next, err := NewBlock(uint64(conf.GetPruningLimit())-1, ZeroMerkleNodeID)
-		if !assert.NoError(t, err) {
-			return false
-		}
+		next := NewBlock(uint64(conf.GetPruningLimit())-1, ZeroMerkleNodeID)
 
 		for {
 			if next.ID != prev {
@@ -321,10 +315,7 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) { // nolint:gocognit
 
 		// Generate a unique next-block ID to shuffle with that is exactly at the pruning limit.
 
-		next, err = NewBlock(uint64(conf.GetPruningLimit()), ZeroMerkleNodeID)
-		if !assert.NoError(t, err) {
-			return false
-		}
+		next = NewBlock(uint64(conf.GetPruningLimit()), ZeroMerkleNodeID)
 
 		for {
 			if next.ID != prev {

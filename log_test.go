@@ -69,10 +69,8 @@ func TestCollapseResultsLogger(t *testing.T) {
 	txRejected := NewTransaction(sender, 2, 0, sys.TagTransfer, payload)
 	txs = append(txs, &txRejected)
 
-	block, err := NewBlock(0, MerkleNodeID{})
-	if !assert.NoError(t, err) {
-		return
-	}
+	block := NewBlock(0, MerkleNodeID{})
+
 	results, err := collapseTransactions(txs, &block, accounts)
 	if !assert.NoError(t, err) {
 		return
