@@ -242,7 +242,7 @@ func checkForUpdate(baseURL string, updateDirectory string, publicKeyPEM []byte,
 	return
 }
 
-func periodicUpdateRoutine(updateURL string) { // nolint:unused
+func periodicUpdateRoutine(updateURL string) {
 	if updateURL == "" {
 		return
 	}
