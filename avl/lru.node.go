@@ -34,7 +34,7 @@ import (
 
 //nolint:lll
 
-type NodeLRU struct {
+type nodeLRU struct {
 	sync.Mutex
 
 	size int
@@ -48,15 +48,15 @@ type objectInfoNode struct {
 	obj *node
 }
 
-func NewNodeLRU(size int) *NodeLRU {
-	return &NodeLRU{
+func newNodeLRU(size int) *nodeLRU {
+	return &nodeLRU{
 		size:     size,
 		elements: make(map[[16]byte]*list.Element, size),
 		access:   list.New(),
 	}
 }
 
-func (l *NodeLRU) Load(key [16]byte) (*node, bool) {
+func (l *nodeLRU) Load(key [16]byte) (*node, bool) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -70,7 +70,7 @@ func (l *NodeLRU) Load(key [16]byte) (*node, bool) {
 	return elem.Value.(*objectInfoNode).obj, ok
 }
 
-func (l *NodeLRU) LoadOrPut(key [16]byte, val *node) (*node, bool) {
+func (l *nodeLRU) LoadOrPut(key [16]byte, val *node) (*node, bool) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -95,7 +95,7 @@ func (l *NodeLRU) LoadOrPut(key [16]byte, val *node) (*node, bool) {
 	return val, ok
 }
 
-func (l *NodeLRU) Put(key [16]byte, val *node) {
+func (l *nodeLRU) Put(key [16]byte, val *node) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -118,7 +118,7 @@ func (l *NodeLRU) Put(key [16]byte, val *node) {
 	}
 }
 
-func (l *NodeLRU) Remove(key [16]byte) {
+func (l *nodeLRU) Remove(key [16]byte) {
 	l.Lock()
 	defer l.Unlock()
 

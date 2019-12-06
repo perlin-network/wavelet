@@ -50,13 +50,13 @@ type Tree struct {
 
 	root *node
 
-	cache *NodeLRU
+	cache *nodeLRU
 
 	viewID uint64
 }
 
 func New(kv store.KV) *Tree {
-	t := &Tree{kv: kv, cache: NewNodeLRU(DefaultCacheSize), maxWriteBatchSize: MaxWriteBatchSize}
+	t := &Tree{kv: kv, cache: newNodeLRU(DefaultCacheSize), maxWriteBatchSize: MaxWriteBatchSize}
 
 	// Load root node if it already exists.
 	if buf, err := t.kv.Get(RootKey); err == nil && len(buf) == MerkleHashSize {
@@ -74,7 +74,7 @@ func (t *Tree) WithLRUCache(size *int) *Tree {
 	if size == nil {
 		t.cache = nil
 	} else {
-		t.cache = NewNodeLRU(*size)
+		t.cache = newNodeLRU(*size)
 	}
 
 	return t
