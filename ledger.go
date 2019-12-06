@@ -24,17 +24,12 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"github.com/perlin-network/wavelet/internal/cuckoo"
-	"github.com/perlin-network/wavelet/internal/worker"
-	"io"
-	"math/rand"
-	"sync"
-	"time"
-
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/conf"
+	"github.com/perlin-network/wavelet/internal/cuckoo"
+	"github.com/perlin-network/wavelet/internal/worker"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
@@ -42,6 +37,10 @@ import (
 	"golang.org/x/crypto/blake2b"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
+	"io"
+	"math/rand"
+	"sync"
+	"time"
 )
 
 type bitset uint8
@@ -912,7 +911,7 @@ func (l *Ledger) query() {
 		l.queryWorkerPool.Queue(f)
 	}
 
-	votes := make([]*finalizationVote, 0, len(peers))
+	votes := make([]Vote, 0, len(peers))
 	voters := make(map[AccountID]struct{}, len(peers))
 
 	for i := 0; i < cap(votes); i++ {
@@ -937,24 +936,44 @@ func (l *Ledger) query() {
 		votes = append(votes, &response.vote)
 	}
 
+ValidateVotes:
 	for _, vote := range votes {
-		// Filter nil blocks
+		vote := vote.(*finalizationVote)
+
+		// Filter nil block proposals.
 		if vote.block == nil {
-			continue
+			continue ValidateVotes
 		}
 
-		// Filter blocks with unexpected block height
+		// Filter block proposals at an unexpected height.
 		if vote.block.Index != current.Index+1 {
 			vote.block = nil
-			continue
+			continue ValidateVotes
 		}
 
-		// Filter blocks with at least 1 missing tx
+		// Filter block proposals containing transactions which our node has not
+		// locally archived, and mark them as missing.
 		if l.transactions.BatchMarkMissing(vote.block.Transactions...) {
 			vote.block = nil
-			continue
+			continue ValidateVotes
 		}
 
+		transactions, err := l.transactions.BatchFind(vote.block.Transactions)
+		if err != nil {
+			vote.block = nil
+			continue ValidateVotes
+		}
+
+		// Validate the height recorded on transactions inside the block proposal.
+		for _, tx := range transactions {
+			if vote.block.Index >= tx.Block+uint64(conf.GetPruningLimit()) {
+				vote.block = nil
+				continue ValidateVotes
+			}
+		}
+
+		// Derive the Merkle root of the block by cloning the current ledger state, and applying
+		// all transactions in the block into the ledger state.
 		results, err := l.collapseTransactions(vote.block, false)
 		if err != nil {
 			logger := log.Node()
@@ -962,17 +981,19 @@ func (l *Ledger) query() {
 				Err(err).
 				Msg("error collapsing transactions during query")
 
-			continue
+			vote.block = nil
+			continue ValidateVotes
 		}
 
-		// Filter blocks that results in unexpected merkle root after collapse
+		// Validate the Merkle root recorded on the block with the resultant Merkle root we got
+		// from applying all transactions in the block.
 		if results.snapshot.Checksum() != vote.block.Merkle {
 			vote.block = nil
-			continue
+			continue ValidateVotes
 		}
 	}
 
-	TickForFinalization(l.accounts, l.finalizer, votes)
+	l.finalizer.Tick(calculateTallies(l.accounts, votes))
 }
 
 // SyncToLatestBlock continuously checks if the node is out of sync from its peers.
@@ -983,7 +1004,7 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 	voteWG := new(sync.WaitGroup)
 
 	snowballK := conf.GetSnowballK()
-	syncVotes := make(chan *syncVote, snowballK)
+	syncVotes := make(chan Vote, snowballK)
 
 	logger := log.Sync("sync")
 
@@ -1098,7 +1119,7 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 		restart := func() { // Respawn all previously stopped workers.
 			snowballK = conf.GetSnowballK()
 
-			syncVotes = make(chan *syncVote, snowballK)
+			syncVotes = make(chan Vote, snowballK)
 			go CollectVotesForSync(l.accounts, l.syncer, syncVotes, voteWG, snowballK)
 
 			l.sync = make(chan struct{})

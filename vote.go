@@ -21,11 +21,10 @@ package wavelet
 
 import (
 	"encoding/binary"
+	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/sys"
 	"math"
 	"sync"
-
-	"github.com/perlin-network/noise/skademlia"
 )
 
 type VoteID BlockID
@@ -137,20 +136,22 @@ func (f *finalizationVote) Tally() float64 {
 
 func CollectVotesForSync(
 	accounts *Accounts,
-	snowball *Snowball,
-	voteChan <-chan *syncVote,
+	sampler *Snowball,
+	voteChan <-chan Vote,
 	wg *sync.WaitGroup,
 	snowballK int,
 ) {
-	votes := make([]*syncVote, 0, snowballK)
+	votes := make([]Vote, 0, snowballK)
 	voters := make(map[AccountID]struct{}, snowballK)
 
-	// TODO is this the best place to set the initial preferred
-	snowball.Prefer(&syncVote{
+	// TODO: is this the best place to set the initial preferred
+	sampler.Prefer(&syncVote{
 		outOfSync: false,
 	})
 
 	for vote := range voteChan {
+		vote := vote.(*syncVote)
+
 		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
 			continue // To make sure the sampling process is fair, only allow one vote per peer.
 		}
@@ -160,7 +161,7 @@ func CollectVotesForSync(
 		votes = append(votes, vote)
 
 		if len(votes) == cap(votes) {
-			TickForSync(accounts, snowball, votes)
+			sampler.Tick(calculateTallies(accounts, votes))
 
 			voters = make(map[AccountID]struct{}, snowballK)
 			votes = votes[:0]
@@ -170,26 +171,6 @@ func CollectVotesForSync(
 	if wg != nil {
 		wg.Done()
 	}
-}
-
-func TickForFinalization(accounts *Accounts, snowball *Snowball, responses []*finalizationVote) {
-	snowballResponses := make([]Vote, 0, len(responses))
-
-	for _, res := range responses {
-		snowballResponses = append(snowballResponses, res)
-	}
-
-	snowball.Tick(calculateTallies(accounts, snowballResponses))
-}
-
-func TickForSync(accounts *Accounts, snowball *Snowball, responses []*syncVote) {
-	snowballResponses := make([]Vote, 0, len(responses))
-
-	for _, res := range responses {
-		snowballResponses = append(snowballResponses, res)
-	}
-
-	snowball.Tick(calculateTallies(accounts, snowballResponses))
 }
 
 // Return back the votes with their tallies calculated.

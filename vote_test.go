@@ -208,7 +208,7 @@ func TestTickForFinalization(t *testing.T) {
 		accounts := NewAccounts(store.NewInmem())
 		snowball.Reset()
 
-		votes := make([]*finalizationVote, 0, snowballK)
+		votes := make([]Vote, 0, snowballK)
 
 		for i := 0; i < cap(votes); i++ {
 			block, err := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
@@ -223,7 +223,7 @@ func TestTickForFinalization(t *testing.T) {
 		}
 
 		for i := 0; i < conf.GetSnowballBeta()+1; i++ {
-			TickForFinalization(accounts, snowball, votes)
+			snowball.Tick(calculateTallies(accounts, votes))
 		}
 
 		assert.False(t, snowball.Decided())
@@ -235,7 +235,7 @@ func TestTickForFinalization(t *testing.T) {
 		snowball.Reset()
 
 		snapshot := accounts.Snapshot()
-		votes := make([]*finalizationVote, 0, snowballK)
+		votes := make([]Vote, 0, snowballK)
 
 		_block, err := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
 		if !assert.NoError(t, err) {
@@ -262,7 +262,7 @@ func TestTickForFinalization(t *testing.T) {
 		assert.NoError(t, accounts.Commit(snapshot))
 
 		for i := 0; i < conf.GetSnowballBeta()+1; i++ {
-			TickForFinalization(accounts, snowball, votes)
+			snowball.Tick(calculateTallies(accounts, votes))
 		}
 
 		assert.False(t, snowball.Decided())
@@ -276,7 +276,7 @@ func TestTickForFinalization(t *testing.T) {
 		biggestStakeIdx := 0
 		snapshot := accounts.Snapshot()
 
-		votes := make([]*finalizationVote, 0, snowballK)
+		votes := make([]Vote, 0, snowballK)
 
 		for i := 0; i < cap(votes); i++ {
 			block, err := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
@@ -302,11 +302,11 @@ func TestTickForFinalization(t *testing.T) {
 		assert.NoError(t, accounts.Commit(snapshot))
 
 		for i := 0; i < conf.GetSnowballBeta()+1; i++ {
-			TickForFinalization(accounts, snowball, votes)
+			snowball.Tick(calculateTallies(accounts, votes))
 		}
 
 		assert.True(t, snowball.Decided())
-		assert.Equal(t, votes[biggestStakeIdx].block, snowball.Preferred().Value())
+		assert.Equal(t, votes[biggestStakeIdx].(*finalizationVote).block, snowball.Preferred().Value())
 	})
 
 	t.Run("transactions num majority block wins", func(t *testing.T) {
@@ -315,7 +315,7 @@ func TestTickForFinalization(t *testing.T) {
 		snowball.Reset()
 
 		biggestTxNumIdx := 0
-		votes := make([]*finalizationVote, 0, snowballK)
+		votes := make([]Vote, 0, snowballK)
 
 		for i := 0; i < cap(votes); i++ {
 			num := 2
@@ -335,11 +335,11 @@ func TestTickForFinalization(t *testing.T) {
 		}
 
 		for i := 0; i < conf.GetSnowballBeta()+1; i++ {
-			TickForFinalization(accounts, snowball, votes)
+			snowball.Tick(calculateTallies(accounts, votes))
 		}
 
 		assert.True(t, snowball.Decided())
-		assert.Equal(t, votes[biggestTxNumIdx].block, snowball.Preferred().Value())
+		assert.Equal(t, votes[biggestTxNumIdx].(*finalizationVote).block, snowball.Preferred().Value())
 	})
 }
 
@@ -357,8 +357,8 @@ func TestCollectVotesForSync(t *testing.T) {
 		accounts := NewAccounts(store.NewInmem())
 		snowball.Reset()
 
-		votes := make([]*syncVote, 0, snowballK)
-		voteC := make(chan *syncVote)
+		votes := make([]Vote, 0, snowballK)
+		voteC := make(chan Vote)
 		wg := new(sync.WaitGroup)
 
 		wg.Add(1)
@@ -388,8 +388,8 @@ func TestCollectVotesForSync(t *testing.T) {
 		accounts := NewAccounts(store.NewInmem())
 		snowball.Reset()
 
-		votes := make([]*syncVote, 0, snowballK)
-		voteC := make(chan *syncVote)
+		votes := make([]Vote, 0, snowballK)
+		voteC := make(chan Vote)
 		wg := new(sync.WaitGroup)
 
 		wg.Add(1)
@@ -425,8 +425,8 @@ func TestCollectVotesForSync(t *testing.T) {
 		snapshot := accounts.Snapshot()
 		snowball.Reset()
 
-		votes := make([]*syncVote, 0, snowballK)
-		voteC := make(chan *syncVote)
+		votes := make([]Vote, 0, snowballK)
+		voteC := make(chan Vote)
 		wg := new(sync.WaitGroup)
 
 		wg.Add(1)
@@ -471,8 +471,8 @@ func TestCollectVotesForSync(t *testing.T) {
 		accounts := NewAccounts(store.NewInmem())
 		snowball.Reset()
 
-		votes := make([]*syncVote, 0, snowballK)
-		voteC := make(chan *syncVote)
+		votes := make([]Vote, 0, snowballK)
+		voteC := make(chan Vote)
 		wg := new(sync.WaitGroup)
 
 		wg.Add(1)
@@ -508,8 +508,8 @@ func TestCollectVotesForSync(t *testing.T) {
 		accounts := NewAccounts(store.NewInmem())
 		snowball.Reset()
 
-		votes := make([]*syncVote, 0, snowballK)
-		voteC := make(chan *syncVote)
+		votes := make([]Vote, 0, snowballK)
+		voteC := make(chan Vote)
 		wg := new(sync.WaitGroup)
 
 		wg.Add(1)
