@@ -51,14 +51,21 @@ func (b Block) Marshal() []byte {
 
 	n += 4
 
-	var ids []byte
+	// Directly convert the slice of transaction IDs into a byte slice through
+	// pointer re-alignment. This is done by taking the internal pointer of
+	// (*Block).Transactions, and re-assigning the pointer to an empty
+	// byte slice.
 
-	sh := (*reflect.SliceHeader)(unsafe.Pointer(&ids))
-	sh.Data = (*reflect.SliceHeader)(unsafe.Pointer(&b.Transactions)).Data
-	sh.Len = SizeTransactionID * len(b.Transactions)
-	sh.Cap = SizeTransactionID * len(b.Transactions)
+	{
+		var ids []byte
 
-	copy(buf[n:n+len(b.Transactions)*SizeTransactionID], ids)
+		sh := (*reflect.SliceHeader)(unsafe.Pointer(&ids))
+		sh.Data = (*reflect.SliceHeader)(unsafe.Pointer(&b.Transactions)).Data
+		sh.Len = SizeTransactionID * len(b.Transactions)
+		sh.Cap = SizeTransactionID * len(b.Transactions)
+
+		copy(buf[n:n+len(b.Transactions)*SizeTransactionID], ids)
+	}
 
 	return buf
 }
