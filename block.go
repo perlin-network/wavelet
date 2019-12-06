@@ -36,13 +36,24 @@ func (b *Block) GetID() string {
 
 func (b Block) Marshal() []byte {
 	buf := make([]byte, 8+SizeMerkleNodeID+4+len(b.Transactions)*SizeTransactionID)
+	n := 0
 
-	binary.BigEndian.PutUint64(buf[0:8], b.Index)
-	copy(buf[8:8+SizeMerkleNodeID], b.Merkle[:])
-	binary.BigEndian.PutUint32(buf[8+SizeMerkleNodeID:8+SizeMerkleNodeID+4], uint32(len(b.Transactions)))
+	binary.BigEndian.PutUint64(buf[n:n+8], b.Index)
 
-	for i, id := range b.Transactions {
-		copy(buf[8+SizeMerkleNodeID+4+i*SizeTransactionID:8+SizeMerkleNodeID+4+i*SizeTransactionID+SizeTransactionID], id[:])
+	n += 8
+
+	copy(buf[n:n+SizeMerkleNodeID], b.Merkle[:])
+
+	n += SizeMerkleNodeID
+
+	binary.BigEndian.PutUint32(buf[n:n+4], uint32(len(b.Transactions)))
+
+	n += 4
+
+	for _, id := range b.Transactions {
+		copy(buf[n:n+SizeTransactionID], id[:])
+
+		n += SizeTransactionID
 	}
 
 	return buf
