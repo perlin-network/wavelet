@@ -26,6 +26,7 @@ import (
 	"encoding/hex"
 	"github.com/perlin-network/wavelet/internal/cuckoo"
 	"github.com/perlin-network/wavelet/internal/filebuffer"
+	"github.com/perlin-network/wavelet/internal/radix"
 	"github.com/perlin-network/wavelet/internal/stall"
 	"github.com/perlin-network/wavelet/internal/worker"
 	"io"
@@ -62,7 +63,7 @@ var (
 type Ledger struct {
 	client  *skademlia.Client
 	metrics *Metrics
-	indexer *Indexer
+	indexer *radix.Indexer
 
 	accounts     *Accounts
 	blocks       *Blocks
@@ -79,18 +80,16 @@ type Ledger struct {
 	syncStatus     bitset
 	syncStatusLock sync.RWMutex
 
-	cacheCollapse *CollapseLRU
-	fileBuffers   *filebuffer.Pool
-
-	sendQuota chan struct{}
+	stateLRU *StateLRU
+	filePool *filebuffer.Pool
 
 	stallDetector *stall.Detector
 
 	stopWG   sync.WaitGroup
 	cancelGC context.CancelFunc
 
-	transactionsSyncIndexLock sync.RWMutex
-	transactionsSyncIndex     *cuckoo.Filter
+	filterLock sync.RWMutex
+	filter     *cuckoo.Filter
 
 	queryBlockCache map[[blake2b.Size256]byte]*Block
 
@@ -134,7 +133,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 	}
 
 	metrics := NewMetrics(context.TODO())
-	indexer := NewIndexer()
+	indexer := radix.NewIndexer()
 	accounts := NewAccounts(kv)
 
 	var block *Block
@@ -184,12 +183,10 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 
 		sync: make(chan struct{}),
 
-		cacheCollapse: NewCollapseLRU(16),
-		fileBuffers:   filebuffer.NewPool(sys.SyncPooledFileSize, ""),
+		stateLRU: NewStateLRU(16),
+		filePool: filebuffer.NewPool(sys.SyncPooledFileSize, ""),
 
-		sendQuota: make(chan struct{}, 2000),
-
-		transactionsSyncIndex: cuckoo.NewFilter(),
+		filter: cuckoo.NewFilter(),
 
 		queryBlockCache: make(map[BlockID]*Block),
 
@@ -232,8 +229,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 
 	go ledger.SyncToLatestBlock()
 
-	go ledger.PushSendQuota()
-
 	return ledger, nil
 }
 
@@ -268,13 +263,13 @@ func (l *Ledger) Close() {
 // data structure used to sync transactions.
 func (l *Ledger) AddTransaction(verifySignature bool, txs ...Transaction) {
 	l.transactions.BatchAdd(l.blocks.Latest().ID, txs, verifySignature)
-	l.transactionsSyncIndexLock.Lock()
+	l.filterLock.Lock()
 
 	for _, tx := range txs {
-		l.transactionsSyncIndex.Insert(tx.ID)
+		l.filter.Insert(tx.ID)
 	}
 
-	l.transactionsSyncIndexLock.Unlock()
+	l.filterLock.Unlock()
 }
 
 // Find searches through complete transaction and account indices for a specified
@@ -321,28 +316,6 @@ func (l *Ledger) Find(query string, max int) (results []string) {
 	return append(results, l.indexer.Find(query, count)...)
 }
 
-// PushSendQuota permits one token into this nodes send quota bucket every millisecond
-// such that the node may add one single transaction into its graph.
-func (l *Ledger) PushSendQuota() {
-	for range time.Tick(1 * time.Millisecond) {
-		select {
-		case l.sendQuota <- struct{}{}:
-		default:
-		}
-	}
-}
-
-// TakeSendQuota removes one token from this nodes send quota bucket to signal
-// that the node has added one single transaction into its graph.
-func (l *Ledger) TakeSendQuota() bool {
-	select {
-	case <-l.sendQuota:
-		return true
-	default:
-		return false
-	}
-}
-
 // Protocol returns an implementation of WaveletServer to handle incoming
 // RPC and streams for the ledger. The protocol is agnostic to whatever
 // choice of network stack is used with Wavelet, though by default it is
@@ -376,15 +349,11 @@ func (l *Ledger) Restart() error {
 // missing transactions and incrementally finalizing intervals of transactions in
 // the ledgers graph.
 func (l *Ledger) PerformConsensus() {
-	l.consensus.Add(1)
+	l.consensus.Add(3)
 
 	go l.PullMissingTransactions()
 
-	l.consensus.Add(1)
-
 	go l.SyncTransactions()
-
-	l.consensus.Add(1)
 
 	go l.FinalizeBlocks()
 }
@@ -415,9 +384,9 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 
 		logger := log.Sync("sync_tx")
 
-		l.transactionsSyncIndexLock.RLock()
-		cf := l.transactionsSyncIndex.MarshalBinary()
-		l.transactionsSyncIndexLock.RUnlock()
+		l.filterLock.RLock()
+		cf := l.filter.MarshalBinary()
+		l.filterLock.RUnlock()
 
 		if err != nil {
 			logger.Error().Err(err).Msg("failed to marshal set membership filter data")
@@ -756,11 +725,11 @@ func (l *Ledger) finalize(block Block) {
 	}
 
 	pruned := l.transactions.ReshufflePending(block)
-	l.transactionsSyncIndexLock.Lock()
+	l.filterLock.Lock()
 	for _, txID := range pruned {
-		l.transactionsSyncIndex.Delete(txID)
+		l.filter.Delete(txID)
 	}
-	l.transactionsSyncIndexLock.Unlock()
+	l.filterLock.Unlock()
 
 	evicted, err := l.blocks.Save(&block)
 	if err != nil {
@@ -1256,7 +1225,7 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 
 		var chunksBufferLock sync.Mutex
 
-		chunksBuffer, err := l.fileBuffers.GetBounded(int64(len(sources)) * sys.SyncChunkSize)
+		chunksBuffer, err := l.filePool.GetBounded(int64(len(sources)) * sys.SyncChunkSize)
 		if err != nil {
 			logger.Error().
 				Err(err).
@@ -1265,11 +1234,11 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 			goto SYNC
 		}
 
-		diffBuffer := l.fileBuffers.GetUnbounded()
+		diffBuffer := l.filePool.GetUnbounded()
 
 		cleanup := func() {
-			l.fileBuffers.Put(chunksBuffer)
-			l.fileBuffers.Put(diffBuffer)
+			l.filePool.Put(chunksBuffer)
+			l.filePool.Put(diffBuffer)
 		}
 
 		for i := 0; i < cap(workers); i++ {
@@ -1503,7 +1472,7 @@ func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResu
 	}
 
 	cacheKey := blake2b.Sum256(idBuf.Bytes())
-	collapseState, _ := l.cacheCollapse.LoadOrPut(cacheKey, &CollapseState{})
+	collapseState, _ := l.stateLRU.LoadOrPut(cacheKey, &CollapseState{})
 
 	collapseState.once.Do(func() {
 		txs, err := l.transactions.BatchFind(block.Transactions)
@@ -1613,13 +1582,13 @@ func (l *Ledger) setSync(flag bitset) {
 }
 
 func (l *Ledger) resetTransactionsSyncIndex() {
-	l.transactionsSyncIndexLock.Lock()
-	defer l.transactionsSyncIndexLock.Unlock()
+	l.filterLock.Lock()
+	defer l.filterLock.Unlock()
 
-	l.transactionsSyncIndex.Reset()
+	l.filter.Reset()
 
 	l.transactions.Iterate(func(tx *Transaction) bool {
-		l.transactionsSyncIndex.Insert(tx.ID)
+		l.filter.Insert(tx.ID)
 		return true
 	})
 }
@@ -1636,11 +1605,11 @@ func (l *Ledger) loadTransactions() error {
 
 		l.transactions.BatchUnsafeAdd(transactions)
 
-		l.transactionsSyncIndexLock.Lock()
+		l.filterLock.Lock()
 		for _, tx := range transactions {
-			l.transactionsSyncIndex.Insert(tx.ID)
+			l.filter.Insert(tx.ID)
 		}
-		l.transactionsSyncIndexLock.Unlock()
+		l.filterLock.Unlock()
 
 		count += len(transactions)
 	}

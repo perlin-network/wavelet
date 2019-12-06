@@ -181,8 +181,8 @@ func TestCalculateTallies(t *testing.T) {
 	}
 }
 
-func TestTickForFinalization(t *testing.T) {
-	getTxIDs := func(count int) []TransactionID {
+func TestTick(t *testing.T) {
+	generateIDs := func(count int) []TransactionID {
 		var ids []TransactionID
 
 		for i := 0; i < count; i++ {
@@ -211,7 +211,7 @@ func TestTickForFinalization(t *testing.T) {
 		votes := make([]Vote, 0, snowballK)
 
 		for i := 0; i < cap(votes); i++ {
-			block := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
+			block := NewBlock(1, accounts.tree.Checksum(), generateIDs(1)...)
 
 			votes = append(votes, &finalizationVote{
 				voter: getRandomID(t),
@@ -234,7 +234,7 @@ func TestTickForFinalization(t *testing.T) {
 		snapshot := accounts.Snapshot()
 		votes := make([]Vote, 0, snowballK)
 
-		_block := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
+		_block := NewBlock(1, accounts.tree.Checksum(), generateIDs(1)...)
 
 		for i := 0; i < cap(votes); i++ {
 			voter := getRandomID(t)
@@ -273,7 +273,7 @@ func TestTickForFinalization(t *testing.T) {
 		votes := make([]Vote, 0, snowballK)
 
 		for i := 0; i < cap(votes); i++ {
-			block := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
+			block := NewBlock(1, accounts.tree.Checksum(), generateIDs(1)...)
 
 			voter := getRandomID(t)
 
@@ -314,7 +314,7 @@ func TestTickForFinalization(t *testing.T) {
 				num++
 			}
 
-			block := NewBlock(1, accounts.tree.Checksum(), getTxIDs(num)...)
+			block := NewBlock(1, accounts.tree.Checksum(), generateIDs(num)...)
 
 			votes = append(votes, &finalizationVote{
 				voter: getRandomID(t),

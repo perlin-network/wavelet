@@ -27,13 +27,13 @@ import (
 )
 
 //nolint:lll
-//go:generate genny -in=$GOFILE -out=../ledger_collapse_lru_gen.go -pkg wavelet gen "KeyType=[32]byte ValueType=*CollapseState NameType=Collapse"
+//go:generate genny -in=$GOFILE -out=../lru.state.go -pkg wavelet gen "KeyType=[32]byte ValueType=*CollapseState NameType=State"
 
 //nolint:lll
-//go:generate genny -in=$GOFILE -out=../avl/node_lru_gen.go -pkg avl gen "KeyType=[16]byte ValueType=*node NameType=node"
+//go:generate genny -in=$GOFILE -out=../avl/lru.node.go -pkg avl gen "KeyType=[16]byte ValueType=*node NameType=Node"
 
 //nolint:lll
-//go:generate genny -in=$GOFILE -out=vm_lru_gen.go -pkg lru gen "KeyType=[32]byte ValueType=*exec.VirtualMachine NameType=VM"
+//go:generate genny -in=$GOFILE -out=../lru.vm.go -pkg wavelet gen "KeyType=[32]byte ValueType=*exec.VirtualMachine NameType=VM"
 
 type KeyType generic.Type
 type ValueType generic.Type
