@@ -89,7 +89,6 @@ func (g *Gateway) setup() {
 	// Setup websocket logging sinks.
 	sinkNetwork := g.registerWebsocketSink("ws://network/", nil)
 	sinkConsensus := g.registerWebsocketSink("ws://consensus/", nil)
-	sinkStake := g.registerWebsocketSink("ws://stake/?id=account_id", nil)
 	sinkAccounts := g.registerWebsocketSink("ws://accounts/?id=account_id",
 		debounce.NewFactory(debounce.TypeDeduper,
 			debounce.WithPeriod(500*time.Millisecond),
@@ -124,7 +123,6 @@ func (g *Gateway) setup() {
 	// Websocket endpoints.
 	r.GET("/poll/network", g.applyMiddleware(g.poll(sinkNetwork), "/poll/network"))
 	r.GET("/poll/consensus", g.applyMiddleware(g.poll(sinkConsensus), "/poll/consensus"))
-	r.GET("/poll/stake", g.applyMiddleware(g.poll(sinkStake), "/poll/stake"))
 	r.GET("/poll/accounts", g.applyMiddleware(g.poll(sinkAccounts), "/poll/accounts"))
 	r.GET("/poll/contract", g.applyMiddleware(g.poll(sinkContracts), "/poll/contract"))
 	r.GET("/poll/tx", g.applyMiddleware(g.poll(sinkTransactions), "/poll/tx"))

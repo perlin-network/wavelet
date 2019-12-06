@@ -135,7 +135,7 @@ We then initialize the Wavelet client, load a wallet from a private key that wil
 ```javascript
 const host = 'https://testnet.wavelet.net';
 const contractAddress = /* address of your deployed contract */;
-const wallet = Wavelet.loadWalletFromPrivateKey(/* private key of a wallet containing at least 10 million PERLs - join our Discord and we will provide you with the neccessary funds*/)
+const wallet = Wavelet.loadWalletFromPrivateKey(/* private key of a wallet containing at least 10 million PERLs - join our Discord and we will provide you with the neccessary funds*/);
 
 const client = new Wavelet(host);
 
@@ -172,7 +172,8 @@ We then set the textContent of the pre tag to be the resulting value, which will
 
 ```javascript
 pre.textContent = results;
-});
+})
+
 ```
 
 Up until this point, we only get a single, static snapshot of the universe. We need to register to changes in state in order to get a dynamic world — changes in state in the distributed VM is known as “consensus rounds” — where a subset of nodes agree that a given set of transactions are legitimate.
@@ -332,7 +333,7 @@ To generate a random wallet, we can call the handy `generateNewWallet` function.
 
 ```javascript
 // replace
-const wallet = Wavelet.loadWalletFromPrivateKey(/* private key of a wallet containing at least 10 million PERLs*/)
+const wallet = Wavelet.loadWalletFromPrivateKey(/* private key of a wallet containing at least 10 million PERLs*/);
 // with
 const wallet = Wavelet.generateNewWallet()
 ```

@@ -169,8 +169,6 @@ const siteConfig = {
                     if (state.src.charCodeAt(pos) !== dollar) {
                         continue
                     }
-                    ;
-
                     if (state.tShift[nextLine] - state.blkIndent >= 4) {
 
                         // closing fence should be indented less than 4 spaces

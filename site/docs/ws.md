@@ -165,40 +165,6 @@ Below are conditions for each of the debounced endpoints :
       "message": "Pruned away round and transactions."
     }
     ```
- 
-**Poll Stake**
- ----
-   Listen to Stake events 
- 
-* **URL**
- 
-    `/poll/stake`
-  
-* **Query Params:**
-
-    Optional parameters to filter the events by certain properties.
-            
-    `id=[string]` where `id` is the hex-encoded Account ID. Used to filter the events by Account ID.
- 
-* **Message:**
-
-    A JSON object of the event.
- 
-    * **Event:** Reward Validator<br />
-    ```json
-    {
-      "level": "info",
-      "mod": "stake",
-      "event": "reward_validator",
-      "recipient": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
-      "rewardee_tx_id": "22f3bd4b136c547eeed26032e5379d31d165c0b3cecc8eedce6f21152d259725",
-      "entropy": "400056ee68a7cc2695222df05ea76875bc27ec6e61e8e62317c336157019c405",
-      "acc": 8.0,
-      "threshold": 8.0,
-      "time": "2019-06-28T20:38:13+08:00",
-      "message": "Rewarded validator."
-    }
-    ```
 
 **Poll Contract**
  ----

@@ -82,22 +82,6 @@ type (
 	OnFinalized = func(Finalized)
 )
 
-// Mod: stake
-type (
-	StakeRewardValidator struct {
-		Creator      [32]byte  `json:"creator"`
-		Recipient    [32]byte  `json:"recipient"`
-		CreatorTxID  [32]byte  `json:"creator_tx_id"`
-		RewardeeTxID [32]byte  `json:"rewardee_tx_id"`
-		Entropy      [32]byte  `json:"entropy"`
-		Accuracy     float64   `json:"acc"`
-		Threshold    float64   `json:"threshold"`
-		Time         time.Time `json:"time"`
-		Message      string    `json:"message"`
-	}
-	OnStakeRewardValidator = func(StakeRewardValidator)
-)
-
 // Mod: contract
 type (
 	ContractGas struct {
