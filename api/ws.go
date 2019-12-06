@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/fasthttp/websocket"
-	"github.com/perlin-network/wavelet/debounce"
+	"github.com/perlin-network/wavelet/internal/debounce"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 )

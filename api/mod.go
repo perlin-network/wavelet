@@ -37,7 +37,7 @@ import (
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/debounce"
+	"github.com/perlin-network/wavelet/internal/debounce"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"

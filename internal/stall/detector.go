@@ -1,4 +1,4 @@
-package wavelet
+package stall
 
 import (
 	"fmt"
@@ -12,29 +12,29 @@ import (
 	"github.com/pkg/errors"
 )
 
-type StallDetector struct {
+type Detector struct {
 	mu       *sync.Mutex
 	stop     chan struct{}
-	config   StallDetectorConfig
-	delegate StallDetectorDelegate
+	config   Config
+	delegate Delegate
 }
 
-type StallDetectorConfig struct {
+type Config struct {
 	MaxMemoryMB uint64
 }
 
-type StallDetectorDelegate struct {
+type Delegate struct {
 	PrepareShutdown func(error)
 }
 
-func (d StallDetectorDelegate) prepareShutdown(mu sync.Locker, err error) {
+func (d Delegate) prepareShutdown(mu sync.Locker, err error) {
 	mu.Unlock()
 	d.PrepareShutdown(err)
 	mu.Lock()
 }
 
-func NewStallDetector(config StallDetectorConfig, delegate StallDetectorDelegate) *StallDetector {
-	return &StallDetector{
+func NewStallDetector(config Config, delegate Delegate) *Detector {
+	return &Detector{
 		mu:       &sync.Mutex{},
 		stop:     make(chan struct{}),
 		config:   config,
@@ -42,11 +42,11 @@ func NewStallDetector(config StallDetectorConfig, delegate StallDetectorDelegate
 	}
 }
 
-func (d *StallDetector) Stop() {
+func (d *Detector) Stop() {
 	close(d.stop)
 }
 
-func (d *StallDetector) Run(wg *sync.WaitGroup) { // nolint:gocognit
+func (d *Detector) Run(wg *sync.WaitGroup) { // nolint:gocognit
 	defer wg.Done()
 
 	ticker := time.NewTicker(5 * time.Second)
@@ -121,7 +121,7 @@ LOOP:
 							}
 						}()
 
-						if err := d.tryRestart(); err != nil {
+						if err := d.TryRestart(); err != nil {
 							logger.Error().Err(err).Msg("Failed to restart process")
 						}
 
