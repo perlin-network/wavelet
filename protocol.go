@@ -73,12 +73,7 @@ func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse
 		}
 	}
 
-	payload, err := block.Marshal()
-	if err != nil {
-		return nil, err
-	}
-
-	res.Block = payload
+	res.Block = block.Marshal()
 
 	return res, nil
 }
@@ -91,12 +86,7 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 
 	res := &SyncResponse{}
 
-	block, err := p.ledger.blocks.Latest().Marshal()
-	if err != nil {
-		return err
-	}
-
-	header := &SyncInfo{Block: block}
+	header := &SyncInfo{Block: p.ledger.blocks.Latest().Marshal()}
 	diffBuffer := p.ledger.fileBuffers.GetUnbounded()
 
 	defer p.ledger.fileBuffers.Put(diffBuffer)

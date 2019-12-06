@@ -68,12 +68,7 @@ func TestBlocksCircular(t *testing.T) {
 			return
 		}
 
-		tb, err := NewBlock(uint64(i+1), merkle)
-		if !assert.NoError(t, err) {
-			return
-		}
-
-		tb.Transactions = []TransactionID{}
+		tb := NewBlock(uint64(i+1), merkle, []TransactionID{}...)
 
 		_, err = b.Save(&tb)
 		if !assert.NoError(t, err) {
