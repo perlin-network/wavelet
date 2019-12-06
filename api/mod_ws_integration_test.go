@@ -114,7 +114,7 @@ func tryConnectWebsocket(t *testing.T, url url.URL) (*websocket.Conn, func()) {
 	tick := time.Tick(time.Second * 1)
 	for range tick {
 		conn, resp, err = websocket.DefaultDialer.Dial(url.String(), nil)
-		if err == nil || (err != nil && tries >= 5) {
+		if err == nil || tries >= 5 {
 			break
 		}
 

@@ -64,24 +64,7 @@ func setEvents(c *wctl.Client) (func(), error) {
 		return cleanup, err
 	}
 
-	c.OnStakeRewardValidator = onStakeRewardValidator
-	if err := addToCloser(&toClose)(c.PollStake()); err != nil {
-		return cleanup, err
-	}
-
 	return cleanup, nil
-}
-
-func onStakeRewardValidator(r wctl.StakeRewardValidator) {
-	logger.Info().
-		Hex("creator", r.Creator[:]).
-		Hex("recipient", r.Recipient[:]).
-		Hex("creator_tx_id", r.CreatorTxID[:]).
-		Hex("rewardee_tx_id", r.RewardeeTxID[:]).
-		Hex("entropy", r.Entropy[:]).
-		Float64("accuracy", r.Accuracy).
-		Float64("threshold", r.Threshold).
-		Msg(r.Message)
 }
 
 func onTxApplied(u wctl.TxApplied) {

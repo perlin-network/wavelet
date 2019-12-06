@@ -113,9 +113,6 @@ type Client struct {
 	OnProposal
 	OnFinalized
 
-	// Stake
-	OnStakeRewardValidator
-
 	// Contract
 	OnContractGas
 	OnContractLog

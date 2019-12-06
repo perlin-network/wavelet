@@ -79,7 +79,7 @@ Use the same 'ole tools you know and love to efficiently and cost-effectively cr
 [Click here](/docs/smart-contracts) for more info about Wavelet's Rust smart contract SDK.
 
 [Click here](https://github.com/perlin-network/smart-contract-as) for more info about Wavelet's AssemblyScript smart contract SDK.
-`
+`;
 
 class Index extends React.Component {
     render() {

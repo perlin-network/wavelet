@@ -10,7 +10,6 @@ import (
 
 const (
 	RouteWSConsensus    = "/poll/consensus"
-	RouteWSStake        = "/poll/stake"
 	RouteWSAccounts     = "/poll/accounts"
 	RouteWSContracts    = "/poll/contract"
 	RouteWSTransactions = "/poll/tx"

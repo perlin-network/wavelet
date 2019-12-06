@@ -42,7 +42,7 @@ new Vue({
   },
   methods: {
     addTodo({target}){
-    	this.todos.unshift({text: target.value, done: false, id: Date.now()})
+    	this.todos.unshift({text: target.value, done: false, id: Date.now()});
       target.value = ''
     },
     removeTodo(id) {
@@ -283,8 +283,8 @@ const contract = new Contract(client, "<YOUR CONTRACT ID>");
 
 Vue.use({
   install (Vue) {
-    Vue.prototype.$contract = contract
-    Vue.prototype.$wallet = wallet
+    Vue.prototype.$contract = contract;
+    Vue.prototype.$wallet = wallet;
     Vue.prototype.$client = client
   }
 })
@@ -342,14 +342,14 @@ export default {
   },
   methods: {
     async init() {
-      var self = this
+      var self = this;
       return await this.$contract.init().then(resp => {
-        self.getTodos()
+        self.getTodos();
         self.listen()
       })
     },
     async listen() {
-      var self = this
+      var self = this;
       await this.$client.pollConsensus({
         onRoundEnded: msg => {
           (async () => {
@@ -371,7 +371,7 @@ export default {
       });
     },
     async addTodo({target}) {
-      var self = this
+      var self = this;
       return await this.$contract.call(
         this.$wallet, 
         'add_todo', 
@@ -385,7 +385,7 @@ export default {
       })
     },
     async removeTodo(id) {
-      var self = this
+      var self = this;
       return await this.$contract.call(
         this.$wallet, 
         'remove_todo', 
@@ -398,7 +398,7 @@ export default {
       })
     },
     async toggleTodo(id) {
-      var self = this
+      var self = this;
       return await this.$contract.call(
         this.$wallet, 
         'toggle_todo', 

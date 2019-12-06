@@ -38,7 +38,6 @@ var (
 	consensus zerolog.Logger
 	contract  zerolog.Logger
 	syncer    zerolog.Logger
-	stake     zerolog.Logger
 	tx        zerolog.Logger
 	metrics   zerolog.Logger
 )
@@ -56,7 +55,6 @@ const (
 	ModuleConsensus = "consensus"
 	ModuleContract  = "contract"
 	ModuleSync      = "sync"
-	ModuleStake     = "stake"
 	ModuleTX        = "tx"
 	ModuleMetrics   = "metrics"
 )
@@ -73,7 +71,6 @@ func setupChildLoggers() {
 	consensus = logger.With().Str(KeyModule, ModuleConsensus).Logger().Level(zerolog.DebugLevel)
 	contract = logger.With().Str(KeyModule, ModuleContract).Logger().Level(zerolog.DebugLevel)
 	syncer = logger.With().Str(KeyModule, ModuleSync).Logger().Level(zerolog.DebugLevel)
-	stake = logger.With().Str(KeyModule, ModuleStake).Logger().Level(zerolog.DebugLevel)
 	tx = logger.With().Str(KeyModule, ModuleTX).Logger().Level(zerolog.DebugLevel)
 	metrics = logger.With().Str(KeyModule, ModuleMetrics).Logger().Level(zerolog.DebugLevel)
 }
@@ -90,7 +87,6 @@ func SetLevel(ls string) {
 	consensus = consensus.Level(level)
 	contract = contract.Level(level)
 	syncer = syncer.Level(level)
-	stake = stake.Level(level)
 	tx = tx.Level(level)
 	metrics = metrics.Level(level)
 }
@@ -133,10 +129,6 @@ func TX(event string) zerolog.Logger {
 
 func Consensus(event string) zerolog.Logger {
 	return consensus.With().Str(KeyEvent, event).Logger()
-}
-
-func Stake(event string) zerolog.Logger {
-	return stake.With().Str(KeyEvent, event).Logger()
 }
 
 func Sync(event string) zerolog.Logger {
