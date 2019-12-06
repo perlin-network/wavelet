@@ -24,7 +24,6 @@ import (
 
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/lru"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 )
@@ -137,7 +136,7 @@ type CollapseContext struct {
 
 	rewardWithdrawalRequests []RewardWithdrawalRequest
 
-	VMCache *lru.VMLRU
+	VMCache *VMLRU
 }
 
 func NewCollapseContext(tree *avl.Tree) *CollapseContext {
@@ -163,7 +162,7 @@ func (c *CollapseContext) init() {
 	c.contractGasBalances = make(map[TransactionID]uint64)
 	c.contractVMs = make(map[AccountID]*VMState)
 
-	c.VMCache = lru.NewVMLRU(4)
+	c.VMCache = NewVMLRU(4)
 }
 
 func (c *CollapseContext) ReadAccountsLen() uint64 {

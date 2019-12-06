@@ -87,20 +87,20 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 	res := &SyncResponse{}
 
 	header := &SyncInfo{Block: p.ledger.blocks.Latest().Marshal()}
-	diffBuffer := p.ledger.fileBuffers.GetUnbounded()
+	diffBuffer := p.ledger.filePool.GetUnbounded()
 
-	defer p.ledger.fileBuffers.Put(diffBuffer)
+	defer p.ledger.filePool.Put(diffBuffer)
 
 	if err := p.ledger.accounts.Snapshot().DumpDiff(req.GetBlockId(), diffBuffer); err != nil {
 		return err
 	}
 
-	chunksBuffer, err := p.ledger.fileBuffers.GetBounded(diffBuffer.Len())
+	chunksBuffer, err := p.ledger.filePool.GetBounded(diffBuffer.Len())
 	if err != nil {
 		return err
 	}
 
-	defer p.ledger.fileBuffers.Put(chunksBuffer)
+	defer p.ledger.filePool.Put(chunksBuffer)
 
 	if _, err := io.Copy(chunksBuffer, diffBuffer); err != nil {
 		return err

@@ -185,11 +185,11 @@ func calculateTallies(accounts *Accounts, responses []Vote) []Vote {
 		votes[res.ID()].SetTally(votes[res.ID()].Tally() + 1.0/float64(len(responses)))
 	}
 
-	for id, weight := range Normalize(ComputeProfitWeights(responses)) {
+	for id, weight := range Normalize(WeighByTransactions(responses)) {
 		votes[id].SetTally(votes[id].Tally() * weight)
 	}
 
-	for id, weight := range Normalize(ComputeStakeWeights(accounts, responses)) {
+	for id, weight := range Normalize(WeighByStake(accounts, responses)) {
 		votes[id].SetTally(votes[id].Tally() * weight)
 	}
 
@@ -208,7 +208,7 @@ func calculateTallies(accounts *Accounts, responses []Vote) []Vote {
 	return tallies
 }
 
-func ComputeProfitWeights(responses []Vote) map[VoteID]float64 {
+func WeighByTransactions(responses []Vote) map[VoteID]float64 {
 	weights := make(map[VoteID]float64, len(responses))
 
 	for _, res := range responses {
@@ -222,7 +222,7 @@ func ComputeProfitWeights(responses []Vote) map[VoteID]float64 {
 	return weights
 }
 
-func ComputeStakeWeights(accounts *Accounts, responses []Vote) map[VoteID]float64 {
+func WeighByStake(accounts *Accounts, responses []Vote) map[VoteID]float64 {
 	weights := make(map[VoteID]float64, len(responses))
 
 	snapshot := accounts.Snapshot()
