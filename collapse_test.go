@@ -216,10 +216,7 @@ func newCollapseContainer(t assert.TestingT, noOfAcc int) *collapseTestContainer
 	accountState := NewAccounts(stateStore)
 	assert.NoError(t, accountState.Commit(state))
 
-	block, err := NewBlock(viewID, state.Checksum())
-	if err != nil {
-		assert.FailNow(t, err.Error())
-	}
+	block := NewBlock(viewID, state.Checksum())
 
 	testGraph := &collapseTestContainer{
 		accounts:     accounts,
@@ -264,11 +261,8 @@ func (g *collapseTestContainer) applyContract(b *testing.B, code []byte) (Transa
 		return Transaction{}, err
 	}
 
-	newBlock, err := NewBlock(g.block.Index+1, g.accountState.tree.Checksum())
-	if err != nil {
-		return Transaction{}, err
-	}
-	g.block = &newBlock
+	block := NewBlock(g.block.Index+1, g.accountState.tree.Checksum())
+	g.block = &block
 
 	return tx, nil
 }

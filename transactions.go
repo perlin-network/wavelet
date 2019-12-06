@@ -76,7 +76,7 @@ func (t *Transactions) BatchAdd(block BlockID, transactions []Transaction, verif
 
 // BatchUnsafeAdd adds transactions to buffer without adding them to index
 // used on node's start
-func (t *Transactions) BatchUnsafeAdd(txs []*Transaction) {
+func (t *Transactions) BatchUnsafeAdd(txs ...*Transaction) {
 	t.Lock()
 	defer t.Unlock()
 

@@ -68,7 +68,7 @@ func TestCalculateTallies(t *testing.T) {
 	{
 		nodeIDCount++
 		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
-		block, _ := NewBlock(1, nodeID, getTxID(2)...)
+		block := NewBlock(1, nodeID, getTxID(2)...)
 
 		voterID := getRandomID(t)
 		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake*10)
@@ -85,7 +85,7 @@ func TestCalculateTallies(t *testing.T) {
 	{
 		nodeIDCount++
 		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
-		block, _ := NewBlock(1, nodeID, getTxID(10)...)
+		block := NewBlock(1, nodeID, getTxID(10)...)
 
 		voterID := getRandomID(t)
 		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake*2)
@@ -102,7 +102,7 @@ func TestCalculateTallies(t *testing.T) {
 	{
 		nodeIDCount++
 		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
-		block, _ := NewBlock(1, nodeID, getTxID(4)...)
+		block := NewBlock(1, nodeID, getTxID(4)...)
 
 		// First response
 
@@ -133,7 +133,7 @@ func TestCalculateTallies(t *testing.T) {
 	{
 		nodeIDCount++
 		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
-		block, _ := NewBlock(1, nodeID, getTxID(9)...)
+		block := NewBlock(1, nodeID, getTxID(9)...)
 
 		voterID := getRandomID(t)
 		WriteAccountStake(snapshot, voterID.PublicKey(), baseStake*9)
@@ -151,7 +151,7 @@ func TestCalculateTallies(t *testing.T) {
 	{
 		nodeIDCount++
 		binary.BigEndian.PutUint16(nodeID[:], nodeIDCount)
-		block, _ := NewBlock(1, nodeID, getTxID(1)...)
+		block := NewBlock(1, nodeID, getTxID(1)...)
 
 		voterID := getRandomID(t)
 		WriteAccountStake(snapshot, voterID.PublicKey(), 0)
@@ -211,10 +211,7 @@ func TestTickForFinalization(t *testing.T) {
 		votes := make([]Vote, 0, snowballK)
 
 		for i := 0; i < cap(votes); i++ {
-			block, err := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
-			if !assert.NoError(t, err) {
-				return
-			}
+			block := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
 
 			votes = append(votes, &finalizationVote{
 				voter: getRandomID(t),
@@ -237,10 +234,7 @@ func TestTickForFinalization(t *testing.T) {
 		snapshot := accounts.Snapshot()
 		votes := make([]Vote, 0, snowballK)
 
-		_block, err := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
-		if !assert.NoError(t, err) {
-			return
-		}
+		_block := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
 
 		for i := 0; i < cap(votes); i++ {
 			voter := getRandomID(t)
@@ -279,10 +273,7 @@ func TestTickForFinalization(t *testing.T) {
 		votes := make([]Vote, 0, snowballK)
 
 		for i := 0; i < cap(votes); i++ {
-			block, err := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
-			if !assert.NoError(t, err) {
-				return
-			}
+			block := NewBlock(1, accounts.tree.Checksum(), getTxIDs(1)...)
 
 			voter := getRandomID(t)
 
@@ -323,10 +314,7 @@ func TestTickForFinalization(t *testing.T) {
 				num++
 			}
 
-			block, err := NewBlock(1, accounts.tree.Checksum(), getTxIDs(num)...)
-			if !assert.NoError(t, err) {
-				return
-			}
+			block := NewBlock(1, accounts.tree.Checksum(), getTxIDs(num)...)
 
 			votes = append(votes, &finalizationVote{
 				voter: getRandomID(t),
