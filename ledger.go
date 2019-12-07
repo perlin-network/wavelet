@@ -33,6 +33,7 @@ import (
 	"io"
 	"math/rand"
 	"reflect"
+	"sort"
 	"sync"
 	"time"
 	"unsafe"
@@ -1673,6 +1674,14 @@ ValidateVotes:
 				vote.block = nil
 				continue ValidateVotes
 			}
+		}
+
+		// Filter away block proposals with transaction IDs that are not properly sorted.
+		if !sort.SliceIsSorted(transactions, func(i, j int) bool {
+			return transactions[i].ComputeIndex(current.ID).Cmp(transactions[j].ComputeIndex(current.ID)) < 0
+		}) {
+			vote.block = nil
+			continue ValidateVotes
 		}
 
 		// Derive the Merkle root of the block by cloning the current ledger state, and applying
