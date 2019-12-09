@@ -25,6 +25,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"github.com/minio/highwayhash"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/internal/cuckoo"
 	"github.com/perlin-network/wavelet/internal/filebuffer"
 	"github.com/perlin-network/wavelet/internal/radix"
@@ -33,6 +34,7 @@ import (
 	"io"
 	"math/rand"
 	"reflect"
+	"sort"
 	"sync"
 	"time"
 	"unsafe"
@@ -93,8 +95,9 @@ type Ledger struct {
 	transactionFilterLock sync.RWMutex
 	transactionFilter     *cuckoo.Filter
 
-	queryBlockCache map[[blake2b.Size256]byte]*Block
-	queryStateCache *StateLRU
+	queryPeerBlockCache  map[edwards25519.PublicKey]*Block
+	queryBlockValidCache map[BlockID]struct{}
+	queryStateCache      *StateLRU
 
 	queryWorkerPool *worker.Pool
 
@@ -186,12 +189,13 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 
 		sync: make(chan struct{}),
 
-		queryStateCache: NewStateLRU(16),
-		filePool:        filebuffer.NewPool(sys.SyncPooledFileSize, ""),
+		filePool: filebuffer.NewPool(sys.SyncPooledFileSize, ""),
 
 		transactionFilter: cuckoo.NewFilter(),
 
-		queryBlockCache: make(map[BlockID]*Block),
+		queryPeerBlockCache:  make(map[edwards25519.PublicKey]*Block),
+		queryBlockValidCache: make(map[BlockID]struct{}),
+		queryStateCache:      NewStateLRU(16),
 
 		queryWorkerPool: worker.NewWorkerPool(),
 
@@ -686,6 +690,13 @@ func (l *Ledger) proposeBlock() *Block {
 
 	latest := l.blocks.Latest()
 
+	sort.Slice(proposing, func(i, j int) bool {
+		return bytes.Compare(l.transactions.Find(
+			proposing[i]).ComputeIndex(latest.ID),
+			l.transactions.Find(proposing[j]).ComputeIndex(latest.ID),
+		) < 0
+	})
+
 	results, err := l.collapseTransactions(latest.Index+1, latest, proposing, false)
 	if err != nil {
 		logger := log.Node()
@@ -769,8 +780,13 @@ func (l *Ledger) finalize(block Block) {
 
 	l.applySync(finalized)
 
-	// Reset snowball
+	// Reset sampler(s).
 	l.finalizer.Reset()
+
+	// Reset querying-related cache(s).
+	for id := range l.queryBlockValidCache {
+		delete(l.queryBlockValidCache, id)
+	}
 
 	logger.Info().
 		Int("num_applied_tx", results.appliedCount).
@@ -804,7 +820,7 @@ func (l *Ledger) query() {
 
 	for _, p := range peers {
 		conn := p.Conn()
-		cacheBlock := l.queryBlockCache[p.ID().Checksum()]
+		cached := l.queryPeerBlockCache[p.ID().Checksum()]
 
 		f := func() {
 			var response response
@@ -815,11 +831,11 @@ func (l *Ledger) query() {
 
 			req := &QueryRequest{BlockIndex: current.Index + 1}
 
-			if cacheBlock != nil {
+			if cached != nil {
 				req.CacheBlockId = make([]byte, SizeBlockID)
-				copy(req.CacheBlockId, cacheBlock.ID[:])
+				copy(req.CacheBlockId, cached.ID[:])
 
-				response.cacheBlock = cacheBlock
+				response.cacheBlock = cached
 			}
 
 			f := func() {
@@ -895,7 +911,7 @@ func (l *Ledger) query() {
 		if response.cacheValid {
 			response.vote.block = response.cacheBlock
 		} else if response.vote.block != nil {
-			l.queryBlockCache[response.vote.voter.Checksum()] = response.vote.block
+			l.queryPeerBlockCache[response.vote.voter.Checksum()] = response.vote.block
 		}
 
 		votes = append(votes, &response.vote)
@@ -1650,6 +1666,11 @@ ValidateVotes:
 			continue ValidateVotes
 		}
 
+		// Skip validating the block if it has already been validated before.
+		if _, exists := l.queryBlockValidCache[vote.block.ID]; exists {
+			continue ValidateVotes
+		}
+
 		// Ignore block proposals at an unexpected height.
 		if vote.block.Index != current.Index+1 {
 			vote.block = nil
@@ -1703,5 +1724,7 @@ ValidateVotes:
 			vote.block = nil
 			continue ValidateVotes
 		}
+
+		l.queryBlockValidCache[vote.block.ID] = struct{}{}
 	}
 }
