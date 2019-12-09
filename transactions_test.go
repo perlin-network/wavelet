@@ -3,6 +3,7 @@
 package wavelet
 
 import (
+	"bytes"
 	"crypto/rand"
 	"math"
 	"sort"
@@ -84,7 +85,7 @@ func TestTransactions(t *testing.T) {
 		// Check that the mempool index is sorted properly.
 
 		sort.Slice(transactions, func(i, j int) bool {
-			return transactions[i].ComputeIndex(block).Cmp(transactions[j].ComputeIndex(block)) < 0
+			return bytes.Compare(transactions[i].ComputeIndex(block), transactions[j].ComputeIndex(block)) < 0
 		})
 
 		for i, id := range manager.ProposableIDs() {
@@ -193,7 +194,7 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 		manager.index.Ascend(func(i btree.Item) bool {
 			item := i.(mempoolItem)
 
-			if !assert.Equal(t, item.index.Cmp(manager.Find(item.id).ComputeIndex(prev)), 0) {
+			if !assert.Equal(t, bytes.Compare(item.index, manager.Find(item.id).ComputeIndex(prev)), 0) {
 				t.FailNow()
 			}
 
@@ -211,7 +212,7 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 		manager.index.Ascend(func(i btree.Item) bool {
 			item := i.(mempoolItem)
 
-			if !assert.Zero(t, item.index.Cmp(manager.Find(item.id).ComputeIndex(next.ID))) {
+			if !assert.Zero(t, bytes.Compare(item.index, manager.Find(item.id).ComputeIndex(next.ID))) {
 				t.FailNow()
 			}
 
@@ -354,7 +355,7 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) { // nolint:gocognit
 		// Assert that transactions that are not pruned are still proposable.
 
 		sort.Slice(toNotBePrunedIDs, func(i, j int) bool {
-			return manager.Find(toNotBePrunedIDs[i]).ComputeIndex(next.ID).Cmp(manager.Find(toNotBePrunedIDs[j]).ComputeIndex(next.ID)) < 0
+			return bytes.Compare(manager.Find(toNotBePrunedIDs[i]).ComputeIndex(next.ID), manager.Find(toNotBePrunedIDs[j]).ComputeIndex(next.ID)) < 0
 		})
 
 		if !assert.Equal(t, toNotBePrunedIDs, manager.ProposableIDs()) {

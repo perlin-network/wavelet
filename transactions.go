@@ -1,7 +1,7 @@
 package wavelet
 
 import (
-	"math/big"
+	"bytes"
 	"sync"
 
 	"github.com/google/btree"
@@ -12,12 +12,12 @@ import (
 var _ btree.Item = (*mempoolItem)(nil)
 
 type mempoolItem struct {
-	index *big.Int
+	index []byte
 	id    TransactionID
 }
 
 func (m mempoolItem) Less(than btree.Item) bool {
-	return m.index.Cmp(than.(mempoolItem).index) < 0
+	return bytes.Compare(m.index, than.(mempoolItem).index) < 0
 }
 
 type Transactions struct {
