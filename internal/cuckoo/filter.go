@@ -24,7 +24,6 @@ import (
 	"fmt"
 	"math/rand"
 	"reflect"
-	"runtime"
 	"unsafe"
 )
 
@@ -81,9 +80,10 @@ func (f *Filter) MarshalBinary() []byte {
 	sh.Len = NumBuckets * BucketSize
 	sh.Cap = NumBuckets * BucketSize
 
-	runtime.KeepAlive(f.Buckets)
+	out := make([]byte, NumBuckets*BucketSize)
+	copy(out, buf)
 
-	return buf
+	return out
 }
 
 func NewFilter() *Filter {
