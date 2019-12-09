@@ -34,7 +34,6 @@ import (
 	"io"
 	"math/rand"
 	"reflect"
-	"sort"
 	"sync"
 	"time"
 	"unsafe"
@@ -167,7 +166,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 		block = blocks.Latest()
 	}
 
-	transactions := NewTransactions(block.Index)
+	transactions := NewTransactions(*block)
 
 	finalizer := NewSnowball()
 	syncer := NewSnowball()
@@ -269,7 +268,7 @@ func (l *Ledger) Close() {
 // AddTransaction adds a transaction to the ledger and adds it's id to a probabilistic
 // data structure used to sync transactions.
 func (l *Ledger) AddTransaction(verifySignature bool, txs ...Transaction) {
-	l.transactions.BatchAdd(l.blocks.Latest().ID, txs, verifySignature)
+	l.transactions.BatchAdd(txs, verifySignature)
 	l.transactionFilterLock.Lock()
 
 	for _, tx := range txs {
@@ -689,13 +688,6 @@ func (l *Ledger) proposeBlock() *Block {
 	}
 
 	latest := l.blocks.Latest()
-
-	sort.Slice(proposing, func(i, j int) bool {
-		return bytes.Compare(l.transactions.Find(
-			proposing[i]).ComputeIndex(latest.ID),
-			l.transactions.Find(proposing[j]).ComputeIndex(latest.ID),
-		) < 0
-	})
 
 	results, err := l.collapseTransactions(latest.Index+1, latest, proposing, false)
 	if err != nil {
