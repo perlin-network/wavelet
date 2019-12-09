@@ -195,7 +195,7 @@ func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error
 		return err
 	}
 
-	cf, err := cuckoo.UnmarshalBinary(req.GetFilter())
+	cf, err := cuckoo.UnsafeUnmarshalBinary(req.GetFilter())
 	if err != nil {
 		return err
 	}

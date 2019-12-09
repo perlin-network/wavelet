@@ -28,9 +28,11 @@ import (
 	"github.com/pkg/errors"
 )
 
-func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) (*collapseResults, error) {
+func collapseTransactions(
+	height uint64, txs []*Transaction, block *Block, accounts *Accounts,
+) (*collapseResults, error) {
 	res := &collapseResults{snapshot: accounts.Snapshot()}
-	res.snapshot.SetViewID(block.Index)
+	res.snapshot.SetViewID(height)
 
 	ctx := NewCollapseContext(res.snapshot)
 

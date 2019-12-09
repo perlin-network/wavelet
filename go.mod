@@ -17,10 +17,8 @@ require (
 	github.com/fasthttp/websocket v1.4.0
 	github.com/gogo/protobuf v1.3.0
 	github.com/golang/snappy v0.0.1
-	github.com/google/btree v1.0.0
 	github.com/gorilla/websocket v1.4.0
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
-	github.com/mauricelam/genny v0.0.0-20190320071652-0800202903e5
 	github.com/minio/highwayhash v1.0.0
 	github.com/perlin-network/life v0.0.0-20190723115110-3091ed0c1be8
 	github.com/perlin-network/noise v1.1.1-0.20191113101947-c8dc081eafa7
