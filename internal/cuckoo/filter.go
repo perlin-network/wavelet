@@ -39,6 +39,21 @@ type TransactionID [32]byte
 type Filter struct {
 	Buckets [NumBuckets]Bucket
 	Count   uint
+
+	unsafe bool
+}
+
+// UnsafeUnmarshalBinary is roughly 1.7x faster than UnmarshalBinary, but in return
+// does not provide an accurate cardinality estimate of the items in the filter.
+func UnsafeUnmarshalBinary(buf []byte) (*Filter, error) {
+	if len(buf) != NumBuckets*BucketSize {
+		return nil, fmt.Errorf("must be %d bytes, but got %d bytes", NumBuckets*BucketSize, len(buf))
+	}
+
+	ptr := (*reflect.SliceHeader)(unsafe.Pointer(&buf)).Data
+	buckets := *(*[NumBuckets]Bucket)(unsafe.Pointer(ptr))
+
+	return &Filter{Buckets: buckets, unsafe: true}, nil
 }
 
 func UnmarshalBinary(buf []byte) (*Filter, error) {
@@ -46,13 +61,7 @@ func UnmarshalBinary(buf []byte) (*Filter, error) {
 		return nil, fmt.Errorf("must be %d bytes, but got %d bytes", NumBuckets*BucketSize, len(buf))
 	}
 
-	count := uint(0)
-
-	for _, b := range buf {
-		if b != 0 {
-			count++
-		}
-	}
+	count := CountNonzeroBytes(buf)
 
 	ptr := (*reflect.SliceHeader)(unsafe.Pointer(&buf)).Data
 	buckets := *(*[NumBuckets]Bucket)(unsafe.Pointer(ptr))
@@ -61,6 +70,10 @@ func UnmarshalBinary(buf []byte) (*Filter, error) {
 }
 
 func (f *Filter) MarshalBinary() []byte {
+	if f.unsafe {
+		panic("attempted to re-marshal an unsafely unmarshaled cuckoo filter")
+	}
+
 	var buf []byte
 
 	sh := (*reflect.SliceHeader)(unsafe.Pointer(&buf))

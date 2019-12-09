@@ -102,6 +102,24 @@ func BenchmarkMarshalBinary(b *testing.B) {
 	}
 }
 
+func BenchmarkUnsafeUnmarshalBinary(b *testing.B) {
+	filter := NewFilter()
+
+	samples := samples(b)
+
+	for _, sample := range samples {
+		filter.Insert(sample)
+	}
+
+	data := filter.MarshalBinary()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_, err := UnsafeUnmarshalBinary(data)
+		assert.NoError(b, err)
+	}
+}
+
 func BenchmarkUnmarshalBinary(b *testing.B) {
 	filter := NewFilter()
 
