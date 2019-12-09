@@ -350,12 +350,6 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		sys.Tag(req.Tag), req.payload, req.signature,
 	)
 
-	if !tx.VerifySignature() {
-		g.renderError(ctx, ErrBadRequest(errors.New("bad signature")))
-
-		return
-	}
-
 	snapshot := g.ledger.Snapshot()
 
 	if err := wavelet.ValidateTransaction(snapshot, tx); err != nil {
@@ -364,7 +358,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	g.ledger.AddTransaction(false, tx)
+	g.ledger.AddTransaction(tx)
 
 	g.render(ctx, &sendTransactionResponse{ledger: g.ledger, tx: &tx})
 }

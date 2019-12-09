@@ -25,7 +25,12 @@ import (
 	"github.com/pkg/errors"
 )
 
+// ValidateTransaction validates signature, and state to make sure that the transaction is acceptable.
 func ValidateTransaction(snapshot *avl.Tree, tx Transaction) error {
+	if !tx.VerifySignature() {
+		return ErrTxInvalidSignature
+	}
+
 	switch tx.Tag {
 	case sys.TagTransfer:
 		return validateTransferTransaction(snapshot, tx)

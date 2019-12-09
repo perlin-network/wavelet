@@ -23,8 +23,10 @@ package wavelet
 
 import (
 	"crypto/rand"
+	"encoding/binary"
 	"testing"
 
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/store"
@@ -253,4 +255,37 @@ func TestValidateBatchTransaction(t *testing.T) {
 	tx := buildSignedTransaction(keys, sys.TagBatch, 1, 1, payload)
 
 	assert.Error(t, ValidateTransaction(state, tx))
+}
+
+func TestValidateTransaction_InvalidSignature(t *testing.T) {
+	state := avl.New(store.NewInmem())
+
+	keys, err := skademlia.NewKeys(1, 1)
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	tx := NewTransaction(keys, 1, 1, sys.TagTransfer, []byte{})
+
+	var nonceBuf [8]byte
+
+	binary.BigEndian.PutUint64(nonceBuf[:], tx.Nonce)
+
+	var blockBuf [8]byte
+
+	binary.BigEndian.PutUint64(blockBuf[:], tx.Block)
+
+	badKey, err := skademlia.NewKeys(1, 1)
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	// Set invalid signature
+	tx.Signature = edwards25519.Sign(
+		badKey.PrivateKey(), append(nonceBuf[:], append(blockBuf[:], append([]byte{byte(tx.Tag)}, []byte{}...)...)...),
+	)
+
+	err = ValidateTransaction(state, tx)
+	assert.Error(t, err)
+	assert.Equal(t, ErrTxInvalidSignature, err)
 }

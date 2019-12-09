@@ -24,12 +24,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"github.com/minio/highwayhash"
-	"github.com/perlin-network/wavelet/internal/cuckoo"
-	"github.com/perlin-network/wavelet/internal/filebuffer"
-	"github.com/perlin-network/wavelet/internal/radix"
-	"github.com/perlin-network/wavelet/internal/stall"
-	"github.com/perlin-network/wavelet/internal/worker"
 	"io"
 	"math/rand"
 	"reflect"
@@ -66,7 +60,8 @@ const (
 )
 
 var (
-	ErrMissingTx = errors.New("missing transaction")
+	ErrMissingTx          = errors.New("missing transaction")
+	ErrTxInvalidSignature = errors.New("bad tx signature")
 )
 
 type Ledger struct {
@@ -272,8 +267,8 @@ func (l *Ledger) Close() {
 
 // AddTransaction adds a transaction to the ledger and adds it's id to a probabilistic
 // data structure used to sync transactions.
-func (l *Ledger) AddTransaction(verifySignature bool, txs ...Transaction) {
-	l.transactions.BatchAdd(txs, verifySignature)
+func (l *Ledger) AddTransaction(txs ...Transaction) {
+	l.transactions.BatchAdd(txs)
 	l.transactionFilterLock.Lock()
 
 	for _, tx := range txs {
@@ -497,14 +492,12 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 							continue
 						}
 
-						if !tx.VerifySignature() {
-							logger.Error().
-								Hex("tx_id", tx.ID[:]).
-								Msg("bad signature")
-							continue
-						}
-
 						if err := ValidateTransaction(snapshot, tx); err != nil {
+							if err == ErrTxInvalidSignature {
+								logger.Error().
+									Hex("tx_id", tx.ID[:]).
+									Msg("bad signature")
+							}
 							continue
 						}
 
@@ -514,7 +507,7 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 					downloadedNum := len(transactions)
 					count -= uint64(downloadedNum)
 
-					l.AddTransaction(false, transactions...)
+					l.AddTransaction(transactions...)
 
 					l.metrics.downloadedTX.Mark(int64(downloadedNum))
 					l.metrics.receivedTX.Mark(int64(downloadedNum))
@@ -627,22 +620,20 @@ func (l *Ledger) PullMissingTransactions() {
 		snapshot := l.Snapshot()
 
 		for _, tx := range pulled {
-			if !tx.VerifySignature() {
-				logger.Error().
-					Hex("tx_id", tx.ID[:]).
-					Msg("bad signature")
-
-				continue
-			}
-
 			if err := ValidateTransaction(snapshot, tx); err != nil {
+				if err == ErrTxInvalidSignature {
+					logger.Error().
+						Hex("tx_id", tx.ID[:]).
+						Msg("bad signature")
+				}
+
 				continue
 			}
 
 			pulledTXs = append(pulledTXs, tx)
 		}
 
-		l.AddTransaction(false, pulledTXs...)
+		l.AddTransaction(pulledTXs...)
 
 		if count > 0 {
 			logger.Info().
