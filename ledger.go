@@ -684,9 +684,9 @@ func (l *Ledger) proposeBlock() *Block {
 		return nil
 	}
 
-	proposed := NewBlock(l.blocks.Latest().Index+1, l.accounts.tree.Checksum(), proposing...)
+	latest := l.blocks.Latest()
 
-	results, err := l.collapseTransactions(&proposed, false)
+	results, err := l.collapseTransactions(latest.Index+1, latest, proposing, false)
 	if err != nil {
 		logger := log.Node()
 		logger.Error().
@@ -696,7 +696,7 @@ func (l *Ledger) proposeBlock() *Block {
 		return nil
 	}
 
-	proposed.Merkle = results.snapshot.Checksum()
+	proposed := NewBlock(latest.Index+1, results.snapshot.Checksum(), proposing...)
 
 	return &proposed
 }
@@ -706,7 +706,7 @@ func (l *Ledger) finalize(block Block) {
 
 	logger := log.Consensus("finalized")
 
-	results, err := l.collapseTransactions(&block, true)
+	results, err := l.collapseTransactions(block.Index, current, block.Transactions, true)
 	if err != nil {
 		logger := log.Node()
 		logger.Error().
@@ -1457,25 +1457,27 @@ type CollapseState struct {
 // and available ones to a snapshot of all accounts stored in the ledger. It returns an updated
 // snapshot with all finalized transactions applied, alongside count summaries of the number of
 // applied, rejected, or otherwise ignored transactions.
-func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResults, error) {
+func (l *Ledger) collapseTransactions(
+	height uint64, current *Block, proposed []TransactionID, logging bool,
+) (*collapseResults, error) {
 	var ids []byte
 
 	sh := (*reflect.SliceHeader)(unsafe.Pointer(&ids))
-	sh.Data = (*reflect.SliceHeader)(unsafe.Pointer(&block.Transactions)).Data
-	sh.Len = SizeTransactionID * len(block.Transactions)
-	sh.Cap = SizeTransactionID * len(block.Transactions)
+	sh.Data = uintptr(unsafe.Pointer(&proposed[0]))
+	sh.Len = len(proposed)
+	sh.Cap = len(proposed)
 
 	cacheKey := highwayhash.Sum64(ids, CacheKey)
 	state, _ := l.queryStateCache.LoadOrPut(cacheKey, &CollapseState{})
 
 	state.once.Do(func() {
-		txs, err := l.transactions.BatchFind(block.Transactions)
+		transactions, err := l.transactions.BatchFind(proposed)
 		if err != nil {
 			state.err = err
 			return
 		}
 
-		state.results, state.err = collapseTransactions(txs, block, l.accounts)
+		state.results, state.err = collapseTransactions(height, transactions, current, l.accounts)
 	})
 
 	if logging && state.results != nil {
@@ -1684,7 +1686,7 @@ ValidateVotes:
 
 		// Derive the Merkle root of the block by cloning the current ledger state, and applying
 		// all transactions in the block into the ledger state.
-		results, err := l.collapseTransactions(vote.block, false)
+		results, err := l.collapseTransactions(vote.block.Index, current, vote.block.Transactions, false)
 		if err != nil {
 			logger := log.Node()
 			logger.Error().

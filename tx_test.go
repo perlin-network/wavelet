@@ -23,14 +23,10 @@ package wavelet
 
 import (
 	"bytes"
-	"fmt"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/stretchr/testify/assert"
-	"reflect"
-	"runtime"
 	"testing"
-	"unsafe"
 )
 
 func BenchmarkNewTX(b *testing.B) {
@@ -60,24 +56,24 @@ func BenchmarkMarshalUnmarshalTX(b *testing.B) {
 	}
 }
 
-func TestMarshalTransaction(t *testing.T) {
-	keys, err := skademlia.NewKeys(1, 1)
-	assert.NoError(t, err)
-
-	tx := NewTransaction(keys, 2, 13, sys.TagTransfer, []byte{1, 2, 3})
-	buf := tx.Marshal()
-
-	var b []byte
-
-	sh := (*reflect.SliceHeader)(unsafe.Pointer(&b))
-	sh.Data = uintptr(unsafe.Pointer(&tx))
-	sh.Len = int(unsafe.Sizeof(tx))
-	sh.Cap = int(unsafe.Sizeof(tx))
-
-	runtime.KeepAlive(tx)
-
-	fmt.Println(buf)
-	fmt.Println(b[:len(b)-32])
-
-	fmt.Println(len(buf), len(b), unsafe.Sizeof(tx))
-}
+//func TestMarshalTransaction(t *testing.T) {
+//	keys, err := skademlia.NewKeys(1, 1)
+//	assert.NoError(t, err)
+//
+//	tx := NewTransaction(keys, 2, 13, sys.TagTransfer, []byte{1, 2, 3})
+//	buf := tx.Marshal()
+//
+//	var b []byte
+//
+//	sh := (*reflect.SliceHeader)(unsafe.Pointer(&b))
+//	sh.Data = uintptr(unsafe.Pointer(&tx))
+//	sh.Len = int(unsafe.Sizeof(tx))
+//	sh.Cap = int(unsafe.Sizeof(tx))
+//
+//	runtime.KeepAlive(tx)
+//
+//	fmt.Println(buf)
+//	fmt.Println(b[:len(b)-32])
+//
+//	fmt.Println(len(buf), len(b), unsafe.Sizeof(tx))
+//}
