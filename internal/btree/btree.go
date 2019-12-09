@@ -47,8 +47,10 @@ type BTree struct {
 
 func (n *node) find(key []byte) (index int, found bool) {
 	i, j := 0, n.numItems
+
 	for i < j {
 		h := i + (j-i)/2
+
 		if bytes.Compare(key, n.items[h].key) >= 0 {
 			i = h + 1
 		} else {
@@ -284,10 +286,13 @@ func (n *node) delete(max bool, key []byte, height int) (
 	if found {
 		if max {
 			i++
+
 			prev, deleted = n.children[i].delete(true, nil, height-1)
 		} else {
 			prev = n.items[i]
+
 			maxItem, _ := n.children[i].delete(true, nil, height-1)
+
 			n.items[i] = maxItem
 			deleted = true
 		}
