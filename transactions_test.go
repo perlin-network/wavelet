@@ -10,7 +10,6 @@ import (
 	"testing"
 	"testing/quick"
 
-	"github.com/google/btree"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/sys"
@@ -24,7 +23,7 @@ func TestTransactions(t *testing.T) {
 	assert.NoError(t, err)
 
 	fn := func(block BlockID, numTransactions uint8) bool {
-		manager := NewTransactions(0)
+		manager := NewTransactions(Block{Index: 0, ID: block})
 
 		// Create `numTransactions` unique transactions.
 
@@ -36,12 +35,12 @@ func TestTransactions(t *testing.T) {
 
 		// Check that all transactions were successfully stored in the manager.
 
-		manager.BatchAdd(block, transactions, true)
+		manager.BatchAdd(transactions, true)
 
 		// Attempt to re-add all transactions that were already stored in the manager.
 
 		for _, tx := range transactions {
-			manager.Add(block, tx, true)
+			manager.Add(tx, true)
 		}
 
 		if !assert.Len(t, manager.buffer, len(transactions)) || !assert.Equal(t, manager.Len(), len(transactions)) {
@@ -107,7 +106,7 @@ func TestTransactionsMarkMissing(t *testing.T) {
 	assert.NoError(t, err)
 
 	fn := func(numTransactions uint8) bool {
-		manager := NewTransactions(0)
+		manager := NewTransactions(Block{Index: 0, ID: ZeroBlockID})
 
 		// Mark a single transaction missing.
 
@@ -137,8 +136,8 @@ func TestTransactionsMarkMissing(t *testing.T) {
 
 		// Adding all the transactions into the manager should make len(missing) = 0.
 
-		manager.Add(ZeroBlockID, tx, true)
-		manager.BatchAdd(ZeroBlockID, transactions, true)
+		manager.Add(tx, true)
+		manager.BatchAdd(transactions, true)
 
 		if !assert.Len(t, manager.missing, 0) || !assert.Len(t, manager.MissingIDs(), 0) {
 			return false
@@ -161,7 +160,7 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 			numTransactions++
 		}
 
-		manager := NewTransactions(0)
+		manager := NewTransactions(Block{Index: 0, ID: prev})
 
 		// Generate and add a bunch of transactions to the manager.
 
@@ -173,7 +172,7 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 			transactions = append(transactions, tx)
 		}
 
-		manager.BatchAdd(prev, transactions, true)
+		manager.BatchAdd(transactions, true)
 
 		// Generate a unique next-block ID to shuffle with.
 
@@ -191,10 +190,10 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 
 		// Check that the indices assigned are correct in the mempool index.
 
-		manager.index.Ascend(func(i btree.Item) bool {
-			item := i.(mempoolItem)
+		manager.index.Scan(func(key []byte, value interface{}) bool {
+			id := value.(TransactionID)
 
-			if !assert.Equal(t, bytes.Compare(item.index, manager.Find(item.id).ComputeIndex(prev)), 0) {
+			if !assert.Equal(t, bytes.Compare(key, manager.Find(id).ComputeIndex(prev)), 0) {
 				t.FailNow()
 			}
 
@@ -209,17 +208,17 @@ func TestTransactionsReshuffleIndices(t *testing.T) {
 
 		// Check that the shuffle worked correctly, and the indices were updated.
 
-		manager.index.Ascend(func(i btree.Item) bool {
-			item := i.(mempoolItem)
+		manager.index.Scan(func(key []byte, value interface{}) bool {
+			id := value.(TransactionID)
 
-			if !assert.Zero(t, bytes.Compare(item.index, manager.Find(item.id).ComputeIndex(next.ID))) {
+			if !assert.Equal(t, bytes.Compare(key, manager.Find(id).ComputeIndex(next.ID)), 0) {
 				t.FailNow()
 			}
 
 			return true
 		})
 
-		return assert.Equal(t, manager.height, next.Index)
+		return assert.Equal(t, manager.latest.Index, next.Index)
 	}
 
 	assert.NoError(t, quick.Check(fn, nil))
@@ -244,7 +243,7 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) { // nolint:gocognit
 			numMissing++
 		}
 
-		manager := NewTransactions(0)
+		manager := NewTransactions(Block{Index: 0, ID: prev})
 
 		// Generate and add a bunch of proposable transactions to the manager.
 
@@ -266,8 +265,8 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) { // nolint:gocognit
 			}
 		}
 
-		manager.BatchAdd(prev, toNotBePrunedTransactions, true)
-		manager.BatchAdd(prev, toBePrunedTransactions, true)
+		manager.BatchAdd(toNotBePrunedTransactions, true)
+		manager.BatchAdd(toBePrunedTransactions, true)
 
 		// Generate and add a bunch of finalized transactions to the manager.
 
@@ -348,7 +347,7 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) { // nolint:gocognit
 
 		// Assert that the managers height has been properly updated.
 
-		if !assert.Equal(t, manager.height, next.Index) {
+		if !assert.Equal(t, manager.latest.Index, next.Index) {
 			return false
 		}
 
@@ -365,7 +364,7 @@ func TestTransactionsPruneOnReshuffle(t *testing.T) { // nolint:gocognit
 		// Check that stale transactions cannot be added to the manager.
 
 		before := len(manager.buffer)
-		manager.Add(ZeroBlockID, NewTransaction(keys, math.MaxUint64, 0, sys.TagStake, nil), true)
+		manager.Add(NewTransaction(keys, math.MaxUint64, 0, sys.TagStake, nil), true)
 		return assert.Len(t, manager.buffer, before)
 	}
 

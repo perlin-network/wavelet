@@ -71,7 +71,7 @@ func TestCollapseResultsLogger(t *testing.T) {
 
 	block := NewBlock(0, MerkleNodeID{})
 
-	results, err := collapseTransactions(txs, &block, accounts)
+	results, err := collapseTransactions(block.Index, txs, &block, accounts)
 	if !assert.NoError(t, err) {
 		return
 	}

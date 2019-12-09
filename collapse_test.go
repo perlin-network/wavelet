@@ -248,7 +248,7 @@ func (g *collapseTestContainer) applyContract(b *testing.B, code []byte) (Transa
 	nonce := uint64(time.Now().UnixNano())
 	tx := NewTransaction(sender, nonce+1, g.block.Index, sys.TagContract, payload)
 
-	results, err := collapseTransactions([]*Transaction{&tx}, g.block, g.accountState)
+	results, err := collapseTransactions(g.block.Index, []*Transaction{&tx}, g.block, g.accountState)
 	if err != nil {
 		return Transaction{}, err
 	}
@@ -280,7 +280,7 @@ func (g *collapseTestContainer) collapseTransactionsNewState(b *testing.B) (*col
 
 	b.StartTimer()
 
-	results, err := collapseTransactions(g.txs, g.block, accountState)
+	results, err := collapseTransactions(g.block.Index, g.txs, g.block, accountState)
 	if err != nil {
 		return nil, err
 	}

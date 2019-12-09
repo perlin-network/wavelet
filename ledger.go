@@ -25,6 +25,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"github.com/minio/highwayhash"
+	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/internal/cuckoo"
 	"github.com/perlin-network/wavelet/internal/filebuffer"
 	"github.com/perlin-network/wavelet/internal/radix"
@@ -93,8 +94,9 @@ type Ledger struct {
 	transactionFilterLock sync.RWMutex
 	transactionFilter     *cuckoo.Filter
 
-	queryBlockCache map[[blake2b.Size256]byte]*Block
-	queryStateCache *StateLRU
+	queryPeerBlockCache  map[edwards25519.PublicKey]*Block
+	queryBlockValidCache map[BlockID]struct{}
+	queryStateCache      *StateLRU
 
 	queryWorkerPool *worker.Pool
 
@@ -164,7 +166,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 		block = blocks.Latest()
 	}
 
-	transactions := NewTransactions(block.Index)
+	transactions := NewTransactions(*block)
 
 	finalizer := NewSnowball()
 	syncer := NewSnowball()
@@ -186,12 +188,13 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 
 		sync: make(chan struct{}),
 
-		queryStateCache: NewStateLRU(16),
-		filePool:        filebuffer.NewPool(sys.SyncPooledFileSize, ""),
+		filePool: filebuffer.NewPool(sys.SyncPooledFileSize, ""),
 
 		transactionFilter: cuckoo.NewFilter(),
 
-		queryBlockCache: make(map[BlockID]*Block),
+		queryPeerBlockCache:  make(map[edwards25519.PublicKey]*Block),
+		queryBlockValidCache: make(map[BlockID]struct{}),
+		queryStateCache:      NewStateLRU(16),
 
 		queryWorkerPool: worker.NewWorkerPool(),
 
@@ -265,7 +268,7 @@ func (l *Ledger) Close() {
 // AddTransaction adds a transaction to the ledger and adds it's id to a probabilistic
 // data structure used to sync transactions.
 func (l *Ledger) AddTransaction(verifySignature bool, txs ...Transaction) {
-	l.transactions.BatchAdd(l.blocks.Latest().ID, txs, verifySignature)
+	l.transactions.BatchAdd(txs, verifySignature)
 	l.transactionFilterLock.Lock()
 
 	for _, tx := range txs {
@@ -684,9 +687,9 @@ func (l *Ledger) proposeBlock() *Block {
 		return nil
 	}
 
-	proposed := NewBlock(l.blocks.Latest().Index+1, l.accounts.tree.Checksum(), proposing...)
+	latest := l.blocks.Latest()
 
-	results, err := l.collapseTransactions(&proposed, false)
+	results, err := l.collapseTransactions(latest.Index+1, latest, proposing, false)
 	if err != nil {
 		logger := log.Node()
 		logger.Error().
@@ -696,7 +699,7 @@ func (l *Ledger) proposeBlock() *Block {
 		return nil
 	}
 
-	proposed.Merkle = results.snapshot.Checksum()
+	proposed := NewBlock(latest.Index+1, results.snapshot.Checksum(), proposing...)
 
 	return &proposed
 }
@@ -706,7 +709,7 @@ func (l *Ledger) finalize(block Block) {
 
 	logger := log.Consensus("finalized")
 
-	results, err := l.collapseTransactions(&block, true)
+	results, err := l.collapseTransactions(block.Index, current, block.Transactions, true)
 	if err != nil {
 		logger := log.Node()
 		logger.Error().
@@ -769,8 +772,13 @@ func (l *Ledger) finalize(block Block) {
 
 	l.applySync(finalized)
 
-	// Reset snowball
+	// Reset sampler(s).
 	l.finalizer.Reset()
+
+	// Reset querying-related cache(s).
+	for id := range l.queryBlockValidCache {
+		delete(l.queryBlockValidCache, id)
+	}
 
 	logger.Info().
 		Int("num_applied_tx", results.appliedCount).
@@ -804,7 +812,7 @@ func (l *Ledger) query() {
 
 	for _, p := range peers {
 		conn := p.Conn()
-		cacheBlock := l.queryBlockCache[p.ID().Checksum()]
+		cached := l.queryPeerBlockCache[p.ID().Checksum()]
 
 		f := func() {
 			var response response
@@ -815,11 +823,11 @@ func (l *Ledger) query() {
 
 			req := &QueryRequest{BlockIndex: current.Index + 1}
 
-			if cacheBlock != nil {
+			if cached != nil {
 				req.CacheBlockId = make([]byte, SizeBlockID)
-				copy(req.CacheBlockId, cacheBlock.ID[:])
+				copy(req.CacheBlockId, cached.ID[:])
 
-				response.cacheBlock = cacheBlock
+				response.cacheBlock = cached
 			}
 
 			f := func() {
@@ -895,7 +903,7 @@ func (l *Ledger) query() {
 		if response.cacheValid {
 			response.vote.block = response.cacheBlock
 		} else if response.vote.block != nil {
-			l.queryBlockCache[response.vote.voter.Checksum()] = response.vote.block
+			l.queryPeerBlockCache[response.vote.voter.Checksum()] = response.vote.block
 		}
 
 		votes = append(votes, &response.vote)
@@ -1457,25 +1465,27 @@ type CollapseState struct {
 // and available ones to a snapshot of all accounts stored in the ledger. It returns an updated
 // snapshot with all finalized transactions applied, alongside count summaries of the number of
 // applied, rejected, or otherwise ignored transactions.
-func (l *Ledger) collapseTransactions(block *Block, logging bool) (*collapseResults, error) {
+func (l *Ledger) collapseTransactions(
+	height uint64, current *Block, proposed []TransactionID, logging bool,
+) (*collapseResults, error) {
 	var ids []byte
 
 	sh := (*reflect.SliceHeader)(unsafe.Pointer(&ids))
-	sh.Data = (*reflect.SliceHeader)(unsafe.Pointer(&block.Transactions)).Data
-	sh.Len = SizeTransactionID * len(block.Transactions)
-	sh.Cap = SizeTransactionID * len(block.Transactions)
+	sh.Data = uintptr(unsafe.Pointer(&proposed[0]))
+	sh.Len = len(proposed)
+	sh.Cap = len(proposed)
 
 	cacheKey := highwayhash.Sum64(ids, CacheKey)
 	state, _ := l.queryStateCache.LoadOrPut(cacheKey, &CollapseState{})
 
 	state.once.Do(func() {
-		txs, err := l.transactions.BatchFind(block.Transactions)
+		transactions, err := l.transactions.BatchFind(proposed)
 		if err != nil {
 			state.err = err
 			return
 		}
 
-		state.results, state.err = collapseTransactions(txs, block, l.accounts)
+		state.results, state.err = collapseTransactions(height, transactions, current, l.accounts)
 	})
 
 	if logging && state.results != nil {
@@ -1648,6 +1658,11 @@ ValidateVotes:
 			continue ValidateVotes
 		}
 
+		// Skip validating the block if it has already been validated before.
+		if _, exists := l.queryBlockValidCache[vote.block.ID]; exists {
+			continue ValidateVotes
+		}
+
 		// Ignore block proposals at an unexpected height.
 		if vote.block.Index != current.Index+1 {
 			vote.block = nil
@@ -1684,7 +1699,7 @@ ValidateVotes:
 
 		// Derive the Merkle root of the block by cloning the current ledger state, and applying
 		// all transactions in the block into the ledger state.
-		results, err := l.collapseTransactions(vote.block, false)
+		results, err := l.collapseTransactions(vote.block.Index, current, vote.block.Transactions, false)
 		if err != nil {
 			logger := log.Node()
 			logger.Error().
@@ -1701,5 +1716,7 @@ ValidateVotes:
 			vote.block = nil
 			continue ValidateVotes
 		}
+
+		l.queryBlockValidCache[vote.block.ID] = struct{}{}
 	}
 }
