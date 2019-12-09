@@ -909,7 +909,7 @@ func (l *Ledger) query() {
 // If the majority of its peers responded that it is out of sync (decided using snowball),
 // the node will attempt to sync its state to the latest block by downloading the AVL tree
 // diff from its peers and applying the diff to its local AVL tree.
-func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
+func (l *Ledger) SyncToLatestBlock() {
 	logger := log.Sync("sync")
 	syncTimeoutMultiplier := 0
 
@@ -954,7 +954,7 @@ func (l *Ledger) SyncToLatestBlock() { // nolint:gocyclo,gocognit
 	}
 }
 
-func (l *Ledger) performSync(current *Block) bool {
+func (l *Ledger) performSync(current *Block) bool { // nolint:gocyclo,gocognit
 	logger := log.Sync("sync")
 
 	peers, err := SelectPeers(l.client.ClosestPeers(), conf.GetSnowballK())
@@ -968,6 +968,7 @@ func (l *Ledger) performSync(current *Block) bool {
 	req := &SyncRequest{Data: &SyncRequest_BlockId{BlockId: current.Index}}
 
 	type response struct {
+		peer   skademlia.ClosestPeer
 		header *SyncInfo
 		latest Block
 		stream Wavelet_SyncClient
@@ -1011,7 +1012,12 @@ func (l *Ledger) performSync(current *Block) bool {
 				return
 			}
 
-			resp = response{header: header, latest: latest, stream: stream}
+			resp = response{
+				peer:   p,
+				header: header,
+				latest: latest,
+				stream: stream,
+			}
 		}(p)
 	}
 
@@ -1044,13 +1050,16 @@ func (l *Ledger) performSync(current *Block) bool {
 	// Select a block to sync to which the majority of peers are on.
 
 	var (
-		latest   *Block
-		majority []response
+		latest      *Block
+		latestVoter skademlia.ClosestPeer
+		majority    []response
 	)
 
 	for _, votes := range set {
 		if len(votes) >= len(set)*2/3 {
-			latest = &votes[0].latest
+			majorityVote := votes[0]
+			latest = &majorityVote.latest
+			latestVoter = majorityVote.peer
 			majority = votes
 
 			break
@@ -1134,8 +1143,8 @@ func (l *Ledger) performSync(current *Block) bool {
 	streamLocks := make(map[Wavelet_SyncClient]*sync.Mutex)
 
 	var (
-		streamLock sync.Mutex
-		chunkWG sync.WaitGroup
+		streamLock       sync.Mutex
+		chunkWG          sync.WaitGroup
 		chunksBufferLock sync.Mutex
 	)
 
@@ -1283,21 +1292,65 @@ func (l *Ledger) performSync(current *Block) bool {
 		return false
 	}
 
-	evicted, err := l.blocks.Save(latest)
-	if err != nil {
-		logger.Error().
-			Err(err).
-			Msg("Failed to save finalized block to our database")
-
-		return false
+	// get all the blocks up until latest one
+	var oldestBlockIx uint64 = 1
+	if latest.Index > uint64(conf.GetPruningLimit()) {
+		oldestBlockIx = latest.Index - uint64(conf.GetPruningLimit())
 	}
 
-	if err := l.storeTransactions(latest, evicted); err != nil {
-		logger.Error().
-			Err(err).
-			Msg("Failed to save transactions from finalized block to our database")
+	var blocks []*Block
 
-		return false
+	client := NewWaveletClient(latestVoter.Conn())
+
+	for i := oldestBlockIx; i < latest.Index; i++ {
+		if _, err := l.blocks.GetByIndex(i); err == nil {
+			continue
+		}
+
+		resp, err := client.GetBlock(context.Background(), &GetBlockRequest{BlockIndex: i})
+		if err != nil {
+			logger.Error().
+				Err(err).
+				Msg("Failed to save finalized block to our database")
+
+			return false
+		}
+
+		block, err := UnmarshalBlock(bytes.NewReader(resp.Block))
+		if err != nil {
+			logger.Error().
+				Err(err).
+				Msg("Failed to save finalized block to our database")
+
+			return false
+		}
+
+		blocks = append(blocks, &block)
+	}
+
+	blocks = append(blocks, latest)
+
+	logger.Info().
+		Int("blocks", len(blocks)).
+		Msg("Going to save downloaded blocks")
+
+	for _, b := range blocks {
+		evicted, err := l.blocks.Save(b)
+		if err != nil {
+			logger.Error().
+				Err(err).
+				Msg("Failed to save finalized block to our database")
+
+			return false
+		}
+
+		if err := l.storeTransactions(b, evicted); err != nil {
+			logger.Error().
+				Err(err).
+				Msg("Failed to save transactions from finalized block to our database")
+
+			return false
+		}
 	}
 
 	if err := l.accounts.Commit(snapshot); err != nil {
@@ -1328,6 +1381,7 @@ func (l *Ledger) isOutOfSync() bool {
 	voteWG := new(sync.WaitGroup)
 
 	voteWG.Add(1)
+
 	go CollectVotesForSync(l.accounts, l.syncer, syncVotes, voteWG, snowballK)
 
 	defer func() {

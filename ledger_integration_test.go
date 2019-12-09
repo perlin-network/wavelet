@@ -296,6 +296,7 @@ func TestLedger_Sync(t *testing.T) {
 	charlie := testnet.AddNode(t)
 
 	timeout := time.NewTimer(time.Second * 1000)
+CHECK:
 	for {
 		select {
 		case <-timeout.C:
@@ -304,12 +305,14 @@ func TestLedger_Sync(t *testing.T) {
 		default:
 			ri := <-charlie.WaitForBlock(alice.BlockIndex())
 			if ri >= alice.BlockIndex() {
-				goto DONE
+				break CHECK
 			}
 		}
 	}
 
-DONE:
+	// ensure that new node has all the blocks from other nodes after sync except genesis block
+	assert.Equal(t, int(alice.BlockIndex()), len(charlie.ledger.blocks.Clone())-1)
+
 	for _, acc := range accounts {
 		assert.EqualValues(t, acc.Balance, charlie.BalanceWithPublicKey(acc.PublicKey))
 		assert.EqualValues(t, acc.Stake, charlie.StakeWithPublicKey(acc.PublicKey))

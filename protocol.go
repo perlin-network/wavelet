@@ -262,8 +262,8 @@ func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error
 }
 
 func (p *Protocol) PullTransactions(
-	ctx context.Context, req *TransactionPullRequest) (*TransactionPullResponse, error,
-) {
+	ctx context.Context, req *TransactionPullRequest,
+) (*TransactionPullResponse, error) {
 	res := &TransactionPullResponse{
 		Transactions: make([][]byte, 0, len(req.TransactionIds)),
 	}
@@ -286,4 +286,13 @@ func (p *Protocol) PullTransactions(
 	}
 
 	return res, nil
+}
+
+func (p *Protocol) GetBlock(ctx context.Context, req *GetBlockRequest) (*GetBlockResponse, error) {
+	b, err := p.ledger.blocks.GetByIndex(req.BlockIndex)
+	if err != nil {
+		return nil, err
+	}
+
+	return &GetBlockResponse{Block: b.Marshal()}, nil
 }
