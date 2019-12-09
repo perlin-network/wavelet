@@ -679,7 +679,6 @@ func (l *Ledger) FinalizeBlocks() {
 // next block in the chain.
 func (l *Ledger) proposeBlock() *Block {
 	proposing := l.transactions.ProposableIDs()
-
 	if len(proposing) == 0 {
 		return nil
 	}
@@ -948,6 +947,8 @@ func (l *Ledger) SyncToLatestBlock() {
 		for !synced {
 			synced = l.performSync(current)
 		}
+
+		l.transactions.ReshufflePending(*l.blocks.Latest())
 
 		l.sync = make(chan struct{})
 		l.PerformConsensus()
@@ -1647,6 +1648,8 @@ func (l *Ledger) loadTransactions() error {
 }
 
 func (l *Ledger) storeTransactions(stored *Block, evicted *Block) error {
+	l.transactions.BatchMarkFinalized(stored.Transactions...)
+
 	txs, _ := l.transactions.BatchFind(stored.Transactions)
 	if txs == nil {
 		return nil

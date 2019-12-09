@@ -321,6 +321,17 @@ CHECK:
 		checkCode, _ := ReadAccountContractCode(charlie.ledger.accounts.Snapshot(), acc.PublicKey)
 		assert.True(t, bytes.Equal(code[:], checkCode))
 	}
+
+	// ensure that finalization works after sync and there is no double spending
+	stake := alice.Stake()
+	_, err := alice.PlaceStake(10)
+	if !assert.NoError(t, err) {
+		return
+	}
+
+	alice.WaitUntilBlock(t, alice.BlockIndex()+1)
+
+	assert.EqualValues(t, stake+10, alice.Stake())
 }
 
 func TestLedger_LoadTxsOnStart(t *testing.T) {
