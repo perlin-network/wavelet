@@ -1667,11 +1667,18 @@ ValidateVotes:
 			continue ValidateVotes
 		}
 
-		// Validate the height recorded on transactions inside the block proposal.
-		for _, tx := range transactions {
-			if vote.block.Index >= tx.Block+uint64(conf.GetPruningLimit()) {
+		for i := range transactions {
+			// Validate the height recorded on transactions inside the block proposal.
+			if vote.block.Index >= transactions[i].Block+uint64(conf.GetPruningLimit()) {
 				vote.block = nil
 				continue ValidateVotes
+			}
+
+			if i > 0 { // Filter away block proposals with transaction IDs that are not properly sorted.
+				if bytes.Compare(transactions[i-1].ComputeIndex(current.ID), transactions[i].ComputeIndex(current.ID)) >= 0 {
+					vote.block = nil
+					continue ValidateVotes
+				}
 			}
 		}
 

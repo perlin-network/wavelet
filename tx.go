@@ -23,14 +23,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"io"
-	"math/big"
-
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
+	"io"
 )
 
 type Transaction struct {
@@ -153,11 +151,9 @@ func UnmarshalTransaction(r io.Reader) (t Transaction, err error) {
 	return t, nil
 }
 
-func (tx Transaction) ComputeIndex(id BlockID) *big.Int {
-	buf := blake2b.Sum256(append(tx.ID[:], id[:]...))
-	index := (&big.Int{}).SetBytes(buf[:])
-
-	return index
+func (tx Transaction) ComputeIndex(id BlockID) []byte {
+	idx := blake2b.Sum256(append(tx.ID[:], id[:]...))
+	return idx[:]
 }
 
 func (tx Transaction) Fee() uint64 {
