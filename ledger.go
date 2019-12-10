@@ -25,7 +25,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"github.com/minio/highwayhash"
-	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/internal/cuckoo"
 	"github.com/perlin-network/wavelet/internal/filebuffer"
 	"github.com/perlin-network/wavelet/internal/radix"
@@ -94,7 +93,7 @@ type Ledger struct {
 	transactionFilterLock sync.RWMutex
 	transactionFilter     *cuckoo.Filter
 
-	queryPeerBlockCache  map[edwards25519.PublicKey]*Block
+	queryPeerBlockCache  *PeerBlockLRU
 	queryBlockValidCache map[BlockID]struct{}
 	queryStateCache      *StateLRU
 
@@ -192,7 +191,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 
 		transactionFilter: cuckoo.NewFilter(),
 
-		queryPeerBlockCache:  make(map[edwards25519.PublicKey]*Block),
+		queryPeerBlockCache:  NewPeerBlockLRU(16),
 		queryBlockValidCache: make(map[BlockID]struct{}),
 		queryStateCache:      NewStateLRU(16),
 
@@ -812,7 +811,7 @@ func (l *Ledger) query() {
 
 	for _, p := range peers {
 		conn := p.Conn()
-		cached := l.queryPeerBlockCache[p.ID().Checksum()]
+		cached, _ := l.queryPeerBlockCache.Load(p.ID().Checksum())
 
 		f := func() {
 			var response response
@@ -903,7 +902,7 @@ func (l *Ledger) query() {
 		if response.cacheValid {
 			response.vote.block = response.cacheBlock
 		} else if response.vote.block != nil {
-			l.queryPeerBlockCache[response.vote.voter.Checksum()] = response.vote.block
+			l.queryPeerBlockCache.Put(response.vote.voter.Checksum(), response.vote.block)
 		}
 
 		votes = append(votes, &response.vote)
