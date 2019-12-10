@@ -22,6 +22,7 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
+	"github.com/perlin-network/wavelet/sys"
 	"io/ioutil"
 	"os"
 
@@ -428,6 +429,16 @@ func (cli *CLI) restart(ctx *cli.Context) {
 	}
 
 	cli.logger.Info().Msg(m.Message)
+}
+
+func (cli *CLI) version(ctx *cli.Context) {
+	cli.logger.Info().
+		Str("git_commit", sys.GitCommit).
+		Str("go_version", sys.GoVersion).
+		Str("os_arch", sys.OSArch).
+		Str("go_exe", sys.GoExe).
+		Str("version_meta", sys.VersionMeta).
+		Msg("Version info.")
 }
 
 func (cli *CLI) updateParameters(ctx *cli.Context) {

@@ -182,6 +182,12 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 			},
 		},
 		{
+			Name:        "version",
+			Aliases:     []string{"v"},
+			Action:      a(c.version),
+			Description: "print out binary version of wavelet node",
+		},
+		{
 			Name:    "exit",
 			Aliases: []string{"quit", ":q"},
 			Action:  a(c.exit),
