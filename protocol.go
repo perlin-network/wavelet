@@ -288,11 +288,11 @@ func (p *Protocol) PullTransactions(
 	return res, nil
 }
 
-func (p *Protocol) GetBlock(ctx context.Context, req *GetBlockRequest) (*GetBlockResponse, error) {
+func (p *Protocol) GetBlock(ctx context.Context, req *QueryRequest) (*QueryResponse, error) {
 	b, err := p.ledger.blocks.GetByIndex(req.BlockIndex)
 	if err != nil {
 		return nil, err
 	}
 
-	return &GetBlockResponse{Block: b.Marshal()}, nil
+	return &QueryResponse{Block: b.Marshal()}, nil
 }

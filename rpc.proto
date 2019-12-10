@@ -84,14 +84,6 @@ message TransactionPullResponse {
     repeated bytes transactions = 1;
 }
 
-message GetBlockRequest {
-    uint64 block_index = 1;
-}
-
-message GetBlockResponse {
-    bytes block = 1;
-}
-
 service Wavelet {
     rpc Query (QueryRequest) returns (QueryResponse) {}
 
@@ -101,5 +93,5 @@ service Wavelet {
     rpc PullTransactions (TransactionPullRequest) returns (TransactionPullResponse) {}
     rpc SyncTransactions (stream TransactionsSyncRequest) returns (stream TransactionsSyncResponse) {}
 
-    rpc GetBlock (GetBlockRequest) returns (GetBlockResponse) {}
+    rpc GetBlock (QueryRequest) returns (QueryResponse) {}
 }

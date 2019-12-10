@@ -301,7 +301,6 @@ CHECK:
 		select {
 		case <-timeout.C:
 			t.Fatal("timed out waiting for sync")
-
 		default:
 			ri := <-charlie.WaitForBlock(alice.BlockIndex())
 			if ri >= alice.BlockIndex() {

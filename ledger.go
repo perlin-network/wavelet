@@ -1316,7 +1316,7 @@ func (l *Ledger) performSync(current *Block) bool { // nolint:gocyclo,gocognit
 			continue
 		}
 
-		resp, err := client.GetBlock(context.Background(), &GetBlockRequest{BlockIndex: i})
+		resp, err := client.GetBlock(context.Background(), &QueryRequest{BlockIndex: i})
 		if err != nil {
 			logger.Error().
 				Err(err).
