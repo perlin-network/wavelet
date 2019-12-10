@@ -780,6 +780,10 @@ func (l *Ledger) finalize(block Block) {
 		delete(l.queryBlockValidCache, id)
 	}
 
+	for key := range l.queryPeerBlockCache {
+		delete(l.queryPeerBlockCache, key)
+	}
+
 	logger.Info().
 		Int("num_applied_tx", results.appliedCount).
 		Int("num_rejected_tx", results.rejectedCount).
