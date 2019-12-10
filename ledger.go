@@ -1301,10 +1301,10 @@ func (l *Ledger) performSync(current *Block) bool { // nolint:gocyclo,gocognit
 		return false
 	}
 
-	// get all the blocks up until latest one
-	var oldestBlockIx uint64 = 1
-	if latest.Index > uint64(conf.GetPruningLimit()) {
-		oldestBlockIx = latest.Index - uint64(conf.GetPruningLimit())
+	// get all the blocks up until latest one starting either from latest saved one or oldest possible
+	oldestBlockIx := current.Index
+	if pl := uint64(conf.GetPruningLimit()); latest.Index > pl && latest.Index - pl > oldestBlockIx {
+		oldestBlockIx = latest.Index - pl
 	}
 
 	var blocks []*Block
