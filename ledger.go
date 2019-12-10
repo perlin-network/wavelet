@@ -25,7 +25,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"github.com/minio/highwayhash"
-	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/internal/cuckoo"
 	"github.com/perlin-network/wavelet/internal/filebuffer"
 	"github.com/perlin-network/wavelet/internal/radix"
