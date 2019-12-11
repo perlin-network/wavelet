@@ -24,6 +24,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"math/rand"
 	"reflect"
@@ -378,7 +379,8 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 		select {
 		case <-l.sync:
 			return
-		case <-time.After(3 * time.Second):
+		case <-time.After(10 * time.Second):
+			fmt.Println("syncing....")
 		}
 
 		snowballK := conf.GetSnowballK()
