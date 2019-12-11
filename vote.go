@@ -211,12 +211,22 @@ func calculateTallies(accounts *Accounts, responses []Vote) []Vote {
 func WeighByTransactions(responses []Vote) map[VoteID]float64 {
 	weights := make(map[VoteID]float64, len(responses))
 
+	var max float64
+
 	for _, res := range responses {
 		if res.ID() == ZeroVoteID {
 			continue
 		}
 
 		weights[res.ID()] += res.Length()
+
+		if weights[res.ID()] > max {
+			max = weights[res.ID()]
+		}
+	}
+
+	for id := range weights {
+		weights[id] /= max
 	}
 
 	return weights
@@ -224,6 +234,8 @@ func WeighByTransactions(responses []Vote) map[VoteID]float64 {
 
 func WeighByStake(accounts *Accounts, responses []Vote) map[VoteID]float64 {
 	weights := make(map[VoteID]float64, len(responses))
+
+	var max float64
 
 	snapshot := accounts.Snapshot()
 
@@ -239,6 +251,14 @@ func WeighByStake(accounts *Accounts, responses []Vote) map[VoteID]float64 {
 		} else {
 			weights[res.ID()] += float64(stake)
 		}
+
+		if weights[res.ID()] > max {
+			max = weights[res.ID()]
+		}
+	}
+
+	for id := range weights {
+		weights[id] /= max
 	}
 
 	return weights

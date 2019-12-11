@@ -24,13 +24,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"github.com/minio/highwayhash"
-	"github.com/perlin-network/noise/edwards25519"
-	"github.com/perlin-network/wavelet/internal/cuckoo"
-	"github.com/perlin-network/wavelet/internal/filebuffer"
-	"github.com/perlin-network/wavelet/internal/radix"
-	"github.com/perlin-network/wavelet/internal/stall"
-	"github.com/perlin-network/wavelet/internal/worker"
 	"io"
 	"math/rand"
 	"reflect"
@@ -38,10 +31,16 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/minio/highwayhash"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/conf"
+	"github.com/perlin-network/wavelet/internal/cuckoo"
+	"github.com/perlin-network/wavelet/internal/filebuffer"
+	"github.com/perlin-network/wavelet/internal/radix"
+	"github.com/perlin-network/wavelet/internal/stall"
+	"github.com/perlin-network/wavelet/internal/worker"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
@@ -61,7 +60,8 @@ const (
 )
 
 var (
-	ErrMissingTx = errors.New("missing transaction")
+	ErrMissingTx          = errors.New("missing transaction")
+	ErrTxInvalidSignature = errors.New("bad tx signature")
 )
 
 type Ledger struct {
@@ -94,7 +94,7 @@ type Ledger struct {
 	transactionFilterLock sync.RWMutex
 	transactionFilter     *cuckoo.Filter
 
-	queryPeerBlockCache  map[edwards25519.PublicKey]*Block
+	queryPeerBlockCache  *PeerBlockLRU
 	queryBlockValidCache map[BlockID]struct{}
 	queryStateCache      *StateLRU
 
@@ -192,7 +192,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 
 		transactionFilter: cuckoo.NewFilter(),
 
-		queryPeerBlockCache:  make(map[edwards25519.PublicKey]*Block),
+		queryPeerBlockCache:  NewPeerBlockLRU(16),
 		queryBlockValidCache: make(map[BlockID]struct{}),
 		queryStateCache:      NewStateLRU(16),
 
@@ -267,8 +267,8 @@ func (l *Ledger) Close() {
 
 // AddTransaction adds a transaction to the ledger and adds it's id to a probabilistic
 // data structure used to sync transactions.
-func (l *Ledger) AddTransaction(verifySignature bool, txs ...Transaction) {
-	l.transactions.BatchAdd(txs, verifySignature)
+func (l *Ledger) AddTransaction(txs ...Transaction) {
+	l.transactions.BatchAdd(txs)
 	l.transactionFilterLock.Lock()
 
 	for _, tx := range txs {
@@ -399,6 +399,8 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 			continue
 		}
 
+		snapshot := l.Snapshot()
+
 		var wg sync.WaitGroup
 
 		bfReq := &TransactionsSyncRequest{
@@ -482,6 +484,7 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 					}
 
 					transactions := make([]Transaction, 0, len(txResponse.Transactions))
+
 					for _, txBody := range txResponse.Transactions {
 						tx, err := UnmarshalTransaction(bytes.NewReader(txBody))
 						if err != nil {
@@ -489,10 +492,12 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 							continue
 						}
 
-						if !tx.VerifySignature() {
-							logger.Error().
-								Hex("tx_id", tx.ID[:]).
-								Msg("bad signature")
+						if err := ValidateTransaction(snapshot, tx); err != nil {
+							if err == ErrTxInvalidSignature {
+								logger.Error().
+									Hex("tx_id", tx.ID[:]).
+									Msg("bad signature")
+							}
 							continue
 						}
 
@@ -502,7 +507,7 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 					downloadedNum := len(transactions)
 					count -= uint64(downloadedNum)
 
-					l.AddTransaction(false, transactions...)
+					l.AddTransaction(transactions...)
 
 					l.metrics.downloadedTX.Mark(int64(downloadedNum))
 					l.metrics.receivedTX.Mark(int64(downloadedNum))
@@ -612,12 +617,15 @@ func (l *Ledger) PullMissingTransactions() {
 		close(responseChan)
 
 		pulledTXs := make([]Transaction, 0, len(pulled))
+		snapshot := l.Snapshot()
 
 		for _, tx := range pulled {
-			if !tx.VerifySignature() {
-				logger.Error().
-					Hex("tx_id", tx.ID[:]).
-					Msg("bad signature")
+			if err := ValidateTransaction(snapshot, tx); err != nil {
+				if err == ErrTxInvalidSignature {
+					logger.Error().
+						Hex("tx_id", tx.ID[:]).
+						Msg("bad signature")
+				}
 
 				continue
 			}
@@ -625,7 +633,7 @@ func (l *Ledger) PullMissingTransactions() {
 			pulledTXs = append(pulledTXs, tx)
 		}
 
-		l.AddTransaction(false, pulledTXs...)
+		l.AddTransaction(pulledTXs...)
 
 		if count > 0 {
 			logger.Info().
@@ -811,7 +819,7 @@ func (l *Ledger) query() {
 
 	for _, p := range peers {
 		conn := p.Conn()
-		cached := l.queryPeerBlockCache[p.ID().Checksum()]
+		cached, _ := l.queryPeerBlockCache.Load(p.ID().Checksum())
 
 		f := func() {
 			var response response
@@ -902,7 +910,7 @@ func (l *Ledger) query() {
 		if response.cacheValid {
 			response.vote.block = response.cacheBlock
 		} else if response.vote.block != nil {
-			l.queryPeerBlockCache[response.vote.voter.Checksum()] = response.vote.block
+			l.queryPeerBlockCache.Put(response.vote.voter.Checksum(), response.vote.block)
 		}
 
 		votes = append(votes, &response.vote)

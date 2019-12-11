@@ -525,6 +525,13 @@ func buildWithdrawStakePayload(amount uint64) Stake {
 	}
 }
 
+func buildWithdrawRewardPayload(amount uint64) Stake {
+	return Stake{
+		Opcode: sys.WithdrawReward,
+		Amount: amount,
+	}
+}
+
 func buildSignedTransaction(keys *skademlia.Keypair, tag sys.Tag, nonce uint64, block uint64, payload []byte) Transaction {
 	var nonceBuf [8]byte
 	binary.BigEndian.PutUint64(nonceBuf[:], nonce)

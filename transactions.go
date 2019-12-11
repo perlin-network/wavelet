@@ -31,30 +31,14 @@ func NewTransactions(latest Block) *Transactions {
 
 // Add adds a transaction into the node, and indexes it into the nodes mempool
 // based on the value BLAKE2b(tx.ID || block.ID).
-func (t *Transactions) Add(tx Transaction, verifySignature bool) {
-	if verifySignature && !tx.VerifySignature() {
-		return
-	}
-
+func (t *Transactions) Add(tx Transaction) {
 	t.Lock()
 	defer t.Unlock()
 
 	t.add(tx)
 }
 
-func (t *Transactions) BatchAdd(transactions []Transaction, verifySignature bool) {
-	if verifySignature {
-		filtered := transactions[:0]
-
-		for i := range transactions {
-			if transactions[i].VerifySignature() {
-				filtered = append(filtered, transactions[i])
-			}
-		}
-
-		transactions = filtered
-	}
-
+func (t *Transactions) BatchAdd(transactions []Transaction) {
 	t.Lock()
 	defer t.Unlock()
 

@@ -51,8 +51,7 @@ func getGenesisTestNetwork(t testing.TB, withContract bool) (testnet *TestNetwor
 	alice = testnet.AddNode(t)
 	bob := testnet.AddNode(t)
 
-	alice.WaitUntilSync(t)
-	bob.WaitUntilSync(t)
+	testnet.WaitUntilSync(t)
 
 	var err error
 
@@ -72,20 +71,24 @@ func getGenesisTestNetwork(t testing.TB, withContract bool) (testnet *TestNetwor
 	assert.NoError(t, err)
 	bob.WaitUntilStake(t, 100)
 
+	block := alice.BlockIndex()
+
 	if withContract {
 		for i := 0; i < 3; i++ {
 			tx, err := alice.SpawnContract("testdata/transfer_back.wasm", 10000, nil)
 			if !assert.NoError(t, err) {
 				return nil, nil, cleanup
 			}
-			alice.WaitUntilConsensus(t)
+			block++
+			alice.WaitUntilBlock(t, block)
 
 			if i%2 == 0 {
 				tx, err = alice.DepositGas(tx.ID, (uint64(i)+1)*100)
 				if !assert.NoError(t, err) {
 					return nil, nil, cleanup
 				}
-				alice.WaitUntilConsensus(t)
+				block++
+				alice.WaitUntilBlock(t, block)
 			}
 		}
 	}
