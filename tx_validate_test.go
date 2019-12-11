@@ -55,6 +55,12 @@ func TestValidateStakeTransaction(t *testing.T) {
 		tx := buildSignedTransaction(keys, sys.TagStake, 1, 1, payload)
 
 		assert.Error(t, ValidateTransaction(state, tx))
+
+		// Success
+
+		WriteAccountBalance(state, keys.PublicKey(), 5004)
+
+		assert.NoError(t, ValidateTransaction(state, tx))
 	})
 
 	t.Run("withdraw stake", func(t *testing.T) {
@@ -66,6 +72,12 @@ func TestValidateStakeTransaction(t *testing.T) {
 		tx := buildSignedTransaction(keys, sys.TagStake, 1, 1, payload)
 
 		assert.Error(t, ValidateTransaction(state, tx))
+
+		// Success
+
+		WriteAccountStake(state, keys.PublicKey(), 5004)
+
+		assert.NoError(t, ValidateTransaction(state, tx))
 	})
 
 	t.Run("withdraw reward - not enough reward", func(t *testing.T) {
@@ -77,6 +89,12 @@ func TestValidateStakeTransaction(t *testing.T) {
 		tx := buildSignedTransaction(keys, sys.TagStake, 1, 1, payload)
 
 		assert.Error(t, ValidateTransaction(state, tx))
+
+		// Success
+
+		WriteAccountReward(state, keys.PublicKey(), 5004)
+
+		assert.NoError(t, ValidateTransaction(state, tx))
 	})
 
 	t.Run("withdraw reward - lower than minimum", func(t *testing.T) {
@@ -178,6 +196,20 @@ func TestValidateTransferTransaction(t *testing.T) {
 
 		assert.Error(t, ValidateTransaction(state, tx))
 	})
+
+	t.Run("success", func(t *testing.T) {
+		var recipient AccountID
+		_, err = rand.Read(recipient[:])
+		assert.NoError(t, err)
+
+		payload, err := buildTransferPayload(recipient, 1).Marshal()
+		if !assert.NoError(t, err) {
+			return
+		}
+
+		tx := buildSignedTransaction(keys, sys.TagTransfer, 1, 1, payload)
+		assert.NoError(t, ValidateTransaction(state, tx))
+	})
 }
 
 func TestValidateContractTransaction(t *testing.T) {
@@ -233,6 +265,23 @@ func TestValidateContractTransaction(t *testing.T) {
 
 		assert.Error(t, ValidateTransaction(state, tx))
 	})
+
+	t.Run("success", func(t *testing.T) {
+		var contractCode [32]byte
+		_, err = rand.Read(contractCode[:])
+		if !assert.NoError(t, err) {
+			return
+		}
+
+		payload, err := buildContractSpawnPayload(1, 1, contractCode[:]).Marshal()
+		if !assert.NoError(t, err) {
+			return
+		}
+
+		tx := buildSignedTransaction(keys, sys.TagContract, 1, 1, payload)
+
+		assert.NoError(t, ValidateTransaction(state, tx))
+	})
 }
 
 func TestValidateBatchTransaction(t *testing.T) {
@@ -244,8 +293,9 @@ func TestValidateBatchTransaction(t *testing.T) {
 	}
 
 	var batch Batch
-	assert.NoError(t, batch.AddStake(buildWithdrawStakePayload(100)))
-	assert.NoError(t, batch.AddTransfer(buildTransferPayload(AccountID{}, 100)))
+	assert.NoError(t, batch.AddStake(buildWithdrawStakePayload(1)))
+	assert.NoError(t, batch.AddStake(buildPlaceStakePayload(1)))
+	assert.NoError(t, batch.AddTransfer(buildTransferPayload(AccountID{}, 1)))
 
 	payload, err := batch.Marshal()
 	if !assert.NoError(t, err) {
@@ -255,6 +305,13 @@ func TestValidateBatchTransaction(t *testing.T) {
 	tx := buildSignedTransaction(keys, sys.TagBatch, 1, 1, payload)
 
 	assert.Error(t, ValidateTransaction(state, tx))
+
+	// Success case
+
+	WriteAccountBalance(state, keys.PublicKey(), 42)
+	WriteAccountStake(state, keys.PublicKey(), 42)
+
+	assert.NoError(t, ValidateTransaction(state, tx))
 }
 
 func TestValidateTransaction_InvalidSignature(t *testing.T) {
