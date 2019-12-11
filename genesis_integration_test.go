@@ -100,6 +100,7 @@ func TestDumpIncludingContract(t *testing.T) {
 		assert.FailNow(t, "failed to get test network.")
 		return
 	}
+
 	defer func() {
 		_ = os.RemoveAll(testDumpDir)
 	}()

@@ -14,12 +14,6 @@ type config struct {
 	snowballBeta  int
 	SnowballAlpha float64
 
-	// votes counting and majority calculation related parameters
-	syncVoteThreshold             float64
-	finalizationVoteThreshold     float64
-	stakeMajorityWeight           float64
-	transactionsNumMajorityWeight float64
-
 	// Timeout for outgoing requests
 	queryTimeout          time.Duration
 	gossipTimeout         time.Duration
@@ -62,11 +56,6 @@ func defaultConfig() config {
 		snowballBeta:  150,
 		SnowballAlpha: 0.8,
 
-		syncVoteThreshold:             0.8,
-		finalizationVoteThreshold:     0.8,
-		stakeMajorityWeight:           1,
-		transactionsNumMajorityWeight: 0.3,
-
 		queryTimeout:               5 * time.Second,
 		gossipTimeout:              5 * time.Second,
 		downloadTxTimeout:          30 * time.Second,
@@ -93,40 +82,9 @@ func defaultConfig() config {
 
 type Option func(*config)
 
-// updateWeights update transaction number and round depth weights for consensus vote counting
-// weights values are calculated as such, that it should be just enough to reach majority
-// in case of same stakes
-func updateWeights() {
-	c.transactionsNumMajorityWeight = c.finalizationVoteThreshold - (1 / float64(c.snowballK))
-}
-
 func WithSnowballK(sk int) Option {
 	return func(c *config) {
 		c.snowballK = sk
-	}
-}
-
-func WithSyncVoteThreshold(sa float64) Option {
-	return func(c *config) {
-		c.syncVoteThreshold = sa
-	}
-}
-
-func WithFinalizationVoteThreshold(sa float64) Option {
-	return func(c *config) {
-		c.finalizationVoteThreshold = sa
-	}
-}
-
-func WithStakeMajorityWeight(sa float64) Option {
-	return func(c *config) {
-		c.stakeMajorityWeight = sa
-	}
-}
-
-func WithTransactionsNumMajorityWeight(sa float64) Option {
-	return func(c *config) {
-		c.transactionsNumMajorityWeight = sa
 	}
 }
 
@@ -211,38 +169,6 @@ func WithMissingTxPullLimit(n uint64) Option {
 func GetSnowballK() int {
 	l.RLock()
 	t := c.snowballK
-	l.RUnlock()
-
-	return t
-}
-
-func GetSyncVoteThreshold() float64 {
-	l.RLock()
-	t := c.syncVoteThreshold
-	l.RUnlock()
-
-	return t
-}
-
-func GetFinalizationVoteThreshold() float64 {
-	l.RLock()
-	t := c.finalizationVoteThreshold
-	l.RUnlock()
-
-	return t
-}
-
-func GetStakeMajorityWeight() float64 {
-	l.RLock()
-	t := c.stakeMajorityWeight
-	l.RUnlock()
-
-	return t
-}
-
-func GetTransactionsNumMajorityWeight() float64 {
-	l.RLock()
-	t := c.transactionsNumMajorityWeight
 	l.RUnlock()
 
 	return t
@@ -366,8 +292,6 @@ func Update(options ...Option) {
 	for _, option := range options {
 		option(&c)
 	}
-
-	updateWeights()
 
 	l.Unlock()
 }

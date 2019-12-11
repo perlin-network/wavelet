@@ -398,9 +398,6 @@ func TestMain_UpdateParams(t *testing.T) {
 	}{
 		{"snowball.k", "snowballK", 123},
 		{"snowball.beta", "snowballBeta", 789},
-		{"vote.sync.threshold", "syncVoteThreshold", 12.34},
-		{"vote.finalization.threshold", "finalizationVoteThreshold", 56.78},
-		{"vote.finalization.stake.weight", "stakeMajorityWeight", 11.11},
 		{"query.timeout", "queryTimeout", time.Second * 9},
 		{"gossip.timeout", "gossipTimeout", time.Second * 4},
 		{"download.tx.timeout", "downloadTxTimeout", time.Second * 3},

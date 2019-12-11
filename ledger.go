@@ -34,6 +34,7 @@ import (
 	"io"
 	"math/rand"
 	"reflect"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -1303,7 +1304,7 @@ func (l *Ledger) performSync(current *Block) bool { // nolint:gocyclo,gocognit
 
 	// get all the blocks up until latest one starting either from latest saved one or oldest possible
 	oldestBlockIx := current.Index
-	if pl := uint64(conf.GetPruningLimit()); latest.Index > pl && latest.Index - pl > oldestBlockIx {
+	if pl := uint64(conf.GetPruningLimit()); latest.Index > pl && latest.Index-pl > oldestBlockIx {
 		oldestBlockIx = latest.Index - pl
 	}
 
@@ -1318,6 +1319,11 @@ func (l *Ledger) performSync(current *Block) bool { // nolint:gocyclo,gocognit
 
 		resp, err := client.GetBlock(context.Background(), &QueryRequest{BlockIndex: i})
 		if err != nil {
+			if strings.Contains(err.Error(), ErrRoundPruned.Error()) {
+				logger.Debug().Uint64("block_index", i).Msg("Skipping pruned block.")
+				continue
+			}
+
 			logger.Error().
 				Err(err).
 				Msg("Failed to save finalized block to our database")

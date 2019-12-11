@@ -23,6 +23,7 @@ import (
 	"bytes"
 	"context"
 	"github.com/perlin-network/wavelet/internal/cuckoo"
+	"github.com/pkg/errors"
 	"io"
 
 	"github.com/perlin-network/wavelet/conf"
@@ -30,6 +31,8 @@ import (
 	"github.com/perlin-network/wavelet/sys"
 	"golang.org/x/crypto/blake2b"
 )
+
+var ErrRoundPruned = errors.New("round was pruned")
 
 type Protocol struct {
 	ledger *Ledger
@@ -289,6 +292,11 @@ func (p *Protocol) PullTransactions(
 }
 
 func (p *Protocol) GetBlock(ctx context.Context, req *QueryRequest) (*QueryResponse, error) {
+	// if block which peer is asking for was pruned - return corresponding error
+	if req.BlockIndex <= p.ledger.blocks.Latest().Index-uint64(conf.GetPruningLimit()) {
+		return nil, ErrRoundPruned
+	}
+
 	b, err := p.ledger.blocks.GetByIndex(req.BlockIndex)
 	if err != nil {
 		return nil, err
