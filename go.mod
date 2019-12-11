@@ -12,6 +12,7 @@ require (
 	github.com/buaazp/fasthttprouter v0.1.1
 	github.com/chzyer/logex v1.1.10 // indirect
 	github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1 // indirect
+	github.com/davecgh/go-spew v1.1.1
 	github.com/dgraph-io/badger/v2 v2.0.0
 	github.com/dgryski/go-metro v0.0.0-20180109044635-280f6062b5bc // indirect
 	github.com/djherbis/buffer v1.1.0

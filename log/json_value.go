@@ -79,7 +79,7 @@ func ValueBatch(value *fastjson.Value, keyDstPair ...interface{}) error {
 }
 
 // ValueAny unmarshals primitives: *string, *int{,8,16,32,64}, *bool,
-// *float{,32,64}, *uint{,8,16,32,64} {[]byte, [16,32,64]byte} hex types.
+// *float{,32,64}, *uint{,8,16,32,64} *{[]byte, [16,32,64]byte} hex types.
 // This function panics on unknown dst types.
 func ValueAny(value *fastjson.Value, dst interface{}, key ...string) error {
 	val := value.Get(key...)
@@ -93,32 +93,8 @@ func ValueAny(value *fastjson.Value, dst interface{}, key ...string) error {
 	}
 
 	switch dst := dst.(type) {
-	case []byte, [16]byte, [32]byte, [64]byte:
-		return ValueHex(value, dst, key...)
-
 	case *[]byte, *[16]byte, *[32]byte, *[64]byte:
-		b, err := val.StringBytes()
-		if err != nil {
-			return NewErrUnmarshalErr(val, key, err)
-		}
-
-		switch dst := dst.(type) {
-		case *[]byte:
-			h, err := hex.DecodeString(string(b))
-			if err != nil {
-				return NewErrUnmarshalErr(val, key, err)
-			}
-
-			*dst = h
-			return nil
-
-		case *[16]byte:
-			return ValueHex(value, *dst, key...)
-		case *[32]byte:
-			return ValueHex(value, *dst, key...)
-		case *[64]byte:
-			return ValueHex(value, *dst, key...)
-		}
+		return ValueHex(value, dst, key...)
 
 	case *string:
 		if val.Type() != fastjson.TypeString {
@@ -222,22 +198,8 @@ func ValueString(value *fastjson.Value, key ...string) string {
 	return string(value.GetStringBytes(key...))
 }
 
+// ValueHex decodes *[16,32,64]byte and *[]byte
 func ValueHex(value *fastjson.Value, dst interface{}, key ...string) error {
-	var bytes []byte
-
-	switch dst := dst.(type) {
-	case []byte:
-		bytes = dst
-	case [16]byte:
-		bytes = dst[:]
-	case [32]byte:
-		bytes = dst[:]
-	case [64]byte:
-		bytes = dst[:]
-	default:
-		panic("Unknown type")
-	}
-
 	val := value.Get(key...)
 	if val == nil {
 		return NewErrUnmarshalErr(value, key, ErrDoesNotExist)
@@ -246,6 +208,21 @@ func ValueHex(value *fastjson.Value, dst interface{}, key ...string) error {
 	b, err := val.StringBytes()
 	if err != nil {
 		return NewErrUnmarshalErr(val, key, err)
+	}
+
+	// var bytes = make([]byte, hex.DecodedLen(len(b)))
+	var bytes []byte
+
+	switch dst := dst.(type) {
+	case *[]byte:
+		*dst = make([]byte, hex.DecodedLen(len(b)))
+		bytes = *dst
+	case *[16]byte:
+		bytes = dst[:]
+	case *[32]byte:
+		bytes = dst[:]
+	case *[64]byte:
+		bytes = dst[:]
 	}
 
 	i, err := hex.Decode(bytes, b)
@@ -302,7 +279,7 @@ func ValueTime(value *fastjson.Value, timeFmt string, key ...string) (*time.Time
 		return nil, NewErrUnmarshalErr(v, key, err)
 	}
 
-	t, err := time.Parse(string(b), timeFmt)
+	t, err := time.Parse(timeFmt, string(b))
 	if err != nil {
 		return nil, NewErrUnmarshalErr(v, key, err)
 	}

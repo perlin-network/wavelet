@@ -100,6 +100,7 @@ func (err *ErrorEvent) MarshalEvent(ev *zerolog.Event) {
 	var debug = node.Debug()
 	if err.Event != nil {
 		debug.Dict("error", err.Event)
+		ev.Dict("error", err.Event)
 	}
 
 	debug.Err(err.Error).Msg(err.Message)

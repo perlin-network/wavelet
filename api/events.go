@@ -16,7 +16,6 @@ type NetworkJoined struct {
 	PublicKey wavelet.AccountID `json:"public_key"`
 	Address   string            `json:"address"`
 	Time      time.Time         `json:"time"`
-	Message   string            `json:"message"`
 }
 
 var _ log.Loggable = (*NetworkJoined)(nil)
@@ -30,11 +29,13 @@ func (n *NetworkJoined) MarshalEvent(ev *zerolog.Event) {
 
 func (n *NetworkJoined) UnmarshalValue(v *fastjson.Value) error {
 	if err := log.ValueBatch(v,
-		"address", &n.Address,
-		"message", &n.Message); err != nil {
+		"public_key", n.PublicKey,
+		"address", &n.Address); err != nil {
 
 		return err
 	}
+
+	log.ValueHex(v, n.PublicKey, "public_key")
 
 	t, err := log.ValueTime(v, time.RFC3339Nano, "time")
 	if err != nil {
@@ -50,7 +51,6 @@ type NetworkLeft struct {
 	PublicKey wavelet.AccountID `json:"public_key"`
 	Address   string            `json:"address"`
 	Time      time.Time         `json:"time"`
-	Message   string            `json:"message"`
 }
 
 var _ log.Loggable = (*NetworkLeft)(nil)
@@ -64,8 +64,8 @@ func (n *NetworkLeft) MarshalEvent(ev *zerolog.Event) {
 
 func (n *NetworkLeft) UnmarshalValue(v *fastjson.Value) error {
 	if err := log.ValueBatch(v,
-		"address", &n.Address,
-		"message", &n.Message); err != nil {
+		"public_key", n.PublicKey,
+		"address", &n.Address); err != nil {
 
 		return err
 	}
@@ -85,6 +85,7 @@ func (g *Gateway) registerEvents() {
 			log.EventTo(log.Network("joined").Info(), &NetworkJoined{
 				PublicKey: id.PublicKey(),
 				Address:   id.Address(),
+				Time:      time.Now(),
 			})
 		})
 
@@ -92,6 +93,7 @@ func (g *Gateway) registerEvents() {
 			log.EventTo(log.Network("left").Info(), &NetworkLeft{
 				PublicKey: id.PublicKey(),
 				Address:   id.Address(),
+				Time:      time.Now(),
 			})
 		})
 	}
