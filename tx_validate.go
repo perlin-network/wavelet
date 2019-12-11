@@ -27,7 +27,11 @@ import (
 
 // ValidateTransaction validates signature, and state to make sure that the transaction is acceptable.
 func ValidateTransaction(snapshot *avl.Tree, tx Transaction) error {
-	if !tx.VerifySignature() {
+	return validateTransaction(snapshot, tx, true)
+}
+
+func validateTransaction(snapshot *avl.Tree, tx Transaction, verifySignature bool) error {
+	if verifySignature && !tx.VerifySignature() {
 		return ErrTxInvalidSignature
 	}
 
@@ -144,7 +148,7 @@ func validateBatchTransaction(snapshot *avl.Tree, tx Transaction) error {
 			Tag:     sys.Tag(payload.Tags[i]),
 			Payload: payload.Payloads[i],
 		}
-		if err := ValidateTransaction(snapshot, entry); err != nil {
+		if err := validateTransaction(snapshot, entry, false); err != nil {
 			return errors.Wrapf(err, "Error while processing %d/%d transaction in a batch.", i+1, payload.Size)
 		}
 	}
