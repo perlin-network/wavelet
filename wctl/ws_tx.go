@@ -26,7 +26,7 @@ func (c *Client) PollTransactions() (func(), error) {
 			case ev == "failed":
 				err = parseTxFailed(c, o)
 			default:
-				err = errInvalidEvent(o, ev)
+				// err = errInvalidEvent(o, ev)
 			}
 
 			if err != nil {
