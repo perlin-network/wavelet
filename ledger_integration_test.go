@@ -55,54 +55,6 @@ func TestLedger_Pay(t *testing.T) {
 	}
 }
 
-func TestLedger_PayInsufficientBalance(t *testing.T) {
-	testnet, err := NewTestNetwork()
-	FailTest(t, err)
-
-	defer testnet.Cleanup()
-
-	alice, err := testnet.AddNode()
-	FailTest(t, err)
-
-	bob, err := testnet.AddNode()
-	FailTest(t, err)
-
-	FailTest(t, testnet.WaitUntilSync())
-
-	_, err = testnet.Faucet().Pay(alice, 1000000)
-	FailTest(t, err)
-
-	FailTest(t, alice.WaitUntilBalance(1000000))
-
-	// Alice attempt to pay Bob more than what
-	// she has in her wallet
-	_, err = alice.Pay(bob, 1000001)
-	FailTest(t, err)
-
-	FailTest(t, alice.WaitUntilBlock(2))
-
-	// Alice should have paid for gas even though the tx failed
-	err = waitFor(func() bool {
-		return alice.Balance() > 0 && alice.Balance() < 1000000
-	})
-
-	FailTest(t, err)
-
-	// Bob should not receive the tx amount
-	assert.EqualValues(t, 0, bob.Balance())
-
-	// Everyone else should see the updated balance of Alice and Bob
-	for _, node := range testnet.Nodes() {
-		node := node
-		err = waitFor(func() bool {
-			return node.BalanceOfAccount(alice) == alice.Balance() &&
-				node.BalanceOfAccount(bob) == 0
-		})
-
-		assert.NoError(t, err)
-	}
-}
-
 func TestLedger_Stake(t *testing.T) {
 	testnet, err := NewTestNetwork()
 	FailTest(t, err)
