@@ -17,7 +17,7 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// +build !integration,unit
+// +build unit
 
 package wavelet
 
@@ -35,8 +35,10 @@ import (
 )
 
 func TestCollapseResultsLogger(t *testing.T) {
-	log.ClearWriters()
-	defer log.ClearWriters()
+	writerKey := "tx_write_test"
+
+	log.ClearWriter(writerKey)
+	defer log.ClearWriter(writerKey)
 
 	logger := NewCollapseResultsLogger()
 
@@ -77,10 +79,16 @@ func TestCollapseResultsLogger(t *testing.T) {
 	}
 
 	logCh := make(chan []byte, 2)
-	log.SetWriter("tx_write_test", writerFunc(func(p []byte) (n int, err error) {
+
+	writer := writerFunc(func(p []byte) (n int, err error) {
 		logCh <- p
 		return len(p), nil
-	}))
+	})
+
+	log.SetWriter(writerKey, log.NewConsoleWriter(
+		writer,
+		log.FilterFor(log.ModuleTX),
+	))
 
 	logger.Log(results)
 

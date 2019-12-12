@@ -232,8 +232,6 @@ func (s *ledgerStatusResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error
 		arena.NewNumberString(strconv.FormatUint(accountsLen, 10)))
 	o.Set("preferred_votes",
 		arena.NewNumberInt(s.ledger.Finalizer().Progress()))
-	o.Set("sync_status",
-		arena.NewString(s.ledger.SyncStatus()))
 
 	{
 		blockObj := arena.NewObject()

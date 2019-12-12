@@ -25,6 +25,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+var ErrContractAlreadyExists = errors.New("contract: already exists")
+
 // ValidateTransaction validates signature, and state to make sure that the transaction is acceptable.
 func ValidateTransaction(snapshot *avl.Tree, tx Transaction) error {
 	return validateTransaction(snapshot, tx, true)
@@ -124,7 +126,7 @@ func validateContractTransaction(snapshot *avl.Tree, tx Transaction) error {
 	}
 
 	if _, exists := ReadAccountContractCode(snapshot, tx.ID); exists {
-		return errors.New("contract: already exists")
+		return ErrContractAlreadyExists
 	}
 
 	if bal, _ := ReadAccountBalance(snapshot, tx.Sender); bal < tx.Fee()+payload.GasDeposit+payload.GasLimit {

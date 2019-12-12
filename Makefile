@@ -2,6 +2,7 @@ BINOUT = $(shell pwd)/build
 
 R = localhost:5000
 T = latest
+G = $(shell git rev-parse --short HEAD)
 
 protoc:
 	protoc --gogofaster_out=plugins=grpc:. -I=. rpc.proto
@@ -34,7 +35,7 @@ upload:
 	rsync -avz cmd/graph/main root@104.248.44.250:/root
 
 docker:
-	docker build -t wavelet:$(T) .
+	docker build --build-arg=GIT_COMMIT=$(G) -t wavelet:$(T) .
 ifneq ($(R),)
 	docker tag wavelet:$(T) $(R)/wavelet:$(T)
 	docker push $(R)/wavelet:$(T)
