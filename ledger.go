@@ -179,6 +179,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 		collapseResultsLogger: NewCollapseResultsLogger(),
 	}
 
+	var kickstart sync.Once
+
 	syncManager.OnStateReconciled = append(syncManager.OnStateReconciled, func(outOfSync bool) {
 		if outOfSync {
 			syncManager.logger.Info().Msg("Peers have reported to us that we are out of sync. " +
@@ -188,9 +190,13 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 				close(ledger.consensusStop)
 				ledger.consensus.Wait()
 			}
-		} else if ledger.consensusStop == nil {
-			ledger.consensusStop = make(chan struct{})
-			ledger.PerformConsensus()
+		} else {
+			kickstart.Do(func() {
+				if ledger.consensusStop == nil {
+					ledger.consensusStop = make(chan struct{})
+					ledger.PerformConsensus()
+				}
+			})
 		}
 	})
 
