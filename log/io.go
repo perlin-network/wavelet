@@ -84,12 +84,12 @@ func (t *multiWriter) WriteFilter(p []byte, module string) (n int, err error) {
 	return len(p), nil
 }
 
-func (t *multiWriter) Clear() {
+func (t *multiWriter) Clear(key string) {
 	t.Lock()
 	defer t.Unlock()
 
-	t.writers = make(map[string]io.Writer)
-	t.writersModules = make(map[string]map[string]struct{})
+	delete(t.writers, key)
+	delete(t.writersModules, key)
 }
 
 func write(w io.Writer, p []byte) (n int, err error) {
