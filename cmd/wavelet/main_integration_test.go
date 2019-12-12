@@ -351,104 +351,168 @@ func TestMain_DepositGas(t *testing.T) {
 
 	wavelet.FailTest(t, w.WaitForConsensus())
 
-	tx := w.WaitForTransaction(t, txID)
+	tx, err := w.WaitForTransaction(txID)
+	wavelet.FailTest(t, err)
+
 	w.Stdin <- fmt.Sprintf("deposit-gas %s 99999", tx.ID)
-	w.Stdout.Search(t, "Gas deposited.")
+
+	_, err = w.Stdout.Search("Gas deposited.")
+	assert.NoError(t, err)
 }
 
 func TestMain_Find(t *testing.T) {
 	config := defaultConfig()
 	config.Wallet = wallet2
-	alice := NewTestWavelet(t, config)
+	alice, err := NewTestWavelet(config)
+	wavelet.FailTest(t, err)
+
 	defer alice.Cleanup()
 
-	bob := alice.Testnet.AddNode(t)
+	bob, err := alice.Testnet.AddNode()
+	wavelet.FailTest(t, err)
 
-	alice.Testnet.WaitForSync(t)
+	wavelet.FailTest(t, alice.Testnet.WaitForSync())
 
 	recipient := bob.PublicKey()
 	alice.Stdin <- fmt.Sprintf("p %s 99999", hex.EncodeToString(recipient[:]))
 
-	txID := extractTxID(t, alice.Stdout.Search(t, "Paid to recipient."))
-	alice.WaitForTransaction(t, txID)
+	txIDText, err := alice.Stdout.Search("Paid to recipient.")
+	wavelet.FailTest(t, err)
+
+	txID, err := extractTxID(txIDText)
+	wavelet.FailTest(t, err)
+
+	_, err = alice.WaitForTransaction(txID)
+	wavelet.FailTest(t, err)
 
 	alice.Stdin <- fmt.Sprintf("find %s", txID)
-	alice.Stdout.Search(t, fmt.Sprintf("Transaction: %s", txID))
+
+	_, err = alice.Stdout.Search(fmt.Sprintf("Transaction: %s", txID))
+	assert.NoError(t, err)
 }
 
 func TestMain_PlaceStake(t *testing.T) {
 	config := defaultConfig()
 	config.Wallet = wallet2
-	alice := NewTestWavelet(t, config)
+	alice, err := NewTestWavelet(config)
+	wavelet.FailTest(t, err)
+
 	defer alice.Cleanup()
 
-	bob := alice.Testnet.AddNode(t)
+	bob, err := alice.Testnet.AddNode()
+	wavelet.FailTest(t, err)
 
-	alice.Testnet.WaitForSync(t)
+	wavelet.FailTest(t, alice.Testnet.WaitForSync())
 
 	alice.Stdin <- "ps 1000"
 
-	txID := extractTxID(t, alice.Stdout.Search(t, "Stake placed."))
-	tx := alice.WaitForTransaction(t, txID)
+	txIDText, err := alice.Stdout.Search("Stake placed.")
+	wavelet.FailTest(t, err)
+
+	txID, err := extractTxID(txIDText)
+	wavelet.FailTest(t, err)
+
+	tx, err := alice.WaitForTransaction(txID)
+	wavelet.FailTest(t, err)
 
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, alice.PublicKey, tx.Sender)
 
-	waitFor(t, func() error {
-		if bob.StakeWithPublicKey(asAccountID(t, alice.PublicKey)) != 1000 {
+	err = waitFor(func() error {
+		accID, err := asAccountID(alice.PublicKey)
+		if err != nil {
+			return err
+		}
+
+		if bob.StakeWithPublicKey(accID) != 1000 {
 			return fmt.Errorf("wrong stake amount")
 		}
+
 		return nil
 	})
+
+	assert.NoError(t, err)
 }
 
 func TestMain_WithdrawStake(t *testing.T) {
 	config := defaultConfig()
 	config.Wallet = wallet2
-	alice := NewTestWavelet(t, config)
+	alice, err := NewTestWavelet(config)
+	wavelet.FailTest(t, err)
+
 	defer alice.Cleanup()
 
-	bob := alice.Testnet.AddNode(t)
+	bob, err := alice.Testnet.AddNode()
+	wavelet.FailTest(t, err)
 
-	alice.Testnet.WaitForSync(t)
+	wavelet.FailTest(t, alice.Testnet.WaitForSync())
 
 	alice.Stdin <- "ps 1000"
 
-	txID := extractTxID(t, alice.Stdout.Search(t, "Stake placed."))
-	alice.WaitForTransaction(t, txID)
+	txIDText, err := alice.Stdout.Search("Stake placed.")
+	wavelet.FailTest(t, err)
 
-	alice.WaitForConsensus(t)
+	txID, err := extractTxID(txIDText)
+	wavelet.FailTest(t, err)
+
+	wavelet.FailTest(t, alice.WaitForConsensus())
+
+	_, err = alice.Stdout.Search("Stake updated.")
+	wavelet.FailTest(t, err)
 
 	alice.Stdin <- "ws 500"
 
-	txID = extractTxID(t, alice.Stdout.Search(t, "Stake withdrew."))
-	tx := alice.WaitForTransaction(t, txID)
+	txIDText, err = alice.Stdout.Search("Stake withdrew.")
+	wavelet.FailTest(t, err)
+
+	txID, err = extractTxID(txIDText)
+	wavelet.FailTest(t, err)
+
+	tx, err := alice.WaitForTransaction(txID)
+	wavelet.FailTest(t, err)
 
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, alice.PublicKey, tx.Sender)
 
-	waitFor(t, func() error {
-		if bob.StakeWithPublicKey(asAccountID(t, alice.PublicKey)) != 500 {
+	err = waitFor(func() error {
+		accID, err := asAccountID(alice.PublicKey)
+		if err != nil {
+			return err
+		}
+
+		if bob.StakeWithPublicKey(accID) != 500 {
 			return fmt.Errorf("wrong stake amount")
 		}
+
 		return nil
 	})
+
+	assert.NoError(t, err)
 }
 
 func TestMain_WithdrawReward(t *testing.T) {
 	config := defaultConfig()
 	config.Wallet = wallet2
-	w := NewTestWavelet(t, config)
+	w, err := NewTestWavelet(config)
+	wavelet.FailTest(t, err)
+
 	defer w.Cleanup()
 
-	w.Testnet.AddNode(t)
+	_, err = w.Testnet.AddNode()
+	wavelet.FailTest(t, err)
 
-	w.Testnet.WaitForSync(t)
+	wavelet.FailTest(t, w.Testnet.WaitForSync())
 
 	w.Stdin <- "wr 1000"
 
-	txID := extractTxID(t, w.Stdout.Search(t, "Reward withdrew."))
-	tx := w.WaitForTransaction(t, txID)
+	txIDText, err := w.Stdout.Search("Reward withdrew.")
+	wavelet.FailTest(t, err)
+
+	txID, err := extractTxID(txIDText)
+	wavelet.FailTest(t, err)
+
+	tx, err := w.WaitForTransaction(txID)
+	wavelet.FailTest(t, err)
 
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, w.PublicKey, tx.Sender)
@@ -457,14 +521,18 @@ func TestMain_WithdrawReward(t *testing.T) {
 }
 
 func TestMain_UpdateParams(t *testing.T) {
-	w := NewTestWavelet(t, defaultConfig())
+	w, err := NewTestWavelet(defaultConfig())
+	wavelet.FailTest(t, err)
+
 	defer func() {
 		w.Cleanup()
 		conf.Reset()
 	}()
 
 	w.Stdin <- "up"
-	w.Stdout.Search(t, "Current configuration values")
+
+	_, err = w.Stdout.Search("Current configuration values")
+	wavelet.FailTest(t, err)
 
 	tests := []struct {
 		Config string
@@ -505,7 +573,8 @@ func TestMain_UpdateParams(t *testing.T) {
 				searchVal = v
 			}
 
-			w.Stdout.Search(t, fmt.Sprintf("%s:%s", tt.Var, searchVal))
+			_, err = w.Stdout.Search(fmt.Sprintf("%s:%s", tt.Var, searchVal))
+			wavelet.FailTest(t, err)
 		})
 	}
 }
@@ -513,18 +582,25 @@ func TestMain_UpdateParams(t *testing.T) {
 func TestMain_ConnectDisconnect(t *testing.T) {
 	config := defaultConfig()
 	config.Wallet = wallet2
-	w := NewTestWavelet(t, config)
+	w, err := NewTestWavelet(config)
+	wavelet.FailTest(t, err)
+
 	defer w.Cleanup()
 
-	w.Testnet.AddNode(t)
+	_, err = w.Testnet.AddNode()
+	wavelet.FailTest(t, err)
 
-	w.Testnet.WaitForSync(t)
+	wavelet.FailTest(t, w.Testnet.WaitForSync())
 
 	peerAddr := w.Testnet.Nodes()[0].Addr()
 	w.Stdin <- fmt.Sprintf("connect %s", peerAddr)
-	w.Stdout.Search(t, "Successfully connected to")
+	_, err = w.Stdout.Search("Successfully connected to")
+	wavelet.FailTest(t, err)
+
 	w.Stdin <- fmt.Sprintf("disconnect %s", peerAddr)
-	w.Stdout.Search(t, "Successfully disconnected")
+	_, err = w.Stdout.Search("Successfully disconnected")
+
+	assert.NoError(t, err)
 }
 
 func nextPort() (string, error) {
@@ -631,7 +707,7 @@ func (s *mockStdout) Write(p []byte) (n int, err error) {
 }
 
 func (s *mockStdout) Search(sub string) (string, error) {
-	timeout := time.NewTimer(time.Second * 10)
+	timeout := time.NewTimer(time.Second * 30)
 	for {
 		select {
 		case line := <-s.Lines:
@@ -713,8 +789,15 @@ func NewTestWavelet(cfg *TestWaveletConfig) (*TestWavelet, error) {
 		return nil, err
 	}
 
-	port := nextPort(t)
-	apiPort := nextPort(t)
+	port, err := nextPort()
+	if err != nil {
+		return nil, err
+	}
+
+	apiPort, err := nextPort()
+	if err != nil {
+		return nil, err
+	}
 
 	args := []string{"wavelet", "--loglevel", "", "--port", port, "--api.port", apiPort}
 	if cfg != nil {
@@ -742,11 +825,19 @@ func NewTestWavelet(cfg *TestWaveletConfig) (*TestWavelet, error) {
 		defer w.StopWG.Done()
 		Run(args, stdin, stdout, true)
 	}()
-	waitForAPI(t, apiPort)
 
-	w.PublicKey = w.GetLedgerStatus(t).PublicKey
+	if err := waitForAPI(apiPort); err != nil {
+		return nil, err
+	}
 
-	return w
+	ls, err := w.GetLedgerStatus()
+	if err != nil {
+		return nil, err
+	}
+
+	w.PublicKey = ls.PublicKey
+
+	return w, nil
 }
 
 func (w *TestWavelet) GetLedgerStatus() (*TestLedgerStatus, error) {

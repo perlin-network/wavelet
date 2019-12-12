@@ -40,9 +40,7 @@ func TestRewardWithdrawals(t *testing.T) {
 	rws := make([]RewardWithdrawalRequest, 20)
 	for i := range rws {
 		_, err := rand.Read(a[:])
-		if !assert.NoError(t, err) {
-			return
-		}
+		FailTest(t, err)
 
 		rw := RewardWithdrawalRequest{
 			account:    a,

@@ -156,7 +156,7 @@ func applyStakeTransaction(ctx *CollapseContext, block *Block, tx *Transaction) 
 		if stake < payload.Amount {
 			return errors.Errorf(
 				"stake: %x attempt to withdraw a stake of %d PERLs, but only has staked %d PERLs",
-				tx.Sender, payload.Amount, payload,
+				tx.Sender, payload.Amount, stake,
 			)
 		}
 

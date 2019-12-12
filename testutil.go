@@ -741,6 +741,8 @@ func waitFor(fn func() bool) error {
 }
 
 func FailTest(t *testing.T, err error) {
+	t.Helper()
+
 	if err != nil {
 		t.Fatal(err)
 	}
