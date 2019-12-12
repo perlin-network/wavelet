@@ -426,7 +426,7 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 
 				defer func() {
 					if err := stream.CloseSend(); err != nil {
-						logger.Error().Err(err).Msg("failed to send set membership filter data")
+						logger.Error().Err(err).Msg("failed to close sync transaction stream")
 					}
 				}()
 
@@ -468,13 +468,13 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 					}
 
 					if err := stream.Send(&TransactionsSyncRequest{Data: &req}); err != nil {
-						logger.Error().Err(err).Msg("failed to receive sync transactions header")
+						logger.Error().Err(err).Msg("failed to send sync transactions request")
 						return
 					}
 
 					res, err := stream.Recv()
 					if err != nil {
-						logger.Error().Err(err).Msg("failed to receive sync transactions header")
+						logger.Error().Err(err).Msg("failed to receive sync transactions response")
 						return
 					}
 
@@ -492,12 +492,11 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 							continue
 						}
 
-						if err := ValidateTransaction(snapshot, tx); err != nil {
-							if err == ErrTxInvalidSignature {
-								logger.Error().
-									Hex("tx_id", tx.ID[:]).
-									Msg("bad signature")
-							}
+						if err := ValidateTransaction(snapshot, tx); err != nil && err != ErrContractAlreadyExists {
+							logger.Error().
+								Err(err).
+								Hex("tx_id", tx.ID[:]).
+								Msg("transaction validation error")
 							continue
 						}
 
@@ -505,6 +504,13 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 					}
 
 					downloadedNum := len(transactions)
+					if downloadedNum == 0 {
+						logger.Warn().
+							Uint64("transaction_to_sync", count).
+							Msg("No transactions to add while there are still missing transactions")
+						return
+					}
+
 					count -= uint64(downloadedNum)
 
 					l.AddTransaction(transactions...)
