@@ -92,6 +92,4 @@ service Wavelet {
 
     rpc PullTransactions (TransactionPullRequest) returns (TransactionPullResponse) {}
     rpc SyncTransactions (stream TransactionsSyncRequest) returns (stream TransactionsSyncResponse) {}
-
-    rpc GetBlock (QueryRequest) returns (QueryResponse) {}
 }
