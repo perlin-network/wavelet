@@ -11,17 +11,19 @@ import (
 type Transactions struct {
 	sync.RWMutex
 
-	buffer  map[TransactionID]*Transaction
-	missing map[TransactionID]uint64
-	index   btree.BTree
+	buffer    map[TransactionID]*Transaction
+	missing   map[TransactionID]uint64
+	finalized map[TransactionID]struct{}
+	index     btree.BTree
 
 	latest Block // The latest block height the node is aware of.
 }
 
 func NewTransactions(latest Block) *Transactions {
 	return &Transactions{
-		buffer:  make(map[TransactionID]*Transaction),
-		missing: make(map[TransactionID]uint64),
+		buffer:    make(map[TransactionID]*Transaction),
+		missing:   make(map[TransactionID]uint64),
+		finalized: make(map[TransactionID]struct{}),
 
 		latest: latest,
 	}
@@ -67,7 +69,10 @@ func (t *Transactions) add(tx Transaction) {
 		return
 	}
 
-	t.index.Set(tx.ComputeIndex(t.latest.ID), tx.ID)
+	if _, finalized := t.finalized[tx.ID]; !finalized {
+		t.index.Set(tx.ComputeIndex(t.latest.ID), tx.ID)
+	}
+
 	t.buffer[tx.ID] = &tx
 
 	delete(t.missing, tx.ID) // In case the transaction was previously missing, mark it as no longer missing.
@@ -80,6 +85,16 @@ func (t *Transactions) MarkMissing(id TransactionID) bool {
 	defer t.Unlock()
 
 	return t.markMissing(id)
+}
+
+// BatchMarkFinalized saves batch of transaction ids to finalized index
+func (t *Transactions) BatchMarkFinalized(ids ...TransactionID) {
+	t.Lock()
+	defer t.Unlock()
+
+	for _, id := range ids {
+		t.finalized[id] = struct{}{}
+	}
 }
 
 // BatchMarkMissing is the same as MarkMissing, but it accepts a list of transaction IDs.
@@ -122,10 +137,8 @@ func (t *Transactions) ReshufflePending(next Block) []TransactionID {
 
 	// Delete mempool entries for transactions in the finalized block.
 
-	lookup := make(map[TransactionID]struct{})
-
 	for _, id := range next.Transactions {
-		lookup[id] = struct{}{}
+		t.finalized[id] = struct{}{}
 	}
 
 	// Recompute indices of all items in the mempool.
@@ -134,7 +147,7 @@ func (t *Transactions) ReshufflePending(next Block) []TransactionID {
 	t.index.Scan(func(key []byte, value interface{}) bool {
 		id := value.(TransactionID)
 
-		if _, finalized := lookup[id]; finalized {
+		if _, finalized := t.finalized[id]; finalized {
 			return true
 		}
 
@@ -153,11 +166,13 @@ func (t *Transactions) ReshufflePending(next Block) []TransactionID {
 
 	// Go through the entire transactions index and prune away
 	// any transactions that are too old.
-	pruned := []TransactionID{}
+	var pruned []TransactionID
 
 	for _, tx := range t.buffer {
 		if next.Index >= tx.Block+uint64(conf.GetPruningLimit()) {
 			delete(t.buffer, tx.ID)
+			delete(t.finalized, tx.ID)
+
 			pruned = append(pruned, tx.ID)
 		}
 	}

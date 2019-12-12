@@ -53,7 +53,7 @@ func (b *Blocks) Latest() *Block {
 	return block
 }
 
-func (b *Blocks) Count() uint64 {
+func (b *Blocks) LatestHeight() uint64 {
 	return b.Latest().Index
 }
 

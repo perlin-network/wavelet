@@ -103,8 +103,8 @@ func SetWriter(key string, writer io.Writer) {
 	output.SetWriter(key, writer, modules...)
 }
 
-func ClearWriters() {
-	output.Clear()
+func ClearWriter(key string) {
+	output.Clear(key)
 }
 
 func Node() zerolog.Logger {

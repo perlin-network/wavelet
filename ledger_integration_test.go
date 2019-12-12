@@ -296,20 +296,22 @@ func TestLedger_Sync(t *testing.T) {
 	charlie := testnet.AddNode(t)
 
 	timeout := time.NewTimer(time.Second * 1000)
+CHECK:
 	for {
 		select {
 		case <-timeout.C:
 			t.Fatal("timed out waiting for sync")
-
 		default:
 			ri := <-charlie.WaitForBlock(alice.BlockIndex())
 			if ri >= alice.BlockIndex() {
-				goto DONE
+				break CHECK
 			}
 		}
 	}
 
-DONE:
+	// ensure that new node has all the blocks from other nodes after sync except genesis block
+	assert.Equal(t, int(alice.BlockIndex()), len(charlie.ledger.blocks.Clone())-1)
+
 	for _, acc := range accounts {
 		assert.EqualValues(t, acc.Balance, charlie.BalanceWithPublicKey(acc.PublicKey))
 		assert.EqualValues(t, acc.Stake, charlie.StakeWithPublicKey(acc.PublicKey))
@@ -318,32 +320,15 @@ DONE:
 		checkCode, _ := ReadAccountContractCode(charlie.ledger.accounts.Snapshot(), acc.PublicKey)
 		assert.True(t, bytes.Equal(code[:], checkCode))
 	}
-}
 
-func TestLedger_LoadTxsOnStart(t *testing.T) {
-	testnet := NewTestNetwork(t)
-	defer testnet.Cleanup()
-
-	alice := testnet.AddNode(t)
-	bob := testnet.AddNode(t)
-
-	testnet.WaitUntilSync(t)
-
-	tx, err := testnet.Faucet().Pay(alice, 1000000)
+	// ensure that finalization works after sync and there is no double spending
+	stake := alice.Stake()
+	_, err := alice.PlaceStake(10)
 	if !assert.NoError(t, err) {
 		return
 	}
 
-	testnet.WaitForConsensus(t)
+	alice.WaitUntilBlock(t, alice.BlockIndex()+1)
 
-	assert.NotNil(t, bob.ledger.transactions.Find(tx.ID))
-
-	bobDBPath := bob.DBPath()
-	bob.Leave(false)
-
-	bob = testnet.AddNode(t, WithRemoveExistingDB(false), WithDBPath(bobDBPath))
-
-	bob.WaitUntilSync(t)
-
-	assert.NotNil(t, bob.ledger.transactions.Find(tx.ID))
+	assert.EqualValues(t, stake+10, alice.Stake())
 }

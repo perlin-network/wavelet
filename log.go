@@ -102,7 +102,7 @@ func NewCollapseResultsLogger() *CollapseResultsLogger {
 func (c *CollapseResultsLogger) Log(results *collapseResults) {
 	timestamp := time.Now()
 
-	modTx := []byte("tx")
+	modTx := []byte(log.ModuleTX)
 	eventApplied := []byte("applied")
 	bufTxID := make([]byte, hex.EncodedLen(SizeTransactionID))
 	bufAccount := make([]byte, hex.EncodedLen(SizeAccountID))

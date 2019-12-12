@@ -84,9 +84,6 @@ message TransactionPullResponse {
     repeated bytes transactions = 1;
 }
 
-message Empty {
-}
-
 service Wavelet {
     rpc Query (QueryRequest) returns (QueryResponse) {}
 

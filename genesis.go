@@ -546,7 +546,7 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 
 	accounts := make(map[AccountID]*account)
 
-	tree.IteratePrefix(keyAccounts[:], func(key, value []byte) {
+	tree.IteratePrefix(keyAccounts[:], func(key, value []byte) bool {
 		var prefix [1]byte
 		copy(prefix[:], key[1:])
 
@@ -555,14 +555,14 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 			prefix != keyAccountStake &&
 			prefix != keyAccountReward &&
 			prefix != keyAccountContractCode {
-			return
+			return true
 		}
 
 		var id AccountID
 		copy(id[:], key[2:])
 
 		if _, exist := accounts[id]; exist {
-			return
+			return true
 		}
 		_, isContract := ReadAccountContractCode(tree, id)
 
@@ -572,7 +572,7 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 		accounts[id] = acc
 
 		if !isDumpContract && acc.isContract {
-			return
+			return true
 		}
 
 		if balance, exist := ReadAccountBalance(tree, id); exist {
@@ -597,13 +597,14 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 			folder = filepath.Join(dir, fmt.Sprintf("%x", id))
 
 			// Make sure the folder exists
-			if ferr := os.MkdirAll(folder, 0700); ferr != nil {
-				err = errors.Wrapf(ferr, "failed to create directory %s", dir)
-				return
+			if fErr := os.MkdirAll(folder, 0700); fErr != nil {
+				err = errors.Wrapf(fErr, "failed to create directory %s", dir)
+				return true
 			}
 		}
 
 		err = dumpContract(tree, id, folder)
+		return true
 	})
 
 	if err != nil {

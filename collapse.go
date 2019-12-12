@@ -20,7 +20,10 @@
 package wavelet
 
 import (
+	"bytes"
+	"encoding/binary"
 	"encoding/hex"
+	"github.com/perlin-network/wavelet/conf"
 
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
@@ -115,6 +118,8 @@ func collapseTransactions(
 		return res, err
 	}
 
+	ctx.processFinalizedTransactions(block.Index, txs)
+
 	return res, nil
 }
 
@@ -137,6 +142,7 @@ type CollapseContext struct {
 	contractVMs         map[AccountID]*VMState
 
 	rewardWithdrawalRequests []RewardWithdrawalRequest
+	finalizedTransactions    []*Transaction
 
 	VMCache *VMLRU
 }
@@ -310,6 +316,38 @@ func (c *CollapseContext) processRewardWithdrawals(blockIndex uint64) {
 	c.rewardWithdrawalRequests = leftovers
 }
 
+func (c *CollapseContext) processFinalizedTransactions(height uint64, finalized []*Transaction) {
+	StoreFinalizedTransactionIDs(c.tree, height, finalized)
+
+	pruningLimit := uint64(conf.GetPruningLimit())
+
+	if height < pruningLimit {
+		return
+	}
+
+	heightLimit := height - pruningLimit
+
+	cb := func(k, v []byte) bool {
+		r := bytes.NewReader(k)
+
+		var buf [8]byte
+		if n, err := r.Read(buf[:]); n != 8 || err != nil {
+			return false
+		}
+
+		height := binary.BigEndian.Uint64(buf[:])
+
+		if height <= heightLimit {
+			c.tree.Delete(append(keyTransactionFinalized[:], k...))
+			return true
+		}
+
+		return false
+	}
+
+	c.tree.IteratePrefix(keyTransactionFinalized[:], cb)
+}
+
 // Write the changes into the tree.
 func (c *CollapseContext) Flush() error {
 	if c.checksum != c.tree.Checksum() {
@@ -354,6 +392,8 @@ func (c *CollapseContext) Flush() error {
 // Apply a transaction by writing the states into memory.
 // After you've finished, you MUST call CollapseContext.Flush() to actually write the states into the tree.
 func (c *CollapseContext) ApplyTransaction(block *Block, tx *Transaction) error {
+	c.finalizedTransactions = append(c.finalizedTransactions, tx)
+
 	if err := applyTransaction(block, c, tx, &contractExecutorState{
 		GasPayer: tx.Sender,
 	}); err != nil {

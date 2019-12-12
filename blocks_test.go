@@ -44,7 +44,7 @@ func TestNewBlocks(t *testing.T) {
 
 	assert.Equal(t, uint64(5), newRM.Latest().Index)
 	assert.Equal(t, uint64(1), newRM.Oldest().Index)
-	assert.Equal(t, uint64(5), newRM.Count())
+	assert.Equal(t, uint64(5), newRM.LatestHeight())
 }
 
 func TestBlocksCircular(t *testing.T) {
