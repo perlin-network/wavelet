@@ -306,7 +306,8 @@ func (s *SyncManager) findPeersToDownloadStateFrom(numPeers int) ([]syncPeer, er
 		return nil, errors.New("no peers for us to sync with")
 	}
 
-	req := &SyncRequest{Data: &SyncRequest_BlockId{BlockId: s.blocks.LatestHeight()}}
+	height := s.blocks.LatestHeight()
+	req := &SyncRequest{Data: &SyncRequest_BlockId{BlockId: height}}
 
 	var wg sync.WaitGroup
 
@@ -321,7 +322,7 @@ func (s *SyncManager) findPeersToDownloadStateFrom(numPeers int) ([]syncPeer, er
 				return
 			}
 
-			block, checksums, err := s.askForLatestStateDetails(stream, req)
+			block, checksums, err := s.askForLatestStateDetails(stream, height, req)
 			if err != nil {
 				return
 			}
@@ -348,7 +349,7 @@ func (s *SyncManager) findPeersToDownloadStateFrom(numPeers int) ([]syncPeer, er
 
 // Ask for the latest block and state Merkle root from a peer.
 func (s *SyncManager) askForLatestStateDetails(
-	stream Wavelet_SyncClient, req *SyncRequest,
+	stream Wavelet_SyncClient, height uint64, req *SyncRequest,
 ) (block Block, checksums [][blake2b.Size256]byte, err error) {
 	if err := stream.Send(req); err != nil {
 		return Block{}, nil, err
@@ -371,6 +372,16 @@ func (s *SyncManager) askForLatestStateDetails(
 	block, err = UnmarshalBlock(bytes.NewReader(info.Block))
 	if err != nil {
 		return Block{}, nil, err
+	}
+
+	if block.Index <= height {
+		return Block{}, nil,
+			errors.Errorf(
+				"peers reported latest state is at height %d, but our "+
+					"current height is %d and thus our peer is outdated",
+				block.Index,
+				height,
+			)
 	}
 
 	checksums = make([][blake2b.Size256]byte, len(info.Checksums))
