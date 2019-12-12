@@ -306,7 +306,8 @@ func (s *SyncManager) findPeersToDownloadStateFrom(numPeers int) ([]syncPeer, er
 
 	peers, err := SelectPeers(s.client.ClosestPeers(), numPeers)
 	if err != nil {
-		s.logger.Warn().Msg("It looks like there are no peers for us to sync with. Retrying after 1 second...")
+		s.logger.Warn().
+			Msg("It looks like there are no peers for us to download state from. Retrying after 1 second...")
 		s.wait(1 * time.Second)
 
 		return nil, errors.New("no peers for us to sync with")
