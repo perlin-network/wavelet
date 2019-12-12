@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -31,10 +32,14 @@ var wallet1 = "87a6813c3b4cf534b6ae82db9b1409fa7dbd5c13dba5858970b56084c4a930eb4
 var wallet2 = "85e7450f7cf0d9cd1d1d7bf4169c2f364eea4ba833a7280e0f931a1d92fd92c2696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a"
 
 func TestMain_Basic(t *testing.T) {
-	w := NewTestWavelet(t, defaultConfig())
+	w, err := NewTestWavelet(defaultConfig())
+	wavelet.FailTest(t, err)
+
 	defer w.Cleanup()
 
-	ledger := w.GetLedgerStatus(t)
+	ledger, err := w.GetLedgerStatus()
+	wavelet.FailTest(t, err)
+
 	assert.EqualValues(t, "127.0.0.1:"+w.Port, ledger.Address)
 	assert.NotEqual(t, wallet1[64:], ledger.PublicKey) // A random wallet should be generated
 }
@@ -42,7 +47,9 @@ func TestMain_Basic(t *testing.T) {
 func TestMain_WithLogLevel(t *testing.T) {
 	config := defaultConfig()
 	config.LogLevel = "warn"
-	w := NewTestWavelet(t, config)
+	w, err := NewTestWavelet(config)
+	wavelet.FailTest(t, err)
+
 	defer w.Cleanup()
 
 	w.Stdin <- "status"
@@ -66,20 +73,27 @@ func TestMain_WithLogLevel(t *testing.T) {
 func TestMain_WithDefaultLogLevel(t *testing.T) {
 	// Test default loglevel should be debug
 	config := defaultConfig()
-	w := NewTestWavelet(t, config)
+	w, err := NewTestWavelet(config)
+	wavelet.FailTest(t, err)
+
 	defer w.Cleanup()
 
 	w.Stdin <- "status"
-	w.Stdout.Search(t, "Here is the current status of your node")
+	_, err = w.Stdout.Search("Here is the current status of your node")
+	assert.NoError(t, err)
 }
 
 func TestMain_WithWalletString(t *testing.T) {
 	config := defaultConfig()
 	config.Wallet = "b27b880e6e44e3b127186a08bc5698316e8dd99157cec56211560b62141f0851c72096021609681eb8cab244752945b2008e1b51d8bc2208b2b562f35485d5cc"
-	w := NewTestWavelet(t, config)
+	w, err := NewTestWavelet(config)
+	wavelet.FailTest(t, err)
+
 	defer w.Cleanup()
 
-	ledger := w.GetLedgerStatus(t)
+	ledger, err := w.GetLedgerStatus()
+	wavelet.FailTest(t, err)
+
 	assert.EqualValues(t, config.Wallet[64:], ledger.PublicKey)
 }
 
@@ -88,81 +102,108 @@ func TestMain_WithWalletFile(t *testing.T) {
 
 	// Write wallet to a temporary file
 	dir, err := ioutil.TempDir("", "wavelet")
-	if err != nil {
-		t.Fatal(err)
-	}
+	wavelet.FailTest(t, err)
+
 	defer func() {
 		_ = os.RemoveAll(dir)
 	}()
 
 	walletPath := filepath.Join(dir, "wallet.txt")
-	if err := ioutil.WriteFile(walletPath, []byte(wallet), 0666); err != nil {
-		t.Fatal(err)
-	}
+	err = ioutil.WriteFile(walletPath, []byte(wallet), 0666)
+	wavelet.FailTest(t, err)
 
 	config := defaultConfig()
 	config.Wallet = walletPath
-	w := NewTestWavelet(t, config)
+	w, err := NewTestWavelet(config)
+	wavelet.FailTest(t, err)
+
 	defer w.Cleanup()
 
-	ledger := w.GetLedgerStatus(t)
+	ledger, err := w.GetLedgerStatus()
+	wavelet.FailTest(t, err)
+
 	assert.EqualValues(t, wallet[64:], ledger.PublicKey)
 }
 
 func TestMain_WithInvalidWallet(t *testing.T) {
 	config := defaultConfig()
 	config.Wallet = "foobar"
-	w := NewTestWavelet(t, config)
+	w, err := NewTestWavelet(config)
+	wavelet.FailTest(t, err)
+
 	defer w.Cleanup()
 
-	ledger := w.GetLedgerStatus(t)
+	ledger, err := w.GetLedgerStatus()
+	wavelet.FailTest(t, err)
+
 	assert.NotEqual(t, wallet1[64:], ledger.PublicKey) // A random wallet should be generated
 }
 
 func TestMain_Status(t *testing.T) {
-	w := NewTestWavelet(t, defaultConfig())
+	w, err := NewTestWavelet(defaultConfig())
+	wavelet.FailTest(t, err)
+
 	defer w.Cleanup()
 
 	w.Stdin <- "status"
-	w.Stdout.Search(t, "Here is the current status of your node")
+	_, err = w.Stdout.Search("Here is the current status of your node")
+	assert.NoError(t, err)
 }
 
 func TestMain_Pay(t *testing.T) {
 	config := defaultConfig()
 	config.Wallet = wallet2
-	alice := NewTestWavelet(t, config)
+	alice, err := NewTestWavelet(config)
+	wavelet.FailTest(t, err)
+
 	defer alice.Cleanup()
 
-	bob := alice.Testnet.AddNode(t)
+	bob, err := alice.Testnet.AddNode()
+	wavelet.FailTest(t, err)
 
-	alice.Testnet.WaitForSync(t)
+	wavelet.FailTest(t, alice.Testnet.WaitForSync())
 
 	recipient := bob.PublicKey()
 	alice.Stdin <- fmt.Sprintf("p %s 99999", hex.EncodeToString(recipient[:]))
 
-	txID := extractTxID(t, alice.Stdout.Search(t, "Paid to recipient."))
-	tx := alice.WaitForTransaction(t, txID)
+	txIDText, err := alice.Stdout.Search("Paid to recipient.")
+	wavelet.FailTest(t, err)
+
+	txID, err := extractTxID(txIDText)
+	wavelet.FailTest(t, err)
+
+	tx, err := alice.WaitForTransaction(txID)
+	wavelet.FailTest(t, err)
 
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, alice.PublicKey, tx.Sender)
 
-	bob.WaitUntilBalance(t, 99999)
+	assert.NoError(t, bob.WaitUntilBalance(99999))
 }
 
 func TestMain_Spawn(t *testing.T) {
 	config := defaultConfig()
 	config.Wallet = wallet2
-	w := NewTestWavelet(t, config)
+	w, err := NewTestWavelet(config)
+	wavelet.FailTest(t, err)
+
 	defer w.Cleanup()
 
-	w.Testnet.AddNode(t)
+	_, err = w.Testnet.AddNode()
+	wavelet.FailTest(t, err)
 
-	w.Testnet.WaitForSync(t)
+	wavelet.FailTest(t, w.Testnet.WaitForSync())
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
-	txID := extractTxID(t, w.Stdout.Search(t, "Smart contract spawned."))
-	tx := w.WaitForTransaction(t, txID)
+	txIDText, err := w.Stdout.Search("Smart contract spawned.")
+	wavelet.FailTest(t, err)
+
+	txID, err := extractTxID(txIDText)
+	wavelet.FailTest(t, err)
+
+	tx, err := w.WaitForTransaction(txID)
+	wavelet.FailTest(t, err)
 
 	assert.EqualValues(t, txID, tx.ID)
 	assert.EqualValues(t, w.PublicKey, tx.Sender)
@@ -171,46 +212,73 @@ func TestMain_Spawn(t *testing.T) {
 func TestMain_Call(t *testing.T) {
 	config := defaultConfig()
 	config.Wallet = wallet2
-	w := NewTestWavelet(t, config)
+	w, err := NewTestWavelet(config)
+	wavelet.FailTest(t, err)
+
 	defer w.Cleanup()
 
-	w.Testnet.AddNode(t)
+	_, err = w.Testnet.AddNode()
+	wavelet.FailTest(t, err)
 
-	w.Testnet.WaitForSync(t)
+	wavelet.FailTest(t, w.Testnet.WaitForSync())
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
-	txID := extractTxID(t, w.Stdout.Search(t, "Smart contract spawned."))
+	contractIDText, err := w.Stdout.Search("Smart contract spawned.")
+	wavelet.FailTest(t, err)
 
-	w.WaitForConsensus(t)
+	txID, err := extractTxID(contractIDText)
+	wavelet.FailTest(t, err)
 
-	tx := w.WaitForTransaction(t, txID)
+	wavelet.FailTest(t, w.WaitForConsensus())
+
+	tx, err := w.WaitForTransaction(txID)
+	wavelet.FailTest(t, err)
+
 	w.Stdin <- fmt.Sprintf("call %s 1000 100000 on_money_received", tx.ID)
-	w.Stdout.Search(t, "Smart contract function called.")
+
+	_, err = w.Stdout.Search("Smart contract function called.")
+	assert.NoError(t, err)
 }
 
 func TestMain_CallWithParams(t *testing.T) {
 	config := defaultConfig()
 	config.Wallet = wallet2
-	w := NewTestWavelet(t, config)
+	w, err := NewTestWavelet(config)
+	wavelet.FailTest(t, err)
+
 	defer w.Cleanup()
 
-	w.Testnet.AddNode(t)
+	_, err = w.Testnet.AddNode()
+	wavelet.FailTest(t, err)
 
-	w.Testnet.WaitForSync(t)
+	wavelet.FailTest(t, w.Testnet.WaitForSync())
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
-	txID := extractTxID(t, w.Stdout.Search(t, "Smart contract spawned."))
-	w.WaitForConsensus(t)
-	tx := w.WaitForTransaction(t, txID)
+	txIDText, err := w.Stdout.Search("Smart contract spawned.")
+	wavelet.FailTest(t, err)
+
+	txID, err := extractTxID(txIDText)
+	wavelet.FailTest(t, err)
+
+	wavelet.FailTest(t, w.WaitForConsensus())
+
+	tx, err := w.WaitForTransaction(txID)
+	wavelet.FailTest(t, err)
 
 	params := "Sfoobar Bloremipsum 142 21337 4666666 831415926535 Hbada55"
 
 	w.Stdin <- fmt.Sprintf("call %s 1000 100000 on_money_received %s", tx.ID, params)
 
-	txID = extractTxID(t, w.Stdout.Search(t, "Smart contract function called."))
-	tx = w.WaitForTransaction(t, txID)
+	txIDText, err = w.Stdout.Search("Smart contract function called.")
+	wavelet.FailTest(t, err)
+
+	txID, err = extractTxID(txIDText)
+	wavelet.FailTest(t, err)
+
+	tx, err = w.WaitForTransaction(txID)
+	wavelet.FailTest(t, err)
 
 	encodedParams, err := base64.StdEncoding.DecodeString(tx.Payload)
 	if err != nil {
@@ -263,18 +331,25 @@ func TestMain_CallWithParams(t *testing.T) {
 func TestMain_DepositGas(t *testing.T) {
 	config := defaultConfig()
 	config.Wallet = wallet2
-	w := NewTestWavelet(t, config)
+	w, err := NewTestWavelet(config)
+	wavelet.FailTest(t, err)
+
 	defer w.Cleanup()
 
-	w.Testnet.AddNode(t)
+	_, err = w.Testnet.AddNode()
+	wavelet.FailTest(t, err)
 
-	w.Testnet.WaitForSync(t)
+	wavelet.FailTest(t, w.Testnet.WaitForSync())
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
-	txID := extractTxID(t, w.Stdout.Search(t, "Smart contract spawned."))
+	txIDText, err := w.Stdout.Search("Smart contract spawned.")
+	wavelet.FailTest(t, err)
 
-	w.WaitForConsensus(t)
+	txID, err := extractTxID(txIDText)
+	wavelet.FailTest(t, err)
+
+	wavelet.FailTest(t, w.WaitForConsensus())
 
 	tx := w.WaitForTransaction(t, txID)
 	w.Stdin <- fmt.Sprintf("deposit-gas %s 99999", tx.ID)
@@ -452,26 +527,27 @@ func TestMain_ConnectDisconnect(t *testing.T) {
 	w.Stdout.Search(t, "Successfully disconnected")
 }
 
-func nextPort(t *testing.T) string {
+func nextPort() (string, error) {
 	port, err := freeport.GetFreePort()
 	if err != nil {
-		t.Fatal(err)
+		return "", err
 	}
-	return strconv.Itoa(port)
+
+	return strconv.Itoa(port), nil
 }
 
-func waitForAPI(t *testing.T, apiPort string) {
+func waitForAPI(apiPort string) error {
 	timeout := time.NewTimer(time.Second * 30)
 	tick := time.NewTicker(time.Second * 1)
 
 	for {
 		select {
 		case <-timeout.C:
-			t.Fatal("timed out waiting for API")
+			return errors.New("timed out waiting for API")
 
 		case <-tick.C:
 			if _, err := getLedgerStatus(apiPort); err == nil {
-				return
+				return nil
 			}
 		}
 	}
@@ -554,48 +630,45 @@ func (s *mockStdout) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func (s *mockStdout) Search(t *testing.T, sub string) string {
-	t.Helper()
-
+func (s *mockStdout) Search(sub string) (string, error) {
 	timeout := time.NewTimer(time.Second * 10)
 	for {
 		select {
 		case line := <-s.Lines:
 			if strings.Contains(line, sub) {
-				return line
+				return line, nil
 			}
 
 		case <-timeout.C:
-			t.Fatal("timed out searching for string in stdout\nstring: " + sub)
+			return "", fmt.Errorf("timed out searching for string in stdout: %q", sub)
 		}
 	}
 }
 
-func extractTxID(t *testing.T, s string) string {
+func extractTxID(s string) (string, error) {
 	if len(s) < 64 {
-		t.Fatal("output does not contain tx id")
+		return "", errors.New("output does not contain tx id")
 	}
 
 	txID := s[len(s)-64:]
 	if _, err := hex.DecodeString(txID); err != nil {
-		t.Fatal(err)
+		return "", err
 	}
 
-	return txID
+	return txID, nil
 }
 
-func waitFor(t *testing.T, fn func() error) {
+func waitFor(fn func() error) error {
 	timeout := time.NewTimer(time.Second * 30)
 	ticker := time.NewTicker(time.Second * 1)
 
 	for {
 		select {
 		case <-timeout.C:
-			t.Fatal("timed out waiting")
-
+			return errors.New("timed out waiting")
 		case <-ticker.C:
 			if err := fn(); err == nil {
-				return
+				return nil
 			}
 		}
 	}
@@ -628,14 +701,17 @@ func defaultConfig() *TestWaveletConfig {
 	}
 }
 
-func NewTestWavelet(t *testing.T, cfg *TestWaveletConfig) *TestWavelet {
+func NewTestWavelet(cfg *TestWaveletConfig) (*TestWavelet, error) {
 	// We set the loglevel directly instead of using the flag, to prevent race condition.
 	// The race condition will happen, we have to run the app on different goroutine than testing's goroutine.
 	if cfg.LogLevel != "" {
 		log.SetLevel(cfg.LogLevel)
 	}
 
-	testnet := wavelet.NewTestNetwork(t)
+	testnet, err := wavelet.NewTestNetwork()
+	if err != nil {
+		return nil, err
+	}
 
 	port := nextPort(t)
 	apiPort := nextPort(t)
@@ -673,12 +749,13 @@ func NewTestWavelet(t *testing.T, cfg *TestWaveletConfig) *TestWavelet {
 	return w
 }
 
-func (w *TestWavelet) GetLedgerStatus(t *testing.T) *TestLedgerStatus {
+func (w *TestWavelet) GetLedgerStatus() (*TestLedgerStatus, error) {
 	ledger, err := getLedgerStatus(w.APIPort)
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
 	}
-	return ledger
+
+	return ledger, nil
 }
 
 func getLedgerStatus(apiPort string) (*TestLedgerStatus, error) {
@@ -720,24 +797,20 @@ func getLedgerStatus(apiPort string) (*TestLedgerStatus, error) {
 	return &ledger, nil
 }
 
-func (w *TestWavelet) WaitForTransaction(t *testing.T, id string) *TestTransaction {
+func (w *TestWavelet) WaitForTransaction(id string) (*TestTransaction, error) {
 	var tx *TestTransaction
-	var err error
-	waitFor(t, func() error {
+
+	err := waitFor(func() error {
+		var err error
 		tx, err = getTransaction(w.APIPort, id)
 		return err
 	})
 
-	return tx
+	return tx, err
 }
 
-func (w *TestWavelet) GetTransaction(t *testing.T, id string) *TestTransaction {
-	tx, err := getTransaction(w.APIPort, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return tx
+func (w *TestWavelet) GetTransaction(id string) (*TestTransaction, error) {
+	return getTransaction(w.APIPort, id)
 }
 
 func getTransaction(apiPort string, id string) (*TestTransaction, error) {
@@ -779,20 +852,20 @@ func getTransaction(apiPort string, id string) (*TestTransaction, error) {
 	return &tx, nil
 }
 
-func (w *TestWavelet) WaitForConsensus(t *testing.T) {
-	t.Helper()
-	w.Stdout.Search(t, "Finalized block")
+func (w *TestWavelet) WaitForConsensus() error {
+	_, err := w.Stdout.Search("Finalized block")
+	return err
 }
 
-func asAccountID(t *testing.T, s string) wavelet.AccountID {
-	t.Helper()
-
+func asAccountID(s string) (wavelet.AccountID, error) {
 	var accountID wavelet.AccountID
+
 	key, err := hex.DecodeString(s)
 	if err != nil {
-		t.Fatal(err)
+		return accountID, err
 	}
 
 	copy(accountID[:], key)
-	return accountID
+
+	return accountID, nil
 }
