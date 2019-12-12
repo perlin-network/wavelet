@@ -24,27 +24,31 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
-	"github.com/perlin-network/wavelet/internal/filebuffer"
-	"github.com/perlin-network/wavelet/sys"
-	"reflect"
-	"sync"
-	"time"
-	"unsafe"
-
-	"github.com/minio/highwayhash"
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/internal/cuckoo"
+	"github.com/perlin-network/wavelet/internal/filebuffer"
 	"github.com/perlin-network/wavelet/internal/radix"
 	"github.com/perlin-network/wavelet/internal/stall"
 	"github.com/perlin-network/wavelet/internal/worker"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
+	"golang.org/x/crypto/blake2b"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
+)
+
+type bitset uint8
+
+const (
+	outOfSync   bitset = 0 //nolint:staticcheck
+	synced             = 1
+	finalized          = 2
+	fullySynced        = 3
 )
 
 var (
@@ -80,7 +84,6 @@ type Ledger struct {
 
 	queryPeerBlockCache  *PeerBlockLRU
 	queryBlockValidCache map[BlockID]struct{}
-	queryStateCache      *StateLRU
 
 	queryWorkerPool *worker.Pool
 
@@ -180,7 +183,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 
 		queryPeerBlockCache:  NewPeerBlockLRU(16),
 		queryBlockValidCache: make(map[BlockID]struct{}),
-		queryStateCache:      NewStateLRU(16),
 
 		queryWorkerPool: worker.NewWorkerPool(),
 
@@ -934,7 +936,6 @@ type collapseResults struct {
 }
 
 type CollapseState struct {
-	once    sync.Once
 	results *collapseResults
 	err     error
 }
@@ -946,25 +947,17 @@ type CollapseState struct {
 func (l *Ledger) collapseTransactions(
 	height uint64, current *Block, proposed []TransactionID, logging bool,
 ) (*collapseResults, error) {
-	var ids []byte
+	state := &CollapseState{}
 
-	sh := (*reflect.SliceHeader)(unsafe.Pointer(&ids))
-	sh.Data = uintptr(unsafe.Pointer(&proposed[0]))
-	sh.Len = len(proposed)
-	sh.Cap = len(proposed)
+	transactions, err := l.transactions.BatchFind(proposed)
+	if err != nil {
+		return nil, errors.Wrap(err, "could not find transactions to collapse in node")
+	}
 
-	cacheKey := highwayhash.Sum64(ids, CacheKey)
-	state, _ := l.queryStateCache.LoadOrPut(cacheKey, &CollapseState{})
-
-	state.once.Do(func() {
-		transactions, err := l.transactions.BatchFind(proposed)
-		if err != nil {
-			state.err = err
-			return
-		}
-
-		state.results, state.err = collapseTransactions(height, transactions, current, l.accounts)
-	})
+	state.results, state.err = collapseTransactions(height, transactions, current, l.accounts)
+	if state.err != nil {
+		return nil, errors.Wrap(state.err, "failed to collapse transactions")
+	}
 
 	if logging && state.results != nil {
 		l.collapseResultsLogger.Log(state.results)
