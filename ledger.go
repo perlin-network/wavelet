@@ -37,18 +37,10 @@ import (
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
-	"golang.org/x/crypto/blake2b"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
-)
-
-type bitset uint8
-
-const (
-	outOfSync   bitset = 0 //nolint:staticcheck
-	synced             = 1
-	finalized          = 2
-	fullySynced        = 3
+	"sync"
+	"time"
 )
 
 var (
@@ -1025,18 +1017,6 @@ func (l *Ledger) LogChanges(snapshot *avl.Tree, lastBlockIndex uint64) {
 		return true
 	})
 }
-
-//func (l *Ledger) resetTransactionsSyncIndex() {
-//	l.transactionFilterLock.Lock()
-//	defer l.transactionFilterLock.Unlock()
-//
-//	l.transactionFilter.Reset()
-//
-//	l.transactions.Iterate(func(tx *Transaction) bool {
-//		l.transactionFilter.Insert(tx.ID)
-//		return true
-//	})
-//}
 
 // filterInvalidVotes takes a slice of (*finalizationVote)'s and filters away
 // ones that are invalid with respect to the current nodes state.
