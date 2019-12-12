@@ -241,6 +241,8 @@ type TestLedger struct {
 	kv        store.KV
 	kvCleanup func()
 	stopped   chan struct{}
+
+	synced bool
 }
 
 type TestLedgerConfig struct {
@@ -299,7 +301,7 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 
 	client.Bootstrap()
 
-	return &TestLedger{
+	tl := &TestLedger{
 		ledger:    ledger,
 		client:    client,
 		server:    server,
@@ -309,6 +311,12 @@ func NewTestLedger(t testing.TB, cfg TestLedgerConfig) *TestLedger {
 		kvCleanup: cleanup,
 		stopped:   stopped,
 	}
+
+	tl.ledger.syncManager.OnSynced = append(tl.ledger.syncManager.OnSynced, func(block Block) {
+		tl.synced = true
+	})
+
+	return tl
 }
 
 func (l *TestLedger) Leave(wipeDB bool) {
@@ -546,21 +554,28 @@ func (l *TestLedger) WaitUntilBlock(t testing.TB, block uint64) {
 }
 
 func (l *TestLedger) WaitForSync() <-chan bool {
+	l.synced = false
+
 	ch := make(chan bool)
+
 	go func() {
 		timeout := time.NewTimer(time.Second * 30)
-		ticker := time.NewTicker(time.Millisecond * 50)
+		timer := time.NewTicker(50 * time.Millisecond)
+
+		defer timeout.Stop()
+		defer timer.Stop()
+
 		for {
 			select {
 			case <-timeout.C:
 				ch <- false
 				return
-
-			case <-ticker.C:
-				if l.ledger.SyncStatus() == "Node is fully synced" {
+			case <-timer.C:
+				if l.synced {
 					ch <- true
 					return
 				}
+
 			}
 		}
 	}()

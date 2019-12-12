@@ -332,31 +332,3 @@ CHECK:
 
 	assert.EqualValues(t, stake+10, alice.Stake())
 }
-
-func TestLedger_LoadTxsOnStart(t *testing.T) {
-	testnet := NewTestNetwork(t)
-	defer testnet.Cleanup()
-
-	alice := testnet.AddNode(t)
-	bob := testnet.AddNode(t)
-
-	testnet.WaitUntilSync(t)
-
-	tx, err := testnet.Faucet().Pay(alice, 1000000)
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	testnet.WaitForConsensus(t)
-
-	assert.NotNil(t, bob.ledger.transactions.Find(tx.ID))
-
-	bobDBPath := bob.DBPath()
-	bob.Leave(false)
-
-	bob = testnet.AddNode(t, WithRemoveExistingDB(false), WithDBPath(bobDBPath))
-
-	bob.WaitUntilSync(t)
-
-	assert.NotNil(t, bob.ledger.transactions.Find(tx.ID))
-}

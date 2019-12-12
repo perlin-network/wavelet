@@ -24,9 +24,6 @@ package wavelet
 import (
 	"crypto/rand"
 	"encoding/binary"
-	"github.com/perlin-network/noise/skademlia"
-	"github.com/perlin-network/wavelet/sys"
-	"github.com/pkg/errors"
 	mrand "math/rand"
 	"sort"
 	"testing"
@@ -138,57 +135,6 @@ func TestWriteAccountContractPage(t *testing.T) {
 
 	_, exist := ReadAccountContractPage(state, id, 0)
 	assert.True(t, exist)
-}
-
-func TestDB_Transactions(t *testing.T) {
-	var txID TransactionID
-
-	keys, err := skademlia.NewKeys(1, 1)
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	txs := make([]*Transaction, 3)
-	for i := range txs {
-		_, err := rand.Read(txID[:])
-		if !assert.NoError(t, err) {
-			return
-		}
-
-		tx := NewTransaction(keys, uint64(i), 0, sys.TagTransfer, []byte{})
-		txs[i] = &tx
-	}
-
-	db := store.NewInmem()
-
-	if !assert.NoError(t, StoreTransactions(db, txs)) {
-		return
-	}
-
-	ids := make([]TransactionID, 0, len(txs))
-	for _, tx := range txs {
-		ids = append(ids, tx.ID)
-	}
-
-	loadedTxs, err := LoadTransactions(db, ids)
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	if !assert.Equal(t, len(txs), len(loadedTxs)) {
-		return
-	}
-
-	for i := range txs {
-		assert.Equal(t, *txs[i], *loadedTxs[i])
-	}
-
-	if !assert.NoError(t, DeleteTransactions(db, ids)) {
-		return
-	}
-
-	loadedTxs, err = LoadTransactions(db, ids)
-	assert.EqualError(t, errors.Cause(err), store.ErrNotFound.Error())
 }
 
 func BenchmarkReadUnderAccounts(b *testing.B) {

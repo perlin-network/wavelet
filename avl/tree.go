@@ -132,7 +132,7 @@ func (t *Tree) IterateFrom(key []byte, callback func(key, value []byte) bool) {
 	t.root.iterateFrom(t, key, callback)
 }
 
-func (t *Tree) IteratePrefix(prefix []byte, callback func(key, value []byte)) {
+func (t *Tree) IteratePrefix(prefix []byte, callback func(key, value []byte) bool) {
 	if t.root == nil {
 		return
 	}
@@ -142,9 +142,7 @@ func (t *Tree) IteratePrefix(prefix []byte, callback func(key, value []byte)) {
 			return false
 		}
 
-		callback(key, value)
-
-		return true
+		return callback(key[len(prefix):], value)
 	})
 }
 
