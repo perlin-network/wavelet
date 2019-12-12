@@ -25,8 +25,12 @@ COPY go.mod /src/go.mod
 COPY go.sum /src/go.sum
 RUN (cd /src; go mod download)
 
+ARG GIT_COMMIT
+ENV GIT_COMMIT=$GIT_COMMIT
+
 ADD . /src
-RUN (cd /src/cmd/wavelet; CGO_ENABLED=0 go build)
+RUN (echo "${GIT_COMMIT}")
+RUN (cd /src/cmd/wavelet; CGO_ENABLED=0 go build -ldflags "-X github.com/perlin-network/wavelet/sys.GitCommit=${GIT_COMMIT}")
 RUN (cd /src/cmd/benchmark; CGO_ENABLED=0 go build)
 
 FROM alpine:3.9
