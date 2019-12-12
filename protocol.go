@@ -244,21 +244,7 @@ func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error
 		if err := stream.Send(res); err != nil {
 			return err
 		}
-
-		pointer += chunkSize
-		if pointer >= len(toReturn) {
-			break
-		}
 	}
-
-	if pointer > 0 {
-		logger := log.Sync("sync_tx")
-		logger.Debug().
-			Int("num_transactions", len(toReturn)).
-			Msg("Provided transactions for a sync request.")
-	}
-
-	return nil
 }
 
 func (p *Protocol) PullTransactions(
