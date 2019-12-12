@@ -169,8 +169,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 		filePool:    filePool,
 		syncManager: syncManager,
 
-		consensusStop: make(chan struct{}),
-
 		transactionFilter: cuckoo.NewFilter(),
 
 		queryPeerBlockCache:  NewPeerBlockLRU(16),
@@ -181,11 +179,19 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 		collapseResultsLogger: NewCollapseResultsLogger(),
 	}
 
-	syncManager.OnOutOfSync = append(syncManager.OnOutOfSync, func() {
-		syncManager.logger.Info().Msg("Peers have reported to us that we are out of sync. Stopping consensus and initiating state syncing...")
+	syncManager.OnStateReconciled = append(syncManager.OnStateReconciled, func(outOfSync bool) {
+		if outOfSync {
+			syncManager.logger.Info().Msg("Peers have reported to us that we are out of sync. " +
+				"Initializing state syncing...")
 
-		close(ledger.consensusStop)
-		ledger.consensus.Wait()
+			if ledger.consensusStop != nil {
+				close(ledger.consensusStop)
+				ledger.consensus.Wait()
+			}
+		} else if ledger.consensusStop == nil {
+			ledger.consensusStop = make(chan struct{})
+			ledger.PerformConsensus()
+		}
 	})
 
 	syncManager.OnSynced = append(syncManager.OnSynced, func(block Block) {
@@ -238,7 +244,6 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 	ledger.stallDetector = stallDetector
 
 	ledger.queryWorkerPool.Start(16)
-	ledger.PerformConsensus()
 
 	go ledger.syncManager.Start()
 

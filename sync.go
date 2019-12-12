@@ -30,8 +30,8 @@ type SyncManager struct {
 	logger zerolog.Logger
 	exit   chan struct{}
 
-	OnOutOfSync []func()
-	OnSynced    []func(block Block)
+	OnStateReconciled []func(outOfSync bool)
+	OnSynced          []func(block Block)
 }
 
 func NewSyncManager(
@@ -58,16 +58,18 @@ func (s *SyncManager) Start() {
 
 	for {
 		for {
-			if !s.stateOutOfSync() {
+			outOfSync := s.stateOutOfSync()
+
+			for _, fn := range s.OnStateReconciled {
+				fn(outOfSync)
+			}
+
+			if !outOfSync {
 				s.wait(b.Duration())
 				continue
 			}
 
 			break
-		}
-
-		for _, fn := range s.OnOutOfSync {
-			fn()
 		}
 
 		var (
