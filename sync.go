@@ -3,7 +3,6 @@ package wavelet
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"github.com/djherbis/buffer"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/conf"
@@ -59,7 +58,7 @@ func (s *SyncManager) Start() {
 
 	for {
 		for {
-			if !s.stateOutdated() {
+			if !s.stateOutOfSync() {
 				s.wait(b.Duration())
 				continue
 			}
@@ -78,7 +77,7 @@ func (s *SyncManager) Start() {
 
 		for {
 			if block, err = s.sync(b); err != nil {
-				fmt.Println(err)
+				s.logger.Warn().Err(err).Msg("Got an error while syncing.")
 				continue
 			}
 
@@ -113,7 +112,9 @@ func (s *SyncManager) sync(b *backoff.Backoff) (Block, error) {
 
 		block, checksums, streams, err = s.collateLatestStateDetails(peers)
 		if err != nil {
+			s.logger.Warn().Err(err).Msg("Got an error while collating the latest state details from our peers")
 			s.wait(b.Duration())
+
 			continue
 		}
 
@@ -129,11 +130,14 @@ func (s *SyncManager) sync(b *backoff.Backoff) (Block, error) {
 
 	diffBuffer := s.filePool.GetUnbounded()
 
-	defer s.filePool.Put(chunksBuffer)
-	defer s.filePool.Put(diffBuffer)
+	defer func() {
+		s.filePool.Put(chunksBuffer)
+		s.filePool.Put(diffBuffer)
+	}()
 
 	err = nil
 
+	// TODO(kenta): make number of attempts to download chunked state configurable
 	for i := 0; i < 3; i++ {
 		if err = s.downloadStateInChunks(checksums, streams, chunksBuffer, diffBuffer); err != nil {
 			s.wait(b.Duration())
@@ -177,20 +181,20 @@ func (s *SyncManager) sync(b *backoff.Backoff) (Block, error) {
 	return block, nil
 }
 
-/** Methods that help us figure out whether or not our node is outdated. */
+/** Methods that help us figure out whether or not our node is out-of-sync. */
 
-func (s *SyncManager) stateOutdated() bool {
+func (s *SyncManager) stateOutOfSync() bool {
 	samplerK := conf.GetSnowballK()
 
-	// Our initial belief is that we're not outdated.
+	// Our initial belief is that we're not out-of-sync.
 	sampler := NewSnowball()
 	sampler.Prefer(&syncVote{outOfSync: false})
 
-	// Run a worker to consolidate votes from our peers as to whether or not our state is outdated.
+	// Run a worker to consolidate votes from our peers as to whether or not our state is out-of-sync.
 	votes := make(chan Vote, samplerK)
 	go s.consolidateVotesFromPeers(sampler, votes)
 
-	for { // Infinitely keep asking our peers if we are outdated given our latest state.
+	for { // Infinitely keep asking our peers if we are out-of-sync given our latest state.
 		converged := s.collectVotesFromPeers(sampler, votes, samplerK)
 
 		if converged {
@@ -203,8 +207,8 @@ func (s *SyncManager) stateOutdated() bool {
 	return sampler.preferred.(*syncVote).outOfSync
 }
 
-// Ask a peer if our latest block height is far too outdated.
-func (s *SyncManager) askIfWereOutdated(ctx context.Context, peer skademlia.ClosestPeer, height uint64) (bool, error) {
+// Ask a peer if our latest block height is far too out-of-sync.
+func (s *SyncManager) askIfWereOutOfSync(ctx context.Context, peer skademlia.ClosestPeer, height uint64) (bool, error) {
 	res, err := NewWaveletClient(peer.Conn()).CheckOutOfSync(ctx, &OutOfSyncRequest{BlockIndex: height})
 	if err != nil {
 		return false, errors.Wrap(err, "failed to ask peer if they believe we are out-of-sync")
@@ -236,7 +240,7 @@ func (s *SyncManager) collectVotesFromPeers(sampler *Snowball, votes chan<- Vote
 			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 			defer cancel()
 
-			maybe, err := s.askIfWereOutdated(ctx, peer, latestHeight)
+			maybe, err := s.askIfWereOutOfSync(ctx, peer, latestHeight)
 			if err != nil {
 				return
 			}
@@ -378,7 +382,7 @@ func (s *SyncManager) askForLatestStateDetails(
 		return Block{}, nil,
 			errors.Errorf(
 				"peers reported latest state is at height %d, but our "+
-					"current height is %d and thus our peer is outdated",
+					"current height is %d and thus our peer is out of sync",
 				block.Index,
 				height,
 			)
@@ -419,10 +423,6 @@ func (s *SyncManager) collateLatestStateDetails(peers []syncPeer) (
 			block = peer.block
 			checksums = peer.checksums
 		}
-	}
-
-	if max == nil || checksums == nil { // How...?
-		return block, checksums, streams, errors.New("something unexpected happened")
 	}
 
 	key := block.ID[:]

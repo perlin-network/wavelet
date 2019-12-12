@@ -317,15 +317,7 @@ func (c *CollapseContext) processRewardWithdrawals(blockIndex uint64) {
 }
 
 func (c *CollapseContext) processFinalizedTransactions(height uint64, finalized []*Transaction) {
-	for _, tx := range finalized {
-		key := make([]byte, len(keyTransactionFinalized)+8+32)
-
-		copy(key[:len(keyTransactionFinalized)], keyTransactionFinalized[:])
-		binary.BigEndian.PutUint64(key[len(keyTransactionFinalized):len(keyTransactionFinalized)+8], height)
-		copy(key[len(keyTransactionFinalized)+8:len(keyTransactionFinalized)+8+32], tx.ID[:])
-
-		c.tree.Insert(key, nil)
-	}
+	StoreFinalizedTransactionIDs(c.tree, height, finalized)
 
 	pruningLimit := uint64(conf.GetPruningLimit())
 

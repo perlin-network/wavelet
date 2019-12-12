@@ -382,6 +382,20 @@ func StoreRewardWithdrawalRequest(tree *avl.Tree, rw RewardWithdrawalRequest) {
 	tree.Insert(rw.Key(), rw.Marshal())
 }
 
+// Store each finalized transaction with an empty value, and a key comprised of:
+// [HEADER | 64-bit big-endian integer representing height where transaction got finalized | 256-bit transaction ID].
+func StoreFinalizedTransactionIDs(tree *avl.Tree, height uint64, finalized []*Transaction) {
+	for _, tx := range finalized {
+		key := make([]byte, len(keyTransactionFinalized)+8+32)
+
+		copy(key[:len(keyTransactionFinalized)], keyTransactionFinalized[:])
+		binary.BigEndian.PutUint64(key[len(keyTransactionFinalized):len(keyTransactionFinalized)+8], height)
+		copy(key[len(keyTransactionFinalized)+8:len(keyTransactionFinalized)+8+32], tx.ID[:])
+
+		tree.Insert(key, nil)
+	}
+}
+
 func LoadFinalizedTransactionIDs(tree *avl.Tree) []TransactionID {
 	var ids []TransactionID
 
@@ -390,7 +404,6 @@ func LoadFinalizedTransactionIDs(tree *avl.Tree) []TransactionID {
 
 		r := bytes.NewReader(k)
 		if n, err := r.ReadAt(id[:], 8); n != SizeTransactionID || err != nil {
-			fmt.Println("why", err)
 			return true
 		}
 

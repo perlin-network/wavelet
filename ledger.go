@@ -61,7 +61,7 @@ type Ledger struct {
 	finalizer *Snowball
 
 	consensus     sync.WaitGroup
-	consensusExit chan struct{}
+	consensusStop chan struct{}
 
 	stallDetector *stall.Detector
 
@@ -169,7 +169,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 		filePool:    filePool,
 		syncManager: syncManager,
 
-		consensusExit: make(chan struct{}),
+		consensusStop: make(chan struct{}),
 
 		transactionFilter: cuckoo.NewFilter(),
 
@@ -182,7 +182,9 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 	}
 
 	syncManager.OnOutOfSync = append(syncManager.OnOutOfSync, func() {
-		close(ledger.consensusExit)
+		syncManager.logger.Info().Msg("Peers have reported to us that we are out of sync. Stopping consensus and initiating state syncing...")
+
+		close(ledger.consensusStop)
 		ledger.consensus.Wait()
 	})
 
@@ -206,7 +208,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 				Msg("Failed to save preferred block to database")
 		}
 
-		ledger.consensusExit = make(chan struct{})
+		ledger.consensusStop = make(chan struct{})
 		ledger.PerformConsensus()
 	})
 
@@ -247,7 +249,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 func (l *Ledger) Close() {
 	l.syncManager.Stop()
 
-	close(l.consensusExit)
+	close(l.consensusStop)
 	l.consensus.Wait()
 
 	if l.cancelGC != nil {
@@ -375,7 +377,7 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 	for {
 		select {
 		case <-time.After(1 * time.Second):
-		case <-l.consensusExit:
+		case <-l.consensusStop:
 			return
 		}
 
@@ -532,7 +534,7 @@ func (l *Ledger) PullMissingTransactions() {
 	for {
 		select {
 		case <-time.After(100 * time.Millisecond):
-		case <-l.consensusExit:
+		case <-l.consensusStop:
 			return
 		}
 
@@ -656,7 +658,7 @@ func (l *Ledger) FinalizeBlocks() {
 
 	for {
 		select {
-		case <-l.consensusExit:
+		case <-l.consensusStop:
 			return
 		default:
 		}
