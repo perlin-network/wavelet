@@ -136,12 +136,16 @@ func TestSnowball(t *testing.T) {
 	assert.Equal(t, *snowball, cloned) // nolint:govet
 
 	// Reset Snowball and assert everything is cleared properly.
+	oldPreferred := snowball.Preferred().ID()
+	oldLast := snowball.last.ID()
+
 	snowball.Reset()
 	assert.False(t, snowball.Decided())
-	assert.Nil(t, snowball.Preferred())
-	assert.Nil(t, snowball.last)
 	assert.Equal(t, 0, snowball.count)
 	assert.Len(t, snowball.counts, 0)
+	// Last preferred and vote should not be cleared
+	assert.Equal(t, oldPreferred, snowball.Preferred().ID())
+	assert.Equal(t, oldLast, snowball.last.ID())
 
 	// Case 2: check that Snowball terminates properly given unanimous sampling of Round A, with preference
 	// first initially to check for off-by-one errors.
@@ -165,12 +169,16 @@ func TestSnowball(t *testing.T) {
 	assert.Len(t, snowball.counts, 1)
 
 	// Reset Snowball and assert everything is cleared properly.
+	oldPreferred = snowball.Preferred().ID()
+	oldLast = snowball.last.ID()
+
 	snowball.Reset()
 	assert.False(t, snowball.Decided())
-	assert.Nil(t, snowball.Preferred())
-	assert.Nil(t, snowball.last)
 	assert.Equal(t, 0, snowball.count)
 	assert.Len(t, snowball.counts, 0)
+	// Last preferred and vote should not be cleared
+	assert.Equal(t, oldPreferred, snowball.Preferred().ID())
+	assert.Equal(t, oldLast, snowball.last.ID())
 
 	// Case 3: check that Snowball terminates if we sample 10 times majority vote A, then sample 11 times majority vote B.
 	// This demonstrates the that we need a large amount of samplings to overthrow our undecided preferred
@@ -226,6 +234,9 @@ func TestSnowball(t *testing.T) {
 	}
 
 	// Reset snowball and tally
+	oldLast = snowball.last.ID()
+	oldPreferred = snowball.Preferred().ID()
+
 	snowball.Reset()
 	newMajorityVote.SetTally(1)
 
@@ -237,7 +248,7 @@ func TestSnowball(t *testing.T) {
 	assert.False(t, snowball.Decided())
 	assert.Len(t, snowball.counts, 0)
 	assert.Equal(t, 0, snowball.count)
-	assert.Nil(t, snowball.last)
+	assert.Equal(t, oldLast, snowball.last.ID())
 
 	snowball.Tick(nil)
 	snowball.Tick([]Vote{})
@@ -246,26 +257,26 @@ func TestSnowball(t *testing.T) {
 	assert.False(t, snowball.Decided())
 	assert.Len(t, snowball.counts, 0)
 	assert.Equal(t, 0, snowball.count)
-	assert.Nil(t, snowball.last)
+	assert.Equal(t, oldLast, snowball.last.ID())
 
 	snowball.Reset()
 
 	// Case 6: tick with nil slice and empty slice when the snowball is empty. Does nothing.
 
-	assert.Nil(t, snowball.Preferred())
+	assert.Equal(t, oldPreferred, snowball.Preferred().ID())
 	assert.False(t, snowball.Decided())
 	assert.Len(t, snowball.counts, 0)
 	assert.Equal(t, 0, snowball.count)
-	assert.Nil(t, snowball.last)
+	assert.Equal(t, oldLast, snowball.last.ID())
 
 	snowball.Tick(nil)
 	snowball.Tick([]Vote{})
 
-	assert.Nil(t, snowball.Preferred())
+	assert.Equal(t, oldPreferred, snowball.Preferred().ID())
 	assert.False(t, snowball.Decided())
 	assert.Len(t, snowball.counts, 0)
 	assert.Equal(t, 0, snowball.count)
-	assert.Nil(t, snowball.last)
+	assert.Equal(t, oldLast, snowball.last.ID())
 }
 
 // Test if all tallies have equal value and the value is lower than alpha.
