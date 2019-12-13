@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	atomic2 "go.uber.org/atomic"
 	"io/ioutil"
 	"net"
 	"os"
@@ -224,7 +225,7 @@ type TestLedger struct {
 	kvCleanup func()
 	stopped   chan struct{}
 
-	synced bool
+	synced atomic2.Bool
 }
 
 type TestLedgerConfig struct {
@@ -301,9 +302,12 @@ func NewTestLedger(cfg TestLedgerConfig) (*TestLedger, error) {
 		stopped:   stopped,
 	}
 
-	tl.ledger.syncManager.OnSynced = append(tl.ledger.syncManager.OnSynced, func(block Block) {
-		tl.synced = true
-	})
+	tl.ledger.syncManager.OnStateReconciled = append(
+		tl.ledger.syncManager.OnStateReconciled,
+		func(outOfSync bool) {
+			tl.synced.Store(!outOfSync)
+		},
+	)
 
 	return tl, nil
 }
@@ -453,7 +457,7 @@ func (l *TestLedger) WaitUntilConsensus() error {
 // is of a specific value before continuing.
 func (l *TestLedger) WaitUntilBalance(balance uint64) error {
 	ticker := time.NewTicker(time.Millisecond * 200)
-	timeout := time.NewTimer(time.Second * 10)
+	timeout := time.NewTimer(time.Second * 30)
 	for {
 		select {
 		case <-ticker.C:
@@ -468,7 +472,7 @@ func (l *TestLedger) WaitUntilBalance(balance uint64) error {
 
 func (l *TestLedger) WaitUntilStake(stake uint64) error {
 	ticker := time.NewTicker(time.Millisecond * 200)
-	timeout := time.NewTimer(time.Second * 10)
+	timeout := time.NewTimer(time.Second * 30)
 
 	for {
 		select {
@@ -524,8 +528,25 @@ func (l *TestLedger) WaitUntilBlock(block uint64) error {
 func (l *TestLedger) WaitForSync() <-chan error {
 	ch := make(chan error)
 	go func() {
-		time.Sleep(time.Second * 10)
-		ch <- nil
+		timeout := time.NewTimer(time.Second * 30)
+		timer := time.NewTicker(50 * time.Millisecond)
+
+		defer timeout.Stop()
+		defer timer.Stop()
+
+		for {
+			select {
+			case <-timeout.C:
+				ch <- fmt.Errorf("%x timed out waiting for sync", l.PublicKey())
+				return
+			case <-timer.C:
+				if l.synced.Load() {
+					ch <- nil
+					return
+				}
+
+			}
+		}
 	}()
 
 	return ch

@@ -711,6 +711,7 @@ func (s *mockStdout) Search(sub string) (string, error) {
 	for {
 		select {
 		case line := <-s.Lines:
+			fmt.Println(line)
 			if strings.Contains(line, sub) {
 				return line, nil
 			}

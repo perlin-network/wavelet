@@ -298,34 +298,3 @@ DONE:
 	}
 }
 
-func TestLedger_LoadTxsOnStart(t *testing.T) {
-	testnet, err := NewTestNetwork()
-	FailTest(t, err)
-
-	defer testnet.Cleanup()
-
-	alice, err := testnet.AddNode()
-	FailTest(t, err)
-
-	bob, err := testnet.AddNode()
-	FailTest(t, err)
-
-	FailTest(t, testnet.WaitUntilSync())
-
-	tx, err := testnet.Faucet().Pay(alice, 1000000)
-	FailTest(t, err)
-
-	FailTest(t, testnet.WaitForConsensus())
-
-	assert.NotNil(t, bob.ledger.transactions.Find(tx.ID))
-
-	bobDBPath := bob.DBPath()
-	bob.Leave(false)
-
-	bob, err = testnet.AddNode(WithRemoveExistingDB(false), WithDBPath(bobDBPath))
-	FailTest(t, err)
-
-	FailTest(t, bob.WaitUntilSync())
-
-	assert.NotNil(t, bob.ledger.transactions.Find(tx.ID))
-}
