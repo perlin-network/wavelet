@@ -21,7 +21,6 @@ package api
 
 import (
 	"bytes"
-	"context"
 	"crypto/tls"
 	"encoding/hex"
 	"fmt"
@@ -37,7 +36,6 @@ import (
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/internal/debounce"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
@@ -87,27 +85,12 @@ func New() *Gateway {
 
 func (g *Gateway) setup() {
 	// Setup websocket logging sinks.
-	sinkNetwork := g.registerWebsocketSink("ws://network/", nil)
-	sinkConsensus := g.registerWebsocketSink("ws://consensus/", nil)
-	sinkAccounts := g.registerWebsocketSink("ws://accounts/?id=account_id",
-		debounce.NewFactory(debounce.TypeDeduper,
-			debounce.WithPeriod(500*time.Millisecond),
-			debounce.WithKeys("account_id", "event"),
-		),
-	)
-	sinkContracts := g.registerWebsocketSink("ws://contract/?id=contract_id",
-		debounce.NewFactory(debounce.TypeDeduper,
-			debounce.WithPeriod(500*time.Millisecond),
-			debounce.WithKeys("contract_id"),
-		),
-	)
-	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&tag=tag",
-		debounce.NewFactory(debounce.TypeLimiter,
-			debounce.WithPeriod(2200*time.Millisecond),
-			debounce.WithBufferLimit(1638400),
-		),
-	)
-	sinkMetrics := g.registerWebsocketSink("ws://metrics/", nil)
+	sinkNetwork := g.registerWebsocketSink("ws://network/")
+	sinkConsensus := g.registerWebsocketSink("ws://consensus/")
+	sinkAccounts := g.registerWebsocketSink("ws://accounts/?id=account_id")
+	sinkContracts := g.registerWebsocketSink("ws://contract/?id=contract_id")
+	sinkTransactions := g.registerWebsocketSink("ws://tx/?id=tx_id&sender=sender_id&tag=tag")
+	sinkMetrics := g.registerWebsocketSink("ws://metrics/")
 
 	log.SetWriter(log.LoggerWebsocket, g)
 
@@ -737,7 +720,7 @@ func (g *Gateway) poll(sink *sink) func(ctx *fasthttp.RequestCtx) {
 	}
 }
 
-func (g *Gateway) registerWebsocketSink(rawURL string, factory *debounce.Factory) *sink {
+func (g *Gateway) registerWebsocketSink(rawURL string) *sink {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		panic(err)
@@ -756,10 +739,6 @@ func (g *Gateway) registerWebsocketSink(rawURL string, factory *debounce.Factory
 		filters: filters,
 		join:    make(chan *client),
 		leave:   make(chan *client),
-	}
-
-	if factory != nil {
-		sink.debouncer = factory.Init(context.Background(), debounce.WithAction(sink.debounce))
 	}
 
 	go sink.run()
@@ -803,6 +782,7 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 func (g *Gateway) render(ctx *fasthttp.RequestCtx, m marshalableJSON) {
 	arena := g.arenaPool.Get()
 	b, err := m.marshalJSON(arena)
+	arena.Reset()
 	g.arenaPool.Put(arena)
 
 	if err != nil {

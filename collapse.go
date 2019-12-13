@@ -22,9 +22,8 @@ package wavelet
 import (
 	"encoding/binary"
 	"encoding/hex"
-	"github.com/perlin-network/wavelet/conf"
-
 	"github.com/perlin-network/wavelet/avl"
+	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -33,14 +32,17 @@ import (
 func collapseTransactions(
 	height uint64, txs []*Transaction, block *Block, accounts *Accounts,
 ) (*collapseResults, error) {
-	res := &collapseResults{snapshot: accounts.Snapshot()}
-	res.snapshot.SetViewID(height)
+	snapshot := accounts.Snapshot()
+	snapshot.SetViewID(height)
 
-	ctx := NewCollapseContext(res.snapshot)
+	res := &collapseResults{
+		snapshot: snapshot,
+		ctx:      NewCollapseContext(snapshot),
 
-	res.applied = make([]*Transaction, 0, len(txs))
-	res.rejected = make([]*Transaction, 0, len(txs))
-	res.rejectedErrors = make([]error, 0, len(txs))
+		applied:        make([]*Transaction, 0, len(txs)),
+		rejected:       make([]*Transaction, 0, len(txs)),
+		rejectedErrors: make([]error, 0, len(txs)),
+	}
 
 	var (
 		totalStake uint64
@@ -55,7 +57,7 @@ func collapseTransactions(
 		if hex.EncodeToString(tx.Sender[:]) != sys.FaucetAddress {
 			fee := tx.Fee()
 
-			senderBalance, _ := ctx.ReadAccountBalance(tx.Sender)
+			senderBalance, _ := res.ctx.ReadAccountBalance(tx.Sender)
 			if senderBalance < fee {
 				res.rejected = append(res.rejected, tx)
 				res.rejectedErrors = append(
@@ -70,10 +72,10 @@ func collapseTransactions(
 				continue
 			}
 
-			ctx.WriteAccountBalance(tx.Sender, senderBalance-fee)
+			res.ctx.WriteAccountBalance(tx.Sender, senderBalance-fee)
 			totalFee += fee
 
-			stake, _ := ctx.ReadAccountStake(tx.Sender)
+			stake, _ := res.ctx.ReadAccountStake(tx.Sender)
 			if stake >= sys.MinimumStake {
 				if _, ok := stakes[tx.Sender]; !ok {
 					stakes[tx.Sender] = stake
@@ -85,7 +87,7 @@ func collapseTransactions(
 			}
 		}
 
-		if err := ctx.ApplyTransaction(block, tx); err != nil {
+		if err := res.ctx.ApplyTransaction(block, tx); err != nil {
 			res.rejected = append(res.rejected, tx)
 			res.rejectedErrors = append(res.rejectedErrors, err)
 			res.rejectedCount += tx.LogicalUnits()
@@ -104,20 +106,20 @@ func collapseTransactions(
 
 	if totalStake > 0 {
 		for sender, stake := range stakes {
-			rewardeeBalance, _ := ctx.ReadAccountReward(sender)
+			rewardeeBalance, _ := res.ctx.ReadAccountReward(sender)
 
 			reward := float64(totalFee) * (float64(stake) / float64(totalStake))
-			ctx.WriteAccountReward(sender, rewardeeBalance+uint64(reward))
+			res.ctx.WriteAccountReward(sender, rewardeeBalance+uint64(reward))
 		}
 	}
 
-	ctx.processRewardWithdrawals(block.Index)
+	res.ctx.processRewardWithdrawals(block.Index)
 
-	if err := ctx.Flush(); err != nil {
+	if err := res.ctx.Flush(); err != nil {
 		return res, err
 	}
 
-	ctx.processFinalizedTransactions(block.Index, txs)
+	//ctx.processFinalizedTransactions(block.Index, txs)
 
 	return res, nil
 }
