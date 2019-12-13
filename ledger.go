@@ -670,6 +670,12 @@ func (l *Ledger) FinalizeBlocks() {
 	b := &backoff.Backoff{Min: 0 * time.Second, Max: 200 * time.Millisecond, Factor: 1.25, Jitter: true}
 
 	for {
+		select {
+		case <-l.consensusStop:
+			return
+		default:
+		}
+
 		decided := l.finalizer.Decided()
 
 		preferred := l.finalizer.Preferred()
