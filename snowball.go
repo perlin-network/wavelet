@@ -49,6 +49,9 @@ func (s *Snowball) Reset() {
 	s.counts = make(map[VoteID]uint16)
 	s.count = 0
 
+	s.preferred = nil
+	s.last = nil
+
 	s.decided = false
 	s.stalled = 0
 
@@ -83,7 +86,7 @@ func (s *Snowball) Tick(votes []Vote) {
 	}
 
 	if majority == nil || majority.Tally() < conf.GetSnowballAlpha()*2/denom {
-		if s.preferred != nil {
+		if majority != nil && s.preferred != nil {
 			s.stalled++
 
 			// TODO(kenta): configure stall
