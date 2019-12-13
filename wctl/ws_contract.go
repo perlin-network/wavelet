@@ -15,7 +15,7 @@ func (c *Client) PollContracts() (func(), error) {
 			}
 
 			switch ev := jsonString(o, "event"); ev {
-			case "gas":
+			case "gas", "execute": // tx_applier.go same structure
 				err = parseContractGas(c, o)
 			case "log":
 				err = parseContractLog(c, o)
