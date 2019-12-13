@@ -51,15 +51,9 @@ jobs:
 
       - name: Experimental test
         run: |
-          find . -regex '.*_integration_test\.go$'
-          find . -maxdepth 1 -regex '.*_integration_test\.go$'
-          find . -regex '.*_integration_test\.go$' -exec grep -oP "func Test[a-zA-Z0-9_]*" {} \; | cut -c6-
-          find . -regex '.*_integration_test\.go$' -exec grep -oE "func Test[a-zA-Z0-9_]*" {} \; | cut -c6-
-          TESTS=($(find . -regex '.*_integration_test\.go$' -exec grep -o "func Test[a-zA-Z0-9_]*" {} \; | cut -c6-))
-          echo $TESTS
+          TESTS=$(find . -maxdepth 1 -regex '.*_integration_test\.go$' -exec grep -o "func Test[a-zA-Z0-9_]*" {} \; | cut -c6-)
           for t in $TESTS
           do
-            echo $t
             go test -tags=integration -v -count=1 . -run $t$
           done
 
