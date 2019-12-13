@@ -119,7 +119,7 @@ func collapseTransactions(
 		return res, err
 	}
 
-	//ctx.processFinalizedTransactions(block.Index, txs)
+	res.ctx.processFinalizedTransactions(block.Index, txs)
 
 	return res, nil
 }
