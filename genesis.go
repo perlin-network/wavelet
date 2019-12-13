@@ -24,6 +24,13 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"io"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
 	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
@@ -31,12 +38,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fastjson"
-	"io"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
 )
 
 const testingGenesis = `
@@ -549,7 +550,7 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 
 	tree.IteratePrefix(keyAccounts[:], func(key, value []byte) bool {
 		var prefix [1]byte
-		copy(prefix[:], key[1:])
+		copy(prefix[:], key[:])
 
 		// Filter by prefixes relevant to wallet and contract code.
 		if prefix != keyAccountBalance &&
@@ -560,7 +561,7 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 		}
 
 		var id AccountID
-		copy(id[:], key[2:])
+		copy(id[:], key[1:])
 
 		if _, exist := accounts[id]; exist {
 			return true
