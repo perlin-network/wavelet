@@ -522,30 +522,10 @@ func (l *TestLedger) WaitUntilBlock(block uint64) error {
 }
 
 func (l *TestLedger) WaitForSync() <-chan error {
-	l.synced = false
-
 	ch := make(chan error)
 	go func() {
-		timeout := time.NewTimer(time.Second * 30)
-		timer := time.NewTicker(50 * time.Millisecond)
-
-		defer timeout.Stop()
-		defer timer.Stop()
-
-		for {
-			select {
-			case <-timeout.C:
-				ch <- fmt.Errorf("%x timed out waiting for sync", l.PublicKey())
-				return
-
-			case <-timer.C:
-				if l.synced {
-					ch <- nil
-					return
-				}
-
-			}
-		}
+		time.Sleep(time.Second * 10)
+		ch <- nil
 	}()
 
 	return ch
