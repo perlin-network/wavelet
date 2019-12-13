@@ -297,4 +297,3 @@ DONE:
 		assert.True(t, bytes.Equal(code[:], checkCode))
 	}
 }
-

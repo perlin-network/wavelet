@@ -79,7 +79,7 @@ func TestMain_WithDefaultLogLevel(t *testing.T) {
 	defer w.Cleanup()
 
 	w.Stdin <- "status"
-	_, err = w.Stdout.Search("Here is the current status of your node")
+	_, err = w.Stdout.Search("Here is the current status of your node", 1)
 	assert.NoError(t, err)
 }
 
@@ -146,7 +146,7 @@ func TestMain_Status(t *testing.T) {
 	defer w.Cleanup()
 
 	w.Stdin <- "status"
-	_, err = w.Stdout.Search("Here is the current status of your node")
+	_, err = w.Stdout.Search("Here is the current status of your node", 1)
 	assert.NoError(t, err)
 }
 
@@ -166,7 +166,7 @@ func TestMain_Pay(t *testing.T) {
 	recipient := bob.PublicKey()
 	alice.Stdin <- fmt.Sprintf("p %s 99999", hex.EncodeToString(recipient[:]))
 
-	txIDText, err := alice.Stdout.Search("Paid to recipient.")
+	txIDText, err := alice.Stdout.Search("Paid to recipient.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(txIDText)
@@ -196,7 +196,7 @@ func TestMain_Spawn(t *testing.T) {
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
-	txIDText, err := w.Stdout.Search("Smart contract spawned.")
+	txIDText, err := w.Stdout.Search("Smart contract spawned.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(txIDText)
@@ -224,20 +224,20 @@ func TestMain_Call(t *testing.T) {
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
-	contractIDText, err := w.Stdout.Search("Smart contract spawned.")
+	contractIDText, err := w.Stdout.Search("Smart contract spawned.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(contractIDText)
 	wavelet.FailTest(t, err)
 
-	wavelet.FailTest(t, w.WaitForConsensus())
+	wavelet.FailTest(t, w.WaitForConsensus(3))
 
 	tx, err := w.WaitForTransaction(txID)
 	wavelet.FailTest(t, err)
 
 	w.Stdin <- fmt.Sprintf("call %s 1000 100000 on_money_received", tx.ID)
 
-	_, err = w.Stdout.Search("Smart contract function called.")
+	_, err = w.Stdout.Search("Smart contract function called.", 1)
 	assert.NoError(t, err)
 }
 
@@ -256,13 +256,13 @@ func TestMain_CallWithParams(t *testing.T) {
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
-	txIDText, err := w.Stdout.Search("Smart contract spawned.")
+	txIDText, err := w.Stdout.Search("Smart contract spawned.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(txIDText)
 	wavelet.FailTest(t, err)
 
-	wavelet.FailTest(t, w.WaitForConsensus())
+	wavelet.FailTest(t, w.WaitForConsensus(3))
 
 	tx, err := w.WaitForTransaction(txID)
 	wavelet.FailTest(t, err)
@@ -271,7 +271,7 @@ func TestMain_CallWithParams(t *testing.T) {
 
 	w.Stdin <- fmt.Sprintf("call %s 1000 100000 on_money_received %s", tx.ID, params)
 
-	txIDText, err = w.Stdout.Search("Smart contract function called.")
+	txIDText, err = w.Stdout.Search("Smart contract function called.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err = extractTxID(txIDText)
@@ -343,20 +343,20 @@ func TestMain_DepositGas(t *testing.T) {
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
-	txIDText, err := w.Stdout.Search("Smart contract spawned.")
+	txIDText, err := w.Stdout.Search("Smart contract spawned.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(txIDText)
 	wavelet.FailTest(t, err)
 
-	wavelet.FailTest(t, w.WaitForConsensus())
+	wavelet.FailTest(t, w.WaitForConsensus(3))
 
 	tx, err := w.WaitForTransaction(txID)
 	wavelet.FailTest(t, err)
 
 	w.Stdin <- fmt.Sprintf("deposit-gas %s 99999", tx.ID)
 
-	_, err = w.Stdout.Search("Gas deposited.")
+	_, err = w.Stdout.Search("Gas deposited.", 1)
 	assert.NoError(t, err)
 }
 
@@ -376,7 +376,7 @@ func TestMain_Find(t *testing.T) {
 	recipient := bob.PublicKey()
 	alice.Stdin <- fmt.Sprintf("p %s 99999", hex.EncodeToString(recipient[:]))
 
-	txIDText, err := alice.Stdout.Search("Paid to recipient.")
+	txIDText, err := alice.Stdout.Search("Paid to recipient.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(txIDText)
@@ -387,7 +387,7 @@ func TestMain_Find(t *testing.T) {
 
 	alice.Stdin <- fmt.Sprintf("find %s", txID)
 
-	_, err = alice.Stdout.Search(fmt.Sprintf("Transaction: %s", txID))
+	_, err = alice.Stdout.Search(fmt.Sprintf("Transaction: %s", txID), 1)
 	assert.NoError(t, err)
 }
 
@@ -406,7 +406,7 @@ func TestMain_PlaceStake(t *testing.T) {
 
 	alice.Stdin <- "ps 1000"
 
-	txIDText, err := alice.Stdout.Search("Stake placed.")
+	txIDText, err := alice.Stdout.Search("Stake placed.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(txIDText)
@@ -449,20 +449,17 @@ func TestMain_WithdrawStake(t *testing.T) {
 
 	alice.Stdin <- "ps 1000"
 
-	txIDText, err := alice.Stdout.Search("Stake placed.")
+	txIDText, err := alice.Stdout.Search("Stake placed.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(txIDText)
 	wavelet.FailTest(t, err)
 
-	wavelet.FailTest(t, alice.WaitForConsensus())
-
-	_, err = alice.Stdout.Search("Stake updated.")
-	wavelet.FailTest(t, err)
+	wavelet.FailTest(t, alice.WaitForConsensus(3))
 
 	alice.Stdin <- "ws 500"
 
-	txIDText, err = alice.Stdout.Search("Stake withdrew.")
+	txIDText, err = alice.Stdout.Search("Stake withdrew.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err = extractTxID(txIDText)
@@ -505,7 +502,7 @@ func TestMain_WithdrawReward(t *testing.T) {
 
 	w.Stdin <- "wr 1000"
 
-	txIDText, err := w.Stdout.Search("Reward withdrew.")
+	txIDText, err := w.Stdout.Search("Reward withdrew.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(txIDText)
@@ -531,7 +528,7 @@ func TestMain_UpdateParams(t *testing.T) {
 
 	w.Stdin <- "up"
 
-	_, err = w.Stdout.Search("Current configuration values")
+	_, err = w.Stdout.Search("Current configuration values", 1)
 	wavelet.FailTest(t, err)
 
 	tests := []struct {
@@ -573,7 +570,7 @@ func TestMain_UpdateParams(t *testing.T) {
 				searchVal = v
 			}
 
-			_, err = w.Stdout.Search(fmt.Sprintf("%s:%s", tt.Var, searchVal))
+			_, err = w.Stdout.Search(fmt.Sprintf("%s:%s", tt.Var, searchVal), 1)
 			wavelet.FailTest(t, err)
 		})
 	}
@@ -594,11 +591,11 @@ func TestMain_ConnectDisconnect(t *testing.T) {
 
 	peerAddr := w.Testnet.Nodes()[0].Addr()
 	w.Stdin <- fmt.Sprintf("connect %s", peerAddr)
-	_, err = w.Stdout.Search("Successfully connected to")
+	_, err = w.Stdout.Search("Successfully connected to", 1)
 	wavelet.FailTest(t, err)
 
 	w.Stdin <- fmt.Sprintf("disconnect %s", peerAddr)
-	_, err = w.Stdout.Search("Successfully disconnected")
+	_, err = w.Stdout.Search("Successfully disconnected", 1)
 
 	assert.NoError(t, err)
 }
@@ -706,16 +703,19 @@ func (s *mockStdout) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func (s *mockStdout) Search(sub string) (string, error) {
+func (s *mockStdout) Search(sub string, times int) (string, error) {
 	timeout := time.NewTimer(time.Second * 30)
+	c := 0
 	for {
 		select {
 		case line := <-s.Lines:
 			fmt.Println(line)
 			if strings.Contains(line, sub) {
-				return line, nil
+				c++
+				if c == times {
+					return line, nil
+				}
 			}
-
 		case <-timeout.C:
 			return "", fmt.Errorf("timed out searching for string in stdout: %q", sub)
 		}
@@ -801,10 +801,8 @@ func NewTestWavelet(cfg *TestWaveletConfig) (*TestWavelet, error) {
 	}
 
 	args := []string{"wavelet", "--loglevel", "", "--port", port, "--api.port", apiPort}
-	if cfg != nil {
-		if cfg.Wallet != "" {
-			args = append(args, []string{"--wallet", cfg.Wallet}...)
-		}
+	if cfg != nil && cfg.Wallet != "" {
+		args = append(args, []string{"--wallet", cfg.Wallet}...)
 	}
 
 	// Bootstrap with the faucet
@@ -944,8 +942,8 @@ func getTransaction(apiPort string, id string) (*TestTransaction, error) {
 	return &tx, nil
 }
 
-func (w *TestWavelet) WaitForConsensus() error {
-	_, err := w.Stdout.Search("Finalized block")
+func (w *TestWavelet) WaitForConsensus(nodesNum int) error {
+	_, err := w.Stdout.Search("Finalized block", nodesNum)
 	return err
 }
 
