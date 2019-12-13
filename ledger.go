@@ -28,6 +28,7 @@ import (
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/conf"
+	"github.com/perlin-network/wavelet/internal/backoff"
 	"github.com/perlin-network/wavelet/internal/cuckoo"
 	"github.com/perlin-network/wavelet/internal/filebuffer"
 	"github.com/perlin-network/wavelet/internal/radix"
@@ -667,21 +668,18 @@ func (l *Ledger) PullMissingTransactions() {
 func (l *Ledger) FinalizeBlocks() {
 	defer l.consensus.Done()
 
-	for {
-		select {
-		case <-l.consensusStop:
-			return
-		default:
-		}
+	b := &backoff.Backoff{Min: 0 * time.Second, Max: 200 * time.Millisecond, Factor: 1.25, Jitter: true}
 
+	for {
 		decided := l.finalizer.Decided()
 
 		preferred := l.finalizer.Preferred()
+
 		if preferred == nil {
 			proposedBlock := l.proposeBlock()
-			logger := log.Consensus("proposal")
 
 			if proposedBlock != nil {
+				logger := log.Consensus("proposal")
 				logger.Debug().
 					Hex("block_id", proposedBlock.ID[:]).
 					Uint64("block_index", proposedBlock.Index).
@@ -691,6 +689,18 @@ func (l *Ledger) FinalizeBlocks() {
 				l.finalizer.Prefer(&finalizationVote{
 					block: proposedBlock,
 				})
+
+				b.Reset()
+			} else {
+				t := time.NewTicker(b.Duration())
+
+				select {
+				case <-l.consensusStop:
+					t.Stop()
+					return
+				case <-t.C:
+					t.Stop()
+				}
 			}
 		} else {
 			if decided {
