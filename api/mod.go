@@ -798,6 +798,7 @@ func (g *Gateway) render(ctx *fasthttp.RequestCtx, m marshalableJSON) {
 func (g *Gateway) renderError(ctx *fasthttp.RequestCtx, e *errResponse) {
 	arena := g.arenaPool.Get()
 	b := e.marshalJSON(arena)
+	arena.Reset()
 	g.arenaPool.Put(arena)
 
 	ctx.SetContentType("application/json")
