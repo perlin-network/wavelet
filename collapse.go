@@ -20,7 +20,6 @@
 package wavelet
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"github.com/perlin-network/wavelet/conf"
@@ -317,8 +316,6 @@ func (c *CollapseContext) processRewardWithdrawals(blockIndex uint64) {
 }
 
 func (c *CollapseContext) processFinalizedTransactions(height uint64, finalized []*Transaction) {
-	StoreFinalizedTransactionIDs(c.tree, height, finalized)
-
 	pruningLimit := uint64(conf.GetPruningLimit())
 
 	if height < pruningLimit {
@@ -328,14 +325,7 @@ func (c *CollapseContext) processFinalizedTransactions(height uint64, finalized 
 	heightLimit := height - pruningLimit
 
 	cb := func(k, v []byte) bool {
-		r := bytes.NewReader(k)
-
-		var buf [8]byte
-		if n, err := r.Read(buf[:]); n != 8 || err != nil {
-			return false
-		}
-
-		height := binary.BigEndian.Uint64(buf[:])
+		height := binary.BigEndian.Uint64(k[:8])
 
 		if height <= heightLimit {
 			c.tree.Delete(append(keyTransactionFinalized[:], k...))
@@ -346,6 +336,8 @@ func (c *CollapseContext) processFinalizedTransactions(height uint64, finalized 
 	}
 
 	c.tree.IteratePrefix(keyTransactionFinalized[:], cb)
+
+	StoreFinalizedTransactionIDs(c.tree, height, finalized)
 }
 
 // Write the changes into the tree.
