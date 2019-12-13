@@ -85,10 +85,7 @@ func TestCollapseResultsLogger(t *testing.T) {
 		return len(p), nil
 	})
 
-	log.SetWriter(writerKey, log.NewConsoleWriter(
-		writer,
-		log.FilterFor(log.ModuleTX),
-	))
+	log.SetWriter(writerKey, writer)
 
 	logger.Log(results)
 
