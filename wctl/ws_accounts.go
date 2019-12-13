@@ -3,36 +3,34 @@ package wctl
 import "github.com/valyala/fastjson"
 
 func (c *Client) PollAccounts() (func(), error) {
-	return c.pollWS(RouteWSAccounts, func(v *fastjson.Value) {
+	return c.pollWS(RouteWSAccounts, func(o *fastjson.Value) {
 		var err error
 
-		for _, o := range v.GetArray() {
-			if err := checkMod(o, "accounts"); err != nil {
-				if c.OnError != nil {
-					c.OnError(err)
-				}
-				continue
+		if err := checkMod(o, "accounts"); err != nil {
+			if c.OnError != nil {
+				c.OnError(err)
 			}
+			return
+		}
 
-			switch ev := jsonString(o, "event"); ev {
-			case "balance_updated":
-				err = parseAccountsBalanceUpdated(c, o)
-			case "gas_balance_updated":
-				err = parseAccountsGasBalanceUpdated(c, o)
-			case "num_pages_updated":
-				err = parseAccountNumPagesUpdated(c, o)
-			case "stake_updated":
-				err = parseAccountStakeUpdated(c, o)
-			case "reward_updated":
-				err = parseAccountRewardUpdated(c, o)
-			default:
-				err = errInvalidEvent(o, ev)
-			}
+		switch ev := jsonString(o, "event"); ev {
+		case "balance_updated":
+			err = parseAccountsBalanceUpdated(c, o)
+		case "gas_balance_updated":
+			err = parseAccountsGasBalanceUpdated(c, o)
+		case "num_pages_updated":
+			err = parseAccountNumPagesUpdated(c, o)
+		case "stake_updated":
+			err = parseAccountStakeUpdated(c, o)
+		case "reward_updated":
+			err = parseAccountRewardUpdated(c, o)
+		default:
+			err = errInvalidEvent(o, ev)
+		}
 
-			if err != nil {
-				if c.OnError != nil {
-					c.OnError(err)
-				}
+		if err != nil {
+			if c.OnError != nil {
+				c.OnError(err)
 			}
 		}
 	})
