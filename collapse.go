@@ -20,10 +20,8 @@
 package wavelet
 
 import (
-	"encoding/binary"
 	"encoding/hex"
 	"github.com/perlin-network/wavelet/avl"
-	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -119,7 +117,7 @@ func collapseTransactions(
 		return res, err
 	}
 
-	res.ctx.processFinalizedTransactions(block.Index, txs)
+	//res.ctx.processFinalizedTransactions(block.Index, txs)
 
 	return res, nil
 }
@@ -317,30 +315,30 @@ func (c *CollapseContext) processRewardWithdrawals(blockIndex uint64) {
 	c.rewardWithdrawalRequests = leftovers
 }
 
-func (c *CollapseContext) processFinalizedTransactions(height uint64, finalized []*Transaction) {
-	pruningLimit := uint64(conf.GetPruningLimit())
-
-	if height < pruningLimit {
-		return
-	}
-
-	heightLimit := height - pruningLimit
-
-	cb := func(k, v []byte) bool {
-		height := binary.BigEndian.Uint64(k[:8])
-
-		if height <= heightLimit {
-			c.tree.Delete(append(keyTransactionFinalized[:], k...))
-			return true
-		}
-
-		return false
-	}
-
-	c.tree.IteratePrefix(keyTransactionFinalized[:], cb)
-
-	StoreFinalizedTransactionIDs(c.tree, height, finalized)
-}
+//func (c *CollapseContext) processFinalizedTransactions(height uint64, finalized []*Transaction) {
+//	pruningLimit := uint64(conf.GetPruningLimit())
+//
+//	if height < pruningLimit {
+//		return
+//	}
+//
+//	heightLimit := height - pruningLimit
+//
+//	cb := func(k, v []byte) bool {
+//		height := binary.BigEndian.Uint64(k[:8])
+//
+//		if height <= heightLimit {
+//			c.tree.Delete(append(keyTransactionFinalized[:], k...))
+//			return true
+//		}
+//
+//		return false
+//	}
+//
+//	c.tree.IteratePrefix(keyTransactionFinalized[:], cb)
+//
+//	StoreFinalizedTransactionIDs(c.tree, height, finalized)
+//}
 
 // Write the changes into the tree.
 func (c *CollapseContext) Flush() error {
