@@ -57,6 +57,7 @@ func (c *Client) pollWS(path string, callback func(*fastjson.Value)) (func(), er
 
 			go func(message []byte) {
 				p := c.jsonPool.Get()
+				defer c.jsonPool.Put(p)
 
 				o, err := p.ParseBytes(message)
 				if err != nil {
@@ -65,8 +66,6 @@ func (c *Client) pollWS(path string, callback func(*fastjson.Value)) (func(), er
 				}
 
 				callback(o)
-
-				c.jsonPool.Put(p)
 			}(message)
 		}
 	}()

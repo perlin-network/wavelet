@@ -22,7 +22,6 @@ package wavelet
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"encoding/hex"
 	"sync"
 	"time"
@@ -31,6 +30,7 @@ import (
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/conf"
+	"github.com/perlin-network/wavelet/internal/backoff"
 	"github.com/perlin-network/wavelet/internal/cuckoo"
 	"github.com/perlin-network/wavelet/internal/filebuffer"
 	"github.com/perlin-network/wavelet/internal/radix"
@@ -671,21 +671,18 @@ func (l *Ledger) PullMissingTransactions() {
 func (l *Ledger) FinalizeBlocks() {
 	defer l.consensus.Done()
 
-	for {
-		select {
-		case <-l.consensusStop:
-			return
-		default:
-		}
+	b := &backoff.Backoff{Min: 0 * time.Second, Max: 200 * time.Millisecond, Factor: 1.25, Jitter: true}
 
+	for {
 		decided := l.finalizer.Decided()
 
 		preferred := l.finalizer.Preferred()
+
 		if preferred == nil {
 			proposedBlock := l.proposeBlock()
-			logger := log.Consensus("proposal")
 
 			if proposedBlock != nil {
+				logger := log.Consensus("proposal")
 				logger.Debug().
 					Hex("block_id", proposedBlock.ID[:]).
 					Uint64("block_index", proposedBlock.Index).
@@ -695,6 +692,18 @@ func (l *Ledger) FinalizeBlocks() {
 				l.finalizer.Prefer(&finalizationVote{
 					block: proposedBlock,
 				})
+
+				b.Reset()
+			} else {
+				t := time.NewTicker(b.Duration())
+
+				select {
+				case <-l.consensusStop:
+					t.Stop()
+					return
+				case <-t.C:
+					t.Stop()
+				}
 			}
 		} else {
 			if decided {
@@ -787,7 +796,7 @@ func (l *Ledger) finalize(block Block) {
 	l.metrics.acceptedTX.Mark(int64(results.appliedCount))
 	l.metrics.finalizedBlocks.Mark(1)
 
-	l.LogChanges(results.snapshot, current.Index)
+	l.LogChanges(results)
 
 	// Reset sampler(s).
 	l.finalizer.Reset()
@@ -942,11 +951,7 @@ type collapseResults struct {
 	rejectedCount int
 
 	snapshot *avl.Tree
-}
-
-type CollapseState struct {
-	results *collapseResults
-	err     error
+	ctx      *CollapseContext
 }
 
 // collapseTransactions takes all transactions recorded within a block, and applies all valid
@@ -956,83 +961,60 @@ type CollapseState struct {
 func (l *Ledger) collapseTransactions(
 	height uint64, current *Block, proposed []TransactionID, logging bool,
 ) (*collapseResults, error) {
-	state := &CollapseState{}
-
 	transactions, err := l.transactions.BatchFind(proposed)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not find transactions to collapse in node")
 	}
 
-	state.results, state.err = collapseTransactions(height, transactions, current, l.accounts)
-	if state.err != nil {
-		return nil, errors.Wrap(state.err, "failed to collapse transactions")
+	results, err := collapseTransactions(height, transactions, current, l.accounts)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to collapse transactions")
 	}
 
-	if logging && state.results != nil {
-		l.collapseResultsLogger.Log(state.results)
+	if logging && results != nil {
+		l.collapseResultsLogger.Log(results)
 	}
 
-	return state.results, state.err
+	return results, err
 }
 
 // LogChanges logs all changes made to an AVL tree state snapshot for the purposes
 // of logging out changes to account state to Wavelet's HTTP API.
-func (l *Ledger) LogChanges(snapshot *avl.Tree, lastBlockIndex uint64) {
+func (l *Ledger) LogChanges(c *collapseResults) {
 	balanceLogger := log.Accounts("balance_updated")
 	gasBalanceLogger := log.Accounts("gas_balance_updated")
 	stakeLogger := log.Accounts("stake_updated")
 	rewardLogger := log.Accounts("reward_updated")
-	numPagesLogger := log.Accounts("num_pages_updated")
 
-	balanceKey := append(keyAccounts[:], keyAccountBalance[:]...)
-	gasBalanceKey := append(keyAccounts[:], keyAccountContractGasBalance[:]...)
-	stakeKey := append(keyAccounts[:], keyAccountStake[:]...)
-	rewardKey := append(keyAccounts[:], keyAccountReward[:]...)
-	numPagesKey := append(keyAccounts[:], keyAccountContractNumPages[:]...)
-
-	var id AccountID
-
-	snapshot.IterateLeafDiff(lastBlockIndex, func(key, value []byte) bool {
-		switch {
-		case bytes.HasPrefix(key, balanceKey):
-			copy(id[:], key[len(balanceKey):])
-
+	for _, id := range c.ctx.accountIDs {
+		if bal, ok := c.ctx.balances[id]; ok {
 			balanceLogger.Log().
 				Hex("account_id", id[:]).
-				Uint64("balance", binary.LittleEndian.Uint64(value)).
-				Msg("")
-		case bytes.HasPrefix(key, gasBalanceKey):
-			copy(id[:], key[len(gasBalanceKey):])
-
-			gasBalanceLogger.Log().
-				Hex("account_id", id[:]).
-				Uint64("gas_balance", binary.LittleEndian.Uint64(value)).
-				Msg("")
-		case bytes.HasPrefix(key, stakeKey):
-			copy(id[:], key[len(stakeKey):])
-
-			stakeLogger.Log().
-				Hex("account_id", id[:]).
-				Uint64("stake", binary.LittleEndian.Uint64(value)).
-				Msg("")
-		case bytes.HasPrefix(key, rewardKey):
-			copy(id[:], key[len(rewardKey):])
-
-			rewardLogger.Log().
-				Hex("account_id", id[:]).
-				Uint64("reward", binary.LittleEndian.Uint64(value)).
-				Msg("")
-		case bytes.HasPrefix(key, numPagesKey):
-			copy(id[:], key[len(numPagesKey):])
-
-			numPagesLogger.Log().
-				Hex("account_id", id[:]).
-				Uint64("num_pages", binary.LittleEndian.Uint64(value)).
+				Uint64("balance", bal).
 				Msg("")
 		}
 
-		return true
-	})
+		if stake, ok := c.ctx.stakes[id]; ok {
+			stakeLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("stake", stake).
+				Msg("")
+		}
+
+		if reward, ok := c.ctx.rewards[id]; ok {
+			rewardLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("reward", reward).
+				Msg("")
+		}
+
+		if gasBal, ok := c.ctx.contractGasBalances[id]; ok {
+			gasBalanceLogger.Log().
+				Hex("account_id", id[:]).
+				Uint64("gas_balance", gasBal).
+				Msg("")
+		}
+	}
 }
 
 // filterInvalidVotes takes a slice of (*finalizationVote)'s and filters away

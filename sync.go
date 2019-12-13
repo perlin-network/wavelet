@@ -29,6 +29,7 @@ type SyncManager struct {
 
 	logger zerolog.Logger
 	exit   chan struct{}
+	exited atomic.Bool
 
 	OnStateReconciled []func(outOfSync bool)
 	OnSynced          []func(block Block)
@@ -50,6 +51,7 @@ func NewSyncManager(
 }
 
 func (s *SyncManager) Stop() {
+	s.exited.Store(true)
 	close(s.exit)
 }
 
@@ -58,7 +60,15 @@ func (s *SyncManager) Start() {
 
 	for {
 		for {
-			outOfSync := s.stateOutOfSync()
+			outOfSync, err := s.stateOutOfSync()
+
+			if err != nil {
+				if s.closed() {
+					return
+				}
+
+				continue
+			}
 
 			for _, fn := range s.OnStateReconciled {
 				fn(outOfSync)
@@ -66,6 +76,11 @@ func (s *SyncManager) Start() {
 
 			if !outOfSync {
 				s.wait(b.Duration())
+
+				if s.closed() {
+					return
+				}
+
 				continue
 			}
 
@@ -80,6 +95,11 @@ func (s *SyncManager) Start() {
 		for {
 			if block, err = s.sync(b); err != nil {
 				s.logger.Warn().Err(err).Msg("Got an error while syncing.")
+
+				if s.closed() {
+					return
+				}
+
 				continue
 			}
 
@@ -109,6 +129,11 @@ func (s *SyncManager) sync(b *backoff.Backoff) (Block, error) {
 		peers, err = s.findPeersToDownloadStateFrom(conf.GetSnowballK())
 		if err != nil {
 			s.wait(b.Duration())
+
+			if s.closed() {
+				return Block{}, nil
+			}
+
 			continue
 		}
 
@@ -116,6 +141,10 @@ func (s *SyncManager) sync(b *backoff.Backoff) (Block, error) {
 		if err != nil {
 			s.logger.Warn().Err(err).Msg("Got an error while collating the latest state details from our peers")
 			s.wait(b.Duration())
+
+			if s.closed() {
+				return Block{}, nil
+			}
 
 			continue
 		}
@@ -143,6 +172,11 @@ func (s *SyncManager) sync(b *backoff.Backoff) (Block, error) {
 	for i := 0; i < 3; i++ {
 		if err = s.downloadStateInChunks(checksums, streams, chunksBuffer, diffBuffer); err != nil {
 			s.wait(b.Duration())
+
+			if s.closed() {
+				return Block{}, nil
+			}
+
 			continue
 		}
 
@@ -185,7 +219,7 @@ func (s *SyncManager) sync(b *backoff.Backoff) (Block, error) {
 
 /** Methods that help us figure out whether or not our node is out-of-sync. */
 
-func (s *SyncManager) stateOutOfSync() bool {
+func (s *SyncManager) stateOutOfSync() (bool, error) {
 	samplerK := conf.GetSnowballK()
 
 	// Our initial belief is that we're not out-of-sync.
@@ -197,16 +231,24 @@ func (s *SyncManager) stateOutOfSync() bool {
 	go s.consolidateVotesFromPeers(sampler, votes)
 
 	for { // Infinitely keep asking our peers if we are out-of-sync given our latest state.
-		converged := s.collectVotesFromPeers(sampler, votes, samplerK)
+		converged, err := s.collectVotesFromPeers(sampler, votes, samplerK)
+
+		if err != nil {
+			return false, err
+		}
 
 		if converged {
 			break
 		}
 
 		s.wait(5 * time.Millisecond)
+
+		if s.closed() {
+			return false, nil
+		}
 	}
 
-	return sampler.preferred.(*syncVote).outOfSync
+	return sampler.preferred.(*syncVote).outOfSync, nil
 }
 
 // Ask a peer if our latest block height is far too out-of-sync.
@@ -220,7 +262,7 @@ func (s *SyncManager) askIfWereOutOfSync(ctx context.Context, peer skademlia.Clo
 }
 
 // Collect votes from peers, and return true if our sampling algorithm has terminated. Else, return false.
-func (s *SyncManager) collectVotesFromPeers(sampler *Snowball, votes chan<- Vote, samplerK int) bool {
+func (s *SyncManager) collectVotesFromPeers(sampler *Snowball, votes chan<- Vote, samplerK int) (bool, error) {
 	latestHeight := s.blocks.LatestHeight()
 
 	peers, err := SelectPeers(s.client.ClosestPeers(), samplerK)
@@ -228,7 +270,7 @@ func (s *SyncManager) collectVotesFromPeers(sampler *Snowball, votes chan<- Vote
 		s.logger.Warn().Msg("It looks like there are no peers for us to sync with. Retrying after 1 second...")
 		s.wait(1 * time.Second)
 
-		return false
+		return false, errors.Wrap(err, "no peers for us to sync with")
 	}
 
 	var wg sync.WaitGroup
@@ -258,10 +300,10 @@ func (s *SyncManager) collectVotesFromPeers(sampler *Snowball, votes chan<- Vote
 
 	if sampler.Decided() {
 		close(votes)
-		return true
+		return true, nil
 	}
 
-	return false
+	return false, nil
 }
 
 // Consolidate votes from our peers to figure out if our latest state if out-of-date.
@@ -309,6 +351,10 @@ func (s *SyncManager) findPeersToDownloadStateFrom(numPeers int) ([]syncPeer, er
 		s.logger.Warn().
 			Msg("It looks like there are no peers for us to download state from. Retrying after 1 second...")
 		s.wait(1 * time.Second)
+
+		if s.closed() {
+			return nil, nil
+		}
 
 		return nil, errors.New("no peers for us to sync with")
 	}
@@ -567,4 +613,8 @@ func (s *SyncManager) wait(t time.Duration) {
 	case <-timer.C:
 	case <-s.exit:
 	}
+}
+
+func (s *SyncManager) closed() bool {
+	return s.exited.Load()
 }
