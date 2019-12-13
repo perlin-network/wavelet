@@ -23,7 +23,7 @@ func (c *Client) pollConsensus() (func(), error) {
 		case "finalized":
 			err = parseConsensusFinalized(c, v)
 		default:
-			// err = errInvalidEvent(v, ev)
+			err = errInvalidEvent(v, ev)
 		}
 
 		if err != nil {

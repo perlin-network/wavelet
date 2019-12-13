@@ -129,6 +129,7 @@ func (c *CollapseResultsLogger) Log(results *collapseResults) {
 func (c *CollapseResultsLogger) addTx(mod, event []byte,
 	timestamp time.Time, tag int,
 	txID []byte, sender []byte, logError error) {
+
 	o := c.arena.NewObject()
 
 	o.Set("mod", c.arena.NewStringBytes(mod))

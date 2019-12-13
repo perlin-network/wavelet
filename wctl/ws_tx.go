@@ -25,8 +25,10 @@ func (c *Client) PollTransactions() (func(), error) {
 				err = parseTxGossipError(c, o)
 			case ev == "failed":
 				err = parseTxFailed(c, o)
+			case ev == "rejected":
+				err = parseTxRejected(c, o)
 			default:
-				// err = errInvalidEvent(o, ev)
+				err = errInvalidEvent(o, ev)
 			}
 
 			if err != nil {
@@ -76,6 +78,31 @@ func parseTxGossipError(c *Client, v *fastjson.Value) error {
 
 	if c.OnTxGossipError != nil {
 		c.OnTxGossipError(t)
+	}
+
+	return nil
+}
+
+func parseTxRejected(c *Client, v *fastjson.Value) error {
+	var t TxRejected
+
+	if err := jsonHex(v, t.TxID[:], "tx_id"); err != nil {
+		return err
+	}
+
+	if err := jsonHex(v, t.SenderID[:], "sender_id"); err != nil {
+		return err
+	}
+
+	t.Tag = byte(v.GetUint("tag"))
+	t.Error = jsonString(v, "error")
+
+	if err := jsonTime(v, &t.Time, "time"); err != nil {
+		return err
+	}
+
+	if c.OnTxRejected != nil {
+		c.OnTxRejected(t)
 	}
 
 	return nil

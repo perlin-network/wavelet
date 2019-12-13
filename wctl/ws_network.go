@@ -19,7 +19,7 @@ func (c *Client) PollNetwork() (func(), error) {
 		case "left":
 			err = parsePeerLeave(c, v)
 		default:
-			// err = errInvalidEvent(v, ev)
+			err = errInvalidEvent(v, ev)
 		}
 
 		if err != nil {

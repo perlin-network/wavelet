@@ -20,7 +20,7 @@ func (c *Client) PollContracts() (func(), error) {
 			case "log":
 				err = parseContractLog(c, o)
 			default:
-				// err = errInvalidEvent(o, ev)
+				err = errInvalidEvent(o, ev)
 			}
 
 			if err != nil {

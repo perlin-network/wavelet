@@ -112,6 +112,15 @@ type (
 	}
 	OnTxApplied = func(TxApplied)
 
+	TxRejected struct {
+		TxID     [32]byte  `json:"tx_id"`
+		SenderID [32]byte  `json:"sender_id"`
+		Tag      byte      `json:"tag"`
+		Error    string    `json:"error,omitempty"`
+		Time     time.Time `json:"time"`
+	}
+	OnTxRejected = func(TxRejected)
+
 	TxGossipError struct {
 		Error   string    `json:"error"`
 		Time    time.Time `json:"time"`

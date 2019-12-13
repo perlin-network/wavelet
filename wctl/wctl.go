@@ -120,6 +120,7 @@ type Client struct {
 	// PollTransactions
 	OnTxApplied
 	OnTxGossipError
+	OnTxRejected
 	OnTxFailed
 
 	OnMetrics
