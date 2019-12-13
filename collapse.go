@@ -141,7 +141,6 @@ type CollapseContext struct {
 	contractVMs         map[AccountID]*VMState
 
 	rewardWithdrawalRequests []RewardWithdrawalRequest
-	finalizedTransactions    []*Transaction
 
 	VMCache *VMLRU
 }
@@ -384,8 +383,6 @@ func (c *CollapseContext) Flush() error {
 // Apply a transaction by writing the states into memory.
 // After you've finished, you MUST call CollapseContext.Flush() to actually write the states into the tree.
 func (c *CollapseContext) ApplyTransaction(block *Block, tx *Transaction) error {
-	c.finalizedTransactions = append(c.finalizedTransactions, tx)
-
 	if err := applyTransaction(block, c, tx, &contractExecutorState{
 		GasPayer: tx.Sender,
 	}); err != nil {
