@@ -550,7 +550,7 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 
 	tree.IteratePrefix(keyAccounts[:], func(key, value []byte) bool {
 		var prefix [1]byte
-		copy(prefix[:], key[:])
+		copy(prefix[:], key)
 
 		// Filter by prefixes relevant to wallet and contract code.
 		if prefix != keyAccountBalance &&
