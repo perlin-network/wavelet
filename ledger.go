@@ -24,6 +24,9 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/hex"
+	"sync"
+	"time"
+
 	"github.com/perlin-network/noise"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
@@ -39,8 +42,6 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/peer"
-	"sync"
-	"time"
 )
 
 var (
@@ -260,7 +261,10 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 func (l *Ledger) Close() {
 	l.syncManager.Stop()
 
-	close(l.consensusStop)
+	if l.consensusStop != nil {
+		close(l.consensusStop)
+	}
+
 	l.consensus.Wait()
 
 	if l.cancelGC != nil {
