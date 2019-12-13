@@ -51,7 +51,7 @@ jobs:
 
       - name: Experimental test
         run: |
-          TESTS=($(find . -maxdepth 1 -regex '.*_integration_test\.go$' -exec grep -o "func Test[a-zA-Z0-9_]*" {} \; | cut -c6-))
+          TESTS=($(find . -regex '.*_integration_test\.go$' -exec grep -o "func Test[a-zA-Z0-9_]*" {} \; | cut -c6-))
           echo $TESTS
           for t in $TESTS
           do
