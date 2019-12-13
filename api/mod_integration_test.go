@@ -621,7 +621,7 @@ func TestGetLedger(t *testing.T) {
 	publicKey := keys.PublicKey()
 
 	expectedJSON := fmt.Sprintf(
-		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"preferred_votes":0,"sync_status":"Node is taking part in consensus process","block":{"merkle_root":"19be72d52438349e8fa2c4705f1cd954","height":0,"id":"2d301376b242d1dec15ac1d0e5b30c41e11a4ad743f79c59bec204b0e01b36bd","transactions":0},"preferred":null,"num_missing_tx":0,"num_tx":0,"num_tx_in_store":0,"num_accounts_in_store":3,"peers":null}`,
+		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"preferred_votes":0,"block":{"merkle_root":"0c2d4da48122ef4d5dc2e175071b1aed","height":0,"id":"447d70fa65f0b4dfde4ec2fee479ad7a93ce090b76726e2df361608c2fa2919e","transactions":0},"preferred":null,"num_missing_tx":0,"num_tx":0,"num_tx_in_store":0,"num_accounts_in_store":3,"peers":null}`,
 		hex.EncodeToString(publicKey[:]),
 		listener.Addr().(*net.TCPAddr).Port,
 	)

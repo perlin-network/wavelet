@@ -96,12 +96,10 @@ func TestPollLog(t *testing.T) {
 			return
 		}
 
-		vals, err := v.Array()
+		_, err = v.Object()
 		if !assert.NoError(t, err) {
 			return
 		}
-
-		assert.Equal(t, 2, len(vals))
 	})
 }
 
