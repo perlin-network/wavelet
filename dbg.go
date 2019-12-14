@@ -9,6 +9,8 @@ import (
 )
 
 var debugMutex sync.Mutex
+
+var lastDebugDebounceLog time.Time
 var lastDebugLog time.Time
 
 var debugLogsCount map[string]int = make(map[string]int)
@@ -19,14 +21,18 @@ func dbg(args ...interface{}) {
 	debugMutex.Lock()
 	defer debugMutex.Unlock()
 
-	msg := fmt.Sprintln(args...)
+	if time.Since(lastDebugDebounceLog).Milliseconds() > 10 {
+		msg := fmt.Sprintln(args...)
 
-	if _, exists := debugLogsCount[msg]; !exists {
-		debugLogsTime[msg] = time.Now()
-		debugLogsOrder = append(debugLogsOrder, msg)
+		if _, exists := debugLogsCount[msg]; !exists {
+			debugLogsTime[msg] = time.Now()
+			debugLogsOrder = append(debugLogsOrder, msg)
+		}
+
+		debugLogsCount[msg]++
+
+		lastDebugDebounceLog = time.Now()
 	}
-
-	debugLogsCount[msg]++
 
 	if time.Since(lastDebugLog).Milliseconds() > 100 {
 		for _, msg := range debugLogsOrder {
