@@ -11,13 +11,17 @@ import (
 )
 
 func BenchmarkRehashNoWrite(b *testing.B) {
-	kv, cleanup := store.NewTestKV(b, "inmem", "")
+	kv, cleanup, err := store.NewTestKV("inmem", "")
+	if !assert.NoError(b, err) {
+		return
+	}
+
 	defer cleanup()
 
 	tree := New(kv)
 
 	var key [32]byte
-	_, err := rand.Read(key[:]) // nolint:gosec
+	_, err = rand.Read(key[:]) // nolint:gosec
 	assert.NoError(b, err)
 
 	var val [64]byte

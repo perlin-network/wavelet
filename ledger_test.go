@@ -10,10 +10,17 @@ import (
 )
 
 func TestLedger_FilterInvalidVotes(t *testing.T) {
-	testnet := NewTestNetwork(t)
+	testnet, err := NewTestNetwork()
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	defer testnet.Cleanup()
 
-	alice := testnet.AddNode(t)
+	alice, err := testnet.AddNode()
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	var transactions []*Transaction
 	var ids []TransactionID

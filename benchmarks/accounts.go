@@ -90,7 +90,11 @@ func benchmarkAccountsCommit(size int, db string, dir string) func(b *testing.B)
 	return func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
 			func() {
-				kv, cleanup := store.NewTestKV(b, db, dir)
+				kv, cleanup, err := store.NewTestKV(db, dir)
+				if err != nil {
+					b.Fatal(err)
+				}
+
 				defer cleanup()
 
 				accounts := wavelet.NewAccounts(kv)

@@ -1,8 +1,8 @@
 package store
 
 import (
+	"fmt"
 	"os"
-	"testing"
 )
 
 type TestKVConfig struct {
@@ -24,9 +24,7 @@ func WithKeepExisting() TestKVOption {
 }
 
 // NewTestKV returns a KV store for testing purposes.
-func NewTestKV(t testing.TB, kv string, path string, opts ...TestKVOption) (KV, func()) {
-	t.Helper()
-
+func NewTestKV(kv string, path string, opts ...TestKVOption) (KV, func(), error) {
 	cfg := defaultKVConfig()
 
 	for _, opt := range opts {
@@ -37,9 +35,7 @@ func NewTestKV(t testing.TB, kv string, path string, opts ...TestKVOption) (KV, 
 	case "inmem":
 		inmemdb := NewInmem()
 
-		return inmemdb, func() {
-			_ = inmemdb.Close()
-		}
+		return inmemdb, func() { _ = inmemdb.Close() }, nil
 	case "level": //nolint:goconst
 		if cfg.RemoveExisting {
 			_ = os.RemoveAll(path)
@@ -47,16 +43,18 @@ func NewTestKV(t testing.TB, kv string, path string, opts ...TestKVOption) (KV, 
 
 		leveldb, err := NewLevelDB(path)
 		if err != nil {
-			t.Fatalf("failed to create LevelDB: %s", err)
+			return nil, nil, err
 		}
 
-		return leveldb, func() {
+		cleanup := func() {
 			_ = leveldb.Close()
 
 			if cfg.RemoveExisting {
 				_ = os.RemoveAll(path)
 			}
 		}
+
+		return leveldb, cleanup, nil
 	case "badger": // nolint:goconst
 		if cfg.RemoveExisting {
 			_ = os.RemoveAll(path)
@@ -64,17 +62,19 @@ func NewTestKV(t testing.TB, kv string, path string, opts ...TestKVOption) (KV, 
 
 		badger, err := NewBadger(path)
 		if err != nil {
-			t.Fatalf("failed to create Badger: %s", err)
+			return nil, nil, err
 		}
 
-		return badger, func() {
+		cleanup := func() {
 			_ = badger.Close()
 
 			if cfg.RemoveExisting {
 				_ = os.RemoveAll(path)
 			}
 		}
+
+		return badger, cleanup, nil
 	default:
-		panic("unknown kv " + kv)
+		return nil, nil, fmt.Errorf("unknown kv %s", kv)
 	}
 }
