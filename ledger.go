@@ -696,6 +696,7 @@ func (l *Ledger) FinalizeBlocks() {
 					Msg("Proposing block...")
 
 				l.finalizer.Prefer(&finalizationVote{
+					voter: l.client.ID(),
 					block: proposedBlock,
 				})
 
@@ -941,6 +942,15 @@ func (l *Ledger) query() {
 		votes = append(votes, &response.vote)
 	}
 
+	// Include our own vote as well.
+
+	var preferred *Block = nil
+	if vote, ok := l.finalizer.Preferred().(*finalizationVote); ok && vote != nil {
+		preferred = vote.block
+	}
+
+	votes = append(votes, &finalizationVote{voter: l.client.ID(), block: preferred})
+
 	l.filterInvalidVotes(current, votes)
 	l.finalizer.Tick(calculateTallies(l.accounts, votes))
 }
@@ -1042,6 +1052,7 @@ ValidateVotes:
 
 		// Ignore block proposals at an unexpected height.
 		if vote.block.Index != current.Index+1 {
+			dbg("got block not suited for current height", vote.block.Index, current.Index+1)
 			vote.block = nil
 			continue ValidateVotes
 		}
@@ -1049,15 +1060,18 @@ ValidateVotes:
 		// Ignore block proposals containing transactions which our node has not
 		// locally archived, and mark them as missing.
 		if l.transactions.BatchMarkMissing(vote.block.Transactions...) {
+			dbg("we're missing some transactions from block",
+				hex.EncodeToString(vote.block.ID[:]),
+				"made for height",
+				vote.block.Index,
+				"while we're finalizing",
+				current.Index+1,
+			)
 			vote.block = nil
 			continue ValidateVotes
 		}
 
-		transactions, err := l.transactions.BatchFind(vote.block.Transactions)
-		if err != nil {
-			vote.block = nil
-			continue ValidateVotes
-		}
+		transactions, _ := l.transactions.BatchFind(vote.block.Transactions)
 
 		for i := range transactions {
 			// Validate the height recorded on transactions inside the block proposal.
@@ -1078,6 +1092,15 @@ ValidateVotes:
 		// all transactions in the block into the ledger state.
 		results, err := l.collapseTransactions(vote.block.Index, current, vote.block.Transactions, false)
 		if err != nil {
+			dbg("failed to collapse for block",
+				hex.EncodeToString(vote.block.ID[:]),
+				"made for height",
+				vote.block.Index,
+				"while we're finalizing",
+				current.Index+1,
+				err,
+			)
+
 			logger := log.Node()
 			logger.Error().
 				Err(err).
@@ -1090,6 +1113,20 @@ ValidateVotes:
 		// Validate the Merkle root recorded on the block with the resultant Merkle root we got
 		// from applying all transactions in the block.
 		if results.snapshot.Checksum() != vote.block.Merkle {
+			c := results.snapshot.Checksum()
+
+			dbg("got bad merkle root for block",
+				hex.EncodeToString(vote.block.ID[:]),
+				"made for height",
+				vote.block.Index,
+				"while we're finalizing",
+				current.Index+1,
+				"the root is",
+				hex.EncodeToString(vote.block.Merkle[:]),
+				"but computed",
+				hex.EncodeToString(c[:]),
+			)
+
 			vote.block = nil
 			continue ValidateVotes
 		}

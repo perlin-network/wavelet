@@ -96,6 +96,12 @@ func (s *Snowball) Tick(votes []Vote) {
 			}
 		}
 
+		if majority != nil {
+			dbg("snowball got reset w/ majority", majority.Tally(), conf.GetSnowballAlpha()*2/denom)
+		} else {
+			dbg("snowball got reset w/ nil majority")
+		}
+
 		s.count = 0
 
 		return
