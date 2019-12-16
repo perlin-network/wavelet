@@ -59,6 +59,7 @@ type Ledger struct {
 	transactions *Transactions
 	db           store.KV
 
+	gossiper  *Gossiper
 	finalizer *Snowball
 
 	consensus     sync.WaitGroup
@@ -149,6 +150,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 	transactions := NewTransactions(*block)
 	transactions.BatchMarkFinalized(LoadFinalizedTransactionIDs(accounts.tree)...)
 
+	gossiper := NewGossiper(context.TODO(), client, metrics)
 	finalizer := NewSnowball()
 
 	filePool := filebuffer.NewPool(sys.SyncPooledFileSize, "")
@@ -165,6 +167,7 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 		transactions: transactions,
 		db:           kv,
 
+		gossiper:  gossiper,
 		finalizer: finalizer,
 
 		filePool:    filePool,
@@ -288,6 +291,7 @@ func (l *Ledger) AddTransaction(txs ...Transaction) {
 
 	for _, tx := range txs {
 		l.transactionFilter.Insert(tx.ID)
+		l.gossiper.Push(tx)
 	}
 
 	l.transactionFilterLock.Unlock()
@@ -370,11 +374,11 @@ func (l *Ledger) Restart() error {
 // missing transactions and incrementally finalizing intervals of transactions in
 // the ledgers graph.
 func (l *Ledger) PerformConsensus() {
-	l.consensus.Add(3)
+	l.consensus.Add(2)
 
 	go l.PullMissingTransactions()
 
-	go l.SyncTransactions()
+	//go l.SyncTransactions()
 
 	go l.FinalizeBlocks()
 }

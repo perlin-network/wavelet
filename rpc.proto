@@ -58,6 +58,13 @@ message SyncResponse {
     }
 }
 
+message GossipRequest {
+    repeated bytes transactions = 1;
+}
+
+message GossipResponse {
+}
+
 message TransactionsSyncRequest {
     oneof Data {
         bytes filter = 1;
@@ -85,6 +92,7 @@ message TransactionPullResponse {
 }
 
 service Wavelet {
+		rpc Gossip (stream GossipRequest) returns (GossipResponse) {}
     rpc Query (QueryRequest) returns (QueryResponse) {}
 
     rpc CheckOutOfSync (OutOfSyncRequest) returns (OutOfSyncResponse) {}
