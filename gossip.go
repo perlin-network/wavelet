@@ -69,7 +69,12 @@ func (g *Gossiper) Push(tx Transaction) {
 func (g *Gossiper) Gossip(transactions [][]byte) {
 	batch := &GossipRequest{Transactions: transactions}
 
-	peers := g.client.ClosestPeers()
+	snowballK := conf.GetSnowballK()
+
+	peers, err := SelectPeers(g.client.ClosestPeers(), snowballK)
+	if err != nil {
+		return
+	}
 
 	var wg sync.WaitGroup
 	for _, p := range peers {
