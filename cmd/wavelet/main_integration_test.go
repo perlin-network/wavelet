@@ -709,7 +709,6 @@ func (s *mockStdout) Search(sub string, times int) (string, error) {
 	for {
 		select {
 		case line := <-s.Lines:
-			fmt.Println(line)
 			if strings.Contains(line, sub) {
 				c++
 				if c == times {

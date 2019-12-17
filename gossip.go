@@ -26,16 +26,13 @@ import (
 
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/conf"
-	"github.com/perlin-network/wavelet/debounce"
+	"github.com/perlin-network/wavelet/internal/debounce"
 	"github.com/perlin-network/wavelet/log"
 )
 
 type Gossiper struct {
 	client  *skademlia.Client
 	metrics *Metrics
-
-	streams     map[string]Wavelet_GossipClient
-	streamsLock sync.Mutex
 
 	debouncer *debounce.Limiter
 }
@@ -44,8 +41,6 @@ func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics
 	g := &Gossiper{
 		client:  client,
 		metrics: metrics,
-
-		streams: make(map[string]Wavelet_GossipClient),
 	}
 
 	g.debouncer = debounce.NewLimiter(
@@ -67,40 +62,34 @@ func (g *Gossiper) Push(tx Transaction) {
 }
 
 func (g *Gossiper) Gossip(transactions [][]byte) {
-	batch := &GossipRequest{Transactions: transactions}
+	logger := log.TX("gossip")
 
-	snowballK := conf.GetSnowballK()
-
-	peers, err := SelectPeers(g.client.ClosestPeers(), snowballK)
+	peers, err := SelectPeers(g.client.ClosestPeers(), conf.GetSnowballK())
 	if err != nil {
+		logger.Err(err).Msg("Failed to select peers to gossip transactions.")
 		return
 	}
 
+	batch := &GossipRequest{Transactions: transactions}
+
 	var wg sync.WaitGroup
+
 	for _, p := range peers {
-		client := NewWaveletClient(p.Conn())
-
-		ctx, cancel := context.WithTimeout(context.Background(), conf.GetGossipTimeout())
-		defer cancel()
-
-		stream, err := client.Gossip(ctx)
-		if err != nil {
-			continue
-		}
-
 		wg.Add(1)
 
-		go func() {
-			defer func() {
-				_ = stream.CloseSend()
-				wg.Done()
-			}()
+		go func(p skademlia.ClosestPeer) {
+			defer wg.Done()
 
-			if err := stream.Send(batch); err != nil {
-				logger := log.TX("gossip")
+			client := NewWaveletClient(p.Conn())
+
+			ctx, cancel := context.WithTimeout(context.Background(), conf.GetGossipTimeout())
+			defer cancel()
+
+			_, err := client.Gossip(ctx, batch)
+			if err != nil {
 				logger.Err(err).Msg("Failed to send batch")
 			}
-		}()
+		}(p)
 	}
 
 	wg.Wait()

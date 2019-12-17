@@ -16,6 +16,7 @@ require (
 	github.com/djherbis/buffer v1.1.0
 	github.com/fasthttp/websocket v1.4.0
 	github.com/gogo/protobuf v1.3.0
+	github.com/golang/protobuf v1.3.2
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/websocket v1.4.0
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b

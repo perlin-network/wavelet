@@ -22,6 +22,7 @@ package wavelet
 import (
 	"bytes"
 	"context"
+	"github.com/golang/protobuf/ptypes/empty"
 	"io"
 
 	"github.com/perlin-network/wavelet/internal/cuckoo"
@@ -36,34 +37,28 @@ type Protocol struct {
 	ledger *Ledger
 }
 
-func (p *Protocol) Gossip(stream Wavelet_GossipServer) error {
-	for {
-		batch, err := stream.Recv()
+func (p *Protocol) Gossip(ctx context.Context, req *GossipRequest) (*empty.Empty, error) {
+	txs := make([]Transaction, 0, len(req.Transactions))
 
+	for _, buf := range req.Transactions {
+		tx, err := UnmarshalTransaction(bytes.NewReader(buf))
 		if err != nil {
-			return err
+			logger := log.TX("gossip")
+			logger.Err(err).Msg("Failed to unmarshal transaction")
+
+			continue
 		}
 
-		txs := make([]Transaction, 0, len(batch.Transactions))
-
-		for _, buf := range batch.Transactions {
-			tx, err := UnmarshalTransaction(bytes.NewReader(buf))
-
-			if err != nil {
-				logger := log.TX("gossip")
-				logger.Err(err).Msg("Failed to unmarshal transaction")
-				continue
-			}
-
-			if p.ledger.Transactions().Has(tx.ID) {
-				continue
-			}
-
-			txs = append(txs, tx)
+		if p.ledger.Transactions().Has(tx.ID) {
+			continue
 		}
 
-		p.ledger.AddTransaction(txs...)
+		txs = append(txs, tx)
 	}
+
+	p.ledger.AddTransaction(txs...)
+
+	return new(empty.Empty), nil
 }
 
 func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse, error) {
