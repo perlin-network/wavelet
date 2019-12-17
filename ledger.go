@@ -840,9 +840,6 @@ func (l *Ledger) query() {
 
 	type response struct {
 		vote finalizationVote
-
-		cacheValid bool
-		cacheBlock *Block
 	}
 
 	responseChan := make(chan response)
@@ -864,7 +861,7 @@ func (l *Ledger) query() {
 				req.CacheBlockId = make([]byte, SizeBlockID)
 				copy(req.CacheBlockId, cached.ID[:])
 
-				response.cacheBlock = cached
+				response.vote.block = cached
 			}
 
 			f := func() {
@@ -900,7 +897,6 @@ func (l *Ledger) query() {
 				response.vote.voter = voter
 
 				if res.CacheValid {
-					response.cacheValid = true
 					return
 				}
 
@@ -937,9 +933,7 @@ func (l *Ledger) query() {
 
 		voters[response.vote.voter.PublicKey()] = struct{}{}
 
-		if response.cacheValid {
-			response.vote.block = response.cacheBlock
-		} else if response.vote.block != nil {
+		if response.vote.block != nil {
 			l.queryPeerBlockCache.Put(response.vote.voter.Checksum(), response.vote.block)
 		}
 
