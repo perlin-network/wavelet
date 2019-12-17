@@ -51,7 +51,7 @@ var (
 		},
 	}
 
-	consoleDefaultTimeFormat = time.Kitchen
+	consoleDefaultTimeFormat = "3:04:05PM"
 
 	consoleDefaultPartsOrder = func() []string {
 		return []string{
