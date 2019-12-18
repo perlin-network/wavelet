@@ -22,8 +22,10 @@ package wavelet
 import (
 	"bytes"
 	"context"
-	"github.com/perlin-network/wavelet/internal/cuckoo"
+	"github.com/golang/protobuf/ptypes/empty"
 	"io"
+
+	"github.com/perlin-network/wavelet/internal/cuckoo"
 
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
@@ -33,6 +35,30 @@ import (
 
 type Protocol struct {
 	ledger *Ledger
+}
+
+func (p *Protocol) Gossip(ctx context.Context, req *GossipRequest) (*empty.Empty, error) {
+	txs := make([]Transaction, 0, len(req.Transactions))
+
+	for _, buf := range req.Transactions {
+		tx, err := UnmarshalTransaction(bytes.NewReader(buf))
+		if err != nil {
+			logger := log.TX("gossip")
+			logger.Err(err).Msg("Failed to unmarshal transaction")
+
+			continue
+		}
+
+		if p.ledger.Transactions().Has(tx.ID) {
+			continue
+		}
+
+		txs = append(txs, tx)
+	}
+
+	p.ledger.AddTransaction(txs...)
+
+	return new(empty.Empty), nil
 }
 
 func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse, error) {

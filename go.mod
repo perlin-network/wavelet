@@ -16,10 +16,12 @@ require (
 	github.com/djherbis/buffer v1.1.0
 	github.com/fasthttp/websocket v1.4.0
 	github.com/gogo/protobuf v1.3.0
+	github.com/golang/protobuf v1.3.2
 	github.com/golang/snappy v0.0.1
 	github.com/gorilla/websocket v1.4.0
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
 	github.com/minio/highwayhash v1.0.0
+	github.com/mmcloughlin/avo v0.0.0-20190927041150-15d6a9a17e53 // indirect
 	github.com/perlin-network/life v0.0.0-20190723115110-3091ed0c1be8
 	github.com/perlin-network/noise v1.1.1-0.20191113101947-c8dc081eafa7
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
