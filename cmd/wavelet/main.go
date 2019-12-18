@@ -163,6 +163,11 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, disableGC bool) {
 			Usage:  "Minimum log level to output. Possible values: debug, info, warn, error, fatal, panic.",
 			EnvVar: "WAVELET_LOGLEVEL",
 		}),
+		altsrc.NewBoolFlag(cli.BoolFlag{
+			Name:   "log.nocolor",
+			Usage:  "Disable color in log output.",
+			EnvVar: "WAVELET_LOG_NOCOLOR",
+		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "memory.max",
 			Value:  0,
@@ -355,7 +360,12 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer, disableGC bool
 		logger.Err(err).Msg("wctl error")
 	}
 
-	shell, err := NewCLI(client, CLIWithStdin(stdin), CLIWithStdout(stdout))
+	opts := []CLIOption{CLIWithStdin(stdin), CLIWithStdout(stdout)}
+	if c.Bool("log.nocolor") {
+		opts = append(opts, CLIWithNoColor(true))
+	}
+
+	shell, err := NewCLI(client, opts...)
 	if err != nil {
 		return fmt.Errorf("failed to spawn the CLI: %v", err)
 	}
