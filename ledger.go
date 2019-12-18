@@ -940,15 +940,6 @@ func (l *Ledger) query() {
 		votes = append(votes, &response.vote)
 	}
 
-	// Include our own vote as well.
-
-	var preferred *Block = nil
-	if vote, ok := l.finalizer.Preferred().(*finalizationVote); ok && vote != nil {
-		preferred = vote.block
-	}
-
-	votes = append(votes, &finalizationVote{voter: l.client.ID(), block: preferred})
-
 	l.filterInvalidVotes(current, votes)
 	l.finalizer.Tick(calculateTallies(l.accounts, votes))
 }
