@@ -54,25 +54,34 @@ type CLI struct {
 
 	client *wctl.Client
 
-	stdin  io.ReadCloser
-	stdout io.Writer
+	stdin   io.ReadCloser
+	stdout  io.Writer
+	nocolor bool
 
 	cleanup func()
 }
 
-func CLIWithStdin(stdin io.ReadCloser) func(cli *CLI) {
+type CLIOption func(cli *CLI)
+
+func CLIWithStdin(stdin io.ReadCloser) CLIOption {
 	return func(cli *CLI) {
 		cli.stdin = stdin
 	}
 }
 
-func CLIWithStdout(stdout io.Writer) func(cli *CLI) {
+func CLIWithStdout(stdout io.Writer) CLIOption {
 	return func(cli *CLI) {
 		cli.stdout = stdout
 	}
 }
 
-func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
+func CLIWithNoColor(b bool) CLIOption {
+	return func(cli *CLI) {
+		cli.nocolor = b
+	}
+}
+
+func NewCLI(client *wctl.Client, opts ...CLIOption) (*CLI, error) {
 	// Set CLI callbacks, mainly loggers
 	cleanup, err := setEvents(client)
 	if err != nil {
@@ -363,6 +372,7 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 				log.ModuleSync,
 				log.ModuleContract,
 			),
+			log.NoColor(c.nocolor),
 		),
 	)
 
