@@ -33,6 +33,8 @@ import (
 	"github.com/perlin-network/wavelet/cmd/wavelet/node"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/pkg/errors"
+	"github.com/rs/zerolog"
+	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 	"go.uber.org/atomic"
 )
@@ -104,37 +106,9 @@ type Client struct {
 	// These functions would also return a callback to stop polling.
 	OnError
 
-<<<<<<< HEAD
 	// map of random number ID to function handlers
 	handlers  map[int64]interface{}
 	handlerMu sync.Mutex
-=======
-	// Accounts
-	OnBalanceUpdated
-	OnGasBalanceUpdated
-	OnNumPagesUpdated
-	OnStakeUpdated
-	OnRewardUpdated
-
-	// Network
-	OnPeerJoin
-	OnPeerLeave
-
-	// Consensus
-	OnProposal
-	OnFinalized
-
-	// Contract
-	OnContractGas
-	OnContractLog
-
-	// PollTransactions
-	OnTxApplied
-	OnTxGossipError
-	OnTxFailed
-
-	OnMetrics
->>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
 }
 
 func NewClient(config Config) (*Client, error) {
@@ -170,7 +144,6 @@ func NewClient(config Config) (*Client, error) {
 		handlers: map[int64]interface{}{},
 	}
 
-<<<<<<< HEAD
 	// Generate parsers and arenas
 	for i := 0; i < JSONPoolSize; i++ {
 		var a fastjson.Arena
@@ -180,16 +153,12 @@ func NewClient(config Config) (*Client, error) {
 		c.parsers.Put(&p)
 	}
 
-	// Get the nonce
-	n, err := c.GetSelfNonce()
-=======
 	ls, err := c.LedgerStatus()
->>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
 	if err != nil {
 		return c, errors.Wrap(err, "Failed to get self nonce")
 	}
 
-	c.Block.Store(ls.Block.Index)
+	c.Block.Store(ls.Block.Height)
 
 	// Start listening to consensus to track Block
 	cancel, err := c.pollConsensus()
@@ -256,6 +225,82 @@ func (c *Client) GetContractPages(contractID string, index *uint64) (string, err
 	return base64.StdEncoding.EncodeToString(res), err
 }
 
+// RequestJSON will make a request to a given path, with a given body and
+// return the JSON bytes result into `out` to unmarshal.
+func (c *Client) RequestJSON(path, method string, body log.MarshalableArena, out log.UnmarshalableValue) error {
+	var bytes []byte
+
+	if body != nil {
+		a := c.arenas.Get()
+		defer c.arenas.Put(a)
+
+		raw, err := body.MarshalArena(a)
+		if err != nil {
+			return err
+		}
+
+		bytes = raw
+	}
+
+	resBody, err := c.Request(path, method, bytes)
+	if err != nil {
+		return err
+	}
+
+	if out == nil {
+		return nil
+	}
+
+	p := c.parsers.Get()
+	defer c.parsers.Put(p)
+
+	v, err := p.ParseBytes(resBody)
+	if err != nil {
+		return errors.Wrap(err, "Failed to parse JSON")
+	}
+
+	return out.UnmarshalValue(v)
+}
+
+// Request will make a request to a given path, with a given body and return
+// the result in raw bytes.
+func (c *Client) Request(path string, method string, body []byte) ([]byte, error) {
+	req := fasthttp.AcquireRequest()
+	defer fasthttp.ReleaseRequest(req)
+
+	addr := c.url + path
+
+	req.URI().Update(addr)
+	req.Header.SetMethod(method)
+	req.Header.SetContentType("application/json")
+	req.Header.Set("Authorization", "Bearer "+c.APISecret)
+
+	if body != nil {
+		req.SetBody(body)
+	}
+
+	res := fasthttp.AcquireResponse()
+	defer fasthttp.ReleaseResponse(res)
+
+	if err := fasthttp.DoTimeout(req, res, 5*time.Second); err != nil {
+		return nil, err
+	}
+
+	if res.StatusCode() != http.StatusOK {
+		if err := ParseRequestError(res.Body()); err != nil {
+			return nil, err
+		}
+
+		return nil, &RequestError{
+			RequestBody:  req.Body(),
+			ResponseBody: res.Body(),
+			StatusCode:   res.StatusCode(),
+		}
+	}
+
+	return res.Body(), nil
+}
+
 func (c *Client) error(err error) {
 	if c.OnError != nil {
 		c.OnError(err)
@@ -293,4 +338,76 @@ func (c *Client) possibleError(v *fastjson.Value) bool {
 	}
 
 	return false
+}
+
+type MsgResponse struct {
+	Message string `json:"msg"`
+}
+
+var _ log.JSONObject = (*MsgResponse)(nil)
+
+func (r *MsgResponse) UnmarshalJSON(b []byte) error {
+	var parser fastjson.Parser
+
+	v, err := parser.ParseBytes(b)
+	if err != nil {
+		return err
+	}
+
+	r.Message = string(v.GetStringBytes("msg"))
+	return nil
+}
+
+func (r *MsgResponse) MarshalEvent(ev *zerolog.Event) {
+	ev.Msg(r.Message)
+}
+
+func (r *MsgResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
+	o := arena.NewObject()
+	o.Set("msg", arena.NewString(r.Message))
+
+	return o.MarshalTo(nil), nil
+}
+
+func (r *MsgResponse) UnmarshalValue(v *fastjson.Value) error {
+	r.Message = string(v.GetStringBytes("msg"))
+	return nil
+}
+
+type RequestError struct {
+	Status      string `json:"status"`
+	ErrorString string `json:"error"`
+
+	RequestBody  []byte
+	ResponseBody []byte
+	StatusCode   int
+}
+
+func ParseRequestError(b []byte) *RequestError {
+	var parser fastjson.Parser
+	var e RequestError
+
+	v, err := parser.ParseBytes(b)
+	if err != nil {
+		return nil
+	}
+
+	e.Status = string(v.GetStringBytes("status"))
+	e.ErrorString = string(v.GetStringBytes("error"))
+
+	if e.Status == "" || e.ErrorString == "" {
+		return nil
+	}
+
+	return &e
+}
+
+func (e *RequestError) Error() string {
+	if e.ErrorString != "" {
+		return e.ErrorString
+	}
+
+	return fmt.Sprintf(`Unexpected error code %d.
+	Request body: %s
+	Response body: %s`, e.StatusCode, e.RequestBody, e.ResponseBody)
 }

@@ -32,12 +32,12 @@ import (
 
 type Gossiper struct {
 	client  *skademlia.Client
-	metrics *Metrics
+	metrics *MetricsService
 
 	debouncer *debounce.Limiter
 }
 
-func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *Metrics) *Gossiper {
+func NewGossiper(ctx context.Context, client *skademlia.Client, metrics *MetricsService) *Gossiper {
 	g := &Gossiper{
 		client:  client,
 		metrics: metrics,

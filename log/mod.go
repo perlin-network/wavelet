@@ -127,8 +127,12 @@ func Consensus(event string) *zerolog.Logger {
 	return eventIf(event, consensus)
 }
 
-func Sync(event string) zerolog.Logger {
-	return syncer.With().Str(KeyEvent, event).Logger()
+func Sync(event string) *zerolog.Logger {
+	return eventIf(event, syncer)
+}
+
+func Metrics() *zerolog.Logger {
+	return eventIf("", metrics)
 }
 
 func eventIf(event string, logger zerolog.Logger) *zerolog.Logger {

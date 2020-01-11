@@ -20,11 +20,11 @@
 package main
 
 import (
-	"encoding/hex"
 	"fmt"
-	"github.com/perlin-network/wavelet/sys"
 	"io/ioutil"
 	"os"
+
+	"github.com/perlin-network/wavelet/sys"
 
 	"github.com/perlin-network/wavelet"
 	"gopkg.in/urfave/cli.v1"
@@ -40,48 +40,15 @@ func (cli *CLI) status(ctx *cli.Context) {
 			Msg("Failed to get the ledger status")
 		return
 	}
+	l.MarshalEvent(cli.logger.Info())
 
 	a, err := cli.client.GetSelf()
 	if err != nil {
 		cli.logger.Error().Err(err).
 			Msg("Failed to get self-account status")
+		return
 	}
-
-	preferredID := "N/A"
-
-	if l.Preferred != nil {
-		preferredID = hex.EncodeToString(l.Preferred.ID[:])
-	}
-
-	var peers = make([]string, 0, len(l.Peers))
-	for _, p := range l.Peers {
-		peers = append(peers, fmt.Sprintf("%s[%x]", p.Address, p.PublicKey))
-	}
-
-	cli.logger.Info().
-		Uint64("block_height", l.Block.Height).
-		Hex("block_id", l.Block.ID[:]).
-		Hex("user_id", l.PublicKey[:]).
-		Uint64("balance", a.Balance).
-		Uint64("stake", a.Stake).
-		Uint64("reward", a.Reward).
-		Strs("peers", peers).
-<<<<<<< HEAD
-		Int("num_tx", l.NumTx).
-		Int("num_tx_in_store", l.NumTxInStore).
-		Uint64("num_accounts_in_store", l.NumAccounts).
-		Uint64("client_nonce", cli.client.Nonce.Load()).
-=======
-		Uint64("num_tx", l.NumTx).
-		Uint64("num_missing_tx", l.NumMissingTx).
-		Uint64("num_tx_in_store", l.NumTxInStore).
-		Uint64("num_accounts_in_store", l.AccountsLen).
->>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
-		Uint64("client_block", cli.client.Block.Load()).
-		Str("sync_status", l.SyncStatus).
-		Str("preferred_block_id", preferredID).
-		Int("preferred_votes", l.PreferredVotes).
-		Msg("Here is the current status of your node.")
+	a.MarshalEvent(cli.logger.Info())
 }
 
 func (cli *CLI) pay(ctx *cli.Context) {
@@ -109,10 +76,7 @@ func (cli *CLI) pay(ctx *cli.Context) {
 			Msg("Failed to pay to recipient.")
 		return
 	}
-
-	cli.logger.Info().
-		Hex("tx_id", tx.ID[:]).
-		Msgf("Paid to recipient.")
+	tx.MarshalEvent(cli.logger.Info())
 }
 
 func (cli *CLI) call(ctx *cli.Context) {
@@ -194,11 +158,7 @@ func (cli *CLI) call(ctx *cli.Context) {
 		cli.logger.Err(err).Msg("Failed to call function.")
 		return
 	}
-
-	cli.logger.Info().
-		Str("recipient", cmd[0]).
-		Hex("tx_id", tx.ID[:]).
-		Msgf("Smart contract function called.")
+	tx.MarshalEvent(cli.logger.Info())
 }
 
 func (cli *CLI) find(ctx *cli.Context) {
@@ -223,21 +183,9 @@ func (cli *CLI) find(ctx *cli.Context) {
 
 	switch {
 	case account != nil:
-		cli.logger.Info().
-			Hex("public_key", account.ID[:]).
-			Uint64("balance", account.Balance).
-			Uint64("gas_balance", account.GasBalance).
-			Uint64("stake", account.Stake).
-			Uint64("reward", account.Reward).
-			Bool("is_contract", account.IsContract).
-			Uint64("num_pages", account.NumPages).
-			Msgf("Account: %s", cmd[0])
+		account.MarshalEvent(cli.logger.Info())
 	case tx != nil:
-		cli.logger.Info().
-			Hex("sender", tx.Sender[:]).
-			Uint64("nonce", tx.Nonce).
-			Uint8("tag", tx.Tag).
-			Msgf("Transaction: %s", cmd[0])
+		tx.MarshalEvent(cli.logger.Info())
 	}
 }
 
@@ -265,10 +213,7 @@ func (cli *CLI) spawn(ctx *cli.Context) {
 		cli.logger.Err(err).Msg("Failed to spawn smart contract.")
 		return
 	}
-
-	cli.logger.Info().
-		Hex("tx_id", tx.ID[:]).
-		Msgf("Smart contract spawned.")
+	tx.MarshalEvent(cli.logger.Info())
 }
 
 func (cli *CLI) depositGas(ctx *cli.Context) {
@@ -296,10 +241,7 @@ func (cli *CLI) depositGas(ctx *cli.Context) {
 			Msg("Failed to deposit gas.")
 		return
 	}
-
-	cli.logger.Info().
-		Hex("tx_id", tx.ID[:]).
-		Msgf("Gas deposited.")
+	tx.MarshalEvent(cli.logger.Info())
 }
 
 func (cli *CLI) placeStake(ctx *cli.Context) {
@@ -322,10 +264,7 @@ func (cli *CLI) placeStake(ctx *cli.Context) {
 			Msg("Failed to place stake.")
 		return
 	}
-
-	cli.logger.Info().
-		Hex("tx_id", tx.ID[:]).
-		Msgf("Stake placed.")
+	tx.MarshalEvent(cli.logger.Info())
 }
 
 func (cli *CLI) withdrawStake(ctx *cli.Context) {
@@ -348,10 +287,7 @@ func (cli *CLI) withdrawStake(ctx *cli.Context) {
 			Msg("Failed to withdraw stake.")
 		return
 	}
-
-	cli.logger.Info().
-		Hex("tx_id", tx.ID[:]).
-		Msgf("Stake withdrew.")
+	tx.MarshalEvent(cli.logger.Info())
 }
 
 func (cli *CLI) withdrawReward(ctx *cli.Context) {
@@ -374,10 +310,7 @@ func (cli *CLI) withdrawReward(ctx *cli.Context) {
 			Msg("Failed to withdraw reward.")
 		return
 	}
-
-	cli.logger.Info().
-		Hex("tx_id", tx.ID[:]).
-		Msgf("Reward withdrew.")
+	tx.MarshalEvent(cli.logger.Info())
 }
 
 func (cli *CLI) connect(ctx *cli.Context) {
@@ -396,8 +329,7 @@ func (cli *CLI) connect(ctx *cli.Context) {
 
 		return
 	}
-
-	cli.logger.Info().Msg(m.Message)
+	m.MarshalEvent(cli.logger.Info())
 }
 
 func (cli *CLI) disconnect(ctx *cli.Context) {
@@ -416,8 +348,7 @@ func (cli *CLI) disconnect(ctx *cli.Context) {
 
 		return
 	}
-
-	cli.logger.Info().Msg(m.Message)
+	m.MarshalEvent(cli.logger.Info())
 }
 
 func (cli *CLI) restart(ctx *cli.Context) {
@@ -435,8 +366,7 @@ func (cli *CLI) restart(ctx *cli.Context) {
 
 		return
 	}
-
-	cli.logger.Info().Msg(m.Message)
+	m.MarshalEvent(cli.logger.Info())
 }
 
 func (cli *CLI) version(ctx *cli.Context) {

@@ -85,8 +85,7 @@ func (g *Gateway) restart(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	body := ctx.PostBody()
-	if len(body) != 0 {
+	if body := ctx.PostBody(); len(body) != 0 {
 		parser := g.parserPool.Get()
 		v, err := parser.ParseBytes(body)
 		g.parserPool.Put(parser)

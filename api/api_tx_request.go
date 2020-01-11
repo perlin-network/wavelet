@@ -5,7 +5,9 @@ import (
 
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
+	"github.com/perlin-network/wavelet/sys"
 	"github.com/rs/zerolog"
+	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 )
 
@@ -71,4 +73,34 @@ func (s *TxRequest) MarshalEvent(ev *zerolog.Event) {
 	ev.Int("payload_len", len(s.Payload))
 
 	ev.Msg("Transaction request")
+}
+
+func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
+	req := new(TxRequest)
+
+	parser := g.parserPool.Get()
+	defer g.parserPool.Put(parser)
+
+	if err := req.bind(parser, ctx.PostBody()); err != nil {
+		g.renderError(ctx, ErrBadRequest(err))
+		return
+	}
+
+	tx := wavelet.NewSignedTransaction(
+		req.Sender, req.Nonce, req.Block,
+		sys.Tag(req.Tag), req.Payload, req.Signature,
+	)
+
+	snapshot := g.Ledger.Snapshot()
+	if err := wavelet.ValidateTransaction(snapshot, tx); err != nil {
+		g.renderError(ctx, ErrBadRequest(err))
+
+		return
+	}
+
+	g.Ledger.AddTransaction(tx)
+
+	g.render(ctx, &TxResponse{
+		ID: tx.ID,
+	})
 }

@@ -1,7 +1,6 @@
 package api
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -14,7 +13,7 @@ import (
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
-	"github.com/perlin-network/wavelet/debounce"
+	"github.com/perlin-network/wavelet/internal/debounce"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/pkg/errors"
@@ -96,7 +95,7 @@ func New(opts *Config) *Gateway {
 	// Setup websocket logging sinks.
 	sinkNetwork := g.registerWebsocketSink("ws://network/", nil)
 	sinkConsensus := g.registerWebsocketSink("ws://consensus/", nil)
-	sinkStake := g.registerWebsocketSink("ws://stake/?id=account_id", nil)
+	// sinkStake := g.registerWebsocketSink("ws://stake/?id=account_id", nil)
 	sinkAccounts := g.registerWebsocketSink(
 		"ws://accounts/?id=account_id",
 		debounce.NewFactory(debounce.TypeDeduper,
@@ -137,8 +136,6 @@ func New(opts *Config) *Gateway {
 		g.poll(sinkNetwork), true)
 	g.routeWithMiddleware("GET", "/poll/consensus",
 		g.poll(sinkConsensus), true)
-	g.routeWithMiddleware("GET", "/poll/stake",
-		g.poll(sinkStake), true)
 	g.routeWithMiddleware("GET", "/poll/accounts",
 		g.poll(sinkAccounts), true)
 	g.routeWithMiddleware("GET", "/poll/contract",
@@ -175,9 +172,6 @@ func New(opts *Config) *Gateway {
 		g.getTransaction, false)
 	g.routeWithMiddleware("GET", "/tx",
 		g.listTransactions, true)
-
-	g.routeWithMiddleware("GET", "/nonce/:id",
-		g.getAccountNonce, false)
 
 	// Connectivity endpoints
 	g.routeWithMiddleware("POST", "/node/connect",
@@ -356,10 +350,6 @@ func (g *Gateway) registerWebsocketSink(rawURL string, factory *debounce.Factory
 		leave:   make(chan *client),
 	}
 
-	if factory != nil {
-		sink.debouncer = factory.Init(context.Background(), debounce.WithAction(sink.debounce))
-	}
-
 	go sink.run()
 
 	g.sinksLock.Lock()
@@ -383,7 +373,10 @@ func (g *Gateway) Write(buf []byte) (n int, err error) {
 		return n, errors.Errorf("all logs must have the field %q", log.KeyModule)
 	}
 
+	g.sinksLock.RLock()
 	sink, exists := g.sinks[string(mod)]
+	g.sinksLock.RUnlock()
+
 	if !exists {
 		return len(buf), nil
 	}

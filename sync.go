@@ -3,6 +3,11 @@ package wavelet
 import (
 	"bytes"
 	"context"
+	"io"
+	"math/rand"
+	"sync"
+	"time"
+
 	"github.com/djherbis/buffer"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/conf"
@@ -14,10 +19,6 @@ import (
 	"github.com/rs/zerolog"
 	"go.uber.org/atomic"
 	"golang.org/x/crypto/blake2b"
-	"io"
-	"math/rand"
-	"sync"
-	"time"
 )
 
 type SyncManager struct {
@@ -27,7 +28,7 @@ type SyncManager struct {
 
 	filePool *filebuffer.Pool
 
-	logger zerolog.Logger
+	logger *zerolog.Logger
 	exit   chan struct{}
 	exited atomic.Bool
 

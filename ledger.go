@@ -45,25 +45,16 @@ import (
 )
 
 var (
-<<<<<<< HEAD
-	ErrOutOfSync     = errors.New("Node is currently ouf of sync. Please try again later.")
-	ErrAlreadyExists = errors.New("transaction already exists in the graph")
-	ErrMissingTx     = errors.New("missing transaction")
-=======
+	ErrOutOfSync          = errors.New("Node is currently ouf of sync. Please try again later.")
+	ErrAlreadyExists      = errors.New("transaction already exists in the graph")
 	ErrMissingTx          = errors.New("missing transaction")
 	ErrTxInvalidSignature = errors.New("bad tx signature")
->>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
 )
 
 type Ledger struct {
 	client  *skademlia.Client
-<<<<<<< HEAD
 	metrics *MetricsService
-	indexer *Indexer
-=======
-	metrics *Metrics
 	indexer *radix.Indexer
->>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
 
 	accounts     *Accounts
 	blocks       *Blocks
@@ -144,21 +135,13 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 		genesis := performInception(accounts.tree, cfg.Genesis)
 
 		if err := accounts.Commit(nil); err != nil {
-<<<<<<< HEAD
-			log.PanicNode(err, "BUG: accounts.Commit")
-=======
 			return nil, errors.Wrap(err, "error committing accounts from genesis")
->>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
 		}
 
 		ptr := &genesis
 
 		if _, err := blocks.Save(ptr); err != nil {
-<<<<<<< HEAD
-			log.PanicNode(err, "BUG: blocks.Save")
-=======
 			return nil, errors.Wrap(err, "error saving genesis block to db")
->>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
 		}
 
 		block = ptr
@@ -166,17 +149,8 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 		block = blocks.Latest()
 	}
 
-<<<<<<< HEAD
-	if block == nil {
-		log.PanicNode(err, "BUG: could not find genesis, or storage is corrupted.")
-		return nil
-	}
-
-	transactions := NewTransactions(block.Index)
-=======
 	transactions := NewTransactions(*block)
 	transactions.BatchMarkFinalized(LoadFinalizedTransactionIDs(accounts.tree)...)
->>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
 
 	gossiper := NewGossiper(context.TODO(), client, metrics)
 	finalizer := NewSnowball()
@@ -280,17 +254,9 @@ func NewLedger(kv store.KV, client *skademlia.Client, opts ...Option) (*Ledger, 
 
 	ledger.stallDetector = stallDetector
 
-<<<<<<< HEAD
-	ledger.queueWorkerPool.Start(16)
-	ledger.PerformConsensus()
-
-	go ledger.SyncToLatestBlock()
-	go ledger.PushSendQuota()
-=======
 	ledger.queryWorkerPool.Start(16)
 
 	go ledger.syncManager.Start()
->>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
 
 	return ledger, nil
 }
@@ -309,12 +275,8 @@ func (l *Ledger) Close() {
 		l.cancelGC()
 	}
 
-<<<<<<< HEAD
-	l.queueWorkerPool.Stop()
-=======
 	l.queryWorkerPool.Stop()
 
->>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
 	l.stallDetector.Stop()
 
 	l.collapseResultsLogger.Stop()
@@ -446,24 +408,13 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 			continue
 		}
 
-<<<<<<< HEAD
-		l.transactionsSyncIndexLock.RLock()
-		cf := l.transactionsSyncIndex.Encode()
-		l.transactionsSyncIndexLock.RUnlock()
-
-		if err != nil {
-			log.Error(log.Sync("pull_tx"), err,
-				"failed to marshal bloom filter")
-=======
-		logger := log.Sync("sync_tx")
-
 		l.transactionFilterLock.RLock()
 		cf := l.transactionFilter.MarshalBinary()
 		l.transactionFilterLock.RUnlock()
 
 		if err != nil {
-			logger.Error().Err(err).Msg("failed to marshal set membership filter data")
->>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
+			log.Error(log.Sync("sync_tx"), err,
+				"failed to marshal set membership filter data")
 			continue
 		}
 
@@ -488,35 +439,27 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 
 				stream, err := NewWaveletClient(conn).SyncTransactions(ctx)
 				if err != nil {
-					log.Error(log.Sync("pull_tx"), err,
+					log.Error(log.Sync("sync_tx"), err,
 						"failed to create sync transactions stream")
 					return
 				}
 
 				defer func() {
 					if err := stream.CloseSend(); err != nil {
-<<<<<<< HEAD
-						log.Error(log.Sync("pull_tx"), err,
-							"failed to send sync transactions bloom filter")
-=======
-						logger.Error().Err(err).Msg("failed to close sync transaction stream")
->>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
+						log.Error(log.Sync("sync_tx"), err,
+							"failed to close sync transaction stream")
 					}
 				}()
 
 				if err := stream.Send(bfReq); err != nil {
-<<<<<<< HEAD
-					log.Error(log.Sync("pull_tx"), err,
-						"failed to send sync transactions bloom filter")
-=======
-					logger.Error().Err(err).Msg("failed to send set membership filter data")
->>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
+					log.Error(log.Sync("sync_tx"), err,
+						"failed to send set membership filter data")
 					return
 				}
 
 				res, err := stream.Recv()
 				if err != nil {
-					log.Error(log.Sync("pull_tx"), err,
+					log.Error(log.Sync("sync_tx"), err,
 						"failed to receive sync transactions header")
 					return
 				}
@@ -527,14 +470,14 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 				}
 
 				if count > conf.GetTXSyncLimit() {
-					log.Sync("pull_tx").Debug().
+					log.Sync("sync_tx").Debug().
 						Uint64("count", count).
 						Str("peer_address", conn.Target()).
 						Msg("Bad number of transactions would be received")
 					return
 				}
 
-				log.Sync("pull_tx").Debug().
+				log.Sync("sync_tx").Debug().
 					Uint64("count", count).
 					Msg("Requesting transaction(s) to sync.")
 
@@ -548,23 +491,15 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 					}
 
 					if err := stream.Send(&TransactionsSyncRequest{Data: &req}); err != nil {
-<<<<<<< HEAD
-						log.Error(log.Sync("pull_tx"), err,
-							"failed to receive sync transactions header")
-=======
-						logger.Error().Err(err).Msg("failed to send sync transactions request")
->>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
+						log.Error(log.Sync("sync_tx"), err,
+							"failed to send sync transactions request")
 						return
 					}
 
 					res, err := stream.Recv()
 					if err != nil {
-<<<<<<< HEAD
-						log.Error(log.Sync("pull_tx"), err,
-							"failed to receive sync transactions header")
-=======
-						logger.Error().Err(err).Msg("failed to receive sync transactions response")
->>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
+						log.Error(log.Sync("sync_tx"), err,
+							"failed to receive sync transactions response")
 						return
 					}
 
@@ -578,13 +513,13 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 					for _, txBody := range txResponse.Transactions {
 						tx, err := UnmarshalTransaction(bytes.NewReader(txBody))
 						if err != nil {
-							log.Error(log.Sync("pull_tx"), err,
+							log.Error(log.Sync("sync_tx"), err,
 								"failed to unmarshal synced transaction")
 							continue
 						}
 
 						if err := ValidateTransaction(snapshot, tx); err != nil && err != ErrContractAlreadyExists {
-							logger.Error().
+							log.NewError(log.Sync("sync_tx")).
 								Err(err).
 								Hex("tx_id", tx.ID[:]).
 								Msg("transaction validation error")
@@ -596,7 +531,7 @@ func (l *Ledger) SyncTransactions() { // nolint:gocognit
 
 					downloadedNum := len(transactions)
 					if downloadedNum == 0 {
-						logger.Warn().
+						log.Sync("sync_tx").Warn().
 							Uint64("transaction_to_sync", count).
 							Msg("No transactions to add while there are still missing transactions")
 						return
@@ -682,7 +617,7 @@ func (l *Ledger) PullMissingTransactions() {
 				for _, buf := range batch.Transactions {
 					tx, err := UnmarshalTransaction(bytes.NewReader(buf))
 					if err != nil {
-						logger.Error().
+						log.NewError(log.Sync("pull_missing_tx")).
 							Err(err).
 							Hex("tx_id", tx.ID[:]).
 							Msg("error unmarshaling downloaded tx")
@@ -1049,58 +984,6 @@ func (l *Ledger) collapseTransactions(
 
 // LogChanges logs all changes made to an AVL tree state snapshot for the purposes
 // of logging out changes to account state to Wavelet's HTTP API.
-func (l *Ledger) LogChanges(snapshot *avl.Tree, lastBlockIndex uint64) {
-	var (
-		balanceKey    = append(keyAccounts[:], keyAccountBalance[:]...)
-		gasBalanceKey = append(keyAccounts[:], keyAccountContractGasBalance[:]...)
-		stakeKey      = append(keyAccounts[:], keyAccountStake[:]...)
-		rewardKey     = append(keyAccounts[:], keyAccountReward[:]...)
-		numPagesKey   = append(keyAccounts[:], keyAccountContractNumPages[:]...)
-	)
-
-	snapshot.IterateLeafDiff(lastBlockIndex, func(key, value []byte) bool {
-		switch {
-		case bytes.HasPrefix(key, balanceKey):
-			var id AccountID
-			copy(id[:], key[len(balanceKey):])
-
-			log.Info(log.Accounts("balance_updated"), AccountBalanceUpdated{
-				AccountID: id,
-				Balance:   binary.LittleEndian.Uint64(value),
-			})
-		case bytes.HasPrefix(key, gasBalanceKey):
-			var id AccountID
-			copy(id[:], key[len(gasBalanceKey):])
-
-			log.Info(log.Accounts("gas_balance_updated"), AccountGasBalanceUpdated{
-				AccountID:  id,
-				GasBalance: binary.LittleEndian.Uint64(value),
-			})
-		case bytes.HasPrefix(key, stakeKey):
-			var id AccountID
-			copy(id[:], key[len(stakeKey):])
-
-			log.Info(log.Accounts("stake_updated"), AccountStakeUpdated{
-				AccountID: id,
-				Stake:     binary.LittleEndian.Uint64(value),
-			})
-		case bytes.HasPrefix(key, rewardKey):
-			var id AccountID
-			copy(id[:], key[len(rewardKey):])
-
-			log.Info(log.Accounts("reward_updated"), AccountRewardUpdated{
-				AccountID: id,
-				Reward:    binary.LittleEndian.Uint64(value),
-			})
-		case bytes.HasPrefix(key, numPagesKey):
-			var id AccountID
-			copy(id[:], key[len(numPagesKey):])
-
-			log.Info(log.Accounts("num_pages_updated"), AccountNumPagesUpdated{
-				AccountID: id,
-				NumPages:  binary.LittleEndian.Uint64(value),
-			})
-
 func (l *Ledger) LogChanges(c *collapseResults) {
 	balanceLogger := log.Accounts("balance_updated")
 	gasBalanceLogger := log.Accounts("gas_balance_updated")
@@ -1111,28 +994,25 @@ func (l *Ledger) LogChanges(c *collapseResults) {
 		if bal, ok := c.ctx.balances[id]; ok {
 			log.Info(balanceLogger, AccountBalanceUpdated{
 				AccountID: id,
-				Balance:   binary.LittleEndian.Uint64(value),
+				Balance:   bal,
 			})
-		}
 
-		 if stake, ok := c.ctx.stakes[id]; ok {
+		} else if stake, ok := c.ctx.stakes[id]; ok {
 			log.Info(stakeLogger, AccountStakeUpdated{
 				AccountID: id,
-				Stake:     binary.LittleEndian.Uint64(value),
+				Stake:     stake,
 			})
-		}
 
-		if reward, ok := c.ctx.rewards[id]; ok {
+		} else if reward, ok := c.ctx.rewards[id]; ok {
 			log.Info(rewardLogger, AccountRewardUpdated{
 				AccountID: id,
-				Reward:    binary.LittleEndian.Uint64(value),
+				Reward:    reward,
 			})
-		}
 
-		if gasBal, ok := c.ctx.contractGasBalances[id]; ok {
-		log.Info(gasBalanceLogger, AccountGasBalanceUpdated{
+		} else if gasBal, ok := c.ctx.contractGasBalances[id]; ok {
+			log.Info(gasBalanceLogger, AccountGasBalanceUpdated{
 				AccountID:  id,
-				GasBalance: binary.LittleEndian.Uint64(value),
+				GasBalance: gasBal,
 			})
 		}
 	}

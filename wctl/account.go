@@ -32,38 +32,3 @@ func (c *Client) RecipientIsContract(recipient [32]byte) bool {
 
 	return a.IsContract
 }
-<<<<<<< HEAD
-=======
-
-type Account struct {
-	PublicKey  [32]byte `json:"public_key"`
-	Balance    uint64   `json:"balance"`
-	GasBalance uint64   `json:"gas_balance"`
-	Stake      uint64   `json:"stake"`
-	Reward     uint64   `json:"reward"`
-	IsContract bool     `json:"is_contract"`
-	NumPages   uint64   `json:"num_mem_pages,omitempty"`
-}
-
-func (a *Account) UnmarshalJSON(b []byte) error {
-	var parser fastjson.Parser
-
-	v, err := parser.ParseBytes(b)
-	if err != nil {
-		return err
-	}
-
-	if err := jsonHex(v, a.PublicKey[:], "public_key"); err != nil {
-		return err
-	}
-
-	a.Balance = v.GetUint64("balance")
-	a.GasBalance = v.GetUint64("gas_balance")
-	a.Stake = v.GetUint64("stake")
-	a.Reward = v.GetUint64("reward")
-	a.IsContract = v.GetBool("is_contract")
-	a.NumPages = v.GetUint64("num_mem_pages")
-
-	return nil
-}
->>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01

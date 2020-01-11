@@ -16,10 +16,9 @@ type LedgerStatus struct {
 	Address        string                 `json:"address"`
 	NumAccounts    uint64                 `json:"num_accounts"`
 	PreferredVotes int                    `json:"preferred_votes"`
-	SyncStatus     string                 `json:"sync_status"`
 
 	Block     LedgerStatusBlock  `json:"block"`
-	Preferred *LedgerStatusBlock `json:"preferred"`
+	Preferred *LedgerStatusBlock `json:"preferred,omitempty"`
 
 	NumTx              int `json:"num_tx"`
 	NumTxInStore       int `json:"num_tx_in_store"`
@@ -54,7 +53,6 @@ func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 		Address:        g.Client.ID().Address(),
 		NumAccounts:    wavelet.ReadAccountsLen(snapshot),
 		PreferredVotes: g.Ledger.Finalizer().Progress(),
-		SyncStatus:     g.Ledger.SyncStatus(),
 
 		Block: LedgerStatusBlock{
 			MerkleRoot: block.Merkle,
@@ -100,7 +98,6 @@ func (s *LedgerStatus) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	log.ObjectAny(arena, o, "address", s.Address)
 	log.ObjectAny(arena, o, "num_accounts", s.NumAccounts)
 	log.ObjectAny(arena, o, "preferred_votes", s.PreferredVotes)
-	log.ObjectAny(arena, o, "sync_status", s.SyncStatus)
 
 	{
 		block := arena.NewObject()
@@ -155,7 +152,6 @@ func (s *LedgerStatus) UnmarshalValue(v *fastjson.Value) error {
 	s.Address = log.ValueString(v, "address")
 	s.NumAccounts = v.GetUint64("num_accounts")
 	s.PreferredVotes = v.GetInt("preferred_votes")
-	s.SyncStatus = log.ValueString(v, "sync_status")
 
 	// Parse block
 
@@ -197,7 +193,6 @@ func (s *LedgerStatus) MarshalEvent(ev *zerolog.Event) {
 	ev.Str("address", s.Address)
 	ev.Uint64("num_accounts", s.NumAccounts)
 	ev.Int("preferred_votes", s.PreferredVotes)
-	ev.Str("sync_status", s.SyncStatus)
 
 	ev.Hex("block_merkle_root", s.Block.MerkleRoot[:])
 	ev.Hex("block_id", s.Block.ID[:])

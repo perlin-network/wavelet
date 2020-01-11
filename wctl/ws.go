@@ -24,6 +24,17 @@ func parseMod(path string) string {
 	return parts[len(parts)-1]
 }
 
+// Docs: https://wavelet.perlin.net/docs/ws
+
+type (
+	// Other callbacks always take a pointer to a structure as the only
+	// argument. An example:
+	//     func(*api.NetworkJoin)
+
+	// OnError called on any WS error
+	OnError = func(error)
+)
+
 // EstablishWS will create a websocket connection.
 func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 	prot := "ws"

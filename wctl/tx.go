@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"net/url"
 	"strconv"
+	"time"
 
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/wavelet/api"

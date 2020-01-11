@@ -25,8 +25,6 @@ import (
 	"fmt"
 	"io"
 
-	"io"
-
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/log"

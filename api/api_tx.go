@@ -20,35 +20,6 @@ type TxResponse struct {
 
 var _ log.JSONObject = (*TxResponse)(nil)
 
-func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
-	req := new(TxRequest)
-
-	if g.Ledger != nil && g.Ledger.TakeSendQuota() == false {
-		g.renderError(ctx, ErrInternal(errors.New("rate limit")))
-		return
-	}
-
-	parser := g.parserPool.Get()
-	defer g.parserPool.Put(parser)
-
-	if err := req.bind(parser, ctx.PostBody()); err != nil {
-		g.renderError(ctx, ErrBadRequest(err))
-		return
-	}
-
-	tx := wavelet.NewSignedTransaction(
-		req.Sender, req.Nonce, req.Block,
-		sys.Tag(req.Tag), req.Payload, req.Signature,
-	)
-
-	// TODO(kenta): check signature and nonce
-	g.Ledger.AddTransaction(true, tx)
-
-	g.render(ctx, &TxResponse{
-		ID: tx.ID,
-	})
-}
-
 func (s *TxResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 	log.ObjectAny(arena, o, "id", s.ID[:])
@@ -70,16 +41,35 @@ func (s *TxResponse) UnmarshalValue(v *fastjson.Value) error {
 */
 
 type Transaction struct {
-	ID     wavelet.TransactionID `json:"id"`
-	Sender wavelet.AccountID     `json:"sender"`
-	// Status    string `json:"status"`
-	Nonce     uint64            `json:"nonce"`
-	Tag       uint8             `json:"tag"`
-	Payload   []byte            `json:"payload"` // base64
-	Signature wavelet.Signature `json:"signature"`
+	ID        wavelet.TransactionID `json:"id"`
+	Sender    wavelet.AccountID     `json:"sender"`
+	Status    string                `json:"status"`
+	Nonce     uint64                `json:"nonce"`
+	Block     uint64                `json:"height"`
+	Tag       sys.Tag               `json:"tag"`
+	Payload   []byte                `json:"payload"` // base64
+	Signature wavelet.Signature     `json:"signature"`
 }
 
 var _ log.JSONObject = (*Transaction)(nil)
+
+func convertTransaction(tx *wavelet.Transaction, status string) Transaction {
+	return Transaction{
+		ID:        tx.ID,
+		Sender:    tx.Sender,
+		Status:    status,
+		Nonce:     tx.Nonce,
+		Block:     tx.Block,
+		Tag:       tx.Tag,
+		Payload:   tx.Payload,
+		Signature: tx.Signature,
+	}
+}
+
+const (
+	StatusApplied  = "applied"
+	StatusReceived = "received"
+)
 
 func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 	param, ok := ctx.UserValue("id").(string)
@@ -108,14 +98,14 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	g.render(ctx, &Transaction{
-		ID:        tx.ID,
-		Sender:    tx.Sender,
-		Nonce:     tx.Nonce,
-		Tag:       uint8(tx.Tag),
-		Payload:   tx.Payload,
-		Signature: tx.Signature,
-	})
+	var converted = convertTransaction(tx, "")
+	if tx.Block < g.Ledger.Blocks().Latest().Index {
+		converted.Status = StatusApplied
+	} else {
+		converted.Status = StatusReceived
+	}
+
+	g.render(ctx, &converted)
 }
 
 func (s *Transaction) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
@@ -148,7 +138,7 @@ func (s *Transaction) UnmarshalValue(v *fastjson.Value) error {
 	log.ValueHex(v, s.Signature, "signature")
 
 	s.Nonce = v.GetUint64("nonce")
-	s.Tag = uint8(v.GetUint("tag"))
+	s.Tag = sys.Tag(v.GetUint("tag"))
 
 	pl, _ := log.ValueBase64(v, "payload")
 	s.Payload = pl
@@ -164,7 +154,7 @@ func (s *Transaction) MarshalEvent(ev *zerolog.Event) {
 	ev.Hex("signature", s.Signature[:])
 
 	ev.Uint64("nonce", s.Nonce)
-	ev.Uint8("tag", s.Tag)
+	ev.Uint8("tag", uint8(s.Tag))
 
 	ev.Int("payload_len", len(s.Payload))
 }
@@ -178,71 +168,78 @@ type TransactionList []Transaction
 var _ log.JSONObject = (*TransactionList)(nil)
 
 func (g *Gateway) listTransactions(ctx *fasthttp.RequestCtx) {
-	// TODO
+	var (
+		sender        wavelet.AccountID
+		offset, limit uint64
+		err           error
+	)
 
-	/*
-		var sender wavelet.AccountID
-		var offset, limit uint64
-		var err error
-
-		queryArgs := ctx.QueryArgs()
-		if raw := string(queryArgs.Peek("sender")); len(raw) > 0 {
-			slice, err := hex.DecodeString(raw)
-			if err != nil {
-				g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "sender ID must be presented as valid hex")))
-				return
-			}
-
-			if len(slice) != wavelet.SizeAccountID {
-				g.renderError(ctx, ErrBadRequest(errors.Errorf("sender ID must be %d bytes long", wavelet.SizeAccountID)))
-				return
-			}
-
-			copy(sender[:], slice)
+	queryArgs := ctx.QueryArgs()
+	if raw := string(queryArgs.Peek("sender")); len(raw) > 0 {
+		slice, err := hex.DecodeString(raw)
+		if err != nil {
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(
+				err, "sender ID must be presented as valid hex")))
+			return
 		}
 
-		if raw := string(queryArgs.Peek("offset")); len(raw) > 0 {
-			offset, err = strconv.ParseUint(raw, 10, 64)
-
-			if err != nil {
-				g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse offset")))
-				return
-			}
+		if len(slice) != wavelet.SizeAccountID {
+			g.renderError(ctx, ErrBadRequest(errors.Errorf(
+				"sender ID must be %d bytes long", wavelet.SizeAccountID)))
+			return
 		}
 
-		if raw := string(queryArgs.Peek("limit")); len(raw) > 0 {
-			limit, err = strconv.ParseUint(raw, 10, 64)
+		copy(sender[:], slice)
+	}
 
-			if err != nil {
-				g.renderError(ctx, ErrBadRequest(errors.Wrap(err, "could not parse limit")))
-				return
-			}
+	if raw := string(queryArgs.Peek("offset")); len(raw) > 0 {
+		offset, err = strconv.ParseUint(raw, 10, 64)
+
+		if err != nil {
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(
+				err, "could not parse offset")))
+			return
 		}
+	}
 
-		if limit > maxPaginationLimit {
-			limit = maxPaginationLimit
+	if raw := string(queryArgs.Peek("limit")); len(raw) > 0 {
+		limit, err = strconv.ParseUint(raw, 10, 64)
+
+		if err != nil {
+			g.renderError(ctx, ErrBadRequest(errors.Wrap(
+				err, "could not parse limit")))
+			return
 		}
+	}
 
-	*/
+	if limit > maxPaginationLimit {
+		limit = maxPaginationLimit
+	}
 
 	var transactions TransactionList
+	var latestBlockIndex = g.Ledger.Blocks().Latest().Index
 
-	/*
-
-		g.Ledger.Transactions().Iterate
-		var rootDepth = g.Ledger.Graph().RootDepth()
-
-		for _, tx := range g.Ledger.Graph().ListTransactions(offset, limit, sender) {
-			status := "received"
-
-			if tx.Depth <= rootDepth {
-				status = "applied"
-			}
-
-			transactions = append(transactions, &transaction{tx: tx, status: status})
+	// TODO: maybe there is be a better way to do this? Currently, this iterates
+	// the entire transaction list
+	g.Ledger.Transactions().Iterate(func(tx *wavelet.Transaction) bool {
+		if tx.Block < offset {
+			return true
+		}
+		if uint64(len(transactions)) >= limit {
+			return true
+		}
+		if sender != wavelet.ZeroAccountID && tx.Sender != sender {
+			return true
 		}
 
-	*/
+		var status = StatusReceived
+		if tx.Block <= latestBlockIndex {
+			status = StatusApplied
+		}
+
+		transactions = append(transactions, convertTransaction(tx, status))
+		return true
+	})
 
 	g.render(ctx, &transactions)
 }
