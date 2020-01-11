@@ -2,6 +2,7 @@ BINOUT = $(shell pwd)/build
 
 R = localhost:5000
 T = latest
+G = $(shell git rev-parse --short HEAD)
 
 protoc:
 	protoc --gogofaster_out=plugins=grpc:. -I=. rpc.proto
@@ -10,10 +11,10 @@ protoc-docker:
 	docker run --rm -v `pwd`:/src znly/protoc --gogofaster_out=plugins=grpc:. -I=. src/rpc.proto
 
 integration_test:
-	go test -tags=integration -v -coverprofile=coverage_integration.txt -covermode=atomic -timeout=60m -parallel 1 ./...
+	go test -tags=integration -v -coverprofile=coverage_integration.txt -covermode=atomic -timeout=15m -parallel 1 ./...
 
 unit_test:
-	go test -tags=unit -v -coverprofile=coverage_unit.txt -covermode=atomic -race ./...
+	go test -tags=unit -v -coverprofile=coverage_unit.txt -covermode=atomic -timeout=5m -race ./...
 
 test: unit_test integration_test
 
@@ -34,7 +35,7 @@ upload:
 	rsync -avz cmd/graph/main root@104.248.44.250:/root
 
 docker:
-	docker build -t wavelet:$(T) .
+	docker build --build-arg=GIT_COMMIT=$(G) -t wavelet:$(T) .
 ifneq ($(R),)
 	docker tag wavelet:$(T) $(R)/wavelet:$(T)
 	docker push $(R)/wavelet:$(T)

@@ -17,7 +17,7 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// +build !integration,unit
+// +build unit
 
 package avl
 
@@ -35,7 +35,11 @@ import (
 )
 
 func TestSerialize(t *testing.T) {
-	kv, cleanup := store.NewTestKV(t, "level", "db")
+	kv, cleanup, err := store.NewTestKV("level", "db")
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	defer cleanup()
 
 	tree := New(kv)
@@ -57,7 +61,11 @@ func TestSerialize(t *testing.T) {
 }
 
 func TestTree_Commit(t *testing.T) {
-	kv, cleanup := store.NewTestKV(t, "level", "db")
+	kv, cleanup, err := store.NewTestKV("level", "db")
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	defer cleanup()
 
 	{
@@ -75,7 +83,11 @@ func TestTree_Commit(t *testing.T) {
 }
 
 func TestTree_DeleteUntilEmpty(t *testing.T) {
-	kv, cleanup := store.NewTestKV(t, "level", "db")
+	kv, cleanup, err := store.NewTestKV("level", "db")
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	defer cleanup()
 
 	values := map[string]string{
@@ -122,7 +134,11 @@ func TestTree_DeleteUntilEmpty(t *testing.T) {
 }
 
 func TestTree_Snapshot(t *testing.T) {
-	kv, cleanup := store.NewTestKV(t, "level", "db")
+	kv, cleanup, err := store.NewTestKV("level", "db")
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	defer cleanup()
 
 	tree := New(kv)
@@ -145,10 +161,18 @@ func TestTree_Snapshot(t *testing.T) {
 }
 
 func TestTree_Diff_Randomized(t *testing.T) {
-	kv, cleanup := store.NewTestKV(t, "level", "db")
+	kv, cleanup, err := store.NewTestKV("level", "db")
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	defer cleanup()
 
-	kv2, cleanup2 := store.NewTestKV(t, "level", "db2")
+	kv2, cleanup2, err := store.NewTestKV("level", "db2")
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	defer cleanup2()
 
 	tree1 := New(kv)
@@ -198,10 +222,18 @@ func TestTree_Diff_Randomized(t *testing.T) {
 }
 
 func TestTree_Diff_UpdateNotifier(t *testing.T) {
-	kv, cleanup1 := store.NewTestKV(t, "level", "db")
+	kv, cleanup1, err := store.NewTestKV("level", "db")
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	defer cleanup1()
 
-	kv2, cleanup2 := store.NewTestKV(t, "level", "db2")
+	kv2, cleanup2, err := store.NewTestKV("level", "db2")
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	defer cleanup2()
 
 	tree1 := New(kv)
@@ -237,10 +269,18 @@ func TestTree_Diff_UpdateNotifier(t *testing.T) {
 }
 
 func TestTree_ApplyEmptyDiff(t *testing.T) {
-	kv, cleanup1 := store.NewTestKV(t, "level", "db")
+	kv, cleanup1, err := store.NewTestKV("level", "db")
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	defer cleanup1()
 
-	kv2, cleanup2 := store.NewTestKV(t, "level", "db2")
+	kv2, cleanup2, err := store.NewTestKV("level", "db2")
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	defer cleanup2()
 
 	tree1 := New(kv)
@@ -271,10 +311,18 @@ func TestTree_ApplyEmptyDiff(t *testing.T) {
 }
 
 func TestTree_Difference(t *testing.T) {
-	kv, cleanup := store.NewTestKV(t, "level", "db")
+	kv, cleanup, err := store.NewTestKV("level", "db")
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	defer cleanup()
 
-	kv2, cleanup2 := store.NewTestKV(t, "level", "db2")
+	kv2, cleanup2, err := store.NewTestKV("level", "db2")
+	if !assert.NoError(t, err) {
+		return
+	}
+
 	defer cleanup2()
 
 	tree := New(kv)
@@ -374,7 +422,11 @@ func BenchmarkAVL(b *testing.B) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N/InnerLoopCount; i++ {
-		kv, cleanup := store.NewTestKV(b, "level", "db")
+		kv, cleanup, err := store.NewTestKV("level", "")
+		if err != nil {
+			b.Fatal(err)
+		}
+
 		tree := New(kv)
 
 		refMap := make(map[string][]byte)
@@ -382,8 +434,10 @@ func BenchmarkAVL(b *testing.B) {
 
 		keys := make([]byte, InnerLoopCount*KeySize)
 
-		_, err := rand.Read(keys)
-		assert.NoError(b, err)
+		_, err = rand.Read(keys)
+		if !assert.NoError(b, err) {
+			return
+		}
 
 		for j := 0; j < InnerLoopCount; j++ {
 			shouldDelete := shouldDelete[i*InnerLoopCount+j:]

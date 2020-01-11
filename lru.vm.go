@@ -17,36 +17,38 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-package lru
+package wavelet
 
 import (
 	"container/list"
 	"sync"
+
+	"github.com/perlin-network/life/exec"
 )
 
-type LRU struct {
+type VMLRU struct {
 	sync.Mutex
 
 	size int
 
-	elements map[interface{}]*list.Element
-	access   *list.List // *objectInfo
+	elements map[[32]byte]*list.Element
+	access   *list.List
 }
 
-type objectInfo struct {
-	key interface{}
-	obj interface{}
+type objectInfoVM struct {
+	key [32]byte
+	obj *exec.VirtualMachine
 }
 
-func NewLRU(size int) *LRU {
-	return &LRU{
+func NewVMLRU(size int) *VMLRU {
+	return &VMLRU{
 		size:     size,
-		elements: make(map[interface{}]*list.Element, size),
+		elements: make(map[[32]byte]*list.Element, size),
 		access:   list.New(),
 	}
 }
 
-func (l *LRU) Load(key interface{}) (interface{}, bool) {
+func (l *VMLRU) Load(key [32]byte) (*exec.VirtualMachine, bool) {
 	l.Lock()
 	defer l.Unlock()
 
@@ -57,26 +59,26 @@ func (l *LRU) Load(key interface{}) (interface{}, bool) {
 
 	l.access.MoveToFront(elem)
 
-	return elem.Value.(*objectInfo).obj, ok
+	return elem.Value.(*objectInfoVM).obj, ok
 }
 
-func (l *LRU) LoadOrPut(key interface{}, val interface{}) (interface{}, bool) {
+func (l *VMLRU) LoadOrPut(key [32]byte, val *exec.VirtualMachine) (*exec.VirtualMachine, bool) {
 	l.Lock()
 	defer l.Unlock()
 
 	elem, ok := l.elements[key]
 
 	if ok {
-		val = elem.Value.(*objectInfo).obj
+		val = elem.Value.(*objectInfoVM).obj
 		l.access.MoveToFront(elem)
 	} else {
-		l.elements[key] = l.access.PushFront(&objectInfo{
+		l.elements[key] = l.access.PushFront(&objectInfoVM{
 			key: key,
 			obj: val,
 		})
 		for len(l.elements) > l.size {
 			back := l.access.Back()
-			info := back.Value.(*objectInfo)
+			info := back.Value.(*objectInfoVM)
 			delete(l.elements, info.key)
 			l.access.Remove(back)
 		}
@@ -85,57 +87,30 @@ func (l *LRU) LoadOrPut(key interface{}, val interface{}) (interface{}, bool) {
 	return val, ok
 }
 
-func (l *LRU) Put(key interface{}, val interface{}) {
+func (l *VMLRU) Put(key [32]byte, val *exec.VirtualMachine) {
 	l.Lock()
 	defer l.Unlock()
 
 	elem, ok := l.elements[key]
 
 	if ok {
-		elem.Value.(*objectInfo).obj = val
+		elem.Value.(*objectInfoVM).obj = val
 		l.access.MoveToFront(elem)
 	} else {
-		l.elements[key] = l.access.PushFront(&objectInfo{
+		l.elements[key] = l.access.PushFront(&objectInfoVM{
 			key: key,
 			obj: val,
 		})
 		for len(l.elements) > l.size {
 			back := l.access.Back()
-			info := back.Value.(*objectInfo)
+			info := back.Value.(*objectInfoVM)
 			delete(l.elements, info.key)
 			l.access.Remove(back)
 		}
 	}
 }
 
-func (l *LRU) PutWithEvictCallback(key interface{}, val interface{}, onEvict func(key interface{}, val interface{})) {
-	l.Lock()
-	defer l.Unlock()
-
-	elem, ok := l.elements[key]
-
-	if ok {
-		elem.Value.(*objectInfo).obj = val
-		l.access.MoveToFront(elem)
-	} else {
-		l.elements[key] = l.access.PushFront(&objectInfo{
-			key: key,
-			obj: val,
-		})
-		for len(l.elements) > l.size {
-			back := l.access.Back()
-			info := back.Value.(*objectInfo)
-			delete(l.elements, info.key)
-			l.access.Remove(back)
-
-			if onEvict != nil {
-				onEvict(info.key, info.obj)
-			}
-		}
-	}
-}
-
-func (l *LRU) Remove(key interface{}) {
+func (l *VMLRU) Remove(key [32]byte) {
 	l.Lock()
 	defer l.Unlock()
 

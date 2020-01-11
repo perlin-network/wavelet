@@ -22,8 +22,10 @@ package wavelet
 import (
 	"bytes"
 	"context"
-	cuckoo "github.com/seiflotfy/cuckoofilter"
+	"github.com/golang/protobuf/ptypes/empty"
 	"io"
+
+	"github.com/perlin-network/wavelet/internal/cuckoo"
 
 	"github.com/perlin-network/wavelet/conf"
 	"github.com/perlin-network/wavelet/log"
@@ -33,6 +35,30 @@ import (
 
 type Protocol struct {
 	ledger *Ledger
+}
+
+func (p *Protocol) Gossip(ctx context.Context, req *GossipRequest) (*empty.Empty, error) {
+	txs := make([]Transaction, 0, len(req.Transactions))
+
+	for _, buf := range req.Transactions {
+		tx, err := UnmarshalTransaction(bytes.NewReader(buf))
+		if err != nil {
+			logger := log.TX("gossip")
+			logger.Err(err).Msg("Failed to unmarshal transaction")
+
+			continue
+		}
+
+		if p.ledger.Transactions().Has(tx.ID) {
+			continue
+		}
+
+		txs = append(txs, tx)
+	}
+
+	p.ledger.AddTransaction(txs...)
+
+	return new(empty.Empty), nil
 }
 
 func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse, error) {
@@ -73,12 +99,7 @@ func (p *Protocol) Query(ctx context.Context, req *QueryRequest) (*QueryResponse
 		}
 	}
 
-	payload, err := block.Marshal()
-	if err != nil {
-		return nil, err
-	}
-
-	res.Block = payload
+	res.Block = block.Marshal()
 
 	return res, nil
 }
@@ -91,26 +112,21 @@ func (p *Protocol) Sync(stream Wavelet_SyncServer) error {
 
 	res := &SyncResponse{}
 
-	block, err := p.ledger.blocks.Latest().Marshal()
-	if err != nil {
-		return err
-	}
+	header := &SyncInfo{Block: p.ledger.blocks.Latest().Marshal()}
+	diffBuffer := p.ledger.filePool.GetUnbounded()
 
-	header := &SyncInfo{Block: block}
-	diffBuffer := p.ledger.fileBuffers.GetUnbounded()
-
-	defer p.ledger.fileBuffers.Put(diffBuffer)
+	defer p.ledger.filePool.Put(diffBuffer)
 
 	if err := p.ledger.accounts.Snapshot().DumpDiff(req.GetBlockId(), diffBuffer); err != nil {
 		return err
 	}
 
-	chunksBuffer, err := p.ledger.fileBuffers.GetBounded(diffBuffer.Len())
+	chunksBuffer, err := p.ledger.filePool.GetBounded(diffBuffer.Len())
 	if err != nil {
 		return err
 	}
 
-	defer p.ledger.fileBuffers.Put(chunksBuffer)
+	defer p.ledger.filePool.Put(chunksBuffer)
 
 	if _, err := io.Copy(chunksBuffer, diffBuffer); err != nil {
 		return err
@@ -205,7 +221,7 @@ func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error
 		return err
 	}
 
-	cf, err := cuckoo.Decode(req.GetFilter())
+	cf, err := cuckoo.UnsafeUnmarshalBinary(req.GetFilter())
 	if err != nil {
 		return err
 	}
@@ -213,7 +229,7 @@ func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error
 	var toReturn [][]byte
 
 	p.ledger.transactions.Iterate(func(tx *Transaction) bool {
-		if exists := cf.Lookup(tx.ID[:]); !exists {
+		if exists := cf.Lookup(tx.ID); !exists {
 			toReturn = append(toReturn, tx.Marshal())
 		}
 
@@ -254,26 +270,12 @@ func (p *Protocol) SyncTransactions(stream Wavelet_SyncTransactionsServer) error
 		if err := stream.Send(res); err != nil {
 			return err
 		}
-
-		pointer += chunkSize
-		if pointer >= len(toReturn) {
-			break
-		}
 	}
-
-	if pointer > 0 {
-		logger := log.Sync("sync_tx")
-		logger.Debug().
-			Int("num_transactions", len(toReturn)).
-			Msg("Provided transactions for a sync request.")
-	}
-
-	return nil
 }
 
 func (p *Protocol) PullTransactions(
-	ctx context.Context, req *TransactionPullRequest) (*TransactionPullResponse, error,
-) {
+	ctx context.Context, req *TransactionPullRequest,
+) (*TransactionPullResponse, error) {
 	res := &TransactionPullResponse{
 		Transactions: make([][]byte, 0, len(req.TransactionIds)),
 	}

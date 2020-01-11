@@ -27,7 +27,8 @@ import (
 
 var (
 	output = &multiWriter{
-		writers: make(map[string]io.Writer),
+		writers:        make(map[string]io.Writer),
+		writersModules: make(map[string]map[string]struct{}),
 	}
 	logger = zerolog.New(output).With().Timestamp().Logger()
 
@@ -37,7 +38,6 @@ var (
 	consensus zerolog.Logger
 	contract  zerolog.Logger
 	syncer    zerolog.Logger
-	stake     zerolog.Logger
 	tx        zerolog.Logger
 	metrics   zerolog.Logger
 )
@@ -88,7 +88,19 @@ func SetLevel(ls string) {
 }
 
 func SetWriter(key string, writer io.Writer) {
-	output.SetWriter(key, writer)
+	var modules []string
+
+	if cw, ok := writer.(ConsoleWriter); ok {
+		for k := range cw.FilteredModules {
+			modules = append(modules, k)
+		}
+	}
+
+	output.SetWriter(key, writer, modules...)
+}
+
+func ClearWriter(key string) {
+	output.Clear(key)
 }
 
 func Node() *zerolog.Logger {
@@ -115,12 +127,8 @@ func Consensus(event string) *zerolog.Logger {
 	return eventIf(event, consensus)
 }
 
-func Sync(event string) *zerolog.Logger {
-	return eventIf(event, syncer)
-}
-
-func Metrics() *zerolog.Logger {
-	return &metrics
+func Sync(event string) zerolog.Logger {
+	return syncer.With().Str(KeyEvent, event).Logger()
 }
 
 func eventIf(event string, logger zerolog.Logger) *zerolog.Logger {
@@ -132,4 +140,10 @@ func eventIf(event string, logger zerolog.Logger) *zerolog.Logger {
 	}
 
 	return &l
+}
+
+// Write to only the writers that have filter for the module.
+func Write(module string, msg []byte) error {
+	_, err := output.WriteFilter(msg, module)
+	return err
 }

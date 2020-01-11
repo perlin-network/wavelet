@@ -17,7 +17,7 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// +build integration,!unit
+// +build integration
 
 package api
 
@@ -42,13 +42,17 @@ func TestPollLog(t *testing.T) {
 	gateway := New()
 	gateway.setup()
 
+	log.ClearWriter(log.LoggerWebsocket)
 	log.SetWriter(log.LoggerWebsocket, gateway)
 
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
 	kv := store.NewInmem()
-	ledger := wavelet.NewLedger(kv, skademlia.NewClient(":0", keys))
+	ledger, err := wavelet.NewLedger(kv, skademlia.NewClient(":0", keys))
+	if !assert.NoError(t, err) {
+		return
+	}
 
 	go gateway.StartHTTP(8080, nil, ledger, keys, kv)
 	defer gateway.Shutdown()
@@ -92,69 +96,11 @@ func TestPollLog(t *testing.T) {
 			return
 		}
 
-		vals, err := v.Array()
+		_, err = v.Object()
 		if !assert.NoError(t, err) {
 			return
 		}
-
-		assert.Equal(t, 2, len(vals))
 	})
-}
-
-func TestPollNonce(t *testing.T) {
-	testnet := wavelet.NewTestNetwork(t)
-	defer testnet.Cleanup()
-
-	alice := testnet.AddNode(t)
-	testnet.AddNode(t)
-
-	testnet.WaitUntilSync(t)
-
-	gateway := New()
-	gateway.setup()
-
-	go gateway.StartHTTP(8080, nil, alice.Ledger(), alice.Keys(), alice.KV())
-	defer gateway.Shutdown()
-
-	_, err := testnet.Faucet().Pay(alice, 1000000)
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	u := url.URL{
-		Scheme: "ws",
-		Host:   ":8080",
-		Path:   "/poll/accounts",
-	}
-
-	c, cleanup := tryConnectWebsocket(t, u)
-	defer cleanup()
-
-	_, msg, err := c.ReadMessage()
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	v, err := fastjson.Parse(string(msg))
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	vals, err := v.Array()
-	if !assert.NoError(t, err) {
-		return
-	}
-
-	for _, e := range vals {
-		if string(e.GetStringBytes("event")) != "nonce_updated" {
-			continue
-		}
-
-		assert.EqualValues(t, 2, e.GetUint64("nonce"))
-		return
-	}
-
-	assert.Fail(t, "nonce_updated event not found")
 }
 
 func tryConnectWebsocket(t *testing.T, url url.URL) (*websocket.Conn, func()) {
@@ -166,7 +112,7 @@ func tryConnectWebsocket(t *testing.T, url url.URL) (*websocket.Conn, func()) {
 	tick := time.Tick(time.Second * 1)
 	for range tick {
 		conn, resp, err = websocket.DefaultDialer.Dial(url.String(), nil)
-		if err == nil || (err != nil && tries >= 5) {
+		if err == nil || tries >= 5 {
 			break
 		}
 

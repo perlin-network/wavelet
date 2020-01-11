@@ -23,7 +23,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/rs/zerolog"
 	"io"
 	"os"
 	"sort"
@@ -31,6 +30,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/rs/zerolog"
 )
 
 const (
@@ -51,7 +52,7 @@ var (
 		},
 	}
 
-	consoleDefaultTimeFormat = time.Kitchen
+	consoleDefaultTimeFormat = "3:04:05PM"
 
 	consoleDefaultPartsOrder = func() []string {
 		return []string{
@@ -101,6 +102,12 @@ func FilterFor(modules ...string) func(w *ConsoleWriter) {
 		for _, module := range modules {
 			w.FilteredModules[module] = struct{}{}
 		}
+	}
+}
+
+func NoColor(b bool) func(w *ConsoleWriter) {
+	return func(w *ConsoleWriter) {
+		w.NoColor = b
 	}
 }
 

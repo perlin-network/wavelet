@@ -20,9 +20,8 @@
 package wavelet
 
 import (
-	"sync"
-
 	"github.com/perlin-network/wavelet/conf"
+	"sync"
 )
 
 type Snowball struct {
@@ -35,6 +34,7 @@ type Snowball struct {
 	last      Vote
 
 	decided bool
+	stalled int
 }
 
 func NewSnowball() *Snowball {
@@ -46,13 +46,15 @@ func NewSnowball() *Snowball {
 func (s *Snowball) Reset() {
 	s.Lock()
 
-	s.preferred = nil
-	s.last = nil
-
 	s.counts = make(map[VoteID]uint16)
 	s.count = 0
 
+	s.preferred = nil
+	s.last = nil
+
 	s.decided = false
+	s.stalled = 0
+
 	s.Unlock()
 }
 
@@ -84,11 +86,29 @@ func (s *Snowball) Tick(votes []Vote) {
 	}
 
 	if majority == nil || majority.Tally() < conf.GetSnowballAlpha()*2/denom {
+		if majority != nil && s.preferred != nil {
+			s.stalled++
+
+			// TODO(kenta): configure stall
+			if s.stalled > conf.GetSnowballBeta()*10 {
+				s.preferred = nil
+				s.stalled = 0
+			}
+		}
+
+		if majority != nil {
+			dbg("snowball got reset w/ majority", majority.Tally(), conf.GetSnowballAlpha()*2/denom)
+		} else {
+			dbg("snowball got reset w/ nil majority")
+		}
+
 		s.count = 0
+
 		return
 	}
 
 	s.counts[majority.ID()]++
+	s.stalled = 0
 
 	if s.preferred == nil || s.counts[majority.ID()] > s.counts[s.preferred.ID()] {
 		s.preferred = majority

@@ -17,7 +17,7 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// +build !integration,unit
+// +build unit
 
 package wavelet
 
@@ -73,10 +73,7 @@ func TestApplyTransaction_Single(t *testing.T) {
 
 	rng := rand.New(rand.NewSource(42))
 
-	block, err := NewBlock(viewID, state.Checksum())
-	if !assert.NoError(t, err) {
-		return
-	}
+	block := NewBlock(viewID, state.Checksum())
 
 	var nonce uint64
 
@@ -148,10 +145,7 @@ func TestApplyTransferTransaction(t *testing.T) {
 	t.Parallel()
 
 	state := avl.New(store.NewInmem())
-	block, err := NewBlock(0, state.Checksum())
-	if !assert.NoError(t, err) {
-		return
-	}
+	block := NewBlock(0, state.Checksum())
 
 	alice, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
@@ -209,10 +203,7 @@ func TestApplyStakeTransaction(t *testing.T) {
 	t.Parallel()
 
 	state := avl.New(store.NewInmem())
-	block, err := NewBlock(0, state.Checksum())
-	if !assert.NoError(t, err) {
-		return
-	}
+	block := NewBlock(0, state.Checksum())
 
 	account, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
@@ -269,10 +260,7 @@ func TestApplyBatchTransaction(t *testing.T) {
 	t.Parallel()
 
 	state := avl.New(store.NewInmem())
-	block, err := NewBlock(0, state.Checksum())
-	if !assert.NoError(t, err) {
-		return
-	}
+	block := NewBlock(0, state.Checksum())
 
 	alice, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
@@ -324,10 +312,7 @@ func TestApplyContractTransaction(t *testing.T) {
 	t.Parallel()
 
 	state := avl.New(store.NewInmem())
-	block, err := NewBlock(0, state.Checksum())
-	if !assert.NoError(t, err) {
-		return
-	}
+	block := NewBlock(0, state.Checksum())
 
 	account, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
@@ -536,6 +521,13 @@ func buildPlaceStakePayload(amount uint64) Stake {
 func buildWithdrawStakePayload(amount uint64) Stake {
 	return Stake{
 		Opcode: sys.WithdrawStake,
+		Amount: amount,
+	}
+}
+
+func buildWithdrawRewardPayload(amount uint64) Stake {
+	return Stake{
+		Opcode: sys.WithdrawReward,
 		Amount: amount,
 	}
 }

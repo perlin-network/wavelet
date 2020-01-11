@@ -53,7 +53,7 @@ func (b *Blocks) Latest() *Block {
 	return block
 }
 
-func (b *Blocks) Count() uint64 {
+func (b *Blocks) LatestHeight() uint64 {
 	return b.Latest().Index
 }
 
@@ -103,4 +103,15 @@ func (b *Blocks) GetByIndex(ix uint64) (*Block, error) {
 	}
 
 	return block, nil
+}
+
+func (b *Blocks) Clone() []*Block {
+	b.RLock()
+
+	blocks := make([]*Block, len(b.buffer))
+	copy(blocks, b.buffer)
+
+	b.RUnlock()
+
+	return blocks
 }

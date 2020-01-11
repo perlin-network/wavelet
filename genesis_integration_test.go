@@ -1,4 +1,23 @@
-// +build integration,!unit
+// Copyright (c) 2019 Perlin
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of
+// this software and associated documentation files (the "Software"), to deal in
+// the Software without restriction, including without limitation the rights to
+// use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+// the Software, and to permit persons to whom the Software is furnished to do so,
+// subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+// FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+// COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+// IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+// CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// +build integration
 
 package wavelet
 
@@ -22,90 +41,134 @@ const (
 
 var testRestoreDir = "testdata/testgenesis"
 
-func getGenesisTestNetwork(t testing.TB, withContract bool) (testnet *TestNetwork, alice *TestLedger, cleanup func()) {
-	testnet = NewTestNetwork(t)
+func getGenesisTestNetwork(withContract bool) (*TestLedger, func(), error) {
+	testnet, err := NewTestNetwork()
+	if err != nil {
+		return nil, nil, err
+	}
 
-	cleanup = func() {
+	cleanup := func() {
 		testnet.Cleanup()
 	}
 
-	alice = testnet.AddNode(t)
-	bob := testnet.AddNode(t)
+	alice, err := testnet.AddNode()
+	if err != nil {
+		return nil, cleanup, err
+	}
 
-	alice.WaitUntilSync(t)
-	bob.WaitUntilSync(t)
+	bob, err := testnet.AddNode()
+	if err != nil {
+		return nil, cleanup, err
+	}
 
-	var err error
+	if err := testnet.WaitUntilSync(); err != nil {
+		return nil, cleanup, err
+	}
 
-	_, err = testnet.faucet.Pay(alice, 10000000000)
-	assert.NoError(t, err)
-	alice.WaitUntilBalance(t, 10000000000)
+	if _, err := testnet.faucet.Pay(alice, 10000000000); err != nil {
+		return nil, cleanup, err
+	}
 
-	_, err = testnet.faucet.Pay(bob, 10000000000)
-	assert.NoError(t, err)
-	bob.WaitUntilBalance(t, 10000000000)
+	if err := alice.WaitUntilBalance(10000000000); err != nil {
+		return nil, cleanup, err
+	}
 
-	_, err = alice.PlaceStake(100)
-	assert.NoError(t, err)
-	alice.WaitUntilStake(t, 100)
+	if _, err := testnet.faucet.Pay(bob, 10000000000); err != nil {
+		return nil, cleanup, err
+	}
 
-	_, err = bob.PlaceStake(100)
-	assert.NoError(t, err)
-	bob.WaitUntilStake(t, 100)
+	if err := bob.WaitUntilBalance(10000000000); err != nil {
+		return nil, cleanup, err
+	}
+
+	if _, err := alice.PlaceStake(100); err != nil {
+		return nil, cleanup, err
+	}
+
+	if err := alice.WaitUntilStake(100); err != nil {
+		return nil, cleanup, err
+	}
+
+	if _, err := bob.PlaceStake(100); err != nil {
+		return nil, cleanup, err
+	}
+
+	if err := bob.WaitUntilStake(100); err != nil {
+		return nil, cleanup, err
+	}
+
+	block := alice.BlockIndex()
 
 	if withContract {
-		for i := 0; i < 4; i++ {
+		for i := 0; i < 3; i++ {
 			tx, err := alice.SpawnContract("testdata/transfer_back.wasm", 10000, nil)
-			if !assert.NoError(t, err) {
-				return nil, nil, cleanup
+			if err != nil {
+				return nil, cleanup, err
 			}
-			alice.WaitUntilConsensus(t)
+
+			block++
+
+			if err := alice.WaitUntilBlock(block); err != nil {
+				return nil, cleanup, err
+			}
 
 			if i%2 == 0 {
 				tx, err = alice.DepositGas(tx.ID, (uint64(i)+1)*100)
-				if !assert.NoError(t, err) {
-					return nil, nil, cleanup
+				if err != nil {
+					return nil, cleanup, err
 				}
-				alice.WaitUntilConsensus(t)
+
+				block++
+
+				if err := alice.WaitUntilBlock(block); err != nil {
+					return nil, cleanup, err
+				}
 			}
 		}
 	}
 
-	return testnet, alice, cleanup
+	return alice, cleanup, nil
 }
 
 func TestDumpIncludingContract(t *testing.T) {
-	testnet, target, cleanup := getGenesisTestNetwork(t, true)
-	defer cleanup()
-	if testnet == nil || target == nil {
-		assert.FailNow(t, "failed to get test network.")
+	target, cleanup, err := getGenesisTestNetwork(true)
+	if cleanup != nil {
+		defer cleanup()
+	}
+
+	if !assert.NoError(t, err) {
 		return
 	}
+
 	defer func() {
 		_ = os.RemoveAll(testDumpDir)
 	}()
 
 	// Delete the dir in case it already exists
-	assert.NoError(t, os.RemoveAll(testDumpDir))
+	if !assert.NoError(t, os.RemoveAll(testDumpDir)) {
+		return
+	}
 
 	expected := target.ledger.Snapshot()
 	if !assert.NoError(t, Dump(expected, testDumpDir, true, false)) {
 		return
 	}
 
-	fmt.Println("checkdump")
 	testDump(t, testDumpDir, expected, true)
 }
 
 func TestDumpWithoutContract(t *testing.T) {
 	testDumpDir := "testDumpIncludingContract"
 
-	testnet, target, cleanup := getGenesisTestNetwork(t, false)
-	defer cleanup()
-	if testnet == nil || target == nil {
-		assert.FailNow(t, "failed setup test network.")
+	target, cleanup, err := getGenesisTestNetwork(false)
+	if cleanup != nil {
+		defer cleanup()
+	}
+
+	if !assert.NoError(t, err) {
 		return
 	}
+
 	defer func() {
 		_ = os.RemoveAll(testDumpDir)
 	}()
@@ -135,7 +198,7 @@ func testDump(t *testing.T, dumpDir string, expected *avl.Tree, checkContract bo
 
 	// Repeatedly restore the dump and check it's checksum to make sure there's no randomness in the order of the restoration.
 	var checksum = actual.Checksum()
-	for i := 0; i < 30; i++ {
+	for i := 0; i < 10; i++ {
 		tree := avl.New(store.NewInmem())
 		_ = performInception(tree, &dumpDir)
 
@@ -196,14 +259,12 @@ func compareTree(t *testing.T, expected *avl.Tree, actual *avl.Tree, checkContra
 }
 
 func TestPerformInception(t *testing.T) {
-	t.Parallel()
-
 	tree := avl.New(store.NewInmem())
 	block := performInception(tree, &testRestoreDir)
 
 	assert.Equal(t, uint64(0), block.Index)
 	assert.Nil(t, block.Transactions)
-	assert.Equal(t, "6c669ad9992286e000f6bb4c0aa5a416", fmt.Sprintf("%x", block.Merkle))
+	assert.Equal(t, "3a4598625c7fcf107257c648c9f289da", fmt.Sprintf("%x", block.Merkle))
 
 	uint64p := func(v uint64) *uint64 {
 		return &v
@@ -333,42 +394,25 @@ func checkAccount(t *testing.T, tree *avl.Tree, id AccountID, expectedBalance, e
 }
 
 // Used to check the restored tree to make sure some of the global prefixes must not exist.
-// Also, check all the accounts' nonce have value 1.
 func checkRestoredDefaults(t *testing.T, tree *avl.Tree) {
-	// Check for global prefixes that must not exists.
+	val, exist := tree.Lookup(keyRewardWithdrawals[:])
 
-	var val []byte
-	var exist bool
-
-	val, exist = tree.Lookup(keyRewardWithdrawals[:])
 	assert.False(t, exist)
 	assert.Nil(t, val)
-
-	// Check all the account nonce values must be 1.
-
-	tree.IteratePrefix(append(keyAccounts[:], keyAccountNonce[:]...), func(key, value []byte) {
-		var id AccountID
-		copy(id[:], key[2:])
-
-		if _, isContract := ReadAccountContractCode(tree, id); isContract {
-			return
-		}
-
-		nonce, exist := ReadAccountNonce(tree, id)
-		assert.True(t, exist, "account %x is missing nonce", id)
-		assert.Equal(t, uint64(1), nonce, "account %x, expected nonce is 1", id)
-	})
 }
 
 func BenchmarkDump(b *testing.B) {
 	testDumpDir := "testDumpIncludingContract"
 
-	testnet, target, cleanup := getGenesisTestNetwork(b, true)
-	defer cleanup()
-	if testnet == nil || target == nil {
-		assert.FailNow(b, "failed setup test network.")
+	target, cleanup, err := getGenesisTestNetwork(true)
+	if cleanup != nil {
+		defer cleanup()
+	}
+
+	if !assert.NoError(b, err) {
 		return
 	}
+
 	defer func() {
 		_ = os.RemoveAll(testDumpDir)
 	}()

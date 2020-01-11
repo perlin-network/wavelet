@@ -34,7 +34,8 @@ type kvPair struct {
 var _ WriteBatch = (*inmemWriteBatch)(nil)
 
 type inmemWriteBatch struct {
-	pairs []kvPair
+	pairs      []kvPair
+	deleteKeys [][]byte
 }
 
 // It is safe to modify the contents of the argument after Put returns but not
@@ -63,6 +64,15 @@ func (b *inmemWriteBatch) Destroy() {
 	b.pairs = nil
 }
 
+func (b *inmemWriteBatch) Delete(key []byte) error {
+	keyCopy := make([]byte, len(key))
+	copy(keyCopy, key)
+
+	b.deleteKeys = append(b.deleteKeys, keyCopy)
+
+	return nil
+}
+
 var _ KV = (*inmemKV)(nil)
 
 type inmemKV struct {
@@ -88,7 +98,7 @@ func (s *inmemKV) Close() error {
 func (s *inmemKV) get(key []byte) ([]byte, error) {
 	v, found := s.db.GetValue(key)
 	if !found {
-		return nil, errors.New("key not found")
+		return nil, ErrNotFound
 	}
 
 	src := v.([]byte)
@@ -165,6 +175,10 @@ func (s *inmemKV) CommitWriteBatch(batch WriteBatch) error {
 	if wb, ok := batch.(*inmemWriteBatch); ok {
 		for _, pair := range wb.pairs {
 			_ = s.db.Set(pair.key, pair.value)
+		}
+
+		for _, key := range wb.deleteKeys {
+			_ = s.db.Remove(key)
 		}
 
 		writeBatchPool.Put(wb)

@@ -22,6 +22,7 @@ package main
 import (
 	"encoding/hex"
 	"fmt"
+	"github.com/perlin-network/wavelet/sys"
 	"io/ioutil"
 	"os"
 
@@ -33,7 +34,7 @@ import (
 )
 
 func (cli *CLI) status(ctx *cli.Context) {
-	l, err := cli.client.LedgerStatus("", "", 0, 0)
+	l, err := cli.client.LedgerStatus()
 	if err != nil {
 		cli.logger.Error().Err(err).
 			Msg("Failed to get the ledger status")
@@ -64,12 +65,18 @@ func (cli *CLI) status(ctx *cli.Context) {
 		Uint64("balance", a.Balance).
 		Uint64("stake", a.Stake).
 		Uint64("reward", a.Reward).
-		Uint64("nonce", a.Nonce).
 		Strs("peers", peers).
+<<<<<<< HEAD
 		Int("num_tx", l.NumTx).
 		Int("num_tx_in_store", l.NumTxInStore).
 		Uint64("num_accounts_in_store", l.NumAccounts).
 		Uint64("client_nonce", cli.client.Nonce.Load()).
+=======
+		Uint64("num_tx", l.NumTx).
+		Uint64("num_missing_tx", l.NumMissingTx).
+		Uint64("num_tx_in_store", l.NumTxInStore).
+		Uint64("num_accounts_in_store", l.AccountsLen).
+>>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
 		Uint64("client_block", cli.client.Block.Load()).
 		Str("sync_status", l.SyncStatus).
 		Str("preferred_block_id", preferredID).
@@ -221,7 +228,6 @@ func (cli *CLI) find(ctx *cli.Context) {
 			Uint64("balance", account.Balance).
 			Uint64("gas_balance", account.GasBalance).
 			Uint64("stake", account.Stake).
-			Uint64("nonce", account.Nonce).
 			Uint64("reward", account.Reward).
 			Bool("is_contract", account.IsContract).
 			Uint64("num_pages", account.NumPages).
@@ -433,6 +439,16 @@ func (cli *CLI) restart(ctx *cli.Context) {
 	cli.logger.Info().Msg(m.Message)
 }
 
+func (cli *CLI) version(ctx *cli.Context) {
+	cli.logger.Info().
+		Str("git_commit", sys.GitCommit).
+		Str("go_version", sys.GoVersion).
+		Str("os_arch", sys.OSArch).
+		Str("go_exe", sys.GoExe).
+		Str("version_meta", sys.VersionMeta).
+		Msg("Version info.")
+}
+
 func (cli *CLI) updateParameters(ctx *cli.Context) {
 	conf.Update(
 		conf.WithSnowballK(ctx.Int("snowball.k")),
@@ -449,8 +465,6 @@ func (cli *CLI) updateParameters(ctx *cli.Context) {
 		conf.WithSyncIfBlockIndicesDifferBy(ctx.Uint64("sync.if.block.indices.differ.by")),
 		conf.WithPruningLimit(uint8(ctx.Uint64("pruning.limit"))),
 		conf.WithSecret(ctx.String("api.secret")),
-		conf.WithBloomFilterK(ctx.Uint("bloom.filter.k")),
-		conf.WithBloomFilterM(ctx.Uint("bloom.filter.m")),
 		conf.WithTXSyncChunkSize(ctx.Uint64("tx.sync.chunk.size")),
 		conf.WithTXSyncLimit(ctx.Uint64("tx.sync.limit")),
 	)

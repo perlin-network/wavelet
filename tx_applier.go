@@ -21,8 +21,10 @@ package wavelet
 
 import (
 	"encoding/hex"
+
 	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet/avl"
+
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -154,7 +156,7 @@ func applyStakeTransaction(ctx *CollapseContext, block *Block, tx *Transaction) 
 		if stake < payload.Amount {
 			return errors.Errorf(
 				"stake: %x attempt to withdraw a stake of %d PERLs, but only has staked %d PERLs",
-				tx.Sender, payload.Amount, payload,
+				tx.Sender, payload.Amount, stake,
 			)
 		}
 
@@ -282,8 +284,6 @@ func executeContractInTransactionContext(
 	funcParams []byte,
 	state *contractExecutorState,
 ) error {
-	logger := log.Contracts("execute")
-
 	gasPayerBalance, _ := ctx.ReadAccountBalance(state.GasPayer)
 	contractGasBalance, _ := ctx.ReadAccountContractGasBalance(contractID)
 	availableBalance := gasPayerBalance + contractGasBalance
@@ -324,11 +324,11 @@ func executeContractInTransactionContext(
 
 	// availableBalance >= realGasLimit >= executor.Gas && state.GasLimit >= realGasLimit must always hold.
 	if realGasLimit < executor.Gas {
-		logger.Fatal().Msg("BUG: realGasLimit < executor.Gas")
+		log.FatalNode(nil, "BUG: realGasLimit < executor.Gas")
 	}
 
 	if state.GasLimit < realGasLimit {
-		logger.Fatal().Msg("BUG: state.GasLimit < realGasLimit")
+		log.FatalNode(nil, "BUG: state.GasLimit < realGasLimit")
 	}
 
 	if invocationErr != nil { // Revert changes and have the gas payer pay gas fees.
@@ -336,7 +336,7 @@ func executeContractInTransactionContext(
 			ctx.WriteAccountContractGasBalance(contractID, 0)
 
 			if gasPayerBalance < (executor.Gas - contractGasBalance) {
-				logger.Fatal().Msg("BUG: gasPayerBalance < (executor.Gas - contractGasBalance)")
+				log.FatalNode(nil, "BUG: gasPayerBalance < (executor.Gas - contractGasBalance)")
 			}
 
 			ctx.WriteAccountBalance(state.GasPayer, gasPayerBalance-(executor.Gas-contractGasBalance))
@@ -347,14 +347,15 @@ func executeContractInTransactionContext(
 		state.GasLimit -= executor.Gas
 
 		if executor.GasLimitExceeded {
-			logger.Info().
-				Hex("sender_id", tx.Sender[:]).
-				Hex("contract_id", contractID[:]).
-				Uint64("gas", executor.Gas).
-				Uint64("gas_limit", realGasLimit).
-				Msg("Exceeded gas limit while invoking smart contract function.")
+			log.Info(log.Contracts("execute"), &ContractGas{
+				SenderID:   tx.Sender,
+				ContractID: contractID,
+				Gas:        executor.Gas,
+				GasLimit:   realGasLimit,
+			})
 		} else {
-			logger.Info().Err(invocationErr).Msg("failed to invoke smart contract")
+			log.Error(log.Contracts("execute"), invocationErr,
+				"failed to invoke smart contract")
 		}
 	} else {
 		// Contract invocation succeeded. VM state can be safely saved now.
@@ -363,7 +364,7 @@ func executeContractInTransactionContext(
 		if executor.Gas > contractGasBalance {
 			ctx.WriteAccountContractGasBalance(contractID, 0)
 			if gasPayerBalance < (executor.Gas - contractGasBalance) {
-				logger.Fatal().Msg("BUG: gasPayerBalance < (executor.Gas - contractGasBalance)")
+				log.FatalNode(nil, "BUG: gasPayerBalance < (executor.Gas - contractGasBalance)")
 			}
 			ctx.WriteAccountBalance(state.GasPayer, gasPayerBalance-(executor.Gas-contractGasBalance))
 		} else {
@@ -379,7 +380,8 @@ func executeContractInTransactionContext(
 		for _, entry := range executor.Queue {
 			err := applyTransaction(block, ctx, entry, state)
 			if err != nil {
-				logger.Info().Err(err).Msg("failed to process sub-transaction")
+				log.Error(log.Contracts("execute"), err,
+					"failed to process sub-transaction")
 			}
 		}
 	}

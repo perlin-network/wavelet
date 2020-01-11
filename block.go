@@ -1,11 +1,12 @@
 package wavelet
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
+	"reflect"
+	"unsafe"
 
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/blake2b"
@@ -19,17 +20,12 @@ type Block struct {
 	ID BlockID
 }
 
-func NewBlock(index uint64, merkle MerkleNodeID, ids ...TransactionID) (Block, error) {
+func NewBlock(index uint64, merkle MerkleNodeID, ids ...TransactionID) Block {
 	b := Block{Index: index, Merkle: merkle, Transactions: ids}
 
-	marshaled, err := b.Marshal()
-	if err != nil {
-		return b, errors.Wrap(err, "failed to marshal block")
-	}
+	b.ID = blake2b.Sum256(b.Marshal())
 
-	b.ID = blake2b.Sum256(marshaled)
-
-	return b, nil
+	return b
 }
 
 func (b *Block) GetID() string {
@@ -40,24 +36,38 @@ func (b *Block) GetID() string {
 	return fmt.Sprintf("%x", b.ID)
 }
 
-func (b Block) Marshal() ([]byte, error) {
-	buf := bytes.NewBuffer(make([]byte, 0, 8+SizeMerkleNodeID+4+4+len(b.Transactions)*SizeTransactionID))
+func (b Block) Marshal() []byte {
+	buf, n := make([]byte, 8+SizeMerkleNodeID+4+len(b.Transactions)*SizeTransactionID), 0
 
-	if err := binary.Write(buf, binary.BigEndian, b.Index); err != nil {
-		return nil, errors.Wrap(err, "error marshaling index")
+	binary.BigEndian.PutUint64(buf[n:n+8], b.Index)
+
+	n += 8
+
+	copy(buf[n:n+SizeMerkleNodeID], b.Merkle[:])
+
+	n += SizeMerkleNodeID
+
+	binary.BigEndian.PutUint32(buf[n:n+4], uint32(len(b.Transactions)))
+
+	n += 4
+
+	// Directly convert the slice of transaction IDs into a byte slice through
+	// pointer re-alignment. This is done by taking the internal pointer of
+	// (*Block).Transactions, and re-assigning the pointer to an empty
+	// byte slice.
+
+	{
+		var ids []byte
+
+		sh := (*reflect.SliceHeader)(unsafe.Pointer(&ids))
+		sh.Data = (*reflect.SliceHeader)(unsafe.Pointer(&b.Transactions)).Data
+		sh.Len = SizeTransactionID * len(b.Transactions)
+		sh.Cap = SizeTransactionID * len(b.Transactions)
+
+		copy(buf[n:n+len(b.Transactions)*SizeTransactionID], ids)
 	}
 
-	buf.Write(b.Merkle[:])
-
-	if err := binary.Write(buf, binary.BigEndian, uint32(len(b.Transactions))); err != nil {
-		return nil, errors.Wrap(err, "error marshaling transactions num")
-	}
-
-	for _, id := range b.Transactions {
-		buf.Write(id[:])
-	}
-
-	return buf.Bytes(), nil
+	return buf
 }
 
 func (b Block) String() string {
@@ -92,12 +102,7 @@ func UnmarshalBlock(r io.Reader) (Block, error) {
 		}
 	}
 
-	marshaled, err := block.Marshal()
-	if err != nil {
-		return block, errors.Wrap(err, "failed to marshal block")
-	}
-
-	block.ID = blake2b.Sum256(marshaled)
+	block.ID = blake2b.Sum256(block.Marshal())
 
 	return block, nil
 }

@@ -24,6 +24,13 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"io"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+
 	wasm "github.com/perlin-network/life/wasm-validation"
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
@@ -31,12 +38,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/valyala/bytebufferpool"
 	"github.com/valyala/fastjson"
-	"io"
-	"io/ioutil"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
 )
 
 const testingGenesis = `
@@ -46,7 +47,8 @@ const testingGenesis = `
     "reward": 5000000
   },
   "696937c2c8df35dba0169de72990b80761e51dd9e2411fa1fce147f68ade830a": {
-    "balance": 10000000000000000000
+    "balance": 10000000000000000000,
+	"reward": 5000000
   },
   "f03bb6f98c4dfd31f3d448c7ec79fa3eaa92250112ada43471812f4b1ace6467": {
     "balance": 10000000000000000000
@@ -113,12 +115,7 @@ func performInception(tree *avl.Tree, genesis *string) Block {
 		logger.Fatal().Err(err).Msg("genesis")
 	}
 
-	block, err := NewBlock(0, tree.Checksum())
-	if err != nil {
-		logger.Fatal().Err(err).Msg("genesis block")
-	}
-
-	return block
+	return NewBlock(0, tree.Checksum())
 }
 
 func restoreFromJSON(tree *avl.Tree, json []byte) error {
@@ -460,7 +457,6 @@ func restoreAccount(tree *avl.Tree, id AccountID, val *fastjson.Value) error {
 
 	if !isContract {
 		WriteAccountsLen(tree, ReadAccountsLen(tree)+1)
-		WriteAccountNonce(tree, id, 1)
 	}
 
 	return nil
@@ -552,23 +548,23 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 
 	accounts := make(map[AccountID]*account)
 
-	tree.IteratePrefix(keyAccounts[:], func(key, value []byte) {
+	tree.IteratePrefix(keyAccounts[:], func(key, value []byte) bool {
 		var prefix [1]byte
-		copy(prefix[:], key[1:])
+		copy(prefix[:], key)
 
 		// Filter by prefixes relevant to wallet and contract code.
 		if prefix != keyAccountBalance &&
 			prefix != keyAccountStake &&
 			prefix != keyAccountReward &&
 			prefix != keyAccountContractCode {
-			return
+			return true
 		}
 
 		var id AccountID
-		copy(id[:], key[2:])
+		copy(id[:], key[1:])
 
 		if _, exist := accounts[id]; exist {
-			return
+			return true
 		}
 		_, isContract := ReadAccountContractCode(tree, id)
 
@@ -578,7 +574,7 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 		accounts[id] = acc
 
 		if !isDumpContract && acc.isContract {
-			return
+			return true
 		}
 
 		if balance, exist := ReadAccountBalance(tree, id); exist {
@@ -603,13 +599,14 @@ func Dump(tree *avl.Tree, dir string, isDumpContract bool, useContractFolder boo
 			folder = filepath.Join(dir, fmt.Sprintf("%x", id))
 
 			// Make sure the folder exists
-			if ferr := os.MkdirAll(folder, 0700); ferr != nil {
-				err = errors.Wrapf(ferr, "failed to create directory %s", dir)
-				return
+			if fErr := os.MkdirAll(folder, 0700); fErr != nil {
+				err = errors.Wrapf(fErr, "failed to create directory %s", dir)
+				return true
 			}
 		}
 
 		err = dumpContract(tree, id, folder)
+		return true
 	})
 
 	if err != nil {

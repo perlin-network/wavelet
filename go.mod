@@ -14,15 +14,15 @@ require (
 	github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1 // indirect
 	github.com/davecgh/go-spew v1.1.1
 	github.com/dgraph-io/badger/v2 v2.0.0
-	github.com/dgryski/go-metro v0.0.0-20180109044635-280f6062b5bc // indirect
 	github.com/djherbis/buffer v1.1.0
 	github.com/fasthttp/websocket v1.4.0
 	github.com/gogo/protobuf v1.3.0
+	github.com/golang/protobuf v1.3.2
 	github.com/golang/snappy v0.0.1
-	github.com/google/btree v1.0.0
 	github.com/gorilla/websocket v1.4.0
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
 	github.com/minio/highwayhash v1.0.0
+	github.com/mmcloughlin/avo v0.0.0-20190927041150-15d6a9a17e53 // indirect
 	github.com/perlin-network/life v0.0.0-20190723115110-3091ed0c1be8
 	github.com/perlin-network/noise v1.1.1-0.20191113101947-c8dc081eafa7
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
@@ -30,7 +30,6 @@ require (
 	github.com/pkg/errors v0.8.1
 	github.com/rcrowley/go-metrics v0.0.0-20181016184325-3113b8401b8a
 	github.com/rs/zerolog v1.14.3
-	github.com/seiflotfy/cuckoofilter v0.0.0-20190302225222-764cb5258d9b
 	github.com/stretchr/testify v1.4.0
 	github.com/syndtr/goleveldb v1.0.0
 	github.com/valyala/bytebufferpool v1.0.0

@@ -17,13 +17,14 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// +build !integration,unit
+// +build unit
 
 package store // nolint:dupl
 
 import (
 	"crypto/rand"
 	"fmt"
+	"github.com/pkg/errors"
 	"os"
 	"testing"
 
@@ -148,7 +149,7 @@ func TestLevelDB_WriteBatch(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = db2.Get([]byte("key_batch100000"))
-	assert.EqualError(t, err, "leveldb: not found")
+	assert.EqualError(t, errors.Cause(err), ErrNotFound.Error())
 
 	wb = db2.NewWriteBatch()
 	for i := 0; i < 100000; i++ {

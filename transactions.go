@@ -1,84 +1,67 @@
 package wavelet
 
 import (
-	"encoding/binary"
-	"github.com/perlin-network/noise/edwards25519"
-	"math/big"
 	"sync"
 
-	"github.com/google/btree"
 	"github.com/perlin-network/wavelet/conf"
+	"github.com/perlin-network/wavelet/internal/btree"
+	"github.com/pkg/errors"
 )
-
-var _ btree.Item = (*mempoolItem)(nil)
-
-type mempoolItem struct {
-	index *big.Int
-	id    TransactionID
-}
-
-func (m mempoolItem) Less(than btree.Item) bool {
-	return m.index.Cmp(than.(mempoolItem).index) < 0
-}
 
 type Transactions struct {
 	sync.RWMutex
 
-	buffer  map[TransactionID]*Transaction
-	missing map[TransactionID]uint64
-	index   *btree.BTree
+	buffer    map[TransactionID]*Transaction
+	missing   map[TransactionID]uint64
+	finalized map[TransactionID]struct{}
+	index     btree.BTree
 
-	height uint64 // The latest block height the node is aware of.
+	latest Block // The latest block height the node is aware of.
 }
 
-func NewTransactions(height uint64) *Transactions {
+func NewTransactions(latest Block) *Transactions {
 	return &Transactions{
-		buffer:  make(map[TransactionID]*Transaction),
-		missing: make(map[TransactionID]uint64),
-		index:   btree.New(32),
+		buffer:    make(map[TransactionID]*Transaction),
+		missing:   make(map[TransactionID]uint64),
+		finalized: make(map[TransactionID]struct{}),
 
-		height: height,
+		latest: latest,
 	}
 }
 
 // Add adds a transaction into the node, and indexes it into the nodes mempool
 // based on the value BLAKE2b(tx.ID || block.ID).
-func (t *Transactions) Add(block BlockID, tx Transaction, verifySignature bool) {
+func (t *Transactions) Add(tx Transaction) {
 	t.Lock()
 	defer t.Unlock()
 
-	t.add(block, tx, verifySignature)
+	t.add(tx)
 }
 
-func (t *Transactions) BatchAdd(block BlockID, transactions []Transaction, verifySignature bool) {
+func (t *Transactions) BatchAdd(transactions []Transaction) {
 	t.Lock()
 	defer t.Unlock()
 
 	for _, tx := range transactions {
-		t.add(block, tx, verifySignature)
+		t.add(tx)
 	}
 }
 
-func (t *Transactions) add(block BlockID, tx Transaction, verifySignature bool) {
-	if verifySignature {
-		var (
-			nonceBuf [8]byte
-			blockBuf [8]byte
-		)
+// BatchUnsafeAdd adds transactions to buffer without adding them to index
+// used on node's start
+func (t *Transactions) BatchUnsafeAdd(txs []*Transaction) {
+	t.Lock()
+	defer t.Unlock()
 
-		binary.BigEndian.PutUint64(nonceBuf[:], tx.Nonce)
-		binary.BigEndian.PutUint64(blockBuf[:], tx.Block)
-
-		if !edwards25519.Verify(
-			tx.Sender,
-			append(nonceBuf[:], append(blockBuf[:], append([]byte{byte(tx.Tag)}, tx.Payload...)...)...),
-			tx.Signature,
-		) {
-			return
-		}
+	for _, tx := range txs {
+		t.buffer[tx.ID] = tx
 	}
+}
 
-	if t.height >= tx.Block+uint64(conf.GetPruningLimit()) {
+func (t *Transactions) add(tx Transaction) {
+	if t.latest.Index >= tx.Block+uint64(conf.GetPruningLimit()) {
+		delete(t.missing, tx.ID)
+
 		return
 	}
 
@@ -86,7 +69,10 @@ func (t *Transactions) add(block BlockID, tx Transaction, verifySignature bool) 
 		return
 	}
 
-	t.index.ReplaceOrInsert(mempoolItem{index: tx.ComputeIndex(block), id: tx.ID})
+	if _, finalized := t.finalized[tx.ID]; !finalized {
+		t.index.Set(tx.ComputeIndex(t.latest.ID), tx.ID)
+	}
+
 	t.buffer[tx.ID] = &tx
 
 	delete(t.missing, tx.ID) // In case the transaction was previously missing, mark it as no longer missing.
@@ -99,6 +85,16 @@ func (t *Transactions) MarkMissing(id TransactionID) bool {
 	defer t.Unlock()
 
 	return t.markMissing(id)
+}
+
+// BatchMarkFinalized saves batch of transaction ids to finalized index
+func (t *Transactions) BatchMarkFinalized(ids ...TransactionID) {
+	t.Lock()
+	defer t.Unlock()
+
+	for _, id := range ids {
+		t.finalized[id] = struct{}{}
+	}
 }
 
 // BatchMarkMissing is the same as MarkMissing, but it accepts a list of transaction IDs.
@@ -125,7 +121,7 @@ func (t *Transactions) markMissing(id TransactionID) bool {
 		return false
 	}
 
-	t.missing[id] = t.height
+	t.missing[id] = t.latest.Index
 
 	return true
 }
@@ -141,50 +137,42 @@ func (t *Transactions) ReshufflePending(next Block) []TransactionID {
 
 	// Delete mempool entries for transactions in the finalized block.
 
-	lookup := make(map[TransactionID]struct{})
-
 	for _, id := range next.Transactions {
-		lookup[id] = struct{}{}
+		t.finalized[id] = struct{}{}
 	}
 
 	// Recompute indices of all items in the mempool.
+	var updated btree.BTree
 
-	items := make([]mempoolItem, 0, t.index.Len())
+	t.index.Scan(func(key []byte, value interface{}) bool {
+		id := value.(TransactionID)
 
-	t.index.Ascend(func(i btree.Item) bool {
-		item := i.(mempoolItem)
-
-		if _, finalized := lookup[item.id]; finalized {
+		if _, finalized := t.finalized[id]; finalized {
 			return true
 		}
 
-		tx := t.buffer[item.id]
+		tx := t.buffer[id]
 
 		if next.Index < tx.Block+uint64(conf.GetPruningLimit()) {
-			item.index = tx.ComputeIndex(next.ID)
-			items = append(items, item)
+			updated.Set(tx.ComputeIndex(next.ID), id)
 		}
 
 		return true
 	})
 
-	// Clear the entire mempool.
-
-	t.index.Clear(false)
-
 	// Re-insert all mempool items with the recomputed indices.
 
-	for _, item := range items {
-		t.index.ReplaceOrInsert(item)
-	}
+	t.index = updated
 
 	// Go through the entire transactions index and prune away
 	// any transactions that are too old.
-	pruned := []TransactionID{}
+	var pruned []TransactionID
 
 	for _, tx := range t.buffer {
 		if next.Index >= tx.Block+uint64(conf.GetPruningLimit()) {
 			delete(t.buffer, tx.ID)
+			delete(t.finalized, tx.ID)
+
 			pruned = append(pruned, tx.ID)
 		}
 	}
@@ -201,7 +189,7 @@ func (t *Transactions) ReshufflePending(next Block) []TransactionID {
 	// Have all IDs of transactions missing from now on be marked to be missing from
 	// a new block height.
 
-	t.height = next.Index
+	t.latest = next
 
 	return pruned
 }
@@ -226,7 +214,9 @@ func (t *Transactions) HasPending(block BlockID, id TransactionID) bool {
 		return false
 	}
 
-	return t.index.Has(mempoolItem{index: tx.ComputeIndex(block), id: id})
+	_, found := t.index.Get(tx.ComputeIndex(block))
+
+	return found
 }
 
 // Find searches and returns a transaction by its id if the node has it
@@ -236,6 +226,25 @@ func (t *Transactions) Find(id TransactionID) *Transaction {
 	defer t.RUnlock()
 
 	return t.buffer[id]
+}
+
+// BatchFind returns an error if one of the id does not exist.
+func (t *Transactions) BatchFind(ids []TransactionID) ([]*Transaction, error) {
+	t.RLock()
+	defer t.RUnlock()
+
+	txs := make([]*Transaction, 0, len(ids))
+
+	for i := range ids {
+		tx, exist := t.buffer[ids[i]]
+		if !exist {
+			return nil, errors.Wrapf(ErrMissingTx, "%x", ids[i])
+		}
+
+		txs = append(txs, tx)
+	}
+
+	return txs, nil
 }
 
 // Len returns the total number of transactions that the node has archived.
@@ -289,9 +298,11 @@ func (t *Transactions) ProposableIDs() []TransactionID {
 
 	proposable := make([]TransactionID, 0, limit)
 
-	t.index.Ascend(func(i btree.Item) bool {
-		if t.buffer[i.(mempoolItem).id].Block <= t.height+1 {
-			proposable = append(proposable, i.(mempoolItem).id)
+	t.index.Scan(func(key []byte, value interface{}) bool {
+		id := value.(TransactionID)
+
+		if t.buffer[id].Block <= t.latest.Index+1 {
+			proposable = append(proposable, id)
 		}
 
 		return len(proposable) < limit

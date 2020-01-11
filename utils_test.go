@@ -1,8 +1,9 @@
-// +build integration,!unit
+// +build integration
 
 package wavelet
 
 import (
+	"fmt"
 	"net"
 	"strconv"
 	"testing"
@@ -23,9 +24,15 @@ func TestSelectPeers(t *testing.T) {
 	nodes := make([]*skademlia.Client, 10)
 	addrs := make([]string, 10)
 	cleanup := make([]func(), 10)
+
+	var err error
 	for i := 0; i < 10; i++ {
-		nodes[i], addrs[i], cleanup[i] = newNode(t)
-		defer cleanup[i]()
+		nodes[i], addrs[i], cleanup[i], err = newNode()
+		if cleanup[i] != nil {
+			defer cleanup[i]()
+		}
+
+		assert.NoError(t, err)
 	}
 
 	for i := 0; i < 10; i++ {
@@ -80,31 +87,43 @@ func TestSelectPeers(t *testing.T) {
 	assert.Equal(t, 4, len(selected))
 }
 
-func newNode(t *testing.T) (*skademlia.Client, string, func()) {
+func newNode() (*skademlia.Client, string, func(), error) {
 	keys, err := skademlia.NewKeys(sys.SKademliaC1, sys.SKademliaC2)
-	assert.NoError(t, err)
+	if err != nil {
+		return nil, "", nil, err
+	}
 
 	ln, err := net.Listen("tcp", ":0") // nolint:gosec
-	assert.NoError(t, err)
+	if err != nil {
+		return nil, "", nil, err
+	}
 
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(ln.Addr().(*net.TCPAddr).Port))
 
 	client := skademlia.NewClient(addr, keys, skademlia.WithC1(sys.SKademliaC1), skademlia.WithC2(sys.SKademliaC2))
 	client.SetCredentials(noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), client.Protocol()))
 
-	kv, cleanup := store.NewTestKV(t, "level", "db")
-	ledger := NewLedger(kv, client, WithoutGC())
+	kv, cleanup, err := store.NewTestKV("level", "db")
+	if err != nil {
+		return nil, "", nil, err
+	}
+
+	ledger, err := NewLedger(kv, client, WithoutGC())
+	if err != nil {
+		return nil, "", cleanup, err
+	}
+
 	server := client.Listen()
 	RegisterWaveletServer(server, ledger.Protocol())
 
 	go func() { // nolint:staticcheck
 		if err := server.Serve(ln); err != nil && err != grpc.ErrServerStopped {
-			t.Fatal(err)
+			fmt.Println(err)
 		}
 	}()
 
 	return client, addr, func() {
 		server.GracefulStop()
 		cleanup()
-	}
+	}, nil
 }

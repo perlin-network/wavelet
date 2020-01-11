@@ -33,16 +33,16 @@ import (
 
 var (
 	// Global prefixes.
-	keyAccounts          = [...]byte{0x1}
-	keyAccountsLen       = [...]byte{0x2}
-	keyBlocks            = [...]byte{0x3}
-	keyBlockLatestIx     = [...]byte{0x4}
-	keyBlockOldestIx     = [...]byte{0x5}
-	keyBlockStoredCount  = [...]byte{0x6}
-	keyRewardWithdrawals = [...]byte{0x7}
+	keyAccounts             = [...]byte{0x1}
+	keyAccountsLen          = [...]byte{0x2}
+	keyBlocks               = [...]byte{0x3}
+	keyBlockLatestIx        = [...]byte{0x4}
+	keyBlockOldestIx        = [...]byte{0x5}
+	keyBlockStoredCount     = [...]byte{0x6}
+	keyRewardWithdrawals    = [...]byte{0x7}
+	keyTransactionFinalized = [...]byte{0x8}
 
 	// Account-local prefixes.
-	keyAccountNonce              = [...]byte{0x1}
 	keyAccountBalance            = [...]byte{0x2}
 	keyAccountStake              = [...]byte{0x3}
 	keyAccountReward             = [...]byte{0x4}
@@ -112,22 +112,6 @@ func UnmarshalRewardWithdrawalRequest(r io.Reader) (RewardWithdrawalRequest, err
 	rw.blockIndex = binary.BigEndian.Uint64(buf[:8])
 
 	return rw, nil
-}
-
-func ReadAccountNonce(tree *avl.Tree, id AccountID) (uint64, bool) {
-	buf, exists := readUnderAccounts(tree, id, keyAccountNonce[:])
-	if !exists || len(buf) == 0 {
-		return 0, false
-	}
-
-	return binary.LittleEndian.Uint64(buf), true
-}
-
-func WriteAccountNonce(tree *avl.Tree, id AccountID, nonce uint64) {
-	var buf [8]byte
-
-	binary.LittleEndian.PutUint64(buf[:], nonce)
-	writeUnderAccounts(tree, id, keyAccountNonce[:], buf[:])
 }
 
 func ReadAccountBalance(tree *avl.Tree, id AccountID) (uint64, bool) {
@@ -321,12 +305,7 @@ func StoreBlock(kv store.KV, block Block, currentIx, oldestIx uint32, storedCoun
 		return errors.Wrap(err, "error storing latest block index")
 	}
 
-	marshaled, err := block.Marshal()
-	if err != nil {
-		return errors.Wrap(err, "error marshaling block")
-	}
-
-	if err := kv.Put(append(keyBlocks[:], strconv.Itoa(int(currentIx))...), marshaled); err != nil {
+	if err := kv.Put(append(keyBlocks[:], strconv.Itoa(int(currentIx))...), block.Marshal()); err != nil {
 		return errors.Wrap(err, "error storing block")
 	}
 
@@ -381,15 +360,17 @@ func LoadBlocks(kv store.KV) ([]*Block, uint32, uint32, error) {
 func GetRewardWithdrawalRequests(tree *avl.Tree, blockLimit uint64) []RewardWithdrawalRequest {
 	var rws []RewardWithdrawalRequest
 
-	cb := func(k, v []byte) {
+	cb := func(k, v []byte) bool {
 		rw, err := UnmarshalRewardWithdrawalRequest(bytes.NewReader(v))
 		if err != nil {
-			return
+			return true
 		}
 
 		if rw.blockIndex <= blockLimit {
 			rws = append(rws, rw)
 		}
+
+		return true
 	}
 
 	tree.IteratePrefix(keyRewardWithdrawals[:], cb)
@@ -399,4 +380,39 @@ func GetRewardWithdrawalRequests(tree *avl.Tree, blockLimit uint64) []RewardWith
 
 func StoreRewardWithdrawalRequest(tree *avl.Tree, rw RewardWithdrawalRequest) {
 	tree.Insert(rw.Key(), rw.Marshal())
+}
+
+// Store each finalized transaction with an empty value, and a key comprised of:
+// [HEADER | 64-bit big-endian integer representing height where transaction got finalized | 256-bit transaction ID].
+func StoreFinalizedTransactionIDs(tree *avl.Tree, height uint64, finalized []*Transaction) {
+	for _, tx := range finalized {
+		key := make([]byte, len(keyTransactionFinalized)+8+32)
+
+		copy(key[:len(keyTransactionFinalized)], keyTransactionFinalized[:])
+		binary.BigEndian.PutUint64(key[len(keyTransactionFinalized):len(keyTransactionFinalized)+8], height)
+		copy(key[len(keyTransactionFinalized)+8:len(keyTransactionFinalized)+8+32], tx.ID[:])
+
+		tree.Insert(key, nil)
+	}
+}
+
+func LoadFinalizedTransactionIDs(tree *avl.Tree) []TransactionID {
+	var ids []TransactionID
+
+	cb := func(k, v []byte) bool {
+		var id TransactionID
+
+		r := bytes.NewReader(k)
+		if n, err := r.ReadAt(id[:], 8); n != SizeTransactionID || err != nil {
+			return true
+		}
+
+		ids = append(ids, id)
+
+		return true
+	}
+
+	tree.IteratePrefix(keyTransactionFinalized[:], cb)
+
+	return ids
 }

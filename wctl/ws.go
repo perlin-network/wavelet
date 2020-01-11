@@ -11,7 +11,6 @@ import (
 
 const (
 	RouteWSConsensus    = "/poll/consensus"
-	RouteWSStake        = "/poll/stake"
 	RouteWSAccounts     = "/poll/accounts"
 	RouteWSContracts    = "/poll/contract"
 	RouteWSTransactions = "/poll/tx"
@@ -66,6 +65,7 @@ func (c *Client) _pollWS(path string,
 
 			go func(message []byte) {
 				p := c.jsonPool.Get()
+				defer c.jsonPool.Put(p)
 
 				o, err := p.ParseBytes(message)
 				if err != nil {
@@ -74,8 +74,6 @@ func (c *Client) _pollWS(path string,
 				}
 
 				callback(o)
-
-				c.jsonPool.Put(p)
 			}(message)
 		}
 	}()

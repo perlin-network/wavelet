@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/fasthttp/websocket"
-	"github.com/perlin-network/wavelet/debounce"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fastjson"
 )
@@ -150,8 +149,6 @@ type sink struct {
 	filters map[string]string
 
 	join, leave chan *client
-
-	debouncer debounce.Debouncer
 }
 
 func (s *sink) run() {
@@ -196,58 +193,9 @@ SENDING:
 	}
 }
 
-func (s *sink) debounce(batch [][]byte) {
-	f := func(clients map[*client]struct{}) {
-	SENDING:
-		for c := range clients {
-			idx, obj := 0, fastjson.MustParse("[]")
-
-		BATCHING:
-			for _, buf := range batch {
-				o, err := fastjson.ParseBytes(buf)
-				if err != nil {
-					continue BATCHING
-				}
-
-				for key, condition := range c.filters {
-					val := o.Get(key)
-
-					if val == nil {
-						continue BATCHING
-					}
-
-					if !fastjsonEquals(val, condition) {
-						continue BATCHING
-					}
-				}
-
-				obj.SetArrayItem(idx, o)
-				idx++
-			}
-
-			if idx == 0 {
-				continue SENDING
-			}
-
-			buf := obj.MarshalTo(nil)
-
-			select {
-			case c.queue <- buf:
-			default:
-			}
-		}
-	}
-
-	s.ops <- f
-}
-
 func (s *sink) broadcast(item broadcastItem) {
-	if s.debouncer != nil {
-		s.debouncer.Add(debounce.Bytes(item.buf))
-	} else {
-		s.ops <- func(clients map[*client]struct{}) {
-			s.doSend(clients, item.buf, item.value)
-		}
+	s.ops <- func(clients map[*client]struct{}) {
+		s.doSend(clients, item.buf, item.value)
 	}
 }
 

@@ -24,7 +24,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"math/big"
+
+	"io"
 
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
@@ -201,11 +202,9 @@ func UnmarshalTransaction(r io.Reader) (Transaction, error) {
 	return t, t.Unmarshal(r)
 }
 
-func (tx Transaction) ComputeIndex(id BlockID) *big.Int {
-	buf := blake2b.Sum256(append(tx.ID[:], id[:]...))
-	index := (&big.Int{}).SetBytes(buf[:])
-
-	return index
+func (tx Transaction) ComputeIndex(id BlockID) []byte {
+	idx := blake2b.Sum256(append(tx.ID[:], id[:]...))
+	return idx[:]
 }
 
 func (tx Transaction) Fee() uint64 {
@@ -235,4 +234,22 @@ func (tx Transaction) LogicalUnits() int {
 
 func (tx Transaction) String() string {
 	return fmt.Sprintf("Transaction{ID: %x}", tx.ID)
+}
+
+func (tx Transaction) VerifySignature() bool {
+	var (
+		nonceBuf [8]byte
+		blockBuf [8]byte
+	)
+
+	binary.BigEndian.PutUint64(nonceBuf[:], tx.Nonce)
+	binary.BigEndian.PutUint64(blockBuf[:], tx.Block)
+
+	message := make([]byte, 0, 8+8+1+len(tx.Payload))
+	message = append(message, nonceBuf[:]...)
+	message = append(message, blockBuf[:]...)
+	message = append(message, byte(tx.Tag))
+	message = append(message, tx.Payload...)
+
+	return edwards25519.Verify(tx.Sender, message, tx.Signature)
 }

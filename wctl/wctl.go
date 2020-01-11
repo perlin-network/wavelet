@@ -43,7 +43,6 @@ const (
 	RouteContract = "/contract"
 	RouteTxList   = "/tx"
 	RouteTxSend   = "/tx/send"
-	RouteNonce    = "/nonce"
 
 	RouteNode       = "/node"
 	RouteConnect    = RouteNode + "/connect"
@@ -86,7 +85,6 @@ type Client struct {
 	url      string
 
 	// Local state counters
-	Nonce *atomic.Uint64
 	Block *atomic.Uint64
 
 	// JSON stuff
@@ -106,9 +104,37 @@ type Client struct {
 	// These functions would also return a callback to stop polling.
 	OnError
 
+<<<<<<< HEAD
 	// map of random number ID to function handlers
 	handlers  map[int64]interface{}
 	handlerMu sync.Mutex
+=======
+	// Accounts
+	OnBalanceUpdated
+	OnGasBalanceUpdated
+	OnNumPagesUpdated
+	OnStakeUpdated
+	OnRewardUpdated
+
+	// Network
+	OnPeerJoin
+	OnPeerLeave
+
+	// Consensus
+	OnProposal
+	OnFinalized
+
+	// Contract
+	OnContractGas
+	OnContractLog
+
+	// PollTransactions
+	OnTxApplied
+	OnTxGossipError
+	OnTxFailed
+
+	OnMetrics
+>>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
 }
 
 func NewClient(config Config) (*Client, error) {
@@ -139,12 +165,12 @@ func NewClient(config Config) (*Client, error) {
 		OnError: func(err error) {
 			log.ErrNode(err, "")
 		},
-		Nonce: atomic.NewUint64(0),
 		Block: atomic.NewUint64(0),
 
 		handlers: map[int64]interface{}{},
 	}
 
+<<<<<<< HEAD
 	// Generate parsers and arenas
 	for i := 0; i < JSONPoolSize; i++ {
 		var a fastjson.Arena
@@ -156,12 +182,14 @@ func NewClient(config Config) (*Client, error) {
 
 	// Get the nonce
 	n, err := c.GetSelfNonce()
+=======
+	ls, err := c.LedgerStatus()
+>>>>>>> f59047e31aa71fc9fbecf1364e37a5e5641f8e01
 	if err != nil {
 		return c, errors.Wrap(err, "Failed to get self nonce")
 	}
 
-	c.Nonce.Store(n.Nonce)
-	c.Block.Store(n.Block)
+	c.Block.Store(ls.Block.Index)
 
 	// Start listening to consensus to track Block
 	cancel, err := c.pollConsensus()

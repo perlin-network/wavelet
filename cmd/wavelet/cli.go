@@ -51,25 +51,34 @@ type CLI struct {
 
 	client *wctl.Client
 
-	stdin  io.ReadCloser
-	stdout io.Writer
+	stdin   io.ReadCloser
+	stdout  io.Writer
+	nocolor bool
 
 	cleanup func()
 }
 
-func CLIWithStdin(stdin io.ReadCloser) func(cli *CLI) {
+type CLIOption func(cli *CLI)
+
+func CLIWithStdin(stdin io.ReadCloser) CLIOption {
 	return func(cli *CLI) {
 		cli.stdin = stdin
 	}
 }
 
-func CLIWithStdout(stdout io.Writer) func(cli *CLI) {
+func CLIWithStdout(stdout io.Writer) CLIOption {
 	return func(cli *CLI) {
 		cli.stdout = stdout
 	}
 }
 
-func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
+func CLIWithNoColor(b bool) CLIOption {
+	return func(cli *CLI) {
+		cli.nocolor = b
+	}
+}
+
+func NewCLI(client *wctl.Client, opts ...CLIOption) (*CLI, error) {
 	// Set CLI callbacks, mainly loggers
 	cleanup, err := setEvents(client)
 	if err != nil {
@@ -179,6 +188,12 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 			},
 		},
 		{
+			Name:        "version",
+			Aliases:     []string{"v"},
+			Action:      a(c.version),
+			Description: "print out binary version of wavelet node",
+		},
+		{
 			Name:    "exit",
 			Aliases: []string{"quit", ":q"},
 			Action:  a(c.exit),
@@ -259,16 +274,6 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 					Value: conf.GetSecret(),
 					Usage: "shared secret for http api authorization",
 				},
-				cli.UintFlag{
-					Name:  "bloom.filter.k",
-					Value: conf.GetBloomFilterK(),
-					Usage: "bloom filter K parameter for transaction syncing",
-				},
-				cli.UintFlag{
-					Name:  "bloom.filter.m",
-					Value: conf.GetBloomFilterM(),
-					Usage: "bloom filter M parameter for transaction syncing",
-				},
 				cli.Uint64Flag{
 					Name:  "tx.sync.chunk.size",
 					Value: conf.GetTXSyncChunkSize(),
@@ -284,17 +289,7 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 		{
 			Name:        "dump",
 			Action:      a(c.dump),
-			Description: "dump wallet states, and you may use -c to dump contract code and pages",
-			Flags: []cli.Flag{
-				cli.BoolFlag{
-					Name:  "c",
-					Usage: "dump contract code and pages",
-				},
-			},
-		},
-		{
-			Name:        "dump",
-			Action:      a(c.dump),
+			Aliases:     []string{"d"},
 			Description: "dump wallet states, and you may use -c to dump contract code and pages",
 			Flags: []cli.Flag{
 				cli.BoolFlag{
@@ -374,6 +369,7 @@ func NewCLI(client *wctl.Client, opts ...func(cli *CLI)) (*CLI, error) {
 				log.ModuleSync,
 				log.ModuleContract,
 			),
+			log.NoColor(c.nocolor),
 		),
 	)
 

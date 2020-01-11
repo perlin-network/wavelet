@@ -21,24 +21,26 @@ package wavelet
 
 import (
 	"encoding/hex"
-
 	"github.com/perlin-network/wavelet/avl"
 	"github.com/perlin-network/wavelet/log"
-	"github.com/perlin-network/wavelet/lru"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
 )
 
-func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) (*collapseResults, error) {
-	res := &collapseResults{snapshot: accounts.Snapshot()}
-	res.snapshot.SetViewID(block.Index)
+func collapseTransactions(
+	height uint64, txs []*Transaction, block *Block, accounts *Accounts,
+) (*collapseResults, error) {
+	snapshot := accounts.Snapshot()
+	snapshot.SetViewID(height)
 
-	res.applied = make([]*Transaction, 0, len(txs))
-	res.rejected = make([]*Transaction, 0, len(txs))
-	res.rejectedErrors = make([]error, 0, len(txs))
-	res.accountNonces = make(map[AccountID]uint64)
+	res := &collapseResults{
+		snapshot: snapshot,
+		ctx:      NewCollapseContext(snapshot),
 
-	ctx := NewCollapseContext(res.snapshot)
+		applied:        make([]*Transaction, 0, len(txs)),
+		rejected:       make([]*Transaction, 0, len(txs)),
+		rejectedErrors: make([]error, 0, len(txs)),
+	}
 
 	var (
 		totalStake uint64
@@ -50,21 +52,10 @@ func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) 
 	// Apply transactions in reverse order from the end of the round
 	// all the way down to the beginning of the round.
 	for _, tx := range txs {
-		// Update nonce.
-		nonce, exists := ctx.ReadAccountNonce(tx.Sender)
-		if !exists {
-			ctx.WriteAccountsLen(ctx.ReadAccountsLen() + 1)
-		}
-
-		ctx.WriteAccountNonce(tx.Sender, nonce+1)
-
-		// Keep track of latest nonce of each account
-		res.accountNonces[tx.Sender] = nonce + 1
-
 		if hex.EncodeToString(tx.Sender[:]) != sys.FaucetAddress {
 			fee := tx.Fee()
 
-			senderBalance, _ := ctx.ReadAccountBalance(tx.Sender)
+			senderBalance, _ := res.ctx.ReadAccountBalance(tx.Sender)
 			if senderBalance < fee {
 				res.rejected = append(res.rejected, tx)
 				res.rejectedErrors = append(
@@ -79,10 +70,10 @@ func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) 
 				continue
 			}
 
-			ctx.WriteAccountBalance(tx.Sender, senderBalance-fee)
+			res.ctx.WriteAccountBalance(tx.Sender, senderBalance-fee)
 			totalFee += fee
 
-			stake, _ := ctx.ReadAccountStake(tx.Sender)
+			stake, _ := res.ctx.ReadAccountStake(tx.Sender)
 			if stake >= sys.MinimumStake {
 				if _, ok := stakes[tx.Sender]; !ok {
 					stakes[tx.Sender] = stake
@@ -94,7 +85,7 @@ func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) 
 			}
 		}
 
-		if err := ctx.ApplyTransaction(block, tx); err != nil {
+		if err := res.ctx.ApplyTransaction(block, tx); err != nil {
 			res.rejected = append(res.rejected, tx)
 			res.rejectedErrors = append(res.rejectedErrors, err)
 			res.rejectedCount += tx.LogicalUnits()
@@ -113,18 +104,20 @@ func collapseTransactions(txs []*Transaction, block *Block, accounts *Accounts) 
 
 	if totalStake > 0 {
 		for sender, stake := range stakes {
-			rewardeeBalance, _ := ctx.ReadAccountReward(sender)
+			rewardeeBalance, _ := res.ctx.ReadAccountReward(sender)
 
 			reward := float64(totalFee) * (float64(stake) / float64(totalStake))
-			ctx.WriteAccountReward(sender, rewardeeBalance+uint64(reward))
+			res.ctx.WriteAccountReward(sender, rewardeeBalance+uint64(reward))
 		}
 	}
 
-	ctx.processRewardWithdrawals(block.Index)
+	res.ctx.processRewardWithdrawals(block.Index)
 
-	if err := ctx.Flush(); err != nil {
+	if err := res.ctx.Flush(); err != nil {
 		return res, err
 	}
+
+	//res.ctx.processFinalizedTransactions(block.Index, txs)
 
 	return res, nil
 }
@@ -143,14 +136,13 @@ type CollapseContext struct {
 	balances            map[AccountID]uint64
 	stakes              map[AccountID]uint64
 	rewards             map[AccountID]uint64
-	nonces              map[AccountID]uint64
 	contracts           map[TransactionID][]byte
 	contractGasBalances map[TransactionID]uint64
 	contractVMs         map[AccountID]*VMState
 
 	rewardWithdrawalRequests []RewardWithdrawalRequest
 
-	VMCache *lru.LRU
+	VMCache *VMLRU
 }
 
 func NewCollapseContext(tree *avl.Tree) *CollapseContext {
@@ -172,12 +164,11 @@ func (c *CollapseContext) init() {
 	c.balances = make(map[AccountID]uint64)
 	c.stakes = make(map[AccountID]uint64)
 	c.rewards = make(map[AccountID]uint64)
-	c.nonces = make(map[AccountID]uint64)
 	c.contracts = make(map[TransactionID][]byte)
 	c.contractGasBalances = make(map[TransactionID]uint64)
 	c.contractVMs = make(map[AccountID]*VMState)
 
-	c.VMCache = lru.NewLRU(4)
+	c.VMCache = NewVMLRU(4)
 }
 
 func (c *CollapseContext) ReadAccountsLen() uint64 {
@@ -186,19 +177,6 @@ func (c *CollapseContext) ReadAccountsLen() uint64 {
 
 func (c *CollapseContext) WriteAccountsLen(size uint64) {
 	c.accountLen = size
-}
-
-func (c *CollapseContext) ReadAccountNonce(id AccountID) (uint64, bool) {
-	if nonce, ok := c.nonces[id]; ok {
-		return nonce, true
-	}
-
-	nonce, exists := ReadAccountNonce(c.tree, id)
-	if exists {
-		c.nonces[id] = nonce
-	}
-
-	return nonce, exists
 }
 
 func (c *CollapseContext) ReadAccountBalance(id AccountID) (uint64, bool) {
@@ -280,11 +258,6 @@ func (c *CollapseContext) addAccount(id AccountID) {
 	c.accountIDs = append(c.accountIDs, id)
 }
 
-func (c *CollapseContext) WriteAccountNonce(id AccountID, nonce uint64) {
-	c.addAccount(id)
-	c.nonces[id] = nonce
-}
-
 func (c *CollapseContext) WriteAccountBalance(id AccountID, balance uint64) {
 	c.addAccount(id)
 	c.balances[id] = balance
@@ -341,6 +314,31 @@ func (c *CollapseContext) processRewardWithdrawals(blockIndex uint64) {
 	c.rewardWithdrawalRequests = leftovers
 }
 
+//func (c *CollapseContext) processFinalizedTransactions(height uint64, finalized []*Transaction) {
+//	pruningLimit := uint64(conf.GetPruningLimit())
+//
+//	if height < pruningLimit {
+//		return
+//	}
+//
+//	heightLimit := height - pruningLimit
+//
+//	cb := func(k, v []byte) bool {
+//		height := binary.BigEndian.Uint64(k[:8])
+//
+//		if height <= heightLimit {
+//			c.tree.Delete(append(keyTransactionFinalized[:], k...))
+//			return true
+//		}
+//
+//		return false
+//	}
+//
+//	c.tree.IteratePrefix(keyTransactionFinalized[:], cb)
+//
+//	StoreFinalizedTransactionIDs(c.tree, height, finalized)
+//}
+
 // Write the changes into the tree.
 func (c *CollapseContext) Flush() error {
 	if c.checksum != c.tree.Checksum() {
@@ -363,10 +361,6 @@ func (c *CollapseContext) Flush() error {
 
 		if reward, ok := c.rewards[id]; ok {
 			WriteAccountReward(c.tree, id, reward)
-		}
-
-		if nonce, ok := c.nonces[id]; ok {
-			WriteAccountNonce(c.tree, id, nonce)
 		}
 
 		if gasBal, ok := c.contractGasBalances[id]; ok {

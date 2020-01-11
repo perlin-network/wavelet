@@ -17,7 +17,7 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// +build !integration,unit
+// +build unit
 
 package wavelet
 
@@ -87,7 +87,6 @@ func getRandomID(t *testing.T) *skademlia.ID {
 }
 
 func TestSnowball(t *testing.T) {
-	t.Parallel()
 	snowballBeta := 10
 	defaultBeta := conf.GetSnowballBeta()
 	conf.Update(conf.WithSnowballBeta(snowballBeta))
@@ -272,7 +271,6 @@ func TestSnowball(t *testing.T) {
 // Test if all tallies have equal value and the value is lower than alpha.
 // Snowball will never decide.
 func TestSnowball_EqualTally_LowerThanAlpha(t *testing.T) {
-	t.Parallel()
 	snowballBeta := 10
 	defaultBeta := conf.GetSnowballBeta()
 	conf.Update(conf.WithSnowballBeta(snowballBeta))
@@ -326,7 +324,6 @@ func TestSnowball_EqualTally_LowerThanAlpha(t *testing.T) {
 //
 // Nevertheless, because of the way the snowball is implemented, if this happens, the snowball will prefer the first vote.
 func TestSnowball_EqualTally_HigherThanAlpha(t *testing.T) {
-	t.Parallel()
 	snowballBeta := 10
 	defaultBeta := conf.GetSnowballBeta()
 	conf.Update(conf.WithSnowballBeta(snowballBeta))

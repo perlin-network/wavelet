@@ -52,6 +52,10 @@ func (b *badgerWriteBatch) Destroy() {
 	b.batch.Cancel()
 }
 
+func (b *badgerWriteBatch) Delete(key []byte) error {
+	return b.batch.Delete(key)
+}
+
 type badgerKV struct {
 	dir string
 	db  *badger.DB
@@ -102,6 +106,10 @@ func (b *badgerKV) Get(key []byte) ([]byte, error) {
 		value, err = item.ValueCopy(nil)
 		return err
 	})
+
+	if err != nil {
+		return nil, errors.Wrap(ErrNotFound, err.Error())
+	}
 
 	if value == nil {
 		value = []byte{}

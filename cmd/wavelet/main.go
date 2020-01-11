@@ -113,6 +113,17 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, disableGC bool) {
 			EnvVar: "WAVELET_API_PORT",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{
+			Name:   "cli.host",
+			Usage:  "Host to reach to manage the node.",
+			EnvVar: "WAVELET_CLI_HOST",
+		}),
+		altsrc.NewUintFlag(cli.UintFlag{
+			Name:   "cli.port",
+			Value:  0,
+			Usage:  "Port to connect to to manage the node.",
+			EnvVar: "WAVELET_CLI_PORT",
+		}),
+		altsrc.NewStringFlag(cli.StringFlag{
 			Name:   "api.host",
 			Usage:  "Host for the API HTTPS node.",
 			EnvVar: "WAVELET_API_HOST",
@@ -151,6 +162,11 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, disableGC bool) {
 			Value:  "debug",
 			Usage:  "Minimum log level to output. Possible values: debug, info, warn, error, fatal, panic.",
 			EnvVar: "WAVELET_LOGLEVEL",
+		}),
+		altsrc.NewBoolFlag(cli.BoolFlag{
+			Name:   "log.nocolor",
+			Usage:  "Disable color in log output.",
+			EnvVar: "WAVELET_LOG_NOCOLOR",
 		}),
 		altsrc.NewIntFlag(cli.IntFlag{
 			Name:   "memory.max",
@@ -303,10 +319,16 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer, disableGC bool
 		}()
 
 		wctlCfg.Server = srv
-		wctlCfg.APIPort = uint16(c.Uint("api.port"))
-		wctlCfg.PrivateKey = srv.Keys.PrivateKey()
 
-		wctlCfg.APIHost = c.String("api.host")
+		if c.Uint("cli.port") != 0 {
+			wctlCfg.APIPort = uint16(c.Uint("cli.port"))
+		} else {
+			wctlCfg.APIPort = uint16(c.Uint("api.port"))
+		}
+
+		wctlCfg.PrivateKey = srv.Keys.PrivateKey()
+		wctlCfg.APIHost = c.String("cli.host")
+
 		if wctlCfg.APIHost == "" {
 			wctlCfg.APIHost = "127.0.0.1"
 		} else {
@@ -337,7 +359,12 @@ func start(c *cli.Context, stdin io.ReadCloser, stdout io.Writer, disableGC bool
 		logger.Err(err).Msg("wctl error")
 	}
 
-	shell, err := NewCLI(client, CLIWithStdin(stdin), CLIWithStdout(stdout))
+	opts := []CLIOption{CLIWithStdin(stdin), CLIWithStdout(stdout)}
+	if c.Bool("log.nocolor") {
+		opts = append(opts, CLIWithNoColor(true))
+	}
+
+	shell, err := NewCLI(client, opts...)
 	if err != nil {
 		return errors.Wrap(err, "Failed to spawn the CLI")
 	}

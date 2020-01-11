@@ -21,6 +21,8 @@ syntax = "proto3";
 
 package wavelet;
 
+import "google/protobuf/empty.proto";
+
 message QueryRequest {
     uint64 block_index = 1;
     bytes cache_block_id = 2;
@@ -58,6 +60,10 @@ message SyncResponse {
     }
 }
 
+message GossipRequest {
+    repeated bytes transactions = 1;
+}
+
 message TransactionsSyncRequest {
     oneof Data {
         bytes filter = 1;
@@ -84,10 +90,8 @@ message TransactionPullResponse {
     repeated bytes transactions = 1;
 }
 
-message Empty {
-}
-
 service Wavelet {
+    rpc Gossip (GossipRequest) returns (google.protobuf.Empty) {}
     rpc Query (QueryRequest) returns (QueryResponse) {}
 
     rpc CheckOutOfSync (OutOfSyncRequest) returns (OutOfSyncResponse) {}

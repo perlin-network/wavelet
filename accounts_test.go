@@ -17,43 +17,42 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// +build unit
+
 package wavelet
 
-//import (
-//	"bytes"
-//	"fmt"
-//	"math/rand"
-//	"testing"
-//	"testing/quick"
-//	"time"
-//
-//	"github.com/perlin-network/wavelet/store"
-//	"github.com/stretchr/testify/assert"
-//)
-//
-//func TestSmartContract(t *testing.T) {
-//	fn := func(id TransactionID, code [2 * 1024]byte) bool {
-//		accounts := NewAccounts(store.NewInmem())
-//		tree := accounts.Snapshot()
-//
-//		returned, available := ReadAccountContractCode(tree, id)
-//		if returned != nil || available == true {
-//			return false
-//		}
-//
-//		WriteAccountContractCode(tree, id, code[:])
-//
-//		returned, available = ReadAccountContractCode(tree, id)
-//		if !bytes.Equal(code[:], returned) || available == false {
-//			return false
-//		}
-//
-//		return true
-//	}
-//
-//	assert.NoError(t, quick.Check(fn, nil))
-//}
-//
+import (
+	"bytes"
+	"testing"
+	"testing/quick"
+
+	"github.com/perlin-network/wavelet/store"
+	"github.com/stretchr/testify/assert"
+)
+
+func TestSmartContract(t *testing.T) {
+	fn := func(id TransactionID, code [2 * 1024]byte) bool {
+		accounts := NewAccounts(store.NewInmem())
+		tree := accounts.Snapshot()
+
+		returned, available := ReadAccountContractCode(tree, id)
+		if returned != nil || available == true {
+			return false
+		}
+
+		WriteAccountContractCode(tree, id, code[:])
+
+		returned, available = ReadAccountContractCode(tree, id)
+		if !bytes.Equal(code[:], returned) || available == false {
+			return false
+		}
+
+		return true
+	}
+
+	assert.NoError(t, quick.Check(fn, nil))
+}
+
 //func BenchmarkAccountsCommit(b *testing.B) {
 //	dbs := []string{"level"}
 //

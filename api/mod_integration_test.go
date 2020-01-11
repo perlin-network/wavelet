@@ -17,7 +17,7 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// +build integration,!unit
+// +build integration
 
 package api
 
@@ -72,7 +72,7 @@ func TestListTransaction(t *testing.T) {
 	assert.NoError(t, err)
 
 	tx := newTransaction(keys, sys.TagTransfer, 0, 0, buf[:])
-	gateway.ledger.AddTransaction(true, tx)
+	gateway.ledger.AddTransaction(tx)
 
 	// Build an expected response
 	var expectedResponse transactionList
@@ -172,7 +172,7 @@ func TestGetTransaction(t *testing.T) {
 	_, err = rand.Read(buf[:])
 	assert.NoError(t, err)
 
-	gateway.ledger.AddTransaction(true, newTransaction(keys, sys.TagTransfer, 0, 0, buf[:]))
+	gateway.ledger.AddTransaction(newTransaction(keys, sys.TagTransfer, 0, 0, buf[:]))
 
 	var txID wavelet.TransactionID
 	gateway.ledger.Transactions().Iterate(func(tx *wavelet.Transaction) bool {
@@ -621,7 +621,7 @@ func TestGetLedger(t *testing.T) {
 	publicKey := keys.PublicKey()
 
 	expectedJSON := fmt.Sprintf(
-		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"preferred_votes":0,"sync_status":"Node is taking part in consensus process","block":{"merkle_root":"cd3b0df841268ab6c987a594de29ad19","height":0,"id":"4b35bb7ead7ac9a0e7064c6d99342962360854308f84dde9fe0703cd7772a94d","transactions":0},"preferred":null,"num_missing_tx":0,"num_tx":0,"num_tx_in_store":0,"num_accounts_in_store":3,"peers":null}`,
+		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"preferred_votes":0,"block":{"merkle_root":"19be72d52438349e8fa2c4705f1cd954","height":0,"id":"2d301376b242d1dec15ac1d0e5b30c41e11a4ad743f79c59bec204b0e01b36bd","transactions":0},"preferred":null,"num_missing_tx":0,"num_tx":0,"num_tx_in_store":0,"num_accounts_in_store":3,"peers":null}`,
 		hex.EncodeToString(publicKey[:]),
 		listener.Addr().(*net.TCPAddr).Port,
 	)
@@ -756,9 +756,15 @@ func compareJSON(expected []byte, response []byte) error {
 
 func createLedger(t *testing.T) *wavelet.Ledger {
 	keys, err := skademlia.NewKeys(1, 1)
-	assert.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	ledger := wavelet.NewLedger(store.NewInmem(), skademlia.NewClient(":0", keys))
+	ledger, err := wavelet.NewLedger(store.NewInmem(), skademlia.NewClient(":0", keys))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	return ledger
 }
 

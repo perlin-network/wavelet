@@ -17,7 +17,7 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-// +build !integration,unit
+// +build unit
 
 package wavelet
 
@@ -25,6 +25,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/avl"
@@ -122,12 +123,6 @@ func TestCollapseContext(t *testing.T) {
 	// For each value, we do a write and check the value.
 	f := func(override bool) {
 		checkAccountID(override, func(id AccountID) {
-			ctx.WriteAccountNonce(id, 1)
-			nonce, _ := ctx.ReadAccountNonce(id)
-			assert.Equal(t, uint64(1), nonce)
-		})
-
-		checkAccountID(override, func(id AccountID) {
 			ctx.WriteAccountBalance(id, 2)
 			bal, _ := ctx.ReadAccountBalance(id)
 			assert.Equal(t, uint64(2), bal)
@@ -221,10 +216,7 @@ func newCollapseContainer(t assert.TestingT, noOfAcc int) *collapseTestContainer
 	accountState := NewAccounts(stateStore)
 	assert.NoError(t, accountState.Commit(state))
 
-	block, err := NewBlock(viewID, state.Checksum())
-	if err != nil {
-		assert.FailNow(t, err.Error())
-	}
+	block := NewBlock(viewID, state.Checksum())
 
 	testGraph := &collapseTestContainer{
 		accounts:     accounts,
@@ -253,10 +245,10 @@ func (g *collapseTestContainer) applyContract(b *testing.B, code []byte) (Transa
 		return Transaction{}, err
 	}
 
-	nonce, _ := ReadAccountNonce(g.accountState.tree, sender.PublicKey())
+	nonce := uint64(time.Now().UnixNano())
 	tx := NewTransaction(sender, nonce+1, g.block.Index, sys.TagContract, payload)
 
-	results, err := collapseTransactions([]*Transaction{&tx}, g.block, g.accountState)
+	results, err := collapseTransactions(g.block.Index, []*Transaction{&tx}, g.block, g.accountState)
 	if err != nil {
 		return Transaction{}, err
 	}
@@ -269,11 +261,8 @@ func (g *collapseTestContainer) applyContract(b *testing.B, code []byte) (Transa
 		return Transaction{}, err
 	}
 
-	newBlock, err := NewBlock(g.block.Index+1, g.accountState.tree.Checksum())
-	if err != nil {
-		return Transaction{}, err
-	}
-	g.block = &newBlock
+	block := NewBlock(g.block.Index+1, g.accountState.tree.Checksum())
+	g.block = &block
 
 	return tx, nil
 }
@@ -291,7 +280,7 @@ func (g *collapseTestContainer) collapseTransactionsNewState(b *testing.B) (*col
 
 	b.StartTimer()
 
-	results, err := collapseTransactions(g.txs, g.block, accountState)
+	results, err := collapseTransactions(g.block.Index, g.txs, g.block, accountState)
 	if err != nil {
 		return nil, err
 	}
@@ -306,9 +295,8 @@ func (g *collapseTestContainer) addTxs(b *testing.B, noOfTx int, getTx func(send
 		// Choose random sender
 		var sender = g.accounts[g.accountIDs[rng.Intn(len(g.accountIDs))]]
 
-		nonce, _ := ReadAccountNonce(g.accountState.tree, sender.PublicKey())
-
-		g.txs = append(g.txs, getTx(sender, nonce+uint64(i+1)))
+		nonce := uint64(time.Now().UnixNano())
+		g.txs = append(g.txs, getTx(sender, nonce))
 	}
 }
 
