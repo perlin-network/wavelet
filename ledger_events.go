@@ -168,8 +168,8 @@ func (c *ConsensusFinalized) UnmarshalValue(v *fastjson.Value) error {
 	c.OldBlockHeight = v.GetUint64("old_block_height")
 	c.NewBlockHeight = v.GetUint64("new_block_height")
 
-	log.ValueHex(v, c.OldBlockID, "old_block_id")
-	log.ValueHex(v, c.NewBlockID, "new_block_id")
+	log.ValueHex(v, c.OldBlockID[:], "old_block_id")
+	log.ValueHex(v, c.NewBlockID[:], "new_block_id")
 
 	return nil
 }

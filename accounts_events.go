@@ -104,7 +104,7 @@ func marshalAccountIDandUint64(ev *zerolog.Event, id AccountID, ukey string, u u
 
 // yes, I know this is a terrible function name, it can't be helped
 func unmarshalAccountIDandUint64(v *fastjson.Value, id AccountID, ukey string, u *uint64) error {
-	if err := log.ValueHex(v, id, "account_id"); err != nil {
+	if err := log.ValueHex(v, id[:], "account_id"); err != nil {
 		return err
 	}
 

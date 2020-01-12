@@ -37,6 +37,16 @@ const (
 	WithdrawReward
 )
 
+// String converts a given tag to a string.
+func (tag Tag) String() string {
+	if tag < 0 || tag > 3 { // nolint:staticcheck
+		return "" // Return invalid tag
+	}
+
+	names := [...]string{"nop", "transfer", "contract", "stake", "batch"}
+	return names[tag] // Return tag
+}
+
 const (
 	// Size of individual chunks sent for a syncing peer.
 	SyncChunkSize = 16 * 1024 // 64KB
@@ -264,13 +274,4 @@ func init() { // nolint:gochecknoinits
 	if VersionMeta == "testnet" {
 		MinimumStake = 10000
 	}
-}
-
-// String converts a given tag to a string.
-func (tag Tag) String() string {
-	if tag < 0 || tag > 3 { // nolint:staticcheck
-		return "" // Return invalid tag
-	}
-
-	return []string{"transfer", "contract", "stake", "batch"}[tag] // Return tag
 }

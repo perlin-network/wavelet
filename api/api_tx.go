@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"strconv"
+	"strings"
 
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
@@ -15,7 +16,8 @@ import (
 )
 
 type TxResponse struct {
-	ID wavelet.TransactionID `json:"id"`
+	ID  wavelet.TransactionID `json:"id"`
+	Tag sys.Tag               `json:"tag"`
 }
 
 var _ log.JSONObject = (*TxResponse)(nil)
@@ -23,17 +25,34 @@ var _ log.JSONObject = (*TxResponse)(nil)
 func (s *TxResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	o := arena.NewObject()
 	log.ObjectAny(arena, o, "id", s.ID[:])
+	log.ObjectAny(arena, o, "tag", uint8(s.Tag))
 
 	return o.MarshalTo(nil), nil
 }
 
 func (s *TxResponse) MarshalEvent(ev *zerolog.Event) {
 	ev.Hex("id", s.ID[:])
-	ev.Msg("Transaction sent.")
+
+	if s.Tag != sys.TagStake {
+		ev.Msg(strings.Title(s.Tag.String()) + " sent.")
+		return
+	}
+
+	// We don't know the Opcode, so this is all we could do.
+	ev.Msg("Stake changed.")
 }
 
 func (s *TxResponse) UnmarshalValue(v *fastjson.Value) error {
-	return log.ValueHex(v, s.ID[:], "id")
+	var tag uint8
+	if err := log.ValueBatch(v,
+		"id", s.ID[:],
+		"tag", &tag); err != nil {
+
+		return err
+	}
+
+	s.Tag = sys.Tag(tag)
+	return nil
 }
 
 /*
@@ -43,12 +62,12 @@ func (s *TxResponse) UnmarshalValue(v *fastjson.Value) error {
 type Transaction struct {
 	ID        wavelet.TransactionID `json:"id"`
 	Sender    wavelet.AccountID     `json:"sender"`
+	Signature wavelet.Signature     `json:"signature"`
 	Status    string                `json:"status"`
 	Nonce     uint64                `json:"nonce"`
 	Block     uint64                `json:"height"`
 	Tag       sys.Tag               `json:"tag"`
 	Payload   []byte                `json:"payload"` // base64
-	Signature wavelet.Signature     `json:"signature"`
 }
 
 var _ log.JSONObject = (*Transaction)(nil)
@@ -57,12 +76,12 @@ func convertTransaction(tx *wavelet.Transaction, status string) Transaction {
 	return Transaction{
 		ID:        tx.ID,
 		Sender:    tx.Sender,
+		Signature: tx.Signature,
 		Status:    status,
 		Nonce:     tx.Nonce,
 		Block:     tx.Block,
 		Tag:       tx.Tag,
 		Payload:   tx.Payload,
-		Signature: tx.Signature,
 	}
 }
 
@@ -121,12 +140,13 @@ func (s *Transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 	o := arena.NewObject()
 
 	err := log.ObjectBatch(arena, o,
-		"id", s.ID[:],
+		"id", s.ID,
 		"sender", s.Sender,
-		"nonce", s.Nonce,
-		"tag", s.Tag,
-		"payload", base64.StdEncoding.EncodeToString(s.Payload),
 		"signature", s.Signature,
+		"status", s.Status,
+		"nonce", s.Nonce,
+		"tag", uint8(s.Tag),
+		"payload", base64.StdEncoding.EncodeToString(s.Payload),
 	)
 
 	return o, err
@@ -134,8 +154,8 @@ func (s *Transaction) getObject(arena *fastjson.Arena) (*fastjson.Value, error) 
 
 func (s *Transaction) UnmarshalValue(v *fastjson.Value) error {
 	log.ValueHex(v, s.ID[:], "id")
-	log.ValueHex(v, s.Sender, "sender")
-	log.ValueHex(v, s.Signature, "signature")
+	log.ValueHex(v, s.Sender[:], "sender")
+	log.ValueHex(v, s.Signature[:], "signature")
 
 	s.Nonce = v.GetUint64("nonce")
 	s.Tag = sys.Tag(v.GetUint("tag"))
@@ -157,6 +177,7 @@ func (s *Transaction) MarshalEvent(ev *zerolog.Event) {
 	ev.Uint8("tag", uint8(s.Tag))
 
 	ev.Int("payload_len", len(s.Payload))
+	ev.Msg("Transaction")
 }
 
 func (s *Transaction) MarshalZerologObject(ev *zerolog.Event) {

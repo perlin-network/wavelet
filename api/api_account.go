@@ -96,5 +96,9 @@ func (s *Account) MarshalEvent(ev *zerolog.Event) {
 	ev.Bool("is_contract", s.IsContract)
 	ev.Uint64("num_pages", s.NumPages)
 
-	ev.Msg("Account")
+	if s.IsContract {
+		ev.Msg("Contract")
+	} else {
+		ev.Msg("Account")
+	}
 }

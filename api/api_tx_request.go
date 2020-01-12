@@ -13,11 +13,11 @@ import (
 
 type TxRequest struct {
 	Sender    wavelet.AccountID `json:"sender"`
+	Signature wavelet.Signature `json:"signature"`
 	Nonce     uint64            `json:"nonce"`
 	Block     uint64            `json:"block"`
 	Tag       uint8             `json:"tag"`
 	Payload   []byte            `json:"payload"`
-	Signature wavelet.Signature `json:"signature"`
 }
 
 var _ log.JSONObject = (*TxRequest)(nil)
@@ -43,8 +43,8 @@ func (s *TxRequest) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 
 func (s *TxRequest) UnmarshalValue(v *fastjson.Value) error {
 	return log.ValueBatch(v,
-		"sender", s.Sender,
-		"signature", s.Signature,
+		"sender", s.Sender[:],
+		"signature", s.Signature[:],
 		"nonce", &s.Nonce,
 		"block", &s.Block,
 		"tag", &s.Tag,
@@ -101,6 +101,7 @@ func (g *Gateway) sendTransaction(ctx *fasthttp.RequestCtx) {
 	g.Ledger.AddTransaction(tx)
 
 	g.render(ctx, &TxResponse{
-		ID: tx.ID,
+		ID:  tx.ID,
+		Tag: sys.Tag(req.Tag),
 	})
 }

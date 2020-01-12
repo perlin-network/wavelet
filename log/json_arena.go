@@ -179,9 +179,9 @@ func ObjectAny(arena *fastjson.Arena, o *fastjson.Value, key string,
 		target = arena.NewNumberFloat64(float64(val))
 
 	default:
-		panic("BUG: Unknown dst type when marshaling " + key)
+		panic("BUG: Unknown dst type when marshaling `" + key + "`")
 	}
 
-	o.Set(key, target)
+	o.Set(parts[0], target)
 	return nil
 }

@@ -9,17 +9,19 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/conf"
@@ -166,7 +168,7 @@ func TestMain_Pay(t *testing.T) {
 	recipient := bob.PublicKey()
 	alice.Stdin <- fmt.Sprintf("p %s 99999", hex.EncodeToString(recipient[:]))
 
-	txIDText, err := alice.Stdout.Search("Paid to recipient.", 1)
+	txIDText, err := alice.Stdout.Search("Transfer sent.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(txIDText)
@@ -196,7 +198,7 @@ func TestMain_Spawn(t *testing.T) {
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
-	txIDText, err := w.Stdout.Search("Smart contract spawned.", 1)
+	txIDText, err := w.Stdout.Search("Contract sent.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(txIDText)
@@ -224,7 +226,7 @@ func TestMain_Call(t *testing.T) {
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
-	contractIDText, err := w.Stdout.Search("Smart contract spawned.", 1)
+	contractIDText, err := w.Stdout.Search("Contract sent.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(contractIDText)
@@ -237,7 +239,7 @@ func TestMain_Call(t *testing.T) {
 
 	w.Stdin <- fmt.Sprintf("call %s 1000 100000 on_money_received", tx.ID)
 
-	_, err = w.Stdout.Search("Smart contract function called.", 1)
+	_, err = w.Stdout.Search("Transfer sent.", 1)
 	assert.NoError(t, err)
 }
 
@@ -256,7 +258,7 @@ func TestMain_CallWithParams(t *testing.T) {
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
-	txIDText, err := w.Stdout.Search("Smart contract spawned.", 1)
+	txIDText, err := w.Stdout.Search("Contract sent.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(txIDText)
@@ -271,7 +273,7 @@ func TestMain_CallWithParams(t *testing.T) {
 
 	w.Stdin <- fmt.Sprintf("call %s 1000 100000 on_money_received %s", tx.ID, params)
 
-	txIDText, err = w.Stdout.Search("Smart contract function called.", 1)
+	txIDText, err = w.Stdout.Search("Transfer sent.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err = extractTxID(txIDText)
@@ -343,7 +345,7 @@ func TestMain_DepositGas(t *testing.T) {
 
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
-	txIDText, err := w.Stdout.Search("Smart contract spawned.", 1)
+	txIDText, err := w.Stdout.Search("Contract sent.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(txIDText)
@@ -356,7 +358,7 @@ func TestMain_DepositGas(t *testing.T) {
 
 	w.Stdin <- fmt.Sprintf("deposit-gas %s 99999", tx.ID)
 
-	_, err = w.Stdout.Search("Gas deposited.", 1)
+	_, err = w.Stdout.Search("Transfer sent.", 1)
 	assert.NoError(t, err)
 }
 
@@ -376,7 +378,7 @@ func TestMain_Find(t *testing.T) {
 	recipient := bob.PublicKey()
 	alice.Stdin <- fmt.Sprintf("p %s 99999", hex.EncodeToString(recipient[:]))
 
-	txIDText, err := alice.Stdout.Search("Paid to recipient.", 1)
+	txIDText, err := alice.Stdout.Search("Transfer sent.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(txIDText)
@@ -387,7 +389,7 @@ func TestMain_Find(t *testing.T) {
 
 	alice.Stdin <- fmt.Sprintf("find %s", txID)
 
-	_, err = alice.Stdout.Search(fmt.Sprintf("Transaction: %s", txID), 1)
+	_, err = alice.Stdout.Search(fmt.Sprintf("Transaction id: %s", txID), 1)
 	assert.NoError(t, err)
 }
 
@@ -406,7 +408,7 @@ func TestMain_PlaceStake(t *testing.T) {
 
 	alice.Stdin <- "ps 1000"
 
-	txIDText, err := alice.Stdout.Search("Stake placed.", 1)
+	txIDText, err := alice.Stdout.Search("Stake changed.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(txIDText)
@@ -449,7 +451,7 @@ func TestMain_WithdrawStake(t *testing.T) {
 
 	alice.Stdin <- "ps 1000"
 
-	txIDText, err := alice.Stdout.Search("Stake placed.", 1)
+	txIDText, err := alice.Stdout.Search("Stake changed.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(txIDText)
@@ -459,7 +461,7 @@ func TestMain_WithdrawStake(t *testing.T) {
 
 	alice.Stdin <- "ws 500"
 
-	txIDText, err = alice.Stdout.Search("Stake withdrew.", 1)
+	txIDText, err = alice.Stdout.Search("Stake changed.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err = extractTxID(txIDText)
@@ -502,7 +504,7 @@ func TestMain_WithdrawReward(t *testing.T) {
 
 	w.Stdin <- "wr 1000"
 
-	txIDText, err := w.Stdout.Search("Reward withdrew.", 1)
+	txIDText, err := w.Stdout.Search("Stake changed.", 1)
 	wavelet.FailTest(t, err)
 
 	txID, err := extractTxID(txIDText)
@@ -703,18 +705,27 @@ func (s *mockStdout) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
+var _stripANSISeq = regexp.MustCompile("\033\\[[0-9;]*m")
+
+func stripANSISeq(input string) string {
+	return _stripANSISeq.ReplaceAllString(input, "")
+}
+
 func (s *mockStdout) Search(sub string, times int) (string, error) {
 	timeout := time.NewTimer(time.Second * 30)
 	c := 0
 	for {
 		select {
 		case line := <-s.Lines:
+			line = stripANSISeq(line) // clear the color codes
+
 			if strings.Contains(line, sub) {
 				c++
 				if c == times {
 					return line, nil
 				}
 			}
+
 		case <-timeout.C:
 			return "", fmt.Errorf("timed out searching for string in stdout: %q", sub)
 		}

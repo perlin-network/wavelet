@@ -120,7 +120,7 @@ func Run(args []string, stdin io.ReadCloser, stdout io.Writer, disableGC bool) {
 		altsrc.NewUintFlag(cli.UintFlag{
 			Name:   "cli.port",
 			Value:  0,
-			Usage:  "Port to connect to to manage the node.",
+			Usage:  "Port to connect to manage the node.",
 			EnvVar: "WAVELET_CLI_PORT",
 		}),
 		altsrc.NewStringFlag(cli.StringFlag{

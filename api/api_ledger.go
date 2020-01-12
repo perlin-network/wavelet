@@ -155,8 +155,8 @@ func (s *LedgerStatus) UnmarshalValue(v *fastjson.Value) error {
 
 	// Parse block
 
-	log.ValueHex(v, s.Block.MerkleRoot, "block", "merkle_root")
-	log.ValueHex(v, s.Block.ID, "block", "id")
+	log.ValueHex(v, s.Block.MerkleRoot[:], "block", "merkle_root")
+	log.ValueHex(v, s.Block.ID[:], "block", "id")
 	s.Block.Height = v.GetUint64("block", "height")
 	s.Block.Txs = v.GetInt("block", "transactions")
 
@@ -165,8 +165,8 @@ func (s *LedgerStatus) UnmarshalValue(v *fastjson.Value) error {
 	if v.Exists("preferred") {
 		s.Preferred = &LedgerStatusBlock{}
 
-		log.ValueHex(v, s.Preferred.MerkleRoot, "preferred", "merkle_root")
-		log.ValueHex(v, s.Preferred.ID, "preferred", "id")
+		log.ValueHex(v, s.Preferred.MerkleRoot[:], "preferred", "merkle_root")
+		log.ValueHex(v, s.Preferred.ID[:], "preferred", "id")
 		s.Preferred.Height = v.GetUint64("preferred", "height")
 		s.Preferred.Txs = v.GetInt("preferred", "transactions")
 	}

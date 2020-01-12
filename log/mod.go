@@ -74,7 +74,8 @@ func setupChildLoggers() {
 func SetLevel(ls string) {
 	level, err := zerolog.ParseLevel(ls)
 	if err != nil {
-		level = zerolog.DebugLevel
+		// TODO: bug so panic, but maybe too harsh?
+		panic("Unknown level")
 	}
 
 	node = node.Level(level)

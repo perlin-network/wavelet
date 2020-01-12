@@ -4,6 +4,7 @@ import (
 	"github.com/perlin-network/wavelet"
 	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/wctl"
+	"github.com/rs/zerolog"
 )
 
 // converts a normal (func to close, error) to only an error
@@ -53,4 +54,11 @@ func setEvents(c *wctl.Client) (func(), error) {
 	)
 
 	return cleanup, err
+}
+
+func withCustomMessage(ev *zerolog.Event, v log.MarshalableEvent, msg string) {
+	dict := zerolog.Dict()
+	v.MarshalEvent(dict)
+	ev.Dict("tx", dict)
+	ev.Msg(msg)
 }

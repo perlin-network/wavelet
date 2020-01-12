@@ -58,19 +58,49 @@ func ValueBatch(value *fastjson.Value, keyDstPair ...interface{}) error {
 		return NewErrUnmarshalCustom(value, nil, "keyDstPair is not even")
 	}
 
+	var ( // flags
+		omitempty bool
+	)
+
 	for i := 0; i < len(keyDstPair); i += 2 {
 		var keys []string
 
 		switch ks := keyDstPair[i].(type) {
 		case string:
-			keys = append(keys, ks)
+			var parts = strings.Split(ks, ",")
+			var key = strings.Split(parts[0], ".")
+			keys = append(keys, key...)
+			parts = parts[1:]
+
+			// check for flag
+			for _, part := range parts {
+				switch part {
+				case "omitempty":
+					omitempty = true
+				}
+			}
+
 		case []string:
 			keys = ks
+
 		default:
 			return fmt.Errorf("Index %d doesn't have a proper value", i)
 		}
 
-		if err := ValueAny(value, keyDstPair[i+1], keys...); err != nil {
+		val := value.Get(keys...)
+		if val == nil {
+			if omitempty {
+				continue
+			}
+			return NewErrUnmarshalErr(value, keys, ErrDoesNotExist)
+		}
+
+		// If the value is nil, leave the dst alone.
+		if val.Type() == fastjson.TypeNull {
+			continue
+		}
+
+		if err := valueAny(val, keyDstPair[i+1], keys...); err != nil {
 			return errors.Wrap(err, "Index "+strconv.Itoa(i)+" failed")
 		}
 	}
@@ -92,9 +122,13 @@ func ValueAny(value *fastjson.Value, dst interface{}, key ...string) error {
 		return nil
 	}
 
+	return valueAny(val, dst, key...)
+}
+
+func valueAny(val *fastjson.Value, dst interface{}, key ...string) error {
 	switch dst := dst.(type) {
-	case *[]byte, *[16]byte, *[32]byte, *[64]byte:
-		return ValueHex(value, dst, key...)
+	case *[]byte, []byte, *[16]byte, *[32]byte, *[64]byte:
+		return valueHex(val, dst, key...)
 
 	case *string:
 		if val.Type() != fastjson.TypeString {
@@ -205,6 +239,10 @@ func ValueHex(value *fastjson.Value, dst interface{}, key ...string) error {
 		return NewErrUnmarshalErr(value, key, ErrDoesNotExist)
 	}
 
+	return valueHex(val, dst, key...)
+}
+
+func valueHex(val *fastjson.Value, dst interface{}, key ...string) error {
 	b, err := val.StringBytes()
 	if err != nil {
 		return NewErrUnmarshalErr(val, key, err)
@@ -217,12 +255,17 @@ func ValueHex(value *fastjson.Value, dst interface{}, key ...string) error {
 	case *[]byte:
 		*dst = make([]byte, hex.DecodedLen(len(b)))
 		bytes = *dst
+	case []byte:
+		bytes = dst
 	case *[16]byte:
 		bytes = dst[:]
 	case *[32]byte:
 		bytes = dst[:]
 	case *[64]byte:
 		bytes = dst[:]
+	default:
+		// fmt.Println(string(debug.Stack()))
+		return NewErrUnmarshalCustom(val, key, "invalid []byte ptr")
 	}
 
 	i, err := hex.Decode(bytes, b)

@@ -29,7 +29,7 @@ func (n *NetworkJoined) MarshalEvent(ev *zerolog.Event) {
 
 func (n *NetworkJoined) UnmarshalValue(v *fastjson.Value) error {
 	if err := log.ValueBatch(v,
-		"public_key", n.PublicKey,
+		"public_key", n.PublicKey[:],
 		"address", &n.Address); err != nil {
 
 		return err
@@ -64,7 +64,7 @@ func (n *NetworkLeft) MarshalEvent(ev *zerolog.Event) {
 
 func (n *NetworkLeft) UnmarshalValue(v *fastjson.Value) error {
 	if err := log.ValueBatch(v,
-		"public_key", n.PublicKey,
+		"public_key", n.PublicKey[:],
 		"address", &n.Address); err != nil {
 
 		return err
