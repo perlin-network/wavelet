@@ -119,7 +119,7 @@ func New(opts *Config) *Gateway {
 	)
 	sinkMetrics := g.registerWebsocketSink("ws://metrics/", nil)
 
-	log.SetLevel("info")
+	// log.SetLevel("info")
 	log.SetWriter(log.LoggerWebsocket, g)
 
 	// Setup HTTP router.
