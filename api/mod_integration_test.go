@@ -49,6 +49,7 @@ import (
 	"github.com/buaazp/fasthttprouter"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/store"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/pkg/errors"
@@ -58,10 +59,9 @@ import (
 )
 
 func TestListTransaction(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
+	gateway := New(&Config{
+		Ledger: createLedger(t),
+	})
 
 	// Create a transaction
 	keys, err := skademlia.NewKeys(1, 1)
@@ -72,14 +72,13 @@ func TestListTransaction(t *testing.T) {
 	assert.NoError(t, err)
 
 	tx := newTransaction(keys, sys.TagTransfer, 0, 0, buf[:])
-	gateway.ledger.AddTransaction(tx)
+	gateway.Ledger.AddTransaction(tx)
 
 	// Build an expected response
-	var expectedResponse transactionList
+	var expectedResponse TransactionList
 
-	gateway.ledger.Transactions().Iterate(func(tx *wavelet.Transaction) bool {
-		txRes := &transaction{tx: tx}
-		txRes.status = "applied"
+	gateway.Ledger.Transactions().Iterate(func(tx *wavelet.Transaction) bool {
+		txRes := convertTransaction(tx, "applied")
 
 		//_, err := txRes.marshal()
 		//assert.NoError(t, err)
@@ -91,7 +90,7 @@ func TestListTransaction(t *testing.T) {
 		name         string
 		url          string
 		wantCode     int
-		wantResponse marshalableJSON
+		wantResponse log.MarshalableArena
 	}{
 		{
 			name:     "sender not hex",
@@ -125,7 +124,7 @@ func TestListTransaction(t *testing.T) {
 			name:         "success",
 			url:          "/tx?limit=1&offset=0",
 			wantCode:     http.StatusOK,
-			wantResponse: expectedResponse,
+			wantResponse: &expectedResponse,
 		},
 	}
 
@@ -150,7 +149,7 @@ func TestListTransaction(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantResponse != nil {
-				r, err := tc.wantResponse.marshalJSON(new(fastjson.ArenaPool).Get())
+				r, err := tc.wantResponse.MarshalArena(&fastjson.Arena{})
 				assert.NoError(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
@@ -159,10 +158,9 @@ func TestListTransaction(t *testing.T) {
 }
 
 func TestGetTransaction(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
+	gateway := New(&Config{
+		Ledger: createLedger(t),
+	})
 
 	// Create a transaction
 	keys, err := skademlia.NewKeys(1, 1)
@@ -172,27 +170,26 @@ func TestGetTransaction(t *testing.T) {
 	_, err = rand.Read(buf[:])
 	assert.NoError(t, err)
 
-	gateway.ledger.AddTransaction(newTransaction(keys, sys.TagTransfer, 0, 0, buf[:]))
+	gateway.Ledger.AddTransaction(newTransaction(keys, sys.TagTransfer, 0, 0, buf[:]))
 
 	var txID wavelet.TransactionID
-	gateway.ledger.Transactions().Iterate(func(tx *wavelet.Transaction) bool {
+	gateway.Ledger.Transactions().Iterate(func(tx *wavelet.Transaction) bool {
 		txID = tx.ID
 		return false
 	})
 
-	tx := gateway.ledger.Transactions().Find(txID)
+	tx := gateway.Ledger.Transactions().Find(txID)
 	if tx == nil {
 		t.Fatal("not found")
 	}
 
-	txRes := &transaction{tx: tx}
-	txRes.status = "applied"
+	txRes := convertTransaction(tx, "applied")
 
 	tests := []struct {
 		name         string
 		id           string
 		wantCode     int
-		wantResponse marshalableJSON
+		wantResponse log.MarshalableArena
 	}{
 		{
 			name:     "invalid id length",
@@ -207,7 +204,7 @@ func TestGetTransaction(t *testing.T) {
 			name:         "success",
 			id:           hex.EncodeToString(txID[:]),
 			wantCode:     http.StatusOK,
-			wantResponse: txRes,
+			wantResponse: &txRes,
 		},
 	}
 
@@ -229,7 +226,7 @@ func TestGetTransaction(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantResponse != nil {
-				r, err := tc.wantResponse.marshalJSON(new(fastjson.ArenaPool).Get())
+				r, err := tc.wantResponse.MarshalArena(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
@@ -238,13 +235,14 @@ func TestGetTransaction(t *testing.T) {
 }
 
 func TestSendTransaction(t *testing.T) {
-	gateway := New()
-	gateway.setup()
+	gateway := New(&Config{
+		Ledger: createLedger(t),
+	})
 
 	tests := []struct {
 		name     string
 		wantCode int
-		req      sendTransactionRequest
+		req      TxRequest
 	}{
 		{
 			name:     "ok",
@@ -278,8 +276,7 @@ func TestSendTransaction(t *testing.T) {
 }
 
 func TestSendTransactionRandom(t *testing.T) {
-	gateway := New()
-	gateway.setup()
+	gateway := New(&Config{})
 
 	type request struct {
 		Sender    string `json:"sender"`
@@ -317,8 +314,7 @@ func TestSendTransactionRandom(t *testing.T) {
 
 // Test POST APIs with completely random payload
 func TestPostPayloadRandom(t *testing.T) {
-	gateway := New()
-	gateway.setup()
+	gateway := New(&Config{})
 
 	tests := []struct {
 		url string
@@ -368,10 +364,9 @@ func TestPostPayloadRandom(t *testing.T) {
 }
 
 func TestGetAccount(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
+	gateway := New(&Config{
+		Ledger: createLedger(t),
+	})
 
 	idHex := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
 	idBytes, err := hex.DecodeString(idHex)
@@ -380,9 +375,9 @@ func TestGetAccount(t *testing.T) {
 	var id32 wavelet.AccountID
 	copy(id32[:], idBytes)
 
-	wavelet.WriteAccountBalance(gateway.ledger.Snapshot(), id32, 10)
-	wavelet.WriteAccountStake(gateway.ledger.Snapshot(), id32, 11)
-	wavelet.WriteAccountContractNumPages(gateway.ledger.Snapshot(), id32, 12)
+	wavelet.WriteAccountBalance(gateway.Ledger.Snapshot(), id32, 10)
+	wavelet.WriteAccountStake(gateway.Ledger.Snapshot(), id32, 11)
+	wavelet.WriteAccountContractNumPages(gateway.Ledger.Snapshot(), id32, 12)
 
 	var id wavelet.AccountID
 	copy(id[:], idBytes)
@@ -391,7 +386,7 @@ func TestGetAccount(t *testing.T) {
 		name         string
 		url          string
 		wantCode     int
-		wantResponse marshalableJSON
+		wantResponse log.MarshalableArena
 	}{
 		{
 			name:     "missing id",
@@ -412,7 +407,7 @@ func TestGetAccount(t *testing.T) {
 			name:         "valid id",
 			url:          "/accounts/" + idHex,
 			wantCode:     http.StatusOK,
-			wantResponse: &account{ledger: gateway.ledger, id: id},
+			wantResponse: convertAccount(gateway.Ledger, id),
 		},
 	}
 
@@ -436,7 +431,7 @@ func TestGetAccount(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantResponse != nil {
-				r, err := tc.wantResponse.marshalJSON(new(fastjson.ArenaPool).Get())
+				r, err := tc.wantResponse.MarshalArena(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
@@ -445,10 +440,9 @@ func TestGetAccount(t *testing.T) {
 }
 
 func TestGetContractCode(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
+	gateway := New(&Config{
+		Ledger: createLedger(t),
+	})
 
 	idHex := "1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d1c331c1d"
 	idBytes, err := hex.DecodeString(idHex)
@@ -457,14 +451,14 @@ func TestGetContractCode(t *testing.T) {
 	var id32 wavelet.AccountID
 	copy(id32[:], idBytes)
 
-	s := gateway.ledger.Snapshot()
+	s := gateway.Ledger.Snapshot()
 	wavelet.WriteAccountContractCode(s, id32, []byte("contract code"))
 
 	tests := []struct {
 		name      string
 		url       string
 		wantCode  int
-		wantError marshalableJSON
+		wantError log.MarshalableArena
 	}{
 		{
 			name:     "missing id",
@@ -512,7 +506,7 @@ func TestGetContractCode(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantError != nil {
-				r, err := tc.wantError.marshalJSON(new(fastjson.ArenaPool).Get())
+				r, err := tc.wantError.MarshalArena(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
@@ -521,10 +515,9 @@ func TestGetContractCode(t *testing.T) {
 }
 
 func TestGetContractPages(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
+	gateway := New(&Config{
+		Ledger: createLedger(t),
+	})
 
 	// string: u1mf2g3b2477y5btco22txqxuc41cav6
 	var id = "75316d66326733623234373779356274636f3232747871787563343163617636"
@@ -533,7 +526,7 @@ func TestGetContractPages(t *testing.T) {
 		name      string
 		url       string
 		wantCode  int
-		wantError marshalableJSON
+		wantError log.MarshalableArena
 	}{
 		{
 			name:     "page not uint",
@@ -575,7 +568,7 @@ func TestGetContractPages(t *testing.T) {
 			assert.Equal(t, tc.wantCode, w.StatusCode, "status code")
 
 			if tc.wantError != nil {
-				r, err := tc.wantError.marshalJSON(new(fastjson.ArenaPool).Get())
+				r, err := tc.wantError.MarshalArena(new(fastjson.ArenaPool).Get())
 				assert.Nil(t, err)
 				assert.Equal(t, string(r), string(bytes.TrimSpace(response)))
 			}
@@ -584,20 +577,19 @@ func TestGetContractPages(t *testing.T) {
 }
 
 func TestGetLedger(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
+	gateway := New(&Config{
+		Ledger: createLedger(t),
+	})
 
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
-	gateway.keys = keys
+	gateway.Keys = keys
 
 	listener, err := net.Listen("tcp", ":0") // nolint:gosec
 	assert.NoError(t, err)
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(listener.Addr().(*net.TCPAddr).Port))
 
-	gateway.client = skademlia.NewClient(addr, keys,
+	gateway.Client = skademlia.NewClient(addr, keys,
 		skademlia.WithC1(sys.SKademliaC1),
 		skademlia.WithC2(sys.SKademliaC2),
 	)
@@ -621,7 +613,7 @@ func TestGetLedger(t *testing.T) {
 	publicKey := keys.PublicKey()
 
 	expectedJSON := fmt.Sprintf(
-		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"preferred_votes":0,"block":{"merkle_root":"19be72d52438349e8fa2c4705f1cd954","height":0,"id":"2d301376b242d1dec15ac1d0e5b30c41e11a4ad743f79c59bec204b0e01b36bd","transactions":0},"preferred":null,"num_missing_tx":0,"num_tx":0,"num_tx_in_store":0,"num_accounts_in_store":3,"peers":null}`,
+		`{"public_key":"%s","address":"127.0.0.1:%d","num_accounts":3,"preferred_votes":0,"block":{"merkle_root":"19be72d52438349e8fa2c4705f1cd954","height":0,"id":"2d301376b242d1dec15ac1d0e5b30c41e11a4ad743f79c59bec204b0e01b36bd","transactions":0},"preferred":null,"num_missing_tx":0,"num_tx":0,"num_tx_in_store":0,"peers":null}`,
 		hex.EncodeToString(publicKey[:]),
 		listener.Addr().(*net.TCPAddr).Port,
 	)
@@ -630,14 +622,13 @@ func TestGetLedger(t *testing.T) {
 }
 
 func TestConnectDisconnectErrors(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	gateway.ledger = createLedger(t)
+	gateway := New(&Config{
+		Ledger: createLedger(t),
+	})
 
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
-	gateway.keys = keys
+	gateway.Keys = keys
 
 	l, err := net.Listen("tcp", ":0") // nolint:gosec
 	if !assert.NoError(t, err) {
@@ -646,12 +637,12 @@ func TestConnectDisconnectErrors(t *testing.T) {
 
 	addr := net.JoinHostPort("127.0.0.1", strconv.Itoa(l.Addr().(*net.TCPAddr).Port))
 
-	gateway.client = skademlia.NewClient(addr, keys,
+	gateway.Client = skademlia.NewClient(addr, keys,
 		skademlia.WithC1(sys.SKademliaC1),
 		skademlia.WithC2(sys.SKademliaC2),
 	)
-	gateway.client.SetCredentials(
-		noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), gateway.client.Protocol()),
+	gateway.Client.SetCredentials(
+		noise.NewCredentials(addr, handshake.NewECDH(), cipher.NewAEAD(), gateway.Client.Protocol()),
 	)
 
 	currentSecret := conf.GetSecret()
@@ -773,7 +764,7 @@ type testErrResponse struct {
 	ErrorText  string `json:"error,omitempty"` // application-level error message, for debugging
 }
 
-func (t testErrResponse) marshalJSON(arena *fastjson.Arena) ([]byte, error) {
+func (t testErrResponse) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 	return json.Marshal(t)
 }
 

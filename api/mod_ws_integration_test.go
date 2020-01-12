@@ -39,12 +39,6 @@ import (
 )
 
 func TestPollLog(t *testing.T) {
-	gateway := New()
-	gateway.setup()
-
-	log.ClearWriter(log.LoggerWebsocket)
-	log.SetWriter(log.LoggerWebsocket, gateway)
-
 	keys, err := skademlia.NewKeys(1, 1)
 	assert.NoError(t, err)
 
@@ -54,7 +48,17 @@ func TestPollLog(t *testing.T) {
 		return
 	}
 
-	go gateway.StartHTTP(8080, nil, ledger, keys, kv)
+	gateway := New(&Config{
+		Port:   8080,
+		Ledger: ledger,
+		Keys:   keys,
+		KV:     kv,
+	})
+
+	log.ClearWriter(log.LoggerWebsocket)
+	log.SetWriter(log.LoggerWebsocket, gateway)
+
+	go gateway.Start()
 	defer gateway.Shutdown()
 
 	t.Run("tx-tag-filter", func(t *testing.T) {

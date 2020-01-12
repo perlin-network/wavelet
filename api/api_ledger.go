@@ -20,9 +20,9 @@ type LedgerStatus struct {
 	Block     LedgerStatusBlock  `json:"block"`
 	Preferred *LedgerStatusBlock `json:"preferred,omitempty"`
 
-	NumTx              int `json:"num_tx"`
-	NumTxInStore       int `json:"num_tx_in_store"`
-	NumAccountsInStore int `json:"num_accounts_in_store"`
+	NumMissingTx int `json:"num_missing_tx"`
+	NumTx        int `json:"num_tx"`
+	NumTxInStore int `json:"num_tx_in_store"`
 
 	Peers []LedgerStatusPeer
 }
@@ -61,6 +61,7 @@ func (g *Gateway) ledgerStatus(ctx *fasthttp.RequestCtx) {
 			Txs:        len(block.Transactions),
 		},
 
+		NumMissingTx: g.Ledger.Transactions().MissingLen(),
 		NumTx:        g.Ledger.Transactions().PendingLen(),
 		NumTxInStore: g.Ledger.Transactions().Len(),
 	}
@@ -119,8 +120,11 @@ func (s *LedgerStatus) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
 		log.ObjectAny(arena, pref, "transactions", s.Preferred.Txs)
 
 		o.Set("preferred", pref)
+	} else {
+		o.Set("preferred", arena.NewNull())
 	}
 
+	log.ObjectAny(arena, o, "num_missing_tx", s.NumMissingTx)
 	log.ObjectAny(arena, o, "num_tx", s.NumTx)
 	log.ObjectAny(arena, o, "num_tx_in_store", s.NumTxInStore)
 
@@ -162,13 +166,13 @@ func (s *LedgerStatus) UnmarshalValue(v *fastjson.Value) error {
 
 	// Parse preferred block
 
-	if v.Exists("preferred") {
+	if p := v.Get("preferred"); p != nil && p.Type() != fastjson.TypeNull {
 		s.Preferred = &LedgerStatusBlock{}
 
-		log.ValueHex(v, s.Preferred.MerkleRoot[:], "preferred", "merkle_root")
-		log.ValueHex(v, s.Preferred.ID[:], "preferred", "id")
-		s.Preferred.Height = v.GetUint64("preferred", "height")
-		s.Preferred.Txs = v.GetInt("preferred", "transactions")
+		log.ValueHex(p, s.Preferred.MerkleRoot[:], "merkle_root")
+		log.ValueHex(p, s.Preferred.ID[:], "id")
+		s.Preferred.Height = p.GetUint64("height")
+		s.Preferred.Txs = p.GetInt("transactions")
 	}
 
 	s.NumTx = v.GetInt("num_tx")

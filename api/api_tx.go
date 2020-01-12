@@ -118,7 +118,7 @@ func (g *Gateway) getTransaction(ctx *fasthttp.RequestCtx) {
 	}
 
 	var converted = convertTransaction(tx, "")
-	if tx.Block < g.Ledger.Blocks().Latest().Index {
+	if tx.Block <= g.Ledger.Blocks().Latest().Index {
 		converted.Status = StatusApplied
 	} else {
 		converted.Status = StatusReceived

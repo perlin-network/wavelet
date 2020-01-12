@@ -45,8 +45,11 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 
 	var id wavelet.AccountID
 	copy(id[:], slice)
+	g.render(ctx, convertAccount(g.Ledger, id))
+}
 
-	snapshot := g.Ledger.Snapshot()
+func convertAccount(ledger *wavelet.Ledger, id wavelet.AccountID) *Account {
+	snapshot := ledger.Snapshot()
 
 	balance, _ := wavelet.ReadAccountBalance(snapshot, id)
 	gasBalance, _ := wavelet.ReadAccountContractGasBalance(snapshot, id)
@@ -55,7 +58,7 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 	_, isContract := wavelet.ReadAccountContractCode(snapshot, id)
 	numPages, _ := wavelet.ReadAccountContractNumPages(snapshot, id)
 
-	g.render(ctx, &Account{
+	return &Account{
 		PublicKey:  id,
 		Balance:    balance,
 		GasBalance: gasBalance,
@@ -63,7 +66,7 @@ func (g *Gateway) getAccount(ctx *fasthttp.RequestCtx) {
 		Reward:     reward,
 		IsContract: isContract,
 		NumPages:   numPages,
-	})
+	}
 }
 
 func (s *Account) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
