@@ -43,13 +43,15 @@ func TestPollLog(t *testing.T) {
 	assert.NoError(t, err)
 
 	kv := store.NewInmem()
-	ledger, err := wavelet.NewLedger(kv, skademlia.NewClient(":0", keys))
+	client := skademlia.NewClient(":0", keys)
+	ledger, err := wavelet.NewLedger(kv, client)
 	if !assert.NoError(t, err) {
 		return
 	}
 
 	gateway := New(&Config{
 		Port:   8080,
+		Client: client,
 		Ledger: ledger,
 		Keys:   keys,
 		KV:     kv,
@@ -58,7 +60,7 @@ func TestPollLog(t *testing.T) {
 	log.ClearWriter(log.LoggerWebsocket)
 	log.SetWriter(log.LoggerWebsocket, gateway)
 
-	go gateway.Start()
+	gateway.Start()
 	defer gateway.Shutdown()
 
 	t.Run("tx-tag-filter", func(t *testing.T) {
@@ -132,7 +134,7 @@ func tryConnectWebsocket(t *testing.T, url url.URL) (*websocket.Conn, func()) {
 }
 
 func readAllMessages(t *testing.T, client *websocket.Conn, n int) (messages [][]byte) {
-	messages = make([][]byte, 0)
+	messages = make([][]byte, 0, n)
 
 	ch := make(chan []byte, 10)
 	go func() {
