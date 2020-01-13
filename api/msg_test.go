@@ -29,7 +29,7 @@ import (
 )
 
 func TestSendTransactionRequestTag(t *testing.T) {
-	req := new(sendTransactionRequest)
+	req := new(TxRequest)
 
 	// test missing tag
 	missing := `
@@ -76,7 +76,7 @@ func TestSendTransactionRequestTag(t *testing.T) {
 }
 
 func TestSendTransactionRequestMissingFields(t *testing.T) {
-	req := new(sendTransactionRequest)
+	req := new(TxRequest)
 
 	// test missing sender
 	missingSender := `
