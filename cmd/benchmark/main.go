@@ -33,9 +33,9 @@ import (
 
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
+	"github.com/perlin-network/wavelet"
 	logger "github.com/perlin-network/wavelet/log"
 	"github.com/perlin-network/wavelet/sys"
-	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -207,19 +207,11 @@ func commandRemote(c *cli.Context) error {
 	fmt.Printf("You're now connected! Using %d workers\n.", numWorkers)
 
 	// Add the OnMetrics callback
-	client.OnMetrics = func(met wctl.Metrics) {
-		log.Info().
-			Float64("accepted_tps", met.TpsAccepted).
-			Float64("received_tps", met.TpsReceived).
-			Float64("gossiped_tps", met.TpsGossiped).
-			Float64("downloaded_tps", met.TpsDownloaded).
-			Float64("queried_bps", met.BpsQueried).
-			Int64("query_latency_max_ms", met.QueryLatencyMaxMS).
-			Int64("query_latency_min_ms", met.QueryLatencyMinMS).
-			Float64("query_latency_mean_ms", met.QueryLatencyMeanMS).
-			Str("message", met.Message).
-			Msg("Benchmarking...")
-	}
+	client.AddHandler(func(ev logger.MarshalableEvent) {
+		if met, ok := ev.(*wavelet.Metrics); ok {
+			met.MarshalEvent(log.Info())
+		}
+	})
 
 	if _, err := client.PollMetrics(); err != nil {
 		panic(err)

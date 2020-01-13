@@ -94,7 +94,7 @@ type Client struct {
 	arenas  fastjson.ArenaPool
 
 	// Stop the background consensus that is created before
-	stopConsensus func()
+	// stopConsensus func()
 
 	// Stop other websockets that the user spawned
 	stopSockets []func()
@@ -107,7 +107,7 @@ type Client struct {
 	OnError
 
 	// map of random number ID to function handlers
-	handlers  map[int64]interface{}
+	handlers  map[int64]func(ev log.MarshalableEvent)
 	handlerMu sync.Mutex
 }
 
@@ -141,7 +141,7 @@ func NewClient(config Config) (*Client, error) {
 		},
 		Block: atomic.NewUint64(0),
 
-		handlers: map[int64]interface{}{},
+		handlers: map[int64]func(ev log.MarshalableEvent){},
 	}
 
 	// Generate parsers and arenas
@@ -160,8 +160,10 @@ func NewClient(config Config) (*Client, error) {
 
 	c.Block.Store(ls.Block.Height)
 
-	// Start listening to consensus to track Block
-	cancel, err := c.pollConsensus()
+	/* !!! Forgot what this was for...
+
+	// Start listening to consensus to track Block.
+	cancel, err := c.PollConsensus()
 	if err != nil {
 		cancel()
 		return nil, err
@@ -169,14 +171,14 @@ func NewClient(config Config) (*Client, error) {
 
 	c.stopConsensus = cancel
 
+	*/
+
 	return c, nil
 }
 
 // AddHandler adds a custom handler into the list of handlers to call on a known
-// event. The handler must have its only argument a pointer to a struct.
-// Example:
-//     func(finalized *wavelet.ConsensusFinalized)
-func (c *Client) AddHandler(handler interface{}) func() {
+// event. The handler must do manual type assertion for filtering.
+func (c *Client) AddHandler(handler func(ev log.MarshalableEvent)) func() {
 	c.handlerMu.Lock()
 	defer c.handlerMu.Unlock()
 
@@ -200,8 +202,6 @@ func (c *Client) AddHandler(handler interface{}) func() {
 }
 
 func (c *Client) Close() {
-	c.stopConsensus()
-
 	// cancel user-spawned sockets
 	for _, c := range c.stopSockets {
 		c()

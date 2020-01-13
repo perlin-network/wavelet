@@ -21,21 +21,22 @@ package main
 
 import (
 	"github.com/perlin-network/wavelet"
+	"github.com/perlin-network/wavelet/api"
 	"github.com/perlin-network/wavelet/sys"
 	"github.com/perlin-network/wavelet/wctl"
 	"github.com/pkg/errors"
 )
 
-func floodTransactions(numWorkers int) func(client *wctl.Client) ([]*wctl.TxResponse, error) {
-	return func(client *wctl.Client) ([]*wctl.TxResponse, error) {
-		chRes := make(chan *wctl.TxResponse, numWorkers)
+func floodTransactions(numWorkers int) func(client *wctl.Client) ([]*api.TxResponse, error) {
+	return func(client *wctl.Client) ([]*api.TxResponse, error) {
+		chRes := make(chan *api.TxResponse, numWorkers)
 		chErr := make(chan error, numWorkers)
 
 		for i := 0; i < numWorkers; i++ {
 			go sendTransaction(i+1, client, chRes, chErr)
 		}
 
-		var responses []*wctl.TxResponse
+		var responses []*api.TxResponse
 		var err error
 
 		for i := 0; i < numWorkers; i++ {
@@ -57,7 +58,7 @@ func floodTransactions(numWorkers int) func(client *wctl.Client) ([]*wctl.TxResp
 func sendTransaction(
 	i int,
 	client *wctl.Client,
-	chRes chan<- *wctl.TxResponse,
+	chRes chan<- *api.TxResponse,
 	chErr chan<- error,
 ) {
 	n := 1

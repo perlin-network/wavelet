@@ -20,6 +20,11 @@ func (s *SyncPullMissingTx) MarshalEvent(ev *zerolog.Event) {
 	ev.Msg("Pulled missing transaction(s).")
 }
 
+func (s *SyncPullMissingTx) UnmarshalValue(v *fastjson.Value) error {
+	return log.ValueBatch(v,
+		"count", &s.Count)
+}
+
 // event: out_of_sync
 type SyncOutOfSync struct {
 	CurrentBlockIndex uint64 `json:"current_block_index"`
@@ -172,4 +177,34 @@ func (c *ConsensusFinalized) UnmarshalValue(v *fastjson.Value) error {
 	log.ValueHex(v, c.NewBlockID[:], "new_block_id")
 
 	return nil
+}
+
+// event: proposal
+type ConsensusProposal struct {
+	BlockID    BlockID `json:"block_id"`
+	BlockIndex uint64  `json:"block_index"`
+	NumTxs     int     `json:"num_transactions"`
+}
+
+var _ log.JSONObject = (*ConsensusFinalized)(nil)
+
+func (c *ConsensusProposal) MarshalEvent(ev *zerolog.Event) {
+	ev.Hex("block_id", c.BlockID[:])
+	ev.Uint64("block_index", c.BlockIndex)
+	ev.Int("num_transactions", c.NumTxs)
+	ev.Msg("Proposing block...")
+}
+
+func (c *ConsensusProposal) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
+	return log.MarshalObjectBatch(arena,
+		"block_id", c.BlockID,
+		"block_index", c.BlockIndex,
+		"num_transactions", c.NumTxs)
+}
+
+func (c *ConsensusProposal) UnmarshalValue(v *fastjson.Value) error {
+	return log.ValueBatch(v,
+		"block_id", c.BlockID[:],
+		"block_index", &c.BlockIndex,
+		"num_transactions", &c.NumTxs)
 }

@@ -196,6 +196,7 @@ func TestMain_Spawn(t *testing.T) {
 
 	wavelet.FailTest(t, w.Testnet.WaitForSync())
 
+	w.Stdin <- "l" // for some reason, the test would fail with a broken pipe w/o this
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
 	txIDText, err := w.Stdout.Search("Contract sent.", 1)
@@ -224,6 +225,7 @@ func TestMain_Call(t *testing.T) {
 
 	wavelet.FailTest(t, w.Testnet.WaitForSync())
 
+	w.Stdin <- "l" // for some reason, the test would fail with a broken pipe w/o this
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
 	contractIDText, err := w.Stdout.Search("Contract sent.", 1)
@@ -256,6 +258,7 @@ func TestMain_CallWithParams(t *testing.T) {
 
 	wavelet.FailTest(t, w.Testnet.WaitForSync())
 
+	w.Stdin <- "l" // for some reason, the test would fail with a broken pipe w/o this
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
 	txIDText, err := w.Stdout.Search("Contract sent.", 1)
@@ -343,6 +346,7 @@ func TestMain_DepositGas(t *testing.T) {
 
 	wavelet.FailTest(t, w.Testnet.WaitForSync())
 
+	w.Stdin <- "l" // for some reason, the test would fail with a broken pipe w/o this
 	w.Stdin <- "spawn ../../testdata/transfer_back.wasm"
 
 	txIDText, err := w.Stdout.Search("Contract sent.", 1)

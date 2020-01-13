@@ -19,23 +19,23 @@ type ErrorEvent struct {
 
 	// For local node debugging only
 	*zerolog.Event `json:"-"`
-
-	logger *zerolog.Logger
 }
 
 func NewError(logger *zerolog.Logger) *ErrorEvent {
 	return &ErrorEvent{
-		Event:  zerolog.Dict(),
-		logger: logger,
+		Event: logger.Error(),
 	}
 }
 
 func NewErrorFull(logger *zerolog.Logger, err error, msg string) *ErrorEvent {
+	return newErrorFull(logger.Error(), err, msg)
+}
+
+func newErrorFull(ev *zerolog.Event, err error, msg string) *ErrorEvent {
 	return &ErrorEvent{
 		Error:   err,
 		Message: msg,
-		Event:   zerolog.Dict(),
-		logger:  logger,
+		Event:   ev,
 	}
 }
 
@@ -46,7 +46,7 @@ var _ JSONObject = (*ErrorEvent)(nil)
 */
 
 func ErrNode(err error, msg string) {
-	EventTo(node.Error(), NewErrorFull(nil, err, msg))
+	NewErrorFull(&node, err, msg).Send()
 }
 
 func ErrNodeX() *ErrorEvent {
@@ -54,11 +54,11 @@ func ErrNodeX() *ErrorEvent {
 }
 
 func FatalNode(err error, msg string) {
-	EventTo(node.Fatal(), NewErrorFull(nil, err, msg))
+	newErrorFull(node.Fatal(), err, msg).Send()
 }
 
 func PanicNode(err error, msg string) {
-	EventTo(node.Panic(), NewErrorFull(nil, err, msg))
+	newErrorFull(node.Panic(), err, msg).Send()
 }
 
 /*
@@ -66,11 +66,11 @@ func PanicNode(err error, msg string) {
 */
 
 func Error(logger *zerolog.Logger, err error, msg string) {
-	EventTo(logger.Error(), NewErrorFull(nil, err, msg))
+	NewErrorFull(logger, err, msg).Send()
 }
 
 func ErrorF(logger *zerolog.Logger, err error, msgF string, v ...interface{}) {
-	EventTo(logger.Error(), NewErrorFull(nil, err, fmt.Sprintf(msgF, v...)))
+	NewErrorFull(logger, err, fmt.Sprintf(msgF, v...)).Send()
 }
 
 func ErrorWithEvent(logger *zerolog.Logger, err error, msg string) *ErrorEvent {
@@ -91,21 +91,14 @@ func (err *ErrorEvent) Msgf(f string, v ...interface{}) {
 }
 
 func (err *ErrorEvent) Msg(msg string) {
-	err.Message = msg
-	err.MarshalEvent(err.logger.Error())
+	if msg != "" {
+		err.Message = msg
+	}
+
+	err.MarshalEvent(err.Event)
 }
 
 func (err *ErrorEvent) MarshalEvent(ev *zerolog.Event) {
-	// Hijack MarshalEvent and log the keys into a debug node logger
-	var debug = node.Debug()
-	if err.Event != nil {
-		debug.Dict("error", err.Event)
-		ev.Dict("error", err.Event)
-	}
-
-	debug.Err(err.Error).Msg(err.Message)
-
-	// Send the error over for real
 	ev.Err(err.Error).Msg(err.Message)
 }
 

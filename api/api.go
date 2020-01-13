@@ -193,6 +193,13 @@ func New(opts *Config) *Gateway {
 	return g
 }
 
+func (g *Gateway) newServer() *fasthttp.Server {
+	return &fasthttp.Server{
+		Handler:     g.router.Handler,
+		ReadTimeout: 2 * time.Second,
+	}
+}
+
 // Start listens to the given port and TLS if given. It does not block.
 func (g *Gateway) Start() error {
 	// Start the cleanup daemon
@@ -205,7 +212,7 @@ func (g *Gateway) Start() error {
 	}
 
 	// Create a new server
-	g.server = &fasthttp.Server{Handler: g.router.Handler}
+	g.server = g.newServer()
 	go func() {
 		defer stop()
 
@@ -227,7 +234,7 @@ func (g *Gateway) Start() error {
 			return errors.Wrap(err, "Failed to listen to port 443")
 		}
 
-		g.serverTLS = &fasthttp.Server{Handler: g.router.Handler}
+		g.serverTLS = g.newServer()
 		go func() {
 			// Listen to the wrapped TLS listener
 			if err := g.serverTLS.Serve(tls.NewListener(tlsLn, g.tls)); err != nil {

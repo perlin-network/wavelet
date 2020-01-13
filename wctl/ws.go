@@ -57,6 +57,12 @@ func (c *Client) EstablishWS(path string) (*websocket.Conn, error) {
 	return conn, err
 }
 
+func connIsClosedError(err error) bool {
+	// String checking is the only solution:
+	// https://golang.org/src/net/error_test.go#L506.
+	return strings.Contains(err.Error(), "use of closed network connection")
+}
+
 // callback is spawned in a goroutine
 func (c *Client) _pollWS(path string,
 	callback func(*fastjson.Value)) (func(), error) {
@@ -70,7 +76,10 @@ func (c *Client) _pollWS(path string,
 		for {
 			_, message, err := ws.ReadMessage()
 			if err != nil {
-				c.OnError(err)
+				// We should ignore errors returned by Close().
+				if !connIsClosedError(err) {
+					c.OnError(err)
+				}
 				return
 			}
 

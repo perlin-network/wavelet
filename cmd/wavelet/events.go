@@ -51,6 +51,7 @@ func setEvents(c *wctl.Client) (func(), error) {
 		c.PollAccounts,
 		c.PollContracts,
 		c.PollTransactions,
+		c.PollConsensus,
 	)
 
 	return cleanup, err

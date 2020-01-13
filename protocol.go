@@ -22,8 +22,9 @@ package wavelet
 import (
 	"bytes"
 	"context"
-	"github.com/golang/protobuf/ptypes/empty"
 	"io"
+
+	"github.com/golang/protobuf/ptypes/empty"
 
 	"github.com/perlin-network/wavelet/internal/cuckoo"
 
@@ -291,8 +292,7 @@ func (p *Protocol) PullTransactions(
 	}
 
 	if len(res.Transactions) > 0 {
-		logger := log.Sync("pull_missing_tx")
-		logger.Debug().
+		log.Sync("pull_missing_tx").Debug().
 			Int("num_transactions", len(res.Transactions)).
 			Msg("Provided transactions for a pull request.")
 	}

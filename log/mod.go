@@ -133,7 +133,7 @@ func Sync(event string) *zerolog.Logger {
 }
 
 func Metrics() *zerolog.Logger {
-	return eventIf("", metrics)
+	return eventIf("metrics", metrics)
 }
 
 func eventIf(event string, logger zerolog.Logger) *zerolog.Logger {

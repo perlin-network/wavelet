@@ -377,7 +377,8 @@ func NewCLI(client *wctl.Client, opts ...CLIOption) (*CLI, error) {
 }
 
 func (cli *CLI) Start() {
-	defer cli.cleanup()
+	// defer cli.cleanup()
+	defer cli.rl.Close()
 
 ReadLoop:
 	for {
@@ -410,8 +411,6 @@ ReadLoop:
 				Msg("Failed to run command.")
 		}
 	}
-
-	_ = cli.rl.Close()
 }
 
 func (cli *CLI) exit(ctx *cli.Context) {

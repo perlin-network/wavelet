@@ -697,11 +697,11 @@ func (l *Ledger) FinalizeBlocks() {
 		if preferred == nil {
 			proposedBlock := l.proposeBlock()
 			if proposedBlock != nil {
-				log.NewError(log.Consensus("proposal")).
-					Hex("block_id", proposedBlock.ID[:]).
-					Uint64("block_index", proposedBlock.Index).
-					Int("num_transactions", len(proposedBlock.Transactions)).
-					Msg("Proposing block...")
+				log.Info(log.Consensus("proposal"), &ConsensusProposal{
+					BlockID:    proposedBlock.ID,
+					BlockIndex: proposedBlock.Index,
+					NumTxs:     len(proposedBlock.Transactions),
+				})
 
 				l.finalizer.Prefer(&finalizationVote{
 					voter: l.client.ID(),
