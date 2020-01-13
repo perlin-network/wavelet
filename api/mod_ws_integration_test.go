@@ -69,9 +69,12 @@ func TestPollLog(t *testing.T) {
 		defer cleanup()
 
 		// log 2 messages with different tags
-		logger := log.TX("test")
-		logger.Log().Uint8("tag", byte(sys.TagTransfer)).Msg("")
-		logger.Log().Uint8("tag", byte(sys.TagStake)).Msg("")
+		go func() {
+			time.Sleep(time.Second / 2)
+			logger := log.TX("test")
+			logger.Log().Uint8("tag", byte(sys.TagTransfer)).Msg("")
+			logger.Log().Uint8("tag", byte(sys.TagStake)).Msg("")
+		}()
 
 		messages := readAllMessages(t, c, 1)
 		assert.Equal(t, 1, len(messages))

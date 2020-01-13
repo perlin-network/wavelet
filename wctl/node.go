@@ -11,10 +11,8 @@ func (c *Client) Connect(address string) (*MsgResponse, error) {
 	o := (&fastjson.Arena{}).NewObject()
 	o.Set("address", arena.NewString(address))
 
-	j := log.JSONRaw(o.MarshalTo(nil))
-
 	var resp MsgResponse
-	if err := c.RequestJSON(RouteConnect, ReqPost, j, &resp); err != nil {
+	if err := c.RequestJSON(RouteConnect, ReqPost, log.ValueAsJSON(o), &resp); err != nil {
 		return nil, err
 	}
 
@@ -27,10 +25,8 @@ func (c *Client) Disconnect(address string) (*MsgResponse, error) {
 	o := (&fastjson.Arena{}).NewObject()
 	o.Set("address", arena.NewString(address))
 
-	j := log.JSONRaw(o.MarshalTo(nil))
-
 	var resp MsgResponse
-	if err := c.RequestJSON(RouteDisconnect, ReqPost, j, &resp); err != nil {
+	if err := c.RequestJSON(RouteDisconnect, ReqPost, log.ValueAsJSON(o), &resp); err != nil {
 		return nil, err
 	}
 
@@ -49,10 +45,8 @@ func (c *Client) Restart(hard bool) (*MsgResponse, error) {
 		o.Set("hard", arena.NewFalse())
 	}
 
-	j := log.JSONRaw(o.MarshalTo(nil))
-
 	var resp MsgResponse
-	if err := c.RequestJSON(RouteRestart, ReqPost, j, &resp); err != nil {
+	if err := c.RequestJSON(RouteRestart, ReqPost, log.ValueAsJSON(o), &resp); err != nil {
 		return nil, err
 	}
 

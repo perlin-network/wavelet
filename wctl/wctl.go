@@ -381,8 +381,6 @@ type RequestError struct {
 	RequestBody  []byte
 	ResponseBody []byte
 	StatusCode   int
-
-	underlying log.ErrorEvent
 }
 
 func ParseRequestError(b []byte) *RequestError {

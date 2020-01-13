@@ -31,6 +31,8 @@ import (
 	"strings"
 	"time"
 
+	_ "net/http/pprof"
+
 	"github.com/perlin-network/noise/edwards25519"
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet"
@@ -44,6 +46,7 @@ import (
 
 func main() {
 	http.DefaultTransport.(*http.Transport).MaxIdleConnsPerHost = 100
+	go http.ListenAndServe("localhost:10080", nil)
 
 	app := cli.NewApp()
 

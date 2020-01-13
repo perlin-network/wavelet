@@ -69,8 +69,7 @@ func ObjectBatch(arena *fastjson.Arena, o *fastjson.Value, keyValPair ...interfa
 
 // ObjectAny sets a key-value into the existing object. It does as many types as
 // ValueAny.
-func ObjectAny(arena *fastjson.Arena, o *fastjson.Value, key string,
-	val interface{}) error {
+func ObjectAny(arena *fastjson.Arena, o *fastjson.Value, key string, val interface{}) error {
 
 	var target *fastjson.Value
 

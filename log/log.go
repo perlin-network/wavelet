@@ -48,26 +48,17 @@ func Info(logger *zerolog.Logger, loggable MarshalableEvent) {
 	EventTo(logger.Info(), loggable)
 }
 
-type JSONRaw []byte
+type JSONRaw fastjson.Value
 
-var _ JSONObject = (*JSONRaw)(nil)
-
-func (j JSONRaw) MarshalEvent(ev *zerolog.Event) {
-	ev.RawJSON("json", j)
-	ev.Msg("Raw JSON")
+func ValueAsJSON(v *fastjson.Value) *JSONRaw {
+	return (*JSONRaw)(v)
 }
 
-func (j JSONRaw) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
-	return j, nil
+func (j *JSONRaw) MarshalArena(arena *fastjson.Arena) ([]byte, error) {
+	return (*fastjson.Value)(j).MarshalTo(nil), nil
 }
 
-func (j JSONRaw) UnmarshalValue(v *fastjson.Value) error {
-	var parser fastjson.Parser
-	parsed, err := parser.ParseBytes(j)
-	if err != nil {
-		return err
-	}
-
-	*v = *parsed
+func (j *JSONRaw) UnmarshalValue(v *fastjson.Value) error {
+	*v = fastjson.Value(*j)
 	return nil
 }

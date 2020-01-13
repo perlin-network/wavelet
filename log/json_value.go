@@ -69,6 +69,7 @@ func ValueBatch(value *fastjson.Value, keyDstPair ...interface{}) error {
 		case string:
 			var parts = strings.Split(ks, ",")
 			var key = strings.Split(parts[0], ".")
+
 			keys = append(keys, key...)
 			parts = parts[1:]
 
@@ -92,6 +93,7 @@ func ValueBatch(value *fastjson.Value, keyDstPair ...interface{}) error {
 			if omitempty {
 				continue
 			}
+
 			return NewErrUnmarshalErr(value, keys, ErrDoesNotExist)
 		}
 
@@ -306,8 +308,8 @@ func ValueBase64(value *fastjson.Value, key ...string) ([]byte, error) {
 	}
 
 	dec := make([]byte, base64.StdEncoding.DecodedLen(len(b)))
-
 	_, err = base64.StdEncoding.Decode(dec, b)
+
 	return dec, err
 }
 
