@@ -24,7 +24,6 @@ import (
 	"github.com/perlin-network/noise/skademlia"
 	"github.com/perlin-network/wavelet/sys"
 	"math"
-	"sync"
 )
 
 type VoteID BlockID
@@ -132,45 +131,6 @@ func (f *finalizationVote) SetTally(v float64) {
 
 func (f *finalizationVote) Tally() float64 {
 	return f.tally
-}
-
-func CollectVotesForSync(
-	accounts *Accounts,
-	sampler *Snowball,
-	voteChan <-chan Vote,
-	wg *sync.WaitGroup,
-	snowballK int,
-) {
-	votes := make([]Vote, 0, snowballK)
-	voters := make(map[AccountID]struct{}, snowballK)
-
-	// TODO: is this the best place to set the initial preferred
-	sampler.Prefer(&syncVote{
-		outOfSync: false,
-	})
-
-	for vote := range voteChan {
-		vote := vote.(*syncVote)
-
-		if _, recorded := voters[vote.voter.PublicKey()]; recorded {
-			continue // To make sure the sampling process is fair, only allow one vote per peer.
-		}
-
-		voters[vote.voter.PublicKey()] = struct{}{}
-
-		votes = append(votes, vote)
-
-		if len(votes) == cap(votes) {
-			sampler.Tick(calculateTallies(accounts, votes))
-
-			voters = make(map[AccountID]struct{}, snowballK)
-			votes = votes[:0]
-		}
-	}
-
-	if wg != nil {
-		wg.Done()
-	}
 }
 
 // Return back the votes with their tallies calculated.
