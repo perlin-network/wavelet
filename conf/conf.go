@@ -59,7 +59,7 @@ var (
 func defaultConfig() config {
 	defConf := config{
 		snowballK:     2,
-		snowballBeta:  150,
+		snowballBeta:  300,
 		SnowballAlpha: 0.8,
 
 		syncVoteThreshold:             0.8,
