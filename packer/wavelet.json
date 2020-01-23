@@ -1,0 +1,33 @@
+{
+  "variables": {
+    "aws_access_key": "",
+    "aws_secret_key": "",
+    "wavelet_version": "v0.2.0",
+    "wavelet_build_branch": "{{env `WAVELET_BUILD_BRANCH`}}",
+    "go_version": "1.13.6"
+  },
+  "builders": [
+    {
+      "type": "amazon-ebs",
+      "access_key": "{{user `aws_access_key`}}",
+      "secret_key": "{{user `aws_secret_key`}}",
+      "region": "ap-southeast-1",
+      "source_ami": "ami-061eb2b23f9f8839c",
+      "instance_type": "t2.micro",
+      "ssh_username": "ubuntu",
+      "ami_name": "perlin-wavelet-{{timestamp}}"
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "shell",
+      "script": "./setup.sh",
+      "environment_vars": [
+        "WAVELET_VERSION={{user `wavelet_version`}}",
+        "WAVELET_BUILD_BRANCH={{user `wavelet_build_branch`}}",
+        "GO_VERSION={{user `go_version`}}"
+      ],
+      "execute_command": "sudo -S sh -c '{{ .Vars }} {{ .Path }}'"
+    }
+  ] 
+}
