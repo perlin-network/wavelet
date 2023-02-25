@@ -21,7 +21,6 @@ require (
 	github.com/gorilla/websocket v1.4.0
 	github.com/huandu/skiplist v0.0.0-20180112095830-8e883b265e1b
 	github.com/minio/highwayhash v1.0.0
-	github.com/mmcloughlin/avo v0.0.0-20190927041150-15d6a9a17e53 // indirect
 	github.com/perlin-network/life v0.0.0-20190723115110-3091ed0c1be8
 	github.com/perlin-network/noise v1.1.1-0.20191113101947-c8dc081eafa7
 	github.com/phayes/freeport v0.0.0-20180830031419-95f893ade6f2
@@ -37,7 +36,7 @@ require (
 	go.uber.org/atomic v1.5.0
 	golang.org/x/crypto v0.0.0-20190911031432-227b76d455e7
 	golang.org/x/net v0.0.0-20191105084925-a882066a44e0
-	golang.org/x/sys v0.0.0-20190919044723-0c1ff786ef13 // indirect
+	golang.org/x/sys v0.1.0 // indirect
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
 	google.golang.org/appengine v1.6.2 // indirect
 	google.golang.org/genproto v0.0.0-20190916214212-f660b8655731 // indirect
